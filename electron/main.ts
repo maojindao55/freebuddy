@@ -35,7 +35,7 @@ function createWindow() {
     title: "FreeBuddy",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: 14 },
-    backgroundColor: "#f2f2f2",
+    backgroundColor: "#0b1329",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

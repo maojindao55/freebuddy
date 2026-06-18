@@ -72,6 +72,26 @@ export interface RunCtx {
 
 export const runCtxMap = new Map<string, RunCtx>();
 
+function latestSessionIdFromMessages(messages: ConversationMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role !== "assistant") continue;
+    try {
+      const items = JSON.parse(message.content) as CliStreamItem[];
+      if (!Array.isArray(items)) continue;
+      for (let j = items.length - 1; j >= 0; j -= 1) {
+        const item = items[j];
+        if (item?.kind === "session" && item.sessionId) {
+          return item.sessionId;
+        }
+      }
+    } catch {
+      // Ignore old/plain assistant messages.
+    }
+  }
+  return undefined;
+}
+
 export const useConversationStore = create<ConversationState>((set, get) => ({
   members: builtinCliMembers,
   conversations: [],
@@ -245,13 +265,17 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...(resolved?.extraArgs ?? []),
       ...(member.cli.extraArgs ?? [])
     ];
+    const toolSessionScope = conv.cwd ?? `conversation:${conv.id}`;
 
     let resumedFromSessionId: string | undefined;
-    if (!wantFresh && conv.cwd) {
-      const prev = await cliClient.getToolSession(member.id, conv.cwd);
+    if (!wantFresh) {
+      const prev = await cliClient.getToolSession(member.id, toolSessionScope);
       if (prev && prev.adapter === member.cli.adapter) {
         resumedFromSessionId = prev.sessionId;
       }
+      resumedFromSessionId ??= latestSessionIdFromMessages(
+        get().messages[conversationId] ?? []
+      );
     }
 
     const runArgs: CliRunArgs = {
@@ -263,6 +287,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       extraArgs,
       prompt: trimmed,
       cwd: conv.cwd,
+      toolSessionScope,
+      toolSessionId: resumedFromSessionId,
       env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
       approvalMode: member.cli.approvalMode,
       showStderr: member.cli.showStderr,

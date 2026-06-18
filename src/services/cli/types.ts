@@ -21,6 +21,10 @@ export interface CliRunArgs {
   extraArgs?: string[];
   prompt: string;
   cwd?: string;
+  /** Persistence key for tool-session resume. Defaults to cwd when omitted. */
+  toolSessionScope?: string;
+  /** Concrete CLI session/thread id to resume when available. */
+  toolSessionId?: string;
   env?: Record<string, string>;
   approvalMode?: "auto" | "ask";
   showStderr?: boolean;

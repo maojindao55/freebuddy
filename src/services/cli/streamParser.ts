@@ -35,12 +35,13 @@ export type CliStreamItem =
       outputTokens?: number;
       totalCost?: number;
     }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; details?: string[] }
   | { kind: "done"; exitCode?: number }
   | { kind: "raw"; content: string };
 
 export interface ParseContext {
   sessionId?: string;
+  diagnosticLogs?: string[];
 }
 
 export interface AdapterStreamParser {

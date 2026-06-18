@@ -41,6 +41,8 @@ const cli = {
   updateMessage: (input: unknown) =>
     ipcRenderer.invoke("cli:updateMessage", input),
 
+  selectDirectory: () => ipcRenderer.invoke("cli:selectDirectory"),
+
   onEvent(sessionId: string, cb: (event: unknown) => void): () => void {
     const channel = `cli://${sessionId}`;
     const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);

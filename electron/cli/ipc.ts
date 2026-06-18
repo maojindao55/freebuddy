@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from "electron";
+import { ipcMain, BrowserWindow, dialog, type IpcMainInvokeEvent } from "electron";
 
 import { cliAdapterDefinitions } from "./adapters.js";
 import { cliCheck, cliInstall, listRuntimes } from "./check.js";
@@ -42,6 +42,16 @@ function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
 }
 
 export function registerCliIpc() {
+  ipcMain.handle("cli:selectDirectory", async (event) => {
+    const win = senderWindow(event);
+    if (!win) return null;
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      properties: ["openDirectory"]
+    });
+    if (canceled) return null;
+    return filePaths[0] ?? null;
+  });
+
   ipcMain.handle("cli:listAdapters", () => cliAdapterDefinitions);
 
   ipcMain.handle("cli:listOverrides", () => listOverrides());

@@ -72,6 +72,8 @@ declare global {
     appendMessage(input: AppendMessageInput): Promise<ConversationMessage>;
     updateMessage(input: UpdateMessageInput): Promise<void>;
 
+    selectDirectory(): Promise<string | null>;
+
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;
   }
 

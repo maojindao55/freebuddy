@@ -33,6 +33,7 @@ export function ConversationList({
               className={`conv-item${activeId === c.id ? " active" : ""}`}
               onClick={() => void setActive(c.id)}
             >
+              {running && <span className="conv-running-dot" />}
               <div className="conv-item-main">
                 <strong>{c.title}</strong>
                 <small>
@@ -41,7 +42,6 @@ export function ConversationList({
                 </small>
               </div>
               <div className="conv-item-side">
-                {running && <span className="status-pill running">●</span>}
                 <button
                   className="icon-btn"
                   title="Rename"

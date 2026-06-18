@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { useConversationStore } from "@/store/conversationStore";
 
@@ -15,6 +15,7 @@ export function WorkspacePanel({
   const conversations = useConversationStore((s) => s.conversations);
   const messagesMap = useConversationStore((s) => s.messages);
   const liveMap = useConversationStore((s) => s.live);
+  const [copiedSession, setCopiedSession] = useState(false);
 
   const active = conversations.find((c) => c.id === activeId);
   const messages = activeId ? messagesMap[activeId] ?? [] : [];
@@ -25,6 +26,29 @@ export function WorkspacePanel({
     () => messages.filter((m) => m.role === "assistant").length,
     [messages]
   );
+  const latestSessionId = useMemo(() => {
+    const fromLive = live?.capturedSessionId ?? live?.resumedFromSessionId;
+    if (fromLive) return fromLive;
+
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message.role !== "assistant") continue;
+      try {
+        const items = JSON.parse(message.content) as unknown[];
+        if (!Array.isArray(items)) continue;
+        for (let j = items.length - 1; j >= 0; j -= 1) {
+          const item = items[j] as { kind?: string; sessionId?: string };
+          if (item?.kind === "session" && item.sessionId) {
+            return item.sessionId;
+          }
+        }
+      } catch {
+        // Ignore plain or legacy assistant messages.
+      }
+    }
+
+    return undefined;
+  }, [live?.capturedSessionId, live?.resumedFromSessionId, messages]);
 
   return (
     <aside className="details-panel workspace-panel" aria-label="Workspace panel">
@@ -63,6 +87,29 @@ export function WorkspacePanel({
           <div>
             <dt>Workspace</dt>
             <dd>{active?.cwd ? shortPath(active.cwd) : "Not set"}</dd>
+          </div>
+          <div>
+            <dt>Session ID</dt>
+            <dd>
+              <button
+                className="session-id-copy"
+                type="button"
+                disabled={!latestSessionId}
+                title={latestSessionId ? `Copy ${latestSessionId}` : "No session captured yet"}
+                onClick={() => {
+                  if (!latestSessionId) return;
+                  void navigator.clipboard.writeText(latestSessionId);
+                  setCopiedSession(true);
+                  window.setTimeout(() => setCopiedSession(false), 1200);
+                }}
+              >
+                {copiedSession
+                  ? "Copied"
+                  : latestSessionId
+                    ? shortSessionId(latestSessionId)
+                    : "Not captured"}
+              </button>
+            </dd>
           </div>
           <div>
             <dt>Messages</dt>
@@ -112,4 +159,9 @@ export function WorkspacePanel({
 
 function shortPath(path: string) {
   return path.split(/[/\\]/).filter(Boolean).slice(-2).join("/") || path;
+}
+
+function shortSessionId(id: string) {
+  if (id.length <= 18) return id;
+  return `${id.slice(0, 8)}…${id.slice(-6)}`;
 }

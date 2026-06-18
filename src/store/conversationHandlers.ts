@@ -15,6 +15,50 @@ type SetFn = (
 ) => void;
 type GetFn = () => ConversationState;
 
+function hasUserFacingError(items: CliStreamItem[]) {
+  return items.some((item) => item.kind === "error");
+}
+
+function failureSummaryFor(exitCode: number, parseCtx: ParseContext): CliStreamItem {
+  const details = parseCtx.diagnosticLogs?.slice(-30);
+  return {
+    kind: "error",
+    message:
+      exitCode === 130
+        ? "Agent 运行已中断。"
+        : `Agent 运行失败，退出码 ${exitCode}。${
+            details?.length
+              ? "已收起原始 CLI 日志，方便排查。"
+              : "CLI 没有返回可解析的结构化内容。"
+          }`,
+    details
+  };
+}
+
+function refreshLatestErrorDetails(
+  items: CliStreamItem[],
+  parseCtx: ParseContext
+): CliStreamItem[] {
+  const details = parseCtx.diagnosticLogs?.slice(-30);
+  if (!details?.length) return items;
+
+  let errorIndex = -1;
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (items[i].kind === "error") {
+      errorIndex = i;
+      break;
+    }
+  }
+  if (errorIndex < 0) return items;
+
+  const next = [...items];
+  const item = next[errorIndex];
+  if (item.kind === "error") {
+    next[errorIndex] = { ...item, details };
+  }
+  return next;
+}
+
 export function handleStreamEvent(
   set: SetFn,
   get: GetFn,
@@ -42,9 +86,11 @@ export function handleStreamEvent(
       nextItems = appendItems(nextItems, items);
       if (parseCtx.sessionId) capturedSessionId = parseCtx.sessionId;
     } else if (e.type === "stderr") {
-      nextItems = appendItems(nextItems, [
+      const items = parser.parseStderrLine?.(e.content, parseCtx) ?? [
         { kind: "command-output", content: e.content, stream: "stderr" }
-      ] as CliStreamItem[]);
+      ];
+      nextItems = appendItems(nextItems, items as CliStreamItem[]);
+      nextItems = refreshLatestErrorDetails(nextItems, parseCtx);
     } else if (e.type === "error") {
       nextItems = appendItems(nextItems, [
         { kind: "error", message: e.message }
@@ -58,6 +104,9 @@ export function handleStreamEvent(
         status = e.exitCode === 0 ? "done" : "failed";
       }
       exitCode = e.exitCode;
+      if (status !== "killed" && e.exitCode !== 0 && !hasUserFacingError(nextItems)) {
+        nextItems = appendItems(nextItems, [failureSummaryFor(e.exitCode, parseCtx)]);
+      }
       nextItems = appendItems(nextItems, [
         { kind: "done", exitCode: e.exitCode }
       ] as CliStreamItem[]);

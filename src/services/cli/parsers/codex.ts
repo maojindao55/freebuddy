@@ -5,6 +5,14 @@ import {
   type CliStreamItem
 } from "../streamParser";
 
+function errorMessageFrom(value: any, fallback: string): string {
+  const err = value?.error;
+  if (typeof err === "string") return err;
+  if (err?.message) return String(err.message);
+  if (value?.message) return String(value.message);
+  return fallback;
+}
+
 const codexParser: AdapterStreamParser = {
   parseStdoutLine(line, ctx) {
     const obj = tryJson(line);
@@ -22,6 +30,99 @@ const codexParser: AdapterStreamParser = {
     }
 
     switch (type) {
+      case "thread.started": {
+        const threadId = msg.thread_id ?? msg.threadId;
+        if (threadId && threadId !== ctx.sessionId) {
+          ctx.sessionId = String(threadId);
+          out.push({ kind: "session", sessionId: String(threadId) });
+        }
+        break;
+      }
+      case "turn.started":
+        break;
+      case "item.updated": {
+        const item = msg.item ?? {};
+        const itemType = String(item.type ?? "");
+        const delta =
+          msg.delta ??
+          item.delta ??
+          item.text_delta ??
+          item.content_delta ??
+          item.thinking_delta;
+
+        if (
+          (itemType === "agent_message" || itemType === "assistant_message") &&
+          delta
+        ) {
+          out.push({
+            kind: "text",
+            role: "assistant",
+            content: String(delta),
+            append: true
+          });
+        } else if (itemType === "reasoning" && delta) {
+          out.push({
+            kind: "thinking",
+            content: String(delta),
+            append: true
+          });
+        }
+        break;
+      }
+      case "item.completed": {
+        const item = msg.item ?? {};
+        const itemType = String(item.type ?? "");
+        if (itemType === "agent_message" || itemType === "assistant_message") {
+          const text = item.text ?? item.message ?? item.content;
+          if (text) {
+            out.push({
+              kind: "text",
+              role: "assistant",
+              content: String(text)
+            });
+          }
+        } else if (itemType === "reasoning") {
+          const text = item.text ?? item.content;
+          if (text) out.push({ kind: "thinking", content: String(text) });
+        } else if (itemType === "function_call" || itemType === "tool_call") {
+          out.push({
+            kind: "tool-call",
+            tool: String(item.name ?? item.tool ?? "tool"),
+            input: item.arguments ?? item.input,
+            id: item.id
+          });
+        } else if (itemType === "function_call_output" || itemType === "tool_result") {
+          out.push({
+            kind: "tool-result",
+            tool: String(item.name ?? item.tool ?? "tool"),
+            id: item.id,
+            content: String(item.output ?? item.content ?? ""),
+            isError: item.is_error === true
+          });
+        }
+        break;
+      }
+      case "turn.completed": {
+        const usage = msg.usage ?? {};
+        if (Object.keys(usage).length > 0) {
+          out.push({
+            kind: "usage",
+            inputTokens: usage.input_tokens ?? usage.inputTokens,
+            outputTokens: usage.output_tokens ?? usage.outputTokens,
+            totalCost: usage.total_cost ?? usage.totalCost
+          });
+        }
+        break;
+      }
+      case "turn.failed":
+      case "turn.error":
+      case "turn.aborted":
+      case "turn.cancelled":
+        out.push({
+          kind: "error",
+          message: errorMessageFrom(msg, line)
+        });
+        break;
       case "agent_message":
       case "assistant_message":
       case "message":
@@ -131,7 +232,7 @@ const codexParser: AdapterStreamParser = {
       case "error":
         out.push({
           kind: "error",
-          message: String(msg.message ?? msg.error ?? line)
+          message: errorMessageFrom(msg, line)
         });
         break;
       case "task_complete":
@@ -142,6 +243,10 @@ const codexParser: AdapterStreamParser = {
         out.push({ kind: "raw", content: line });
     }
     return out;
+  },
+  parseStderrLine(line) {
+    if (line.includes("Reading additional input from stdin")) return [];
+    return line ? [{ kind: "command-output", content: line, stream: "stderr" }] : [];
   }
 };
 

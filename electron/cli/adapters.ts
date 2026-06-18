@@ -120,10 +120,13 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
 
   switch (input.adapter) {
     case "codex": {
-      const args: string[] = ["exec", "--json", "--color", "never"];
       if (input.toolSessionId && !hasExplicitToolSessionArg("codex", extra)) {
-        // codex exec resume uses --last by default; we record sessionId only.
+        const args: string[] = ["exec", "resume", "--json"];
+        args.push(...extra);
+        args.push(input.toolSessionId, input.prompt);
+        return { bin, args, promptViaStdin: false };
       }
+      const args: string[] = ["exec", "--json", "--color", "never"];
       args.push(...extra);
       args.push(input.prompt);
       return { bin, args, promptViaStdin: false };

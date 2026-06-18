@@ -122,6 +122,9 @@ export const cliClient = {
   updateMessage(input: UpdateMessageInput): Promise<void> {
     return api().updateMessage(input);
   },
+  selectDirectory(): Promise<string | null> {
+    return api().selectDirectory();
+  },
 
   onEvent(sessionId: string, cb: (e: CliEvent) => void): () => void {
     return api().onEvent(sessionId, cb as (e: unknown) => void);

@@ -32,7 +32,7 @@ export function CLIAdaptersTab() {
   if (!cliClient.isAvailable()) {
     return (
       <div className="settings-tab">
-        <h3>CLI Adapters</h3>
+        <h3 className="settings-section-title">CLI Adapters</h3>
         <p className="muted">
           CLI bridge is unavailable. Run the desktop app to manage CLI agents.
         </p>
@@ -42,7 +42,7 @@ export function CLIAdaptersTab() {
 
   return (
     <div className="settings-tab">
-      <h3>CLI Adapters</h3>
+      <h3 className="settings-section-title">CLI Adapters</h3>
       <p className="muted">
         Configure local CLI coding agents. Each adapter becomes a first-class
         FreeBuddy member.
@@ -107,13 +107,13 @@ function AdapterRow({
         </div>
         <div className="adapter-row-meta">
           {rt?.installed ? (
-            <span className="ok">
+            <span className="adapter-status ok">
               ✓ installed {rt.version ? `(${rt.version})` : ""}
             </span>
           ) : rt ? (
-            <span className="warn">not installed</span>
+            <span className="adapter-status warn">not installed</span>
           ) : (
-            <span className="muted">not checked</span>
+            <span className="adapter-status muted">not checked</span>
           )}
           {rt?.binaryPath && <span className="muted">{rt.binaryPath}</span>}
           {ex.extraArgs.length > 0 && (
@@ -143,7 +143,9 @@ function EditOverrideDialog({
   executorId: string;
   onClose: () => void;
 }) {
-  const ex = useCliExecutorStore((s) => s.resolve(executorId));
+  const resolve = useCliExecutorStore((s) => s.resolve);
+  const override = useCliExecutorStore((s) => s.overrides[executorId]);
+  const ex = resolve(executorId);
   const upsert = useCliExecutorStore((s) => s.upsertOverride);
   const reset = useCliExecutorStore((s) => s.resetOverride);
 
@@ -192,7 +194,12 @@ function EditOverrideDialog({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h4>Edit {ex.label}</h4>
+        <header className="modal-header">
+          <h2>Edit {ex.label}</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </header>
 
         <label>
           Binary path

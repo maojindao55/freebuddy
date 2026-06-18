@@ -24,6 +24,10 @@ export interface CliRunArgs {
   extraArgs?: string[];
   prompt: string;
   cwd?: string;
+  /** Persistence key for tool-session resume. Defaults to cwd when omitted. */
+  toolSessionScope?: string;
+  /** Concrete CLI session/thread id to resume when available. */
+  toolSessionId?: string;
   env?: Record<string, string>;
   approvalMode?: "auto" | "ask";
   showStderr?: boolean;
@@ -132,12 +136,20 @@ function maybeCaptureSessionId(args: CliRunArgs, rawLine: string) {
     return;
   }
   const o = obj as Record<string, any>;
+  const msg = o?.msg ?? o;
   const candidate =
     o?.session_id ||
     o?.sessionId ||
+    o?.thread_id ||
+    o?.threadId ||
     o?.session?.id ||
     o?.data?.session_id ||
-    o?.data?.sessionId;
+    o?.data?.sessionId ||
+    msg?.session_id ||
+    msg?.sessionId ||
+    msg?.thread_id ||
+    msg?.threadId ||
+    msg?.session?.id;
   if (typeof candidate === "string" && candidate.length > 0) {
     capturedSessions.set(args.sessionId, candidate);
   }
@@ -161,17 +173,20 @@ export async function cliRun(
   }
 
   let toolSessionId: string | undefined;
+  const toolSessionScope = args.toolSessionScope || args.cwd;
   const definition = getAdapterDefinition(args.adapter);
   const userControlsResume = hasExplicitToolSessionArg(args.adapter, args.extraArgs);
   if (
     args.resumeToolSession !== false &&
     !userControlsResume &&
-    definition?.capabilities.toolSession &&
-    args.cwd
+    definition?.capabilities.toolSession
   ) {
-    const prev = getToolSession(args.agentId, args.cwd);
-    if (prev && prev.adapter === args.adapter) {
-      toolSessionId = prev.sessionId;
+    toolSessionId = args.toolSessionId;
+    if (!toolSessionId && toolSessionScope) {
+      const prev = getToolSession(args.agentId, toolSessionScope);
+      if (prev && prev.adapter === args.adapter) {
+        toolSessionId = prev.sessionId;
+      }
     }
   }
 
@@ -281,8 +296,8 @@ export async function cliRun(
     );
 
     const captured = capturedSessions.get(args.sessionId);
-    if (captured && args.cwd) {
-      saveToolSession(args.agentId, args.cwd, args.adapter, captured);
+    if (captured && toolSessionScope) {
+      saveToolSession(args.agentId, toolSessionScope, args.adapter, captured);
       setTaskToolSessionId(args.sessionId, captured);
     }
     capturedSessions.delete(args.sessionId);

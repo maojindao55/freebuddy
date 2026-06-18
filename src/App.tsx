@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ChatView } from "./components/CLI/ChatView";
 import { ConversationList } from "./components/CLI/ConversationList";
-import { NewConversationDialog } from "./components/CLI/NewConversationDialog";
 import { WorkspacePanel } from "./components/CLI/WorkspacePanel";
 import { SettingsModal } from "./components/Settings/SettingsModal";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
@@ -13,7 +12,6 @@ type Theme = "light" | "dark";
 function App() {
   const [theme, setTheme] = useState<Theme>("light");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [newOpen, setNewOpen] = useState(false);
 
   const isElectron =
     Boolean(window.freebuddy?.cli) || navigator.userAgent.includes("Electron");
@@ -35,19 +33,21 @@ function App() {
   const conversations = useConversationStore((s) => s.conversations);
   const live = useConversationStore((s) => s.live);
   const activeId = useConversationStore((s) => s.activeId);
+  const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
+  const isNewTask = !activeConversation;
   const runningCount = conversations.filter(
     (c) => live[c.id]?.status === "running" || live[c.id]?.status === "starting"
   ).length;
 
   return (
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}`}
       data-theme={theme}
     >
       <aside className="activity-bar" aria-label="Primary">
         <button className="activity-dot active" title="Chat" aria-label="Chat">
-          <span className="icon">fb</span>
+          <span className="icon-glyph">💬</span>
         </button>
         <button
           className="activity-dot bottom"
@@ -55,7 +55,7 @@ function App() {
           aria-label="Settings"
           onClick={() => setSettingsOpen(true)}
         >
-          <span className="icon-glyph">⚙︎</span>
+          <span className="icon-glyph">⚙</span>
         </button>
         <button
           className="activity-dot"
@@ -63,7 +63,7 @@ function App() {
           aria-label="Toggle theme"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
-          <span className="icon">{theme === "dark" ? "sun" : "moon"}</span>
+          <span className="icon-glyph">{theme === "dark" ? "☀️" : "🌙"}</span>
         </button>
       </aside>
 
@@ -75,7 +75,7 @@ function App() {
           </div>
         </div>
 
-        <ConversationList onNew={() => setNewOpen(true)} />
+        <ConversationList onNew={() => void setActive(undefined)} />
 
         <div className="sidebar-footer">
           <span className="muted">
@@ -94,14 +94,10 @@ function App() {
         <header className="titlebar">
           <div className="breadcrumb">
             <span>FreeBuddy</span>
-            <span>/</span>
+            <span>›</span>
             <strong>{activeConversation?.title ?? "Chat"}</strong>
           </div>
-          <div className="titlebar-actions">
-            <button className="text-button">Ask</button>
-            <button className="text-button active">Craft</button>
-            <button className="text-button">Plan</button>
-          </div>
+
         </header>
 
         <section className="chat-section" aria-label="Chat">
@@ -109,14 +105,15 @@ function App() {
         </section>
       </main>
 
-      <WorkspacePanel
-        runtime={runtime}
-        theme={theme}
-        runningCount={runningCount}
-      />
+      {activeConversation && (
+        <WorkspacePanel
+          runtime={runtime}
+          theme={theme}
+          runningCount={runningCount}
+        />
+      )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
-      {newOpen && <NewConversationDialog onClose={() => setNewOpen(false)} />}
     </div>
   );
 }

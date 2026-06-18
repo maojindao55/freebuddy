@@ -2,11 +2,35 @@ import {
   registerParser,
   tryJson,
   type AdapterStreamParser,
+  type ParseContext,
   type CliStreamItem
 } from "../streamParser";
 
+function rememberDiagnostic(ctx: ParseContext, line: string) {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  const logs = ctx.diagnosticLogs ?? [];
+  logs.push(trimmed);
+  ctx.diagnosticLogs = logs.slice(-40);
+}
+
+function logfmtValue(line: string, key: string): string | undefined {
+  const match = line.match(new RegExp(`${key}=("([^"]*)"|\\S+)`));
+  if (!match) return undefined;
+  return match[2] ?? match[1]?.replace(/^"|"$/g, "");
+}
+
+function isOpenCodeRuntimeLog(line: string) {
+  return /\btimestamp=/.test(line) && /\blevel=/.test(line);
+}
+
 const opencodeParser: AdapterStreamParser = {
   parseStdoutLine(line, ctx) {
+    if (isOpenCodeRuntimeLog(line)) {
+      rememberDiagnostic(ctx, line);
+      return [];
+    }
+
     const obj = tryJson(line);
     if (!obj) return line ? [{ kind: "raw", content: line }] : [];
     const out: CliStreamItem[] = [];
@@ -105,6 +129,27 @@ const opencodeParser: AdapterStreamParser = {
         out.push({ kind: "raw", content: line });
     }
     return out;
+  },
+  parseStderrLine(line, ctx) {
+    if (!line.trim()) return [];
+
+    if (isOpenCodeRuntimeLog(line)) {
+      rememberDiagnostic(ctx, line);
+      const level = logfmtValue(line, "level")?.toUpperCase();
+      if (level === "ERROR" || level === "FATAL" || level === "PANIC") {
+        return [
+          {
+            kind: "error",
+            message: logfmtValue(line, "message") ?? line,
+            details: ctx.diagnosticLogs
+          }
+        ];
+      }
+      return [];
+    }
+
+    rememberDiagnostic(ctx, line);
+    return [];
   }
 };
 

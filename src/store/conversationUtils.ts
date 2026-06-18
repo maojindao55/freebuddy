@@ -11,21 +11,53 @@ export function appendItems(
     const last = out[out.length - 1];
     if (
       item.kind === "text" &&
-      item.append &&
       last &&
       last.kind === "text" &&
       last.role === item.role
     ) {
-      out[out.length - 1] = { ...last, content: last.content + item.content };
-      continue;
+      if (item.append) {
+        out[out.length - 1] = { ...last, content: last.content + item.content };
+        continue;
+      }
+      if (item.content === last.content) continue;
+      if (item.content.startsWith(last.content)) {
+        out[out.length - 1] = { ...last, content: item.content };
+        continue;
+      }
     }
     if (
       item.kind === "thinking" &&
-      item.append &&
       last &&
       last.kind === "thinking"
     ) {
-      out[out.length - 1] = { ...last, content: last.content + item.content };
+      if (item.append) {
+        out[out.length - 1] = { ...last, content: last.content + item.content };
+        continue;
+      }
+      if (item.content === last.content) continue;
+      if (item.content.startsWith(last.content)) {
+        out[out.length - 1] = { ...last, content: item.content };
+        continue;
+      }
+    }
+    if (
+      item.kind === "error" &&
+      last &&
+      last.kind === "error" &&
+      last.message === item.message
+    ) {
+      continue;
+    }
+    if (
+      item.kind === "command-output" &&
+      last &&
+      last.kind === "command-output" &&
+      last.stream === item.stream
+    ) {
+      out[out.length - 1] = {
+        ...last,
+        content: `${last.content}\n${item.content}`
+      };
       continue;
     }
     out.push(item);

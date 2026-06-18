@@ -13,6 +13,7 @@
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.preload.json --noEmit",
+    "test": "npm run build:electron && node --test tests/*.mjs",
     "start": "npm run build && electron dist-electron/main.js",
     "preview": "vite preview --host 127.0.0.1"
   },

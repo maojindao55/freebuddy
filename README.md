@@ -2,7 +2,7 @@
 
 FreeBuddy is a WorkBuddy-style desktop AI workspace built with Electron, React, Vite, and TypeScript.
 
-It treats local CLI coding agents (Codex, Claude Code, OpenCode, …) as **first-class members** and provides a unified configuration, structured stream view, task history, and tool-session resume.
+It treats local ACP coding agents (Codex ACP, Claude Agent ACP, OpenCode ACP, …) as **first-class members** and provides a unified configuration, structured stream view, task history, and tool-session resume. Direct CLI JSON adapters remain available as legacy fallbacks in settings.
 
 ## Install
 
@@ -25,7 +25,7 @@ npm run build
 npm run start
 ```
 
-## CLI Agents
+## ACP Agents
 
 Open **Settings → CLI Adapters** to:
 
@@ -35,17 +35,27 @@ Open **Settings → CLI Adapters** to:
 
 Then on the home screen pick an agent, optionally set a workdir, and send a prompt. The structured stream (assistant text, tool calls, commands, file edits, usage, errors) renders live in the task panel.
 
-### Built-in adapters
+### Primary adapters
 
 | Adapter      | Binary         | Install hint                                  |
 |--------------|----------------|-----------------------------------------------|
-| Codex        | `codex`        | `npm install -g @openai/codex`                |
-| Claude Code  | `claude`       | `npm install -g @anthropic-ai/claude-code`    |
-| OpenCode     | `opencode`     | `npm install -g opencode-ai`                  |
+| Codex ACP    | `codex-acp`    | `npm install -g @zed-industries/codex-acp`    |
+| Claude ACP   | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` |
+| OpenCode ACP | `opencode acp` | `npm install -g opencode-ai`                  |
+
+### Legacy fallback adapters
+
+These stay available in Settings for debugging or emergencies, but they are no longer the default home-screen members.
+
+| Adapter      | Binary         | Install hint                                  |
+|--------------|----------------|-----------------------------------------------|
+| Codex Legacy | `codex`        | `npm install -g @openai/codex`                |
+| Claude Code Legacy | `claude` | `npm install -g @anthropic-ai/claude-code`    |
+| OpenCode Legacy | `opencode` | `npm install -g opencode-ai`                  |
 
 ### Tool session resume
 
-When an adapter emits a `session_id`, FreeBuddy persists it per `(agentId, workdir)`. The next run with the same agent and workdir auto-attaches the resume flag (`--resume` for Claude, `--session` for OpenCode, etc.), so context carries over. Override with explicit `--resume` / `--session` in adapter extra args if you want manual control.
+ACP sessions are persisted per `(agentId, workdir)`. Follow-up turns use ACP session resume when the agent supports it, while replayed history updates are suppressed so only the current turn renders. Legacy fallback adapters still persist emitted `session_id` values and attach their native resume flags.
 
 ### Storage
 

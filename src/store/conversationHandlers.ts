@@ -91,6 +91,15 @@ export function handleStreamEvent(
       ];
       nextItems = appendItems(nextItems, items as CliStreamItem[]);
       nextItems = refreshLatestErrorDetails(nextItems, parseCtx);
+    } else if (e.type === "items") {
+      nextItems = appendItems(nextItems, e.items);
+      const sessionItem = [...e.items]
+        .reverse()
+        .find((item) => item.kind === "session");
+      if (sessionItem?.kind === "session") {
+        parseCtx.sessionId = sessionItem.sessionId;
+        capturedSessionId = sessionItem.sessionId;
+      }
     } else if (e.type === "error") {
       nextItems = appendItems(nextItems, [
         { kind: "error", message: e.message }

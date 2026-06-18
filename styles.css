@@ -3422,6 +3422,7 @@ button.ghost:focus-visible,
 
 .stream-tool-result,
 .stream-file-edit,
+.stream-tool-invocation,
 .stream-thinking {
   overflow: hidden;
   border: 0;
@@ -3433,12 +3434,93 @@ button.ghost:focus-visible,
 
 .stream-tool-result summary,
 .stream-file-edit summary,
+.stream-tool-invocation summary,
 .stream-thinking summary {
   padding: 0;
   color: #8a8a8a;
   font-weight: 500;
   line-height: 22px;
   cursor: pointer;
+}
+
+.stream-tool-invocation summary {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  list-style-position: outside;
+}
+
+.stream-tool-invocation summary::-webkit-details-marker {
+  display: none;
+}
+
+.stream-tool-invocation summary::before {
+  color: #9a9a9a;
+  content: "▶";
+  font-size: 12px;
+  transform: translateY(-1px);
+}
+
+.stream-tool-invocation[open] summary::before {
+  content: "▼";
+}
+
+.stream-tool-summary-main {
+  min-width: 0;
+  overflow: hidden;
+  color: #8a8a8a;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stream-tool-summary-meta {
+  flex: 0 0 auto;
+  color: #9aa3b2;
+  font-size: 12px;
+}
+
+.stream-tool-body {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0 28px;
+}
+
+.stream-tool-section .stream-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #4b5a70;
+  font-weight: 650;
+}
+
+.stream-tool-section pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid #ececec;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #4a4a4a;
+  font-family: var(--fb-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.stream-tool-empty {
+  color: #a0a0a0;
+  font-size: 13px;
+}
+
+.stream-tool-result summary {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.stream-summary-label {
+  color: #4b5a70;
+  font-weight: 650;
 }
 
 .stream-tool-result pre,

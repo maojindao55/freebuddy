@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import type { ConversationMessage } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
-import { StreamItem } from "./StreamItem";
+import { StreamItem, StreamToolInvocation } from "./StreamItem";
 
 const HIDDEN_CODEX_EVENTS = new Set([
   "thread.started",
@@ -148,6 +148,47 @@ function isVisibleItem(item: CliStreamItem, hideDiagnosticStderr = false) {
   return item.kind !== "session";
 }
 
+type VisibleBlock =
+  | { kind: "single"; item: CliStreamItem }
+  | {
+      kind: "tool";
+      call: Extract<CliStreamItem, { kind: "tool-call" }>;
+      results: Extract<CliStreamItem, { kind: "tool-result" }>[];
+    };
+
+function sameToolInvocation(
+  call: Extract<CliStreamItem, { kind: "tool-call" }>,
+  result: Extract<CliStreamItem, { kind: "tool-result" }>
+) {
+  if (call.id || result.id) return call.id === result.id;
+  return true;
+}
+
+function visibleBlocks(items: CliStreamItem[]): VisibleBlock[] {
+  const blocks: VisibleBlock[] = [];
+
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (item.kind !== "tool-call") {
+      blocks.push({ kind: "single", item });
+      continue;
+    }
+
+    const results: Extract<CliStreamItem, { kind: "tool-result" }>[] = [];
+    let cursor = i + 1;
+    while (cursor < items.length) {
+      const next = items[cursor];
+      if (next.kind !== "tool-result" || !sameToolInvocation(item, next)) break;
+      results.push(next);
+      cursor += 1;
+    }
+    blocks.push({ kind: "tool", call: item, results });
+    i = cursor - 1;
+  }
+
+  return blocks;
+}
+
 export function MessageBubble({ message }: { message: ConversationMessage }) {
   const items = useMemo<CliStreamItem[]>(() => {
     if (message.role !== "assistant") return [];
@@ -166,10 +207,11 @@ export function MessageBubble({ message }: { message: ConversationMessage }) {
     );
     return items.filter((item) => isVisibleItem(item, hideDiagnosticStderr));
   }, [items]);
+  const blocks = useMemo(() => visibleBlocks(visibleItems), [visibleItems]);
   const isWaitingForAgent =
     message.role === "assistant" &&
     (message.status === "running" || message.status === "starting") &&
-    visibleItems.length === 0;
+    blocks.length === 0;
 
   const timeStr = useMemo(() => {
     try {
@@ -214,11 +256,19 @@ export function MessageBubble({ message }: { message: ConversationMessage }) {
             </span>
           )}
         </div>
-        {visibleItems.length > 0 && (
+        {blocks.length > 0 && (
           <div className="msg-bubble">
             <div className="msg-items">
-              {visibleItems.map((it, i) => (
-                <StreamItem key={i} item={it} />
+              {blocks.map((block, i) => (
+                block.kind === "tool" ? (
+                  <StreamToolInvocation
+                    key={i}
+                    call={block.call}
+                    results={block.results}
+                  />
+                ) : (
+                  <StreamItem key={i} item={block.item} />
+                )
               ))}
             </div>
           </div>

@@ -176,6 +176,74 @@ function toolActionLabel(item: Extract<CliStreamItem, { kind: "tool-call" }>) {
   return target ? `${item.tool} ${target}` : item.tool;
 }
 
+function hasVisibleContent(content: string) {
+  return content.trim().length > 0;
+}
+
+function formatValue(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function toolGroupLabel(item: Extract<CliStreamItem, { kind: "tool-call" }>) {
+  const tool = item.tool.toLowerCase();
+  if (tool.includes("search") || tool.includes("fetch")) return item.tool;
+  return toolActionLabel(item);
+}
+
+export function StreamToolInvocation({
+  call,
+  results
+}: {
+  call: Extract<CliStreamItem, { kind: "tool-call" }>;
+  results: Extract<CliStreamItem, { kind: "tool-result" }>[];
+}) {
+  const hasError = results.some((result) => result.isError);
+  const input = formatValue(call.input);
+
+  return (
+    <details className={`stream-tool-invocation${hasError ? " error" : ""}`}>
+      <summary>
+        <span className="stream-step-icon">⌁</span>
+        <span className="stream-tool-summary-main">{toolGroupLabel(call)}</span>
+        {results.length > 0 && (
+          <span className="stream-tool-summary-meta">
+            {results.some((result) => hasVisibleContent(result.content))
+              ? "result"
+              : "done"}
+          </span>
+        )}
+      </summary>
+      <div className="stream-tool-body">
+        {input && (
+          <div className="stream-tool-section">
+            <span className="stream-label">Input</span>
+            <pre>{input}</pre>
+          </div>
+        )}
+        {results.map((result, index) => (
+          <div className="stream-tool-section" key={`${result.id ?? "result"}-${index}`}>
+            <span className="stream-label">
+              {result.tool} 结果
+              {result.isError ? " error" : ""}
+            </span>
+            {hasVisibleContent(result.content) ? (
+              <pre>{result.content}</pre>
+            ) : (
+              <div className="stream-tool-empty">No output</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function StreamItem({ item }: { item: CliStreamItem }) {
   switch (item.kind) {
     case "text":
@@ -199,10 +267,21 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </div>
       );
     case "tool-result":
+      if (!hasVisibleContent(item.content)) {
+        return (
+          <div className={`stream-step stream-tool-result-empty${item.isError ? " error" : ""}`}>
+            <span className="stream-step-icon">↳</span>
+            <span className="stream-label">{item.tool} 结果</span>
+            {item.isError && <span className="stream-error-suffix">error</span>}
+          </div>
+        );
+      }
       return (
         <details className={`stream-tool-result${item.isError ? " error" : ""}`}>
           <summary>
-            <span className="stream-label">{item.tool} 结果</span>
+            <span className="stream-label stream-summary-label">
+              {item.tool} 结果
+            </span>
             {item.isError && <span className="stream-error-suffix">error</span>}
           </summary>
           <pre>{item.content}</pre>

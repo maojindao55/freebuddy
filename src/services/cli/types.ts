@@ -1,4 +1,5 @@
 import type { CLIAdapterId } from "@/config/cliAdapters";
+import type { CliStreamItem } from "./streamParser";
 
 export interface CLIExecutorOverride {
   id: CLIAdapterId;
@@ -36,6 +37,7 @@ export type CliEvent =
   | { type: "started"; pid: number }
   | { type: "stdout"; content: string }
   | { type: "stderr"; content: string }
+  | { type: "items"; items: CliStreamItem[] }
   | { type: "done"; exitCode: number }
   | { type: "error"; message: string };
 

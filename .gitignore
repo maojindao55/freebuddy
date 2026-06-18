@@ -1,0 +1,5 @@
+build/
+dist/
+dist-electron/
+node_modules/
+.DS_Store

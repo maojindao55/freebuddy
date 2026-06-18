@@ -1,0 +1,38 @@
+{
+  "name": "freebuddy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A WorkBuddy-style desktop AI workspace built with Electron, React, Vite, and TypeScript.",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-electron.mjs",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "build": "npm run build:renderer && npm run build:electron",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.preload.json --noEmit",
+    "start": "npm run build && electron dist-electron/main.js",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "nanoid": "^5.1.11",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "shell-env": "^4.0.3",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^39.2.7",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.7"
+  }
+}

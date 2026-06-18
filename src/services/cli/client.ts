@@ -1,0 +1,129 @@
+import type {
+  CLIExecutorOverride,
+  CliCheckResult,
+  CliEvent,
+  CliInstallResult,
+  CliRunArgs,
+  CliRuntime,
+  CliTaskListArgs,
+  CliTaskLogPage,
+  CliTaskRow,
+  ToolSessionRecord,
+  Conversation,
+  ConversationMessage,
+  CreateConversationInput,
+  ListConversationsArgs,
+  AppendMessageInput,
+  UpdateMessageInput
+} from "./types";
+import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
+
+function api() {
+  const cli = window.freebuddy?.cli;
+  if (!cli) {
+    throw new Error(
+      "FreeBuddy CLI bridge is unavailable. Are you running outside Electron?"
+    );
+  }
+  return cli;
+}
+
+export const cliClient = {
+  isAvailable(): boolean {
+    return Boolean(window.freebuddy?.cli);
+  },
+
+  listAdapters(): Promise<CLIAdapterDefinition[]> {
+    return api().listAdapters();
+  },
+
+  listOverrides(): Promise<CLIExecutorOverride[]> {
+    return api().listOverrides();
+  },
+  upsertOverride(o: CLIExecutorOverride): Promise<void> {
+    return api().upsertOverride(o);
+  },
+  resetOverride(id: string): Promise<void> {
+    return api().resetOverride(id);
+  },
+
+  listRuntimes(): Promise<CliRuntime[]> {
+    return api().listRuntimes();
+  },
+  check(adapter: string, binary?: string): Promise<CliCheckResult> {
+    return api().check(adapter, binary);
+  },
+  install(command: string): Promise<CliInstallResult> {
+    return api().install(command);
+  },
+
+  run(args: CliRunArgs): Promise<{ sessionId: string }> {
+    return api().run(args);
+  },
+  kill(sessionId: string): Promise<boolean> {
+    return api().kill(sessionId);
+  },
+
+  listTasks(args?: CliTaskListArgs): Promise<CliTaskRow[]> {
+    return api().listTasks(args);
+  },
+  getTask(id: string): Promise<CliTaskRow | undefined> {
+    return api().getTask(id);
+  },
+  readTaskLog(args: {
+    taskId: string;
+    startLine?: number;
+    limit?: number;
+    maxBytes?: number;
+  }): Promise<CliTaskLogPage> {
+    return api().readTaskLog(args);
+  },
+
+  getToolSession(
+    agentId: string,
+    workspacePath: string
+  ): Promise<ToolSessionRecord | undefined> {
+    return api().getToolSession(agentId, workspacePath);
+  },
+  saveToolSession(args: {
+    agentId: string;
+    workspacePath: string;
+    adapter: CLIAdapterId;
+    sessionId: string;
+    title?: string;
+  }): Promise<void> {
+    return api().saveToolSession(args);
+  },
+
+  listConversations(args?: ListConversationsArgs): Promise<Conversation[]> {
+    return api().listConversations(args);
+  },
+  getConversation(id: string): Promise<Conversation | undefined> {
+    return api().getConversation(id);
+  },
+  createConversation(input: CreateConversationInput): Promise<Conversation> {
+    return api().createConversation(input);
+  },
+  renameConversation(id: string, title: string): Promise<void> {
+    return api().renameConversation(id, title);
+  },
+  archiveConversation(id: string, archived: boolean): Promise<void> {
+    return api().archiveConversation(id, archived);
+  },
+  deleteConversation(id: string): Promise<void> {
+    return api().deleteConversation(id);
+  },
+  listMessages(conversationId: string): Promise<ConversationMessage[]> {
+    return api().listMessages(conversationId);
+  },
+  appendMessage(input: AppendMessageInput): Promise<ConversationMessage> {
+    return api().appendMessage(input);
+  },
+  updateMessage(input: UpdateMessageInput): Promise<void> {
+    return api().updateMessage(input);
+  },
+
+  onEvent(sessionId: string, cb: (e: CliEvent) => void): () => void {
+    return api().onEvent(sessionId, cb as (e: unknown) => void);
+  }
+};

@@ -1,14 +1,17 @@
-import { app, BrowserWindow, Menu, nativeImage, net, protocol, shell } from "electron";
+import { app, BrowserWindow, nativeImage, net, protocol, shell } from "electron";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
 import { getDb } from "./cli/db.js";
+import { initApplicationMenu } from "./menu.js";
+import { tMain } from "./cli/i18n.js";
+import { getLanguage } from "./cli/settings.js";
+import { APP_NAME } from "./app-meta.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
-const APP_NAME = "FreeBuddy";
 
 app.setName(APP_NAME);
 app.setAboutPanelOptions({ applicationName: APP_NAME });
@@ -46,9 +49,12 @@ function registerLocalFileProtocol() {
       const absolute = path.isAbsolute(decoded) ? decoded : `/${decoded}`;
       return await net.fetch(pathToFileURL(absolute).toString());
     } catch (error) {
-      return new Response(`Failed to load file: ${(error as Error).message}`, {
-        status: 404
-      });
+      return new Response(
+        tMain("main.fileLoadFailed", getLanguage(), {
+          message: (error as Error).message
+        }),
+        { status: 404 }
+      );
     }
   });
 }
@@ -91,7 +97,7 @@ function createWindow() {
     }
   });
 
-  Menu.setApplicationMenu(createMenu());
+  initApplicationMenu();
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -113,52 +119,6 @@ function createWindow() {
   } else {
     void mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
-}
-
-function createMenu() {
-  return Menu.buildFromTemplate([
-    {
-      label: APP_NAME,
-      submenu: [
-        { role: "about" },
-        { type: "separator" },
-        { role: "hide" },
-        { role: "hideOthers" },
-        { role: "unhide" },
-        { type: "separator" },
-        { role: "quit" }
-      ]
-    },
-    {
-      label: "Edit",
-      submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "selectAll" }
-      ]
-    },
-    {
-      label: "View",
-      submenu: [
-        { role: "reload" },
-        { role: "toggleDevTools" },
-        { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
-        { type: "separator" },
-        { role: "togglefullscreen" }
-      ]
-    },
-    {
-      label: "Window",
-      submenu: [{ role: "minimize" }, { role: "zoom" }, { role: "close" }]
-    }
-  ]);
 }
 
 app.whenReady().then(async () => {

@@ -1,20 +1,32 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 export const APP_NAME = "FreeBuddy";
 export const DEV_BUNDLE_ID = "dev.freebuddy.electron";
 
+function escapePlistString(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function setPlistString(plistPath, key, value) {
-  try {
-    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ${value}`, plistPath], {
-      stdio: "ignore"
-    });
-  } catch {
-    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Add :${key} string ${value}`, plistPath], {
-      stdio: "ignore"
-    });
+  const escapedValue = escapePlistString(value);
+  let plist = fs.readFileSync(plistPath, "utf8");
+  const keyPattern = new RegExp(
+    `(<key>${key}</key>\\s*<string>)[\\s\\S]*?(</string>)`
+  );
+
+  if (keyPattern.test(plist)) {
+    plist = plist.replace(keyPattern, `$1${escapedValue}$2`);
+  } else if (plist.includes("</dict>")) {
+    plist = plist.replace("</dict>", `  <key>${key}</key>\n  <string>${escapedValue}</string>\n</dict>`);
+  } else {
+    throw new Error(`${plistPath} is missing a plist <dict>`);
   }
+
+  fs.writeFileSync(plistPath, plist);
 }
 
 export function prepareMacElectronShell({

@@ -6,6 +6,12 @@ import test from "node:test";
 
 import { prepareMacElectronShell } from "../scripts/electron-shell.mjs";
 
+const electronShellSource = fs.readFileSync(new URL("../scripts/electron-shell.mjs", import.meta.url), "utf8");
+
+test("macOS shell preparation does not depend on macOS-only plist tools", () => {
+  assert.doesNotMatch(electronShellSource, /\/usr\/libexec\/PlistBuddy/);
+});
+
 test("prepareMacElectronShell creates a FreeBuddy-named macOS app shell", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-electron-shell-"));
   const sourceApp = path.join(tmp, "Electron.app");

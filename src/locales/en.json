@@ -35,5 +35,73 @@
     "new": "+ New",
     "empty": "No conversations yet.",
     "deleteConfirm": "Delete \"{{title}}\"?"
+  },
+  "chat": {
+    "inputPlaceholder": "Type freely",
+    "attachFile": "Attach file",
+    "permission": "Permission",
+    "approvalAuto": "Auto",
+    "approvalAsk": "Ask each time",
+    "enterHint": "Enter to send · Shift+Enter for newline",
+    "agentRunning": "Agent is running…",
+    "send": "Send",
+    "stop": "Stop",
+    "selectCwd": "Select working directory",
+    "cwdPlaceholder": "/absolute/path (optional; defaults to the default working directory)",
+    "heroTitle": "Local CLI Agent Workspace",
+    "newAgentChat": "New Agent Chat",
+    "attach": "Attach",
+    "workspace": "Workspace",
+    "noWorkspace": "No workspace selected",
+    "emptyHeroHeading": "What should {{name}} work on?",
+    "emptyHeroBody": "Use this thread for coding tasks, project inspection, and focused fixes.",
+    "heroSubtitle": "Pick a local agent, give it a working directory, then start coding, inspecting, or reshaping the project.",
+    "startTask": "Start task",
+    "agent": "Agent",
+    "stopAria": "Stop running",
+    "startingAria": "Starting",
+    "sendAria": "Send message",
+    "permissionHint": "Permission mode for tool execution",
+    "defaultAttachmentTitle": "Attachment",
+    "pendingAttachmentsAria": "Pending attachments",
+    "removeAttachmentAria": "Remove {{name}}",
+    "newTaskAria": "New task",
+    "commonTasksAria": "Common tasks",
+    "starter": {
+      "one": "Analyze the current project structure and suggest next steps",
+      "two": "Check recent changes for UI/UX issues",
+      "three": "Implement a small feature and explain how to verify it"
+    },
+    "newTaskPrompts": {
+      "analyze": {
+        "label": "Analyze project",
+        "prompt": "Analyze the current project structure and tell me what I can do first"
+      },
+      "modify": {
+        "label": "Edit code",
+        "prompt": "Modify code based on my needs and provide verification steps"
+      },
+      "review": {
+        "label": "Code review",
+        "prompt": "Review the risks, issues, and improvements in the current changes"
+      }
+    }
+  },
+  "errors": {
+    "attachmentLimit": "Add at most {{count}} attachments per message.",
+    "attachmentTooLarge": "{{name}} exceeds the 50 MB attachment size limit.",
+    "attachmentType": "{{name}} is not a supported attachment type.",
+    "attachmentDesktopOnly": "Attachments require the Electron desktop app.",
+    "attachmentSelectFailed": "Failed to select attachments: {{err}}",
+    "cliBridgeUnavailable": "FreeBuddy CLI bridge is unavailable. Please run the Electron desktop app.",
+    "agentNotInstalled": "{{agent}} is not installed. Open Settings → Cli Agents to install.",
+    "checkFailed": "Check failed: {{err}}",
+    "taskFailed": "Task failed: {{err}}",
+    "sendFailed": "Send failed: {{err}}"
+  },
+  "attachments": {
+    "review": "Please review these attachments.",
+    "userMessage": "User message:",
+    "attached": "Attachments:"
   }
 }

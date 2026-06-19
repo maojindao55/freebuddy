@@ -35,5 +35,73 @@
     "new": "+ 新建",
     "empty": "暂无会话。",
     "deleteConfirm": "删除“{{title}}”?"
+  },
+  "chat": {
+    "inputPlaceholder": "随心输入",
+    "attachFile": "添加附件",
+    "permission": "权限",
+    "approvalAuto": "自动",
+    "approvalAsk": "每次询问",
+    "enterHint": "Enter 发送 · Shift+Enter 换行",
+    "agentRunning": "Agent 正在运行…",
+    "send": "发送",
+    "stop": "停止",
+    "selectCwd": "选择工作目录",
+    "cwdPlaceholder": "/absolute/path，可选；不填则使用默认运行目录",
+    "heroTitle": "本地 CLI Agent 工作台",
+    "newAgentChat": "新建 Agent 对话",
+    "attach": "添加",
+    "workspace": "工作目录",
+    "noWorkspace": "未选择工作目录",
+    "emptyHeroHeading": "{{name}} 可以做些什么？",
+    "emptyHeroBody": "用这个会话来编码、检查项目或聚焦修复问题。",
+    "heroSubtitle": "选择一个本地 agent，给它一个工作目录，然后开始编码、检查或改造项目。",
+    "startTask": "开始任务",
+    "agent": "Agent",
+    "stopAria": "停止运行",
+    "startingAria": "正在启动",
+    "sendAria": "发送消息",
+    "permissionHint": "工具执行的权限模式",
+    "defaultAttachmentTitle": "附件",
+    "pendingAttachmentsAria": "待发送附件",
+    "removeAttachmentAria": "移除 {{name}}",
+    "newTaskAria": "新建任务",
+    "commonTasksAria": "常用任务",
+    "starter": {
+      "one": "先分析当前项目结构，给我下一步实现建议",
+      "two": "检查刚才的改动有没有 UI/UX 问题",
+      "three": "帮我实现一个小功能，并说明验证步骤"
+    },
+    "newTaskPrompts": {
+      "analyze": {
+        "label": "分析项目",
+        "prompt": "先分析当前项目结构，告诉我可以先做什么"
+      },
+      "modify": {
+        "label": "修改代码",
+        "prompt": "根据我的需求修改代码，并给出验证步骤"
+      },
+      "review": {
+        "label": "代码审查",
+        "prompt": "检查当前改动的风险、问题和可改进点"
+      }
+    }
+  },
+  "errors": {
+    "attachmentLimit": "每条消息最多添加 {{count}} 个附件。",
+    "attachmentTooLarge": "{{name}} 超过 50 MB 附件大小限制。",
+    "attachmentType": "{{name}} 不是支持的附件类型。",
+    "attachmentDesktopOnly": "附件功能需要在 Electron 桌面端使用。",
+    "attachmentSelectFailed": "选择附件失败：{{err}}",
+    "cliBridgeUnavailable": "FreeBuddy CLI 桥接不可用。请在 Electron 桌面端运行。",
+    "agentNotInstalled": "{{agent}} 未安装。请在“设置 → Cli Agents”中安装。",
+    "checkFailed": "检查失败：{{err}}",
+    "taskFailed": "任务失败：{{err}}",
+    "sendFailed": "发送失败：{{err}}"
+  },
+  "attachments": {
+    "review": "请查看这些附件。",
+    "userMessage": "用户消息：",
+    "attached": "附件："
   }
 }

@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 
+import { useTranslation } from "react-i18next";
+
 import { displayAgentName } from "@/config/agentDisplay";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
@@ -231,13 +233,14 @@ function MessageImageAttachments({
 }: {
   attachments: ChatAttachment[];
 }) {
+  const { t } = useTranslation();
   const { open } = useImageLightbox();
   if (!attachments.length) return null;
 
   return (
     <div
       className="message-image-attachments"
-      aria-label="Message image attachments"
+      aria-label={t("attachments.imagesAria")}
     >
       {attachments.map((attachment) => {
         const src = attachmentPreviewUrl(attachment.path);
@@ -247,7 +250,7 @@ function MessageImageAttachments({
             type="button"
             className="message-image-attachment"
             title={attachment.path}
-            aria-label={`Preview ${attachment.name}`}
+            aria-label={t("attachments.previewName", { name: attachment.name })}
             onClick={() => open({ src, alt: attachment.name })}
           >
             <img
@@ -273,11 +276,12 @@ function MessageAttachments({
 }: {
   attachments?: ChatAttachment[];
 }) {
+  const { t } = useTranslation();
   const { open } = useImageLightbox();
   if (!attachments?.length) return null;
 
   return (
-    <div className="message-attachments attachment-list" aria-label="Message attachments">
+    <div className="message-attachments attachment-list" aria-label={t("attachments.listAria")}>
       {attachments.map((attachment) => {
         const isImage = attachment.kind === "image";
         const previewSrc = isImage ? attachmentPreviewUrl(attachment.path) : null;
@@ -302,10 +306,10 @@ function MessageAttachments({
               style={isImage ? { display: "none" } : undefined}
             >
               {isImage
-                ? "IMG"
+                ? t("attachments.kindImage")
                 : attachment.kind === "code"
-                  ? "CODE"
-                  : "FILE"}
+                  ? t("attachments.kindCode")
+                  : t("attachments.kindFile")}
             </span>
           </span>
         );
@@ -316,7 +320,7 @@ function MessageAttachments({
                 type="button"
                 className="message-attachment-thumb-button"
                 onClick={() => open({ src: previewSrc, alt: attachment.name })}
-                aria-label={`Preview ${attachment.name}`}
+                aria-label={t("attachments.previewName", { name: attachment.name })}
               >
                 {thumb}
               </button>
@@ -344,6 +348,7 @@ export function MessageBubble({
   message: ConversationMessage;
   adapter?: string;
 }) {
+  const { t } = useTranslation();
   const items = useMemo<CliStreamItem[]>(() => {
     if (message.role !== "assistant") return [];
     try {
@@ -387,7 +392,7 @@ export function MessageBubble({
       <div className="msg msg-user">
         <div className="msg-content-wrapper">
           <div className="msg-header">
-            <span className="msg-author">You</span>
+            <span className="msg-author">{t("message.you")}</span>
             <span className="msg-time">{timeStr}</span>
           </div>
           {showBubble && (
@@ -420,7 +425,7 @@ export function MessageBubble({
           <span className="msg-time">{timeStr}</span>
           {message.status !== "ready" && (
             <span className={`status-pill ${message.status}`}>
-              {message.status}
+              {t(`status.${message.status}`)}
             </span>
           )}
         </div>
@@ -445,7 +450,7 @@ export function MessageBubble({
         {isWaitingForAgent && (
           <div className="msg-loading">
             <span className="loading-dots">●●●</span>
-            <span>正在思考</span>
+            <span>{t("message.thinking")}</span>
           </div>
         )}
       </div>

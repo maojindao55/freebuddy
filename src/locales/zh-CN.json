@@ -17,7 +17,10 @@
     "starting": "启动中",
     "done": "已完成",
     "failed": "已失败",
-    "killed": "已中断"
+    "killed": "已中断",
+    "idle": "空闲",
+    "ready": "就绪",
+    "sent": "已发送"
   },
   "general": {
     "languageLabel": "语言",
@@ -87,6 +90,66 @@
       }
     }
   },
+  "workspace": {
+    "panelAria": "工作区面板",
+    "activeAgent": "当前 Agent",
+    "runState": "运行状态",
+    "workspace": "工作区",
+    "notSet": "未设置",
+    "sessionId": "会话 ID",
+    "copySession": "复制 {{id}}",
+    "noSession": "尚未捕获会话",
+    "copied": "已复制",
+    "notCaptured": "未捕获",
+    "messages": "消息数",
+    "agentTurns": "Agent 轮次",
+    "context": "上下文",
+    "cost": "成本",
+    "tokens": "Token",
+    "tokenBreakdown": "输入 {{input}} · 输出 {{output}}",
+    "liveCount": "{{count}} 活跃",
+    "executionQueue": "执行队列",
+    "cliStream": "CLI 响应流",
+    "waitingPrompt": "等待输入",
+    "pid": "pid {{pid}}",
+    "sendToStart": "发送消息以开始运行",
+    "toolSession": "工具会话",
+    "resumedContext": "已恢复上下文",
+    "freshContext": "全新或已保存上下文",
+    "messageSnapshot": "消息快照",
+    "persistedLocally": "已本地保存",
+    "noHistory": "暂无历史",
+    "noConversation": "无会话",
+    "localAgent": "本地编码 Agent",
+    "createToBegin": "创建会话以开始"
+  },
+  "message": {
+    "you": "你",
+    "thinking": "正在思考"
+  },
+  "stream": {
+    "read": "读取 {{target}}",
+    "edit": "修改 {{target}}",
+    "exec": "执行 {{target}}",
+    "result": "{{tool}} 结果",
+    "thinking": "思考过程",
+    "viewRawLog": "查看原始日志 ({{count}})",
+    "summaryResult": "结果",
+    "summaryDone": "完成",
+    "input": "输入",
+    "command": "命令",
+    "noOutput": "无输出",
+    "errorTag": "错误",
+    "terminal": "⟩ 终端",
+    "sessionLabel": "会话",
+    "usageLabel": "用量",
+    "contextUsage": "上下文: {{used}}{{total}}",
+    "tokenUsage": "输入: {{input}} · 输出: {{output}}",
+    "errorLabel": "错误",
+    "exitLabel": "退出",
+    "doneOk": "✓ 完成",
+    "exitCode": "(退出码 {{code}})"
+  },
   "errors": {
     "attachmentLimit": "每条消息最多添加 {{count}} 个附件。",
     "attachmentTooLarge": "{{name}} 超过 50 MB 附件大小限制。",
@@ -102,6 +165,13 @@
   "attachments": {
     "review": "请查看这些附件。",
     "userMessage": "用户消息：",
-    "attached": "附件："
+    "attached": "附件：",
+    "imagesAria": "消息图片附件",
+    "listAria": "消息附件",
+    "previewName": "预览 {{name}}",
+    "previewImage": "预览图片",
+    "kindImage": "图片",
+    "kindCode": "代码",
+    "kindFile": "文件"
   }
 }

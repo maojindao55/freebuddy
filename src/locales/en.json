@@ -17,7 +17,10 @@
     "starting": "Starting",
     "done": "Done",
     "failed": "Failed",
-    "killed": "Killed"
+    "killed": "Killed",
+    "idle": "Idle",
+    "ready": "Ready",
+    "sent": "Sent"
   },
   "general": {
     "languageLabel": "Language",
@@ -87,6 +90,66 @@
       }
     }
   },
+  "workspace": {
+    "panelAria": "Workspace panel",
+    "activeAgent": "Active Agent",
+    "runState": "Run State",
+    "workspace": "Workspace",
+    "notSet": "Not set",
+    "sessionId": "Session ID",
+    "copySession": "Copy {{id}}",
+    "noSession": "No session captured yet",
+    "copied": "Copied",
+    "notCaptured": "Not captured",
+    "messages": "Messages",
+    "agentTurns": "Agent turns",
+    "context": "Context",
+    "cost": "Cost",
+    "tokens": "Tokens",
+    "tokenBreakdown": "in {{input}} · out {{output}}",
+    "liveCount": "{{count}} live",
+    "executionQueue": "Execution Queue",
+    "cliStream": "CLI response stream",
+    "waitingPrompt": "Waiting for prompt",
+    "pid": "pid {{pid}}",
+    "sendToStart": "Send a message to start a run",
+    "toolSession": "Tool session",
+    "resumedContext": "resumed context",
+    "freshContext": "fresh or saved context",
+    "messageSnapshot": "Message snapshot",
+    "persistedLocally": "persisted locally",
+    "noHistory": "no history yet",
+    "noConversation": "No conversation",
+    "localAgent": "Local coding agent",
+    "createToBegin": "Create a conversation to begin"
+  },
+  "message": {
+    "you": "You",
+    "thinking": "Thinking"
+  },
+  "stream": {
+    "read": "Read {{target}}",
+    "edit": "Edit {{target}}",
+    "exec": "Execute {{target}}",
+    "result": "{{tool}} result",
+    "thinking": "Thinking process",
+    "viewRawLog": "View raw log ({{count}})",
+    "summaryResult": "result",
+    "summaryDone": "done",
+    "input": "Input",
+    "command": "Command",
+    "noOutput": "No output",
+    "errorTag": "error",
+    "terminal": "⟩ Terminal",
+    "sessionLabel": "Session",
+    "usageLabel": "Usage",
+    "contextUsage": "ctx: {{used}}{{total}}",
+    "tokenUsage": "in: {{input}} · out: {{output}}",
+    "errorLabel": "Error",
+    "exitLabel": "Exit",
+    "doneOk": "✓ Done",
+    "exitCode": "(exit {{code}})"
+  },
   "errors": {
     "attachmentLimit": "Add at most {{count}} attachments per message.",
     "attachmentTooLarge": "{{name}} exceeds the 50 MB attachment size limit.",
@@ -102,6 +165,13 @@
   "attachments": {
     "review": "Please review these attachments.",
     "userMessage": "User message:",
-    "attached": "Attachments:"
+    "attached": "Attachments:",
+    "imagesAria": "Message image attachments",
+    "listAria": "Message attachments",
+    "previewName": "Preview {{name}}",
+    "previewImage": "Preview image",
+    "kindImage": "IMG",
+    "kindCode": "CODE",
+    "kindFile": "FILE"
   }
 }

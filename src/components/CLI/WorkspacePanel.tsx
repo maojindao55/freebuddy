@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 
+import { useTranslation } from "react-i18next";
+
 import { displayAgentName } from "@/config/agentDisplay";
 import { useConversationStore } from "@/store/conversationStore";
 import { AgentAvatar } from "./AgentAvatar";
@@ -9,6 +11,7 @@ export function WorkspacePanel({
 }: {
   runningCount: number;
 }) {
+  const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
   const messagesMap = useConversationStore((s) => s.messages);
@@ -77,11 +80,11 @@ export function WorkspacePanel({
   }, [messages]);
 
   return (
-    <aside className="details-panel workspace-panel" aria-label="Workspace panel">
+    <aside className="details-panel workspace-panel" aria-label={t("workspace.panelAria")}>
       <section className="side-card active-agent-card">
         <div className="side-card-header">
-          <span>Active Agent</span>
-          <strong>{status}</strong>
+          <span>{t("workspace.activeAgent")}</span>
+          <strong>{t(`status.${status}`)}</strong>
         </div>
         <div className="agent-lockup">
           <AgentAvatar
@@ -94,30 +97,38 @@ export function WorkspacePanel({
             }
           />
           <div>
-            <strong>{active ? activeAgentName : "No conversation"}</strong>
-            <small>{active ? "Local coding agent" : "Create a conversation to begin"}</small>
+            <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
+            <small>{active ? t("workspace.localAgent") : t("workspace.createToBegin")}</small>
           </div>
         </div>
       </section>
 
       <section className="side-card">
         <div className="side-card-header">
-          <span>Run State</span>
-          <strong>{runningCount > 0 ? `${runningCount} live` : "idle"}</strong>
+          <span>{t("workspace.runState")}</span>
+          <strong>
+            {runningCount > 0
+              ? t("workspace.liveCount", { count: runningCount })
+              : t("status.idle")}
+          </strong>
         </div>
         <dl className="compact-dl">
           <div>
-            <dt>Workspace</dt>
-            <dd>{active?.cwd ? shortPath(active.cwd) : "Not set"}</dd>
+            <dt>{t("workspace.workspace")}</dt>
+            <dd>{active?.cwd ? shortPath(active.cwd) : t("workspace.notSet")}</dd>
           </div>
           <div>
-            <dt>Session ID</dt>
+            <dt>{t("workspace.sessionId")}</dt>
             <dd>
               <button
                 className="session-id-copy"
                 type="button"
                 disabled={!latestSessionId}
-                title={latestSessionId ? `Copy ${latestSessionId}` : "No session captured yet"}
+                title={
+                  latestSessionId
+                    ? t("workspace.copySession", { id: latestSessionId })
+                    : t("workspace.noSession")
+                }
                 onClick={() => {
                   if (!latestSessionId) return;
                   void navigator.clipboard.writeText(latestSessionId);
@@ -126,24 +137,24 @@ export function WorkspacePanel({
                 }}
               >
                 {copiedSession
-                  ? "Copied"
+                  ? t("workspace.copied")
                   : latestSessionId
                     ? shortSessionId(latestSessionId)
-                    : "Not captured"}
+                    : t("workspace.notCaptured")}
               </button>
             </dd>
           </div>
           <div>
-            <dt>Messages</dt>
+            <dt>{t("workspace.messages")}</dt>
             <dd>{messages.length}</dd>
           </div>
           <div>
-            <dt>Agent turns</dt>
+            <dt>{t("workspace.agentTurns")}</dt>
             <dd>{assistantTurns}</dd>
           </div>
           {latestUsage?.contextUsed != null && (
             <div>
-              <dt>Context</dt>
+              <dt>{t("workspace.context")}</dt>
               <dd>
                 {formatTokens(latestUsage.contextUsed)}
                 {latestUsage.contextSize != null
@@ -154,7 +165,7 @@ export function WorkspacePanel({
           )}
           {latestUsage?.costAmount != null && (
             <div>
-              <dt>Cost</dt>
+              <dt>{t("workspace.cost")}</dt>
               <dd>{formatCost(latestUsage.costAmount, latestUsage.costCurrency)}</dd>
             </div>
           )}
@@ -163,10 +174,12 @@ export function WorkspacePanel({
             (latestUsage?.inputTokens != null ||
               latestUsage?.outputTokens != null) && (
               <div>
-                <dt>Tokens</dt>
+                <dt>{t("workspace.tokens")}</dt>
                 <dd>
-                  in {latestUsage.inputTokens ?? "–"} · out{" "}
-                  {latestUsage.outputTokens ?? "–"}
+                  {t("workspace.tokenBreakdown", {
+                    input: latestUsage.inputTokens ?? "–",
+                    output: latestUsage.outputTokens ?? "–"
+                  })}
                 </dd>
               </div>
             )}
@@ -175,28 +188,28 @@ export function WorkspacePanel({
 
       <section className="side-card run-queue-card">
         <div className="side-card-header">
-          <span>Execution Queue</span>
-          <strong>{status}</strong>
+          <span>{t("workspace.executionQueue")}</span>
+          <strong>{t(`status.${status}`)}</strong>
         </div>
         <article className="queue-row">
           <span className={`queue-icon ${live ? "running" : ""}`} />
           <div>
-            <strong>{live ? "CLI response stream" : "Waiting for prompt"}</strong>
-            <p>{live?.pid ? `pid ${live.pid}` : "Send a message to start a run"}</p>
+            <strong>{live ? t("workspace.cliStream") : t("workspace.waitingPrompt")}</strong>
+            <p>{live?.pid ? t("workspace.pid", { pid: live.pid }) : t("workspace.sendToStart")}</p>
           </div>
         </article>
         <article className="queue-row">
           <span className="queue-icon" />
           <div>
-            <strong>Tool session</strong>
-            <p>{live?.resumedFromSessionId ? "resumed context" : "fresh or saved context"}</p>
+            <strong>{t("workspace.toolSession")}</strong>
+            <p>{live?.resumedFromSessionId ? t("workspace.resumedContext") : t("workspace.freshContext")}</p>
           </div>
         </article>
         <article className="queue-row">
           <span className="queue-icon" />
           <div>
-            <strong>Message snapshot</strong>
-            <p>{messages.length ? "persisted locally" : "no history yet"}</p>
+            <strong>{t("workspace.messageSnapshot")}</strong>
+            <p>{messages.length ? t("workspace.persistedLocally") : t("workspace.noHistory")}</p>
           </div>
         </article>
       </section>

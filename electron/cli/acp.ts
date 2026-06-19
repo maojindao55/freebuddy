@@ -43,6 +43,10 @@ export type AcpStreamItem =
       inputTokens?: number;
       outputTokens?: number;
       totalCost?: number;
+      contextUsed?: number;
+      contextSize?: number;
+      costAmount?: number;
+      costCurrency?: string;
     }
   | { kind: "error"; message: string; details?: string[] }
   | { kind: "done"; exitCode?: number }
@@ -178,8 +182,9 @@ function actionFromToolKind(kind: unknown): "create" | "update" | "delete" {
   return kind === "delete" ? "delete" : "update";
 }
 
-function usageTokens(update: any, key: string): number | undefined {
-  return update?.[key] ?? update?.usage?.[key] ?? update?.usage?.context?.[key];
+function num(update: any, key: string): number | undefined {
+  const v = update?.[key];
+  return typeof v === "number" ? v : undefined;
 }
 
 export function acpUpdateToItems(
@@ -262,14 +267,17 @@ export function acpUpdateToItems(
       return [
         {
           kind: "usage",
-          ...(usageTokens(update, "inputTokens") != null
-            ? { inputTokens: usageTokens(update, "inputTokens") }
+          ...(num(update, "used") != null
+            ? { contextUsed: num(update, "used") }
             : {}),
-          ...(usageTokens(update, "outputTokens") != null
-            ? { outputTokens: usageTokens(update, "outputTokens") }
+          ...(num(update, "size") != null
+            ? { contextSize: num(update, "size") }
             : {}),
-          ...(usageTokens(update, "totalCost") != null
-            ? { totalCost: usageTokens(update, "totalCost") }
+          ...(typeof update?.cost?.amount === "number"
+            ? {
+                costAmount: update.cost.amount,
+                costCurrency: typeof update.cost.currency === "string" ? update.cost.currency : undefined
+              }
             : {})
         }
       ];

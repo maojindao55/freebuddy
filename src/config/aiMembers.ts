@@ -22,8 +22,8 @@ export const builtinCliMembers: CLIMember[] = [
   {
     id: "cli-codex-acp",
     kind: "cli",
-    name: "Codex ACP",
-    description: "Codex through the Agent Client Protocol adapter.",
+    name: "Codex",
+    description: "Local Codex coding agent.",
     source: "builtin",
     enabled: true,
     cli: { adapter: "codex-acp", approvalMode: "auto", showStderr: true }
@@ -31,8 +31,8 @@ export const builtinCliMembers: CLIMember[] = [
   {
     id: "cli-claude-agent-acp",
     kind: "cli",
-    name: "Claude Agent ACP",
-    description: "Claude Agent SDK through the Agent Client Protocol adapter.",
+    name: "ClaudeCode",
+    description: "Local ClaudeCode coding agent.",
     source: "builtin",
     enabled: true,
     cli: { adapter: "claude-agent-acp", approvalMode: "auto", showStderr: false }
@@ -40,10 +40,19 @@ export const builtinCliMembers: CLIMember[] = [
   {
     id: "cli-opencode-acp",
     kind: "cli",
-    name: "OpenCode ACP",
-    description: "OpenCode through its native Agent Client Protocol server.",
+    name: "OpenCode",
+    description: "Local OpenCode coding agent.",
     source: "builtin",
     enabled: true,
     cli: { adapter: "opencode-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-cursor-agent-acp",
+    kind: "cli",
+    name: "Cursor",
+    description: "Local Cursor coding agent.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "cursor-agent-acp", approvalMode: "auto", showStderr: true }
   }
 ];

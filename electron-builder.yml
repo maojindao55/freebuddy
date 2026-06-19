@@ -1,0 +1,44 @@
+appId: dev.freebuddy.app
+productName: FreeBuddy
+copyright: Copyright © 2026 FreeBuddy
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - assets/app-icon.png
+  - package.json
+
+extraResources:
+  - from: assets/app-icon.png
+    to: app-icon.png
+
+asarUnpack:
+  - node_modules/better-sqlite3/**/*
+
+mac:
+  icon: desktop/macos/AppIcon.icns
+  category: public.app-category.productivity
+  identity: null
+  target:
+    - target: dmg
+
+win:
+  icon: assets/app-icon.ico
+  target:
+    - target: nsis
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+
+linux:
+  icon: assets/app-icon.png
+  category: Utility
+  target:
+    - target: AppImage
+    - target: deb

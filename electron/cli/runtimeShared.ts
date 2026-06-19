@@ -26,11 +26,40 @@ export interface CliRunArgs {
   timeoutMs?: number;
 }
 
+export type CliPermissionOptionKind =
+  | "allow_once"
+  | "allow_always"
+  | "reject_once"
+  | "reject_always"
+  | string;
+
+export interface CliPermissionOption {
+  optionId: string;
+  name?: string;
+  kind?: CliPermissionOptionKind;
+}
+
+export interface CliPermissionRequest {
+  requestId: string;
+  sessionId: string;
+  acpSessionId?: string;
+  toolCall?: {
+    toolCallId?: string;
+    title?: string;
+    kind?: string;
+    rawInput?: unknown;
+    locations?: unknown;
+  };
+  options: CliPermissionOption[];
+}
+
 export type CliEvent =
   | { type: "started"; pid: number }
   | { type: "stdout"; content: string }
   | { type: "stderr"; content: string }
   | { type: "items"; items: AcpStreamItem[] }
+  | { type: "permission"; request: CliPermissionRequest }
+  | { type: "permission-resolved"; requestId: string }
   | { type: "done"; exitCode: number }
   | { type: "error"; message: string };
 
@@ -155,4 +184,57 @@ export function maybeCaptureSessionId(
   if (typeof candidate === "string" && candidate.length > 0) {
     capturedSessions.set(args.sessionId, candidate);
   }
+}
+
+// ---- Permission request registry ----------------------------------------
+// Renderer dispatches decisions back to the main process via IPC; we look up
+// the pending resolver by sessionId+requestId and let acpRuntime write the
+// JSON-RPC response back to the agent.
+
+export type CliPermissionDecision =
+  | { outcome: "selected"; optionId: string }
+  | { outcome: "cancelled" };
+
+export type CliPermissionResolver = (decision: CliPermissionDecision) => void;
+
+const permissionRegistry = new Map<string, Map<string, CliPermissionResolver>>();
+
+export function registerPermissionResolver(
+  sessionId: string,
+  requestId: string,
+  resolver: CliPermissionResolver
+) {
+  let bucket = permissionRegistry.get(sessionId);
+  if (!bucket) {
+    bucket = new Map();
+    permissionRegistry.set(sessionId, bucket);
+  }
+  bucket.set(requestId, resolver);
+}
+
+export function takePermissionResolver(
+  sessionId: string,
+  requestId: string
+): CliPermissionResolver | undefined {
+  const bucket = permissionRegistry.get(sessionId);
+  if (!bucket) return undefined;
+  const resolver = bucket.get(requestId);
+  if (resolver) {
+    bucket.delete(requestId);
+    if (bucket.size === 0) permissionRegistry.delete(sessionId);
+  }
+  return resolver;
+}
+
+export function clearPermissionResolversForSession(sessionId: string) {
+  const bucket = permissionRegistry.get(sessionId);
+  if (!bucket) return;
+  for (const resolver of bucket.values()) {
+    try {
+      resolver({ outcome: "cancelled" });
+    } catch {
+      /* noop */
+    }
+  }
+  permissionRegistry.delete(sessionId);
 }

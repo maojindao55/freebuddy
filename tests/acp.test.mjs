@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCommand } from "../dist-electron/cli/adapters.js";
+import { buildCommand, cliAdapterDefinitions } from "../dist-electron/cli/adapters.js";
 import {
   acpUpdateToItems,
   buildInitializeRequest,
@@ -23,6 +23,46 @@ test("buildCommand starts OpenCode through its ACP server", () => {
   assert.equal(built.protocol, "acp");
 });
 
+test("buildCommand applies OpenCode ACP model through config env", () => {
+  const built = buildCommand({
+    adapter: "opencode-acp",
+    prompt: "hello",
+    cwd: "/tmp/project",
+    extraArgs: ["-m", "openai/gpt-4.1", "--print-logs"]
+  });
+
+  assert.deepEqual(built.args, ["acp", "--cwd", "/tmp/project", "--print-logs"]);
+  assert.deepEqual(built.env, {
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: "openai/gpt-4.1" })
+  });
+
+  const withEquals = buildCommand({
+    adapter: "opencode-acp",
+    prompt: "hello",
+    extraArgs: ["--model=anthropic/claude-sonnet-4"]
+  });
+  assert.deepEqual(withEquals.args, ["acp"]);
+  assert.deepEqual(withEquals.env, {
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: "anthropic/claude-sonnet-4" })
+  });
+});
+
+test("visible adapter definitions are ACP-only with product names", () => {
+  assert.deepEqual(
+    cliAdapterDefinitions.map((definition) => ({
+      id: definition.id,
+      label: definition.label,
+      protocol: definition.protocol
+    })),
+    [
+      { id: "codex-acp", label: "Codex", protocol: "acp" },
+      { id: "claude-agent-acp", label: "ClaudeCode", protocol: "acp" },
+      { id: "opencode-acp", label: "OpenCode", protocol: "acp" },
+      { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" }
+    ]
+  );
+});
+
 test("buildCommand starts Codex and Claude ACP adapters", () => {
   assert.deepEqual(
     buildCommand({ adapter: "codex-acp", prompt: "hello" }),
@@ -42,6 +82,67 @@ test("buildCommand starts Codex and Claude ACP adapters", () => {
       protocol: "acp"
     }
   );
+});
+
+test("buildCommand translates Codex model shorthand for codex-acp", () => {
+  assert.deepEqual(
+    buildCommand({
+      adapter: "codex-acp",
+      prompt: "hello",
+      extraArgs: ["-m", "gpt-5", "--config", "approval_policy=never"]
+    }),
+    {
+      bin: "codex-acp",
+      args: ["-c", 'model="gpt-5"', "--config", "approval_policy=never"],
+      promptViaStdin: false,
+      protocol: "acp"
+    }
+  );
+
+  assert.deepEqual(
+    buildCommand({
+      adapter: "codex-acp",
+      prompt: "hello",
+      extraArgs: ["--model=o3"]
+    }).args,
+    ["-c", 'model="o3"']
+  );
+});
+
+test("buildCommand applies ClaudeCode ACP model through environment", () => {
+  const built = buildCommand({
+    adapter: "claude-agent-acp",
+    prompt: "hello",
+    extraArgs: ["--model=claude-sonnet-4-5", "--hide-claude-auth"]
+  });
+
+  assert.deepEqual(built.args, ["--hide-claude-auth"]);
+  assert.deepEqual(built.env, {
+    ANTHROPIC_MODEL: "claude-sonnet-4-5"
+  });
+});
+
+test("buildCommand starts Cursor through its ACP server", () => {
+  const built = buildCommand({
+    adapter: "cursor-agent-acp",
+    prompt: "hello"
+  });
+
+  assert.equal(built.bin, "cursor-agent");
+  assert.deepEqual(built.args, ["acp"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand applies Cursor ACP model through CURSOR_MODEL env", () => {
+  const built = buildCommand({
+    adapter: "cursor-agent-acp",
+    prompt: "hello",
+    extraArgs: ["-m", "gpt-5", "--print"]
+  });
+
+  assert.deepEqual(built.args, ["acp", "--print"]);
+  assert.deepEqual(built.env, { CURSOR_MODEL: "gpt-5" });
 });
 
 test("buildInitializeRequest advertises conservative client capabilities", () => {
@@ -155,12 +256,23 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
   assert.deepEqual(
     acpUpdateToItems({
       sessionUpdate: "usage_update",
-      usage: {
-        inputTokens: 3,
-        outputTokens: 4
-      }
+      used: 53000,
+      size: 200000,
+      cost: { amount: 0.045, currency: "USD" }
     }),
-    [{ kind: "usage", inputTokens: 3, outputTokens: 4 }]
+    [
+      {
+        kind: "usage",
+        contextUsed: 53000,
+        contextSize: 200000,
+        costAmount: 0.045,
+        costCurrency: "USD"
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({ sessionUpdate: "usage_update", used: 1200 }),
+    [{ kind: "usage", contextUsed: 1200 }]
   );
 });
 

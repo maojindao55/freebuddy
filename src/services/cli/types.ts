@@ -10,6 +10,7 @@ export interface CLIExecutorOverride {
   env?: Record<string, string>;
   installHint?: string;
   docsUrl?: string;
+  icon?: string;
   enabled?: boolean;
 }
 
@@ -33,11 +34,33 @@ export interface CliRunArgs {
   timeoutMs?: number;
 }
 
+export interface CliPermissionOption {
+  optionId: string;
+  name?: string;
+  kind?: "allow_once" | "allow_always" | "reject_once" | "reject_always" | string;
+}
+
+export interface CliPermissionRequest {
+  requestId: string;
+  sessionId: string;
+  acpSessionId?: string;
+  toolCall?: {
+    toolCallId?: string;
+    title?: string;
+    kind?: string;
+    rawInput?: unknown;
+    locations?: unknown;
+  };
+  options: CliPermissionOption[];
+}
+
 export type CliEvent =
   | { type: "started"; pid: number }
   | { type: "stdout"; content: string }
   | { type: "stderr"; content: string }
   | { type: "items"; items: CliStreamItem[] }
+  | { type: "permission"; request: CliPermissionRequest }
+  | { type: "permission-resolved"; requestId: string }
   | { type: "done"; exitCode: number }
   | { type: "error"; message: string };
 
@@ -117,6 +140,24 @@ export interface ToolSessionRecord {
 
 // ---- Conversations -------------------------------------------------------
 
+export interface ChatAttachment {
+  id: string;
+  kind: "image" | "document" | "code";
+  name: string;
+  path: string;
+  mimeType?: string;
+  size?: number;
+  extension?: string;
+}
+
+export interface AttachmentCandidate {
+  path: string;
+  name?: string;
+  size?: number;
+  mimeType?: string;
+  mime_type?: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -124,6 +165,7 @@ export interface Conversation {
   agentName: string;
   adapter: string;
   cwd?: string;
+  approvalMode?: "auto" | "ask";
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -146,6 +188,7 @@ export interface ConversationMessage {
   status: MessageStatus;
   /** For assistant messages: JSON-serialized CliStreamItem[]; for user: text. */
   content: string;
+  attachments?: ChatAttachment[];
   taskId?: string;
   createdAt: string;
   updatedAt: string;
@@ -158,6 +201,7 @@ export interface CreateConversationInput {
   agentName: string;
   adapter: string;
   cwd?: string;
+  approvalMode?: "auto" | "ask";
 }
 
 export interface ListConversationsArgs {
@@ -172,6 +216,7 @@ export interface AppendMessageInput {
   role: MessageRole;
   status: MessageStatus;
   content: string;
+  attachments?: ChatAttachment[];
   taskId?: string;
 }
 

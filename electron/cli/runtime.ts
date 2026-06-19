@@ -30,6 +30,33 @@ export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 const running = new Map<string, Running>();
 const capturedSessions = new Map<string, string>();
 
+function mergeJsonEnvValue(current: string | undefined, patch: string) {
+  if (!current) return patch;
+  try {
+    return JSON.stringify({
+      ...JSON.parse(current),
+      ...JSON.parse(patch)
+    });
+  } catch {
+    return patch;
+  }
+}
+
+function mergeBuiltEnv(
+  base: Record<string, string | undefined>,
+  patch?: Record<string, string>
+) {
+  if (!patch) return base;
+  const next = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    next[key] =
+      key === "OPENCODE_CONFIG_CONTENT"
+        ? mergeJsonEnvValue(next[key], value)
+        : value;
+  }
+  return next;
+}
+
 export async function cliRun(
   webContents: WebContents,
   args: CliRunArgs
@@ -93,7 +120,7 @@ export async function cliRun(
     return;
   }
 
-  const env = { ...process.env, ...(args.env || {}) };
+  const env = mergeBuiltEnv({ ...process.env, ...(args.env || {}) }, built.env);
 
   const child = spawn(built.bin, built.args, {
     cwd: args.cwd,

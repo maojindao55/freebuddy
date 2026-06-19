@@ -34,6 +34,13 @@ export type CliStreamItem =
       inputTokens?: number;
       outputTokens?: number;
       totalCost?: number;
+      /** ACP usage_update: cumulative context tokens used. */
+      contextUsed?: number;
+      /** ACP usage_update: session context window size. */
+      contextSize?: number;
+      /** ACP usage_update: cumulative cost amount. */
+      costAmount?: number;
+      costCurrency?: string;
     }
   | { kind: "error"; message: string; details?: string[] }
   | { kind: "done"; exitCode?: number }

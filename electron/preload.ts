@@ -13,6 +13,8 @@ const cli = {
 
   run: (args: unknown) => ipcRenderer.invoke("cli:run", args),
   kill: (sessionId: string) => ipcRenderer.invoke("cli:kill", sessionId),
+  permissionDecision: (args: unknown) =>
+    ipcRenderer.invoke("cli:permissionDecision", args),
 
   listTasks: (args: unknown) => ipcRenderer.invoke("cli:listTasks", args),
   getTask: (id: string) => ipcRenderer.invoke("cli:getTask", id),
@@ -34,6 +36,10 @@ const cli = {
     ipcRenderer.invoke("cli:archiveConversation", { id, archived }),
   deleteConversation: (id: string) =>
     ipcRenderer.invoke("cli:deleteConversation", id),
+  setConversationApprovalMode: (
+    id: string,
+    approvalMode: "auto" | "ask" | null
+  ) => ipcRenderer.invoke("cli:setConversationApprovalMode", { id, approvalMode }),
   listMessages: (conversationId: string) =>
     ipcRenderer.invoke("cli:listMessages", conversationId),
   appendMessage: (input: unknown) =>
@@ -42,12 +48,21 @@ const cli = {
     ipcRenderer.invoke("cli:updateMessage", input),
 
   selectDirectory: () => ipcRenderer.invoke("cli:selectDirectory"),
+  selectAttachments: () => ipcRenderer.invoke("cli:selectAttachments"),
 
   onEvent(sessionId: string, cb: (event: unknown) => void): () => void {
     const channel = `cli://${sessionId}`;
     const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
     ipcRenderer.on(channel, handler);
     return () => ipcRenderer.off(channel, handler);
+  }
+};
+
+const window = {
+  onChromeVisible(cb: (visible: boolean) => void): () => void {
+    const handler = (_e: IpcRendererEvent, visible: boolean) => cb(visible);
+    ipcRenderer.on("window:chrome", handler);
+    return () => ipcRenderer.off("window:chrome", handler);
   }
 };
 
@@ -58,5 +73,6 @@ contextBridge.exposeInMainWorld("freebuddy", {
     electron: process.versions.electron,
     node: process.versions.node
   },
-  cli
+  cli,
+  window
 });

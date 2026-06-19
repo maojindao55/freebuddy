@@ -1,5 +1,6 @@
 import readline from "node:readline";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import { type ChildProcessByStdio } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 
@@ -13,15 +14,20 @@ import {
   buildSessionResumeRequest,
   parseAcpLine,
   shouldEmitAcpUpdate,
-  type AcpMessage
+  type AcpMessage,
+  type AcpRequestId
 } from "./acp.js";
 import { updateRuntimeRun } from "./check.js";
 import { saveToolSession } from "./store.js";
 import {
   appendLog,
+  clearPermissionResolversForSession,
+  registerPermissionResolver,
   setTaskToolSessionId,
   updateTaskStatus,
   type CliEvent,
+  type CliPermissionDecision,
+  type CliPermissionOption,
   type CliRunArgs,
   type Running
 } from "./runtimeShared.js";
@@ -91,6 +97,7 @@ export async function runAcpAgent({
     if (finished) return;
     finished = true;
     running.delete(args.sessionId);
+    clearPermissionResolversForSession(args.sessionId);
     if (errorMessage) emit({ type: "error", message: errorMessage });
     emit({ type: "done", exitCode });
     updateTaskStatus(args.sessionId, status, exitCode, errorMessage);
@@ -165,11 +172,7 @@ export async function runAcpAgent({
 
     if (msg.method && msg.id != null) {
       if (msg.method === "session/request_permission") {
-        writeAcp(child, {
-          jsonrpc: "2.0",
-          id: msg.id,
-          result: { outcome: { outcome: "cancelled" } }
-        });
+        handlePermissionRequest(msg);
       } else {
         writeAcp(child, {
           jsonrpc: "2.0",
@@ -182,6 +185,156 @@ export async function runAcpAgent({
       }
     }
   });
+
+  function normalizePermissionOptions(raw: unknown): CliPermissionOption[] {
+    if (!Array.isArray(raw)) return [];
+    const out: CliPermissionOption[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      const optionId =
+        typeof e.optionId === "string"
+          ? e.optionId
+          : typeof e.id === "string"
+            ? e.id
+            : undefined;
+      if (!optionId) continue;
+      out.push({
+        optionId,
+        name:
+          typeof e.name === "string"
+            ? e.name
+            : typeof e.label === "string"
+              ? (e.label as string)
+              : undefined,
+        kind: typeof e.kind === "string" ? (e.kind as string) : undefined
+      });
+    }
+    return out;
+  }
+
+  function pickAutoApprovedOption(
+    options: CliPermissionOption[]
+  ): CliPermissionOption | undefined {
+    const allowOnce = options.find((o) => o.kind === "allow_once");
+    if (allowOnce) return allowOnce;
+    const allowAlways = options.find((o) => o.kind === "allow_always");
+    if (allowAlways) return allowAlways;
+    const idHint = options.find((o) => /^allow(-|_)?(once|always)?$/i.test(o.optionId));
+    if (idHint) return idHint;
+    return undefined;
+  }
+
+  function respondToPermission(
+    requestRpcId: AcpRequestId,
+    decision: CliPermissionDecision
+  ) {
+    if (decision.outcome === "selected") {
+      writeAcp(child, {
+        jsonrpc: "2.0",
+        id: requestRpcId,
+        result: {
+          outcome: { outcome: "selected", optionId: decision.optionId }
+        }
+      });
+    } else {
+      writeAcp(child, {
+        jsonrpc: "2.0",
+        id: requestRpcId,
+        result: { outcome: { outcome: "cancelled" } }
+      });
+    }
+  }
+
+  function handlePermissionRequest(msg: AcpMessage) {
+    const params = (msg.params ?? {}) as Record<string, unknown>;
+    const options = normalizePermissionOptions(params.options);
+    const requestRpcId = msg.id!;
+
+    if (args.approvalMode === "auto") {
+      const auto = pickAutoApprovedOption(options);
+      if (auto) {
+        appendLog(
+          logStream,
+          "system",
+          `permission auto-approved (${auto.optionId})`
+        );
+        respondToPermission(requestRpcId, {
+          outcome: "selected",
+          optionId: auto.optionId
+        });
+        return;
+      }
+      // Fall through to manual prompting if no allow option is present.
+    }
+
+    if (options.length === 0) {
+      appendLog(
+        logStream,
+        "system",
+        "permission request had no options; cancelling"
+      );
+      respondToPermission(requestRpcId, { outcome: "cancelled" });
+      return;
+    }
+
+    const requestId = randomUUID();
+    const toolCallRaw =
+      (params.toolCall as Record<string, unknown> | undefined) ?? undefined;
+    const toolCall = toolCallRaw
+      ? {
+          toolCallId:
+            typeof toolCallRaw.toolCallId === "string"
+              ? (toolCallRaw.toolCallId as string)
+              : typeof toolCallRaw.id === "string"
+                ? (toolCallRaw.id as string)
+                : undefined,
+          title:
+            typeof toolCallRaw.title === "string"
+              ? (toolCallRaw.title as string)
+              : undefined,
+          kind:
+            typeof toolCallRaw.kind === "string"
+              ? (toolCallRaw.kind as string)
+              : undefined,
+          rawInput: toolCallRaw.rawInput,
+          locations: toolCallRaw.locations
+        }
+      : undefined;
+
+    registerPermissionResolver(args.sessionId, requestId, (decision) => {
+      appendLog(
+        logStream,
+        "system",
+        `permission decision (${requestId}): ${
+          decision.outcome === "selected"
+            ? `selected ${decision.optionId}`
+            : "cancelled"
+        }`
+      );
+      respondToPermission(requestRpcId, decision);
+      emit({ type: "permission-resolved", requestId });
+    });
+
+    appendLog(
+      logStream,
+      "system",
+      `permission requested (${requestId}) options=${options.map((o) => o.optionId).join(",")}`
+    );
+    emit({
+      type: "permission",
+      request: {
+        requestId,
+        sessionId: args.sessionId,
+        acpSessionId:
+          typeof params.sessionId === "string"
+            ? (params.sessionId as string)
+            : activeAcpSessionId,
+        toolCall,
+        options
+      }
+    });
+  }
 
   const rlErr = readline.createInterface({ input: child.stderr });
   rlErr.on("line", (line) => {

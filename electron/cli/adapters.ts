@@ -5,6 +5,7 @@ export type CLIAdapterId =
   | "claude-agent-acp"
   | "opencode"
   | "opencode-acp"
+  | "cursor-agent-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -29,7 +30,7 @@ export interface CLIAdapterDefinition {
   protocol?: "legacy-cli-json" | "acp";
 }
 
-export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
+const legacyAdapterDefinitions: CLIAdapterDefinition[] = [
   {
     id: "codex",
     label: "Codex Legacy",
@@ -42,19 +43,6 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     installHint: "npm install -g @openai/codex",
     docsUrl: "https://github.com/openai/codex",
     protocol: "legacy-cli-json"
-  },
-  {
-    id: "codex-acp",
-    label: "Codex ACP",
-    defaultBinary: "codex-acp",
-    streamMode: "raw",
-    commandGroup: "codex",
-    capabilities: { toolSession: true },
-    toolSessionArgs: [],
-    toolSessionArgPrefixes: [],
-    installHint: "npm install -g @zed-industries/codex-acp",
-    docsUrl: "https://github.com/zed-industries/codex-acp",
-    protocol: "acp"
   },
   {
     id: "claude",
@@ -70,19 +58,6 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     protocol: "legacy-cli-json"
   },
   {
-    id: "claude-agent-acp",
-    label: "Claude Agent ACP",
-    defaultBinary: "claude-agent-acp",
-    streamMode: "raw",
-    commandGroup: "claude",
-    capabilities: { toolSession: true },
-    toolSessionArgs: [],
-    toolSessionArgPrefixes: [],
-    installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
-    docsUrl: "https://github.com/agentclientprotocol/claude-agent-acp",
-    protocol: "acp"
-  },
-  {
     id: "opencode",
     label: "OpenCode Legacy",
     defaultBinary: "opencode",
@@ -94,10 +69,39 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     installHint: "npm install -g opencode-ai",
     docsUrl: "https://opencode.ai/docs",
     protocol: "legacy-cli-json"
+  }
+];
+
+export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
+  {
+    id: "codex-acp",
+    label: "Codex",
+    defaultBinary: "codex-acp",
+    streamMode: "raw",
+    commandGroup: "codex",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g @zed-industries/codex-acp",
+    docsUrl: "https://github.com/zed-industries/codex-acp",
+    protocol: "acp"
+  },
+  {
+    id: "claude-agent-acp",
+    label: "ClaudeCode",
+    defaultBinary: "claude-agent-acp",
+    streamMode: "raw",
+    commandGroup: "claude",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
+    docsUrl: "https://github.com/agentclientprotocol/claude-agent-acp",
+    protocol: "acp"
   },
   {
     id: "opencode-acp",
-    label: "OpenCode ACP",
+    label: "OpenCode",
     defaultBinary: "opencode",
     streamMode: "raw",
     commandGroup: "opencode",
@@ -107,11 +111,29 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     installHint: "npm install -g opencode-ai",
     docsUrl: "https://opencode.ai/docs",
     protocol: "acp"
+  },
+  {
+    id: "cursor-agent-acp",
+    label: "Cursor",
+    defaultBinary: "cursor-agent",
+    streamMode: "raw",
+    commandGroup: "cursor",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "curl https://cursor.com/install -fsS | bash",
+    docsUrl: "https://docs.cursor.com/en/cli/overview",
+    protocol: "acp"
   }
 ];
 
+const allAdapterDefinitions = [
+  ...legacyAdapterDefinitions,
+  ...cliAdapterDefinitions
+];
+
 const definitionsById = new Map(
-  cliAdapterDefinitions.map((definition) => [definition.id, definition])
+  allAdapterDefinitions.map((definition) => [definition.id, definition])
 );
 
 export function getAdapterDefinition(
@@ -150,9 +172,60 @@ export interface BuildCommandInput {
 export interface BuiltCommand {
   bin: string;
   args: string[];
+  env?: Record<string, string>;
   /** When true, the prompt is delivered via stdin instead of argv. */
   promptViaStdin: boolean;
   protocol?: "legacy-cli-json" | "acp";
+}
+
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function normalizeCodexAcpArgs(args: string[]): string[] {
+  const normalized: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "-m" || arg === "--model") {
+      const model = args[i + 1];
+      if (model) {
+        normalized.push("-c", `model=${tomlString(model)}`);
+        i += 1;
+        continue;
+      }
+    }
+    if (arg.startsWith("--model=")) {
+      normalized.push("-c", `model=${tomlString(arg.slice("--model=".length))}`);
+      continue;
+    }
+    normalized.push(arg);
+  }
+  return normalized;
+}
+
+function splitModelArg(args: string[]): {
+  model?: string;
+  args: string[];
+} {
+  const rest: string[] = [];
+  let model: string | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "-m" || arg === "--model") {
+      const value = args[i + 1];
+      if (value) {
+        model = value;
+        i += 1;
+        continue;
+      }
+    }
+    if (arg.startsWith("--model=")) {
+      model = arg.slice("--model=".length);
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { model, args: rest };
 }
 
 /**
@@ -179,14 +252,48 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
       return { bin, args, promptViaStdin: false, protocol: "legacy-cli-json" };
     }
     case "codex-acp":
-      return { bin, args: extra, promptViaStdin: false, protocol: "acp" };
-    case "claude-agent-acp":
-      return { bin, args: extra, promptViaStdin: false, protocol: "acp" };
+      return {
+        bin,
+        args: normalizeCodexAcpArgs(extra),
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    case "claude-agent-acp": {
+      const { model, args } = splitModelArg(extra);
+      return {
+        bin,
+        args,
+        ...(model ? { env: { ANTHROPIC_MODEL: model } } : {}),
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
     case "opencode-acp": {
+      const { model, args: acpArgs } = splitModelArg(extra);
       const args: string[] = ["acp"];
       if (input.cwd) args.push("--cwd", input.cwd);
-      args.push(...extra);
-      return { bin, args, promptViaStdin: false, protocol: "acp" };
+      args.push(...acpArgs);
+      return {
+        bin,
+        args,
+        ...(model
+          ? { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ model }) } }
+          : {}),
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "cursor-agent-acp": {
+      const { model, args: acpArgs } = splitModelArg(extra);
+      const args: string[] = ["acp"];
+      args.push(...acpArgs);
+      return {
+        bin,
+        args,
+        ...(model ? { env: { CURSOR_MODEL: model } } : {}),
+        promptViaStdin: false,
+        protocol: "acp"
+      };
     }
     case "claude": {
       const args: string[] = [

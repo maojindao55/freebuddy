@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "${{ github.ref_name }}" \
+              --repo "${{ github.repository }}" \
+              --title "FreeBuddy ${{ github.ref_name }}" \
+              --draft \
+              --notes "## 下载安装包
+
+          | 平台 | 文件 | 说明 |
+          |------|------|------|
+          | macOS Apple Silicon | \`FreeBuddy_macOS-Apple-Silicon.dmg\` | M 系列芯片 Mac |
+          | macOS Intel | \`FreeBuddy_macOS-Intel.dmg\` | Intel 芯片 Mac |
+          | Windows | \`FreeBuddy_Windows_x64.exe\` | Windows 10/11 64 位 |
+          | Linux AppImage | \`FreeBuddy_Linux_x64.AppImage\` | 通用 Linux 桌面包 |
+          | Linux Debian | \`FreeBuddy_Linux_x64.deb\` | Ubuntu / Debian |
+
+          ## macOS 安装提示
+          如果提示无法打开，请在终端执行：
+          \`\`\`bash
+          xattr -cr /Applications/FreeBuddy.app
+          \`\`\`
+
+          ## Windows 安装提示
+          如果 SmartScreen 弹出警告，点击「更多信息」后选择「仍要运行」。"
+          fi
+
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            builder_args: --mac --arm64
+            assets: |
+              FreeBuddy_macOS-Apple-Silicon.dmg|*.dmg
+          - platform: macos-latest
+            builder_args: --mac --x64
+            assets: |
+              FreeBuddy_macOS-Intel.dmg|*.dmg
+          - platform: ubuntu-22.04
+            builder_args: --linux --x64
+            assets: |
+              FreeBuddy_Linux_x64.AppImage|*.AppImage
+              FreeBuddy_Linux_x64.deb|*.deb
+          - platform: windows-latest
+            builder_args: --win --x64
+            assets: |
+              FreeBuddy_Windows_x64.exe|*.exe
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 make g++ libarchive-tools rpm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build Electron app
+        run: |
+          npm run build
+          npx electron-builder ${{ matrix.builder_args }}
+
+      - name: Upload renamed assets (Unix)
+        if: matrix.platform != 'windows-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          while IFS='|' read -r asset_name find_pattern; do
+            if [ -z "$asset_name" ]; then
+              continue
+            fi
+            FILE=$(find release -name "$find_pattern" -type f | head -1)
+            if [ -z "$FILE" ]; then
+              echo "No artifact matching $find_pattern found"
+              find release -type f || true
+              exit 1
+            fi
+            cp "$FILE" "$asset_name"
+            gh release upload "${{ github.ref_name }}" "$asset_name" \
+              --repo "${{ github.repository }}" --clobber
+          done <<'ASSETS'
+          ${{ matrix.assets }}
+          ASSETS
+
+      - name: Upload renamed assets (Windows)
+        if: matrix.platform == 'windows-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $assets = @"
+          ${{ matrix.assets }}
+          "@ -split "`n"
+          foreach ($asset in $assets) {
+            if ([string]::IsNullOrWhiteSpace($asset)) {
+              continue
+            }
+            $parts = $asset.Trim().Split("|")
+            $assetName = $parts[0]
+            $findPattern = $parts[1]
+            $file = Get-ChildItem -Path release -Recurse -Filter $findPattern | Select-Object -First 1
+            if (-not $file) {
+              Write-Error "No artifact matching $findPattern found"
+              Get-ChildItem -Path release -Recurse -File
+              exit 1
+            }
+            Copy-Item $file.FullName $assetName
+            gh release upload "${{ github.ref_name }}" $assetName `
+              --repo "${{ github.repository }}" --clobber
+          }
+
+  publish-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest

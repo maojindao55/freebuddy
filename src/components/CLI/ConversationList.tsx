@@ -1,4 +1,53 @@
 import { useConversationStore } from "@/store/conversationStore";
+import type { Conversation } from "@/services/cli/types";
+import { displayAgentName } from "@/config/agentDisplay";
+
+function conversationTimeValue(conversation: Conversation) {
+  return conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt;
+}
+
+function formatConversationTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (sameDay) {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(date);
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "2-digit",
+      day: "2-digit"
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function formatConversationTimeTitle(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
 
 export function ConversationList({
   onNew
@@ -10,7 +59,6 @@ export function ConversationList({
   const setActive = useConversationStore((s) => s.setActive);
   const live = useConversationStore((s) => s.live);
   const remove = useConversationStore((s) => s.deleteConversation);
-  const rename = useConversationStore((s) => s.renameConversation);
 
   return (
     <div className="conv-list">
@@ -27,6 +75,9 @@ export function ConversationList({
         {conversations.map((c) => {
           const running =
             live[c.id]?.status === "running" || live[c.id]?.status === "starting";
+          const timeValue = conversationTimeValue(c);
+          const timeLabel = formatConversationTime(timeValue);
+          const agentName = displayAgentName(c.agentName, c.adapter);
           return (
             <li
               key={c.id}
@@ -35,24 +86,23 @@ export function ConversationList({
             >
               {running && <span className="conv-running-dot" />}
               <div className="conv-item-main">
-                <strong>{c.title}</strong>
+                <div className="conv-item-title-row">
+                  <strong>{c.title}</strong>
+                </div>
                 <small>
-                  {c.agentName}
+                  {agentName}
                   {c.cwd ? ` · ${c.cwd.split(/[/\\]/).slice(-2).join("/")}` : ""}
+                  {timeLabel && (
+                    <>
+                      {" · "}
+                      <time dateTime={timeValue} title={formatConversationTimeTitle(timeValue)}>
+                        {timeLabel}
+                      </time>
+                    </>
+                  )}
                 </small>
               </div>
               <div className="conv-item-side">
-                <button
-                  className="icon-btn"
-                  title="Rename"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const next = window.prompt("Rename conversation", c.title);
-                    if (next && next.trim()) void rename(c.id, next.trim());
-                  }}
-                >
-                  ✎
-                </button>
                 <button
                   className="icon-btn danger"
                   title="Delete"

@@ -5,6 +5,7 @@ export type CLIAdapterId =
   | "claude-agent-acp"
   | "opencode"
   | "opencode-acp"
+  | "cursor-agent-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -27,26 +28,12 @@ export interface CLIAdapterDefinition {
   protocol?: "legacy-cli-json" | "acp";
 }
 
-// Kept in sync with electron/cli/adapters.ts. Renderer uses this only for
-// labels / UI defaults / install hints; the source of truth at run-time is
-// what `cli.listAdapters()` returns from the main process.
+// User-visible adapters. Legacy command builders still exist in the main
+// process for older saved runs, but the product surface is ACP-only.
 export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
   {
-    id: "codex",
-    label: "Codex Legacy",
-    defaultBinary: "codex",
-    streamMode: "codex-json",
-    commandGroup: "codex",
-    capabilities: { toolSession: true },
-    toolSessionArgs: ["resume", "--last"],
-    toolSessionArgPrefixes: [],
-    installHint: "npm install -g @openai/codex",
-    docsUrl: "https://github.com/openai/codex",
-    protocol: "legacy-cli-json"
-  },
-  {
     id: "codex-acp",
-    label: "Codex ACP",
+    label: "Codex",
     defaultBinary: "codex-acp",
     streamMode: "raw",
     commandGroup: "codex",
@@ -58,21 +45,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     protocol: "acp"
   },
   {
-    id: "claude",
-    label: "Claude Code Legacy",
-    defaultBinary: "claude",
-    streamMode: "claude-json",
-    commandGroup: "claude",
-    capabilities: { toolSession: true },
-    toolSessionArgs: ["--resume", "-r", "--continue", "-c", "--session-id"],
-    toolSessionArgPrefixes: ["--resume=", "--session-id="],
-    installHint: "npm install -g @anthropic-ai/claude-code",
-    docsUrl: "https://docs.anthropic.com/en/docs/claude-code",
-    protocol: "legacy-cli-json"
-  },
-  {
     id: "claude-agent-acp",
-    label: "Claude Agent ACP",
+    label: "ClaudeCode",
     defaultBinary: "claude-agent-acp",
     streamMode: "raw",
     commandGroup: "claude",
@@ -84,21 +58,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     protocol: "acp"
   },
   {
-    id: "opencode",
-    label: "OpenCode Legacy",
-    defaultBinary: "opencode",
-    streamMode: "opencode-json",
-    commandGroup: "opencode",
-    capabilities: { toolSession: true },
-    toolSessionArgs: ["--session", "-s", "--continue", "-c"],
-    toolSessionArgPrefixes: ["--session="],
-    installHint: "npm install -g opencode-ai",
-    docsUrl: "https://opencode.ai/docs",
-    protocol: "legacy-cli-json"
-  },
-  {
     id: "opencode-acp",
-    label: "OpenCode ACP",
+    label: "OpenCode",
     defaultBinary: "opencode",
     streamMode: "raw",
     commandGroup: "opencode",
@@ -107,6 +68,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g opencode-ai",
     docsUrl: "https://opencode.ai/docs",
+    protocol: "acp"
+  },
+  {
+    id: "cursor-agent-acp",
+    label: "Cursor",
+    defaultBinary: "cursor-agent",
+    streamMode: "raw",
+    commandGroup: "cursor",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "curl https://cursor.com/install -fsS | bash",
+    docsUrl: "https://docs.cursor.com/en/cli/overview",
     protocol: "acp"
   }
 ];

@@ -3,17 +3,11 @@ import { useTranslation } from "react-i18next";
 
 import type { CliPermissionOption } from "@/services/cli/types";
 import { usePermissionStore } from "@/store/permissionStore";
-
-function describeRawInput(raw: unknown): string | null {
-  if (raw == null) return null;
-  if (typeof raw === "string") return raw;
-  try {
-    const text = JSON.stringify(raw, null, 2);
-    return text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
-  } catch {
-    return String(raw);
-  }
-}
+import {
+  actionKeyFor,
+  optionKeyFor,
+  permissionTargets
+} from "@/utils/permissionDisplay";
 
 function optionVariant(option: CliPermissionOption): string {
   const k = (option.kind ?? "").toLowerCase();
@@ -22,6 +16,12 @@ function optionVariant(option: CliPermissionOption): string {
   if (/allow/i.test(option.optionId)) return "primary";
   if (/reject|deny|cancel/i.test(option.optionId)) return "danger";
   return "ghost";
+}
+
+function shortPath(p: string): string {
+  const segs = p.split(/[/\\]/).filter(Boolean);
+  if (segs.length <= 2) return p;
+  return `…/${segs.slice(-2).join("/")}`;
 }
 
 export function PermissionDialog() {
@@ -46,21 +46,17 @@ export function PermissionDialog() {
     };
   }, [current, decide]);
 
-  const inputText = useMemo(
-    () => describeRawInput(current?.toolCall?.rawInput),
+  const targets = useMemo(
+    () => (current ? permissionTargets(current.toolCall) : []),
     [current]
   );
 
   if (!current) return null;
 
-  const title =
-    current.toolCall?.title ||
-    current.toolCall?.kind ||
-    t("permission.fallbackTitle");
-  const subtitle =
-    current.toolCall?.title && current.toolCall?.kind
-      ? current.toolCall.kind
-      : null;
+  const actionKey = actionKeyFor(current.toolCall?.title, current.toolCall?.kind);
+  const heading = actionKey
+    ? t(actionKey)
+    : current.toolCall?.title || current.toolCall?.kind || t("permission.title");
 
   return (
     <div className="permission-backdrop" role="dialog" aria-modal="true">
@@ -70,24 +66,24 @@ export function PermissionDialog() {
       >
         <header className="permission-header">
           <span className="permission-eyebrow">{t("permission.title")}</span>
-          <h2 className="permission-title">{title}</h2>
-          {subtitle ? (
-            <span className="permission-subtitle">{subtitle}</span>
-          ) : null}
+          <h2 className="permission-title">{heading}</h2>
         </header>
 
-        {inputText ? (
-          <div className="permission-section">
-            <span className="permission-label">{t("permission.input")}</span>
-            <pre className="permission-input">{inputText}</pre>
-          </div>
+        {targets.length > 0 ? (
+          <ul className="permission-targets">
+            {targets.map((target) => (
+              <li key={target} title={target}>
+                <code>{shortPath(target)}</code>
+              </li>
+            ))}
+          </ul>
         ) : null}
-
-        <p className="permission-help">{t("permission.help")}</p>
 
         <div className="permission-actions">
           {current.options.map((option) => {
             const variant = optionVariant(option);
+            const labelKey = optionKeyFor(option.kind);
+            const label = labelKey ? t(labelKey) : option.name || option.optionId;
             return (
               <button
                 key={option.optionId}
@@ -101,7 +97,7 @@ export function PermissionDialog() {
                   })
                 }
               >
-                {option.name || option.optionId}
+                {label}
               </button>
             );
           })}

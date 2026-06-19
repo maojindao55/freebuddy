@@ -15,6 +15,7 @@ import {
   type CliRunArgs,
   type Running
 } from "./runtimeShared.js";
+import { killProcessTree } from "./process-kill.js";
 
 export interface LegacyRuntimeInput {
   child: ChildProcessByStdio<Writable, Readable, Readable>;
@@ -63,7 +64,7 @@ export function runLegacyCliAgent({
   if (args.timeoutMs && args.timeoutMs > 0) {
     timer = setTimeout(() => {
       try {
-        child.kill("SIGKILL");
+        killProcessTree(child, "force");
       } catch {
         /* noop */
       }

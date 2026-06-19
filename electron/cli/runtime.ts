@@ -24,6 +24,7 @@ import {
   type CliRunArgs,
   type Running
 } from "./runtimeShared.js";
+import { killProcessTree } from "./process-kill.js";
 
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
@@ -187,17 +188,19 @@ export function cliKill(sessionId: string): boolean {
   if (!r) return false;
   try {
     r.cancel?.();
-    r.child.kill("SIGTERM");
-    setTimeout(() => {
-      const still = running.get(sessionId);
-      if (still) {
-        try {
-          still.child.kill("SIGKILL");
-        } catch {
-          /* noop */
+    killProcessTree(r.child, "term");
+    if (process.platform !== "win32") {
+      setTimeout(() => {
+        const still = running.get(sessionId);
+        if (still) {
+          try {
+            killProcessTree(still.child, "force");
+          } catch {
+            /* noop */
+          }
         }
-      }
-    }, 2000);
+      }, 2000);
+    }
     updateTaskStatus(sessionId, "killed");
     return true;
   } catch {

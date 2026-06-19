@@ -26,6 +26,7 @@ test("electron-builder config packages FreeBuddy for desktop platforms", () => {
   assert.match(builderConfig, /mac:[\s\S]*target:[\s\S]*- target:\s+dmg/m);
   assert.match(builderConfig, /win:[\s\S]*target:[\s\S]*- target:\s+nsis/m);
   assert.match(builderConfig, /linux:[\s\S]*target:[\s\S]*- target:\s+AppImage[\s\S]*- target:\s+deb/m);
+  assert.match(builderConfig, /linux:[\s\S]*maintainer:\s+FreeBuddy <noreply@freebuddy\.dev>/m);
   assert.match(builderConfig, /extraResources:[\s\S]*from:\s+assets\/app-icon\.png[\s\S]*to:\s+app-icon\.png/m);
 });
 

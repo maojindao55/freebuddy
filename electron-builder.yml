@@ -39,6 +39,7 @@ nsis:
 linux:
   icon: assets/app-icon.png
   category: Utility
+  maintainer: FreeBuddy <noreply@freebuddy.dev>
   target:
     - target: AppImage
     - target: deb

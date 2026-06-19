@@ -152,7 +152,7 @@ async function main() {
     console.log(`[dry-run] 将更新 package.json, package-lock.json, desktop/macos/Info.plist → ${newVersion}`);
     run(steps, true);
     console.log("");
-    console.log("--dry-run 完成，未实际修改仓库。");
+    console.log("[dry-run] 完成，未实际修改仓库。");
   } else {
     updateVersionFiles(newVersion);
     run(steps, false);

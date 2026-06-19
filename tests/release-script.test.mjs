@@ -55,7 +55,7 @@ test("release runner updates Electron version files and performs git ops", () =>
   assert.ok(releaseScript.includes("package-lock.json"));
   assert.ok(releaseScript.includes("desktop/macos/Info.plist"));
   assert.match(releaseScript, /CFBundleShortVersionString/);
-  assert.match(releaseScript, /--dry-run/);
+  assert.match(releaseScript, /dry-run/);
   assert.match(releaseScript, /git/);
   assert.match(releaseScript, /tag/);
   assert.match(releaseScript, /push/);

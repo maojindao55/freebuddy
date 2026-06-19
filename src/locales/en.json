@@ -1,0 +1,27 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "settings": "Settings",
+    "delete": "Delete",
+    "save": "Save",
+    "reset": "Reset",
+    "edit": "Edit",
+    "check": "Check",
+    "install": "Install",
+    "installing": "Installing…",
+    "search": "Search"
+  },
+  "status": {
+    "running": "Running",
+    "starting": "Starting",
+    "done": "Done",
+    "failed": "Failed",
+    "killed": "Killed"
+  },
+  "general": {
+    "languageLabel": "Language",
+    "languageEn": "English",
+    "languageZhCN": "简体中文"
+  }
+}

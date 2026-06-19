@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { cliClient } from "@/services/cli/client";
@@ -32,6 +33,7 @@ function withModelArg(args: string[], model: string): string[] {
 }
 
 export function CLIAdaptersTab() {
+  const { t } = useTranslation();
   const loaded = useCliExecutorStore((s) => s.loaded);
   const load = useCliExecutorStore((s) => s.load);
   const adapters = useCliExecutorStore((s) => s.adapters);
@@ -61,9 +63,9 @@ export function CLIAdaptersTab() {
     return (
       <div className="settings-tab">
         <div className="settings-section-heading">
-          <h3 className="settings-section-title">Cli Agents</h3>
+          <h3 className="settings-section-title">{t("settings.cli.title")}</h3>
           <span className="settings-section-desc">
-            Agent management is unavailable. Run the desktop app to manage local agents.
+            {t("settings.cli.unavailable")}
           </span>
         </div>
       </div>
@@ -73,9 +75,9 @@ export function CLIAdaptersTab() {
   return (
     <div className="settings-tab">
       <div className="settings-section-heading">
-        <h3 className="settings-section-title">Cli Agents</h3>
+        <h3 className="settings-section-title">{t("settings.cli.title")}</h3>
         <span className="settings-section-desc">
-          Configure the local cli agents available in FreeBuddy.
+          {t("settings.cli.description")}
         </span>
       </div>
 
@@ -92,7 +94,7 @@ export function CLIAdaptersTab() {
               try {
                 const r = await cliClient.install(ex.installHint);
                 if (!r.success) {
-                  alert(`Install failed (exit ${r.exitCode}):\n${r.stderr || r.stdout}`);
+                  alert(t("settings.cli.installFailed", { code: r.exitCode, output: r.stderr || r.stdout }));
                 } else {
                   await check(ex.id);
                 }
@@ -128,6 +130,7 @@ function AdapterRow({
   onInstall: () => void;
   installing: boolean;
 }) {
+  const { t } = useTranslation();
   const rt = ex.runtime;
   const parsedExtraArgs = extractModelArg(ex.extraArgs);
   const model = parsedExtraArgs.model;
@@ -145,28 +148,28 @@ function AdapterRow({
         <div className="adapter-row-meta">
           {rt?.installed ? (
             <span className="adapter-status ok">
-              ✓ installed {rt.version ? `(${rt.version})` : ""}
+              {t("settings.cli.installed")} {rt.version ? `(${rt.version})` : ""}
             </span>
           ) : rt ? (
-            <span className="adapter-status warn">not installed</span>
+            <span className="adapter-status warn">{t("settings.cli.notInstalled")}</span>
           ) : (
-            <span className="adapter-status muted">not checked</span>
+            <span className="adapter-status muted">{t("settings.cli.notChecked")}</span>
           )}
           {model && (
             <span className="muted">
-              model: <code>{model}</code>
+              {t("settings.cli.modelLabel")}: <code>{model}</code>
             </span>
           )}
         </div>
       </div>
       <div className="adapter-row-actions">
-        <button onClick={onCheck}>Check</button>
+        <button onClick={onCheck}>{t("common.check")}</button>
         {!rt?.installed && ex.installHint && (
           <button onClick={onInstall} disabled={installing}>
-            {installing ? "Installing…" : "Install"}
+            {installing ? t("common.installing") : t("common.install")}
           </button>
         )}
-        <button onClick={onEdit}>Edit</button>
+        <button onClick={onEdit}>{t("common.edit")}</button>
       </div>
     </div>
   );
@@ -179,6 +182,7 @@ function EditOverrideDialog({
   executorId: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const resolve = useCliExecutorStore((s) => s.resolve);
   const override = useCliExecutorStore((s) => s.overrides[executorId]);
   const ex = resolve(executorId);
@@ -243,14 +247,14 @@ function EditOverrideDialog({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
-          <h2>Edit {ex.label}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <h2>{t("settings.cli.editTitle", { label: ex.label })}</h2>
+          <button className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
             ✕
           </button>
         </header>
 
         <div className="icon-picker-field">
-          <span className="icon-picker-label">Avatar</span>
+          <span className="icon-picker-label">{t("settings.cli.avatar")}</span>
           <AvatarPicker
             value={icon}
             onChange={setIcon}
@@ -260,25 +264,25 @@ function EditOverrideDialog({
         </div>
 
         <label>
-          Command override
+          {t("settings.cli.commandOverride")}
           <input
             value={binary}
-            placeholder="Use default"
+            placeholder={t("settings.cli.useDefault")}
             onChange={(e) => setBinary(e.target.value)}
           />
         </label>
 
         <label>
-          Model
+          {t("settings.cli.model")}
           <input
             value={model}
-            placeholder="Use agent default"
+            placeholder={t("settings.cli.useAgentDefault")}
             onChange={(e) => setModel(e.target.value)}
           />
         </label>
 
         <label>
-          Extra args (one per line)
+          {t("settings.cli.extraArgs")}
           <textarea
             rows={4}
             value={extraArgs}
@@ -287,7 +291,7 @@ function EditOverrideDialog({
         </label>
 
         <label>
-          Environment (KEY=value per line)
+          {t("settings.cli.environment")}
           <textarea
             rows={4}
             value={envText}
@@ -297,18 +301,18 @@ function EditOverrideDialog({
 
         {ex.docsUrl && (
           <p className="muted">
-            Docs:{" "}
+            {t("settings.cli.docs")}{" "}
             <a href={ex.docsUrl} target="_blank" rel="noreferrer">
-              Setup guide
+              {t("settings.cli.setupGuide")}
             </a>
           </p>
         )}
 
         <div className="modal-actions">
-          <button onClick={onReset}>Reset</button>
-          <button onClick={onClose}>Cancel</button>
+          <button onClick={onReset}>{t("common.reset")}</button>
+          <button onClick={onClose}>{t("common.cancel")}</button>
           <button className="primary" onClick={onSave}>
-            Save
+            {t("common.save")}
           </button>
         </div>
       </div>

@@ -184,5 +184,39 @@
   "lightbox": {
     "preview": "图片预览",
     "close": "关闭预览"
+  },
+  "settings": {
+    "cli": {
+      "title": "Cli Agents",
+      "description": "配置 FreeBuddy 中可用的本地 CLI Agent。",
+      "commandOverride": "命令覆盖",
+      "model": "模型",
+      "extraArgs": "附加参数（每行一个）",
+      "environment": "环境变量（每行 KEY=value）",
+      "docs": "文档：",
+      "setupGuide": "安装指南",
+      "useDefault": "使用默认",
+      "useAgentDefault": "使用 Agent 默认",
+      "avatar": "头像",
+      "searchPlaceholder": "搜索图标（DeepSeek、Qwen、Cursor…）",
+      "noIcons": "没有匹配的图标。",
+      "iconsFrom": "图标来自",
+      "installFailed": "安装失败（退出码 {{code}}）：\n{{output}}",
+      "editTitle": "编辑 {{label}}",
+      "unavailable": "Agent 管理不可用。请运行桌面端以管理本地 Agent。",
+      "installed": "✓ 已安装",
+      "notInstalled": "未安装",
+      "notChecked": "未检查",
+      "modelLabel": "模型"
+    },
+    "avatar": {
+      "groups": {
+        "all": "全部",
+        "models": "模型",
+        "providers": "提供商",
+        "apps": "应用"
+      },
+      "defaultAlt": "默认"
+    }
   }
 }

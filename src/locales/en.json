@@ -185,5 +185,39 @@
   "lightbox": {
     "preview": "Image preview",
     "close": "Close preview"
+  },
+  "settings": {
+    "cli": {
+      "title": "Cli Agents",
+      "description": "Configure the local cli agents available in FreeBuddy.",
+      "commandOverride": "Command override",
+      "model": "Model",
+      "extraArgs": "Extra args (one per line)",
+      "environment": "Environment (KEY=value per line)",
+      "docs": "Docs:",
+      "setupGuide": "Setup guide",
+      "useDefault": "Use default",
+      "useAgentDefault": "Use agent default",
+      "avatar": "Avatar",
+      "searchPlaceholder": "Search icons (DeepSeek, Qwen, Cursor…)",
+      "noIcons": "No matching icons.",
+      "iconsFrom": "Icons from",
+      "installFailed": "Install failed (exit {{code}}):\n{{output}}",
+      "editTitle": "Edit {{label}}",
+      "unavailable": "Agent management is unavailable. Run the desktop app to manage local agents.",
+      "installed": "✓ installed",
+      "notInstalled": "not installed",
+      "notChecked": "not checked",
+      "modelLabel": "model"
+    },
+    "avatar": {
+      "groups": {
+        "all": "All",
+        "models": "Models",
+        "providers": "Providers",
+        "apps": "Apps"
+      },
+      "defaultAlt": "Default"
+    }
   }
 }

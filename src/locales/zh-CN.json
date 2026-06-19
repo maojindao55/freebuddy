@@ -102,6 +102,7 @@
     "notCaptured": "未捕获",
     "messages": "消息数",
     "agentTurns": "Agent 轮次",
+    "duration": "耗时",
     "context": "上下文",
     "cost": "成本",
     "tokens": "Token",

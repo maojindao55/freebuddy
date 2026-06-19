@@ -12,9 +12,11 @@ import {
 import type {
   CliEvent,
   CliRunArgs,
+  ChatAttachment,
   Conversation,
   ConversationMessage
 } from "@/services/cli/types";
+import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
 import { defaultTitleFor } from "./conversationUtils";
@@ -48,15 +50,23 @@ export interface ConversationState {
     member: CLIMember;
     cwd?: string;
     title?: string;
+    approvalMode?: "auto" | "ask";
   }): Promise<Conversation>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
   archiveConversation(id: string, archived: boolean): Promise<void>;
-  resetContext(id: string): void;
+  setConversationApprovalMode(
+    id: string,
+    approvalMode: "auto" | "ask"
+  ): Promise<void>;
 
   sendMessage(input: {
     conversationId: string;
     prompt: string;
+    attachments?: ChatAttachment[];
+    userMessageId?: string;
+    assistantMessageId?: string;
+    approvalModeOverride?: "auto" | "ask";
   }): Promise<void>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
@@ -129,7 +139,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => ({ messages: { ...s.messages, [id]: list } }));
   },
 
-  async newConversation({ member, cwd, title }) {
+  async newConversation({ member, cwd, title, approvalMode }) {
     const id = nanoid();
     const conv = await cliClient.createConversation({
       id,
@@ -137,7 +147,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       agentId: member.id,
       agentName: member.name,
       adapter: member.cli.adapter,
-      cwd
+      cwd,
+      approvalMode: approvalMode ?? member.cli.approvalMode
     });
     set((s) => ({
       conversations: [conv, ...s.conversations.filter((c) => c.id !== conv.id)],
@@ -182,9 +193,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }));
   },
 
-  resetContext(id) {
+  async setConversationApprovalMode(id, approvalMode) {
+    await cliClient.setConversationApprovalMode(id, approvalMode);
     set((s) => ({
-      pendingFreshContext: { ...s.pendingFreshContext, [id]: true }
+      conversations: s.conversations.map((c) =>
+        c.id === id ? { ...c, approvalMode } : c
+      )
     }));
   },
 
@@ -193,9 +207,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     return !!live && (live.status === "starting" || live.status === "running");
   },
 
-  async sendMessage({ conversationId, prompt }) {
+  async sendMessage({
+    conversationId,
+    prompt,
+    attachments = [],
+    userMessageId,
+    assistantMessageId,
+    approvalModeOverride
+  }) {
     const trimmed = prompt.trim();
-    if (!trimmed) return;
+    if (!trimmed && attachments.length === 0) return;
     if (get().isRunning(conversationId)) return;
 
     const conv = get().conversations.find((c) => c.id === conversationId);
@@ -203,7 +224,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const member = get().members.find((m) => m.id === conv.agentId);
     if (!member) throw new Error(`Member ${conv.agentId} not found`);
 
-    const userMsgId = nanoid();
+    const userMsgId = userMessageId ?? nanoid();
     const now = new Date().toISOString();
     const userMsg: ConversationMessage = {
       id: userMsgId,
@@ -211,6 +232,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       role: "user",
       status: "sent",
       content: trimmed,
+      ...(attachments.length ? { attachments } : {}),
       createdAt: now,
       updatedAt: now
     };
@@ -225,10 +247,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       conversationId,
       role: "user",
       status: "sent",
-      content: trimmed
+      content: trimmed,
+      attachments,
     });
 
-    const assistantMsgId = nanoid();
+    const assistantMsgId = assistantMessageId ?? nanoid();
     const assistantMsg: ConversationMessage = {
       id: assistantMsgId,
       conversationId,
@@ -285,12 +308,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       adapter: member.cli.adapter,
       binary,
       extraArgs,
-      prompt: trimmed,
+      prompt: composeMessageWithAttachments(trimmed, attachments),
       cwd: conv.cwd,
       toolSessionScope,
       toolSessionId: resumedFromSessionId,
       env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
-      approvalMode: member.cli.approvalMode,
+      approvalMode:
+        approvalModeOverride ?? conv.approvalMode ?? member.cli.approvalMode,
       showStderr: member.cli.showStderr,
       resumeToolSession: !wantFresh
     };

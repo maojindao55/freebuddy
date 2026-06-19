@@ -15,6 +15,7 @@ import type {
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
+  AttachmentCandidate,
   CreateConversationInput,
   ListConversationsArgs,
   AppendMessageInput,
@@ -37,6 +38,12 @@ declare global {
 
     run(args: CliRunArgs): Promise<{ sessionId: string }>;
     kill(sessionId: string): Promise<boolean>;
+    permissionDecision(args: {
+      sessionId: string;
+      requestId: string;
+      outcome: "selected" | "cancelled";
+      optionId?: string;
+    }): Promise<boolean>;
 
     listTasks(args?: CliTaskListArgs): Promise<CliTaskRow[]>;
     getTask(id: string): Promise<CliTaskRow | undefined>;
@@ -67,14 +74,23 @@ declare global {
     renameConversation(id: string, title: string): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
     deleteConversation(id: string): Promise<void>;
+    setConversationApprovalMode(
+      id: string,
+      approvalMode: "auto" | "ask" | null
+    ): Promise<void>;
 
     listMessages(conversationId: string): Promise<ConversationMessage[]>;
     appendMessage(input: AppendMessageInput): Promise<ConversationMessage>;
     updateMessage(input: UpdateMessageInput): Promise<void>;
 
     selectDirectory(): Promise<string | null>;
+    selectAttachments(): Promise<AttachmentCandidate[]>;
 
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;
+  }
+
+  interface FreebuddyWindow {
+    onChromeVisible(cb: (visible: boolean) => void): () => void;
   }
 
   interface FreebuddyApi {
@@ -85,6 +101,7 @@ declare global {
       node?: string;
     };
     cli: FreebuddyCli;
+    window: FreebuddyWindow;
   }
 
   interface Window {

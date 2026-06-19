@@ -1,5 +1,15 @@
 import { getDb } from "./db.js";
 
+export interface ChatAttachment {
+  id: string;
+  kind: "image" | "document" | "code";
+  name: string;
+  path: string;
+  mimeType?: string;
+  size?: number;
+  extension?: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -7,6 +17,7 @@ export interface Conversation {
   agentName: string;
   adapter: string;
   cwd?: string;
+  approvalMode?: "auto" | "ask";
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -21,6 +32,7 @@ export interface ConversationMessage {
   status: string;
   /** For user messages: raw text. For assistant: serialized CliStreamItem[]. */
   content: string;
+  attachments?: ChatAttachment[];
   taskId?: string;
   createdAt: string;
   updatedAt: string;
@@ -34,6 +46,10 @@ function rowToConversation(r: any): Conversation {
     agentName: r.agent_name,
     adapter: r.adapter,
     cwd: r.cwd ?? undefined,
+    approvalMode:
+      r.approval_mode === "ask" || r.approval_mode === "auto"
+        ? r.approval_mode
+        : undefined,
     archived: r.archived === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -42,12 +58,23 @@ function rowToConversation(r: any): Conversation {
 }
 
 function rowToMessage(r: any): ConversationMessage {
+  let attachments: ChatAttachment[] | undefined;
+  if (r.attachments) {
+    try {
+      const parsed = JSON.parse(r.attachments);
+      if (Array.isArray(parsed)) attachments = parsed;
+    } catch {
+      attachments = undefined;
+    }
+  }
+
   return {
     id: r.id,
     conversationId: r.conversation_id,
     role: r.role,
     status: r.status,
     content: r.content,
+    attachments,
     taskId: r.task_id ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at
@@ -61,6 +88,7 @@ export interface CreateConversationInput {
   agentName: string;
   adapter: string;
   cwd?: string;
+  approvalMode?: "auto" | "ask";
 }
 
 export function createConversation(input: CreateConversationInput): Conversation {
@@ -68,8 +96,8 @@ export function createConversation(input: CreateConversationInput): Conversation
   getDb()
     .prepare(
       `INSERT INTO conversations
-         (id, title, agent_id, agent_name, adapter, cwd, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`
+         (id, title, agent_id, agent_name, adapter, cwd, approval_mode, archived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     )
     .run(
       input.id,
@@ -78,10 +106,23 @@ export function createConversation(input: CreateConversationInput): Conversation
       input.agentName,
       input.adapter,
       input.cwd ?? null,
+      input.approvalMode ?? null,
       now,
       now
     );
   return getConversation(input.id) as Conversation;
+}
+
+export function setConversationApprovalMode(
+  id: string,
+  approvalMode: "auto" | "ask" | null
+): void {
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE conversations SET approval_mode = ?, updated_at = ? WHERE id = ?`
+    )
+    .run(approvalMode, now, id);
 }
 
 export function getConversation(id: string): Conversation | undefined {
@@ -150,6 +191,7 @@ export interface AppendMessageInput {
   role: "user" | "assistant" | "system";
   status: string;
   content: string;
+  attachments?: ChatAttachment[];
   taskId?: string;
 }
 
@@ -158,8 +200,8 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
   getDb()
     .prepare(
       `INSERT INTO conversation_messages
-         (id, conversation_id, role, status, content, task_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, conversation_id, role, status, content, attachments, task_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.id,
@@ -167,6 +209,7 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
       input.role,
       input.status,
       input.content,
+      input.attachments?.length ? JSON.stringify(input.attachments) : null,
       input.taskId ?? null,
       now,
       now

@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
+import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
 import { ConversationList } from "./components/CLI/ConversationList";
+import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
+import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { WorkspacePanel } from "./components/CLI/WorkspacePanel";
 import { SettingsModal } from "./components/Settings/SettingsModal";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
@@ -9,9 +12,95 @@ import { useConversationStore } from "./store/conversationStore";
 
 type Theme = "light" | "dark";
 
+function GearIcon() {
+  return (
+    <svg
+      className="footer-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg
+      className="footer-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg
+      className="footer-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function BrandMark() {
+  return (
+    <span className="sidebar-logo" aria-hidden="true">
+      <img src={sidebarLogoUrl} alt="" className="sidebar-logo-img" />
+    </span>
+  );
+}
+
+function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      className="footer-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M9 4v16" />
+      {collapsed ? (
+        <path d="M14 10l3 2-3 2" />
+      ) : (
+        <path d="M17 10l-3 2 3 2" />
+      )}
+    </svg>
+  );
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>("light");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(true);
 
   const isElectron =
     Boolean(window.freebuddy?.cli) || navigator.userAgent.includes("Electron");
@@ -23,11 +112,13 @@ function App() {
     void loadConversations();
   }, [loadExecutors, loadConversations]);
 
-  const runtime = useMemo(() => {
-    const versions = window.freebuddy?.versions;
-    return versions?.electron
-      ? `Electron ${versions.electron}`
-      : "Browser preview";
+  useEffect(() => {
+    const off = window.freebuddy?.window?.onChromeVisible?.((visible) => {
+      setChromeVisible(visible);
+    });
+    return () => {
+      off?.();
+    };
   }, []);
 
   const conversations = useConversationStore((s) => s.conversations);
@@ -40,52 +131,54 @@ function App() {
     (c) => live[c.id]?.status === "running" || live[c.id]?.status === "starting"
   ).length;
 
+  const renderToggleButton = (extraClass = "") => (
+    <button
+      type="button"
+      className={`sidebar-toggle${extraClass ? ` ${extraClass}` : ""}`}
+      title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      aria-expanded={!sidebarCollapsed}
+      onClick={() => setSidebarCollapsed((v) => !v)}
+    >
+      <SidebarToggleIcon collapsed={sidebarCollapsed} />
+    </button>
+  );
+
   return (
+    <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}`}
       data-theme={theme}
     >
-      <aside className="activity-bar" aria-label="Primary">
-        <button className="activity-dot active" title="Chat" aria-label="Chat">
-          <span className="icon-glyph">💬</span>
-        </button>
-        <button
-          className="activity-dot bottom"
-          title="Settings"
-          aria-label="Settings"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <span className="icon-glyph">⚙</span>
-        </button>
-        <button
-          className="activity-dot"
-          title="Toggle theme"
-          aria-label="Toggle theme"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          <span className="icon-glyph">{theme === "dark" ? "☀️" : "🌙"}</span>
-        </button>
-      </aside>
-
+      {sidebarCollapsed && renderToggleButton("floating")}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div>
-            <h1>FreeBuddy</h1>
-            <p>Local CLI agent workspace</p>
+          <div className="sidebar-brand">
+            <BrandMark />
+            <div className="sidebar-brand-text">
+              <h1>FreeBuddy</h1>
+            </div>
           </div>
+          {renderToggleButton()}
         </div>
 
         <ConversationList onNew={() => void setActive(undefined)} />
 
         <div className="sidebar-footer">
-          <span className="muted">
-            {runningCount > 0 ? `${runningCount} running` : "idle"}
-          </span>
           <button
             className="footer-action"
             onClick={() => setSettingsOpen(true)}
           >
+            <GearIcon />
             Settings
+          </button>
+          <button
+            className="footer-toggle"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
         </div>
       </aside>
@@ -93,8 +186,6 @@ function App() {
       <main className="workspace">
         <header className="titlebar">
           <div className="breadcrumb">
-            <span>FreeBuddy</span>
-            <span>›</span>
             <strong>{activeConversation?.title ?? "Chat"}</strong>
           </div>
 
@@ -106,15 +197,13 @@ function App() {
       </main>
 
       {activeConversation && (
-        <WorkspacePanel
-          runtime={runtime}
-          theme={theme}
-          runningCount={runningCount}
-        />
+        <WorkspacePanel runningCount={runningCount} />
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      <PermissionDialog />
     </div>
+    </ImageLightboxProvider>
   );
 }
 

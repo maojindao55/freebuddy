@@ -10,6 +10,8 @@
   <string>FreeBuddy</string>
   <key>CFBundleIdentifier</key>
   <string>dev.freebuddy.app</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

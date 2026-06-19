@@ -2,7 +2,7 @@
 
 FreeBuddy is a WorkBuddy-style desktop AI workspace built with Electron, React, Vite, and TypeScript.
 
-It treats local CLI coding agents (Codex, Claude Code, OpenCode, …) as **first-class members** and provides a unified configuration, structured stream view, task history, and tool-session resume.
+It treats local coding agents (Codex, ClaudeCode, OpenCode) as **first-class members** and provides a unified configuration, structured stream view, task history, and tool-session resume. The app uses the Agent Client Protocol internally so the UI can stay focused on agents rather than protocol choices.
 
 ## Install
 
@@ -25,9 +25,9 @@ npm run build
 npm run start
 ```
 
-## CLI Agents
+## Coding Agents
 
-Open **Settings → CLI Adapters** to:
+Open **Settings → Coding Agents** to:
 
 - Check whether an adapter binary is installed (auto-detects via `which` + `--version`)
 - One-click install via the adapter's recommended install command
@@ -35,17 +35,17 @@ Open **Settings → CLI Adapters** to:
 
 Then on the home screen pick an agent, optionally set a workdir, and send a prompt. The structured stream (assistant text, tool calls, commands, file edits, usage, errors) renders live in the task panel.
 
-### Built-in adapters
+### Built-in agents
 
-| Adapter      | Binary         | Install hint                                  |
+| Agent        | Command        | Install hint                                  |
 |--------------|----------------|-----------------------------------------------|
-| Codex        | `codex`        | `npm install -g @openai/codex`                |
-| Claude Code  | `claude`       | `npm install -g @anthropic-ai/claude-code`    |
+| Codex        | `codex-acp`    | `npm install -g @zed-industries/codex-acp`    |
+| ClaudeCode   | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` |
 | OpenCode     | `opencode`     | `npm install -g opencode-ai`                  |
 
 ### Tool session resume
 
-When an adapter emits a `session_id`, FreeBuddy persists it per `(agentId, workdir)`. The next run with the same agent and workdir auto-attaches the resume flag (`--resume` for Claude, `--session` for OpenCode, etc.), so context carries over. Override with explicit `--resume` / `--session` in adapter extra args if you want manual control.
+Agent sessions are persisted per `(agentId, workdir)`. Follow-up turns resume the saved session when the agent supports it, while replayed history updates are suppressed so only the current turn renders.
 
 ### Storage
 

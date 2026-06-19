@@ -1,10 +1,53 @@
 import type { ReactNode } from "react";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
+import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
+import { attachmentPreviewUrl } from "@/utils/chatAttachments";
+import { useImageLightbox } from "./ImageLightbox";
+
+const IMAGE_PATH_EXTENSIONS = "png|jpe?g|webp|gif|bmp|svg|avif|heic|heif";
+const IMAGE_PATH_REGEX = new RegExp(
+  // Absolute POSIX path or Windows drive path ending in a known image extension.
+  `(?:/[^\\s)\\]\`'"<>]+|[A-Za-z]:[\\\\/][^\\s)\\]\`'"<>]+)\\.(?:${IMAGE_PATH_EXTENSIONS})`,
+  "gi"
+);
+const IMAGE_PATH_FULL_REGEX = new RegExp(`^${IMAGE_PATH_REGEX.source}$`, "i");
+const MARKDOWN_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+
+function isImagePath(value: string): boolean {
+  return IMAGE_PATH_FULL_REGEX.test(value.trim());
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
+}
+
+function resolveImageSrc(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  if (isHttpUrl(value)) return value;
+  // Absolute local path (POSIX or Windows). Route through custom protocol.
+  if (/^([A-Za-z]:[\\/]|\/)/.test(value)) {
+    return attachmentPreviewUrl(value);
+  }
+  // Anything else (relative, ~/, etc.) is rendered as plain text by callers.
+  return "";
+}
+
+function formatTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+function formatCost(amount: number, currency?: string): string {
+  const value = amount.toFixed(amount < 0.01 ? 4 : 2);
+  return currency === "USD" ? `$${value}` : `${value} ${currency ?? ""}`.trim();
+}
 
 function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  // Strip markdown image syntax: image previews are rendered as separate figure blocks.
+  const cleaned = text.replace(MARKDOWN_IMAGE_REGEX, "").replace(/[ \t]{2,}/g, " ");
+  const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
 
   parts.forEach((part, index) => {
     if (!part) return;
@@ -21,6 +64,64 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
   });
 
   return nodes;
+}
+
+interface InlineImageRef {
+  alt: string;
+  src: string;
+}
+
+/** Collect image references from a chunk of text: markdown ![alt](src) and bare absolute paths. */
+function collectInlineImages(text: string): InlineImageRef[] {
+  const seen = new Set<string>();
+  const refs: InlineImageRef[] = [];
+  let stripped = text;
+
+  stripped = stripped.replace(MARKDOWN_IMAGE_REGEX, (_match, alt: string, src: string) => {
+    const resolved = resolveImageSrc(src) || (isHttpUrl(src) ? src : "");
+    if (resolved && !seen.has(resolved)) {
+      seen.add(resolved);
+      refs.push({ alt: (alt || "").trim(), src: resolved });
+    }
+    return " ";
+  });
+
+  const matches = stripped.match(IMAGE_PATH_REGEX);
+  if (matches) {
+    for (const raw of matches) {
+      const resolved = resolveImageSrc(raw);
+      if (!resolved || seen.has(resolved)) continue;
+      seen.add(resolved);
+      refs.push({ alt: "", src: resolved });
+    }
+  }
+  return refs;
+}
+
+function MessageImage({ src, alt }: { alt: string; src: string }) {
+  const { open } = useImageLightbox();
+  return (
+    <figure className="markdown-image-figure">
+      <button
+        type="button"
+        className="markdown-image-button"
+        onClick={() => open({ src, alt })}
+        aria-label={alt ? `Preview ${alt}` : "Preview image"}
+      >
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          className="markdown-image"
+          onError={(event) => {
+            const figure = event.currentTarget.closest("figure");
+            if (figure) figure.classList.add("markdown-image-error");
+          }}
+        />
+      </button>
+      {alt ? <figcaption>{alt}</figcaption> : null}
+    </figure>
+  );
 }
 
 function isTableSeparator(line: string) {
@@ -131,9 +232,28 @@ function MarkdownText({ content }: { content: string }) {
       i += 1;
     }
 
-    blocks.push(
-      <p key={`p-${i}`}>{renderInline(paragraph.join("\n"), `p-${i}`)}</p>
-    );
+    const paragraphText = paragraph.join("\n");
+    const images = collectInlineImages(paragraphText);
+    const trimmed = paragraphText.trim();
+    const isImageOnly =
+      images.length > 0 &&
+      (isImagePath(trimmed) || /^!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)$/.test(trimmed));
+
+    if (!isImageOnly) {
+      blocks.push(
+        <p key={`p-${i}`}>{renderInline(paragraphText, `p-${i}`)}</p>
+      );
+    }
+
+    images.forEach((image, imageIndex) => {
+      blocks.push(
+        <MessageImage
+          key={`img-${i}-${imageIndex}`}
+          src={image.src}
+          alt={image.alt}
+        />
+      );
+    });
   }
 
   return <div className="markdown-body">{blocks}</div>;
@@ -176,6 +296,93 @@ function toolActionLabel(item: Extract<CliStreamItem, { kind: "tool-call" }>) {
   return target ? `${item.tool} ${target}` : item.tool;
 }
 
+function hasVisibleContent(content: string) {
+  return content.trim().length > 0;
+}
+
+function formatValue(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  ) {
+    return "";
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function toolGroupLabel(item: Extract<CliStreamItem, { kind: "tool-call" }>) {
+  const tool = item.tool.toLowerCase();
+  if (tool.includes("search") || tool.includes("fetch")) return item.tool;
+  return toolActionLabel(item);
+}
+
+export function StreamToolInvocation({
+  call,
+  results,
+  commands = []
+}: {
+  call: Extract<CliStreamItem, { kind: "tool-call" }>;
+  results: Extract<CliStreamItem, { kind: "tool-result" }>[];
+  commands?: Extract<CliStreamItem, { kind: "command" }>[];
+}) {
+  const visibleResults = dedupeToolResults(results);
+  const visibleCommands = dedupeCommands(commands);
+  const hasError = visibleResults.some((result) => result.isError);
+  const input = formatValue(call.input);
+
+  return (
+    <details className={`stream-tool-invocation${hasError ? " error" : ""}`}>
+      <summary>
+        <span className="stream-step-icon">⌁</span>
+        <span className="stream-tool-summary-main">{toolGroupLabel(call)}</span>
+        {(visibleResults.length > 0 || visibleCommands.length > 0) && (
+          <span className="stream-tool-summary-meta">
+            {visibleResults.some((result) => hasVisibleContent(result.content)) ||
+            visibleCommands.length > 0
+              ? "result"
+              : "done"}
+          </span>
+        )}
+      </summary>
+      <div className="stream-tool-body">
+        {input && (
+          <div className="stream-tool-section">
+            <span className="stream-label">Input</span>
+            <pre>{input}</pre>
+          </div>
+        )}
+        {visibleCommands.map((command, index) => (
+          <div className="stream-tool-section" key={`command-${index}`}>
+            <span className="stream-label">Command</span>
+            <pre>{command.command}</pre>
+            {command.cwd && <div className="stream-tool-empty">{command.cwd}</div>}
+          </div>
+        ))}
+        {visibleResults.map((result, index) => (
+          <div className="stream-tool-section" key={`${result.id ?? "result"}-${index}`}>
+            <span className="stream-label">
+              {result.tool} 结果
+              {result.isError ? " error" : ""}
+            </span>
+            {hasVisibleContent(result.content) ? (
+              <pre>{result.content}</pre>
+            ) : (
+              <div className="stream-tool-empty">No output</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function StreamItem({ item }: { item: CliStreamItem }) {
   switch (item.kind) {
     case "text":
@@ -199,10 +406,21 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </div>
       );
     case "tool-result":
+      if (!hasVisibleContent(item.content)) {
+        return (
+          <div className={`stream-step stream-tool-result-empty${item.isError ? " error" : ""}`}>
+            <span className="stream-step-icon">↳</span>
+            <span className="stream-label">{item.tool} 结果</span>
+            {item.isError && <span className="stream-error-suffix">error</span>}
+          </div>
+        );
+      }
       return (
         <details className={`stream-tool-result${item.isError ? " error" : ""}`}>
           <summary>
-            <span className="stream-label">{item.tool} 结果</span>
+            <span className="stream-label stream-summary-label">
+              {item.tool} 结果
+            </span>
             {item.isError && <span className="stream-error-suffix">error</span>}
           </summary>
           <pre>{item.content}</pre>
@@ -237,16 +455,33 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
           {item.title ? ` — ${item.title}` : ""}
         </div>
       );
-    case "usage":
+    case "usage": {
+      const hasContext =
+        item.contextUsed != null || item.contextSize != null;
       return (
         <div className="stream-meta">
           <span className="stream-label">Usage</span>
-          <span>in: {item.inputTokens ?? "–"} · out: {item.outputTokens ?? "–"}</span>
-          {item.totalCost != null && (
+          {hasContext ? (
+            <span>
+              ctx: {item.contextUsed != null ? formatTokens(item.contextUsed) : "–"}
+              {item.contextSize != null
+                ? ` / ${formatTokens(item.contextSize)}`
+                : ""}
+            </span>
+          ) : (
+            <span>
+              in: {item.inputTokens ?? "–"} · out: {item.outputTokens ?? "–"}
+            </span>
+          )}
+          {item.costAmount != null && (
+            <span className="stream-cost"> · {formatCost(item.costAmount, item.costCurrency)}</span>
+          )}
+          {item.costAmount == null && item.totalCost != null && (
             <span className="stream-cost"> · ${item.totalCost.toFixed(4)}</span>
           )}
         </div>
       );
+    }
     case "error":
       return (
         <div className="stream-error">

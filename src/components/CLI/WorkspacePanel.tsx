@@ -1,14 +1,12 @@
 import { useMemo, useState } from "react";
 
+import { displayAgentName } from "@/config/agentDisplay";
 import { useConversationStore } from "@/store/conversationStore";
+import { AgentAvatar } from "./AgentAvatar";
 
 export function WorkspacePanel({
-  runtime,
-  theme,
   runningCount
 }: {
-  runtime: string;
-  theme: "light" | "dark";
   runningCount: number;
 }) {
   const activeId = useConversationStore((s) => s.activeId);
@@ -18,6 +16,7 @@ export function WorkspacePanel({
   const [copiedSession, setCopiedSession] = useState(false);
 
   const active = conversations.find((c) => c.id === activeId);
+  const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
   const messages = activeId ? messagesMap[activeId] ?? [] : [];
   const live = activeId ? liveMap[activeId] : undefined;
 
@@ -50,26 +49,53 @@ export function WorkspacePanel({
     return undefined;
   }, [live?.capturedSessionId, live?.resumedFromSessionId, messages]);
 
+  const latestUsage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message.role !== "assistant") continue;
+      try {
+        const items = JSON.parse(message.content) as unknown[];
+        if (!Array.isArray(items)) continue;
+        for (let j = items.length - 1; j >= 0; j -= 1) {
+          const item = items[j] as {
+            kind?: string;
+            contextUsed?: number;
+            contextSize?: number;
+            costAmount?: number;
+            costCurrency?: string;
+            inputTokens?: number;
+            outputTokens?: number;
+            totalCost?: number;
+          };
+          if (item?.kind === "usage") return item;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return undefined;
+  }, [messages]);
+
   return (
     <aside className="details-panel workspace-panel" aria-label="Workspace panel">
-      <div className="panel-tabs">
-        <button className="panel-tab active">Tasks</button>
-        <button className="panel-tab">Context</button>
-        <button className="panel-tab">Files</button>
-      </div>
-
       <section className="side-card active-agent-card">
         <div className="side-card-header">
           <span>Active Agent</span>
           <strong>{status}</strong>
         </div>
         <div className="agent-lockup">
-          <span className="agent-avatar">
-            {(active?.agentName ?? "FB").slice(0, 2).toUpperCase()}
-          </span>
+          <AgentAvatar
+            adapter={active?.adapter}
+            className="agent-avatar"
+            fallback={
+              <span>
+                {(active ? activeAgentName : "FB").slice(0, 2).toUpperCase()}
+              </span>
+            }
+          />
           <div>
-            <strong>{active?.agentName ?? "No conversation"}</strong>
-            <small>{active?.adapter ?? "Create a conversation to begin"}</small>
+            <strong>{active ? activeAgentName : "No conversation"}</strong>
+            <small>{active ? "Local coding agent" : "Create a conversation to begin"}</small>
           </div>
         </div>
       </section>
@@ -80,10 +106,6 @@ export function WorkspacePanel({
           <strong>{runningCount > 0 ? `${runningCount} live` : "idle"}</strong>
         </div>
         <dl className="compact-dl">
-          <div>
-            <dt>Runtime</dt>
-            <dd>{runtime}</dd>
-          </div>
           <div>
             <dt>Workspace</dt>
             <dd>{active?.cwd ? shortPath(active.cwd) : "Not set"}</dd>
@@ -119,10 +141,35 @@ export function WorkspacePanel({
             <dt>Agent turns</dt>
             <dd>{assistantTurns}</dd>
           </div>
-          <div>
-            <dt>Theme</dt>
-            <dd>{theme === "dark" ? "Dark" : "Light"}</dd>
-          </div>
+          {latestUsage?.contextUsed != null && (
+            <div>
+              <dt>Context</dt>
+              <dd>
+                {formatTokens(latestUsage.contextUsed)}
+                {latestUsage.contextSize != null
+                  ? ` / ${formatTokens(latestUsage.contextSize)}`
+                  : ""}
+              </dd>
+            </div>
+          )}
+          {latestUsage?.costAmount != null && (
+            <div>
+              <dt>Cost</dt>
+              <dd>{formatCost(latestUsage.costAmount, latestUsage.costCurrency)}</dd>
+            </div>
+          )}
+          {latestUsage?.contextUsed == null &&
+            latestUsage?.costAmount == null &&
+            (latestUsage?.inputTokens != null ||
+              latestUsage?.outputTokens != null) && (
+              <div>
+                <dt>Tokens</dt>
+                <dd>
+                  in {latestUsage.inputTokens ?? "–"} · out{" "}
+                  {latestUsage.outputTokens ?? "–"}
+                </dd>
+              </div>
+            )}
         </dl>
       </section>
 
@@ -164,4 +211,13 @@ function shortPath(path: string) {
 function shortSessionId(id: string) {
   if (id.length <= 18) return id;
   return `${id.slice(0, 8)}…${id.slice(-6)}`;
+}
+
+function formatTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+function formatCost(amount: number, currency?: string): string {
+  const value = amount.toFixed(amount < 0.01 ? 4 : 2);
+  return currency === "USD" ? `$${value}` : `${value} ${currency ?? ""}`.trim();
 }

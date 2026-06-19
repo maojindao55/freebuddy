@@ -3,6 +3,33 @@ import { useEffect, useMemo, useState } from "react";
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { cliClient } from "@/services/cli/client";
 import type { CLIExecutorOverride } from "@/services/cli/types";
+import { AgentAvatar } from "@/components/CLI/AgentAvatar";
+import { AvatarPicker } from "./AvatarPicker";
+
+function extractModelArg(args: string[]): { model: string; args: string[] } {
+  const rest: string[] = [];
+  let model = "";
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "-m" || arg === "--model") {
+      if (!model && args[i + 1]) model = args[i + 1];
+      i += args[i + 1] ? 1 : 0;
+      continue;
+    }
+    if (arg.startsWith("--model=")) {
+      if (!model) model = arg.slice("--model=".length);
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { model, args: rest };
+}
+
+function withModelArg(args: string[], model: string): string[] {
+  const cleaned = extractModelArg(args).args;
+  const trimmed = model.trim();
+  return trimmed ? [`--model=${trimmed}`, ...cleaned] : cleaned;
+}
 
 export function CLIAdaptersTab() {
   const loaded = useCliExecutorStore((s) => s.loaded);
@@ -16,6 +43,7 @@ export function CLIAdaptersTab() {
   const list = useMemo<ResolvedExecutor[]>(
     () =>
       adapters
+        .filter((a) => a.protocol === "acp")
         .map((a) => resolve(a.id))
         .filter((x): x is ResolvedExecutor => !!x),
     // resolve is stable (zustand getter); recompute when inputs change.
@@ -32,21 +60,24 @@ export function CLIAdaptersTab() {
   if (!cliClient.isAvailable()) {
     return (
       <div className="settings-tab">
-        <h3 className="settings-section-title">CLI Adapters</h3>
-        <p className="muted">
-          CLI bridge is unavailable. Run the desktop app to manage CLI agents.
-        </p>
+        <div className="settings-section-heading">
+          <h3 className="settings-section-title">Cli Agents</h3>
+          <span className="settings-section-desc">
+            Agent management is unavailable. Run the desktop app to manage local agents.
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="settings-tab">
-      <h3 className="settings-section-title">CLI Adapters</h3>
-      <p className="muted">
-        Configure local CLI coding agents. Each adapter becomes a first-class
-        FreeBuddy member.
-      </p>
+      <div className="settings-section-heading">
+        <h3 className="settings-section-title">Cli Agents</h3>
+        <span className="settings-section-desc">
+          Configure the local cli agents available in FreeBuddy.
+        </span>
+      </div>
 
       <div className="adapter-list">
         {list.map((ex) => (
@@ -98,12 +129,18 @@ function AdapterRow({
   installing: boolean;
 }) {
   const rt = ex.runtime;
+  const parsedExtraArgs = extractModelArg(ex.extraArgs);
+  const model = parsedExtraArgs.model;
   return (
     <div className="adapter-row">
+      <AgentAvatar
+        adapter={ex.id}
+        className="adapter-avatar"
+        fallback={<span>{ex.label.slice(0, 2).toUpperCase()}</span>}
+      />
       <div className="adapter-row-main">
         <div className="adapter-row-title">
           <strong>{ex.label}</strong>
-          <code>{ex.binary}</code>
         </div>
         <div className="adapter-row-meta">
           {rt?.installed ? (
@@ -115,10 +152,9 @@ function AdapterRow({
           ) : (
             <span className="adapter-status muted">not checked</span>
           )}
-          {rt?.binaryPath && <span className="muted">{rt.binaryPath}</span>}
-          {ex.extraArgs.length > 0 && (
+          {model && (
             <span className="muted">
-              args: <code>{ex.extraArgs.join(" ")}</code>
+              model: <code>{model}</code>
             </span>
           )}
         </div>
@@ -149,19 +185,30 @@ function EditOverrideDialog({
   const upsert = useCliExecutorStore((s) => s.upsertOverride);
   const reset = useCliExecutorStore((s) => s.resetOverride);
 
-  const [binary, setBinary] = useState(ex?.override?.binary ?? "");
+  const [binary, setBinary] = useState(
+    ex?.override?.binary && ex.override.binary !== ex.defaultBinary
+      ? ex.override.binary
+      : ""
+  );
+  const parsedExtraArgs = extractModelArg(ex?.override?.extraArgs ?? []);
+  const [model, setModel] = useState(parsedExtraArgs.model);
   const [extraArgs, setExtraArgs] = useState(
-    (ex?.override?.extraArgs ?? []).join("\n")
+    parsedExtraArgs.args.join("\n")
   );
   const [envText, setEnvText] = useState(
     Object.entries(ex?.override?.env ?? {})
       .map(([k, v]) => `${k}=${v}`)
       .join("\n")
   );
+  const [icon, setIcon] = useState(ex?.override?.icon ?? "");
 
   if (!ex) return null;
 
   const onSave = async () => {
+    const cleanedExtraArgs = extraArgs
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
     const env: Record<string, string> = {};
     envText
       .split(/\r?\n/)
@@ -174,12 +221,13 @@ function EditOverrideDialog({
 
     const override: CLIExecutorOverride = {
       id: ex.id,
-      binary: binary.trim() || undefined,
-      extraArgs: extraArgs
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean),
+      binary:
+        binary.trim() && binary.trim() !== ex.defaultBinary
+          ? binary.trim()
+          : undefined,
+      extraArgs: withModelArg(cleanedExtraArgs, model),
       env: Object.keys(env).length ? env : undefined,
+      icon: icon || undefined,
       enabled: true
     };
     await upsert(override);
@@ -201,12 +249,31 @@ function EditOverrideDialog({
           </button>
         </header>
 
+        <div className="icon-picker-field">
+          <span className="icon-picker-label">Avatar</span>
+          <AvatarPicker
+            value={icon}
+            onChange={setIcon}
+            defaultAdapter={ex.id}
+            defaultLabel={ex.label}
+          />
+        </div>
+
         <label>
-          Binary path
+          Command override
           <input
             value={binary}
-            placeholder={ex.defaultBinary}
+            placeholder="Use default"
             onChange={(e) => setBinary(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Model
+          <input
+            value={model}
+            placeholder="Use agent default"
+            onChange={(e) => setModel(e.target.value)}
           />
         </label>
 
@@ -232,7 +299,7 @@ function EditOverrideDialog({
           <p className="muted">
             Docs:{" "}
             <a href={ex.docsUrl} target="_blank" rel="noreferrer">
-              {ex.docsUrl}
+              Setup guide
             </a>
           </p>
         )}

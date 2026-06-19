@@ -1,6 +1,6 @@
-import { app, BrowserWindow, Menu, shell } from "electron";
+import { app, BrowserWindow, Menu, nativeImage, net, protocol, shell } from "electron";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
@@ -8,6 +8,50 @@ import { getDb } from "./cli/db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const APP_NAME = "FreeBuddy";
+
+app.setName(APP_NAME);
+app.setAboutPanelOptions({ applicationName: APP_NAME });
+
+function resolveAppIconPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "app-icon.png")
+    : path.join(__dirname, "../assets/app-icon.png");
+}
+
+function loadAppIcon() {
+  const icon = nativeImage.createFromPath(resolveAppIconPath());
+  return icon.isEmpty() ? undefined : icon;
+}
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "freebuddy-file",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+      stream: true
+    }
+  }
+]);
+
+function registerLocalFileProtocol() {
+  protocol.handle("freebuddy-file", async (request) => {
+    try {
+      const url = new URL(request.url);
+      const encoded = url.pathname + url.search;
+      const decoded = decodeURIComponent(encoded.replace(/^\//, ""));
+      const absolute = path.isAbsolute(decoded) ? decoded : `/${decoded}`;
+      return await net.fetch(pathToFileURL(absolute).toString());
+    } catch (error) {
+      return new Response(`Failed to load file: ${(error as Error).message}`, {
+        status: 404
+      });
+    }
+  });
+}
 
 async function injectShellPath() {
   if (process.platform === "win32") return;
@@ -27,12 +71,15 @@ async function injectShellPath() {
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  const appIcon = loadAppIcon();
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 640,
-    title: "FreeBuddy",
+    title: APP_NAME,
+    ...(appIcon ? { icon: appIcon } : {}),
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: 14 },
     backgroundColor: "#0b1329",
@@ -51,6 +98,15 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  const sendChromeVisible = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send("window:chrome", !mainWindow.isFullScreen());
+  };
+  mainWindow.on("enter-full-screen", sendChromeVisible);
+  mainWindow.on("leave-full-screen", sendChromeVisible);
+  mainWindow.on("maximize", sendChromeVisible);
+  mainWindow.on("unmaximize", sendChromeVisible);
+
   if (isDev) {
     void mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL as string);
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -62,7 +118,7 @@ function createWindow() {
 function createMenu() {
   return Menu.buildFromTemplate([
     {
-      label: app.name,
+      label: APP_NAME,
       submenu: [
         { role: "about" },
         { type: "separator" },
@@ -107,8 +163,13 @@ function createMenu() {
 
 app.whenReady().then(async () => {
   await injectShellPath();
+  registerLocalFileProtocol();
   getDb();
   registerCliIpc();
+  const appIcon = loadAppIcon();
+  if (process.platform === "darwin" && app.dock && appIcon) {
+    app.dock.setIcon(appIcon);
+  }
   createWindow();
 
   app.on("activate", () => {

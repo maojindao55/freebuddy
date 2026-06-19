@@ -10,6 +10,7 @@ export interface CLIExecutorOverride {
   env?: Record<string, string>;
   installHint?: string;
   docsUrl?: string;
+  icon?: string;
   enabled?: boolean;
 }
 
@@ -17,7 +18,7 @@ export function listOverrides(): CLIExecutorOverride[] {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT id, base_adapter, label, binary, extra_args, env, install_hint, docs_url, enabled
+      `SELECT id, base_adapter, label, binary, extra_args, env, install_hint, docs_url, icon, enabled
        FROM cli_executor_overrides ORDER BY id`
     )
     .all() as Array<{
@@ -29,6 +30,7 @@ export function listOverrides(): CLIExecutorOverride[] {
     env: string | null;
     install_hint: string | null;
     docs_url: string | null;
+    icon: string | null;
     enabled: number;
   }>;
   return rows.map((r) => ({
@@ -40,6 +42,7 @@ export function listOverrides(): CLIExecutorOverride[] {
     env: r.env ? (JSON.parse(r.env) as Record<string, string>) : undefined,
     installHint: r.install_hint ?? undefined,
     docsUrl: r.docs_url ?? undefined,
+    icon: r.icon ?? undefined,
     enabled: r.enabled !== 0
   }));
 }
@@ -49,8 +52,8 @@ export function upsertOverride(o: CLIExecutorOverride): void {
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO cli_executor_overrides
-       (id, base_adapter, label, binary, extra_args, env, install_hint, docs_url, enabled, updated_at)
-     VALUES (@id, @base_adapter, @label, @binary, @extra_args, @env, @install_hint, @docs_url, @enabled, @updated_at)
+       (id, base_adapter, label, binary, extra_args, env, install_hint, docs_url, icon, enabled, updated_at)
+     VALUES (@id, @base_adapter, @label, @binary, @extra_args, @env, @install_hint, @docs_url, @icon, @enabled, @updated_at)
      ON CONFLICT(id) DO UPDATE SET
        base_adapter=excluded.base_adapter,
        label=excluded.label,
@@ -59,6 +62,7 @@ export function upsertOverride(o: CLIExecutorOverride): void {
        env=excluded.env,
        install_hint=excluded.install_hint,
        docs_url=excluded.docs_url,
+       icon=excluded.icon,
        enabled=excluded.enabled,
        updated_at=excluded.updated_at`
   ).run({
@@ -70,6 +74,7 @@ export function upsertOverride(o: CLIExecutorOverride): void {
     env: o.env ? JSON.stringify(o.env) : null,
     install_hint: o.installHint ?? null,
     docs_url: o.docsUrl ?? null,
+    icon: o.icon ?? null,
     enabled: o.enabled === false ? 0 : 1,
     updated_at: now
   });

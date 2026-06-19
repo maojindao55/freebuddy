@@ -20,6 +20,7 @@ CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR" swiftc "$ROOT_DIR/desktop/macos/Free
   -framework WebKit
 
 cp "$ROOT_DIR/desktop/macos/Info.plist" "$CONTENTS_DIR/Info.plist"
+cp "$ROOT_DIR/desktop/macos/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 cp -R "$ROOT_DIR/dist/." "$WEB_DIR/"
 
 plutil -lint "$CONTENTS_DIR/Info.plist"

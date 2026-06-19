@@ -11,6 +11,7 @@ import type {
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
+  AttachmentCandidate,
   CreateConversationInput,
   ListConversationsArgs,
   AppendMessageInput,
@@ -63,6 +64,14 @@ export const cliClient = {
   kill(sessionId: string): Promise<boolean> {
     return api().kill(sessionId);
   },
+  permissionDecision(args: {
+    sessionId: string;
+    requestId: string;
+    outcome: "selected" | "cancelled";
+    optionId?: string;
+  }): Promise<boolean> {
+    return api().permissionDecision(args);
+  },
 
   listTasks(args?: CliTaskListArgs): Promise<CliTaskRow[]> {
     return api().listTasks(args);
@@ -113,6 +122,12 @@ export const cliClient = {
   deleteConversation(id: string): Promise<void> {
     return api().deleteConversation(id);
   },
+  setConversationApprovalMode(
+    id: string,
+    approvalMode: "auto" | "ask" | null
+  ): Promise<void> {
+    return api().setConversationApprovalMode(id, approvalMode);
+  },
   listMessages(conversationId: string): Promise<ConversationMessage[]> {
     return api().listMessages(conversationId);
   },
@@ -124,6 +139,9 @@ export const cliClient = {
   },
   selectDirectory(): Promise<string | null> {
     return api().selectDirectory();
+  },
+  selectAttachments(): Promise<AttachmentCandidate[]> {
+    return api().selectAttachments();
   },
 
   onEvent(sessionId: string, cb: (e: CliEvent) => void): () => void {

@@ -98,6 +98,7 @@ function migrate(db: DB) {
       agent_name TEXT NOT NULL,
       adapter TEXT NOT NULL,
       cwd TEXT,
+      approval_mode TEXT,
       archived INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -112,6 +113,7 @@ function migrate(db: DB) {
       role TEXT NOT NULL,
       status TEXT NOT NULL,
       content TEXT NOT NULL,
+      attachments TEXT,
       task_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -120,4 +122,25 @@ function migrate(db: DB) {
     CREATE INDEX IF NOT EXISTS idx_messages_conv_time
       ON conversation_messages(conversation_id, created_at);
   `);
+
+  const overrideCols = db
+    .prepare("PRAGMA table_info(cli_executor_overrides)")
+    .all() as Array<{ name: string }>;
+  if (!overrideCols.some((c) => c.name === "icon")) {
+    db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN icon TEXT");
+  }
+
+  const messageCols = db
+    .prepare("PRAGMA table_info(conversation_messages)")
+    .all() as Array<{ name: string }>;
+  if (!messageCols.some((c) => c.name === "attachments")) {
+    db.exec("ALTER TABLE conversation_messages ADD COLUMN attachments TEXT");
+  }
+
+  const conversationCols = db
+    .prepare("PRAGMA table_info(conversations)")
+    .all() as Array<{ name: string }>;
+  if (!conversationCols.some((c) => c.name === "approval_mode")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN approval_mode TEXT");
+  }
 }

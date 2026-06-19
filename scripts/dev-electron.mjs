@@ -1,7 +1,12 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { resolveElectronCommand } from "./electron-shell.mjs";
 
 const viteUrl = "http://127.0.0.1:5173";
 const children = new Set();
+const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 function run(command, args, options = {}) {
   const child = spawn(command, args, {
@@ -53,7 +58,8 @@ const vite = run("npm", ["exec", "vite", "--", "--host", "127.0.0.1", "--port", 
 
 await waitForVite();
 
-const electron = run("npm", ["exec", "electron", "--", "dist-electron/main.js"], {
+const electronCommand = resolveElectronCommand(rootDir, path.join(rootDir, "dist-electron/main.js"));
+const electron = run(electronCommand.command, electronCommand.args, {
   env: {
     ...process.env,
     VITE_DEV_SERVER_URL: viteUrl

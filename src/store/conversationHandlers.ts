@@ -8,6 +8,7 @@ import { cliClient } from "@/services/cli/client";
 
 import type { ConversationState } from "./conversationStore";
 import { runCtxMap } from "./conversationStore";
+import { usePermissionStore } from "./permissionStore";
 import { appendItems } from "./conversationUtils";
 
 type SetFn = (
@@ -67,6 +68,15 @@ export function handleStreamEvent(
   parser: ReturnType<typeof getParser>,
   parseCtx: ParseContext
 ): void {
+  if (e.type === "permission") {
+    usePermissionStore.getState().enqueue(conversationId, e.request);
+    return;
+  }
+  if (e.type === "permission-resolved") {
+    usePermissionStore.getState().remove(e.requestId);
+    return;
+  }
+
   set((s) => {
     const live = s.live[conversationId];
     if (!live) return s;
@@ -91,6 +101,15 @@ export function handleStreamEvent(
       ];
       nextItems = appendItems(nextItems, items as CliStreamItem[]);
       nextItems = refreshLatestErrorDetails(nextItems, parseCtx);
+    } else if (e.type === "items") {
+      nextItems = appendItems(nextItems, e.items);
+      const sessionItem = [...e.items]
+        .reverse()
+        .find((item) => item.kind === "session");
+      if (sessionItem?.kind === "session") {
+        parseCtx.sessionId = sessionItem.sessionId;
+        capturedSessionId = sessionItem.sessionId;
+      }
     } else if (e.type === "error") {
       nextItems = appendItems(nextItems, [
         { kind: "error", message: e.message }
@@ -146,6 +165,7 @@ export function handleStreamEvent(
   });
 
   if (e.type === "done") {
+    usePermissionStore.getState().removeForConversation(conversationId);
     const live = get().live[conversationId];
     const reason = live?.status === "killed" ? "killed" : "done";
     void finalizeRun(set, get, conversationId, reason);

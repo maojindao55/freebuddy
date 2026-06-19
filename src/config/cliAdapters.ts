@@ -1,7 +1,11 @@
 export type CLIAdapterId =
   | "codex"
+  | "codex-acp"
   | "claude"
+  | "claude-agent-acp"
   | "opencode"
+  | "opencode-acp"
+  | "cursor-agent-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -21,47 +25,63 @@ export interface CLIAdapterDefinition {
   toolSessionArgPrefixes: string[];
   installHint?: string;
   docsUrl?: string;
+  protocol?: "legacy-cli-json" | "acp";
 }
 
-// Kept in sync with electron/cli/adapters.ts. Renderer uses this only for
-// labels / UI defaults / install hints; the source of truth at run-time is
-// what `cli.listAdapters()` returns from the main process.
+// User-visible adapters. Legacy command builders still exist in the main
+// process for older saved runs, but the product surface is ACP-only.
 export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
   {
-    id: "codex",
+    id: "codex-acp",
     label: "Codex",
-    defaultBinary: "codex",
-    streamMode: "codex-json",
+    defaultBinary: "codex-acp",
+    streamMode: "raw",
     commandGroup: "codex",
     capabilities: { toolSession: true },
-    toolSessionArgs: ["resume", "--last"],
+    toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "npm install -g @openai/codex",
-    docsUrl: "https://github.com/openai/codex"
+    installHint: "npm install -g @zed-industries/codex-acp",
+    docsUrl: "https://github.com/zed-industries/codex-acp",
+    protocol: "acp"
   },
   {
-    id: "claude",
-    label: "Claude Code",
-    defaultBinary: "claude",
-    streamMode: "claude-json",
+    id: "claude-agent-acp",
+    label: "ClaudeCode",
+    defaultBinary: "claude-agent-acp",
+    streamMode: "raw",
     commandGroup: "claude",
     capabilities: { toolSession: true },
-    toolSessionArgs: ["--resume", "-r", "--continue", "-c", "--session-id"],
-    toolSessionArgPrefixes: ["--resume=", "--session-id="],
-    installHint: "npm install -g @anthropic-ai/claude-code",
-    docsUrl: "https://docs.anthropic.com/en/docs/claude-code"
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
+    docsUrl: "https://github.com/agentclientprotocol/claude-agent-acp",
+    protocol: "acp"
   },
   {
-    id: "opencode",
+    id: "opencode-acp",
     label: "OpenCode",
     defaultBinary: "opencode",
-    streamMode: "opencode-json",
+    streamMode: "raw",
     commandGroup: "opencode",
     capabilities: { toolSession: true },
-    toolSessionArgs: ["--session", "-s", "--continue", "-c"],
-    toolSessionArgPrefixes: ["--session="],
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
     installHint: "npm install -g opencode-ai",
-    docsUrl: "https://opencode.ai/docs"
+    docsUrl: "https://opencode.ai/docs",
+    protocol: "acp"
+  },
+  {
+    id: "cursor-agent-acp",
+    label: "Cursor",
+    defaultBinary: "cursor-agent",
+    streamMode: "raw",
+    commandGroup: "cursor",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "curl https://cursor.com/install -fsS | bash",
+    docsUrl: "https://docs.cursor.com/en/cli/overview",
+    protocol: "acp"
   }
 ];
 

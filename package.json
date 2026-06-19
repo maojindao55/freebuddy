@@ -1,5 +1,6 @@
 {
   "name": "freebuddy",
+  "productName": "FreeBuddy",
   "version": "0.1.0",
   "private": true,
   "description": "A WorkBuddy-style desktop AI workspace built with Electron, React, Vite, and TypeScript.",
@@ -13,10 +14,20 @@
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.preload.json --noEmit",
-    "start": "npm run build && electron dist-electron/main.js",
+    "test": "npm run build:electron && node --test tests/*.mjs",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac --x64 --arm64",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "release": "bash scripts/release.sh",
+    "release:patch": "bash scripts/release.sh patch",
+    "release:minor": "bash scripts/release.sh minor",
+    "release:major": "bash scripts/release.sh major",
+    "start": "npm run build && node scripts/start-electron.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@lobehub/icons": "^5.10.0",
     "better-sqlite3": "^12.11.1",
     "nanoid": "^5.1.11",
     "react": "^19.2.3",
@@ -33,6 +44,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "electron": "^39.2.7",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.9.3",
     "vite": "^7.2.7"
   }

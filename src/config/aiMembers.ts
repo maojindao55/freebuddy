@@ -20,30 +20,39 @@ export interface CLIMember {
 
 export const builtinCliMembers: CLIMember[] = [
   {
-    id: "cli-codex",
+    id: "cli-codex-acp",
     kind: "cli",
     name: "Codex",
-    description: "OpenAI Codex CLI — strong at refactors and implementation.",
+    description: "Local Codex coding agent.",
     source: "builtin",
     enabled: true,
-    cli: { adapter: "codex", approvalMode: "auto", showStderr: true }
+    cli: { adapter: "codex-acp", approvalMode: "auto", showStderr: true }
   },
   {
-    id: "cli-claude",
+    id: "cli-claude-agent-acp",
     kind: "cli",
-    name: "Claude Code",
-    description: "Anthropic Claude Code — codebase analysis and debugging.",
+    name: "ClaudeCode",
+    description: "Local ClaudeCode coding agent.",
     source: "builtin",
     enabled: true,
-    cli: { adapter: "claude", approvalMode: "auto", showStderr: false }
+    cli: { adapter: "claude-agent-acp", approvalMode: "auto", showStderr: false }
   },
   {
-    id: "cli-opencode",
+    id: "cli-opencode-acp",
     kind: "cli",
     name: "OpenCode",
-    description: "OpenCode open-source coding assistant.",
+    description: "Local OpenCode coding agent.",
     source: "builtin",
     enabled: true,
-    cli: { adapter: "opencode", approvalMode: "auto", showStderr: true }
+    cli: { adapter: "opencode-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-cursor-agent-acp",
+    kind: "cli",
+    name: "Cursor",
+    description: "Local Cursor coding agent.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "cursor-agent-acp", approvalMode: "auto", showStderr: true }
   }
 ];

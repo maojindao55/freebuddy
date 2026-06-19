@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { type ChildProcessByStdio } from "node:child_process";
+import spawn from "cross-spawn";
 import fs from "node:fs";
 import path from "node:path";
 import type { WebContents } from "electron";

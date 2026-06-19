@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import spawn from "cross-spawn";
 import { adapterBinary } from "./adapters.js";
 import { getDb } from "./db.js";
 
@@ -13,7 +13,7 @@ function which(bin: string): Promise<string | undefined> {
     const cmd = process.platform === "win32" ? "where" : "which";
     const child = spawn(cmd, [bin], { env: process.env });
     let out = "";
-    child.stdout.on("data", (d) => (out += d.toString()));
+    child.stdout!.on("data", (d) => (out += d.toString()));
     child.on("error", () => resolve(undefined));
     child.on("close", (code) => {
       if (code !== 0) return resolve(undefined);
@@ -30,8 +30,8 @@ function runVersion(bin: string): Promise<string | undefined> {
       child.kill();
       resolve(undefined);
     }, 5000);
-    child.stdout.on("data", (d) => (out += d.toString()));
-    child.stderr.on("data", (d) => (out += d.toString()));
+    child.stdout!.on("data", (d) => (out += d.toString()));
+    child.stderr!.on("data", (d) => (out += d.toString()));
     child.on("error", () => {
       clearTimeout(timer);
       resolve(undefined);
@@ -169,8 +169,8 @@ export function cliInstall(command: string): Promise<CliInstallResult> {
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => child.kill(), 10 * 60 * 1000);
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.stdout!.on("data", (d) => (stdout += d.toString()));
+    child.stderr!.on("data", (d) => (stderr += d.toString()));
     child.on("error", (err) => {
       clearTimeout(timer);
       reject(err);

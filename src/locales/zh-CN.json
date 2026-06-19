@@ -160,7 +160,11 @@
     "agentNotInstalled": "{{agent}} 未安装。请在“设置 → Cli Agents”中安装。",
     "checkFailed": "检查失败：{{err}}",
     "taskFailed": "任务失败：{{err}}",
-    "sendFailed": "发送失败：{{err}}"
+    "sendFailed": "发送失败：{{err}}",
+    "agentInterrupted": "Agent 运行已中断。",
+    "agentFailed": "Agent 运行失败，退出码 {{code}}。{{detail}}",
+    "rawLogCollapsed": "已收起原始 CLI 日志，方便排查。",
+    "cliNoStructured": "CLI 没有返回可解析的结构化内容。"
   },
   "attachments": {
     "review": "请查看这些附件。",

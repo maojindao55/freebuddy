@@ -160,7 +160,11 @@
     "agentNotInstalled": "{{agent}} is not installed. Open Settings → Cli Agents to install.",
     "checkFailed": "Check failed: {{err}}",
     "taskFailed": "Task failed: {{err}}",
-    "sendFailed": "Send failed: {{err}}"
+    "sendFailed": "Send failed: {{err}}",
+    "agentInterrupted": "Agent run interrupted.",
+    "agentFailed": "Agent run failed with exit code {{code}}.{{detail}}",
+    "rawLogCollapsed": "Raw CLI log collapsed for easier debugging.",
+    "cliNoStructured": "The CLI returned no parseable structured content."
   },
   "attachments": {
     "review": "Please review these attachments.",

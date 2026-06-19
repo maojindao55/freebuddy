@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import type {
   CLIExecutorOverride,
   CliCheckResult,
@@ -22,9 +23,7 @@ import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 function api() {
   const cli = window.freebuddy?.cli;
   if (!cli) {
-    throw new Error(
-      "FreeBuddy CLI bridge is unavailable. Are you running outside Electron?"
-    );
+    throw new Error(i18next.t("errors.cliBridgeUnavailable"));
   }
   return cli;
 }

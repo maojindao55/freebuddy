@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import type { CliEvent } from "@/services/cli/types";
 import type {
   CliStreamItem,
@@ -26,12 +27,13 @@ function failureSummaryFor(exitCode: number, parseCtx: ParseContext): CliStreamI
     kind: "error",
     message:
       exitCode === 130
-        ? "Agent 运行已中断。"
-        : `Agent 运行失败，退出码 ${exitCode}。${
-            details?.length
-              ? "已收起原始 CLI 日志，方便排查。"
-              : "CLI 没有返回可解析的结构化内容。"
-          }`,
+        ? i18next.t("errors.agentInterrupted")
+        : i18next.t("errors.agentFailed", {
+            code: exitCode,
+            detail: details?.length
+              ? i18next.t("errors.rawLogCollapsed")
+              : i18next.t("errors.cliNoStructured")
+          }),
     details
   };
 }

@@ -121,6 +121,11 @@ function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conv_time
       ON conversation_messages(conversation_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   const overrideCols = db

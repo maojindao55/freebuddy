@@ -93,6 +93,11 @@ declare global {
     onChromeVisible(cb: (visible: boolean) => void): () => void;
   }
 
+  interface FreebuddySettings {
+    getSetting(key: string): Promise<string | null>;
+    setSetting(key: string, value: string): Promise<void>;
+  }
+
   interface FreebuddyApi {
     platform: string;
     versions: {
@@ -101,6 +106,7 @@ declare global {
       node?: string;
     };
     cli: FreebuddyCli;
+    settings: FreebuddySettings;
     window: FreebuddyWindow;
   }
 

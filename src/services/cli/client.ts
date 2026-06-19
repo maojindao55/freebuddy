@@ -144,6 +144,17 @@ export const cliClient = {
     return api().selectAttachments();
   },
 
+  getSetting(key: string): Promise<string | null> {
+    const api = window.freebuddy;
+    if (!api) return Promise.resolve(null);
+    return api.settings.getSetting(key);
+  },
+  setSetting(key: string, value: string): Promise<void> {
+    const api = window.freebuddy;
+    if (!api) return Promise.resolve();
+    return api.settings.setSetting(key, value);
+  },
+
   onEvent(sessionId: string, cb: (e: CliEvent) => void): () => void {
     return api().onEvent(sessionId, cb as (e: unknown) => void);
   }

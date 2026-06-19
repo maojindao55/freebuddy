@@ -102,6 +102,7 @@
     "notCaptured": "Not captured",
     "messages": "Messages",
     "agentTurns": "Agent turns",
+    "duration": "Duration",
     "context": "Context",
     "cost": "Cost",
     "tokens": "Tokens",

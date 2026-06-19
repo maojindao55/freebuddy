@@ -9,8 +9,7 @@
     "edit": "Edit",
     "check": "Check",
     "install": "Install",
-    "installing": "Installing…",
-    "search": "Search"
+    "installing": "Installing…"
   },
   "status": {
     "running": "Running",

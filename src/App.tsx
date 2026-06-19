@@ -9,6 +9,9 @@ import { WorkspacePanel } from "./components/CLI/WorkspacePanel";
 import { SettingsModal } from "./components/Settings/SettingsModal";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
+import { useSettingsStore } from "./store/settingsStore";
+import i18next from "i18next";
+import { useTranslation } from "react-i18next";
 
 type Theme = "light" | "dark";
 
@@ -119,6 +122,21 @@ function App() {
     return () => {
       off?.();
     };
+  }, []);
+
+  const { t } = useTranslation();
+  const loadSettings = useSettingsStore((s) => s.load);
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    document.documentElement.lang = i18next.language ?? "en";
+    const handler = (lng: string) => {
+      document.documentElement.lang = lng;
+    };
+    i18next.on("languageChanged", handler);
+    return () => i18next.off("languageChanged", handler);
   }, []);
 
   const conversations = useConversationStore((s) => s.conversations);

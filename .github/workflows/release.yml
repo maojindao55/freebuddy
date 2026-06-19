@@ -92,7 +92,7 @@ jobs:
       - name: Build Electron app
         run: |
           npm run build
-          npx electron-builder ${{ matrix.builder_args }}
+          npx electron-builder ${{ matrix.builder_args }} --publish never
 
       - name: Upload renamed assets (Unix)
         if: matrix.platform != 'windows-latest'

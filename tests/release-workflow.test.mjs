@@ -39,5 +39,6 @@ test("release workflow creates renamed assets for macOS, Windows and Linux", () 
   assert.match(workflow, /FreeBuddy_Linux_x64\.deb/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
+  assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);
   assert.match(workflow, /gh release upload/);
 });

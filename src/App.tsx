@@ -153,8 +153,8 @@ function App() {
     <button
       type="button"
       className={`sidebar-toggle${extraClass ? ` ${extraClass}` : ""}`}
-      title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      title={t(sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}
+      aria-label={t(sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}
       aria-expanded={!sidebarCollapsed}
       onClick={() => setSidebarCollapsed((v) => !v)}
     >
@@ -174,7 +174,7 @@ function App() {
           <div className="sidebar-brand">
             <BrandMark />
             <div className="sidebar-brand-text">
-              <h1>FreeBuddy</h1>
+              <h1>{t("app.brand")}</h1>
             </div>
           </div>
           {renderToggleButton()}
@@ -188,12 +188,12 @@ function App() {
             onClick={() => setSettingsOpen(true)}
           >
             <GearIcon />
-            Settings
+            {t("common.settings")}
           </button>
           <button
             className="footer-toggle"
-            title="Toggle theme"
-            aria-label="Toggle theme"
+            title={t("sidebar.toggleTheme")}
+            aria-label={t("sidebar.toggleTheme")}
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           >
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
@@ -204,12 +204,12 @@ function App() {
       <main className="workspace">
         <header className="titlebar">
           <div className="breadcrumb">
-            <strong>{activeConversation?.title ?? "Chat"}</strong>
+            <strong>{activeConversation?.title ?? t("app.chat")}</strong>
           </div>
 
         </header>
 
-        <section className="chat-section" aria-label="Chat">
+        <section className="chat-section" aria-label={t("app.chat")}>
           <ChatView />
         </section>
       </main>

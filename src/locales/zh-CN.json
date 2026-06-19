@@ -23,5 +23,17 @@
     "languageLabel": "语言",
     "languageEn": "English",
     "languageZhCN": "简体中文"
+  },
+  "app": { "brand": "FreeBuddy", "chat": "聊天" },
+  "sidebar": {
+    "expand": "展开侧边栏",
+    "collapse": "收起侧边栏",
+    "toggleTheme": "切换主题"
+  },
+  "conversations": {
+    "title": "会话",
+    "new": "+ 新建",
+    "empty": "暂无会话。",
+    "deleteConfirm": "删除“{{title}}”?"
   }
 }

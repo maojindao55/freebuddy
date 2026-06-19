@@ -23,5 +23,17 @@
     "languageLabel": "Language",
     "languageEn": "English",
     "languageZhCN": "简体中文"
+  },
+  "app": { "brand": "FreeBuddy", "chat": "Chat" },
+  "sidebar": {
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "toggleTheme": "Toggle theme"
+  },
+  "conversations": {
+    "title": "Conversations",
+    "new": "+ New",
+    "empty": "No conversations yet.",
+    "deleteConfirm": "Delete \"{{title}}\"?"
   }
 }

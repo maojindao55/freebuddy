@@ -4559,3 +4559,7 @@ button.ghost:focus-visible,
 [data-theme="dark"] .permission-btn-ghost:hover:not(:disabled) {
   background: rgba(148, 163, 184, 0.16);
 }
+
+.settings-section { padding: 12px 0; border-bottom: 1px solid var(--border, #e5e7eb); }
+.settings-section h3 { margin: 0 0 8px; font-size: 13px; }
+.settings-section select { padding: 6px 8px; border-radius: 6px; }

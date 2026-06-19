@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 interface LightboxState {
   src: string;
@@ -14,6 +15,7 @@ const LightboxContext = createContext<LightboxContextValue | null>(null);
 
 export function ImageLightboxProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<LightboxState | null>(null);
+  const { t } = useTranslation();
 
   const open = useCallback((next: LightboxState) => setState(next), []);
   const close = useCallback(() => setState(null), []);
@@ -40,13 +42,13 @@ export function ImageLightboxProvider({ children }: { children: ReactNode }) {
           className="image-lightbox-backdrop"
           role="dialog"
           aria-modal="true"
-          aria-label={state.alt || "Image preview"}
+          aria-label={state.alt || t("lightbox.preview")}
           onClick={close}
         >
           <button
             type="button"
             className="image-lightbox-close"
-            aria-label="Close preview"
+            aria-label={t("lightbox.close")}
             onClick={(event) => {
               event.stopPropagation();
               close();

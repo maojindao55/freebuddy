@@ -173,5 +173,17 @@
     "kindImage": "IMG",
     "kindCode": "CODE",
     "kindFile": "FILE"
+  },
+  "permission": {
+    "title": "Permission required",
+    "fallbackTitle": "Tool execution permission",
+    "input": "Input",
+    "help": "The agent is asking for permission to run the action above. Choose how to respond — you can allow once, allow always, or reject.",
+    "morePending_one": "+{{count}} more pending request",
+    "morePending_other": "+{{count}} more pending requests"
+  },
+  "lightbox": {
+    "preview": "Image preview",
+    "close": "Close preview"
   }
 }

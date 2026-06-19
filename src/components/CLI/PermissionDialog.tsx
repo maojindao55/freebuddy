@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { CliPermissionOption } from "@/services/cli/types";
 import { usePermissionStore } from "@/store/permissionStore";
@@ -27,6 +28,7 @@ export function PermissionDialog() {
   const queue = usePermissionStore((s) => s.queue);
   const decide = usePermissionStore((s) => s.decide);
   const current = queue[0];
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!current) return;
@@ -54,7 +56,7 @@ export function PermissionDialog() {
   const title =
     current.toolCall?.title ||
     current.toolCall?.kind ||
-    "Tool execution permission";
+    t("permission.fallbackTitle");
   const subtitle =
     current.toolCall?.title && current.toolCall?.kind
       ? current.toolCall.kind
@@ -67,7 +69,7 @@ export function PermissionDialog() {
         onClick={(event) => event.stopPropagation()}
       >
         <header className="permission-header">
-          <span className="permission-eyebrow">Permission required</span>
+          <span className="permission-eyebrow">{t("permission.title")}</span>
           <h2 className="permission-title">{title}</h2>
           {subtitle ? (
             <span className="permission-subtitle">{subtitle}</span>
@@ -76,15 +78,12 @@ export function PermissionDialog() {
 
         {inputText ? (
           <div className="permission-section">
-            <span className="permission-label">Input</span>
+            <span className="permission-label">{t("permission.input")}</span>
             <pre className="permission-input">{inputText}</pre>
           </div>
         ) : null}
 
-        <p className="permission-help">
-          The agent is asking for permission to run the action above. Choose
-          how to respond — you can allow once, allow always, or reject.
-        </p>
+        <p className="permission-help">{t("permission.help")}</p>
 
         <div className="permission-actions">
           {current.options.map((option) => {
@@ -114,14 +113,13 @@ export function PermissionDialog() {
               void decide(current.requestId, { outcome: "cancelled" })
             }
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
 
         {queue.length > 1 ? (
           <div className="permission-queue">
-            +{queue.length - 1} more pending request
-            {queue.length - 1 === 1 ? "" : "s"}
+            {t("permission.morePending", { count: queue.length - 1 })}
           </div>
         ) : null}
       </div>

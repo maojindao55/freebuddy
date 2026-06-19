@@ -173,5 +173,16 @@
     "kindImage": "图片",
     "kindCode": "代码",
     "kindFile": "文件"
+  },
+  "permission": {
+    "title": "需要权限",
+    "fallbackTitle": "工具执行权限",
+    "input": "输入",
+    "help": "Agent 正在请求执行上述操作。请选择处理方式 —— 可允许一次、始终允许或拒绝。",
+    "morePending_other": "还有 {{count}} 个待处理请求"
+  },
+  "lightbox": {
+    "preview": "图片预览",
+    "close": "关闭预览"
   }
 }

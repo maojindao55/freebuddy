@@ -8,12 +8,16 @@ async function loadModule() {
     new URL("../src/utils/chatAttachments.ts", import.meta.url),
     "utf8"
   );
-  const output = ts.transpileModule(source, {
+  const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
       target: ts.ScriptTarget.ES2022
     }
   }).outputText;
+  const output = transpiled.replace(
+    /^import i18next from "i18next";\s*$/m,
+    'const i18next = { t: (k) => k };'
+  );
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 
@@ -105,10 +109,10 @@ test("formats attachments for agent prompts", async () => {
   );
   assert.equal(
     composeMessageWithAttachments("请分析", [image]),
-    "用户消息：\n请分析\n\n附件：\n- screen.png (image/png, 1.5 KB): /Users/me/Desktop/screen.png"
+    "attachments.userMessage\n请分析\n\nattachments.attached\n- screen.png (image/png, 1.5 KB): /Users/me/Desktop/screen.png"
   );
   assert.equal(
     composeMessageWithAttachments("", [image]),
-    "用户消息：\n请查看这些附件。\n\n附件：\n- screen.png (image/png, 1.5 KB): /Users/me/Desktop/screen.png"
+    "attachments.userMessage\nattachments.review\n\nattachments.attached\n- screen.png (image/png, 1.5 KB): /Users/me/Desktop/screen.png"
   );
 });

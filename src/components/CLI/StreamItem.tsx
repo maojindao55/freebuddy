@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
 import { attachmentPreviewUrl } from "@/utils/chatAttachments";
@@ -99,6 +102,7 @@ function collectInlineImages(text: string): InlineImageRef[] {
 }
 
 function MessageImage({ src, alt }: { alt: string; src: string }) {
+  const { t } = useTranslation();
   const { open } = useImageLightbox();
   return (
     <figure className="markdown-image-figure">
@@ -106,7 +110,7 @@ function MessageImage({ src, alt }: { alt: string; src: string }) {
         type="button"
         className="markdown-image-button"
         onClick={() => open({ src, alt })}
-        aria-label={alt ? `Preview ${alt}` : "Preview image"}
+        aria-label={alt ? t("attachments.previewName", { name: alt }) : t("attachments.previewImage")}
       >
         <img
           src={src}
@@ -283,15 +287,20 @@ function truncate(value: string, max = 96) {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
 }
 
-function toolActionLabel(item: Extract<CliStreamItem, { kind: "tool-call" }>) {
+function toolActionLabel(
+  item: Extract<CliStreamItem, { kind: "tool-call" }>,
+  t: TFunction
+) {
   const tool = item.tool.toLowerCase();
   const target = truncate(summarizeValue(item.input));
-  if (tool.includes("read") || tool.includes("open")) return `读取 ${target || item.tool}`;
+  if (tool.includes("read") || tool.includes("open")) {
+    return t("stream.read", { target: target || item.tool });
+  }
   if (tool.includes("write") || tool.includes("edit") || tool.includes("patch")) {
-    return `修改 ${target || item.tool}`;
+    return t("stream.edit", { target: target || item.tool });
   }
   if (tool.includes("command") || tool.includes("exec") || tool.includes("shell")) {
-    return `执行 ${target || item.tool}`;
+    return t("stream.exec", { target: target || item.tool });
   }
   return target ? `${item.tool} ${target}` : item.tool;
 }
@@ -317,10 +326,13 @@ function formatValue(value: unknown): string {
   }
 }
 
-function toolGroupLabel(item: Extract<CliStreamItem, { kind: "tool-call" }>) {
+function toolGroupLabel(
+  item: Extract<CliStreamItem, { kind: "tool-call" }>,
+  t: TFunction
+) {
   const tool = item.tool.toLowerCase();
   if (tool.includes("search") || tool.includes("fetch")) return item.tool;
-  return toolActionLabel(item);
+  return toolActionLabel(item, t);
 }
 
 export function StreamToolInvocation({
@@ -336,31 +348,32 @@ export function StreamToolInvocation({
   const visibleCommands = dedupeCommands(commands);
   const hasError = visibleResults.some((result) => result.isError);
   const input = formatValue(call.input);
+  const { t } = useTranslation();
 
   return (
     <details className={`stream-tool-invocation${hasError ? " error" : ""}`}>
       <summary>
         <span className="stream-step-icon">⌁</span>
-        <span className="stream-tool-summary-main">{toolGroupLabel(call)}</span>
+        <span className="stream-tool-summary-main">{toolGroupLabel(call, t)}</span>
         {(visibleResults.length > 0 || visibleCommands.length > 0) && (
           <span className="stream-tool-summary-meta">
             {visibleResults.some((result) => hasVisibleContent(result.content)) ||
             visibleCommands.length > 0
-              ? "result"
-              : "done"}
+              ? t("stream.summaryResult")
+              : t("stream.summaryDone")}
           </span>
         )}
       </summary>
       <div className="stream-tool-body">
         {input && (
           <div className="stream-tool-section">
-            <span className="stream-label">Input</span>
+            <span className="stream-label">{t("stream.input")}</span>
             <pre>{input}</pre>
           </div>
         )}
         {visibleCommands.map((command, index) => (
           <div className="stream-tool-section" key={`command-${index}`}>
-            <span className="stream-label">Command</span>
+            <span className="stream-label">{t("stream.command")}</span>
             <pre>{command.command}</pre>
             {command.cwd && <div className="stream-tool-empty">{command.cwd}</div>}
           </div>
@@ -368,13 +381,13 @@ export function StreamToolInvocation({
         {visibleResults.map((result, index) => (
           <div className="stream-tool-section" key={`${result.id ?? "result"}-${index}`}>
             <span className="stream-label">
-              {result.tool} 结果
-              {result.isError ? " error" : ""}
+              {t("stream.result", { tool: result.tool })}
+              {result.isError ? ` ${t("stream.errorTag")}` : ""}
             </span>
             {hasVisibleContent(result.content) ? (
               <pre>{result.content}</pre>
             ) : (
-              <div className="stream-tool-empty">No output</div>
+              <div className="stream-tool-empty">{t("stream.noOutput")}</div>
             )}
           </div>
         ))}
@@ -384,6 +397,7 @@ export function StreamToolInvocation({
 }
 
 export function StreamItem({ item }: { item: CliStreamItem }) {
+  const { t } = useTranslation();
   switch (item.kind) {
     case "text":
       return (
@@ -394,7 +408,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
     case "thinking":
       return (
         <details className="stream-thinking">
-          <summary>思考过程</summary>
+          <summary>{t("stream.thinking")}</summary>
           <MarkdownText content={item.content} />
         </details>
       );
@@ -402,7 +416,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
       return (
         <div className="stream-step stream-tool-call">
           <span className="stream-step-icon">⌁</span>
-          <span>{toolActionLabel(item)}</span>
+          <span>{toolActionLabel(item, t)}</span>
         </div>
       );
     case "tool-result":
@@ -410,8 +424,8 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         return (
           <div className={`stream-step stream-tool-result-empty${item.isError ? " error" : ""}`}>
             <span className="stream-step-icon">↳</span>
-            <span className="stream-label">{item.tool} 结果</span>
-            {item.isError && <span className="stream-error-suffix">error</span>}
+            <span className="stream-label">{t("stream.result", { tool: item.tool })}</span>
+            {item.isError && <span className="stream-error-suffix">{t("stream.errorTag")}</span>}
           </div>
         );
       }
@@ -419,9 +433,9 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         <details className={`stream-tool-result${item.isError ? " error" : ""}`}>
           <summary>
             <span className="stream-label stream-summary-label">
-              {item.tool} 结果
+              {t("stream.result", { tool: item.tool })}
             </span>
-            {item.isError && <span className="stream-error-suffix">error</span>}
+            {item.isError && <span className="stream-error-suffix">{t("stream.errorTag")}</span>}
           </summary>
           <pre>{item.content}</pre>
         </details>
@@ -429,7 +443,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
     case "command":
       return (
         <div className="stream-command">
-          <span className="stream-label">⟩ Terminal</span>
+          <span className="stream-label">{t("stream.terminal")}</span>
           <code>{item.command}</code>
           {item.cwd && <span className="cwd">{item.cwd}</span>}
         </div>
@@ -450,7 +464,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
     case "session":
       return (
         <div className="stream-meta session-meta">
-          <span className="stream-label">Session</span>{" "}
+          <span className="stream-label">{t("stream.sessionLabel")}</span>{" "}
           <code>{item.sessionId}</code>
           {item.title ? ` — ${item.title}` : ""}
         </div>
@@ -458,19 +472,19 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
     case "usage": {
       const hasContext =
         item.contextUsed != null || item.contextSize != null;
+      const used = item.contextUsed != null ? formatTokens(item.contextUsed) : "–";
+      const total = item.contextSize != null ? ` / ${formatTokens(item.contextSize)}` : "";
       return (
         <div className="stream-meta">
-          <span className="stream-label">Usage</span>
+          <span className="stream-label">{t("stream.usageLabel")}</span>
           {hasContext ? (
-            <span>
-              ctx: {item.contextUsed != null ? formatTokens(item.contextUsed) : "–"}
-              {item.contextSize != null
-                ? ` / ${formatTokens(item.contextSize)}`
-                : ""}
-            </span>
+            <span>{t("stream.contextUsage", { used, total })}</span>
           ) : (
             <span>
-              in: {item.inputTokens ?? "–"} · out: {item.outputTokens ?? "–"}
+              {t("stream.tokenUsage", {
+                input: item.inputTokens ?? "–",
+                output: item.outputTokens ?? "–"
+              })}
             </span>
           )}
           {item.costAmount != null && (
@@ -486,11 +500,11 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
       return (
         <div className="stream-error">
           <div>
-            <span className="stream-label">Error</span> {item.message}
+            <span className="stream-label">{t("stream.errorLabel")}</span> {item.message}
           </div>
           {item.details?.length ? (
             <details className="stream-error-details">
-              <summary>查看原始日志 ({item.details.length})</summary>
+              <summary>{t("stream.viewRawLog", { count: item.details.length })}</summary>
               <pre>{item.details.join("\n")}</pre>
             </details>
           ) : null}
@@ -500,9 +514,11 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
       return (
         <div className={`stream-meta done${item.exitCode && item.exitCode !== 0 ? " failed" : ""}`}>
           <span className="stream-label">
-            {item.exitCode && item.exitCode !== 0 ? "Exit" : "✓ Done"}
+            {item.exitCode && item.exitCode !== 0 ? t("stream.exitLabel") : t("stream.doneOk")}
           </span>
-          {item.exitCode != null && <span> (exit {item.exitCode})</span>}
+          {item.exitCode != null && (
+            <span> {t("stream.exitCode", { code: item.exitCode })}</span>
+          )}
         </div>
       );
     case "raw":

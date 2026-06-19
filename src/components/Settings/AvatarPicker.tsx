@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toc, type IconToc } from "@lobehub/icons";
 
 import { getAgentIconId } from "@/config/agentIcon";
@@ -10,11 +11,11 @@ import {
 
 type IconGroup = IconToc["group"] | "all";
 
-const GROUPS: { value: IconGroup; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "model", label: "Models" },
-  { value: "provider", label: "Providers" },
-  { value: "application", label: "Apps" }
+const GROUPS: { value: IconGroup; key: string }[] = [
+  { value: "all", key: "all" },
+  { value: "model", key: "models" },
+  { value: "provider", key: "providers" },
+  { value: "application", key: "apps" }
 ];
 
 function matches(item: IconToc, query: string): boolean {
@@ -38,6 +39,7 @@ export function AvatarPicker({
   defaultAdapter,
   defaultLabel
 }: AvatarPickerProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<IconGroup>("all");
 
@@ -58,7 +60,7 @@ export function AvatarPicker({
       <div className="avatar-picker-controls">
         <input
           className="avatar-picker-search"
-          placeholder="Search icons (DeepSeek, Qwen, Cursor…)"
+          placeholder={t("settings.cli.searchPlaceholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -70,7 +72,7 @@ export function AvatarPicker({
               className={`avatar-picker-group${group === g.value ? " active" : ""}`}
               onClick={() => setGroup(g.value)}
             >
-              {g.label}
+              {t(`settings.avatar.groups.${g.key}`)}
             </button>
           ))}
         </div>
@@ -80,13 +82,13 @@ export function AvatarPicker({
         <button
           type="button"
           className={`avatar-picker-tile${value === "" ? " selected" : ""}`}
-          title="Use default"
+          title={t("settings.cli.useDefault")}
           onClick={() => onChange("")}
         >
           {defaultIconId ? (
             <img
               src={lobehubAvatarUrl(defaultIconId)}
-              alt="Default"
+              alt={t("settings.avatar.defaultAlt")}
               loading="lazy"
               className="avatar-picker-img"
             />
@@ -113,11 +115,11 @@ export function AvatarPicker({
           </button>
         ))}
         {filtered.length === 0 && (
-          <div className="avatar-picker-empty">No matching icons.</div>
+          <div className="avatar-picker-empty">{t("settings.cli.noIcons")}</div>
         )}
       </div>
       <div className="avatar-picker-source">
-        Icons from{" "}
+        {t("settings.cli.iconsFrom")}{" "}
         <a href="https://lobehub.com/icons" target="_blank" rel="noreferrer">
           LobeHub Icons
         </a>

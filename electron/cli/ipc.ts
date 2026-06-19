@@ -40,6 +40,9 @@ import {
   type ListConversationsArgs,
   type UpdateMessageInput
 } from "./conversations.js";
+import { getSetting, setSetting, getLanguage } from "./settings.js";
+import { tMain } from "./i18n.js";
+import { setApplicationMenuForLanguage } from "../menu.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -129,8 +132,8 @@ export function registerCliIpc() {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
       properties: ["openFile", "multiSelections"],
       filters: [
-        { name: "Supported attachments", extensions: ATTACHMENT_EXTENSIONS },
-        { name: "All files", extensions: ["*"] }
+        { name: tMain("dialog.supportedAttachments", getLanguage()), extensions: ATTACHMENT_EXTENSIONS },
+        { name: tMain("dialog.allFiles", getLanguage()), extensions: ["*"] }
       ]
     });
     if (canceled) return [];
@@ -270,4 +273,12 @@ export function registerCliIpc() {
   ipcMain.handle("cli:updateMessage", (_e, input: UpdateMessageInput) =>
     updateMessage(input)
   );
+
+  ipcMain.handle("settings:get", (_e, key: string) => getSetting(key));
+  ipcMain.handle("settings:set", (_e, args: { key: string; value: string }) => {
+    setSetting(args.key, args.value);
+    if (args.key === "language" && (args.value === "en" || args.value === "zh-CN")) {
+      setApplicationMenuForLanguage(args.value);
+    }
+  });
 }

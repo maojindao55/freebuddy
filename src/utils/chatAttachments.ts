@@ -1,3 +1,5 @@
+import i18next from "i18next";
+
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 
@@ -187,8 +189,8 @@ export function composeMessageWithAttachments(
   const text = content.trim();
   if (attachments.length === 0) return text;
 
-  const body = text || "请查看这些附件。";
-  return `用户消息：\n${body}\n\n附件：\n${attachments.map(formatAttachmentForPrompt).join("\n")}`;
+  const body = text || i18next.t("attachments.review");
+  return `${i18next.t("attachments.userMessage")}\n${body}\n\n${i18next.t("attachments.attached")}\n${attachments.map(formatAttachmentForPrompt).join("\n")}`;
 }
 
 /**

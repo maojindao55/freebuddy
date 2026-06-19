@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import type {
   CLIExecutorOverride,
   CliCheckResult,
@@ -22,9 +23,7 @@ import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 function api() {
   const cli = window.freebuddy?.cli;
   if (!cli) {
-    throw new Error(
-      "FreeBuddy CLI bridge is unavailable. Are you running outside Electron?"
-    );
+    throw new Error(i18next.t("errors.cliBridgeUnavailable"));
   }
   return cli;
 }
@@ -142,6 +141,17 @@ export const cliClient = {
   },
   selectAttachments(): Promise<AttachmentCandidate[]> {
     return api().selectAttachments();
+  },
+
+  getSetting(key: string): Promise<string | null> {
+    const api = window.freebuddy;
+    if (!api) return Promise.resolve(null);
+    return api.settings.getSetting(key);
+  },
+  setSetting(key: string, value: string): Promise<void> {
+    const api = window.freebuddy;
+    if (!api) return Promise.resolve();
+    return api.settings.setSetting(key, value);
   },
 
   onEvent(sessionId: string, cb: (e: CliEvent) => void): () => void {

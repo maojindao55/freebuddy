@@ -66,6 +66,15 @@ const window = {
   }
 };
 
+const settings: {
+  getSetting: (key: string) => Promise<unknown>;
+  setSetting: (key: string, value: string) => Promise<unknown>;
+} = {
+  getSetting: (key) => ipcRenderer.invoke("settings:get", key),
+  setSetting: (key, value) =>
+    ipcRenderer.invoke("settings:set", { key, value })
+};
+
 contextBridge.exposeInMainWorld("freebuddy", {
   platform: process.platform,
   versions: {
@@ -74,5 +83,6 @@ contextBridge.exposeInMainWorld("freebuddy", {
     node: process.versions.node
   },
   cli,
+  settings,
   window
 });

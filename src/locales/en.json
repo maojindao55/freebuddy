@@ -1,0 +1,226 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "settings": "Settings",
+    "delete": "Delete",
+    "save": "Save",
+    "reset": "Reset",
+    "edit": "Edit",
+    "check": "Check",
+    "install": "Install",
+    "installing": "Installing…"
+  },
+  "status": {
+    "running": "Running",
+    "starting": "Starting",
+    "done": "Done",
+    "failed": "Failed",
+    "killed": "Killed",
+    "idle": "Idle",
+    "ready": "Ready",
+    "sent": "Sent"
+  },
+  "general": {
+    "languageLabel": "Language",
+    "languageEn": "English",
+    "languageZhCN": "简体中文"
+  },
+  "app": { "brand": "FreeBuddy", "chat": "Chat" },
+  "sidebar": {
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "toggleTheme": "Toggle theme"
+  },
+  "conversations": {
+    "title": "Conversations",
+    "new": "+ New",
+    "empty": "No conversations yet.",
+    "deleteConfirm": "Delete \"{{title}}\"?"
+  },
+  "chat": {
+    "inputPlaceholder": "Type freely",
+    "attachFile": "Attach file",
+    "permission": "Permission",
+    "approvalAuto": "Auto",
+    "approvalAsk": "Ask each time",
+    "enterHint": "Enter to send · Shift+Enter for newline",
+    "agentRunning": "Agent is running…",
+    "send": "Send",
+    "stop": "Stop",
+    "selectCwd": "Select working directory",
+    "cwdPlaceholder": "/absolute/path (optional; defaults to the default working directory)",
+    "heroTitle": "Local CLI Agent Workspace",
+    "newAgentChat": "New Agent Chat",
+    "attach": "Attach",
+    "workspace": "Workspace",
+    "noWorkspace": "No workspace selected",
+    "emptyHeroHeading": "What should {{name}} work on?",
+    "emptyHeroBody": "Use this thread for coding tasks, project inspection, and focused fixes.",
+    "heroSubtitle": "Pick a local agent, give it a working directory, then start coding, inspecting, or reshaping the project.",
+    "startTask": "Start task",
+    "agent": "Agent",
+    "stopAria": "Stop running",
+    "startingAria": "Starting",
+    "sendAria": "Send message",
+    "permissionHint": "Permission mode for tool execution",
+    "defaultAttachmentTitle": "Attachment",
+    "pendingAttachmentsAria": "Pending attachments",
+    "removeAttachmentAria": "Remove {{name}}",
+    "newTaskAria": "New task",
+    "commonTasksAria": "Common tasks",
+    "starter": {
+      "one": "Analyze the current project structure and suggest next steps",
+      "two": "Check recent changes for UI/UX issues",
+      "three": "Implement a small feature and explain how to verify it"
+    },
+    "newTaskPrompts": {
+      "analyze": {
+        "label": "Analyze project",
+        "prompt": "Analyze the current project structure and tell me what I can do first"
+      },
+      "modify": {
+        "label": "Edit code",
+        "prompt": "Modify code based on my needs and provide verification steps"
+      },
+      "review": {
+        "label": "Code review",
+        "prompt": "Review the risks, issues, and improvements in the current changes"
+      }
+    }
+  },
+  "workspace": {
+    "panelAria": "Workspace panel",
+    "activeAgent": "Active Agent",
+    "runState": "Run State",
+    "workspace": "Workspace",
+    "notSet": "Not set",
+    "sessionId": "Session ID",
+    "copySession": "Copy {{id}}",
+    "noSession": "No session captured yet",
+    "copied": "Copied",
+    "notCaptured": "Not captured",
+    "messages": "Messages",
+    "agentTurns": "Agent turns",
+    "context": "Context",
+    "cost": "Cost",
+    "tokens": "Tokens",
+    "tokenBreakdown": "in {{input}} · out {{output}}",
+    "liveCount": "{{count}} live",
+    "executionQueue": "Execution Queue",
+    "cliStream": "CLI response stream",
+    "waitingPrompt": "Waiting for prompt",
+    "pid": "pid {{pid}}",
+    "sendToStart": "Send a message to start a run",
+    "toolSession": "Tool session",
+    "resumedContext": "resumed context",
+    "freshContext": "fresh or saved context",
+    "messageSnapshot": "Message snapshot",
+    "persistedLocally": "persisted locally",
+    "noHistory": "no history yet",
+    "noConversation": "No conversation",
+    "localAgent": "Local coding agent",
+    "createToBegin": "Create a conversation to begin"
+  },
+  "message": {
+    "you": "You",
+    "thinking": "Thinking"
+  },
+  "stream": {
+    "read": "Read {{target}}",
+    "edit": "Edit {{target}}",
+    "exec": "Execute {{target}}",
+    "result": "{{tool}} result",
+    "thinking": "Thinking process",
+    "viewRawLog": "View raw log ({{count}})",
+    "summaryResult": "result",
+    "summaryDone": "done",
+    "input": "Input",
+    "command": "Command",
+    "noOutput": "No output",
+    "errorTag": "error",
+    "terminal": "⟩ Terminal",
+    "sessionLabel": "Session",
+    "usageLabel": "Usage",
+    "contextUsage": "ctx: {{used}}{{total}}",
+    "tokenUsage": "in: {{input}} · out: {{output}}",
+    "errorLabel": "Error",
+    "exitLabel": "Exit",
+    "doneOk": "✓ Done",
+    "exitCode": "(exit {{code}})"
+  },
+  "errors": {
+    "attachmentLimit": "Add at most {{count}} attachments per message.",
+    "attachmentTooLarge": "{{name}} exceeds the 50 MB attachment size limit.",
+    "attachmentType": "{{name}} is not a supported attachment type.",
+    "attachmentDesktopOnly": "Attachments require the Electron desktop app.",
+    "attachmentSelectFailed": "Failed to select attachments: {{err}}",
+    "cliBridgeUnavailable": "FreeBuddy CLI bridge is unavailable. Please run the Electron desktop app.",
+    "agentNotInstalled": "{{agent}} is not installed. Open Settings → Cli Agents to install.",
+    "checkFailed": "Check failed: {{err}}",
+    "taskFailed": "Task failed: {{err}}",
+    "sendFailed": "Send failed: {{err}}",
+    "agentInterrupted": "Agent run interrupted.",
+    "agentFailed": "Agent run failed with exit code {{code}}.{{detail}}",
+    "rawLogCollapsed": "Raw CLI log collapsed for easier debugging.",
+    "cliNoStructured": "The CLI returned no parseable structured content."
+  },
+  "attachments": {
+    "review": "Please review these attachments.",
+    "userMessage": "User message:",
+    "attached": "Attachments:",
+    "imagesAria": "Message image attachments",
+    "listAria": "Message attachments",
+    "previewName": "Preview {{name}}",
+    "previewImage": "Preview image",
+    "kindImage": "IMG",
+    "kindCode": "CODE",
+    "kindFile": "FILE"
+  },
+  "permission": {
+    "title": "Permission required",
+    "fallbackTitle": "Tool execution permission",
+    "input": "Input",
+    "help": "The agent is asking for permission to run the action above. Choose how to respond — you can allow once, allow always, or reject.",
+    "morePending_one": "+{{count}} more pending request",
+    "morePending_other": "+{{count}} more pending requests"
+  },
+  "lightbox": {
+    "preview": "Image preview",
+    "close": "Close preview"
+  },
+  "settings": {
+    "cli": {
+      "title": "Cli Agents",
+      "description": "Configure the local cli agents available in FreeBuddy.",
+      "commandOverride": "Command override",
+      "model": "Model",
+      "extraArgs": "Extra args (one per line)",
+      "environment": "Environment (KEY=value per line)",
+      "docs": "Docs:",
+      "setupGuide": "Setup guide",
+      "useDefault": "Use default",
+      "useAgentDefault": "Use agent default",
+      "avatar": "Avatar",
+      "searchPlaceholder": "Search icons (DeepSeek, Qwen, Cursor…)",
+      "noIcons": "No matching icons.",
+      "iconsFrom": "Icons from",
+      "installFailed": "Install failed (exit {{code}}):\n{{output}}",
+      "editTitle": "Edit {{label}}",
+      "unavailable": "Agent management is unavailable. Run the desktop app to manage local agents.",
+      "installed": "✓ installed",
+      "notInstalled": "not installed",
+      "notChecked": "not checked",
+      "modelLabel": "model"
+    },
+    "avatar": {
+      "groups": {
+        "all": "All",
+        "models": "Models",
+        "providers": "Providers",
+        "apps": "Apps"
+      },
+      "defaultAlt": "Default"
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
+import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
@@ -16,16 +17,6 @@ import {
 import { MessageBubble } from "./MessageBubble";
 
 const EMPTY_MESSAGES: never[] = [];
-const starterPrompts = [
-  "先分析当前项目结构，给我下一步实现建议",
-  "检查刚才的改动有没有 UI/UX 问题",
-  "帮我实现一个小功能，并说明验证步骤"
-];
-const newTaskPrompts = [
-  ["分析项目", "先分析当前项目结构，告诉我可以先做什么"],
-  ["修改代码", "根据我的需求修改代码，并给出验证步骤"],
-  ["代码审查", "检查当前改动的风险、问题和可改进点"]
-];
 
 function attachmentSummary(attachment: ChatAttachment): string {
   return [
@@ -77,10 +68,11 @@ function AttachmentTray({
   attachments: ChatAttachment[];
   onRemove: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   if (attachments.length === 0) return null;
 
   return (
-    <div className="attachment-tray" aria-label="Pending attachments">
+    <div className="attachment-tray" aria-label={t("chat.pendingAttachmentsAria")}>
       {attachments.map((attachment) => (
         <div className="attachment-chip" key={attachment.id} title={attachment.path}>
           <span className="attachment-chip-icon">
@@ -118,7 +110,7 @@ function AttachmentTray({
           <button
             type="button"
             className="attachment-chip-remove"
-            aria-label={`Remove ${attachment.name}`}
+            aria-label={t("chat.removeAttachmentAria", { name: attachment.name })}
             onClick={() => onRemove(attachment.id)}
           >
             x
@@ -130,6 +122,7 @@ function AttachmentTray({
 }
 
 export function ChatView() {
+  const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
   const members = useConversationStore((s) => s.members);
@@ -179,6 +172,11 @@ export function ChatView() {
   const sending =
     running ||
     (submitPreview?.conversationId === conv?.id);
+  const starterPrompts = [
+    t("chat.starter.one"),
+    t("chat.starter.two"),
+    t("chat.starter.three")
+  ];
 
   const previewMessages = useMemo<ConversationMessage[]>(() => {
     if (!conv || submitPreview?.conversationId !== conv.id) return [];
@@ -247,7 +245,7 @@ export function ChatView() {
 
     for (const candidate of selected) {
       if (byPath.size >= MAX_ATTACHMENTS_PER_MESSAGE) {
-        warnings.push(`每条消息最多添加 ${MAX_ATTACHMENTS_PER_MESSAGE} 个附件。`);
+        warnings.push(t("errors.attachmentLimit", { count: MAX_ATTACHMENTS_PER_MESSAGE }));
         break;
       }
 
@@ -257,8 +255,8 @@ export function ChatView() {
         const name = candidate.name || candidate.path;
         warnings.push(
           validation.reason === "file_too_large"
-            ? `${name} 超过 50 MB 附件大小限制。`
-            : `${name} 不是支持的附件类型。`
+            ? t("errors.attachmentTooLarge", { name })
+            : t("errors.attachmentType", { name })
         );
         continue;
       }
@@ -272,7 +270,7 @@ export function ChatView() {
   const handleSelectAttachments = async (target: "chat" | "new") => {
     if (sending) return;
     if (!cliClient.isAvailable()) {
-      setPreflightMsg("附件功能需要在 Electron 桌面端使用。");
+      setPreflightMsg(t("errors.attachmentDesktopOnly"));
       return;
     }
 
@@ -289,7 +287,7 @@ export function ChatView() {
       }
       setPreflightMsg(warnings[0] ?? null);
     } catch (error) {
-      setPreflightMsg(`选择附件失败：${error instanceof Error ? error.message : String(error)}`);
+      setPreflightMsg(t("errors.attachmentSelectFailed", { err: error instanceof Error ? error.message : String(error) }));
     }
   };
 
@@ -305,7 +303,7 @@ export function ChatView() {
 
   const preflightMember = async (targetMember: typeof members[number]) => {
     if (!cliClient.isAvailable()) {
-      setPreflightMsg("FreeBuddy CLI bridge is unavailable. Please run the Electron desktop app.");
+      setPreflightMsg(t("errors.cliBridgeUnavailable"));
       return false;
     }
     try {
@@ -314,13 +312,13 @@ export function ChatView() {
       if (!r.installed) {
         const resolved = resolve(targetMember.cli.adapter);
         setPreflightMsg(
-          `${resolved?.label ?? "Agent"} is not installed. Open Settings -> Cli Agents to install.`
+          t("errors.agentNotInstalled", { agent: resolved?.label ?? t("chat.agent") })
         );
         return false;
       }
       return true;
     } catch (err) {
-      setPreflightMsg(`Check failed: ${err instanceof Error ? err.message : String(err)}`);
+      setPreflightMsg(t("errors.checkFailed", { err: err instanceof Error ? err.message : String(err) }));
       return false;
     }
   };
@@ -338,7 +336,7 @@ export function ChatView() {
       const newConv = await createConversation({
         member: selectedMember,
         cwd: newTaskCwd.trim() || undefined,
-        title: (prompt || attachmentsToSend[0]?.name || "附件").slice(0, 24),
+        title: (prompt || attachmentsToSend[0]?.name || t("chat.defaultAttachmentTitle")).slice(0, 24),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
@@ -352,7 +350,7 @@ export function ChatView() {
     } catch (e) {
       setNewTaskDraft(prompt);
       setNewTaskPendingAttachments(attachmentsToSend);
-      setPreflightMsg(`Task failed: ${e instanceof Error ? e.message : String(e)}`);
+      setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
     }
   };
 
@@ -397,7 +395,7 @@ export function ChatView() {
       setSubmitPreview(null);
       setDraft(prompt);
       setPendingAttachments(attachmentsToSend);
-      setPreflightMsg(`Send failed: ${e instanceof Error ? e.message : String(e)}`);
+      setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
     }
   };
 
@@ -430,10 +428,10 @@ export function ChatView() {
       <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
         {messages.length === 0 && (
           <div className="chat-empty chat-empty-hero">
-            <p className="eyebrow">New Agent Chat</p>
-            <h2>What should {member?.name} work on?</h2>
+            <p className="eyebrow">{t("chat.newAgentChat")}</p>
+            <h2>{t("chat.emptyHeroHeading", { name: member?.name ?? "" })}</h2>
             <p className="muted">
-              Use this thread for coding tasks, project inspection, and focused fixes.
+              {t("chat.emptyHeroBody")}
             </p>
             <div className="starter-prompts">
               {starterPrompts.map((prompt) => (
@@ -457,7 +455,7 @@ export function ChatView() {
       <div className="chat-composer">
         <div className="composer-context-row">
           <span>{agentDisplayName}</span>
-          <span>{conv.cwd ? conv.cwd : "No workspace selected"}</span>
+          <span>{conv.cwd ? conv.cwd : t("chat.noWorkspace")}</span>
         </div>
         <AttachmentTray
           attachments={pendingAttachments}
@@ -470,8 +468,8 @@ export function ChatView() {
           disabled={sending}
           placeholder={
             sending
-              ? "Agent 正在运行…"
-              : "随心输入"
+              ? t("chat.agentRunning")
+              : t("chat.inputPlaceholder")
           }
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -486,18 +484,18 @@ export function ChatView() {
             <button
               className="composer-tool-chip"
               type="button"
-              title="Attach file"
+              title={t("chat.attachFile")}
               disabled={sending || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
               onClick={() => void handleSelectAttachments("chat")}
             >
               <PaperclipIcon />
-              <span>Attach</span>
+              <span>{t("chat.attach")}</span>
             </button>
             <label
               className="composer-permission"
-              title="Permission mode for tool execution"
+              title={t("chat.permissionHint")}
             >
-              <span className="composer-permission-label">权限</span>
+              <span className="composer-permission-label">{t("chat.permission")}</span>
               <select
                 className="composer-permission-select"
                 value={permissionMode}
@@ -508,20 +506,20 @@ export function ChatView() {
                   if (conv?.id) void setApprovalMode(conv.id, next);
                 }}
               >
-                <option value="auto">自动</option>
-                <option value="ask">每次询问</option>
+                <option value="auto">{t("chat.approvalAuto")}</option>
+                <option value="ask">{t("chat.approvalAsk")}</option>
               </select>
             </label>
           </div>
           <div className="composer-tail">
-            <span className="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+            <span className="composer-hint">{t("chat.enterHint")}</span>
             {sending ? (
               <button
                 className="danger stop-icon-button"
                 type="button"
                 disabled={!running}
-                title={running ? "停止" : "启动中"}
-                aria-label={running ? "停止运行" : "正在启动"}
+                title={running ? t("chat.stop") : t("status.starting")}
+                aria-label={running ? t("chat.stopAria") : t("chat.startingAria")}
                 onClick={() => void stopActive(conv.id)}
               >
                 {running ? "■" : "…"}
@@ -531,8 +529,8 @@ export function ChatView() {
                 className="primary send-icon-button"
                 type="button"
                 disabled={!(draft.trim() || pendingAttachments.length > 0)}
-                title="发送"
-                aria-label="发送消息"
+                title={t("chat.send")}
+                aria-label={t("chat.sendAria")}
                 onClick={onSend}
               >
                 ↑
@@ -578,21 +576,27 @@ function NewTaskHome({
   onPrompt: (value: string) => void;
   onSubmit: () => void;
 }) {
+  const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const newTaskPrompts = [
+    { label: t("chat.newTaskPrompts.analyze.label"), prompt: t("chat.newTaskPrompts.analyze.prompt") },
+    { label: t("chat.newTaskPrompts.modify.label"), prompt: t("chat.newTaskPrompts.modify.prompt") },
+    { label: t("chat.newTaskPrompts.review.label"), prompt: t("chat.newTaskPrompts.review.prompt") }
+  ];
 
   return (
     <div className="new-task-view">
-      <section className="new-task-hero" aria-label="New task">
+      <section className="new-task-hero" aria-label={t("chat.newTaskAria")}>
         <h1>
           FreeBuddy
-          <span>本地 CLI Agent 工作台</span>
+          <span>{t("chat.heroTitle")}</span>
         </h1>
         <p className="new-task-subtitle">
-          选择一个本地 agent，给它一个工作目录，然后开始编码、检查或改造项目。
+          {t("chat.heroSubtitle")}
         </p>
 
-        <div className="new-task-chips" aria-label="Common tasks">
-          {newTaskPrompts.map(([label, prompt]) => (
+        <div className="new-task-chips" aria-label={t("chat.commonTasksAria")}>
+          {newTaskPrompts.map(({ label, prompt }) => (
             <button
               key={label}
               onClick={() => {
@@ -615,7 +619,7 @@ function NewTaskHome({
             autoFocus
             rows={4}
             value={draft}
-            placeholder="随心输入"
+            placeholder={t("chat.inputPlaceholder")}
             onChange={(event) => onDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
@@ -627,7 +631,7 @@ function NewTaskHome({
 
           <div className="new-task-toolbar">
             <label>
-              <span>Agent</span>
+              <span>{t("chat.agent")}</span>
               <select value={selectedMemberId} onChange={(event) => onMember(event.target.value)}>
                 {members.map((member) => (
                   <option key={member.id} value={member.id}>
@@ -637,18 +641,18 @@ function NewTaskHome({
               </select>
             </label>
             <label>
-              <span>权限</span>
+              <span>{t("chat.permission")}</span>
               <select value={permissionMode} onChange={(event) => onPermissionMode(event.target.value as "auto" | "ask")}>
-                <option value="auto">自动</option>
-                <option value="ask">每次询问</option>
+                <option value="auto">{t("chat.approvalAuto")}</option>
+                <option value="ask">{t("chat.approvalAsk")}</option>
               </select>
             </label>
             <button
               className="new-task-send send-icon-button"
               type="button"
               disabled={!(draft.trim() || pendingAttachments.length > 0) || members.length === 0}
-              title="开始任务"
-              aria-label="开始任务"
+              title={t("chat.startTask")}
+              aria-label={t("chat.startTask")}
               onClick={onSubmit}
             >
               ↑
@@ -660,17 +664,17 @@ function NewTaskHome({
               <button
                 className="composer-tool-chip"
                 type="button"
-                title="Attach file"
+                title={t("chat.attachFile")}
                 disabled={pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
                 onClick={onSelectAttachments}
               >
                 <PaperclipIcon />
-                <span>Attach</span>
+                <span>{t("chat.attach")}</span>
               </button>
               <button
                 className="composer-tool-chip"
                 type="button"
-                title="选择工作目录"
+                title={t("chat.selectCwd")}
                 onClick={async () => {
                   try {
                     const path = await cliClient.selectDirectory();
@@ -681,12 +685,12 @@ function NewTaskHome({
                 }}
               >
                 <FolderIcon />
-                <span>Workspace</span>
+                <span>{t("chat.workspace")}</span>
               </button>
             </div>
             <input
               value={cwd}
-              placeholder="/absolute/path，可选；不填则使用默认运行目录"
+              placeholder={t("chat.cwdPlaceholder")}
               onChange={(event) => onCwd(event.target.value)}
             />
           </div>

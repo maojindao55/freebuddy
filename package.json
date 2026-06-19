@@ -29,9 +29,11 @@
   "dependencies": {
     "@lobehub/icons": "^5.10.0",
     "better-sqlite3": "^12.11.1",
+    "i18next": "^26.3.1",
     "nanoid": "^5.1.11",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "react-i18next": "^17.0.8",
     "shell-env": "^4.0.3",
     "zustand": "^5.0.14"
   },

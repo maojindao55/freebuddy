@@ -102,6 +102,7 @@
     "notCaptured": "未捕获",
     "messages": "消息数",
     "agentTurns": "Agent 轮次",
+    "duration": "耗时",
     "context": "上下文",
     "cost": "成本",
     "tokens": "Token",
@@ -179,9 +180,17 @@
   },
   "permission": {
     "title": "需要权限",
-    "fallbackTitle": "工具执行权限",
-    "input": "输入",
-    "help": "Agent 正在请求执行上述操作。请选择处理方式 —— 可允许一次、始终允许或拒绝。",
+    "allowOnce": "允许一次",
+    "allowAlways": "始终允许",
+    "reject": "拒绝",
+    "action": {
+      "externalDirectory": "访问工作区外的目录",
+      "edit": "编辑文件",
+      "command": "运行命令",
+      "fetch": "获取网址",
+      "search": "搜索网页",
+      "read": "读取文件"
+    },
     "morePending_other": "还有 {{count}} 个待处理请求"
   },
   "lightbox": {

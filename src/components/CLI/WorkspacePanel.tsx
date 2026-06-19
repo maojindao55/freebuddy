@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useTranslation } from "react-i18next";
 
 import { displayAgentName } from "@/config/agentDisplay";
 import { useConversationStore } from "@/store/conversationStore";
+import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
 
 export function WorkspacePanel({
@@ -17,6 +18,7 @@ export function WorkspacePanel({
   const messagesMap = useConversationStore((s) => s.messages);
   const liveMap = useConversationStore((s) => s.live);
   const [copiedSession, setCopiedSession] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
@@ -24,6 +26,13 @@ export function WorkspacePanel({
   const live = activeId ? liveMap[activeId] : undefined;
 
   const status = live?.status ?? "ready";
+  const isLive = status === "running" || status === "starting";
+
+  useEffect(() => {
+    if (!isLive) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [isLive]);
   const assistantTurns = useMemo(
     () => messages.filter((m) => m.role === "assistant").length,
     [messages]
@@ -78,6 +87,19 @@ export function WorkspacePanel({
     }
     return undefined;
   }, [messages]);
+
+  const durationMs = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message.role !== "assistant") continue;
+      const start = Date.parse(message.createdAt);
+      const end = isLive ? now : Date.parse(message.updatedAt);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
+      const ms = end - start;
+      return ms >= 0 ? ms : undefined;
+    }
+    return undefined;
+  }, [messages, isLive, now]);
 
   return (
     <aside className="details-panel workspace-panel" aria-label={t("workspace.panelAria")}>
@@ -152,6 +174,12 @@ export function WorkspacePanel({
             <dt>{t("workspace.agentTurns")}</dt>
             <dd>{assistantTurns}</dd>
           </div>
+          {durationMs != null && (
+            <div>
+              <dt>{t("workspace.duration")}</dt>
+              <dd>{formatDuration(durationMs)}</dd>
+            </div>
+          )}
           {latestUsage?.contextUsed != null && (
             <div>
               <dt>{t("workspace.context")}</dt>

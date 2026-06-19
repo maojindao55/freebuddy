@@ -102,6 +102,7 @@
     "notCaptured": "Not captured",
     "messages": "Messages",
     "agentTurns": "Agent turns",
+    "duration": "Duration",
     "context": "Context",
     "cost": "Cost",
     "tokens": "Tokens",
@@ -179,9 +180,17 @@
   },
   "permission": {
     "title": "Permission required",
-    "fallbackTitle": "Tool execution permission",
-    "input": "Input",
-    "help": "The agent is asking for permission to run the action above. Choose how to respond — you can allow once, allow always, or reject.",
+    "allowOnce": "Allow once",
+    "allowAlways": "Always allow",
+    "reject": "Reject",
+    "action": {
+      "externalDirectory": "Access a directory outside the workspace",
+      "edit": "Edit files",
+      "command": "Run a command",
+      "fetch": "Fetch a URL",
+      "search": "Search the web",
+      "read": "Read files"
+    },
     "morePending_one": "+{{count}} more pending request",
     "morePending_other": "+{{count}} more pending requests"
   },

@@ -50,6 +50,17 @@ test("implement phase contains exactly one write step", () => {
   assert.equal(writes.length, 1);
 });
 
+test("loop_or_finish is a decision phase and does not synthesize before loop decision", () => {
+  const p = buildReviewLoopPlan({
+    goal: "x",
+    reviewer: agents.reviewer,
+    implementer: agents.implementer,
+    verifier: agents.verifier
+  });
+  const loopOrFinish = p.phases.find((ph) => ph.id === "loop_or_finish");
+  assert.deepEqual(loopOrFinish.steps, []);
+});
+
 test("coordinator prompt includes the agent list and goal", () => {
   const prompt = reviewLoopCoordinatorPrompt({
     goal: "ship it",

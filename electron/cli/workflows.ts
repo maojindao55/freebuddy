@@ -216,11 +216,11 @@ export function createWorkflowStep(input: CreateWorkflowStepInput): void {
 
 export interface UpdateWorkflowStepPatch {
   status?: WorkflowStepStatus;
-  summary?: string;
-  resultJson?: string;
-  cliTaskId?: string;
-  startedAt?: string;
-  endedAt?: string;
+  summary?: string | null;
+  resultJson?: string | null;
+  cliTaskId?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
 }
 
 export function updateWorkflowStep(

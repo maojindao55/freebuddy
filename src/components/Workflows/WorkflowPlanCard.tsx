@@ -5,10 +5,12 @@ import { useWorkflowStore } from "@/store/workflowStore";
 
 export function WorkflowPlanCard({
   plan,
-  conversationId
+  conversationId,
+  onRun
 }: {
   plan: WorkflowPlan;
   conversationId?: string;
+  onRun?: (plan: WorkflowPlan) => void | Promise<void>;
 }) {
   const { t } = useTranslation();
   const createAndStart = useWorkflowStore((s) => s.createAndStart);
@@ -21,6 +23,14 @@ export function WorkflowPlanCard({
     (n, p) => n + p.steps.filter((s) => s.mode === "write").length,
     0
   );
+  const gates = plan.phases
+    .filter((phase) => phase.gate && phase.gate.type !== "all_done")
+    .map((phase) => ({ phase, gate: phase.gate! }));
+  const riskLabel =
+    writeCount > 0 ? t("workflow.riskWrite") : t("workflow.riskReadOnly");
+  const run = onRun
+    ? () => void onRun(plan)
+    : () => void createAndStart({ plan, conversationId });
 
   return (
     <section className="workflow-plan-card">
@@ -47,6 +57,28 @@ export function WorkflowPlanCard({
           <dd>{writeCount}</dd>
         </div>
       </dl>
+      <div className="workflow-plan-risk">
+        <strong>{t("workflow.risk")}</strong>
+        <span>{riskLabel}</span>
+      </div>
+      <div className="workflow-plan-gates">
+        <strong>{t("workflow.gates")}</strong>
+        {gates.length === 0 ? (
+          <span>{t("workflow.noGates")}</span>
+        ) : (
+          <ul>
+            {gates.map(({ phase, gate }) => (
+              <li key={phase.id}>
+                <span>{phase.title}</span>
+                <small>
+                  {gate.type}
+                  {"reason" in gate && gate.reason ? ` - ${gate.reason}` : ""}
+                </small>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <ol className="workflow-plan-phases">
         {plan.phases.map((phase) => (
           <li key={phase.id}>
@@ -65,7 +97,7 @@ export function WorkflowPlanCard({
         <button
           type="button"
           className="primary"
-          onClick={() => void createAndStart({ plan, conversationId })}
+          onClick={run}
         >
           {t("workflow.run")}
         </button>

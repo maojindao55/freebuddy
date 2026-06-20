@@ -7,6 +7,7 @@ import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { cliClient } from "@/services/cli/client";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
+import type { WorkflowPlan } from "@/services/workflows/types";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
   attachmentPreviewUrl,
@@ -147,6 +148,7 @@ export function ChatView() {
   const pendingPlan = useWorkflowStore((s) => s.pendingPlan);
   const pendingErrors = useWorkflowStore((s) => s.pendingErrors);
   const previewReviewLoop = useWorkflowStore((s) => s.previewReviewLoop);
+  const createAndStartWorkflow = useWorkflowStore((s) => s.createAndStart);
   const clearPendingPlan = useWorkflowStore((s) => s.clearPending);
   const activeConversationId = useConversationStore((s) => s.activeId);
 
@@ -425,6 +427,31 @@ export function ChatView() {
     }
   };
 
+  const onCreateWorkflowConversation = async () => {
+    if (!pendingPlan) return;
+    const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
+    if (!selectedMember) return;
+    const cwd = newTaskCwd.trim() || pendingPlan.cwd;
+    setPreflightMsg(null);
+    try {
+      if (!(await preflightMember(selectedMember))) return;
+      const newConv = await createConversation({
+        member: selectedMember,
+        cwd,
+        title: pendingPlan.name.slice(0, 24),
+        approvalMode: permissionMode
+      });
+      setNewTaskDraft("");
+      setNewTaskPendingAttachments([]);
+      await createAndStartWorkflow({
+        conversationId: newConv.id,
+        plan: { ...pendingPlan, cwd }
+      });
+    } catch (e) {
+      setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+
   if (!conv) {
     return (
       <NewTaskHome
@@ -434,6 +461,9 @@ export function ChatView() {
         cwd={newTaskCwd}
         permissionMode={permissionMode}
         pendingAttachments={newTaskPendingAttachments}
+        workflowMode={workflowMode}
+        pendingPlan={pendingPlan}
+        pendingErrors={pendingErrors}
         preflightMsg={preflightMsg}
         onDraft={setNewTaskDraft}
         onMember={setSelectedMemberId}
@@ -441,6 +471,9 @@ export function ChatView() {
         onPermissionMode={setPermissionMode}
         onSelectAttachments={() => void handleSelectAttachments("new")}
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
+        onWorkflowMode={setWorkflowMode}
+        onGeneratePlan={() => void handleGeneratePlan()}
+        onCreateWorkflowConversation={onCreateWorkflowConversation}
         onSubmit={() => void onCreateAndSend()}
       />
     );
@@ -599,6 +632,9 @@ function NewTaskHome({
   cwd,
   permissionMode,
   pendingAttachments,
+  workflowMode,
+  pendingPlan,
+  pendingErrors,
   preflightMsg,
   onDraft,
   onMember,
@@ -606,6 +642,9 @@ function NewTaskHome({
   onPermissionMode,
   onSelectAttachments,
   onRemoveAttachment,
+  onWorkflowMode,
+  onGeneratePlan,
+  onCreateWorkflowConversation,
   onSubmit
 }: {
   draft: string;
@@ -614,6 +653,9 @@ function NewTaskHome({
   cwd: string;
   permissionMode: "auto" | "ask";
   pendingAttachments: ChatAttachment[];
+  workflowMode: boolean;
+  pendingPlan: WorkflowPlan | null;
+  pendingErrors: string[];
   preflightMsg: string | null;
   onDraft: (value: string) => void;
   onMember: (value: string) => void;
@@ -621,6 +663,9 @@ function NewTaskHome({
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
+  onWorkflowMode: (value: boolean) => void;
+  onGeneratePlan: () => void;
+  onCreateWorkflowConversation: () => void;
   onSubmit: () => void;
 }) {
   const { t } = useTranslation();
@@ -630,6 +675,21 @@ function NewTaskHome({
     <div className="new-task-view">
       <div className="new-task-stack">
         <h1 className="new-task-title">{t("chat.heroTitle")}</h1>
+        {(pendingPlan || pendingErrors.length > 0) && (
+          <div className="workflow-plan-preview">
+            {pendingErrors.length > 0 && (
+              <div className="preflight-warn">
+                {t("workflow.invalidPlan")}: {pendingErrors.join("; ")}
+              </div>
+            )}
+            {pendingPlan && (
+              <WorkflowPlanCard
+                plan={pendingPlan}
+                onRun={() => void onCreateWorkflowConversation()}
+              />
+            )}
+          </div>
+        )}
         <section className="new-task-composer" aria-label={t("chat.newTaskAria")}>
         <AttachmentTray
           attachments={pendingAttachments}
@@ -694,6 +754,15 @@ function NewTaskHome({
             <FolderIcon />
             <span>{t("chat.workspace")}</span>
           </button>
+          <button
+            className={`composer-tool-chip${workflowMode ? " active" : ""}`}
+            type="button"
+            title={t("workflow.modeHint")}
+            aria-pressed={workflowMode}
+            onClick={() => onWorkflowMode(!workflowMode)}
+          >
+            <span>{t("workflow.mode")}</span>
+          </button>
           <input
             className="new-task-cwd-input"
             value={cwd}
@@ -704,10 +773,14 @@ function NewTaskHome({
             <button
               className="new-task-send send-icon-button"
               type="button"
-              disabled={!(draft.trim() || pendingAttachments.length > 0) || members.length === 0}
+              disabled={
+                workflowMode
+                  ? !draft.trim() || members.length === 0
+                  : !(draft.trim() || pendingAttachments.length > 0) || members.length === 0
+              }
               title={t("chat.startTask")}
               aria-label={t("chat.startTask")}
-              onClick={onSubmit}
+              onClick={workflowMode ? onGeneratePlan : onSubmit}
             >
               ↑
             </button>

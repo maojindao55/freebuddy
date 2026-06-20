@@ -263,6 +263,11 @@
     "progress": "进度",
     "loop": "循环",
     "writeStep": "写入",
+    "risk": "风险",
+    "riskWrite": "会写入工作区",
+    "riskReadOnly": "只读工作流",
+    "gates": "关卡",
+    "noGates": "没有人工关卡",
     "noActiveRun": "没有进行中的工作流",
     "status": {
       "pending_approval": "等待批准",

@@ -12,6 +12,8 @@ export interface StepState {
 export interface SchedulerContext {
   /** True if a write step is currently running anywhere in the run. */
   writeBusy: boolean;
+  /** True once the user has explicitly approved a write step or phase. */
+  writeApproved?: boolean;
 }
 
 export interface RunnableSelection {
@@ -59,7 +61,7 @@ export function selectRunnableSteps(
         isTerminalOk(statusById.get(dep))
       );
       if (!depsOk) continue;
-      if (step.mode === "write" && writeStarted) continue;
+      if (step.mode === "write" && (!ctx.writeApproved || writeStarted)) continue;
       result.push({ phaseId: phase.id, stepId: step.id });
       slots -= 1;
       if (step.mode === "write") {

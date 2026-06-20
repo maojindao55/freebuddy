@@ -8,6 +8,10 @@ test("WorkflowPlanCard renders preview stats and run/cancel actions", () => {
   const src = read("../src/components/Workflows/WorkflowPlanCard.tsx");
   assert.match(src, /workflow-plan-stats/);
   assert.match(src, /workflow-plan-phases/);
+  assert.match(src, /workflow-plan-gates/);
+  assert.match(src, /workflow-plan-risk/);
+  assert.match(src, /gate\.type/);
+  assert.match(src, /gate\.reason/);
   assert.match(src, /createAndStart/);
   assert.match(src, /clearPending/);
 });
@@ -48,10 +52,18 @@ test("ChatView wires the workflow-mode trigger and plan preview", () => {
   assert.match(src, /<WorkflowPlanCard/);
 });
 
+test("new-task page exposes workflow mode and plan preview", () => {
+  const src = read("../src/components/CLI/ChatView.tsx");
+  assert.match(src, /workflowMode=\{workflowMode\}/);
+  assert.match(src, /onWorkflowMode=\{setWorkflowMode\}/);
+  assert.match(src, /onGeneratePlan=\{\(\) => void handleGeneratePlan\(\)\}/);
+  assert.match(src, /onCreateWorkflowConversation/);
+});
+
 test("workflow i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
-  for (const key of ["mode", "run", "cancel", "summary", "progress"]) {
+  for (const key of ["mode", "run", "cancel", "summary", "progress", "gates", "risk"]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }

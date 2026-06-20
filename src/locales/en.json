@@ -264,6 +264,11 @@
     "progress": "Progress",
     "loop": "Loop",
     "writeStep": "Write",
+    "risk": "Risk",
+    "riskWrite": "Writes to the workspace",
+    "riskReadOnly": "Read-only workflow",
+    "gates": "Gates",
+    "noGates": "No manual gates",
     "noActiveRun": "No active workflow",
     "status": {
       "pending_approval": "Awaiting approval",

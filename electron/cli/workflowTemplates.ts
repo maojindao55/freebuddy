@@ -97,17 +97,7 @@ export function buildReviewLoopPlan(input: ReviewLoopInput): WorkflowPlan {
         id: "loop_or_finish",
         title: "Loop or Finish",
         parallelism: 1,
-        steps: [
-          {
-            id: "synthesize",
-            title: "Synthesize final result",
-            agentId: input.verifier.id,
-            mode: "summarize",
-            prompt:
-              "Synthesize the final result: resolved findings, unresolved findings, files touched, and checks run.",
-            consumes: ["verify-changes"]
-          }
-        ],
+        steps: [],
         gate: { type: "all_done" }
       }
     ]

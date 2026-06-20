@@ -46,7 +46,10 @@ test("respects phase parallelism", () => {
 
 test("never runs two write steps at once", () => {
   const p = plan(3, [{ id: "a", mode: "write" }, { id: "b", mode: "write" }, { id: "c" }]);
-  const next = selectRunnableSteps(p, [], { writeBusy: false });
+  const next = selectRunnableSteps(p, [], {
+    writeBusy: false,
+    writeApproved: true
+  });
   assert.deepEqual(next, [{ phaseId: "ph", stepId: "a" }]);
 });
 
@@ -54,6 +57,24 @@ test("writeBusy blocks starting a write step but allows research", () => {
   const p = plan(2, [{ id: "a", mode: "research" }, { id: "b", mode: "write" }]);
   const next = selectRunnableSteps(p, [], { writeBusy: true });
   assert.deepEqual(next, [{ phaseId: "ph", stepId: "a" }]);
+});
+
+test("write steps do not start before explicit write approval", () => {
+  const p = plan(1, [{ id: "w", mode: "write" }]);
+  const next = selectRunnableSteps(p, [], {
+    writeBusy: false,
+    writeApproved: false
+  });
+  assert.deepEqual(next, []);
+});
+
+test("write steps start after explicit write approval", () => {
+  const p = plan(1, [{ id: "w", mode: "write" }]);
+  const next = selectRunnableSteps(p, [], {
+    writeBusy: false,
+    writeApproved: true
+  });
+  assert.deepEqual(next, [{ phaseId: "ph", stepId: "w" }]);
 });
 
 test("dependencies block steps until satisfied", () => {

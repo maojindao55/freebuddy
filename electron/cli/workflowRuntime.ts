@@ -69,6 +69,10 @@ interface ActiveRun {
 
 const REVIEW_LOOP_PHASES = ["review", "implement", "verify"];
 
+function hasWriteApproval(state: ActiveRun): boolean {
+  return state.approvedPhases.size > 0;
+}
+
 export class WorkflowRuntime {
   private active = new Map<string, ActiveRun>();
 
@@ -193,11 +197,11 @@ export class WorkflowRuntime {
     // CLI task (new sessionId) rather than mutating the old task record.
     updateWorkflowStep(stepRowId, {
       status: "pending",
-      summary: undefined,
-      resultJson: undefined,
-      cliTaskId: undefined,
-      startedAt: undefined,
-      endedAt: undefined
+      summary: null,
+      resultJson: null,
+      cliTaskId: null,
+      startedAt: null,
+      endedAt: null
     });
     updateWorkflowRun(runId, { status: "running" });
     await this.start(runId);
@@ -228,16 +232,29 @@ export class WorkflowRuntime {
         // Evaluate the phase gate before advancing. For a manual gate we keep
         // the run's ActiveRun alive (spin-wait) so approveGate() can record
         // approval and we can observe it here.
-        const gate = phaseGateSatisfied(phase.gate, {
+        const gateConfig = phase.gate;
+        const reviewerStepStatus =
+          gateConfig?.type === "review_required"
+            ? getWorkflowSteps(runId).find(
+                (s) => s.stepId === gateConfig.reviewerStepId
+              )?.status
+            : undefined;
+        const gate = phaseGateSatisfied(gateConfig, {
           approvedPhases: state.approvedPhases,
-          phaseId: phase.id
+          phaseId: phase.id,
+          reviewerStepStatus
         });
         if (gate.pause) {
-          updateWorkflowRun(runId, { status: "paused" });
-          while (!state.approvedPhases.has(phase.id) && !state.stopped) {
-            await new Promise((r) => setTimeout(r, 200));
+          if (gateConfig?.type === "manual_approval") {
+            updateWorkflowRun(runId, { status: "paused" });
+            while (!state.approvedPhases.has(phase.id) && !state.stopped) {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            if (state.stopped) return;
+          } else {
+            updateWorkflowRun(runId, { status: "blocked" });
+            return;
           }
-          if (state.stopped) return;
         }
 
         phaseIndex += 1;
@@ -257,7 +274,7 @@ export class WorkflowRuntime {
           run.maxLoops
         );
         if (decision === "loop") {
-          resetWorkflowStepsForLoop(runId, [...REVIEW_LOOP_PHASES, "loop_or_finish"]);
+          resetWorkflowStepsForLoop(runId, REVIEW_LOOP_PHASES);
           const reviewIdx = plan.phases.findIndex((p) => p.id === "review");
           updateWorkflowRun(runId, {
             status: "running",
@@ -298,9 +315,10 @@ export class WorkflowRuntime {
       const writeBusy = steps.some(
         (s) => s.status === "running" && s.mode === "write"
       );
-      const runnable = selectRunnableSteps(plan, states, { writeBusy }).filter(
-        (r) => r.phaseId === phase.id
-      );
+      const runnable = selectRunnableSteps(plan, states, {
+        writeBusy,
+        writeApproved: hasWriteApproval(state)
+      }).filter((r) => r.phaseId === phase.id);
 
       if (runnable.length === 0) {
         const phaseSteps = steps.filter((s) => s.phaseId === phase.id);
@@ -326,6 +344,13 @@ export class WorkflowRuntime {
     const step = steps.find((s) => s.stepId === stepId);
     if (!step || step.status === "done" || step.status === "skipped") return;
     if (step.status === "running") return;
+    if (step.mode === "write" && !hasWriteApproval(state)) {
+      updateWorkflowStep(step.id, {
+        status: "blocked",
+        endedAt: new Date().toISOString()
+      });
+      return;
+    }
 
     const resolved = this.deps.resolveAgent(step.agentId);
     if (!resolved) {

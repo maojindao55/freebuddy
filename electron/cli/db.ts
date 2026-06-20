@@ -126,6 +126,53 @@ function migrate(db: DB) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT,
+      name TEXT NOT NULL,
+      goal TEXT NOT NULL,
+      status TEXT NOT NULL,
+      cwd TEXT,
+      template TEXT,
+      loop_index INTEGER NOT NULL DEFAULT 0,
+      max_loops INTEGER NOT NULL DEFAULT 1,
+      plan_json TEXT NOT NULL,
+      summary TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      ended_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_conversation
+      ON workflow_runs(conversation_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS workflow_steps (
+      id TEXT PRIMARY KEY,
+      workflow_run_id TEXT NOT NULL,
+      phase_id TEXT NOT NULL,
+      step_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      agent_name TEXT NOT NULL,
+      adapter TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      status TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      depends_on TEXT,
+      target_paths TEXT,
+      summary TEXT,
+      result_json TEXT,
+      cli_task_id TEXT,
+      started_at TEXT,
+      ended_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(workflow_run_id) REFERENCES workflow_runs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_steps_run
+      ON workflow_steps(workflow_run_id, phase_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_workflow_steps_task
+      ON workflow_steps(cli_task_id);
   `);
 
   const overrideCols = db

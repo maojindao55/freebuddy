@@ -54,5 +54,14 @@ export const builtinCliMembers: CLIMember[] = [
     source: "builtin",
     enabled: true,
     cli: { adapter: "cursor-agent-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-kimi-acp",
+    kind: "cli",
+    name: "Kimi",
+    description: "Local Kimi coding agent.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "kimi-acp", approvalMode: "auto", showStderr: true }
   }
 ];

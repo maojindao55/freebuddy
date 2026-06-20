@@ -9,6 +9,16 @@ export interface AcpMessage {
   error?: { code: number; message: string; data?: any };
 }
 
+/** An ACP authentication method advertised by an agent in `initialize`.
+ *  FreeBuddy does not drive the auth flow; it only reads these to detect that
+ *  authentication is required and surface a clear error. */
+export interface AcpAuthMethod {
+  id: string;
+  type?: "agent" | "env_var" | "terminal";
+  name?: string;
+  description?: string;
+}
+
 export type AcpStreamItem =
   | {
       kind: "text";
@@ -69,7 +79,12 @@ export function buildInitializeRequest(id: AcpRequestId): AcpMessage {
     method: "initialize",
     params: {
       protocolVersion: 1,
-      clientCapabilities: {},
+      clientCapabilities: {
+        // Opt in to receive terminal-type auth methods so we can detect when
+        // an agent requires authentication and surface a clear error. We do not
+        // drive the login flow; the user logs in via the agent's own CLI.
+        auth: { terminal: true }
+      },
       clientInfo: {
         name: "freebuddy",
         title: "FreeBuddy",

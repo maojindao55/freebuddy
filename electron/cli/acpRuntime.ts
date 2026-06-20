@@ -14,6 +14,7 @@ import {
   buildSessionResumeRequest,
   parseAcpLine,
   shouldEmitAcpUpdate,
+  type AcpAuthMethod,
   type AcpMessage,
   type AcpRequestId
 } from "./acp.js";
@@ -67,6 +68,7 @@ export async function runAcpAgent({
   let activeAcpSessionId: string | undefined;
   let finished = false;
   let promptStarted = false;
+  let promptHadContent = false;
   const pending = new Map<
     string,
     {
@@ -145,7 +147,10 @@ export async function runAcpAgent({
       if (waiter) {
         pending.delete(String(msg.id));
         if (msg.error) {
-          waiter.reject(new Error(msg.error.message));
+          const err = new Error(msg.error.message);
+          (err as Error & { code?: number; data?: unknown }).code = msg.error.code;
+          (err as Error & { code?: number; data?: unknown }).data = msg.error.data;
+          waiter.reject(err);
         } else {
           waiter.resolve(msg.result);
         }
@@ -158,6 +163,15 @@ export async function runAcpAgent({
       if (typeof sessionId === "string") {
         activeAcpSessionId = sessionId;
         capturedSessions.set(args.sessionId, sessionId);
+      }
+      const updateType = String(msg.params?.update?.sessionUpdate ?? "");
+      if (
+        promptStarted &&
+        /^(agent_message_chunk|agent_thought_chunk|tool_call|tool_call_update|plan)$/.test(
+          updateType
+        )
+      ) {
+        promptHadContent = true;
       }
       if (
         !shouldEmitAcpUpdate(msg.params?.update, {
@@ -355,28 +369,70 @@ export async function runAcpAgent({
     }
   });
 
-  try {
-    const init = await request(buildInitializeRequest(nextId()));
-    const caps = init?.agentCapabilities ?? {};
-    if (toolSessionId && caps?.sessionCapabilities?.resume) {
+  let agentCaps: any = {};
+  let authMethods: AcpAuthMethod[] = [];
+
+  const establishSession = async () => {
+    if (toolSessionId && agentCaps?.sessionCapabilities?.resume) {
       await request(buildSessionResumeRequest(nextId(), toolSessionId, args.cwd));
       activeAcpSessionId = toolSessionId;
     } else {
       const created = await request(buildSessionNewRequest(nextId(), args.cwd));
       activeAcpSessionId = created?.sessionId;
     }
+  };
+
+  const runPromptOnSession = async () => {
+    emit({
+      type: "items",
+      items: [{ kind: "session", sessionId: activeAcpSessionId! }]
+    });
+    promptStarted = true;
+    promptHadContent = false;
+    await request(
+      buildSessionPromptRequest(nextId(), activeAcpSessionId!, args.prompt)
+    );
+  };
+
+  /** Build a clear error telling the user the agent needs authentication.
+   *  FreeBuddy does not drive the login flow; the user logs in via the agent's
+   *  own CLI, then retries the task. */
+  const authRequiredError = (methods: AcpAuthMethod[]) => {
+    const method = methods[0];
+    const label = method?.name ? ` (${method.name})` : "";
+    return new Error(
+      `Authentication required${label}. Log in to this agent from your terminal (for example via its login command), then retry the task.`
+    );
+  };
+
+  try {
+    const init = await request(buildInitializeRequest(nextId()));
+    agentCaps = init?.agentCapabilities ?? {};
+    authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
+
+    try {
+      await establishSession();
+    } catch (sessionErr) {
+      // The agent advertised auth methods and rejected session creation.
+      if (!finished && authMethods.length > 0) throw authRequiredError(authMethods);
+      throw sessionErr;
+    }
 
     if (!activeAcpSessionId) {
       throw new Error("ACP agent did not return a sessionId");
     }
 
-    emit({
-      type: "items",
-      items: [{ kind: "session", sessionId: activeAcpSessionId }]
-    });
-    promptStarted = true;
-    await request(buildSessionPromptRequest(nextId(), activeAcpSessionId, args.prompt));
-    if (caps?.sessionCapabilities?.close) {
+    await runPromptOnSession();
+
+    // Some agents (e.g. kimi when signed out) let session creation succeed but
+    // return an empty turn because the model layer is unauthenticated. If the
+    // agent advertised auth methods and produced nothing, treat it as a missing
+    // login rather than a silent success.
+    if (!promptHadContent && authMethods.length > 0 && !finished) {
+      throw authRequiredError(authMethods);
+    }
+
+    if (agentCaps?.sessionCapabilities?.close) {
       try {
         await request(buildSessionCloseRequest(nextId(), activeAcpSessionId));
       } catch {

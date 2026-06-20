@@ -1,5 +1,3 @@
-import { useTranslation } from "react-i18next";
-
 import type {
   WorkflowPhase,
   WorkflowStepRow as WorkflowStepRowData

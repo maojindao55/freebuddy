@@ -19,7 +19,14 @@ export function WorkflowRunPanel() {
   const approveGate = useWorkflowStore((s) => s.approveGate);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
-  const plan = activeRun ? JSON.parse(activeRun.planJson) : null;
+  let plan: ReturnType<typeof JSON.parse> = null;
+  if (activeRun) {
+    try {
+      plan = JSON.parse(activeRun.planJson);
+    } catch {
+      plan = null;
+    }
+  }
   const isLive =
     activeRun?.status === "running" ||
     activeRun?.status === "paused" ||

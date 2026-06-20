@@ -28,8 +28,6 @@ jobs:
           | macOS Apple Silicon | \`FreeBuddy_macOS-Apple-Silicon.dmg\` | M 系列芯片 Mac |
           | macOS Intel | \`FreeBuddy_macOS-Intel.dmg\` | Intel 芯片 Mac |
           | Windows | \`FreeBuddy_Windows_x64.exe\` | Windows 10/11 64 位 |
-          | Linux AppImage | \`FreeBuddy_Linux_x64.AppImage\` | 通用 Linux 桌面包 |
-          | Linux Debian | \`FreeBuddy_Linux_x64.deb\` | Ubuntu / Debian |
 
           ## macOS 安装提示
           如果提示无法打开，请在终端执行：
@@ -55,11 +53,6 @@ jobs:
             builder_args: --mac --x64
             assets: |
               FreeBuddy_macOS-Intel.dmg|*.dmg
-          - platform: ubuntu-22.04
-            builder_args: --linux --x64
-            assets: |
-              FreeBuddy_Linux_x64.AppImage|*.AppImage
-              FreeBuddy_Linux_x64.deb|*.deb
           - platform: windows-latest
             builder_args: --win --x64
             assets: |
@@ -76,12 +69,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-
-      - name: Install system dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential python3 make g++ libarchive-tools rpm
 
       - name: Install dependencies
         run: npm ci

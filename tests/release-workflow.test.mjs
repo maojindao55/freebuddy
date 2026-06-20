@@ -30,14 +30,12 @@ test("electron-builder config packages FreeBuddy for desktop platforms", () => {
   assert.match(builderConfig, /extraResources:[\s\S]*from:\s+assets\/app-icon\.png[\s\S]*to:\s+app-icon\.png/m);
 });
 
-test("release workflow creates renamed assets for macOS, Windows and Linux", () => {
+test("release workflow creates renamed assets for macOS and Windows", () => {
   assert.match(workflow, /name:\s+Release/);
   assert.match(workflow, /tags:\s+\['v\*'\]/);
   assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.dmg/);
   assert.match(workflow, /FreeBuddy_macOS-Intel\.dmg/);
   assert.match(workflow, /FreeBuddy_Windows_x64\.exe/);
-  assert.match(workflow, /FreeBuddy_Linux_x64\.AppImage/);
-  assert.match(workflow, /FreeBuddy_Linux_x64\.deb/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
   assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);

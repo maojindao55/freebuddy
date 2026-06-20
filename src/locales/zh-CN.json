@@ -242,5 +242,47 @@
       },
       "defaultAlt": "默认"
     }
+  },
+  "workflow": {
+    "mode": "工作流模式",
+    "modeHint": "使用多个 Agent 规划并作为工作流运行",
+    "reviewLoop": "评审循环",
+    "generatePlan": "生成计划",
+    "planPreview": "工作流计划",
+    "phases": "阶段",
+    "steps": "步骤",
+    "agents": "Agent",
+    "run": "运行工作流",
+    "cancel": "取消",
+    "editPrompt": "编辑",
+    "approveGate": "批准并继续",
+    "pause": "暂停",
+    "resume": "继续",
+    "stop": "停止",
+    "retry": "重试步骤",
+    "progress": "进度",
+    "loop": "循环",
+    "writeStep": "写入",
+    "noActiveRun": "没有进行中的工作流",
+    "status": {
+      "pending_approval": "等待批准",
+      "running": "运行中",
+      "paused": "已暂停",
+      "blocked": "已阻塞",
+      "completed": "已完成",
+      "failed": "已失败",
+      "killed": "已停止",
+      "partial": "部分完成"
+    },
+    "stepStatus": {
+      "pending": "待处理",
+      "running": "运行中",
+      "done": "已完成",
+      "failed": "已失败",
+      "skipped": "已跳过",
+      "blocked": "已阻塞"
+    },
+    "invalidPlan": "生成的计划无效",
+    "summary": "工作流总结"
   }
 }

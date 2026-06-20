@@ -243,5 +243,47 @@
       },
       "defaultAlt": "Default"
     }
+  },
+  "workflow": {
+    "mode": "Workflow mode",
+    "modeHint": "Plan with multiple agents, then run as a workflow",
+    "reviewLoop": "Review Loop",
+    "generatePlan": "Generate plan",
+    "planPreview": "Workflow plan",
+    "phases": "Phases",
+    "steps": "Steps",
+    "agents": "Agents",
+    "run": "Run workflow",
+    "cancel": "Cancel",
+    "editPrompt": "Edit",
+    "approveGate": "Approve & continue",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "retry": "Retry step",
+    "progress": "Progress",
+    "loop": "Loop",
+    "writeStep": "Write",
+    "noActiveRun": "No active workflow",
+    "status": {
+      "pending_approval": "Awaiting approval",
+      "running": "Running",
+      "paused": "Paused",
+      "blocked": "Blocked",
+      "completed": "Completed",
+      "failed": "Failed",
+      "killed": "Stopped",
+      "partial": "Partially completed"
+    },
+    "stepStatus": {
+      "pending": "Pending",
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed",
+      "skipped": "Skipped",
+      "blocked": "Blocked"
+    },
+    "invalidPlan": "The generated plan is invalid",
+    "summary": "Workflow summary"
   }
 }

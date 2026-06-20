@@ -73,6 +73,43 @@ test("sidebar collapse toggle hides the sidebar column", () => {
   );
 });
 
+test("new-task page sending flag is not stuck true without an active conversation", () => {
+  // submitPreview is null and conv is undefined on the new-task page, so both
+  // sides would be `undefined`. The guard must require submitPreview !== null
+  // or the attach button (which early-returns when sending) never works there.
+  assert.match(
+    chatViewSource,
+    /const sending =\s*running \|\|\s*\(submitPreview !== null && submitPreview\.conversationId === conv\?\.id\);/m
+  );
+});
+
+test("new-task page drops the hero heading, subtitle, and quick-prompt chips", () => {
+  assert.doesNotMatch(chatViewSource, /className="new-task-hero"/);
+  assert.doesNotMatch(chatViewSource, /className="new-task-subtitle"/);
+  assert.doesNotMatch(chatViewSource, /className="new-task-chips"/);
+  assert.doesNotMatch(chatViewSource, /newTaskPrompts/);
+});
+
+test("new-task page merges attach, workspace, agent, and send into one toolbar row", () => {
+  // There is exactly one .new-task-toolbar row and no separate workspace-picker.
+  const toolbarOpenings = chatViewSource.match(/className="new-task-toolbar"/g) ?? [];
+  assert.equal(toolbarOpenings.length, 1);
+  assert.doesNotMatch(chatViewSource, /className="workspace-picker"/);
+
+  // The single toolbar must carry every control: attach, cwd, agent, permission, send.
+  const newTaskHome = chatViewSource.slice(
+    chatViewSource.indexOf("function NewTaskHome")
+  );
+  const toolbarStart = newTaskHome.indexOf('className="new-task-toolbar"');
+  const toolbarEnd = newTaskHome.indexOf("new-task-warn", toolbarStart);
+  const toolbar = newTaskHome.slice(toolbarStart, toolbarEnd);
+  assert.match(toolbar, /onSelectAttachments/);
+  assert.match(toolbar, /onCwd/);
+  assert.match(toolbar, /onMember/);
+  assert.match(toolbar, /onPermissionMode/);
+  assert.match(toolbar, /className="new-task-send/);
+});
+
 test("sidebar brand uses the dedicated sidebar logo asset", () => {
   const brandMarkSource = appSource.match(/function BrandMark\(\) \{[\s\S]*?\n\}/)?.[0] ?? "";
 

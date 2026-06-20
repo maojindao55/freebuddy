@@ -171,7 +171,7 @@ export function ChatView() {
     live?.status === "running" || live?.status === "starting";
   const sending =
     running ||
-    (submitPreview?.conversationId === conv?.id);
+    (submitPreview !== null && submitPreview.conversationId === conv?.id);
   const starterPrompts = [
     t("chat.starter.one"),
     t("chat.starter.two"),
@@ -415,7 +415,6 @@ export function ChatView() {
         onPermissionMode={setPermissionMode}
         onSelectAttachments={() => void handleSelectAttachments("new")}
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
-        onPrompt={(prompt) => setNewTaskDraft(prompt)}
         onSubmit={() => void onCreateAndSend()}
       />
     );
@@ -557,7 +556,6 @@ function NewTaskHome({
   onPermissionMode,
   onSelectAttachments,
   onRemoveAttachment,
-  onPrompt,
   onSubmit
 }: {
   draft: string;
@@ -573,80 +571,86 @@ function NewTaskHome({
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
-  onPrompt: (value: string) => void;
   onSubmit: () => void;
 }) {
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const newTaskPrompts = [
-    { label: t("chat.newTaskPrompts.analyze.label"), prompt: t("chat.newTaskPrompts.analyze.prompt") },
-    { label: t("chat.newTaskPrompts.modify.label"), prompt: t("chat.newTaskPrompts.modify.prompt") },
-    { label: t("chat.newTaskPrompts.review.label"), prompt: t("chat.newTaskPrompts.review.prompt") }
-  ];
 
   return (
     <div className="new-task-view">
-      <section className="new-task-hero" aria-label={t("chat.newTaskAria")}>
-        <h1>
-          FreeBuddy
-          <span>{t("chat.heroTitle")}</span>
-        </h1>
-        <p className="new-task-subtitle">
-          {t("chat.heroSubtitle")}
-        </p>
+      <div className="new-task-stack">
+        <h1 className="new-task-title">{t("chat.heroTitle")}</h1>
+        <section className="new-task-composer" aria-label={t("chat.newTaskAria")}>
+        <AttachmentTray
+          attachments={pendingAttachments}
+          onRemove={onRemoveAttachment}
+        />
+        <textarea
+          ref={textareaRef}
+          autoFocus
+          rows={4}
+          value={draft}
+          placeholder={t("chat.inputPlaceholder")}
+          onChange={(event) => onDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              onSubmit();
+            }
+          }}
+        />
 
-        <div className="new-task-chips" aria-label={t("chat.commonTasksAria")}>
-          {newTaskPrompts.map(({ label, prompt }) => (
-            <button
-              key={label}
-              onClick={() => {
-                onPrompt(prompt);
-                textareaRef.current?.focus();
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="new-task-composer">
-          <AttachmentTray
-            attachments={pendingAttachments}
-            onRemove={onRemoveAttachment}
-          />
-          <textarea
-            ref={textareaRef}
-            autoFocus
-            rows={4}
-            value={draft}
-            placeholder={t("chat.inputPlaceholder")}
-            onChange={(event) => onDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                onSubmit();
+        <div className="new-task-toolbar">
+          <label>
+            <span>{t("chat.agent")}</span>
+            <select value={selectedMemberId} onChange={(event) => onMember(event.target.value)}>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t("chat.permission")}</span>
+            <select value={permissionMode} onChange={(event) => onPermissionMode(event.target.value as "auto" | "ask")}>
+              <option value="auto">{t("chat.approvalAuto")}</option>
+              <option value="ask">{t("chat.approvalAsk")}</option>
+            </select>
+          </label>
+          <button
+            className="composer-tool-chip"
+            type="button"
+            title={t("chat.attachFile")}
+            disabled={pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+            onClick={onSelectAttachments}
+          >
+            <PaperclipIcon />
+            <span>{t("chat.attach")}</span>
+          </button>
+          <button
+            className="composer-tool-chip"
+            type="button"
+            title={t("chat.selectCwd")}
+            onClick={async () => {
+              try {
+                const path = await cliClient.selectDirectory();
+                if (path) onCwd(path);
+              } catch (e) {
+                console.error("Error picking directory:", e);
               }
             }}
+          >
+            <FolderIcon />
+            <span>{t("chat.workspace")}</span>
+          </button>
+          <input
+            className="new-task-cwd-input"
+            value={cwd}
+            onChange={(event) => onCwd(event.target.value)}
           />
 
-          <div className="new-task-toolbar">
-            <label>
-              <span>{t("chat.agent")}</span>
-              <select value={selectedMemberId} onChange={(event) => onMember(event.target.value)}>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>{t("chat.permission")}</span>
-              <select value={permissionMode} onChange={(event) => onPermissionMode(event.target.value as "auto" | "ask")}>
-                <option value="auto">{t("chat.approvalAuto")}</option>
-                <option value="ask">{t("chat.approvalAsk")}</option>
-              </select>
-            </label>
+          <div className="new-task-toolbar-tail">
             <button
               className="new-task-send send-icon-button"
               type="button"
@@ -658,46 +662,11 @@ function NewTaskHome({
               ↑
             </button>
           </div>
-
-          <div className="workspace-picker">
-            <div className="new-task-tools">
-              <button
-                className="composer-tool-chip"
-                type="button"
-                title={t("chat.attachFile")}
-                disabled={pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
-                onClick={onSelectAttachments}
-              >
-                <PaperclipIcon />
-                <span>{t("chat.attach")}</span>
-              </button>
-              <button
-                className="composer-tool-chip"
-                type="button"
-                title={t("chat.selectCwd")}
-                onClick={async () => {
-                  try {
-                    const path = await cliClient.selectDirectory();
-                    if (path) onCwd(path);
-                  } catch (e) {
-                    console.error("Error picking directory:", e);
-                  }
-                }}
-              >
-                <FolderIcon />
-                <span>{t("chat.workspace")}</span>
-              </button>
-            </div>
-            <input
-              value={cwd}
-              placeholder={t("chat.cwdPlaceholder")}
-              onChange={(event) => onCwd(event.target.value)}
-            />
-          </div>
         </div>
 
         {preflightMsg && <div className="preflight-warn new-task-warn">{preflightMsg}</div>}
       </section>
+      </div>
     </div>
   );
 }

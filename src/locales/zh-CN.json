@@ -50,7 +50,7 @@
     "stop": "停止",
     "selectCwd": "选择工作目录",
     "cwdPlaceholder": "/absolute/path，可选；不填则使用默认运行目录",
-    "heroTitle": "本地 CLI Agent 工作台",
+    "heroTitle": "自由地做你想做的",
     "newAgentChat": "新建 Agent 对话",
     "attach": "添加",
     "workspace": "工作目录",

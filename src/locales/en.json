@@ -50,7 +50,7 @@
     "stop": "Stop",
     "selectCwd": "Select working directory",
     "cwdPlaceholder": "/absolute/path (optional; defaults to the default working directory)",
-    "heroTitle": "Local CLI Agent Workspace",
+    "heroTitle": "Free to do whatever you want",
     "newAgentChat": "New Agent Chat",
     "attach": "Attach",
     "workspace": "Workspace",

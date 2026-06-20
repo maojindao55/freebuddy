@@ -1461,7 +1461,10 @@ button {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 118px 48px 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 48px 64px;
   background: var(--fb-panel-bg);
   background-image: 
     radial-gradient(at 0% 0%, rgba(0, 194, 154, 0.04) 0px, transparent 50%),
@@ -1484,101 +1487,27 @@ button {
   box-shadow: var(--fb-shadow-sm);
 }
 
-.new-task-hero {
+.new-task-stack {
   width: 100%;
-  max-width: 900px;
+  max-width: 760px;
   margin: 0 auto;
-  align-self: start;
-}
-
-.new-task-hero h1 {
-  margin: 0 0 12px;
-  font-family: 'Outfit', var(--fb-font);
-  font-size: 46px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  background: linear-gradient(135deg, var(--fb-text-primary) 30%, var(--fb-brand) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.new-task-hero h1 span {
-  display: block;
-  font-weight: 400;
-  font-size: 26px;
-  margin-top: 6px;
-  color: var(--fb-text-secondary);
-  -webkit-text-fill-color: var(--fb-text-secondary);
-}
-
-.new-task-subtitle {
-  max-width: 580px;
-  margin: 0 0 32px;
-  color: var(--fb-text-secondary);
-  font-size: 14px;
-  line-height: 22px;
-}
-
-.new-task-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  height: 42px;
-  margin-bottom: var(--fb-spacing-xl);
-  padding: 3px;
-  border-radius: var(--fb-rounded-md);
-  background: var(--fb-panel-soft);
-  border: 1px solid var(--fb-border);
-}
-
-.new-task-tabs button {
-  height: 34px;
-  padding: 0 var(--fb-spacing-lg);
-  border: 0;
-  border-radius: var(--fb-rounded-sm);
-  color: var(--fb-text-secondary);
-  background: transparent;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.new-task-tabs button.active {
-  color: var(--fb-active-fg);
-  background: var(--fb-active);
-  box-shadow: var(--fb-shadow-sm);
-}
-
-.new-task-chips {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--fb-spacing-sm);
-  margin-bottom: 20px;
+  flex-direction: column;
 }
 
-.new-task-chips button {
-  height: 36px;
-  padding: 0 var(--fb-spacing-lg);
-  border: 1px solid var(--fb-border);
-  border-radius: 18px;
-  color: var(--fb-text-secondary);
-  background: var(--fb-panel-bg);
-  font-size: 13px;
-  font-weight: 500;
-  box-shadow: var(--fb-shadow-sm);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.new-task-chips button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(0, 194, 154, 0.4);
-  color: var(--fb-brand);
-  background: var(--fb-panel-bg);
-  box-shadow: 0 4px 12px var(--fb-brand-glow);
+.new-task-title {
+  margin: 0 0 40px;
+  font-family: 'Outfit', var(--fb-font);
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--fb-text-primary);
 }
 
 .new-task-composer {
+  width: 100%;
   overflow: hidden;
   border: 1px solid var(--fb-border-strong);
   border-radius: 24px;
@@ -1663,7 +1592,6 @@ button {
   font-weight: 600;
   cursor: not-allowed;
   transition: all 0.2s ease;
-  margin-left: auto;
 }
 
 .new-task-toolbar .new-task-send:not(:disabled) {
@@ -1683,30 +1611,17 @@ button {
   transform: translateY(0);
 }
 
-.workspace-picker {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 8px 18px 12px;
-  background: var(--fb-panel-bg);
-  color: var(--fb-text-tertiary);
-  font-size: 12px;
-  border-top: 1px solid var(--fb-border);
-  border-bottom-left-radius: var(--fb-rounded-xl);
-  border-bottom-right-radius: var(--fb-rounded-xl);
-}
-
-.new-task-tools {
+.new-task-toolbar-tail {
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--fb-spacing-md);
+  margin-left: auto;
 }
 
-.workspace-picker input {
+.new-task-cwd-input {
   min-width: 0;
   flex: 1;
+  max-width: 320px;
   border: 0;
   outline: none;
   color: var(--fb-text-secondary);
@@ -1715,9 +1630,13 @@ button {
   font-size: 12px;
 }
 
+.new-task-cwd-input::placeholder {
+  color: var(--fb-text-tertiary);
+}
+
 .composer-tool-chip,
 .composer-tools .composer-tool-chip,
-.new-task-tools .composer-tool-chip {
+.new-task-toolbar .composer-tool-chip {
   display: inline-flex;
   height: 30px;
   align-items: center;
@@ -1736,7 +1655,7 @@ button {
 
 .composer-tool-chip:hover:not(:disabled),
 .composer-tools .composer-tool-chip:hover:not(:disabled),
-.new-task-tools .composer-tool-chip:hover:not(:disabled) {
+.new-task-toolbar .composer-tool-chip:hover:not(:disabled) {
   color: var(--fb-brand);
   border-color: var(--fb-brand);
   background: var(--fb-brand-glow);
@@ -3234,7 +3153,7 @@ button.ghost:disabled {
 
 @media (max-width: 760px) {
   .new-task-view {
-    padding: 72px 22px 40px;
+    padding: 40px 18px 36px;
   }
 
   .growth-pill {
@@ -3245,30 +3164,23 @@ button.ghost:disabled {
     line-height: 28px;
   }
 
-  .new-task-hero h1 {
-    font-size: 34px;
-    line-height: 1.2;
-  }
-
-  .new-task-tabs {
-    width: 100%;
-    overflow-x: auto;
-    margin-bottom: 36px;
-  }
-
-  .new-task-tabs button {
-    flex: 1 0 auto;
-    padding: 0 12px;
-    font-size: 13px;
-  }
-
   .new-task-composer {
     border-radius: 16px;
+  }
+
+  .new-task-title {
+    font-size: 20px;
   }
 
   .new-task-toolbar {
     flex-wrap: wrap;
     height: auto;
+  }
+
+  .new-task-toolbar-tail {
+    flex: 1 0 100%;
+    margin-left: 0;
+    justify-content: flex-end;
   }
 
   .new-task-toolbar label {
@@ -3282,11 +3194,6 @@ button.ghost:disabled {
 
   .new-task-toolbar .new-task-send {
     margin-left: 0;
-  }
-
-  .workspace-picker {
-    align-items: stretch;
-    flex-direction: column;
   }
 
   .practice-section {
@@ -3596,9 +3503,8 @@ button.ghost:disabled {
 .icon-button:focus-visible,
 .icon-btn:focus-visible,
 button.ghost:focus-visible,
-.starter-prompts button:focus-visible,
-.new-task-chips button:focus-visible,
-.adapter-row-actions button:focus-visible,
+  .starter-prompts button:focus-visible,
+  .adapter-row-actions button:focus-visible,
 .scene-pill:focus-visible {
   outline: 2px solid var(--fb-brand);
   outline-offset: 2px;

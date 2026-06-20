@@ -675,6 +675,30 @@ function NewTaskHome({
     <div className="new-task-view">
       <div className="new-task-stack">
         <h1 className="new-task-title">{t("chat.heroTitle")}</h1>
+        <div
+          className="new-task-mode-tabs"
+          role="tablist"
+          aria-label={t("workflow.modeTabsAria")}
+        >
+          <button
+            className={`new-task-mode-tab${!workflowMode ? " active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={!workflowMode}
+            onClick={() => onWorkflowMode(false)}
+          >
+            {t("workflow.normalMode")}
+          </button>
+          <button
+            className={`new-task-mode-tab${workflowMode ? " active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={workflowMode}
+            onClick={() => onWorkflowMode(true)}
+          >
+            {t("workflow.mode")}
+          </button>
+        </div>
         {(pendingPlan || pendingErrors.length > 0) && (
           <div className="workflow-plan-preview">
             {pendingErrors.length > 0 && (
@@ -705,7 +729,11 @@ function NewTaskHome({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              onSubmit();
+              if (workflowMode) {
+                onGeneratePlan();
+              } else {
+                onSubmit();
+              }
             }
           }}
         />
@@ -753,15 +781,6 @@ function NewTaskHome({
           >
             <FolderIcon />
             <span>{t("chat.workspace")}</span>
-          </button>
-          <button
-            className={`composer-tool-chip${workflowMode ? " active" : ""}`}
-            type="button"
-            title={t("workflow.modeHint")}
-            aria-pressed={workflowMode}
-            onClick={() => onWorkflowMode(!workflowMode)}
-          >
-            <span>{t("workflow.mode")}</span>
           </button>
           <input
             className="new-task-cwd-input"

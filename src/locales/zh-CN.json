@@ -244,7 +244,9 @@
     }
   },
   "workflow": {
+    "normalMode": "普通模式",
     "mode": "工作流模式",
+    "modeTabsAria": "任务模式",
     "modeHint": "使用多个 Agent 规划并作为工作流运行",
     "reviewLoop": "评审循环",
     "generatePlan": "生成计划",

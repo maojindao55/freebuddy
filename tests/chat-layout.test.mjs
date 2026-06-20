@@ -110,6 +110,23 @@ test("new-task page merges attach, workspace, agent, and send into one toolbar r
   assert.match(toolbar, /className="new-task-send/);
 });
 
+test("new-task page separates normal and workflow modes into tabs above the composer", () => {
+  const newTaskHome = chatViewSource.slice(
+    chatViewSource.indexOf("function NewTaskHome")
+  );
+  const tabsStart = newTaskHome.indexOf('className="new-task-mode-tabs"');
+  const composerStart = newTaskHome.indexOf('className="new-task-composer"');
+  assert.ok(tabsStart > -1, "missing new-task mode tabs");
+  assert.ok(tabsStart < composerStart, "mode tabs should sit above the composer");
+  assert.match(newTaskHome, /workflow\.normalMode/);
+  assert.match(newTaskHome, /workflow\.mode/);
+
+  const toolbarStart = newTaskHome.indexOf('className="new-task-toolbar"');
+  const toolbarEnd = newTaskHome.indexOf("new-task-warn", toolbarStart);
+  const toolbar = newTaskHome.slice(toolbarStart, toolbarEnd);
+  assert.doesNotMatch(toolbar, /workflow\.mode/);
+});
+
 test("sidebar brand uses the dedicated sidebar logo asset", () => {
   const brandMarkSource = appSource.match(/function BrandMark\(\) \{[\s\S]*?\n\}/)?.[0] ?? "";
 

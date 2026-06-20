@@ -58,12 +58,13 @@ test("new-task page exposes workflow mode and plan preview", () => {
   assert.match(src, /onWorkflowMode=\{setWorkflowMode\}/);
   assert.match(src, /onGeneratePlan=\{\(\) => void handleGeneratePlan\(\)\}/);
   assert.match(src, /onCreateWorkflowConversation/);
+  assert.match(src, /new-task-mode-tabs/);
 });
 
 test("workflow i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
-  for (const key of ["mode", "run", "cancel", "summary", "progress", "gates", "risk"]) {
+  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk"]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }

@@ -245,7 +245,9 @@
     }
   },
   "workflow": {
+    "normalMode": "Normal mode",
     "mode": "Workflow mode",
+    "modeTabsAria": "Task mode",
     "modeHint": "Plan with multiple agents, then run as a workflow",
     "reviewLoop": "Review Loop",
     "generatePlan": "Generate plan",

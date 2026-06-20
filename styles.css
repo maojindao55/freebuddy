@@ -1496,7 +1496,7 @@ button {
 }
 
 .new-task-title {
-  margin: 0 0 40px;
+  margin: 0 0 18px;
   font-family: 'Outfit', var(--fb-font);
   font-size: 26px;
   font-weight: 400;
@@ -1504,6 +1504,46 @@ button {
   line-height: 1.3;
   text-align: center;
   color: var(--fb-text-primary);
+}
+
+.new-task-mode-tabs {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  gap: 4px;
+  margin: 0 auto 22px;
+  padding: 4px;
+  border: 1px solid var(--fb-border);
+  border-radius: 999px;
+  background: var(--fb-panel-soft);
+}
+
+.new-task-mode-tab {
+  height: 32px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--fb-text-secondary);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.new-task-mode-tab:hover {
+  color: var(--fb-text-primary);
+}
+
+.new-task-mode-tab.active {
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-bg);
+  box-shadow: var(--fb-shadow-sm);
+}
+
+.new-task-mode-tab:focus-visible {
+  outline: 2px solid rgba(14, 165, 233, 0.35);
+  outline-offset: 2px;
 }
 
 .new-task-composer {

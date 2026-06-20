@@ -75,6 +75,26 @@ const settings: {
     ipcRenderer.invoke("settings:set", { key, value })
 };
 
+const workflow = {
+  validate: (plan: unknown) => ipcRenderer.invoke("workflow:validate", plan),
+  previewReviewLoop: (input: unknown) =>
+    ipcRenderer.invoke("workflow:previewReviewLoop", input),
+  coordinatorPrompt: (input: unknown) =>
+    ipcRenderer.invoke("workflow:coordinatorPrompt", input),
+  createRun: (input: unknown) => ipcRenderer.invoke("workflow:createRun", input),
+  start: (runId: string) => ipcRenderer.invoke("workflow:start", runId),
+  pause: (runId: string) => ipcRenderer.invoke("workflow:pause", runId),
+  resume: (runId: string) => ipcRenderer.invoke("workflow:resume", runId),
+  stop: (runId: string) => ipcRenderer.invoke("workflow:stop", runId),
+  retryStep: (args: unknown) => ipcRenderer.invoke("workflow:retryStep", args),
+  approveGate: (args: unknown) =>
+    ipcRenderer.invoke("workflow:approveGate", args),
+  getRun: (runId: string) => ipcRenderer.invoke("workflow:getRun", runId),
+  getSteps: (runId: string) => ipcRenderer.invoke("workflow:getSteps", runId),
+  listRuns: (conversationId: string) =>
+    ipcRenderer.invoke("workflow:listRuns", conversationId)
+};
+
 contextBridge.exposeInMainWorld("freebuddy", {
   platform: process.platform,
   versions: {
@@ -83,6 +103,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
     node: process.versions.node
   },
   cli,
+  workflow,
   settings,
   window
 });

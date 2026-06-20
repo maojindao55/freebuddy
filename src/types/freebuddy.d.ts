@@ -21,6 +21,12 @@ import type {
   AppendMessageInput,
   UpdateMessageInput
 } from "@/services/cli/types";
+import type {
+  WorkflowPlan,
+  WorkflowRunRow,
+  WorkflowStepRow,
+  WorkflowValidationResult
+} from "@/services/workflows/types";
 
 export {};
 
@@ -98,6 +104,39 @@ declare global {
     setSetting(key: string, value: string): Promise<void>;
   }
 
+  interface FreebuddyWorkflow {
+    validate(plan: WorkflowPlan): Promise<WorkflowValidationResult>;
+    previewReviewLoop(input: {
+      goal: string;
+      cwd?: string;
+      targetPaths?: string[];
+    }): Promise<
+      | { ok: true; plan: WorkflowPlan }
+      | { ok: false; errors: string[] }
+    >;
+    coordinatorPrompt(input: {
+      goal: string;
+      cwd?: string;
+      targetPaths?: string[];
+    }): Promise<string>;
+    createRun(input: {
+      conversationId?: string;
+      plan: WorkflowPlan;
+    }): Promise<
+      | { ok: true; run: WorkflowRunRow }
+      | { ok: false; errors: string[] }
+    >;
+    start(runId: string): Promise<boolean>;
+    pause(runId: string): Promise<boolean>;
+    resume(runId: string): Promise<void>;
+    stop(runId: string): Promise<boolean>;
+    retryStep(args: { runId: string; stepRowId: string }): Promise<void>;
+    approveGate(args: { runId: string; phaseId: string }): Promise<boolean>;
+    getRun(runId: string): Promise<WorkflowRunRow | undefined>;
+    getSteps(runId: string): Promise<WorkflowStepRow[]>;
+    listRuns(conversationId: string): Promise<WorkflowRunRow[]>;
+  }
+
   interface FreebuddyApi {
     platform: string;
     versions: {
@@ -106,6 +145,7 @@ declare global {
       node?: string;
     };
     cli: FreebuddyCli;
+    workflow: FreebuddyWorkflow;
     settings: FreebuddySettings;
     window: FreebuddyWindow;
   }

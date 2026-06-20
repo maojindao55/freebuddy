@@ -274,6 +274,7 @@ export class WorkflowRuntime {
           run.maxLoops
         );
         if (decision === "loop") {
+          state.approvedPhases.clear();
           resetWorkflowStepsForLoop(runId, REVIEW_LOOP_PHASES);
           const reviewIdx = plan.phases.findIndex((p) => p.id === "review");
           updateWorkflowRun(runId, {

@@ -30,3 +30,8 @@ test("retry clears stale metadata with explicit null patches", () => {
   assert.match(runtimeSource, /startedAt: null/);
   assert.match(runtimeSource, /endedAt: null/);
 });
+
+test("review loop replay clears prior manual approvals before rerunning write steps", () => {
+  assert.match(runtimeSource, /approvedPhases\.clear\(\)/);
+  assert.match(runtimeSource, /resetWorkflowStepsForLoop\(runId, REVIEW_LOOP_PHASES\)/);
+});

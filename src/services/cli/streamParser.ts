@@ -30,6 +30,14 @@ export type CliStreamItem =
     }
   | { kind: "session"; sessionId: string; title?: string }
   | {
+      kind: "plan";
+      entries: {
+        content: string;
+        priority: "high" | "medium" | "low";
+        status: "pending" | "in_progress" | "completed";
+      }[];
+    }
+  | {
       kind: "usage";
       inputTokens?: number;
       outputTokens?: number;

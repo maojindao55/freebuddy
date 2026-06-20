@@ -31,6 +31,7 @@ import {
   type CliRunArgs,
   type Running
 } from "./runtimeShared.js";
+import { killProcessTree } from "./process-kill.js";
 
 function writeAcp(
   child: ChildProcessByStdio<Writable, Readable, Readable>,
@@ -121,7 +122,7 @@ export async function runAcpAgent({
         const still = running.get(args.sessionId);
         if (still) {
           try {
-            still.child.kill("SIGTERM");
+            killProcessTree(still.child, "term");
           } catch {
             /* noop */
           }

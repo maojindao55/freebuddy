@@ -3,6 +3,8 @@ import type { CLIMember } from "@/config/aiMembers";
 
 type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
+type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
+type PlanEntry = PlanItem["entries"][number];
 
 function toolResultKey(item: ToolResultItem) {
   return `${item.tool}\u0000${item.content.trim()}`;
@@ -44,13 +46,70 @@ export function dedupeCommands(commands: CommandItem[]): CommandItem[] {
   return out;
 }
 
+function planPriority(value: unknown): PlanEntry["priority"] {
+  return value === "high" || value === "low" ? value : "medium";
+}
+
+function planStatus(value: unknown): PlanEntry["status"] {
+  return value === "in_progress" || value === "completed"
+    ? value
+    : "pending";
+}
+
+function normalizePlanEntries(entries: unknown): PlanEntry[] {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry) => {
+      const item = entry as {
+        content?: unknown;
+        priority?: unknown;
+        status?: unknown;
+      };
+      return {
+        content: typeof item.content === "string" ? item.content.trim() : "",
+        priority: planPriority(item.priority),
+        status: planStatus(item.status)
+      };
+    })
+    .filter((entry) => entry.content.length > 0);
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function legacyTodoPlan(item: CliStreamItem): PlanItem | undefined {
+  if (item.kind === "tool-call") {
+    const input = item.input as { todos?: unknown } | undefined;
+    const entries = normalizePlanEntries(input?.todos);
+    return entries.length ? { kind: "plan", entries } : undefined;
+  }
+
+  if (item.kind === "tool-result") {
+    const raw = parseJsonObject(item.content);
+    const metadata = raw?.metadata as { todos?: unknown } | undefined;
+    const entries = normalizePlanEntries(metadata?.todos ?? raw?.todos);
+    return entries.length ? { kind: "plan", entries } : undefined;
+  }
+
+  return undefined;
+}
+
 export function appendItems(
   prev: CliStreamItem[],
   next: CliStreamItem[]
 ): CliStreamItem[] {
   if (!next.length) return prev;
   const out = [...prev];
-  for (const item of next) {
+  for (const rawItem of next) {
+    const item = legacyTodoPlan(rawItem) ?? rawItem;
     const last = out[out.length - 1];
     if (
       item.kind === "text" &&
@@ -90,6 +149,13 @@ export function appendItems(
       last.message === item.message
     ) {
       continue;
+    }
+    if (item.kind === "plan") {
+      const planIndex = out.findIndex((previous) => previous.kind === "plan");
+      if (planIndex >= 0) {
+        out[planIndex] = item;
+        continue;
+      }
     }
     if (
       item.kind === "command-output" &&

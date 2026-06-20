@@ -276,6 +276,141 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
   );
 });
 
+test("acpUpdateToItems maps ACP plan updates", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "plan",
+      entries: [
+        {
+          content: "Analyze the codebase",
+          priority: "high",
+          status: "completed"
+        },
+        {
+          content: "Implement the right-column plan card",
+          priority: "medium",
+          status: "in_progress"
+        },
+        {
+          content: "Verify the UI",
+          priority: "low",
+          status: "pending"
+        }
+      ]
+    }),
+    [
+      {
+        kind: "plan",
+        entries: [
+          {
+            content: "Analyze the codebase",
+            priority: "high",
+            status: "completed"
+          },
+          {
+            content: "Implement the right-column plan card",
+            priority: "medium",
+            status: "in_progress"
+          },
+          {
+            content: "Verify the UI",
+            priority: "low",
+            status: "pending"
+          }
+        ]
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps OpenCode todo tool calls as plan updates", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call",
+      toolCallId: "call_todos",
+      title: "7 todos",
+      kind: "other",
+      status: "pending",
+      rawInput: {
+        todos: [
+          {
+            content: "Explore project context",
+            status: "completed",
+            priority: "high"
+          },
+          {
+            content: "Ask clarifying questions",
+            status: "in_progress",
+            priority: "high"
+          },
+          {
+            content: "Write implementation plan",
+            status: "pending",
+            priority: "medium"
+          }
+        ]
+      }
+    }),
+    [
+      {
+        kind: "plan",
+        entries: [
+          {
+            content: "Explore project context",
+            status: "completed",
+            priority: "high"
+          },
+          {
+            content: "Ask clarifying questions",
+            status: "in_progress",
+            priority: "high"
+          },
+          {
+            content: "Write implementation plan",
+            status: "pending",
+            priority: "medium"
+          }
+        ]
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps OpenCode todo metadata updates as plan updates", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call_todowrite",
+      title: "todowrite",
+      kind: "other",
+      status: "completed",
+      rawOutput: {
+        metadata: {
+          todos: [
+            {
+              content: "Handoff execution",
+              status: "in_progress",
+              priority: "medium"
+            }
+          ]
+        }
+      }
+    }),
+    [
+      {
+        kind: "plan",
+        entries: [
+          {
+            content: "Handoff execution",
+            status: "in_progress",
+            priority: "medium"
+          }
+        ]
+      }
+    ]
+  );
+});
+
 test("acpUpdateToItems ignores ACP control updates that are not chat content", () => {
   assert.deepEqual(
     acpUpdateToItems({

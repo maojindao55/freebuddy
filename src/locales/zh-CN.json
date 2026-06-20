@@ -116,6 +116,18 @@
     "toolSession": "工具会话",
     "resumedContext": "已恢复上下文",
     "freshContext": "全新或已保存上下文",
+    "plan": "Agent 计划",
+    "planProgress": "{{done}}/{{total}} 完成",
+    "planStatus": {
+      "pending": "待处理",
+      "in_progress": "进行中",
+      "completed": "已完成"
+    },
+    "planPriority": {
+      "high": "高优先级",
+      "medium": "中优先级",
+      "low": "低优先级"
+    },
     "messageSnapshot": "消息快照",
     "persistedLocally": "已本地保存",
     "noHistory": "暂无历史",

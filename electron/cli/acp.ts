@@ -39,6 +39,14 @@ export type AcpStreamItem =
     }
   | { kind: "session"; sessionId: string; title?: string }
   | {
+      kind: "plan";
+      entries: {
+        content: string;
+        priority: "high" | "medium" | "low";
+        status: "pending" | "in_progress" | "completed";
+      }[];
+    }
+  | {
       kind: "usage";
       inputTokens?: number;
       outputTokens?: number;
@@ -51,6 +59,8 @@ export type AcpStreamItem =
   | { kind: "error"; message: string; details?: string[] }
   | { kind: "done"; exitCode?: number }
   | { kind: "raw"; content: string };
+
+type AcpPlanEntry = Extract<AcpStreamItem, { kind: "plan" }>["entries"][number];
 
 export function buildInitializeRequest(id: AcpRequestId): AcpMessage {
   return {
@@ -187,6 +197,41 @@ function num(update: any, key: string): number | undefined {
   return typeof v === "number" ? v : undefined;
 }
 
+function planPriority(value: unknown): "high" | "medium" | "low" {
+  return value === "high" || value === "low" ? value : "medium";
+}
+
+function planStatus(
+  value: unknown
+): "pending" | "in_progress" | "completed" {
+  return value === "in_progress" || value === "completed"
+    ? value
+    : "pending";
+}
+
+function planEntries(update: any): AcpPlanEntry[] {
+  if (!Array.isArray(update?.entries)) return [];
+  return normalizePlanEntries(update.entries);
+}
+
+function todoEntries(update: any): AcpPlanEntry[] {
+  const todos =
+    update?.rawInput?.todos ??
+    update?.rawOutput?.metadata?.todos ??
+    update?.rawOutput?.todos;
+  return Array.isArray(todos) ? normalizePlanEntries(todos) : [];
+}
+
+function normalizePlanEntries(entries: any[]): AcpPlanEntry[] {
+  return entries
+    .map((entry: any) => ({
+      content: typeof entry?.content === "string" ? entry.content.trim() : "",
+      priority: planPriority(entry?.priority),
+      status: planStatus(entry?.status)
+    }))
+    .filter((entry: AcpPlanEntry) => entry.content.length > 0);
+}
+
 export function acpUpdateToItems(
   update: any,
   fallbackSessionId?: string
@@ -212,7 +257,11 @@ export function acpUpdateToItems(
           append: true
         }
       ];
-    case "tool_call":
+    case "tool_call": {
+      const entries = todoEntries(update);
+      if (entries.length) {
+        return [{ kind: "plan", entries }];
+      }
       return [
         {
           kind: "tool-call",
@@ -221,7 +270,12 @@ export function acpUpdateToItems(
           input: update.rawInput ?? update.content
         }
       ];
+    }
     case "tool_call_update": {
+      const entries = todoEntries(update);
+      if (entries.length) {
+        return [{ kind: "plan", entries }];
+      }
       if (update.kind === "execute" && update.rawInput?.command) {
         return [
           {
@@ -279,6 +333,13 @@ export function acpUpdateToItems(
                 costCurrency: typeof update.cost.currency === "string" ? update.cost.currency : undefined
               }
             : {})
+        }
+      ];
+    case "plan":
+      return [
+        {
+          kind: "plan",
+          entries: planEntries(update)
         }
       ];
     case "available_commands_update":

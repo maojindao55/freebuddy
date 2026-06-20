@@ -76,6 +76,15 @@ async function injectShellPath() {
 
 let mainWindow: BrowserWindow | null = null;
 
+function windowChromeOptions() {
+  return process.platform === "darwin"
+    ? {
+        titleBarStyle: "hiddenInset" as const,
+        trafficLightPosition: { x: 14, y: 14 }
+      }
+    : {};
+}
+
 function createWindow() {
   const appIcon = loadAppIcon();
 
@@ -86,8 +95,7 @@ function createWindow() {
     minHeight: 640,
     title: APP_NAME,
     ...(appIcon ? { icon: appIcon } : {}),
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 14, y: 14 },
+    ...windowChromeOptions(),
     backgroundColor: "#0b1329",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

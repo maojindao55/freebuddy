@@ -8,6 +8,7 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
+import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
@@ -113,6 +114,7 @@ export function WorkspacePanel({
 
   return (
     <aside className="details-panel workspace-panel" aria-label={t("workspace.panelAria")}>
+      <WorkflowRunPanel />
       <section className="side-card active-agent-card">
         <div className="side-card-header">
           <span>{t("workspace.activeAgent")}</span>

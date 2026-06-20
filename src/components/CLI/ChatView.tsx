@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useWorkflowStore } from "@/store/workflowStore";
 import { cliClient } from "@/services/cli/client";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
 import { displayAgentName } from "@/config/agentDisplay";
@@ -15,6 +16,7 @@ import {
   validateAttachmentCandidate
 } from "@/utils/chatAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { WorkflowPlanCard } from "../Workflows/WorkflowPlanCard";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -140,6 +142,12 @@ export function ChatView() {
     [activeId, messagesMap]
   );
   const live = activeId ? liveMap[activeId] : undefined;
+
+  const [workflowMode, setWorkflowMode] = useState(false);
+  const pendingPlan = useWorkflowStore((s) => s.pendingPlan);
+  const pendingErrors = useWorkflowStore((s) => s.pendingErrors);
+  const previewReviewLoop = useWorkflowStore((s) => s.previewReviewLoop);
+  const activeConversationId = useConversationStore((s) => s.activeId);
 
   const resolve = useCliExecutorStore((s) => s.resolve);
   const check = useCliExecutorStore((s) => s.check);
@@ -399,6 +407,15 @@ export function ChatView() {
     }
   };
 
+  const handleGeneratePlan = async () => {
+    const prompt = draft.trim() || newTaskDraft.trim();
+    if (!prompt) return;
+    await previewReviewLoop({
+      goal: prompt,
+      cwd: conv?.cwd || newTaskCwd || undefined
+    });
+  };
+
   if (!conv) {
     return (
       <NewTaskHome
@@ -450,6 +467,20 @@ export function ChatView() {
       </div>
 
       {preflightMsg && <div className="preflight-warn">{preflightMsg}</div>}
+
+      {(pendingPlan || pendingErrors.length > 0) && (
+        <div className="workflow-plan-preview">
+          {pendingErrors.length > 0 && (
+            <div className="preflight-warn">{t("workflow.invalidPlan")}: {pendingErrors.join("; ")}</div>
+          )}
+          {pendingPlan && (
+            <WorkflowPlanCard
+              plan={pendingPlan}
+              conversationId={activeConversationId ?? undefined}
+            />
+          )}
+        </div>
+      )}
 
       <div className="chat-composer">
         <div className="composer-context-row">
@@ -509,6 +540,16 @@ export function ChatView() {
                 <option value="ask">{t("chat.approvalAsk")}</option>
               </select>
             </label>
+            <button
+              className={`composer-tool-chip${workflowMode ? " active" : ""}`}
+              type="button"
+              title={t("workflow.modeHint")}
+              aria-pressed={workflowMode}
+              onClick={() => setWorkflowMode((v) => !v)}
+              disabled={sending}
+            >
+              <span>{t("workflow.mode")}</span>
+            </button>
           </div>
           <div className="composer-tail">
             <span className="composer-hint">{t("chat.enterHint")}</span>
@@ -530,7 +571,7 @@ export function ChatView() {
                 disabled={!(draft.trim() || pendingAttachments.length > 0)}
                 title={t("chat.send")}
                 aria-label={t("chat.sendAria")}
-                onClick={onSend}
+                onClick={workflowMode ? () => void handleGeneratePlan() : onSend}
               >
                 ↑
               </button>

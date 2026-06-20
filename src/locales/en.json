@@ -116,6 +116,18 @@
     "toolSession": "Tool session",
     "resumedContext": "resumed context",
     "freshContext": "fresh or saved context",
+    "plan": "Agent Plan",
+    "planProgress": "{{done}}/{{total}} done",
+    "planStatus": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "completed": "Completed"
+    },
+    "planPriority": {
+      "high": "High priority",
+      "medium": "Medium priority",
+      "low": "Low priority"
+    },
     "messageSnapshot": "Message snapshot",
     "persistedLocally": "persisted locally",
     "noHistory": "no history yet",

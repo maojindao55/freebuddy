@@ -3,9 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { displayAgentName } from "@/config/agentDisplay";
+import type { ConversationMessage } from "@/services/cli/types";
+import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
+
+type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
+type PlanEntry = PlanItem["entries"][number];
 
 export function WorkspacePanel({
   runningCount
@@ -87,6 +92,11 @@ export function WorkspacePanel({
     }
     return undefined;
   }, [messages]);
+
+  const latestPlan = useMemo(
+    () => latestPlanFromMessages(messages),
+    [messages]
+  );
 
   const durationMs = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -214,34 +224,88 @@ export function WorkspacePanel({
         </dl>
       </section>
 
-      <section className="side-card run-queue-card">
-        <div className="side-card-header">
-          <span>{t("workspace.executionQueue")}</span>
-          <strong>{t(`status.${status}`)}</strong>
-        </div>
-        <article className="queue-row">
-          <span className={`queue-icon ${live ? "running" : ""}`} />
-          <div>
-            <strong>{live ? t("workspace.cliStream") : t("workspace.waitingPrompt")}</strong>
-            <p>{live?.pid ? t("workspace.pid", { pid: live.pid }) : t("workspace.sendToStart")}</p>
+      {latestPlan && (
+        <section className="side-card plan-card">
+          <div className="side-card-header">
+            <span>{t("workspace.plan")}</span>
+            <strong>
+              {t("workspace.planProgress", {
+                done: latestPlan.entries.filter((entry) => entry.status === "completed").length,
+                total: latestPlan.entries.length
+              })}
+            </strong>
           </div>
-        </article>
-        <article className="queue-row">
-          <span className="queue-icon" />
-          <div>
-            <strong>{t("workspace.toolSession")}</strong>
-            <p>{live?.resumedFromSessionId ? t("workspace.resumedContext") : t("workspace.freshContext")}</p>
-          </div>
-        </article>
-        <article className="queue-row">
-          <span className="queue-icon" />
-          <div>
-            <strong>{t("workspace.messageSnapshot")}</strong>
-            <p>{messages.length ? t("workspace.persistedLocally") : t("workspace.noHistory")}</p>
-          </div>
-        </article>
-      </section>
+          <ol className="plan-list">
+            {latestPlan.entries.map((entry, index) => (
+              <li
+                key={`${entry.content}-${index}`}
+                className={`plan-entry ${entry.status} priority-${entry.priority}`}
+              >
+                <span className="plan-status-dot" aria-hidden="true" />
+                <div>
+                  <p>{entry.content}</p>
+                  <small>
+                    {t(`workspace.planStatus.${entry.status}`)} ·{" "}
+                    {t(`workspace.planPriority.${entry.priority}`)}
+                  </small>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </aside>
+  );
+}
+
+function latestPlanFromMessages(
+  messages: ConversationMessage[]
+): PlanItem | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role !== "assistant") continue;
+    const items = parseMessageItems(message.content);
+    for (let j = items.length - 1; j >= 0; j -= 1) {
+      const item = items[j];
+      if (isPlanItem(item)) return item;
+    }
+  }
+  return undefined;
+}
+
+function parseMessageItems(content: string): unknown[] {
+  try {
+    const items = JSON.parse(content);
+    return Array.isArray(items) ? items : [];
+  } catch {
+    return [];
+  }
+}
+
+function isPlanItem(item: unknown): item is PlanItem {
+  if (!item || typeof item !== "object") return false;
+  const candidate = item as { kind?: unknown; entries?: unknown };
+  if (candidate.kind !== "plan" || !Array.isArray(candidate.entries)) {
+    return false;
+  }
+  return candidate.entries.every(isPlanEntry);
+}
+
+function isPlanEntry(entry: unknown): entry is PlanEntry {
+  if (!entry || typeof entry !== "object") return false;
+  const candidate = entry as {
+    content?: unknown;
+    priority?: unknown;
+    status?: unknown;
+  };
+  return (
+    typeof candidate.content === "string" &&
+    (candidate.priority === "high" ||
+      candidate.priority === "medium" ||
+      candidate.priority === "low") &&
+    (candidate.status === "pending" ||
+      candidate.status === "in_progress" ||
+      candidate.status === "completed")
   );
 }
 

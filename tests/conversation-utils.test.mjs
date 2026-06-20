@@ -100,6 +100,74 @@ test("appendItems deduplicates repeated command cards within one tool call", asy
   ]);
 });
 
+test("appendItems replaces the current agent plan with the latest update", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "plan",
+        entries: [
+          { content: "Analyze", priority: "high", status: "in_progress" },
+          { content: "Implement", priority: "medium", status: "pending" }
+        ]
+      },
+      { kind: "text", role: "assistant", content: "Working..." }
+    ],
+    [
+      {
+        kind: "plan",
+        entries: [
+          { content: "Analyze", priority: "high", status: "completed" },
+          { content: "Implement", priority: "medium", status: "in_progress" }
+        ]
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "plan",
+      entries: [
+        { content: "Analyze", priority: "high", status: "completed" },
+        { content: "Implement", priority: "medium", status: "in_progress" }
+      ]
+    },
+    { kind: "text", role: "assistant", content: "Working..." }
+  ]);
+});
+
+test("appendItems converts legacy todo tool calls into the current agent plan", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [],
+    [
+      {
+        kind: "tool-call",
+        id: "call_todos",
+        tool: "7 todos",
+        input: {
+          todos: [
+            { content: "Explore", priority: "high", status: "completed" },
+            { content: "Implement", priority: "medium", status: "in_progress" }
+          ]
+        }
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "plan",
+      entries: [
+        { content: "Explore", priority: "high", status: "completed" },
+        { content: "Implement", priority: "medium", status: "in_progress" }
+      ]
+    }
+  ]);
+});
+
 test("dedupeCommands collapses renderer duplicates", async () => {
   const { dedupeCommands } = await loadConversationUtils();
   const command = "date '+%Y-%m-%d %H:%M:%S %Z'";

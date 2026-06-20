@@ -2967,8 +2967,13 @@ button.ghost:disabled {
 }
 
 .workspace-panel {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
   gap: 16px;
   padding: 16px;
+  overflow: hidden;
   background: var(--fb-home-bg-primary);
   border-left: 1px solid var(--fb-border);
 }
@@ -3121,44 +3126,93 @@ button.ghost:disabled {
   color: var(--fb-text-tertiary);
 }
 
-.run-queue-card {
+.plan-card {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.queue-row {
-  display: flex;
-  min-height: 52px;
-  align-items: center;
-  gap: 12px;
-  margin: 0 14px;
-  padding: 8px 0;
+.plan-list {
+  display: grid;
+  gap: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0 10px 12px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.plan-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.plan-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.plan-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.plan-entry {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0;
   border-top: 1px solid var(--fb-border);
 }
 
-.queue-row div {
-  min-width: 0;
+.plan-entry:first-child {
+  border-top: 0;
 }
 
-.queue-row strong,
-.queue-row p {
-  display: block;
-  overflow: hidden;
+.plan-status-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--fb-text-tertiary);
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+}
+
+.plan-entry.in_progress .plan-status-dot {
+  background: var(--fb-brand);
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+
+.plan-entry.completed .plan-status-dot {
+  background: var(--fb-brand);
+  box-shadow: 0 0 0 3px rgba(47, 158, 68, 0.12);
+}
+
+.plan-entry p {
   margin: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-row strong {
   color: var(--fb-text-primary);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
-.queue-row p {
+.plan-entry.completed p {
+  color: var(--fb-text-secondary);
+}
+
+.plan-entry small {
+  display: block;
+  margin-top: 3px;
   color: var(--fb-text-tertiary);
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.plan-entry.priority-high small {
+  color: var(--fb-warning);
 }
 
 @keyframes pulse-glow {

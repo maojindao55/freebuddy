@@ -216,18 +216,28 @@ export class WorkflowRuntime {
         if (state.stopped) return;
         const phase = plan.phases[phaseIndex];
 
-        // Run this phase's steps to completion.
-        await this.runPhase(runId, run, plan, phase, state);
+        // Run this phase's steps to completion. Returns false if a step failed
+        // or is blocked, in which case we halt the run for a user decision.
+        const completed = await this.runPhase(runId, run, plan, phase, state);
         if (state.stopped) return;
+        if (!completed) {
+          updateWorkflowRun(runId, { status: "blocked" });
+          return;
+        }
 
-        // Evaluate the phase gate before advancing.
+        // Evaluate the phase gate before advancing. For a manual gate we keep
+        // the run's ActiveRun alive (spin-wait) so approveGate() can record
+        // approval and we can observe it here.
         const gate = phaseGateSatisfied(phase.gate, {
           approvedPhases: state.approvedPhases,
           phaseId: phase.id
         });
         if (gate.pause) {
           updateWorkflowRun(runId, { status: "paused" });
-          return; // resume() / approveGate() will re-drive
+          while (!state.approvedPhases.has(phase.id) && !state.stopped) {
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          if (state.stopped) return;
         }
 
         phaseIndex += 1;
@@ -271,41 +281,33 @@ export class WorkflowRuntime {
     plan: WorkflowPlan,
     phase: WorkflowPhase,
     state: ActiveRun
-  ): Promise<void> {
-    // Pump until every step in this phase is terminal.
+  ): Promise<boolean> {
+    // Returns true when every step in this phase reached a terminal-ok status
+    // (done|skipped). Returns false if the phase cannot make progress because a
+    // step failed or is blocked by an unsatisfiable dependency.
     while (true) {
-      if (state.stopped) return;
+      if (state.stopped) return false;
       // Respect user-initiated pause: hold without starting new steps.
       while (state.paused && !state.stopped) {
         await new Promise((r) => setTimeout(r, 200));
       }
-      if (state.stopped) return;
+      if (state.stopped) return false;
+
       const steps = getWorkflowSteps(runId);
       const states = steps.map((s) => ({ stepId: s.stepId, status: s.status }));
       const writeBusy = steps.some(
         (s) => s.status === "running" && s.mode === "write"
       );
-      const runnable = selectRunnableSteps(
-        plan,
-        states,
-        { writeBusy }
-      ).filter((r) => r.phaseId === phase.id);
+      const runnable = selectRunnableSteps(plan, states, { writeBusy }).filter(
+        (r) => r.phaseId === phase.id
+      );
 
       if (runnable.length === 0) {
-        // Either phase is complete, or blocked by a failed step.
         const phaseSteps = steps.filter((s) => s.phaseId === phase.id);
-        const allTerminal = phaseSteps.every(
+        const allTerminalOk = phaseSteps.every(
           (s) => s.status === "done" || s.status === "skipped"
         );
-        if (allTerminal) return;
-        const failed = phaseSteps.find((s) => s.status === "failed");
-        if (failed) {
-          updateWorkflowRun(runId, { status: "blocked" });
-          return;
-        }
-        // Otherwise waiting on in-flight steps; loop will poll again.
-        await this.drainInFlight(state);
-        continue;
+        return allTerminalOk; // true = phase complete; false = blocked/failed
       }
 
       await Promise.all(
@@ -375,14 +377,6 @@ export class WorkflowRuntime {
       resultJson: JSON.stringify({ items: collected, exitCode, error: errored }),
       endedAt: new Date().toISOString()
     });
-  }
-
-  private async drainInFlight(state: ActiveRun): Promise<void> {
-    // Yield to let in-flight executor.run promises progress.
-    for (let i = 0; i < 5; i++) {
-      if (state.stopped) return;
-      await new Promise((r) => setTimeout(r, 50));
-    }
   }
 
   private finalize(

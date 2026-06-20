@@ -61,6 +61,7 @@ they do it. FreeBuddy wraps that workflow in a calm desktop interface:
 | ClaudeCode | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` |
 | OpenCode | `opencode` | `npm install -g opencode-ai` |
 | Cursor | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
+| Kimi | `kimi` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
 
 Open **Settings -> Coding Agents** to check installed runtimes, run the
 recommended install command, customize a binary path, set a model, pass extra

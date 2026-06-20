@@ -6,6 +6,7 @@ export type CLIAdapterId =
   | "opencode"
   | "opencode-acp"
   | "cursor-agent-acp"
+  | "kimi-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -123,6 +124,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "curl https://cursor.com/install -fsS | bash",
     docsUrl: "https://docs.cursor.com/en/cli/overview",
+    protocol: "acp"
+  },
+  {
+    id: "kimi-acp",
+    label: "Kimi",
+    defaultBinary: "kimi",
+    streamMode: "raw",
+    commandGroup: "kimi",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+    docsUrl: "https://moonshotai.github.io/kimi-code/en/guides/ides",
     protocol: "acp"
   }
 ];
@@ -291,6 +305,18 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
         bin,
         args,
         ...(model ? { env: { CURSOR_MODEL: model } } : {}),
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "kimi-acp": {
+      const { model, args: acpArgs } = splitModelArg(extra);
+      const args: string[] = ["acp"];
+      args.push(...acpArgs);
+      return {
+        bin,
+        args,
+        ...(model ? { env: { KIMI_MODEL_NAME: model } } : {}),
         promptViaStdin: false,
         protocol: "acp"
       };

@@ -58,7 +58,8 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "codex-acp", label: "Codex", protocol: "acp" },
       { id: "claude-agent-acp", label: "ClaudeCode", protocol: "acp" },
       { id: "opencode-acp", label: "OpenCode", protocol: "acp" },
-      { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" }
+      { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" },
+      { id: "kimi-acp", label: "Kimi", protocol: "acp" }
     ]
   );
 });
@@ -145,6 +146,34 @@ test("buildCommand applies Cursor ACP model through CURSOR_MODEL env", () => {
   assert.deepEqual(built.env, { CURSOR_MODEL: "gpt-5" });
 });
 
+test("buildCommand starts Kimi through its ACP server", () => {
+  const built = buildCommand({ adapter: "kimi-acp", prompt: "hello" });
+
+  assert.equal(built.bin, "kimi");
+  assert.deepEqual(built.args, ["acp"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand applies Kimi ACP model through KIMI_MODEL_NAME env", () => {
+  const built = buildCommand({
+    adapter: "kimi-acp",
+    prompt: "hello",
+    extraArgs: ["-m", "kimi-k2", "--yolo"]
+  });
+
+  assert.deepEqual(built.args, ["acp", "--yolo"]);
+  assert.deepEqual(built.env, { KIMI_MODEL_NAME: "kimi-k2" });
+
+  const withEquals = buildCommand({
+    adapter: "kimi-acp",
+    prompt: "hello",
+    extraArgs: ["--model=moonshot-v1-128k"]
+  });
+  assert.deepEqual(withEquals.args, ["acp"]);
+  assert.deepEqual(withEquals.env, { KIMI_MODEL_NAME: "moonshot-v1-128k" });
+});
+
 test("buildInitializeRequest advertises conservative client capabilities", () => {
   assert.deepEqual(buildInitializeRequest(7), {
     jsonrpc: "2.0",
@@ -152,7 +181,9 @@ test("buildInitializeRequest advertises conservative client capabilities", () =>
     method: "initialize",
     params: {
       protocolVersion: 1,
-      clientCapabilities: {},
+      clientCapabilities: {
+        auth: { terminal: true }
+      },
       clientInfo: {
         name: "freebuddy",
         title: "FreeBuddy",

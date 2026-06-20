@@ -147,6 +147,7 @@ export function ChatView() {
   const pendingPlan = useWorkflowStore((s) => s.pendingPlan);
   const pendingErrors = useWorkflowStore((s) => s.pendingErrors);
   const previewReviewLoop = useWorkflowStore((s) => s.previewReviewLoop);
+  const clearPendingPlan = useWorkflowStore((s) => s.clearPending);
   const activeConversationId = useConversationStore((s) => s.activeId);
 
   const resolve = useCliExecutorStore((s) => s.resolve);
@@ -229,6 +230,10 @@ export function ChatView() {
   useEffect(() => {
     isNearBottomRef.current = true;
   }, [activeId]);
+
+  useEffect(() => {
+    clearPendingPlan();
+  }, [activeConversationId, clearPendingPlan]);
 
   useEffect(() => {
     const resolved = conv?.approvalMode ?? member?.cli.approvalMode;
@@ -410,10 +415,14 @@ export function ChatView() {
   const handleGeneratePlan = async () => {
     const prompt = draft.trim() || newTaskDraft.trim();
     if (!prompt) return;
-    await previewReviewLoop({
-      goal: prompt,
-      cwd: conv?.cwd || newTaskCwd || undefined
-    });
+    try {
+      await previewReviewLoop({
+        goal: prompt,
+        cwd: conv?.cwd || newTaskCwd || undefined
+      });
+    } catch (e) {
+      setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
+    }
   };
 
   if (!conv) {

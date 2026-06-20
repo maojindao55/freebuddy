@@ -13,7 +13,6 @@ interface State {
   pendingErrors: string[];
   activeRun: WorkflowRunRow | null;
   steps: WorkflowStepRow[];
-  loadedConversations: Set<string>;
 
   loadForConversation(conversationId: string): Promise<void>;
   previewReviewLoop(input: {
@@ -40,7 +39,6 @@ export const useWorkflowStore = create<State>((set, get) => ({
   pendingErrors: [],
   activeRun: null,
   steps: [],
-  loadedConversations: new Set(),
 
   async loadForConversation(conversationId) {
     if (!workflowClient.isAvailable()) return;
@@ -52,14 +50,12 @@ export const useWorkflowStore = create<State>((set, get) => ({
       const steps = await workflowClient.getSteps(latestRunning.id);
       set({
         activeRun: latestRunning,
-        steps,
-        loadedConversations: new Set([conversationId])
+        steps
       });
     } else {
       set({
         activeRun: null,
-        steps: [],
-        loadedConversations: new Set([conversationId])
+        steps: []
       });
     }
   },

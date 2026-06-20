@@ -6,6 +6,7 @@ import { displayAgentName } from "@/config/agentDisplay";
 import type { ConversationMessage } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
+import { useWorkflowStore } from "@/store/workflowStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
@@ -25,6 +26,12 @@ export function WorkspacePanel({
   const liveMap = useConversationStore((s) => s.live);
   const [copiedSession, setCopiedSession] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
+
+  useEffect(() => {
+    if (!activeId) return;
+    void loadWorkflowForConversation(activeId);
+  }, [activeId, loadWorkflowForConversation]);
 
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);

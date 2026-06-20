@@ -257,7 +257,7 @@ export class WorkflowRuntime {
           run.maxLoops
         );
         if (decision === "loop") {
-          resetWorkflowStepsForLoop(runId, REVIEW_LOOP_PHASES);
+          resetWorkflowStepsForLoop(runId, [...REVIEW_LOOP_PHASES, "loop_or_finish"]);
           const reviewIdx = plan.phases.findIndex((p) => p.id === "review");
           updateWorkflowRun(runId, {
             status: "running",

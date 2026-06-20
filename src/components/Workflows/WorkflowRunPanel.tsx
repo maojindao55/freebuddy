@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { WorkflowStepRow } from "@/services/workflows/types";
+import { pendingManualGatePhaseId } from "@/services/workflows/planning";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { WorkflowPhaseList } from "./WorkflowPhaseList";
 import { WorkflowStepDetails } from "./WorkflowStepDetails";
@@ -50,7 +51,12 @@ export function WorkflowRunPanel() {
   }
 
   const selected = steps.find((s) => s.id === selectedId);
-  const needsApproval = activeRun.status === "paused";
+  const gatingPhaseId = plan
+    ? pendingManualGatePhaseId(
+        plan.phases,
+        steps.map((s) => ({ stepId: s.stepId, status: s.status }))
+      )
+    : undefined;
 
   return (
     <>
@@ -95,11 +101,11 @@ export function WorkflowRunPanel() {
           step={selected}
           onRetry={(step) => void retryStep(activeRun.id, step.id)}
         />
-        {needsApproval && (
+        {gatingPhaseId && (
           <button
             type="button"
             className="primary"
-            onClick={() => void approveGate(activeRun.id, currentPhaseId(plan.phases, steps))}
+            onClick={() => void approveGate(activeRun.id, gatingPhaseId)}
           >
             {t("workflow.approveGate")}
           </button>
@@ -109,12 +115,4 @@ export function WorkflowRunPanel() {
       {!isLive && <ReviewLoopSummary run={activeRun} />}
     </>
   );
-}
-
-function currentPhaseId(phases: { id: string }[], steps: WorkflowStepRow[]): string {
-  const active = steps.find(
-    (s) => s.status === "running" || s.status === "pending"
-  );
-  if (active) return active.phaseId;
-  return phases[phases.length - 1]?.id ?? "";
 }

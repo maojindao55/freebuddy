@@ -99,6 +99,24 @@ test("all_done gate always passes", () => {
   assert.equal(r.pass, true);
 });
 
+test("review_required gate passes when reviewer step is done", () => {
+  const r = phaseGateSatisfied(
+    { type: "review_required", reviewerStepId: "rev" },
+    { approvedPhases: new Set(), phaseId: "p1", reviewerStepStatus: "done" }
+  );
+  assert.equal(r.pass, true);
+  assert.equal(r.pause, false);
+});
+
+test("review_required gate pauses when reviewer step is not done", () => {
+  const r = phaseGateSatisfied(
+    { type: "review_required", reviewerStepId: "rev" },
+    { approvedPhases: new Set(), phaseId: "p1", reviewerStepStatus: "running" }
+  );
+  assert.equal(r.pass, false);
+  assert.equal(r.pause, true);
+});
+
 test("decideReviewLoop finishes when no unresolved issues", () => {
   assert.equal(decideReviewLoop("done", false, 0, 3), "finish");
 });

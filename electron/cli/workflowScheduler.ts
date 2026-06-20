@@ -48,7 +48,7 @@ export function selectRunnableSteps(
     if (phaseFinished) continue; // move to next phase
 
     const runningInPhase = statuses.filter((st) => st === "running").length;
-    let slots = Math.max(0, (phase.parallelism || 1) - runningInPhase);
+    let slots = Math.max(0, (phase.parallelism ?? 1) - runningInPhase);
 
     for (const step of phase.steps) {
       if (slots <= 0) break;

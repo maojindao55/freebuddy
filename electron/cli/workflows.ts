@@ -26,6 +26,25 @@ function rowToRun(r: any): WorkflowRunRow {
 }
 
 function rowToStep(r: any): WorkflowStepRow {
+  let dependsOn: string[] | undefined;
+  if (r.depends_on) {
+    try {
+      const parsed = JSON.parse(r.depends_on);
+      if (Array.isArray(parsed)) dependsOn = parsed;
+    } catch {
+      dependsOn = undefined;
+    }
+  }
+  let targetPaths: string[] | undefined;
+  if (r.target_paths) {
+    try {
+      const parsed = JSON.parse(r.target_paths);
+      if (Array.isArray(parsed)) targetPaths = parsed;
+    } catch {
+      targetPaths = undefined;
+    }
+  }
+
   return {
     id: r.id,
     workflowRunId: r.workflow_run_id,
@@ -38,10 +57,8 @@ function rowToStep(r: any): WorkflowStepRow {
     mode: r.mode,
     status: r.status as WorkflowStepStatus,
     prompt: r.prompt,
-    dependsOn: r.depends_on ? (JSON.parse(r.depends_on) as string[]) : undefined,
-    targetPaths: r.target_paths
-      ? (JSON.parse(r.target_paths) as string[])
-      : undefined,
+    dependsOn,
+    targetPaths,
     summary: r.summary ?? undefined,
     resultJson: r.result_json ?? undefined,
     cliTaskId: r.cli_task_id ?? undefined,

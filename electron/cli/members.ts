@@ -36,5 +36,11 @@ export const builtinCliMembers: CLIMember[] = [
     name: "Cursor",
     enabled: true,
     cli: { adapter: "cursor-agent-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-kimi-acp",
+    name: "Kimi",
+    enabled: true,
+    cli: { adapter: "kimi-acp", approvalMode: "auto", showStderr: true }
   }
 ];

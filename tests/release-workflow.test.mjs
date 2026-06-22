@@ -30,14 +30,17 @@ test("electron-builder config packages FreeBuddy for desktop platforms", () => {
   assert.match(builderConfig, /extraResources:[\s\S]*from:\s+assets\/app-icon\.png[\s\S]*to:\s+app-icon\.png/m);
 });
 
-test("release workflow creates renamed assets for macOS and Windows", () => {
+test("release workflow publishes electron-builder assets with update metadata", () => {
   assert.match(workflow, /name:\s+Release/);
   assert.match(workflow, /tags:\s+\['v\*'\]/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.dmg/);
-  assert.match(workflow, /FreeBuddy_macOS-Intel\.dmg/);
-  assert.match(workflow, /FreeBuddy_Windows_x64\.exe/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
-  assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);
-  assert.match(workflow, /gh release upload/);
+  // Native publish so latest.yml / latest-mac.yml are uploaded for auto-update.
+  assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish always/);
+  assert.match(workflow, /GH_TOKEN:\s+\$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+  // macOS builds both arches in one job so latest-mac.yml lists them together.
+  assert.match(workflow, /builder_args:\s+--mac --arm64 --x64/);
+  assert.match(workflow, /builder_args:\s+--win --x64/);
+  assert.match(workflow, /--draft=false/);
+  assert.match(workflow, /--latest/);
 });

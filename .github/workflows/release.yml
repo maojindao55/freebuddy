@@ -23,11 +23,12 @@ jobs:
               --draft \
               --notes "## 下载安装包
 
-          | 平台 | 文件 | 说明 |
-          |------|------|------|
-          | macOS Apple Silicon | \`FreeBuddy_macOS-Apple-Silicon.dmg\` | M 系列芯片 Mac |
-          | macOS Intel | \`FreeBuddy_macOS-Intel.dmg\` | Intel 芯片 Mac |
-          | Windows | \`FreeBuddy_Windows_x64.exe\` | Windows 10/11 64 位 |
+          在下方 Assets 中选择对应平台的安装包：
+          - macOS (Apple Silicon)：\`*-mac-arm64.dmg\`
+          - macOS (Intel)：\`*-mac-x64.dmg\`
+          - Windows：\`*-win-x64.exe\`
+
+          应用的「检查更新」会自动从本 Release 拉取最新版本。
 
           ## macOS 安装提示
           如果提示无法打开，请在终端执行：
@@ -46,17 +47,9 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            builder_args: --mac --arm64
-            assets: |
-              FreeBuddy_macOS-Apple-Silicon.dmg|*.dmg
-          - platform: macos-latest
-            builder_args: --mac --x64
-            assets: |
-              FreeBuddy_macOS-Intel.dmg|*.dmg
+            builder_args: --mac --arm64 --x64
           - platform: windows-latest
             builder_args: --win --x64
-            assets: |
-              FreeBuddy_Windows_x64.exe|*.exe
 
     runs-on: ${{ matrix.platform }}
 
@@ -76,60 +69,12 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build Electron app
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm run build
-          npx electron-builder ${{ matrix.builder_args }} --publish never
-
-      - name: Upload renamed assets (Unix)
-        if: matrix.platform != 'windows-latest'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          while IFS='|' read -r asset_name find_pattern; do
-            if [ -z "$asset_name" ]; then
-              continue
-            fi
-            FILE=$(find release -name "$find_pattern" -type f | head -1)
-            if [ -z "$FILE" ]; then
-              echo "No artifact matching $find_pattern found"
-              find release -type f || true
-              exit 1
-            fi
-            cp "$FILE" "$asset_name"
-            gh release upload "${{ github.ref_name }}" "$asset_name" \
-              --repo "${{ github.repository }}" --clobber
-          done <<'ASSETS'
-          ${{ matrix.assets }}
-          ASSETS
-
-      - name: Upload renamed assets (Windows)
-        if: matrix.platform == 'windows-latest'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: |
-          $assets = @"
-          ${{ matrix.assets }}
-          "@ -split "`n"
-          foreach ($asset in $assets) {
-            if ([string]::IsNullOrWhiteSpace($asset)) {
-              continue
-            }
-            $parts = $asset.Trim().Split("|")
-            $assetName = $parts[0]
-            $findPattern = $parts[1]
-            $file = Get-ChildItem -Path release -Recurse -Filter $findPattern | Select-Object -First 1
-            if (-not $file) {
-              Write-Error "No artifact matching $findPattern found"
-              Get-ChildItem -Path release -Recurse -File
-              exit 1
-            }
-            Copy-Item $file.FullName $assetName
-            gh release upload "${{ github.ref_name }}" $assetName `
-              --repo "${{ github.repository }}" --clobber
-          }
+          npx electron-builder ${{ matrix.builder_args }} --publish always
 
   publish-release:
     needs: build

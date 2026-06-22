@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AboutTab } from "./AboutTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { GeneralTab } from "./GeneralTab";
 import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
 
-type SettingsTab = "general" | "cli" | "workflowTeams";
+type SettingsTab = "general" | "cli" | "workflowTeams" | "about";
 
 const TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
+  { key: "about", labelKey: "settings.tabs.about" }
 ];
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -41,6 +43,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             {activeTab === "general" && <GeneralTab />}
             {activeTab === "cli" && <CLIAdaptersTab />}
             {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
+            {activeTab === "about" && <AboutTab />}
           </div>
         </div>
       </div>

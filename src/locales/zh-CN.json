@@ -214,7 +214,8 @@
     "tabs": {
       "general": "通用",
       "cli": "CLI Agent",
-      "workflowTeams": "工作流团队"
+      "workflowTeams": "工作流团队",
+      "about": "关于"
     },
     "cli": {
       "title": "Cli Agents",
@@ -360,5 +361,35 @@
     "graphViewer": "图查看器",
     "startNodes": "起始节点",
     "finalNodes": "结束节点"
+  },
+  "updater": {
+    "appTitle": "应用",
+    "updateTitle": "更新",
+    "linksTitle": "链接",
+    "check": "检查更新",
+    "downloadNow": "立即下载",
+    "installNow": "安装并重启",
+    "releaseNotes": "更新日志",
+    "autoCheckHint": "FreeBuddy 会在启动时自动检查更新，并在后台下载。",
+    "unavailable": "需要在桌面端构建中才能检查更新。",
+    "releasesLink": "GitHub 发布页",
+    "platform": {
+      "win32": "Windows",
+      "darwin": "macOS",
+      "linux": "Linux"
+    },
+    "arch": {
+      "x64": "x64",
+      "arm64": "Apple 芯片",
+      "ia32": "x86"
+    },
+    "status": {
+      "checking": "正在检查更新…",
+      "available": "发现新版本 {{version}}。",
+      "notAvailable": "已是最新版本。",
+      "downloading": "下载中… {{percent}}%",
+      "downloaded": "{{version}} 已准备就绪，可立即安装。",
+      "error": "检查更新失败。"
+    }
   }
 }

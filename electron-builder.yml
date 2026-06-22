@@ -19,6 +19,11 @@ extraResources:
 asarUnpack:
   - node_modules/better-sqlite3/**/*
 
+publish:
+  - provider: github
+    owner: maojindao55
+    repo: freebuddy
+
 mac:
   icon: desktop/macos/AppIcon.icns
   category: public.app-category.productivity

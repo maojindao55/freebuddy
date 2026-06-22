@@ -215,7 +215,8 @@
     "tabs": {
       "general": "General",
       "cli": "CLI Agents",
-      "workflowTeams": "Workflow Teams"
+      "workflowTeams": "Workflow Teams",
+      "about": "About"
     },
     "cli": {
       "title": "Cli Agents",
@@ -361,5 +362,35 @@
     "graphViewer": "Graph viewer",
     "startNodes": "Start nodes",
     "finalNodes": "Final nodes"
+  },
+  "updater": {
+    "appTitle": "Application",
+    "updateTitle": "Updates",
+    "linksTitle": "Links",
+    "check": "Check for updates",
+    "downloadNow": "Download now",
+    "installNow": "Install and restart",
+    "releaseNotes": "Release notes",
+    "autoCheckHint": "FreeBuddy checks for updates automatically on startup and downloads them in the background.",
+    "unavailable": "Update checks require the desktop build.",
+    "releasesLink": "GitHub releases",
+    "platform": {
+      "win32": "Windows",
+      "darwin": "macOS",
+      "linux": "Linux"
+    },
+    "arch": {
+      "x64": "x64",
+      "arm64": "Apple Silicon",
+      "ia32": "x86"
+    },
+    "status": {
+      "checking": "Checking for updates…",
+      "available": "Version {{version}} is available.",
+      "notAvailable": "You're on the latest version.",
+      "downloading": "Downloading… {{percent}}%",
+      "downloaded": "Version {{version}} is ready to install.",
+      "error": "Update check failed."
+    }
   }
 }

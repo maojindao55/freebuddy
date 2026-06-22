@@ -9,13 +9,19 @@ import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { initApplicationMenu } from "./menu.js";
 import { tMain } from "./cli/i18n.js";
 import { getLanguage } from "./cli/settings.js";
-import { APP_NAME } from "./app-meta.js";
+import { APP_NAME, APP_VERSION } from "./app-meta.js";
+import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
 app.setName(APP_NAME);
-app.setAboutPanelOptions({ applicationName: APP_NAME });
+process.env.FB_APP_VERSION = APP_VERSION;
+app.setAboutPanelOptions({
+  applicationName: APP_NAME,
+  applicationVersion: APP_VERSION,
+  version: APP_VERSION
+});
 
 function resolveAppIconPath() {
   return app.isPackaged
@@ -136,11 +142,13 @@ app.whenReady().then(async () => {
   getDb();
   seedBuiltinWorkflowTeams();
   registerCliIpc();
+  registerUpdaterIpc();
   const appIcon = loadAppIcon();
   if (process.platform === "darwin" && app.dock && appIcon) {
     app.dock.setIcon(appIcon);
   }
   createWindow();
+  initAutoUpdater();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

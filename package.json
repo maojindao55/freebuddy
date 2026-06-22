@@ -31,6 +31,7 @@
     "antd": "^6.4.5",
     "better-sqlite3": "^12.11.1",
     "cross-spawn": "^7.0.6",
+    "electron-updater": "^6.8.9",
     "i18next": "^26.3.1",
     "nanoid": "^5.1.11",
     "react": "^19.2.3",

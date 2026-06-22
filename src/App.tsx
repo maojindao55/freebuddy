@@ -11,6 +11,7 @@ import { SettingsModal } from "./components/Settings/SettingsModal";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
+import { useUpdaterStore } from "./store/updaterStore";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -132,6 +133,13 @@ function App() {
     void loadSettings();
   }, [loadSettings]);
 
+  const loadUpdater = useUpdaterStore((s) => s.load);
+  useEffect(() => {
+    void loadUpdater();
+  }, [loadUpdater]);
+  const updateReady = useUpdaterStore((s) => s.status === "downloaded");
+  const appVersion = useUpdaterStore((s) => s.appVersion);
+
   useEffect(() => {
     document.documentElement.lang = i18next.language ?? "en";
     const handler = (lng: string) => {
@@ -210,7 +218,9 @@ function App() {
           >
             <GearIcon />
             {t("common.settings")}
+            {updateReady && <span className="footer-badge" aria-label={t("updater.installNow")} />}
           </button>
+          {appVersion && <span className="footer-version">v{appVersion}</span>}
           <button
             className="footer-toggle"
             title={t("sidebar.toggleTheme")}

@@ -131,16 +131,38 @@ const workflowTeams = {
   seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
+const updater = {
+  getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
+  check: () =>
+    ipcRenderer.invoke("updater:check") as Promise<
+      { ok: true; version: string | null } | { ok: false; error: string }
+    >,
+  download: () =>
+    ipcRenderer.invoke("updater:download") as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
+  quitAndInstall: () => ipcRenderer.invoke("updater:quitAndInstall") as Promise<boolean>,
+  onEvent(cb: (event: unknown) => void): () => void {
+    const channel = "updater://event";
+    const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  }
+};
+
 contextBridge.exposeInMainWorld("freebuddy", {
   platform: process.platform,
+  arch: process.arch,
   versions: {
     chrome: process.versions.chrome,
     electron: process.versions.electron,
     node: process.versions.node
   },
+  appVersion: process.env.FB_APP_VERSION ?? "",
   cli,
   workflow,
   workflowTeams,
   settings,
-  window
+  window,
+  updater
 });

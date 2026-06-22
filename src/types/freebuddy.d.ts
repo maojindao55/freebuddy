@@ -210,18 +210,48 @@ declare global {
     seedBuiltins(): Promise<WorkflowTeam[]>;
   }
 
+  type UpdaterEvent =
+    | { type: "checking-for-update" }
+    | {
+        type: "update-available";
+        version: string;
+        releaseDate?: string;
+        releaseNotes?: unknown;
+      }
+    | { type: "update-not-available"; version: string }
+    | {
+        type: "download-progress";
+        percent: number;
+        transferred: number;
+        total: number;
+        bytesPerSecond: number;
+      }
+    | { type: "update-downloaded"; version: string }
+    | { type: "error"; message: string };
+
+  interface FreebuddyUpdater {
+    getVersion(): Promise<string>;
+    check(): Promise<{ ok: true; version: string | null } | { ok: false; error: string }>;
+    download(): Promise<{ ok: true } | { ok: false; error: string }>;
+    quitAndInstall(): Promise<boolean>;
+    onEvent(cb: (event: UpdaterEvent) => void): () => void;
+  }
+
   interface FreebuddyApi {
     platform: string;
+    arch: string;
     versions: {
       chrome?: string;
       electron?: string;
       node?: string;
     };
+    appVersion: string;
     cli: FreebuddyCli;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
     settings: FreebuddySettings;
     window: FreebuddyWindow;
+    updater: FreebuddyUpdater;
   }
 
   interface Window {

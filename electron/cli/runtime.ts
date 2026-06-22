@@ -61,10 +61,12 @@ function mergeBuiltEnv(
 
 export async function cliRun(
   webContents: WebContents,
-  args: CliRunArgs
+  args: CliRunArgs,
+  onEvent?: (e: CliEvent) => void
 ): Promise<void> {
   const channel = channelName(args.sessionId);
   const emit = (e: CliEvent) => {
+    if (onEvent) onEvent(e);
     if (!webContents.isDestroyed()) webContents.send(channel, e);
   };
 

@@ -412,20 +412,44 @@ export function MessageBubble({
     );
   }
 
+  if (message.role === "system") {
+    const label = message.roleLabel ?? t("message.system");
+    return (
+      <div className="msg msg-system msg-system-divider">
+        <span className="msg-system-divider-line" aria-hidden="true" />
+        <span className="msg-system-divider-label">
+          <span className="msg-system-role">{label}</span>
+          {message.agentName && (
+            <span className="msg-system-agent">{message.agentName}</span>
+          )}
+        </span>
+        <span className="msg-system-divider-line" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  const roleLabel = message.roleLabel;
+  const agentLabel = message.agentName ?? displayAgentName(undefined, adapter);
+  const statusText =
+    message.status !== "ready" ? t(`status.${message.status}`) : null;
+
   return (
     <div className="msg msg-assistant">
       <AgentAvatar
-        adapter={adapter}
+        adapter={message.adapter ?? adapter}
         className="msg-avatar agent-avatar"
         fallback={<span>✦</span>}
       />
       <div className="msg-content-wrapper">
         <div className="msg-header">
-          <span className="msg-author">{displayAgentName(undefined, adapter)}</span>
+          <span className="msg-author">{agentLabel}</span>
           <span className="msg-time">{timeStr}</span>
-          {message.status !== "ready" && (
+          {(roleLabel || statusText) && (
             <span className={`status-pill ${message.status}`}>
-              {t(`status.${message.status}`)}
+              {roleLabel && (
+                <span className="status-pill-role">{roleLabel}</span>
+              )}
+              {statusText && <span>{statusText}</span>}
             </span>
           )}
         </div>

@@ -43,6 +43,7 @@ import {
 import { getSetting, setSetting, getLanguage } from "./settings.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
+import { registerWorkflowIpc } from "./workflowIpc.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -281,4 +282,6 @@ export function registerCliIpc() {
       setApplicationMenuForLanguage(args.value);
     }
   });
+
+  registerWorkflowIpc();
 }

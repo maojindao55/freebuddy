@@ -1,9 +1,21 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { GeneralTab } from "./GeneralTab";
+import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
+
+type SettingsTab = "general" | "cli" | "workflowTeams";
+
+const TABS: { key: SettingsTab; labelKey: string }[] = [
+  { key: "general", labelKey: "settings.tabs.general" },
+  { key: "cli", labelKey: "settings.tabs.cli" },
+  { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
+];
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
@@ -13,9 +25,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             ✕
           </button>
         </header>
-        <div className="settings-body">
-          <GeneralTab />
-          <CLIAdaptersTab />
+        <div className="settings-layout">
+          <nav className="settings-nav">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                className={`settings-nav-item${activeTab === tab.key ? " active" : ""}`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {t(tab.labelKey)}
+              </button>
+            ))}
+          </nav>
+          <div className="settings-panel">
+            {activeTab === "general" && <GeneralTab />}
+            {activeTab === "cli" && <CLIAdaptersTab />}
+            {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
+          </div>
         </div>
       </div>
     </div>

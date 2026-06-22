@@ -82,6 +82,32 @@ export interface RunCtx {
 
 export const runCtxMap = new Map<string, RunCtx>();
 
+let workflowMessageUnsubscribe: (() => void) | null = null;
+let workflowMessageConversationId: string | null = null;
+
+function ensureWorkflowMessageSubscription(
+  conversationId: string | undefined,
+  refresh: (id: string) => Promise<void>
+) {
+  const fb = (globalThis as any).freebuddy;
+  const api = fb?.workflow;
+  if (!api?.onStepMessage) return;
+  if (workflowMessageConversationId === conversationId) return;
+  if (workflowMessageUnsubscribe) {
+    try {
+      workflowMessageUnsubscribe();
+    } catch {
+      /* noop */
+    }
+    workflowMessageUnsubscribe = null;
+  }
+  workflowMessageConversationId = conversationId ?? null;
+  if (!conversationId) return;
+  workflowMessageUnsubscribe = api.onStepMessage(conversationId, () => {
+    void refresh(conversationId);
+  });
+}
+
 function latestSessionIdFromMessages(messages: ConversationMessage[]): string | undefined {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
@@ -124,6 +150,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (active && !get().messages[active]) {
       await get().loadMessages(active);
     }
+    ensureWorkflowMessageSubscription(active, async (cid) => {
+      await get().loadMessages(cid);
+    });
   },
 
   async setActive(id) {
@@ -131,6 +160,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (id && !get().messages[id]) {
       await get().loadMessages(id);
     }
+    ensureWorkflowMessageSubscription(id, async (cid) => {
+      await get().loadMessages(cid);
+    });
   },
 
   async loadMessages(id) {
@@ -156,6 +188,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       messages: { ...s.messages, [conv.id]: [] },
       pendingFreshContext: { ...s.pendingFreshContext, [conv.id]: true }
     }));
+    ensureWorkflowMessageSubscription(conv.id, async (cid) => {
+      await get().loadMessages(cid);
+    });
     return conv;
   },
 

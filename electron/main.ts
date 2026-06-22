@@ -5,6 +5,7 @@ import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
 import { getDb } from "./cli/db.js";
+import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { initApplicationMenu } from "./menu.js";
 import { tMain } from "./cli/i18n.js";
 import { getLanguage } from "./cli/settings.js";
@@ -133,6 +134,7 @@ app.whenReady().then(async () => {
   await injectShellPath();
   registerLocalFileProtocol();
   getDb();
+  seedBuiltinWorkflowTeams();
   registerCliIpc();
   const appIcon = loadAppIcon();
   if (process.platform === "darwin" && app.dock && appIcon) {

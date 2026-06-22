@@ -34,6 +34,12 @@ export interface ConversationMessage {
   content: string;
   attachments?: ChatAttachment[];
   taskId?: string;
+  agentId?: string;
+  agentName?: string;
+  adapter?: string;
+  roleLabel?: string;
+  workflowRunId?: string;
+  workflowStepRowId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +82,12 @@ function rowToMessage(r: any): ConversationMessage {
     content: r.content,
     attachments,
     taskId: r.task_id ?? undefined,
+    agentId: r.agent_id ?? undefined,
+    agentName: r.agent_name ?? undefined,
+    adapter: r.adapter ?? undefined,
+    roleLabel: r.role_label ?? undefined,
+    workflowRunId: r.workflow_run_id ?? undefined,
+    workflowStepRowId: r.workflow_step_row_id ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
@@ -193,6 +205,12 @@ export interface AppendMessageInput {
   content: string;
   attachments?: ChatAttachment[];
   taskId?: string;
+  agentId?: string;
+  agentName?: string;
+  adapter?: string;
+  roleLabel?: string;
+  workflowRunId?: string;
+  workflowStepRowId?: string;
 }
 
 export function appendMessage(input: AppendMessageInput): ConversationMessage {
@@ -200,8 +218,11 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
   getDb()
     .prepare(
       `INSERT INTO conversation_messages
-         (id, conversation_id, role, status, content, attachments, task_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, conversation_id, role, status, content, attachments, task_id,
+          agent_id, agent_name, adapter, role_label,
+          workflow_run_id, workflow_step_row_id,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.id,
@@ -211,6 +232,12 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
       input.content,
       input.attachments?.length ? JSON.stringify(input.attachments) : null,
       input.taskId ?? null,
+      input.agentId ?? null,
+      input.agentName ?? null,
+      input.adapter ?? null,
+      input.roleLabel ?? null,
+      input.workflowRunId ?? null,
+      input.workflowStepRowId ?? null,
       now,
       now
     );

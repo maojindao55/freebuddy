@@ -75,6 +75,49 @@ const settings: {
     ipcRenderer.invoke("settings:set", { key, value })
 };
 
+const workflow = {
+  validate: (plan: unknown) => ipcRenderer.invoke("workflow:validate", plan),
+  previewReviewLoop: (input: unknown) =>
+    ipcRenderer.invoke("workflow:previewReviewLoop", input),
+  coordinatorPrompt: (input: unknown) =>
+    ipcRenderer.invoke("workflow:coordinatorPrompt", input),
+  createRun: (input: unknown) => ipcRenderer.invoke("workflow:createRun", input),
+  start: (runId: string) => ipcRenderer.invoke("workflow:start", runId),
+  pause: (runId: string) => ipcRenderer.invoke("workflow:pause", runId),
+  resume: (runId: string) => ipcRenderer.invoke("workflow:resume", runId),
+  stop: (runId: string) => ipcRenderer.invoke("workflow:stop", runId),
+  retryStep: (args: unknown) => ipcRenderer.invoke("workflow:retryStep", args),
+  approveGate: (args: unknown) =>
+    ipcRenderer.invoke("workflow:approveGate", args),
+  getRun: (runId: string) => ipcRenderer.invoke("workflow:getRun", runId),
+  getSteps: (runId: string) => ipcRenderer.invoke("workflow:getSteps", runId),
+  listRuns: (conversationId: string) =>
+    ipcRenderer.invoke("workflow:listRuns", conversationId),
+  previewTeamRun: (input: unknown) =>
+    ipcRenderer.invoke("workflow:previewTeamRun", input),
+  createTeamRun: (input: unknown) =>
+    ipcRenderer.invoke("workflow:createTeamRun", input),
+  onStepMessage(
+    conversationId: string,
+    cb: (event: { type: "appended" | "updated"; messageId: string }) => void
+  ): () => void {
+    const channel = `workflow://message/${conversationId}`;
+    const handler = (_e: IpcRendererEvent, payload: unknown) =>
+      cb(payload as any);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  }
+};
+
+const workflowTeams = {
+  list: () => ipcRenderer.invoke("workflowTeams:list"),
+  get: (id: string) => ipcRenderer.invoke("workflowTeams:get", id),
+  create: (input: unknown) => ipcRenderer.invoke("workflowTeams:create", input),
+  update: (args: unknown) => ipcRenderer.invoke("workflowTeams:update", args),
+  delete: (id: string) => ipcRenderer.invoke("workflowTeams:delete", id),
+  seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
+};
+
 contextBridge.exposeInMainWorld("freebuddy", {
   platform: process.platform,
   versions: {
@@ -83,6 +126,8 @@ contextBridge.exposeInMainWorld("freebuddy", {
     node: process.versions.node
   },
   cli,
+  workflow,
+  workflowTeams,
   settings,
   window
 });

@@ -10,6 +10,19 @@ const cli = {
   check: (adapter: string, binary?: string) =>
     ipcRenderer.invoke("cli:check", { adapter, binary }),
   install: (command: string) => ipcRenderer.invoke("cli:install", command),
+  installStream: (
+    command: string,
+    cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+  ): (() => void) => {
+    const channel = "cli://install";
+    const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload as any);
+    ipcRenderer.on(channel, handler);
+    ipcRenderer.invoke("cli:installStream", command).catch((err) => {
+      cb({ type: "stderr", content: String(err) });
+      cb({ type: "done", exitCode: 1 });
+    });
+    return () => ipcRenderer.off(channel, handler);
+  },
 
   run: (args: unknown) => ipcRenderer.invoke("cli:run", args),
   kill: (sessionId: string) => ipcRenderer.invoke("cli:kill", sessionId),

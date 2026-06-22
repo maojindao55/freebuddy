@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { cliAdapterDefinitions } from "./adapters.js";
-import { cliCheck, cliInstall, listRuntimes } from "./check.js";
+import { cliCheck, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
 import {
   listOverrides,
   upsertOverride,
@@ -166,6 +166,9 @@ export function registerCliIpc() {
   );
   ipcMain.handle("cli:install", async (_e, command: string) =>
     cliInstall(command)
+  );
+  ipcMain.handle("cli:installStream", async (_e, command: string) =>
+    cliInstallStream(command, BrowserWindow.getFocusedWindow()?.webContents)
   );
 
   ipcMain.handle("cli:run", async (event, args: CliRunArgs) => {

@@ -48,6 +48,10 @@ declare global {
     listRuntimes(): Promise<CliRuntime[]>;
     check(adapter: string, binary?: string): Promise<CliCheckResult>;
     install(command: string): Promise<CliInstallResult>;
+    installStream(
+      command: string,
+      cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+    ): () => void;
 
     run(args: CliRunArgs): Promise<{ sessionId: string }>;
     kill(sessionId: string): Promise<boolean>;

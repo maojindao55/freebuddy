@@ -44,5 +44,5 @@ export function setApplicationMenuForLanguage(lang: "en" | "zh-CN") {
 }
 
 export function initApplicationMenu() {
-  setApplicationMenuForLanguage(getLanguage());
+  Menu.setApplicationMenu(null);
 }

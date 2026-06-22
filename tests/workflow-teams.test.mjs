@@ -129,7 +129,7 @@ test("new task page exposes a team selector and send button for team mode", () =
 
 test("ChatView onCreateAndSend starts team directly without preview", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
-  assert.match(src, /if \(taskMode === "team"\)/);
+  assert.match(src, /if \(teamMode\)/);
   assert.match(src, /createAndStartTeam\(\{\s*teamId: team\.id/);
 });
 

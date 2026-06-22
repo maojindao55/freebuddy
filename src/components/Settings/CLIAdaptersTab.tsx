@@ -6,6 +6,7 @@ import { cliClient } from "@/services/cli/client";
 import type { CLIExecutorOverride } from "@/services/cli/types";
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
+import { InstallDialog } from "./InstallDialog";
 
 function extractModelArg(args: string[]): { model: string; args: string[] } {
   const rest: string[] = [];
@@ -54,6 +55,7 @@ export function CLIAdaptersTab() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [installDialog, setInstallDialog] = useState<{ id: string; label: string; command: string } | null>(null);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -88,19 +90,10 @@ export function CLIAdaptersTab() {
             ex={ex}
             onCheck={() => void check(ex.id)}
             onEdit={() => setEditingId(ex.id)}
-            onInstall={async () => {
+            onInstall={() => {
               if (!ex.installHint) return;
               setInstalling(ex.id);
-              try {
-                const r = await cliClient.install(ex.installHint);
-                if (!r.success) {
-                  alert(t("settings.cli.installFailed", { code: r.exitCode, output: r.stderr || r.stdout }));
-                } else {
-                  await check(ex.id);
-                }
-              } finally {
-                setInstalling(null);
-              }
+              setInstallDialog({ id: ex.id, label: ex.label, command: ex.installHint });
             }}
             installing={installing === ex.id}
           />
@@ -111,6 +104,18 @@ export function CLIAdaptersTab() {
         <EditOverrideDialog
           executorId={editingId}
           onClose={() => setEditingId(null)}
+        />
+      )}
+
+      {installDialog && (
+        <InstallDialog
+          command={installDialog.command}
+          label={installDialog.label}
+          onClose={async ({ success }) => {
+            setInstallDialog(null);
+            setInstalling(null);
+            if (success) await check(installDialog.id);
+          }}
         />
       )}
     </div>
@@ -151,9 +156,16 @@ function AdapterRow({
               {t("settings.cli.installed")} {rt.version ? `(${rt.version})` : ""}
             </span>
           ) : rt ? (
-            <span className="adapter-status warn">{t("settings.cli.notInstalled")}</span>
+            <span className="adapter-status warn" title={rt.lastError}>
+              {t("settings.cli.notInstalled")}
+            </span>
           ) : (
             <span className="adapter-status muted">{t("settings.cli.notChecked")}</span>
+          )}
+          {rt?.lastError && !rt.installed && (
+            <span className="adapter-status error" title={rt.lastError}>
+              {t("settings.cli.installBroken")}
+            </span>
           )}
           {model && (
             <span className="muted">

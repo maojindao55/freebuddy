@@ -25,20 +25,22 @@ function which(bin: string): Promise<string | undefined> {
 function runVersion(bin: string): Promise<string | undefined> {
   return new Promise((resolve) => {
     const child = spawn(bin, ["--version"], { env: process.env });
-    let out = "";
+    let stdout = "";
+    let stderr = "";
     const timer = setTimeout(() => {
       child.kill();
       resolve(undefined);
     }, 5000);
-    child.stdout!.on("data", (d) => (out += d.toString()));
-    child.stderr!.on("data", (d) => (out += d.toString()));
+    child.stdout!.on("data", (d) => (stdout += d.toString()));
+    child.stderr!.on("data", (d) => (stderr += d.toString()));
     child.on("error", () => {
       clearTimeout(timer);
       resolve(undefined);
     });
-    child.on("close", () => {
+    child.on("close", (code) => {
       clearTimeout(timer);
-      const first = out.split(/\r?\n/).find((l) => l.trim().length > 0);
+      if (code !== 0) return resolve(undefined);
+      const first = stdout.split(/\r?\n/).find((l) => l.trim().length > 0);
       resolve(first?.trim());
     });
   });
@@ -101,6 +103,16 @@ export async function cliCheck(
     return { installed: false };
   }
   const version = await runVersion(resolved);
+  if (!version) {
+    upsertRuntime(
+      adapter,
+      false,
+      resolved,
+      undefined,
+      "binary found but --version failed; try reinstalling"
+    );
+    return { installed: false };
+  }
   const result: CliCheckResult = {
     installed: true,
     path: resolved,
@@ -160,11 +172,32 @@ export function cliInstall(command: string): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
     const trimmed = command.trim();
     if (!trimmed) return reject(new Error("install command required"));
-    const shell =
-      process.platform === "win32"
-        ? "cmd"
-        : process.env.SHELL || "/bin/sh";
-    const args = process.platform === "win32" ? ["/C", trimmed] : ["-lc", trimmed];
+
+    const isWindows = process.platform === "win32";
+    const isPowerShellCommand =
+      /^irm\s/i.test(trimmed) ||
+      /\|\s*iex\b/i.test(trimmed) ||
+      /Invoke-(WebRequest|Expression)/i.test(trimmed);
+
+    let shell: string;
+    let args: string[];
+    if (isWindows && isPowerShellCommand) {
+      shell = "powershell";
+      args = [
+        "-ExecutionPolicy", "Bypass",
+        "-OutputFormat", "Text",
+        "-Command",
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; " +
+          trimmed
+      ];
+    } else if (isWindows) {
+      shell = "cmd";
+      args = ["/C", trimmed];
+    } else {
+      shell = process.env.SHELL || "/bin/sh";
+      args = ["-lc", trimmed];
+    }
+
     const child = spawn(shell, args, { env: process.env });
     let stdout = "";
     let stderr = "";
@@ -177,6 +210,82 @@ export function cliInstall(command: string): Promise<CliInstallResult> {
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      resolve({
+        success: code === 0,
+        exitCode: code,
+        stdout,
+        stderr
+      });
+    });
+  });
+}
+
+export function cliInstallStream(
+  command: string,
+  webContents?: Electron.WebContents | null
+): Promise<CliInstallResult> {
+  return new Promise((resolve, reject) => {
+    const trimmed = command.trim();
+    if (!trimmed) return reject(new Error("install command required"));
+
+    const isWindows = process.platform === "win32";
+    const isPowerShellCommand =
+      /^irm\s/i.test(trimmed) ||
+      /\|\s*iex\b/i.test(trimmed) ||
+      /Invoke-(WebRequest|Expression)/i.test(trimmed);
+
+    let shell: string;
+    let args: string[];
+    if (isWindows && isPowerShellCommand) {
+      shell = "powershell";
+      args = [
+        "-ExecutionPolicy", "Bypass",
+        "-OutputFormat", "Text",
+        "-Command",
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; " +
+          trimmed
+      ];
+    } else if (isWindows) {
+      shell = "cmd";
+      args = ["/C", trimmed];
+    } else {
+      shell = process.env.SHELL || "/bin/sh";
+      args = ["-lc", trimmed];
+    }
+
+    const channel = "cli://install";
+    const send = (payload: { type: "stdout" | "stderr"; content: string }) => {
+      webContents?.send(channel, payload);
+    };
+
+    const child = spawn(shell, args, { env: process.env });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      send({ type: "stderr", content: "Install timed out after 10 minutes." });
+      webContents?.send(channel, { type: "done", exitCode: 1 });
+    }, 10 * 60 * 1000);
+
+    child.stdout!.on("data", (d) => {
+      const chunk = d.toString();
+      stdout += chunk;
+      send({ type: "stdout", content: chunk });
+    });
+    child.stderr!.on("data", (d) => {
+      const chunk = d.toString();
+      stderr += chunk;
+      send({ type: "stderr", content: chunk });
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      send({ type: "stderr", content: String(err) });
+      webContents?.send(channel, { type: "done", exitCode: 1 });
+      reject(err);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      webContents?.send(channel, { type: "done", exitCode: code });
       resolve({
         success: code === 0,
         exitCode: code,

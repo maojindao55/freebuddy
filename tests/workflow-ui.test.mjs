@@ -67,12 +67,11 @@ test("WorkflowStepRow shows the agent avatar inline", () => {
   assert.match(src, /workflow-step-agent-avatar/);
 });
 
-test("ChatView wires the workflow-mode trigger and plan preview", () => {
+test("ChatView wires the team-mode trigger and plan preview", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
   assert.match(src, /useWorkflowStore/);
-  assert.match(src, /previewReviewLoop/);
-  assert.match(src, /workflowMode/);
-  assert.match(src, /<WorkflowPlanCard/);
+  assert.match(src, /previewTeam/);
+  assert.match(src, /teamMode/);
 });
 
 test("new-task page exposes mode tabs and team submit", () => {

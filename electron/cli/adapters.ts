@@ -122,7 +122,10 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "curl https://cursor.com/install -fsS | bash",
+    installHint:
+      process.platform === "win32"
+        ? "irm 'https://cursor.com/install?win32=true' | iex"
+        : "curl https://cursor.com/install -fsS | bash",
     docsUrl: "https://docs.cursor.com/en/cli/overview",
     protocol: "acp"
   },
@@ -135,7 +138,10 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+    installHint:
+      process.platform === "win32"
+        ? "irm https://code.kimi.com/kimi-code/install.ps1 | iex"
+        : "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
     docsUrl: "https://moonshotai.github.io/kimi-code/en/guides/ides",
     protocol: "acp"
   }

@@ -4,7 +4,8 @@ import type { WebContents } from "electron";
 import type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 import { cliRun, cliKill } from "./runtime.js";
 import {
-  appendMessage
+  appendMessage,
+  updateMessage
 } from "./conversations.js";
 import type {
   WorkflowAgentRef,
@@ -371,6 +372,33 @@ export class WorkflowRuntime {
     });
     state.activeSessions.add(sessionId);
 
+    // Post a placeholder assistant message into the conversation so the chat
+    // pane shows progress for this step in real time. Use the workflow plan's
+    // role label (step.title) so the bubble capsule reads e.g. "RESEARCH CONTEXT · 运行中".
+    let assistantMessageId: string | undefined;
+    if (run.conversationId) {
+      assistantMessageId = randomUUID();
+      appendMessage({
+        id: assistantMessageId,
+        conversationId: run.conversationId,
+        role: "assistant",
+        status: "running",
+        content: "[]",
+        taskId: sessionId,
+        agentId: step.agentId,
+        agentName: resolved.agentName,
+        adapter: resolved.adapter,
+        roleLabel: step.title,
+        workflowRunId: runId,
+        workflowStepRowId: step.id
+      });
+      this.broadcastMessageEvent({
+        type: "appended",
+        conversationId: run.conversationId,
+        messageId: assistantMessageId
+      });
+    }
+
     try {
       await this.deps.executor.run({
         sessionId,
@@ -382,7 +410,20 @@ export class WorkflowRuntime {
         prompt: step.prompt,
         cwd: run.cwd,
         onEvent: (e: CliEvent) => {
-          if (e.type === "items" && e.items?.length) collected.push(...e.items);
+          if (e.type === "items" && e.items?.length) {
+            collected.push(...e.items);
+            if (assistantMessageId && run.conversationId) {
+              updateMessage({
+                id: assistantMessageId,
+                content: JSON.stringify(collected)
+              });
+              this.broadcastMessageEvent({
+                type: "updated",
+                conversationId: run.conversationId,
+                messageId: assistantMessageId
+              });
+            }
+          }
           if (e.type === "done") exitCode = e.exitCode;
           if (e.type === "error") errored = e.message;
         }
@@ -403,6 +444,33 @@ export class WorkflowRuntime {
       resultJson: JSON.stringify({ items: collected, exitCode, error: errored }),
       endedAt: new Date().toISOString()
     });
+
+    if (assistantMessageId && run.conversationId) {
+      updateMessage({
+        id: assistantMessageId,
+        status: failed ? "failed" : "done",
+        content: JSON.stringify(collected)
+      });
+      this.broadcastMessageEvent({
+        type: "updated",
+        conversationId: run.conversationId,
+        messageId: assistantMessageId
+      });
+    }
+  }
+
+  private broadcastMessageEvent(payload: {
+    type: "appended" | "updated";
+    conversationId: string;
+    messageId: string;
+  }): void {
+    const wc = this.deps.webContents;
+    if (!wc || wc.isDestroyed?.()) return;
+    try {
+      wc.send(`workflow://message/${payload.conversationId}`, payload);
+    } catch {
+      /* noop */
+    }
   }
 
   private finalize(
@@ -420,17 +488,6 @@ export class WorkflowRuntime {
       summary,
       endedAt: new Date().toISOString()
     });
-    if (run.conversationId) {
-      appendMessage({
-        id: randomUUID(),
-        conversationId: run.conversationId,
-        role: "assistant",
-        status: status === "completed" ? "done" : "failed",
-        content: JSON.stringify([
-          { kind: "text", role: "assistant", content: summary }
-        ])
-      });
-    }
   }
 
   private composeSummary(
@@ -469,6 +526,7 @@ export function createCliStepExecutor(
         extraArgs: args.extraArgs,
         prompt: args.prompt,
         cwd: args.cwd,
+        approvalMode: "auto",
         resumeToolSession: false
       };
       await cliRun(webContents, runArgs, args.onEvent);

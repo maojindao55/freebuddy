@@ -27,6 +27,13 @@ import type {
   WorkflowStepRow,
   WorkflowValidationResult
 } from "@/services/workflows/types";
+import type {
+  WorkflowTeam,
+  WorkflowTeamPreview,
+  WorkflowTeamRole,
+  WorkflowTeamPolicy,
+  WorkflowTemplate2
+} from "@/services/workflowTeams/types";
 
 export {};
 
@@ -135,6 +142,68 @@ declare global {
     getRun(runId: string): Promise<WorkflowRunRow | undefined>;
     getSteps(runId: string): Promise<WorkflowStepRow[]>;
     listRuns(conversationId: string): Promise<WorkflowRunRow[]>;
+    previewTeamRun(input: {
+      teamId: string;
+      goal: string;
+      cwd?: string;
+      targetPaths?: string[];
+    }): Promise<
+      | { ok: true; preview: WorkflowTeamPreview }
+      | { ok: false; errors: string[] }
+    >;
+    createTeamRun(input: {
+      teamId: string;
+      conversationId?: string;
+      goal: string;
+      cwd?: string;
+      targetPaths?: string[];
+    }): Promise<
+      | { ok: true; run: WorkflowRunRow }
+      | { ok: false; errors: string[] }
+    >;
+    onStepMessage(
+      conversationId: string,
+      cb: (event: {
+        type: "appended" | "updated";
+        messageId: string;
+      }) => void
+    ): () => void;
+  }
+
+  interface FreebuddyWorkflowTeams {
+    list(): Promise<WorkflowTeam[]>;
+    get(id: string): Promise<WorkflowTeam | undefined>;
+    create(input: {
+      id: string;
+      name: string;
+      description?: string;
+      icon?: string;
+      enabled: boolean;
+      source: "builtin" | "user";
+      roles: WorkflowTeamRole[];
+      template: WorkflowTemplate2;
+      policy: WorkflowTeamPolicy;
+    }): Promise<
+      | { ok: true; team: WorkflowTeam }
+      | { ok: false; errors: string[] }
+    >;
+    update(args: {
+      id: string;
+      patch: {
+        name?: string;
+        description?: string | null;
+        icon?: string | null;
+        enabled?: boolean;
+        roles?: WorkflowTeamRole[];
+        template?: WorkflowTemplate2;
+        policy?: WorkflowTeamPolicy;
+      };
+    }): Promise<
+      | { ok: true; team: WorkflowTeam }
+      | { ok: false; errors: string[] }
+    >;
+    delete(id: string): Promise<boolean>;
+    seedBuiltins(): Promise<WorkflowTeam[]>;
   }
 
   interface FreebuddyApi {
@@ -146,6 +215,7 @@ declare global {
     };
     cli: FreebuddyCli;
     workflow: FreebuddyWorkflow;
+    workflowTeams: FreebuddyWorkflowTeams;
     settings: FreebuddySettings;
     window: FreebuddyWindow;
   }

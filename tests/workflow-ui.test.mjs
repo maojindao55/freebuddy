@@ -25,6 +25,23 @@ test("WorkflowRunPanel renders running actions and pause/resume/stop", () => {
   assert.match(src, /setInterval/);
 });
 
+test("WorkflowRunPanel shows a progress bar and inline step details", () => {
+  const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  assert.match(src, /workflow-progress-bar/);
+  assert.match(src, /workflow-progress-fill/);
+  assert.match(src, /WorkflowPhaseList/);
+  // approve gate button merged into the run-actions row
+  assert.match(src, /workflow\.approveGate/);
+  // separate details-card removed
+  assert.doesNotMatch(src, /workflow-step-details-card/);
+});
+
+test("WorkflowPhaseList renders inline step details for the selected step", () => {
+  const src = read("../src/components/Workflows/WorkflowPhaseList.tsx");
+  assert.match(src, /WorkflowStepDetails/);
+  assert.match(src, /selectedStepId/);
+});
+
 test("WorkflowStepDetails renders failed-state retry", () => {
   const src = read("../src/components/Workflows/WorkflowStepDetails.tsx");
   assert.match(src, /step\.status === "failed"/);
@@ -44,6 +61,12 @@ test("WorkspacePanel mounts the WorkflowRunPanel", () => {
   assert.match(src, /<WorkflowRunPanel/);
 });
 
+test("WorkflowStepRow shows the agent avatar inline", () => {
+  const src = read("../src/components/Workflows/WorkflowStepRow.tsx");
+  assert.match(src, /AgentAvatar/);
+  assert.match(src, /workflow-step-agent-avatar/);
+});
+
 test("ChatView wires the workflow-mode trigger and plan preview", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
   assert.match(src, /useWorkflowStore/);
@@ -52,12 +75,11 @@ test("ChatView wires the workflow-mode trigger and plan preview", () => {
   assert.match(src, /<WorkflowPlanCard/);
 });
 
-test("new-task page exposes workflow mode and plan preview", () => {
+test("new-task page exposes mode tabs and team submit", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
-  assert.match(src, /workflowMode=\{workflowMode\}/);
-  assert.match(src, /onWorkflowMode=\{setWorkflowMode\}/);
-  assert.match(src, /onGeneratePlan=\{\(\) => void handleGeneratePlan\(\)\}/);
-  assert.match(src, /onCreateWorkflowConversation/);
+  assert.match(src, /taskMode=\{taskMode\}/);
+  assert.match(src, /onTaskMode=\{/);
+  assert.match(src, /onSubmit=\{\(\) => void onCreateAndSend\(\)\}/);
   assert.match(src, /new-task-mode-tabs/);
 });
 

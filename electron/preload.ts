@@ -92,7 +92,30 @@ const workflow = {
   getRun: (runId: string) => ipcRenderer.invoke("workflow:getRun", runId),
   getSteps: (runId: string) => ipcRenderer.invoke("workflow:getSteps", runId),
   listRuns: (conversationId: string) =>
-    ipcRenderer.invoke("workflow:listRuns", conversationId)
+    ipcRenderer.invoke("workflow:listRuns", conversationId),
+  previewTeamRun: (input: unknown) =>
+    ipcRenderer.invoke("workflow:previewTeamRun", input),
+  createTeamRun: (input: unknown) =>
+    ipcRenderer.invoke("workflow:createTeamRun", input),
+  onStepMessage(
+    conversationId: string,
+    cb: (event: { type: "appended" | "updated"; messageId: string }) => void
+  ): () => void {
+    const channel = `workflow://message/${conversationId}`;
+    const handler = (_e: IpcRendererEvent, payload: unknown) =>
+      cb(payload as any);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  }
+};
+
+const workflowTeams = {
+  list: () => ipcRenderer.invoke("workflowTeams:list"),
+  get: (id: string) => ipcRenderer.invoke("workflowTeams:get", id),
+  create: (input: unknown) => ipcRenderer.invoke("workflowTeams:create", input),
+  update: (args: unknown) => ipcRenderer.invoke("workflowTeams:update", args),
+  delete: (id: string) => ipcRenderer.invoke("workflowTeams:delete", id),
+  seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
 contextBridge.exposeInMainWorld("freebuddy", {
@@ -104,6 +127,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   },
   cli,
   workflow,
+  workflowTeams,
   settings,
   window
 });

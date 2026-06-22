@@ -135,9 +135,10 @@
     "localAgent": "本地编码 Agent",
     "createToBegin": "创建会话以开始"
   },
-  "message": {
+"message": {
     "you": "你",
-    "thinking": "正在思考"
+    "thinking": "思考中",
+    "system": "系统"
   },
   "stream": {
     "read": "读取 {{target}}",
@@ -210,6 +211,11 @@
     "close": "关闭预览"
   },
   "settings": {
+    "tabs": {
+      "general": "通用",
+      "cli": "CLI Agent",
+      "workflowTeams": "工作流团队"
+    },
     "cli": {
       "title": "Cli Agents",
       "description": "配置 FreeBuddy 中可用的本地 CLI Agent。",
@@ -290,6 +296,62 @@
       "blocked": "已阻塞"
     },
     "invalidPlan": "生成的计划无效",
-    "summary": "工作流总结"
+    "summary": "工作流总结",
+    "teamExecution": "团队执行",
+    "teamExecutionHint": "为任务运行一支协作的 Agent 团队",
+    "selectTeam": "选择团队",
+    "noTeams": "尚未配置团队",
+    "generateRoute": "生成路线",
+    "teamPlanPreview": "团队路线",
+    "teamOverview": "概览",
+    "teamRoles": "角色",
+    "teamWorkflow": "工作流",
+    "teamPolicy": "策略",
+    "teamPolicyGates": "审批关卡",
+    "teamPolicyLimits": "执行限制",
+    "teamBuiltinLocked": "内置模板为只读，复制后可自定义。",
+    "teamAdvanced": "高级",
+    "teamEditor": "团队编辑",
+    "teamList": "团队",
+    "worksWith": "成员",
+    "routeSummary": "路线摘要",
+    "role": "角色",
+    "writeNodes": "写入步骤",
+    "approvalNodes": "审批节点",
+    "loops": "最大循环",
+    "allowed": "允许",
+    "denied": "禁止",
+    "newTeam": "新建团队",
+    "teamName": "团队名称",
+    "teamDescription": "描述",
+    "teamSource": "来源",
+    "builtinTeam": "内置",
+    "userTeam": "自定义",
+    "duplicateTeam": "复制",
+    "disableTeam": "禁用",
+    "enableTeam": "启用",
+    "deleteTeam": "删除",
+    "confirmDeleteTeam": "删除该团队？",
+    "teamNameRequired": "团队名称不能为空",
+    "agentBindings": "Agent 绑定",
+    "rolePlanner": "规划者",
+    "roleResearcher": "调研者",
+    "roleReviewer": "审查者",
+    "roleImplementer": "执行者",
+    "roleVerifier": "验证者",
+    "roleSummarizer": "汇总者",
+    "tempOverrideAgent": "本次临时替换 Agent",
+    "currentAgent": "Agent",
+    "noAgent": "无 Agent",
+    "allowWrites": "允许写入文件",
+    "requireApprovalBeforeWrite": "写入前需要审批",
+    "requireApprovalAfterReview": "审查后需要审批",
+    "maxLoops": "最大循环",
+    "stopOnVerifyFailure": "验证失败时停止",
+    "parallelReads": "最大并发只读",
+    "advancedGraph": "高级图计划",
+    "graphViewer": "图查看器",
+    "startNodes": "起始节点",
+    "finalNodes": "结束节点"
   }
 }

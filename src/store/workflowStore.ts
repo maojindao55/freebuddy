@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { workflowClient } from "@/services/workflows/client";
+import { workflowTeamsClient } from "@/services/workflowTeams/client";
 import type {
   WorkflowPlan,
   WorkflowRunRow,
@@ -25,6 +26,13 @@ interface State {
     conversationId?: string;
     plan: WorkflowPlan;
   }): Promise<boolean>;
+  createAndStartTeam(input: {
+    teamId: string;
+    conversationId?: string;
+    goal: string;
+    cwd?: string;
+    targetPaths?: string[];
+  }): Promise<boolean>;
   refresh(runId: string): Promise<void>;
   pause(runId: string): Promise<void>;
   resume(runId: string): Promise<void>;
@@ -43,13 +51,14 @@ export const useWorkflowStore = create<State>((set, get) => ({
   async loadForConversation(conversationId) {
     if (!workflowClient.isAvailable()) return;
     const runs = await workflowClient.listRuns(conversationId);
-    const latestRunning = runs.find((r) =>
-      ["running", "paused", "blocked", "pending_approval"].includes(r.status)
-    );
-    if (latestRunning) {
-      const steps = await workflowClient.getSteps(latestRunning.id);
+    const latest =
+      runs.find((r) =>
+        ["running", "paused", "blocked", "pending_approval"].includes(r.status)
+      ) ?? runs[0];
+    if (latest) {
+      const steps = await workflowClient.getSteps(latest.id);
       set({
-        activeRun: latestRunning,
+        activeRun: latest,
         steps
       });
     } else {
@@ -77,6 +86,19 @@ export const useWorkflowStore = create<State>((set, get) => ({
   async createAndStart(input) {
     if (!workflowClient.isAvailable()) return false;
     const res = await workflowClient.createRun(input);
+    if (!res.ok) {
+      set({ pendingErrors: res.errors });
+      return false;
+    }
+    set({ pendingPlan: null, pendingErrors: [], activeRun: res.run, steps: [] });
+    await workflowClient.start(res.run.id);
+    await get().refresh(res.run.id);
+    return true;
+  },
+
+  async createAndStartTeam(input) {
+    if (!workflowTeamsClient.isAvailable()) return false;
+    const res = await workflowTeamsClient.createTeamRun(input);
     if (!res.ok) {
       set({ pendingErrors: res.errors });
       return false;

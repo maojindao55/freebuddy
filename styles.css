@@ -1112,7 +1112,7 @@ button {
   box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--fb-border);
   animation: slideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.modal.modal-wide { width: 720px; }
+.modal.modal-wide { width: 800px; }
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -1199,6 +1199,53 @@ button {
 }
 
 .settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 20px;
+  min-height: 420px;
+  max-height: 70vh;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 12px;
+  border-right: 1px solid var(--fb-border);
+  overflow-y: auto;
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.settings-nav-item:hover {
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+}
+.settings-nav-item.active {
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  font-weight: 600;
+}
+.settings-panel {
+  overflow-y: auto;
+  padding-right: 4px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3616,6 +3663,38 @@ button.ghost:focus-visible,
   letter-spacing: 0;
   text-transform: none;
 }
+.msg-assistant .status-pill:has(.status-pill-role) {
+  height: 20px;
+  min-height: 20px;
+  padding: 0 9px;
+  gap: 0;
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  font-size: 11px;
+  font-weight: 600;
+}
+.msg-assistant .status-pill .status-pill-role {
+  display: inline-flex;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.msg-assistant .status-pill:has(.status-pill-role) > span:not(.status-pill-role) {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.msg-assistant .status-pill:has(.status-pill-role) > span:not(.status-pill-role)::before {
+  content: '•';
+  margin: 0 4px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 1;
+}
+.msg-assistant .status-pill:has(.status-pill-role)::before {
+  display: none;
+}
 
 .msg-assistant .status-pill::before {
   content: '';
@@ -3683,6 +3762,68 @@ button.ghost:focus-visible,
 .msg-assistant .msg-items {
   gap: 10px;
   padding: 0;
+}
+
+.msg-system {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 4px;
+  padding: 0 20px;
+}
+.msg-system-divider {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 6px;
+  padding: 0 20px;
+}
+.msg-system-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--fb-border-strong);
+}
+.msg-system-divider-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  flex: none;
+}
+.msg-system-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.msg-system-role {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.msg-system-agent {
+  color: var(--fb-text-tertiary);
+  font-weight: 500;
+}
+.msg-system-bubble {
+  align-self: flex-start;
+  background: var(--fb-panel-soft);
+  border: 1px dashed var(--fb-border-strong);
+  border-radius: 8px;
+  padding: 8px 12px;
+  max-width: min(640px, 80%);
+}
+.msg-system-bubble pre {
+  margin: 0;
+  font-family: var(--fb-font);
+  font-size: 13px;
+  color: var(--fb-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .msg-user .msg-content-wrapper {
@@ -3759,12 +3900,58 @@ button.ghost:focus-visible,
   white-space: pre-wrap;
 }
 
+.markdown-body .markdown-heading {
+  margin: 14px 0 6px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.markdown-body .markdown-heading:first-child {
+  margin-top: 0;
+}
+.markdown-body h1.markdown-heading { font-size: 18px; }
+.markdown-body h2.markdown-heading { font-size: 16px; }
+.markdown-body h3.markdown-heading { font-size: 15px; }
+.markdown-body h4.markdown-heading { font-size: 14px; }
+.markdown-body h5.markdown-heading { font-size: 13px; }
+.markdown-body h6.markdown-heading { font-size: 12px; color: var(--muted, #6b7280); }
+
 .markdown-body p:last-child,
 .markdown-body ul:last-child,
 .markdown-body ol:last-child,
+.markdown-body .markdown-heading:last-child,
 .markdown-table-wrap:last-child {
   margin-bottom: 0;
 }
+
+.markdown-body .markdown-heading {
+  margin: 14px 0 6px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.markdown-body .markdown-heading:first-child {
+  margin-top: 0;
+}
+.markdown-body h1.markdown-heading { font-size: 18px; }
+.markdown-body h2.markdown-heading { font-size: 16px; }
+.markdown-body h3.markdown-heading { font-size: 15px; }
+.markdown-body h4.markdown-heading { font-size: 14px; }
+.markdown-body h5.markdown-heading { font-size: 13px; }
+.markdown-body h6.markdown-heading { font-size: 12px; color: var(--muted, #6b7280); }
+
+.markdown-body .markdown-heading {
+  margin: 14px 0 6px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.markdown-body .markdown-heading:first-child {
+  margin-top: 0;
+}
+.markdown-body h1.markdown-heading { font-size: 18px; }
+.markdown-body h2.markdown-heading { font-size: 16px; }
+.markdown-body h3.markdown-heading { font-size: 15px; }
+.markdown-body h4.markdown-heading { font-size: 14px; }
+.markdown-body h5.markdown-heading { font-size: 13px; }
+.markdown-body h6.markdown-heading { font-size: 12px; color: var(--muted, #6b7280); }
 
 .markdown-body ul,
 .markdown-body ol {
@@ -4576,24 +4763,758 @@ button.ghost:focus-visible,
 .workflow-plan-phases .write small { color: #b45309; font-weight: 600; }
 .workflow-plan-actions { display: flex; gap: 8px; }
 
-.workflow-run-panel .workflow-run-actions { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
-.workflow-phase-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.workflow-phase-header { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #6b7280); margin-bottom: 4px; }
-.workflow-step-list { list-style: none; margin: 0; padding: 0; }
-.workflow-step-row .workflow-step-button { display: flex; width: 100%; align-items: center; gap: 8px; background: none; border: none; padding: 6px 4px; text-align: left; cursor: pointer; font-size: 13px; color: inherit; }
-.workflow-step-row.selected { background: var(--surface-alt, #f3f4f6); border-radius: 6px; }
-.workflow-step-dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; flex: none; }
-.workflow-step-row.running .workflow-step-dot { background: #3b82f6; }
-.workflow-step-row.done .workflow-step-dot { background: #22c55e; }
-.workflow-step-row.failed .workflow-step-dot { background: #ef4444; }
-.workflow-step-status { margin-left: auto; font-size: 11px; color: var(--muted, #6b7280); }
-.workflow-step-badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #fef3c7; color: #92400e; }
+/* Workflow Teams */
+.workflow-team-list { display: flex; flex-direction: column; gap: 10px; }
+.workflow-team-list-actions { display: flex; justify-content: flex-end; }
+.workflow-team-list-actions button.primary {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: none;
+  background: var(--fb-brand-gradient);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.workflow-team-list-actions button.primary:hover {
+  opacity: 0.9;
+}
+.workflow-team-list-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.workflow-team-card {
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-panel-bg);
+  transition: border-color 0.15s;
+}
+.workflow-team-card:hover { border-color: var(--fb-border-strong); }
+.workflow-team-card-main { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.workflow-team-card-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.workflow-team-card-title strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+.workflow-team-card-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workflow-team-card-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+  flex-wrap: wrap;
+}
+.workflow-team-card-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.workflow-team-card-actions {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+.workflow-team-card-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--fb-border);
+  background: transparent;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.workflow-team-card-actions button:hover {
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  border-color: var(--fb-border-strong);
+}
+.workflow-team-card-actions button.danger {
+  color: var(--fb-danger);
+  border-color: transparent;
+}
+.workflow-team-card-actions button.danger:hover {
+  background: rgba(225, 29, 72, 0.08);
+  border-color: var(--fb-danger);
+}
+.workflow-team-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.workflow-team-badge.builtin {
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+}
+.workflow-team-badge.user {
+  background: rgba(6, 182, 212, 0.12);
+  color: #0891b2;
+}
+.workflow-team-badge.muted {
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-tertiary);
+}
 
-.workflow-step-details-card { display: flex; flex-direction: column; gap: 8px; }
-.workflow-step-details header { display: flex; justify-content: space-between; align-items: center; }
-.workflow-status-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-alt, #f3f4f6); }
+.workflow-team-editor { display: flex; flex-direction: column; gap: 16px; }
+.workflow-team-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.workflow-team-editor-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.workflow-team-editor-back:hover {
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+}
+.workflow-team-editor-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.workflow-team-editor-title h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workflow-team-editor-actions { display: flex; gap: 8px; }
+.workflow-team-editor-actions button {
+  padding: 6px 14px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--fb-border);
+  background: transparent;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.workflow-team-editor-actions button:hover { background: var(--fb-panel-soft); }
+.workflow-team-editor-actions button.primary {
+  background: var(--fb-brand-gradient);
+  color: #fff;
+  border: none;
+}
+.workflow-team-editor-actions button.primary:hover { opacity: 0.9; }
+.workflow-team-editor-errors {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(225, 29, 72, 0.08);
+  color: var(--fb-danger);
+  font-size: 12px;
+  list-style: disc;
+  padding-left: 30px;
+}
+.workflow-team-editor-section {
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--fb-panel-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.workflow-team-editor-section h5 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fb-text-tertiary);
+}
+.workflow-team-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+}
+.workflow-team-editor-field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.workflow-team-editor-field input,
+.workflow-team-editor-field textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  transition: border-color 0.15s;
+  outline: none;
+}
+.workflow-team-editor-field input:focus,
+.workflow-team-editor-field textarea:focus {
+  border-color: var(--fb-brand);
+}
+.workflow-team-editor-field input:disabled,
+.workflow-team-editor-field textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.workflow-team-editor-field.inline input { max-width: 72px; }
+.workflow-team-editor-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+}
+.workflow-team-editor-toggle input[type="checkbox"] {
+  accent-color: var(--fb-brand);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.workflow-team-editor-toggle input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.workflow-team-roles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.workflow-team-roles li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--fb-panel-soft);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.workflow-team-role-info {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.workflow-team-role-info strong {
+  font-size: 13px;
+  color: var(--fb-text-primary);
+}
+.workflow-team-role-info small {
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+}
+.workflow-team-role-agent {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+}
+.workflow-team-role-agent select {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--fb-border);
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+.workflow-team-role-agent select:focus { border-color: var(--fb-brand); }
+.workflow-team-nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.workflow-team-nodes li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.workflow-team-nodes li::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.workflow-team-nodes li.write::before {
+  background: #f59e0b;
+}
+.workflow-team-nodes li:not(.write):not(.approval)::before {
+  background: var(--fb-text-tertiary);
+}
+.workflow-team-nodes li.approval::before {
+  background: var(--fb-brand);
+}
+.workflow-team-nodes li strong {
+  font-weight: 500;
+  color: var(--fb-text-primary);
+}
+.workflow-team-editor-disclose {
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  color: var(--fb-text-tertiary);
+  transition: color 0.15s;
+}
+.workflow-team-editor-disclose:hover { color: var(--fb-text-secondary); }
+.workflow-team-editor-json {
+  font-size: 11px;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--fb-panel-soft);
+  padding: 10px;
+  border-radius: 8px;
+  color: var(--fb-text-secondary);
+  font-family: var(--fb-mono);
+}
+.workflow-team-editor-disclose-icon {
+  display: inline-block;
+  width: 12px;
+  margin-right: 4px;
+  font-size: 10px;
+}
+.workflow-team-editor-hint {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 12px;
+  background: var(--fb-brand-glow);
+  color: var(--fb-text-secondary);
+  border-radius: 8px;
+  border-left: 3px solid var(--fb-brand);
+}
+.workflow-team-editor-section-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fb-text-tertiary);
+}
+.workflow-team-editor-section-desc .write-count {
+  color: #f59e0b;
+  font-weight: 500;
+}
+.workflow-team-editor-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+.workflow-team-editor-subgroup + .workflow-team-editor-subgroup {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fb-border);
+}
+.workflow-team-editor-subgroup-title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fb-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.workflow-team-editor-limits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.workflow-team-badge.write {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+.workflow-team-node-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.workflow-team-node-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+}
+.workflow-team-node-role {
+  color: var(--fb-text-secondary);
+}
+.workflow-team-nodes.timeline {
+  padding-left: 8px;
+  position: relative;
+}
+.workflow-team-nodes.timeline li {
+  align-items: flex-start;
+  padding: 6px 0;
+  gap: 10px;
+  position: relative;
+}
+.workflow-team-nodes.timeline li::before {
+  margin-top: 6px;
+}
+.workflow-team-nodes.timeline li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 2.5px;
+  top: 18px;
+  bottom: -6px;
+  width: 1px;
+  background: var(--fb-border);
+}
+
+/* Team preview card on new task */
+.workflow-team-preview-card { background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 14px 16px; margin: 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.workflow-team-preview-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.workflow-team-preview-stats { display: flex; gap: 16px; font-size: 12px; color: var(--muted, #6b7280); flex-wrap: wrap; }
+.workflow-team-preview-roles,
+.workflow-team-preview-route { display: flex; flex-direction: column; gap: 4px; }
+.workflow-team-preview-roles strong,
+.workflow-team-preview-route strong { font-size: 12px; }
+.workflow-team-preview-route ol { padding-left: 20px; margin: 0; font-size: 13px; }
+.workflow-team-preview-route li.write { color: #b45309; font-weight: 500; }
+.workflow-team-preview-route li.approval { color: #6d28d9; }
+.workflow-team-preview-actions { display: flex; gap: 8px; }
+
+/* Team selector on new task */
+.new-task-team-selector { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.new-task-team-selector label { font-size: 12px; color: var(--muted, #6b7280); }
+.new-task-team-selector select { padding: 8px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 8px; font-size: 14px; }
+.workflow-run-panel { display: flex; flex-direction: column; }
+.workflow-run-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+.workflow-run-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.workflow-run-title strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fb-text);
+  letter-spacing: -0.01em;
+}
+.workflow-run-status {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-alt, #f3f4f6);
+  color: var(--muted, #6b7280);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.workflow-run-status.running {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--fb-brand);
+}
+.workflow-run-status.paused,
+.workflow-run-status.blocked {
+  background: #fef3c7;
+  color: #92400e;
+}
+.workflow-run-status.failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.workflow-run-status.completed,
+.workflow-run-status.partial {
+  background: #dcfce7;
+  color: #166534;
+}
+.workflow-run-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+}
+.workflow-progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-alt, #f3f4f6);
+  overflow: hidden;
+}
+.workflow-progress-fill {
+  height: 100%;
+  background: var(--fb-brand-gradient);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.workflow-progress-label {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  min-width: 36px;
+  text-align: right;
+}
+.workflow-run-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 14px;
+  margin: 4px 0;
+}
+.workflow-run-actions button {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--fb-border);
+  background: var(--fb-panel-bg);
+  cursor: pointer;
+}
+.workflow-run-actions button.primary {
+  background: var(--fb-brand-gradient);
+  color: #fff;
+  border: none;
+}
+.workflow-run-actions button.danger {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+.workflow-steps-antd { padding: 0 14px 14px; }
+.workflow-steps-antd .ant-steps {
+  font-family: var(--fb-font);
+}
+.workflow-steps-antd .ant-steps-item-title.selected {
+  color: var(--fb-brand) !important;
+}
+.workflow-steps-antd .ant-steps-item-title {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding-inline-end: 0 !important;
+  cursor: pointer;
+  line-height: 16px !important;
+}
+.workflow-steps-antd .ant-steps-item-description {
+  font-size: 11px !important;
+  margin-top: 2px !important;
+}
+.workflow-step-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  flex-wrap: wrap;
+}
+.workflow-step-agent-avatar {
+  display: grid;
+  place-items: center;
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--fb-brand-gradient);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  flex: none;
+  box-shadow: 0 2px 5px rgba(0, 194, 154, 0.18);
+}
+.workflow-step-agent-avatar.agent-brand-avatar {
+  background: transparent;
+  box-shadow: none;
+}
+.workflow-step-agent-name {
+  font-weight: 500;
+}
+.workflow-step-status-text {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted, #6b7280);
+}
+.workflow-step-status-text.running { color: var(--fb-brand); font-weight: 600; }
+.workflow-step-status-text.done { color: #22c55e; }
+.workflow-step-status-text.failed { color: #ef4444; }
+.workflow-step-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  font-variant-numeric: tabular-nums;
+}
+.workflow-step-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 500;
+}
+
+.workflow-step-details {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--fb-brand);
+  background: var(--fb-panel-bg);
+  border-radius: 0 8px 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workflow-step-details header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.workflow-step-details header strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.workflow-status-pill {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-alt, #f3f4f6);
+  font-weight: 500;
+}
 .workflow-status-pill.failed { background: #fee2e2; color: #991b1b; }
 .workflow-status-pill.done { background: #dcfce7; color: #166534; }
-.workflow-step-prompt { white-space: pre-wrap; font-size: 12px; max-height: 160px; overflow-y: auto; margin: 0; }
-.workflow-step-summary p { font-size: 12px; color: var(--muted, #6b7280); }
+.workflow-status-pill.running { background: var(--fb-brand-glow); color: var(--fb-brand); }
+.workflow-step-prompt {
+  white-space: pre-wrap;
+  font-size: 11px;
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--surface-alt, #f3f4f6);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted, #6b7280);
+  line-height: 1.5;
+}
+.workflow-step-summary {
+  font-size: 12px;
+}
+.workflow-step-summary summary {
+  cursor: pointer;
+  color: var(--fb-brand);
+  font-weight: 500;
+  user-select: none;
+}
+.workflow-step-summary p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  white-space: pre-wrap;
+}
+.workflow-retry-button {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--fb-brand-gradient);
+  color: #fff;
+  cursor: pointer;
+}
 .workflow-summary-text { white-space: pre-wrap; font-size: 12px; margin: 0; }
+
+/* Team Summary card */
+.team-summary-card .team-summary-title {
+  padding: 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.team-summary-title strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fb-text);
+}
+.team-summary-title small {
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+}
+.team-agent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.team-agent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  background: var(--surface-alt, #f3f4f6);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted, #6b7280);
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.team-agent-pill.running {
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+.team-agent-pill.failed {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.team-agent-avatar {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 9px;
+  flex: none;
+}

@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { WorkflowStepRow } from "@/services/workflows/types";
 import { pendingManualGatePhaseId } from "@/services/workflows/planning";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { WorkflowPhaseList } from "./WorkflowPhaseList";
-import { WorkflowStepDetails } from "./WorkflowStepDetails";
-import { ReviewLoopSummary } from "./ReviewLoopSummary";
 
 export function WorkflowRunPanel() {
   const { t } = useTranslation();
@@ -39,42 +37,71 @@ export function WorkflowRunPanel() {
     return () => window.clearInterval(id);
   }, [activeRun?.id, isLive, refresh]);
 
+  const progress = useMemo(() => {
+    if (!steps.length) return { done: 0, total: 0, percent: 0 };
+    const done = steps.filter(
+      (s) => s.status === "done" || s.status === "skipped"
+    ).length;
+    return {
+      done,
+      total: steps.length,
+      percent: Math.round((done / steps.length) * 100)
+    };
+  }, [steps]);
+
   if (!activeRun || !plan) {
-    return (
-      <section className="side-card workflow-run-panel">
-        <div className="side-card-header">
-          <span>{t("workflow.progress")}</span>
-          <strong>{t("workflow.noActiveRun")}</strong>
-        </div>
-      </section>
-    );
+    return null;
   }
 
-  const selected = steps.find((s) => s.id === selectedId);
-  const gatingPhaseId = plan
-    ? pendingManualGatePhaseId(
-        plan.phases,
-        steps.map((s) => ({ stepId: s.stepId, status: s.status }))
-      )
-    : undefined;
+  const gatingPhaseId = pendingManualGatePhaseId(
+    plan.phases,
+    steps.map((s) => ({ stepId: s.stepId, status: s.status }))
+  );
 
   return (
-    <>
-      <section className="side-card workflow-run-panel">
-        <div className="side-card-header">
-          <span>{activeRun.name}</span>
-          <strong>{t(`workflow.status.${activeRun.status}`)}</strong>
+    <section className="side-card workflow-run-panel">
+      <div className="workflow-run-header">
+        <div className="workflow-run-title">
+          <strong>{activeRun.name}</strong>
+          <span className={`workflow-run-status ${activeRun.status}`}>
+            {t(`workflow.status.${activeRun.status}`)}
+          </span>
         </div>
+        <div className="workflow-run-progress">
+          <div className="workflow-progress-bar" aria-hidden="true">
+            <div
+              className="workflow-progress-fill"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          <span className="workflow-progress-label">
+            {progress.done}/{progress.total}
+          </span>
+        </div>
+      </div>
 
+      {(isLive || gatingPhaseId) && (
         <div className="workflow-run-actions">
           {activeRun.status === "running" && (
             <button type="button" onClick={() => void pause(activeRun.id)}>
               {t("workflow.pause")}
             </button>
           )}
-          {(activeRun.status === "paused" || activeRun.status === "blocked") && (
+          {(activeRun.status === "paused" ||
+            activeRun.status === "blocked") && (
             <button type="button" onClick={() => void resume(activeRun.id)}>
               {t("workflow.resume")}
+            </button>
+          )}
+          {gatingPhaseId && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() =>
+                void approveGate(activeRun.id, gatingPhaseId)
+              }
+            >
+              {t("workflow.approveGate")}
             </button>
           )}
           {isLive && (
@@ -87,32 +114,17 @@ export function WorkflowRunPanel() {
             </button>
           )}
         </div>
+      )}
 
-        <WorkflowPhaseList
-          phases={plan.phases}
-          steps={steps}
-          selectedStepId={selectedId}
-          onSelect={(step: WorkflowStepRow) => setSelectedId(step.id)}
-        />
-      </section>
-
-      <section className="side-card workflow-step-details-card">
-        <WorkflowStepDetails
-          step={selected}
-          onRetry={(step) => void retryStep(activeRun.id, step.id)}
-        />
-        {gatingPhaseId && (
-          <button
-            type="button"
-            className="primary"
-            onClick={() => void approveGate(activeRun.id, gatingPhaseId)}
-          >
-            {t("workflow.approveGate")}
-          </button>
-        )}
-      </section>
-
-      {!isLive && <ReviewLoopSummary run={activeRun} />}
-    </>
+      <WorkflowPhaseList
+        phases={plan.phases}
+        steps={steps}
+        selectedStepId={selectedId}
+        onSelect={(step: WorkflowStepRow) =>
+          setSelectedId((cur) => (cur === step.id ? undefined : step.id))
+        }
+        onRetry={(step) => void retryStep(activeRun.id, step.id)}
+      />
+    </section>
   );
 }

@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 
+import { AgentAvatar } from "@/components/CLI/AgentAvatar";
+import { displayAgentName } from "@/config/agentDisplay";
 import type { WorkflowStepRow } from "@/services/workflows/types";
 
 export function WorkflowStepRow({
@@ -12,22 +14,37 @@ export function WorkflowStepRow({
   selected?: boolean;
 }) {
   const { t } = useTranslation();
+  const agentLabel = displayAgentName(step.agentName, step.adapter);
   return (
-    <li
+    <div
       className={`workflow-step-row ${step.status} ${step.mode}${
         selected ? " selected" : ""
       }`}
     >
       <button type="button" className="workflow-step-button" onClick={onClick}>
         <span className="workflow-step-dot" aria-hidden="true" />
-        <span className="workflow-step-title">{step.title}</span>
-        {step.mode === "write" && (
-          <span className="workflow-step-badge">{t("workflow.writeStep")}</span>
-        )}
+        <div className="workflow-step-main">
+          <span className="workflow-step-title">{step.title}</span>
+          <span className="workflow-step-meta">
+            <AgentAvatar
+              adapter={step.adapter}
+              className="workflow-step-agent-avatar"
+              fallback={
+                <span>{agentLabel.slice(0, 2).toUpperCase()}</span>
+              }
+            />
+            <span className="workflow-step-agent-name">{agentLabel}</span>
+            {step.mode === "write" && (
+              <span className="workflow-step-badge">
+                {t("workflow.writeStep")}
+              </span>
+            )}
+          </span>
+        </div>
         <span className="workflow-step-status">
           {t(`workflow.stepStatus.${step.status}`)}
         </span>
       </button>
-    </li>
+    </div>
   );
 }

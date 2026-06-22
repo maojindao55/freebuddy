@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ConfigProvider, theme as antdTheme } from "antd";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
@@ -163,6 +164,25 @@ function App() {
   );
 
   return (
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: "#10b981",
+          colorSuccess: "#10b981",
+          colorError: "#ef4444",
+          colorText: theme === "dark" ? "#f8fafc" : "#0f172a",
+          colorTextDescription: theme === "dark" ? "#64748b" : "#6b7280",
+          colorBgContainer: theme === "dark" ? "#111b2d" : "#ffffff",
+          fontFamily: "var(--fb-font)",
+          borderRadius: 8,
+          wireframe: false
+        },
+        algorithm:
+          theme === "dark"
+            ? antdTheme.darkAlgorithm
+            : antdTheme.defaultAlgorithm
+      }}
+    >
     <ImageLightboxProvider>
     <div
       className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}`}
@@ -222,6 +242,7 @@ function App() {
       <PermissionDialog />
     </div>
     </ImageLightboxProvider>
+    </ConfigProvider>
   );
 }
 

@@ -154,6 +154,20 @@ function MarkdownText({ content }: { content: string }) {
       continue;
     }
 
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const text = headingMatch[2].trim();
+      const Tag = `h${level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+      blocks.push(
+        <Tag key={`h-${i}`} className="markdown-heading">
+          {renderInline(text, `h-${i}`)}
+        </Tag>
+      );
+      i += 1;
+      continue;
+    }
+
     if (line.trim().startsWith("```")) {
       const code: string[] = [];
       i += 1;
@@ -229,6 +243,7 @@ function MarkdownText({ content }: { content: string }) {
       i < lines.length &&
       lines[i].trim() &&
       !lines[i].trim().startsWith("```") &&
+      !/^#{1,6}\s+/.test(lines[i]) &&
       !(lines[i].includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) &&
       !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])
     ) {

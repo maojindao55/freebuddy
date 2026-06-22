@@ -5,9 +5,14 @@ import { useTranslation } from "react-i18next";
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useWorkflowStore } from "@/store/workflowStore";
+import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { cliClient } from "@/services/cli/client";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
 import type { WorkflowPlan } from "@/services/workflows/types";
+import type {
+  WorkflowTeam,
+  WorkflowTeamPreview
+} from "@/services/workflowTeams/types";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
   attachmentPreviewUrl,
@@ -144,13 +149,27 @@ export function ChatView() {
   );
   const live = activeId ? liveMap[activeId] : undefined;
 
-  const [workflowMode, setWorkflowMode] = useState(false);
+  const [taskMode, setTaskMode] = useState<"normal" | "workflow" | "team">(
+    "normal"
+  );
+  const workflowMode = taskMode === "workflow";
+  const teamMode = taskMode === "team";
   const pendingPlan = useWorkflowStore((s) => s.pendingPlan);
   const pendingErrors = useWorkflowStore((s) => s.pendingErrors);
   const previewReviewLoop = useWorkflowStore((s) => s.previewReviewLoop);
   const createAndStartWorkflow = useWorkflowStore((s) => s.createAndStart);
+  const createAndStartTeam = useWorkflowStore((s) => s.createAndStartTeam);
   const clearPendingPlan = useWorkflowStore((s) => s.clearPending);
   const activeConversationId = useConversationStore((s) => s.activeId);
+
+  const teams = useWorkflowTeamStore((s) => s.teams);
+  const teamsLoaded = useWorkflowTeamStore((s) => s.loaded);
+  const loadTeams = useWorkflowTeamStore((s) => s.load);
+  const pendingTeamPreview = useWorkflowTeamStore((s) => s.pendingTeamPreview);
+  const pendingTeamErrors = useWorkflowTeamStore((s) => s.pendingErrors);
+  const previewTeam = useWorkflowTeamStore((s) => s.previewTeam);
+  const clearTeamPreview = useWorkflowTeamStore((s) => s.clearPreview);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
   const resolve = useCliExecutorStore((s) => s.resolve);
   const check = useCliExecutorStore((s) => s.check);
@@ -235,7 +254,19 @@ export function ChatView() {
 
   useEffect(() => {
     clearPendingPlan();
-  }, [activeConversationId, clearPendingPlan]);
+    clearTeamPreview();
+  }, [activeConversationId, clearPendingPlan, clearTeamPreview]);
+
+  useEffect(() => {
+    if (!teamsLoaded) void loadTeams();
+  }, [teamsLoaded, loadTeams]);
+
+  useEffect(() => {
+    if (!selectedTeamId && teams.length > 0) {
+      const firstEnabled = teams.find((t) => t.enabled);
+      if (firstEnabled) setSelectedTeamId(firstEnabled.id);
+    }
+  }, [teams, selectedTeamId]);
 
   useEffect(() => {
     const resolved = conv?.approvalMode ?? member?.cli.approvalMode;
@@ -341,6 +372,70 @@ export function ChatView() {
   const onCreateAndSend = async () => {
     const prompt = newTaskDraft.trim();
     const attachmentsToSend = newTaskPendingAttachments;
+
+    if (taskMode === "team") {
+      if (!prompt || !selectedTeamId) return;
+      const team = teams.find((tt) => tt.id === selectedTeamId);
+      if (!team) return;
+      const firstRoleAgentId = team.roles[0]?.agentId;
+      const teamMember =
+        members.find((m) => m.id === firstRoleAgentId) ?? members[0];
+      if (!teamMember) return;
+      setPreflightMsg(null);
+      try {
+        if (!(await preflightMember(teamMember))) return;
+        const cwd = newTaskCwd.trim() || undefined;
+        const newConv = await createConversation({
+          member: teamMember,
+          cwd,
+          title: (team.name + ": " + prompt).slice(0, 32),
+          approvalMode: permissionMode
+        });
+        setNewTaskDraft("");
+        setNewTaskPendingAttachments([]);
+        const userMsgId = nanoid();
+        const now = new Date().toISOString();
+        await cliClient.appendMessage({
+          id: userMsgId,
+          conversationId: newConv.id,
+          role: "user",
+          status: "sent",
+          content: prompt
+        });
+        useConversationStore.setState((s) => ({
+          messages: {
+            ...s.messages,
+            [newConv.id]: [
+              ...(s.messages[newConv.id] ?? []),
+              {
+                id: userMsgId,
+                conversationId: newConv.id,
+                role: "user",
+                status: "sent",
+                content: prompt,
+                createdAt: now,
+                updatedAt: now
+              }
+            ]
+          }
+        }));
+        await createAndStartTeam({
+          teamId: team.id,
+          conversationId: newConv.id,
+          goal: prompt,
+          cwd
+        });
+      } catch (e) {
+        setNewTaskDraft(prompt);
+        setPreflightMsg(
+          t("errors.taskFailed", {
+            err: e instanceof Error ? e.message : String(e)
+          })
+        );
+      }
+      return;
+    }
+
     const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
     if ((!prompt && attachmentsToSend.length === 0) || !selectedMember) return;
 
@@ -418,35 +513,55 @@ export function ChatView() {
     const prompt = draft.trim() || newTaskDraft.trim();
     if (!prompt) return;
     try {
-      await previewReviewLoop({
-        goal: prompt,
-        cwd: conv?.cwd || newTaskCwd || undefined
-      });
+      if (teamMode && selectedTeamId) {
+        await previewTeam({
+          teamId: selectedTeamId,
+          goal: prompt,
+          cwd: conv?.cwd || newTaskCwd || undefined
+        });
+      } else if (workflowMode) {
+        await previewReviewLoop({
+          goal: prompt,
+          cwd: conv?.cwd || newTaskCwd || undefined
+        });
+      }
     } catch (e) {
       setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
     }
   };
 
   const onCreateWorkflowConversation = async () => {
-    if (!pendingPlan) return;
     const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
     if (!selectedMember) return;
-    const cwd = newTaskCwd.trim() || pendingPlan.cwd;
+    if (!teamMode && !pendingPlan) return;
+    if (teamMode && !pendingTeamPreview) return;
+    const cwd = newTaskCwd.trim() || pendingTeamPreview?.cwd || pendingPlan?.cwd;
     setPreflightMsg(null);
     try {
       if (!(await preflightMember(selectedMember))) return;
       const newConv = await createConversation({
         member: selectedMember,
         cwd,
-        title: pendingPlan.name.slice(0, 24),
+        title: (pendingPlan?.name ?? "").slice(0, 24),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
       setNewTaskPendingAttachments([]);
-      await createAndStartWorkflow({
-        conversationId: newConv.id,
-        plan: { ...pendingPlan, cwd }
-      });
+      if (teamMode && pendingTeamPreview) {
+        clearTeamPreview();
+        await createAndStartTeam({
+          teamId: pendingTeamPreview.teamId,
+          conversationId: newConv.id,
+          goal: pendingTeamPreview.goal,
+          cwd: pendingTeamPreview.cwd ?? cwd
+        });
+      } else if (pendingPlan) {
+        clearPendingPlan();
+        await createAndStartWorkflow({
+          conversationId: newConv.id,
+          plan: { ...pendingPlan, cwd }
+        });
+      }
     } catch (e) {
       setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
     }
@@ -461,9 +576,9 @@ export function ChatView() {
         cwd={newTaskCwd}
         permissionMode={permissionMode}
         pendingAttachments={newTaskPendingAttachments}
-        workflowMode={workflowMode}
-        pendingPlan={pendingPlan}
-        pendingErrors={pendingErrors}
+        taskMode={taskMode}
+        teams={teams}
+        selectedTeamId={selectedTeamId}
         preflightMsg={preflightMsg}
         onDraft={setNewTaskDraft}
         onMember={setSelectedMemberId}
@@ -471,9 +586,12 @@ export function ChatView() {
         onPermissionMode={setPermissionMode}
         onSelectAttachments={() => void handleSelectAttachments("new")}
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
-        onWorkflowMode={setWorkflowMode}
-        onGeneratePlan={() => void handleGeneratePlan()}
-        onCreateWorkflowConversation={onCreateWorkflowConversation}
+        onTaskMode={(m) => {
+          setTaskMode(m);
+          clearPendingPlan();
+          clearTeamPreview();
+        }}
+        onTeam={setSelectedTeamId}
         onSubmit={() => void onCreateAndSend()}
       />
     );
@@ -587,7 +705,7 @@ export function ChatView() {
               type="button"
               title={t("workflow.modeHint")}
               aria-pressed={workflowMode}
-              onClick={() => setWorkflowMode((v) => !v)}
+              onClick={() => setTaskMode(workflowMode ? "normal" : "workflow")}
               disabled={sending}
             >
               <span>{t("workflow.mode")}</span>
@@ -632,9 +750,9 @@ function NewTaskHome({
   cwd,
   permissionMode,
   pendingAttachments,
-  workflowMode,
-  pendingPlan,
-  pendingErrors,
+  taskMode,
+  teams,
+  selectedTeamId,
   preflightMsg,
   onDraft,
   onMember,
@@ -642,9 +760,8 @@ function NewTaskHome({
   onPermissionMode,
   onSelectAttachments,
   onRemoveAttachment,
-  onWorkflowMode,
-  onGeneratePlan,
-  onCreateWorkflowConversation,
+  onTaskMode,
+  onTeam,
   onSubmit
 }: {
   draft: string;
@@ -653,9 +770,9 @@ function NewTaskHome({
   cwd: string;
   permissionMode: "auto" | "ask";
   pendingAttachments: ChatAttachment[];
-  workflowMode: boolean;
-  pendingPlan: WorkflowPlan | null;
-  pendingErrors: string[];
+  taskMode: "normal" | "workflow" | "team";
+  teams: WorkflowTeam[];
+  selectedTeamId: string;
   preflightMsg: string | null;
   onDraft: (value: string) => void;
   onMember: (value: string) => void;
@@ -663,13 +780,13 @@ function NewTaskHome({
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
-  onWorkflowMode: (value: boolean) => void;
-  onGeneratePlan: () => void;
-  onCreateWorkflowConversation: () => void;
+  onTaskMode: (value: "normal" | "workflow" | "team") => void;
+  onTeam: (id: string) => void;
   onSubmit: () => void;
 }) {
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const teamMode = taskMode === "team";
 
   return (
     <div className="new-task-view">
@@ -681,39 +798,25 @@ function NewTaskHome({
           aria-label={t("workflow.modeTabsAria")}
         >
           <button
-            className={`new-task-mode-tab${!workflowMode ? " active" : ""}`}
+            className={`new-task-mode-tab${taskMode === "normal" ? " active" : ""}`}
             type="button"
             role="tab"
-            aria-selected={!workflowMode}
-            onClick={() => onWorkflowMode(false)}
+            aria-selected={taskMode === "normal"}
+            onClick={() => onTaskMode("normal")}
           >
             {t("workflow.normalMode")}
           </button>
           <button
-            className={`new-task-mode-tab${workflowMode ? " active" : ""}`}
+            className={`new-task-mode-tab${taskMode === "team" ? " active" : ""}`}
             type="button"
             role="tab"
-            aria-selected={workflowMode}
-            onClick={() => onWorkflowMode(true)}
+            aria-selected={taskMode === "team"}
+            onClick={() => onTaskMode("team")}
           >
-            {t("workflow.mode")}
+            {t("workflow.teamExecution")}
           </button>
         </div>
-        {(pendingPlan || pendingErrors.length > 0) && (
-          <div className="workflow-plan-preview">
-            {pendingErrors.length > 0 && (
-              <div className="preflight-warn">
-                {t("workflow.invalidPlan")}: {pendingErrors.join("; ")}
-              </div>
-            )}
-            {pendingPlan && (
-              <WorkflowPlanCard
-                plan={pendingPlan}
-                onRun={() => void onCreateWorkflowConversation()}
-              />
-            )}
-          </div>
-        )}
+
         <section className="new-task-composer" aria-label={t("chat.newTaskAria")}>
         <AttachmentTray
           attachments={pendingAttachments}
@@ -729,26 +832,46 @@ function NewTaskHome({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              if (workflowMode) {
-                onGeneratePlan();
-              } else {
-                onSubmit();
-              }
+              onSubmit();
             }
           }}
         />
 
         <div className="new-task-toolbar">
-          <label>
-            <span>{t("chat.agent")}</span>
-            <select value={selectedMemberId} onChange={(event) => onMember(event.target.value)}>
-              {members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {teamMode ? (
+            <label>
+              <span>{t("workflow.selectTeam")}</span>
+              {teams.filter((tt) => tt.enabled).length === 0 ? (
+                <select disabled value="">
+                  <option value="">{t("workflow.noTeams")}</option>
+                </select>
+              ) : (
+                <select
+                  value={selectedTeamId}
+                  onChange={(event) => onTeam(event.target.value)}
+                >
+                  {teams
+                    .filter((tt) => tt.enabled)
+                    .map((tt) => (
+                      <option key={tt.id} value={tt.id}>
+                        {tt.name}
+                      </option>
+                    ))}
+                </select>
+              )}
+            </label>
+          ) : (
+            <label>
+              <span>{t("chat.agent")}</span>
+              <select value={selectedMemberId} onChange={(event) => onMember(event.target.value)}>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             <span>{t("chat.permission")}</span>
             <select value={permissionMode} onChange={(event) => onPermissionMode(event.target.value as "auto" | "ask")}>
@@ -793,13 +916,16 @@ function NewTaskHome({
               className="new-task-send send-icon-button"
               type="button"
               disabled={
-                workflowMode
-                  ? !draft.trim() || members.length === 0
-                  : !(draft.trim() || pendingAttachments.length > 0) || members.length === 0
+                !(draft.trim() || pendingAttachments.length > 0) ||
+                (teamMode ? !selectedTeamId : members.length === 0)
               }
-              title={t("chat.startTask")}
-              aria-label={t("chat.startTask")}
-              onClick={workflowMode ? onGeneratePlan : onSubmit}
+              title={
+                teamMode ? t("workflow.teamExecution") : t("chat.startTask")
+              }
+              aria-label={
+                teamMode ? t("workflow.teamExecution") : t("chat.startTask")
+              }
+              onClick={onSubmit}
             >
               ↑
             </button>

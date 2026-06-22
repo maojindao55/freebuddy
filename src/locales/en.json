@@ -137,7 +137,8 @@
   },
   "message": {
     "you": "You",
-    "thinking": "Thinking"
+    "thinking": "Thinking",
+    "system": "System"
   },
   "stream": {
     "read": "Read {{target}}",
@@ -211,6 +212,11 @@
     "close": "Close preview"
   },
   "settings": {
+    "tabs": {
+      "general": "General",
+      "cli": "CLI Agents",
+      "workflowTeams": "Workflow Teams"
+    },
     "cli": {
       "title": "Cli Agents",
       "description": "Configure the local cli agents available in FreeBuddy.",
@@ -291,6 +297,62 @@
       "blocked": "Blocked"
     },
     "invalidPlan": "The generated plan is invalid",
-    "summary": "Workflow summary"
+    "summary": "Workflow summary",
+    "teamExecution": "Team execution",
+    "teamExecutionHint": "Run a coordinated team of agents for your task",
+    "selectTeam": "Select team",
+    "noTeams": "No teams configured",
+    "generateRoute": "Generate route",
+    "teamPlanPreview": "Team plan",
+    "teamOverview": "Team overview",
+    "teamRoles": "Roles",
+    "teamWorkflow": "Workflow",
+    "teamPolicy": "Policy",
+    "teamPolicyGates": "Approval gates",
+    "teamPolicyLimits": "Limits",
+    "teamBuiltinLocked": "Built-in templates are read-only. Duplicate to customize.",
+    "teamAdvanced": "Advanced",
+    "teamEditor": "Team editor",
+    "teamList": "Teams",
+    "worksWith": "Works with",
+    "routeSummary": "Route summary",
+    "role": "Role",
+    "writeNodes": "Write steps",
+    "approvalNodes": "Approval gates",
+    "loops": "Max loops",
+    "allowed": "Allowed",
+    "denied": "Denied",
+    "newTeam": "New team",
+    "teamName": "Team name",
+    "teamDescription": "Description",
+    "teamSource": "Source",
+    "builtinTeam": "Built-in",
+    "userTeam": "Custom",
+    "duplicateTeam": "Duplicate",
+    "disableTeam": "Disable",
+    "enableTeam": "Enable",
+    "deleteTeam": "Delete",
+    "confirmDeleteTeam": "Delete this team?",
+    "teamNameRequired": "Team name is required",
+    "agentBindings": "Agent bindings",
+    "rolePlanner": "Planner",
+    "roleResearcher": "Researcher",
+    "roleReviewer": "Reviewer",
+    "roleImplementer": "Implementer",
+    "roleVerifier": "Verifier",
+    "roleSummarizer": "Summarizer",
+    "tempOverrideAgent": "Temporary agent override",
+    "currentAgent": "Agent",
+    "noAgent": "No agent",
+    "allowWrites": "Allow file writes",
+    "requireApprovalBeforeWrite": "Require approval before write",
+    "requireApprovalAfterReview": "Require approval after review",
+    "maxLoops": "Max loops",
+    "stopOnVerifyFailure": "Stop on verify failure",
+    "parallelReads": "Max parallel reads",
+    "advancedGraph": "Advanced graph",
+    "graphViewer": "Graph viewer",
+    "startNodes": "Start nodes",
+    "finalNodes": "Final nodes"
   }
 }

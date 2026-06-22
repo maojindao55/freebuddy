@@ -16,7 +16,6 @@ export function WorkflowStepDetails({
   return (
     <div className="workflow-step-details">
       <header>
-        <strong>{step.title}</strong>
         <span className={`workflow-status-pill ${step.status}`}>
           {t(`workflow.stepStatus.${step.status}`)}
         </span>

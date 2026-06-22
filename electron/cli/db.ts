@@ -115,6 +115,12 @@ function migrate(db: DB) {
       content TEXT NOT NULL,
       attachments TEXT,
       task_id TEXT,
+      agent_id TEXT,
+      agent_name TEXT,
+      adapter TEXT,
+      role_label TEXT,
+      workflow_run_id TEXT,
+      workflow_step_row_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
@@ -173,6 +179,20 @@ function migrate(db: DB) {
       ON workflow_steps(workflow_run_id, phase_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_workflow_steps_task
       ON workflow_steps(cli_task_id);
+
+    CREATE TABLE IF NOT EXISTS workflow_teams (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      icon TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      source TEXT NOT NULL,
+      roles_json TEXT NOT NULL,
+      template_json TEXT NOT NULL,
+      policy_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   const overrideCols = db
@@ -188,11 +208,48 @@ function migrate(db: DB) {
   if (!messageCols.some((c) => c.name === "attachments")) {
     db.exec("ALTER TABLE conversation_messages ADD COLUMN attachments TEXT");
   }
+  if (!messageCols.some((c) => c.name === "agent_id")) {
+    db.exec("ALTER TABLE conversation_messages ADD COLUMN agent_id TEXT");
+  }
+  if (!messageCols.some((c) => c.name === "agent_name")) {
+    db.exec("ALTER TABLE conversation_messages ADD COLUMN agent_name TEXT");
+  }
+  if (!messageCols.some((c) => c.name === "adapter")) {
+    db.exec("ALTER TABLE conversation_messages ADD COLUMN adapter TEXT");
+  }
+  if (!messageCols.some((c) => c.name === "role_label")) {
+    db.exec("ALTER TABLE conversation_messages ADD COLUMN role_label TEXT");
+  }
+  if (!messageCols.some((c) => c.name === "workflow_run_id")) {
+    db.exec(
+      "ALTER TABLE conversation_messages ADD COLUMN workflow_run_id TEXT"
+    );
+  }
+  if (!messageCols.some((c) => c.name === "workflow_step_row_id")) {
+    db.exec(
+      "ALTER TABLE conversation_messages ADD COLUMN workflow_step_row_id TEXT"
+    );
+  }
 
   const conversationCols = db
     .prepare("PRAGMA table_info(conversations)")
     .all() as Array<{ name: string }>;
   if (!conversationCols.some((c) => c.name === "approval_mode")) {
     db.exec("ALTER TABLE conversations ADD COLUMN approval_mode TEXT");
+  }
+
+  const workflowRunCols = db
+    .prepare("PRAGMA table_info(workflow_runs)")
+    .all() as Array<{ name: string }>;
+  if (!workflowRunCols.some((c) => c.name === "team_id")) {
+    db.exec("ALTER TABLE workflow_runs ADD COLUMN team_id TEXT");
+  }
+  if (!workflowRunCols.some((c) => c.name === "team_snapshot_json")) {
+    db.exec("ALTER TABLE workflow_runs ADD COLUMN team_snapshot_json TEXT");
+  }
+  if (!workflowRunCols.some((c) => c.name === "plan_version")) {
+    db.exec(
+      "ALTER TABLE workflow_runs ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 1"
+    );
   }
 }

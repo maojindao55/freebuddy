@@ -27,6 +27,8 @@ export function WorkspacePanel({
   const [copiedSession, setCopiedSession] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
+  const activeRun = useWorkflowStore((s) => s.activeRun);
+  const workflowSteps = useWorkflowStore((s) => s.steps);
 
   useEffect(() => {
     if (!activeId) return;
@@ -41,16 +43,33 @@ export function WorkspacePanel({
   const status = live?.status ?? "ready";
   const isLive = status === "running" || status === "starting";
 
+  const isTeamRun = !!activeRun && activeRun.conversationId === activeId;
+  const isTeamLive =
+    isTeamRun &&
+    (activeRun!.status === "running" ||
+      activeRun!.status === "paused" ||
+      activeRun!.status === "blocked");
+
   useEffect(() => {
-    if (!isLive) return;
+    if (!isLive && !isTeamLive) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [isLive]);
+  }, [isLive, isTeamLive]);
+
+  const totalMessages = useMemo(
+    () =>
+      isTeamRun
+        ? messages.filter((m) => m.role !== "system").length
+        : messages.length,
+    [isTeamRun, messages]
+  );
   const assistantTurns = useMemo(
     () => messages.filter((m) => m.role === "assistant").length,
     [messages]
   );
+
   const latestSessionId = useMemo(() => {
+    if (isTeamRun) return undefined;
     const fromLive = live?.capturedSessionId ?? live?.resumedFromSessionId;
     if (fromLive) return fromLive;
 
@@ -72,7 +91,7 @@ export function WorkspacePanel({
     }
 
     return undefined;
-  }, [live?.capturedSessionId, live?.resumedFromSessionId, messages]);
+  }, [isTeamRun, live?.capturedSessionId, live?.resumedFromSessionId, messages]);
 
   const latestUsage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -102,11 +121,18 @@ export function WorkspacePanel({
   }, [messages]);
 
   const latestPlan = useMemo(
-    () => latestPlanFromMessages(messages),
-    [messages]
+    () => (isTeamRun ? undefined : latestPlanFromMessages(messages)),
+    [isTeamRun, messages]
   );
 
   const durationMs = useMemo(() => {
+    if (isTeamRun && activeRun?.createdAt) {
+      const start = Date.parse(activeRun.createdAt);
+      const end = activeRun.endedAt ? Date.parse(activeRun.endedAt) : now;
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
+      const ms = end - start;
+      return ms >= 0 ? ms : undefined;
+    }
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const message = messages[i];
       if (message.role !== "assistant") continue;
@@ -117,32 +143,42 @@ export function WorkspacePanel({
       return ms >= 0 ? ms : undefined;
     }
     return undefined;
-  }, [messages, isLive, now]);
+  }, [
+    isTeamRun,
+    activeRun?.createdAt,
+    activeRun?.endedAt,
+    messages,
+    isLive,
+    now
+  ]);
 
   return (
     <aside className="details-panel workspace-panel" aria-label={t("workspace.panelAria")}>
       <WorkflowRunPanel />
-      <section className="side-card active-agent-card">
-        <div className="side-card-header">
-          <span>{t("workspace.activeAgent")}</span>
-          <strong>{t(`status.${status}`)}</strong>
-        </div>
-        <div className="agent-lockup">
-          <AgentAvatar
-            adapter={active?.adapter}
-            className="agent-avatar"
-            fallback={
-              <span>
-                {(active ? activeAgentName : "FB").slice(0, 2).toUpperCase()}
-              </span>
-            }
-          />
-          <div>
-            <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
-            <small>{active ? t("workspace.localAgent") : t("workspace.createToBegin")}</small>
+
+      {isTeamRun ? null : (
+        <section className="side-card active-agent-card">
+          <div className="side-card-header">
+            <span>{t("workspace.activeAgent")}</span>
+            <strong>{t(`status.${status}`)}</strong>
           </div>
-        </div>
-      </section>
+          <div className="agent-lockup">
+            <AgentAvatar
+              adapter={active?.adapter}
+              className="agent-avatar"
+              fallback={
+                <span>
+                  {(active ? activeAgentName : "FB").slice(0, 2).toUpperCase()}
+                </span>
+              }
+            />
+            <div>
+              <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
+              <small>{active ? t("workspace.localAgent") : t("workspace.createToBegin")}</small>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="side-card">
         <div className="side-card-header">
@@ -158,36 +194,38 @@ export function WorkspacePanel({
             <dt>{t("workspace.workspace")}</dt>
             <dd>{active?.cwd ? shortPath(active.cwd) : t("workspace.notSet")}</dd>
           </div>
-          <div>
-            <dt>{t("workspace.sessionId")}</dt>
-            <dd>
-              <button
-                className="session-id-copy"
-                type="button"
-                disabled={!latestSessionId}
-                title={
-                  latestSessionId
-                    ? t("workspace.copySession", { id: latestSessionId })
-                    : t("workspace.noSession")
-                }
-                onClick={() => {
-                  if (!latestSessionId) return;
-                  void navigator.clipboard.writeText(latestSessionId);
-                  setCopiedSession(true);
-                  window.setTimeout(() => setCopiedSession(false), 1200);
-                }}
-              >
-                {copiedSession
-                  ? t("workspace.copied")
-                  : latestSessionId
-                    ? shortSessionId(latestSessionId)
-                    : t("workspace.notCaptured")}
-              </button>
-            </dd>
-          </div>
+          {!isTeamRun && (
+            <div>
+              <dt>{t("workspace.sessionId")}</dt>
+              <dd>
+                <button
+                  className="session-id-copy"
+                  type="button"
+                  disabled={!latestSessionId}
+                  title={
+                    latestSessionId
+                      ? t("workspace.copySession", { id: latestSessionId })
+                      : t("workspace.noSession")
+                  }
+                  onClick={() => {
+                    if (!latestSessionId) return;
+                    void navigator.clipboard.writeText(latestSessionId);
+                    setCopiedSession(true);
+                    window.setTimeout(() => setCopiedSession(false), 1200);
+                  }}
+                >
+                  {copiedSession
+                    ? t("workspace.copied")
+                    : latestSessionId
+                      ? shortSessionId(latestSessionId)
+                      : t("workspace.notCaptured")}
+                </button>
+              </dd>
+            </div>
+          )}
           <div>
             <dt>{t("workspace.messages")}</dt>
-            <dd>{messages.length}</dd>
+            <dd>{totalMessages}</dd>
           </div>
           <div>
             <dt>{t("workspace.agentTurns")}</dt>
@@ -224,8 +262,8 @@ export function WorkspacePanel({
                 <dt>{t("workspace.tokens")}</dt>
                 <dd>
                   {t("workspace.tokenBreakdown", {
-                    input: latestUsage.inputTokens ?? "–",
-                    output: latestUsage.outputTokens ?? "–"
+                    input: latestUsage.inputTokens ?? "\u2013",
+                    output: latestUsage.outputTokens ?? "\u2013"
                   })}
                 </dd>
               </div>
@@ -324,7 +362,7 @@ function shortPath(path: string) {
 
 function shortSessionId(id: string) {
   if (id.length <= 18) return id;
-  return `${id.slice(0, 8)}…${id.slice(-6)}`;
+  return `${id.slice(0, 8)}\u2026${id.slice(-6)}`;
 }
 
 function formatTokens(n: number): string {

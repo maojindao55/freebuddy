@@ -35,7 +35,7 @@ test("preload exposes the workflow client object", () => {
   for (const m of METHODS) {
     assert.match(preload, new RegExp(`${m}\\s*:`));
   }
-  assert.match(preload, /\bworkflow,\s*\n\s*settings/);
+  assert.match(preload, /\bworkflow,\s*\n\s*workflowTeams,\s*\n\s*settings/);
 });
 
 test("renderer types declare the FreebuddyWorkflow interface", () => {

@@ -190,6 +190,12 @@ export interface ConversationMessage {
   content: string;
   attachments?: ChatAttachment[];
   taskId?: string;
+  agentId?: string;
+  agentName?: string;
+  adapter?: string;
+  roleLabel?: string;
+  workflowRunId?: string;
+  workflowStepRowId?: string;
   createdAt: string;
   updatedAt: string;
 }

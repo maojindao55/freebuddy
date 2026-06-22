@@ -108,6 +108,7 @@ function App() {
 
   const isElectron =
     Boolean(window.freebuddy?.cli) || navigator.userAgent.includes("Electron");
+  const platform = window.freebuddy?.platform ?? "";
 
   const loadExecutors = useCliExecutorStore((s) => s.load);
   const loadConversations = useConversationStore((s) => s.load);
@@ -185,7 +186,7 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
     >
       {sidebarCollapsed && renderToggleButton("floating")}

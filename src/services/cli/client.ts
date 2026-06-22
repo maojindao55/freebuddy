@@ -56,6 +56,12 @@ export const cliClient = {
   install(command: string): Promise<CliInstallResult> {
     return api().install(command);
   },
+  installStream(
+    command: string,
+    cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+  ): () => void {
+    return api().installStream(command, cb);
+  },
 
   run(args: CliRunArgs): Promise<{ sessionId: string }> {
     return api().run(args);

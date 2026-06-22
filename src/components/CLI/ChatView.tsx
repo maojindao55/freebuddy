@@ -8,7 +8,6 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { cliClient } from "@/services/cli/client";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
-import type { WorkflowPlan } from "@/services/workflows/types";
 import type {
   WorkflowTeam,
   WorkflowTeamPreview
@@ -22,7 +21,6 @@ import {
   validateAttachmentCandidate
 } from "@/utils/chatAttachments";
 import { MessageBubble } from "./MessageBubble";
-import { WorkflowPlanCard } from "../Workflows/WorkflowPlanCard";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -48,6 +46,55 @@ function PaperclipIcon() {
       aria-hidden="true"
     >
       <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.57 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="7" y="5" width="3" height="14" rx="1" />
+      <rect x="14" y="5" width="3" height="14" rx="1" />
+    </svg>
+  );
+}
+
+function ResumeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polygon points="7 4 19 12 7 20 7 4" fill="currentColor" />
     </svg>
   );
 }
@@ -149,17 +196,12 @@ export function ChatView() {
   );
   const live = activeId ? liveMap[activeId] : undefined;
 
-  const [taskMode, setTaskMode] = useState<"normal" | "workflow" | "team">(
+  const [taskMode, setTaskMode] = useState<"normal" | "team">(
     "normal"
   );
-  const workflowMode = taskMode === "workflow";
   const teamMode = taskMode === "team";
-  const pendingPlan = useWorkflowStore((s) => s.pendingPlan);
-  const pendingErrors = useWorkflowStore((s) => s.pendingErrors);
-  const previewReviewLoop = useWorkflowStore((s) => s.previewReviewLoop);
-  const createAndStartWorkflow = useWorkflowStore((s) => s.createAndStart);
+  const workflowMode = false;
   const createAndStartTeam = useWorkflowStore((s) => s.createAndStartTeam);
-  const clearPendingPlan = useWorkflowStore((s) => s.clearPending);
   const activeConversationId = useConversationStore((s) => s.activeId);
 
   const teams = useWorkflowTeamStore((s) => s.teams);
@@ -253,9 +295,8 @@ export function ChatView() {
   }, [activeId]);
 
   useEffect(() => {
-    clearPendingPlan();
     clearTeamPreview();
-  }, [activeConversationId, clearPendingPlan, clearTeamPreview]);
+  }, [activeConversationId, clearTeamPreview]);
 
   useEffect(() => {
     if (!teamsLoaded) void loadTeams();
@@ -373,7 +414,7 @@ export function ChatView() {
     const prompt = newTaskDraft.trim();
     const attachmentsToSend = newTaskPendingAttachments;
 
-    if (taskMode === "team") {
+    if (teamMode) {
       if (!prompt || !selectedTeamId) return;
       const team = teams.find((tt) => tt.id === selectedTeamId);
       if (!team) return;
@@ -510,19 +551,14 @@ export function ChatView() {
   };
 
   const handleGeneratePlan = async () => {
-    const prompt = draft.trim() || newTaskDraft.trim();
+    const prompt = newTaskDraft.trim();
     if (!prompt) return;
     try {
       if (teamMode && selectedTeamId) {
         await previewTeam({
           teamId: selectedTeamId,
           goal: prompt,
-          cwd: conv?.cwd || newTaskCwd || undefined
-        });
-      } else if (workflowMode) {
-        await previewReviewLoop({
-          goal: prompt,
-          cwd: conv?.cwd || newTaskCwd || undefined
+          cwd: newTaskCwd || undefined
         });
       }
     } catch (e) {
@@ -530,38 +566,30 @@ export function ChatView() {
     }
   };
 
-  const onCreateWorkflowConversation = async () => {
+  const onCreateTeamConversation = async () => {
     const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
     if (!selectedMember) return;
-    if (!teamMode && !pendingPlan) return;
-    if (teamMode && !pendingTeamPreview) return;
-    const cwd = newTaskCwd.trim() || pendingTeamPreview?.cwd || pendingPlan?.cwd;
+    if (!teamMode) return;
+    if (!pendingTeamPreview) return;
+    const cwd = newTaskCwd.trim() || pendingTeamPreview?.cwd;
     setPreflightMsg(null);
     try {
       if (!(await preflightMember(selectedMember))) return;
       const newConv = await createConversation({
         member: selectedMember,
         cwd,
-        title: (pendingPlan?.name ?? "").slice(0, 24),
+        title: (pendingTeamPreview.name ?? "").slice(0, 24),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
       setNewTaskPendingAttachments([]);
-      if (teamMode && pendingTeamPreview) {
-        clearTeamPreview();
-        await createAndStartTeam({
-          teamId: pendingTeamPreview.teamId,
-          conversationId: newConv.id,
-          goal: pendingTeamPreview.goal,
-          cwd: pendingTeamPreview.cwd ?? cwd
-        });
-      } else if (pendingPlan) {
-        clearPendingPlan();
-        await createAndStartWorkflow({
-          conversationId: newConv.id,
-          plan: { ...pendingPlan, cwd }
-        });
-      }
+      clearTeamPreview();
+      await createAndStartTeam({
+        teamId: pendingTeamPreview.teamId,
+        conversationId: newConv.id,
+        goal: pendingTeamPreview.goal,
+        cwd: pendingTeamPreview.cwd ?? cwd
+      });
     } catch (e) {
       setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
     }
@@ -588,7 +616,6 @@ export function ChatView() {
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
         onTaskMode={(m) => {
           setTaskMode(m);
-          clearPendingPlan();
           clearTeamPreview();
         }}
         onTeam={setSelectedTeamId}
@@ -627,20 +654,6 @@ export function ChatView() {
       </div>
 
       {preflightMsg && <div className="preflight-warn">{preflightMsg}</div>}
-
-      {(pendingPlan || pendingErrors.length > 0) && (
-        <div className="workflow-plan-preview">
-          {pendingErrors.length > 0 && (
-            <div className="preflight-warn">{t("workflow.invalidPlan")}: {pendingErrors.join("; ")}</div>
-          )}
-          {pendingPlan && (
-            <WorkflowPlanCard
-              plan={pendingPlan}
-              conversationId={activeConversationId ?? undefined}
-            />
-          )}
-        </div>
-      )}
 
       <div className="chat-composer">
         <div className="composer-context-row">
@@ -700,16 +713,6 @@ export function ChatView() {
                 <option value="ask">{t("chat.approvalAsk")}</option>
               </select>
             </label>
-            <button
-              className={`composer-tool-chip${workflowMode ? " active" : ""}`}
-              type="button"
-              title={t("workflow.modeHint")}
-              aria-pressed={workflowMode}
-              onClick={() => setTaskMode(workflowMode ? "normal" : "workflow")}
-              disabled={sending}
-            >
-              <span>{t("workflow.mode")}</span>
-            </button>
           </div>
           <div className="composer-tail">
             <span className="composer-hint">{t("chat.enterHint")}</span>
@@ -722,7 +725,7 @@ export function ChatView() {
                 aria-label={running ? t("chat.stopAria") : t("chat.startingAria")}
                 onClick={() => void stopActive(conv.id)}
               >
-                {running ? "■" : "…"}
+                {running ? <StopIcon /> : <span className="starting-spinner">…</span>}
               </button>
             ) : (
               <button
@@ -731,7 +734,7 @@ export function ChatView() {
                 disabled={!(draft.trim() || pendingAttachments.length > 0)}
                 title={t("chat.send")}
                 aria-label={t("chat.sendAria")}
-                onClick={workflowMode ? () => void handleGeneratePlan() : onSend}
+                onClick={onSend}
               >
                 ↑
               </button>

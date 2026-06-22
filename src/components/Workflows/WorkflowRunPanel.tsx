@@ -6,6 +6,55 @@ import { pendingManualGatePhaseId } from "@/services/workflows/planning";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { WorkflowPhaseList } from "./WorkflowPhaseList";
 
+function PauseIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="7" y="5" width="3" height="14" rx="1" />
+      <rect x="14" y="5" width="3" height="14" rx="1" />
+    </svg>
+  );
+}
+
+function ResumeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polygon points="7 4 19 12 7 20 7 4" fill="currentColor" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    </svg>
+  );
+}
+
 export function WorkflowRunPanel() {
   const { t } = useTranslation();
   const activeRun = useWorkflowStore((s) => s.activeRun);
@@ -84,13 +133,13 @@ export function WorkflowRunPanel() {
         <div className="workflow-run-actions">
           {activeRun.status === "running" && (
             <button type="button" onClick={() => void pause(activeRun.id)}>
-              {t("workflow.pause")}
+              <PauseIcon /> {t("workflow.pause")}
             </button>
           )}
           {(activeRun.status === "paused" ||
             activeRun.status === "blocked") && (
             <button type="button" onClick={() => void resume(activeRun.id)}>
-              {t("workflow.resume")}
+              <ResumeIcon /> {t("workflow.resume")}
             </button>
           )}
           {gatingPhaseId && (
@@ -110,7 +159,7 @@ export function WorkflowRunPanel() {
               className="danger"
               onClick={() => void stop(activeRun.id)}
             >
-              {t("workflow.stop")}
+              <StopIcon /> {t("workflow.stop")}
             </button>
           )}
         </div>

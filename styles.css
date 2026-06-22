@@ -188,6 +188,31 @@ button {
   gap: 12px;
   padding: 18px 16px 14px;
 }
+.electron-shell .sidebar-header {
+  -webkit-app-region: drag;
+}
+.electron-shell .sidebar-header button,
+.electron-shell .sidebar-header a {
+  -webkit-app-region: no-drag;
+}
+.sidebar-header button,
+.sidebar-header a {
+  -webkit-app-region: no-drag;
+}
+.sidebar-header button,
+.sidebar-header a {
+  -webkit-app-region: no-drag;
+}
+.sidebar-header button,
+.sidebar-header a,
+.sidebar-header .sidebar-brand {
+  -webkit-app-region: no-drag;
+}
+.sidebar-header button,
+.sidebar-header a,
+.sidebar-header input {
+  -webkit-app-region: no-drag;
+}
 
 .sidebar-toggle {
   display: inline-grid;
@@ -425,6 +450,14 @@ button {
   gap: 16px;
   padding: 0 16px;
   border-bottom: 1px solid var(--fb-border);
+  -webkit-app-region: drag;
+}
+.titlebar button,
+.titlebar a,
+.titlebar input,
+.titlebar select,
+.titlebar .titlebar-actions {
+  -webkit-app-region: no-drag;
 }
 
 .breadcrumb {

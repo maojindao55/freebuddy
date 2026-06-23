@@ -197,7 +197,6 @@ function App() {
       className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
     >
-      {sidebarCollapsed && renderToggleButton("floating")}
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-brand">
@@ -234,6 +233,7 @@ function App() {
 
       <main className="workspace">
         <header className="titlebar">
+          {sidebarCollapsed && renderToggleButton("floating")}
           <div className="breadcrumb">
             <strong>{activeConversation?.title ?? t("app.chat")}</strong>
           </div>

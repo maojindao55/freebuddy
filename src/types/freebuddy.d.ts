@@ -231,7 +231,10 @@ declare global {
 
   interface FreebuddyUpdater {
     getVersion(): Promise<string>;
-    check(): Promise<{ ok: true; version: string | null } | { ok: false; error: string }>;
+    check(): Promise<
+      | { ok: true; available: boolean; version: string | null }
+      | { ok: false; error: string }
+    >;
     download(): Promise<{ ok: true } | { ok: false; error: string }>;
     quitAndInstall(): Promise<boolean>;
     onEvent(cb: (event: UpdaterEvent) => void): () => void;

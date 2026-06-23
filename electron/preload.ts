@@ -135,7 +135,8 @@ const updater = {
   getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
   check: () =>
     ipcRenderer.invoke("updater:check") as Promise<
-      { ok: true; version: string | null } | { ok: false; error: string }
+      | { ok: true; available: boolean; version: string | null }
+      | { ok: false; error: string }
     >,
   download: () =>
     ipcRenderer.invoke("updater:download") as Promise<

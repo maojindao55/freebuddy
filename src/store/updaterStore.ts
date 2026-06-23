@@ -111,9 +111,15 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       const result = await api.check();
       if (!result.ok) {
         set({ status: "error", errorMessage: result.error });
-      } else if (result.version) {
-        set({ status: "available", latestVersion: result.version });
+      } else if (!result.available) {
+        // On the latest version. Set explicitly so the UI shows "up to date"
+        // even though electron-updater returned a (non-null) latest version.
+        set({ status: "not-available", latestVersion: result.version });
       }
+      // When an update IS available, leave the status to the event-driven flow
+      // (update-available -> download-progress -> update-downloaded), which
+      // fires during the check. Setting "available" here would clobber an
+      // already-started download.
     } catch (err) {
       set({ status: "error", errorMessage: (err as Error)?.message ?? String(err) });
     }

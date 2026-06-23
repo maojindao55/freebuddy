@@ -97,7 +97,11 @@ export function registerUpdaterIpc() {
     bindAutoUpdater();
     try {
       const result = await autoUpdater.checkForUpdates();
-      return { ok: true, version: result?.updateInfo?.version ?? null };
+      return {
+        ok: true,
+        available: result?.isUpdateAvailable ?? false,
+        version: result?.updateInfo?.version ?? null
+      };
     } catch (err) {
       return { ok: false, error: (err as Error)?.message ?? String(err) };
     }

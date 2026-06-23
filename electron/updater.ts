@@ -4,6 +4,11 @@ import { APP_VERSION } from "./app-meta.js";
 
 const { autoUpdater } = electronUpdater;
 
+// GitHub release source. Set explicitly so the updater works even when the
+// build did not pack an app-update.yml (e.g. --publish never).
+const UPDATE_OWNER = "maojindao55";
+const UPDATE_REPO = "freebuddy";
+
 const UPDATE_EVENT_CHANNEL = "updater://event";
 
 export type UpdaterEvent =
@@ -32,6 +37,11 @@ function bindAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.logger = null;
+  autoUpdater.setFeedURL({
+    provider: "github",
+    owner: UPDATE_OWNER,
+    repo: UPDATE_REPO
+  });
 
   autoUpdater.on("checking-for-update", () => {
     broadcast({ type: "checking-for-update" });

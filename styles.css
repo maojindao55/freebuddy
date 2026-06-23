@@ -2682,13 +2682,6 @@ button {
   line-height: 1.4;
 }
 
-.session-config-list .session-config-category {
-  display: block;
-  margin-top: 2px;
-  color: var(--fb-text-tertiary);
-  font-size: 11px;
-}
-
 .chat-composer textarea {
   display: block;
   width: 100%;
@@ -3247,6 +3240,8 @@ button.ghost:disabled {
 
 .compact-dl dt {
   color: var(--fb-text-tertiary);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .compact-dl dd {
@@ -3254,8 +3249,62 @@ button.ghost:disabled {
   margin: 0;
   overflow: hidden;
   color: var(--fb-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-config-card .compact-dl {
+  gap: 0;
+  padding: 0 14px 14px;
+}
+
+.session-config-list .session-config-row {
+  align-items: flex-start;
+  padding: 9px 0;
+  border-top: 1px solid var(--fb-border);
+}
+
+.session-config-list .session-config-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.session-config-list dt {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.session-config-list .session-config-label {
+  color: var(--fb-text-secondary);
+}
+
+.session-config-list .session-config-category {
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.session-config-list dd {
+  flex: 0 1 58%;
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-align: right;
+  white-space: normal;
 }
 
 .session-id-copy {

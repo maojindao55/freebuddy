@@ -21,6 +21,7 @@ import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 import { useCliExecutorStore } from "./cliExecutorStore";
 import { defaultTitleFor } from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
+import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 
 export interface LiveAssistant {
   messageId: string;
@@ -168,7 +169,24 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   async loadMessages(id) {
     if (!cliClient.isAvailable()) return;
     const list = await cliClient.listMessages(id);
-    set((s) => ({ messages: { ...s.messages, [id]: list } }));
+    set((s) => {
+      const sessionInfo = latestSessionInfoFromMessages(list);
+      const agentTitle = sessionInfo?.title?.trim();
+      let conversations = s.conversations;
+      if (agentTitle) {
+        const conversation = conversations.find((entry) => entry.id === id);
+        if (conversation && conversation.title !== agentTitle) {
+          conversations = conversations.map((entry) =>
+            entry.id === id ? { ...entry, title: agentTitle } : entry
+          );
+          void cliClient.renameConversation(id, agentTitle);
+        }
+      }
+      return {
+        messages: { ...s.messages, [id]: list },
+        conversations
+      };
+    });
   },
 
   async newConversation({ member, cwd, title, approvalMode }) {

@@ -714,3 +714,26 @@ test("shouldEmitAcpUpdate suppresses replay updates before the current prompt st
     true
   );
 });
+
+test("shouldEmitAcpUpdate always emits session metadata updates", () => {
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "session_info_update",
+        title: "Renamed session"
+      },
+      { promptStarted: false }
+    ),
+    true
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "config_option_update",
+        configOptions: [{ id: "model", name: "Model", type: "select" }]
+      },
+      { promptStarted: false }
+    ),
+    true
+  );
+});

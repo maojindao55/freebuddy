@@ -663,8 +663,9 @@ function configOptionLabel(
 }
 
 function normalizeConfigOptions(update: any): ConfigOptionItem[] {
-  if (!Array.isArray(update?.configOptions)) return [];
-  return update.configOptions
+  const rawOptions = update?.configOptions ?? update?.options;
+  if (!Array.isArray(rawOptions)) return [];
+  return rawOptions
     .map((option: any) => {
       const id =
         typeof option?.id === "string"
@@ -672,11 +673,12 @@ function normalizeConfigOptions(update: any): ConfigOptionItem[] {
           : typeof option?.name === "string"
             ? option.name
             : "";
+      const currentValueRaw = option?.currentValue ?? option?.value;
       const currentValue =
-        typeof option?.currentValue === "string"
-          ? option.currentValue
-          : typeof option?.value === "string"
-            ? option.value
+        typeof currentValueRaw === "string"
+          ? currentValueRaw
+          : currentValueRaw != null
+            ? String(currentValueRaw)
             : undefined;
       const valuesSource = option?.options?.values ?? option?.values;
       const values = Array.isArray(valuesSource)
@@ -783,17 +785,21 @@ export function acpUpdateToItems(
     }
     case "session_info_update": {
       const sessionId = update.sessionId ?? fallbackSessionId;
-      if (!sessionId) return [];
+      const title =
+        typeof update.title === "string" && update.title.trim()
+          ? update.title.trim()
+          : undefined;
+      const updatedAt =
+        typeof update.updatedAt === "string" && update.updatedAt
+          ? update.updatedAt
+          : undefined;
+      if (!sessionId && !title && !updatedAt) return [];
       const item: Extract<AcpStreamItem, { kind: "session" }> = {
         kind: "session",
-        sessionId: String(sessionId)
+        sessionId: sessionId ? String(sessionId) : String(fallbackSessionId ?? "")
       };
-      if (typeof update.title === "string" && update.title.trim()) {
-        item.title = update.title.trim();
-      }
-      if (typeof update.updatedAt === "string" && update.updatedAt) {
-        item.updatedAt = update.updatedAt;
-      }
+      if (title) item.title = title;
+      if (updatedAt) item.updatedAt = updatedAt;
       return [item];
     }
     case "usage_update":
@@ -836,9 +842,20 @@ export function acpUpdateToItems(
   }
 }
 
+const METADATA_SESSION_UPDATES = new Set([
+  "session_info_update",
+  "config_option_update",
+  "available_commands_update",
+  "usage_update"
+]);
+
 export function shouldEmitAcpUpdate(
-  _update: any,
+  update: any,
   state: { promptStarted: boolean }
 ): boolean {
+  const type = String(update?.sessionUpdate ?? "");
+  if (METADATA_SESSION_UPDATES.has(type)) {
+    return true;
+  }
   return state.promptStarted;
 }

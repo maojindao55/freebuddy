@@ -434,3 +434,108 @@ test("appendItems upserts available-commands and config-options metadata", async
   assert.equal(items[1].kind, "config-options");
   assert.equal(items[1].options[0].currentValue, "gpt-4");
 });
+
+test("appendItems upserts text and thinking chunks by messageId", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "text",
+        role: "assistant",
+        content: "Hel",
+        messageId: "msg-1"
+      },
+      {
+        kind: "thinking",
+        content: "Plan",
+        messageId: "think-1"
+      }
+    ],
+    [
+      {
+        kind: "text",
+        role: "assistant",
+        content: "lo",
+        append: true,
+        messageId: "msg-1"
+      },
+      {
+        kind: "thinking",
+        content: "ning",
+        append: true,
+        messageId: "think-1"
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "text",
+      role: "assistant",
+      content: "Hello",
+      messageId: "msg-1"
+    },
+    {
+      kind: "thinking",
+      content: "Planning",
+      messageId: "think-1"
+    }
+  ]);
+});
+
+test("appendItems upserts terminal embed snapshots by terminalId", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [{ kind: "terminal-embed", terminalId: "term-1", output: "line 1\n" }],
+    [
+      {
+        kind: "terminal-embed",
+        terminalId: "term-1",
+        output: "line 1\nline 2\n",
+        running: false,
+        exitCode: 0,
+        exited: true
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "terminal-embed",
+      terminalId: "term-1",
+      output: "line 1\nline 2\n",
+      running: false,
+      exitCode: 0,
+      exited: true
+    }
+  ]);
+});
+
+test("collectStreamMessageIds gathers ids from stored assistant snapshots", async () => {
+  const { collectStreamMessageIds } = await loadConversationUtils();
+
+  assert.deepEqual(
+    collectStreamMessageIds([
+      {
+        id: "assistant-1",
+        conversationId: "conv-1",
+        role: "assistant",
+        status: "done",
+        content: JSON.stringify([
+          {
+            kind: "text",
+            role: "assistant",
+            content: "Hi",
+            messageId: "msg-a-1"
+          },
+          { kind: "thinking", content: "hmm", messageId: "msg-t-1" }
+        ]),
+        createdAt: "2026-06-23T10:00:00.000Z",
+        updatedAt: "2026-06-23T10:00:00.000Z"
+      }
+    ]),
+    ["msg-a-1", "msg-t-1"]
+  );
+});

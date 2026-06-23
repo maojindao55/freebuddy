@@ -11,7 +11,8 @@ import {
   buildSessionPromptRequest,
   contentBlockToItems,
   parseAcpLine,
-  shouldEmitAcpUpdate
+  shouldEmitAcpUpdate,
+  shouldSkipUserMessageChunk
 } from "../dist-electron/cli/acp.js";
 
 test("buildCommand starts OpenCode through its ACP server", () => {
@@ -208,7 +209,8 @@ test("buildInitializeRequest advertises conservative client capabilities", () =>
     params: {
       protocolVersion: 1,
       clientCapabilities: {
-        auth: { terminal: true }
+        auth: { terminal: true },
+        terminal: true
       },
       clientInfo: {
         name: "freebuddy",
@@ -716,6 +718,40 @@ test("acpUpdateToItems keeps legacy tool_call_update without toolCallId", () => 
   );
 });
 
+test("acpUpdateToItems carries messageId for agent chunks", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "agent_message_chunk",
+      messageId: "msg-a-1",
+      content: { type: "text", text: "Hi" }
+    }),
+    [
+      {
+        kind: "text",
+        role: "assistant",
+        content: "Hi",
+        append: true,
+        messageId: "msg-a-1"
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "agent_thought_chunk",
+      messageId: "msg-t-1",
+      content: { type: "text", text: "Thinking" }
+    }),
+    [
+      {
+        kind: "thinking",
+        content: "Thinking",
+        append: true,
+        messageId: "msg-t-1"
+      }
+    ]
+  );
+});
+
 test("shouldEmitAcpUpdate suppresses replay updates before the current prompt starts", () => {
   assert.equal(
     shouldEmitAcpUpdate(
@@ -759,6 +795,68 @@ test("shouldEmitAcpUpdate always emits session metadata updates", () => {
       { promptStarted: false }
     ),
     true
+  );
+});
+
+test("shouldEmitAcpUpdate suppresses persisted messageId replay after prompt starts", () => {
+  const replayMessageIds = new Set(["msg-old-1"]);
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "msg-old-1",
+        content: { type: "text", text: "previous answer" }
+      },
+      { promptStarted: true, replayMessageIds }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "msg-new-1",
+        content: { type: "text", text: "fresh answer" }
+      },
+      { promptStarted: true, replayMessageIds }
+    ),
+    true
+  );
+});
+
+test("shouldSkipUserMessageChunk deduplicates echoed user messages", () => {
+  assert.equal(
+    shouldSkipUserMessageChunk(
+      {
+        sessionUpdate: "user_message_chunk",
+        messageId: "user-1",
+        content: { type: "text", text: "hello" }
+      },
+      { userMessageId: "user-1", promptText: "hello" }
+    ),
+    true
+  );
+  assert.equal(
+    shouldSkipUserMessageChunk(
+      {
+        sessionUpdate: "user_message_chunk",
+        messageId: "user-2",
+        content: { type: "text", text: "hello" }
+      },
+      { userMessageId: "user-1", promptText: "hello" }
+    ),
+    true
+  );
+  assert.equal(
+    shouldSkipUserMessageChunk(
+      {
+        sessionUpdate: "user_message_chunk",
+        messageId: "user-2",
+        content: { type: "text", text: "different" }
+      },
+      { userMessageId: "user-1", promptText: "hello" }
+    ),
+    false
   );
 });
 

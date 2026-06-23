@@ -165,6 +165,8 @@
     "errorTag": "错误",
     "terminal": "⟩ 终端",
     "terminalEmbed": "终端 {{id}}",
+    "terminalRunning": "运行中…",
+    "terminalTruncated": "输出已截断（达到字节上限）。",
     "sessionLabel": "会话",
     "usageLabel": "用量",
     "contextUsage": "上下文: {{used}}{{total}}",

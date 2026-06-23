@@ -165,6 +165,8 @@
     "errorTag": "error",
     "terminal": "⟩ Terminal",
     "terminalEmbed": "Terminal {{id}}",
+    "terminalRunning": "running…",
+    "terminalTruncated": "Output truncated (byte limit reached).",
     "sessionLabel": "Session",
     "usageLabel": "Usage",
     "contextUsage": "ctx: {{used}}{{total}}",

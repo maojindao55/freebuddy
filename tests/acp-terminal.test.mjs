@@ -1,0 +1,53 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { createAcpTerminalManager } from "../dist-electron/cli/acpTerminal.js";
+
+test("terminal manager streams output and reports exit status", async () => {
+  const events = [];
+  const manager = createAcpTerminalManager({
+    onOutput: (terminalId, snap) => {
+      events.push({ terminalId, ...snap });
+    }
+  });
+
+  const { terminalId } = manager.create({
+    sessionId: "sess-1",
+    command: process.platform === "win32" ? "cmd" : "sh",
+    args:
+      process.platform === "win32"
+        ? ["/c", "echo hello&& exit 0"]
+        : ["-c", "printf 'hello\\n'; exit 0"]
+  });
+
+  const exit = await manager.waitForExit(terminalId);
+  const snap = manager.output(terminalId);
+
+  assert.equal(exit.exitCode, 0);
+  assert.match(snap.output, /hello/);
+  assert.equal(snap.exited, true);
+  assert.ok(events.some((event) => event.terminalId === terminalId && /hello/.test(event.output)));
+
+  manager.release(terminalId);
+});
+
+test("terminal manager enforces output byte limits", async () => {
+  const manager = createAcpTerminalManager({});
+  const { terminalId } = manager.create({
+    sessionId: "sess-2",
+    command: process.platform === "win32" ? "cmd" : "sh",
+    args:
+      process.platform === "win32"
+        ? ["/c", "powershell -NoProfile -Command \"('x' * 200)\""]
+        : ["-c", "python3 -c \"print('x' * 200)\""],
+    outputByteLimit: 32
+  });
+
+  await manager.waitForExit(terminalId);
+  const snap = manager.output(terminalId);
+
+  assert.equal(snap.truncated, true);
+  assert.ok(Buffer.byteLength(snap.output, "utf8") <= 32);
+
+  manager.release(terminalId);
+});

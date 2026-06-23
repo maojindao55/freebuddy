@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
+import { useTerminalStore } from "@/store/terminalStore";
 import { attachmentPreviewUrl, formatBytes } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
 
@@ -740,6 +741,42 @@ export function StreamToolInvocation({
   );
 }
 
+function TerminalEmbed({
+  item
+}: {
+  item: Extract<CliStreamItem, { kind: "terminal-embed" }>;
+}) {
+  const { t } = useTranslation();
+  const live = useTerminalStore((state) => state.byId[item.terminalId]);
+  const output = live?.output ?? item.output ?? "";
+  const exited = live?.exited ?? item.exited ?? false;
+  const running = live?.running ?? item.running ?? !exited;
+  const truncated = live?.truncated ?? item.truncated;
+  const exitCode = live?.exitCode ?? item.exitCode;
+
+  return (
+    <div className={`stream-terminal-embed${running ? " running" : ""}`}>
+      <div className="stream-terminal-header">
+        <span className="stream-label">{t("stream.terminal")}</span>
+        <code className="stream-terminal-id">{item.terminalId}</code>
+        {running ? (
+          <span className="stream-terminal-running">{t("stream.terminalRunning")}</span>
+        ) : exitCode != null ? (
+          <span
+            className={`stream-terminal-exit${exitCode === 0 ? " ok" : " failed"}`}
+          >
+            {t("stream.exitCode", { code: exitCode })}
+          </span>
+        ) : null}
+      </div>
+      <pre className="stream-terminal-output">{output || t("stream.noOutput")}</pre>
+      {truncated ? (
+        <div className="stream-terminal-truncated">{t("stream.terminalTruncated")}</div>
+      ) : null}
+    </div>
+  );
+}
+
 export function StreamItem({ item }: { item: CliStreamItem }) {
   const { t } = useTranslation();
   switch (item.kind) {
@@ -815,13 +852,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </details>
       );
     case "terminal-embed":
-      return (
-        <div className="stream-terminal-embed">
-          <span className="stream-label">
-            {t("stream.terminalEmbed", { id: item.terminalId })}
-          </span>
-        </div>
-      );
+      return <TerminalEmbed item={item} />;
     case "session":
       return (
         <div className="stream-meta session-meta">

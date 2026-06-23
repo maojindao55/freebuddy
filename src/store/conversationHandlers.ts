@@ -12,6 +12,7 @@ import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
 import { appendItems } from "./conversationUtils";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
+import { useTerminalStore } from "./terminalStore";
 
 type SetFn = (
   fn: (state: ConversationState) => Partial<ConversationState> | ConversationState
@@ -190,6 +191,25 @@ export function handleStreamEvent(
         parseCtx.sessionId = sessionItem.sessionId;
         capturedSessionId = sessionItem.sessionId;
       }
+    } else if (e.type === "terminal-update") {
+      useTerminalStore.getState().upsert(e.terminalId, {
+        output: e.output,
+        truncated: e.truncated,
+        exitCode: e.exitCode,
+        exited: e.exited,
+        running: e.running
+      });
+      nextItems = appendItems(nextItems, [
+        {
+          kind: "terminal-embed",
+          terminalId: e.terminalId,
+          output: e.output,
+          truncated: e.truncated,
+          exitCode: e.exitCode,
+          exited: e.exited,
+          running: e.running
+        }
+      ]);
     } else if (e.type === "error") {
       nextItems = appendItems(nextItems, [
         { kind: "error", message: e.message }

@@ -19,7 +19,12 @@ import type {
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
-import { defaultTitleFor, mergeConversationMessages, upsertConversationMessage } from "./conversationUtils";
+import {
+  collectStreamMessageIds,
+  defaultTitleFor,
+  mergeConversationMessages,
+  upsertConversationMessage
+} from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 
@@ -393,7 +398,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       approvalMode:
         approvalModeOverride ?? conv.approvalMode ?? member.cli.approvalMode,
       showStderr: member.cli.showStderr,
-      resumeToolSession: !wantFresh
+      resumeToolSession: !wantFresh,
+      userMessageId: userMsgId,
+      knownStreamMessageIds: collectStreamMessageIds(
+        get().messages[conversationId] ?? []
+      )
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");

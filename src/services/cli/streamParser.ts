@@ -29,8 +29,9 @@ export type CliStreamItem =
       role: "assistant" | "user" | "system";
       content: string;
       append?: boolean;
+      messageId?: string;
     }
-  | { kind: "thinking"; content: string; append?: boolean }
+  | { kind: "thinking"; content: string; append?: boolean; messageId?: string }
   | {
       kind: "tool-call";
       tool: string;
@@ -66,7 +67,15 @@ export type CliStreamItem =
       oldText?: string;
       newText?: string;
     }
-  | { kind: "terminal-embed"; terminalId: string }
+  | {
+      kind: "terminal-embed";
+      terminalId: string;
+      output?: string;
+      truncated?: boolean;
+      exitCode?: number | null;
+      exited?: boolean;
+      running?: boolean;
+    }
   | { kind: "session"; sessionId: string; title?: string; updatedAt?: string }
   | {
       kind: "available-commands";

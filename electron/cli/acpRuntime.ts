@@ -17,10 +17,12 @@ import {
   buildSessionResumeRequest,
   parseAcpLine,
   shouldEmitAcpUpdate,
+  shouldSkipUserMessageChunk,
   type AcpAuthMethod,
   type AcpMessage,
   type AcpRequestId
 } from "./acp.js";
+import { createAcpTerminalManager } from "./acpTerminal.js";
 import { updateRuntimeRun } from "./check.js";
 import { saveToolSession } from "./store.js";
 import {
@@ -72,6 +74,21 @@ export async function runAcpAgent({
   let finished = false;
   let promptStarted = false;
   let promptHadContent = false;
+  const replayMessageIds = new Set(args.knownStreamMessageIds ?? []);
+  const terminalManager = createAcpTerminalManager({
+    defaultCwd: args.cwd,
+    onOutput: (terminalId, snap) => {
+      emit({
+        type: "terminal-update",
+        terminalId,
+        output: snap.output,
+        truncated: snap.truncated,
+        exitCode: snap.exitCode,
+        exited: snap.exited,
+        running: !snap.exited
+      });
+    }
+  });
   const pending = new Map<
     string,
     {
@@ -102,6 +119,7 @@ export async function runAcpAgent({
   ) => {
     if (finished) return;
     finished = true;
+    terminalManager.dispose();
     running.delete(args.sessionId);
     clearPermissionResolversForSession(args.sessionId);
     if (errorMessage) emit({ type: "error", message: errorMessage });
@@ -177,8 +195,17 @@ export async function runAcpAgent({
         promptHadContent = true;
       }
       if (
+        shouldSkipUserMessageChunk(msg.params?.update, {
+          userMessageId: args.userMessageId,
+          promptText: args.prompt
+        })
+      ) {
+        return;
+      }
+      if (
         !shouldEmitAcpUpdate(msg.params?.update, {
-          promptStarted
+          promptStarted,
+          replayMessageIds
         })
       ) {
         return;
@@ -191,6 +218,8 @@ export async function runAcpAgent({
     if (msg.method && msg.id != null) {
       if (msg.method === "session/request_permission") {
         handlePermissionRequest(msg);
+      } else if (msg.method.startsWith("terminal/")) {
+        void handleTerminalRequest(msg);
       } else {
         writeAcp(child, {
           jsonrpc: "2.0",
@@ -352,6 +381,123 @@ export async function runAcpAgent({
         options
       }
     });
+  }
+
+  async function handleTerminalRequest(msg: AcpMessage) {
+    const params = (msg.params ?? {}) as Record<string, unknown>;
+    const requestRpcId = msg.id!;
+    const respond = (result: Record<string, unknown>) => {
+      writeAcp(child, { jsonrpc: "2.0", id: requestRpcId, result });
+    };
+    const respondError = (message: string) => {
+      writeAcp(child, {
+        jsonrpc: "2.0",
+        id: requestRpcId,
+        error: { code: -32603, message }
+      });
+    };
+
+    try {
+      switch (msg.method) {
+        case "terminal/create": {
+          const sessionId =
+            typeof params.sessionId === "string"
+              ? params.sessionId
+              : activeAcpSessionId;
+          const command = typeof params.command === "string" ? params.command : "";
+          if (!sessionId || !command) {
+            respondError("terminal/create requires sessionId and command");
+            return;
+          }
+          const argsList = Array.isArray(params.args)
+            ? params.args.map((entry) => String(entry))
+            : undefined;
+          const env = Array.isArray(params.env)
+            ? params.env
+                .map((entry) => {
+                  const item = entry as { name?: unknown; value?: unknown };
+                  if (typeof item?.name !== "string") return undefined;
+                  return {
+                    name: item.name,
+                    value: String(item.value ?? "")
+                  };
+                })
+                .filter(
+                  (entry): entry is { name: string; value: string } =>
+                    entry != null
+                )
+            : undefined;
+          const created = terminalManager.create({
+            sessionId,
+            command,
+            args: argsList,
+            cwd: typeof params.cwd === "string" ? params.cwd : args.cwd,
+            env,
+            outputByteLimit:
+              typeof params.outputByteLimit === "number"
+                ? params.outputByteLimit
+                : undefined
+          });
+          respond({ terminalId: created.terminalId });
+          return;
+        }
+        case "terminal/output": {
+          const terminalId =
+            typeof params.terminalId === "string" ? params.terminalId : "";
+          if (!terminalId) {
+            respondError("terminal/output requires terminalId");
+            return;
+          }
+          const snap = terminalManager.output(terminalId);
+          respond({
+            output: snap.output,
+            truncated: snap.truncated,
+            ...(snap.exited ? { exitCode: snap.exitCode, exited: true } : {})
+          });
+          return;
+        }
+        case "terminal/wait_for_exit": {
+          const terminalId =
+            typeof params.terminalId === "string" ? params.terminalId : "";
+          if (!terminalId) {
+            respondError("terminal/wait_for_exit requires terminalId");
+            return;
+          }
+          const result = await terminalManager.waitForExit(terminalId);
+          respond({
+            ...(result.exitCode != null ? { exitCode: result.exitCode } : {}),
+            ...(result.signal ? { signal: result.signal } : {})
+          });
+          return;
+        }
+        case "terminal/kill": {
+          const terminalId =
+            typeof params.terminalId === "string" ? params.terminalId : "";
+          if (!terminalId) {
+            respondError("terminal/kill requires terminalId");
+            return;
+          }
+          terminalManager.kill(terminalId);
+          respond({});
+          return;
+        }
+        case "terminal/release": {
+          const terminalId =
+            typeof params.terminalId === "string" ? params.terminalId : "";
+          if (!terminalId) {
+            respondError("terminal/release requires terminalId");
+            return;
+          }
+          terminalManager.release(terminalId);
+          respond({});
+          return;
+        }
+        default:
+          respondError(`Unsupported terminal method ${msg.method}`);
+      }
+    } catch (err) {
+      respondError((err as Error)?.message || String(err));
+    }
   }
 
   const rlErr = readline.createInterface({ input: child.stderr });

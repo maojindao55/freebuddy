@@ -8,6 +8,59 @@ type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
 type ToolCallItem = Extract<CliStreamItem, { kind: "tool-call" }>;
 
+function mergeStreamText(
+  prev: Extract<CliStreamItem, { kind: "text" }>,
+  next: Extract<CliStreamItem, { kind: "text" }>
+): Extract<CliStreamItem, { kind: "text" }> {
+  if (next.append) {
+    return { ...prev, content: prev.content + next.content };
+  }
+  if (next.content === prev.content) return prev;
+  if (next.content.startsWith(prev.content)) {
+    return { ...prev, content: next.content };
+  }
+  return { ...prev, ...next };
+}
+
+function mergeStreamThinking(
+  prev: Extract<CliStreamItem, { kind: "thinking" }>,
+  next: Extract<CliStreamItem, { kind: "thinking" }>
+): Extract<CliStreamItem, { kind: "thinking" }> {
+  if (next.append) {
+    return { ...prev, content: prev.content + next.content };
+  }
+  if (next.content === prev.content) return prev;
+  if (next.content.startsWith(prev.content)) {
+    return { ...prev, content: next.content };
+  }
+  return { ...prev, ...next };
+}
+
+export function collectStreamMessageIds(
+  messages: ConversationMessage[]
+): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    try {
+      const parsed = JSON.parse(message.content);
+      if (!Array.isArray(parsed)) continue;
+      for (const item of parsed as CliStreamItem[]) {
+        if (
+          (item.kind === "text" || item.kind === "thinking") &&
+          typeof item.messageId === "string" &&
+          item.messageId.length > 0
+        ) {
+          ids.add(item.messageId);
+        }
+      }
+    } catch {
+      /* ignore malformed snapshots */
+    }
+  }
+  return [...ids];
+}
+
 export function mergeToolCalls(prev: ToolCallItem, next: ToolCallItem): ToolCallItem {
   const merged: ToolCallItem = {
     kind: "tool-call",
@@ -149,6 +202,41 @@ export function appendItems(
   for (const rawItem of next) {
     const item = legacyTodoPlan(rawItem) ?? rawItem;
     const last = out[out.length - 1];
+    if (item.kind === "text" && item.messageId) {
+      const index = out.findIndex(
+        (previous) =>
+          previous.kind === "text" &&
+          previous.messageId === item.messageId &&
+          previous.role === item.role
+      );
+      if (index >= 0) {
+        const previous = out[index] as Extract<CliStreamItem, { kind: "text" }>;
+        out[index] = mergeStreamText(previous, item);
+        continue;
+      }
+    }
+    if (item.kind === "thinking" && item.messageId) {
+      const index = out.findIndex(
+        (previous) =>
+          previous.kind === "thinking" && previous.messageId === item.messageId
+      );
+      if (index >= 0) {
+        const previous = out[index] as Extract<CliStreamItem, { kind: "thinking" }>;
+        out[index] = mergeStreamThinking(previous, item);
+        continue;
+      }
+    }
+    if (item.kind === "terminal-embed") {
+      const index = out.findIndex(
+        (previous) =>
+          previous.kind === "terminal-embed" &&
+          previous.terminalId === item.terminalId
+      );
+      if (index >= 0) {
+        out[index] = { ...out[index], ...item };
+        continue;
+      }
+    }
     if (
       item.kind === "text" &&
       last &&

@@ -1,5 +1,28 @@
 import type { CLIStreamMode } from "@/config/cliAdapters";
 
+export type ToolKind =
+  | "read"
+  | "edit"
+  | "delete"
+  | "move"
+  | "search"
+  | "execute"
+  | "think"
+  | "fetch"
+  | "mode"
+  | "other";
+
+export type ToolCallStatus = "pending" | "running" | "completed" | "failed";
+
+export type ToolOutputItem = Extract<
+  CliStreamItem,
+  | { kind: "content-block" }
+  | { kind: "file-edit" }
+  | { kind: "command" }
+  | { kind: "command-output" }
+  | { kind: "terminal-embed" }
+>;
+
 export type CliStreamItem =
   | {
       kind: "text";
@@ -8,7 +31,20 @@ export type CliStreamItem =
       append?: boolean;
     }
   | { kind: "thinking"; content: string; append?: boolean }
-  | { kind: "tool-call"; tool: string; input?: unknown; id?: string }
+  | {
+      kind: "tool-call";
+      tool: string;
+      input?: unknown;
+      id?: string;
+      status?: ToolCallStatus;
+      toolKind?: ToolKind;
+      locations?: { path: string; line?: number }[];
+      output?: string;
+      isError?: boolean;
+      toolOutputs?: ToolOutputItem[];
+      /** Internal merge hint: replace toolOutputs instead of appending. */
+      replaceToolOutputs?: boolean;
+    }
   | {
       kind: "tool-result";
       tool: string;
@@ -27,7 +63,10 @@ export type CliStreamItem =
       path: string;
       action: "create" | "update" | "delete";
       patch?: string;
+      oldText?: string;
+      newText?: string;
     }
+  | { kind: "terminal-embed"; terminalId: string }
   | { kind: "session"; sessionId: string; title?: string }
   | {
       kind: "plan";

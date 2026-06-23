@@ -192,6 +192,93 @@ test("stored assistant messages reuse appendItems normalization", () => {
   assert.match(source, /out = appendItems\(out, \[next\]\)/);
 });
 
+test("appendItems upserts enriched tool calls by toolCallId", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "tool-call",
+        id: "tool-1",
+        tool: "Run tests",
+        status: "pending",
+        toolKind: "execute",
+        input: { command: "npm test" }
+      }
+    ],
+    [
+      {
+        kind: "tool-call",
+        id: "tool-1",
+        tool: "Run tests",
+        status: "completed",
+        output: "ok"
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "tool-call",
+      id: "tool-1",
+      tool: "Run tests",
+      status: "completed",
+      toolKind: "execute",
+      input: { command: "npm test" },
+      output: "ok"
+    }
+  ]);
+});
+
+test("appendItems replaces toolOutputs when replaceToolOutputs is set", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "tool-call",
+        id: "tool-2",
+        tool: "Edit",
+        toolOutputs: [{ kind: "command", command: "old" }]
+      }
+    ],
+    [
+      {
+        kind: "tool-call",
+        id: "tool-2",
+        tool: "Edit",
+        replaceToolOutputs: true,
+        toolOutputs: [
+          {
+            kind: "file-edit",
+            path: "/tmp/a.ts",
+            action: "update",
+            oldText: "a",
+            newText: "b"
+          }
+        ]
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "tool-call",
+      id: "tool-2",
+      tool: "Edit",
+      toolOutputs: [
+        {
+          kind: "file-edit",
+          path: "/tmp/a.ts",
+          action: "update",
+          oldText: "a",
+          newText: "b"
+        }
+      ]
+    }
+  ]);
+});
+
 test("tool block renderer groups command items with the tool call", () => {
   const source = fs.readFileSync(
     new URL("../src/components/CLI/MessageBubble.tsx", import.meta.url),
@@ -201,6 +288,7 @@ test("tool block renderer groups command items with the tool call", () => {
   assert.match(source, /commands: Extract<CliStreamItem, \{ kind: "command" \}>\[\]/);
   assert.match(source, /next\.kind !== "tool-result" && next\.kind !== "command"/);
   assert.match(source, /commands=\{block\.commands\}/);
+  assert.match(source, /extras=\{block\.extras\}/);
 });
 
 test("tool invocation renderer applies final result deduplication", () => {
@@ -212,6 +300,18 @@ test("tool invocation renderer applies final result deduplication", () => {
   assert.match(source, /import \{ dedupeCommands, dedupeToolResults \} from "@\/store\/conversationUtils"/);
   assert.match(source, /const visibleResults = dedupeToolResults\(results\)/);
   assert.match(source, /const visibleCommands = dedupeCommands\(commands\)/);
+});
+
+test("tool invocation renderer shows ACP status and structured outputs", () => {
+  const source = fs.readFileSync(
+    new URL("../src/components/CLI/StreamItem.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(source, /stream-tool-status/);
+  assert.match(source, /extras = \[\]/);
+  assert.match(source, /toolKindIcon/);
+  assert.match(source, /case "terminal-embed":/);
 });
 
 test("tool invocation renderer hides empty object input payloads", () => {

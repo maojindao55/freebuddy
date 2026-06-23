@@ -429,12 +429,74 @@ function truncate(value: string, max = 96) {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
 }
 
+function toolKindIcon(toolKind?: Extract<CliStreamItem, { kind: "tool-call" }>["toolKind"]) {
+  switch (toolKind) {
+    case "read":
+      return "📖";
+    case "edit":
+      return "✎";
+    case "delete":
+      return "🗑";
+    case "move":
+      return "↪";
+    case "search":
+      return "🔍";
+    case "execute":
+      return "▶";
+    case "fetch":
+      return "⬇";
+    case "think":
+      return "💭";
+    case "mode":
+      return "◎";
+    default:
+      return "⌁";
+  }
+}
+
+function toolStatusMeta(
+  call: Extract<CliStreamItem, { kind: "tool-call" }>,
+  t: TFunction
+) {
+  switch (call.status) {
+    case "pending":
+      return { className: "pending", label: t("stream.statusPending") };
+    case "running":
+      return { className: "running", label: t("stream.statusRunning") };
+    case "completed":
+      return { className: "completed", label: t("stream.statusCompleted") };
+    case "failed":
+      return { className: "failed", label: t("stream.statusFailed") };
+    default:
+      return undefined;
+  }
+}
+
 function toolActionLabel(
   item: Extract<CliStreamItem, { kind: "tool-call" }>,
   t: TFunction
 ) {
+  const locationTarget = item.locations?.[0]?.path;
+  const target = truncate(locationTarget ?? summarizeValue(item.input));
+
+  switch (item.toolKind) {
+    case "read":
+      return t("stream.read", { target: target || item.tool });
+    case "edit":
+      return t("stream.edit", { target: target || item.tool });
+    case "execute":
+      return t("stream.exec", { target: target || item.tool });
+    case "search":
+      return target ? `${item.tool} ${target}` : item.tool;
+    case "delete":
+      return t("stream.delete", { target: target || item.tool });
+    case "move":
+      return t("stream.move", { target: target || item.tool });
+    default:
+      break;
+  }
+
   const tool = item.tool.toLowerCase();
-  const target = truncate(summarizeValue(item.input));
   if (tool.includes("read") || tool.includes("open")) {
     return t("stream.read", { target: target || item.tool });
   }
@@ -480,31 +542,81 @@ function toolGroupLabel(
 export function StreamToolInvocation({
   call,
   results,
-  commands = []
+  commands = [],
+  extras = []
 }: {
   call: Extract<CliStreamItem, { kind: "tool-call" }>;
   results: Extract<CliStreamItem, { kind: "tool-result" }>[];
   commands?: Extract<CliStreamItem, { kind: "command" }>[];
+  extras?: CliStreamItem[];
 }) {
   const visibleResults = dedupeToolResults(results);
   const visibleCommands = dedupeCommands(commands);
-  const hasError = visibleResults.some((result) => result.isError);
+  const hasError = call.isError || visibleResults.some((result) => result.isError);
   const input = formatValue(call.input);
   const { t } = useTranslation();
+  const statusMeta = toolStatusMeta(call, t);
+  const hasBody =
+    Boolean(input) ||
+    visibleCommands.length > 0 ||
+    visibleResults.length > 0 ||
+    extras.length > 0;
+  const showDoneMeta =
+    call.status === "completed" &&
+    !visibleResults.some((result) => hasVisibleContent(result.content)) &&
+    visibleCommands.length === 0 &&
+    extras.length === 0;
 
   return (
-    <details className={`stream-tool-invocation${hasError ? " error" : ""}`}>
+    <details
+      className={`stream-tool-invocation${hasError ? " error" : ""}${
+        statusMeta ? ` status-${statusMeta.className}` : ""
+      }`}
+      open={call.status === "running" ? true : undefined}
+    >
       <summary>
-        <span className="stream-step-icon">⌁</span>
+        <span className="stream-step-icon">{toolKindIcon(call.toolKind)}</span>
         <span className="stream-tool-summary-main">{toolGroupLabel(call, t)}</span>
-        {(visibleResults.length > 0 || visibleCommands.length > 0) && (
+        {call.locations?.length ? (
+          <span className="stream-tool-locations">
+            {call.locations.map((location, index) => {
+              const href = resolveLinkHref(location.path);
+              return href ? (
+                <a
+                  key={`${location.path}-${index}`}
+                  href={href}
+                  className="stream-tool-location"
+                  title={location.path}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {truncate(location.path, 48)}
+                </a>
+              ) : (
+                <span key={`${location.path}-${index}`} className="stream-tool-location">
+                  {truncate(location.path, 48)}
+                </span>
+              );
+            })}
+          </span>
+        ) : null}
+        {statusMeta ? (
+          <span className={`stream-tool-status ${statusMeta.className}`}>
+            {call.status === "running" ? (
+              <span className="stream-tool-spinner" aria-hidden="true" />
+            ) : null}
+            <span>{statusMeta.label}</span>
+          </span>
+        ) : hasBody ? (
           <span className="stream-tool-summary-meta">
             {visibleResults.some((result) => hasVisibleContent(result.content)) ||
-            visibleCommands.length > 0
+            visibleCommands.length > 0 ||
+            extras.length > 0
               ? t("stream.summaryResult")
-              : t("stream.summaryDone")}
+              : showDoneMeta
+                ? t("stream.summaryDone")
+                : null}
           </span>
-        )}
+        ) : null}
       </summary>
       <div className="stream-tool-body">
         {input && (
@@ -518,6 +630,11 @@ export function StreamToolInvocation({
             <span className="stream-label">{t("stream.command")}</span>
             <pre>{command.command}</pre>
             {command.cwd && <div className="stream-tool-empty">{command.cwd}</div>}
+          </div>
+        ))}
+        {extras.map((extra, index) => (
+          <div className="stream-tool-section" key={`extra-${index}`}>
+            <StreamItem item={extra} />
           </div>
         ))}
         {visibleResults.map((result, index) => (
@@ -602,8 +719,23 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
       return (
         <details className="stream-file-edit">
           <summary>{item.action} {item.path}</summary>
-          {item.patch && <pre>{item.patch}</pre>}
+          {item.oldText != null && item.newText != null ? (
+            <div className="stream-diff">
+              <pre className="stream-diff-old">{item.oldText}</pre>
+              <pre className="stream-diff-new">{item.newText}</pre>
+            </div>
+          ) : item.patch ? (
+            <pre>{item.patch}</pre>
+          ) : null}
         </details>
+      );
+    case "terminal-embed":
+      return (
+        <div className="stream-terminal-embed">
+          <span className="stream-label">
+            {t("stream.terminalEmbed", { id: item.terminalId })}
+          </span>
+        </div>
       );
     case "session":
       return (

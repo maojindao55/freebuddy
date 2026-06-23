@@ -4366,6 +4366,100 @@ button.ghost:focus-visible,
   font-size: 12px;
 }
 
+.stream-tool-locations {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stream-tool-location {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--fb-brand, #2563eb);
+  font-size: 12px;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stream-tool-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.stream-tool-status.pending {
+  color: #9aa3b2;
+}
+
+.stream-tool-status.running {
+  color: #2563eb;
+}
+
+.stream-tool-status.completed {
+  color: #16a34a;
+}
+
+.stream-tool-status.failed,
+.stream-tool-invocation.error .stream-tool-status.failed {
+  color: #dc2626;
+}
+
+.stream-tool-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(37, 99, 235, 0.2);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: stream-tool-spin 0.8s linear infinite;
+}
+
+@keyframes stream-tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.stream-diff {
+  display: grid;
+  gap: 8px;
+}
+
+.stream-diff-old,
+.stream-diff-new {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: 8px;
+  font-family: var(--fb-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stream-diff-old {
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.stream-diff-new {
+  border: 1px solid rgba(22, 163, 74, 0.18);
+  background: rgba(22, 163, 74, 0.04);
+}
+
+.stream-terminal-embed {
+  padding: 8px 10px;
+  border: 1px dashed #d7dbe3;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #6b7280;
+  font-size: 12px;
+}
+
 .stream-tool-body {
   display: grid;
   gap: 8px;

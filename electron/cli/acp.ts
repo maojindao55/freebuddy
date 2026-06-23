@@ -27,7 +27,29 @@ export type AcpStreamItem =
       append?: boolean;
     }
   | { kind: "thinking"; content: string; append?: boolean }
-  | { kind: "tool-call"; tool: string; input?: unknown; id?: string }
+  | {
+      kind: "tool-call";
+      tool: string;
+      input?: unknown;
+      id?: string;
+      status?: "pending" | "running" | "completed" | "failed";
+      toolKind?:
+        | "read"
+        | "edit"
+        | "delete"
+        | "move"
+        | "search"
+        | "execute"
+        | "think"
+        | "fetch"
+        | "mode"
+        | "other";
+      locations?: { path: string; line?: number }[];
+      output?: string;
+      isError?: boolean;
+      toolOutputs?: AcpStreamItem[];
+      replaceToolOutputs?: boolean;
+    }
   | {
       kind: "tool-result";
       tool: string;
@@ -46,7 +68,10 @@ export type AcpStreamItem =
       path: string;
       action: "create" | "update" | "delete";
       patch?: string;
+      oldText?: string;
+      newText?: string;
     }
+  | { kind: "terminal-embed"; terminalId: string }
   | { kind: "session"; sessionId: string; title?: string }
   | {
       kind: "plan";
@@ -320,11 +345,154 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
   const out: AcpStreamItem[] = [];
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
-    if (entry.type === "content" && entry.content) {
-      out.push(...contentBlockToItems(entry.content));
+    switch (entry.type) {
+      case "content":
+        if (entry.content) out.push(...contentBlockToItems(entry.content));
+        break;
+      case "diff": {
+        const path = typeof entry.path === "string" ? entry.path : "";
+        if (!path) break;
+        const hasOld = typeof entry.oldText === "string";
+        const hasNew = typeof entry.newText === "string";
+        const action: "create" | "update" | "delete" = !hasOld
+          ? "create"
+          : !hasNew
+            ? "delete"
+            : "update";
+        out.push({
+          kind: "file-edit",
+          path,
+          action,
+          ...(hasOld ? { oldText: entry.oldText } : {}),
+          ...(hasNew ? { newText: entry.newText } : {})
+        });
+        break;
+      }
+      case "terminal": {
+        const terminalId =
+          typeof entry.terminalId === "string" ? entry.terminalId : "";
+        if (terminalId) {
+          out.push({ kind: "terminal-embed", terminalId });
+        }
+        break;
+      }
+      default:
+        break;
     }
   }
   return out;
+}
+
+type ToolCallItem = Extract<AcpStreamItem, { kind: "tool-call" }>;
+
+function normalizeToolStatus(
+  value: unknown
+): ToolCallItem["status"] | undefined {
+  return value === "pending" ||
+    value === "running" ||
+    value === "completed" ||
+    value === "failed"
+    ? value
+    : undefined;
+}
+
+function normalizeToolKind(value: unknown): ToolCallItem["toolKind"] | undefined {
+  const kinds = new Set([
+    "read",
+    "edit",
+    "delete",
+    "move",
+    "search",
+    "execute",
+    "think",
+    "fetch",
+    "mode",
+    "other"
+  ]);
+  const kind = String(value ?? "");
+  return kinds.has(kind) ? (kind as ToolCallItem["toolKind"]) : undefined;
+}
+
+function normalizeLocations(
+  locations: unknown
+): ToolCallItem["locations"] | undefined {
+  if (!Array.isArray(locations)) return undefined;
+  const out = locations
+    .map((location) => ({
+      path: typeof location?.path === "string" ? location.path : "",
+      ...(typeof location?.line === "number" ? { line: location.line } : {})
+    }))
+    .filter((location) => location.path.length > 0);
+  return out.length ? out : undefined;
+}
+
+function buildToolCallItem(
+  update: any,
+  isUpdate: boolean
+): ToolCallItem | undefined {
+  const id =
+    update?.toolCallId == null ? undefined : String(update.toolCallId);
+  if (!id) return undefined;
+
+  const item: ToolCallItem = {
+    kind: "tool-call",
+    id,
+    tool: String(update.title ?? update.kind ?? "tool")
+  };
+
+  if (!isUpdate || update.rawInput !== undefined) {
+    if (update.rawInput !== undefined) item.input = update.rawInput;
+    else if (!isUpdate && update.content !== undefined) item.input = update.content;
+  }
+
+  const status = normalizeToolStatus(update.status);
+  if (status) item.status = status;
+  else if (!isUpdate) item.status = "pending";
+
+  const toolKind = normalizeToolKind(update.kind);
+  if (toolKind) item.toolKind = toolKind;
+
+  const locations = normalizeLocations(update.locations);
+  if (locations) item.locations = locations;
+
+  if (Array.isArray(update.content)) {
+    item.toolOutputs = toolCallContentToItems(update.content);
+    item.replaceToolOutputs = true;
+  }
+
+  if (update.rawOutput !== undefined && update.rawOutput !== null) {
+    item.output = toolOutputText(update.rawOutput);
+  }
+  if (update.status === "failed") item.isError = true;
+
+  if (!item.toolOutputs?.length) {
+    if (update.kind === "execute" && update.rawInput?.command) {
+      item.toolOutputs = [
+        {
+          kind: "command",
+          command: String(update.rawInput.command),
+          ...(update.rawInput.cwd ? { cwd: String(update.rawInput.cwd) } : {})
+        }
+      ];
+    } else if (update.kind === "edit" && update.locations?.[0]?.path) {
+      item.toolOutputs = [
+        {
+          kind: "file-edit",
+          path: String(update.locations[0].path),
+          action: actionFromToolKind(update.kind),
+          ...(update.rawOutput != null
+            ? { patch: stringifyValue(update.rawOutput) }
+            : {})
+        }
+      ];
+    }
+  }
+
+  if (isUpdate && typeof update.title === "string" && update.title) {
+    item.tool = update.title;
+  }
+
+  return item;
 }
 
 function actionFromToolKind(kind: unknown): "create" | "update" | "delete" {
@@ -394,6 +562,8 @@ export function acpUpdateToItems(
       if (entries.length) {
         return [{ kind: "plan", entries }];
       }
+      const toolCall = buildToolCallItem(update, false);
+      if (toolCall) return [toolCall];
       return [
         {
           kind: "tool-call",
@@ -408,6 +578,8 @@ export function acpUpdateToItems(
       if (entries.length) {
         return [{ kind: "plan", entries }];
       }
+      const toolCall = buildToolCallItem(update, true);
+      if (toolCall) return [toolCall];
       if (Array.isArray(update.content) && update.content.length) {
         const fromContent = toolCallContentToItems(update.content);
         if (fromContent.length) return fromContent;
@@ -434,7 +606,7 @@ export function acpUpdateToItems(
       return [
         {
           kind: "tool-result",
-          id: update.toolCallId,
+          ...(update.toolCallId != null ? { id: String(update.toolCallId) } : {}),
           tool: String(update.title ?? update.kind ?? "tool"),
           content: toolOutputText(update.rawOutput ?? update.content),
           ...(update.status === "failed" ? { isError: true } : {})

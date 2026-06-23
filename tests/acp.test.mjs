@@ -238,7 +238,17 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
       kind: "execute",
       rawInput: { command: "npm test" }
     }),
-    [{ kind: "tool-call", id: "tool-1", tool: "Run tests", input: { command: "npm test" } }]
+    [
+      {
+        kind: "tool-call",
+        id: "tool-1",
+        tool: "Run tests",
+        input: { command: "npm test" },
+        status: "pending",
+        toolKind: "execute",
+        toolOutputs: [{ kind: "command", command: "npm test" }]
+      }
+    ]
   );
   assert.deepEqual(
     acpUpdateToItems({
@@ -248,7 +258,15 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
       rawOutput: "ok",
       status: "completed"
     }),
-    [{ kind: "tool-result", id: "tool-1", tool: "Run tests", content: "ok" }]
+    [
+      {
+        kind: "tool-call",
+        id: "tool-1",
+        tool: "Run tests",
+        output: "ok",
+        status: "completed"
+      }
+    ]
   );
   assert.deepEqual(
     acpUpdateToItems({
@@ -258,7 +276,15 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
       rawOutput: "",
       status: "completed"
     }),
-    [{ kind: "tool-result", id: "tool-2", tool: "Web Search", content: "" }]
+    [
+      {
+        kind: "tool-call",
+        id: "tool-2",
+        tool: "Web Search",
+        output: "",
+        status: "completed"
+      }
+    ]
   );
   assert.deepEqual(
     acpUpdateToItems({
@@ -270,10 +296,11 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
     }),
     [
       {
-        kind: "tool-result",
+        kind: "tool-call",
         id: "tool-3",
         tool: "webfetch",
-        content: "Sofascore page content"
+        output: "Sofascore page content",
+        status: "completed"
       }
     ]
   );
@@ -619,12 +646,78 @@ test("acpUpdateToItems maps tool_call_update content blocks", () => {
     }),
     [
       {
-        kind: "content-block",
-        blockType: "resource",
-        mimeType: "text/plain",
-        text: "file body"
+        kind: "tool-call",
+        id: "tool-4",
+        tool: "Read file",
+        toolOutputs: [
+          {
+            kind: "content-block",
+            blockType: "resource",
+            mimeType: "text/plain",
+            text: "file body"
+          }
+        ],
+        replaceToolOutputs: true
       }
     ]
+  );
+});
+
+test("acpUpdateToItems maps structured tool_call_update diff and terminal content", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-5",
+      title: "Edit file",
+      kind: "edit",
+      status: "running",
+      locations: [{ path: "/tmp/app.ts", line: 12 }],
+      content: [
+        {
+          type: "diff",
+          path: "/tmp/app.ts",
+          oldText: "const a = 1;",
+          newText: "const a = 2;"
+        },
+        {
+          type: "terminal",
+          terminalId: "term-1"
+        }
+      ]
+    }),
+    [
+      {
+        kind: "tool-call",
+        id: "tool-5",
+        tool: "Edit file",
+        status: "running",
+        toolKind: "edit",
+        locations: [{ path: "/tmp/app.ts", line: 12 }],
+        toolOutputs: [
+          {
+            kind: "file-edit",
+            path: "/tmp/app.ts",
+            action: "update",
+            oldText: "const a = 1;",
+            newText: "const a = 2;"
+          },
+          { kind: "terminal-embed", terminalId: "term-1" }
+        ],
+        replaceToolOutputs: true
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems keeps legacy tool_call_update without toolCallId", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      title: "Run tests",
+      rawOutput: "ok",
+      status: "completed"
+    }),
+    [{ kind: "tool-result", tool: "Run tests", content: "ok" }]
   );
 });
 

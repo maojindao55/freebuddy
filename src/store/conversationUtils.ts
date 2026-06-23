@@ -5,6 +5,43 @@ type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
+type ToolCallItem = Extract<CliStreamItem, { kind: "tool-call" }>;
+
+export function mergeToolCalls(prev: ToolCallItem, next: ToolCallItem): ToolCallItem {
+  const merged: ToolCallItem = {
+    kind: "tool-call",
+    id: prev.id!,
+    tool: next.tool || prev.tool
+  };
+
+  const input = next.input !== undefined ? next.input : prev.input;
+  if (input !== undefined) merged.input = input;
+
+  const status = next.status ?? prev.status;
+  if (status !== undefined) merged.status = status;
+
+  const toolKind = next.toolKind ?? prev.toolKind;
+  if (toolKind !== undefined) merged.toolKind = toolKind;
+
+  const locations = next.locations ?? prev.locations;
+  if (locations !== undefined) merged.locations = locations;
+
+  const output = next.output !== undefined ? next.output : prev.output;
+  if (output !== undefined) merged.output = output;
+
+  const isError = next.isError ?? prev.isError;
+  if (isError !== undefined) merged.isError = isError;
+
+  if (next.toolOutputs) {
+    merged.toolOutputs = next.replaceToolOutputs
+      ? next.toolOutputs
+      : [...(prev.toolOutputs ?? []), ...next.toolOutputs];
+  } else if (prev.toolOutputs) {
+    merged.toolOutputs = prev.toolOutputs;
+  }
+
+  return merged;
+}
 
 function toolResultKey(item: ToolResultItem) {
   return `${item.tool}\u0000${item.content.trim()}`;
@@ -154,6 +191,15 @@ export function appendItems(
       const planIndex = out.findIndex((previous) => previous.kind === "plan");
       if (planIndex >= 0) {
         out[planIndex] = item;
+        continue;
+      }
+    }
+    if (item.kind === "tool-call" && item.id) {
+      const toolIndex = out.findIndex(
+        (previous) => previous.kind === "tool-call" && previous.id === item.id
+      );
+      if (toolIndex >= 0) {
+        out[toolIndex] = mergeToolCalls(out[toolIndex] as ToolCallItem, item);
         continue;
       }
     }

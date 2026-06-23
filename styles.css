@@ -3263,9 +3263,37 @@ button.ghost:disabled {
   white-space: nowrap;
 }
 
+.session-config-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+.session-config-card .session-config-scroll {
+  max-height: min(240px, 36vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0 14px 14px;
+}
+
+.session-config-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.session-config-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.session-config-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .session-config-card .compact-dl {
   gap: 0;
-  padding: 0 14px 14px;
+  padding: 0;
 }
 
 .session-config-list .session-config-row {
@@ -3290,18 +3318,25 @@ button.ghost:disabled {
 }
 
 .session-config-list .session-config-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   color: var(--fb-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-config-list dd {
   flex: 0 1 58%;
+  min-width: 0;
+  overflow: hidden;
   color: var(--fb-text-primary);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.45;
-  overflow-wrap: anywhere;
   text-align: right;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-id-copy {

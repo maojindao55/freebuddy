@@ -295,22 +295,25 @@ export function WorkspacePanel({
             <span>{t("workspace.sessionConfig")}</span>
             <strong>{latestConfigOptions.length}</strong>
           </div>
-          <dl className="compact-dl session-config-list">
-            {latestConfigOptions.map((option) => {
-              const value =
-                option.currentLabel ?? option.currentValue ?? t("workspace.notSet");
-              return (
-                <div key={option.id} className="session-config-row">
-                  <dt>
-                    <span className="session-config-label">
-                      {option.name ?? option.id}
-                    </span>
-                  </dt>
-                  <dd title={value}>{value}</dd>
-                </div>
-              );
-            })}
-          </dl>
+          <div className="session-config-scroll">
+            <dl className="compact-dl session-config-list">
+              {latestConfigOptions.map((option) => {
+                const label = option.name ?? option.id;
+                const value =
+                  option.currentLabel ?? option.currentValue ?? t("workspace.notSet");
+                return (
+                  <div key={option.id} className="session-config-row">
+                    <dt>
+                      <span className="session-config-label" title={label}>
+                        {label}
+                      </span>
+                    </dt>
+                    <dd title={value}>{value}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </div>
         </section>
       )}
 

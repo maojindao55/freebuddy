@@ -442,7 +442,7 @@ function toolKindIcon(toolKind?: Extract<CliStreamItem, { kind: "tool-call" }>["
     case "search":
       return "🔍";
     case "execute":
-      return "▶";
+      return "⚡";
     case "fetch":
       return "⬇";
     case "think":

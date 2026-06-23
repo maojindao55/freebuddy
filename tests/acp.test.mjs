@@ -6,6 +6,7 @@ import {
   acpUpdateToItems,
   buildInitializeRequest,
   buildSessionPromptRequest,
+  contentBlockToItems,
   parseAcpLine,
   shouldEmitAcpUpdate
 } from "../dist-electron/cli/acp.js";
@@ -474,6 +475,156 @@ test("acpUpdateToItems ignores ACP user message chunks because FreeBuddy renders
       content: { type: "text", text: "nihao" }
     }),
     []
+  );
+});
+
+test("contentBlockToItems maps ACP ContentBlock variants", () => {
+  assert.deepEqual(
+    contentBlockToItems({ type: "text", text: "Hello" }, { role: "assistant", append: true }),
+    [{ kind: "text", role: "assistant", content: "Hello", append: true }]
+  );
+  assert.deepEqual(
+    contentBlockToItems({ type: "text", text: "Plan" }, { asThinking: true, append: true }),
+    [{ kind: "thinking", content: "Plan", append: true }]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "image",
+      mimeType: "image/png",
+      data: "aGVsbG8="
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "image",
+        mimeType: "image/png",
+        data: "aGVsbG8="
+      }
+    ]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "audio",
+      mimeType: "audio/wav",
+      data: "YXVkaW8="
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "audio",
+        mimeType: "audio/wav",
+        data: "YXVkaW8="
+      }
+    ]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "resource_link",
+      uri: "file:///tmp/readme.md",
+      name: "readme.md",
+      title: "README",
+      mimeType: "text/markdown",
+      size: 2048
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "resource_link",
+        uri: "file:///tmp/readme.md",
+        name: "readme.md",
+        title: "README",
+        mimeType: "text/markdown",
+        size: 2048
+      }
+    ]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "resource",
+      resource: {
+        uri: "file:///tmp/context.txt",
+        mimeType: "text/plain",
+        text: "embedded context"
+      }
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "resource",
+        uri: "file:///tmp/context.txt",
+        mimeType: "text/plain",
+        text: "embedded context"
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps image and resource_link message chunks", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "image",
+        mimeType: "image/jpeg",
+        data: "Zm9v"
+      }
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "image",
+        mimeType: "image/jpeg",
+        data: "Zm9v"
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "resource_link",
+        uri: "/workspace/README.md",
+        name: "README.md"
+      }
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "resource_link",
+        uri: "/workspace/README.md",
+        name: "README.md"
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps tool_call_update content blocks", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-4",
+      title: "Read file",
+      content: [
+        {
+          type: "content",
+          content: {
+            type: "resource",
+            resource: {
+              mimeType: "text/plain",
+              text: "file body"
+            }
+          }
+        }
+      ]
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "resource",
+        mimeType: "text/plain",
+        text: "file body"
+      }
+    ]
   );
 });
 

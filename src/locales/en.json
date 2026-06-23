@@ -161,7 +161,8 @@
     "errorLabel": "Error",
     "exitLabel": "Exit",
     "doneOk": "✓ Done",
-    "exitCode": "(exit {{code}})"
+    "exitCode": "(exit {{code}})",
+    "resourceLink": "Resource"
   },
   "errors": {
     "attachmentLimit": "Add at most {{count}} attachments per message.",

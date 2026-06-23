@@ -161,7 +161,8 @@
     "errorLabel": "错误",
     "exitLabel": "退出",
     "doneOk": "✓ 完成",
-    "exitCode": "(退出码 {{code}})"
+    "exitCode": "(退出码 {{code}})",
+    "resourceLink": "资源"
   },
   "errors": {
     "attachmentLimit": "每条消息最多添加 {{count}} 个附件。",

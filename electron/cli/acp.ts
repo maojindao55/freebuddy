@@ -66,6 +66,18 @@ export type AcpStreamItem =
       costAmount?: number;
       costCurrency?: string;
     }
+  | {
+      kind: "content-block";
+      blockType: "image" | "audio" | "resource_link" | "resource";
+      mimeType?: string;
+      data?: string;
+      uri?: string;
+      name?: string;
+      title?: string;
+      description?: string;
+      size?: number;
+      text?: string;
+    }
   | { kind: "error"; message: string; details?: string[] }
   | { kind: "done"; exitCode?: number }
   | { kind: "raw"; content: string };
@@ -203,6 +215,118 @@ function textFromContent(content: any): string {
   return stringifyValue(content);
 }
 
+export type ContentBlockRole = "assistant" | "user" | "system";
+
+export interface ContentBlockOptions {
+  role?: ContentBlockRole;
+  append?: boolean;
+  asThinking?: boolean;
+}
+
+/** Map an ACP ContentBlock to normalized stream items. */
+export function contentBlockToItems(
+  block: any,
+  options: ContentBlockOptions = {}
+): AcpStreamItem[] {
+  if (!block || typeof block !== "object") return [];
+  const type = String(block.type ?? "");
+
+  switch (type) {
+    case "text": {
+      const text = typeof block.text === "string" ? block.text : "";
+      if (!text) return [];
+      if (options.asThinking) {
+        return [{ kind: "thinking", content: text, append: options.append }];
+      }
+      return [
+        {
+          kind: "text",
+          role: options.role ?? "assistant",
+          content: text,
+          append: options.append
+        }
+      ];
+    }
+    case "image": {
+      const data = typeof block.data === "string" ? block.data : "";
+      if (!data) return [];
+      return [
+        {
+          kind: "content-block",
+          blockType: "image",
+          data,
+          mimeType:
+            typeof block.mimeType === "string" ? block.mimeType : "image/png"
+        }
+      ];
+    }
+    case "audio": {
+      const data = typeof block.data === "string" ? block.data : "";
+      if (!data) return [];
+      return [
+        {
+          kind: "content-block",
+          blockType: "audio",
+          data,
+          mimeType:
+            typeof block.mimeType === "string" ? block.mimeType : "audio/wav"
+        }
+      ];
+    }
+    case "resource_link": {
+      const uri = typeof block.uri === "string" ? block.uri : "";
+      if (!uri) return [];
+      return [
+        {
+          kind: "content-block",
+          blockType: "resource_link",
+          uri,
+          ...(typeof block.name === "string" ? { name: block.name } : {}),
+          ...(typeof block.title === "string" ? { title: block.title } : {}),
+          ...(typeof block.description === "string"
+            ? { description: block.description }
+            : {}),
+          ...(typeof block.mimeType === "string" ? { mimeType: block.mimeType } : {}),
+          ...(typeof block.size === "number" ? { size: block.size } : {})
+        }
+      ];
+    }
+    case "resource": {
+      const resource = block.resource;
+      if (!resource || typeof resource !== "object") return [];
+      const uri = typeof resource.uri === "string" ? resource.uri : undefined;
+      const text = typeof resource.text === "string" ? resource.text : undefined;
+      const data = typeof resource.blob === "string" ? resource.blob : undefined;
+      if (!uri && !text && !data) return [];
+      return [
+        {
+          kind: "content-block",
+          blockType: "resource",
+          ...(uri ? { uri } : {}),
+          ...(text ? { text } : {}),
+          ...(data ? { data } : {}),
+          ...(typeof resource.mimeType === "string"
+            ? { mimeType: resource.mimeType }
+            : {})
+        }
+      ];
+    }
+    default:
+      return [{ kind: "raw", content: stringifyValue(block) }];
+  }
+}
+
+function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
+  const out: AcpStreamItem[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.type === "content" && entry.content) {
+      out.push(...contentBlockToItems(entry.content));
+    }
+  }
+  return out;
+}
+
 function actionFromToolKind(kind: unknown): "create" | "update" | "delete" {
   return kind === "delete" ? "delete" : "update";
 }
@@ -256,22 +380,15 @@ export function acpUpdateToItems(
     case "user_message_chunk":
       return [];
     case "agent_message_chunk":
-      return [
-        {
-          kind: "text",
-          role: "assistant",
-          content: textFromContent(update.content),
-          append: true
-        }
-      ];
+      return contentBlockToItems(update.content, {
+        role: "assistant",
+        append: true
+      });
     case "agent_thought_chunk":
-      return [
-        {
-          kind: "thinking",
-          content: textFromContent(update.content),
-          append: true
-        }
-      ];
+      return contentBlockToItems(update.content, {
+        append: true,
+        asThinking: true
+      });
     case "tool_call": {
       const entries = todoEntries(update);
       if (entries.length) {
@@ -290,6 +407,10 @@ export function acpUpdateToItems(
       const entries = todoEntries(update);
       if (entries.length) {
         return [{ kind: "plan", entries }];
+      }
+      if (Array.isArray(update.content) && update.content.length) {
+        const fromContent = toolCallContentToItems(update.content);
+        if (fromContent.length) return fromContent;
       }
       if (update.kind === "execute" && update.rawInput?.command) {
         return [

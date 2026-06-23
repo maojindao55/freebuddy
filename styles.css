@@ -4142,6 +4142,66 @@ button.ghost:focus-visible,
   border-radius: 10px;
   border: 1px solid rgba(0, 0, 0, 0.06);
   background: rgba(0, 0, 0, 0.02);
+}
+
+.markdown-body a {
+  color: var(--fb-brand, #2563eb);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body a:hover {
+  opacity: 0.85;
+}
+
+.markdown-blockquote {
+  margin: 10px 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid rgba(0, 0, 0, 0.12);
+  color: var(--muted, #6b7280);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0 8px 8px 0;
+}
+
+.stream-content-block {
+  margin: 10px 0 12px;
+}
+
+.stream-audio {
+  width: min(420px, 100%);
+}
+
+.stream-resource-link a,
+.stream-embedded-resource a {
+  color: var(--fb-brand, #2563eb);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.stream-resource-description,
+.stream-resource-meta,
+.stream-resource-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+.stream-embedded-resource-text {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid #e6e6e6;
+  border-radius: 8px;
+  background: #fafafa;
+  font-family: var(--fb-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.markdown-image {
   transition: transform 120ms ease;
 }
 

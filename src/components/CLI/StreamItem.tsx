@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
-import { attachmentPreviewUrl } from "@/utils/chatAttachments";
+import { attachmentPreviewUrl, formatBytes } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
 
 const IMAGE_PATH_EXTENSIONS = "png|jpe?g|webp|gif|bmp|svg|avif|heic|heif";
@@ -50,7 +50,7 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
   const nodes: ReactNode[] = [];
   // Strip markdown image syntax: image previews are rendered as separate figure blocks.
   const cleaned = text.replace(MARKDOWN_IMAGE_REGEX, "").replace(/[ \t]{2,}/g, " ");
-  const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
 
   parts.forEach((part, index) => {
     if (!part) return;
@@ -63,10 +63,40 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
       nodes.push(<strong key={key}>{part.slice(2, -2)}</strong>);
       return;
     }
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      const label = linkMatch[1];
+      const href = resolveLinkHref(linkMatch[2]);
+      if (href) {
+        nodes.push(
+          <a key={key} href={href} target="_blank" rel="noreferrer noopener">
+            {label}
+          </a>
+        );
+        return;
+      }
+    }
     nodes.push(part);
   });
 
   return nodes;
+}
+
+function resolveLinkHref(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  if (isHttpUrl(value)) return value;
+  if (/^([A-Za-z]:[\\/]|\/)/.test(value)) {
+    return attachmentPreviewUrl(value);
+  }
+  if (/^file:\/\//i.test(value)) {
+    return value;
+  }
+  return value;
+}
+
+function dataUrlFromBase64(data: string, mimeType: string): string {
+  return `data:${mimeType};base64,${data}`;
 }
 
 interface InlineImageRef {
@@ -168,6 +198,20 @@ function MarkdownText({ content }: { content: string }) {
       continue;
     }
 
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
+        i += 1;
+      }
+      blocks.push(
+        <blockquote key={`quote-${i}`} className="markdown-blockquote">
+          {renderInline(quoteLines.join("\n"), `quote-${i}`)}
+        </blockquote>
+      );
+      continue;
+    }
+
     if (line.trim().startsWith("```")) {
       const code: string[] = [];
       i += 1;
@@ -244,6 +288,7 @@ function MarkdownText({ content }: { content: string }) {
       lines[i].trim() &&
       !lines[i].trim().startsWith("```") &&
       !/^#{1,6}\s+/.test(lines[i]) &&
+      !/^\s*>\s?/.test(lines[i]) &&
       !(lines[i].includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) &&
       !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])
     ) {
@@ -276,6 +321,88 @@ function MarkdownText({ content }: { content: string }) {
   }
 
   return <div className="markdown-body">{blocks}</div>;
+}
+
+function StreamContentBlock({
+  item
+}: {
+  item: Extract<CliStreamItem, { kind: "content-block" }>;
+}) {
+  const { t } = useTranslation();
+
+  switch (item.blockType) {
+    case "image": {
+      if (!item.data) return null;
+      const src = dataUrlFromBase64(item.data, item.mimeType ?? "image/png");
+      return <MessageImage src={src} alt={item.title ?? item.name ?? ""} />;
+    }
+    case "audio": {
+      if (!item.data) return null;
+      const src = dataUrlFromBase64(item.data, item.mimeType ?? "audio/wav");
+      return (
+        <div className="stream-content-block stream-audio-block">
+          <audio controls preload="metadata" src={src} className="stream-audio" />
+        </div>
+      );
+    }
+    case "resource_link": {
+      const href = item.uri ? resolveLinkHref(item.uri) : "";
+      const label = item.title || item.name || item.uri || t("stream.resourceLink");
+      const meta = [
+        item.mimeType,
+        typeof item.size === "number" ? formatBytes(item.size) : ""
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return (
+        <div className="stream-content-block stream-resource-link">
+          {href ? (
+            <a href={href} target="_blank" rel="noreferrer noopener" title={item.uri}>
+              {label}
+            </a>
+          ) : (
+            <span>{label}</span>
+          )}
+          {item.description ? (
+            <div className="stream-resource-description">{item.description}</div>
+          ) : null}
+          {meta ? <div className="stream-resource-meta">{meta}</div> : null}
+        </div>
+      );
+    }
+    case "resource": {
+      if (item.text) {
+        return (
+          <div className="stream-content-block stream-embedded-resource">
+            {(item.title || item.name || item.uri) && (
+              <div className="stream-resource-label">
+                {item.title || item.name || item.uri}
+              </div>
+            )}
+            <pre className="stream-embedded-resource-text">{item.text}</pre>
+          </div>
+        );
+      }
+      if (item.data && item.mimeType?.startsWith("image/")) {
+        const src = dataUrlFromBase64(item.data, item.mimeType);
+        return <MessageImage src={src} alt={item.title ?? item.name ?? ""} />;
+      }
+      if (item.uri) {
+        const href = resolveLinkHref(item.uri);
+        const label = item.title || item.name || item.uri;
+        return (
+          <div className="stream-content-block stream-embedded-resource">
+            <a href={href} target="_blank" rel="noreferrer noopener">
+              {label}
+            </a>
+          </div>
+        );
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
 }
 
 function summarizeValue(value: unknown): string {
@@ -427,6 +554,8 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
           <MarkdownText content={item.content} />
         </details>
       );
+    case "content-block":
+      return <StreamContentBlock item={item} />;
     case "tool-call":
       return (
         <div className="stream-step stream-tool-call">

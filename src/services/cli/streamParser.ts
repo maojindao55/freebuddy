@@ -50,6 +50,20 @@ export type CliStreamItem =
       costAmount?: number;
       costCurrency?: string;
     }
+  | {
+      kind: "content-block";
+      blockType: "image" | "audio" | "resource_link" | "resource";
+      mimeType?: string;
+      /** Base64 payload for image/audio or embedded blob resources. */
+      data?: string;
+      uri?: string;
+      name?: string;
+      title?: string;
+      description?: string;
+      size?: number;
+      /** Text payload for embedded text resources. */
+      text?: string;
+    }
   | { kind: "error"; message: string; details?: string[] }
   | { kind: "done"; exitCode?: number }
   | { kind: "raw"; content: string };

@@ -10,6 +10,9 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
+import {
+  mergeSessionMetaItems
+} from "@/store/sessionMetaUtils";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
@@ -124,6 +127,21 @@ export function WorkspacePanel({
     () => (isTeamRun ? undefined : latestPlanFromMessages(messages)),
     [isTeamRun, messages]
   );
+
+  const latestConfigOptions = useMemo(() => {
+    if (isTeamRun) return [];
+    const messageItems = messages
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) => {
+        try {
+          const items = JSON.parse(message.content);
+          return Array.isArray(items) ? items : [];
+        } catch {
+          return [];
+        }
+      });
+    return mergeSessionMetaItems(messageItems, live?.items).configOptions;
+  }, [isTeamRun, live, messages]);
 
   const durationMs = useMemo(() => {
     if (isTeamRun && activeRun?.createdAt) {
@@ -270,6 +288,28 @@ export function WorkspacePanel({
             )}
         </dl>
       </section>
+
+      {latestConfigOptions.length > 0 && (
+        <section className="side-card session-config-card">
+          <div className="side-card-header">
+            <span>{t("workspace.sessionConfig")}</span>
+            <strong>{latestConfigOptions.length}</strong>
+          </div>
+          <dl className="compact-dl session-config-list">
+            {latestConfigOptions.map((option) => (
+              <div key={option.id}>
+                <dt>{option.name ?? option.id}</dt>
+                <dd>
+                  {option.currentLabel ?? option.currentValue ?? t("workspace.notSet")}
+                  {option.category ? (
+                    <small className="session-config-category">{option.category}</small>
+                  ) : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       {latestPlan && (
         <section className="side-card plan-card">

@@ -194,6 +194,20 @@ export function appendItems(
         continue;
       }
     }
+    if (item.kind === "available-commands") {
+      const index = out.findIndex((previous) => previous.kind === "available-commands");
+      if (index >= 0) {
+        out[index] = item;
+        continue;
+      }
+    }
+    if (item.kind === "config-options") {
+      const index = out.findIndex((previous) => previous.kind === "config-options");
+      if (index >= 0) {
+        out[index] = item;
+        continue;
+      }
+    }
     if (item.kind === "tool-call" && item.id) {
       const toolIndex = out.findIndex(
         (previous) => previous.kind === "tool-call" && previous.id === item.id

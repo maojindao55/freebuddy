@@ -390,7 +390,12 @@ export async function runAcpAgent({
     promptStarted = true;
     promptHadContent = false;
     await request(
-      buildSessionPromptRequest(nextId(), activeAcpSessionId!, args.prompt)
+      buildSessionPromptRequest(
+        nextId(),
+        activeAcpSessionId!,
+        args.prompt,
+        args.promptAttachments
+      )
     );
   };
 

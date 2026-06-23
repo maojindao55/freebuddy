@@ -138,6 +138,7 @@ export function handleStreamEvent(
     const messageList = s.messages[conversationId] ?? [];
     const msgIdx = messageList.findIndex((m) => m.id === live.messageId);
     let messages = s.messages;
+    let conversations = s.conversations;
     if (msgIdx >= 0) {
       const updated = [...messageList];
       updated[msgIdx] = {
@@ -147,6 +148,27 @@ export function handleStreamEvent(
         updatedAt: new Date().toISOString()
       };
       messages = { ...s.messages, [conversationId]: updated };
+    }
+
+    if (e.type === "items") {
+      const sessionWithTitle = [...e.items]
+        .reverse()
+        .find(
+          (item) =>
+            item.kind === "session" &&
+            typeof item.title === "string" &&
+            item.title.trim().length > 0
+        );
+      if (sessionWithTitle?.kind === "session") {
+        const title = sessionWithTitle.title!.trim();
+        const conversation = conversations.find((entry) => entry.id === conversationId);
+        if (conversation && conversation.title !== title) {
+          conversations = conversations.map((entry) =>
+            entry.id === conversationId ? { ...entry, title } : entry
+          );
+          void cliClient.renameConversation(conversationId, title);
+        }
+      }
     }
 
     return {
@@ -162,7 +184,8 @@ export function handleStreamEvent(
           capturedSessionId
         }
       },
-      messages
+      messages,
+      conversations
     };
   });
 

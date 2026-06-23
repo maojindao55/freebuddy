@@ -324,3 +324,68 @@ test("tool invocation renderer hides empty object input payloads", () => {
   assert.match(source, /Object\.keys\(value\)\.length === 0/);
   assert.match(source, /return "";/);
 });
+
+test("appendItems upserts available-commands and config-options metadata", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "available-commands",
+        commands: [{ name: "brainstorming", description: "Explore ideas" }]
+      },
+      {
+        kind: "config-options",
+        options: [
+          {
+            id: "model",
+            name: "Model",
+            type: "select",
+            category: "model",
+            currentValue: "gpt-5",
+            currentLabel: "GPT-5",
+            values: [{ id: "gpt-5", name: "GPT-5" }]
+          }
+        ]
+      }
+    ],
+    [
+      {
+        kind: "available-commands",
+        commands: [
+          { name: "brainstorming", description: "Explore ideas" },
+          { name: "commit", description: "Commit changes" }
+        ]
+      },
+      {
+        kind: "config-options",
+        options: [
+          {
+            id: "model",
+            name: "Model",
+            type: "select",
+            category: "model",
+            currentValue: "gpt-4",
+            currentLabel: "GPT-4",
+            values: [
+              { id: "gpt-5", name: "GPT-5" },
+              { id: "gpt-4", name: "GPT-4" }
+            ]
+          }
+        ]
+      }
+    ]
+  );
+
+  assert.equal(items.filter((item) => item.kind === "available-commands").length, 1);
+  assert.equal(items.filter((item) => item.kind === "config-options").length, 1);
+  assert.deepEqual(items[0], {
+    kind: "available-commands",
+    commands: [
+      { name: "brainstorming", description: "Explore ideas" },
+      { name: "commit", description: "Commit changes" }
+    ]
+  });
+  assert.equal(items[1].kind, "config-options");
+  assert.equal(items[1].options[0].currentValue, "gpt-4");
+});

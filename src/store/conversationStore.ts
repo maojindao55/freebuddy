@@ -344,6 +344,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       binary,
       extraArgs,
       prompt: composeMessageWithAttachments(trimmed, attachments),
+      promptAttachments: attachments.map((attachment) => ({
+        path: attachment.path,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        name: attachment.name
+      })),
       cwd: conv.cwd,
       toolSessionScope,
       toolSessionId: resumedFromSessionId,

@@ -14,6 +14,13 @@ export interface CLIExecutorOverride {
   enabled?: boolean;
 }
 
+export interface CliPromptAttachment {
+  path: string;
+  kind: "image" | "document" | "code";
+  mimeType?: string;
+  name?: string;
+}
+
 export interface CliRunArgs {
   sessionId: string;
   agentId: string;
@@ -22,6 +29,7 @@ export interface CliRunArgs {
   binary?: string;
   extraArgs?: string[];
   prompt: string;
+  promptAttachments?: CliPromptAttachment[];
   cwd?: string;
   /** Persistence key for tool-session resume. Defaults to cwd when omitted. */
   toolSessionScope?: string;

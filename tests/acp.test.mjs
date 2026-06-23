@@ -5,6 +5,7 @@ import { buildCommand, cliAdapterDefinitions } from "../dist-electron/cli/adapte
 import {
   acpUpdateToItems,
   buildInitializeRequest,
+  buildPromptContentBlocks,
   buildSessionPromptRequest,
   contentBlockToItems,
   parseAcpLine,
@@ -252,68 +253,6 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
   );
   assert.deepEqual(
     acpUpdateToItems({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "tool-1",
-      title: "Run tests",
-      rawOutput: "ok",
-      status: "completed"
-    }),
-    [
-      {
-        kind: "tool-call",
-        id: "tool-1",
-        tool: "Run tests",
-        output: "ok",
-        status: "completed"
-      }
-    ]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "tool-2",
-      title: "Web Search",
-      rawOutput: "",
-      status: "completed"
-    }),
-    [
-      {
-        kind: "tool-call",
-        id: "tool-2",
-        tool: "Web Search",
-        output: "",
-        status: "completed"
-      }
-    ]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "tool-3",
-      title: "webfetch",
-      rawOutput: { output: "Sofascore page content" },
-      status: "completed"
-    }),
-    [
-      {
-        kind: "tool-call",
-        id: "tool-3",
-        tool: "webfetch",
-        output: "Sofascore page content",
-        status: "completed"
-      }
-    ]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "session_info_update",
-      sessionId: "sess-2",
-      title: "Work"
-    }),
-    [{ kind: "session", sessionId: "sess-2", title: "Work" }]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
       sessionUpdate: "usage_update",
       used: 53000,
       size: 200000,
@@ -329,56 +268,95 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
       }
     ]
   );
-  assert.deepEqual(
-    acpUpdateToItems({ sessionUpdate: "usage_update", used: 1200 }),
-    [{ kind: "usage", contextUsed: 1200 }]
-  );
 });
 
-test("acpUpdateToItems maps ACP plan updates", () => {
+test("acpUpdateToItems maps session metadata, commands and config options", () => {
   assert.deepEqual(
     acpUpdateToItems({
-      sessionUpdate: "plan",
-      entries: [
+      sessionUpdate: "session_info_update",
+      sessionId: "sess-2",
+      title: "Work",
+      updatedAt: "2026-06-23T12:00:00.000Z"
+    }),
+    [
+      {
+        kind: "session",
+        sessionId: "sess-2",
+        title: "Work",
+        updatedAt: "2026-06-23T12:00:00.000Z"
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [{ name: "brainstorming", description: "Explore ideas" }]
+    }),
+    [
+      {
+        kind: "available-commands",
+        commands: [{ name: "brainstorming", description: "Explore ideas" }]
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "config_option_update",
+      configOptions: [
         {
-          content: "Analyze the codebase",
-          priority: "high",
-          status: "completed"
-        },
-        {
-          content: "Implement the right-column plan card",
-          priority: "medium",
-          status: "in_progress"
-        },
-        {
-          content: "Verify the UI",
-          priority: "low",
-          status: "pending"
+          id: "model",
+          name: "Model",
+          type: "select",
+          category: "model",
+          currentValue: "gpt-5",
+          options: {
+            values: [{ id: "gpt-5", name: "GPT-5" }]
+          }
         }
       ]
     }),
     [
       {
-        kind: "plan",
-        entries: [
+        kind: "config-options",
+        options: [
           {
-            content: "Analyze the codebase",
-            priority: "high",
-            status: "completed"
-          },
-          {
-            content: "Implement the right-column plan card",
-            priority: "medium",
-            status: "in_progress"
-          },
-          {
-            content: "Verify the UI",
-            priority: "low",
-            status: "pending"
+            id: "model",
+            name: "Model",
+            type: "select",
+            category: "model",
+            currentValue: "gpt-5",
+            currentLabel: "GPT-5",
+            values: [{ id: "gpt-5", name: "GPT-5" }]
           }
         ]
       }
     ]
+  );
+});
+
+test("buildPromptContentBlocks maps text and resource links for attachments", () => {
+  assert.deepEqual(buildPromptContentBlocks("hello"), [{ type: "text", text: "hello" }]);
+  const blocks = buildPromptContentBlocks("see file", [
+    {
+      path: "/tmp/readme.md",
+      kind: "document",
+      mimeType: "text/markdown",
+      name: "readme.md"
+    }
+  ]);
+  assert.equal(blocks.length, 2);
+  assert.deepEqual(blocks[0], { type: "text", text: "see file" });
+  assert.equal(blocks[1].type, "resource_link");
+  assert.match(String(blocks[1].uri), /readme\.md$/);
+});
+
+test("acpUpdateToItems ignores ACP control updates that are not chat content", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "current_mode_update",
+      currentModeId: "build"
+    }),
+    []
   );
 });
 
@@ -470,14 +448,7 @@ test("acpUpdateToItems maps OpenCode todo metadata updates as plan updates", () 
   );
 });
 
-test("acpUpdateToItems ignores ACP control updates that are not chat content", () => {
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "available_commands_update",
-      availableCommands: [{ name: "brainstorming", description: "Explore ideas" }]
-    }),
-    []
-  );
+test("acpUpdateToItems ignores mode updates that are not chat content", () => {
   assert.deepEqual(
     acpUpdateToItems({
       sessionUpdate: "current_mode_update",

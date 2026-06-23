@@ -67,7 +67,28 @@ export type CliStreamItem =
       newText?: string;
     }
   | { kind: "terminal-embed"; terminalId: string }
-  | { kind: "session"; sessionId: string; title?: string }
+  | { kind: "session"; sessionId: string; title?: string; updatedAt?: string }
+  | {
+      kind: "available-commands";
+      commands: {
+        name: string;
+        description?: string;
+        inputHint?: string;
+      }[];
+    }
+  | {
+      kind: "config-options";
+      options: {
+        id: string;
+        name?: string;
+        category?: string;
+        type?: string;
+        currentValue?: string;
+        currentLabel?: string;
+        description?: string;
+        values?: { id: string; name?: string }[];
+      }[];
+    }
   | {
       kind: "plan";
       entries: {

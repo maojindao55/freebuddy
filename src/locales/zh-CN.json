@@ -40,6 +40,9 @@
   },
   "chat": {
     "inputPlaceholder": "随心输入",
+    "inputPlaceholderWithSlash": "随心输入，或输入 / 使用命令",
+    "slashCommandsAria": "可用斜杠命令",
+    "slashCommandsEmpty": "没有匹配的命令",
     "attachFile": "添加附件",
     "permission": "权限",
     "approvalAuto": "自动",
@@ -133,7 +136,8 @@
     "noHistory": "暂无历史",
     "noConversation": "无会话",
     "localAgent": "本地编码 Agent",
-    "createToBegin": "创建会话以开始"
+    "createToBegin": "创建会话以开始",
+    "sessionConfig": "会话配置"
   },
 "message": {
     "you": "你",

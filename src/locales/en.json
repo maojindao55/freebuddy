@@ -40,6 +40,9 @@
   },
   "chat": {
     "inputPlaceholder": "Type freely",
+    "inputPlaceholderWithSlash": "Type freely, or / for commands",
+    "slashCommandsAria": "Available slash commands",
+    "slashCommandsEmpty": "No matching commands",
     "attachFile": "Attach file",
     "permission": "Permission",
     "approvalAuto": "Auto",
@@ -133,7 +136,8 @@
     "noHistory": "no history yet",
     "noConversation": "No conversation",
     "localAgent": "Local coding agent",
-    "createToBegin": "Create a conversation to begin"
+    "createToBegin": "Create a conversation to begin",
+    "sessionConfig": "Session Config"
   },
   "message": {
     "you": "You",

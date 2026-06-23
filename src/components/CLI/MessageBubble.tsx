@@ -152,7 +152,11 @@ function isVisibleItem(item: CliStreamItem, hideDiagnosticStderr = false) {
   ) {
     return false;
   }
-  return item.kind !== "session" && item.kind !== "usage" && item.kind !== "plan";
+  return item.kind !== "session" &&
+    item.kind !== "usage" &&
+    item.kind !== "plan" &&
+    item.kind !== "available-commands" &&
+    item.kind !== "config-options";
 }
 
 type VisibleBlock =

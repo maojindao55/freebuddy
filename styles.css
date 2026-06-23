@@ -2632,6 +2632,63 @@ button {
   color: var(--fb-text-primary);
 }
 
+.composer-input-wrap {
+  position: relative;
+}
+
+.slash-command-menu {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-bottom: 1px solid var(--fb-border);
+  background: var(--fb-panel-soft);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.slash-command-menu-empty {
+  padding: 8px 12px;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+}
+
+.slash-command-option {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fb-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.slash-command-option:hover,
+.slash-command-option.active {
+  background: var(--fb-panel-bg);
+}
+
+.slash-command-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.slash-command-description,
+.slash-command-hint {
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.session-config-list .session-config-category {
+  display: block;
+  margin-top: 2px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
 .chat-composer textarea {
   display: block;
   width: 100%;

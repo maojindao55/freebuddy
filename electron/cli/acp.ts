@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
 export type AcpRequestId = number | string | null;
 
 export interface AcpMessage {
@@ -72,7 +76,28 @@ export type AcpStreamItem =
       newText?: string;
     }
   | { kind: "terminal-embed"; terminalId: string }
-  | { kind: "session"; sessionId: string; title?: string }
+  | { kind: "session"; sessionId: string; title?: string; updatedAt?: string }
+  | {
+      kind: "available-commands";
+      commands: {
+        name: string;
+        description?: string;
+        inputHint?: string;
+      }[];
+    }
+  | {
+      kind: "config-options";
+      options: {
+        id: string;
+        name?: string;
+        category?: string;
+        type?: string;
+        currentValue?: string;
+        currentLabel?: string;
+        description?: string;
+        values?: { id: string; name?: string }[];
+      }[];
+    }
   | {
       kind: "plan";
       entries: {
@@ -163,10 +188,71 @@ export function buildSessionResumeRequest(
   };
 }
 
+export interface AcpPromptAttachment {
+  path: string;
+  kind: "image" | "document" | "code";
+  mimeType?: string;
+  name?: string;
+}
+
+const MAX_PROMPT_IMAGE_BYTES = 50 * 1024 * 1024;
+
+function readImageBase64(filePath: string): string | undefined {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size > MAX_PROMPT_IMAGE_BYTES) return undefined;
+    return fs.readFileSync(filePath).toString("base64");
+  } catch {
+    return undefined;
+  }
+}
+
+function resourceLinkBlock(attachment: AcpPromptAttachment) {
+  const uri = attachment.path.startsWith("file:")
+    ? attachment.path
+    : pathToFileURL(path.resolve(attachment.path)).href;
+  return {
+    type: "resource_link",
+    uri,
+    ...(attachment.name ? { name: attachment.name } : {}),
+    ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {})
+  };
+}
+
+export function buildPromptContentBlocks(
+  prompt: string,
+  attachments: AcpPromptAttachment[] = []
+): Record<string, unknown>[] {
+  const blocks: Record<string, unknown>[] = [];
+  const text = prompt.trim();
+  if (text) blocks.push({ type: "text", text });
+
+  for (const attachment of attachments) {
+    if (attachment.kind === "image") {
+      const data = readImageBase64(attachment.path);
+      if (data) {
+        blocks.push({
+          type: "image",
+          mimeType: attachment.mimeType ?? "image/png",
+          data
+        });
+        continue;
+      }
+    }
+    blocks.push(resourceLinkBlock(attachment));
+  }
+
+  if (!blocks.length) {
+    blocks.push({ type: "text", text: prompt });
+  }
+  return blocks;
+}
+
 export function buildSessionPromptRequest(
   id: AcpRequestId,
   sessionId: string,
-  prompt: string
+  prompt: string,
+  attachments?: AcpPromptAttachment[]
 ): AcpMessage {
   return {
     jsonrpc: "2.0",
@@ -174,7 +260,7 @@ export function buildSessionPromptRequest(
     method: "session/prompt",
     params: {
       sessionId,
-      prompt: [{ type: "text", text: prompt }]
+      prompt: buildPromptContentBlocks(prompt, attachments)
     }
   };
 }
@@ -539,6 +625,88 @@ function normalizePlanEntries(entries: any[]): AcpPlanEntry[] {
     .filter((entry: AcpPlanEntry) => entry.content.length > 0);
 }
 
+type AvailableCommandItem = Extract<
+  AcpStreamItem,
+  { kind: "available-commands" }
+>["commands"][number];
+
+type ConfigOptionItem = Extract<
+  AcpStreamItem,
+  { kind: "config-options" }
+>["options"][number];
+
+function normalizeAvailableCommands(update: any): AvailableCommandItem[] {
+  if (!Array.isArray(update?.availableCommands)) return [];
+  return update.availableCommands
+    .map((command: any) => ({
+      name: typeof command?.name === "string" ? command.name.trim() : "",
+      ...(typeof command?.description === "string"
+        ? { description: command.description }
+        : {}),
+      ...(typeof command?.input?.hint === "string"
+        ? { inputHint: command.input.hint }
+        : {})
+    }))
+    .filter((command: AvailableCommandItem) => command.name.length > 0);
+}
+
+function configOptionLabel(
+  option: any,
+  currentValue: string | undefined
+): string | undefined {
+  const values = option?.options?.values ?? option?.values;
+  if (!Array.isArray(values) || !currentValue) return undefined;
+  const match = values.find(
+    (value: any) => String(value?.id ?? "") === currentValue
+  );
+  return typeof match?.name === "string" ? match.name : undefined;
+}
+
+function normalizeConfigOptions(update: any): ConfigOptionItem[] {
+  if (!Array.isArray(update?.configOptions)) return [];
+  return update.configOptions
+    .map((option: any) => {
+      const id =
+        typeof option?.id === "string"
+          ? option.id
+          : typeof option?.name === "string"
+            ? option.name
+            : "";
+      const currentValue =
+        typeof option?.currentValue === "string"
+          ? option.currentValue
+          : typeof option?.value === "string"
+            ? option.value
+            : undefined;
+      const valuesSource = option?.options?.values ?? option?.values;
+      const values = Array.isArray(valuesSource)
+        ? valuesSource
+            .map((value: any) => ({
+              id: String(value?.id ?? ""),
+              ...(typeof value?.name === "string" ? { name: value.name } : {})
+            }))
+            .filter((value: { id: string }) => value.id.length > 0)
+        : undefined;
+      return {
+        id: id.trim(),
+        ...(typeof option?.name === "string" ? { name: option.name } : {}),
+        ...(typeof option?.category === "string"
+          ? { category: option.category }
+          : {}),
+        ...(typeof option?.type === "string" ? { type: option.type } : {}),
+        ...(currentValue ? { currentValue } : {}),
+        ...(configOptionLabel(option, currentValue)
+          ? { currentLabel: configOptionLabel(option, currentValue) }
+          : {}),
+        ...(typeof option?.description === "string"
+          ? { description: option.description }
+          : {}),
+        ...(values?.length ? { values } : {})
+      };
+    })
+    .filter((option: ConfigOptionItem) => option.id.length > 0);
+}
+
 export function acpUpdateToItems(
   update: any,
   fallbackSessionId?: string
@@ -615,15 +783,18 @@ export function acpUpdateToItems(
     }
     case "session_info_update": {
       const sessionId = update.sessionId ?? fallbackSessionId;
-      return sessionId
-        ? [
-            {
-              kind: "session",
-              sessionId: String(sessionId),
-              title: update.title
-            }
-          ]
-        : [];
+      if (!sessionId) return [];
+      const item: Extract<AcpStreamItem, { kind: "session" }> = {
+        kind: "session",
+        sessionId: String(sessionId)
+      };
+      if (typeof update.title === "string" && update.title.trim()) {
+        item.title = update.title.trim();
+      }
+      if (typeof update.updatedAt === "string" && update.updatedAt) {
+        item.updatedAt = update.updatedAt;
+      }
+      return [item];
     }
     case "usage_update":
       return [
@@ -650,10 +821,16 @@ export function acpUpdateToItems(
           entries: planEntries(update)
         }
       ];
-    case "available_commands_update":
+    case "available_commands_update": {
+      const commands = normalizeAvailableCommands(update);
+      return commands.length ? [{ kind: "available-commands", commands }] : [];
+    }
     case "current_mode_update":
-    case "config_option_update":
       return [];
+    case "config_option_update": {
+      const options = normalizeConfigOptions(update);
+      return options.length ? [{ kind: "config-options", options }] : [];
+    }
     default:
       return update ? [{ kind: "raw", content: stringifyValue(update) }] : [];
   }

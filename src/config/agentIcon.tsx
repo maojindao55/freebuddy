@@ -9,7 +9,8 @@ const defaultAgentIcon: Partial<Record<CLIAdapterId, string>> = {
   "opencode-acp": "OpenCode",
   opencode: "OpenCode",
   "cursor-agent-acp": "Cursor",
-  "kimi-acp": "Kimi"
+  "kimi-acp": "Kimi",
+  "qoder-acp": "Qoder"
 };
 
 /**

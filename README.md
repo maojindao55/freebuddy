@@ -62,6 +62,7 @@ they do it. FreeBuddy wraps that workflow in a calm desktop interface:
 | OpenCode | `opencode` | `npm install -g opencode-ai` |
 | Cursor | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
 | Kimi | `kimi` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
+| Qoder | `qodercli` | `curl -fsSL https://qoder.com/install \| bash` |
 
 Open **Settings -> Coding Agents** to check installed runtimes, run the
 recommended install command, customize a binary path, set a model, pass extra

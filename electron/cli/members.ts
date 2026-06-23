@@ -42,5 +42,11 @@ export const builtinCliMembers: CLIMember[] = [
     name: "Kimi",
     enabled: true,
     cli: { adapter: "kimi-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-qoder-acp",
+    name: "Qoder",
+    enabled: true,
+    cli: { adapter: "qoder-acp", approvalMode: "auto", showStderr: true }
   }
 ];

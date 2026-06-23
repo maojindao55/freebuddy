@@ -59,7 +59,8 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "claude-agent-acp", label: "ClaudeCode", protocol: "acp" },
       { id: "opencode-acp", label: "OpenCode", protocol: "acp" },
       { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" },
-      { id: "kimi-acp", label: "Kimi", protocol: "acp" }
+      { id: "kimi-acp", label: "Kimi", protocol: "acp" },
+      { id: "qoder-acp", label: "Qoder", protocol: "acp" }
     ]
   );
 });
@@ -172,6 +173,27 @@ test("buildCommand applies Kimi ACP model through KIMI_MODEL_NAME env", () => {
   });
   assert.deepEqual(withEquals.args, ["acp"]);
   assert.deepEqual(withEquals.env, { KIMI_MODEL_NAME: "moonshot-v1-128k" });
+});
+
+test("buildCommand starts Qoder through its ACP server", () => {
+  const built = buildCommand({ adapter: "qoder-acp", prompt: "hello" });
+
+  assert.equal(built.bin, "qodercli");
+  assert.deepEqual(built.args, ["--acp"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand forwards extra args to Qoder ACP server", () => {
+  const built = buildCommand({
+    adapter: "qoder-acp",
+    prompt: "hello",
+    extraArgs: ["--yolo", "--some-flag"]
+  });
+
+  assert.deepEqual(built.args, ["--acp", "--yolo", "--some-flag"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
 });
 
 test("buildInitializeRequest advertises conservative client capabilities", () => {

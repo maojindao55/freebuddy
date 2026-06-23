@@ -7,6 +7,7 @@ export type CLIAdapterId =
   | "opencode-acp"
   | "cursor-agent-acp"
   | "kimi-acp"
+  | "qoder-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -95,6 +96,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
     docsUrl: "https://moonshotai.github.io/kimi-code/en/guides/ides",
+    protocol: "acp"
+  },
+  {
+    id: "qoder-acp",
+    label: "Qoder",
+    defaultBinary: "qodercli",
+    streamMode: "raw",
+    commandGroup: "qoder",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "curl -fsSL https://qoder.com/install | bash",
+    docsUrl: "https://docs.qoder.com/en/cli/acp",
     protocol: "acp"
   }
 ];

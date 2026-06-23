@@ -3275,8 +3275,7 @@ button.ghost:disabled {
 .session-config-list dt {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
   min-width: 0;
   font-size: 12px;
   font-weight: 500;
@@ -3285,15 +3284,6 @@ button.ghost:disabled {
 
 .session-config-list .session-config-label {
   color: var(--fb-text-secondary);
-}
-
-.session-config-list .session-config-category {
-  color: var(--fb-text-tertiary);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1.35;
-  text-transform: uppercase;
 }
 
 .session-config-list dd {

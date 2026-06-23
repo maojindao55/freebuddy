@@ -305,9 +305,6 @@ export function WorkspacePanel({
                     <span className="session-config-label">
                       {option.name ?? option.id}
                     </span>
-                    {option.category ? (
-                      <span className="session-config-category">{option.category}</span>
-                    ) : null}
                   </dt>
                   <dd title={value}>{value}</dd>
                 </div>

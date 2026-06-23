@@ -1,14 +1,13 @@
-import { app, BrowserWindow, nativeImage, net, protocol, shell } from "electron";
+import { app, BrowserWindow, nativeImage, protocol, shell } from "electron";
 import path from "node:path";
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
+import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
 import { getDb } from "./cli/db.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { initApplicationMenu } from "./menu.js";
-import { tMain } from "./cli/i18n.js";
-import { getLanguage } from "./cli/settings.js";
 import { APP_NAME, APP_VERSION } from "./app-meta.js";
 import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 
@@ -48,22 +47,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 function registerLocalFileProtocol() {
-  protocol.handle("freebuddy-file", async (request) => {
-    try {
-      const url = new URL(request.url);
-      const encoded = url.pathname + url.search;
-      const decoded = decodeURIComponent(encoded.replace(/^\//, ""));
-      const absolute = path.isAbsolute(decoded) ? decoded : `/${decoded}`;
-      return await net.fetch(pathToFileURL(absolute).toString());
-    } catch (error) {
-      return new Response(
-        tMain("main.fileLoadFailed", getLanguage(), {
-          message: (error as Error).message
-        }),
-        { status: 404 }
-      );
-    }
-  });
+  protocol.handle("freebuddy-file", handleFreebuddyFileRequest);
 }
 
 async function injectShellPath() {

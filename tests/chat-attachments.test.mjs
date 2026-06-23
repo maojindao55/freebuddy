@@ -116,3 +116,13 @@ test("formats attachments for agent prompts", async () => {
     "attachments.userMessage\nattachments.review\n\nattachments.attached\n- screen.png (image/png, 1.5 KB): /Users/me/Desktop/screen.png"
   );
 });
+
+test("attachmentPreviewUrl uses query-based freebuddy-file URLs", async () => {
+  const { attachmentPreviewUrl } = await loadModule();
+  const url = attachmentPreviewUrl("/tmp/photo.png");
+  assert.match(url, /^freebuddy-file:\/\/open\?path=/);
+  assert.equal(
+    decodeURIComponent(new URL(url).searchParams.get("path") ?? ""),
+    "/tmp/photo.png"
+  );
+});

@@ -104,6 +104,49 @@ jobs:
           ${{ matrix.assets }}
           ASSETS
 
+      - name: Upload macOS update metadata (per-arch latest-mac.yml)
+        if: matrix.platform == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          tag="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+          yml=$(find release -name latest-mac.yml -type f | head -1)
+          if [ -z "$yml" ]; then
+            echo "No latest-mac.yml found; skipping"
+            exit 0
+          fi
+          # Rewrite native artifact names to the friendly download names
+          # that we actually uploaded above.
+          sed -i.bak \
+            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-arm64\.dmg#FreeBuddy_macOS-Apple-Silicon.dmg#g' \
+            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-x64\.dmg#FreeBuddy_macOS-Intel.dmg#g' \
+            "$yml"
+          # Tag the yml with the arch so the two matrix jobs don't clobber
+          # each other. A follow-up job merges them into latest-mac.yml.
+          if echo "${{ matrix.builder_args }}" | grep -q -- '--arm64'; then
+            arch_tag="arm64"
+          else
+            arch_tag="x64"
+          fi
+          cp "$yml" "latest-mac-${arch_tag}.yml"
+          gh release upload "$tag" "latest-mac-${arch_tag}.yml" \
+            --repo "$repo" --clobber
+          # Also upload the blockmap so delta updates work.
+          blockmap=$(find release -name "*.dmg.blockmap" -type f | head -1)
+          if [ -n "$blockmap" ]; then
+            if [ "$arch_tag" = "arm64" ]; then
+              cp "$blockmap" "FreeBuddy_macOS-Apple-Silicon.dmg.blockmap"
+              gh release upload "$tag" "FreeBuddy_macOS-Apple-Silicon.dmg.blockmap" \
+                --repo "$repo" --clobber
+            else
+              cp "$blockmap" "FreeBuddy_macOS-Intel.dmg.blockmap"
+              gh release upload "$tag" "FreeBuddy_macOS-Intel.dmg.blockmap" \
+                --repo "$repo" --clobber
+            fi
+          fi
+
       - name: Upload renamed assets (Windows)
         if: matrix.platform == 'windows-latest'
         env:
@@ -157,8 +200,43 @@ jobs:
             gh release upload $tag FreeBuddy_Windows_x64.exe.blockmap --repo $repo --clobber
           }
 
-  publish-release:
+  merge-mac-metadata:
     needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Merge per-arch latest-mac.yml into latest-mac.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+          mkdir -p _mac_meta
+          gh release download "$tag" --repo "$repo" \
+            --dir _mac_meta \
+            --pattern 'latest-mac-arm64.yml' \
+            --pattern 'latest-mac-x64.yml' || true
+          if [ ! -f _mac_meta/latest-mac-arm64.yml ] && [ ! -f _mac_meta/latest-mac-x64.yml ]; then
+            echo "No per-arch mac yml found; skipping merge"
+            exit 0
+          fi
+          node scripts/merge-mac-latest-yml.mjs \
+            _mac_meta/latest-mac-arm64.yml \
+            _mac_meta/latest-mac-x64.yml \
+            latest-mac.yml
+          gh release upload "$tag" latest-mac.yml --repo "$repo" --clobber
+
+  publish-release:
+    needs: merge-mac-metadata
     runs-on: ubuntu-latest
     steps:
       - name: Publish release

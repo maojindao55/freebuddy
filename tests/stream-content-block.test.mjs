@@ -32,3 +32,12 @@ test("styles include content-block and markdown quote rules", () => {
   assert.match(stylesSource, /\.stream-audio\b/);
   assert.match(stylesSource, /\.markdown-body a\b/);
 });
+
+test("thinking and tool invocations share the same disclosure chevron", () => {
+  assert.match(
+    stylesSource,
+    /\.stream-thinking summary::before,\s*\n\.stream-tool-invocation summary::before/
+  );
+  assert.match(stylesSource, /\.stream-thinking\[open\] summary::before,/);
+  assert.doesNotMatch(stylesSource, /content: "▼"/);
+});

@@ -4333,22 +4333,37 @@ button.ghost:focus-visible,
   max-width: 100%;
   align-items: center;
   gap: 7px;
-  list-style-position: outside;
+  list-style: none;
 }
 
+.stream-thinking summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  list-style: none;
+}
+
+.stream-thinking summary::-webkit-details-marker,
 .stream-tool-invocation summary::-webkit-details-marker {
   display: none;
 }
 
+.stream-thinking summary::before,
 .stream-tool-invocation summary::before {
-  color: #9a9a9a;
-  content: "▶";
-  font-size: 12px;
-  transform: translateY(-1px);
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid #9a9a9a;
+  content: "";
+  transition: transform 120ms ease;
+  transform: rotate(0deg);
 }
 
+.stream-thinking[open] summary::before,
 .stream-tool-invocation[open] summary::before {
-  content: "▼";
+  transform: rotate(90deg);
 }
 
 .stream-tool-summary-main {

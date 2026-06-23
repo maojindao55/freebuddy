@@ -7,7 +7,7 @@ export const MAX_PERSISTED_IMAGE_BASE64 = 48 * 1024;
 export const MAX_TEXT_STREAM_CHARS = 12_000;
 
 const DATA_URL_PATTERN =
-  /data:image\/[a-z0-9.+*-]+;base64,[a-z0-9+/=\s]+/gi;
+  /data:image\/[a-z0-9.+*-]+;base64,[a-zA-Z0-9+/=\s]+/gi;
 
 export interface ExtractedInlineImage {
   data: string;
@@ -99,6 +99,42 @@ export function sanitizeStreamItems(
   const out: CliStreamItem[] = [];
 
   for (const item of items) {
+    if (item.kind === "tool-call") {
+      const next: Extract<CliStreamItem, { kind: "tool-call" }> = { ...item };
+      if (typeof next.output === "string" && next.output.length > 0) {
+        const { text, images } = extractDataUrlImages(next.output);
+        next.output = summarizeMediaText(text, images);
+        if (images.length > 0) {
+          next.toolOutputs = [
+            ...(next.toolOutputs ?? []),
+            ...imageBlocksFromExtracted(images, (image) =>
+              registerPreview?.(image)
+            )
+          ];
+        }
+      }
+      if (next.toolOutputs?.length) {
+        next.toolOutputs = sanitizeStreamItems(
+          next.toolOutputs,
+          registerPreview
+        ) as Extract<CliStreamItem, { kind: "tool-call" }>["toolOutputs"];
+      }
+      out.push(next);
+      continue;
+    }
+
+    if (item.kind === "content-block" && item.blockType === "resource" && item.text) {
+      const { text, images } = extractDataUrlImages(item.text);
+      const nextText = summarizeMediaText(text, images);
+      if (nextText !== item.text || images.length > 0) {
+        out.push({ ...item, text: nextText });
+        out.push(
+          ...imageBlocksFromExtracted(images, (image) => registerPreview?.(image))
+        );
+        continue;
+      }
+    }
+
     if (item.kind === "tool-result" || item.kind === "raw") {
       const { text, images } = extractDataUrlImages(item.content);
       const nextContent = summarizeMediaText(text, images);

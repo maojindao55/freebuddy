@@ -51,6 +51,40 @@ test("sanitizeStreamItems splits image output into compact text plus image block
   assert.equal(imageItem.data, payload);
 });
 
+test("extractDataUrlImages matches standard base64 alphabet casing", async () => {
+  const { extractDataUrlImages } = await loadStreamMedia();
+  const payload = "iVBORw0KGgoAAAANSUhEUg";
+  const { text, images } = extractDataUrlImages(
+    `{"url":"data:image/png;base64,${payload}"}`
+  );
+
+  assert.equal(images.length, 1);
+  assert.equal(images[0].data, payload);
+  assert.doesNotMatch(text, /iVBORw0KGgo/);
+});
+
+test("sanitizeStreamItems redacts tool-call output payloads", async () => {
+  const { sanitizeStreamItems } = await loadStreamMedia();
+  const payload = "iVBORw0KGgo" + "A".repeat(120);
+  const items = sanitizeStreamItems([
+    {
+      kind: "tool-call",
+      id: "tool-read",
+      tool: "gaokao_jiayou.png",
+      output: `{"url":"data:image/png;base64,${payload}"}`
+    }
+  ]);
+
+  const call = items.find((item) => item.kind === "tool-call");
+  assert.ok(call);
+  assert.doesNotMatch(call.output ?? "", /data:image\/png;base64,/);
+  assert.ok(
+    call.toolOutputs?.some(
+      (item) => item.kind === "content-block" && item.blockType === "image"
+    )
+  );
+});
+
 test("sanitizeStreamItems stores oversized image previews by reference key", async () => {
   const { sanitizeStreamItems, MAX_PERSISTED_IMAGE_BASE64 } = await loadStreamMedia();
   const payload = "c".repeat(MAX_PERSISTED_IMAGE_BASE64 + 128);

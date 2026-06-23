@@ -402,6 +402,7 @@ function StreamContentBlock({
     }
     case "resource": {
       if (item.text) {
+        const prepared = prepareDisplayText(item.text);
         return (
           <div className="stream-content-block stream-embedded-resource">
             {(item.title || item.name || item.uri) && (
@@ -409,7 +410,16 @@ function StreamContentBlock({
                 {item.title || item.name || item.uri}
               </div>
             )}
-            <pre className="stream-embedded-resource-text">{item.text}</pre>
+            {prepared.images.map((image, index) => (
+              <MessageImage
+                key={`resource-image-${index}`}
+                src={dataUrlFromBase64(image.data, image.mimeType)}
+                alt=""
+              />
+            ))}
+            {hasVisibleContent(prepared.text) ? (
+              <pre className="stream-embedded-resource-text">{prepared.text}</pre>
+            ) : null}
           </div>
         );
       }

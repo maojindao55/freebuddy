@@ -5,7 +5,9 @@ import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
+import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { useTerminalStore } from "@/store/terminalStore";
+import { prepareDisplayText } from "@/utils/streamMedia";
 import { attachmentPreviewUrl, formatBytes } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
 
@@ -98,6 +100,28 @@ function resolveLinkHref(raw: string): string {
 
 function dataUrlFromBase64(data: string, mimeType: string): string {
   return `data:${mimeType};base64,${data}`;
+}
+
+function StreamToolResultBody({ content }: { content: string }) {
+  const { t } = useTranslation();
+  const prepared = prepareDisplayText(content);
+
+  return (
+    <>
+      {prepared.images.map((image, index) => (
+        <MessageImage
+          key={`tool-image-${index}`}
+          src={dataUrlFromBase64(image.data, image.mimeType)}
+          alt=""
+        />
+      ))}
+      {hasVisibleContent(prepared.text) ? (
+        <pre>{prepared.text}</pre>
+      ) : prepared.images.length === 0 ? (
+        <div className="stream-tool-empty">{t("stream.noOutput")}</div>
+      ) : null}
+    </>
+  );
 }
 
 interface InlineImageRef {
@@ -333,8 +357,13 @@ function StreamContentBlock({
 
   switch (item.blockType) {
     case "image": {
-      if (!item.data) return null;
-      const src = dataUrlFromBase64(item.data, item.mimeType ?? "image/png");
+      const previewSrc = item.previewKey
+        ? useImagePreviewStore.getState().byKey[item.previewKey]
+        : undefined;
+      if (!item.data && !previewSrc) return null;
+      const src =
+        previewSrc ??
+        dataUrlFromBase64(item.data!, item.mimeType ?? "image/png");
       return <MessageImage src={src} alt={item.title ?? item.name ?? ""} />;
     }
     case "audio": {
@@ -729,8 +758,8 @@ export function StreamToolInvocation({
               {t("stream.result", { tool: result.tool })}
               {result.isError ? ` ${t("stream.errorTag")}` : ""}
             </span>
-            {hasVisibleContent(result.content) ? (
-              <pre>{result.content}</pre>
+            {hasVisibleContent(result.content) || /data:image\//i.test(result.content) ? (
+              <StreamToolResultBody content={result.content} />
             ) : (
               <div className="stream-tool-empty">{t("stream.noOutput")}</div>
             )}
@@ -803,7 +832,10 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </div>
       );
     case "tool-result":
-      if (!hasVisibleContent(item.content)) {
+      if (
+        !hasVisibleContent(item.content) &&
+        !/data:image\//i.test(item.content)
+      ) {
         return (
           <div className={`stream-step stream-tool-result-empty${item.isError ? " error" : ""}`}>
             <span className="stream-step-icon">↳</span>
@@ -820,7 +852,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
             </span>
             {item.isError && <span className="stream-error-suffix">{t("stream.errorTag")}</span>}
           </summary>
-          <pre>{item.content}</pre>
+          <StreamToolResultBody content={item.content} />
         </details>
       );
     case "command":
@@ -913,8 +945,23 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
           )}
         </div>
       );
-    case "raw":
-      return <pre className="stream-raw">{item.content}</pre>;
+    case "raw": {
+      const prepared = prepareDisplayText(item.content);
+      return (
+        <div className="stream-raw">
+          {prepared.images.map((image, index) => (
+            <MessageImage
+              key={`raw-image-${index}`}
+              src={dataUrlFromBase64(image.data, image.mimeType)}
+              alt=""
+            />
+          ))}
+          {hasVisibleContent(prepared.text) ? (
+            <pre>{prepared.text}</pre>
+          ) : null}
+        </div>
+      );
+    }
     default:
       return null;
   }

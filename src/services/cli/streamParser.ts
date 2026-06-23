@@ -125,6 +125,8 @@ export type CliStreamItem =
       mimeType?: string;
       /** Base64 payload for image/audio or embedded blob resources. */
       data?: string;
+      /** Runtime-only key for previews too large to persist in message JSON. */
+      previewKey?: string;
       uri?: string;
       name?: string;
       title?: string;

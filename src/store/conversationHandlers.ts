@@ -12,12 +12,20 @@ import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
 import { appendItems } from "./conversationUtils";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
+import { useImagePreviewStore } from "./imagePreviewStore";
 import { useTerminalStore } from "./terminalStore";
+import { sanitizeStreamItems } from "@/utils/streamMedia";
 
 type SetFn = (
   fn: (state: ConversationState) => Partial<ConversationState> | ConversationState
 ) => void;
 type GetFn = () => ConversationState;
+
+function sanitizeIncomingItems(items: CliStreamItem[]): CliStreamItem[] {
+  return sanitizeStreamItems(items, (image) =>
+    useImagePreviewStore.getState().register(image)
+  );
+}
 
 function sessionTitleFromItems(items: CliStreamItem[]): string | undefined {
   for (let i = items.length - 1; i >= 0; i -= 1) {
@@ -138,7 +146,10 @@ export function handleStreamEvent(
           return [];
         }
       })();
-      const nextItems = appendItems(currentItems, e.items);
+      const nextItems = appendItems(
+        currentItems,
+        sanitizeIncomingItems(e.items)
+      );
       const updated = [...messageList];
       updated[msgIdx] = {
         ...updated[msgIdx],
@@ -173,17 +184,19 @@ export function handleStreamEvent(
       status = "running";
       pid = e.pid;
     } else if (e.type === "stdout") {
-      const items = parser.parseStdoutLine(e.content, parseCtx);
+      const items = sanitizeIncomingItems(parser.parseStdoutLine(e.content, parseCtx));
       nextItems = appendItems(nextItems, items);
       if (parseCtx.sessionId) capturedSessionId = parseCtx.sessionId;
     } else if (e.type === "stderr") {
-      const items = parser.parseStderrLine?.(e.content, parseCtx) ?? [
-        { kind: "command-output", content: e.content, stream: "stderr" }
-      ];
+      const items = sanitizeIncomingItems(
+        parser.parseStderrLine?.(e.content, parseCtx) ?? [
+          { kind: "command-output", content: e.content, stream: "stderr" }
+        ]
+      );
       nextItems = appendItems(nextItems, items as CliStreamItem[]);
       nextItems = refreshLatestErrorDetails(nextItems, parseCtx);
     } else if (e.type === "items") {
-      nextItems = appendItems(nextItems, e.items);
+      nextItems = appendItems(nextItems, sanitizeIncomingItems(e.items));
       const sessionItem = [...e.items]
         .reverse()
         .find((item) => item.kind === "session");

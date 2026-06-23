@@ -6,7 +6,9 @@ import { displayAgentName } from "@/config/agentDisplay";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { appendItems } from "@/store/conversationUtils";
+import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { formatBytes, attachmentPreviewUrl } from "@/utils/chatAttachments";
+import { sanitizeStreamItems } from "@/utils/streamMedia";
 import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
@@ -384,11 +386,20 @@ export function MessageBubble({
     if (message.role !== "assistant") return [];
     try {
       const parsed = JSON.parse(message.content);
-      return Array.isArray(parsed)
-        ? normalizeStoredItems(parsed)
-        : normalizeStoredItems([{ kind: "raw", content: message.content }]);
+      const base = Array.isArray(parsed)
+        ? parsed
+        : [{ kind: "raw", content: message.content } satisfies CliStreamItem];
+      return normalizeStoredItems(
+        sanitizeStreamItems(base as CliStreamItem[], (image) =>
+          useImagePreviewStore.getState().register(image)
+        )
+      );
     } catch {
-      return [{ kind: "raw", content: message.content }];
+      return normalizeStoredItems(
+        sanitizeStreamItems([{ kind: "raw", content: message.content }], (image) =>
+          useImagePreviewStore.getState().register(image)
+        )
+      );
     }
   }, [message.role, message.content]);
   const visibleItems = useMemo(() => {

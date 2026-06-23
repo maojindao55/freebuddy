@@ -1,5 +1,6 @@
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { CLIMember } from "@/config/aiMembers";
+import type { ConversationMessage } from "@/services/cli/types";
 
 type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
@@ -289,4 +290,53 @@ export function defaultTitleFor(member: CLIMember, cwd?: string): string {
     ? cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
     : undefined;
   return tail ? `${member.name} · ${tail}` : member.name;
+}
+
+function mergeMessageAttachments(
+  preferred: ConversationMessage | undefined,
+  fallback: ConversationMessage | undefined
+): ConversationMessage["attachments"] | undefined {
+  if (preferred?.attachments?.length) return preferred.attachments;
+  if (fallback?.attachments?.length) return fallback.attachments;
+  return preferred?.attachments ?? fallback?.attachments;
+}
+
+export function upsertConversationMessage(
+  messages: ConversationMessage[],
+  message: ConversationMessage
+): ConversationMessage[] {
+  const index = messages.findIndex((entry) => entry.id === message.id);
+  if (index < 0) return [...messages, message];
+  const previous = messages[index];
+  const next = [...messages];
+  next[index] = {
+    ...previous,
+    ...message,
+    attachments: mergeMessageAttachments(message, previous)
+  };
+  return next;
+}
+
+export function mergeConversationMessages(
+  existing: ConversationMessage[],
+  loaded: ConversationMessage[]
+): ConversationMessage[] {
+  const byId = new Map<string, ConversationMessage>();
+  for (const message of loaded) {
+    byId.set(message.id, message);
+  }
+  for (const message of existing) {
+    const persisted = byId.get(message.id);
+    if (!persisted) {
+      byId.set(message.id, message);
+      continue;
+    }
+    byId.set(message.id, {
+      ...persisted,
+      attachments: mergeMessageAttachments(persisted, message)
+    });
+  }
+  return Array.from(byId.values()).sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt)
+  );
 }

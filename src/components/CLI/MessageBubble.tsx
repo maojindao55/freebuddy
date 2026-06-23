@@ -285,12 +285,16 @@ function MessageImageAttachments({
               alt={attachment.name}
               loading="lazy"
               onError={(event) => {
-                const button = event.currentTarget.closest(
-                  ".message-image-attachment"
-                ) as HTMLElement | null;
-                if (button) button.style.display = "none";
+                event.currentTarget.hidden = true;
+                const fallback = event.currentTarget.nextElementSibling;
+                if (fallback instanceof HTMLElement) {
+                  fallback.hidden = false;
+                }
               }}
             />
+            <span className="message-image-fallback" hidden>
+              {attachment.name}
+            </span>
           </button>
         );
       })}

@@ -19,7 +19,7 @@ import type {
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
-import { defaultTitleFor } from "./conversationUtils";
+import { defaultTitleFor, mergeConversationMessages, upsertConversationMessage } from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 
@@ -183,7 +183,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         }
       }
       return {
-        messages: { ...s.messages, [id]: list },
+        messages: {
+          ...s.messages,
+          [id]: mergeConversationMessages(s.messages[id] ?? [], list)
+        },
         conversations
       };
     });
@@ -292,17 +295,32 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => ({
       messages: {
         ...s.messages,
-        [conversationId]: [...(s.messages[conversationId] ?? []), userMsg]
+        [conversationId]: upsertConversationMessage(
+          s.messages[conversationId] ?? [],
+          userMsg
+        )
       }
     }));
-    await cliClient.appendMessage({
+    const savedUser = await cliClient.appendMessage({
       id: userMsgId,
       conversationId,
       role: "user",
       status: "sent",
       content: trimmed,
-      attachments,
+      attachments
     });
+    set((s) => ({
+      messages: {
+        ...s.messages,
+        [conversationId]: upsertConversationMessage(
+          s.messages[conversationId] ?? [],
+          {
+            ...userMsg,
+            attachments: savedUser.attachments ?? userMsg.attachments
+          }
+        )
+      }
+    }));
 
     const assistantMsgId = assistantMessageId ?? nanoid();
     const assistantMsg: ConversationMessage = {
@@ -317,10 +335,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => ({
       messages: {
         ...s.messages,
-        [conversationId]: [
-          ...(s.messages[conversationId] ?? []),
+        [conversationId]: upsertConversationMessage(
+          s.messages[conversationId] ?? [],
           assistantMsg
-        ]
+        )
       }
     }));
     await cliClient.appendMessage({

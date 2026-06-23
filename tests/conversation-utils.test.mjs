@@ -325,6 +325,51 @@ test("tool invocation renderer hides empty object input payloads", () => {
   assert.match(source, /return "";/);
 });
 
+test("mergeConversationMessages preserves in-memory attachments", async () => {
+  const { mergeConversationMessages, upsertConversationMessage } =
+    await loadConversationUtils();
+
+  const attachment = {
+    id: "att-1",
+    kind: "image",
+    name: "screen.png",
+    path: "/tmp/screen.png",
+    mimeType: "image/png"
+  };
+  const existing = [
+    {
+      id: "user-1",
+      conversationId: "conv-1",
+      role: "user",
+      status: "sent",
+      content: "see this",
+      attachments: [attachment],
+      createdAt: "2026-06-23T10:00:00.000Z",
+      updatedAt: "2026-06-23T10:00:00.000Z"
+    }
+  ];
+  const loaded = [
+    {
+      id: "user-1",
+      conversationId: "conv-1",
+      role: "user",
+      status: "sent",
+      content: "see this",
+      createdAt: "2026-06-23T10:00:00.000Z",
+      updatedAt: "2026-06-23T10:00:00.000Z"
+    }
+  ];
+
+  const merged = mergeConversationMessages(existing, loaded);
+  assert.deepEqual(merged[0].attachments, [attachment]);
+
+  const upserted = upsertConversationMessage(loaded, {
+    ...loaded[0],
+    attachments: [attachment]
+  });
+  assert.deepEqual(upserted[0].attachments, [attachment]);
+});
+
 test("appendItems upserts available-commands and config-options metadata", async () => {
   const { appendItems } = await loadConversationUtils();
 

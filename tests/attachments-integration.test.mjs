@@ -67,7 +67,9 @@ test("conversation send flow composes agent prompts from attachments", () => {
   assert.match(files.store, /composeMessageWithAttachments/);
   assert.match(files.store, /attachments\?: ChatAttachment\[\]/);
   assert.match(files.store, /content:\s*trimmed/);
-  assert.match(files.store, /attachments,\s*\}\)/);
+  assert.match(files.store, /attachments/);
+  assert.match(files.store, /upsertConversationMessage/);
+  assert.match(files.store, /savedUser\.attachments/);
   assert.match(files.store, /prompt:\s*composeMessageWithAttachments\(trimmed,\s*attachments/);
 });
 

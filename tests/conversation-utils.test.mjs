@@ -192,6 +192,93 @@ test("stored assistant messages reuse appendItems normalization", () => {
   assert.match(source, /out = appendItems\(out, \[next\]\)/);
 });
 
+test("appendItems upserts enriched tool calls by toolCallId", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "tool-call",
+        id: "tool-1",
+        tool: "Run tests",
+        status: "pending",
+        toolKind: "execute",
+        input: { command: "npm test" }
+      }
+    ],
+    [
+      {
+        kind: "tool-call",
+        id: "tool-1",
+        tool: "Run tests",
+        status: "completed",
+        output: "ok"
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "tool-call",
+      id: "tool-1",
+      tool: "Run tests",
+      status: "completed",
+      toolKind: "execute",
+      input: { command: "npm test" },
+      output: "ok"
+    }
+  ]);
+});
+
+test("appendItems replaces toolOutputs when replaceToolOutputs is set", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "tool-call",
+        id: "tool-2",
+        tool: "Edit",
+        toolOutputs: [{ kind: "command", command: "old" }]
+      }
+    ],
+    [
+      {
+        kind: "tool-call",
+        id: "tool-2",
+        tool: "Edit",
+        replaceToolOutputs: true,
+        toolOutputs: [
+          {
+            kind: "file-edit",
+            path: "/tmp/a.ts",
+            action: "update",
+            oldText: "a",
+            newText: "b"
+          }
+        ]
+      }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    {
+      kind: "tool-call",
+      id: "tool-2",
+      tool: "Edit",
+      toolOutputs: [
+        {
+          kind: "file-edit",
+          path: "/tmp/a.ts",
+          action: "update",
+          oldText: "a",
+          newText: "b"
+        }
+      ]
+    }
+  ]);
+});
+
 test("tool block renderer groups command items with the tool call", () => {
   const source = fs.readFileSync(
     new URL("../src/components/CLI/MessageBubble.tsx", import.meta.url),
@@ -201,6 +288,7 @@ test("tool block renderer groups command items with the tool call", () => {
   assert.match(source, /commands: Extract<CliStreamItem, \{ kind: "command" \}>\[\]/);
   assert.match(source, /next\.kind !== "tool-result" && next\.kind !== "command"/);
   assert.match(source, /commands=\{block\.commands\}/);
+  assert.match(source, /extras=\{block\.extras\}/);
 });
 
 test("tool invocation renderer applies final result deduplication", () => {
@@ -214,6 +302,19 @@ test("tool invocation renderer applies final result deduplication", () => {
   assert.match(source, /const visibleCommands = dedupeCommands\(commands\)/);
 });
 
+test("tool invocation renderer shows ACP status and structured outputs", () => {
+  const source = fs.readFileSync(
+    new URL("../src/components/CLI/StreamItem.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(source, /stream-tool-status/);
+  assert.match(source, /extras = \[\]/);
+  assert.match(source, /function ToolKindIcon/);
+  assert.match(source, /stream-step-icon-svg/);
+  assert.match(source, /case "terminal-embed":/);
+});
+
 test("tool invocation renderer hides empty object input payloads", () => {
   const source = fs.readFileSync(
     new URL("../src/components/CLI/StreamItem.tsx", import.meta.url),
@@ -222,4 +323,114 @@ test("tool invocation renderer hides empty object input payloads", () => {
 
   assert.match(source, /Object\.keys\(value\)\.length === 0/);
   assert.match(source, /return "";/);
+});
+
+test("mergeConversationMessages preserves in-memory attachments", async () => {
+  const { mergeConversationMessages, upsertConversationMessage } =
+    await loadConversationUtils();
+
+  const attachment = {
+    id: "att-1",
+    kind: "image",
+    name: "screen.png",
+    path: "/tmp/screen.png",
+    mimeType: "image/png"
+  };
+  const existing = [
+    {
+      id: "user-1",
+      conversationId: "conv-1",
+      role: "user",
+      status: "sent",
+      content: "see this",
+      attachments: [attachment],
+      createdAt: "2026-06-23T10:00:00.000Z",
+      updatedAt: "2026-06-23T10:00:00.000Z"
+    }
+  ];
+  const loaded = [
+    {
+      id: "user-1",
+      conversationId: "conv-1",
+      role: "user",
+      status: "sent",
+      content: "see this",
+      createdAt: "2026-06-23T10:00:00.000Z",
+      updatedAt: "2026-06-23T10:00:00.000Z"
+    }
+  ];
+
+  const merged = mergeConversationMessages(existing, loaded);
+  assert.deepEqual(merged[0].attachments, [attachment]);
+
+  const upserted = upsertConversationMessage(loaded, {
+    ...loaded[0],
+    attachments: [attachment]
+  });
+  assert.deepEqual(upserted[0].attachments, [attachment]);
+});
+
+test("appendItems upserts available-commands and config-options metadata", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [
+      {
+        kind: "available-commands",
+        commands: [{ name: "brainstorming", description: "Explore ideas" }]
+      },
+      {
+        kind: "config-options",
+        options: [
+          {
+            id: "model",
+            name: "Model",
+            type: "select",
+            category: "model",
+            currentValue: "gpt-5",
+            currentLabel: "GPT-5",
+            values: [{ id: "gpt-5", name: "GPT-5" }]
+          }
+        ]
+      }
+    ],
+    [
+      {
+        kind: "available-commands",
+        commands: [
+          { name: "brainstorming", description: "Explore ideas" },
+          { name: "commit", description: "Commit changes" }
+        ]
+      },
+      {
+        kind: "config-options",
+        options: [
+          {
+            id: "model",
+            name: "Model",
+            type: "select",
+            category: "model",
+            currentValue: "gpt-4",
+            currentLabel: "GPT-4",
+            values: [
+              { id: "gpt-5", name: "GPT-5" },
+              { id: "gpt-4", name: "GPT-4" }
+            ]
+          }
+        ]
+      }
+    ]
+  );
+
+  assert.equal(items.filter((item) => item.kind === "available-commands").length, 1);
+  assert.equal(items.filter((item) => item.kind === "config-options").length, 1);
+  assert.deepEqual(items[0], {
+    kind: "available-commands",
+    commands: [
+      { name: "brainstorming", description: "Explore ideas" },
+      { name: "commit", description: "Commit changes" }
+    ]
+  });
+  assert.equal(items[1].kind, "config-options");
+  assert.equal(items[1].options[0].currentValue, "gpt-4");
 });

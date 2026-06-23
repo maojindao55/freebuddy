@@ -152,7 +152,11 @@ function isVisibleItem(item: CliStreamItem, hideDiagnosticStderr = false) {
   ) {
     return false;
   }
-  return item.kind !== "session" && item.kind !== "usage" && item.kind !== "plan";
+  return item.kind !== "session" &&
+    item.kind !== "usage" &&
+    item.kind !== "plan" &&
+    item.kind !== "available-commands" &&
+    item.kind !== "config-options";
 }
 
 type VisibleBlock =
@@ -162,6 +166,7 @@ type VisibleBlock =
       call: Extract<CliStreamItem, { kind: "tool-call" }>;
       results: Extract<CliStreamItem, { kind: "tool-result" }>[];
       commands: Extract<CliStreamItem, { kind: "command" }>[];
+      extras: CliStreamItem[];
     };
 
 function sameToolInvocation(
@@ -170,6 +175,19 @@ function sameToolInvocation(
 ) {
   if (call.id || result.id) return call.id === result.id;
   return true;
+}
+
+function syntheticToolResult(
+  call: Extract<CliStreamItem, { kind: "tool-call" }>
+): Extract<CliStreamItem, { kind: "tool-result" }> | undefined {
+  if (call.output === undefined) return undefined;
+  return {
+    kind: "tool-result",
+    id: call.id,
+    tool: call.tool,
+    content: call.output,
+    ...(call.isError ? { isError: true } : {})
+  };
 }
 
 function visibleBlocks(items: CliStreamItem[]): VisibleBlock[] {
@@ -184,6 +202,9 @@ function visibleBlocks(items: CliStreamItem[]): VisibleBlock[] {
 
     const results: Extract<CliStreamItem, { kind: "tool-result" }>[] = [];
     const commands: Extract<CliStreamItem, { kind: "command" }>[] = [];
+    const synthetic = syntheticToolResult(item);
+    if (synthetic) results.push(synthetic);
+
     let cursor = i + 1;
     while (cursor < items.length) {
       const next = items[cursor];
@@ -196,7 +217,13 @@ function visibleBlocks(items: CliStreamItem[]): VisibleBlock[] {
       }
       cursor += 1;
     }
-    blocks.push({ kind: "tool", call: item, results, commands });
+    blocks.push({
+      kind: "tool",
+      call: item,
+      results,
+      commands,
+      extras: item.toolOutputs ?? []
+    });
     i = cursor - 1;
   }
 
@@ -258,12 +285,16 @@ function MessageImageAttachments({
               alt={attachment.name}
               loading="lazy"
               onError={(event) => {
-                const button = event.currentTarget.closest(
-                  ".message-image-attachment"
-                ) as HTMLElement | null;
-                if (button) button.style.display = "none";
+                event.currentTarget.hidden = true;
+                const fallback = event.currentTarget.nextElementSibling;
+                if (fallback instanceof HTMLElement) {
+                  fallback.hidden = false;
+                }
               }}
             />
+            <span className="message-image-fallback" hidden>
+              {attachment.name}
+            </span>
           </button>
         );
       })}
@@ -463,6 +494,7 @@ export function MessageBubble({
                     call={block.call}
                     results={block.results}
                     commands={block.commands}
+                    extras={block.extras}
                   />
                 ) : (
                   <StreamItem key={i} item={block.item} />

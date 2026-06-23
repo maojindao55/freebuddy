@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
-import { attachmentPreviewUrl } from "@/utils/chatAttachments";
+import { attachmentPreviewUrl, formatBytes } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
 
 const IMAGE_PATH_EXTENSIONS = "png|jpe?g|webp|gif|bmp|svg|avif|heic|heif";
@@ -50,7 +50,7 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
   const nodes: ReactNode[] = [];
   // Strip markdown image syntax: image previews are rendered as separate figure blocks.
   const cleaned = text.replace(MARKDOWN_IMAGE_REGEX, "").replace(/[ \t]{2,}/g, " ");
-  const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
 
   parts.forEach((part, index) => {
     if (!part) return;
@@ -63,10 +63,40 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
       nodes.push(<strong key={key}>{part.slice(2, -2)}</strong>);
       return;
     }
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      const label = linkMatch[1];
+      const href = resolveLinkHref(linkMatch[2]);
+      if (href) {
+        nodes.push(
+          <a key={key} href={href} target="_blank" rel="noreferrer noopener">
+            {label}
+          </a>
+        );
+        return;
+      }
+    }
     nodes.push(part);
   });
 
   return nodes;
+}
+
+function resolveLinkHref(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  if (isHttpUrl(value)) return value;
+  if (/^([A-Za-z]:[\\/]|\/)/.test(value)) {
+    return attachmentPreviewUrl(value);
+  }
+  if (/^file:\/\//i.test(value)) {
+    return value;
+  }
+  return value;
+}
+
+function dataUrlFromBase64(data: string, mimeType: string): string {
+  return `data:${mimeType};base64,${data}`;
 }
 
 interface InlineImageRef {
@@ -168,6 +198,20 @@ function MarkdownText({ content }: { content: string }) {
       continue;
     }
 
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
+        i += 1;
+      }
+      blocks.push(
+        <blockquote key={`quote-${i}`} className="markdown-blockquote">
+          {renderInline(quoteLines.join("\n"), `quote-${i}`)}
+        </blockquote>
+      );
+      continue;
+    }
+
     if (line.trim().startsWith("```")) {
       const code: string[] = [];
       i += 1;
@@ -244,6 +288,7 @@ function MarkdownText({ content }: { content: string }) {
       lines[i].trim() &&
       !lines[i].trim().startsWith("```") &&
       !/^#{1,6}\s+/.test(lines[i]) &&
+      !/^\s*>\s?/.test(lines[i]) &&
       !(lines[i].includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) &&
       !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])
     ) {
@@ -278,6 +323,88 @@ function MarkdownText({ content }: { content: string }) {
   return <div className="markdown-body">{blocks}</div>;
 }
 
+function StreamContentBlock({
+  item
+}: {
+  item: Extract<CliStreamItem, { kind: "content-block" }>;
+}) {
+  const { t } = useTranslation();
+
+  switch (item.blockType) {
+    case "image": {
+      if (!item.data) return null;
+      const src = dataUrlFromBase64(item.data, item.mimeType ?? "image/png");
+      return <MessageImage src={src} alt={item.title ?? item.name ?? ""} />;
+    }
+    case "audio": {
+      if (!item.data) return null;
+      const src = dataUrlFromBase64(item.data, item.mimeType ?? "audio/wav");
+      return (
+        <div className="stream-content-block stream-audio-block">
+          <audio controls preload="metadata" src={src} className="stream-audio" />
+        </div>
+      );
+    }
+    case "resource_link": {
+      const href = item.uri ? resolveLinkHref(item.uri) : "";
+      const label = item.title || item.name || item.uri || t("stream.resourceLink");
+      const meta = [
+        item.mimeType,
+        typeof item.size === "number" ? formatBytes(item.size) : ""
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return (
+        <div className="stream-content-block stream-resource-link">
+          {href ? (
+            <a href={href} target="_blank" rel="noreferrer noopener" title={item.uri}>
+              {label}
+            </a>
+          ) : (
+            <span>{label}</span>
+          )}
+          {item.description ? (
+            <div className="stream-resource-description">{item.description}</div>
+          ) : null}
+          {meta ? <div className="stream-resource-meta">{meta}</div> : null}
+        </div>
+      );
+    }
+    case "resource": {
+      if (item.text) {
+        return (
+          <div className="stream-content-block stream-embedded-resource">
+            {(item.title || item.name || item.uri) && (
+              <div className="stream-resource-label">
+                {item.title || item.name || item.uri}
+              </div>
+            )}
+            <pre className="stream-embedded-resource-text">{item.text}</pre>
+          </div>
+        );
+      }
+      if (item.data && item.mimeType?.startsWith("image/")) {
+        const src = dataUrlFromBase64(item.data, item.mimeType);
+        return <MessageImage src={src} alt={item.title ?? item.name ?? ""} />;
+      }
+      if (item.uri) {
+        const href = resolveLinkHref(item.uri);
+        const label = item.title || item.name || item.uri;
+        return (
+          <div className="stream-content-block stream-embedded-resource">
+            <a href={href} target="_blank" rel="noreferrer noopener">
+              {label}
+            </a>
+          </div>
+        );
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
 function summarizeValue(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
@@ -302,12 +429,159 @@ function truncate(value: string, max = 96) {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
 }
 
+function StreamStepIcon({ children }: { children: ReactNode }) {
+  return (
+    <span className="stream-step-icon" aria-hidden="true">
+      <svg
+        className="stream-step-icon-svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {children}
+      </svg>
+    </span>
+  );
+}
+
+function ToolKindIcon({
+  toolKind
+}: {
+  toolKind?: Extract<CliStreamItem, { kind: "tool-call" }>["toolKind"];
+}) {
+  switch (toolKind) {
+    case "read":
+      return (
+        <StreamStepIcon>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </StreamStepIcon>
+      );
+    case "edit":
+      return (
+        <StreamStepIcon>
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </StreamStepIcon>
+      );
+    case "delete":
+      return (
+        <StreamStepIcon>
+          <path d="M3 6h18" />
+          <path d="M8 6V4h8v2" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+          <line x1="10" y1="11" x2="10" y2="17" />
+          <line x1="14" y1="11" x2="14" y2="17" />
+        </StreamStepIcon>
+      );
+    case "move":
+      return (
+        <StreamStepIcon>
+          <path d="M5 12h14" />
+          <path d="m13 18 6-6-6-6" />
+        </StreamStepIcon>
+      );
+    case "search":
+      return (
+        <StreamStepIcon>
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </StreamStepIcon>
+      );
+    case "execute":
+      return (
+        <StreamStepIcon>
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </StreamStepIcon>
+      );
+    case "fetch":
+      return (
+        <StreamStepIcon>
+          <path d="M12 3v12" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M5 21h14" />
+        </StreamStepIcon>
+      );
+    case "think":
+      return (
+        <StreamStepIcon>
+          <path d="M9 18h6" />
+          <path d="M10 22h4" />
+          <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Z" />
+        </StreamStepIcon>
+      );
+    case "mode":
+      return (
+        <StreamStepIcon>
+          <line x1="4" y1="21" x2="4" y2="14" />
+          <line x1="4" y1="10" x2="4" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12" y2="3" />
+          <line x1="20" y1="21" x2="20" y2="16" />
+          <line x1="20" y1="12" x2="20" y2="3" />
+          <line x1="2" y1="14" x2="6" y2="14" />
+          <line x1="10" y1="8" x2="14" y2="8" />
+          <line x1="18" y1="16" x2="22" y2="16" />
+        </StreamStepIcon>
+      );
+    default:
+      return (
+        <StreamStepIcon>
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </StreamStepIcon>
+      );
+  }
+}
+
+function toolStatusMeta(
+  call: Extract<CliStreamItem, { kind: "tool-call" }>,
+  t: TFunction
+) {
+  switch (call.status) {
+    case "pending":
+      return { className: "pending", label: t("stream.statusPending") };
+    case "running":
+      return { className: "running", label: t("stream.statusRunning") };
+    case "completed":
+      return { className: "completed", label: t("stream.statusCompleted") };
+    case "failed":
+      return { className: "failed", label: t("stream.statusFailed") };
+    default:
+      return undefined;
+  }
+}
+
 function toolActionLabel(
   item: Extract<CliStreamItem, { kind: "tool-call" }>,
   t: TFunction
 ) {
+  const locationTarget = item.locations?.[0]?.path;
+  const target = truncate(locationTarget ?? summarizeValue(item.input));
+
+  switch (item.toolKind) {
+    case "read":
+      return t("stream.read", { target: target || item.tool });
+    case "edit":
+      return t("stream.edit", { target: target || item.tool });
+    case "execute":
+      return t("stream.exec", { target: target || item.tool });
+    case "search":
+      return target ? `${item.tool} ${target}` : item.tool;
+    case "delete":
+      return t("stream.delete", { target: target || item.tool });
+    case "move":
+      return t("stream.move", { target: target || item.tool });
+    default:
+      break;
+  }
+
   const tool = item.tool.toLowerCase();
-  const target = truncate(summarizeValue(item.input));
   if (tool.includes("read") || tool.includes("open")) {
     return t("stream.read", { target: target || item.tool });
   }
@@ -353,31 +627,81 @@ function toolGroupLabel(
 export function StreamToolInvocation({
   call,
   results,
-  commands = []
+  commands = [],
+  extras = []
 }: {
   call: Extract<CliStreamItem, { kind: "tool-call" }>;
   results: Extract<CliStreamItem, { kind: "tool-result" }>[];
   commands?: Extract<CliStreamItem, { kind: "command" }>[];
+  extras?: CliStreamItem[];
 }) {
   const visibleResults = dedupeToolResults(results);
   const visibleCommands = dedupeCommands(commands);
-  const hasError = visibleResults.some((result) => result.isError);
+  const hasError = call.isError || visibleResults.some((result) => result.isError);
   const input = formatValue(call.input);
   const { t } = useTranslation();
+  const statusMeta = toolStatusMeta(call, t);
+  const hasBody =
+    Boolean(input) ||
+    visibleCommands.length > 0 ||
+    visibleResults.length > 0 ||
+    extras.length > 0;
+  const showDoneMeta =
+    call.status === "completed" &&
+    !visibleResults.some((result) => hasVisibleContent(result.content)) &&
+    visibleCommands.length === 0 &&
+    extras.length === 0;
 
   return (
-    <details className={`stream-tool-invocation${hasError ? " error" : ""}`}>
+    <details
+      className={`stream-tool-invocation${hasError ? " error" : ""}${
+        statusMeta ? ` status-${statusMeta.className}` : ""
+      }`}
+      open={call.status === "running" ? true : undefined}
+    >
       <summary>
-        <span className="stream-step-icon">⌁</span>
+        <ToolKindIcon toolKind={call.toolKind} />
         <span className="stream-tool-summary-main">{toolGroupLabel(call, t)}</span>
-        {(visibleResults.length > 0 || visibleCommands.length > 0) && (
+        {call.locations?.length ? (
+          <span className="stream-tool-locations">
+            {call.locations.map((location, index) => {
+              const href = resolveLinkHref(location.path);
+              return href ? (
+                <a
+                  key={`${location.path}-${index}`}
+                  href={href}
+                  className="stream-tool-location"
+                  title={location.path}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {truncate(location.path, 48)}
+                </a>
+              ) : (
+                <span key={`${location.path}-${index}`} className="stream-tool-location">
+                  {truncate(location.path, 48)}
+                </span>
+              );
+            })}
+          </span>
+        ) : null}
+        {statusMeta ? (
+          <span className={`stream-tool-status ${statusMeta.className}`}>
+            {call.status === "running" ? (
+              <span className="stream-tool-spinner" aria-hidden="true" />
+            ) : null}
+            <span>{statusMeta.label}</span>
+          </span>
+        ) : hasBody ? (
           <span className="stream-tool-summary-meta">
             {visibleResults.some((result) => hasVisibleContent(result.content)) ||
-            visibleCommands.length > 0
+            visibleCommands.length > 0 ||
+            extras.length > 0
               ? t("stream.summaryResult")
-              : t("stream.summaryDone")}
+              : showDoneMeta
+                ? t("stream.summaryDone")
+                : null}
           </span>
-        )}
+        ) : null}
       </summary>
       <div className="stream-tool-body">
         {input && (
@@ -391,6 +715,11 @@ export function StreamToolInvocation({
             <span className="stream-label">{t("stream.command")}</span>
             <pre>{command.command}</pre>
             {command.cwd && <div className="stream-tool-empty">{command.cwd}</div>}
+          </div>
+        ))}
+        {extras.map((extra, index) => (
+          <div className="stream-tool-section" key={`extra-${index}`}>
+            <StreamItem item={extra} />
           </div>
         ))}
         {visibleResults.map((result, index) => (
@@ -427,10 +756,12 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
           <MarkdownText content={item.content} />
         </details>
       );
+    case "content-block":
+      return <StreamContentBlock item={item} />;
     case "tool-call":
       return (
         <div className="stream-step stream-tool-call">
-          <span className="stream-step-icon">⌁</span>
+          <ToolKindIcon toolKind={item.toolKind} />
           <span>{toolActionLabel(item, t)}</span>
         </div>
       );
@@ -473,8 +804,23 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
       return (
         <details className="stream-file-edit">
           <summary>{item.action} {item.path}</summary>
-          {item.patch && <pre>{item.patch}</pre>}
+          {item.oldText != null && item.newText != null ? (
+            <div className="stream-diff">
+              <pre className="stream-diff-old">{item.oldText}</pre>
+              <pre className="stream-diff-new">{item.newText}</pre>
+            </div>
+          ) : item.patch ? (
+            <pre>{item.patch}</pre>
+          ) : null}
         </details>
+      );
+    case "terminal-embed":
+      return (
+        <div className="stream-terminal-embed">
+          <span className="stream-label">
+            {t("stream.terminalEmbed", { id: item.terminalId })}
+          </span>
+        </div>
       );
     case "session":
       return (

@@ -3,9 +3,13 @@ import assert from "node:assert/strict";
 
 import { buildCommand, cliAdapterDefinitions } from "../dist-electron/cli/adapters.js";
 import {
+  acpSessionListToItems,
+  acpSessionSetupToItems,
   acpUpdateToItems,
   buildInitializeRequest,
+  buildPromptContentBlocks,
   buildSessionPromptRequest,
+  contentBlockToItems,
   parseAcpLine,
   shouldEmitAcpUpdate
 } from "../dist-electron/cli/acp.js";
@@ -259,52 +263,17 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
       kind: "execute",
       rawInput: { command: "npm test" }
     }),
-    [{ kind: "tool-call", id: "tool-1", tool: "Run tests", input: { command: "npm test" } }]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "tool-1",
-      title: "Run tests",
-      rawOutput: "ok",
-      status: "completed"
-    }),
-    [{ kind: "tool-result", id: "tool-1", tool: "Run tests", content: "ok" }]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "tool-2",
-      title: "Web Search",
-      rawOutput: "",
-      status: "completed"
-    }),
-    [{ kind: "tool-result", id: "tool-2", tool: "Web Search", content: "" }]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "tool-3",
-      title: "webfetch",
-      rawOutput: { output: "Sofascore page content" },
-      status: "completed"
-    }),
     [
       {
-        kind: "tool-result",
-        id: "tool-3",
-        tool: "webfetch",
-        content: "Sofascore page content"
+        kind: "tool-call",
+        id: "tool-1",
+        tool: "Run tests",
+        input: { command: "npm test" },
+        status: "pending",
+        toolKind: "execute",
+        toolOutputs: [{ kind: "command", command: "npm test" }]
       }
     ]
-  );
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "session_info_update",
-      sessionId: "sess-2",
-      title: "Work"
-    }),
-    [{ kind: "session", sessionId: "sess-2", title: "Work" }]
   );
   assert.deepEqual(
     acpUpdateToItems({
@@ -323,56 +292,95 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
       }
     ]
   );
-  assert.deepEqual(
-    acpUpdateToItems({ sessionUpdate: "usage_update", used: 1200 }),
-    [{ kind: "usage", contextUsed: 1200 }]
-  );
 });
 
-test("acpUpdateToItems maps ACP plan updates", () => {
+test("acpUpdateToItems maps session metadata, commands and config options", () => {
   assert.deepEqual(
     acpUpdateToItems({
-      sessionUpdate: "plan",
-      entries: [
+      sessionUpdate: "session_info_update",
+      sessionId: "sess-2",
+      title: "Work",
+      updatedAt: "2026-06-23T12:00:00.000Z"
+    }),
+    [
+      {
+        kind: "session",
+        sessionId: "sess-2",
+        title: "Work",
+        updatedAt: "2026-06-23T12:00:00.000Z"
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "available_commands_update",
+      availableCommands: [{ name: "brainstorming", description: "Explore ideas" }]
+    }),
+    [
+      {
+        kind: "available-commands",
+        commands: [{ name: "brainstorming", description: "Explore ideas" }]
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "config_option_update",
+      configOptions: [
         {
-          content: "Analyze the codebase",
-          priority: "high",
-          status: "completed"
-        },
-        {
-          content: "Implement the right-column plan card",
-          priority: "medium",
-          status: "in_progress"
-        },
-        {
-          content: "Verify the UI",
-          priority: "low",
-          status: "pending"
+          id: "model",
+          name: "Model",
+          type: "select",
+          category: "model",
+          currentValue: "gpt-5",
+          options: {
+            values: [{ id: "gpt-5", name: "GPT-5" }]
+          }
         }
       ]
     }),
     [
       {
-        kind: "plan",
-        entries: [
+        kind: "config-options",
+        options: [
           {
-            content: "Analyze the codebase",
-            priority: "high",
-            status: "completed"
-          },
-          {
-            content: "Implement the right-column plan card",
-            priority: "medium",
-            status: "in_progress"
-          },
-          {
-            content: "Verify the UI",
-            priority: "low",
-            status: "pending"
+            id: "model",
+            name: "Model",
+            type: "select",
+            category: "model",
+            currentValue: "gpt-5",
+            currentLabel: "GPT-5",
+            values: [{ id: "gpt-5", name: "GPT-5" }]
           }
         ]
       }
     ]
+  );
+});
+
+test("buildPromptContentBlocks maps text and resource links for attachments", () => {
+  assert.deepEqual(buildPromptContentBlocks("hello"), [{ type: "text", text: "hello" }]);
+  const blocks = buildPromptContentBlocks("see file", [
+    {
+      path: "/tmp/readme.md",
+      kind: "document",
+      mimeType: "text/markdown",
+      name: "readme.md"
+    }
+  ]);
+  assert.equal(blocks.length, 2);
+  assert.deepEqual(blocks[0], { type: "text", text: "see file" });
+  assert.equal(blocks[1].type, "resource_link");
+  assert.match(String(blocks[1].uri), /readme\.md$/);
+});
+
+test("acpUpdateToItems ignores ACP control updates that are not chat content", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "current_mode_update",
+      currentModeId: "build"
+    }),
+    []
   );
 });
 
@@ -464,14 +472,7 @@ test("acpUpdateToItems maps OpenCode todo metadata updates as plan updates", () 
   );
 });
 
-test("acpUpdateToItems ignores ACP control updates that are not chat content", () => {
-  assert.deepEqual(
-    acpUpdateToItems({
-      sessionUpdate: "available_commands_update",
-      availableCommands: [{ name: "brainstorming", description: "Explore ideas" }]
-    }),
-    []
-  );
+test("acpUpdateToItems ignores mode updates that are not chat content", () => {
   assert.deepEqual(
     acpUpdateToItems({
       sessionUpdate: "current_mode_update",
@@ -499,6 +500,222 @@ test("acpUpdateToItems ignores ACP user message chunks because FreeBuddy renders
   );
 });
 
+test("contentBlockToItems maps ACP ContentBlock variants", () => {
+  assert.deepEqual(
+    contentBlockToItems({ type: "text", text: "Hello" }, { role: "assistant", append: true }),
+    [{ kind: "text", role: "assistant", content: "Hello", append: true }]
+  );
+  assert.deepEqual(
+    contentBlockToItems({ type: "text", text: "Plan" }, { asThinking: true, append: true }),
+    [{ kind: "thinking", content: "Plan", append: true }]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "image",
+      mimeType: "image/png",
+      data: "aGVsbG8="
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "image",
+        mimeType: "image/png",
+        data: "aGVsbG8="
+      }
+    ]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "audio",
+      mimeType: "audio/wav",
+      data: "YXVkaW8="
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "audio",
+        mimeType: "audio/wav",
+        data: "YXVkaW8="
+      }
+    ]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "resource_link",
+      uri: "file:///tmp/readme.md",
+      name: "readme.md",
+      title: "README",
+      mimeType: "text/markdown",
+      size: 2048
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "resource_link",
+        uri: "file:///tmp/readme.md",
+        name: "readme.md",
+        title: "README",
+        mimeType: "text/markdown",
+        size: 2048
+      }
+    ]
+  );
+  assert.deepEqual(
+    contentBlockToItems({
+      type: "resource",
+      resource: {
+        uri: "file:///tmp/context.txt",
+        mimeType: "text/plain",
+        text: "embedded context"
+      }
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "resource",
+        uri: "file:///tmp/context.txt",
+        mimeType: "text/plain",
+        text: "embedded context"
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps image and resource_link message chunks", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "image",
+        mimeType: "image/jpeg",
+        data: "Zm9v"
+      }
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "image",
+        mimeType: "image/jpeg",
+        data: "Zm9v"
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "resource_link",
+        uri: "/workspace/README.md",
+        name: "README.md"
+      }
+    }),
+    [
+      {
+        kind: "content-block",
+        blockType: "resource_link",
+        uri: "/workspace/README.md",
+        name: "README.md"
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps tool_call_update content blocks", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-4",
+      title: "Read file",
+      content: [
+        {
+          type: "content",
+          content: {
+            type: "resource",
+            resource: {
+              mimeType: "text/plain",
+              text: "file body"
+            }
+          }
+        }
+      ]
+    }),
+    [
+      {
+        kind: "tool-call",
+        id: "tool-4",
+        tool: "Read file",
+        toolOutputs: [
+          {
+            kind: "content-block",
+            blockType: "resource",
+            mimeType: "text/plain",
+            text: "file body"
+          }
+        ],
+        replaceToolOutputs: true
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps structured tool_call_update diff and terminal content", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-5",
+      title: "Edit file",
+      kind: "edit",
+      status: "running",
+      locations: [{ path: "/tmp/app.ts", line: 12 }],
+      content: [
+        {
+          type: "diff",
+          path: "/tmp/app.ts",
+          oldText: "const a = 1;",
+          newText: "const a = 2;"
+        },
+        {
+          type: "terminal",
+          terminalId: "term-1"
+        }
+      ]
+    }),
+    [
+      {
+        kind: "tool-call",
+        id: "tool-5",
+        tool: "Edit file",
+        status: "running",
+        toolKind: "edit",
+        locations: [{ path: "/tmp/app.ts", line: 12 }],
+        toolOutputs: [
+          {
+            kind: "file-edit",
+            path: "/tmp/app.ts",
+            action: "update",
+            oldText: "const a = 1;",
+            newText: "const a = 2;"
+          },
+          { kind: "terminal-embed", terminalId: "term-1" }
+        ],
+        replaceToolOutputs: true
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems keeps legacy tool_call_update without toolCallId", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      title: "Run tests",
+      rawOutput: "ok",
+      status: "completed"
+    }),
+    [{ kind: "tool-result", tool: "Run tests", content: "ok" }]
+  );
+});
+
 test("shouldEmitAcpUpdate suppresses replay updates before the current prompt starts", () => {
   assert.equal(
     shouldEmitAcpUpdate(
@@ -520,4 +737,113 @@ test("shouldEmitAcpUpdate suppresses replay updates before the current prompt st
     ),
     true
   );
+});
+
+test("shouldEmitAcpUpdate always emits session metadata updates", () => {
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "session_info_update",
+        title: "Renamed session"
+      },
+      { promptStarted: false }
+    ),
+    true
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "config_option_update",
+        configOptions: [{ id: "model", name: "Model", type: "select" }]
+      },
+      { promptStarted: false }
+    ),
+    true
+  );
+});
+
+test("acpSessionSetupToItems maps OpenCode session/new configOptions", () => {
+  const items = acpSessionSetupToItems("sess-opencode", {
+    sessionId: "sess-opencode",
+    configOptions: [
+      {
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select",
+        currentValue: "anthropic/claude-sonnet-4",
+        options: [
+          {
+            value: "anthropic/claude-sonnet-4",
+            name: "Anthropic/Claude Sonnet 4"
+          }
+        ]
+      },
+      {
+        id: "mode",
+        name: "Session Mode",
+        category: "mode",
+        type: "select",
+        currentValue: "build",
+        options: [{ value: "build", name: "Build" }]
+      }
+    ]
+  });
+
+  assert.equal(items.length, 2);
+  assert.deepEqual(items[0], {
+    kind: "session",
+    sessionId: "sess-opencode"
+  });
+  assert.equal(items[1].kind, "config-options");
+  assert.equal(items[1].options.length, 2);
+  assert.equal(items[1].options[0].currentLabel, "Anthropic/Claude Sonnet 4");
+});
+
+test("acpSessionSetupToItems maps Kimi legacy modes and models", () => {
+  const items = acpSessionSetupToItems("sess-kimi", {
+    session_id: "sess-kimi",
+    modes: {
+      current_mode_id: "default",
+      available_modes: [
+        { id: "default", name: "Default", description: "The default mode." }
+      ]
+    },
+    models: {
+      current_model_id: "kimi-k2",
+      available_models: [
+        { model_id: "kimi-k2", name: "kimi-k2" },
+        { model_id: "kimi-k2,thinking", name: "kimi-k2 (thinking)" }
+      ]
+    }
+  });
+
+  assert.equal(items[1].kind, "config-options");
+  assert.deepEqual(
+    items[1].options.map((option) => option.id),
+    ["mode", "model"]
+  );
+  assert.equal(items[1].options[1].currentValue, "kimi-k2");
+});
+
+test("acpSessionListToItems maps session/list titles", () => {
+  const items = acpSessionListToItems("sess-1", {
+    sessions: [
+      {
+        sessionId: "sess-1",
+        cwd: "/tmp/project",
+        title: "Implement auth flow",
+        updatedAt: "2026-06-23T12:00:00.000Z"
+      }
+    ]
+  });
+
+  assert.deepEqual(items, [
+    {
+      kind: "session",
+      sessionId: "sess-1",
+      title: "Implement auth flow",
+      updatedAt: "2026-06-23T12:00:00.000Z"
+    }
+  ]);
 });

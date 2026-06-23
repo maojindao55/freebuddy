@@ -1,10 +1,48 @@
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { CLIMember } from "@/config/aiMembers";
+import type { ConversationMessage } from "@/services/cli/types";
 
 type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
+type ToolCallItem = Extract<CliStreamItem, { kind: "tool-call" }>;
+
+export function mergeToolCalls(prev: ToolCallItem, next: ToolCallItem): ToolCallItem {
+  const merged: ToolCallItem = {
+    kind: "tool-call",
+    id: prev.id!,
+    tool: next.tool || prev.tool
+  };
+
+  const input = next.input !== undefined ? next.input : prev.input;
+  if (input !== undefined) merged.input = input;
+
+  const status = next.status ?? prev.status;
+  if (status !== undefined) merged.status = status;
+
+  const toolKind = next.toolKind ?? prev.toolKind;
+  if (toolKind !== undefined) merged.toolKind = toolKind;
+
+  const locations = next.locations ?? prev.locations;
+  if (locations !== undefined) merged.locations = locations;
+
+  const output = next.output !== undefined ? next.output : prev.output;
+  if (output !== undefined) merged.output = output;
+
+  const isError = next.isError ?? prev.isError;
+  if (isError !== undefined) merged.isError = isError;
+
+  if (next.toolOutputs) {
+    merged.toolOutputs = next.replaceToolOutputs
+      ? next.toolOutputs
+      : [...(prev.toolOutputs ?? []), ...next.toolOutputs];
+  } else if (prev.toolOutputs) {
+    merged.toolOutputs = prev.toolOutputs;
+  }
+
+  return merged;
+}
 
 function toolResultKey(item: ToolResultItem) {
   return `${item.tool}\u0000${item.content.trim()}`;
@@ -157,6 +195,29 @@ export function appendItems(
         continue;
       }
     }
+    if (item.kind === "available-commands") {
+      const index = out.findIndex((previous) => previous.kind === "available-commands");
+      if (index >= 0) {
+        out[index] = item;
+        continue;
+      }
+    }
+    if (item.kind === "config-options") {
+      const index = out.findIndex((previous) => previous.kind === "config-options");
+      if (index >= 0) {
+        out[index] = item;
+        continue;
+      }
+    }
+    if (item.kind === "tool-call" && item.id) {
+      const toolIndex = out.findIndex(
+        (previous) => previous.kind === "tool-call" && previous.id === item.id
+      );
+      if (toolIndex >= 0) {
+        out[toolIndex] = mergeToolCalls(out[toolIndex] as ToolCallItem, item);
+        continue;
+      }
+    }
     if (
       item.kind === "command-output" &&
       last &&
@@ -229,4 +290,53 @@ export function defaultTitleFor(member: CLIMember, cwd?: string): string {
     ? cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
     : undefined;
   return tail ? `${member.name} · ${tail}` : member.name;
+}
+
+function mergeMessageAttachments(
+  preferred: ConversationMessage | undefined,
+  fallback: ConversationMessage | undefined
+): ConversationMessage["attachments"] | undefined {
+  if (preferred?.attachments?.length) return preferred.attachments;
+  if (fallback?.attachments?.length) return fallback.attachments;
+  return preferred?.attachments ?? fallback?.attachments;
+}
+
+export function upsertConversationMessage(
+  messages: ConversationMessage[],
+  message: ConversationMessage
+): ConversationMessage[] {
+  const index = messages.findIndex((entry) => entry.id === message.id);
+  if (index < 0) return [...messages, message];
+  const previous = messages[index];
+  const next = [...messages];
+  next[index] = {
+    ...previous,
+    ...message,
+    attachments: mergeMessageAttachments(message, previous)
+  };
+  return next;
+}
+
+export function mergeConversationMessages(
+  existing: ConversationMessage[],
+  loaded: ConversationMessage[]
+): ConversationMessage[] {
+  const byId = new Map<string, ConversationMessage>();
+  for (const message of loaded) {
+    byId.set(message.id, message);
+  }
+  for (const message of existing) {
+    const persisted = byId.get(message.id);
+    if (!persisted) {
+      byId.set(message.id, message);
+      continue;
+    }
+    byId.set(message.id, {
+      ...persisted,
+      attachments: mergeMessageAttachments(persisted, message)
+    });
+  }
+  return Array.from(byId.values()).sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt)
+  );
 }

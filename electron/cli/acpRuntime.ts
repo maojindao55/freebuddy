@@ -5,10 +5,13 @@ import { type ChildProcessByStdio } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 
 import {
+  acpSessionListToItems,
+  acpSessionSetupToItems,
   acpUpdateToItems,
   buildInitializeRequest,
   buildSessionCancelNotification,
   buildSessionCloseRequest,
+  buildSessionListRequest,
   buildSessionNewRequest,
   buildSessionPromptRequest,
   buildSessionResumeRequest,
@@ -373,12 +376,33 @@ export async function runAcpAgent({
   let authMethods: AcpAuthMethod[] = [];
 
   const establishSession = async () => {
+    const emitSetupItems = (result: any) => {
+      if (!activeAcpSessionId) return;
+      const items = acpSessionSetupToItems(activeAcpSessionId, result);
+      if (items.length) emit({ type: "items", items });
+    };
+
     if (toolSessionId && agentCaps?.sessionCapabilities?.resume) {
-      await request(buildSessionResumeRequest(nextId(), toolSessionId, args.cwd));
+      const resumed = await request(
+        buildSessionResumeRequest(nextId(), toolSessionId, args.cwd)
+      );
       activeAcpSessionId = toolSessionId;
+      emitSetupItems(resumed);
     } else {
       const created = await request(buildSessionNewRequest(nextId(), args.cwd));
-      activeAcpSessionId = created?.sessionId;
+      activeAcpSessionId = created?.sessionId ?? created?.session_id;
+      emitSetupItems(created);
+    }
+  };
+
+  const syncSessionMetadataFromList = async () => {
+    if (!agentCaps?.sessionCapabilities?.list || !activeAcpSessionId) return;
+    try {
+      const listed = await request(buildSessionListRequest(nextId(), args.cwd));
+      const items = acpSessionListToItems(activeAcpSessionId, listed);
+      if (items.length) emit({ type: "items", items });
+    } catch {
+      /* best-effort */
     }
   };
 
@@ -390,7 +414,12 @@ export async function runAcpAgent({
     promptStarted = true;
     promptHadContent = false;
     await request(
-      buildSessionPromptRequest(nextId(), activeAcpSessionId!, args.prompt)
+      buildSessionPromptRequest(
+        nextId(),
+        activeAcpSessionId!,
+        args.prompt,
+        args.promptAttachments
+      )
     );
   };
 
@@ -423,6 +452,7 @@ export async function runAcpAgent({
     }
 
     await runPromptOnSession();
+    await syncSessionMetadataFromList();
 
     // Some agents (e.g. kimi when signed out) let session creation succeed but
     // return an empty turn because the model layer is unauthenticated. If the

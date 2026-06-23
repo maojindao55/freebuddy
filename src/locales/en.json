@@ -40,6 +40,9 @@
   },
   "chat": {
     "inputPlaceholder": "Type freely",
+    "inputPlaceholderWithSlash": "Type freely, or / for commands",
+    "slashCommandsAria": "Available slash commands",
+    "slashCommandsEmpty": "No matching commands",
     "attachFile": "Attach file",
     "permission": "Permission",
     "approvalAuto": "Auto",
@@ -133,7 +136,8 @@
     "noHistory": "no history yet",
     "noConversation": "No conversation",
     "localAgent": "Local coding agent",
-    "createToBegin": "Create a conversation to begin"
+    "createToBegin": "Create a conversation to begin",
+    "sessionConfig": "Session Config"
   },
   "message": {
     "you": "You",
@@ -144,16 +148,23 @@
     "read": "Read {{target}}",
     "edit": "Edit {{target}}",
     "exec": "Execute {{target}}",
+    "delete": "Delete {{target}}",
+    "move": "Move {{target}}",
     "result": "{{tool}} result",
     "thinking": "Thinking process",
     "viewRawLog": "View raw log ({{count}})",
     "summaryResult": "result",
     "summaryDone": "done",
+    "statusPending": "pending",
+    "statusRunning": "running",
+    "statusCompleted": "done",
+    "statusFailed": "failed",
     "input": "Input",
     "command": "Command",
     "noOutput": "No output",
     "errorTag": "error",
     "terminal": "⟩ Terminal",
+    "terminalEmbed": "Terminal {{id}}",
     "sessionLabel": "Session",
     "usageLabel": "Usage",
     "contextUsage": "ctx: {{used}}{{total}}",
@@ -161,7 +172,8 @@
     "errorLabel": "Error",
     "exitLabel": "Exit",
     "doneOk": "✓ Done",
-    "exitCode": "(exit {{code}})"
+    "exitCode": "(exit {{code}})",
+    "resourceLink": "Resource"
   },
   "errors": {
     "attachmentLimit": "Add at most {{count}} attachments per message.",

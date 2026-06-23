@@ -25,6 +25,16 @@ test("agent plan card scrolls internally when it has many entries", () => {
   assert.equal(/\.plan-list\s*\{[^}]*max-height:/s.test(styles), false);
 });
 
+test("session config card truncates values and scrolls when crowded", () => {
+  assert.match(source, /session-config-scroll/);
+  assert.match(source, /session-config-label" title=\{label\}/);
+  assert.match(source, /<dd title=\{value\}>/);
+  assert.match(styles, /\.session-config-scroll\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(styles, /\.session-config-scroll\s*\{[^}]*max-height:/s);
+  assert.match(styles, /\.session-config-list dd\s*\{[^}]*text-overflow:\s*ellipsis/s);
+  assert.match(styles, /\.session-config-list \.session-config-label\s*\{[^}]*text-overflow:\s*ellipsis/s);
+});
+
 test("workspace panel no longer renders the execution queue card", () => {
   assert.equal(source.includes("run-queue-card"), false);
   assert.equal(source.includes("workspace.executionQueue"), false);

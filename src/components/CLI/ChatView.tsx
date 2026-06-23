@@ -21,6 +21,11 @@ import {
   validateAttachmentCandidate
 } from "@/utils/chatAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
+import {
+  mergeSessionMetaItems,
+  type AvailableCommandItem
+} from "@/store/sessionMetaUtils";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -235,6 +240,7 @@ export function ChatView() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const isNearBottomRef = useRef(true);
+  const [slashIndex, setSlashIndex] = useState(0);
 
   const conv = conversations.find((c) => c.id === activeId);
   const member = conv ? members.find((m) => m.id === conv.agentId) : undefined;
@@ -249,6 +255,37 @@ export function ChatView() {
     t("chat.starter.two"),
     t("chat.starter.three")
   ];
+
+  const availableCommands = useMemo(() => {
+    if (!conv) return [];
+    return mergeSessionMetaItems(
+      messages
+        .filter((message) => message.role === "assistant")
+        .flatMap((message) => {
+          try {
+            const items = JSON.parse(message.content);
+            return Array.isArray(items) ? items : [];
+          } catch {
+            return [];
+          }
+        }),
+      live?.items
+    ).commands;
+  }, [conv, live?.items, messages]);
+
+  const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
+
+  const filteredSlashCommands = useMemo(() => {
+    if (!slashDraft) return [];
+    const query = slashDraft.query.trim().toLowerCase();
+    return availableCommands.filter((command) =>
+      command.name.toLowerCase().startsWith(query)
+    );
+  }, [availableCommands, slashDraft]);
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [draft]);
 
   const previewMessages = useMemo<ConversationMessage[]>(() => {
     if (!conv || submitPreview?.conversationId !== conv.id) return [];
@@ -505,6 +542,11 @@ export function ChatView() {
     }
   };
 
+  const handleSelectSlashCommand = (command: AvailableCommandItem) => {
+    setDraft(`/${command.name} `);
+    chatTextareaRef.current?.focus();
+  };
+
   const onSend = async () => {
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
@@ -664,24 +706,63 @@ export function ChatView() {
           attachments={pendingAttachments}
           onRemove={handleRemovePendingAttachment}
         />
-        <textarea
-          ref={chatTextareaRef}
-          rows={3}
-          value={draft}
-          disabled={sending}
-          placeholder={
-            sending
-              ? t("chat.agentRunning")
-              : t("chat.inputPlaceholder")
-          }
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void onSend();
+        <div className="composer-input-wrap">
+          {slashDraft && availableCommands.length > 0 ? (
+            <SlashCommandMenu
+              commands={availableCommands}
+              query={slashDraft.query}
+              selectedIndex={slashIndex}
+              onSelect={handleSelectSlashCommand}
+            />
+          ) : null}
+          <textarea
+            ref={chatTextareaRef}
+            rows={3}
+            value={draft}
+            disabled={sending}
+            placeholder={
+              sending
+                ? t("chat.agentRunning")
+                : availableCommands.length > 0
+                  ? t("chat.inputPlaceholderWithSlash")
+                  : t("chat.inputPlaceholder")
             }
-          }}
-        />
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (slashDraft && filteredSlashCommands.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSlashIndex((index) => (index + 1) % filteredSlashCommands.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSlashIndex(
+                    (index) =>
+                      (index - 1 + filteredSlashCommands.length) %
+                      filteredSlashCommands.length
+                  );
+                  return;
+                }
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  const selected = filteredSlashCommands[slashIndex];
+                  if (selected) handleSelectSlashCommand(selected);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setDraft("");
+                  return;
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void onSend();
+              }
+            }}
+          />
+        </div>
         <div className="chat-composer-actions">
           <div className="composer-tools">
             <button

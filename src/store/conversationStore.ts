@@ -19,8 +19,9 @@ import type {
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
-import { defaultTitleFor } from "./conversationUtils";
+import { defaultTitleFor, mergeConversationMessages, upsertConversationMessage } from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
+import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 
 export interface LiveAssistant {
   messageId: string;
@@ -168,7 +169,27 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   async loadMessages(id) {
     if (!cliClient.isAvailable()) return;
     const list = await cliClient.listMessages(id);
-    set((s) => ({ messages: { ...s.messages, [id]: list } }));
+    set((s) => {
+      const sessionInfo = latestSessionInfoFromMessages(list);
+      const agentTitle = sessionInfo?.title?.trim();
+      let conversations = s.conversations;
+      if (agentTitle) {
+        const conversation = conversations.find((entry) => entry.id === id);
+        if (conversation && conversation.title !== agentTitle) {
+          conversations = conversations.map((entry) =>
+            entry.id === id ? { ...entry, title: agentTitle } : entry
+          );
+          void cliClient.renameConversation(id, agentTitle);
+        }
+      }
+      return {
+        messages: {
+          ...s.messages,
+          [id]: mergeConversationMessages(s.messages[id] ?? [], list)
+        },
+        conversations
+      };
+    });
   },
 
   async newConversation({ member, cwd, title, approvalMode }) {
@@ -274,17 +295,32 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => ({
       messages: {
         ...s.messages,
-        [conversationId]: [...(s.messages[conversationId] ?? []), userMsg]
+        [conversationId]: upsertConversationMessage(
+          s.messages[conversationId] ?? [],
+          userMsg
+        )
       }
     }));
-    await cliClient.appendMessage({
+    const savedUser = await cliClient.appendMessage({
       id: userMsgId,
       conversationId,
       role: "user",
       status: "sent",
       content: trimmed,
-      attachments,
+      attachments
     });
+    set((s) => ({
+      messages: {
+        ...s.messages,
+        [conversationId]: upsertConversationMessage(
+          s.messages[conversationId] ?? [],
+          {
+            ...userMsg,
+            attachments: savedUser.attachments ?? userMsg.attachments
+          }
+        )
+      }
+    }));
 
     const assistantMsgId = assistantMessageId ?? nanoid();
     const assistantMsg: ConversationMessage = {
@@ -299,10 +335,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => ({
       messages: {
         ...s.messages,
-        [conversationId]: [
-          ...(s.messages[conversationId] ?? []),
+        [conversationId]: upsertConversationMessage(
+          s.messages[conversationId] ?? [],
           assistantMsg
-        ]
+        )
       }
     }));
     await cliClient.appendMessage({
@@ -344,6 +380,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       binary,
       extraArgs,
       prompt: composeMessageWithAttachments(trimmed, attachments),
+      promptAttachments: attachments.map((attachment) => ({
+        path: attachment.path,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        name: attachment.name
+      })),
       cwd: conv.cwd,
       toolSessionScope,
       toolSessionId: resumedFromSessionId,

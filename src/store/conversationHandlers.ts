@@ -11,11 +11,50 @@ import type { ConversationState } from "./conversationStore";
 import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
 import { appendItems } from "./conversationUtils";
+import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 
 type SetFn = (
   fn: (state: ConversationState) => Partial<ConversationState> | ConversationState
 ) => void;
 type GetFn = () => ConversationState;
+
+function sessionTitleFromItems(items: CliStreamItem[]): string | undefined {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (
+      item.kind === "session" &&
+      typeof item.title === "string" &&
+      item.title.trim().length > 0
+    ) {
+      return item.title.trim();
+    }
+  }
+  return undefined;
+}
+
+function applyConversationTitle(
+  conversations: ConversationState["conversations"],
+  conversationId: string,
+  title: string
+): ConversationState["conversations"] {
+  const conversation = conversations.find((entry) => entry.id === conversationId);
+  if (!conversation || conversation.title === title) {
+    return conversations;
+  }
+  void cliClient.renameConversation(conversationId, title);
+  return conversations.map((entry) =>
+    entry.id === conversationId ? { ...entry, title } : entry
+  );
+}
+
+function isMetadataItem(item: CliStreamItem): boolean {
+  return (
+    item.kind === "session" ||
+    item.kind === "available-commands" ||
+    item.kind === "config-options" ||
+    item.kind === "usage"
+  );
+}
 
 function hasUserFacingError(items: CliStreamItem[]) {
   return items.some((item) => item.kind === "error");
@@ -81,7 +120,46 @@ export function handleStreamEvent(
 
   set((s) => {
     const live = s.live[conversationId];
-    if (!live) return s;
+    if (!live) {
+      if (e.type !== "items" || !e.items.some(isMetadataItem)) {
+        return s;
+      }
+
+      const messageList = s.messages[conversationId] ?? [];
+      const msgIdx = messageList.findLastIndex((m) => m.role === "assistant");
+      if (msgIdx < 0) return s;
+
+      const currentItems = (() => {
+        try {
+          const parsed = JSON.parse(messageList[msgIdx].content);
+          return Array.isArray(parsed) ? (parsed as CliStreamItem[]) : [];
+        } catch {
+          return [];
+        }
+      })();
+      const nextItems = appendItems(currentItems, e.items);
+      const updated = [...messageList];
+      updated[msgIdx] = {
+        ...updated[msgIdx],
+        content: JSON.stringify(nextItems),
+        updatedAt: new Date().toISOString()
+      };
+
+      const title = sessionTitleFromItems(e.items);
+      const conversations = title
+        ? applyConversationTitle(s.conversations, conversationId, title)
+        : s.conversations;
+
+      void cliClient.updateMessage({
+        id: updated[msgIdx].id,
+        content: JSON.stringify(nextItems)
+      });
+
+      return {
+        messages: { ...s.messages, [conversationId]: updated },
+        conversations
+      };
+    }
 
     let nextItems = live.items;
     let status = live.status;
@@ -138,6 +216,7 @@ export function handleStreamEvent(
     const messageList = s.messages[conversationId] ?? [];
     const msgIdx = messageList.findIndex((m) => m.id === live.messageId);
     let messages = s.messages;
+    let conversations = s.conversations;
     if (msgIdx >= 0) {
       const updated = [...messageList];
       updated[msgIdx] = {
@@ -147,6 +226,13 @@ export function handleStreamEvent(
         updatedAt: new Date().toISOString()
       };
       messages = { ...s.messages, [conversationId]: updated };
+    }
+
+    if (e.type === "items") {
+      const title = sessionTitleFromItems(e.items);
+      if (title) {
+        conversations = applyConversationTitle(conversations, conversationId, title);
+      }
     }
 
     return {
@@ -162,7 +248,8 @@ export function handleStreamEvent(
           capturedSessionId
         }
       },
-      messages
+      messages,
+      conversations
     };
   });
 

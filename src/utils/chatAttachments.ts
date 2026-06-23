@@ -198,8 +198,8 @@ export function composeMessageWithAttachments(
  * `freebuddy-file://` protocol is registered in the main process and reads the
  * file from disk so we can show image thumbnails without dropping webSecurity.
  */
-export function attachmentPreviewUrl(path: string): string {
-  const normalized = path.replace(/\\/g, "/");
-  const parts = normalized.split("/").map((segment) => encodeURIComponent(segment));
-  return `freebuddy-file://local${parts.join("/")}`;
+export function attachmentPreviewUrl(filePath: string): string {
+  const normalized = filePath.trim().replace(/\\/g, "/");
+  if (!normalized) return "";
+  return `freebuddy-file://open?path=${encodeURIComponent(normalized)}`;
 }

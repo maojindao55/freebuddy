@@ -310,7 +310,8 @@ test("tool invocation renderer shows ACP status and structured outputs", () => {
 
   assert.match(source, /stream-tool-status/);
   assert.match(source, /extras = \[\]/);
-  assert.match(source, /toolKindIcon/);
+  assert.match(source, /function ToolKindIcon/);
+  assert.match(source, /stream-step-icon-svg/);
   assert.match(source, /case "terminal-embed":/);
 });
 

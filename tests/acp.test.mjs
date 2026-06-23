@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { buildCommand, cliAdapterDefinitions } from "../dist-electron/cli/adapters.js";
 import {
+  acpSessionListToItems,
+  acpSessionSetupToItems,
   acpUpdateToItems,
   buildInitializeRequest,
   buildPromptContentBlocks,
@@ -736,4 +738,90 @@ test("shouldEmitAcpUpdate always emits session metadata updates", () => {
     ),
     true
   );
+});
+
+test("acpSessionSetupToItems maps OpenCode session/new configOptions", () => {
+  const items = acpSessionSetupToItems("sess-opencode", {
+    sessionId: "sess-opencode",
+    configOptions: [
+      {
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select",
+        currentValue: "anthropic/claude-sonnet-4",
+        options: [
+          {
+            value: "anthropic/claude-sonnet-4",
+            name: "Anthropic/Claude Sonnet 4"
+          }
+        ]
+      },
+      {
+        id: "mode",
+        name: "Session Mode",
+        category: "mode",
+        type: "select",
+        currentValue: "build",
+        options: [{ value: "build", name: "Build" }]
+      }
+    ]
+  });
+
+  assert.equal(items.length, 2);
+  assert.deepEqual(items[0], {
+    kind: "session",
+    sessionId: "sess-opencode"
+  });
+  assert.equal(items[1].kind, "config-options");
+  assert.equal(items[1].options.length, 2);
+  assert.equal(items[1].options[0].currentLabel, "Anthropic/Claude Sonnet 4");
+});
+
+test("acpSessionSetupToItems maps Kimi legacy modes and models", () => {
+  const items = acpSessionSetupToItems("sess-kimi", {
+    session_id: "sess-kimi",
+    modes: {
+      current_mode_id: "default",
+      available_modes: [
+        { id: "default", name: "Default", description: "The default mode." }
+      ]
+    },
+    models: {
+      current_model_id: "kimi-k2",
+      available_models: [
+        { model_id: "kimi-k2", name: "kimi-k2" },
+        { model_id: "kimi-k2,thinking", name: "kimi-k2 (thinking)" }
+      ]
+    }
+  });
+
+  assert.equal(items[1].kind, "config-options");
+  assert.deepEqual(
+    items[1].options.map((option) => option.id),
+    ["mode", "model"]
+  );
+  assert.equal(items[1].options[1].currentValue, "kimi-k2");
+});
+
+test("acpSessionListToItems maps session/list titles", () => {
+  const items = acpSessionListToItems("sess-1", {
+    sessions: [
+      {
+        sessionId: "sess-1",
+        cwd: "/tmp/project",
+        title: "Implement auth flow",
+        updatedAt: "2026-06-23T12:00:00.000Z"
+      }
+    ]
+  });
+
+  assert.deepEqual(items, [
+    {
+      kind: "session",
+      sessionId: "sess-1",
+      title: "Implement auth flow",
+      updatedAt: "2026-06-23T12:00:00.000Z"
+    }
+  ]);
 });

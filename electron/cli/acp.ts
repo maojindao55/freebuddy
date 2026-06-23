@@ -285,6 +285,18 @@ export function buildSessionCloseRequest(
   };
 }
 
+export function buildSessionListRequest(
+  id: AcpRequestId,
+  cwd?: string
+): AcpMessage {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "session/list",
+    params: cwd ? { cwd } : {}
+  };
+}
+
 export function parseAcpLine(line: string): AcpMessage | undefined {
   const trimmed = line.trim();
   if (!trimmed) return undefined;
@@ -636,8 +648,9 @@ type ConfigOptionItem = Extract<
 >["options"][number];
 
 function normalizeAvailableCommands(update: any): AvailableCommandItem[] {
-  if (!Array.isArray(update?.availableCommands)) return [];
-  return update.availableCommands
+  const rawCommands = update?.availableCommands ?? update?.available_commands;
+  if (!Array.isArray(rawCommands)) return [];
+  return rawCommands
     .map((command: any) => ({
       name: typeof command?.name === "string" ? command.name.trim() : "",
       ...(typeof command?.description === "string"
@@ -650,21 +663,49 @@ function normalizeAvailableCommands(update: any): AvailableCommandItem[] {
     .filter((command: AvailableCommandItem) => command.name.length > 0);
 }
 
+function normalizeConfigOptions(update: any): ConfigOptionItem[] {
+  const rawOptions = update?.configOptions ?? update?.config_options;
+  if (!Array.isArray(rawOptions)) return [];
+  return normalizeConfigOptionList(rawOptions);
+}
+
+function configOptionValueId(value: any): string {
+  const raw = value?.id ?? value?.value;
+  return raw == null ? "" : String(raw);
+}
+
+function configOptionValuesSource(option: any): any[] | undefined {
+  const nested = option?.options;
+  if (Array.isArray(nested)) {
+    if (
+      nested.length === 0 ||
+      nested[0]?.value != null ||
+      nested[0]?.id != null ||
+      typeof nested[0]?.name === "string"
+    ) {
+      return nested;
+    }
+  }
+  if (nested && typeof nested === "object" && Array.isArray(nested.values)) {
+    return nested.values;
+  }
+  if (Array.isArray(option?.values)) return option.values;
+  return undefined;
+}
+
 function configOptionLabel(
   option: any,
   currentValue: string | undefined
 ): string | undefined {
-  const values = option?.options?.values ?? option?.values;
+  const values = configOptionValuesSource(option);
   if (!Array.isArray(values) || !currentValue) return undefined;
   const match = values.find(
-    (value: any) => String(value?.id ?? "") === currentValue
+    (value: any) => configOptionValueId(value) === currentValue
   );
   return typeof match?.name === "string" ? match.name : undefined;
 }
 
-function normalizeConfigOptions(update: any): ConfigOptionItem[] {
-  const rawOptions = update?.configOptions ?? update?.options;
-  if (!Array.isArray(rawOptions)) return [];
+function normalizeConfigOptionList(rawOptions: any[]): ConfigOptionItem[] {
   return rawOptions
     .map((option: any) => {
       const id =
@@ -673,18 +714,18 @@ function normalizeConfigOptions(update: any): ConfigOptionItem[] {
           : typeof option?.name === "string"
             ? option.name
             : "";
-      const currentValueRaw = option?.currentValue ?? option?.value;
+      const currentValueRaw = option?.currentValue ?? option?.current_value ?? option?.value;
       const currentValue =
         typeof currentValueRaw === "string"
           ? currentValueRaw
           : currentValueRaw != null
             ? String(currentValueRaw)
             : undefined;
-      const valuesSource = option?.options?.values ?? option?.values;
+      const valuesSource = configOptionValuesSource(option);
       const values = Array.isArray(valuesSource)
         ? valuesSource
             .map((value: any) => ({
-              id: String(value?.id ?? ""),
+              id: configOptionValueId(value),
               ...(typeof value?.name === "string" ? { name: value.name } : {})
             }))
             .filter((value: { id: string }) => value.id.length > 0)
@@ -707,6 +748,148 @@ function normalizeConfigOptions(update: any): ConfigOptionItem[] {
       };
     })
     .filter((option: ConfigOptionItem) => option.id.length > 0);
+}
+
+function legacyModesAndModelsToConfigOptions(result: any): ConfigOptionItem[] {
+  const options: ConfigOptionItem[] = [];
+  const modes = result?.modes;
+  if (modes && typeof modes === "object") {
+    const currentModeId = modes.currentModeId ?? modes.current_mode_id;
+    const availableModes = modes.availableModes ?? modes.available_modes;
+    if (currentModeId || Array.isArray(availableModes)) {
+      const values = Array.isArray(availableModes)
+        ? availableModes
+            .map((mode: any) => ({
+              id: String(mode.id ?? mode.modeId ?? mode.mode_id ?? ""),
+              ...(typeof mode.name === "string" ? { name: mode.name } : {})
+            }))
+            .filter((value: { id: string }) => value.id.length > 0)
+        : undefined;
+      const currentValue = currentModeId ? String(currentModeId) : undefined;
+      options.push({
+        id: "mode",
+        name: "Session Mode",
+        category: "mode",
+        type: "select",
+        ...(currentValue
+          ? {
+              currentValue,
+              currentLabel: values?.find((value) => value.id === currentValue)?.name
+            }
+          : {}),
+        ...(values?.length ? { values } : {})
+      });
+    }
+  }
+
+  const models = result?.models;
+  if (models && typeof models === "object") {
+    const currentModelId = models.currentModelId ?? models.current_model_id;
+    const availableModels = models.availableModels ?? models.available_models;
+    if (currentModelId || Array.isArray(availableModels)) {
+      const values = Array.isArray(availableModels)
+        ? availableModels
+            .map((model: any) => ({
+              id: String(
+                model.modelId ?? model.model_id ?? model.id ?? ""
+              ),
+              ...(typeof model.name === "string" ? { name: model.name } : {})
+            }))
+            .filter((value: { id: string }) => value.id.length > 0)
+        : undefined;
+      const currentValue = currentModelId ? String(currentModelId) : undefined;
+      options.push({
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select",
+        ...(currentValue
+          ? {
+              currentValue,
+              currentLabel: values?.find((value) => value.id === currentValue)?.name
+            }
+          : {}),
+        ...(values?.length ? { values } : {})
+      });
+    }
+  }
+
+  return options;
+}
+
+function dedupeConfigOptions(options: ConfigOptionItem[]): ConfigOptionItem[] {
+  const seen = new Set<string>();
+  const out: ConfigOptionItem[] = [];
+  for (const option of options) {
+    if (seen.has(option.id)) continue;
+    seen.add(option.id);
+    out.push(option);
+  }
+  return out;
+}
+
+export function acpSessionSetupToItems(
+  sessionId: string,
+  result: any
+): AcpStreamItem[] {
+  if (!result || typeof result !== "object") return [];
+
+  const items: AcpStreamItem[] = [];
+  const resolvedSessionId = String(
+    result.sessionId ?? result.session_id ?? sessionId ?? ""
+  );
+  const title =
+    typeof result.title === "string" && result.title.trim()
+      ? result.title.trim()
+      : typeof result._meta?.kimi?.session?.title === "string" &&
+          result._meta.kimi.session.title.trim()
+        ? result._meta.kimi.session.title.trim()
+        : undefined;
+  const updatedAt =
+    typeof result.updatedAt === "string"
+      ? result.updatedAt
+      : typeof result.updated_at === "string"
+        ? result.updated_at
+        : typeof result._meta?.kimi?.session?.updatedAt === "string"
+          ? result._meta.kimi.session.updatedAt
+          : undefined;
+
+  if (resolvedSessionId || title || updatedAt) {
+    items.push({
+      kind: "session",
+      sessionId: resolvedSessionId || String(sessionId),
+      ...(title ? { title } : {}),
+      ...(updatedAt ? { updatedAt } : {})
+    });
+  }
+
+  const configOptions = dedupeConfigOptions([
+    ...normalizeConfigOptions(result),
+    ...legacyModesAndModelsToConfigOptions(result)
+  ]);
+  if (configOptions.length) {
+    items.push({ kind: "config-options", options: configOptions });
+  }
+
+  const commands = normalizeAvailableCommands(result);
+  if (commands.length) {
+    items.push({ kind: "available-commands", commands });
+  }
+
+  return items;
+}
+
+export function acpSessionListToItems(
+  sessionId: string,
+  listResult: any
+): AcpStreamItem[] {
+  const sessions = listResult?.sessions;
+  if (!Array.isArray(sessions)) return [];
+  const match = sessions.find(
+    (entry: any) =>
+      String(entry?.sessionId ?? entry?.session_id ?? "") === sessionId
+  );
+  return match ? acpSessionSetupToItems(sessionId, match) : [];
 }
 
 export function acpUpdateToItems(

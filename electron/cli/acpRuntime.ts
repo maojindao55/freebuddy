@@ -69,6 +69,7 @@ export async function runAcpAgent({
   let finished = false;
   let promptStarted = false;
   let promptHadContent = false;
+  const stderrBuffer: string[] = [];
   const pending = new Map<
     string,
     {
@@ -353,19 +354,38 @@ export async function runAcpAgent({
 
   const rlErr = readline.createInterface({ input: child.stderr });
   rlErr.on("line", (line) => {
+    stderrBuffer.push(line);
+    if (stderrBuffer.length > 30) stderrBuffer.shift();
     appendLog(logStream, "stderr", line);
     if (args.showStderr !== false) emit({ type: "stderr", content: line });
   });
 
+  function describeCrash(exitCode: number): string | undefined {
+    const stderr = stderrBuffer.join("\n");
+    if (!stderr.includes("panic:")) return undefined;
+
+    if (
+      args.adapter === "trae-acp" ||
+      stderr.includes("code.byted.org/nextcode/coco/cli/acp")
+    ) {
+      return `Trae CLI crashed because no usable models are available. Run \`traecli\` in your terminal to log in to your enterprise account, then retry.`;
+    }
+
+    return `The ACP agent crashed unexpectedly (exit code ${exitCode}).`;
+  }
+
   child.on("close", (code) => {
     const exitCode = code ?? -1;
+    const crashMessage = exitCode !== 0 ? describeCrash(exitCode) : undefined;
     for (const waiter of pending.values()) {
-      waiter.reject(new Error(`ACP agent exited with code ${exitCode}`));
+      waiter.reject(
+        new Error(crashMessage || `ACP agent exited with code ${exitCode}`)
+      );
     }
     pending.clear();
     if (!finished) {
       appendLog(logStream, "system", `exit code=${exitCode}`);
-      finish(exitCode === 0 ? "done" : "failed", exitCode);
+      finish("failed", exitCode, crashMessage);
     }
   });
 

@@ -7,6 +7,7 @@ export type CLIAdapterId =
   | "opencode-acp"
   | "cursor-agent-acp"
   | "kimi-acp"
+  | "trae-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -95,6 +96,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
     docsUrl: "https://moonshotai.github.io/kimi-code/en/guides/ides",
+    protocol: "acp"
+  },
+  {
+    id: "trae-acp",
+    label: "Trae CLI",
+    defaultBinary: "traecli",
+    streamMode: "raw",
+    commandGroup: "trae",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: 'sh -c "$(curl -L https://trae.cn/trae-cli/install.sh)" \u0026\u0026 export PATH=~/.local/bin:$PATH',
+    docsUrl: "https://docs.trae.cn/cli",
     protocol: "acp"
   }
 ];

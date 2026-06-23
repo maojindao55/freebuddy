@@ -7,6 +7,7 @@ export type CLIAdapterId =
   | "opencode-acp"
   | "cursor-agent-acp"
   | "kimi-acp"
+  | "trae-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -144,6 +145,22 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
         : "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
     docsUrl: "https://moonshotai.github.io/kimi-code/en/guides/ides",
     protocol: "acp"
+  },
+  {
+    id: "trae-acp",
+    label: "Trae CLI",
+    defaultBinary: "traecli",
+    streamMode: "raw",
+    commandGroup: "trae",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint:
+      process.platform === "win32"
+        ? "irm https://trae.cn/trae-cli/install.ps1 | iex"
+        : 'sh -c "$(curl -L https://trae.cn/trae-cli/install.sh)" \u0026\u0026 export PATH=~/.local/bin:$PATH',
+    docsUrl: "https://docs.trae.cn/cli",
+    protocol: "acp"
   }
 ];
 
@@ -216,6 +233,27 @@ function normalizeCodexAcpArgs(args: string[]): string[] {
     }
     if (arg.startsWith("--model=")) {
       normalized.push("-c", `model=${tomlString(arg.slice("--model=".length))}`);
+      continue;
+    }
+    normalized.push(arg);
+  }
+  return normalized;
+}
+
+function normalizeTraeAcpArgs(args: string[]): string[] {
+  const normalized: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "-m" || arg === "--model") {
+      const model = args[i + 1];
+      if (model) {
+        normalized.push("-c", `model=${model}`);
+        i += 1;
+        continue;
+      }
+    }
+    if (arg.startsWith("--model=")) {
+      normalized.push("-c", `model=${arg.slice("--model=".length)}`);
       continue;
     }
     normalized.push(arg);
@@ -323,6 +361,16 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
         bin,
         args,
         ...(model ? { env: { KIMI_MODEL_NAME: model } } : {}),
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "trae-acp": {
+      const args: string[] = ["acp", "serve"];
+      args.push(...normalizeTraeAcpArgs(extra));
+      return {
+        bin,
+        args,
         promptViaStdin: false,
         protocol: "acp"
       };

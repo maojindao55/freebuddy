@@ -42,5 +42,11 @@ export const builtinCliMembers: CLIMember[] = [
     name: "Kimi",
     enabled: true,
     cli: { adapter: "kimi-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-trae-acp",
+    name: "Trae CLI",
+    enabled: true,
+    cli: { adapter: "trae-acp", approvalMode: "auto", showStderr: true }
   }
 ];

@@ -63,5 +63,14 @@ export const builtinCliMembers: CLIMember[] = [
     source: "builtin",
     enabled: true,
     cli: { adapter: "kimi-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-trae-acp",
+    kind: "cli",
+    name: "Trae CLI",
+    description: "Local Trae CLI coding agent. Requires TRAECLI_PERSONAL_ACCESS_TOKEN.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "trae-acp", approvalMode: "auto", showStderr: true }
   }
 ];

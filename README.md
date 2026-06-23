@@ -62,10 +62,16 @@ they do it. FreeBuddy wraps that workflow in a calm desktop interface:
 | OpenCode | `opencode` | `npm install -g opencode-ai` |
 | Cursor | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
 | Kimi | `kimi` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
+| Trae CLI | `traecli` | `sh -c "$(curl -L https://trae.cn/trae-cli/install.sh)" && export PATH=~/.local/bin:$PATH` |
 
 Open **Settings -> Coding Agents** to check installed runtimes, run the
 recommended install command, customize a binary path, set a model, pass extra
 arguments, configure environment variables, or choose an agent avatar.
+
+> **Trae CLI note:** Trae CLI requires an enterprise login before use. After
+> installing, run `traecli` in your terminal to complete authentication. If
+> FreeBuddy reports that no usable models are available, the CLI has not been
+> logged in or your account has no active model subscription.
 
 ## Desktop Capabilities
 

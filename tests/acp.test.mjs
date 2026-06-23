@@ -59,7 +59,8 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "claude-agent-acp", label: "ClaudeCode", protocol: "acp" },
       { id: "opencode-acp", label: "OpenCode", protocol: "acp" },
       { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" },
-      { id: "kimi-acp", label: "Kimi", protocol: "acp" }
+      { id: "kimi-acp", label: "Kimi", protocol: "acp" },
+      { id: "trae-acp", label: "Trae CLI", protocol: "acp" }
     ]
   );
 });
@@ -172,6 +173,33 @@ test("buildCommand applies Kimi ACP model through KIMI_MODEL_NAME env", () => {
   });
   assert.deepEqual(withEquals.args, ["acp"]);
   assert.deepEqual(withEquals.env, { KIMI_MODEL_NAME: "moonshot-v1-128k" });
+});
+
+test("buildCommand starts Trae CLI through its ACP server", () => {
+  const built = buildCommand({ adapter: "trae-acp", prompt: "hello" });
+
+  assert.equal(built.bin, "traecli");
+  assert.deepEqual(built.args, ["acp", "serve"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand applies Trae CLI ACP model through -c config", () => {
+  const built = buildCommand({
+    adapter: "trae-acp",
+    prompt: "hello",
+    extraArgs: ["-m", "gpt-4o", "--yolo"]
+  });
+
+  assert.deepEqual(built.args, ["acp", "serve", "-c", "model=gpt-4o", "--yolo"]);
+  assert.equal(built.env, undefined);
+
+  const withEquals = buildCommand({
+    adapter: "trae-acp",
+    prompt: "hello",
+    extraArgs: ["--model=claude-sonnet-4"]
+  });
+  assert.deepEqual(withEquals.args, ["acp", "serve", "-c", "model=claude-sonnet-4"]);
 });
 
 test("buildInitializeRequest advertises conservative client capabilities", () => {

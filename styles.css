@@ -188,6 +188,7 @@ button {
   justify-content: space-between;
   gap: 12px;
   padding: 18px 16px 14px;
+  position: relative;
 }
 .electron-shell .sidebar-header {
   -webkit-app-region: drag;
@@ -233,29 +234,35 @@ button {
   color: var(--fb-text-primary);
 }
 
-/* macOS traffic lights visible: lift the toggle into the top-left system-button row */
+/* macOS traffic lights visible: lift the in-header toggle into the
+   top-left system-button row, anchored to .sidebar-header (which sets
+   position: relative above). */
 .electron-shell.platform-darwin:not(.chrome-hidden) .sidebar-header > .sidebar-toggle {
   position: absolute;
-  top: 8px;
-  left: 74px;
+  top: 10px;
+  left: 82px;
   z-index: 40;
+  -webkit-app-region: no-drag;
 }
 
-/* Floating toggle used only when the sidebar is collapsed */
+/* Floating toggle used only when the sidebar is collapsed.
+   It is rendered inside .titlebar (which has -webkit-app-region: drag),
+   so it can safely opt out of the drag region as a child element. */
 .sidebar-toggle.floating {
   position: absolute;
   top: 8px;
   left: 8px;
   z-index: 40;
+  -webkit-app-region: no-drag;
 }
 
-/* Electron titlebar is taller (52px + 8px padding) → align with its breadcrumb center */
+/* Electron titlebar has a top padding of 8px → match it for vertical centering. */
 .electron-shell .sidebar-toggle.floating {
   top: 16px;
 }
 
 .electron-shell.platform-darwin:not(.chrome-hidden) .sidebar-toggle.floating {
-  left: 74px;
+  left: 82px;
 }
 
 .electron-shell.chrome-hidden.sidebar-collapsed .titlebar {
@@ -444,6 +451,7 @@ button {
 
 .titlebar {
   display: flex;
+  position: relative;
   height: 44px;
   flex: 0 0 auto;
   align-items: center;

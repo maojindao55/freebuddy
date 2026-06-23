@@ -128,6 +128,23 @@ function createWindow() {
   mainWindow.on("maximize", sendChromeVisible);
   mainWindow.on("unmaximize", sendChromeVisible);
 
+  // The app menu is hidden (Menu.setApplicationMenu(null)) and we use
+  // titleBarStyle: "hiddenInset", so macOS' default Esc-to-leave-fullscreen
+  // shortcut has no menu item to bind to. Restore it manually.
+  mainWindow.webContents.on("before-input-event", (_event, input) => {
+    if (
+      input.type === "keyDown" &&
+      input.key === "Escape" &&
+      !input.alt &&
+      !input.control &&
+      !input.meta &&
+      !input.shift &&
+      mainWindow?.isFullScreen()
+    ) {
+      mainWindow.setFullScreen(false);
+    }
+  });
+
   if (isDev) {
     void mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL as string);
     mainWindow.webContents.openDevTools({ mode: "detach" });

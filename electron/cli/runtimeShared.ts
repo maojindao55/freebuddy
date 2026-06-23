@@ -164,13 +164,17 @@ export function appendLog(
   kind: string,
   content: string
 ) {
-  if (!file) return;
+  if (!file || file.writableEnded || file.destroyed) return;
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
     type: kind,
     content
   });
-  file.write(entry + "\n");
+  try {
+    file.write(entry + "\n");
+  } catch {
+    /* best-effort: stream may close while the agent is shutting down */
+  }
 }
 
 export function maybeCaptureSessionId(

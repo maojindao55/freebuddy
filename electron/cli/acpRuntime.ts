@@ -512,10 +512,9 @@ export async function runAcpAgent({
       waiter.reject(new Error(`ACP agent exited with code ${exitCode}`));
     }
     pending.clear();
-    if (!finished) {
-      appendLog(logStream, "system", `exit code=${exitCode}`);
-      finish(exitCode === 0 ? "done" : "failed", exitCode);
-    }
+    if (finished) return;
+    appendLog(logStream, "system", `exit code=${exitCode}`);
+    finish(exitCode === 0 ? "done" : "failed", exitCode);
   });
 
   let agentCaps: any = {};
@@ -616,7 +615,6 @@ export async function runAcpAgent({
       }
     }
     child.stdin.end();
-    finish("done", 0);
   } catch (e) {
     const msg = (e as Error)?.message || String(e);
     appendLog(logStream, "system", msg);

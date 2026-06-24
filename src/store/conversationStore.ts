@@ -25,6 +25,7 @@ import {
   mergeConversationMessages,
   upsertConversationMessage
 } from "./conversationUtils";
+import { startDevTerminalDemo } from "@/dev/terminalDemo";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 
@@ -76,6 +77,7 @@ export interface ConversationState {
   }): Promise<void>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
+  injectDevTerminalDemo(conversationId?: string): Promise<void>;
 }
 
 export interface RunCtx {
@@ -266,6 +268,28 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   isRunning(id) {
     const live = get().live[id];
     return !!live && (live.status === "starting" || live.status === "running");
+  },
+
+  async injectDevTerminalDemo(conversationId) {
+    if (!cliClient.isAvailable()) return;
+    let targetId = conversationId ?? get().activeId;
+    if (!targetId) {
+      const member = get().members.find((entry) => entry.enabled !== false);
+      if (!member) return;
+      await get().newConversation({ member });
+      targetId = get().activeId;
+    }
+    if (!targetId) return;
+
+    await startDevTerminalDemo({
+      conversationId: targetId,
+      getMessages: () => get().messages[targetId] ?? [],
+      setMessages: (messages) => {
+        set((state) => ({
+          messages: { ...state.messages, [targetId]: messages }
+        }));
+      }
+    });
   },
 
   async sendMessage({

@@ -131,6 +131,16 @@ const workflowTeams = {
   seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
+const dev = {
+  onAction(cb: (event: { action: string }) => void): () => void {
+    const channel = "dev:action";
+    const handler = (_e: IpcRendererEvent, payload: unknown) =>
+      cb(payload as { action: string });
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  }
+};
+
 const updater = {
   getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
   check: () =>
@@ -165,5 +175,6 @@ contextBridge.exposeInMainWorld("freebuddy", {
   workflowTeams,
   settings,
   window,
+  dev,
   updater
 });

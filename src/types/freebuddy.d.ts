@@ -110,6 +110,10 @@ declare global {
     onChromeVisible(cb: (visible: boolean) => void): () => void;
   }
 
+  interface FreebuddyDev {
+    onAction(cb: (event: { action: string }) => void): () => void;
+  }
+
   interface FreebuddySettings {
     getSetting(key: string): Promise<string | null>;
     setSetting(key: string, value: string): Promise<void>;
@@ -254,6 +258,7 @@ declare global {
     workflowTeams: FreebuddyWorkflowTeams;
     settings: FreebuddySettings;
     window: FreebuddyWindow;
+    dev?: FreebuddyDev;
     updater: FreebuddyUpdater;
   }
 

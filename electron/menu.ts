@@ -1,10 +1,17 @@
-import { Menu } from "electron";
+import { BrowserWindow, Menu } from "electron";
 import { tMain } from "./cli/i18n.js";
 import { getLanguage } from "./cli/settings.js";
 import { APP_NAME } from "./app-meta.js";
 
+const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+
+function sendDevAction(action: "injectTerminalDemo") {
+  const win = BrowserWindow.getFocusedWindow();
+  win?.webContents.send("dev:action", { action });
+}
+
 export function buildAppMenu(lang: "en" | "zh-CN") {
-  return Menu.buildFromTemplate([
+  const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: APP_NAME,
       submenu: [
@@ -36,13 +43,32 @@ export function buildAppMenu(lang: "en" | "zh-CN") {
       label: tMain("menu.window", lang),
       submenu: [{ role: "minimize" }, { role: "zoom" }, { role: "close" }]
     }
-  ]);
+  ];
+
+  if (isDev) {
+    template.push({
+      label: tMain("menu.development", lang),
+      submenu: [
+        {
+          label: tMain("menu.dev.injectTerminal", lang),
+          accelerator: "CommandOrControl+Shift+T",
+          click: () => sendDevAction("injectTerminalDemo")
+        }
+      ]
+    });
+  }
+
+  return Menu.buildFromTemplate(template);
 }
 
 export function setApplicationMenuForLanguage(lang: "en" | "zh-CN") {
-  Menu.setApplicationMenu(buildAppMenu(lang));
+  if (isDev) {
+    Menu.setApplicationMenu(buildAppMenu(lang));
+    return;
+  }
+  Menu.setApplicationMenu(null);
 }
 
 export function initApplicationMenu() {
-  Menu.setApplicationMenu(null);
+  setApplicationMenuForLanguage(getLanguage());
 }

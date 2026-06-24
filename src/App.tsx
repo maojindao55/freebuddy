@@ -113,10 +113,22 @@ function App() {
 
   const loadExecutors = useCliExecutorStore((s) => s.load);
   const loadConversations = useConversationStore((s) => s.load);
+  const injectDevTerminalDemo = useConversationStore((s) => s.injectDevTerminalDemo);
   useEffect(() => {
     void loadExecutors();
     void loadConversations();
   }, [loadExecutors, loadConversations]);
+
+  useEffect(() => {
+    const off = window.freebuddy?.dev?.onAction?.((event) => {
+      if (event.action === "injectTerminalDemo") {
+        void injectDevTerminalDemo();
+      }
+    });
+    return () => {
+      off?.();
+    };
+  }, [injectDevTerminalDemo]);
 
   useEffect(() => {
     const off = window.freebuddy?.window?.onChromeVisible?.((visible) => {

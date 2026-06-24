@@ -3562,10 +3562,6 @@ button.ghost:disabled {
   flex-direction: column;
 }
 
-.chat-scroll {
-  scroll-behavior: smooth;
-}
-
 .chat-scroll::-webkit-scrollbar,
 .sidebar-nav::-webkit-scrollbar,
 .conv-list ul::-webkit-scrollbar,

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useShallow } from "zustand/react/shallow";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { cliClient } from "@/services/cli/client";
@@ -62,8 +61,10 @@ export function CLIAdaptersTab() {
   const check = useCliExecutorStore((s) => s.check);
   const checkAll = useCliExecutorStore((s) => s.checkAll);
   const startInstall = useCliInstallStore((s) => s.startJob);
-  const installingIds = useCliInstallStore(
-    useShallow((s) => s.jobs.filter((j) => !j.done).map((j) => j.adapterId))
+  const installJobs = useCliInstallStore((s) => s.jobs);
+  const installingIdSet = useMemo(
+    () => new Set(installJobs.filter((j) => !j.done).map((j) => j.adapterId)),
+    [installJobs]
   );
 
   const list = useMemo<ResolvedExecutor[]>(
@@ -189,7 +190,7 @@ export function CLIAdaptersTab() {
                   command: ex.installHint
                 });
               }}
-              installing={installingIds.includes(ex.id)}
+              installing={installingIdSet.has(ex.id)}
             />
           ))
         )}

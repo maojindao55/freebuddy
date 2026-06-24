@@ -35,11 +35,8 @@ test("terminal manager enforces output byte limits", async () => {
   const manager = createAcpTerminalManager({});
   const { terminalId } = manager.create({
     sessionId: "sess-2",
-    command: process.platform === "win32" ? "cmd" : "sh",
-    args:
-      process.platform === "win32"
-        ? ["/c", "powershell -NoProfile -Command \"('x' * 200)\""]
-        : ["-c", "python3 -c \"print('x' * 200)\""],
+    command: process.execPath,
+    args: ["-e", "process.stdout.write('x'.repeat(200))"],
     outputByteLimit: 32
   });
 

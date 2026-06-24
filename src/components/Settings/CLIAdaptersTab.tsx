@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { cliClient } from "@/services/cli/client";
@@ -44,7 +45,9 @@ function adapterSortKey(ex: ResolvedExecutor): number {
 function sortAdapters(list: ResolvedExecutor[]): ResolvedExecutor[] {
   return [...list].sort((a, b) => {
     const diff = adapterSortKey(a) - adapterSortKey(b);
-    return diff !== 0 ? diff : a.label.localeCompare(b.label);
+    return diff !== 0
+      ? diff
+      : String(a.label ?? "").localeCompare(String(b.label ?? ""));
   });
 }
 
@@ -59,8 +62,8 @@ export function CLIAdaptersTab() {
   const check = useCliExecutorStore((s) => s.check);
   const checkAll = useCliExecutorStore((s) => s.checkAll);
   const startInstall = useCliInstallStore((s) => s.startJob);
-  const installingIds = useCliInstallStore((s) =>
-    s.jobs.filter((j) => !j.done).map((j) => j.adapterId)
+  const installingIds = useCliInstallStore(
+    useShallow((s) => s.jobs.filter((j) => !j.done).map((j) => j.adapterId))
   );
 
   const list = useMemo<ResolvedExecutor[]>(
@@ -82,7 +85,7 @@ export function CLIAdaptersTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const [checkingAll, setCheckingAll] = useState(false);
-  const autoCheckStarted = useRef(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
 
   const handleCheck = useCallback(
     async (id: string) => {
@@ -102,9 +105,14 @@ export function CLIAdaptersTab() {
 
   const handleCheckAll = useCallback(async () => {
     setCheckingAll(true);
+    setCheckError(null);
     setCheckingIds(new Set(list.map((ex) => ex.id)));
     try {
       await checkAll();
+    } catch (err) {
+      setCheckError(
+        err instanceof Error ? err.message : String(err)
+      );
     } finally {
       setCheckingAll(false);
       setCheckingIds(new Set());
@@ -114,14 +122,6 @@ export function CLIAdaptersTab() {
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
-
-  useEffect(() => {
-    if (!loaded || list.length === 0 || autoCheckStarted.current) return;
-    const needsCheck = list.some((ex) => !ex.runtime?.lastCheckAt);
-    if (!needsCheck) return;
-    autoCheckStarted.current = true;
-    void handleCheckAll();
-  }, [loaded, list, handleCheckAll]);
 
   if (!cliClient.isAvailable()) {
     return (
@@ -163,6 +163,12 @@ export function CLIAdaptersTab() {
           {checkingAll ? t("settings.cli.checkingAll") : t("settings.cli.checkAll")}
         </button>
       </div>
+
+      {checkError && (
+        <p className="adapter-check-error" role="alert">
+          {t("errors.checkFailed", { err: checkError })}
+        </p>
+      )}
 
       <div className="adapter-list">
         {!loaded ? (

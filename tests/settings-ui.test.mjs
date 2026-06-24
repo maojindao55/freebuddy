@@ -26,7 +26,9 @@ test("coding agent settings expose model as a first-class field", () => {
 test("coding agent settings support bulk check and auto-check on load", () => {
   assert.equal(settingsSource.includes("checkAll"), true);
   assert.equal(settingsSource.includes("handleCheckAll"), true);
-  assert.equal(settingsSource.includes("lastCheckAt"), true);
+  assert.equal(settingsSource.includes("useShallow"), true);
   assert.equal(settingsSource.includes("sortAdapters"), true);
+  assert.equal(settingsSource.includes("lastCheckAt"), false);
   assert.equal(storeSource.includes("async checkAll()"), true);
+  assert.match(storeSource, /for \(const adapter of acpAdapters\)/);
 });

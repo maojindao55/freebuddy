@@ -31,5 +31,5 @@ test("agent install store throttles output and supports background dismiss", () 
   assert.match(storeSource, /FLUSH_MS/);
   assert.match(storeSource, /scheduleFlush/);
   assert.match(storeSource, /setPanelState\(id, "minimized"\)/);
-  assert.match(storeSource, /getState\(\)\.check/);
+  assert.match(storeSource, /import\("@\/store\/cliExecutorStore"\)/);
 });

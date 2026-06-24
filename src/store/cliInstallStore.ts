@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import { cliClient } from "@/services/cli/client";
-import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import type { CLIAdapterId } from "@/config/cliAdapters";
 
 export type CliInstallPanelState = "expanded" | "minimized";
 
@@ -75,7 +75,9 @@ function finishJob(
   }));
 
   if (exitCode === 0) {
-    void useCliExecutorStore.getState().check(id);
+    void import("@/store/cliExecutorStore").then(({ useCliExecutorStore }) => {
+      void useCliExecutorStore.getState().check(id as CLIAdapterId);
+    });
   }
 }
 

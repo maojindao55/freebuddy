@@ -1505,6 +1505,16 @@ button {
   cursor: not-allowed;
 }
 
+.adapter-check-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(225, 29, 72, 0.1);
+  color: var(--fb-danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .adapter-row-actions button.primary {
   border: none;
   background: var(--fb-brand-gradient);

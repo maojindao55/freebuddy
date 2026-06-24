@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AboutTab } from "./AboutTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
+import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
 
@@ -41,7 +42,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </nav>
           <div className="settings-panel">
             {activeTab === "general" && <GeneralTab />}
-            {activeTab === "cli" && <CLIAdaptersTab />}
+            {activeTab === "cli" && (
+              <SettingsTabErrorBoundary>
+                <CLIAdaptersTab />
+              </SettingsTabErrorBoundary>
+            )}
             {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
             {activeTab === "about" && <AboutTab />}
           </div>

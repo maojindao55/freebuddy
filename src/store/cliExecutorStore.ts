@@ -84,11 +84,9 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     if (!cliClient.isAvailable()) return;
     const { adapters, overrides } = get();
     const acpAdapters = adapters.filter((a) => a.protocol === "acp");
-    await Promise.all(
-      acpAdapters.map((a) =>
-        cliClient.check(a.id, overrides[a.id]?.binary)
-      )
-    );
+    for (const adapter of acpAdapters) {
+      await cliClient.check(adapter.id, overrides[adapter.id]?.binary);
+    }
     await get().refreshRuntimes();
   },
 

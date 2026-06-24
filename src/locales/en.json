@@ -271,7 +271,8 @@
       "installRunning": "Installing {{label}}…",
       "installExpand": "Show install progress",
       "installSuccessShort": "{{label}} installed",
-      "installFailedShort": "{{label}} install failed"
+      "installFailedShort": "{{label}} install failed",
+      "tabError": "Failed to load CLI Agents: {{err}}"
     },
     "avatar": {
       "groups": {

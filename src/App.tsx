@@ -8,6 +8,7 @@ import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { WorkspacePanel } from "./components/CLI/WorkspacePanel";
 import { SettingsModal } from "./components/Settings/SettingsModal";
+import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
@@ -250,6 +251,7 @@ function App() {
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      <CliInstallPanelHost />
       <PermissionDialog />
     </div>
     </ImageLightboxProvider>

@@ -6,7 +6,7 @@ import { cliClient } from "@/services/cli/client";
 import type { CLIExecutorOverride } from "@/services/cli/types";
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
-import { InstallDialog } from "./InstallDialog";
+import { useCliInstallStore } from "@/store/cliInstallStore";
 
 function extractModelArg(args: string[]): { model: string; args: string[] } {
   const rest: string[] = [];
@@ -58,6 +58,10 @@ export function CLIAdaptersTab() {
   const resolve = useCliExecutorStore((s) => s.resolve);
   const check = useCliExecutorStore((s) => s.check);
   const checkAll = useCliExecutorStore((s) => s.checkAll);
+  const startInstall = useCliInstallStore((s) => s.startJob);
+  const installingIds = useCliInstallStore((s) =>
+    s.jobs.filter((j) => !j.done).map((j) => j.adapterId)
+  );
 
   const list = useMemo<ResolvedExecutor[]>(
     () =>
@@ -76,12 +80,6 @@ export function CLIAdaptersTab() {
   );
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [installing, setInstalling] = useState<string | null>(null);
-  const [installDialog, setInstallDialog] = useState<{
-    id: string;
-    label: string;
-    command: string;
-  } | null>(null);
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const [checkingAll, setCheckingAll] = useState(false);
   const autoCheckStarted = useRef(false);
@@ -179,14 +177,13 @@ export function CLIAdaptersTab() {
               onEdit={() => setEditingId(ex.id)}
               onInstall={() => {
                 if (!ex.installHint) return;
-                setInstalling(ex.id);
-                setInstallDialog({
-                  id: ex.id,
+                startInstall({
+                  adapterId: ex.id,
                   label: ex.label,
                   command: ex.installHint
                 });
               }}
-              installing={installing === ex.id}
+              installing={installingIds.includes(ex.id)}
             />
           ))
         )}
@@ -196,18 +193,6 @@ export function CLIAdaptersTab() {
         <EditOverrideDialog
           executorId={editingId}
           onClose={() => setEditingId(null)}
-        />
-      )}
-
-      {installDialog && (
-        <InstallDialog
-          command={installDialog.command}
-          label={installDialog.label}
-          onClose={async ({ success }) => {
-            setInstallDialog(null);
-            setInstalling(null);
-            if (success) await handleCheck(installDialog.id);
-          }}
         />
       )}
     </div>

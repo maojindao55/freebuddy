@@ -265,7 +265,13 @@
       "checking": "Checking…",
       "checkingAll": "Checking…",
       "summary": "{{installed}}/{{total}} installed",
-      "loading": "Loading…"
+      "loading": "Loading…",
+      "runInBackground": "Run in background",
+      "installBackgroundHint": "Installation continues in the background. Close this panel and keep using FreeBuddy.",
+      "installRunning": "Installing {{label}}…",
+      "installExpand": "Show install progress",
+      "installSuccessShort": "{{label}} installed",
+      "installFailedShort": "{{label}} install failed"
     },
     "avatar": {
       "groups": {

@@ -65,32 +65,13 @@ function formatBytesEstimate(images: ExtractedInlineImage[]): string {
   return `${bytes} B`;
 }
 
-function imageBlocksFromExtracted(
-  images: ExtractedInlineImage[],
-  previewKeyFor: (image: ExtractedInlineImage) => string | undefined
-): CliStreamItem[] {
-  return images.map((image) => {
-    const previewKey = previewKeyFor(image);
-    if (previewKey) {
-      return {
-        kind: "content-block",
-        blockType: "image",
-        mimeType: image.mimeType,
-        previewKey
-      };
-    }
-    return {
-      kind: "content-block",
-      blockType: "image",
-      mimeType: image.mimeType,
-      data: image.data
-    };
-  });
-}
-
 export type ImagePreviewRegistrar = (
   image: ExtractedInlineImage
 ) => string | undefined;
+
+function isToolImagePreview(item: CliStreamItem): boolean {
+  return item.kind === "content-block" && item.blockType === "image";
+}
 
 export function sanitizeStreamItems(
   items: CliStreamItem[],
@@ -99,19 +80,15 @@ export function sanitizeStreamItems(
   const out: CliStreamItem[] = [];
 
   for (const item of items) {
+    if (isToolImagePreview(item)) {
+      continue;
+    }
+
     if (item.kind === "tool-call") {
       const next: Extract<CliStreamItem, { kind: "tool-call" }> = { ...item };
       if (typeof next.output === "string" && next.output.length > 0) {
         const { text, images } = extractDataUrlImages(next.output);
         next.output = summarizeMediaText(text, images);
-        if (images.length > 0) {
-          next.toolOutputs = [
-            ...(next.toolOutputs ?? []),
-            ...imageBlocksFromExtracted(images, (image) =>
-              registerPreview?.(image)
-            )
-          ];
-        }
       }
       if (next.toolOutputs?.length) {
         next.toolOutputs = sanitizeStreamItems(
@@ -126,11 +103,8 @@ export function sanitizeStreamItems(
     if (item.kind === "content-block" && item.blockType === "resource" && item.text) {
       const { text, images } = extractDataUrlImages(item.text);
       const nextText = summarizeMediaText(text, images);
-      if (nextText !== item.text || images.length > 0) {
+      if (nextText !== item.text) {
         out.push({ ...item, text: nextText });
-        out.push(
-          ...imageBlocksFromExtracted(images, (image) => registerPreview?.(image))
-        );
         continue;
       }
     }
@@ -138,13 +112,10 @@ export function sanitizeStreamItems(
     if (item.kind === "tool-result" || item.kind === "raw") {
       const { text, images } = extractDataUrlImages(item.content);
       const nextContent = summarizeMediaText(text, images);
-      if (nextContent !== item.content || images.length > 0) {
-        out.push({ ...item, content: nextContent });
-      } else {
-        out.push(item);
-      }
       out.push(
-        ...imageBlocksFromExtracted(images, (image) => registerPreview?.(image))
+        nextContent !== item.content
+          ? { ...item, content: nextContent }
+          : item
       );
       continue;
     }
@@ -152,10 +123,7 @@ export function sanitizeStreamItems(
     if (item.kind === "text") {
       const { text, images } = extractDataUrlImages(item.content);
       if (images.length > 0) {
-        out.push({ ...item, content: text });
-        out.push(
-          ...imageBlocksFromExtracted(images, (image) => registerPreview?.(image))
-        );
+        out.push({ ...item, content: summarizeMediaText(text, images) });
       } else {
         out.push(item);
       }
@@ -188,13 +156,8 @@ export function sanitizeStreamItems(
   return out;
 }
 
-export function prepareDisplayText(content: string): {
-  text: string;
-  images: ExtractedInlineImage[];
-} {
+/** Compact tool/raw output for display without inline image previews. */
+export function prepareToolResultText(content: string): string {
   const { text, images } = extractDataUrlImages(content);
-  return {
-    text: summarizeMediaText(text, images),
-    images
-  };
+  return summarizeMediaText(text, images);
 }

@@ -29,7 +29,7 @@ test("extractDataUrlImages removes base64 payloads from tool output text", async
   assert.doesNotMatch(text, /data:image\/png;base64,/);
 });
 
-test("sanitizeStreamItems splits image output into compact text plus image blocks", async () => {
+test("sanitizeStreamItems redacts tool image output without inline previews", async () => {
   const { sanitizeStreamItems } = await loadStreamMedia();
   const payload = "b".repeat(500);
   const items = sanitizeStreamItems([
@@ -46,9 +46,8 @@ test("sanitizeStreamItems splits image output into compact text plus image block
   );
 
   assert.ok(textItem);
-  assert.ok(textItem.content.length < 200);
-  assert.ok(imageItem);
-  assert.equal(imageItem.data, payload);
+  assert.match(textItem.content, /Image output/);
+  assert.equal(imageItem, undefined);
 });
 
 test("extractDataUrlImages matches standard base64 alphabet casing", async () => {
@@ -78,11 +77,41 @@ test("sanitizeStreamItems redacts tool-call output payloads", async () => {
   const call = items.find((item) => item.kind === "tool-call");
   assert.ok(call);
   assert.doesNotMatch(call.output ?? "", /data:image\/png;base64,/);
-  assert.ok(
+  assert.match(call.output ?? "", /Image output/);
+  assert.equal(
     call.toolOutputs?.some(
       (item) => item.kind === "content-block" && item.blockType === "image"
-    )
+    ),
+    undefined
   );
+});
+
+test("sanitizeStreamItems drops native tool image content blocks", async () => {
+  const { sanitizeStreamItems } = await loadStreamMedia();
+  const items = sanitizeStreamItems([
+    {
+      kind: "tool-call",
+      id: "tool-read",
+      tool: "read_image",
+      toolOutputs: [
+        {
+          kind: "content-block",
+          blockType: "image",
+          mimeType: "image/png",
+          data: "aGVsbG8="
+        },
+        {
+          kind: "file-edit",
+          path: "/tmp/a.png",
+          action: "update"
+        }
+      ]
+    }
+  ]);
+
+  const call = items.find((item) => item.kind === "tool-call");
+  assert.equal(call?.toolOutputs?.length, 1);
+  assert.equal(call?.toolOutputs?.[0].kind, "file-edit");
 });
 
 test("sanitizeStreamItems stores oversized image previews by reference key", async () => {

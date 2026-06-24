@@ -7,7 +7,7 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { useTerminalStore } from "@/store/terminalStore";
-import { prepareDisplayText } from "@/utils/streamMedia";
+import { prepareToolResultText } from "@/utils/streamMedia";
 import { attachmentPreviewUrl, formatBytes } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
 
@@ -104,23 +104,12 @@ function dataUrlFromBase64(data: string, mimeType: string): string {
 
 function StreamToolResultBody({ content }: { content: string }) {
   const { t } = useTranslation();
-  const prepared = prepareDisplayText(content);
+  const text = prepareToolResultText(content);
 
-  return (
-    <>
-      {prepared.images.map((image, index) => (
-        <MessageImage
-          key={`tool-image-${index}`}
-          src={dataUrlFromBase64(image.data, image.mimeType)}
-          alt=""
-        />
-      ))}
-      {hasVisibleContent(prepared.text) ? (
-        <pre>{prepared.text}</pre>
-      ) : prepared.images.length === 0 ? (
-        <div className="stream-tool-empty">{t("stream.noOutput")}</div>
-      ) : null}
-    </>
+  return hasVisibleContent(text) ? (
+    <pre>{text}</pre>
+  ) : (
+    <div className="stream-tool-empty">{t("stream.noOutput")}</div>
   );
 }
 
@@ -402,7 +391,7 @@ function StreamContentBlock({
     }
     case "resource": {
       if (item.text) {
-        const prepared = prepareDisplayText(item.text);
+        const text = prepareToolResultText(item.text);
         return (
           <div className="stream-content-block stream-embedded-resource">
             {(item.title || item.name || item.uri) && (
@@ -410,15 +399,8 @@ function StreamContentBlock({
                 {item.title || item.name || item.uri}
               </div>
             )}
-            {prepared.images.map((image, index) => (
-              <MessageImage
-                key={`resource-image-${index}`}
-                src={dataUrlFromBase64(image.data, image.mimeType)}
-                alt=""
-              />
-            ))}
-            {hasVisibleContent(prepared.text) ? (
-              <pre className="stream-embedded-resource-text">{prepared.text}</pre>
+            {hasVisibleContent(text) ? (
+              <pre className="stream-embedded-resource-text">{text}</pre>
             ) : null}
           </div>
         );
@@ -677,6 +659,9 @@ export function StreamToolInvocation({
 }) {
   const visibleResults = dedupeToolResults(results);
   const visibleCommands = dedupeCommands(commands);
+  const visibleExtras = extras.filter(
+    (extra) => !(extra.kind === "content-block" && extra.blockType === "image")
+  );
   const hasError = call.isError || visibleResults.some((result) => result.isError);
   const input = formatValue(call.input);
   const { t } = useTranslation();
@@ -685,12 +670,12 @@ export function StreamToolInvocation({
     Boolean(input) ||
     visibleCommands.length > 0 ||
     visibleResults.length > 0 ||
-    extras.length > 0;
+    visibleExtras.length > 0;
   const showDoneMeta =
     call.status === "completed" &&
     !visibleResults.some((result) => hasVisibleContent(result.content)) &&
     visibleCommands.length === 0 &&
-    extras.length === 0;
+    visibleExtras.length === 0;
 
   return (
     <details
@@ -735,7 +720,7 @@ export function StreamToolInvocation({
           <span className="stream-tool-summary-meta">
             {visibleResults.some((result) => hasVisibleContent(result.content)) ||
             visibleCommands.length > 0 ||
-            extras.length > 0
+            visibleExtras.length > 0
               ? t("stream.summaryResult")
               : showDoneMeta
                 ? t("stream.summaryDone")
@@ -757,7 +742,7 @@ export function StreamToolInvocation({
             {command.cwd && <div className="stream-tool-empty">{command.cwd}</div>}
           </div>
         ))}
-        {extras.map((extra, index) => (
+        {visibleExtras.map((extra, index) => (
           <div className="stream-tool-section" key={`extra-${index}`}>
             <StreamItem item={extra} />
           </div>
@@ -956,21 +941,10 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </div>
       );
     case "raw": {
-      const prepared = prepareDisplayText(item.content);
-      return (
-        <div className="stream-raw">
-          {prepared.images.map((image, index) => (
-            <MessageImage
-              key={`raw-image-${index}`}
-              src={dataUrlFromBase64(image.data, image.mimeType)}
-              alt=""
-            />
-          ))}
-          {hasVisibleContent(prepared.text) ? (
-            <pre>{prepared.text}</pre>
-          ) : null}
-        </div>
-      );
+      const text = prepareToolResultText(item.content);
+      return hasVisibleContent(text) ? (
+        <pre className="stream-raw">{text}</pre>
+      ) : null;
     }
     default:
       return null;

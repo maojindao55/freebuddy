@@ -138,3 +138,51 @@ test("sanitizeStreamItems stores oversized image previews by reference key", asy
     }
   ]);
 });
+
+test("extractDataUrlImages extracts video base64 payloads", async () => {
+  const { extractDataUrlImages } = await loadStreamMedia();
+  const payload = "d".repeat(400);
+  const { text, images } = extractDataUrlImages(
+    `data:video/mp4;base64,${payload}`
+  );
+
+  assert.equal(images.length, 1);
+  assert.equal(images[0].mimeType, "video/mp4");
+  assert.equal(images[0].data, payload);
+  assert.doesNotMatch(text, /data:video\/mp4;base64,/);
+});
+
+test("sanitizeStreamItems summarizes inline video base64 in text items", async () => {
+  const { sanitizeStreamItems } = await loadStreamMedia();
+  const payload = "e".repeat(500);
+  const items = sanitizeStreamItems([
+    { kind: "text", role: "assistant", content: `data:video/mp4;base64,${payload}` }
+  ]);
+
+  const textItem = items.find((item) => item.kind === "text");
+  assert.ok(textItem);
+  assert.match(textItem.content, /Video output/);
+  assert.doesNotMatch(textItem.content, /data:video\/mp4;base64,/);
+});
+
+test("sanitizeStreamItems guards oversized text without any base64 marker", async () => {
+  const { sanitizeStreamItems, GUARD_TEXT_CHARS } = await loadStreamMedia();
+  const big = "x".repeat(GUARD_TEXT_CHARS + 1000);
+  const items = sanitizeStreamItems([
+    { kind: "text", role: "assistant", content: big }
+  ]);
+
+  const textItem = items.find((item) => item.kind === "text");
+  assert.ok(textItem);
+  assert.ok(textItem.content.length < big.length);
+  assert.match(textItem.content, /truncated/);
+});
+
+test("extractDataUrlImages fast-paths text without a base64 marker", async () => {
+  const { extractDataUrlImages } = await loadStreamMedia();
+  const input = "普通的分析文字，不含任何 data url。";
+  const { text, images } = extractDataUrlImages(input);
+
+  assert.equal(images.length, 0);
+  assert.equal(text, input);
+});

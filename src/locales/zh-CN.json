@@ -259,7 +259,19 @@
       "installed": "✓ 已安装",
       "notInstalled": "未安装",
       "notChecked": "未检查",
-      "modelLabel": "模型"
+      "modelLabel": "模型",
+      "checkAll": "全部检查",
+      "checking": "检查中…",
+      "checkingAll": "正在检查…",
+      "summary": "{{installed}}/{{total}} 已安装",
+      "loading": "加载中…",
+      "runInBackground": "后台运行",
+      "installBackgroundHint": "安装会在后台继续，你可以关闭此面板并使用其他功能。",
+      "installRunning": "正在安装 {{label}}…",
+      "installExpand": "展开安装进度",
+      "installSuccessShort": "{{label}} 安装完成",
+      "installFailedShort": "{{label}} 安装失败",
+      "tabError": "CLI Agent 页面加载失败：{{err}}"
     },
     "avatar": {
       "groups": {

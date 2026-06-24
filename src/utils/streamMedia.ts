@@ -6,8 +6,17 @@ export const MAX_PERSISTED_IMAGE_BASE64 = 48 * 1024;
 /** Hard cap for plain-text tool/raw output kept in stream items. */
 export const MAX_TEXT_STREAM_CHARS = 12_000;
 
+/** Defensive ceiling for assistant text/thinking content. Normal analysis text
+ *  stays well below this; only multi-megabyte blobs (e.g. unrecognised base64)
+ *  get truncated. Keeps a 67MB video payload from freezing the renderer. */
+export const GUARD_TEXT_CHARS = 200_000;
+
+/** Single line written to the run log is capped at this many chars so the main
+ *  process never synchronously JSON.stringify + write a multi-megabyte blob. */
+export const MAX_LOG_LINE_CHARS = 64_000;
+
 const DATA_URL_PATTERN =
-  /data:image\/[a-z0-9.+*-]+;base64,[a-zA-Z0-9+/=\s]+/gi;
+  /data:(?:image|video|audio|application)\/[a-z0-9.+*-]+;base64,[a-zA-Z0-9+/=\s]+/gi;
 
 export interface ExtractedInlineImage {
   data: string;
@@ -19,11 +28,16 @@ export function extractDataUrlImages(text: string): {
   images: ExtractedInlineImage[];
 } {
   if (!text) return { text: "", images: [] };
+  // Fast path: most chunks contain no data URL at all. Skip the regex scan
+  // (which is O(n) over the whole string) unless a base64 marker is present.
+  if (!text.includes("base64,")) return { text, images: [] };
 
   const images: ExtractedInlineImage[] = [];
   const cleaned = text.replace(DATA_URL_PATTERN, (match) => {
     const normalized = match.replace(/\s+/g, "");
-    const parts = normalized.match(/^data:(image\/[a-z0-9.+*-]+);base64,(.+)$/i);
+    const parts = normalized.match(
+      /^data:((?:image|video|audio|application)\/[a-z0-9.+*-]+);base64,(.+)$/i
+    );
     if (!parts) return "[image]";
     images.push({ mimeType: parts[1], data: parts[2] });
     return "[image]";
@@ -53,9 +67,16 @@ function summarizeMediaText(text: string, images: ExtractedInlineImage[]): strin
   if (!images.length) return truncateStreamText(text);
   const stripped = collapseImagePlaceholders(text);
   if (!stripped || stripped === "[image]") {
-    return `[Image output · ${formatBytesEstimate(images)}]`;
+    return `[${mediaLabel(images)} output · ${formatBytesEstimate(images)}]`;
   }
   return truncateStreamText(stripped);
+}
+
+function mediaLabel(images: ExtractedInlineImage[]): string {
+  const mime = images[0]?.mimeType ?? "";
+  if (mime.startsWith("video/")) return "Video";
+  if (mime.startsWith("audio/")) return "Audio";
+  return "Image";
 }
 
 function formatBytesEstimate(images: ExtractedInlineImage[]): string {
@@ -118,10 +139,14 @@ export function sanitizeStreamItems(
       continue;
     }
 
-    if (item.kind === "text") {
+    if (item.kind === "text" || item.kind === "thinking") {
       const { text, images } = extractDataUrlImages(item.content);
       if (images.length > 0) {
         out.push({ ...item, content: summarizeMediaText(text, images) });
+      } else if (item.content.length > GUARD_TEXT_CHARS) {
+        // Defensive guard: even without a recognised data URL, a single text
+        // item must never carry a multi-megabyte payload into the snapshot.
+        out.push({ ...item, content: truncateStreamText(item.content, GUARD_TEXT_CHARS) });
       } else {
         out.push(item);
       }

@@ -159,16 +159,25 @@ export function setTaskToolSessionId(id: string, toolSessionId: string) {
     .run(toolSessionId, new Date().toISOString(), id);
 }
 
+/** Cap a single log line so the main process never synchronously
+ *  JSON.stringify + write a multi-megabyte blob (e.g. an inline video base64
+ *  returned by the agent), which would freeze window/event handling. */
+const MAX_LOG_LINE_CHARS = 64_000;
+
 export function appendLog(
   file: fs.WriteStream | null,
   kind: string,
   content: string
 ) {
   if (!file || file.writableEnded || file.destroyed) return;
+  const safeContent =
+    content.length > MAX_LOG_LINE_CHARS
+      ? `${content.slice(0, MAX_LOG_LINE_CHARS)}\n… [log truncated]`
+      : content;
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
     type: kind,
-    content
+    content: safeContent
   });
   try {
     file.write(entry + "\n");

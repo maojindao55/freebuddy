@@ -29,6 +29,7 @@ interface State {
   load(): Promise<void>;
   refreshRuntimes(): Promise<void>;
   check(adapter: CLIAdapterId): Promise<void>;
+  checkAll(): Promise<void>;
   upsertOverride(o: CLIExecutorOverride): Promise<void>;
   resetOverride(id: string): Promise<void>;
 
@@ -76,6 +77,18 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     if (!cliClient.isAvailable()) return;
     const override = get().overrides[adapter];
     await cliClient.check(adapter, override?.binary);
+    await get().refreshRuntimes();
+  },
+
+  async checkAll() {
+    if (!cliClient.isAvailable()) return;
+    const { adapters, overrides } = get();
+    const acpAdapters = adapters.filter((a) => a.protocol === "acp");
+    await Promise.all(
+      acpAdapters.map((a) =>
+        cliClient.check(a.id, overrides[a.id]?.binary)
+      )
+    );
     await get().refreshRuntimes();
   },
 

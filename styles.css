@@ -1339,6 +1339,54 @@ button {
   gap: 10px;
 }
 
+.adapter-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.adapter-list-summary {
+  font-size: 12px;
+  color: var(--fb-text-tertiary);
+}
+
+.adapter-list-toolbar button.primary {
+  height: 28px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--fb-rounded-sm);
+  background: var(--fb-brand-gradient);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.adapter-list-toolbar button.primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.adapter-list-toolbar button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.adapter-row-actions button.primary {
+  border: none;
+  background: var(--fb-brand-gradient);
+  color: #fff;
+}
+
+.adapter-row-actions button.primary:hover:not(:disabled) {
+  opacity: 0.9;
+  border-color: transparent;
+  color: #fff;
+  background: var(--fb-brand-gradient);
+}
+
 .adapter-row {
   display: flex;
   justify-content: space-between;

@@ -259,7 +259,12 @@
       "installed": "✓ 已安装",
       "notInstalled": "未安装",
       "notChecked": "未检查",
-      "modelLabel": "模型"
+      "modelLabel": "模型",
+      "checkAll": "全部检查",
+      "checking": "检查中…",
+      "checkingAll": "正在检查…",
+      "summary": "{{installed}}/{{total}} 已安装",
+      "loading": "加载中…"
     },
     "avatar": {
       "groups": {

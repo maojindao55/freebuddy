@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
@@ -33,6 +33,21 @@ function withModelArg(args: string[], model: string): string[] {
   return trimmed ? [`--model=${trimmed}`, ...cleaned] : cleaned;
 }
 
+function adapterSortKey(ex: ResolvedExecutor): number {
+  const rt = ex.runtime;
+  if (!rt) return 3;
+  if (rt.installed) return 0;
+  if (rt.lastError) return 1;
+  return 2;
+}
+
+function sortAdapters(list: ResolvedExecutor[]): ResolvedExecutor[] {
+  return [...list].sort((a, b) => {
+    const diff = adapterSortKey(a) - adapterSortKey(b);
+    return diff !== 0 ? diff : a.label.localeCompare(b.label);
+  });
+}
+
 export function CLIAdaptersTab() {
   const { t } = useTranslation();
   const loaded = useCliExecutorStore((s) => s.loaded);
@@ -42,24 +57,73 @@ export function CLIAdaptersTab() {
   const runtimes = useCliExecutorStore((s) => s.runtimes);
   const resolve = useCliExecutorStore((s) => s.resolve);
   const check = useCliExecutorStore((s) => s.check);
+  const checkAll = useCliExecutorStore((s) => s.checkAll);
 
   const list = useMemo<ResolvedExecutor[]>(
     () =>
-      adapters
-        .filter((a) => a.protocol === "acp")
-        .map((a) => resolve(a.id))
-        .filter((x): x is ResolvedExecutor => !!x),
-    // resolve is stable (zustand getter); recompute when inputs change.
+      sortAdapters(
+        adapters
+          .filter((a) => a.protocol === "acp")
+          .map((a) => resolve(a.id))
+          .filter((x): x is ResolvedExecutor => !!x)
+      ),
     [adapters, overrides, runtimes, resolve]
+  );
+
+  const installedCount = useMemo(
+    () => list.filter((ex) => ex.runtime?.installed).length,
+    [list]
   );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
-  const [installDialog, setInstallDialog] = useState<{ id: string; label: string; command: string } | null>(null);
+  const [installDialog, setInstallDialog] = useState<{
+    id: string;
+    label: string;
+    command: string;
+  } | null>(null);
+  const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
+  const [checkingAll, setCheckingAll] = useState(false);
+  const autoCheckStarted = useRef(false);
+
+  const handleCheck = useCallback(
+    async (id: string) => {
+      setCheckingIds((prev) => new Set(prev).add(id));
+      try {
+        await check(id);
+      } finally {
+        setCheckingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [check]
+  );
+
+  const handleCheckAll = useCallback(async () => {
+    setCheckingAll(true);
+    setCheckingIds(new Set(list.map((ex) => ex.id)));
+    try {
+      await checkAll();
+    } finally {
+      setCheckingAll(false);
+      setCheckingIds(new Set());
+    }
+  }, [checkAll, list]);
 
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
+
+  useEffect(() => {
+    if (!loaded || list.length === 0 || autoCheckStarted.current) return;
+    const needsCheck = list.some((ex) => !ex.runtime?.lastCheckAt);
+    if (!needsCheck) return;
+    autoCheckStarted.current = true;
+    void handleCheckAll();
+  }, [loaded, list, handleCheckAll]);
 
   if (!cliClient.isAvailable()) {
     return (
@@ -83,21 +147,49 @@ export function CLIAdaptersTab() {
         </span>
       </div>
 
+      <div className="adapter-list-toolbar">
+        <span className="adapter-list-summary">
+          {loaded
+            ? t("settings.cli.summary", {
+                installed: installedCount,
+                total: list.length
+              })
+            : t("settings.cli.loading")}
+        </span>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => void handleCheckAll()}
+          disabled={!loaded || checkingAll || list.length === 0}
+        >
+          {checkingAll ? t("settings.cli.checkingAll") : t("settings.cli.checkAll")}
+        </button>
+      </div>
+
       <div className="adapter-list">
-        {list.map((ex) => (
-          <AdapterRow
-            key={ex.id}
-            ex={ex}
-            onCheck={() => void check(ex.id)}
-            onEdit={() => setEditingId(ex.id)}
-            onInstall={() => {
-              if (!ex.installHint) return;
-              setInstalling(ex.id);
-              setInstallDialog({ id: ex.id, label: ex.label, command: ex.installHint });
-            }}
-            installing={installing === ex.id}
-          />
-        ))}
+        {!loaded ? (
+          <p className="muted">{t("settings.cli.loading")}</p>
+        ) : (
+          list.map((ex) => (
+            <AdapterRow
+              key={ex.id}
+              ex={ex}
+              checking={checkingIds.has(ex.id)}
+              onCheck={() => void handleCheck(ex.id)}
+              onEdit={() => setEditingId(ex.id)}
+              onInstall={() => {
+                if (!ex.installHint) return;
+                setInstalling(ex.id);
+                setInstallDialog({
+                  id: ex.id,
+                  label: ex.label,
+                  command: ex.installHint
+                });
+              }}
+              installing={installing === ex.id}
+            />
+          ))
+        )}
       </div>
 
       {editingId && (
@@ -114,7 +206,7 @@ export function CLIAdaptersTab() {
           onClose={async ({ success }) => {
             setInstallDialog(null);
             setInstalling(null);
-            if (success) await check(installDialog.id);
+            if (success) await handleCheck(installDialog.id);
           }}
         />
       )}
@@ -124,12 +216,14 @@ export function CLIAdaptersTab() {
 
 function AdapterRow({
   ex,
+  checking,
   onCheck,
   onEdit,
   onInstall,
   installing
 }: {
   ex: ResolvedExecutor;
+  checking: boolean;
   onCheck: () => void;
   onEdit: () => void;
   onInstall: () => void;
@@ -151,7 +245,9 @@ function AdapterRow({
           <strong>{ex.label}</strong>
         </div>
         <div className="adapter-row-meta">
-          {rt?.installed ? (
+          {checking ? (
+            <span className="adapter-status muted">{t("settings.cli.checking")}</span>
+          ) : rt?.installed ? (
             <span className="adapter-status ok">
               {t("settings.cli.installed")} {rt.version ? `(${rt.version})` : ""}
             </span>
@@ -162,7 +258,7 @@ function AdapterRow({
           ) : (
             <span className="adapter-status muted">{t("settings.cli.notChecked")}</span>
           )}
-          {rt?.lastError && !rt.installed && (
+          {!checking && rt?.lastError && !rt.installed && (
             <span className="adapter-status error" title={rt.lastError}>
               {t("settings.cli.installBroken")}
             </span>
@@ -175,13 +271,22 @@ function AdapterRow({
         </div>
       </div>
       <div className="adapter-row-actions">
-        <button onClick={onCheck}>{t("common.check")}</button>
+        <button type="button" onClick={onCheck} disabled={checking || installing}>
+          {checking ? t("settings.cli.checking") : t("common.check")}
+        </button>
         {!rt?.installed && ex.installHint && (
-          <button onClick={onInstall} disabled={installing}>
+          <button
+            type="button"
+            className="primary"
+            onClick={onInstall}
+            disabled={installing || checking}
+          >
             {installing ? t("common.installing") : t("common.install")}
           </button>
         )}
-        <button onClick={onEdit}>{t("common.edit")}</button>
+        <button type="button" onClick={onEdit} disabled={checking}>
+          {t("common.edit")}
+        </button>
       </div>
     </div>
   );

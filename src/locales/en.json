@@ -260,7 +260,12 @@
       "installed": "✓ installed",
       "notInstalled": "not installed",
       "notChecked": "not checked",
-      "modelLabel": "model"
+      "modelLabel": "model",
+      "checkAll": "Check all",
+      "checking": "Checking…",
+      "checkingAll": "Checking…",
+      "summary": "{{installed}}/{{total}} installed",
+      "loading": "Loading…"
     },
     "avatar": {
       "groups": {

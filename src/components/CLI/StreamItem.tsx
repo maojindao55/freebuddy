@@ -5,6 +5,9 @@ import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
+import { useImagePreviewStore } from "@/store/imagePreviewStore";
+import { useTerminalStore } from "@/store/terminalStore";
+import { prepareToolResultText } from "@/utils/streamMedia";
 import { attachmentPreviewUrl, formatBytes } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
 
@@ -97,6 +100,17 @@ function resolveLinkHref(raw: string): string {
 
 function dataUrlFromBase64(data: string, mimeType: string): string {
   return `data:${mimeType};base64,${data}`;
+}
+
+function StreamToolResultBody({ content }: { content: string }) {
+  const { t } = useTranslation();
+  const text = prepareToolResultText(content);
+
+  return hasVisibleContent(text) ? (
+    <pre>{text}</pre>
+  ) : (
+    <div className="stream-tool-empty">{t("stream.noOutput")}</div>
+  );
 }
 
 interface InlineImageRef {
@@ -332,8 +346,13 @@ function StreamContentBlock({
 
   switch (item.blockType) {
     case "image": {
-      if (!item.data) return null;
-      const src = dataUrlFromBase64(item.data, item.mimeType ?? "image/png");
+      const previewSrc = item.previewKey
+        ? useImagePreviewStore.getState().byKey[item.previewKey]
+        : undefined;
+      if (!item.data && !previewSrc) return null;
+      const src =
+        previewSrc ??
+        dataUrlFromBase64(item.data!, item.mimeType ?? "image/png");
       return <MessageImage src={src} alt={item.title ?? item.name ?? ""} />;
     }
     case "audio": {
@@ -372,6 +391,7 @@ function StreamContentBlock({
     }
     case "resource": {
       if (item.text) {
+        const text = prepareToolResultText(item.text);
         return (
           <div className="stream-content-block stream-embedded-resource">
             {(item.title || item.name || item.uri) && (
@@ -379,7 +399,9 @@ function StreamContentBlock({
                 {item.title || item.name || item.uri}
               </div>
             )}
-            <pre className="stream-embedded-resource-text">{item.text}</pre>
+            {hasVisibleContent(text) ? (
+              <pre className="stream-embedded-resource-text">{text}</pre>
+            ) : null}
           </div>
         );
       }
@@ -637,6 +659,9 @@ export function StreamToolInvocation({
 }) {
   const visibleResults = dedupeToolResults(results);
   const visibleCommands = dedupeCommands(commands);
+  const visibleExtras = extras.filter(
+    (extra) => !(extra.kind === "content-block" && extra.blockType === "image")
+  );
   const hasError = call.isError || visibleResults.some((result) => result.isError);
   const input = formatValue(call.input);
   const { t } = useTranslation();
@@ -645,12 +670,12 @@ export function StreamToolInvocation({
     Boolean(input) ||
     visibleCommands.length > 0 ||
     visibleResults.length > 0 ||
-    extras.length > 0;
+    visibleExtras.length > 0;
   const showDoneMeta =
     call.status === "completed" &&
     !visibleResults.some((result) => hasVisibleContent(result.content)) &&
     visibleCommands.length === 0 &&
-    extras.length === 0;
+    visibleExtras.length === 0;
 
   return (
     <details
@@ -695,7 +720,7 @@ export function StreamToolInvocation({
           <span className="stream-tool-summary-meta">
             {visibleResults.some((result) => hasVisibleContent(result.content)) ||
             visibleCommands.length > 0 ||
-            extras.length > 0
+            visibleExtras.length > 0
               ? t("stream.summaryResult")
               : showDoneMeta
                 ? t("stream.summaryDone")
@@ -717,7 +742,7 @@ export function StreamToolInvocation({
             {command.cwd && <div className="stream-tool-empty">{command.cwd}</div>}
           </div>
         ))}
-        {extras.map((extra, index) => (
+        {visibleExtras.map((extra, index) => (
           <div className="stream-tool-section" key={`extra-${index}`}>
             <StreamItem item={extra} />
           </div>
@@ -728,8 +753,8 @@ export function StreamToolInvocation({
               {t("stream.result", { tool: result.tool })}
               {result.isError ? ` ${t("stream.errorTag")}` : ""}
             </span>
-            {hasVisibleContent(result.content) ? (
-              <pre>{result.content}</pre>
+            {hasVisibleContent(result.content) || /data:image\//i.test(result.content) ? (
+              <StreamToolResultBody content={result.content} />
             ) : (
               <div className="stream-tool-empty">{t("stream.noOutput")}</div>
             )}
@@ -737,6 +762,42 @@ export function StreamToolInvocation({
         ))}
       </div>
     </details>
+  );
+}
+
+function TerminalEmbed({
+  item
+}: {
+  item: Extract<CliStreamItem, { kind: "terminal-embed" }>;
+}) {
+  const { t } = useTranslation();
+  const live = useTerminalStore((state) => state.byId[item.terminalId]);
+  const output = live?.output ?? item.output ?? "";
+  const exited = live?.exited ?? item.exited ?? false;
+  const running = live?.running ?? item.running ?? !exited;
+  const truncated = live?.truncated ?? item.truncated;
+  const exitCode = live?.exitCode ?? item.exitCode;
+
+  return (
+    <div className={`stream-terminal-embed${running ? " running" : ""}`}>
+      <div className="stream-terminal-header">
+        <span className="stream-label">{t("stream.terminal")}</span>
+        <code className="stream-terminal-id">{item.terminalId}</code>
+        {running ? (
+          <span className="stream-terminal-running">{t("stream.terminalRunning")}</span>
+        ) : exitCode != null ? (
+          <span
+            className={`stream-terminal-exit${exitCode === 0 ? " ok" : " failed"}`}
+          >
+            {t("stream.exitCode", { code: exitCode })}
+          </span>
+        ) : null}
+      </div>
+      <pre className="stream-terminal-output">{output || t("stream.noOutput")}</pre>
+      {truncated ? (
+        <div className="stream-terminal-truncated">{t("stream.terminalTruncated")}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -766,7 +827,10 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </div>
       );
     case "tool-result":
-      if (!hasVisibleContent(item.content)) {
+      if (
+        !hasVisibleContent(item.content) &&
+        !/data:image\//i.test(item.content)
+      ) {
         return (
           <div className={`stream-step stream-tool-result-empty${item.isError ? " error" : ""}`}>
             <span className="stream-step-icon">↳</span>
@@ -783,7 +847,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
             </span>
             {item.isError && <span className="stream-error-suffix">{t("stream.errorTag")}</span>}
           </summary>
-          <pre>{item.content}</pre>
+          <StreamToolResultBody content={item.content} />
         </details>
       );
     case "command":
@@ -815,13 +879,7 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </details>
       );
     case "terminal-embed":
-      return (
-        <div className="stream-terminal-embed">
-          <span className="stream-label">
-            {t("stream.terminalEmbed", { id: item.terminalId })}
-          </span>
-        </div>
-      );
+      return <TerminalEmbed item={item} />;
     case "session":
       return (
         <div className="stream-meta session-meta">
@@ -882,8 +940,12 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
           )}
         </div>
       );
-    case "raw":
-      return <pre className="stream-raw">{item.content}</pre>;
+    case "raw": {
+      const text = prepareToolResultText(item.content);
+      return hasVisibleContent(text) ? (
+        <pre className="stream-raw">{text}</pre>
+      ) : null;
+    }
     default:
       return null;
   }

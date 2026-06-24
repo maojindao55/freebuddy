@@ -40,6 +40,8 @@ export interface CliRunArgs {
   showStderr?: boolean;
   resumeToolSession?: boolean;
   timeoutMs?: number;
+  userMessageId?: string;
+  knownStreamMessageIds?: string[];
 }
 
 export interface CliPermissionOption {
@@ -67,6 +69,15 @@ export type CliEvent =
   | { type: "stdout"; content: string }
   | { type: "stderr"; content: string }
   | { type: "items"; items: CliStreamItem[] }
+  | {
+      type: "terminal-update";
+      terminalId: string;
+      output: string;
+      truncated?: boolean;
+      exitCode?: number | null;
+      exited?: boolean;
+      running?: boolean;
+    }
   | { type: "permission"; request: CliPermissionRequest }
   | { type: "permission-resolved"; requestId: string }
   | { type: "done"; exitCode: number }

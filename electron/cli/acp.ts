@@ -29,8 +29,9 @@ export type AcpStreamItem =
       role: "assistant" | "user" | "system";
       content: string;
       append?: boolean;
+      messageId?: string;
     }
-  | { kind: "thinking"; content: string; append?: boolean }
+  | { kind: "thinking"; content: string; append?: boolean; messageId?: string }
   | {
       kind: "tool-call";
       tool: string;
@@ -75,7 +76,15 @@ export type AcpStreamItem =
       oldText?: string;
       newText?: string;
     }
-  | { kind: "terminal-embed"; terminalId: string }
+  | {
+      kind: "terminal-embed";
+      terminalId: string;
+      output?: string;
+      truncated?: boolean;
+      exitCode?: number | null;
+      exited?: boolean;
+      running?: boolean;
+    }
   | { kind: "session"; sessionId: string; title?: string; updatedAt?: string }
   | {
       kind: "available-commands";
@@ -145,7 +154,8 @@ export function buildInitializeRequest(id: AcpRequestId): AcpMessage {
         // Opt in to receive terminal-type auth methods so we can detect when
         // an agent requires authentication and surface a clear error. We do not
         // drive the login flow; the user logs in via the agent's own CLI.
-        auth: { terminal: true }
+        auth: { terminal: true },
+        terminal: true
       },
       clientInfo: {
         name: "freebuddy",
@@ -344,6 +354,7 @@ export interface ContentBlockOptions {
   role?: ContentBlockRole;
   append?: boolean;
   asThinking?: boolean;
+  messageId?: string;
 }
 
 /** Map an ACP ContentBlock to normalized stream items. */
@@ -359,14 +370,22 @@ export function contentBlockToItems(
       const text = typeof block.text === "string" ? block.text : "";
       if (!text) return [];
       if (options.asThinking) {
-        return [{ kind: "thinking", content: text, append: options.append }];
+        return [
+          {
+            kind: "thinking",
+            content: text,
+            append: options.append,
+            ...(options.messageId ? { messageId: options.messageId } : {})
+          }
+        ];
       }
       return [
         {
           kind: "text",
           role: options.role ?? "assistant",
           content: text,
-          append: options.append
+          append: options.append,
+          ...(options.messageId ? { messageId: options.messageId } : {})
         }
       ];
     }
@@ -903,12 +922,16 @@ export function acpUpdateToItems(
     case "agent_message_chunk":
       return contentBlockToItems(update.content, {
         role: "assistant",
-        append: true
+        append: true,
+        messageId:
+          typeof update.messageId === "string" ? update.messageId : undefined
       });
     case "agent_thought_chunk":
       return contentBlockToItems(update.content, {
         append: true,
-        asThinking: true
+        asThinking: true,
+        messageId:
+          typeof update.messageId === "string" ? update.messageId : undefined
       });
     case "tool_call": {
       const entries = todoEntries(update);
@@ -1032,13 +1055,46 @@ const METADATA_SESSION_UPDATES = new Set([
   "usage_update"
 ]);
 
+export function shouldSkipUserMessageChunk(
+  update: any,
+  context: { userMessageId?: string; promptText?: string }
+): boolean {
+  const type = String(update?.sessionUpdate ?? "");
+  if (type !== "user_message_chunk") return false;
+  const messageId =
+    typeof update?.messageId === "string" ? update.messageId : undefined;
+  if (context.userMessageId && messageId === context.userMessageId) {
+    return true;
+  }
+  const text = textFromContent(update?.content).trim();
+  if (context.promptText && text === context.promptText.trim()) {
+    return true;
+  }
+  return false;
+}
+
 export function shouldEmitAcpUpdate(
   update: any,
-  state: { promptStarted: boolean }
+  state: {
+    promptStarted: boolean;
+    replayMessageIds?: ReadonlySet<string>;
+  }
 ): boolean {
   const type = String(update?.sessionUpdate ?? "");
   if (METADATA_SESSION_UPDATES.has(type)) {
     return true;
   }
-  return state.promptStarted;
+  if (!state.promptStarted) {
+    return false;
+  }
+  const messageId =
+    typeof update?.messageId === "string" ? update.messageId : undefined;
+  if (
+    messageId &&
+    state.replayMessageIds?.has(messageId) &&
+    (type === "agent_message_chunk" || type === "agent_thought_chunk")
+  ) {
+    return false;
+  }
+  return true;
 }

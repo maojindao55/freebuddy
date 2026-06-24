@@ -32,6 +32,10 @@ export interface CliRunArgs {
   showStderr?: boolean;
   resumeToolSession?: boolean;
   timeoutMs?: number;
+  /** DB id of the user message for this prompt (ACP dedup). */
+  userMessageId?: string;
+  /** Known stream messageIds from prior assistant turns (replay suppression). */
+  knownStreamMessageIds?: string[];
 }
 
 export type CliPermissionOptionKind =
@@ -66,6 +70,15 @@ export type CliEvent =
   | { type: "stdout"; content: string }
   | { type: "stderr"; content: string }
   | { type: "items"; items: AcpStreamItem[] }
+  | {
+      type: "terminal-update";
+      terminalId: string;
+      output: string;
+      truncated?: boolean;
+      exitCode?: number | null;
+      exited?: boolean;
+      running?: boolean;
+    }
   | { type: "permission"; request: CliPermissionRequest }
   | { type: "permission-resolved"; requestId: string }
   | { type: "done"; exitCode: number }
@@ -151,13 +164,17 @@ export function appendLog(
   kind: string,
   content: string
 ) {
-  if (!file) return;
+  if (!file || file.writableEnded || file.destroyed) return;
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
     type: kind,
     content
   });
-  file.write(entry + "\n");
+  try {
+    file.write(entry + "\n");
+  } catch {
+    /* best-effort: stream may close while the agent is shutting down */
+  }
 }
 
 export function maybeCaptureSessionId(

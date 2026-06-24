@@ -4612,12 +4612,69 @@ button.ghost:focus-visible,
 }
 
 .stream-terminal-embed {
+  display: grid;
+  gap: 6px;
   padding: 8px 10px;
-  border: 1px dashed #d7dbe3;
+  border: 1px solid #d7dbe3;
   border-radius: 8px;
-  background: #fafafa;
-  color: #6b7280;
+  background: #0f1115;
+  color: #e5e7eb;
   font-size: 12px;
+}
+
+.stream-terminal-embed.running {
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+.stream-terminal-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.stream-terminal-id {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.stream-terminal-running {
+  margin-left: auto;
+  color: #60a5fa;
+  font-size: 11px;
+}
+
+.stream-terminal-exit {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.stream-terminal-exit.ok {
+  color: #4ade80;
+}
+
+.stream-terminal-exit.failed {
+  color: #f87171;
+}
+
+.stream-terminal-output {
+  max-height: 220px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #050608;
+  color: #f3f4f6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stream-terminal-truncated {
+  color: #fbbf24;
+  font-size: 11px;
 }
 
 .stream-tool-body {

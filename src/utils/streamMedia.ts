@@ -80,10 +80,6 @@ export function sanitizeStreamItems(
   const out: CliStreamItem[] = [];
 
   for (const item of items) {
-    if (isToolImagePreview(item)) {
-      continue;
-    }
-
     if (item.kind === "tool-call") {
       const next: Extract<CliStreamItem, { kind: "tool-call" }> = { ...item };
       if (typeof next.output === "string" && next.output.length > 0) {
@@ -94,6 +90,8 @@ export function sanitizeStreamItems(
         next.toolOutputs = sanitizeStreamItems(
           next.toolOutputs,
           registerPreview
+        ).filter(
+          (entry) => !isToolImagePreview(entry)
         ) as Extract<CliStreamItem, { kind: "tool-call" }>["toolOutputs"];
       }
       out.push(next);

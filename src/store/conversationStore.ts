@@ -16,6 +16,9 @@ import type {
   Conversation,
   ConversationMessage
 } from "@/services/cli/types";
+import type { WorkflowRunRow } from "@/services/workflows/types";
+import { workflowFollowupAgentId } from "@/services/workflows/types";
+import { workflowClient } from "@/services/workflows/client";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
@@ -146,6 +149,23 @@ function latestSessionIdFromMessages(messages: ConversationMessage[]): string | 
     }
   }
   return undefined;
+}
+
+async function workflowRunForConversation(
+  conversationId: string
+): Promise<WorkflowRunRow | undefined> {
+  if (!workflowClient.isAvailable()) return undefined;
+  const runs = await workflowClient.listRuns(conversationId);
+  return runs[0];
+}
+
+function memberForWorkflowFollowup(
+  run: WorkflowRunRow | undefined,
+  members: CLIMember[]
+): CLIMember | undefined {
+  const agentId = run ? workflowFollowupAgentId(run) : undefined;
+  if (!agentId) return undefined;
+  return members.find((member) => member.id === agentId);
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
@@ -322,7 +342,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
     const conv = get().conversations.find((c) => c.id === conversationId);
     if (!conv) return;
-    const member = get().members.find((m) => m.id === conv.agentId);
+    const workflowRun = await workflowRunForConversation(conversationId);
+    const member =
+      memberForWorkflowFollowup(workflowRun, get().members) ??
+      get().members.find((m) => m.id === conv.agentId);
     if (!member) throw new Error(`Member ${conv.agentId} not found`);
 
     const userMsgId = userMessageId ?? nanoid();
@@ -404,7 +427,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...(resolved?.extraArgs ?? []),
       ...(member.cli.extraArgs ?? [])
     ];
-    const toolSessionScope = conv.cwd ?? `conversation:${conv.id}`;
+    const toolSessionScope = workflowRun
+      ? `workflow:${workflowRun.id}:${member.id}`
+      : conv.cwd ?? `conversation:${conv.id}`;
 
     let resumedFromSessionId: string | undefined;
     if (!wantFresh) {

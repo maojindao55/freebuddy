@@ -13,6 +13,8 @@ import type {
   WorkflowTeamPreview
 } from "@/services/workflowTeams/types";
 import { workflowTeamName } from "@/services/workflowTeams/types";
+import { workflowFollowupAgentId } from "@/services/workflows/types";
+import { workflowClient } from "@/services/workflows/client";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
   attachmentPreviewUrl,
@@ -259,8 +261,15 @@ export function ChatView() {
   const [slashIndex, setSlashIndex] = useState(0);
 
   const conv = conversations.find((c) => c.id === activeId);
-  const member = conv ? members.find((m) => m.id === conv.agentId) : undefined;
-  const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, conv?.adapter);
+  const activeRun = useWorkflowStore((s) => s.activeRun);
+  const workflowFollowupAgent =
+    activeRun && activeRun.conversationId === conv?.id
+      ? workflowFollowupAgentId(activeRun)
+      : undefined;
+  const member = conv
+    ? members.find((m) => m.id === (workflowFollowupAgent ?? conv.agentId))
+    : undefined;
+  const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, member?.cli.adapter ?? conv?.adapter);
   const running =
     live?.status === "running" || live?.status === "starting";
   const sending =
@@ -561,10 +570,21 @@ export function ChatView() {
     chatTextareaRef.current?.focus();
   };
 
+  const resolveWorkflowFollowupMember = async () => {
+    if (!conv || !workflowClient.isAvailable()) return member;
+    const run =
+      activeRun?.conversationId === conv.id
+        ? activeRun
+        : (await workflowClient.listRuns(conv.id))[0];
+    const agentId = run ? workflowFollowupAgentId(run) : undefined;
+    return members.find((m) => m.id === (agentId ?? conv.agentId));
+  };
+
   const onSend = async () => {
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
-    if (!conv || !member || (!prompt && attachmentsToSend.length === 0) || sending) return;
+    const targetMember = await resolveWorkflowFollowupMember();
+    if (!conv || !targetMember || (!prompt && attachmentsToSend.length === 0) || sending) return;
     setPreflightMsg(null);
     isNearBottomRef.current = true;
     const userMessageId = nanoid();
@@ -581,7 +601,7 @@ export function ChatView() {
     setDraft("");
     setPendingAttachments([]);
     try {
-      if (!(await preflightMember(member))) {
+      if (!(await preflightMember(targetMember))) {
         setSubmitPreview(null);
         setDraft(prompt);
         setPendingAttachments(attachmentsToSend);

@@ -120,15 +120,19 @@ test("workflow i18n keys exist in both locales", () => {
   assert.ok(zh.workflow.stepStatus?.failed);
 });
 
-test("workflow team UI translates builtin team names", () => {
-  const list = read("../src/components/Settings/WorkflowTeamList.tsx");
-  const editor = read("../src/components/Settings/WorkflowTeamEditor.tsx");
-  const preview = read("../src/components/Workflows/WorkflowTeamPreviewCard.tsx");
+test("conversationStore routes workflow follow-ups to the workflow summary agent", () => {
+  const src = read("../src/store/conversationStore.ts");
   const chat = read("../src/components/CLI/ChatView.tsx");
-  assert.match(list, /workflowTeamName\(team, t\)/);
-  assert.match(list, /workflowTeamDescription\(team, t\)/);
-  assert.match(editor, /workflowTeamName\(team, t\)/);
-  assert.match(editor, /workflowTeamDescription\(team, t\)/);
-  assert.match(preview, /workflowTeamPreviewName\(preview, t\)/);
-  assert.match(chat, /workflowTeamName\(tt, t\)/);
+  const types = read("../src/services/workflows/types.ts");
+  assert.match(types, /function workflowFollowupAgentId/);
+  assert.match(types, /step\.mode === "summarize"/);
+  assert.match(types, /step\.mode !== "write"/);
+  assert.match(src, /workflowRunForConversation/);
+  assert.match(src, /memberForWorkflowFollowup\(workflowRun, get\(\)\.members\)/);
+  assert.match(src, /workflow:\$\{workflowRun\.id\}:\$\{member\.id\}/);
+  assert.match(chat, /workflowFollowupAgentId\(activeRun\)/);
+  assert.match(chat, /workflowFollowupAgent \?\? conv\.agentId/);
+  assert.match(chat, /resolveWorkflowFollowupMember/);
+  assert.match(chat, /await workflowClient\.listRuns\(conv\.id\)/);
+  assert.match(chat, /preflightMember\(targetMember\)/);
 });

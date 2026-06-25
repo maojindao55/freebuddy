@@ -101,3 +101,30 @@ export interface WorkflowValidationResult {
   ok: boolean;
   errors: string[];
 }
+
+export function workflowFollowupAgentId(run: Pick<WorkflowRunRow, "planJson">): string | undefined {
+  let plan: WorkflowPlan;
+  try {
+    plan = JSON.parse(run.planJson) as WorkflowPlan;
+  } catch {
+    return undefined;
+  }
+
+  for (let i = plan.phases.length - 1; i >= 0; i -= 1) {
+    const phase = plan.phases[i];
+    for (let j = phase.steps.length - 1; j >= 0; j -= 1) {
+      const step = phase.steps[j];
+      if (step.mode === "summarize") return step.agentId;
+    }
+  }
+
+  for (let i = plan.phases.length - 1; i >= 0; i -= 1) {
+    const phase = plan.phases[i];
+    for (let j = phase.steps.length - 1; j >= 0; j -= 1) {
+      const step = phase.steps[j];
+      if (step.mode !== "write") return step.agentId;
+    }
+  }
+
+  return undefined;
+}

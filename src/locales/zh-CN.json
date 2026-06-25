@@ -324,6 +324,7 @@
     "gates": "关卡",
     "noGates": "没有人工关卡",
     "noActiveRun": "没有进行中的工作流",
+    "runningIndicator": "工作流正在运行",
     "status": {
       "pending_approval": "等待批准",
       "running": "运行中",
@@ -369,6 +370,7 @@
     "allowed": "允许",
     "denied": "禁止",
     "newTeam": "新建团队",
+    "newTeamComingSoon": "自定义团队即将推出。",
     "teamName": "团队名称",
     "teamDescription": "描述",
     "teamSource": "来源",
@@ -399,7 +401,21 @@
     "advancedGraph": "高级图计划",
     "graphViewer": "图查看器",
     "startNodes": "起始节点",
-    "finalNodes": "结束节点"
+    "finalNodes": "结束节点",
+    "builtinTeams": {
+      "team-quick-implement": {
+        "name": "快速实现",
+        "description": "规划、实现、验证并总结。适合小而聚焦的改动，写入前有一次审批。"
+      },
+      "team-implement-review-loop": {
+        "name": "实现-审查循环",
+        "description": "Agent A 负责实现，Agent B 负责审查。失败时 A 修复、B 复审，直到通过或达到最大循环次数。"
+      },
+      "team-research-report": {
+        "name": "分析调研报告",
+        "description": "调研非开发类主题，分析不同情景，并输出带结论和置信度的简洁报告。"
+      }
+    }
   },
   "updater": {
     "appTitle": "应用",

@@ -9,6 +9,7 @@ import { createCliStepExecutor, WorkflowRuntime } from "./workflowRuntime.js";
 import {
   getWorkflowRun,
   getWorkflowSteps,
+  listActiveWorkflowRuns,
   listWorkflowRunsByConversation
 } from "./workflows.js";
 import type {
@@ -138,6 +139,7 @@ export function registerWorkflowIpc() {
   );
 
   ipcMain.handle("workflow:getRun", (_e, runId: string) => getWorkflowRun(runId));
+  ipcMain.handle("workflow:listActiveRuns", () => listActiveWorkflowRuns());
   ipcMain.handle("workflow:getSteps", (_e, runId: string) =>
     getWorkflowSteps(runId)
   );

@@ -146,6 +146,7 @@ declare global {
     approveGate(args: { runId: string; phaseId: string }): Promise<boolean>;
     continueImplementReview(runId: string): Promise<boolean>;
     getRun(runId: string): Promise<WorkflowRunRow | undefined>;
+    listActiveRuns(): Promise<WorkflowRunRow[]>;
     getSteps(runId: string): Promise<WorkflowStepRow[]>;
     listRuns(conversationId: string): Promise<WorkflowRunRow[]>;
     previewTeamRun(input: {

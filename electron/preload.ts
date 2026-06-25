@@ -107,6 +107,7 @@ const workflow = {
   continueImplementReview: (runId: string) =>
     ipcRenderer.invoke("workflow:continueImplementReview", runId),
   getRun: (runId: string) => ipcRenderer.invoke("workflow:getRun", runId),
+  listActiveRuns: () => ipcRenderer.invoke("workflow:listActiveRuns"),
   getSteps: (runId: string) => ipcRenderer.invoke("workflow:getSteps", runId),
   listRuns: (conversationId: string) =>
     ipcRenderer.invoke("workflow:listRuns", conversationId),

@@ -59,6 +59,9 @@ export const workflowClient = {
   getRun(runId: string): Promise<WorkflowRunRow | undefined> {
     return api().getRun(runId);
   },
+  listActiveRuns(): Promise<WorkflowRunRow[]> {
+    return api().listActiveRuns();
+  },
   getSteps(runId: string): Promise<WorkflowStepRow[]> {
     return api().getSteps(runId);
   },

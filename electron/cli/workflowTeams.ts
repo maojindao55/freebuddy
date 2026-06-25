@@ -139,7 +139,17 @@ export function deleteWorkflowTeam(id: string): boolean {
 
 export { builtinWorkflowTeams };
 
+const removedBuiltinWorkflowTeamIds = [
+  "team-code-review",
+  "team-readonly-analysis"
+];
+
 export function seedBuiltinWorkflowTeams(): void {
+  const db = getDb();
+  for (const id of removedBuiltinWorkflowTeamIds) {
+    db.prepare("DELETE FROM workflow_teams WHERE id = ? AND source = 'builtin'").run(id);
+  }
+
   const existing = listWorkflowTeams();
   const existingIds = new Set(existing.map((t) => t.id));
   for (const team of builtinWorkflowTeams()) {
@@ -147,7 +157,7 @@ export function seedBuiltinWorkflowTeams(): void {
       insertWorkflowTeam(team);
       continue;
     }
-    if (team.id === "team-implement-review-loop") {
+    if (team.id === "team-implement-review-loop" || team.source === "builtin") {
       updateWorkflowTeam(team.id, {
         name: team.name,
         description: team.description,

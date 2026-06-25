@@ -31,6 +31,8 @@
   --fb-active-fg: #ffffff;
   --fb-brand: #10b981;
   --fb-brand-glow: rgba(16, 185, 129, 0.12);
+  --fb-workflow: #8b5cf6;
+  --fb-workflow-glow: rgba(139, 92, 246, 0.16);
   --fb-brand-gradient: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
   --fb-danger: #e11d48;
   --fb-warning: #f59e0b;
@@ -3228,6 +3230,14 @@ button {
   background: var(--fb-brand);
   box-shadow: 0 0 0 3px var(--fb-brand-glow);
   animation: pulse-glow 2s infinite;
+}
+
+.conv-running-dot.workflow {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--fb-workflow);
+  box-shadow: 0 0 0 3px var(--fb-workflow-glow);
 }
 
 .conv-item:hover {

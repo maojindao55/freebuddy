@@ -325,6 +325,7 @@
     "gates": "Gates",
     "noGates": "No manual gates",
     "noActiveRun": "No active workflow",
+    "runningIndicator": "Workflow is running",
     "status": {
       "pending_approval": "Awaiting approval",
       "running": "Running",
@@ -370,6 +371,7 @@
     "allowed": "Allowed",
     "denied": "Denied",
     "newTeam": "New team",
+    "newTeamComingSoon": "Custom teams are coming soon.",
     "teamName": "Team name",
     "teamDescription": "Description",
     "teamSource": "Source",
@@ -400,7 +402,21 @@
     "advancedGraph": "Advanced graph",
     "graphViewer": "Graph viewer",
     "startNodes": "Start nodes",
-    "finalNodes": "Final nodes"
+    "finalNodes": "Final nodes",
+    "builtinTeams": {
+      "team-quick-implement": {
+        "name": "Quick Implementation",
+        "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing."
+      },
+      "team-implement-review-loop": {
+        "name": "Implement-Review Loop",
+        "description": "Agent A implements, Agent B reviews. On FAIL, A fixes and B reviews again until PASS or max loops."
+      },
+      "team-research-report": {
+        "name": "Research Report",
+        "description": "Research a non-coding topic, analyze scenarios, and produce a concise report with conclusions and confidence."
+      }
+    }
   },
   "updater": {
     "appTitle": "Application",

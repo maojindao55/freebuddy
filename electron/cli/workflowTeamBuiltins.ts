@@ -63,94 +63,6 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
     updatedAt: now
   };
 
-  const reviewTeam: WorkflowTeam = {
-    id: "team-code-review",
-    name: "Code Review",
-    description: "Research, review, approve findings, implement, verify. For higher-risk tasks needing review first.",
-    icon: "team-review",
-    enabled: true,
-    source: "builtin",
-    roles: [
-      { id: "role-researcher", label: "Researcher", kind: "researcher", agentId: codex, required: true, canWrite: false },
-      { id: "role-reviewer", label: "Reviewer", kind: "reviewer", agentId: claude, required: true, canWrite: false },
-      { id: "role-implementer", label: "Implementer", kind: "implementer", agentId: claude, required: true, canWrite: true },
-      { id: "role-verifier", label: "Verifier", kind: "verifier", agentId: opencode, required: true, canWrite: false },
-      { id: "role-summarizer", label: "Summarizer", kind: "summarizer", agentId: codex, required: true, canWrite: false }
-    ],
-    template: {
-      id: "tpl-code-review",
-      name: "Code Review",
-      version: 1,
-      nodes: [
-        { id: "baseline", title: "Baseline", roleId: "role-researcher", mode: "research", promptTemplate: "Summarize the task and current state. Goal: {{goal}}. Report target files, current state, and success criteria." },
-        { id: "review", title: "Review", roleId: "role-reviewer", mode: "review", promptTemplate: "Review the current state against the goal. List concrete, actionable findings with severity." },
-        { id: "implement", title: "Implement", roleId: "role-implementer", mode: "write", promptTemplate: "Address the approved review findings for: {{goal}}. Make focused changes." },
-        { id: "verify", title: "Verify", roleId: "role-verifier", mode: "verify", promptTemplate: "Verify the changes resolve the findings. Run checks. End your response with: UNRESOLVED: <count>" },
-        { id: "summarize", title: "Summarize", roleId: "role-summarizer", mode: "summarize", promptTemplate: "Summarize what was reviewed, what was changed, and remaining issues." }
-      ],
-      edges: [
-        { id: "e1", from: "baseline", to: "review" },
-        { id: "e2", from: "review", to: "implement" },
-        { id: "e3", from: "implement", to: "verify" },
-        { id: "e4", from: "verify", to: "summarize" }
-      ],
-      startNodeIds: ["baseline"],
-      finalNodeIds: ["summarize"]
-    },
-    policy: {
-      allowWrites: true,
-      requireApprovalBeforeWrite: false,
-      requireApprovalAfterReview: true,
-      maxParallelReadSteps: 1,
-      maxParallelWriteSteps: 1,
-      maxLoops: 3,
-      stopOnVerifyFailure: true
-    },
-    createdAt: now,
-    updatedAt: now
-  };
-
-  const readonlyTeam: WorkflowTeam = {
-    id: "team-readonly-analysis",
-    name: "Read-Only Analysis",
-    description: "Research, review, summarize. No file writes allowed. For code comprehension, comparison, and reporting.",
-    icon: "team-readonly",
-    enabled: true,
-    source: "builtin",
-    roles: [
-      { id: "role-researcher", label: "Researcher", kind: "researcher", agentId: codex, required: true, canWrite: false },
-      { id: "role-reviewer", label: "Reviewer", kind: "reviewer", agentId: claude, required: true, canWrite: false },
-      { id: "role-summarizer", label: "Summarizer", kind: "summarizer", agentId: codex, required: true, canWrite: false }
-    ],
-    template: {
-      id: "tpl-readonly-analysis",
-      name: "Read-Only Analysis",
-      version: 1,
-      nodes: [
-        { id: "research-context", title: "Research context", roleId: "role-researcher", mode: "research", promptTemplate: "Explore the codebase and gather context for: {{goal}}. Report key files and findings." },
-        { id: "review-risks", title: "Review risks", roleId: "role-reviewer", mode: "review", promptTemplate: "Review the research findings. List risks, trade-offs, and recommendations for: {{goal}}." },
-        { id: "summarize", title: "Summarize", roleId: "role-summarizer", mode: "summarize", promptTemplate: "Summarize the analysis and recommendations for: {{goal}}." }
-      ],
-      edges: [
-        { id: "e1", from: "research-context", to: "review-risks" },
-        { id: "e2", from: "review-risks", to: "summarize" }
-      ],
-      startNodeIds: ["research-context"],
-      finalNodeIds: ["summarize"]
-    },
-    policy: {
-      allowWrites: false,
-      requireApprovalBeforeWrite: false,
-      requireApprovalAfterReview: false,
-      maxParallelReadSteps: 3,
-      maxParallelWriteSteps: 1,
-      maxLoops: 1,
-      stopOnVerifyFailure: false
-    },
-    createdAt: now,
-    updatedAt: now
-  };
-
   const implementReviewTeam: WorkflowTeam = {
     id: "team-implement-review-loop",
     name: "Implement-Review Loop",
@@ -214,5 +126,86 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
     updatedAt: now
   };
 
-  return [quickTeam, reviewTeam, implementReviewTeam, readonlyTeam];
+  const researchReportTeam: WorkflowTeam = {
+    id: "team-research-report",
+    name: "Research Report",
+    description:
+      "Research a non-coding topic, analyze scenarios, and produce a concise report with conclusions and confidence.",
+    icon: "team-research-report",
+    enabled: true,
+    source: "builtin",
+    roles: [
+      {
+        id: "role-researcher",
+        label: "Researcher",
+        kind: "researcher",
+        agentId: pickAgent(["cli-kimi-acp", "cli-codex-acp"]),
+        required: true,
+        canWrite: false
+      },
+      {
+        id: "role-analyst",
+        label: "Analyst",
+        kind: "reviewer",
+        agentId: codex,
+        required: true,
+        canWrite: false
+      },
+      {
+        id: "role-reporter",
+        label: "Reporter",
+        kind: "summarizer",
+        agentId: claude,
+        required: true,
+        canWrite: false
+      }
+    ],
+    template: {
+      id: "tpl-research-report",
+      name: "Research Report",
+      version: 1,
+      nodes: [
+        {
+          id: "research",
+          title: "Research",
+          roleId: "role-researcher",
+          mode: "research",
+          promptTemplate: "Research the topic: {{goal}}. Gather relevant facts, context, constraints, and uncertainties. If current information is needed, identify what should be verified and cite available evidence from your environment."
+        },
+        {
+          id: "analysis",
+          title: "Analyze",
+          roleId: "role-analyst",
+          mode: "review",
+          promptTemplate: "Analyze the research for: {{goal}}. Compare plausible scenarios, key drivers, risks, and assumptions. If predicting outcomes such as sports scores, give likely ranges and confidence instead of overclaiming certainty."
+        },
+        {
+          id: "report",
+          title: "Report",
+          roleId: "role-reporter",
+          mode: "summarize",
+          promptTemplate: "Write a concise final report for: {{goal}}. Include summary, evidence, analysis, forecast or recommendation, confidence level, and caveats."
+        }
+      ],
+      edges: [
+        { id: "e1", from: "research", to: "analysis" },
+        { id: "e2", from: "analysis", to: "report" }
+      ],
+      startNodeIds: ["research"],
+      finalNodeIds: ["report"]
+    },
+    policy: {
+      allowWrites: false,
+      requireApprovalBeforeWrite: false,
+      requireApprovalAfterReview: false,
+      maxParallelReadSteps: 1,
+      maxParallelWriteSteps: 1,
+      maxLoops: 1,
+      stopOnVerifyFailure: false
+    },
+    createdAt: now,
+    updatedAt: now
+  };
+
+  return [quickTeam, implementReviewTeam, researchReportTeam];
 }

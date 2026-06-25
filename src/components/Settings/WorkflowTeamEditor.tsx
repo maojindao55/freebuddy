@@ -6,6 +6,10 @@ import type {
   WorkflowTeamPolicy,
   WorkflowTeamRole
 } from "@/services/workflowTeams/types";
+import {
+  workflowTeamDescription,
+  workflowTeamName
+} from "@/services/workflowTeams/types";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useConversationStore } from "@/store/conversationStore";
 
@@ -62,6 +66,10 @@ export function WorkflowTeamEditor({
   const [errors, setErrors] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const isBuiltin = team?.source === "builtin";
+  const displayName = team ? workflowTeamName(team, t) : draft.name;
+  const displayDescription = team
+    ? workflowTeamDescription(team, t)
+    : draft.description;
 
   useEffect(() => {
     setDraft(team ? structuredClone(team) : emptyTeam());
@@ -140,7 +148,7 @@ export function WorkflowTeamEditor({
           ←
         </button>
         <div className="workflow-team-editor-title">
-          <h4>{isNew ? t("workflow.newTeam") : draft.name || t("workflow.teamEditor")}</h4>
+          <h4>{isNew ? t("workflow.newTeam") : displayName || t("workflow.teamEditor")}</h4>
           {isBuiltin && (
             <span className="workflow-team-badge builtin">
               {t("workflow.builtinTeam")}
@@ -181,7 +189,7 @@ export function WorkflowTeamEditor({
           <span>{t("workflow.teamName")}</span>
           <input
             type="text"
-            value={draft.name}
+            value={isBuiltin ? displayName : draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             disabled={isBuiltin}
             placeholder={t("workflow.teamName")}
@@ -190,7 +198,7 @@ export function WorkflowTeamEditor({
         <label className="workflow-team-editor-field">
           <span>{t("workflow.teamDescription")}</span>
           <textarea
-            value={draft.description ?? ""}
+            value={isBuiltin ? displayDescription ?? "" : draft.description ?? ""}
             onChange={(e) =>
               setDraft({ ...draft, description: e.target.value })
             }

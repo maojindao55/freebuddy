@@ -84,9 +84,15 @@ test("new-task page exposes mode tabs and team submit", () => {
 
 test("ConversationList includes workflow runs in the running indicator set", () => {
   const src = read("../src/components/CLI/ConversationList.tsx");
+  const css = read("../styles.css");
   assert.match(src, /useWorkflowStore/);
-  assert.match(src, /workflowRunningConversationId/);
-  assert.match(src, /runningSet\.add\(workflowRunningConversationId\)/);
+  assert.match(src, /workflowActiveRuns/);
+  assert.match(src, /loadWorkflowActiveRuns/);
+  assert.match(src, /workflowRunningSet\.has\(c\.id\)/);
+  assert.match(src, /isWorkflowRunning=\{workflowRunningSet\.has\(c\.id\)\}/);
+  assert.match(src, /conv-running-dot\$\{isWorkflowRunning \? " workflow" : ""\}/);
+  assert.match(css, /\.conv-running-dot\.workflow/);
+  assert.match(css, /--fb-workflow/);
 });
 
 test("ChatView titles team workflow conversations from the prompt", () => {
@@ -98,12 +104,31 @@ test("ChatView titles team workflow conversations from the prompt", () => {
 test("workflow i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
-  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk"]) {
+  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk", "runningIndicator"]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
+  }
+  for (const teamId of ["team-quick-implement", "team-implement-review-loop", "team-research-report"]) {
+    assert.ok(en.workflow.builtinTeams?.[teamId]?.name, `missing en workflow.builtinTeams.${teamId}.name`);
+    assert.ok(en.workflow.builtinTeams?.[teamId]?.description, `missing en workflow.builtinTeams.${teamId}.description`);
+    assert.ok(zh.workflow.builtinTeams?.[teamId]?.name, `missing zh-CN workflow.builtinTeams.${teamId}.name`);
+    assert.ok(zh.workflow.builtinTeams?.[teamId]?.description, `missing zh-CN workflow.builtinTeams.${teamId}.description`);
   }
   assert.ok(en.workflow.status?.running);
   assert.ok(zh.workflow.status?.running);
   assert.ok(en.workflow.stepStatus?.failed);
   assert.ok(zh.workflow.stepStatus?.failed);
+});
+
+test("workflow team UI translates builtin team names", () => {
+  const list = read("../src/components/Settings/WorkflowTeamList.tsx");
+  const editor = read("../src/components/Settings/WorkflowTeamEditor.tsx");
+  const preview = read("../src/components/Workflows/WorkflowTeamPreviewCard.tsx");
+  const chat = read("../src/components/CLI/ChatView.tsx");
+  assert.match(list, /workflowTeamName\(team, t\)/);
+  assert.match(list, /workflowTeamDescription\(team, t\)/);
+  assert.match(editor, /workflowTeamName\(team, t\)/);
+  assert.match(editor, /workflowTeamDescription\(team, t\)/);
+  assert.match(preview, /workflowTeamPreviewName\(preview, t\)/);
+  assert.match(chat, /workflowTeamName\(tt, t\)/);
 });

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
 import { useTranslation } from "react-i18next";
 
@@ -374,7 +374,7 @@ function MessageAttachments({
   );
 }
 
-export function MessageBubble({
+export const MessageBubble = memo(function MessageBubble({
   message,
   adapter
 }: {
@@ -523,4 +523,4 @@ export function MessageBubble({
       </div>
     </div>
   );
-}
+});

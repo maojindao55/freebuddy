@@ -208,14 +208,13 @@ export class WorkflowRuntime {
     const run = getWorkflowRun(runId);
     if (!run) return Promise.resolve();
     const plan = this.resolveWorkflowPlan(run);
-    if (run.status === "blocked") {
-      this.prepareBlockedRunForResume(runId, plan);
+    if (run.status === "blocked" || run.status === "paused" || run.status === "running") {
+      this.prepareInactiveRunForResume(runId, plan);
     }
-    updateWorkflowRun(runId, { status: "running" });
     return this.start(runId);
   }
 
-  private prepareBlockedRunForResume(
+  private prepareInactiveRunForResume(
     runId: string,
     plan: WorkflowPlan
   ): void {
@@ -280,6 +279,38 @@ export class WorkflowRuntime {
     });
     updateWorkflowRun(runId, { status: "running" });
     await this.start(runId);
+  }
+
+  continueImplementReview(runId: string): boolean {
+    const run = getWorkflowRun(runId);
+    if (!run || run.status !== "partial") return false;
+    const plan = this.resolveWorkflowPlan(run);
+    if (!isImplementReviewLoopPlan(plan)) return false;
+    const reviewer = getWorkflowSteps(runId).find(
+      (s) => s.stepId === REVIEW_CHANGES_STEP_ID
+    );
+    const reviewDecisionText = resolveReviewDecisionText(
+      reviewer?.summary,
+      reviewer?.resultJson
+    );
+    if (extractReviewStatus(reviewDecisionText) !== "FAIL") return false;
+
+    const nextMaxLoops = Math.max(run.maxLoops + 1, run.loopIndex + 2);
+    const nextPlan = {
+      ...plan,
+      maxLoops: nextMaxLoops
+    };
+    this.prepareImplementReviewLoopReplay(runId, nextPlan, reviewDecisionText);
+    resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
+    updateWorkflowRun(runId, {
+      status: "running",
+      maxLoops: nextMaxLoops,
+      planJson: JSON.stringify(nextPlan),
+      summary: null,
+      endedAt: null
+    });
+    void this.start(runId);
+    return true;
   }
 
   private resolveWorkflowPlan(
@@ -536,6 +567,33 @@ export class WorkflowRuntime {
     const collected: unknown[] = [];
     let exitCode: number | null = null;
     let errored: string | null = null;
+    let messageFlushTimer: ReturnType<typeof setTimeout> | undefined;
+    let hasPendingMessageUpdate = false;
+
+    const flushMessageUpdate = () => {
+      if (messageFlushTimer) {
+        clearTimeout(messageFlushTimer);
+        messageFlushTimer = undefined;
+      }
+      if (!hasPendingMessageUpdate || !assistantMessageId || !run.conversationId) return;
+      hasPendingMessageUpdate = false;
+      updateMessage({
+        id: assistantMessageId,
+        content: JSON.stringify(collected)
+      });
+      this.broadcastMessageEvent({
+        type: "updated",
+        conversationId: run.conversationId,
+        messageId: assistantMessageId
+      });
+    };
+
+    const scheduleMessageUpdate = () => {
+      if (!assistantMessageId || !run.conversationId) return;
+      hasPendingMessageUpdate = true;
+      if (messageFlushTimer) return;
+      messageFlushTimer = setTimeout(flushMessageUpdate, 300);
+    };
 
     updateWorkflowStep(step.id, {
       status: "running",
@@ -584,17 +642,7 @@ export class WorkflowRuntime {
         onEvent: (e: CliEvent) => {
           if (e.type === "items" && e.items?.length) {
             collected.push(...e.items);
-            if (assistantMessageId && run.conversationId) {
-              updateMessage({
-                id: assistantMessageId,
-                content: JSON.stringify(collected)
-              });
-              this.broadcastMessageEvent({
-                type: "updated",
-                conversationId: run.conversationId,
-                messageId: assistantMessageId
-              });
-            }
+            scheduleMessageUpdate();
           }
           if (e.type === "done") exitCode = e.exitCode;
           if (e.type === "error") errored = e.message;
@@ -603,6 +651,7 @@ export class WorkflowRuntime {
     } catch (err) {
       errored = (err as Error).message;
     } finally {
+      flushMessageUpdate();
       state.activeSessions.delete(sessionId);
     }
 

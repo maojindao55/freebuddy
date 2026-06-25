@@ -281,6 +281,10 @@ export function getMessage(id: string): ConversationMessage | undefined {
   return row ? rowToMessage(row) : undefined;
 }
 
+export function listMessage(id: string): ConversationMessage | undefined {
+  return getMessage(id);
+}
+
 export function listMessages(conversationId: string): ConversationMessage[] {
   const rows = getDb()
     .prepare(

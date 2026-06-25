@@ -313,6 +313,7 @@
     "pause": "Pause",
     "resume": "Resume",
     "resumeAfterFailure": "Retry & continue",
+    "continueIteration": "Continue iteration",
     "stop": "Stop",
     "retry": "Retry step",
     "progress": "Progress",

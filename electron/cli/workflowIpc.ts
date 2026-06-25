@@ -113,9 +113,10 @@ export function registerWorkflowIpc() {
     ensureRuntime(event).pause(runId);
     return true;
   });
-  ipcMain.handle("workflow:resume", (event, runId: string) =>
-    ensureRuntime(event).resume(runId)
-  );
+  ipcMain.handle("workflow:resume", (event, runId: string) => {
+    void ensureRuntime(event).resume(runId);
+    return true;
+  });
   ipcMain.handle("workflow:stop", (event, runId: string) => {
     ensureRuntime(event).stop(runId);
     return true;
@@ -131,6 +132,9 @@ export function registerWorkflowIpc() {
       ensureRuntime(event).approveGate(args.runId, args.phaseId);
       return true;
     }
+  );
+  ipcMain.handle("workflow:continueImplementReview", (event, runId: string) =>
+    ensureRuntime(event).continueImplementReview(runId)
   );
 
   ipcMain.handle("workflow:getRun", (_e, runId: string) => getWorkflowRun(runId));

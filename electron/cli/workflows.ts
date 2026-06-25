@@ -109,7 +109,9 @@ export function createWorkflowRun(input: CreateWorkflowRunInput): WorkflowRunRow
 export interface UpdateWorkflowRunPatch {
   status?: WorkflowRunStatus;
   loopIndex?: number;
-  summary?: string;
+  maxLoops?: number;
+  planJson?: string;
+  summary?: string | null;
   endedAt?: string | null;
 }
 
@@ -126,6 +128,14 @@ export function updateWorkflowRun(
   if (patch.loopIndex !== undefined) {
     fields.push("loop_index = ?");
     params.push(patch.loopIndex);
+  }
+  if (patch.maxLoops !== undefined) {
+    fields.push("max_loops = ?");
+    params.push(patch.maxLoops);
+  }
+  if (patch.planJson !== undefined) {
+    fields.push("plan_json = ?");
+    params.push(patch.planJson);
   }
   if (patch.summary !== undefined) {
     fields.push("summary = ?");

@@ -97,6 +97,7 @@ declare global {
     ): Promise<void>;
 
     listMessages(conversationId: string): Promise<ConversationMessage[]>;
+    listMessage(id: string): Promise<ConversationMessage | undefined>;
     appendMessage(input: AppendMessageInput): Promise<ConversationMessage>;
     updateMessage(input: UpdateMessageInput): Promise<void>;
 
@@ -143,6 +144,7 @@ declare global {
     stop(runId: string): Promise<boolean>;
     retryStep(args: { runId: string; stepRowId: string }): Promise<void>;
     approveGate(args: { runId: string; phaseId: string }): Promise<boolean>;
+    continueImplementReview(runId: string): Promise<boolean>;
     getRun(runId: string): Promise<WorkflowRunRow | undefined>;
     getSteps(runId: string): Promise<WorkflowStepRow[]>;
     listRuns(conversationId: string): Promise<WorkflowRunRow[]>;

@@ -65,6 +65,7 @@ export function WorkflowRunPanel() {
   const stop = useWorkflowStore((s) => s.stop);
   const retryStep = useWorkflowStore((s) => s.retryStep);
   const approveGate = useWorkflowStore((s) => s.approveGate);
+  const continueImplementReview = useWorkflowStore((s) => s.continueImplementReview);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
   let plan: ReturnType<typeof JSON.parse> = null;
@@ -114,6 +115,14 @@ export function WorkflowRunPanel() {
     plan.phases,
     steps.map((s) => ({ stepId: s.stepId, status: s.status }))
   );
+  const reviewStep = steps.find((s) => s.stepId === "review-changes");
+  const canContinueImplementReview =
+    activeRun.status === "partial" &&
+    (plan.template === "implement-review-loop" ||
+      activeRun.template === "implement-review-loop") &&
+    /(?:REVIEW_STATUS:\s*FAIL|<<<REVIEW_FAIL>>>|\[\[REVIEW:FAIL\]\])/i.test(
+      `${reviewStep?.summary ?? ""}\n${reviewStep?.resultJson ?? ""}`
+    );
 
   return (
     <section className="side-card workflow-run-panel">
@@ -137,8 +146,17 @@ export function WorkflowRunPanel() {
         </div>
       </div>
 
-      {(isLive || gatingPhaseId) && (
+      {(isLive || gatingPhaseId || canContinueImplementReview) && (
         <div className="workflow-run-actions">
+          {canContinueImplementReview && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void continueImplementReview(activeRun.id)}
+            >
+              <ResumeIcon /> {t("workflow.continueIteration")}
+            </button>
+          )}
           {activeRun.status === "running" && (
             <button type="button" onClick={() => void pause(activeRun.id)}>
               <PauseIcon /> {t("workflow.pause")}

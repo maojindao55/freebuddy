@@ -1,5 +1,6 @@
 import { Fragment, memo, useCallback, useMemo, useState } from "react";
 import { useConversationStore } from "@/store/conversationStore";
+import { useWorkflowStore } from "@/store/workflowStore";
 import type { Conversation } from "@/services/cli/types";
 import { displayAgentName } from "@/config/agentDisplay";
 import i18next from "i18next";
@@ -198,11 +199,18 @@ export function ConversationList({
     }
     return ids.join("\n");
   });
+  const workflowRun = useWorkflowStore((s) => s.activeRun);
+  const workflowRunningConversationId =
+    workflowRun &&
+    ["running", "paused", "blocked", "pending_approval"].includes(workflowRun.status)
+      ? workflowRun.conversationId
+      : undefined;
   const remove = useConversationStore((s) => s.deleteConversation);
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
 
   const runningSet = new Set(runningSignature ? runningSignature.split("\n") : []);
+  if (workflowRunningConversationId) runningSet.add(workflowRunningConversationId);
 
   // Stable callbacks so memoized rows don't all re-render on every parent render.
   const handleSelect = useCallback(

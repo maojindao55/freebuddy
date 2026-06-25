@@ -312,6 +312,7 @@
     "pause": "暂停",
     "resume": "继续",
     "resumeAfterFailure": "重试并继续",
+    "continueIteration": "继续迭代",
     "stop": "停止",
     "retry": "重试步骤",
     "progress": "进度",

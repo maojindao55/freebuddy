@@ -410,20 +410,35 @@ export function mergeConversationMessages(
   loaded: ConversationMessage[]
 ): ConversationMessage[] {
   const byId = new Map<string, ConversationMessage>();
-  for (const message of loaded) {
+  let changed = false;
+  for (const message of existing) {
     byId.set(message.id, message);
   }
-  for (const message of existing) {
-    const persisted = byId.get(message.id);
-    if (!persisted) {
+  for (const message of loaded) {
+    const previous = byId.get(message.id);
+    if (!previous) {
       byId.set(message.id, message);
+      changed = true;
+      continue;
+    }
+    const attachments = mergeMessageAttachments(message, previous);
+    if (
+      previous.status === message.status &&
+      previous.content === message.content &&
+      previous.updatedAt === message.updatedAt &&
+      previous.attachments === attachments
+    ) {
       continue;
     }
     byId.set(message.id, {
-      ...persisted,
-      attachments: mergeMessageAttachments(persisted, message)
+      ...previous,
+      ...message,
+      attachments
     });
+    changed = true;
   }
+  if (!changed && byId.size !== existing.length) changed = true;
+  if (!changed) return existing;
   return Array.from(byId.values()).sort((a, b) =>
     a.createdAt.localeCompare(b.createdAt)
   );

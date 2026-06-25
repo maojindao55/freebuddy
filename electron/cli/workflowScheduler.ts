@@ -414,7 +414,7 @@ export function resumableStepRowIds(
     .filter(
       (s) =>
         s.phaseId === phaseId &&
-        (s.status === "failed" || s.status === "blocked")
+        (s.status === "failed" || s.status === "blocked" || s.status === "running")
     )
     .map((s) => s.id);
 }

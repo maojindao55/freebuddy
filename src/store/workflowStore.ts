@@ -39,6 +39,7 @@ interface State {
   stop(runId: string): Promise<void>;
   retryStep(runId: string, stepRowId: string): Promise<void>;
   approveGate(runId: string, phaseId: string): Promise<void>;
+  continueImplementReview(runId: string): Promise<void>;
   validate(plan: WorkflowPlan): Promise<WorkflowValidationResult>;
 }
 
@@ -136,6 +137,10 @@ export const useWorkflowStore = create<State>((set, get) => ({
   },
   async approveGate(runId, phaseId) {
     await workflowClient.approveGate({ runId, phaseId });
+    await get().refresh(runId);
+  },
+  async continueImplementReview(runId) {
+    await workflowClient.continueImplementReview(runId);
     await get().refresh(runId);
   },
   async validate(plan) {

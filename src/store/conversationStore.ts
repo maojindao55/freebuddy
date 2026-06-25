@@ -50,7 +50,7 @@ export interface ConversationState {
 
   load(): Promise<void>;
   setActive(id: string | undefined): Promise<void>;
-  loadMessages(id: string): Promise<void>;
+  loadMessages(id: string, messageIds?: string[]): Promise<void>;
 
   newConversation(input: {
     member: CLIMember;
@@ -91,10 +91,11 @@ export const runCtxMap = new Map<string, RunCtx>();
 let workflowMessageUnsubscribe: (() => void) | null = null;
 let workflowMessageConversationId: string | null = null;
 let workflowRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+const workflowPendingMessageIds = new Set<string>();
 
 function ensureWorkflowMessageSubscription(
   conversationId: string | undefined,
-  refresh: (id: string) => Promise<void>
+  refresh: (id: string, messageIds?: string[]) => Promise<void>
 ) {
   const fb = (globalThis as any).freebuddy;
   const api = fb?.workflow;
@@ -112,18 +113,18 @@ function ensureWorkflowMessageSubscription(
     clearTimeout(workflowRefreshTimer);
     workflowRefreshTimer = null;
   }
+  workflowPendingMessageIds.clear();
   workflowMessageConversationId = conversationId ?? null;
   if (!conversationId) return;
-  workflowMessageUnsubscribe = api.onStepMessage(conversationId, () => {
-    // Workflow steps (especially parallel ones) can emit many message
-    // updates in quick succession. Each reload pulls every message and
-    // re-parses every assistant content blob, so coalesce the burst into
-    // a single trailing reload (~one per 150ms during continuous activity).
+  workflowMessageUnsubscribe = api.onStepMessage(conversationId, (event: { messageId?: string }) => {
+    if (event.messageId) workflowPendingMessageIds.add(event.messageId);
     if (workflowRefreshTimer) return;
     workflowRefreshTimer = setTimeout(() => {
       workflowRefreshTimer = null;
-      void refresh(conversationId);
-    }, 150);
+      const ids = [...workflowPendingMessageIds];
+      workflowPendingMessageIds.clear();
+      void refresh(conversationId, ids.length ? ids : undefined);
+    }, 300);
   });
 }
 
@@ -169,8 +170,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (active && !get().messages[active]) {
       await get().loadMessages(active);
     }
-    ensureWorkflowMessageSubscription(active, async (cid) => {
-      await get().loadMessages(cid);
+    ensureWorkflowMessageSubscription(active, async (cid, messageIds) => {
+      await get().loadMessages(cid, messageIds);
     });
   },
 
@@ -179,13 +180,29 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (id && !get().messages[id]) {
       await get().loadMessages(id);
     }
-    ensureWorkflowMessageSubscription(id, async (cid) => {
-      await get().loadMessages(cid);
+    ensureWorkflowMessageSubscription(id, async (cid, messageIds) => {
+      await get().loadMessages(cid, messageIds);
     });
   },
 
-  async loadMessages(id) {
+  async loadMessages(id, messageIds) {
     if (!cliClient.isAvailable()) return;
+    if (messageIds?.length) {
+      const loaded = (
+        await Promise.all(messageIds.map((messageId) => cliClient.listMessage(messageId)))
+      ).filter((message): message is ConversationMessage =>
+        Boolean(message && message.conversationId === id)
+      );
+      if (!loaded.length) return;
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [id]: mergeConversationMessages(s.messages[id] ?? [], loaded)
+        }
+      }));
+      return;
+    }
+
     const list = await cliClient.listMessages(id);
     set((s) => {
       const sessionInfo = latestSessionInfoFromMessages(list);
@@ -227,8 +244,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       messages: { ...s.messages, [conv.id]: [] },
       pendingFreshContext: { ...s.pendingFreshContext, [conv.id]: true }
     }));
-    ensureWorkflowMessageSubscription(conv.id, async (cid) => {
-      await get().loadMessages(cid);
+    ensureWorkflowMessageSubscription(conv.id, async (cid, messageIds) => {
+      await get().loadMessages(cid, messageIds);
     });
     return conv;
   },

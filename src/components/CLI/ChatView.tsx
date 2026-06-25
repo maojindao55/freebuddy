@@ -467,7 +467,7 @@ export function ChatView() {
         const newConv = await createConversation({
           member: teamMember,
           cwd,
-          title: (team.name + ": " + prompt).slice(0, 32),
+          title: (prompt || team.name).slice(0, 24),
           approvalMode: permissionMode
         });
         setNewTaskDraft("");
@@ -621,7 +621,7 @@ export function ChatView() {
       const newConv = await createConversation({
         member: selectedMember,
         cwd,
-        title: (pendingTeamPreview.name ?? "").slice(0, 24),
+        title: (pendingTeamPreview.goal || pendingTeamPreview.teamName || "").slice(0, 24),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
@@ -855,7 +855,7 @@ function NewTaskHome({
   cwd: string;
   permissionMode: "auto" | "ask";
   pendingAttachments: ChatAttachment[];
-  taskMode: "normal" | "workflow" | "team";
+  taskMode: "normal" | "team";
   teams: WorkflowTeam[];
   selectedTeamId: string;
   preflightMsg: string | null;
@@ -865,7 +865,7 @@ function NewTaskHome({
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
-  onTaskMode: (value: "normal" | "workflow" | "team") => void;
+  onTaskMode: (value: "normal" | "team") => void;
   onTeam: (id: string) => void;
   onSubmit: () => void;
 }) {

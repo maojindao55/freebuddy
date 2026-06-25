@@ -82,6 +82,19 @@ test("new-task page exposes mode tabs and team submit", () => {
   assert.match(src, /new-task-mode-tabs/);
 });
 
+test("ConversationList includes workflow runs in the running indicator set", () => {
+  const src = read("../src/components/CLI/ConversationList.tsx");
+  assert.match(src, /useWorkflowStore/);
+  assert.match(src, /workflowRunningConversationId/);
+  assert.match(src, /runningSet\.add\(workflowRunningConversationId\)/);
+});
+
+test("ChatView titles team workflow conversations from the prompt", () => {
+  const src = read("../src/components/CLI/ChatView.tsx");
+  assert.match(src, /title: \(prompt \|\| team\.name\)\.slice\(0, 24\)/);
+  assert.match(src, /title: \(pendingTeamPreview\.goal \|\| pendingTeamPreview\.teamName/);
+});
+
 test("workflow i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));

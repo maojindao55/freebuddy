@@ -186,6 +186,16 @@ test("augmentPromptWithConsumedSummaries appends upstream summaries", () => {
   assert.match(out, /Fix error handling/);
 });
 
+test("runtime exposes continueImplementReview for max-loop FAIL follow-up", () => {
+  const src = fs.readFileSync(
+    new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(src, /continueImplementReview/);
+  assert.match(src, /maxLoops: nextMaxLoops/);
+  assert.match(src, /resetWorkflowStepsForLoop\(runId, IMPLEMENT_REVIEW_LOOP_PHASES\)/);
+});
+
 test("expandTeamToPlan uses implement-review-loop template for loop team", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
@@ -238,16 +248,17 @@ test("findResumePhaseIndex skips finished phases", async () => {
   assert.equal(idx, 1);
 });
 
-test("resumableStepRowIds returns failed and blocked steps in phase", async () => {
+test("resumableStepRowIds returns failed, blocked, and stale running steps in phase", async () => {
   const { resumableStepRowIds } = await import(
     "../dist-electron/cli/workflowScheduler.js"
   );
   const ids = resumableStepRowIds("review", [
     { id: "row-1", phaseId: "implement", status: "done" },
     { id: "row-2", phaseId: "review", status: "failed" },
-    { id: "row-3", phaseId: "review", status: "blocked" }
+    { id: "row-3", phaseId: "review", status: "blocked" },
+    { id: "row-4", phaseId: "review", status: "running" }
   ]);
-  assert.deepEqual(ids, ["row-2", "row-3"]);
+  assert.deepEqual(ids, ["row-2", "row-3", "row-4"]);
 });
 
 test("runtime prepares blocked runs before resume", () => {
@@ -255,6 +266,6 @@ test("runtime prepares blocked runs before resume", () => {
     new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
     "utf8"
   );
-  assert.match(src, /prepareBlockedRunForResume/);
+  assert.match(src, /prepareInactiveRunForResume/);
   assert.match(src, /findResumePhaseIndex/);
 });

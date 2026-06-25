@@ -53,6 +53,9 @@ export const workflowClient = {
   approveGate(args: { runId: string; phaseId: string }): Promise<boolean> {
     return api().approveGate(args);
   },
+  continueImplementReview(runId: string): Promise<boolean> {
+    return api().continueImplementReview(runId);
+  },
   getRun(runId: string): Promise<WorkflowRunRow | undefined> {
     return api().getRun(runId);
   },

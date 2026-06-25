@@ -39,7 +39,9 @@ import {
   deriveStepSummary,
   ensureReviewStatusInSummary,
   extractReviewStatus,
+  findResumePhaseIndex,
   phaseGateSatisfied,
+  resumableStepRowIds,
   resolveReviewDecisionText,
   selectRunnableSteps,
   verifierHasUnresolved
@@ -196,10 +198,54 @@ export class WorkflowRuntime {
   }
 
   resume(runId: string): Promise<void> {
-    const run = this.active.get(runId);
-    if (run) run.paused = false;
+    const active = this.active.get(runId);
+    if (active) {
+      active.paused = false;
+      updateWorkflowRun(runId, { status: "running" });
+      return Promise.resolve();
+    }
+
+    const run = getWorkflowRun(runId);
+    if (!run) return Promise.resolve();
+    const plan = this.resolveWorkflowPlan(run);
+    if (run.status === "blocked") {
+      this.prepareBlockedRunForResume(runId, plan);
+    }
     updateWorkflowRun(runId, { status: "running" });
     return this.start(runId);
+  }
+
+  private prepareBlockedRunForResume(
+    runId: string,
+    plan: WorkflowPlan
+  ): void {
+    const steps = getWorkflowSteps(runId);
+    const states = steps.map((s) => ({
+      id: s.id,
+      phaseId: s.phaseId,
+      stepId: s.stepId,
+      status: s.status
+    }));
+    const phaseIndex = findResumePhaseIndex(
+      plan,
+      states.map((s) => ({
+        stepId: s.stepId,
+        phaseId: s.phaseId,
+        status: s.status
+      }))
+    );
+    const phase = plan.phases[phaseIndex];
+    if (!phase) return;
+    for (const stepRowId of resumableStepRowIds(phase.id, states)) {
+      updateWorkflowStep(stepRowId, {
+        status: "pending",
+        summary: null,
+        resultJson: null,
+        cliTaskId: null,
+        startedAt: null,
+        endedAt: null
+      });
+    }
   }
 
   stop(runId: string): void {
@@ -255,7 +301,15 @@ export class WorkflowRuntime {
     const plan = this.resolveWorkflowPlan(run);
     const state = this.active.get(runId)!;
 
-    let phaseIndex = 0;
+    const stepRows = getWorkflowSteps(runId);
+    let phaseIndex = findResumePhaseIndex(
+      plan,
+      stepRows.map((s) => ({
+        stepId: s.stepId,
+        phaseId: s.phaseId,
+        status: s.status
+      }))
+    );
     // Labeled outer loop so the Review Loop can replay review/implement/verify.
     outer: while (true) {
       while (phaseIndex < plan.phases.length) {

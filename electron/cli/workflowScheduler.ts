@@ -6,6 +6,7 @@ import type {
 
 export interface StepState {
   stepId: string;
+  phaseId?: string;
   status?: WorkflowStepStatus;
 }
 
@@ -385,6 +386,37 @@ export function decideImplementReviewLoop(
   }
   if (reviewerStatus !== "done") return "partial";
   return "finish";
+}
+
+/** First phase that still has steps not in done|skipped. */
+export function findResumePhaseIndex(
+  plan: WorkflowPlan,
+  states: StepState[]
+): number {
+  for (let i = 0; i < plan.phases.length; i++) {
+    const phase = plan.phases[i]!;
+    const phaseSteps = states.filter((s) => s.phaseId === phase.id);
+    if (phaseSteps.length === 0) continue;
+    const finished = phaseSteps.every(
+      (s) => s.status === "done" || s.status === "skipped"
+    );
+    if (!finished) return i;
+  }
+  return plan.phases.length;
+}
+
+/** Step row ids in a phase that should be reset before resuming after a block. */
+export function resumableStepRowIds(
+  phaseId: string,
+  states: Array<{ id: string; phaseId: string; status?: WorkflowStepStatus }>
+): string[] {
+  return states
+    .filter(
+      (s) =>
+        s.phaseId === phaseId &&
+        (s.status === "failed" || s.status === "blocked")
+    )
+    .map((s) => s.id);
 }
 
 export interface ConsumedStepRef {

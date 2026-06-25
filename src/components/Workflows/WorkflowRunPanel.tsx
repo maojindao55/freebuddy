@@ -102,7 +102,13 @@ export function WorkflowRunPanel() {
     return null;
   }
 
-  const gatingPhaseId = pendingManualGatePhaseId(
+  const failedSteps = steps.filter(
+    (s) => s.status === "failed" || s.status === "blocked"
+  );
+  const resumeLabel =
+    activeRun.status === "blocked" && failedSteps.length > 0
+      ? t("workflow.resumeAfterFailure")
+      : t("workflow.resume");
     plan.phases,
     steps.map((s) => ({ stepId: s.stepId, status: s.status }))
   );

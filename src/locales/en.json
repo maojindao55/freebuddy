@@ -302,6 +302,7 @@
     "approveGate": "Approve & continue",
     "pause": "Pause",
     "resume": "Resume",
+    "resumeAfterFailure": "Retry & continue",
     "stop": "Stop",
     "retry": "Retry step",
     "progress": "Progress",

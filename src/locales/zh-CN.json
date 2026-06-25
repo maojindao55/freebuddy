@@ -301,6 +301,7 @@
     "approveGate": "批准并继续",
     "pause": "暂停",
     "resume": "继续",
+    "resumeAfterFailure": "重试并继续",
     "stop": "停止",
     "retry": "重试步骤",
     "progress": "进度",

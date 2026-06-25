@@ -209,12 +209,52 @@ test("expandTeamToPlan uses implement-review-loop template for loop team", async
   assert.equal(result.preview.plan.phases.length, 3);
 });
 
-test("runtime handles implement-review-loop template", () => {
+test("findResumePhaseIndex skips finished phases", async () => {
+  const { findResumePhaseIndex } = await import(
+    "../dist-electron/cli/workflowScheduler.js"
+  );
+  const plan = {
+    name: "p",
+    goal: "g",
+    phases: [
+      {
+        id: "implement",
+        title: "Implement",
+        parallelism: 1,
+        steps: [{ id: "implement-changes", title: "i", agentId: "a", mode: "write", prompt: "p" }]
+      },
+      {
+        id: "review",
+        title: "Review",
+        parallelism: 1,
+        steps: [{ id: "review-changes", title: "r", agentId: "a", mode: "review", prompt: "p" }]
+      }
+    ]
+  };
+  const idx = findResumePhaseIndex(plan, [
+    { stepId: "implement-changes", phaseId: "implement", status: "done" },
+    { stepId: "review-changes", phaseId: "review", status: "failed" }
+  ]);
+  assert.equal(idx, 1);
+});
+
+test("resumableStepRowIds returns failed and blocked steps in phase", async () => {
+  const { resumableStepRowIds } = await import(
+    "../dist-electron/cli/workflowScheduler.js"
+  );
+  const ids = resumableStepRowIds("review", [
+    { id: "row-1", phaseId: "implement", status: "done" },
+    { id: "row-2", phaseId: "review", status: "failed" },
+    { id: "row-3", phaseId: "review", status: "blocked" }
+  ]);
+  assert.deepEqual(ids, ["row-2", "row-3"]);
+});
+
+test("runtime prepares blocked runs before resume", () => {
   const src = fs.readFileSync(
     new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
     "utf8"
   );
-  assert.match(src, /isImplementReviewLoopPlan/);
-  assert.match(src, /decideImplementReviewLoop/);
-  assert.match(src, /IMPLEMENT_REVIEW_LOOP_PHASES/);
+  assert.match(src, /prepareBlockedRunForResume/);
+  assert.match(src, /findResumePhaseIndex/);
 });

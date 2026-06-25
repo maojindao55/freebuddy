@@ -32,6 +32,59 @@ export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 const running = new Map<string, Running>();
 const capturedSessions = new Map<string, string>();
 
+type StreamItemEntry = Extract<CliEvent, { type: "items" }>["items"][number];
+
+/**
+ * Coalesce consecutive high-frequency `items` events (ACP agent_message
+ * chunks, tool calls, ...) into a single event flushed on a short timer or
+ * before any non-items event. ACP agents can emit hundreds of small updates
+ * per second; without batching every chunk triggers a renderer state update,
+ * a JSON.stringify of the whole turn, a React render, and (in workflow mode)
+ * a synchronous DB write + full-message reload. Batching caps that to ~60
+ * flushes/sec while preserving ordering relative to permission/done/error.
+ */
+function createItemsBatchingEmit(
+  send: (e: CliEvent) => void
+): (e: CliEvent) => void {
+  const FLUSH_MS = 16;
+  const MAX_BUFFER = 200;
+  let buffer: StreamItemEntry[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = () => {
+    timer = null;
+    if (buffer.length === 0) return;
+    const items = buffer;
+    buffer = [];
+    send({ type: "items", items });
+  };
+
+  return (e: CliEvent) => {
+    if (e.type === "items" && e.items.length) {
+      for (const it of e.items) buffer.push(it);
+      if (buffer.length >= MAX_BUFFER) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        flush();
+      } else if (timer === null) {
+        timer = setTimeout(flush, FLUSH_MS);
+      }
+      return;
+    }
+    // Preserve ordering: flush pending items before a non-items event
+    // (permission / done / error / started) so the renderer observes them
+    // first, and so finalizeRun sees the complete item set on `done`.
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (buffer.length > 0) flush();
+    send(e);
+  };
+}
+
 function mergeJsonEnvValue(current: string | undefined, patch: string) {
   if (!current) return patch;
   try {
@@ -65,10 +118,10 @@ export async function cliRun(
   onEvent?: (e: CliEvent) => void
 ): Promise<void> {
   const channel = channelName(args.sessionId);
-  const emit = (e: CliEvent) => {
+  const emit = createItemsBatchingEmit((e) => {
     if (onEvent) onEvent(e);
     if (!webContents.isDestroyed()) webContents.send(channel, e);
-  };
+  });
 
   const logFile = path.join(getLogDir(), `${args.sessionId}.jsonl`);
   let logStream: fs.WriteStream | null = null;

@@ -1,3 +1,4 @@
+import { Fragment, memo, useCallback, useMemo, useState } from "react";
 import { useConversationStore } from "@/store/conversationStore";
 import type { Conversation } from "@/services/cli/types";
 import { displayAgentName } from "@/config/agentDisplay";
@@ -8,48 +9,175 @@ function conversationTimeValue(conversation: Conversation) {
   return conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt;
 }
 
+type TimeFormatVariant = "time" | "md" | "ymd" | "full";
+
+// Intl.DateTimeFormat construction is expensive; cache one formatter per
+// (language, variant). Previously the list rebuilt up to 4*N formatter
+// objects on every render of the sidebar.
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+function dateTimeFormatter(lang: string, variant: TimeFormatVariant): Intl.DateTimeFormat {
+  const key = `${lang}|${variant}`;
+  const cached = formatterCache.get(key);
+  if (cached) return cached;
+  const options: Intl.DateTimeFormatOptions =
+    variant === "time"
+      ? { hour: "2-digit", minute: "2-digit" }
+      : variant === "md"
+        ? { month: "2-digit", day: "2-digit" }
+        : variant === "ymd"
+          ? { year: "numeric", month: "2-digit", day: "2-digit" }
+          : {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit"
+            };
+  const formatter = new Intl.DateTimeFormat(lang, options);
+  formatterCache.set(key, formatter);
+  return formatter;
+}
+
 function formatConversationTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-
+  const lang = i18next.language || "en";
   const now = new Date();
   const sameDay =
     date.getFullYear() === now.getFullYear() &&
     date.getMonth() === now.getMonth() &&
     date.getDate() === now.getDate();
-
-  if (sameDay) {
-    return new Intl.DateTimeFormat(i18next.language, {
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(date);
-  }
-
-  if (date.getFullYear() === now.getFullYear()) {
-    return new Intl.DateTimeFormat(i18next.language, {
-      month: "2-digit",
-      day: "2-digit"
-    }).format(date);
-  }
-
-  return new Intl.DateTimeFormat(i18next.language, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
+  if (sameDay) return dateTimeFormatter(lang, "time").format(date);
+  if (date.getFullYear() === now.getFullYear())
+    return dateTimeFormatter(lang, "md").format(date);
+  return dateTimeFormatter(lang, "ymd").format(date);
 }
 
 function formatConversationTimeTitle(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(i18next.language, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
+  return dateTimeFormatter(i18next.language || "en", "full").format(date);
 }
+
+function shortCwd(cwd: string) {
+  return cwd.split(/[/\\]/).slice(-2).join("/");
+}
+
+interface ConvSection {
+  key: string;
+  label: string;
+  items: Conversation[];
+}
+
+const SECTION_ORDER = ["today", "yesterday", "last7", "last30", "earlier"] as const;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Bucket conversations into ordered recency sections. Items arrive pre-sorted
+ * by recency (DESC) from the DB, so each bucket preserves that order.
+ */
+function groupConversationsByDate(
+  items: Conversation[],
+  labels: Record<string, string>
+): ConvSection[] {
+  const now = new Date();
+  const startToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  ).getTime();
+  const buckets: Record<string, Conversation[]> = {
+    today: [],
+    yesterday: [],
+    last7: [],
+    last30: [],
+    earlier: []
+  };
+  for (const c of items) {
+    const ts = Date.parse(conversationTimeValue(c));
+    let key: string;
+    if (!Number.isFinite(ts)) key = "earlier";
+    else if (ts >= startToday) key = "today";
+    else if (ts >= startToday - DAY_MS) key = "yesterday";
+    else if (ts >= startToday - 7 * DAY_MS) key = "last7";
+    else if (ts >= startToday - 30 * DAY_MS) key = "last30";
+    else key = "earlier";
+    buckets[key].push(c);
+  }
+  const sections: ConvSection[] = [];
+  for (const key of SECTION_ORDER) {
+    if (buckets[key].length > 0) {
+      sections.push({ key, label: labels[key], items: buckets[key] });
+    }
+  }
+  return sections;
+}
+
+const ConversationRow = memo(function ConversationRow({
+  conversation,
+  isActive,
+  isRunning,
+  onSelect,
+  onDelete
+}: {
+  conversation: Conversation;
+  isActive: boolean;
+  isRunning: boolean;
+  onSelect: (id: string) => void;
+  onDelete: (id: string, title: string) => void;
+}) {
+  const { t } = useTranslation();
+  const timeValue = conversationTimeValue(conversation);
+  const timeLabel = formatConversationTime(timeValue);
+  const agentName = displayAgentName(conversation.agentName, conversation.adapter);
+
+  return (
+    <li
+      className={`conv-item${isActive ? " active" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-current={isActive ? "true" : undefined}
+      onClick={() => onSelect(conversation.id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(conversation.id);
+        }
+      }}
+    >
+      {isRunning && <span className="conv-running-dot" />}
+      <div className="conv-item-main">
+        <div className="conv-item-title-row">
+          <strong>{conversation.title}</strong>
+        </div>
+        <small>
+          {agentName}
+          {conversation.cwd ? ` · ${shortCwd(conversation.cwd)}` : ""}
+          {timeLabel && (
+            <>
+              {" · "}
+              <time dateTime={timeValue} title={formatConversationTimeTitle(timeValue)}>
+                {timeLabel}
+              </time>
+            </>
+          )}
+        </small>
+      </div>
+      <div className="conv-item-side">
+        <button
+          className="icon-btn danger"
+          title={t("common.delete")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete(conversation.id, conversation.title);
+          }}
+        >
+          ✕
+        </button>
+      </div>
+    </li>
+  );
+});
 
 export function ConversationList({
   onNew
@@ -59,9 +187,60 @@ export function ConversationList({
   const conversations = useConversationStore((s) => s.conversations);
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
-  const live = useConversationStore((s) => s.live);
+  // Subscribe to a stable signature of the running set instead of the whole
+  // live map: this list re-renders only when a conversation starts or stops,
+  // not on every streaming chunk emitted by an already-running agent.
+  const runningSignature = useConversationStore((s) => {
+    const ids: string[] = [];
+    for (const c of s.conversations) {
+      const st = s.live[c.id]?.status;
+      if (st === "running" || st === "starting") ids.push(c.id);
+    }
+    return ids.join("\n");
+  });
   const remove = useConversationStore((s) => s.deleteConversation);
   const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+
+  const runningSet = new Set(runningSignature ? runningSignature.split("\n") : []);
+
+  // Stable callbacks so memoized rows don't all re-render on every parent render.
+  const handleSelect = useCallback(
+    (id: string) => {
+      void setActive(id);
+    },
+    [setActive]
+  );
+  const handleDelete = useCallback(
+    (id: string, title: string) => {
+      if (window.confirm(i18next.t("conversations.deleteConfirm", { title }))) {
+        void remove(id);
+      }
+    },
+    [remove]
+  );
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!normalizedQuery) return conversations;
+    return conversations.filter((c) => {
+      if (c.title.toLowerCase().includes(normalizedQuery)) return true;
+      return displayAgentName(c.agentName, c.adapter)
+        .toLowerCase()
+        .includes(normalizedQuery);
+    });
+  }, [conversations, normalizedQuery]);
+
+  const sections = useMemo(() => {
+    const labels: Record<string, string> = {
+      today: t("conversations.group.today"),
+      yesterday: t("conversations.group.yesterday"),
+      last7: t("conversations.group.last7Days"),
+      last30: t("conversations.group.last30Days"),
+      earlier: t("conversations.group.earlier")
+    };
+    return groupConversationsByDate(filtered, labels);
+  }, [filtered, t]);
 
   return (
     <div className="conv-list">
@@ -71,56 +250,58 @@ export function ConversationList({
           {t("conversations.new")}
         </button>
       </div>
-      <ul>
-        {conversations.length === 0 && (
-          <li className="conv-empty muted">{t("conversations.empty")}</li>
+      <div className="conv-search">
+        <input
+          type="text"
+          value={query}
+          enterKeyHint="search"
+          placeholder={t("conversations.searchPlaceholder")}
+          aria-label={t("conversations.searchPlaceholder")}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setQuery("");
+            }
+          }}
+        />
+        {query && (
+          <button
+            type="button"
+            className="conv-search-clear"
+            aria-label={t("conversations.clearSearchAria")}
+            onClick={() => setQuery("")}
+          >
+            ×
+          </button>
         )}
-        {conversations.map((c) => {
-          const running =
-            live[c.id]?.status === "running" || live[c.id]?.status === "starting";
-          const timeValue = conversationTimeValue(c);
-          const timeLabel = formatConversationTime(timeValue);
-          const agentName = displayAgentName(c.agentName, c.adapter);
-          return (
-            <li
-              key={c.id}
-              className={`conv-item${activeId === c.id ? " active" : ""}`}
-              onClick={() => void setActive(c.id)}
-            >
-              {running && <span className="conv-running-dot" />}
-              <div className="conv-item-main">
-                <div className="conv-item-title-row">
-                  <strong>{c.title}</strong>
-                </div>
-                <small>
-                  {agentName}
-                  {c.cwd ? ` · ${c.cwd.split(/[/\\]/).slice(-2).join("/")}` : ""}
-                  {timeLabel && (
-                    <>
-                      {" · "}
-                      <time dateTime={timeValue} title={formatConversationTimeTitle(timeValue)}>
-                        {timeLabel}
-                      </time>
-                    </>
-                  )}
-                </small>
-              </div>
-              <div className="conv-item-side">
-                <button
-                  className="icon-btn danger"
-                  title={t("common.delete")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.confirm(t("conversations.deleteConfirm", { title: c.title })))
-                      void remove(c.id);
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </li>
-          );
-        })}
+      </div>
+      <ul>
+        {sections.length === 0 ? (
+          <li className="conv-empty muted">
+            {normalizedQuery
+              ? t("conversations.noResults")
+              : t("conversations.empty")}
+          </li>
+        ) : (
+          sections.map((section) => (
+            <Fragment key={section.key}>
+              <li className="conv-group-header">
+                <span>{section.label}</span>
+              </li>
+              {section.items.map((c) => (
+                <ConversationRow
+                  key={c.id}
+                  conversation={c}
+                  isActive={activeId === c.id}
+                  isRunning={runningSet.has(c.id)}
+                  onSelect={handleSelect}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </Fragment>
+          ))
+        )}
       </ul>
     </div>
   );

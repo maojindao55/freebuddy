@@ -9,15 +9,15 @@ import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
 type SettingsTab = "general" | "cli" | "workflowTeams" | "about";
 
 const TABS: { key: SettingsTab; labelKey: string }[] = [
-  { key: "general", labelKey: "settings.tabs.general" },
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
+  { key: "general", labelKey: "settings.tabs.general" },
   { key: "about", labelKey: "settings.tabs.about" }
 ];
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("cli");
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

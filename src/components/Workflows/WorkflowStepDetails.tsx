@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import type { WorkflowStepRow } from "@/services/workflows/types";
+import { workflowStepTitle } from "@/services/workflows/types";
 
 export function WorkflowStepDetails({
   step,
@@ -16,6 +17,7 @@ export function WorkflowStepDetails({
   return (
     <div className="workflow-step-details">
       <header>
+        <strong>{workflowStepTitle(step, t)}</strong>
         <span className={`workflow-status-pill ${step.status}`}>
           {t(`workflow.stepStatus.${step.status}`)}
         </span>

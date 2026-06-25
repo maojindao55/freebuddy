@@ -149,10 +149,11 @@
     "createToBegin": "创建会话以开始",
     "sessionConfig": "会话配置"
   },
-"message": {
+  "message": {
     "you": "你",
     "thinking": "思考中",
-    "system": "系统"
+    "system": "系统",
+    "copy": "复制"
   },
   "stream": {
     "read": "读取 {{target}}",
@@ -342,6 +343,33 @@
       "failed": "已失败",
       "skipped": "已跳过",
       "blocked": "已阻塞"
+    },
+    "phaseTitles": {
+      "baseline": "基线",
+      "review": "审查",
+      "implement": "实现",
+      "verify": "验证",
+      "loop_or_finish": "循环或结束",
+      "plan-task": "规划任务",
+      "summarize": "总结",
+      "research": "调研",
+      "analysis": "分析",
+      "report": "报告"
+    },
+    "stepTitles": {
+      "baseline-summarize": "总结任务和当前状态",
+      "review-findings": "生成审查结论",
+      "implement-fixes": "处理已批准的问题",
+      "verify-changes": "验证改动并报告未解决问题",
+      "implement-changes": "实现改动",
+      "review-changes": "审查改动",
+      "plan-task-step": "规划任务",
+      "implement-step": "实现",
+      "verify-step": "验证",
+      "summarize-step": "总结",
+      "research-step": "调研",
+      "analysis-step": "分析",
+      "report-step": "报告"
     },
     "invalidPlan": "生成的计划无效",
     "summary": "工作流总结",

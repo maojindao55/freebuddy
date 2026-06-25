@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { WorkflowStepRow } from "@/services/workflows/types";
+import type { WorkflowPlan, WorkflowStepRow } from "@/services/workflows/types";
 import { pendingManualGatePhaseId } from "@/services/workflows/planning";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { WorkflowPhaseList } from "./WorkflowPhaseList";
@@ -55,6 +55,16 @@ function StopIcon() {
   );
 }
 
+function workflowRunName(name: string, template: string | undefined, t: ReturnType<typeof useTranslation>["t"]) {
+  if (template === "implement-review-loop") return t("workflow.implementReviewLoop");
+  if (template === "review-loop") return t("workflow.reviewLoop");
+  if (name === "Research Report") return t("workflow.builtinTeams.team-research-report.name");
+  if (name === "Quick Implementation") return t("workflow.builtinTeams.team-quick-implement.name");
+  if (name === "Implement-Review Loop") return t("workflow.implementReviewLoop");
+  if (name === "Review Loop") return t("workflow.reviewLoop");
+  return name;
+}
+
 export function WorkflowRunPanel() {
   const { t } = useTranslation();
   const activeRun = useWorkflowStore((s) => s.activeRun);
@@ -68,10 +78,10 @@ export function WorkflowRunPanel() {
   const continueImplementReview = useWorkflowStore((s) => s.continueImplementReview);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
-  let plan: ReturnType<typeof JSON.parse> = null;
+  let plan: WorkflowPlan | null = null;
   if (activeRun) {
     try {
-      plan = JSON.parse(activeRun.planJson);
+      plan = JSON.parse(activeRun.planJson) as WorkflowPlan;
     } catch {
       plan = null;
     }
@@ -128,7 +138,7 @@ export function WorkflowRunPanel() {
     <section className="side-card workflow-run-panel">
       <div className="workflow-run-header">
         <div className="workflow-run-title">
-          <strong>{activeRun.name}</strong>
+          <strong>{workflowRunName(activeRun.name, plan.template ?? activeRun.template, t)}</strong>
           <span className={`workflow-run-status ${activeRun.status}`}>
             {t(`workflow.status.${activeRun.status}`)}
           </span>

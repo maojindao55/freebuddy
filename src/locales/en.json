@@ -152,7 +152,8 @@
   "message": {
     "you": "You",
     "thinking": "Thinking",
-    "system": "System"
+    "system": "System",
+    "copy": "Copy"
   },
   "stream": {
     "read": "Read {{target}}",
@@ -343,6 +344,33 @@
       "failed": "Failed",
       "skipped": "Skipped",
       "blocked": "Blocked"
+    },
+    "phaseTitles": {
+      "baseline": "Baseline",
+      "review": "Review",
+      "implement": "Implement",
+      "verify": "Verify",
+      "loop_or_finish": "Loop or finish",
+      "plan-task": "Plan task",
+      "summarize": "Summarize",
+      "research": "Research",
+      "analysis": "Analyze",
+      "report": "Report"
+    },
+    "stepTitles": {
+      "baseline-summarize": "Summarize task and current state",
+      "review-findings": "Produce review findings",
+      "implement-fixes": "Address approved findings",
+      "verify-changes": "Verify changes and report unresolved issues",
+      "implement-changes": "Implement changes",
+      "review-changes": "Review changes",
+      "plan-task-step": "Plan task",
+      "implement-step": "Implement",
+      "verify-step": "Verify",
+      "summarize-step": "Summarize",
+      "research-step": "Research",
+      "analysis-step": "Analyze",
+      "report-step": "Report"
     },
     "invalidPlan": "The generated plan is invalid",
     "summary": "Workflow summary",

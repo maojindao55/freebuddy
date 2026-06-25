@@ -40,12 +40,15 @@ test("WorkflowPhaseList renders inline step details for the selected step", () =
   const src = read("../src/components/Workflows/WorkflowPhaseList.tsx");
   assert.match(src, /WorkflowStepDetails/);
   assert.match(src, /selectedStepId/);
+  assert.match(src, /workflowPhaseTitle\(phase, t\)/);
+  assert.match(src, /workflowStepTitle\(step, t\)/);
 });
 
 test("WorkflowStepDetails renders failed-state retry", () => {
   const src = read("../src/components/Workflows/WorkflowStepDetails.tsx");
   assert.match(src, /step\.status === "failed"/);
   assert.match(src, /workflow-retry-button/);
+  assert.match(src, /workflowStepTitle\(step, t\)/);
 });
 
 test("ReviewLoopSummary renders final status text", () => {
@@ -104,7 +107,7 @@ test("ChatView titles team workflow conversations from the prompt", () => {
 test("workflow i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
-  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk", "runningIndicator"]) {
+  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk", "runningIndicator", "phaseTitles", "stepTitles"]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }
@@ -118,6 +121,28 @@ test("workflow i18n keys exist in both locales", () => {
   assert.ok(zh.workflow.status?.running);
   assert.ok(en.workflow.stepStatus?.failed);
   assert.ok(zh.workflow.stepStatus?.failed);
+});
+
+test("WorkflowRunPanel translates workflow run names", () => {
+  const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  assert.match(src, /workflowRunName/);
+  assert.match(src, /workflow\.builtinTeams\.team-research-report\.name/);
+  assert.match(src, /workflow\.implementReviewLoop/);
+});
+
+test("Settings modal opens with CLI agents before General", () => {
+  const src = read("../src/components/Settings/SettingsModal.tsx");
+  assert.match(src, /useState<SettingsTab>\("cli"\)/);
+  assert.match(src, /const TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
+});
+
+test("MessageBubble supports right-click copy", () => {
+  const src = read("../src/components/CLI/MessageBubble.tsx");
+  const css = read("../styles.css");
+  assert.match(src, /onContextMenu=\{handleContextMenu\}/);
+  assert.match(src, /navigator\.clipboard\?\.writeText\(copyText\)/);
+  assert.match(src, /message\.copy/);
+  assert.match(css, /\.message-context-menu/);
 });
 
 test("conversationStore routes workflow follow-ups to the workflow summary agent", () => {

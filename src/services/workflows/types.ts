@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 export type WorkflowStepMode =
   | "research"
   | "review"
@@ -100,6 +102,14 @@ export interface WorkflowStepRow {
 export interface WorkflowValidationResult {
   ok: boolean;
   errors: string[];
+}
+
+export function workflowPhaseTitle(phase: Pick<WorkflowPhase, "id" | "title">, t: TFunction): string {
+  return t(`workflow.phaseTitles.${phase.id}`, { defaultValue: phase.title });
+}
+
+export function workflowStepTitle(step: Pick<WorkflowStepRow, "stepId" | "title">, t: TFunction): string {
+  return t(`workflow.stepTitles.${step.stepId}`, { defaultValue: step.title });
 }
 
 export function workflowFollowupAgentId(run: Pick<WorkflowRunRow, "planJson">): string | undefined {

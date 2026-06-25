@@ -109,6 +109,8 @@ export function WorkflowRunPanel() {
     activeRun.status === "blocked" && failedSteps.length > 0
       ? t("workflow.resumeAfterFailure")
       : t("workflow.resume");
+
+  const gatingPhaseId = pendingManualGatePhaseId(
     plan.phases,
     steps.map((s) => ({ stepId: s.stepId, status: s.status }))
   );
@@ -145,7 +147,7 @@ export function WorkflowRunPanel() {
           {(activeRun.status === "paused" ||
             activeRun.status === "blocked") && (
             <button type="button" onClick={() => void resume(activeRun.id)}>
-              <ResumeIcon /> {t("workflow.resume")}
+              <ResumeIcon /> {resumeLabel}
             </button>
           )}
           {gatingPhaseId && (

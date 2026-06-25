@@ -104,6 +104,80 @@ export function buildReviewLoopPlan(input: ReviewLoopInput): WorkflowPlan {
   };
 }
 
+export interface ImplementReviewLoopInput {
+  goal: string;
+  cwd?: string;
+  implementer: WorkflowAgentRef;
+  reviewer: WorkflowAgentRef;
+  targetPaths?: string[];
+  maxLoops?: number;
+}
+
+export const IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID = "tpl-implement-review-loop";
+
+export function buildImplementReviewLoopPlan(
+  input: ImplementReviewLoopInput
+): WorkflowPlan {
+  const maxLoops = input.maxLoops ?? 5;
+  const target = (input.targetPaths ?? []).join(", ");
+  const goalLine = `Goal: ${input.goal}.` + (target ? ` Target: ${target}.` : "");
+
+  return {
+    name: "Implement-Review Loop",
+    goal: input.goal,
+    cwd: input.cwd,
+    template: "implement-review-loop",
+    maxLoops,
+    phases: [
+      {
+        id: "implement",
+        title: "Implement",
+        parallelism: 1,
+        steps: [
+          {
+            id: "implement-changes",
+            title: "Implement changes",
+            agentId: input.implementer.id,
+            mode: "write",
+            prompt:
+              `Implement the requested change. ${goalLine} ` +
+              "Make focused, minimal edits. Run quick sanity checks if appropriate.",
+            targetPaths: input.targetPaths
+          }
+        ],
+        gate: { type: "all_done" }
+      },
+      {
+        id: "review",
+        title: "Review",
+        parallelism: 1,
+        steps: [
+          {
+            id: "review-changes",
+            title: "Review changes",
+            agentId: input.reviewer.id,
+            mode: "review",
+            prompt:
+              `Review the implementation for: ${input.goal}. ` +
+              "List concrete issues if any. " +
+              "End your response with exactly one line: REVIEW_STATUS: PASS or REVIEW_STATUS: FAIL. " +
+              "If FAIL, include a FINDINGS section with actionable bullets.",
+            consumes: ["implement-changes"]
+          }
+        ],
+        gate: { type: "all_done" }
+      },
+      {
+        id: "loop_or_finish",
+        title: "Loop or Finish",
+        parallelism: 1,
+        steps: [],
+        gate: { type: "all_done" }
+      }
+    ]
+  };
+}
+
 export function reviewLoopCoordinatorPrompt(input: {
   goal: string;
   cwd?: string;

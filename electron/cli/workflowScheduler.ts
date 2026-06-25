@@ -157,3 +157,48 @@ export function verifierHasUnresolved(summary: string | undefined): boolean {
   if (match) return Number(match[1]) > 0;
   return false;
 }
+
+/** Heuristic: detect REVIEW_STATUS: FAIL in a reviewer summary. */
+export function reviewerHasFail(summary: string | undefined): boolean {
+  if (!summary) return false;
+  return /REVIEW_STATUS:\s*FAIL/i.test(summary);
+}
+
+/**
+ * Decide the Implement-Review Loop outcome after the reviewer step completes.
+ */
+export function decideImplementReviewLoop(
+  reviewerStatus: WorkflowStepStatus | undefined,
+  reviewerSummary: string | undefined,
+  loopIndex: number,
+  maxLoops: number
+): "loop" | "finish" | "partial" {
+  if (reviewerStatus !== "done") return "partial";
+  if (!reviewerHasFail(reviewerSummary)) return "finish";
+  if (loopIndex + 1 < maxLoops) return "loop";
+  return "partial";
+}
+
+export interface ConsumedStepRef {
+  stepId: string;
+  title: string;
+  summary?: string;
+}
+
+/** Append upstream step summaries referenced by consumes ids. */
+export function augmentPromptWithConsumedSummaries(
+  basePrompt: string,
+  consumes: string[] | undefined,
+  stepsById: Map<string, ConsumedStepRef>
+): string {
+  if (!consumes?.length) return basePrompt;
+  const blocks: string[] = [];
+  for (const id of consumes) {
+    const ref = stepsById.get(id);
+    if (ref?.summary?.trim()) {
+      blocks.push(`--- ${ref.title} ---\n${ref.summary.trim()}`);
+    }
+  }
+  if (blocks.length === 0) return basePrompt;
+  return `${basePrompt}\n\nContext from prior steps:\n${blocks.join("\n\n")}`;
+}

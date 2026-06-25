@@ -216,6 +216,7 @@ export function createWorkflowStep(input: CreateWorkflowStepInput): void {
 
 export interface UpdateWorkflowStepPatch {
   status?: WorkflowStepStatus;
+  prompt?: string;
   summary?: string | null;
   resultJson?: string | null;
   cliTaskId?: string | null;
@@ -232,6 +233,10 @@ export function updateWorkflowStep(
   if (patch.status !== undefined) {
     fields.push("status = ?");
     params.push(patch.status);
+  }
+  if (patch.prompt !== undefined) {
+    fields.push("prompt = ?");
+    params.push(patch.prompt);
   }
   if (patch.summary !== undefined) {
     fields.push("summary = ?");

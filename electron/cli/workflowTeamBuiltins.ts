@@ -151,5 +151,68 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
     updatedAt: now
   };
 
-  return [quickTeam, reviewTeam, readonlyTeam];
+  const implementReviewTeam: WorkflowTeam = {
+    id: "team-implement-review-loop",
+    name: "Implement-Review Loop",
+    description:
+      "Agent A implements, Agent B reviews. On FAIL, A fixes and B reviews again until PASS or max loops.",
+    icon: "team-implement-review",
+    enabled: true,
+    source: "builtin",
+    roles: [
+      {
+        id: "role-implementer",
+        label: "Implementer",
+        kind: "implementer",
+        agentId: claude,
+        required: true,
+        canWrite: true
+      },
+      {
+        id: "role-reviewer",
+        label: "Reviewer",
+        kind: "reviewer",
+        agentId: codex,
+        required: true,
+        canWrite: false
+      }
+    ],
+    template: {
+      id: "tpl-implement-review-loop",
+      name: "Implement-Review Loop",
+      version: 1,
+      nodes: [
+        {
+          id: "implement",
+          title: "Implement",
+          roleId: "role-implementer",
+          mode: "write",
+          promptTemplate: "Implement: {{goal}}"
+        },
+        {
+          id: "review",
+          title: "Review",
+          roleId: "role-reviewer",
+          mode: "review",
+          promptTemplate: "Review: {{goal}}"
+        }
+      ],
+      edges: [{ id: "e1", from: "implement", to: "review" }],
+      startNodeIds: ["implement"],
+      finalNodeIds: ["review"]
+    },
+    policy: {
+      allowWrites: true,
+      requireApprovalBeforeWrite: false,
+      requireApprovalAfterReview: false,
+      maxParallelReadSteps: 1,
+      maxParallelWriteSteps: 1,
+      maxLoops: 5,
+      stopOnVerifyFailure: false
+    },
+    createdAt: now,
+    updatedAt: now
+  };
+
+  return [quickTeam, reviewTeam, implementReviewTeam, readonlyTeam];
 }

@@ -1,4 +1,8 @@
 import { builtinCliMembers } from "./members.js";
+import {
+  buildImplementReviewLoopPlan,
+  IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID
+} from "./workflowTemplates.js";
 import type {
   WorkflowAgentRef,
   WorkflowGate,
@@ -53,6 +57,10 @@ export function expandTeamToPlan(
   input: TeamRunInput,
   agents: WorkflowAgentRef[]
 ): TeamPreviewResult {
+  if (team.template.id === IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID) {
+    return expandImplementReviewTeamToPlan(team, input, agents);
+  }
+
   const errors: string[] = [];
 
   if (!team.enabled) {
@@ -181,6 +189,88 @@ export function expandTeamToPlan(
     routeSummary,
     writeNodeCount,
     approvalNodeCount,
+    maxLoops: team.policy.maxLoops,
+    plan
+  };
+
+  return { ok: true, preview };
+}
+
+function expandImplementReviewTeamToPlan(
+  team: WorkflowTeam,
+  input: TeamRunInput,
+  agents: WorkflowAgentRef[]
+): TeamPreviewResult {
+  const errors: string[] = [];
+  if (!team.enabled) errors.push("team is disabled");
+
+  const implementerRole = team.roles.find((r) => r.kind === "implementer");
+  const reviewerRole = team.roles.find((r) => r.kind === "reviewer");
+  if (!implementerRole) errors.push("implementer role is required");
+  if (!reviewerRole) errors.push("reviewer role is required");
+
+  const implementer = implementerRole
+    ? agents.find((a) => a.id === implementerRole.agentId)
+    : undefined;
+  const reviewer = reviewerRole
+    ? agents.find((a) => a.id === reviewerRole.agentId)
+    : undefined;
+  if (implementerRole && !implementer) {
+    errors.push(`implementer references unknown agent "${implementerRole.agentId}"`);
+  }
+  if (reviewerRole && !reviewer) {
+    errors.push(`reviewer references unknown agent "${reviewerRole.agentId}"`);
+  }
+  if (errors.length > 0 || !implementer || !reviewer) {
+    return { ok: false, errors };
+  }
+
+  const plan = buildImplementReviewLoopPlan({
+    goal: input.goal,
+    cwd: input.cwd,
+    targetPaths: input.targetPaths,
+    implementer,
+    reviewer,
+    maxLoops: team.policy.maxLoops
+  });
+
+  const roleSummary: WorkflowTeamPreview["roleSummary"] = team.roles.map((role) => {
+    const m = builtinCliMembers.find((x) => x.id === role.agentId);
+    return {
+      roleId: role.id,
+      roleLabel: role.label,
+      kind: role.kind,
+      agentId: role.agentId,
+      agentName: m?.name ?? role.agentId
+    };
+  });
+
+  const routeSummary: WorkflowTeamPreview["routeSummary"] = [
+    {
+      nodeId: "implement",
+      title: "Implement",
+      mode: "write",
+      roleLabel: implementerRole!.label,
+      agentName: implementer.name
+    },
+    {
+      nodeId: "review",
+      title: "Review",
+      mode: "review",
+      roleLabel: reviewerRole!.label,
+      agentName: reviewer.name
+    }
+  ];
+
+  const preview: WorkflowTeamPreview = {
+    teamId: team.id,
+    teamName: team.name,
+    goal: input.goal,
+    cwd: input.cwd,
+    roleSummary,
+    routeSummary,
+    writeNodeCount: 1,
+    approvalNodeCount: 0,
     maxLoops: team.policy.maxLoops,
     plan
   };

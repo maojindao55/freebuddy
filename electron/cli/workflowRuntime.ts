@@ -13,6 +13,7 @@ import type {
   WorkflowPlan,
   WorkflowRunRow,
   WorkflowRunStatus,
+  WorkflowStep,
   WorkflowStepRow
 } from "./workflowTypes.js";
 import {
@@ -26,6 +27,8 @@ import {
 } from "./workflows.js";
 import { validateWorkflowPlan } from "./workflowValidate.js";
 import {
+  augmentPromptWithConsumedSummaries,
+  decideImplementReviewLoop,
   decideReviewLoop,
   deriveStepSummary,
   phaseGateSatisfied,
@@ -66,12 +69,25 @@ interface ActiveRun {
   stopped: boolean;
   approvedPhases: Set<string>;
   activeSessions: Set<string>;
+  /** Write steps may run without a prior manual gate (implement-first loops). */
+  allowImmediateWrite: boolean;
 }
 
 const REVIEW_LOOP_PHASES = ["review", "implement", "verify"];
+const IMPLEMENT_REVIEW_LOOP_PHASES = ["implement", "review"];
+const IMPLEMENT_REVIEW_STEP_ID = "implement-changes";
+const REVIEW_CHANGES_STEP_ID = "review-changes";
 
 function hasWriteApproval(state: ActiveRun): boolean {
-  return state.approvedPhases.size > 0;
+  return state.allowImmediateWrite || state.approvedPhases.size > 0;
+}
+
+function findPlanStep(plan: WorkflowPlan, stepId: string): WorkflowStep | undefined {
+  for (const phase of plan.phases) {
+    const step = phase.steps.find((s) => s.id === stepId);
+    if (step) return step;
+  }
+  return undefined;
 }
 
 export class WorkflowRuntime {
@@ -136,11 +152,13 @@ export class WorkflowRuntime {
     const run = getWorkflowRun(runId);
     if (!run) throw new Error(`workflow run ${runId} not found`);
     if (this.active.has(runId)) return;
+    const plan = JSON.parse(run.planJson) as WorkflowPlan;
     this.active.set(runId, {
       paused: false,
       stopped: false,
       approvedPhases: new Set(),
-      activeSessions: new Set()
+      activeSessions: new Set(),
+      allowImmediateWrite: plan.template === "implement-review-loop"
     });
     updateWorkflowRun(runId, { status: "running" });
     try {
@@ -289,9 +307,53 @@ export class WorkflowRuntime {
         return;
       }
 
+      if (plan.template === "implement-review-loop") {
+        const reviewer = getWorkflowSteps(runId).find(
+          (s) => s.stepId === REVIEW_CHANGES_STEP_ID
+        );
+        const decision = decideImplementReviewLoop(
+          reviewer?.status,
+          reviewer?.summary,
+          run.loopIndex,
+          run.maxLoops
+        );
+        if (decision === "loop") {
+          this.prepareImplementReviewLoopReplay(runId, plan, reviewer?.summary);
+          state.approvedPhases.clear();
+          resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
+          const implementIdx = plan.phases.findIndex((p) => p.id === "implement");
+          updateWorkflowRun(runId, {
+            status: "running",
+            loopIndex: run.loopIndex + 1
+          });
+          phaseIndex = implementIdx >= 0 ? implementIdx : 0;
+          continue outer;
+        }
+        this.finalize(runId, plan, decision === "partial" ? "partial" : "completed");
+        return;
+      }
+
       this.finalize(runId, plan, "completed");
       return;
     }
+  }
+
+  /** Inject prior review feedback into the implement step before the next loop. */
+  private prepareImplementReviewLoopReplay(
+    runId: string,
+    plan: WorkflowPlan,
+    reviewSummary: string | undefined
+  ): void {
+    if (!reviewSummary?.trim()) return;
+    const steps = getWorkflowSteps(runId);
+    const implRow = steps.find((s) => s.stepId === IMPLEMENT_REVIEW_STEP_ID);
+    const planStep = findPlanStep(plan, IMPLEMENT_REVIEW_STEP_ID);
+    if (!implRow || !planStep) return;
+    const base = planStep.prompt;
+    const augmented =
+      `${base}\n\nAddress the following review feedback from the previous round:\n` +
+      `${reviewSummary.trim()}`;
+    updateWorkflowStep(implRow.id, { prompt: augmented });
   }
 
   private async runPhase(
@@ -331,7 +393,7 @@ export class WorkflowRuntime {
       }
 
       await Promise.all(
-        runnable.map((r) => this.executeStep(runId, run, r.stepId, state))
+        runnable.map((r) => this.executeStep(runId, run, plan, r.stepId, state))
       );
     }
   }
@@ -339,6 +401,7 @@ export class WorkflowRuntime {
   private async executeStep(
     runId: string,
     run: WorkflowRunRow,
+    plan: WorkflowPlan,
     stepId: string,
     state: ActiveRun
   ): Promise<void> {
@@ -359,6 +422,19 @@ export class WorkflowRuntime {
       updateWorkflowStep(step.id, { status: "failed", endedAt: new Date().toISOString() });
       return;
     }
+
+    const planStep = findPlanStep(plan, stepId);
+    const stepsById = new Map(
+      steps.map((s) => [
+        s.stepId,
+        { stepId: s.stepId, title: s.title, summary: s.summary }
+      ])
+    );
+    const prompt = augmentPromptWithConsumedSummaries(
+      step.prompt,
+      planStep?.consumes,
+      stepsById
+    );
 
     const sessionId = randomUUID();
     const collected: unknown[] = [];
@@ -407,7 +483,7 @@ export class WorkflowRuntime {
         adapter: resolved.adapter,
         binary: resolved.binary,
         extraArgs: resolved.extraArgs,
-        prompt: step.prompt,
+        prompt,
         cwd: run.cwd,
         onEvent: (e: CliEvent) => {
           if (e.type === "items" && e.items?.length) {

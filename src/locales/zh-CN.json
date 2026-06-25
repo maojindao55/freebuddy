@@ -289,6 +289,7 @@
     "modeTabsAria": "任务模式",
     "modeHint": "使用多个 Agent 规划并作为工作流运行",
     "reviewLoop": "评审循环",
+    "implementReviewLoop": "实现-审查循环",
     "generatePlan": "生成计划",
     "planPreview": "工作流计划",
     "phases": "阶段",

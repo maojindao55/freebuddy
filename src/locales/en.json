@@ -290,6 +290,7 @@
     "modeTabsAria": "Task mode",
     "modeHint": "Plan with multiple agents, then run as a workflow",
     "reviewLoop": "Review Loop",
+    "implementReviewLoop": "Implement-Review Loop",
     "generatePlan": "Generate plan",
     "planPreview": "Workflow plan",
     "phases": "Phases",

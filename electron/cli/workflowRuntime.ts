@@ -32,6 +32,7 @@ import {
   decideReviewLoop,
   deriveStepSummary,
   phaseGateSatisfied,
+  resolveReviewDecisionText,
   selectRunnableSteps,
   verifierHasUnresolved
 } from "./workflowScheduler.js";
@@ -311,14 +312,22 @@ export class WorkflowRuntime {
         const reviewer = getWorkflowSteps(runId).find(
           (s) => s.stepId === REVIEW_CHANGES_STEP_ID
         );
+        const reviewDecisionText = resolveReviewDecisionText(
+          reviewer?.summary,
+          reviewer?.resultJson
+        );
         const decision = decideImplementReviewLoop(
           reviewer?.status,
-          reviewer?.summary,
+          reviewDecisionText,
           run.loopIndex,
           run.maxLoops
         );
         if (decision === "loop") {
-          this.prepareImplementReviewLoopReplay(runId, plan, reviewer?.summary);
+          this.prepareImplementReviewLoopReplay(
+            runId,
+            plan,
+            reviewDecisionText
+          );
           state.approvedPhases.clear();
           resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
           const implementIdx = plan.phases.findIndex((p) => p.id === "implement");

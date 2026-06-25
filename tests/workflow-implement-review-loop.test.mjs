@@ -56,6 +56,34 @@ test("reviewerHasFail detects FAIL marker", () => {
   assert.equal(reviewerHasFail(undefined), false);
 });
 
+test("deriveStepSummary preserves REVIEW_STATUS FAIL when body is truncated", async () => {
+  const { deriveStepSummary } = scheduler;
+  const long = `${"issue ".repeat(120)}REVIEW_STATUS: FAIL`;
+  const summary = deriveStepSummary([{ kind: "text", content: long }]);
+  assert.match(summary, /REVIEW_STATUS:\s*FAIL/i);
+  assert.equal(decideImplementReviewLoop("done", summary, 0, 5), "loop");
+});
+
+test("deriveStepSummary scans all text chunks for review status", async () => {
+  const { deriveStepSummary } = scheduler;
+  const summary = deriveStepSummary([
+    { kind: "text", content: "Long findings paragraph. " },
+    { kind: "tool-call" },
+    { kind: "text", content: "REVIEW_STATUS: FAIL" }
+  ]);
+  assert.match(summary, /REVIEW_STATUS:\s*FAIL/i);
+  assert.equal(decideImplementReviewLoop("done", summary, 0, 5), "loop");
+});
+
+test("resolveReviewDecisionText prefers full resultJson over truncated summary", async () => {
+  const { resolveReviewDecisionText } = scheduler;
+  const text = resolveReviewDecisionText("truncated…", JSON.stringify({
+    items: [{ kind: "text", content: `${"x".repeat(600)}\nREVIEW_STATUS: FAIL` }]
+  }));
+  assert.match(text ?? "", /REVIEW_STATUS:\s*FAIL/i);
+  assert.equal(decideImplementReviewLoop("done", text, 0, 5), "loop");
+});
+
 test("decideImplementReviewLoop finishes on PASS", () => {
   assert.equal(
     decideImplementReviewLoop("done", "REVIEW_STATUS: PASS", 0, 5),

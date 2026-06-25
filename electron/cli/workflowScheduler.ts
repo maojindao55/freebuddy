@@ -127,27 +127,78 @@ export function decideReviewLoop(
 
 /**
  * Extract a concise summary from the final assistant stream items of a step.
- * Prefers the last assistant text; falls back to tool-action count.
+ * Concatenates all text chunks and preserves workflow control markers
+ * (REVIEW_STATUS / UNRESOLVED) even when the body is truncated.
  */
 export function deriveStepSummary(items: unknown[]): string {
-  let text = "";
+  const fullText = collectAllTextFromItems(items);
   let toolCount = 0;
   for (const raw of items) {
-    const item = raw as { kind?: string; content?: string };
+    const item = raw as { kind?: string };
     if (!item || typeof item !== "object") continue;
     if (item.kind === "tool-call" || item.kind === "tool-result") {
       toolCount += 1;
     }
-    if (item.kind === "text" && typeof item.content === "string") {
-      text = item.content;
-    }
   }
-  const trimmed = text.trim();
-  if (trimmed) return trimmed.slice(0, 400);
+  const trimmed = fullText.trim();
+  if (trimmed) return compactStepSummary(trimmed);
   if (toolCount > 0) {
     return `Completed ${toolCount} tool action${toolCount === 1 ? "" : "s"}.`;
   }
   return "Step completed.";
+}
+
+/** Join every assistant text chunk in order (ACP may split long replies). */
+export function collectAllTextFromItems(items: unknown[]): string {
+  const parts: string[] = [];
+  for (const raw of items) {
+    const item = raw as { kind?: string; content?: string };
+    if (!item || typeof item !== "object") continue;
+    if (item.kind === "text" && typeof item.content === "string") {
+      const piece = item.content.trim();
+      if (piece) parts.push(piece);
+    }
+  }
+  return parts.join("\n");
+}
+
+/** Prefer full stream text from resultJson when deciding loop outcomes. */
+export function resolveReviewDecisionText(
+  summary: string | undefined,
+  resultJson: string | undefined
+): string | undefined {
+  if (resultJson) {
+    try {
+      const parsed = JSON.parse(resultJson) as { items?: unknown[] };
+      const full = collectAllTextFromItems(parsed.items ?? []).trim();
+      if (full) return full;
+    } catch {
+      /* fall through to summary */
+    }
+  }
+  return summary;
+}
+
+function compactStepSummary(text: string, maxLen = 400): string {
+  const reviewMarker = [...text.matchAll(/REVIEW_STATUS:\s*(?:PASS|FAIL)/gi)]
+    .at(-1)?.[0];
+  const unresolvedMarker = text.match(/UNRESOLVED:\s*\d+/i)?.[0];
+  const markers = [reviewMarker, unresolvedMarker].filter(Boolean) as string[];
+  if (text.length <= maxLen) return text;
+  if (markers.length === 0) return text.slice(0, maxLen);
+  const markerBlock = markers.join("\n");
+  const budget = Math.max(80, maxLen - markerBlock.length - 2);
+  return `${text.slice(0, budget).trimEnd()}\n…\n${markerBlock}`;
+}
+
+export function extractReviewStatus(
+  text: string | undefined
+): "PASS" | "FAIL" | undefined {
+  if (!text) return undefined;
+  const matches = [...text.matchAll(/REVIEW_STATUS:\s*(PASS|FAIL)/gi)];
+  const last = matches.at(-1)?.[1];
+  if (!last) return undefined;
+  return last.toUpperCase() as "PASS" | "FAIL";
 }
 
 /** Heuristic: detect "UNRESOLVED: <n>" with n > 0 in a verifier summary. */
@@ -160,8 +211,7 @@ export function verifierHasUnresolved(summary: string | undefined): boolean {
 
 /** Heuristic: detect REVIEW_STATUS: FAIL in a reviewer summary. */
 export function reviewerHasFail(summary: string | undefined): boolean {
-  if (!summary) return false;
-  return /REVIEW_STATUS:\s*FAIL/i.test(summary);
+  return extractReviewStatus(summary) === "FAIL";
 }
 
 /**

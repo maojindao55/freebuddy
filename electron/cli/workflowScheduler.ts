@@ -148,18 +148,31 @@ export function deriveStepSummary(items: unknown[]): string {
   return "Step completed.";
 }
 
-/** Join every assistant text chunk in order (ACP may split long replies). */
-export function collectAllTextFromItems(items: unknown[]): string {
+/** Join assistant-visible text used for workflow control markers. */
+export function collectDecisionTextFromItems(items: unknown[]): string {
   const parts: string[] = [];
   for (const raw of items) {
-    const item = raw as { kind?: string; content?: string };
+    const item = raw as {
+      kind?: string;
+      content?: string;
+      text?: string;
+    };
     if (!item || typeof item !== "object") continue;
-    if (item.kind === "text" && typeof item.content === "string") {
+    if (item.kind === "text" || item.kind === "thinking") {
+      const piece = (item.content ?? item.text ?? "").trim();
+      if (piece) parts.push(piece);
+    }
+    if (item.kind === "tool-result" && typeof item.content === "string") {
       const piece = item.content.trim();
       if (piece) parts.push(piece);
     }
   }
   return parts.join("\n");
+}
+
+/** Join every assistant text chunk in order (ACP may split long replies). */
+export function collectAllTextFromItems(items: unknown[]): string {
+  return collectDecisionTextFromItems(items);
 }
 
 /** Prefer full stream text from resultJson when deciding loop outcomes. */
@@ -170,7 +183,7 @@ export function resolveReviewDecisionText(
   if (resultJson) {
     try {
       const parsed = JSON.parse(resultJson) as { items?: unknown[] };
-      const full = collectAllTextFromItems(parsed.items ?? []).trim();
+      const full = collectDecisionTextFromItems(parsed.items ?? []).trim();
       if (full) return full;
     } catch {
       /* fall through to summary */
@@ -195,10 +208,23 @@ export function extractReviewStatus(
   text: string | undefined
 ): "PASS" | "FAIL" | undefined {
   if (!text) return undefined;
-  const matches = [...text.matchAll(/REVIEW_STATUS:\s*(PASS|FAIL)/gi)];
+  const matches = [
+    ...text.matchAll(/REVIEW[\s_-]*STATUS\s*:\s*(PASS|FAIL)/gi)
+  ];
   const last = matches.at(-1)?.[1];
   if (!last) return undefined;
   return last.toUpperCase() as "PASS" | "FAIL";
+}
+
+/** Ensure compact summaries still carry a review status marker when present in full text. */
+export function ensureReviewStatusInSummary(
+  summary: string,
+  decisionText: string
+): string {
+  const status = extractReviewStatus(decisionText);
+  if (!status) return summary;
+  if (extractReviewStatus(summary)) return summary;
+  return `${summary}\nREVIEW_STATUS: ${status}`;
 }
 
 /** Heuristic: detect "UNRESOLVED: <n>" with n > 0 in a verifier summary. */
@@ -223,10 +249,17 @@ export function decideImplementReviewLoop(
   loopIndex: number,
   maxLoops: number
 ): "loop" | "finish" | "partial" {
+  const reviewStatus = extractReviewStatus(reviewerSummary);
+  if (reviewStatus === "PASS") return "finish";
+  if (reviewStatus === "FAIL") {
+    if (reviewerStatus !== "done" && reviewerStatus !== "failed") {
+      return "partial";
+    }
+    if (loopIndex + 1 < maxLoops) return "loop";
+    return "partial";
+  }
   if (reviewerStatus !== "done") return "partial";
-  if (!reviewerHasFail(reviewerSummary)) return "finish";
-  if (loopIndex + 1 < maxLoops) return "loop";
-  return "partial";
+  return "finish";
 }
 
 export interface ConsumedStepRef {

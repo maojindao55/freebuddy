@@ -114,11 +114,24 @@ export interface ImplementReviewLoopInput {
 }
 
 export const IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID = "tpl-implement-review-loop";
+export const IMPLEMENT_REVIEW_STEP_ID = "implement-changes";
+export const REVIEW_CHANGES_STEP_ID = "review-changes";
+
+export function isImplementReviewLoopPlan(plan: WorkflowPlan): boolean {
+  if (plan.template === "implement-review-loop") return true;
+  const stepIds = new Set(
+    plan.phases.flatMap((phase) => phase.steps.map((step) => step.id))
+  );
+  return (
+    stepIds.has(IMPLEMENT_REVIEW_STEP_ID) &&
+    stepIds.has(REVIEW_CHANGES_STEP_ID)
+  );
+}
 
 export function buildImplementReviewLoopPlan(
   input: ImplementReviewLoopInput
 ): WorkflowPlan {
-  const maxLoops = input.maxLoops ?? 5;
+  const maxLoops = Math.max(input.maxLoops ?? 5, 2);
   const target = (input.targetPaths ?? []).join(", ");
   const goalLine = `Goal: ${input.goal}.` + (target ? ` Target: ${target}.` : "");
 

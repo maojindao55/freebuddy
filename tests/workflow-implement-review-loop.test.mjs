@@ -28,6 +28,16 @@ const agents = {
   }
 };
 
+test("buildImplementReviewLoopPlan enforces at least two cycles", () => {
+  const p = buildImplementReviewLoopPlan({
+    goal: "x",
+    implementer: agents.implementer,
+    reviewer: agents.reviewer,
+    maxLoops: 1
+  });
+  assert.equal(p.maxLoops, 2);
+});
+
 test("buildImplementReviewLoopPlan produces implement → review → loop_or_finish", () => {
   const p = buildImplementReviewLoopPlan({
     goal: "add retry",
@@ -97,14 +107,39 @@ test("decideImplementReviewLoop loops on FAIL while under maxLoops", () => {
     "loop"
   );
   assert.equal(
+    decideImplementReviewLoop("failed", "REVIEW_STATUS: FAIL", 0, 5),
+    "loop"
+  );
+  assert.equal(
     decideImplementReviewLoop("done", "REVIEW_STATUS: FAIL", 4, 5),
     "partial"
   );
 });
 
-test("decideImplementReviewLoop returns partial when reviewer failed", () => {
+test("decideImplementReviewLoop requires maxLoops >= 2 for a retry", () => {
   assert.equal(
-    decideImplementReviewLoop("failed", "REVIEW_STATUS: FAIL", 0, 5),
+    decideImplementReviewLoop("done", "REVIEW_STATUS: FAIL", 0, 1),
+    "partial"
+  );
+  assert.equal(
+    decideImplementReviewLoop("done", "REVIEW_STATUS: FAIL", 0, 2),
+    "loop"
+  );
+});
+
+test("extractReviewStatus reads markers from thinking chunks", async () => {
+  const { collectDecisionTextFromItems, extractReviewStatus } = scheduler;
+  const text = collectDecisionTextFromItems([
+    { kind: "thinking", content: "Checking files..." },
+    { kind: "text", content: "Found issues." },
+    { kind: "thinking", content: "REVIEW_STATUS: FAIL" }
+  ]);
+  assert.equal(extractReviewStatus(text), "FAIL");
+});
+
+test("decideImplementReviewLoop returns partial when reviewer failed without status", () => {
+  assert.equal(
+    decideImplementReviewLoop("failed", "Tool error", 0, 5),
     "partial"
   );
 });
@@ -152,7 +187,7 @@ test("runtime handles implement-review-loop template", () => {
     new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
     "utf8"
   );
-  assert.match(src, /implement-review-loop/);
+  assert.match(src, /isImplementReviewLoopPlan/);
   assert.match(src, /decideImplementReviewLoop/);
   assert.match(src, /IMPLEMENT_REVIEW_LOOP_PHASES/);
 });

@@ -145,6 +145,18 @@ export function seedBuiltinWorkflowTeams(): void {
   for (const team of builtinWorkflowTeams()) {
     if (!existingIds.has(team.id)) {
       insertWorkflowTeam(team);
+      continue;
+    }
+    if (team.id === "team-implement-review-loop") {
+      updateWorkflowTeam(team.id, {
+        name: team.name,
+        description: team.description,
+        icon: team.icon,
+        enabled: team.enabled,
+        roles: team.roles,
+        template: team.template,
+        policy: team.policy
+      });
     }
   }
 }

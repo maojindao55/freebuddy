@@ -27,10 +27,18 @@ import {
 } from "./workflows.js";
 import { validateWorkflowPlan } from "./workflowValidate.js";
 import {
+  isImplementReviewLoopPlan,
+  IMPLEMENT_REVIEW_STEP_ID,
+  REVIEW_CHANGES_STEP_ID
+} from "./workflowTemplates.js";
+import {
   augmentPromptWithConsumedSummaries,
+  collectDecisionTextFromItems,
   decideImplementReviewLoop,
   decideReviewLoop,
   deriveStepSummary,
+  ensureReviewStatusInSummary,
+  extractReviewStatus,
   phaseGateSatisfied,
   resolveReviewDecisionText,
   selectRunnableSteps,
@@ -76,8 +84,6 @@ interface ActiveRun {
 
 const REVIEW_LOOP_PHASES = ["review", "implement", "verify"];
 const IMPLEMENT_REVIEW_LOOP_PHASES = ["implement", "review"];
-const IMPLEMENT_REVIEW_STEP_ID = "implement-changes";
-const REVIEW_CHANGES_STEP_ID = "review-changes";
 
 function hasWriteApproval(state: ActiveRun): boolean {
   return state.allowImmediateWrite || state.approvedPhases.size > 0;
@@ -111,7 +117,9 @@ export class WorkflowRuntime {
       goal: input.plan.goal,
       cwd: input.plan.cwd,
       template: input.plan.template,
-      maxLoops: input.plan.maxLoops ?? 1,
+      maxLoops: isImplementReviewLoopPlan(input.plan)
+        ? Math.max(input.plan.maxLoops ?? 5, 2)
+        : (input.plan.maxLoops ?? 1),
       planJson: JSON.stringify(input.plan)
     });
     this.seedSteps(run.id, input.plan);
@@ -159,7 +167,7 @@ export class WorkflowRuntime {
       stopped: false,
       approvedPhases: new Set(),
       activeSessions: new Set(),
-      allowImmediateWrite: plan.template === "implement-review-loop"
+      allowImmediateWrite: isImplementReviewLoopPlan(plan)
     });
     updateWorkflowRun(runId, { status: "running" });
     try {
@@ -308,7 +316,7 @@ export class WorkflowRuntime {
         return;
       }
 
-      if (plan.template === "implement-review-loop") {
+      if (isImplementReviewLoopPlan(plan)) {
         const reviewer = getWorkflowSteps(runId).find(
           (s) => s.stepId === REVIEW_CHANGES_STEP_ID
         );
@@ -521,10 +529,22 @@ export class WorkflowRuntime {
 
     if (state.stopped) return;
 
+    const decisionText = collectDecisionTextFromItems(collected);
     const failed = errored !== null || (exitCode !== null && exitCode !== 0);
-    const summary = deriveStepSummary(collected);
+    let summary = ensureReviewStatusInSummary(
+      deriveStepSummary(collected),
+      decisionText
+    );
+    let stepStatus: WorkflowStepRow["status"] = failed ? "failed" : "done";
+    if (
+      isImplementReviewLoopPlan(plan) &&
+      stepId === REVIEW_CHANGES_STEP_ID &&
+      extractReviewStatus(decisionText) !== undefined
+    ) {
+      stepStatus = "done";
+    }
     updateWorkflowStep(step.id, {
-      status: failed ? "failed" : "done",
+      status: stepStatus,
       summary,
       resultJson: JSON.stringify({ items: collected, exitCode, error: errored }),
       endedAt: new Date().toISOString()
@@ -533,7 +553,7 @@ export class WorkflowRuntime {
     if (assistantMessageId && run.conversationId) {
       updateMessage({
         id: assistantMessageId,
-        status: failed ? "failed" : "done",
+        status: stepStatus === "failed" ? "failed" : "done",
         content: JSON.stringify(collected)
       });
       this.broadcastMessageEvent({

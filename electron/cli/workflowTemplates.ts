@@ -172,9 +172,13 @@ export function buildImplementReviewLoopPlan(
             mode: "review",
             prompt:
               `Review the implementation for: ${input.goal}. ` +
-              "List concrete issues if any. " +
-              "End your response with exactly one line: REVIEW_STATUS: PASS or REVIEW_STATUS: FAIL. " +
-              "If FAIL, include a FINDINGS section with actionable bullets.",
+              "List concrete issues if any.\n\n" +
+              "Required machine-readable format (first AND last line of your reply):\n" +
+              "REVIEW_STATUS: PASS\n" +
+              "or\n" +
+              "REVIEW_STATUS: FAIL\n\n" +
+              "If FAIL, include a FINDINGS section with actionable bullets.\n" +
+              "You may also end with <<<REVIEW_PASS>>> or <<<REVIEW_FAIL>>>.",
             consumes: ["implement-changes"]
           }
         ],

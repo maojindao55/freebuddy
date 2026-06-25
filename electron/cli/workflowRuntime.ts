@@ -162,12 +162,13 @@ export class WorkflowRuntime {
     if (!run) throw new Error(`workflow run ${runId} not found`);
     if (this.active.has(runId)) return;
     const plan = JSON.parse(run.planJson) as WorkflowPlan;
+    const resolvedPlan = this.resolveWorkflowPlan(run, plan);
     this.active.set(runId, {
       paused: false,
       stopped: false,
       approvedPhases: new Set(),
       activeSessions: new Set(),
-      allowImmediateWrite: isImplementReviewLoopPlan(plan)
+      allowImmediateWrite: isImplementReviewLoopPlan(resolvedPlan)
     });
     updateWorkflowRun(runId, { status: "running" });
     try {
@@ -235,10 +236,23 @@ export class WorkflowRuntime {
     await this.start(runId);
   }
 
+  private resolveWorkflowPlan(
+    run: WorkflowRunRow,
+    plan?: WorkflowPlan
+  ): WorkflowPlan {
+    const parsed =
+      plan ?? (JSON.parse(run.planJson) as WorkflowPlan);
+    if (parsed.template) return parsed;
+    if (run.template === "implement-review-loop") {
+      return { ...parsed, template: "implement-review-loop" };
+    }
+    return parsed;
+  }
+
   private async drive(runId: string): Promise<void> {
     let run = getWorkflowRun(runId);
     if (!run) return;
-    const plan = JSON.parse(run.planJson) as WorkflowPlan;
+    const plan = this.resolveWorkflowPlan(run);
     const state = this.active.get(runId)!;
 
     let phaseIndex = 0;
@@ -324,6 +338,7 @@ export class WorkflowRuntime {
           reviewer?.summary,
           reviewer?.resultJson
         );
+        const reviewStatus = extractReviewStatus(reviewDecisionText);
         const decision = decideImplementReviewLoop(
           reviewer?.status,
           reviewDecisionText,
@@ -346,7 +361,17 @@ export class WorkflowRuntime {
           phaseIndex = implementIdx >= 0 ? implementIdx : 0;
           continue outer;
         }
-        this.finalize(runId, plan, decision === "partial" ? "partial" : "completed");
+        this.finalize(
+          runId,
+          plan,
+          decision === "partial" ? "partial" : "completed",
+          {
+            loopDecision: decision,
+            reviewStatus,
+            loopIndex: run.loopIndex,
+            maxLoops: run.maxLoops
+          }
+        );
         return;
       }
 
@@ -581,13 +606,19 @@ export class WorkflowRuntime {
   private finalize(
     runId: string,
     plan: WorkflowPlan,
-    status: WorkflowRunStatus
+    status: WorkflowRunStatus,
+    meta?: {
+      loopDecision?: string;
+      reviewStatus?: string;
+      loopIndex?: number;
+      maxLoops?: number;
+    }
   ): void {
     const run = getWorkflowRun(runId);
     if (!run) return;
     const steps = getWorkflowSteps(runId);
 
-    const summary = this.composeSummary(plan, steps, status);
+    const summary = this.composeSummary(plan, steps, status, meta);
     updateWorkflowRun(runId, {
       status,
       summary,
@@ -598,11 +629,26 @@ export class WorkflowRuntime {
   private composeSummary(
     plan: WorkflowPlan,
     steps: WorkflowStepRow[],
-    status: WorkflowRunStatus
+    status: WorkflowRunStatus,
+    meta?: {
+      loopDecision?: string;
+      reviewStatus?: string;
+      loopIndex?: number;
+      maxLoops?: number;
+    }
   ): string {
     const lines: string[] = [];
     lines.push(`Workflow ${status}: ${plan.name}`);
     lines.push(`Goal: ${plan.goal}`);
+    if (meta?.loopDecision) {
+      lines.push(
+        `Loop decision: ${meta.loopDecision}` +
+          (meta.reviewStatus ? ` (review=${meta.reviewStatus})` : "") +
+          (meta.loopIndex != null && meta.maxLoops != null
+            ? ` [round ${meta.loopIndex + 1}/${meta.maxLoops}]`
+            : "")
+      );
+    }
     for (const phase of plan.phases) {
       lines.push(`\n• ${phase.title}`);
       for (const s of steps.filter((st) => st.phaseId === phase.id)) {

@@ -127,12 +127,39 @@ test("decideImplementReviewLoop requires maxLoops >= 2 for a retry", () => {
   );
 });
 
-test("extractReviewStatus reads markers from thinking chunks", async () => {
+test("extractReviewStatus reads markers from fragmented append chunks", async () => {
   const { collectDecisionTextFromItems, extractReviewStatus } = scheduler;
   const text = collectDecisionTextFromItems([
-    { kind: "thinking", content: "Checking files..." },
-    { kind: "text", content: "Found issues." },
-    { kind: "thinking", content: "REVIEW_STATUS: FAIL" }
+    { kind: "text", content: "RE", append: true, messageId: "m1", role: "assistant" },
+    { kind: "text", content: "VIEW_STATUS: ", append: true, messageId: "m1", role: "assistant" },
+    { kind: "text", content: "FAIL", append: true, messageId: "m1", role: "assistant" }
+  ]);
+  assert.equal(extractReviewStatus(text), "FAIL");
+  assert.equal(decideImplementReviewLoop("done", text, 0, 5), "loop");
+});
+
+test("extractReviewStatus supports alternate markers for tool-heavy agents", async () => {
+  const { extractReviewStatus } = scheduler;
+  assert.equal(extractReviewStatus("done <<<REVIEW_FAIL>>>"), "FAIL");
+  assert.equal(extractReviewStatus("ok [[REVIEW:PASS]]"), "PASS");
+});
+
+test("collectDecisionTextFromItems reads content-block and tool-call output", async () => {
+  const { collectDecisionTextFromItems, extractReviewStatus } = scheduler;
+  const text = collectDecisionTextFromItems([
+    {
+      kind: "tool-call",
+      id: "t1",
+      tool: "review",
+      output: "Issues found",
+      toolOutputs: [
+        {
+          kind: "content-block",
+          blockType: "resource",
+          text: "REVIEW_STATUS: FAIL"
+        }
+      ]
+    }
   ]);
   assert.equal(extractReviewStatus(text), "FAIL");
 });

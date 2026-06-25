@@ -164,7 +164,7 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
         id: "role-implementer",
         label: "Implementer",
         kind: "implementer",
-        agentId: claude,
+        agentId: opencode,
         required: true,
         canWrite: true
       },
@@ -172,7 +172,7 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
         id: "role-reviewer",
         label: "Reviewer",
         kind: "reviewer",
-        agentId: codex,
+        agentId: pickAgent(["cli-kimi-acp", "cli-codex-acp"]),
         required: true,
         canWrite: false
       }

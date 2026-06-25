@@ -150,24 +150,145 @@ export function deriveStepSummary(items: unknown[]): string {
 
 /** Join assistant-visible text used for workflow control markers. */
 export function collectDecisionTextFromItems(items: unknown[]): string {
-  const parts: string[] = [];
-  for (const raw of items) {
-    const item = raw as {
-      kind?: string;
-      content?: string;
-      text?: string;
-    };
-    if (!item || typeof item !== "object") continue;
-    if (item.kind === "text" || item.kind === "thinking") {
-      const piece = (item.content ?? item.text ?? "").trim();
-      if (piece) parts.push(piece);
-    }
-    if (item.kind === "tool-result" && typeof item.content === "string") {
-      const piece = item.content.trim();
-      if (piece) parts.push(piece);
-    }
+  const normalized = normalizeStreamItemsForDecision(items);
+  const pieces: string[] = [];
+  for (const item of normalized) {
+    extractTextPiecesFromItem(item, pieces);
   }
-  return parts.join("\n");
+  return pieces.join("\n");
+}
+
+interface StreamLike {
+  kind?: string;
+  content?: string;
+  text?: string;
+  role?: string;
+  messageId?: string;
+  append?: boolean;
+  blockType?: string;
+  entries?: Array<{ content?: string }>;
+  output?: string;
+  toolOutputs?: StreamLike[];
+  input?: unknown;
+}
+
+function mergeStreamTextLike(prev: StreamLike, next: StreamLike): StreamLike {
+  const prevContent = String(prev.content ?? prev.text ?? "");
+  const nextContent = String(next.content ?? next.text ?? "");
+  if (next.append) {
+    return { ...prev, content: prevContent + nextContent };
+  }
+  if (nextContent === prevContent) return prev;
+  if (nextContent.startsWith(prevContent)) {
+    return { ...prev, content: nextContent };
+  }
+  return { ...next, content: nextContent };
+}
+
+/** Merge ACP append chunks the same way the chat renderer does. */
+function normalizeStreamItemsForDecision(items: unknown[]): StreamLike[] {
+  const out: StreamLike[] = [];
+  for (const raw of items) {
+    const item = raw as StreamLike;
+    if (!item || typeof item !== "object") continue;
+
+    if (item.kind === "text" || item.kind === "thinking") {
+      if (item.messageId) {
+        const idx = out.findIndex(
+          (previous) =>
+            previous.kind === item.kind &&
+            previous.messageId === item.messageId &&
+            (item.kind !== "text" || previous.role === item.role)
+        );
+        if (idx >= 0) {
+          out[idx] = mergeStreamTextLike(out[idx]!, item);
+          continue;
+        }
+      }
+      const last = out[out.length - 1];
+      if (
+        item.append &&
+        last &&
+        last.kind === item.kind &&
+        (item.kind !== "text" || last.role === item.role)
+      ) {
+        out[out.length - 1] = mergeStreamTextLike(last, item);
+        continue;
+      }
+      if (
+        last &&
+        last.kind === item.kind &&
+        (item.kind !== "text" || last.role === item.role)
+      ) {
+        const merged = mergeStreamTextLike(last, item);
+        if (merged !== last) {
+          out[out.length - 1] = merged;
+          continue;
+        }
+      }
+      out.push({ ...item, content: item.content ?? item.text ?? "" });
+      continue;
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+function stringifyUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function extractTextPiecesFromItem(item: StreamLike, pieces: string[]): void {
+  switch (item.kind) {
+    case "text":
+    case "thinking":
+    case "raw":
+    case "command-output": {
+      const piece = String(item.content ?? item.text ?? "").trim();
+      if (piece) pieces.push(piece);
+      return;
+    }
+    case "tool-result": {
+      const piece = String(item.content ?? "").trim();
+      if (piece) pieces.push(piece);
+      return;
+    }
+    case "tool-call": {
+      if (typeof item.output === "string" && item.output.trim()) {
+        pieces.push(item.output.trim());
+      }
+      if (item.input !== undefined) {
+        const input = stringifyUnknown(item.input).trim();
+        if (input && input !== "{}") pieces.push(input);
+      }
+      for (const nested of item.toolOutputs ?? []) {
+        extractTextPiecesFromItem(nested, pieces);
+      }
+      return;
+    }
+    case "content-block": {
+      if (item.blockType === "resource" && typeof item.text === "string") {
+        const piece = item.text.trim();
+        if (piece) pieces.push(piece);
+      }
+      return;
+    }
+    case "plan": {
+      for (const entry of item.entries ?? []) {
+        const piece = String(entry?.content ?? "").trim();
+        if (piece) pieces.push(piece);
+      }
+      return;
+    }
+    default:
+      return;
+  }
 }
 
 /** Join every assistant text chunk in order (ACP may split long replies). */
@@ -193,8 +314,8 @@ export function resolveReviewDecisionText(
 }
 
 function compactStepSummary(text: string, maxLen = 400): string {
-  const reviewMarker = [...text.matchAll(/REVIEW_STATUS:\s*(?:PASS|FAIL)/gi)]
-    .at(-1)?.[0];
+  const status = extractReviewStatus(text);
+  const reviewMarker = status ? `REVIEW_STATUS: ${status}` : undefined;
   const unresolvedMarker = text.match(/UNRESOLVED:\s*\d+/i)?.[0];
   const markers = [reviewMarker, unresolvedMarker].filter(Boolean) as string[];
   if (text.length <= maxLen) return text;
@@ -208,6 +329,10 @@ export function extractReviewStatus(
   text: string | undefined
 ): "PASS" | "FAIL" | undefined {
   if (!text) return undefined;
+  if (/<<<REVIEW_FAIL>>>/i.test(text)) return "FAIL";
+  if (/<<<REVIEW_PASS>>>/i.test(text)) return "PASS";
+  if (/\[\[REVIEW:FAIL\]\]/i.test(text)) return "FAIL";
+  if (/\[\[REVIEW:PASS\]\]/i.test(text)) return "PASS";
   const matches = [
     ...text.matchAll(/REVIEW[\s_-]*STATUS\s*:\s*(PASS|FAIL)/gi)
   ];

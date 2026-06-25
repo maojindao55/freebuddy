@@ -91,6 +91,8 @@ export function expandTeamToPlan(
   let approvalNodeCount = 0;
   let priorMode: WorkflowTemplateNodeMode | undefined;
 
+  let priorStepIds: string[] = [];
+
   for (const node of orderedNodes) {
     const role = node.roleId
       ? team.roles.find((r) => r.id === node.roleId)
@@ -147,7 +149,8 @@ export function expandTeamToPlan(
       title: node.title,
       agentId: agentRef.id,
       mode: nodeModeToStepMode(node.mode),
-      prompt: renderPrompt(node.promptTemplate, input)
+      prompt: renderPrompt(node.promptTemplate, input),
+      ...(priorStepIds.length ? { consumes: priorStepIds } : {})
     };
 
     phases.push({
@@ -167,6 +170,7 @@ export function expandTeamToPlan(
     });
 
     priorMode = node.mode;
+    priorStepIds = [step.id];
   }
 
   if (errors.length > 0) return { ok: false, errors };

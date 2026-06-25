@@ -95,6 +95,12 @@ test("research report team expands to a read-only plan", async () => {
   assert.equal(result.preview.teamId, "team-research-report");
   assert.equal(result.preview.writeNodeCount, 0);
   assert.equal(result.preview.plan.phases.length, 3);
+  const [research, analysis, reportPhase] = result.preview.plan.phases;
+  assert.equal(research.steps[0].consumes, undefined);
+  assert.deepEqual(analysis.steps[0].consumes, [research.steps[0].id]);
+  assert.deepEqual(reportPhase.steps[0].consumes, [analysis.steps[0].id]);
+  assert.match(research.steps[0].prompt, /Do not make final judgments or forecasts/);
+  assert.match(analysis.steps[0].prompt, /Do not repeat the raw facts/);
   for (const phase of result.preview.plan.phases) {
     for (const step of phase.steps) {
       assert.notEqual(step.mode, "write");

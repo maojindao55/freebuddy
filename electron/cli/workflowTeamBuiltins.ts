@@ -170,21 +170,21 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
           title: "Research",
           roleId: "role-researcher",
           mode: "research",
-          promptTemplate: "Research the topic: {{goal}}. Gather relevant facts, context, constraints, and uncertainties. If current information is needed, identify what should be verified and cite available evidence from your environment."
+          promptTemplate: "Research the topic: {{goal}}. Focus only on information gathering: collect relevant facts, current context, constraints, evidence, and data gaps. Do not make final judgments or forecasts. Output concise evidence bullets, note freshness/uncertainty, and list what could not be verified."
         },
         {
           id: "analysis",
           title: "Analyze",
           roleId: "role-analyst",
           mode: "review",
-          promptTemplate: "Analyze the research for: {{goal}}. Compare plausible scenarios, key drivers, risks, and assumptions. If predicting outcomes such as sports scores, give likely ranges and confidence instead of overclaiming certainty."
+          promptTemplate: "Analyze the provided research for: {{goal}}. Do not repeat the raw facts except when needed as evidence. Identify key drivers, compare plausible scenarios, assess risks and assumptions, and provide likelihood ranges or confidence levels. For sports scores or forecasts, reason from the evidence and avoid claiming certainty."
         },
         {
           id: "report",
           title: "Report",
           roleId: "role-reporter",
           mode: "summarize",
-          promptTemplate: "Write a concise final report for: {{goal}}. Include summary, evidence, analysis, forecast or recommendation, confidence level, and caveats."
+          promptTemplate: "Write a concise final report for: {{goal}}. Synthesize the research evidence and analysis into a clear answer with summary, key evidence, forecast or recommendation, confidence level, and caveats."
         }
       ],
       edges: [

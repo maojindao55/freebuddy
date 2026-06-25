@@ -186,20 +186,21 @@ export function ChatView() {
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
   const members = useConversationStore((s) => s.members);
-  const messagesMap = useConversationStore((s) => s.messages);
-  const liveMap = useConversationStore((s) => s.live);
+  // Select only the active conversation's slices so a background conversation
+  // streaming events (which always rebuilds the messages/live maps) does not
+  // re-render this component.
+  const messages = useConversationStore((s) =>
+    s.activeId ? s.messages[s.activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+  );
+  const live = useConversationStore((s) =>
+    s.activeId ? s.live[s.activeId] : undefined
+  );
   const createConversation = useConversationStore((s) => s.newConversation);
   const sendMessage = useConversationStore((s) => s.sendMessage);
   const stopActive = useConversationStore((s) => s.stopActive);
   const setApprovalMode = useConversationStore(
     (s) => s.setConversationApprovalMode
   );
-
-  const messages = useMemo(
-    () => (activeId ? messagesMap[activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES),
-    [activeId, messagesMap]
-  );
-  const live = activeId ? liveMap[activeId] : undefined;
 
   const [taskMode, setTaskMode] = useState<"normal" | "team">(
     "normal"

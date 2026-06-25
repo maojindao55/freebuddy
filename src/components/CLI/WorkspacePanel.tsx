@@ -17,6 +17,10 @@ import {
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
 
+// Stable empty array so the active-slice selectors below return a constant
+// reference when there is no active conversation (avoids re-renders).
+const EMPTY_MESSAGES: ConversationMessage[] = [];
+
 export function WorkspacePanel({
   runningCount
 }: {
@@ -25,8 +29,14 @@ export function WorkspacePanel({
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
-  const messagesMap = useConversationStore((s) => s.messages);
-  const liveMap = useConversationStore((s) => s.live);
+  // Subscribe only to the active conversation's slices so background
+  // conversations streaming events don't re-render this panel.
+  const messages = useConversationStore((s) =>
+    s.activeId ? s.messages[s.activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+  );
+  const live = useConversationStore((s) =>
+    s.activeId ? s.live[s.activeId] : undefined
+  );
   const [copiedSession, setCopiedSession] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
@@ -40,8 +50,6 @@ export function WorkspacePanel({
 
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
-  const messages = activeId ? messagesMap[activeId] ?? [] : [];
-  const live = activeId ? liveMap[activeId] : undefined;
 
   const status = live?.status ?? "ready";
   const isLive = status === "running" || status === "starting";

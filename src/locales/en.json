@@ -36,7 +36,17 @@
     "title": "Conversations",
     "new": "+ New",
     "empty": "No conversations yet.",
-    "deleteConfirm": "Delete \"{{title}}\"?"
+    "deleteConfirm": "Delete \"{{title}}\"?",
+    "searchPlaceholder": "Search conversations",
+    "clearSearchAria": "Clear search",
+    "noResults": "No matching conversations.",
+    "group": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last7Days": "Last 7 days",
+      "last30Days": "Last 30 days",
+      "earlier": "Earlier"
+    }
   },
   "chat": {
     "inputPlaceholder": "Type freely",

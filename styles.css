@@ -3141,6 +3141,68 @@ button {
   color: var(--fb-text-primary);
 }
 
+.conv-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 4px 6px;
+}
+
+.conv-search input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.conv-search input:focus {
+  outline: none;
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 2px var(--fb-brand-glow);
+}
+
+.conv-search input::placeholder {
+  color: var(--fb-text-tertiary);
+}
+
+.conv-search-clear {
+  position: absolute;
+  right: 10px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.conv-search-clear:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+
+.conv-group-header {
+  padding: 10px 6px 4px;
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
 .conv-item {
   display: flex;
   align-items: center;
@@ -3150,7 +3212,11 @@ button {
   border-radius: 10px;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Only transition properties that actually change on hover/active. Avoid
+     `transition: all` (and never transform the item itself on :hover) so the
+     hit box stays put and the cursor can't oscillate in/out at the edges. */
+  transition: background-color 0.15s ease, box-shadow 0.15s ease,
+    border-color 0.15s ease;
   margin-bottom: 2px;
 }
 
@@ -3166,7 +3232,6 @@ button {
 
 .conv-item:hover {
   background: var(--fb-hover);
-  transform: translateX(2px);
 }
 
 .conv-item.active {

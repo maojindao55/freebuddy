@@ -36,7 +36,17 @@
     "title": "会话",
     "new": "+ 新建",
     "empty": "暂无会话。",
-    "deleteConfirm": "删除“{{title}}”?"
+    "deleteConfirm": "删除“{{title}}”?",
+    "searchPlaceholder": "搜索会话",
+    "clearSearchAria": "清除搜索",
+    "noResults": "没有匹配的会话。",
+    "group": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "last7Days": "近 7 天",
+      "last30Days": "近 30 天",
+      "earlier": "更早"
+    }
   },
   "chat": {
     "inputPlaceholder": "随心输入",

@@ -90,6 +90,7 @@ export const runCtxMap = new Map<string, RunCtx>();
 
 let workflowMessageUnsubscribe: (() => void) | null = null;
 let workflowMessageConversationId: string | null = null;
+let workflowRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 function ensureWorkflowMessageSubscription(
   conversationId: string | undefined,
@@ -107,10 +108,22 @@ function ensureWorkflowMessageSubscription(
     }
     workflowMessageUnsubscribe = null;
   }
+  if (workflowRefreshTimer) {
+    clearTimeout(workflowRefreshTimer);
+    workflowRefreshTimer = null;
+  }
   workflowMessageConversationId = conversationId ?? null;
   if (!conversationId) return;
   workflowMessageUnsubscribe = api.onStepMessage(conversationId, () => {
-    void refresh(conversationId);
+    // Workflow steps (especially parallel ones) can emit many message
+    // updates in quick succession. Each reload pulls every message and
+    // re-parses every assistant content blob, so coalesce the burst into
+    // a single trailing reload (~one per 150ms during continuous activity).
+    if (workflowRefreshTimer) return;
+    workflowRefreshTimer = setTimeout(() => {
+      workflowRefreshTimer = null;
+      void refresh(conversationId);
+    }, 150);
   });
 }
 
@@ -230,6 +243,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async deleteConversation(id) {
+    // Stop any in-flight agent run before removing the conversation so the
+    // child process and its IPC event subscription don't keep running
+    // orphaned. The eventual "done" event finalizes and cleans up runCtxMap.
+    if (get().isRunning(id)) {
+      try {
+        await get().stopActive(id);
+      } catch {
+        /* best-effort: still remove the conversation */
+      }
+    }
     await cliClient.deleteConversation(id);
     set((s) => {
       const next = s.conversations.filter((c) => c.id !== id);

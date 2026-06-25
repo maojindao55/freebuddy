@@ -151,14 +151,22 @@ function App() {
   }, []);
 
   const conversations = useConversationStore((s) => s.conversations);
-  const live = useConversationStore((s) => s.live);
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
   const isNewTask = !activeConversation;
-  const runningCount = conversations.filter(
-    (c) => live[c.id]?.status === "running" || live[c.id]?.status === "starting"
-  ).length;
+  // Select the running *count* rather than the whole live map: App (the root)
+  // re-renders only when the number of running conversations changes, not on
+  // every streaming chunk. Otherwise every background event would re-render
+  // the entire tree.
+  const runningCount = useConversationStore((s) => {
+    let n = 0;
+    for (const c of s.conversations) {
+      const st = s.live[c.id]?.status;
+      if (st === "running" || st === "starting") n += 1;
+    }
+    return n;
+  });
 
   const renderToggleButton = (extraClass = "") => (
     <button

@@ -491,6 +491,7 @@
     "resetEntry": "Reset to auto entry",
     "openExternal": "Open in browser",
     "viewport": "Preview size",
+    "viewportResponsive": "Responsive",
     "zoom": "Zoom",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",

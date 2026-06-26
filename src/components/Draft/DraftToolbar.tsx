@@ -8,8 +8,8 @@ import { useDraftPreviewStore } from "@/store/draftPreviewStore";
 
 type DraftViewport = "responsive" | "desktop" | "tablet" | "mobile";
 
-const VIEWPORTS: Array<{ key: DraftViewport; label: string }> = [
-  { key: "responsive", label: "自适应" },
+const VIEWPORTS: Array<{ key: DraftViewport; labelKey?: string; label?: string }> = [
+  { key: "responsive", labelKey: "draft.viewportResponsive" },
   { key: "desktop", label: "1440" },
   { key: "tablet", label: "768" },
   { key: "mobile", label: "390" }
@@ -62,7 +62,7 @@ export function DraftToolbar({
       >
         {viewportOptions.map((option) => (
           <option key={option.key} value={option.key}>
-            {option.label}
+            {option.labelKey ? t(option.labelKey) : option.label}
           </option>
         ))}
       </select>

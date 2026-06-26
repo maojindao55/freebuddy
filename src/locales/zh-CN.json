@@ -488,6 +488,7 @@
     "resetEntry": "恢复自动入口",
     "openExternal": "在浏览器打开",
     "viewport": "预览尺寸",
+    "viewportResponsive": "自适应",
     "zoom": "缩放",
     "zoomIn": "放大",
     "zoomOut": "缩小",

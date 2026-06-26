@@ -55,6 +55,8 @@ const cli = {
   ) => ipcRenderer.invoke("cli:setConversationApprovalMode", { id, approvalMode }),
   listMessages: (conversationId: string) =>
     ipcRenderer.invoke("cli:listMessages", conversationId),
+  listMessage: (id: string) =>
+    ipcRenderer.invoke("cli:listMessage", id),
   appendMessage: (input: unknown) =>
     ipcRenderer.invoke("cli:appendMessage", input),
   updateMessage: (input: unknown) =>
@@ -102,7 +104,10 @@ const workflow = {
   retryStep: (args: unknown) => ipcRenderer.invoke("workflow:retryStep", args),
   approveGate: (args: unknown) =>
     ipcRenderer.invoke("workflow:approveGate", args),
+  continueImplementReview: (runId: string) =>
+    ipcRenderer.invoke("workflow:continueImplementReview", runId),
   getRun: (runId: string) => ipcRenderer.invoke("workflow:getRun", runId),
+  listActiveRuns: () => ipcRenderer.invoke("workflow:listActiveRuns"),
   getSteps: (runId: string) => ipcRenderer.invoke("workflow:getSteps", runId),
   listRuns: (conversationId: string) =>
     ipcRenderer.invoke("workflow:listRuns", conversationId),

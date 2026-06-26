@@ -5,6 +5,7 @@ import fs from "node:fs";
 const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 
 const TEAM_METHODS = ["list", "get", "create", "update", "delete", "seedBuiltins"];
+const WORKFLOW_METHODS = ["listActiveRuns"];
 
 test("workflow team IPC handlers are registered", () => {
   const ipc = read("../electron/cli/workflowIpc.ts");
@@ -13,6 +14,9 @@ test("workflow team IPC handlers are registered", () => {
   }
   assert.match(ipc, /workflow:previewTeamRun/);
   assert.match(ipc, /workflow:createTeamRun/);
+  for (const m of WORKFLOW_METHODS) {
+    assert.match(ipc, new RegExp(`workflow:${m}`));
+  }
 });
 
 test("preload exposes the workflowTeams client object", () => {
@@ -22,12 +26,16 @@ test("preload exposes the workflowTeams client object", () => {
     assert.match(preload, new RegExp(`${m}\\s*:`));
   }
   assert.match(preload, /workflowTeams,/);
+  for (const m of WORKFLOW_METHODS) {
+    assert.match(preload, new RegExp(`${m}\\s*:`));
+  }
 });
 
 test("renderer types declare the FreebuddyWorkflowTeams interface", () => {
   const types = read("../src/types/freebuddy.d.ts");
   assert.match(types, /interface FreebuddyWorkflowTeams \{/);
   assert.match(types, /workflowTeams:\s*FreebuddyWorkflowTeams/);
+  assert.match(types, /listActiveRuns\(\): Promise<WorkflowRunRow\[]>/);
 });
 
 test("expandTeamToPlan produces a workflow plan for the quick team", async () => {
@@ -55,7 +63,18 @@ test("expandTeamToPlan produces a workflow plan for the quick team", async () =>
   assert.ok(result.preview.writeNodeCount >= 1);
 });
 
-test("readonly team rejects expansion when policy disallows writes", async () => {
+test("builtin workflow teams include the three default teams", async () => {
+  const { builtinWorkflowTeams } = await import(
+    "../dist-electron/cli/workflowTeamBuiltins.js"
+  );
+  const teams = builtinWorkflowTeams();
+  assert.deepEqual(
+    teams.map((t) => t.id),
+    ["team-quick-implement", "team-implement-review-loop", "team-research-report"]
+  );
+});
+
+test("research report team expands to a read-only plan", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
   );
@@ -63,22 +82,38 @@ test("readonly team rejects expansion when policy disallows writes", async () =>
     "../dist-electron/cli/workflowTeamAdapter.js"
   );
   const teams = builtinWorkflowTeams();
-  const readonly = teams.find((t) => t.id === "team-readonly-analysis");
-  assert.ok(readonly);
-  const agents = readonly.roles.map((r) => ({
+  const report = teams.find((t) => t.id === "team-research-report");
+  assert.ok(report);
+  const agents = report.roles.map((r) => ({
     id: r.agentId,
     name: r.agentId,
     adapter: "stub-acp",
     enabled: true
   }));
-  const result = expandTeamToPlan(readonly, { goal: "audit" }, agents);
+  const result = expandTeamToPlan(report, { goal: "analyze tomorrow World Cup matches and scores" }, agents);
   assert.equal(result.ok, true);
+  assert.equal(result.preview.teamId, "team-research-report");
   assert.equal(result.preview.writeNodeCount, 0);
+  assert.equal(result.preview.plan.phases.length, 3);
+  const [research, analysis, reportPhase] = result.preview.plan.phases;
+  assert.equal(research.steps[0].consumes, undefined);
+  assert.deepEqual(analysis.steps[0].consumes, [research.steps[0].id]);
+  assert.deepEqual(reportPhase.steps[0].consumes, [analysis.steps[0].id]);
+  assert.match(research.steps[0].prompt, /Do not make final judgments or forecasts/);
+  assert.match(analysis.steps[0].prompt, /Do not repeat the raw facts/);
   for (const phase of result.preview.plan.phases) {
     for (const step of phase.steps) {
       assert.notEqual(step.mode, "write");
     }
   }
+});
+
+test("seeding removes retired builtin workflow teams", () => {
+  const src = read("../electron/cli/workflowTeams.ts");
+  assert.match(src, /removedBuiltinWorkflowTeamIds/);
+  assert.match(src, /team-code-review/);
+  assert.match(src, /team-readonly-analysis/);
+  assert.match(src, /DELETE FROM workflow_teams WHERE id = \? AND source = 'builtin'/);
 });
 
 test("validateWorkflowTeam rejects unknown agent on required role", async () => {
@@ -106,17 +141,36 @@ test("team i18n keys exist in both locales", () => {
     "teamPolicy",
     "newTeam",
     "allowWrites",
-    "requireApprovalBeforeWrite"
+    "requireApprovalBeforeWrite",
+    "newTeamComingSoon"
   ]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }
 });
 
+test("new team button shows coming soon instead of opening editor", () => {
+  const src = read("../src/components/Settings/WorkflowTeamList.tsx");
+  assert.match(src, /workflow\.newTeamComingSoon/);
+  assert.match(src, /window\.alert/);
+  assert.doesNotMatch(src, /onClick=\{onNew\}/);
+});
+
 test("Settings modal mounts the WorkflowTeamsTab", () => {
   const src = read("../src/components/Settings/SettingsModal.tsx");
   assert.match(src, /<WorkflowTeamsTab/);
   assert.match(src, /import \{ WorkflowTeamsTab \}/);
+});
+
+test("ChatView uses a non-writing summary role for team follow-up conversations", () => {
+  const src = read("../src/components/CLI/ChatView.tsx");
+  assert.match(src, /function teamConversationMember/);
+  assert.match(src, /role\.kind === "summarizer"/);
+  assert.match(src, /!role\.canWrite/);
+  assert.doesNotMatch(src, /team\.roles\[0\]\?\.agentId/);
+  assert.match(src, /const teamMember = teamConversationMember\(team, members\)/);
+  assert.match(src, /teams\.find\(\(tt\) => tt\.id === pendingTeamPreview\.teamId\)/);
+  assert.match(src, /member: teamMember/);
 });
 
 test("new task page exposes a team selector and send button for team mode", () => {

@@ -9,6 +9,7 @@ import { createCliStepExecutor, WorkflowRuntime } from "./workflowRuntime.js";
 import {
   getWorkflowRun,
   getWorkflowSteps,
+  listActiveWorkflowRuns,
   listWorkflowRunsByConversation
 } from "./workflows.js";
 import type {
@@ -113,9 +114,10 @@ export function registerWorkflowIpc() {
     ensureRuntime(event).pause(runId);
     return true;
   });
-  ipcMain.handle("workflow:resume", (event, runId: string) =>
-    ensureRuntime(event).resume(runId)
-  );
+  ipcMain.handle("workflow:resume", (event, runId: string) => {
+    void ensureRuntime(event).resume(runId);
+    return true;
+  });
   ipcMain.handle("workflow:stop", (event, runId: string) => {
     ensureRuntime(event).stop(runId);
     return true;
@@ -132,8 +134,12 @@ export function registerWorkflowIpc() {
       return true;
     }
   );
+  ipcMain.handle("workflow:continueImplementReview", (event, runId: string) =>
+    ensureRuntime(event).continueImplementReview(runId)
+  );
 
   ipcMain.handle("workflow:getRun", (_e, runId: string) => getWorkflowRun(runId));
+  ipcMain.handle("workflow:listActiveRuns", () => listActiveWorkflowRuns());
   ipcMain.handle("workflow:getSteps", (_e, runId: string) =>
     getWorkflowSteps(runId)
   );

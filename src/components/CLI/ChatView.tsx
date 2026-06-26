@@ -12,6 +12,9 @@ import type {
   WorkflowTeam,
   WorkflowTeamPreview
 } from "@/services/workflowTeams/types";
+import { workflowTeamName } from "@/services/workflowTeams/types";
+import { workflowFollowupAgentId } from "@/services/workflows/types";
+import { workflowClient } from "@/services/workflows/client";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
   attachmentPreviewUrl,
@@ -181,6 +184,20 @@ function AttachmentTray({
   );
 }
 
+function teamConversationMember(
+  team: WorkflowTeam,
+  members: ReturnType<typeof useConversationStore.getState>["members"]
+) {
+  const preferredRole =
+    team.roles.find((role) => role.kind === "summarizer") ??
+    team.roles.find((role) => !role.canWrite) ??
+    team.roles[0];
+  if (!preferredRole) return members[0];
+  return (
+    members.find((member) => member.id === preferredRole.agentId) ?? members[0]
+  );
+}
+
 export function ChatView() {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
@@ -244,8 +261,15 @@ export function ChatView() {
   const [slashIndex, setSlashIndex] = useState(0);
 
   const conv = conversations.find((c) => c.id === activeId);
-  const member = conv ? members.find((m) => m.id === conv.agentId) : undefined;
-  const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, conv?.adapter);
+  const activeRun = useWorkflowStore((s) => s.activeRun);
+  const workflowFollowupAgent =
+    activeRun && activeRun.conversationId === conv?.id
+      ? workflowFollowupAgentId(activeRun)
+      : undefined;
+  const member = conv
+    ? members.find((m) => m.id === (workflowFollowupAgent ?? conv.agentId))
+    : undefined;
+  const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, member?.cli.adapter ?? conv?.adapter);
   const running =
     live?.status === "running" || live?.status === "starting";
   const sending =
@@ -456,9 +480,7 @@ export function ChatView() {
       if (!prompt || !selectedTeamId) return;
       const team = teams.find((tt) => tt.id === selectedTeamId);
       if (!team) return;
-      const firstRoleAgentId = team.roles[0]?.agentId;
-      const teamMember =
-        members.find((m) => m.id === firstRoleAgentId) ?? members[0];
+      const teamMember = teamConversationMember(team, members);
       if (!teamMember) return;
       setPreflightMsg(null);
       try {
@@ -467,7 +489,7 @@ export function ChatView() {
         const newConv = await createConversation({
           member: teamMember,
           cwd,
-          title: (team.name + ": " + prompt).slice(0, 32),
+          title: (prompt || team.name).slice(0, 24),
           approvalMode: permissionMode
         });
         setNewTaskDraft("");
@@ -548,10 +570,21 @@ export function ChatView() {
     chatTextareaRef.current?.focus();
   };
 
+  const resolveWorkflowFollowupMember = async () => {
+    if (!conv || !workflowClient.isAvailable()) return member;
+    const run =
+      activeRun?.conversationId === conv.id
+        ? activeRun
+        : (await workflowClient.listRuns(conv.id))[0];
+    const agentId = run ? workflowFollowupAgentId(run) : undefined;
+    return members.find((m) => m.id === (agentId ?? conv.agentId));
+  };
+
   const onSend = async () => {
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
-    if (!conv || !member || (!prompt && attachmentsToSend.length === 0) || sending) return;
+    const targetMember = await resolveWorkflowFollowupMember();
+    if (!conv || !targetMember || (!prompt && attachmentsToSend.length === 0) || sending) return;
     setPreflightMsg(null);
     isNearBottomRef.current = true;
     const userMessageId = nanoid();
@@ -568,7 +601,7 @@ export function ChatView() {
     setDraft("");
     setPendingAttachments([]);
     try {
-      if (!(await preflightMember(member))) {
+      if (!(await preflightMember(targetMember))) {
         setSubmitPreview(null);
         setDraft(prompt);
         setPendingAttachments(attachmentsToSend);
@@ -610,18 +643,20 @@ export function ChatView() {
   };
 
   const onCreateTeamConversation = async () => {
-    const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
-    if (!selectedMember) return;
     if (!teamMode) return;
     if (!pendingTeamPreview) return;
+    const team = teams.find((tt) => tt.id === pendingTeamPreview.teamId);
+    if (!team) return;
+    const teamMember = teamConversationMember(team, members);
+    if (!teamMember) return;
     const cwd = newTaskCwd.trim() || pendingTeamPreview?.cwd;
     setPreflightMsg(null);
     try {
-      if (!(await preflightMember(selectedMember))) return;
+      if (!(await preflightMember(teamMember))) return;
       const newConv = await createConversation({
-        member: selectedMember,
+        member: teamMember,
         cwd,
-        title: (pendingTeamPreview.name ?? "").slice(0, 24),
+        title: (pendingTeamPreview.goal || pendingTeamPreview.teamName || "").slice(0, 24),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
@@ -855,7 +890,7 @@ function NewTaskHome({
   cwd: string;
   permissionMode: "auto" | "ask";
   pendingAttachments: ChatAttachment[];
-  taskMode: "normal" | "workflow" | "team";
+  taskMode: "normal" | "team";
   teams: WorkflowTeam[];
   selectedTeamId: string;
   preflightMsg: string | null;
@@ -865,7 +900,7 @@ function NewTaskHome({
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
-  onTaskMode: (value: "normal" | "workflow" | "team") => void;
+  onTaskMode: (value: "normal" | "team") => void;
   onTeam: (id: string) => void;
   onSubmit: () => void;
 }) {
@@ -939,7 +974,7 @@ function NewTaskHome({
                     .filter((tt) => tt.enabled)
                     .map((tt) => (
                       <option key={tt.id} value={tt.id}>
-                        {tt.name}
+                        {workflowTeamName(tt, t)}
                       </option>
                     ))}
                 </select>

@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { WorkflowPlan } from "@/services/workflows/types";
 
 export type WorkflowTeamRoleKind =
@@ -88,6 +89,31 @@ export interface WorkflowTeam {
   policy: WorkflowTeamPolicy;
   createdAt: string;
   updatedAt: string;
+}
+
+export function workflowTeamName(team: WorkflowTeam, t: TFunction): string {
+  return team.source === "builtin"
+    ? t(`workflow.builtinTeams.${team.id}.name`, { defaultValue: team.name })
+    : team.name;
+}
+
+export function workflowTeamDescription(
+  team: WorkflowTeam,
+  t: TFunction
+): string | undefined {
+  if (team.source !== "builtin") return team.description;
+  return t(`workflow.builtinTeams.${team.id}.description`, {
+    defaultValue: team.description ?? ""
+  });
+}
+
+export function workflowTeamPreviewName(
+  preview: WorkflowTeamPreview,
+  t: TFunction
+): string {
+  return t(`workflow.builtinTeams.${preview.teamId}.name`, {
+    defaultValue: preview.teamName
+  });
 }
 
 export interface WorkflowTeamPreview {

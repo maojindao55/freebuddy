@@ -104,6 +104,97 @@ export function buildReviewLoopPlan(input: ReviewLoopInput): WorkflowPlan {
   };
 }
 
+export interface ImplementReviewLoopInput {
+  goal: string;
+  cwd?: string;
+  implementer: WorkflowAgentRef;
+  reviewer: WorkflowAgentRef;
+  targetPaths?: string[];
+  maxLoops?: number;
+}
+
+export const IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID = "tpl-implement-review-loop";
+export const IMPLEMENT_REVIEW_STEP_ID = "implement-changes";
+export const REVIEW_CHANGES_STEP_ID = "review-changes";
+
+export function isImplementReviewLoopPlan(plan: WorkflowPlan): boolean {
+  if (plan.template === "implement-review-loop") return true;
+  const stepIds = new Set(
+    plan.phases.flatMap((phase) => phase.steps.map((step) => step.id))
+  );
+  return (
+    stepIds.has(IMPLEMENT_REVIEW_STEP_ID) &&
+    stepIds.has(REVIEW_CHANGES_STEP_ID)
+  );
+}
+
+export function buildImplementReviewLoopPlan(
+  input: ImplementReviewLoopInput
+): WorkflowPlan {
+  const maxLoops = Math.max(input.maxLoops ?? 5, 2);
+  const target = (input.targetPaths ?? []).join(", ");
+  const goalLine = `Goal: ${input.goal}.` + (target ? ` Target: ${target}.` : "");
+
+  return {
+    name: "Implement-Review Loop",
+    goal: input.goal,
+    cwd: input.cwd,
+    template: "implement-review-loop",
+    maxLoops,
+    phases: [
+      {
+        id: "implement",
+        title: "Implement",
+        parallelism: 1,
+        steps: [
+          {
+            id: "implement-changes",
+            title: "Implement changes",
+            agentId: input.implementer.id,
+            mode: "write",
+            prompt:
+              `Implement the requested change. ${goalLine} ` +
+              "Make focused, minimal edits. Run quick sanity checks if appropriate.",
+            targetPaths: input.targetPaths
+          }
+        ],
+        gate: { type: "all_done" }
+      },
+      {
+        id: "review",
+        title: "Review",
+        parallelism: 1,
+        steps: [
+          {
+            id: "review-changes",
+            title: "Review changes",
+            agentId: input.reviewer.id,
+            mode: "review",
+            prompt:
+              `Review the implementation for: ${input.goal}. ` +
+              "List concrete issues if any.\n\n" +
+              "Required machine-readable format (first AND last line of your reply):\n" +
+              "REVIEW_STATUS: PASS\n" +
+              "or\n" +
+              "REVIEW_STATUS: FAIL\n\n" +
+              "If FAIL, include a FINDINGS section with actionable bullets.\n" +
+              "You may also end with <<<REVIEW_PASS>>> or <<<REVIEW_FAIL>>>.",
+            consumes: ["implement-changes"]
+          }
+        ],
+        gate: { type: "all_done" }
+      },
+      {
+        id: "loop_or_finish",
+        title: "Loop or Finish",
+        parallelism: 1,
+        steps: [],
+        gate: { type: "all_done" }
+      }
+    ]
+  };
+}
+
 export function reviewLoopCoordinatorPrompt(input: {
   goal: string;
   cwd?: string;

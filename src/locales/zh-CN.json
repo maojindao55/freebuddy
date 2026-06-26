@@ -149,10 +149,11 @@
     "createToBegin": "创建会话以开始",
     "sessionConfig": "会话配置"
   },
-"message": {
+  "message": {
     "you": "你",
     "thinking": "思考中",
-    "system": "系统"
+    "system": "系统",
+    "copy": "复制"
   },
   "stream": {
     "read": "读取 {{target}}",
@@ -299,6 +300,7 @@
     "modeTabsAria": "任务模式",
     "modeHint": "使用多个 Agent 规划并作为工作流运行",
     "reviewLoop": "评审循环",
+    "implementReviewLoop": "实现-审查循环",
     "generatePlan": "生成计划",
     "planPreview": "工作流计划",
     "phases": "阶段",
@@ -310,6 +312,8 @@
     "approveGate": "批准并继续",
     "pause": "暂停",
     "resume": "继续",
+    "resumeAfterFailure": "重试并继续",
+    "continueIteration": "继续迭代",
     "stop": "停止",
     "retry": "重试步骤",
     "progress": "进度",
@@ -321,6 +325,7 @@
     "gates": "关卡",
     "noGates": "没有人工关卡",
     "noActiveRun": "没有进行中的工作流",
+    "runningIndicator": "工作流正在运行",
     "status": {
       "pending_approval": "等待批准",
       "running": "运行中",
@@ -338,6 +343,33 @@
       "failed": "已失败",
       "skipped": "已跳过",
       "blocked": "已阻塞"
+    },
+    "phaseTitles": {
+      "baseline": "基线",
+      "review": "审查",
+      "implement": "实现",
+      "verify": "验证",
+      "loop_or_finish": "循环或结束",
+      "plan-task": "规划任务",
+      "summarize": "总结",
+      "research": "调研",
+      "analysis": "分析",
+      "report": "报告"
+    },
+    "stepTitles": {
+      "baseline-summarize": "总结任务和当前状态",
+      "review-findings": "生成审查结论",
+      "implement-fixes": "处理已批准的问题",
+      "verify-changes": "验证改动并报告未解决问题",
+      "implement-changes": "实现改动",
+      "review-changes": "审查改动",
+      "plan-task-step": "规划任务",
+      "implement-step": "实现",
+      "verify-step": "验证",
+      "summarize-step": "总结",
+      "research-step": "调研",
+      "analysis-step": "分析",
+      "report-step": "报告"
     },
     "invalidPlan": "生成的计划无效",
     "summary": "工作流总结",
@@ -366,6 +398,7 @@
     "allowed": "允许",
     "denied": "禁止",
     "newTeam": "新建团队",
+    "newTeamComingSoon": "自定义团队即将推出。",
     "teamName": "团队名称",
     "teamDescription": "描述",
     "teamSource": "来源",
@@ -396,7 +429,21 @@
     "advancedGraph": "高级图计划",
     "graphViewer": "图查看器",
     "startNodes": "起始节点",
-    "finalNodes": "结束节点"
+    "finalNodes": "结束节点",
+    "builtinTeams": {
+      "team-quick-implement": {
+        "name": "快速实现",
+        "description": "规划、实现、验证并总结。适合小而聚焦的改动，写入前有一次审批。"
+      },
+      "team-implement-review-loop": {
+        "name": "实现-审查循环",
+        "description": "Agent A 负责实现，Agent B 负责审查。失败时 A 修复、B 复审，直到通过或达到最大循环次数。"
+      },
+      "team-research-report": {
+        "name": "分析调研报告",
+        "description": "调研非开发类主题，分析不同情景，并输出带结论和置信度的简洁报告。"
+      }
+    }
   },
   "updater": {
     "appTitle": "应用",

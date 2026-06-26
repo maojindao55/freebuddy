@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo, useState, type MouseEvent } from "react";
 
 import { useTranslation } from "react-i18next";
 
@@ -232,6 +232,45 @@ function visibleBlocks(items: CliStreamItem[]): VisibleBlock[] {
   return blocks;
 }
 
+function itemText(item: CliStreamItem): string {
+  switch (item.kind) {
+    case "text":
+    case "thinking":
+    case "raw":
+      return item.content;
+    case "error":
+      return [item.message, item.details].filter(Boolean).join("\n");
+    case "command":
+      return item.command;
+    case "command-output":
+    case "tool-result":
+      return item.content;
+    case "tool-call":
+      return [
+        item.tool,
+        item.input === undefined
+          ? ""
+          : typeof item.input === "string"
+            ? item.input
+            : JSON.stringify(item.input, null, 2),
+        item.output ?? ""
+      ].filter(Boolean).join("\n");
+    case "file-edit":
+      return [item.path, item.oldText, item.newText].filter(Boolean).join("\n");
+    case "content-block":
+      return [item.title, item.name, item.text, item.uri]
+        .filter(Boolean)
+        .join("\n");
+    default:
+      return "";
+  }
+}
+
+function messageText(message: ConversationMessage, items: CliStreamItem[]): string {
+  if (message.role === "user" || message.role === "system") return message.content;
+  return items.map(itemText).filter(Boolean).join("\n\n");
+}
+
 function attachmentSummary(attachment: ChatAttachment): string {
   return [
     attachment.mimeType || attachment.extension || attachment.kind,
@@ -374,7 +413,7 @@ function MessageAttachments({
   );
 }
 
-export function MessageBubble({
+export const MessageBubble = memo(function MessageBubble({
   message,
   adapter
 }: {
@@ -422,6 +461,28 @@ export function MessageBubble({
       return "";
     }
   }, [message.createdAt]);
+  const [copyMenu, setCopyMenu] = useState<{ x: number; y: number } | null>(null);
+  const copyText = messageText(message, items).trim();
+  const handleContextMenu = (event: MouseEvent) => {
+    if (!copyText) return;
+    event.preventDefault();
+    setCopyMenu({ x: event.clientX, y: event.clientY });
+  };
+  const handleCopy = () => {
+    if (copyText) void navigator.clipboard?.writeText(copyText);
+    setCopyMenu(null);
+  };
+  const copyMenuNode = copyMenu ? (
+    <div
+      className="message-context-menu"
+      style={{ left: copyMenu.x, top: copyMenu.y }}
+      onMouseLeave={() => setCopyMenu(null)}
+    >
+      <button type="button" onClick={handleCopy}>
+        {t("message.copy")}
+      </button>
+    </div>
+  ) : null;
 
   if (message.role === "user") {
     const { images: imageAttachments, others: otherAttachments } =
@@ -432,7 +493,7 @@ export function MessageBubble({
 
     return (
       <div className="msg msg-user">
-        <div className="msg-content-wrapper">
+        <div className="msg-content-wrapper" onContextMenu={handleContextMenu}>
           <div className="msg-header">
             <span className="msg-author">{t("message.you")}</span>
             <span className="msg-time">{timeStr}</span>
@@ -446,6 +507,7 @@ export function MessageBubble({
           {imageAttachments.length > 0 && (
             <MessageImageAttachments attachments={imageAttachments} />
           )}
+          {copyMenuNode}
         </div>
         <div className="msg-avatar user-avatar">
           <span>👤</span>
@@ -457,7 +519,7 @@ export function MessageBubble({
   if (message.role === "system") {
     const label = message.roleLabel ?? t("message.system");
     return (
-      <div className="msg msg-system msg-system-divider">
+      <div className="msg msg-system msg-system-divider" onContextMenu={handleContextMenu}>
         <span className="msg-system-divider-line" aria-hidden="true" />
         <span className="msg-system-divider-label">
           <span className="msg-system-role">{label}</span>
@@ -466,6 +528,7 @@ export function MessageBubble({
           )}
         </span>
         <span className="msg-system-divider-line" aria-hidden="true" />
+        {copyMenuNode}
       </div>
     );
   }
@@ -482,7 +545,7 @@ export function MessageBubble({
         className="msg-avatar agent-avatar"
         fallback={<span>✦</span>}
       />
-      <div className="msg-content-wrapper">
+      <div className="msg-content-wrapper" onContextMenu={handleContextMenu}>
         <div className="msg-header">
           <span className="msg-author">{agentLabel}</span>
           <span className="msg-time">{timeStr}</span>
@@ -520,7 +583,8 @@ export function MessageBubble({
             <span>{t("message.thinking")}</span>
           </div>
         )}
+        {copyMenuNode}
       </div>
     </div>
   );
-}
+});

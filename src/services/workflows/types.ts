@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 export type WorkflowStepMode =
   | "research"
   | "review"
@@ -34,7 +36,7 @@ export interface WorkflowPlan {
   name: string;
   goal: string;
   cwd?: string;
-  template?: "review-loop" | "custom";
+  template?: "review-loop" | "implement-review-loop" | "custom";
   maxLoops?: number;
   phases: WorkflowPhase[];
 }
@@ -100,4 +102,39 @@ export interface WorkflowStepRow {
 export interface WorkflowValidationResult {
   ok: boolean;
   errors: string[];
+}
+
+export function workflowPhaseTitle(phase: Pick<WorkflowPhase, "id" | "title">, t: TFunction): string {
+  return t(`workflow.phaseTitles.${phase.id}`, { defaultValue: phase.title });
+}
+
+export function workflowStepTitle(step: Pick<WorkflowStepRow, "stepId" | "title">, t: TFunction): string {
+  return t(`workflow.stepTitles.${step.stepId}`, { defaultValue: step.title });
+}
+
+export function workflowFollowupAgentId(run: Pick<WorkflowRunRow, "planJson">): string | undefined {
+  let plan: WorkflowPlan;
+  try {
+    plan = JSON.parse(run.planJson) as WorkflowPlan;
+  } catch {
+    return undefined;
+  }
+
+  for (let i = plan.phases.length - 1; i >= 0; i -= 1) {
+    const phase = plan.phases[i];
+    for (let j = phase.steps.length - 1; j >= 0; j -= 1) {
+      const step = phase.steps[j];
+      if (step.mode === "summarize") return step.agentId;
+    }
+  }
+
+  for (let i = plan.phases.length - 1; i >= 0; i -= 1) {
+    const phase = plan.phases[i];
+    for (let j = phase.steps.length - 1; j >= 0; j -= 1) {
+      const step = phase.steps[j];
+      if (step.mode !== "write") return step.agentId;
+    }
+  }
+
+  return undefined;
 }

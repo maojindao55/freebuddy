@@ -36,7 +36,13 @@ export function WorkflowPlanCard({
     <section className="workflow-plan-card">
       <header>
         <strong>{plan.name}</strong>
-        <span>{plan.template === "review-loop" ? t("workflow.reviewLoop") : ""}</span>
+        <span>
+          {plan.template === "review-loop"
+            ? t("workflow.reviewLoop")
+            : plan.template === "implement-review-loop"
+              ? t("workflow.implementReviewLoop")
+              : ""}
+        </span>
       </header>
       <p className="workflow-plan-goal">{plan.goal}</p>
       <dl className="workflow-plan-stats">

@@ -109,7 +109,9 @@ export function createWorkflowRun(input: CreateWorkflowRunInput): WorkflowRunRow
 export interface UpdateWorkflowRunPatch {
   status?: WorkflowRunStatus;
   loopIndex?: number;
-  summary?: string;
+  maxLoops?: number;
+  planJson?: string;
+  summary?: string | null;
   endedAt?: string | null;
 }
 
@@ -126,6 +128,14 @@ export function updateWorkflowRun(
   if (patch.loopIndex !== undefined) {
     fields.push("loop_index = ?");
     params.push(patch.loopIndex);
+  }
+  if (patch.maxLoops !== undefined) {
+    fields.push("max_loops = ?");
+    params.push(patch.maxLoops);
+  }
+  if (patch.planJson !== undefined) {
+    fields.push("plan_json = ?");
+    params.push(patch.planJson);
   }
   if (patch.summary !== undefined) {
     fields.push("summary = ?");
@@ -216,6 +226,7 @@ export function createWorkflowStep(input: CreateWorkflowStepInput): void {
 
 export interface UpdateWorkflowStepPatch {
   status?: WorkflowStepStatus;
+  prompt?: string;
   summary?: string | null;
   resultJson?: string | null;
   cliTaskId?: string | null;
@@ -232,6 +243,10 @@ export function updateWorkflowStep(
   if (patch.status !== undefined) {
     fields.push("status = ?");
     params.push(patch.status);
+  }
+  if (patch.prompt !== undefined) {
+    fields.push("prompt = ?");
+    params.push(patch.prompt);
   }
   if (patch.summary !== undefined) {
     fields.push("summary = ?");

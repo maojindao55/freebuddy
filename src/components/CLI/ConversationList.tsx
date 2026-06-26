@@ -1,5 +1,6 @@
-import { Fragment, memo, useCallback, useMemo, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useConversationStore } from "@/store/conversationStore";
+import { useWorkflowStore } from "@/store/workflowStore";
 import type { Conversation } from "@/services/cli/types";
 import { displayAgentName } from "@/config/agentDisplay";
 import i18next from "i18next";
@@ -117,12 +118,14 @@ const ConversationRow = memo(function ConversationRow({
   conversation,
   isActive,
   isRunning,
+  isWorkflowRunning,
   onSelect,
   onDelete
 }: {
   conversation: Conversation;
   isActive: boolean;
   isRunning: boolean;
+  isWorkflowRunning: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string, title: string) => void;
 }) {
@@ -145,7 +148,12 @@ const ConversationRow = memo(function ConversationRow({
         }
       }}
     >
-      {isRunning && <span className="conv-running-dot" />}
+      {(isRunning || isWorkflowRunning) && (
+        <span
+          className={`conv-running-dot${isWorkflowRunning ? " workflow" : ""}`}
+          title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+        />
+      )}
       <div className="conv-item-main">
         <div className="conv-item-title-row">
           <strong>{conversation.title}</strong>
@@ -198,11 +206,18 @@ export function ConversationList({
     }
     return ids.join("\n");
   });
+  const workflowActiveRuns = useWorkflowStore((s) => s.activeRuns);
+  const loadWorkflowActiveRuns = useWorkflowStore((s) => s.loadActiveRuns);
   const remove = useConversationStore((s) => s.deleteConversation);
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
 
   const runningSet = new Set(runningSignature ? runningSignature.split("\n") : []);
+  const workflowRunningSet = new Set(
+    workflowActiveRuns
+      .map((run) => run.conversationId)
+      .filter((id): id is string => Boolean(id))
+  );
 
   // Stable callbacks so memoized rows don't all re-render on every parent render.
   const handleSelect = useCallback(
@@ -221,6 +236,11 @@ export function ConversationList({
   );
 
   const normalizedQuery = query.trim().toLowerCase();
+
+  useEffect(() => {
+    void loadWorkflowActiveRuns();
+  }, [loadWorkflowActiveRuns]);
+
   const filtered = useMemo(() => {
     if (!normalizedQuery) return conversations;
     return conversations.filter((c) => {
@@ -295,6 +315,7 @@ export function ConversationList({
                   conversation={c}
                   isActive={activeId === c.id}
                   isRunning={runningSet.has(c.id)}
+                  isWorkflowRunning={workflowRunningSet.has(c.id)}
                   onSelect={handleSelect}
                   onDelete={handleDelete}
                 />

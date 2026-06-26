@@ -34,7 +34,7 @@ export interface WorkflowPlan {
   name: string;
   goal: string;
   cwd?: string;
-  template?: "review-loop" | "custom";
+  template?: "review-loop" | "implement-review-loop" | "custom";
   maxLoops?: number;
   phases: WorkflowPhase[];
 }

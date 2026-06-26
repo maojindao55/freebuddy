@@ -151,13 +151,13 @@ test("decideReviewLoop returns partial when verifier did not finish", () => {
   assert.equal(decideReviewLoop("failed", true, 0, 3), "partial");
 });
 
-test("deriveStepSummary prefers the last assistant text", () => {
+test("deriveStepSummary concatenates assistant text chunks", () => {
   const s = deriveStepSummary([
     { kind: "text", content: "first" },
     { kind: "tool-call" },
     { kind: "text", content: "  final answer here  " }
   ]);
-  assert.equal(s, "final answer here");
+  assert.equal(s, "first\nfinal answer here");
 });
 
 test("deriveStepSummary falls back to tool count", () => {

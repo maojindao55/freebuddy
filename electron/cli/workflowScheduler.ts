@@ -6,6 +6,7 @@ import type {
 
 export interface StepState {
   stepId: string;
+  phaseId?: string;
   status?: WorkflowStepStatus;
 }
 
@@ -127,27 +128,229 @@ export function decideReviewLoop(
 
 /**
  * Extract a concise summary from the final assistant stream items of a step.
- * Prefers the last assistant text; falls back to tool-action count.
+ * Concatenates all text chunks and preserves workflow control markers
+ * (REVIEW_STATUS / UNRESOLVED) even when the body is truncated.
  */
 export function deriveStepSummary(items: unknown[]): string {
-  let text = "";
+  const fullText = collectAllTextFromItems(items);
   let toolCount = 0;
   for (const raw of items) {
-    const item = raw as { kind?: string; content?: string };
+    const item = raw as { kind?: string };
     if (!item || typeof item !== "object") continue;
     if (item.kind === "tool-call" || item.kind === "tool-result") {
       toolCount += 1;
     }
-    if (item.kind === "text" && typeof item.content === "string") {
-      text = item.content;
-    }
   }
-  const trimmed = text.trim();
-  if (trimmed) return trimmed.slice(0, 400);
+  const trimmed = fullText.trim();
+  if (trimmed) return compactStepSummary(trimmed);
   if (toolCount > 0) {
     return `Completed ${toolCount} tool action${toolCount === 1 ? "" : "s"}.`;
   }
   return "Step completed.";
+}
+
+/** Join assistant-visible text used for workflow control markers. */
+export function collectDecisionTextFromItems(items: unknown[]): string {
+  const normalized = normalizeStreamItemsForDecision(items);
+  const pieces: string[] = [];
+  for (const item of normalized) {
+    extractTextPiecesFromItem(item, pieces);
+  }
+  return pieces.join("\n");
+}
+
+interface StreamLike {
+  kind?: string;
+  content?: string;
+  text?: string;
+  role?: string;
+  messageId?: string;
+  append?: boolean;
+  blockType?: string;
+  entries?: Array<{ content?: string }>;
+  output?: string;
+  toolOutputs?: StreamLike[];
+  input?: unknown;
+}
+
+function mergeStreamTextLike(prev: StreamLike, next: StreamLike): StreamLike {
+  const prevContent = String(prev.content ?? prev.text ?? "");
+  const nextContent = String(next.content ?? next.text ?? "");
+  if (next.append) {
+    return { ...prev, content: prevContent + nextContent };
+  }
+  if (nextContent === prevContent) return prev;
+  if (nextContent.startsWith(prevContent)) {
+    return { ...prev, content: nextContent };
+  }
+  return { ...next, content: nextContent };
+}
+
+/** Merge ACP append chunks the same way the chat renderer does. */
+function normalizeStreamItemsForDecision(items: unknown[]): StreamLike[] {
+  const out: StreamLike[] = [];
+  for (const raw of items) {
+    const item = raw as StreamLike;
+    if (!item || typeof item !== "object") continue;
+
+    if (item.kind === "text" || item.kind === "thinking") {
+      if (item.messageId) {
+        const idx = out.findIndex(
+          (previous) =>
+            previous.kind === item.kind &&
+            previous.messageId === item.messageId &&
+            (item.kind !== "text" || previous.role === item.role)
+        );
+        if (idx >= 0) {
+          out[idx] = mergeStreamTextLike(out[idx]!, item);
+          continue;
+        }
+      }
+      const last = out[out.length - 1];
+      if (
+        item.append &&
+        last &&
+        last.kind === item.kind &&
+        (item.kind !== "text" || last.role === item.role)
+      ) {
+        out[out.length - 1] = mergeStreamTextLike(last, item);
+        continue;
+      }
+      if (
+        last &&
+        last.kind === item.kind &&
+        (item.kind !== "text" || last.role === item.role)
+      ) {
+        const merged = mergeStreamTextLike(last, item);
+        if (merged !== last) {
+          out[out.length - 1] = merged;
+          continue;
+        }
+      }
+      out.push({ ...item, content: item.content ?? item.text ?? "" });
+      continue;
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+function stringifyUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function extractTextPiecesFromItem(item: StreamLike, pieces: string[]): void {
+  switch (item.kind) {
+    case "text":
+    case "thinking":
+    case "raw":
+    case "command-output": {
+      const piece = String(item.content ?? item.text ?? "").trim();
+      if (piece) pieces.push(piece);
+      return;
+    }
+    case "tool-result": {
+      const piece = String(item.content ?? "").trim();
+      if (piece) pieces.push(piece);
+      return;
+    }
+    case "tool-call": {
+      if (typeof item.output === "string" && item.output.trim()) {
+        pieces.push(item.output.trim());
+      }
+      if (item.input !== undefined) {
+        const input = stringifyUnknown(item.input).trim();
+        if (input && input !== "{}") pieces.push(input);
+      }
+      for (const nested of item.toolOutputs ?? []) {
+        extractTextPiecesFromItem(nested, pieces);
+      }
+      return;
+    }
+    case "content-block": {
+      if (item.blockType === "resource" && typeof item.text === "string") {
+        const piece = item.text.trim();
+        if (piece) pieces.push(piece);
+      }
+      return;
+    }
+    case "plan": {
+      for (const entry of item.entries ?? []) {
+        const piece = String(entry?.content ?? "").trim();
+        if (piece) pieces.push(piece);
+      }
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+/** Join every assistant text chunk in order (ACP may split long replies). */
+export function collectAllTextFromItems(items: unknown[]): string {
+  return collectDecisionTextFromItems(items);
+}
+
+/** Prefer full stream text from resultJson when deciding loop outcomes. */
+export function resolveReviewDecisionText(
+  summary: string | undefined,
+  resultJson: string | undefined
+): string | undefined {
+  if (resultJson) {
+    try {
+      const parsed = JSON.parse(resultJson) as { items?: unknown[] };
+      const full = collectDecisionTextFromItems(parsed.items ?? []).trim();
+      if (full) return full;
+    } catch {
+      /* fall through to summary */
+    }
+  }
+  return summary;
+}
+
+function compactStepSummary(text: string, maxLen = 400): string {
+  const status = extractReviewStatus(text);
+  const reviewMarker = status ? `REVIEW_STATUS: ${status}` : undefined;
+  const unresolvedMarker = text.match(/UNRESOLVED:\s*\d+/i)?.[0];
+  const markers = [reviewMarker, unresolvedMarker].filter(Boolean) as string[];
+  if (text.length <= maxLen) return text;
+  if (markers.length === 0) return text.slice(0, maxLen);
+  const markerBlock = markers.join("\n");
+  const budget = Math.max(80, maxLen - markerBlock.length - 2);
+  return `${text.slice(0, budget).trimEnd()}\n…\n${markerBlock}`;
+}
+
+export function extractReviewStatus(
+  text: string | undefined
+): "PASS" | "FAIL" | undefined {
+  if (!text) return undefined;
+  if (/<<<REVIEW_FAIL>>>/i.test(text)) return "FAIL";
+  if (/<<<REVIEW_PASS>>>/i.test(text)) return "PASS";
+  if (/\[\[REVIEW:FAIL\]\]/i.test(text)) return "FAIL";
+  if (/\[\[REVIEW:PASS\]\]/i.test(text)) return "PASS";
+  const matches = [
+    ...text.matchAll(/REVIEW[\s_-]*STATUS\s*:\s*(PASS|FAIL)/gi)
+  ];
+  const last = matches.at(-1)?.[1];
+  if (!last) return undefined;
+  return last.toUpperCase() as "PASS" | "FAIL";
+}
+
+/** Ensure compact summaries still carry a review status marker when present in full text. */
+export function ensureReviewStatusInSummary(
+  summary: string,
+  decisionText: string
+): string {
+  const status = extractReviewStatus(decisionText);
+  if (!status) return summary;
+  if (extractReviewStatus(summary)) return summary;
+  return `${summary}\nREVIEW_STATUS: ${status}`;
 }
 
 /** Heuristic: detect "UNRESOLVED: <n>" with n > 0 in a verifier summary. */
@@ -156,4 +359,86 @@ export function verifierHasUnresolved(summary: string | undefined): boolean {
   const match = summary.match(/UNRESOLVED:\s*(\d+)/i);
   if (match) return Number(match[1]) > 0;
   return false;
+}
+
+/** Heuristic: detect REVIEW_STATUS: FAIL in a reviewer summary. */
+export function reviewerHasFail(summary: string | undefined): boolean {
+  return extractReviewStatus(summary) === "FAIL";
+}
+
+/**
+ * Decide the Implement-Review Loop outcome after the reviewer step completes.
+ */
+export function decideImplementReviewLoop(
+  reviewerStatus: WorkflowStepStatus | undefined,
+  reviewerSummary: string | undefined,
+  loopIndex: number,
+  maxLoops: number
+): "loop" | "finish" | "partial" {
+  const reviewStatus = extractReviewStatus(reviewerSummary);
+  if (reviewStatus === "PASS") return "finish";
+  if (reviewStatus === "FAIL") {
+    if (reviewerStatus !== "done" && reviewerStatus !== "failed") {
+      return "partial";
+    }
+    if (loopIndex + 1 < maxLoops) return "loop";
+    return "partial";
+  }
+  if (reviewerStatus !== "done") return "partial";
+  return "finish";
+}
+
+/** First phase that still has steps not in done|skipped. */
+export function findResumePhaseIndex(
+  plan: WorkflowPlan,
+  states: StepState[]
+): number {
+  for (let i = 0; i < plan.phases.length; i++) {
+    const phase = plan.phases[i]!;
+    const phaseSteps = states.filter((s) => s.phaseId === phase.id);
+    if (phaseSteps.length === 0) continue;
+    const finished = phaseSteps.every(
+      (s) => s.status === "done" || s.status === "skipped"
+    );
+    if (!finished) return i;
+  }
+  return plan.phases.length;
+}
+
+/** Step row ids in a phase that should be reset before resuming after a block. */
+export function resumableStepRowIds(
+  phaseId: string,
+  states: Array<{ id: string; phaseId: string; status?: WorkflowStepStatus }>
+): string[] {
+  return states
+    .filter(
+      (s) =>
+        s.phaseId === phaseId &&
+        (s.status === "failed" || s.status === "blocked" || s.status === "running")
+    )
+    .map((s) => s.id);
+}
+
+export interface ConsumedStepRef {
+  stepId: string;
+  title: string;
+  summary?: string;
+}
+
+/** Append upstream step summaries referenced by consumes ids. */
+export function augmentPromptWithConsumedSummaries(
+  basePrompt: string,
+  consumes: string[] | undefined,
+  stepsById: Map<string, ConsumedStepRef>
+): string {
+  if (!consumes?.length) return basePrompt;
+  const blocks: string[] = [];
+  for (const id of consumes) {
+    const ref = stepsById.get(id);
+    if (ref?.summary?.trim()) {
+      blocks.push(`--- ${ref.title} ---\n${ref.summary.trim()}`);
+    }
+  }
+  if (blocks.length === 0) return basePrompt;
+  return `${basePrompt}\n\nContext from prior steps:\n${blocks.join("\n\n")}`;
 }

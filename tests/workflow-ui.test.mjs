@@ -40,12 +40,15 @@ test("WorkflowPhaseList renders inline step details for the selected step", () =
   const src = read("../src/components/Workflows/WorkflowPhaseList.tsx");
   assert.match(src, /WorkflowStepDetails/);
   assert.match(src, /selectedStepId/);
+  assert.match(src, /workflowPhaseTitle\(phase, t\)/);
+  assert.match(src, /workflowStepTitle\(step, t\)/);
 });
 
 test("WorkflowStepDetails renders failed-state retry", () => {
   const src = read("../src/components/Workflows/WorkflowStepDetails.tsx");
   assert.match(src, /step\.status === "failed"/);
   assert.match(src, /workflow-retry-button/);
+  assert.match(src, /workflowStepTitle\(step, t\)/);
 });
 
 test("ReviewLoopSummary renders final status text", () => {
@@ -82,15 +85,79 @@ test("new-task page exposes mode tabs and team submit", () => {
   assert.match(src, /new-task-mode-tabs/);
 });
 
+test("ConversationList includes workflow runs in the running indicator set", () => {
+  const src = read("../src/components/CLI/ConversationList.tsx");
+  const css = read("../styles.css");
+  assert.match(src, /useWorkflowStore/);
+  assert.match(src, /workflowActiveRuns/);
+  assert.match(src, /loadWorkflowActiveRuns/);
+  assert.match(src, /workflowRunningSet\.has\(c\.id\)/);
+  assert.match(src, /isWorkflowRunning=\{workflowRunningSet\.has\(c\.id\)\}/);
+  assert.match(src, /conv-running-dot\$\{isWorkflowRunning \? " workflow" : ""\}/);
+  assert.match(css, /\.conv-running-dot\.workflow/);
+  assert.match(css, /--fb-workflow/);
+});
+
+test("ChatView titles team workflow conversations from the prompt", () => {
+  const src = read("../src/components/CLI/ChatView.tsx");
+  assert.match(src, /title: \(prompt \|\| team\.name\)\.slice\(0, 24\)/);
+  assert.match(src, /title: \(pendingTeamPreview\.goal \|\| pendingTeamPreview\.teamName/);
+});
+
 test("workflow i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
-  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk"]) {
+  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk", "runningIndicator", "phaseTitles", "stepTitles"]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
+  }
+  for (const teamId of ["team-quick-implement", "team-implement-review-loop", "team-research-report"]) {
+    assert.ok(en.workflow.builtinTeams?.[teamId]?.name, `missing en workflow.builtinTeams.${teamId}.name`);
+    assert.ok(en.workflow.builtinTeams?.[teamId]?.description, `missing en workflow.builtinTeams.${teamId}.description`);
+    assert.ok(zh.workflow.builtinTeams?.[teamId]?.name, `missing zh-CN workflow.builtinTeams.${teamId}.name`);
+    assert.ok(zh.workflow.builtinTeams?.[teamId]?.description, `missing zh-CN workflow.builtinTeams.${teamId}.description`);
   }
   assert.ok(en.workflow.status?.running);
   assert.ok(zh.workflow.status?.running);
   assert.ok(en.workflow.stepStatus?.failed);
   assert.ok(zh.workflow.stepStatus?.failed);
+});
+
+test("WorkflowRunPanel translates workflow run names", () => {
+  const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  assert.match(src, /workflowRunName/);
+  assert.match(src, /workflow\.builtinTeams\.team-research-report\.name/);
+  assert.match(src, /workflow\.implementReviewLoop/);
+});
+
+test("Settings modal opens with CLI agents before General", () => {
+  const src = read("../src/components/Settings/SettingsModal.tsx");
+  assert.match(src, /useState<SettingsTab>\("cli"\)/);
+  assert.match(src, /const TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
+});
+
+test("MessageBubble supports right-click copy", () => {
+  const src = read("../src/components/CLI/MessageBubble.tsx");
+  const css = read("../styles.css");
+  assert.match(src, /onContextMenu=\{handleContextMenu\}/);
+  assert.match(src, /navigator\.clipboard\?\.writeText\(copyText\)/);
+  assert.match(src, /message\.copy/);
+  assert.match(css, /\.message-context-menu/);
+});
+
+test("conversationStore routes workflow follow-ups to the workflow summary agent", () => {
+  const src = read("../src/store/conversationStore.ts");
+  const chat = read("../src/components/CLI/ChatView.tsx");
+  const types = read("../src/services/workflows/types.ts");
+  assert.match(types, /function workflowFollowupAgentId/);
+  assert.match(types, /step\.mode === "summarize"/);
+  assert.match(types, /step\.mode !== "write"/);
+  assert.match(src, /workflowRunForConversation/);
+  assert.match(src, /memberForWorkflowFollowup\(workflowRun, get\(\)\.members\)/);
+  assert.match(src, /workflow:\$\{workflowRun\.id\}:\$\{member\.id\}/);
+  assert.match(chat, /workflowFollowupAgentId\(activeRun\)/);
+  assert.match(chat, /workflowFollowupAgent \?\? conv\.agentId/);
+  assert.match(chat, /resolveWorkflowFollowupMember/);
+  assert.match(chat, /await workflowClient\.listRuns\(conv\.id\)/);
+  assert.match(chat, /preflightMember\(targetMember\)/);
 });

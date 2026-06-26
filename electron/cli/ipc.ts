@@ -31,6 +31,7 @@ import {
   deleteConversation,
   getConversation,
   listConversations,
+  listMessage,
   listMessages,
   renameConversation,
   setConversationApprovalMode,
@@ -270,6 +271,9 @@ export function registerCliIpc() {
 
   ipcMain.handle("cli:listMessages", (_e, conversationId: string) =>
     listMessages(conversationId)
+  );
+  ipcMain.handle("cli:listMessage", (_e, id: string) =>
+    listMessage(id)
   );
   ipcMain.handle("cli:appendMessage", (_e, input: AppendMessageInput) =>
     appendMessage(input)

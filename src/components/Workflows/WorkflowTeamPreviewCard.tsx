@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import type { WorkflowTeamPreview } from "@/services/workflowTeams/types";
+import { workflowTeamPreviewName } from "@/services/workflowTeams/types";
 
 export function WorkflowTeamPreviewCard({
   preview,
@@ -16,7 +17,7 @@ export function WorkflowTeamPreviewCard({
   return (
     <section className="workflow-team-preview-card">
       <header className="workflow-team-preview-header">
-        <strong>{preview.teamName}</strong>
+        <strong>{workflowTeamPreviewName(preview, t)}</strong>
         <span className="muted small">{t("workflow.teamPlanPreview")}</span>
       </header>
       <p className="workflow-plan-goal">{preview.goal}</p>

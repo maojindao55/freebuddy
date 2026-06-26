@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { WorkflowStepRow } from "@/services/workflows/types";
+import type { WorkflowPlan, WorkflowStepRow } from "@/services/workflows/types";
 import { pendingManualGatePhaseId } from "@/services/workflows/planning";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { WorkflowPhaseList } from "./WorkflowPhaseList";
@@ -55,6 +55,16 @@ function StopIcon() {
   );
 }
 
+function workflowRunName(name: string, template: string | undefined, t: ReturnType<typeof useTranslation>["t"]) {
+  if (template === "implement-review-loop") return t("workflow.implementReviewLoop");
+  if (template === "review-loop") return t("workflow.reviewLoop");
+  if (name === "Research Report") return t("workflow.builtinTeams.team-research-report.name");
+  if (name === "Quick Implementation") return t("workflow.builtinTeams.team-quick-implement.name");
+  if (name === "Implement-Review Loop") return t("workflow.implementReviewLoop");
+  if (name === "Review Loop") return t("workflow.reviewLoop");
+  return name;
+}
+
 export function WorkflowRunPanel() {
   const { t } = useTranslation();
   const activeRun = useWorkflowStore((s) => s.activeRun);
@@ -65,12 +75,13 @@ export function WorkflowRunPanel() {
   const stop = useWorkflowStore((s) => s.stop);
   const retryStep = useWorkflowStore((s) => s.retryStep);
   const approveGate = useWorkflowStore((s) => s.approveGate);
+  const continueImplementReview = useWorkflowStore((s) => s.continueImplementReview);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
-  let plan: ReturnType<typeof JSON.parse> = null;
+  let plan: WorkflowPlan | null = null;
   if (activeRun) {
     try {
-      plan = JSON.parse(activeRun.planJson);
+      plan = JSON.parse(activeRun.planJson) as WorkflowPlan;
     } catch {
       plan = null;
     }
@@ -102,16 +113,32 @@ export function WorkflowRunPanel() {
     return null;
   }
 
+  const failedSteps = steps.filter(
+    (s) => s.status === "failed" || s.status === "blocked"
+  );
+  const resumeLabel =
+    activeRun.status === "blocked" && failedSteps.length > 0
+      ? t("workflow.resumeAfterFailure")
+      : t("workflow.resume");
+
   const gatingPhaseId = pendingManualGatePhaseId(
     plan.phases,
     steps.map((s) => ({ stepId: s.stepId, status: s.status }))
   );
+  const reviewStep = steps.find((s) => s.stepId === "review-changes");
+  const canContinueImplementReview =
+    activeRun.status === "partial" &&
+    (plan.template === "implement-review-loop" ||
+      activeRun.template === "implement-review-loop") &&
+    /(?:REVIEW_STATUS:\s*FAIL|<<<REVIEW_FAIL>>>|\[\[REVIEW:FAIL\]\])/i.test(
+      `${reviewStep?.summary ?? ""}\n${reviewStep?.resultJson ?? ""}`
+    );
 
   return (
     <section className="side-card workflow-run-panel">
       <div className="workflow-run-header">
         <div className="workflow-run-title">
-          <strong>{activeRun.name}</strong>
+          <strong>{workflowRunName(activeRun.name, plan.template ?? activeRun.template, t)}</strong>
           <span className={`workflow-run-status ${activeRun.status}`}>
             {t(`workflow.status.${activeRun.status}`)}
           </span>
@@ -129,8 +156,17 @@ export function WorkflowRunPanel() {
         </div>
       </div>
 
-      {(isLive || gatingPhaseId) && (
+      {(isLive || gatingPhaseId || canContinueImplementReview) && (
         <div className="workflow-run-actions">
+          {canContinueImplementReview && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void continueImplementReview(activeRun.id)}
+            >
+              <ResumeIcon /> {t("workflow.continueIteration")}
+            </button>
+          )}
           {activeRun.status === "running" && (
             <button type="button" onClick={() => void pause(activeRun.id)}>
               <PauseIcon /> {t("workflow.pause")}
@@ -139,7 +175,7 @@ export function WorkflowRunPanel() {
           {(activeRun.status === "paused" ||
             activeRun.status === "blocked") && (
             <button type="button" onClick={() => void resume(activeRun.id)}>
-              <ResumeIcon /> {t("workflow.resume")}
+              <ResumeIcon /> {resumeLabel}
             </button>
           )}
           {gatingPhaseId && (

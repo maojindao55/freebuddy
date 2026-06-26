@@ -8,6 +8,7 @@ import type {
   WorkflowPhase,
   WorkflowStepRow as WorkflowStepRowData
 } from "@/services/workflows/types";
+import { workflowPhaseTitle, workflowStepTitle } from "@/services/workflows/types";
 import { WorkflowStepDetails } from "./WorkflowStepDetails";
 
 const STATUS_MAP: Record<string, StepsProps["status"]> = {
@@ -52,6 +53,7 @@ export function WorkflowPhaseList({
       : 0;
 
   const items: StepsProps["items"] = allSteps.map((step) => {
+    const phase = phases.find((entry) => entry.steps.some((ps) => ps.id === step.stepId));
     const agentLabel = displayAgentName(step.agentName, step.adapter);
     const isSelected = selectedStepId === step.id;
     return {
@@ -61,11 +63,16 @@ export function WorkflowPhaseList({
           onClick={onSelect ? () => onSelect(step) : undefined}
           role={onSelect ? "button" : undefined}
         >
-          {step.title}
+          {workflowStepTitle(step, t)}
         </span>
       ),
       description: (
         <span className="workflow-step-meta">
+          {phase && (
+            <span className="workflow-step-phase">
+              {workflowPhaseTitle(phase, t)}
+            </span>
+          )}
           <AgentAvatar
             adapter={step.adapter}
             className="workflow-step-agent-avatar"

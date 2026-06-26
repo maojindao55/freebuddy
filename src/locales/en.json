@@ -152,7 +152,8 @@
   "message": {
     "you": "You",
     "thinking": "Thinking",
-    "system": "System"
+    "system": "System",
+    "copy": "Copy"
   },
   "stream": {
     "read": "Read {{target}}",
@@ -300,6 +301,7 @@
     "modeTabsAria": "Task mode",
     "modeHint": "Plan with multiple agents, then run as a workflow",
     "reviewLoop": "Review Loop",
+    "implementReviewLoop": "Implement-Review Loop",
     "generatePlan": "Generate plan",
     "planPreview": "Workflow plan",
     "phases": "Phases",
@@ -311,6 +313,8 @@
     "approveGate": "Approve & continue",
     "pause": "Pause",
     "resume": "Resume",
+    "resumeAfterFailure": "Retry & continue",
+    "continueIteration": "Continue iteration",
     "stop": "Stop",
     "retry": "Retry step",
     "progress": "Progress",
@@ -322,6 +326,7 @@
     "gates": "Gates",
     "noGates": "No manual gates",
     "noActiveRun": "No active workflow",
+    "runningIndicator": "Workflow is running",
     "status": {
       "pending_approval": "Awaiting approval",
       "running": "Running",
@@ -339,6 +344,33 @@
       "failed": "Failed",
       "skipped": "Skipped",
       "blocked": "Blocked"
+    },
+    "phaseTitles": {
+      "baseline": "Baseline",
+      "review": "Review",
+      "implement": "Implement",
+      "verify": "Verify",
+      "loop_or_finish": "Loop or finish",
+      "plan-task": "Plan task",
+      "summarize": "Summarize",
+      "research": "Research",
+      "analysis": "Analyze",
+      "report": "Report"
+    },
+    "stepTitles": {
+      "baseline-summarize": "Summarize task and current state",
+      "review-findings": "Produce review findings",
+      "implement-fixes": "Address approved findings",
+      "verify-changes": "Verify changes and report unresolved issues",
+      "implement-changes": "Implement changes",
+      "review-changes": "Review changes",
+      "plan-task-step": "Plan task",
+      "implement-step": "Implement",
+      "verify-step": "Verify",
+      "summarize-step": "Summarize",
+      "research-step": "Research",
+      "analysis-step": "Analyze",
+      "report-step": "Report"
     },
     "invalidPlan": "The generated plan is invalid",
     "summary": "Workflow summary",
@@ -367,6 +399,7 @@
     "allowed": "Allowed",
     "denied": "Denied",
     "newTeam": "New team",
+    "newTeamComingSoon": "Custom teams are coming soon.",
     "teamName": "Team name",
     "teamDescription": "Description",
     "teamSource": "Source",
@@ -397,7 +430,21 @@
     "advancedGraph": "Advanced graph",
     "graphViewer": "Graph viewer",
     "startNodes": "Start nodes",
-    "finalNodes": "Final nodes"
+    "finalNodes": "Final nodes",
+    "builtinTeams": {
+      "team-quick-implement": {
+        "name": "Quick Implementation",
+        "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing."
+      },
+      "team-implement-review-loop": {
+        "name": "Implement-Review Loop",
+        "description": "Agent A implements, Agent B reviews. On FAIL, A fixes and B reviews again until PASS or max loops."
+      },
+      "team-research-report": {
+        "name": "Research Report",
+        "description": "Research a non-coding topic, analyze scenarios, and produce a concise report with conclusions and confidence."
+      }
+    }
   },
   "updater": {
     "appTitle": "Application",

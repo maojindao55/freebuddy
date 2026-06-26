@@ -13,9 +13,11 @@ interface State {
   pendingPlan: WorkflowPlan | null;
   pendingErrors: string[];
   activeRun: WorkflowRunRow | null;
+  activeRuns: WorkflowRunRow[];
   steps: WorkflowStepRow[];
 
   loadForConversation(conversationId: string): Promise<void>;
+  loadActiveRuns(): Promise<void>;
   previewReviewLoop(input: {
     goal: string;
     cwd?: string;
@@ -39,6 +41,7 @@ interface State {
   stop(runId: string): Promise<void>;
   retryStep(runId: string, stepRowId: string): Promise<void>;
   approveGate(runId: string, phaseId: string): Promise<void>;
+  continueImplementReview(runId: string): Promise<void>;
   validate(plan: WorkflowPlan): Promise<WorkflowValidationResult>;
 }
 
@@ -46,6 +49,7 @@ export const useWorkflowStore = create<State>((set, get) => ({
   pendingPlan: null,
   pendingErrors: [],
   activeRun: null,
+  activeRuns: [],
   steps: [],
 
   async loadForConversation(conversationId) {
@@ -67,6 +71,13 @@ export const useWorkflowStore = create<State>((set, get) => ({
         steps: []
       });
     }
+    void get().loadActiveRuns();
+  },
+
+  async loadActiveRuns() {
+    if (!workflowClient.isAvailable()) return;
+    const activeRuns = await workflowClient.listActiveRuns();
+    set({ activeRuns });
   },
 
   async previewReviewLoop(input) {
@@ -91,6 +102,7 @@ export const useWorkflowStore = create<State>((set, get) => ({
       return false;
     }
     set({ pendingPlan: null, pendingErrors: [], activeRun: res.run, steps: [] });
+    await get().loadActiveRuns();
     await workflowClient.start(res.run.id);
     await get().refresh(res.run.id);
     return true;
@@ -104,6 +116,7 @@ export const useWorkflowStore = create<State>((set, get) => ({
       return false;
     }
     set({ pendingPlan: null, pendingErrors: [], activeRun: res.run, steps: [] });
+    await get().loadActiveRuns();
     await workflowClient.start(res.run.id);
     await get().refresh(res.run.id);
     return true;
@@ -116,6 +129,7 @@ export const useWorkflowStore = create<State>((set, get) => ({
       workflowClient.getSteps(runId)
     ]);
     if (run) set({ activeRun: run, steps });
+    void get().loadActiveRuns();
   },
 
   async pause(runId) {
@@ -136,6 +150,10 @@ export const useWorkflowStore = create<State>((set, get) => ({
   },
   async approveGate(runId, phaseId) {
     await workflowClient.approveGate({ runId, phaseId });
+    await get().refresh(runId);
+  },
+  async continueImplementReview(runId) {
+    await workflowClient.continueImplementReview(runId);
     await get().refresh(runId);
   },
   async validate(plan) {

@@ -136,6 +136,9 @@ export const cliClient = {
   listMessages(conversationId: string): Promise<ConversationMessage[]> {
     return api().listMessages(conversationId);
   },
+  listMessage(id: string): Promise<ConversationMessage | undefined> {
+    return api().listMessage(id);
+  },
   appendMessage(input: AppendMessageInput): Promise<ConversationMessage> {
     return api().appendMessage(input);
   },

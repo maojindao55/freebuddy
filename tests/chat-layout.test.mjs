@@ -38,7 +38,7 @@ test("workspace keeps the composer inside the visible column", () => {
   assert.match(stylesSource, /\.chat-section\s*\{[^}]*position:\s*relative;[^}]*min-height:\s*0;/m);
   assert.match(stylesSource, /\.chat-view\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s*auto;/m);
   assert.match(stylesSource, /\.chat-composer\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*18px;/m);
-  assert.match(stylesSource, /\.chat-composer\s*\{[^}]*left:\s*272px;[^}]*right:\s*320px;/m);
+  assert.match(stylesSource, /\.chat-composer\s*\{[^}]*left:\s*272px;[^}]*right:\s*var\(--fb-detail-width,\s*440px\);/m);
 });
 
 test("sending a message restores auto-follow to the latest output", () => {
@@ -64,7 +64,7 @@ test("sidebar collapse toggle hides the sidebar column", () => {
   assert.match(stylesSource, /\.sidebar-toggle\.floating\s*\{[\s\S]*?position:\s*absolute;/m);
   assert.match(
     stylesSource,
-    /\.app-shell\.sidebar-collapsed\s*\{[\s\S]*?grid-template-columns:\s*minmax\(420px,\s*1fr\)\s*320px;/
+    /\.app-shell\.sidebar-collapsed\s*\{[\s\S]*?grid-template-columns:\s*minmax\(420px,\s*1fr\)\s*var\(--fb-detail-width,\s*440px\);/
   );
   assert.match(stylesSource, /\.sidebar-collapsed \.sidebar\s*\{[\s\S]*?display:\s*none;/m);
   assert.match(

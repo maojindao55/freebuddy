@@ -5,6 +5,8 @@ import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
 import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
+import { handleDraftRequest } from "./draftProtocol.js";
+import { startPreviewServer } from "./previewServer.js";
 import { getDb } from "./cli/db.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { initApplicationMenu } from "./menu.js";
@@ -20,6 +22,38 @@ app.setAboutPanelOptions({
   applicationName: APP_NAME,
   applicationVersion: APP_VERSION,
   version: APP_VERSION
+});
+
+const PROTOCOL = "freebuddy";
+
+function handleSchemeUrl(raw: string) {
+  try {
+    const parsed = new URL(raw);
+    const action = parsed.hostname || parsed.pathname.replace(/^\//, "");
+    if (action === "preview" && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("freebuddy://bridge", { action: "preview", params: {} });
+    }
+  } catch {
+    // ignore malformed scheme urls
+  }
+}
+
+if (app.isPackaged && !app.isDefaultProtocolClient(PROTOCOL)) {
+  app.setAsDefaultProtocolClient(PROTOCOL);
+}
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  handleSchemeUrl(url);
+});
+
+app.on("second-instance", (_event, argv) => {
+  const url = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+  if (url) handleSchemeUrl(url);
 });
 
 function resolveAppIconPath() {
@@ -43,11 +77,25 @@ protocol.registerSchemesAsPrivileged([
       bypassCSP: true,
       stream: true
     }
+  },
+  {
+    scheme: "freebuddy-draft",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+      stream: true
+    }
   }
 ]);
 
 function registerLocalFileProtocol() {
   protocol.handle("freebuddy-file", handleFreebuddyFileRequest);
+}
+
+function registerDraftProtocol() {
+  protocol.handle("freebuddy-draft", handleDraftRequest);
 }
 
 async function injectShellPath() {
@@ -140,6 +188,10 @@ function createWindow() {
 app.whenReady().then(async () => {
   await injectShellPath();
   registerLocalFileProtocol();
+  registerDraftProtocol();
+  startPreviewServer(() =>
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
+  );
   getDb();
   seedBuiltinWorkflowTeams();
   registerCliIpc();

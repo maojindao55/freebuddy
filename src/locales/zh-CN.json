@@ -474,5 +474,15 @@
       "downloaded": "{{version}} 已准备就绪，可立即安装。",
       "error": "检查更新失败。"
     }
+  },
+  "draft": {
+    "title": "预览",
+    "tabOverview": "概览",
+    "tabPreview": "预览",
+    "previewBadge": "预览可用",
+    "refresh": "刷新",
+    "entryPlaceholder": "入口路径(如 index.html)",
+    "emptyNoWorkspace": "未选择工作区目录。选择一个工作目录即可预览 agent 的产出。",
+    "emptyNoEntry": "未找到可预览的 web 入口。让 agent 创建 index.html,或先构建项目。"
   }
 }

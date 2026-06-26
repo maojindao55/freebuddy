@@ -42,6 +42,8 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
+import { resolveDraftEntry } from "../draftProtocol.js";
+import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
 import { registerWorkflowIpc } from "./workflowIpc.js";
@@ -237,6 +239,14 @@ export function registerCliIpc() {
         args.sessionId,
         args.title
       )
+  );
+
+  ipcMain.handle("cli:resolveDraftEntry", (_e, cwd: string) =>
+    resolveDraftEntry(cwd ?? "")
+  );
+
+  ipcMain.handle("cli:ensureAgentGuides", (_e, cwd: string) =>
+    ensureAgentGuides(cwd ?? "")
   );
 
   // ---- Conversations -----------------------------------------------------

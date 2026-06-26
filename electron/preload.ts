@@ -65,6 +65,12 @@ const cli = {
   selectDirectory: () => ipcRenderer.invoke("cli:selectDirectory"),
   selectAttachments: () => ipcRenderer.invoke("cli:selectAttachments"),
 
+  resolveDraftEntry: (cwd: string) =>
+    ipcRenderer.invoke("cli:resolveDraftEntry", cwd),
+
+  ensureAgentGuides: (cwd: string) =>
+    ipcRenderer.invoke("cli:ensureAgentGuides", cwd),
+
   onEvent(sessionId: string, cb: (event: unknown) => void): () => void {
     const channel = `cli://${sessionId}`;
     const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
@@ -78,6 +84,16 @@ const window = {
     const handler = (_e: IpcRendererEvent, visible: boolean) => cb(visible);
     ipcRenderer.on("window:chrome", handler);
     return () => ipcRenderer.off("window:chrome", handler);
+  },
+  onBridge(
+    cb: (event: { action: string; params: Record<string, string> }) => void
+  ): () => void {
+    const handler = (
+      _e: IpcRendererEvent,
+      payload: { action: string; params: Record<string, string> }
+    ) => cb(payload);
+    ipcRenderer.on("freebuddy://bridge", handler);
+    return () => ipcRenderer.off("freebuddy://bridge", handler);
   }
 };
 

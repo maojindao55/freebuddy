@@ -103,12 +103,17 @@ declare global {
 
     selectDirectory(): Promise<string | null>;
     selectAttachments(): Promise<AttachmentCandidate[]>;
+    resolveDraftEntry(cwd: string): Promise<string | null>;
+    ensureAgentGuides(cwd: string): Promise<string[]>;
 
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;
   }
 
   interface FreebuddyWindow {
     onChromeVisible(cb: (visible: boolean) => void): () => void;
+    onBridge(
+      cb: (event: { action: string; params: Record<string, string> }) => void
+    ): () => void;
   }
 
   interface FreebuddySettings {

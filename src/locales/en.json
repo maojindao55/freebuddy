@@ -447,5 +447,15 @@
       "downloaded": "Version {{version}} is ready to install.",
       "error": "Update check failed."
     }
+  },
+  "draft": {
+    "title": "Preview",
+    "tabOverview": "Overview",
+    "tabPreview": "Preview",
+    "previewBadge": "Preview available",
+    "refresh": "Refresh",
+    "entryPlaceholder": "Entry path (e.g. index.html)",
+    "emptyNoWorkspace": "No workspace selected. Pick a working directory to preview the agent's output.",
+    "emptyNoEntry": "No previewable web entry found. Ask the agent to create an index.html, or build the project first."
   }
 }

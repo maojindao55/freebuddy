@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
@@ -6,13 +6,16 @@ import { ChatView } from "./components/CLI/ChatView";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
-import { WorkspacePanel } from "./components/CLI/WorkspacePanel";
+import { DetailColumn } from "./components/CLI/DetailColumn";
+import { AgentBridgeListener } from "./components/AgentBridge/AgentBridgeListener";
+import { AgentBridgeToasts } from "./components/AgentBridge/AgentBridgeToasts";
 import { SettingsModal } from "./components/Settings/SettingsModal";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useUpdaterStore } from "./store/updaterStore";
+import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -138,6 +141,25 @@ function App() {
   useEffect(() => {
     void loadUpdater();
   }, [loadUpdater]);
+  const loadDetailLayout = useDetailLayoutStore((s) => s.load);
+  const detailWidth = useDetailLayoutStore(selectDetailWidth);
+  useEffect(() => {
+    void loadDetailLayout();
+  }, [loadDetailLayout]);
+
+  const [winWidth, setWinWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1280
+  );
+  useEffect(() => {
+    const onResize = () => setWinWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const sidebarWidth = sidebarCollapsed ? 0 : 272;
+  const effectiveDetailWidth = Math.min(
+    detailWidth,
+    Math.max(DETAIL_MIN_WIDTH, winWidth - sidebarWidth - 420 - 8)
+  );
   const updateReady = useUpdaterStore((s) => s.status === "downloaded");
   const appVersion = useUpdaterStore((s) => s.appVersion);
 
@@ -205,6 +227,7 @@ function App() {
     <div
       className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
+      style={{ "--fb-detail-width": `${effectiveDetailWidth}px` } as CSSProperties}
     >
       <aside className="sidebar">
         <div className="sidebar-header">
@@ -255,12 +278,14 @@ function App() {
       </main>
 
       {activeConversation && (
-        <WorkspacePanel runningCount={runningCount} />
+        <DetailColumn runningCount={runningCount} />
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <CliInstallPanelHost />
       <PermissionDialog />
+      <AgentBridgeListener />
+      <AgentBridgeToasts />
     </div>
     </ImageLightboxProvider>
     </ConfigProvider>

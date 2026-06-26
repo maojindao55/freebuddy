@@ -179,7 +179,7 @@ export function WorkspacePanel({
   ]);
 
   return (
-    <aside className="details-panel workspace-panel" aria-label={t("workspace.panelAria")}>
+    <div className="workspace-cards" aria-label={t("workspace.panelAria")}>
       <WorkflowRunPanel />
 
       {isTeamRun ? null : (
@@ -355,7 +355,7 @@ export function WorkspacePanel({
           </ol>
         </section>
       )}
-    </aside>
+    </div>
   );
 }
 

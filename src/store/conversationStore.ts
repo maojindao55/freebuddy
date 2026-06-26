@@ -203,6 +203,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     ensureWorkflowMessageSubscription(id, async (cid, messageIds) => {
       await get().loadMessages(cid, messageIds);
     });
+    if (id) {
+      const conv = get().conversations.find((c) => c.id === id);
+      if (conv?.cwd) {
+        void cliClient.ensureAgentGuides(conv.cwd).catch(() => {
+          // best-effort: guide files are optional
+        });
+      }
+    }
   },
 
   async loadMessages(id, messageIds) {
@@ -267,6 +275,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     ensureWorkflowMessageSubscription(conv.id, async (cid, messageIds) => {
       await get().loadMessages(cid, messageIds);
     });
+    if (cwd) {
+      void cliClient.ensureAgentGuides(cwd).catch(() => {
+        // best-effort: guide files are optional
+      });
+    }
     return conv;
   },
 

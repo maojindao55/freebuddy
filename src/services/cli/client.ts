@@ -151,6 +151,12 @@ export const cliClient = {
   selectAttachments(): Promise<AttachmentCandidate[]> {
     return api().selectAttachments();
   },
+  resolveDraftEntry(cwd: string): Promise<string | null> {
+    return api().resolveDraftEntry(cwd);
+  },
+  ensureAgentGuides(cwd: string): Promise<string[]> {
+    return api().ensureAgentGuides(cwd);
+  },
 
   getSetting(key: string): Promise<string | null> {
     const api = window.freebuddy;

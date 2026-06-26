@@ -49,10 +49,12 @@ jobs:
             builder_args: --mac --arm64
             assets: |
               FreeBuddy_macOS-Apple-Silicon.dmg|*.dmg
+              FreeBuddy_macOS-Apple-Silicon.zip|*.zip
           - platform: macos-latest
             builder_args: --mac --x64
             assets: |
               FreeBuddy_macOS-Intel.dmg|*.dmg
+              FreeBuddy_macOS-Intel.zip|*.zip
           - platform: windows-latest
             builder_args: --win --x64
             assets: |
@@ -122,6 +124,8 @@ jobs:
           sed -i.bak \
             -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-arm64\.dmg#FreeBuddy_macOS-Apple-Silicon.dmg#g' \
             -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-x64\.dmg#FreeBuddy_macOS-Intel.dmg#g' \
+            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-arm64\.zip#FreeBuddy_macOS-Apple-Silicon.zip#g' \
+            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-x64\.zip#FreeBuddy_macOS-Intel.zip#g' \
             "$yml"
           # Tag the yml with the arch so the two matrix jobs don't clobber
           # each other. A follow-up job merges them into latest-mac.yml.
@@ -134,15 +138,27 @@ jobs:
           gh release upload "$tag" "latest-mac-${arch_tag}.yml" \
             --repo "$repo" --clobber
           # Also upload the blockmap so delta updates work.
-          blockmap=$(find release -name "*.dmg.blockmap" -type f | head -1)
-          if [ -n "$blockmap" ]; then
+          dmg_blockmap=$(find release -name "*.dmg.blockmap" -type f | head -1)
+          if [ -n "$dmg_blockmap" ]; then
             if [ "$arch_tag" = "arm64" ]; then
-              cp "$blockmap" "FreeBuddy_macOS-Apple-Silicon.dmg.blockmap"
+              cp "$dmg_blockmap" "FreeBuddy_macOS-Apple-Silicon.dmg.blockmap"
               gh release upload "$tag" "FreeBuddy_macOS-Apple-Silicon.dmg.blockmap" \
                 --repo "$repo" --clobber
             else
-              cp "$blockmap" "FreeBuddy_macOS-Intel.dmg.blockmap"
+              cp "$dmg_blockmap" "FreeBuddy_macOS-Intel.dmg.blockmap"
               gh release upload "$tag" "FreeBuddy_macOS-Intel.dmg.blockmap" \
+                --repo "$repo" --clobber
+            fi
+          fi
+          zip_blockmap=$(find release -name "*.zip.blockmap" -type f | head -1)
+          if [ -n "$zip_blockmap" ]; then
+            if [ "$arch_tag" = "arm64" ]; then
+              cp "$zip_blockmap" "FreeBuddy_macOS-Apple-Silicon.zip.blockmap"
+              gh release upload "$tag" "FreeBuddy_macOS-Apple-Silicon.zip.blockmap" \
+                --repo "$repo" --clobber
+            else
+              cp "$zip_blockmap" "FreeBuddy_macOS-Intel.zip.blockmap"
+              gh release upload "$tag" "FreeBuddy_macOS-Intel.zip.blockmap" \
                 --repo "$repo" --clobber
             fi
           fi

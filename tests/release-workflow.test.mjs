@@ -23,7 +23,7 @@ test("package exposes electron-builder release scripts", () => {
 test("electron-builder config packages FreeBuddy for desktop platforms", () => {
   assert.match(builderConfig, /^appId:\s+dev\.freebuddy\.app/m);
   assert.match(builderConfig, /^productName:\s+FreeBuddy/m);
-  assert.match(builderConfig, /mac:[\s\S]*target:[\s\S]*- target:\s+dmg/m);
+  assert.match(builderConfig, /mac:[\s\S]*target:[\s\S]*- target:\s+dmg[\s\S]*- target:\s+zip/m);
   assert.match(builderConfig, /win:[\s\S]*target:[\s\S]*- target:\s+nsis/m);
   assert.match(builderConfig, /linux:[\s\S]*target:[\s\S]*- target:\s+AppImage[\s\S]*- target:\s+deb/m);
   assert.match(builderConfig, /linux:[\s\S]*maintainer:\s+FreeBuddy <noreply@freebuddy\.dev>/m);
@@ -34,13 +34,20 @@ test("release workflow uploads friendly-named assets and Windows update metadata
   assert.match(workflow, /name:\s+Release/);
   assert.match(workflow, /tags:\s+\['v\*'\]/);
   assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.dmg/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.zip\.blockmap/);
   assert.match(workflow, /FreeBuddy_macOS-Intel\.dmg/);
+  assert.match(workflow, /FreeBuddy_macOS-Intel\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Intel\.zip\.blockmap/);
   assert.match(workflow, /FreeBuddy_Windows_x64\.exe/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
   // Build only; assets are renamed and uploaded manually to keep friendly names.
   assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);
   assert.match(workflow, /gh release upload/);
+  assert.match(workflow, /Upload macOS update metadata/);
+  assert.match(workflow, /FreeBuddy-[^']+mac-arm64\\\.zip#FreeBuddy_macOS-Apple-Silicon\.zip/);
+  assert.match(workflow, /FreeBuddy-[^']+mac-x64\\\.zip#FreeBuddy_macOS-Intel\.zip/);
   // Auto-update metadata: latest.yml rewritten to the friendly Windows name.
   assert.match(workflow, /Upload Windows update metadata/);
   assert.match(workflow, /FreeBuddy_Windows_x64\.exe\.blockmap/);

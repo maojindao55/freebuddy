@@ -30,6 +30,7 @@ mac:
   identity: null
   target:
     - target: dmg
+    - target: zip
 
 win:
   icon: assets/app-icon.ico

@@ -136,13 +136,55 @@ test("Settings modal opens with CLI agents before General", () => {
   assert.match(src, /const TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
 });
 
-test("MessageBubble supports right-click copy", () => {
+test("MessageBubble supports right-click and inline copy button", () => {
   const src = read("../src/components/CLI/MessageBubble.tsx");
   const css = read("../styles.css");
   assert.match(src, /onContextMenu=\{handleContextMenu\}/);
-  assert.match(src, /navigator\.clipboard\?\.writeText\(copyText\)/);
-  assert.match(src, /message\.copy/);
+  assert.match(src, /navigator\.clipboard\?\.writeText/);
+  assert.match(src, /message\.copySelection/);
+  assert.match(src, /getSelectionText/);
+  assert.match(src, /copyableItemText/);
+  assert.match(src, /item\.kind === "text" \|\| item\.kind === "raw"/);
+  assert.doesNotMatch(src, /case "tool-call"[\s\S]*return/);
+  assert.match(src, /showActionBar = message\.role === "assistant" && message\.status === "done"/);
+  assert.match(src, /msg-actions/);
+  assert.match(src, /msg-action-btn/);
+  assert.match(src, /message\.upvote/);
+  assert.match(src, /message\.downvote/);
   assert.match(css, /\.message-context-menu/);
+  assert.match(css, /\.msg-actions/);
+  assert.doesNotMatch(css, /msg-content-wrapper:hover \.msg-actions/);
+});
+
+test("AgentBridgeListener keeps status/error events out of chat history", () => {
+  const src = read("../src/components/AgentBridge/AgentBridgeListener.tsx");
+  assert.match(src, /if \(action === "status"\)/);
+  assert.match(src, /if \(action === "error"\)/);
+  assert.doesNotMatch(src, /appendBridgeMessage/);
+  assert.doesNotMatch(src, /role: "system"/);
+  assert.doesNotMatch(src, /appendMessage/);
+});
+
+test("DraftCanvas renders markdown, document, pdf, and image targets without iframe", () => {
+  const src = read("../src/components/Draft/DraftCanvas.tsx");
+  const css = read("../styles.css");
+  assert.match(src, /isMarkdownTarget/);
+  assert.match(src, /MarkdownText/);
+  assert.match(src, /readDraftMarkdown/);
+  assert.match(src, /isDocumentTarget/);
+  assert.match(src, /DocumentText/);
+  assert.match(src, /draft-document-wrap/);
+  assert.match(src, /isPdfTarget/);
+  assert.match(src, /#view=FitH&navpanes=0/);
+  assert.match(src, /draft-pdf/);
+  assert.match(src, /type="application\/pdf"/);
+  assert.match(src, /isImageTarget/);
+  assert.match(src, /draft-image-wrap/);
+  assert.match(src, /draft-markdown-wrap/);
+  assert.match(css, /\.draft-image-wrap/);
+  assert.match(css, /\.draft-markdown-wrap/);
+  assert.match(css, /\.draft-document-text/);
+  assert.match(css, /\.draft-pdf/);
 });
 
 test("conversationStore routes workflow follow-ups to the workflow summary agent", () => {
@@ -155,6 +197,8 @@ test("conversationStore routes workflow follow-ups to the workflow summary agent
   assert.match(src, /workflowRunForConversation/);
   assert.match(src, /memberForWorkflowFollowup\(workflowRun, get\(\)\.members\)/);
   assert.match(src, /workflow:\$\{workflowRun\.id\}:\$\{member\.id\}/);
+  assert.match(src, /conversation:\$\{conv\.id\}/);
+  assert.doesNotMatch(src, /: conv\.cwd \?\? `conversation:\$\{conv\.id\}`/);
   assert.match(chat, /workflowFollowupAgentId\(activeRun\)/);
   assert.match(chat, /workflowFollowupAgent \?\? conv\.agentId/);
   assert.match(chat, /resolveWorkflowFollowupMember/);

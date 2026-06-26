@@ -153,7 +153,11 @@
     "you": "你",
     "thinking": "思考中",
     "system": "系统",
-    "copy": "复制"
+    "copy": "复制",
+    "copySelection": "复制选中",
+    "upvote": "赞",
+    "downvote": "倒赞",
+    "copyAll": "复制全部"
   },
   "stream": {
     "read": "读取 {{target}}",
@@ -481,8 +485,17 @@
     "tabPreview": "预览",
     "previewBadge": "预览可用",
     "refresh": "刷新",
-    "entryPlaceholder": "入口路径(如 index.html)",
+    "resetEntry": "恢复自动入口",
+    "openExternal": "在浏览器打开",
+    "viewport": "预览尺寸",
+    "zoom": "缩放",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "resetZoom": "重置缩放",
+    "loading": "正在加载预览…",
+    "loadError": "预览加载失败。请检查入口路径或构建产物。",
+    "manualFallbackPlaceholder": "或手动输入地址 / README.md / data.json / image.png / file.pdf…",
     "emptyNoWorkspace": "未选择工作区目录。选择一个工作目录即可预览 agent 的产出。",
-    "emptyNoEntry": "未找到可预览的 web 入口。让 agent 创建 index.html,或先构建项目。"
+    "emptyNoEntry": "尚未指向预览入口。让 agent 启动 dev server、创建页面、Markdown 文档或图片后，通过 bridge 自动指向这里。"
   }
 }

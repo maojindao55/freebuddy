@@ -39,8 +39,28 @@ const ENTRY_CANDIDATES = [
   "index.html",
   "public/index.html",
   "dist/index.html",
-  "build/index.html"
+  "build/index.html",
+  "out/index.html",
+  "storybook-static/index.html",
+  "docs/index.html",
+  "site/index.html",
+  "app/index.html",
+  "src/index.html",
+  "www/index.html"
 ];
+
+const FRAMEWORK_ENTRY_CANDIDATES: Record<string, string[]> = {
+  vite: ["index.html", "dist/index.html"],
+  next: ["out/index.html"],
+  nuxt: ["dist/index.html", ".output/public/index.html"],
+  astro: ["dist/index.html"],
+  svelte: ["build/index.html", "dist/index.html"],
+  angular: ["dist/index.html"],
+  vue: ["index.html", "dist/index.html"],
+  react: ["index.html", "build/index.html", "dist/index.html"],
+  preact: ["index.html", "dist/index.html"],
+  solid: ["index.html", "dist/index.html"]
+};
 
 function mimeForPath(filePath: string): string {
   const ext = path.extname(filePath).slice(1).toLowerCase();
@@ -57,16 +77,30 @@ export interface DraftRequestParams {
   rel: string;
 }
 
+function parsePathRootUrl(url: URL): DraftRequestParams | null {
+  const raw = url.pathname.replace(/^\//, "");
+  const parts = raw.split("/");
+  if (parts.length < 2 || !parts[0]) return null;
+  const root = path.resolve(decodeURIComponent(parts[0]));
+  if (!path.isAbsolute(root)) return null;
+  const rel = parts.slice(1).map(decodeURIComponent).join("/") || "index.html";
+  return { root, rel };
+}
+
 export function parseDraftUrl(requestUrl: string): DraftRequestParams {
   const url = new URL(requestUrl);
   const rootRaw = url.searchParams.get("root");
-  if (!rootRaw) throw new Error("Missing root");
-  const root = path.resolve(decodeURIComponent(rootRaw));
-  if (!path.isAbsolute(root)) throw new Error("root must be absolute");
+  if (rootRaw) {
+    const root = path.resolve(decodeURIComponent(rootRaw));
+    if (!path.isAbsolute(root)) throw new Error("root must be absolute");
+    const relRaw = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    const rel = relRaw === "" ? "index.html" : relRaw;
+    return { root, rel };
+  }
 
-  const relRaw = decodeURIComponent(url.pathname.replace(/^\//, ""));
-  const rel = relRaw === "" ? "index.html" : relRaw;
-  return { root, rel };
+  const pathRoot = parsePathRootUrl(url);
+  if (pathRoot) return pathRoot;
+  throw new Error("Missing root");
 }
 
 export async function handleDraftRequest(
@@ -108,18 +142,93 @@ export async function handleDraftRequest(
   }
 }
 
+async function isFile(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function readPackageCandidates(cwd: string): Promise<string[]> {
+  try {
+    const raw = await fs.readFile(path.join(cwd, "package.json"), "utf8");
+    const pkg = JSON.parse(raw) as {
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const deps = {
+      ...(pkg.dependencies ?? {}),
+      ...(pkg.devDependencies ?? {})
+    };
+    const scripts = Object.values(pkg.scripts ?? {}).join(" ").toLowerCase();
+    const names = new Set<string>();
+    for (const name of Object.keys(FRAMEWORK_ENTRY_CANDIDATES)) {
+      if (deps[name] || scripts.includes(name)) names.add(name);
+    }
+    if (deps["@vitejs/plugin-react"] || deps["@vitejs/plugin-vue"]) names.add("vite");
+    if (deps["@sveltejs/kit"]) names.add("svelte");
+    return [...names].flatMap((name) => FRAMEWORK_ENTRY_CANDIDATES[name] ?? []);
+  } catch {
+    return [];
+  }
+}
+
+async function discoverHtmlCandidates(cwd: string): Promise<string[]> {
+  const dirs = [".", "public", "dist", "build", "out"];
+  const candidates: string[] = [];
+  for (const dir of dirs) {
+    try {
+      const entries = await fs.readdir(path.join(cwd, dir), { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) {
+          candidates.push(dir === "." ? entry.name : `${dir}/${entry.name}`);
+        }
+      }
+    } catch {
+      // try next directory
+    }
+  }
+  return candidates;
+}
+
+const DOCUMENT_EXTENSIONS = new Set(["md", "txt", "log", "json", "yaml", "yml", "csv"]);
+
+export async function readDraftMarkdown(
+  cwd: string,
+  rel: string
+): Promise<string | null> {
+  if (!cwd || !path.isAbsolute(cwd) || !rel) return null;
+  const root = path.resolve(cwd);
+  const filePath = path.resolve(root, rel);
+  if (!isWithinRoot(filePath, root)) return null;
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+  if (!DOCUMENT_EXTENSIONS.has(ext)) return null;
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) return null;
+    return fs.readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveDraftEntry(
   cwd: string
 ): Promise<string | null> {
   if (!cwd || !path.isAbsolute(cwd)) return null;
-  for (const candidate of ENTRY_CANDIDATES) {
-    try {
-      const full = path.join(cwd, candidate);
-      const stat = await fs.stat(full);
-      if (stat.isFile()) return candidate;
-    } catch {
-      // try next candidate
-    }
+  const root = path.resolve(cwd);
+  const candidates = [
+    ...ENTRY_CANDIDATES,
+    ...(await readPackageCandidates(root)),
+    ...(await discoverHtmlCandidates(root))
+  ];
+  for (const candidate of [...new Set(candidates)]) {
+    const full = path.resolve(root, candidate);
+    if (!isWithinRoot(full, root)) continue;
+    if (await isFile(full)) return candidate;
   }
   return null;
 }

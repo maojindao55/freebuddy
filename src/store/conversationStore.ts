@@ -442,7 +442,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     ];
     const toolSessionScope = workflowRun
       ? `workflow:${workflowRun.id}:${member.id}`
-      : conv.cwd ?? `conversation:${conv.id}`;
+      : `conversation:${conv.id}`;
 
     let resumedFromSessionId: string | undefined;
     if (!wantFresh) {

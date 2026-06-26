@@ -8,6 +8,7 @@ import {
   acpUpdateToItems,
   buildInitializeRequest,
   buildPromptContentBlocks,
+  buildSessionLoadRequest,
   buildSessionPromptRequest,
   contentBlockToItems,
   parseAcpLine,
@@ -229,6 +230,19 @@ test("buildSessionPromptRequest sends a text content block", () => {
     params: {
       sessionId: "sess-1",
       prompt: [{ type: "text", text: "hello" }]
+    }
+  });
+});
+
+test("buildSessionLoadRequest loads Cursor-style ACP sessions", () => {
+  assert.deepEqual(buildSessionLoadRequest(9, "sess-1", "/tmp/project"), {
+    jsonrpc: "2.0",
+    id: 9,
+    method: "session/load",
+    params: {
+      sessionId: "sess-1",
+      cwd: "/tmp/project",
+      mcpServers: []
     }
   });
 });

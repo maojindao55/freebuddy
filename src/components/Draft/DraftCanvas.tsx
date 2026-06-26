@@ -1,14 +1,81 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { ConversationMessage } from "@/services/cli/types";
+import { cliClient } from "@/services/cli/client";
 import { useConversationStore } from "@/store/conversationStore";
 import { useDraftPreviewStore } from "@/store/draftPreviewStore";
-import { DraftToolbar } from "./DraftToolbar";
+import { DraftToolbar, type DraftViewport } from "./DraftToolbar";
+import { MarkdownText } from "../CLI/StreamItem";
 
 const EMPTY_MESSAGES: ConversationMessage[] = [];
+const FRAME_WIDTH: Record<DraftViewport, number | null> = {
+  responsive: null,
+  desktop: 1440,
+  tablet: 768,
+  mobile: 390
+};
+
+const IMAGE_TARGET_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "svg",
+  "avif",
+  "bmp"
+]);
+
+const DOCUMENT_TARGET_EXTENSIONS = new Set(["txt", "log", "json", "yaml", "yml", "csv"]);
+
+function targetExtension(target: string | undefined, url: string | undefined): string {
+  const value = target || url || "";
+  try {
+    const parsed = new URL(value);
+    return parsed.pathname.split(".").pop()?.toLowerCase() ?? "";
+  } catch {
+    return value.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  }
+}
+
+function isMarkdownTarget(target: string | undefined, url: string | undefined): boolean {
+  return targetExtension(target, url) === "md";
+}
+
+function isImageTarget(target: string | undefined, url: string | undefined): boolean {
+  return IMAGE_TARGET_EXTENSIONS.has(targetExtension(target, url));
+}
+
+function isDocumentTarget(target: string | undefined, url: string | undefined): boolean {
+  return DOCUMENT_TARGET_EXTENSIONS.has(targetExtension(target, url));
+}
+
+function isPdfTarget(target: string | undefined, url: string | undefined): boolean {
+  return targetExtension(target, url) === "pdf";
+}
+
+function documentRel(target: string | undefined): string | null {
+  if (!target || /^https?:\/\//i.test(target)) return null;
+  const rel = target.split("?")[0].trim();
+  const ext = rel.split(".").pop()?.toLowerCase() ?? "";
+  return ext === "md" || DOCUMENT_TARGET_EXTENSIONS.has(ext) ? rel : null;
+}
+
+function formatDocumentContent(ext: string, content: string): string {
+  if (ext !== "json") return content;
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    return content;
+  }
+}
+
+function DocumentText({ content, extension }: { content: string; extension: string }) {
+  return <pre className={`draft-document-text ${extension}`}>{formatDocumentContent(extension, content)}</pre>;
+}
 
 function extractLastFileEditPath(
   items: CliStreamItem[] | undefined,
@@ -40,6 +107,18 @@ function extractLastFileEditPath(
 
 export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [viewport, setViewport] = useState<DraftViewport>("responsive");
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [manualInput, setManualInput] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const panStart = useRef({ x: 0, y: 0 });
+  const [markdown, setMarkdown] = useState<string | null>(null);
+  const [documentText, setDocumentText] = useState<string | null>(null);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
   const activeId = useConversationStore((s) => s.activeId);
   const cwd = useConversationStore((s) => {
     const conv = s.conversations.find((c) => c.id === s.activeId);
@@ -54,6 +133,14 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const entry = useDraftPreviewStore((s) =>
     activeId ? s.byConv[activeId] : undefined
   );
+  const hasEntry = Boolean(entry?.url);
+  const isMarkdown = isMarkdownTarget(entry?.manualEntry, entry?.url);
+  const isImage = isImageTarget(entry?.manualEntry, entry?.url);
+  const isDocument = isDocumentTarget(entry?.manualEntry, entry?.url);
+  const isPdf = isPdfTarget(entry?.manualEntry, entry?.url);
+  const pdfUrl = isPdf && entry?.url ? `${entry.url}#view=FitH&navpanes=0` : "";
+  const documentExtension = targetExtension(entry?.manualEntry, entry?.url);
+  const frameWidth = FRAME_WIDTH[viewport];
 
   useEffect(() => {
     if (!activeId) return;
@@ -67,28 +154,211 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
 
   useEffect(() => {
     if (!activeId || !lastEditPath) return;
-    useDraftPreviewStore.getState().scheduleReload(activeId);
+    const ext = lastEditPath.split(".").pop()?.toLowerCase();
+    const delay = ext === "css" || ext === "html" || ext === "htm" ? 120 : 450;
+    useDraftPreviewStore.getState().scheduleReload(activeId, delay);
   }, [activeId, lastEditPath]);
 
-  const hasEntry = Boolean(entry?.url);
+  useEffect(() => {
+    if (!entry?.url) return;
+    setIsLoading(true);
+    setError(null);
+    setMarkdown(null);
+    setDocumentText(null);
+  }, [entry?.url]);
+
+  useEffect(() => {
+    const rel = documentRel(entry?.manualEntry);
+    if (!entry?.url || (!isMarkdown && !isDocument) || !cwd || !rel) return;
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+    void cliClient
+      .readDraftMarkdown(cwd, rel)
+      .then((text) => {
+        if (cancelled) return;
+        if (text == null) throw new Error("Document not found");
+        if (isMarkdown) {
+          setMarkdown(text);
+          setDocumentText(null);
+        } else {
+          setDocumentText(text);
+          setMarkdown(null);
+        }
+        setIsLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMarkdown(null);
+        setDocumentText(null);
+        setIsLoading(false);
+        setError(t("draft.loadError"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd, entry?.manualEntry, entry?.url, isDocument, isMarkdown, t]);
+
+  const focusFrame = () => {
+    frameRef.current?.focus();
+    frameRef.current?.contentWindow?.focus();
+  };
+
+  const commitManual = () => {
+    const trimmed = manualInput.trim();
+    if (!activeId || !trimmed) return;
+    useDraftPreviewStore.getState().setPreviewTarget(activeId, trimmed);
+  };
+
+  const onDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isImage || zoom <= 1) return;
+      e.preventDefault();
+      setIsDragging(true);
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      panStart.current = { ...pan };
+    },
+    [isImage, zoom, pan]
+  );
+
+  const resetPan = useCallback(() => setPan({ x: 0, y: 0 }), []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      setPan({ x: panStart.current.x + dx, y: panStart.current.y + dy });
+    };
+    const onUp = () => setIsDragging(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isDragging]);
+
+  useEffect(() => {
+    setPan({ x: 0, y: 0 });
+  }, [zoom]);
 
   return (
     <div className="draft-canvas">
       <DraftToolbar
-        entryRel={entry?.manualEntry ?? entry?.entryRel ?? ""}
+        url={entry?.url}
+        viewport={viewport}
+        zoom={zoom}
+        onViewportChange={setViewport}
+        onZoomChange={setZoom}
         onClose={onClose}
       />
-      <div className="draft-frame-wrap">
+      <div
+        className={`draft-frame-wrap${isMarkdown || isDocument ? " markdown" : ""}${isImage ? " image" : ""}${isPdf ? " pdf" : ""}`}
+        onMouseDown={hasEntry && !isMarkdown && !isDocument && !isImage && !isPdf ? focusFrame : undefined}
+      >
         {hasEntry ? (
-          <iframe
-            src={entry!.url}
-            className="draft-frame"
-            title={t("draft.title")}
-            sandbox="allow-scripts allow-forms allow-popups allow-modals"
-          />
+          <>
+            {isLoading && <div className="draft-status">{t("draft.loading")}</div>}
+            {error && <div className="draft-status draft-error">{error}</div>}
+            {isMarkdown ? (
+              <div
+                className="draft-markdown-wrap"
+                style={{ transform: `scale(${zoom})`, transformOrigin: "top center" }}
+              >
+                {markdown != null && <MarkdownText content={markdown} />}
+              </div>
+            ) : isDocument ? (
+              <div
+                className="draft-document-wrap"
+                style={{ transform: `scale(${zoom})`, transformOrigin: "top center" }}
+              >
+                {documentText != null && (
+                  <DocumentText content={documentText} extension={documentExtension} />
+                )}
+              </div>
+            ) : isImage ? (
+              <div
+                className="draft-image-wrap"
+                style={zoom > 1 ? { cursor: isDragging ? "grabbing" : "grab" } : undefined}
+                onMouseDown={onDragStart}
+                onDoubleClick={resetPan}
+              >
+                <img
+                  src={entry!.url}
+                  alt={entry?.manualEntry ?? t("draft.title")}
+                  className="draft-image"
+                  style={{
+                    zoom,
+                    transform: `translate(${pan.x}px, ${pan.y}px)`
+                  }}
+                  draggable={false}
+                  onLoad={() => setIsLoading(false)}
+                  onError={() => {
+                    setIsLoading(false);
+                    setError(t("draft.loadError"));
+                  }}
+                />
+              </div>
+            ) : isPdf ? (
+              <embed
+                key={pdfUrl}
+                src={pdfUrl}
+                className="draft-pdf"
+                type="application/pdf"
+                onLoad={() => setIsLoading(false)}
+                onError={() => {
+                  setIsLoading(false);
+                  setError(t("draft.loadError"));
+                }}
+              />
+            ) : (
+              <iframe
+                ref={frameRef}
+                key={entry!.url}
+                src={entry!.url}
+                className="draft-frame"
+                style={{
+                  ...(frameWidth ? { width: frameWidth } : undefined),
+                  transform: `scale(${zoom})`,
+                  transformOrigin: "top center"
+                }}
+                title={t("draft.title")}
+                allow="autoplay; fullscreen; gamepad; pointer-lock; clipboard-read; clipboard-write"
+                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-pointer-lock allow-same-origin"
+                onLoad={() => {
+                  setIsLoading(false);
+                  focusFrame();
+                }}
+                onError={() => {
+                  setIsLoading(false);
+                  setError(t("draft.loadError"));
+                }}
+              />
+            )}
+          </>
         ) : (
           <div className="draft-empty">
             <p>{cwd ? t("draft.emptyNoEntry") : t("draft.emptyNoWorkspace")}</p>
+            {cwd && (
+              <input
+                className="draft-manual-fallback"
+                type="text"
+                value={manualInput}
+                spellCheck={false}
+                autoComplete="off"
+                placeholder={t("draft.manualFallbackPlaceholder")}
+                onChange={(e) => setManualInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && activeId && manualInput.trim()) {
+                    e.preventDefault();
+                    useDraftPreviewStore
+                      .getState()
+                      .setPreviewTarget(activeId, manualInput.trim());
+                  }
+                }}
+              />
+            )}
           </div>
         )}
       </div>

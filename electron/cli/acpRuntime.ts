@@ -12,6 +12,7 @@ import {
   buildSessionCancelNotification,
   buildSessionCloseRequest,
   buildSessionListRequest,
+  buildSessionLoadRequest,
   buildSessionNewRequest,
   buildSessionPromptRequest,
   buildSessionResumeRequest,
@@ -527,7 +528,13 @@ export async function runAcpAgent({
       if (items.length) emit({ type: "items", items });
     };
 
-    if (toolSessionId && agentCaps?.sessionCapabilities?.resume) {
+    if (toolSessionId && agentCaps?.loadSession) {
+      const loaded = await request(
+        buildSessionLoadRequest(nextId(), toolSessionId, args.cwd)
+      );
+      activeAcpSessionId = toolSessionId;
+      emitSetupItems(loaded);
+    } else if (toolSessionId && agentCaps?.sessionCapabilities?.resume) {
       const resumed = await request(
         buildSessionResumeRequest(nextId(), toolSessionId, args.cwd)
       );

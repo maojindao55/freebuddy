@@ -13,6 +13,14 @@ export function AgentBridgeListener() {
   const notify = useAgentBridgeStore((s) => s.notify);
 
   useEffect(() => {
+    const setTarget = (to: string | undefined, openPreview: boolean) => {
+      const convId = useConversationStore.getState().activeId;
+      if (to && convId) {
+        useDraftPreviewStore.getState().setPreviewTarget(convId, to);
+        if (openPreview) useDetailLayoutStore.getState().setActiveTab("preview");
+      }
+    };
+
     const off = window.freebuddy?.window?.onBridge?.((event) => {
       const { action, params } = event;
       if (action === "preview") {
@@ -20,12 +28,21 @@ export function AgentBridgeListener() {
         return;
       }
       if (action === "navigate") {
-        const to = params?.to;
-        const convId = useConversationStore.getState().activeId;
-        if (to && convId) {
-          useDraftPreviewStore.getState().setManualEntry(convId, to);
-          useDetailLayoutStore.getState().setActiveTab("preview");
-        }
+        setTarget(params?.to, true);
+        return;
+      }
+      if (action === "entry") {
+        setTarget(params?.to, false);
+        return;
+      }
+      if (action === "status") {
+        const text = params?.text;
+        if (text) notify(text);
+        return;
+      }
+      if (action === "error") {
+        const text = params?.text;
+        if (text) notify(text);
         return;
       }
       if (action === "notify") {

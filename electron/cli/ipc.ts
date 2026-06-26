@@ -1,6 +1,7 @@
-import { ipcMain, BrowserWindow, dialog, type IpcMainInvokeEvent } from "electron";
+import { ipcMain, BrowserWindow, dialog, shell, type IpcMainInvokeEvent } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { cliAdapterDefinitions } from "./adapters.js";
 import { cliCheck, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
@@ -42,7 +43,7 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
-import { resolveDraftEntry } from "../draftProtocol.js";
+import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
 import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
@@ -244,6 +245,26 @@ export function registerCliIpc() {
   ipcMain.handle("cli:resolveDraftEntry", (_e, cwd: string) =>
     resolveDraftEntry(cwd ?? "")
   );
+
+  ipcMain.handle(
+    "cli:readDraftMarkdown",
+    (_e, args: { cwd?: string; rel?: string }) =>
+      readDraftMarkdown(args?.cwd ?? "", args?.rel ?? "")
+  );
+
+  ipcMain.handle("cli:openDraftExternal", async (_e, url: string) => {
+    if (!url) return false;
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url)) {
+      await shell.openExternal(url);
+      return true;
+    }
+    if (!url.startsWith("freebuddy-draft://")) return false;
+    const { root, rel } = parseDraftUrl(url);
+    const filePath = path.resolve(root, rel);
+    if (!filePath.startsWith(root + path.sep) && filePath !== root) return false;
+    await shell.openExternal(pathToFileURL(filePath).toString());
+    return true;
+  });
 
   ipcMain.handle("cli:ensureAgentGuides", (_e, cwd: string) =>
     ensureAgentGuides(cwd ?? "")

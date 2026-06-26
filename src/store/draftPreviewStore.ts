@@ -1,18 +1,14 @@
 import { create } from "zustand";
 
-import { cliClient } from "@/services/cli/client";
-
 export interface DraftPreviewEntry {
   cwd: string;
-  /** Auto-detected entry relative path (e.g. "index.html"). null if none. */
-  entryRel: string | null;
-  /** User-overridden entry relative path; takes precedence over entryRel. */
+  /** User/agent-set preview target: relative path or localhost URL. */
   manualEntry?: string;
-  /** Entry resolution finished (entry may still be null). */
+  /** Entry resolution finished. */
   ready: boolean;
   /** Bumped to force the iframe to reload (url embeds it). */
   reloadNonce: number;
-  /** Fully composed freebuddy-draft:// url, empty when no entry. */
+  /** Fully composed preview url, empty when no target. */
   url: string;
 }
 
@@ -21,23 +17,31 @@ interface DraftPreviewState {
   timers: Record<string, ReturnType<typeof setTimeout>>;
   ensureFor(convId: string, cwd: string | undefined): Promise<void>;
   setManualEntry(convId: string, rel: string): void;
+  setPreviewTarget(convId: string, target: string): void;
+  clearManualEntry(convId: string): void;
   reload(convId: string): void;
   scheduleReload(convId: string, delay?: number): void;
 }
 
 function composeUrl(
   cwd: string,
-  entryRel: string | null | undefined,
+  target: string | null | undefined,
   nonce: number
 ): string {
-  if (!cwd || !entryRel) return "";
-  const rel = entryRel.split("/").map(encodeURIComponent).join("/");
-  return `freebuddy-draft://render/${rel}?root=${encodeURIComponent(cwd)}&v=${nonce}`;
+  if (!target) return "";
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(target)) {
+    const url = new URL(target);
+    url.searchParams.set("freebuddyDraft", String(nonce));
+    return url.toString();
+  }
+  if (!cwd) return "";
+  const rel = target.split("/").map(encodeURIComponent).join("/");
+  return `freebuddy-draft://render/${encodeURIComponent(cwd)}/${rel}?v=${nonce}`;
 }
 
 function entryOf(entry: DraftPreviewEntry | undefined): string | null | undefined {
   if (!entry) return null;
-  return entry.manualEntry ?? entry.entryRel;
+  return entry.manualEntry;
 }
 
 export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
@@ -45,38 +49,21 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
   timers: {},
 
   async ensureFor(convId, cwd) {
-    if (!cwd) {
-      set((s) => ({
-        byConv: {
-          ...s.byConv,
-          [convId]: { cwd: "", entryRel: null, ready: true, reloadNonce: 0, url: "" }
-        }
-      }));
-      return;
-    }
     const prev = get().byConv[convId];
-    if (prev && prev.cwd === cwd && prev.ready) return;
-    let entryRel: string | null = null;
-    try {
-      if (cliClient.isAvailable()) {
-        entryRel = await cliClient.resolveDraftEntry(cwd);
-      }
-    } catch {
-      entryRel = null;
-    }
+    if (prev && prev.cwd === (cwd ?? "") && prev.ready) return;
     set((s) => {
       const existing = s.byConv[convId];
-      const manualEntry = existing?.manualEntry;
+      const manualEntry = existing?.cwd === (cwd ?? "") ? existing?.manualEntry : undefined;
+      const nonce = existing?.cwd === (cwd ?? "") ? existing?.reloadNonce ?? 0 : 0;
       return {
         byConv: {
           ...s.byConv,
           [convId]: {
-            cwd,
-            entryRel,
+            cwd: cwd ?? "",
             manualEntry,
             ready: true,
-            reloadNonce: existing?.reloadNonce ?? 0,
-            url: composeUrl(cwd, manualEntry ?? entryRel, existing?.reloadNonce ?? 0)
+            reloadNonce: nonce,
+            url: composeUrl(cwd ?? "", manualEntry, nonce)
           }
         }
       };
@@ -84,6 +71,10 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
   },
 
   setManualEntry(convId, rel) {
+    get().setPreviewTarget(convId, rel);
+  },
+
+  setPreviewTarget(convId, target) {
     set((s) => {
       const entry = s.byConv[convId];
       const cwd = entry?.cwd ?? "";
@@ -93,11 +84,29 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
           ...s.byConv,
           [convId]: {
             cwd,
-            entryRel: entry?.entryRel ?? null,
-            manualEntry: rel,
+            manualEntry: target,
             ready: true,
             reloadNonce: nonce,
-            url: composeUrl(cwd, rel, nonce)
+            url: composeUrl(cwd, target, nonce)
+          }
+        }
+      };
+    });
+  },
+
+  clearManualEntry(convId) {
+    set((s) => {
+      const entry = s.byConv[convId];
+      if (!entry?.manualEntry) return s;
+      const nonce = entry.reloadNonce + 1;
+      return {
+        byConv: {
+          ...s.byConv,
+          [convId]: {
+            ...entry,
+            manualEntry: undefined,
+            reloadNonce: nonce,
+            url: composeUrl(entry.cwd, undefined, nonce)
           }
         }
       };

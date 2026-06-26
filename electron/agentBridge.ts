@@ -28,15 +28,46 @@ export const BRIDGE_ACTIONS: BridgeAction[] = [
   },
   {
     name: "navigate",
-    summary: "Point the preview at a workspace-relative path.",
+    summary: "Point the preview at a workspace-relative path or local dev-server URL.",
     description:
-      "Re-target the preview iframe to a different entry file (e.g. another page).",
+      "Re-target the preview iframe to another entry file, route, or localhost URL. Use this after starting npm run dev.",
     params: [
       {
         name: "to",
-        description: "Workspace-relative path, e.g. about.html",
+        description: "Workspace-relative path, route, or http://127.0.0.1:<port>/ URL",
         required: true
       }
+    ]
+  },
+  {
+    name: "entry",
+    summary: "Select the preview entry without changing tabs.",
+    description:
+      "Set the Draft preview target to a workspace-relative file or localhost dev-server URL.",
+    params: [
+      {
+        name: "to",
+        description: "Workspace-relative path or http://127.0.0.1:<port>/ URL",
+        required: true
+      }
+    ]
+  },
+  {
+    name: "status",
+    summary: "Report preview/build status to FreeBuddy.",
+    description:
+      "Show the user what is happening with a build, dev server, or preview setup.",
+    params: [
+      { name: "text", description: "Status message", required: true }
+    ]
+  },
+  {
+    name: "error",
+    summary: "Report a preview/build error to FreeBuddy.",
+    description:
+      "Tell the user why the preview cannot currently render and keep the details in the chat.",
+    params: [
+      { name: "text", description: "Error message", required: true }
     ]
   },
   {
@@ -92,7 +123,24 @@ export function buildBridgeSection(port: number): string {
     "## FreeBuddy bridge",
     "",
     "You can talk back to FreeBuddy over a local HTTP bridge while it is running.",
-    "Run any of these from the project root:",
+    "Always use the bridge to open Draft after you create or update something previewable; do not wait for the user to open it manually.",
+    "Draft supports localhost web apps, static HTML, Markdown files, and image files.",
+    "When previewing npm/Vite/Next/React/Vue apps, prefer starting the dev server and navigating Draft to its localhost URL instead of opening index.html directly.",
+    "",
+    "Dev-server preview flow:",
+    "```sh",
+    "npm run dev -- --host 127.0.0.1",
+    `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=http%3A%2F%2F127.0.0.1%3A5173%2F"`,
+    `curl -s "http://127.0.0.1:${port}/freebuddy/status?text=Preview%20is%20running%20at%20http%3A%2F%2F127.0.0.1%3A5173%2F"`,
+    "```",
+    "",
+    "Markdown/image preview examples:",
+    "```sh",
+    `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=README.md"`,
+    `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=assets%2Fmockup.png"`,
+    "```",
+    "",
+    "Available actions:",
     ""
   ];
   for (const action of BRIDGE_ACTIONS) {

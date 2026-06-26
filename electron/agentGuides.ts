@@ -18,12 +18,15 @@ as a coding agent and streams your work to the user in real time.
 - File edits and creates you make are tracked and shown live to the user.
 - The user can preview web output (HTML/CSS/JS) in a side panel.
 
-## Producing previewable web output
-When the task involves building or changing a web page:
-- Write a self-contained \`index.html\` at the project root (or under \`dist/\`).
-- Use **relative paths** for CSS/JS/assets so they load inside the preview.
-- Plain HTML/CSS/JS renders directly. Projects that need a dev server or a
-  build step will NOT preview until built to static files.
+## Producing previewable output
+When the task involves building or changing anything visual or document-like:
+- After creating or updating previewable output, proactively call the FreeBuddy bridge to open Draft. Do not ask the user to open files manually.
+- If the project has a dev script (Vite/Next/React/Vue/etc.), start it with a localhost host, e.g. \`npm run dev -- --host 127.0.0.1\`, then point Draft at the dev-server URL with the FreeBuddy bridge.
+- Do not point Draft at \`index.html\` for bundled apps that require \`npm run dev\`; that often misses CSS/assets/routes.
+- For plain static pages, write a self-contained \`index.html\` at the project root (or under \`dist/\`) and use relative paths for CSS/JS/assets.
+- For documentation output, write or update a Markdown file such as \`README.md\`, then immediately call \`/freebuddy/navigate?to=README.md\`.
+- For generated visual assets, write an image such as \`assets/mockup.png\`, then immediately call \`/freebuddy/navigate?to=assets%2Fmockup.png\`.
+- Report build/dev-server/status or errors through the bridge so the user can see what happened.
 
 ${bridge}
 

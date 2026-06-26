@@ -67,6 +67,10 @@ const cli = {
 
   resolveDraftEntry: (cwd: string) =>
     ipcRenderer.invoke("cli:resolveDraftEntry", cwd),
+  readDraftMarkdown: (cwd: string, rel: string) =>
+    ipcRenderer.invoke("cli:readDraftMarkdown", { cwd, rel }),
+  openDraftExternal: (url: string) =>
+    ipcRenderer.invoke("cli:openDraftExternal", url),
 
   ensureAgentGuides: (cwd: string) =>
     ipcRenderer.invoke("cli:ensureAgentGuides", cwd),

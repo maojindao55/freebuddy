@@ -26,7 +26,7 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
     void useDraftPreviewStore.getState().ensureFor(activeId, conv?.cwd);
   }, [activeId]);
 
-  const previewAvailable = Boolean(entry?.entryRel);
+  const previewAvailable = Boolean(entry?.url);
 
   const onResizeStart = (e: MouseEvent) => {
     e.preventDefault();

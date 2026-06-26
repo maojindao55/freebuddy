@@ -26,6 +26,10 @@ test("parseBridgeRequest routes /freebuddy/<action>", async () => {
   const nav = parseBridgeRequest("/freebuddy/navigate?to=about.html");
   assert.equal(nav?.action, "navigate");
   assert.equal(nav?.params.to, "about.html");
+  const server = parseBridgeRequest(
+    "/freebuddy/navigate?to=http%3A%2F%2F127.0.0.1%3A5173%2F"
+  );
+  assert.equal(server?.params.to, "http://127.0.0.1:5173/");
 });
 
 test("parseBridgeRequest supports legacy /preview", async () => {
@@ -46,6 +50,9 @@ test("isKnownBridgeAction flags catalog entries only", async () => {
   const { isKnownBridgeAction } = await loadBridge();
   assert.equal(isKnownBridgeAction("preview"), true);
   assert.equal(isKnownBridgeAction("navigate"), true);
+  assert.equal(isKnownBridgeAction("entry"), true);
+  assert.equal(isKnownBridgeAction("status"), true);
+  assert.equal(isKnownBridgeAction("error"), true);
   assert.equal(isKnownBridgeAction("notify"), true);
   assert.equal(isKnownBridgeAction("nope"), false);
 });
@@ -55,6 +62,12 @@ test("buildBridgeSection lists actions with the live port", async () => {
   const md = buildBridgeSection(12345);
   assert.ok(md.includes("/freebuddy/preview"));
   assert.ok(md.includes("/freebuddy/navigate"));
+  assert.ok(md.includes("/freebuddy/entry"));
+  assert.ok(md.includes("/freebuddy/status"));
+  assert.ok(md.includes("/freebuddy/error"));
   assert.ok(md.includes("/freebuddy/notify"));
   assert.ok(md.includes("127.0.0.1:12345"));
+  assert.ok(md.includes("npm run dev"));
+  assert.ok(md.includes("README.md"));
+  assert.ok(md.includes("assets%2Fmockup.png"));
 });

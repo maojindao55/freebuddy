@@ -185,7 +185,7 @@ function tableCells(line: string) {
     .map((cell) => cell.trim());
 }
 
-function MarkdownText({ content }: { content: string }) {
+export function MarkdownText({ content }: { content: string }) {
   const blocks: ReactNode[] = [];
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   let i = 0;
@@ -930,14 +930,11 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
         </div>
       );
     case "done":
+      if (!item.exitCode || item.exitCode === 0) return null;
       return (
-        <div className={`stream-meta done${item.exitCode && item.exitCode !== 0 ? " failed" : ""}`}>
-          <span className="stream-label">
-            {item.exitCode && item.exitCode !== 0 ? t("stream.exitLabel") : t("stream.doneOk")}
-          </span>
-          {item.exitCode != null && (
-            <span> {t("stream.exitCode", { code: item.exitCode })}</span>
-          )}
+        <div className="stream-meta done failed">
+          <span className="stream-label">{t("stream.exitLabel")}</span>
+          <span> {t("stream.exitCode", { code: item.exitCode })}</span>
         </div>
       );
     case "raw": {

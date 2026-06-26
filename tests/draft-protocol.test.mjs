@@ -111,8 +111,43 @@ test("resolveDraftEntry finds index.html and returns null when absent", async ()
   fs.writeFileSync(path.join(distOnly, "dist", "index.html"), "<p>x</p>");
   assert.equal(await resolveDraftEntry(distOnly), "dist/index.html");
 
+  const outOnly = fs.mkdtempSync(path.join(os.tmpdir(), "draft-"));
+  fs.mkdirSync(path.join(outOnly, "out"));
+  fs.writeFileSync(path.join(outOnly, "out", "index.html"), "<p>x</p>");
+  assert.equal(await resolveDraftEntry(outOnly), "out/index.html");
+
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), "draft-"));
   assert.equal(await resolveDraftEntry(empty), null);
 
   assert.equal(await resolveDraftEntry(""), null);
+});
+
+test("resolveDraftEntry discovers package framework and html candidates", async () => {
+  const { resolveDraftEntry } = await loadDraftModule();
+
+  const nextApp = fs.mkdtempSync(path.join(os.tmpdir(), "draft-"));
+  fs.writeFileSync(
+    path.join(nextApp, "package.json"),
+    JSON.stringify({ dependencies: { next: "latest" } })
+  );
+  fs.mkdirSync(path.join(nextApp, "out"));
+  fs.writeFileSync(path.join(nextApp, "out", "index.html"), "<p>next</p>");
+  assert.equal(await resolveDraftEntry(nextApp), "out/index.html");
+
+  const htmlOnly = fs.mkdtempSync(path.join(os.tmpdir(), "draft-"));
+  fs.mkdirSync(path.join(htmlOnly, "public"));
+  fs.writeFileSync(path.join(htmlOnly, "public", "demo.html"), "<p>demo</p>");
+  assert.equal(await resolveDraftEntry(htmlOnly), "public/demo.html");
+});
+
+test("readDraftMarkdown reads workspace markdown and blocks invalid paths", async () => {
+  const { readDraftMarkdown } = await loadDraftModule();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-"));
+  fs.writeFileSync(path.join(dir, "README.md"), "# Hello");
+  fs.writeFileSync(path.join(dir, "index.html"), "<p>x</p>");
+
+  assert.equal(await readDraftMarkdown(dir, "README.md"), "# Hello");
+  assert.equal(await readDraftMarkdown(dir, "index.html"), null);
+  assert.equal(await readDraftMarkdown(dir, "../README.md"), null);
+  assert.equal(await readDraftMarkdown("", "README.md"), null);
 });

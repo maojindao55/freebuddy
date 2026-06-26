@@ -154,6 +154,12 @@ export const cliClient = {
   resolveDraftEntry(cwd: string): Promise<string | null> {
     return api().resolveDraftEntry(cwd);
   },
+  readDraftMarkdown(cwd: string, rel: string): Promise<string | null> {
+    return api().readDraftMarkdown(cwd, rel);
+  },
+  openDraftExternal(url: string): Promise<boolean> {
+    return api().openDraftExternal(url);
+  },
   ensureAgentGuides(cwd: string): Promise<string[]> {
     return api().ensureAgentGuides(cwd);
   },

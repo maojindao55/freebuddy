@@ -136,13 +136,32 @@ test("Settings modal opens with CLI agents before General", () => {
   assert.match(src, /const TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
 });
 
-test("MessageBubble supports right-click copy", () => {
+test("MessageBubble supports right-click and inline copy button", () => {
   const src = read("../src/components/CLI/MessageBubble.tsx");
   const css = read("../styles.css");
   assert.match(src, /onContextMenu=\{handleContextMenu\}/);
-  assert.match(src, /navigator\.clipboard\?\.writeText\(copyText\)/);
-  assert.match(src, /message\.copy/);
+  assert.match(src, /navigator\.clipboard\?\.writeText/);
+  assert.match(src, /message\.copySelection/);
+  assert.match(src, /getSelectionText/);
+  assert.match(src, /msg-actions/);
+  assert.match(src, /msg-action-btn/);
+  assert.match(src, /message\.upvote/);
+  assert.match(src, /message\.downvote/);
   assert.match(css, /\.message-context-menu/);
+  assert.match(css, /\.msg-actions/);
+});
+
+test("DraftCanvas renders markdown and image targets without iframe", () => {
+  const src = read("../src/components/Draft/DraftCanvas.tsx");
+  const css = read("../styles.css");
+  assert.match(src, /isMarkdownTarget/);
+  assert.match(src, /MarkdownText/);
+  assert.match(src, /readDraftMarkdown/);
+  assert.match(src, /isImageTarget/);
+  assert.match(src, /draft-image-wrap/);
+  assert.match(src, /draft-markdown-wrap/);
+  assert.match(css, /\.draft-image-wrap/);
+  assert.match(css, /\.draft-markdown-wrap/);
 });
 
 test("conversationStore routes workflow follow-ups to the workflow summary agent", () => {

@@ -104,6 +104,8 @@ declare global {
     selectDirectory(): Promise<string | null>;
     selectAttachments(): Promise<AttachmentCandidate[]>;
     resolveDraftEntry(cwd: string): Promise<string | null>;
+    readDraftMarkdown(cwd: string, rel: string): Promise<string | null>;
+    openDraftExternal(url: string): Promise<boolean>;
     ensureAgentGuides(cwd: string): Promise<string[]>;
 
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;

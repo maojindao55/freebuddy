@@ -66,7 +66,7 @@ export function DraftToolbar({
           </option>
         ))}
       </select>
-      <div className="draft-zoom-control" aria-label={t("draft.zoom")}> 
+      <div className="draft-zoom-control" aria-label={t("draft.zoom")}>
         <button
           type="button"
           className="draft-action"

@@ -232,43 +232,14 @@ function visibleBlocks(items: CliStreamItem[]): VisibleBlock[] {
   return blocks;
 }
 
-function itemText(item: CliStreamItem): string {
-  switch (item.kind) {
-    case "text":
-    case "thinking":
-    case "raw":
-      return item.content;
-    case "error":
-      return [item.message, item.details].filter(Boolean).join("\n");
-    case "command":
-      return item.command;
-    case "command-output":
-    case "tool-result":
-      return item.content;
-    case "tool-call":
-      return [
-        item.tool,
-        item.input === undefined
-          ? ""
-          : typeof item.input === "string"
-            ? item.input
-            : JSON.stringify(item.input, null, 2),
-        item.output ?? ""
-      ].filter(Boolean).join("\n");
-    case "file-edit":
-      return [item.path, item.oldText, item.newText].filter(Boolean).join("\n");
-    case "content-block":
-      return [item.title, item.name, item.text, item.uri]
-        .filter(Boolean)
-        .join("\n");
-    default:
-      return "";
-  }
+function copyableItemText(item: CliStreamItem): string {
+  if (item.kind === "text" || item.kind === "raw") return item.content;
+  return "";
 }
 
 function messageText(message: ConversationMessage, items: CliStreamItem[]): string {
   if (message.role === "user" || message.role === "system") return message.content;
-  return items.map(itemText).filter(Boolean).join("\n\n");
+  return items.map(copyableItemText).filter(Boolean).join("\n\n");
 }
 
 function attachmentSummary(attachment: ChatAttachment): string {
@@ -471,6 +442,7 @@ export const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
   const [vote, setVote] = useState<"up" | "down" | null>(null);
   const copyText = messageText(message, items).trim();
+  const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
   const getSelectionText = () => {
     const sel = window.getSelection();
     return sel && sel.toString().trim().length > 0 ? sel.toString().trim() : "";
@@ -505,7 +477,7 @@ export const MessageBubble = memo(function MessageBubble({
       </div>
     );
   })() : null;
-  const actionBarNode = copyText ? (
+  const actionBarNode = showActionBar ? (
     <div className="msg-actions">
       <button
         type="button"
@@ -515,11 +487,11 @@ export const MessageBubble = memo(function MessageBubble({
         aria-label={t("message.copy")}
       >
         {copied ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
             <path d="M20 6 9 17l-5-5" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
             <rect x="9" y="9" width="11" height="11" rx="2" />
             <path d="M5 15V5a2 2 0 0 1 2-2h10" />
           </svg>
@@ -532,9 +504,9 @@ export const MessageBubble = memo(function MessageBubble({
         title={t("message.upvote")}
         aria-label={t("message.upvote")}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
-          <path d="M7 10v12" />
-          <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L14 1a3.13 3.13 0 0 1 1 5.88Z" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
+          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.3a2 2 0 0 0 2-1.7l1.4-9a2 2 0 0 0-2-2.3H14Z" />
+          <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
         </svg>
       </button>
       <button
@@ -544,9 +516,9 @@ export const MessageBubble = memo(function MessageBubble({
         title={t("message.downvote")}
         aria-label={t("message.downvote")}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
-          <path d="M17 14V2" />
-          <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L10 23a3.13 3.13 0 0 1-1-5.88Z" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
+          <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.7a2 2 0 0 0-2 1.7l-1.4 9A2 2 0 0 0 4.3 15H10Z" />
+          <path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
         </svg>
       </button>
       {timeStr && <span className="msg-action-time">{timeStr}</span>}

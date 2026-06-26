@@ -2419,22 +2419,16 @@ button {
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
-  padding: 2px 0 0;
+  padding: 4px 0 0;
   margin-left: -3px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.msg-content-wrapper:hover .msg-actions {
-  opacity: 1;
 }
 
 .msg-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2461,8 +2455,9 @@ button {
 }
 
 .msg-action-icon {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
+  display: block;
 }
 
 .msg-action-time {
@@ -3752,6 +3747,11 @@ button.ghost:disabled {
   background-size: 20px 20px;
 }
 
+.draft-frame-wrap.pdf {
+  overflow: hidden;
+  background: #2f2f2f;
+}
+
 .draft-frame {
   width: 100%;
   min-height: 100%;
@@ -3761,7 +3761,17 @@ button.ghost:disabled {
   background: #ffffff;
 }
 
-.draft-markdown-wrap {
+.draft-pdf {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  border: 0;
+  display: block;
+  background: #ffffff;
+}
+
+.draft-markdown-wrap,
+.draft-document-wrap {
   width: 100%;
   min-height: 100%;
   padding: 24px;
@@ -3772,6 +3782,23 @@ button.ghost:disabled {
 .draft-markdown-wrap .markdown-body {
   max-width: 860px;
   margin: 0 auto;
+}
+
+.draft-document-text {
+  width: min(100%, 980px);
+  min-height: calc(100% - 48px);
+  margin: 0 auto;
+  padding: 18px;
+  overflow: auto;
+  color: var(--fb-text-primary);
+  background: var(--fb-surface-bg, #0f172a);
+  border: 1px solid var(--fb-border-strong);
+  border-radius: var(--fb-rounded-md, 8px);
+  font-family: var(--fb-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .draft-image-wrap {

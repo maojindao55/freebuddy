@@ -77,16 +77,30 @@ export interface DraftRequestParams {
   rel: string;
 }
 
+function parsePathRootUrl(url: URL): DraftRequestParams | null {
+  const raw = url.pathname.replace(/^\//, "");
+  const parts = raw.split("/");
+  if (parts.length < 2 || !parts[0]) return null;
+  const root = path.resolve(decodeURIComponent(parts[0]));
+  if (!path.isAbsolute(root)) return null;
+  const rel = parts.slice(1).map(decodeURIComponent).join("/") || "index.html";
+  return { root, rel };
+}
+
 export function parseDraftUrl(requestUrl: string): DraftRequestParams {
   const url = new URL(requestUrl);
   const rootRaw = url.searchParams.get("root");
-  if (!rootRaw) throw new Error("Missing root");
-  const root = path.resolve(decodeURIComponent(rootRaw));
-  if (!path.isAbsolute(root)) throw new Error("root must be absolute");
+  if (rootRaw) {
+    const root = path.resolve(decodeURIComponent(rootRaw));
+    if (!path.isAbsolute(root)) throw new Error("root must be absolute");
+    const relRaw = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    const rel = relRaw === "" ? "index.html" : relRaw;
+    return { root, rel };
+  }
 
-  const relRaw = decodeURIComponent(url.pathname.replace(/^\//, ""));
-  const rel = relRaw === "" ? "index.html" : relRaw;
-  return { root, rel };
+  const pathRoot = parsePathRootUrl(url);
+  if (pathRoot) return pathRoot;
+  throw new Error("Missing root");
 }
 
 export async function handleDraftRequest(
@@ -180,6 +194,8 @@ async function discoverHtmlCandidates(cwd: string): Promise<string[]> {
   return candidates;
 }
 
+const DOCUMENT_EXTENSIONS = new Set(["md", "txt", "log", "json", "yaml", "yml", "csv"]);
+
 export async function readDraftMarkdown(
   cwd: string,
   rel: string
@@ -188,7 +204,8 @@ export async function readDraftMarkdown(
   const root = path.resolve(cwd);
   const filePath = path.resolve(root, rel);
   if (!isWithinRoot(filePath, root)) return null;
-  if (path.extname(filePath).toLowerCase() !== ".md") return null;
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+  if (!DOCUMENT_EXTENSIONS.has(ext)) return null;
   try {
     const stat = await fs.stat(filePath);
     if (!stat.isFile()) return null;

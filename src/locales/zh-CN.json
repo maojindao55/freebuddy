@@ -494,7 +494,7 @@
     "resetZoom": "重置缩放",
     "loading": "正在加载预览…",
     "loadError": "预览加载失败。请检查入口路径或构建产物。",
-    "manualFallbackPlaceholder": "或手动输入地址 / README.md / image.png…",
+    "manualFallbackPlaceholder": "或手动输入地址 / README.md / data.json / image.png / file.pdf…",
     "emptyNoWorkspace": "未选择工作区目录。选择一个工作目录即可预览 agent 的产出。",
     "emptyNoEntry": "尚未指向预览入口。让 agent 启动 dev server、创建页面、Markdown 文档或图片后，通过 bridge 自动指向这里。"
   }

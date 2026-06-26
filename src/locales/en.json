@@ -491,9 +491,13 @@
     "resetEntry": "Reset to auto entry",
     "openExternal": "Open in browser",
     "viewport": "Preview size",
+    "zoom": "Zoom",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
     "loading": "Loading preview…",
     "loadError": "Preview failed to load. Check the entry path or build output.",
-    "manualFallbackPlaceholder": "or enter a URL / README.md / image.png…",
+    "manualFallbackPlaceholder": "or enter a URL / README.md / data.json / image.png / file.pdf…",
     "emptyNoWorkspace": "No workspace selected. Pick a working directory to preview the agent's output.",
     "emptyNoEntry": "No preview yet. Ask the agent to start a dev server, create a page, write a Markdown doc, or generate an image, then it will open here automatically."
   }

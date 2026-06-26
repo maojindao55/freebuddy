@@ -43,7 +43,7 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
-import { readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
+import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
 import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
@@ -259,11 +259,7 @@ export function registerCliIpc() {
       return true;
     }
     if (!url.startsWith("freebuddy-draft://")) return false;
-    const parsed = new URL(url);
-    const rootRaw = parsed.searchParams.get("root");
-    if (!rootRaw) return false;
-    const root = path.resolve(decodeURIComponent(rootRaw));
-    const rel = decodeURIComponent(parsed.pathname.replace(/^\//, "")) || "index.html";
+    const { root, rel } = parseDraftUrl(url);
     const filePath = path.resolve(root, rel);
     if (!filePath.startsWith(root + path.sep) && filePath !== root) return false;
     await shell.openExternal(pathToFileURL(filePath).toString());

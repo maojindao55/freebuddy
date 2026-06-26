@@ -1,7 +1,4 @@
-import { nanoid } from "nanoid";
 import { useEffect } from "react";
-
-import { cliClient } from "@/services/cli/client";
 
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -16,37 +13,6 @@ export function AgentBridgeListener() {
   const notify = useAgentBridgeStore((s) => s.notify);
 
   useEffect(() => {
-    const appendBridgeMessage = (text: string, status: "done" | "failed" = "done") => {
-      const convId = useConversationStore.getState().activeId;
-      if (!convId) return;
-      const id = nanoid();
-      const now = new Date().toISOString();
-      const message = {
-        id,
-        conversationId: convId,
-        role: "system" as const,
-        status,
-        content: text,
-        createdAt: now,
-        updatedAt: now
-      };
-      useConversationStore.setState((s) => ({
-        messages: {
-          ...s.messages,
-          [convId]: [...(s.messages[convId] ?? []), message]
-        }
-      }));
-      if (cliClient.isAvailable()) {
-        void cliClient.appendMessage({
-          id,
-          conversationId: convId,
-          role: "system",
-          status,
-          content: text
-        });
-      }
-    };
-
     const setTarget = (to: string | undefined, openPreview: boolean) => {
       const convId = useConversationStore.getState().activeId;
       if (to && convId) {
@@ -71,18 +37,12 @@ export function AgentBridgeListener() {
       }
       if (action === "status") {
         const text = params?.text;
-        if (text) {
-          notify(text);
-          appendBridgeMessage(`Preview status: ${text}`);
-        }
+        if (text) notify(text);
         return;
       }
       if (action === "error") {
         const text = params?.text;
-        if (text) {
-          notify(text);
-          appendBridgeMessage(`Preview error: ${text}`, "failed");
-        }
+        if (text) notify(text);
         return;
       }
       if (action === "notify") {

@@ -198,6 +198,23 @@ export function buildSessionResumeRequest(
   };
 }
 
+export function buildSessionLoadRequest(
+  id: AcpRequestId,
+  sessionId: string,
+  cwd?: string
+): AcpMessage {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "session/load",
+    params: {
+      sessionId,
+      cwd: cwd || process.cwd(),
+      mcpServers: []
+    }
+  };
+}
+
 export interface AcpPromptAttachment {
   path: string;
   kind: "image" | "document" | "code";

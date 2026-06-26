@@ -29,6 +29,8 @@ const IMAGE_TARGET_EXTENSIONS = new Set([
   "bmp"
 ]);
 
+const DOCUMENT_TARGET_EXTENSIONS = new Set(["txt", "log", "json", "yaml", "yml", "csv"]);
+
 function targetExtension(target: string | undefined, url: string | undefined): string {
   const value = target || url || "";
   try {
@@ -47,10 +49,32 @@ function isImageTarget(target: string | undefined, url: string | undefined): boo
   return IMAGE_TARGET_EXTENSIONS.has(targetExtension(target, url));
 }
 
-function markdownRel(target: string | undefined): string | null {
+function isDocumentTarget(target: string | undefined, url: string | undefined): boolean {
+  return DOCUMENT_TARGET_EXTENSIONS.has(targetExtension(target, url));
+}
+
+function isPdfTarget(target: string | undefined, url: string | undefined): boolean {
+  return targetExtension(target, url) === "pdf";
+}
+
+function documentRel(target: string | undefined): string | null {
   if (!target || /^https?:\/\//i.test(target)) return null;
   const rel = target.split("?")[0].trim();
-  return rel.toLowerCase().endsWith(".md") ? rel : null;
+  const ext = rel.split(".").pop()?.toLowerCase() ?? "";
+  return ext === "md" || DOCUMENT_TARGET_EXTENSIONS.has(ext) ? rel : null;
+}
+
+function formatDocumentContent(ext: string, content: string): string {
+  if (ext !== "json") return content;
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    return content;
+  }
+}
+
+function DocumentText({ content, extension }: { content: string; extension: string }) {
+  return <pre className={`draft-document-text ${extension}`}>{formatDocumentContent(extension, content)}</pre>;
 }
 
 function extractLastFileEditPath(
@@ -93,6 +117,7 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const dragStart = useRef({ x: 0, y: 0 });
   const panStart = useRef({ x: 0, y: 0 });
   const [markdown, setMarkdown] = useState<string | null>(null);
+  const [documentText, setDocumentText] = useState<string | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const activeId = useConversationStore((s) => s.activeId);
   const cwd = useConversationStore((s) => {
@@ -111,6 +136,10 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const hasEntry = Boolean(entry?.url);
   const isMarkdown = isMarkdownTarget(entry?.manualEntry, entry?.url);
   const isImage = isImageTarget(entry?.manualEntry, entry?.url);
+  const isDocument = isDocumentTarget(entry?.manualEntry, entry?.url);
+  const isPdf = isPdfTarget(entry?.manualEntry, entry?.url);
+  const pdfUrl = isPdf && entry?.url ? `${entry.url}#view=FitH&navpanes=0` : "";
+  const documentExtension = targetExtension(entry?.manualEntry, entry?.url);
   const frameWidth = FRAME_WIDTH[viewport];
 
   useEffect(() => {
@@ -135,11 +164,12 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
     setIsLoading(true);
     setError(null);
     setMarkdown(null);
+    setDocumentText(null);
   }, [entry?.url]);
 
   useEffect(() => {
-    const rel = markdownRel(entry?.manualEntry);
-    if (!entry?.url || !isMarkdown || !cwd || !rel) return;
+    const rel = documentRel(entry?.manualEntry);
+    if (!entry?.url || (!isMarkdown && !isDocument) || !cwd || !rel) return;
     let cancelled = false;
     setIsLoading(true);
     setError(null);
@@ -147,20 +177,27 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
       .readDraftMarkdown(cwd, rel)
       .then((text) => {
         if (cancelled) return;
-        if (text == null) throw new Error("Markdown not found");
-        setMarkdown(text);
+        if (text == null) throw new Error("Document not found");
+        if (isMarkdown) {
+          setMarkdown(text);
+          setDocumentText(null);
+        } else {
+          setDocumentText(text);
+          setMarkdown(null);
+        }
         setIsLoading(false);
       })
       .catch(() => {
         if (cancelled) return;
         setMarkdown(null);
+        setDocumentText(null);
         setIsLoading(false);
         setError(t("draft.loadError"));
       });
     return () => {
       cancelled = true;
     };
-  }, [cwd, entry?.manualEntry, entry?.url, isMarkdown, t]);
+  }, [cwd, entry?.manualEntry, entry?.url, isDocument, isMarkdown, t]);
 
   const focusFrame = () => {
     frameRef.current?.focus();
@@ -217,8 +254,8 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
         onClose={onClose}
       />
       <div
-        className={`draft-frame-wrap${isMarkdown ? " markdown" : ""}${isImage ? " image" : ""}`}
-        onMouseDown={hasEntry && !isMarkdown && !isImage ? focusFrame : undefined}
+        className={`draft-frame-wrap${isMarkdown || isDocument ? " markdown" : ""}${isImage ? " image" : ""}${isPdf ? " pdf" : ""}`}
+        onMouseDown={hasEntry && !isMarkdown && !isDocument && !isImage && !isPdf ? focusFrame : undefined}
       >
         {hasEntry ? (
           <>
@@ -230,6 +267,15 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
                 style={{ transform: `scale(${zoom})`, transformOrigin: "top center" }}
               >
                 {markdown != null && <MarkdownText content={markdown} />}
+              </div>
+            ) : isDocument ? (
+              <div
+                className="draft-document-wrap"
+                style={{ transform: `scale(${zoom})`, transformOrigin: "top center" }}
+              >
+                {documentText != null && (
+                  <DocumentText content={documentText} extension={documentExtension} />
+                )}
               </div>
             ) : isImage ? (
               <div
@@ -254,6 +300,18 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
                   }}
                 />
               </div>
+            ) : isPdf ? (
+              <embed
+                key={pdfUrl}
+                src={pdfUrl}
+                className="draft-pdf"
+                type="application/pdf"
+                onLoad={() => setIsLoading(false)}
+                onError={() => {
+                  setIsLoading(false);
+                  setError(t("draft.loadError"));
+                }}
+              />
             ) : (
               <iframe
                 ref={frameRef}

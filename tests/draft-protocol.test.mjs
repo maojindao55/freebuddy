@@ -24,6 +24,22 @@ function buildDraftUrl(root, rel) {
   return `freebuddy-draft://render${pathPart}?root=${encodeURIComponent(root)}`;
 }
 
+function buildEmbeddedRootDraftUrl(root, rel) {
+  const encodedRoot = encodeURIComponent(root);
+  const encodedRel = rel.split("/").map(encodeURIComponent).join("/");
+  return `freebuddy-draft://render/${encodedRoot}/${encodedRel}`;
+}
+
+test("parseDraftUrl resolves root embedded in path", async () => {
+  const { parseDraftUrl } = await loadDraftModule();
+  const rootPath = path.resolve("/tmp/demo app");
+  const { root, rel } = parseDraftUrl(
+    buildEmbeddedRootDraftUrl(rootPath, "docs/sample.pdf")
+  );
+  assert.equal(root, rootPath);
+  assert.equal(rel, "docs/sample.pdf");
+});
+
 test("parseDraftUrl resolves root and relative path", async () => {
   const { parseDraftUrl } = await loadDraftModule();
   const { root, rel } = parseDraftUrl(
@@ -45,6 +61,18 @@ test("handleDraftRequest serves index.html with text/html mime", async () => {
   assert.match(response.headers.get("Content-Type") ?? "", /^text\/html/);
   const body = await response.text();
   assert.equal(body, "<h1>hello</h1>");
+});
+
+test("handleDraftRequest serves pdf with application/pdf mime", async () => {
+  const { handleDraftRequest } = await loadDraftModule();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-"));
+  fs.writeFileSync(path.join(dir, "sample.pdf"), Buffer.from("%PDF-1.4"));
+
+  const response = await handleDraftRequest(
+    new Request(buildEmbeddedRootDraftUrl(dir, "sample.pdf"))
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "application/pdf");
 });
 
 test("handleDraftRequest auto-appends index.html for directory request", async () => {
@@ -140,13 +168,17 @@ test("resolveDraftEntry discovers package framework and html candidates", async 
   assert.equal(await resolveDraftEntry(htmlOnly), "public/demo.html");
 });
 
-test("readDraftMarkdown reads workspace markdown and blocks invalid paths", async () => {
+test("readDraftMarkdown reads workspace text documents and blocks invalid paths", async () => {
   const { readDraftMarkdown } = await loadDraftModule();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-"));
   fs.writeFileSync(path.join(dir, "README.md"), "# Hello");
+  fs.writeFileSync(path.join(dir, "data.json"), "{\"ok\":true}");
+  fs.writeFileSync(path.join(dir, "notes.txt"), "hello");
   fs.writeFileSync(path.join(dir, "index.html"), "<p>x</p>");
 
   assert.equal(await readDraftMarkdown(dir, "README.md"), "# Hello");
+  assert.equal(await readDraftMarkdown(dir, "data.json"), "{\"ok\":true}");
+  assert.equal(await readDraftMarkdown(dir, "notes.txt"), "hello");
   assert.equal(await readDraftMarkdown(dir, "index.html"), null);
   assert.equal(await readDraftMarkdown(dir, "../README.md"), null);
   assert.equal(await readDraftMarkdown("", "README.md"), null);

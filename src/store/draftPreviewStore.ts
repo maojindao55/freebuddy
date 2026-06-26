@@ -36,7 +36,7 @@ function composeUrl(
   }
   if (!cwd) return "";
   const rel = target.split("/").map(encodeURIComponent).join("/");
-  return `freebuddy-draft://render/${rel}?root=${encodeURIComponent(cwd)}&v=${nonce}`;
+  return `freebuddy-draft://render/${encodeURIComponent(cwd)}/${rel}?v=${nonce}`;
 }
 
 function entryOf(entry: DraftPreviewEntry | undefined): string | null | undefined {

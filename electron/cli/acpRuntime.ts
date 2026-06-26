@@ -621,7 +621,22 @@ export async function runAcpAgent({
         /* best-effort */
       }
     }
-    child.stdin.end();
+    appendLog(logStream, "system", "prompt complete; finalizing ACP turn");
+    finish("done", 0);
+    try {
+      child.stdin.end();
+    } catch {
+      /* noop */
+    }
+    setTimeout(() => {
+      if (child.exitCode == null && child.signalCode == null) {
+        try {
+          killProcessTree(child, "term");
+        } catch {
+          /* noop */
+        }
+      }
+    }, 250);
   } catch (e) {
     const msg = (e as Error)?.message || String(e);
     appendLog(logStream, "system", msg);

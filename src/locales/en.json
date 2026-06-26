@@ -272,6 +272,8 @@
       "installStarting": "Starting installer…",
       "installSuccess": "Install completed successfully.",
       "installBroken": "install broken — retry",
+      "commandNotFound": "command not found",
+      "checkProbeFailed": "check failed — retry",
       "editTitle": "Edit {{label}}",
       "unavailable": "Agent management is unavailable. Run the desktop app to manage local agents.",
       "installed": "✓ installed",

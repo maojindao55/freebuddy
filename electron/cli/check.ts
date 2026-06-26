@@ -1,5 +1,5 @@
 import spawn from "cross-spawn";
-import { adapterBinary } from "./adapters.js";
+import { adapterBinary, getCliCheckProbe } from "./adapters.js";
 import { getDb } from "./db.js";
 
 export interface CliCheckResult {
@@ -22,26 +22,34 @@ function which(bin: string): Promise<string | undefined> {
   });
 }
 
-function runVersion(bin: string): Promise<string | undefined> {
+interface CliProbeResult {
+  ok: boolean;
+  output?: string;
+}
+
+function firstNonEmptyLine(value: string): string | undefined {
+  return value.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim();
+}
+
+function runCheckProbe(bin: string, args: string[]): Promise<CliProbeResult> {
   return new Promise((resolve) => {
-    const child = spawn(bin, ["--version"], { env: process.env });
+    const child = spawn(bin, args, { env: process.env });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill();
-      resolve(undefined);
+      resolve({ ok: false });
     }, 5000);
     child.stdout!.on("data", (d) => (stdout += d.toString()));
     child.stderr!.on("data", (d) => (stderr += d.toString()));
     child.on("error", () => {
       clearTimeout(timer);
-      resolve(undefined);
+      resolve({ ok: false });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0) return resolve(undefined);
-      const first = stdout.split(/\r?\n/).find((l) => l.trim().length > 0);
-      resolve(first?.trim());
+      if (code !== 0) return resolve({ ok: false });
+      resolve({ ok: true, output: firstNonEmptyLine(stdout) ?? firstNonEmptyLine(stderr) });
     });
   });
 }
@@ -102,23 +110,24 @@ export async function cliCheck(
     upsertRuntime(adapter, false, undefined, undefined, "binary not found");
     return { installed: false };
   }
-  const version = await runVersion(resolved);
-  if (!version) {
+  const probe = getCliCheckProbe(adapter);
+  const probeResult = await runCheckProbe(resolved, probe.args);
+  if (!probeResult.ok || (!probe.versionOptional && !probeResult.output)) {
     upsertRuntime(
       adapter,
       false,
       resolved,
       undefined,
-      "binary found but --version failed; try reinstalling"
+      `binary found but ${probe.args.join(" ")} failed; try reinstalling`
     );
     return { installed: false };
   }
   const result: CliCheckResult = {
     installed: true,
     path: resolved,
-    version
+    version: probe.versionOptional ? undefined : probeResult.output
   };
-  upsertRuntime(adapter, true, resolved, version);
+  upsertRuntime(adapter, true, resolved, result.version);
   return result;
 }
 

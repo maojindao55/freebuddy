@@ -30,25 +30,26 @@ test("electron-builder config packages FreeBuddy for desktop platforms", () => {
   assert.match(builderConfig, /extraResources:[\s\S]*from:\s+assets\/app-icon\.png[\s\S]*to:\s+app-icon\.png/m);
 });
 
-test("release workflow uploads friendly-named assets and Windows update metadata", () => {
+test("release workflow uploads version-suffixed assets and Windows update metadata", () => {
   assert.match(workflow, /name:\s+Release/);
   assert.match(workflow, /tags:\s+\['v\*'\]/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.dmg/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.zip/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon\.zip\.blockmap/);
-  assert.match(workflow, /FreeBuddy_macOS-Intel\.dmg/);
-  assert.match(workflow, /FreeBuddy_macOS-Intel\.zip/);
-  assert.match(workflow, /FreeBuddy_macOS-Intel\.zip\.blockmap/);
-  assert.match(workflow, /FreeBuddy_Windows_x64\.exe/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-__VERSION__\.dmg/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-__VERSION__\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.dmg/);
+  assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.zip/);
+  assert.match(workflow, /FreeBuddy_Windows_x64-__VERSION__\.exe/);
+  assert.match(workflow, /asset_name="\$\{asset_name\/\/__VERSION__\/\$version_suffix\}"/);
+  assert.match(workflow, /\$assetName = \$assetName\.Replace\("__VERSION__", "v\$appVersion"\)/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
   // Build only; assets are renamed and uploaded manually to keep friendly names.
   assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);
   assert.match(workflow, /gh release upload/);
   assert.match(workflow, /Upload macOS update metadata/);
-  assert.match(workflow, /FreeBuddy-[^']+mac-arm64\\\.zip#FreeBuddy_macOS-Apple-Silicon\.zip/);
-  assert.match(workflow, /FreeBuddy-[^']+mac-x64\\\.zip#FreeBuddy_macOS-Intel\.zip/);
-  // Auto-update metadata: latest.yml rewritten to the friendly Windows name.
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-\$\{version_suffix\}\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Intel-\$\{version_suffix\}\.zip/);
+  // Auto-update metadata: latest.yml rewritten to the version-suffixed Windows name.
   assert.match(workflow, /Upload Windows update metadata/);
-  assert.match(workflow, /FreeBuddy_Windows_x64\.exe\.blockmap/);
+  assert.match(workflow, /FreeBuddy_Windows_x64-v\$appVersion\.exe/);
+  assert.match(workflow, /\$windowsAssetName\.blockmap/);
 });

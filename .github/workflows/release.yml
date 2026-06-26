@@ -25,9 +25,9 @@ jobs:
 
           | 平台 | 文件 | 说明 |
           |------|------|------|
-          | macOS Apple Silicon | \`FreeBuddy_macOS-Apple-Silicon.dmg\` | M 系列芯片 Mac |
-          | macOS Intel | \`FreeBuddy_macOS-Intel.dmg\` | Intel 芯片 Mac |
-          | Windows | \`FreeBuddy_Windows_x64.exe\` | Windows 10/11 64 位 |
+          | macOS Apple Silicon | \`FreeBuddy_macOS-Apple-Silicon-${{ github.ref_name }}.dmg\` | M 系列芯片 Mac |
+          | macOS Intel | \`FreeBuddy_macOS-Intel-${{ github.ref_name }}.dmg\` | Intel 芯片 Mac |
+          | Windows | \`FreeBuddy_Windows_x64-${{ github.ref_name }}.exe\` | Windows 10/11 64 位 |
 
           ## macOS 安装提示
           如果提示无法打开，请在终端执行：
@@ -48,17 +48,17 @@ jobs:
           - platform: macos-latest
             builder_args: --mac --arm64
             assets: |
-              FreeBuddy_macOS-Apple-Silicon.dmg|*.dmg
-              FreeBuddy_macOS-Apple-Silicon.zip|*.zip
+              FreeBuddy_macOS-Apple-Silicon-__VERSION__.dmg|*.dmg
+              FreeBuddy_macOS-Apple-Silicon-__VERSION__.zip|*.zip
           - platform: macos-latest
             builder_args: --mac --x64
             assets: |
-              FreeBuddy_macOS-Intel.dmg|*.dmg
-              FreeBuddy_macOS-Intel.zip|*.zip
+              FreeBuddy_macOS-Intel-__VERSION__.dmg|*.dmg
+              FreeBuddy_macOS-Intel-__VERSION__.zip|*.zip
           - platform: windows-latest
             builder_args: --win --x64
             assets: |
-              FreeBuddy_Windows_x64.exe|*.exe
+              FreeBuddy_Windows_x64-__VERSION__.exe|*.exe
 
     runs-on: ${{ matrix.platform }}
 
@@ -89,10 +89,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
+          version_suffix="v$(node -p "require('./package.json').version")"
           while IFS='|' read -r asset_name find_pattern; do
             if [ -z "$asset_name" ]; then
               continue
             fi
+            asset_name="${asset_name//__VERSION__/$version_suffix}"
             FILE=$(find release -name "$find_pattern" -type f | head -1)
             if [ -z "$FILE" ]; then
               echo "No artifact matching $find_pattern found"
@@ -114,6 +116,11 @@ jobs:
         run: |
           tag="${{ github.ref_name }}"
           repo="${{ github.repository }}"
+          version_suffix="v$(node -p "require('./package.json').version")"
+          arm_dmg="FreeBuddy_macOS-Apple-Silicon-${version_suffix}.dmg"
+          arm_zip="FreeBuddy_macOS-Apple-Silicon-${version_suffix}.zip"
+          x64_dmg="FreeBuddy_macOS-Intel-${version_suffix}.dmg"
+          x64_zip="FreeBuddy_macOS-Intel-${version_suffix}.zip"
           yml=$(find release -name latest-mac.yml -type f | head -1)
           if [ -z "$yml" ]; then
             echo "No latest-mac.yml found; skipping"
@@ -122,10 +129,10 @@ jobs:
           # Rewrite native artifact names to the friendly download names
           # that we actually uploaded above.
           sed -i.bak \
-            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-arm64\.dmg#FreeBuddy_macOS-Apple-Silicon.dmg#g' \
-            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-x64\.dmg#FreeBuddy_macOS-Intel.dmg#g' \
-            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-arm64\.zip#FreeBuddy_macOS-Apple-Silicon.zip#g' \
-            -e 's#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-x64\.zip#FreeBuddy_macOS-Intel.zip#g' \
+            -e "s#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-arm64\.dmg#${arm_dmg}#g" \
+            -e "s#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-x64\.dmg#${x64_dmg}#g" \
+            -e "s#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-arm64\.zip#${arm_zip}#g" \
+            -e "s#FreeBuddy-[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}-mac-x64\.zip#${x64_zip}#g" \
             "$yml"
           # Tag the yml with the arch so the two matrix jobs don't clobber
           # each other. A follow-up job merges them into latest-mac.yml.
@@ -141,24 +148,24 @@ jobs:
           dmg_blockmap=$(find release -name "*.dmg.blockmap" -type f | head -1)
           if [ -n "$dmg_blockmap" ]; then
             if [ "$arch_tag" = "arm64" ]; then
-              cp "$dmg_blockmap" "FreeBuddy_macOS-Apple-Silicon.dmg.blockmap"
-              gh release upload "$tag" "FreeBuddy_macOS-Apple-Silicon.dmg.blockmap" \
+              cp "$dmg_blockmap" "${arm_dmg}.blockmap"
+              gh release upload "$tag" "${arm_dmg}.blockmap" \
                 --repo "$repo" --clobber
             else
-              cp "$dmg_blockmap" "FreeBuddy_macOS-Intel.dmg.blockmap"
-              gh release upload "$tag" "FreeBuddy_macOS-Intel.dmg.blockmap" \
+              cp "$dmg_blockmap" "${x64_dmg}.blockmap"
+              gh release upload "$tag" "${x64_dmg}.blockmap" \
                 --repo "$repo" --clobber
             fi
           fi
           zip_blockmap=$(find release -name "*.zip.blockmap" -type f | head -1)
           if [ -n "$zip_blockmap" ]; then
             if [ "$arch_tag" = "arm64" ]; then
-              cp "$zip_blockmap" "FreeBuddy_macOS-Apple-Silicon.zip.blockmap"
-              gh release upload "$tag" "FreeBuddy_macOS-Apple-Silicon.zip.blockmap" \
+              cp "$zip_blockmap" "${arm_zip}.blockmap"
+              gh release upload "$tag" "${arm_zip}.blockmap" \
                 --repo "$repo" --clobber
             else
-              cp "$zip_blockmap" "FreeBuddy_macOS-Intel.zip.blockmap"
-              gh release upload "$tag" "FreeBuddy_macOS-Intel.zip.blockmap" \
+              cp "$zip_blockmap" "${x64_zip}.blockmap"
+              gh release upload "$tag" "${x64_zip}.blockmap" \
                 --repo "$repo" --clobber
             fi
           fi
@@ -169,6 +176,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
+          $appVersion = (Get-Content package.json | ConvertFrom-Json).version
           $assets = @"
           ${{ matrix.assets }}
           "@ -split "`n"
@@ -178,6 +186,7 @@ jobs:
             }
             $parts = $asset.Trim().Split("|")
             $assetName = $parts[0]
+            $assetName = $assetName.Replace("__VERSION__", "v$appVersion")
             $findPattern = $parts[1]
             $file = Get-ChildItem -Path release -Recurse -Filter $findPattern | Select-Object -First 1
             if (-not $file) {
@@ -198,22 +207,24 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $repo = "${{ github.repository }}"
+          $appVersion = (Get-Content package.json | ConvertFrom-Json).version
+          $windowsAssetName = "FreeBuddy_Windows_x64-v$appVersion.exe"
           # electron-updater reads latest.yml to discover newer versions.
           # Rewrite the native artifact name so it points at the friendly
-          # download name uploaded above (FreeBuddy_Windows_x64.exe).
+          # download name uploaded above.
           $yml = Get-ChildItem -Path release -Recurse -Filter latest.yml | Select-Object -First 1
           if (-not $yml) {
             Write-Host "No latest.yml found; skipping update metadata upload"
             exit 0
           }
           $content = Get-Content $yml.FullName -Raw
-          $content = $content -replace 'FreeBuddy-[0-9]+\.[0-9]+\.[0-9]+-win-x64\.exe', 'FreeBuddy_Windows_x64.exe'
+          $content = $content -replace 'FreeBuddy-[0-9]+\.[0-9]+\.[0-9]+-win-x64\.exe', $windowsAssetName
           Set-Content -Path latest.yml -Value $content -NoNewline
           gh release upload $tag latest.yml --repo $repo --clobber
           $blockmap = Get-ChildItem -Path release -Recurse -Filter *.exe.blockmap | Select-Object -First 1
           if ($blockmap) {
-            Copy-Item $blockmap.FullName FreeBuddy_Windows_x64.exe.blockmap
-            gh release upload $tag FreeBuddy_Windows_x64.exe.blockmap --repo $repo --clobber
+            Copy-Item $blockmap.FullName "$windowsAssetName.blockmap"
+            gh release upload $tag "$windowsAssetName.blockmap" --repo $repo --clobber
           }
 
   merge-mac-metadata:

@@ -269,6 +269,8 @@
       "installStarting": "正在启动安装程序…",
       "installSuccess": "安装成功完成。",
       "installBroken": "安装损坏 — 请重试",
+      "commandNotFound": "未找到命令",
+      "checkProbeFailed": "检测失败 — 请重试",
       "editTitle": "编辑 {{label}}",
       "unavailable": "Agent 管理不可用。请运行桌面端以管理本地 Agent。",
       "installed": "✓ 已安装",

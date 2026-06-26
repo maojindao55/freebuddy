@@ -50,6 +50,11 @@ function sortAdapters(list: ResolvedExecutor[]): ResolvedExecutor[] {
   });
 }
 
+function cliRuntimeErrorKey(lastError: string | undefined): string {
+  if (lastError === "binary not found") return "settings.cli.commandNotFound";
+  return "settings.cli.checkProbeFailed";
+}
+
 export function CLIAdaptersTab() {
   const { t } = useTranslation();
   const loaded = useCliExecutorStore((s) => s.loaded);
@@ -252,7 +257,7 @@ function AdapterRow({
           )}
           {!checking && rt?.lastError && !rt.installed && (
             <span className="adapter-status error" title={rt.lastError}>
-              {t("settings.cli.installBroken")}
+              {t(cliRuntimeErrorKey(rt.lastError))}
             </span>
           )}
           {model && (

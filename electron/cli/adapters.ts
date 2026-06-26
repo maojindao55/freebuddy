@@ -20,6 +20,7 @@ export interface CLIAdapterDefinition {
   id: CLIAdapterId;
   label: string;
   defaultBinary: string;
+  checkProbe?: CliCheckProbe;
   streamMode: CLIStreamMode;
   commandGroup: string;
   capabilities: { toolSession: boolean };
@@ -30,6 +31,11 @@ export interface CLIAdapterDefinition {
   installHint?: string;
   docsUrl?: string;
   protocol?: "legacy-cli-json" | "acp";
+}
+
+export interface CliCheckProbe {
+  args: string[];
+  versionOptional: boolean;
 }
 
 const legacyAdapterDefinitions: CLIAdapterDefinition[] = [
@@ -79,6 +85,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     id: "codex-acp",
     label: "Codex",
     defaultBinary: "codex-acp",
+    checkProbe: { args: ["--help"], versionOptional: true },
     streamMode: "raw",
     commandGroup: "codex",
     capabilities: { toolSession: true },
@@ -181,6 +188,15 @@ export function getAdapterDefinition(
 
 export function adapterBinary(adapter: string): string | undefined {
   return definitionsById.get(adapter as CLIAdapterId)?.defaultBinary;
+}
+
+export function getCliCheckProbe(adapter: string): CliCheckProbe {
+  return (
+    definitionsById.get(adapter as CLIAdapterId)?.checkProbe ?? {
+      args: ["--version"],
+      versionOptional: false
+    }
+  );
 }
 
 export function hasExplicitToolSessionArg(

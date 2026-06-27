@@ -25,7 +25,7 @@ When the task involves building or changing anything visual or document-like:
 - Do not point Draft at \`index.html\` for bundled apps that require \`npm run dev\`; that often misses CSS/assets/routes.
 - For plain static pages, write a self-contained \`index.html\` at the project root (or under \`dist/\`) and use relative paths for CSS/JS/assets.
 - For documentation output, write or update a Markdown file such as \`README.md\`, then immediately call \`/freebuddy/navigate?to=README.md\`.
-- For generated visual assets, write an image such as \`assets/mockup.png\`, then immediately call \`/freebuddy/navigate?to=assets%2Fmockup.png\`.
+- For generated visual assets, navigate to the workspace-relative image path such as \`assets%2Fmockup.png\`; if the image is outside the workspace, pass its absolute path directly or use \`freebuddy-file://open?path=<absolute path>\`.
 - Report build/dev-server/status or errors through the bridge so the user can see what happened.
 
 ${bridge}

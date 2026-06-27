@@ -60,6 +60,8 @@ function workflowRunName(name: string, template: string | undefined, t: ReturnTy
   if (template === "review-loop") return t("workflow.reviewLoop");
   if (name === "Research Report") return t("workflow.builtinTeams.team-research-report.name");
   if (name === "Quick Implementation") return t("workflow.builtinTeams.team-quick-implement.name");
+  if (name === "Root Cause Analysis") return t("workflow.builtinTeams.team-root-cause-analysis.name");
+  if (name === "Build Review Team") return t("workflow.builtinTeams.team-implement-review-loop.name");
   if (name === "Implement-Review Loop") return t("workflow.implementReviewLoop");
   if (name === "Review Loop") return t("workflow.reviewLoop");
   return name;
@@ -126,13 +128,18 @@ export function WorkflowRunPanel() {
     steps.map((s) => ({ stepId: s.stepId, status: s.status }))
   );
   const reviewStep = steps.find((s) => s.stepId === "review-changes");
+  const verifyStep = steps.find((s) => s.stepId === "verify-changes");
+  const reviewNeedsRetry = /(?:REVIEW_STATUS:\s*FAIL|<<<REVIEW_FAIL>>>|\[\[REVIEW:FAIL\]\])/i.test(
+    `${reviewStep?.summary ?? ""}\n${reviewStep?.resultJson ?? ""}`
+  );
+  const verifyNeedsRetry = /UNRESOLVED:\s*[1-9]\d*/i.test(
+    `${verifyStep?.summary ?? ""}\n${verifyStep?.resultJson ?? ""}`
+  );
   const canContinueImplementReview =
     activeRun.status === "partial" &&
     (plan.template === "implement-review-loop" ||
       activeRun.template === "implement-review-loop") &&
-    /(?:REVIEW_STATUS:\s*FAIL|<<<REVIEW_FAIL>>>|\[\[REVIEW:FAIL\]\])/i.test(
-      `${reviewStep?.summary ?? ""}\n${reviewStep?.resultJson ?? ""}`
-    );
+    (reviewNeedsRetry || verifyNeedsRetry);
 
   return (
     <section className="side-card workflow-run-panel">

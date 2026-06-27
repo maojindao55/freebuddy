@@ -7,6 +7,7 @@ const {
   phaseGateSatisfied,
   decideReviewLoop,
   deriveStepSummary,
+  extractVisibleStepOutput,
   verifierHasUnresolved
 } = mod;
 
@@ -163,6 +164,28 @@ test("deriveStepSummary concatenates assistant text chunks", () => {
 test("deriveStepSummary falls back to tool count", () => {
   const s = deriveStepSummary([{ kind: "tool-call" }, { kind: "tool-result" }]);
   assert.equal(s, "Completed 2 tool actions.");
+});
+
+test("deriveStepSummary ignores hidden thinking and tool payloads", () => {
+  const s = deriveStepSummary([
+    { kind: "thinking", content: "I need to search first." },
+    { kind: "tool-call", input: { query: "private search payload" } },
+    { kind: "text", content: "## Evidence\n- One confirmed match tomorrow." }
+  ]);
+  assert.equal(s, "## Evidence\n- One confirmed match tomorrow.");
+});
+
+test("extractVisibleStepOutput keeps full assistant output for downstream context", () => {
+  const visible = extractVisibleStepOutput([
+    { kind: "thinking", content: "I should search." },
+    { kind: "tool-call", input: { query: "noise" } },
+    { kind: "text", content: "A".repeat(450) },
+    { kind: "text", content: "\nFinal evidence bullet." }
+  ]);
+  assert.equal(visible.includes("I should search"), false);
+  assert.equal(visible.includes("query"), false);
+  assert.equal(visible.length, 473);
+  assert.match(visible, /Final evidence bullet\.$/);
 });
 
 test("verifierHasUnresolved parses the UNRESOLVED marker", () => {

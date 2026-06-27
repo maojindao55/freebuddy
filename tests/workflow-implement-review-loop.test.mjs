@@ -60,6 +60,41 @@ test("buildImplementReviewLoopPlan produces implement → review → loop_or_fin
   assert.match(review.steps[0].prompt, /REVIEW_STATUS: FAIL/);
 });
 
+test("build review plan can verify and summarize after review passes", () => {
+  const verifier = {
+    id: "cli-opencode-acp",
+    name: "OpenCode",
+    adapter: "opencode-acp",
+    enabled: true
+  };
+  const summarizer = {
+    id: "cli-codex-acp",
+    name: "Codex",
+    adapter: "codex-acp",
+    enabled: true
+  };
+  const p = buildImplementReviewLoopPlan({
+    goal: "add retry",
+    implementer: agents.implementer,
+    reviewer: agents.reviewer,
+    verifier,
+    summarizer
+  });
+  assert.deepEqual(
+    p.phases.map((ph) => ph.id),
+    ["implement", "review", "verify", "summarize", "loop_or_finish"]
+  );
+  const verify = p.phases.find((ph) => ph.id === "verify");
+  const summarize = p.phases.find((ph) => ph.id === "summarize");
+  assert.equal(verify.steps[0].agentId, verifier.id);
+  assert.equal(verify.steps[0].mode, "verify");
+  assert.deepEqual(verify.steps[0].consumes, ["review-changes"]);
+  assert.match(verify.steps[0].prompt, /UNRESOLVED: <count>/);
+  assert.equal(summarize.steps[0].agentId, summarizer.id);
+  assert.equal(summarize.steps[0].mode, "summarize");
+  assert.deepEqual(summarize.steps[0].consumes, ["verify-changes"]);
+});
+
 test("reviewerHasFail detects FAIL marker", () => {
   assert.equal(reviewerHasFail("Looks good\nREVIEW_STATUS: PASS"), false);
   assert.equal(reviewerHasFail("Issues found\nREVIEW_STATUS: FAIL"), true);
@@ -186,6 +221,27 @@ test("augmentPromptWithConsumedSummaries appends upstream summaries", () => {
   assert.match(out, /Fix error handling/);
 });
 
+test("augmentPromptWithConsumedSummaries prefers visible output over compact summary", () => {
+  const out = augmentPromptWithConsumedSummaries(
+    "Analyze the research.",
+    ["research-step"],
+    new Map([
+      [
+        "research-step",
+        {
+          stepId: "research-step",
+          title: "Research",
+          summary: "I need to search first.",
+          output: `${"confirmed fact ".repeat(80)}final evidence`
+        }
+      ]
+    ])
+  );
+  assert.match(out, /confirmed fact/);
+  assert.match(out, /final evidence/);
+  assert.doesNotMatch(out, /I need to search first/);
+});
+
 test("runtime exposes continueImplementReview for max-loop FAIL follow-up", () => {
   const src = fs.readFileSync(
     new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
@@ -196,7 +252,7 @@ test("runtime exposes continueImplementReview for max-loop FAIL follow-up", () =
   assert.match(src, /resetWorkflowStepsForLoop\(runId, IMPLEMENT_REVIEW_LOOP_PHASES\)/);
 });
 
-test("expandTeamToPlan uses implement-review-loop template for loop team", async () => {
+test("expandTeamToPlan uses build review template for loop team", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
   );
@@ -216,7 +272,25 @@ test("expandTeamToPlan uses implement-review-loop template for loop team", async
   const result = expandTeamToPlan(team, { goal: "fix auth" }, agentRefs);
   assert.equal(result.ok, true);
   assert.equal(result.preview.plan.template, "implement-review-loop");
-  assert.equal(result.preview.plan.phases.length, 3);
+  assert.deepEqual(
+    result.preview.plan.phases.map((phase) => phase.id),
+    ["implement", "review", "verify", "summarize", "loop_or_finish"]
+  );
+  assert.deepEqual(
+    result.preview.routeSummary.map((route) => route.nodeId),
+    ["implement", "review", "verify", "summarize"]
+  );
+});
+
+test("runtime loops build review when verification has unresolved issues", () => {
+  const src = fs.readFileSync(
+    new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(src, /evaluateImplementReviewCheckpoint/);
+  assert.match(src, /stepId === VERIFY_CHANGES_STEP_ID/);
+  assert.match(src, /verifierHasUnresolved\(verifier\?\.summary\)/);
+  assert.match(src, /verification feedback from the previous round/);
 });
 
 test("findResumePhaseIndex skips finished phases", async () => {

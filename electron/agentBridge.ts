@@ -28,13 +28,13 @@ export const BRIDGE_ACTIONS: BridgeAction[] = [
   },
   {
     name: "navigate",
-    summary: "Point the preview at a workspace-relative path or local dev-server URL.",
+    summary: "Point the preview at a workspace-relative path, local file image, or local dev-server URL.",
     description:
-      "Re-target the preview iframe to another entry file, route, or localhost URL. Use this after starting npm run dev.",
+      "Re-target the preview iframe to another entry file, route, localhost URL, or local image file. Use this after starting npm run dev.",
     params: [
       {
         name: "to",
-        description: "Workspace-relative path, route, or http://127.0.0.1:<port>/ URL",
+        description: "Workspace-relative path, route, absolute local image path, freebuddy-file://open?path=<absolute path>, or http://127.0.0.1:<port>/ URL",
         required: true
       }
     ]
@@ -43,11 +43,11 @@ export const BRIDGE_ACTIONS: BridgeAction[] = [
     name: "entry",
     summary: "Select the preview entry without changing tabs.",
     description:
-      "Set the Draft preview target to a workspace-relative file or localhost dev-server URL.",
+      "Set the Draft preview target to a workspace-relative file, local image file, or localhost dev-server URL.",
     params: [
       {
         name: "to",
-        description: "Workspace-relative path or http://127.0.0.1:<port>/ URL",
+        description: "Workspace-relative path, absolute local image path, freebuddy-file://open?path=<absolute path>, or http://127.0.0.1:<port>/ URL",
         required: true
       }
     ]
@@ -138,6 +138,8 @@ export function buildBridgeSection(port: number): string {
     "```sh",
     `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=README.md"`,
     `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=assets%2Fmockup.png"`,
+    `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=%2Ftmp%2Fposter.png"`,
+    `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=freebuddy-file%3A%2F%2Fopen%3Fpath%3D%252Ftmp%252Fposter.png"`,
     "```",
     "",
     "Available actions:",

@@ -25,6 +25,13 @@ test("WorkflowRunPanel renders running actions and pause/resume/stop", () => {
   assert.match(src, /setInterval/);
 });
 
+test("WorkflowRunPanel can continue build review after verification failure", () => {
+  const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  assert.match(src, /verifyStep/);
+  assert.match(src, /UNRESOLVED:\\s\*\[1-9\]\\d\*/);
+  assert.match(src, /canContinueImplementReview/);
+});
+
 test("WorkflowRunPanel shows a progress bar and inline step details", () => {
   const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
   assert.match(src, /workflow-progress-bar/);
@@ -111,7 +118,7 @@ test("workflow i18n keys exist in both locales", () => {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }
-  for (const teamId of ["team-quick-implement", "team-implement-review-loop", "team-research-report"]) {
+  for (const teamId of ["team-quick-implement", "team-implement-review-loop", "team-root-cause-analysis", "team-research-report"]) {
     assert.ok(en.workflow.builtinTeams?.[teamId]?.name, `missing en workflow.builtinTeams.${teamId}.name`);
     assert.ok(en.workflow.builtinTeams?.[teamId]?.description, `missing en workflow.builtinTeams.${teamId}.description`);
     assert.ok(zh.workflow.builtinTeams?.[teamId]?.name, `missing zh-CN workflow.builtinTeams.${teamId}.name`);
@@ -167,6 +174,7 @@ test("AgentBridgeListener keeps status/error events out of chat history", () => 
 
 test("DraftCanvas renders markdown, document, pdf, and image targets without iframe", () => {
   const src = read("../src/components/Draft/DraftCanvas.tsx");
+  const toolbarSrc = read("../src/components/Draft/DraftToolbar.tsx");
   const css = read("../styles.css");
   assert.match(src, /isMarkdownTarget/);
   assert.match(src, /MarkdownText/);
@@ -178,8 +186,17 @@ test("DraftCanvas renders markdown, document, pdf, and image targets without ifr
   assert.match(src, /#view=FitH&navpanes=0/);
   assert.match(src, /draft-pdf/);
   assert.match(src, /type="application\/pdf"/);
-  assert.match(src, /isImageTarget/);
+  assert.match(src, /isImageDraftTarget/);
   assert.match(src, /draft-image-wrap/);
+  assert.match(src, /onImageWheel/);
+  assert.match(src, /onWheel=\{onImageWheel\}/);
+  assert.match(src, /event\.preventDefault\(\)/);
+  assert.match(src, /event\.ctrlKey \|\| event\.metaKey/);
+  assert.match(src, /MAX_IMAGE_ZOOM = 8/);
+  assert.doesNotMatch(src, /useEffect\(\(\) => \{\s*setPan\(\{ x: 0, y: 0 \}\);\s*\}, \[zoom\]\)/);
+  assert.match(toolbarSrc, /MAX_ZOOM = 8/);
+  assert.match(src, /translate\(\$\{pan\.x\}px, \$\{pan\.y\}px\) scale\(\$\{zoom\}\)/);
+  assert.doesNotMatch(src, /\bzoom,\n\s*transform: `translate/);
   assert.match(src, /draft-markdown-wrap/);
   assert.match(css, /\.draft-image-wrap/);
   assert.match(css, /\.draft-markdown-wrap/);

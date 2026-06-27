@@ -1,0 +1,79 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import ts from "typescript";
+
+async function loadDraftPreviewStoreModule() {
+  const source = fs.readFileSync(
+    new URL("../src/store/draftPreviewStore.ts", import.meta.url),
+    "utf8"
+  );
+  const output = ts
+    .transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022
+      }
+    })
+    .outputText.replace(
+      /^import \{ create \} from "zustand";\s*$/m,
+      "const create = (factory) => factory(() => {}, () => ({}));"
+    );
+  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+}
+
+async function loadDraftCanvasModule() {
+  const source = fs.readFileSync(
+    new URL("../src/components/Draft/DraftCanvas.tsx", import.meta.url),
+    "utf8"
+  );
+  const output = ts
+    .transpileModule(source, {
+      compilerOptions: {
+        jsx: ts.JsxEmit.ReactJSX,
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022
+      }
+    })
+    .outputText.replace(/import[\s\S]*?from "react";\n/, "")
+    .replace(/import[\s\S]*?from "react-i18next";\n/, "")
+    .replace(/import[\s\S]*?from "@\/services\/cli\/client";\n/, "")
+    .replace(/import[\s\S]*?from "@\/store\/conversationStore";\n/, "")
+    .replace(/import[\s\S]*?from "@\/store\/draftPreviewStore";\n/, "")
+    .replace(/import[\s\S]*?from "\.\/DraftToolbar";\n/, "")
+    .replace(/import[\s\S]*?from "\.\.\/CLI\/StreamItem";\n/, "");
+  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+}
+
+test("Draft preview keeps freebuddy-file image URLs as direct image sources", async () => {
+  const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
+  const source = "freebuddy-file://open?path=%2Ftmp%2Fgenerated%20poster.png";
+  const url = composeDraftPreviewUrl("/Users/me/workspace", source, 7);
+  const parsed = new URL(url);
+
+  assert.equal(parsed.protocol, "freebuddy-file:");
+  assert.equal(parsed.hostname, "open");
+  assert.equal(parsed.searchParams.get("path"), "/tmp/generated poster.png");
+  assert.equal(parsed.searchParams.get("freebuddyDraft"), "7");
+});
+
+test("Draft image detection reads extension from freebuddy-file path query", async () => {
+  const { isImageDraftTarget } = await loadDraftCanvasModule();
+  const source = "freebuddy-file://open?path=%2Ftmp%2Fgenerated%20poster.png";
+
+  assert.equal(isImageDraftTarget(source, source), true);
+  assert.equal(isImageDraftTarget("freebuddy-file://open?path=%2Ftmp%2Fnotes.txt", ""), false);
+});
+
+test("Draft preview converts absolute local image paths to freebuddy-file URLs", async () => {
+  const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
+  const filePath = path.normalize("/tmp/generated poster.png").replace(/\\/g, "/");
+  const url = composeDraftPreviewUrl("/Users/me/workspace", filePath, 3);
+  const parsed = new URL(url);
+
+  assert.equal(parsed.protocol, "freebuddy-file:");
+  assert.equal(parsed.hostname, "open");
+  assert.equal(decodeURIComponent(parsed.searchParams.get("path") ?? ""), filePath);
+  assert.equal(parsed.searchParams.get("freebuddyDraft"), "3");
+});

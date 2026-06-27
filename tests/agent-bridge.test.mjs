@@ -70,4 +70,6 @@ test("buildBridgeSection lists actions with the live port", async () => {
   assert.ok(md.includes("npm run dev"));
   assert.ok(md.includes("README.md"));
   assert.ok(md.includes("assets%2Fmockup.png"));
+  assert.ok(md.includes("freebuddy-file://open"));
+  assert.ok(md.includes("%2Ftmp%2Fposter.png"));
 });

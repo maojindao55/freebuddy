@@ -210,6 +210,8 @@ function expandImplementReviewTeamToPlan(
 
   const implementerRole = team.roles.find((r) => r.kind === "implementer");
   const reviewerRole = team.roles.find((r) => r.kind === "reviewer");
+  const verifierRole = team.roles.find((r) => r.kind === "verifier");
+  const summarizerRole = team.roles.find((r) => r.kind === "summarizer");
   if (!implementerRole) errors.push("implementer role is required");
   if (!reviewerRole) errors.push("reviewer role is required");
 
@@ -219,11 +221,23 @@ function expandImplementReviewTeamToPlan(
   const reviewer = reviewerRole
     ? agents.find((a) => a.id === reviewerRole.agentId)
     : undefined;
+  const verifier = verifierRole
+    ? agents.find((a) => a.id === verifierRole.agentId)
+    : undefined;
+  const summarizer = summarizerRole
+    ? agents.find((a) => a.id === summarizerRole.agentId)
+    : undefined;
   if (implementerRole && !implementer) {
     errors.push(`implementer references unknown agent "${implementerRole.agentId}"`);
   }
   if (reviewerRole && !reviewer) {
     errors.push(`reviewer references unknown agent "${reviewerRole.agentId}"`);
+  }
+  if (verifierRole && !verifier) {
+    errors.push(`verifier references unknown agent "${verifierRole.agentId}"`);
+  }
+  if (summarizerRole && !summarizer) {
+    errors.push(`summarizer references unknown agent "${summarizerRole.agentId}"`);
   }
   if (errors.length > 0 || !implementer || !reviewer) {
     return { ok: false, errors };
@@ -235,6 +249,8 @@ function expandImplementReviewTeamToPlan(
     targetPaths: input.targetPaths,
     implementer,
     reviewer,
+    verifier,
+    summarizer,
     maxLoops: team.policy.maxLoops
   });
 
@@ -265,6 +281,24 @@ function expandImplementReviewTeamToPlan(
       agentName: reviewer.name
     }
   ];
+  if (verifierRole && verifier) {
+    routeSummary.push({
+      nodeId: "verify",
+      title: "Verify",
+      mode: "verify",
+      roleLabel: verifierRole.label,
+      agentName: verifier.name
+    });
+  }
+  if (summarizerRole && summarizer) {
+    routeSummary.push({
+      nodeId: "summarize",
+      title: "Summarize",
+      mode: "summarize",
+      roleLabel: summarizerRole.label,
+      agentName: summarizer.name
+    });
+  }
 
   const preview: WorkflowTeamPreview = {
     teamId: team.id,

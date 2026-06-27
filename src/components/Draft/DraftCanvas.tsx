@@ -30,11 +30,24 @@ const IMAGE_TARGET_EXTENSIONS = new Set([
 ]);
 
 const DOCUMENT_TARGET_EXTENSIONS = new Set(["txt", "log", "json", "yaml", "yml", "csv"]);
+const MIN_IMAGE_ZOOM = 0.5;
+const MAX_IMAGE_ZOOM = 8;
 
-function targetExtension(target: string | undefined, url: string | undefined): string {
+function clampImageZoom(value: number): number {
+  return Math.min(MAX_IMAGE_ZOOM, Math.max(MIN_IMAGE_ZOOM, value));
+}
+
+export function draftTargetExtension(
+  target: string | undefined,
+  url: string | undefined
+): string {
   const value = target || url || "";
   try {
     const parsed = new URL(value);
+    if (parsed.protocol === "freebuddy-file:") {
+      const filePath = parsed.searchParams.get("path") ?? parsed.pathname;
+      return filePath.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+    }
     return parsed.pathname.split(".").pop()?.toLowerCase() ?? "";
   } catch {
     return value.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
@@ -42,19 +55,22 @@ function targetExtension(target: string | undefined, url: string | undefined): s
 }
 
 function isMarkdownTarget(target: string | undefined, url: string | undefined): boolean {
-  return targetExtension(target, url) === "md";
+  return draftTargetExtension(target, url) === "md";
 }
 
-function isImageTarget(target: string | undefined, url: string | undefined): boolean {
-  return IMAGE_TARGET_EXTENSIONS.has(targetExtension(target, url));
+export function isImageDraftTarget(
+  target: string | undefined,
+  url: string | undefined
+): boolean {
+  return IMAGE_TARGET_EXTENSIONS.has(draftTargetExtension(target, url));
 }
 
 function isDocumentTarget(target: string | undefined, url: string | undefined): boolean {
-  return DOCUMENT_TARGET_EXTENSIONS.has(targetExtension(target, url));
+  return DOCUMENT_TARGET_EXTENSIONS.has(draftTargetExtension(target, url));
 }
 
 function isPdfTarget(target: string | undefined, url: string | undefined): boolean {
-  return targetExtension(target, url) === "pdf";
+  return draftTargetExtension(target, url) === "pdf";
 }
 
 function documentRel(target: string | undefined): string | null {
@@ -135,11 +151,11 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   );
   const hasEntry = Boolean(entry?.url);
   const isMarkdown = isMarkdownTarget(entry?.manualEntry, entry?.url);
-  const isImage = isImageTarget(entry?.manualEntry, entry?.url);
+  const isImage = isImageDraftTarget(entry?.manualEntry, entry?.url);
   const isDocument = isDocumentTarget(entry?.manualEntry, entry?.url);
   const isPdf = isPdfTarget(entry?.manualEntry, entry?.url);
   const pdfUrl = isPdf && entry?.url ? `${entry.url}#view=FitH&navpanes=0` : "";
-  const documentExtension = targetExtension(entry?.manualEntry, entry?.url);
+  const documentExtension = draftTargetExtension(entry?.manualEntry, entry?.url);
   const frameWidth = FRAME_WIDTH[viewport];
 
   useEffect(() => {
@@ -223,6 +239,18 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
 
   const resetPan = useCallback(() => setPan({ x: 0, y: 0 }), []);
 
+  const onImageWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const gestureZoom = event.ctrlKey || event.metaKey;
+    if (!gestureZoom) return;
+    event.preventDefault();
+    const factor = Math.exp(-event.deltaY * 0.002);
+    setZoom((current) => {
+      const next = clampImageZoom(current * factor);
+      if (next <= 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!isDragging) return;
     const onMove = (e: MouseEvent) => {
@@ -238,10 +266,6 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
       window.removeEventListener("mouseup", onUp);
     };
   }, [isDragging]);
-
-  useEffect(() => {
-    setPan({ x: 0, y: 0 });
-  }, [zoom]);
 
   return (
     <div className="draft-canvas">
@@ -282,6 +306,7 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
                 className="draft-image-wrap"
                 style={zoom > 1 ? { cursor: isDragging ? "grabbing" : "grab" } : undefined}
                 onMouseDown={onDragStart}
+                onWheel={onImageWheel}
                 onDoubleClick={resetPan}
               >
                 <img
@@ -289,8 +314,8 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
                   alt={entry?.manualEntry ?? t("draft.title")}
                   className="draft-image"
                   style={{
-                    zoom,
-                    transform: `translate(${pan.x}px, ${pan.y}px)`
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transformOrigin: "center center"
                   }}
                   draggable={false}
                   onLoad={() => setIsLoading(false)}

@@ -257,6 +257,9 @@ export function registerWorkflowIpc() {
       const rt = ensureRuntime(event);
       return rt.createPendingRun({
         conversationId: input.conversationId,
+        teamId: team.id,
+        teamSnapshotJson: JSON.stringify(team),
+        planVersion: team.template.version,
         plan: result.preview.plan,
         agents
       });

@@ -14,6 +14,8 @@ const VIEWPORTS: Array<{ key: DraftViewport; labelKey?: string; label?: string }
   { key: "tablet", label: "768" },
   { key: "mobile", label: "390" }
 ];
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 8;
 
 const ICON_PROPS = {
   viewBox: "0 0 24 24",
@@ -50,7 +52,7 @@ export function DraftToolbar({
   };
 
   const viewportOptions = useMemo(() => VIEWPORTS, []);
-  const setZoom = (next: number) => onZoomChange(Math.min(2, Math.max(0.5, next)));
+  const setZoom = (next: number) => onZoomChange(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next)));
 
   return (
     <div className="draft-toolbar">

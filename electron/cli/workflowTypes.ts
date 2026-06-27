@@ -60,6 +60,9 @@ export type WorkflowStepStatus =
 export interface WorkflowRunRow {
   id: string;
   conversationId?: string;
+  teamId?: string;
+  teamSnapshotJson?: string;
+  planVersion?: number;
   name: string;
   goal: string;
   status: WorkflowRunStatus;

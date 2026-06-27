@@ -306,7 +306,7 @@
     "modeTabsAria": "任务模式",
     "modeHint": "使用多个 Agent 规划并作为工作流运行",
     "reviewLoop": "评审循环",
-    "implementReviewLoop": "实现-审查循环",
+    "implementReviewLoop": "实现审查团队",
     "generatePlan": "生成计划",
     "planPreview": "工作流计划",
     "phases": "阶段",
@@ -442,8 +442,12 @@
         "description": "规划、实现、验证并总结。适合小而聚焦的改动，写入前有一次审批。"
       },
       "team-implement-review-loop": {
-        "name": "实现-审查循环",
-        "description": "Agent A 负责实现，Agent B 负责审查。失败时 A 修复、B 复审，直到通过或达到最大循环次数。"
+        "name": "实现审查团队",
+        "description": "实现、审查、验证并总结。审查或验证失败时回到实现，直到通过或达到最大循环次数。"
+      },
+      "team-root-cause-analysis": {
+        "name": "问题排查团队",
+        "description": "收集证据、质疑假设、验证根因，并输出简洁的问题排查报告。"
       },
       "team-research-report": {
         "name": "分析调研报告",

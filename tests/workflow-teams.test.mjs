@@ -63,15 +63,60 @@ test("expandTeamToPlan produces a workflow plan for the quick team", async () =>
   assert.ok(result.preview.writeNodeCount >= 1);
 });
 
-test("builtin workflow teams include the three default teams", async () => {
+test("builtin workflow teams include the default teams", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
   );
   const teams = builtinWorkflowTeams();
   assert.deepEqual(
     teams.map((t) => t.id),
-    ["team-quick-implement", "team-implement-review-loop", "team-research-report"]
+    [
+      "team-quick-implement",
+      "team-implement-review-loop",
+      "team-root-cause-analysis",
+      "team-research-report"
+    ]
   );
+});
+
+test("root cause team expands to a read-only evidence workflow", async () => {
+  const { builtinWorkflowTeams } = await import(
+    "../dist-electron/cli/workflowTeamBuiltins.js"
+  );
+  const { expandTeamToPlan } = await import(
+    "../dist-electron/cli/workflowTeamAdapter.js"
+  );
+  const teams = builtinWorkflowTeams();
+  const rootCause = teams.find((t) => t.id === "team-root-cause-analysis");
+  assert.ok(rootCause);
+  const agents = rootCause.roles.map((r) => ({
+    id: r.agentId,
+    name: r.agentId,
+    adapter: "stub-acp",
+    enabled: true
+  }));
+  const result = expandTeamToPlan(
+    rootCause,
+    { goal: "find why image preview failed" },
+    agents
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.preview.teamId, "team-root-cause-analysis");
+  assert.equal(result.preview.writeNodeCount, 0);
+  assert.deepEqual(
+    result.preview.plan.phases.map((phase) => phase.id),
+    ["collect-evidence", "challenge-hypothesis", "verify-root-cause", "summarize-findings"]
+  );
+  const [collect, challenge, verify, summarize] = result.preview.plan.phases;
+  assert.match(collect.steps[0].prompt, /Collect concrete evidence/);
+  assert.match(challenge.steps[0].prompt, /challenge the proposed root cause/i);
+  assert.match(verify.steps[0].prompt, /verify the root cause/i);
+  assert.match(summarize.steps[0].prompt, /timeline/i);
+  for (const phase of result.preview.plan.phases) {
+    for (const step of phase.steps) {
+      assert.notEqual(step.mode, "write");
+    }
+  }
 });
 
 test("research report team expands to a read-only plan", async () => {
@@ -101,6 +146,8 @@ test("research report team expands to a read-only plan", async () => {
   assert.deepEqual(reportPhase.steps[0].consumes, [analysis.steps[0].id]);
   assert.match(research.steps[0].prompt, /Do not make final judgments or forecasts/);
   assert.match(analysis.steps[0].prompt, /Do not repeat the raw facts/);
+  assert.match(analysis.steps[0].prompt, /Use the upstream research context as the primary source/);
+  assert.match(reportPhase.steps[0].prompt, /Do not restart broad research/);
   for (const phase of result.preview.plan.phases) {
     for (const step of phase.steps) {
       assert.notEqual(step.mode, "write");
@@ -207,6 +254,25 @@ test("workflow runtime appends per-step messages and broadcasts", () => {
   assert.match(rt, /roleLabel/);
   assert.match(rt, /broadcastMessageEvent/);
   assert.match(rt, /workflow:\/\/message\//);
+});
+
+test("team runs persist team metadata for later audit", () => {
+  const ipc = read("../electron/cli/workflowIpc.ts");
+  const workflows = read("../electron/cli/workflows.ts");
+  const electronTypes = read("../electron/cli/workflowTypes.ts");
+  const rendererTypes = read("../src/services/workflows/types.ts");
+  assert.match(ipc, /teamId:\s*team\.id/);
+  assert.match(ipc, /teamSnapshotJson:\s*JSON\.stringify\(team\)/);
+  assert.match(ipc, /planVersion:\s*team\.template\.version/);
+  assert.match(workflows, /team_id/);
+  assert.match(workflows, /teamSnapshotJson/);
+  assert.match(electronTypes, /teamId\?: string/);
+  assert.match(rendererTypes, /teamId\?: string/);
+});
+
+test("workflow step queries are stable when created_at timestamps tie", () => {
+  const workflows = read("../electron/cli/workflows.ts");
+  assert.match(workflows, /ORDER BY created_at ASC,\s*rowid ASC/s);
 });
 
 test("preload exposes workflow.onStepMessage bridge", () => {

@@ -35,6 +35,14 @@ test("session config card truncates values and scrolls when crowded", () => {
   assert.match(styles, /\.session-config-list \.session-config-label\s*\{[^}]*text-overflow:\s*ellipsis/s);
 });
 
+test("workspace panel does not auto-refresh Codex limit status", () => {
+  assert.equal(source.includes("cliClient.codexStatus"), false);
+  assert.equal(source.includes("codex-limits-card"), false);
+  assert.equal(source.includes("workspace.codexLimits"), false);
+  assert.equal(styles.includes("codex-limit-track"), false);
+  assert.equal(styles.includes("codex-limit-fill"), false);
+});
+
 test("workspace panel no longer renders the execution queue card", () => {
   assert.equal(source.includes("run-queue-card"), false);
   assert.equal(source.includes("workspace.executionQueue"), false);

@@ -309,7 +309,7 @@
     "modeTabsAria": "Task mode",
     "modeHint": "Plan with multiple agents, then run as a workflow",
     "reviewLoop": "Review Loop",
-    "implementReviewLoop": "Implement-Review Loop",
+    "implementReviewLoop": "Build Review Team",
     "generatePlan": "Generate plan",
     "planPreview": "Workflow plan",
     "phases": "Phases",
@@ -445,8 +445,12 @@
         "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing."
       },
       "team-implement-review-loop": {
-        "name": "Implement-Review Loop",
-        "description": "Agent A implements, Agent B reviews. On FAIL, A fixes and B reviews again until PASS or max loops."
+        "name": "Build Review Team",
+        "description": "Implement, review, verify, and summarize. Review or verification failures loop back to implementation until PASS or max loops."
+      },
+      "team-root-cause-analysis": {
+        "name": "Root Cause Analysis",
+        "description": "Collect evidence, challenge the hypothesis, verify the root cause, and produce a concise investigation report."
       },
       "team-research-report": {
         "name": "Research Report",

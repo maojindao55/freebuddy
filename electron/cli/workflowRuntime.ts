@@ -29,7 +29,8 @@ import { validateWorkflowPlan } from "./workflowValidate.js";
 import {
   isImplementReviewLoopPlan,
   IMPLEMENT_REVIEW_STEP_ID,
-  REVIEW_CHANGES_STEP_ID
+  REVIEW_CHANGES_STEP_ID,
+  VERIFY_CHANGES_STEP_ID
 } from "./workflowTemplates.js";
 import {
   augmentPromptWithConsumedSummaries,
@@ -38,6 +39,7 @@ import {
   decideReviewLoop,
   deriveStepSummary,
   ensureReviewStatusInSummary,
+  extractVisibleStepOutput,
   extractReviewStatus,
   findResumePhaseIndex,
   phaseGateSatisfied,
@@ -85,7 +87,7 @@ interface ActiveRun {
 }
 
 const REVIEW_LOOP_PHASES = ["review", "implement", "verify"];
-const IMPLEMENT_REVIEW_LOOP_PHASES = ["implement", "review"];
+const IMPLEMENT_REVIEW_LOOP_PHASES = ["implement", "review", "verify", "summarize"];
 
 function hasWriteApproval(state: ActiveRun): boolean {
   return state.allowImmediateWrite || state.approvedPhases.size > 0;
@@ -99,6 +101,36 @@ function findPlanStep(plan: WorkflowPlan, stepId: string): WorkflowStep | undefi
   return undefined;
 }
 
+function extractStepOutputFromResultJson(resultJson: string | undefined): string | undefined {
+  if (!resultJson) return undefined;
+  try {
+    const parsed = JSON.parse(resultJson) as { items?: unknown[] };
+    const output = extractVisibleStepOutput(parsed.items ?? []).trim();
+    return output || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+type ImplementReviewCheckpoint =
+  | { action: "continue" }
+  | {
+      action: "loop";
+      feedback: string;
+      feedbackKind: "review" | "verification";
+      reviewStatus?: string;
+    }
+  | {
+      action: "partial";
+      reviewStatus?: string;
+      loopDecision?: string;
+    }
+  | {
+      action: "finish";
+      reviewStatus?: string;
+      loopDecision?: string;
+    };
+
 export class WorkflowRuntime {
   private active = new Map<string, ActiveRun>();
 
@@ -107,6 +139,9 @@ export class WorkflowRuntime {
   /** Persist a plan as a pending-approval run. Validates first. */
   createPendingRun(input: {
     conversationId?: string;
+    teamId?: string;
+    teamSnapshotJson?: string;
+    planVersion?: number;
     plan: WorkflowPlan;
     agents: WorkflowAgentRef[];
   }): { ok: true; run: WorkflowRunRow } | { ok: false; errors: string[] } {
@@ -115,6 +150,9 @@ export class WorkflowRuntime {
     const run = createWorkflowRun({
       id: randomUUID(),
       conversationId: input.conversationId,
+      teamId: input.teamId,
+      teamSnapshotJson: input.teamSnapshotJson,
+      planVersion: input.planVersion,
       name: input.plan.name,
       goal: input.plan.goal,
       cwd: input.plan.cwd,
@@ -286,21 +324,32 @@ export class WorkflowRuntime {
     if (!run || run.status !== "partial") return false;
     const plan = this.resolveWorkflowPlan(run);
     if (!isImplementReviewLoopPlan(plan)) return false;
-    const reviewer = getWorkflowSteps(runId).find(
-      (s) => s.stepId === REVIEW_CHANGES_STEP_ID
-    );
+    const steps = getWorkflowSteps(runId);
+    const reviewer = steps.find((s) => s.stepId === REVIEW_CHANGES_STEP_ID);
+    const verifier = steps.find((s) => s.stepId === VERIFY_CHANGES_STEP_ID);
     const reviewDecisionText = resolveReviewDecisionText(
       reviewer?.summary,
       reviewer?.resultJson
     );
-    if (extractReviewStatus(reviewDecisionText) !== "FAIL") return false;
+    const verifierNeedsRetry = verifierHasUnresolved(verifier?.summary);
+    if (
+      extractReviewStatus(reviewDecisionText) !== "FAIL" &&
+      !verifierNeedsRetry
+    ) {
+      return false;
+    }
 
     const nextMaxLoops = Math.max(run.maxLoops + 1, run.loopIndex + 2);
     const nextPlan = {
       ...plan,
       maxLoops: nextMaxLoops
     };
-    this.prepareImplementReviewLoopReplay(runId, nextPlan, reviewDecisionText);
+    this.prepareImplementReviewLoopReplay(
+      runId,
+      nextPlan,
+      verifierNeedsRetry ? verifier?.summary : reviewDecisionText,
+      verifierNeedsRetry ? "verification" : "review"
+    );
     resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
     updateWorkflowRun(runId, {
       status: "running",
@@ -384,6 +433,51 @@ export class WorkflowRuntime {
           }
         }
 
+        if (isImplementReviewLoopPlan(plan)) {
+          const checkpoint = this.evaluateImplementReviewCheckpoint(
+            runId,
+            run,
+            plan,
+            phase.id
+          );
+          if (checkpoint.action === "loop") {
+            this.prepareImplementReviewLoopReplay(
+              runId,
+              plan,
+              checkpoint.feedback,
+              checkpoint.feedbackKind
+            );
+            state.approvedPhases.clear();
+            resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
+            const implementIdx = plan.phases.findIndex((p) => p.id === "implement");
+            updateWorkflowRun(runId, {
+              status: "running",
+              loopIndex: run.loopIndex + 1
+            });
+            run = getWorkflowRun(runId) ?? run;
+            phaseIndex = implementIdx >= 0 ? implementIdx : 0;
+            continue outer;
+          }
+          if (checkpoint.action === "partial") {
+            this.finalize(runId, plan, "partial", {
+              loopDecision: checkpoint.loopDecision ?? "partial",
+              reviewStatus: checkpoint.reviewStatus,
+              loopIndex: run.loopIndex,
+              maxLoops: run.maxLoops
+            });
+            return;
+          }
+          if (checkpoint.action === "finish") {
+            this.finalize(runId, plan, "completed", {
+              loopDecision: checkpoint.loopDecision ?? "finish",
+              reviewStatus: checkpoint.reviewStatus,
+              loopIndex: run.loopIndex,
+              maxLoops: run.maxLoops
+            });
+            return;
+          }
+        }
+
         phaseIndex += 1;
       }
 
@@ -416,47 +510,7 @@ export class WorkflowRuntime {
       }
 
       if (isImplementReviewLoopPlan(plan)) {
-        const reviewer = getWorkflowSteps(runId).find(
-          (s) => s.stepId === REVIEW_CHANGES_STEP_ID
-        );
-        const reviewDecisionText = resolveReviewDecisionText(
-          reviewer?.summary,
-          reviewer?.resultJson
-        );
-        const reviewStatus = extractReviewStatus(reviewDecisionText);
-        const decision = decideImplementReviewLoop(
-          reviewer?.status,
-          reviewDecisionText,
-          run.loopIndex,
-          run.maxLoops
-        );
-        if (decision === "loop") {
-          this.prepareImplementReviewLoopReplay(
-            runId,
-            plan,
-            reviewDecisionText
-          );
-          state.approvedPhases.clear();
-          resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
-          const implementIdx = plan.phases.findIndex((p) => p.id === "implement");
-          updateWorkflowRun(runId, {
-            status: "running",
-            loopIndex: run.loopIndex + 1
-          });
-          phaseIndex = implementIdx >= 0 ? implementIdx : 0;
-          continue outer;
-        }
-        this.finalize(
-          runId,
-          plan,
-          decision === "partial" ? "partial" : "completed",
-          {
-            loopDecision: decision,
-            reviewStatus,
-            loopIndex: run.loopIndex,
-            maxLoops: run.maxLoops
-          }
-        );
+        this.finalize(runId, plan, "completed");
         return;
       }
 
@@ -465,21 +519,84 @@ export class WorkflowRuntime {
     }
   }
 
-  /** Inject prior review feedback into the implement step before the next loop. */
+  private evaluateImplementReviewCheckpoint(
+    runId: string,
+    run: WorkflowRunRow,
+    plan: WorkflowPlan,
+    phaseId: string
+  ): ImplementReviewCheckpoint {
+    const steps = getWorkflowSteps(runId);
+    if (phaseId === "review") {
+      const reviewer = steps.find((s) => s.stepId === REVIEW_CHANGES_STEP_ID);
+      const reviewDecisionText = resolveReviewDecisionText(
+        reviewer?.summary,
+        reviewer?.resultJson
+      );
+      const reviewStatus = extractReviewStatus(reviewDecisionText);
+      const decision = decideImplementReviewLoop(
+        reviewer?.status,
+        reviewDecisionText,
+        run.loopIndex,
+        run.maxLoops
+      );
+      if (decision === "loop") {
+        return {
+          action: "loop",
+          feedback: reviewDecisionText ?? reviewer?.summary ?? "",
+          feedbackKind: "review",
+          reviewStatus
+        };
+      }
+      if (decision === "partial") {
+        return { action: "partial", loopDecision: decision, reviewStatus };
+      }
+      const hasVerification = Boolean(findPlanStep(plan, VERIFY_CHANGES_STEP_ID));
+      return hasVerification
+        ? { action: "continue" }
+        : { action: "finish", loopDecision: decision, reviewStatus };
+    }
+
+    if (phaseId === "verify") {
+      const verifier = steps.find((s) => s.stepId === VERIFY_CHANGES_STEP_ID);
+      if (!verifier) return { action: "continue" };
+      const foundUnresolved = verifierHasUnresolved(verifier?.summary);
+      if (verifier.status !== "done") {
+        return { action: "partial", loopDecision: "partial" };
+      }
+      if (!foundUnresolved) return { action: "continue" };
+      if (run.loopIndex + 1 < run.maxLoops) {
+        return {
+          action: "loop",
+          feedback: verifier.summary ?? "",
+          feedbackKind: "verification"
+        };
+      }
+      return { action: "partial", loopDecision: "partial" };
+    }
+
+    return { action: "continue" };
+  }
+
+  /** Inject prior feedback into the implement step before the next loop. */
   private prepareImplementReviewLoopReplay(
     runId: string,
     plan: WorkflowPlan,
-    reviewSummary: string | undefined
+    feedback: string | undefined,
+    feedbackKind: "review" | "verification" = "review"
   ): void {
-    if (!reviewSummary?.trim()) return;
+    if (!feedback?.trim()) return;
     const steps = getWorkflowSteps(runId);
     const implRow = steps.find((s) => s.stepId === IMPLEMENT_REVIEW_STEP_ID);
     const planStep = findPlanStep(plan, IMPLEMENT_REVIEW_STEP_ID);
     if (!implRow || !planStep) return;
     const base = planStep.prompt;
+    const label =
+      feedbackKind === "verification"
+        ? "verification feedback from the previous round"
+        : "review feedback from the previous round";
     const augmented =
-      `${base}\n\nAddress the following review feedback from the previous round:\n` +
-      `${reviewSummary.trim()}`;
+      `${base}\n\nAddress the following ${label}:\n` +
+      `${feedback.trim()}`;
     updateWorkflowStep(implRow.id, { prompt: augmented });
   }
 
@@ -554,7 +671,12 @@ export class WorkflowRuntime {
     const stepsById = new Map(
       steps.map((s) => [
         s.stepId,
-        { stepId: s.stepId, title: s.title, summary: s.summary }
+        {
+          stepId: s.stepId,
+          title: s.title,
+          summary: s.summary,
+          output: extractStepOutputFromResultJson(s.resultJson)
+        }
       ])
     );
     const prompt = augmentPromptWithConsumedSummaries(

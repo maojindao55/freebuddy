@@ -65,9 +65,9 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
 
   const implementReviewTeam: WorkflowTeam = {
     id: "team-implement-review-loop",
-    name: "Implement-Review Loop",
+    name: "Build Review Team",
     description:
-      "Agent A implements, Agent B reviews. On FAIL, A fixes and B reviews again until PASS or max loops.",
+      "Implement, review, verify, and summarize. Review or verification failures loop back to implementation until PASS or max loops.",
     icon: "team-implement-review",
     enabled: true,
     source: "builtin",
@@ -87,11 +87,27 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
         agentId: pickAgent(["cli-kimi-acp", "cli-codex-acp"]),
         required: true,
         canWrite: false
+      },
+      {
+        id: "role-verifier",
+        label: "Verifier",
+        kind: "verifier",
+        agentId: codex,
+        required: true,
+        canWrite: false
+      },
+      {
+        id: "role-summarizer",
+        label: "Summarizer",
+        kind: "summarizer",
+        agentId: claude,
+        required: true,
+        canWrite: false
       }
     ],
     template: {
       id: "tpl-implement-review-loop",
-      name: "Implement-Review Loop",
+      name: "Build Review Team",
       version: 1,
       nodes: [
         {
@@ -107,11 +123,29 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
           roleId: "role-reviewer",
           mode: "review",
           promptTemplate: "Review: {{goal}}"
+        },
+        {
+          id: "verify",
+          title: "Verify",
+          roleId: "role-verifier",
+          mode: "verify",
+          promptTemplate: "Verify: {{goal}}"
+        },
+        {
+          id: "summarize",
+          title: "Summarize",
+          roleId: "role-summarizer",
+          mode: "summarize",
+          promptTemplate: "Summarize: {{goal}}"
         }
       ],
-      edges: [{ id: "e1", from: "implement", to: "review" }],
+      edges: [
+        { id: "e1", from: "implement", to: "review" },
+        { id: "e2", from: "review", to: "verify" },
+        { id: "e3", from: "verify", to: "summarize" }
+      ],
       startNodeIds: ["implement"],
-      finalNodeIds: ["review"]
+      finalNodeIds: ["summarize"]
     },
     policy: {
       allowWrites: true,
@@ -120,6 +154,103 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
       maxParallelReadSteps: 1,
       maxParallelWriteSteps: 1,
       maxLoops: 5,
+      stopOnVerifyFailure: false
+    },
+    createdAt: now,
+    updatedAt: now
+  };
+
+  const rootCauseTeam: WorkflowTeam = {
+    id: "team-root-cause-analysis",
+    name: "Root Cause Analysis",
+    description:
+      "Collect evidence, challenge the hypothesis, verify the root cause, and produce a concise investigation report.",
+    icon: "team-root-cause",
+    enabled: true,
+    source: "builtin",
+    roles: [
+      {
+        id: "role-investigator",
+        label: "Investigator",
+        kind: "researcher",
+        agentId: pickAgent(["cli-kimi-acp", "cli-codex-acp"]),
+        required: true,
+        canWrite: false
+      },
+      {
+        id: "role-skeptic",
+        label: "Skeptic",
+        kind: "reviewer",
+        agentId: codex,
+        required: true,
+        canWrite: false
+      },
+      {
+        id: "role-verifier",
+        label: "Verifier",
+        kind: "verifier",
+        agentId: opencode,
+        required: true,
+        canWrite: false
+      },
+      {
+        id: "role-summarizer",
+        label: "Summarizer",
+        kind: "summarizer",
+        agentId: claude,
+        required: true,
+        canWrite: false
+      }
+    ],
+    template: {
+      id: "tpl-root-cause-analysis",
+      name: "Root Cause Analysis",
+      version: 1,
+      nodes: [
+        {
+          id: "collect-evidence",
+          title: "Collect Evidence",
+          roleId: "role-investigator",
+          mode: "research",
+          promptTemplate: "Collect concrete evidence for this issue: {{goal}}. Read relevant logs, database rows, source code, screenshots, and timestamps when available. Do not fix yet. Output a fact list, timeline, affected components, and unknowns."
+        },
+        {
+          id: "challenge-hypothesis",
+          title: "Challenge Hypothesis",
+          roleId: "role-skeptic",
+          mode: "review",
+          promptTemplate: "Review the collected evidence for: {{goal}}. Challenge the proposed root cause, identify missing evidence, call out weak assumptions, and list alternative explanations that still fit the facts."
+        },
+        {
+          id: "verify-root-cause",
+          title: "Verify Root Cause",
+          roleId: "role-verifier",
+          mode: "verify",
+          promptTemplate: "Verify the root cause for: {{goal}} using the evidence and challenges above. Check the strongest alternatives, explain what evidence rules them in or out, and state the confidence level. Do not change files."
+        },
+        {
+          id: "summarize-findings",
+          title: "Summarize Findings",
+          roleId: "role-summarizer",
+          mode: "summarize",
+          promptTemplate: "Write a concise root-cause report for: {{goal}}. Include timeline, root cause, evidence, ruled-out alternatives, confidence, impact, and recommended next actions."
+        }
+      ],
+      edges: [
+        { id: "e1", from: "collect-evidence", to: "challenge-hypothesis" },
+        { id: "e2", from: "challenge-hypothesis", to: "verify-root-cause" },
+        { id: "e3", from: "verify-root-cause", to: "summarize-findings" }
+      ],
+      startNodeIds: ["collect-evidence"],
+      finalNodeIds: ["summarize-findings"]
+    },
+    policy: {
+      allowWrites: false,
+      requireApprovalBeforeWrite: false,
+      requireApprovalAfterReview: false,
+      maxParallelReadSteps: 1,
+      maxParallelWriteSteps: 1,
+      maxLoops: 1,
       stopOnVerifyFailure: false
     },
     createdAt: now,
@@ -177,14 +308,14 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
           title: "Analyze",
           roleId: "role-analyst",
           mode: "review",
-          promptTemplate: "Analyze the provided research for: {{goal}}. Do not repeat the raw facts except when needed as evidence. Identify key drivers, compare plausible scenarios, assess risks and assumptions, and provide likelihood ranges or confidence levels. For sports scores or forecasts, reason from the evidence and avoid claiming certainty."
+          promptTemplate: "Analyze the provided research for: {{goal}}. Use the upstream research context as the primary source. Only perform additional lookup when the context has an explicit critical gap, and label it as supplemental. Do not repeat the raw facts except when needed as evidence. Identify key drivers, compare plausible scenarios, assess risks and assumptions, and provide likelihood ranges or confidence levels. For sports scores or forecasts, reason from the evidence and avoid claiming certainty."
         },
         {
           id: "report",
           title: "Report",
           roleId: "role-reporter",
           mode: "summarize",
-          promptTemplate: "Write a concise final report for: {{goal}}. Synthesize the research evidence and analysis into a clear answer with summary, key evidence, forecast or recommendation, confidence level, and caveats."
+          promptTemplate: "Write a concise final report for: {{goal}}. Use prior research and analysis as the primary source. Do not restart broad research; only verify a critical citation/date if missing. Synthesize the research evidence and analysis into a clear answer with summary, key evidence, forecast or recommendation, confidence level, and caveats."
         }
       ],
       edges: [
@@ -207,5 +338,5 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
     updatedAt: now
   };
 
-  return [quickTeam, implementReviewTeam, researchReportTeam];
+  return [quickTeam, implementReviewTeam, rootCauseTeam, researchReportTeam];
 }

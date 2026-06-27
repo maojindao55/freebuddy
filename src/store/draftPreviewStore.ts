@@ -23,16 +23,55 @@ interface DraftPreviewState {
   scheduleReload(convId: string, delay?: number): void;
 }
 
-function composeUrl(
+const LOCAL_PREVIEW_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "svg",
+  "avif",
+  "bmp",
+  "pdf"
+]);
+
+function withDraftNonce(target: string, nonce: number): string {
+  const url = new URL(target);
+  url.searchParams.set("freebuddyDraft", String(nonce));
+  return url.toString();
+}
+
+function localFileExtension(target: string): string {
+  return target.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+}
+
+function isAbsoluteLocalPreviewTarget(target: string): boolean {
+  if (!/^([A-Za-z]:[\\/]|\/)/.test(target)) return false;
+  return LOCAL_PREVIEW_EXTENSIONS.has(localFileExtension(target));
+}
+
+function filePreviewUrl(target: string, nonce: number): string {
+  const normalized = target.trim().replace(/\\/g, "/");
+  const url = new URL("freebuddy-file://open");
+  url.searchParams.set("path", normalized);
+  url.searchParams.set("freebuddyDraft", String(nonce));
+  return url.toString();
+}
+
+export function composeDraftPreviewUrl(
   cwd: string,
   target: string | null | undefined,
   nonce: number
 ): string {
   if (!target) return "";
   if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(target)) {
-    const url = new URL(target);
-    url.searchParams.set("freebuddyDraft", String(nonce));
-    return url.toString();
+    return withDraftNonce(target, nonce);
+  }
+  if (/^freebuddy-file:\/\//i.test(target)) {
+    return withDraftNonce(target, nonce);
+  }
+  if (isAbsoluteLocalPreviewTarget(target)) {
+    return filePreviewUrl(target, nonce);
   }
   if (!cwd) return "";
   const rel = target.split("/").map(encodeURIComponent).join("/");
@@ -63,7 +102,7 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
             manualEntry,
             ready: true,
             reloadNonce: nonce,
-            url: composeUrl(cwd ?? "", manualEntry, nonce)
+            url: composeDraftPreviewUrl(cwd ?? "", manualEntry, nonce)
           }
         }
       };
@@ -87,7 +126,7 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
             manualEntry: target,
             ready: true,
             reloadNonce: nonce,
-            url: composeUrl(cwd, target, nonce)
+            url: composeDraftPreviewUrl(cwd, target, nonce)
           }
         }
       };
@@ -106,7 +145,7 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
             ...entry,
             manualEntry: undefined,
             reloadNonce: nonce,
-            url: composeUrl(entry.cwd, undefined, nonce)
+            url: composeDraftPreviewUrl(entry.cwd, undefined, nonce)
           }
         }
       };
@@ -124,7 +163,7 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
           [convId]: {
             ...entry,
             reloadNonce: nonce,
-            url: composeUrl(entry.cwd, entryOf(entry), nonce)
+            url: composeDraftPreviewUrl(entry.cwd, entryOf(entry), nonce)
           }
         }
       };

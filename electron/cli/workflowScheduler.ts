@@ -132,7 +132,7 @@ export function decideReviewLoop(
  * (REVIEW_STATUS / UNRESOLVED) even when the body is truncated.
  */
 export function deriveStepSummary(items: unknown[]): string {
-  const fullText = collectAllTextFromItems(items);
+  const fullText = extractVisibleStepOutput(items);
   let toolCount = 0;
   for (const raw of items) {
     const item = raw as { kind?: string };
@@ -297,6 +297,50 @@ export function collectAllTextFromItems(items: unknown[]): string {
   return collectDecisionTextFromItems(items);
 }
 
+/** Assistant-visible final output used for summaries and downstream context. */
+export function extractVisibleStepOutput(items: unknown[]): string {
+  const pieces: StreamLike[] = [];
+  for (const raw of items) {
+    const item = raw as StreamLike;
+    if (!item || typeof item !== "object") continue;
+    if (item.kind !== "text") continue;
+    const content = String(item.content ?? item.text ?? "");
+    if (item.messageId) {
+      const idx = pieces.findIndex(
+        (previous) =>
+          previous.messageId === item.messageId &&
+          previous.role === item.role
+      );
+      if (idx >= 0) {
+        pieces[idx] = mergeStreamTextLike(pieces[idx]!, {
+          ...item,
+          content
+        });
+        continue;
+      }
+    }
+    const last = pieces[pieces.length - 1];
+    if (
+      item.append &&
+      last &&
+      !last.messageId &&
+      last.kind === "text" &&
+      last.role === item.role
+    ) {
+      pieces[pieces.length - 1] = mergeStreamTextLike(last, {
+        ...item,
+        content
+      });
+      continue;
+    }
+    pieces.push({ ...item, content });
+  }
+  return pieces
+    .map((item) => String(item.content ?? item.text ?? "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 /** Prefer full stream text from resultJson when deciding loop outcomes. */
 export function resolveReviewDecisionText(
   summary: string | undefined,
@@ -423,6 +467,7 @@ export interface ConsumedStepRef {
   stepId: string;
   title: string;
   summary?: string;
+  output?: string;
 }
 
 /** Append upstream step summaries referenced by consumes ids. */
@@ -435,8 +480,10 @@ export function augmentPromptWithConsumedSummaries(
   const blocks: string[] = [];
   for (const id of consumes) {
     const ref = stepsById.get(id);
-    if (ref?.summary?.trim()) {
-      blocks.push(`--- ${ref.title} ---\n${ref.summary.trim()}`);
+    if (!ref) continue;
+    const context = ref?.output?.trim() || ref?.summary?.trim();
+    if (context) {
+      blocks.push(`--- ${ref.title} ---\n${context}`);
     }
   }
   if (blocks.length === 0) return basePrompt;

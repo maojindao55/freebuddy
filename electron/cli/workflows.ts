@@ -10,6 +10,9 @@ function rowToRun(r: any): WorkflowRunRow {
   return {
     id: r.id,
     conversationId: r.conversation_id ?? undefined,
+    teamId: r.team_id ?? undefined,
+    teamSnapshotJson: r.team_snapshot_json ?? undefined,
+    planVersion: r.plan_version ?? undefined,
     name: r.name,
     goal: r.goal,
     status: r.status as WorkflowRunStatus,
@@ -72,6 +75,9 @@ function rowToStep(r: any): WorkflowStepRow {
 export interface CreateWorkflowRunInput {
   id: string;
   conversationId?: string;
+  teamId?: string;
+  teamSnapshotJson?: string;
+  planVersion?: number;
   name: string;
   goal: string;
   cwd?: string;
@@ -87,8 +93,9 @@ export function createWorkflowRun(input: CreateWorkflowRunInput): WorkflowRunRow
     .prepare(
       `INSERT INTO workflow_runs
          (id, conversation_id, name, goal, status, cwd, template,
-          loop_index, max_loops, plan_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`
+          loop_index, max_loops, plan_json, team_id, team_snapshot_json,
+          plan_version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.id,
@@ -100,6 +107,9 @@ export function createWorkflowRun(input: CreateWorkflowRunInput): WorkflowRunRow
       input.template ?? null,
       input.maxLoops,
       input.planJson,
+      input.teamId ?? null,
+      input.teamSnapshotJson ?? null,
+      input.planVersion ?? 1,
       now,
       now
     );
@@ -278,7 +288,7 @@ export function getWorkflowSteps(runId: string): WorkflowStepRow[] {
   const rows = getDb()
     .prepare(
       `SELECT * FROM workflow_steps WHERE workflow_run_id = ?
-       ORDER BY created_at ASC`
+       ORDER BY created_at ASC, rowid ASC`
     )
     .all(runId) as any[];
   return rows.map(rowToStep);

@@ -81,12 +81,11 @@ jobs:
       - name: Build Electron app
         env:
           # macOS code signing (REQUIRED for Squirrel.Mac auto-update to work).
-          # Works with a free "Apple Development" certificate (.p12) created
-          # via Xcode with an Apple ID; export it and base64-encode here.
-          # First-time install still needs `xattr -cr` (Gatekeeper), but
-          # in-app updates then validate because the signing identity is stable.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # Scoped to macOS only: the Apple Development cert cannot sign
+          # Windows exes, and feeding the multi-cert .p12 to Windows
+          # signtool fails with "Multiple certificates were found".
+          CSC_LINK: ${{ matrix.platform == 'macos-latest' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.CSC_KEY_PASSWORD || '' }}
         run: |
           npm run build
           npx electron-builder ${{ matrix.builder_args }} --publish never

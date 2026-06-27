@@ -27,7 +27,9 @@ publish:
 mac:
   icon: desktop/macos/AppIcon.icns
   category: public.app-category.productivity
-  identity: null
+  hardenedRuntime: true
+  entitlements: desktop/macos/entitlements.mac.plist
+  entitlementsInherit: desktop/macos/entitlements.mac.inherit.plist
   target:
     - target: dmg
     - target: zip

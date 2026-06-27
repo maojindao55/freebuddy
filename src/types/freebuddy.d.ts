@@ -38,7 +38,8 @@ import type {
 import type {
   BusinessWorkspace,
   BusinessAssignmentPlan,
-  BusinessContractDraft
+  BusinessContractDraft,
+  BusinessRequirementRun
 } from "@/services/businessWorkspaces/types";
 
 export {};
@@ -246,6 +247,22 @@ declare global {
       | { ok: true; assignmentPlan: BusinessAssignmentPlan; contractDraft?: BusinessContractDraft }
       | { ok: false; errors: string[] }
     >;
+    createRun(input: {
+      workspaceId: string;
+      workspaceSnapshot: BusinessWorkspace;
+      teamId?: string;
+      goal: string;
+      assignmentPlan: BusinessAssignmentPlan;
+      contractDraft?: BusinessContractDraft;
+    }): Promise<
+      | { ok: true; run: BusinessRequirementRun }
+      | { ok: false; errors: string[] }
+    >;
+    startRun(runId: string): Promise<
+      | { ok: true; run: BusinessRequirementRun }
+      | { ok: false; errors: string[] }
+    >;
+    getRun(runId: string): Promise<BusinessRequirementRun | undefined>;
   }
 
   type UpdaterEvent =

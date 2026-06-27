@@ -11,6 +11,12 @@ import {
 } from "./businessWorkspaces.js";
 import { validateBusinessWorkspace } from "./businessWorkspaceValidate.js";
 import { previewBusinessAssignment } from "./businessAssignmentPlanner.js";
+import { getBusinessRequirementRun } from "./businessRequirementRuns.js";
+import {
+  createRunFromAssignment,
+  startBusinessRun,
+  type CreateRunFromAssignmentInput
+} from "./businessRequirementRuntime.js";
 import type { WorkflowAgentRef } from "./workflowTypes.js";
 
 export function registerBusinessWorkspaceIpc() {
@@ -48,6 +54,15 @@ export function registerBusinessWorkspaceIpc() {
       if (!validation.ok) return { ok: false as const, errors: validation.errors };
       return previewBusinessAssignment(workspace, input.goal);
     }
+  );
+  ipcMain.handle("businessRequirements:createRun", (_e, input: CreateRunFromAssignmentInput) =>
+    createRunFromAssignment(input)
+  );
+  ipcMain.handle("businessRequirements:startRun", (event, runId: string) =>
+    startBusinessRun(event.sender, runId)
+  );
+  ipcMain.handle("businessRequirements:getRun", (_e, runId: string) =>
+    getBusinessRequirementRun(runId)
   );
 }
 

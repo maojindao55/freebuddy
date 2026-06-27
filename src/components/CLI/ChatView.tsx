@@ -254,6 +254,7 @@ export function ChatView() {
   const pendingBusinessErrors = useBusinessRequirementRunStore((s) => s.pendingErrors);
   const previewBusinessAssignment = useBusinessRequirementRunStore((s) => s.previewAssignment);
   const clearBusinessPreview = useBusinessRequirementRunStore((s) => s.clearPreview);
+  const approveAndStartBusinessRun = useBusinessRequirementRunStore((s) => s.approveAndStart);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>("");
   const [businessGoal, setBusinessGoal] = useState<string>("");
 
@@ -695,10 +696,28 @@ export function ChatView() {
     }
   };
 
-  const onApproveBusinessRun = () => {
-    // Wired to the runtime in a later task; clear the preview for now.
-    clearBusinessPreview();
-    setBusinessGoal("");
+  const onApproveBusinessRun = async () => {
+    if (!selectedWorkspaceId || !pendingBusinessPlan) return;
+    const workspace = businessWorkspaces.find((w) => w.id === selectedWorkspaceId);
+    if (!workspace) return;
+    const goal = businessGoal.trim() || newTaskDraft.trim();
+    setPreflightMsg(null);
+    try {
+      const ok = await approveAndStartBusinessRun({
+        workspaceId: selectedWorkspaceId,
+        workspaceSnapshot: workspace,
+        teamId: workspace.defaultTeamId,
+        goal,
+        assignmentPlan: pendingBusinessPlan,
+        contractDraft: pendingBusinessContract ?? undefined
+      });
+      if (!ok && pendingBusinessErrors.length === 0) {
+        setPreflightMsg(t("errors.taskFailed", { err: "business run failed to start" }));
+      }
+      setBusinessGoal("");
+    } catch (e) {
+      setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
+    }
   };
 
   const onCreateTeamConversation = async () => {
@@ -766,7 +785,7 @@ export function ChatView() {
         }}
         onTeam={setSelectedTeamId}
         onWorkspace={setSelectedWorkspaceId}
-        onApproveBusinessRun={onApproveBusinessRun}
+        onApproveBusinessRun={() => void onApproveBusinessRun()}
         onCancelBusinessPreview={() => {
           clearBusinessPreview();
           setBusinessGoal("");

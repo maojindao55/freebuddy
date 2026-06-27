@@ -164,7 +164,10 @@ const businessWorkspaces = {
   update: (args: unknown) => ipcRenderer.invoke("businessWorkspaces:update", args),
   delete: (id: string) => ipcRenderer.invoke("businessWorkspaces:delete", id),
   previewAssignment: (input: unknown) =>
-    ipcRenderer.invoke("businessRequirements:previewAssignment", input)
+    ipcRenderer.invoke("businessRequirements:previewAssignment", input),
+  createRun: (input: unknown) => ipcRenderer.invoke("businessRequirements:createRun", input),
+  startRun: (runId: string) => ipcRenderer.invoke("businessRequirements:startRun", runId),
+  getRun: (runId: string) => ipcRenderer.invoke("businessRequirements:getRun", runId)
 };
 
 const updater = {

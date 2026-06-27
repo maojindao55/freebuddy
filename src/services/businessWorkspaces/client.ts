@@ -1,4 +1,9 @@
-import type { BusinessWorkspace } from "./types";
+import type {
+  BusinessWorkspace,
+  BusinessAssignmentPlan,
+  BusinessContractDraft,
+  BusinessRequirementRun
+} from "./types";
 
 function api() {
   const business = window.freebuddy?.businessWorkspaces;
@@ -27,5 +32,21 @@ export const businessWorkspacesClient = {
   },
   previewAssignment(input: { workspaceId: string; goal: string }) {
     return api().previewAssignment(input);
+  },
+  createRun(input: {
+    workspaceId: string;
+    workspaceSnapshot: BusinessWorkspace;
+    teamId?: string;
+    goal: string;
+    assignmentPlan: BusinessAssignmentPlan;
+    contractDraft?: BusinessContractDraft;
+  }) {
+    return api().createRun(input);
+  },
+  startRun(runId: string) {
+    return api().startRun(runId);
+  },
+  getRun(runId: string): Promise<BusinessRequirementRun | undefined> {
+    return api().getRun(runId);
   }
 };

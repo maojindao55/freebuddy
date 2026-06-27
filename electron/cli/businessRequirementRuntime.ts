@@ -12,8 +12,8 @@ import {
 } from "./businessRequirementRuns.js";
 import {
   ensureCleanRepo,
-  runVerifyCommand,
-  surfaceDependencyOrder
+  groupSurfacesByLevel,
+  runVerifyCommand
 } from "./businessGit.js";
 import type {
   BusinessAssignmentPlan,
@@ -203,14 +203,18 @@ export async function startBusinessRun(
     }
   }
 
-  const order = run.assignmentPlan
-    ? surfaceDependencyOrder(run.assignmentPlan)
-    : run.surfaceRuns.map((s) => s.surfaceId);
+  const items = run.surfaceRuns.map((sr) => ({
+    surfaceId: sr.surfaceId,
+    dependsOnSurfaceIds:
+      run.assignmentPlan?.surfaces.find((p) => p.surfaceId === sr.surfaceId)
+        ?.dependsOnSurfaceIds ?? [],
+    surfaceRun: sr
+  }));
+  const levels = groupSurfacesByLevel(items);
 
-  for (const surfaceId of order) {
-    const surfaceRun = run.surfaceRuns.find((s) => s.surfaceId === surfaceId);
-    if (!surfaceRun) continue;
-
+  const runOneSurface = async (
+    surfaceRun: BusinessSurfaceRun
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
     const agent = resolveAgent(surfaceRun.agentId);
     if (!agent) {
       updateSurfaceRun(
@@ -222,8 +226,7 @@ export async function startBusinessRun(
         },
         run.surfaceRuns
       );
-      updateBusinessRequirementRun(runId, { status: "failed" });
-      return { ok: false, errors: [`unknown agent: ${surfaceRun.agentId}`] };
+      return { ok: false, error: `unknown agent: ${surfaceRun.agentId}` };
     }
 
     updateSurfaceRun(runId, surfaceRun.id, { status: "running" }, run.surfaceRuns);
@@ -243,22 +246,14 @@ export async function startBusinessRun(
     try {
       await cliRun(webContents, args);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       updateSurfaceRun(
         runId,
         surfaceRun.id,
-        {
-          status: "failed",
-          riskSummary: e instanceof Error ? e.message : String(e)
-        },
+        { status: "failed", riskSummary: msg },
         run.surfaceRuns
       );
-      updateBusinessRequirementRun(runId, { status: "failed" });
-      return {
-        ok: false,
-        errors: [
-          `surface ${surfaceRun.surfaceId} failed: ${e instanceof Error ? e.message : String(e)}`
-        ]
-      };
+      return { ok: false, error: `surface ${surfaceRun.surfaceId} failed: ${msg}` };
     }
 
     updateSurfaceRun(runId, surfaceRun.id, { status: "verifying" }, run.surfaceRuns);
@@ -290,18 +285,26 @@ export async function startBusinessRun(
       {
         status: anyVerifyFailed ? "failed" : "done",
         verificationResults,
-        riskSummary: anyVerifyFailed
-          ? "verification failed"
-          : surfaceRun.riskSummary
+        riskSummary: anyVerifyFailed ? "verification failed" : surfaceRun.riskSummary
       },
       run.surfaceRuns
     );
-    if (anyVerifyFailed) {
+    return anyVerifyFailed
+      ? { ok: false, error: `surface ${surfaceRun.surfaceId} verification failed` }
+      : { ok: true };
+  };
+
+  // Run surfaces in dependency waves: independent surfaces (e.g. separate
+  // client/server/admin repos with no dependency) execute concurrently within
+  // a wave; dependents wait for their providers' wave to finish.
+  for (const level of levels) {
+    const outcomes = await Promise.all(
+      level.map((item) => runOneSurface(item.surfaceRun))
+    );
+    const failure = outcomes.find((o) => !o.ok) as { ok: false; error: string } | undefined;
+    if (failure) {
       updateBusinessRequirementRun(runId, { status: "failed" });
-      return {
-        ok: false,
-        errors: [`surface ${surfaceRun.surfaceId} verification failed`]
-      };
+      return { ok: false, errors: [failure.error] };
     }
   }
 

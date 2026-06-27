@@ -1,5 +1,31 @@
 import { getDb } from "./db.js";
-import type { BusinessRequirementRun } from "./businessWorkspaceTypes.js";
+import type {
+  BusinessCommitGate,
+  BusinessRequirementRun
+} from "./businessWorkspaceTypes.js";
+
+function normalizeCommitGate(raw: any): BusinessCommitGate | undefined {
+  if (!raw) return undefined;
+  const gate = { ...raw };
+  gate.repositories = Array.isArray(gate.repositories)
+    ? gate.repositories.map((repo: any) => ({
+        ...repo,
+        diffFiles: Array.isArray(repo?.diffFiles) ? repo.diffFiles : [],
+        outOfScopeFiles: Array.isArray(repo?.outOfScopeFiles) ? repo.outOfScopeFiles : [],
+        verificationResults: Array.isArray(repo?.verificationResults)
+          ? repo.verificationResults
+          : [],
+        risks: Array.isArray(repo?.risks) ? repo.risks : []
+      }))
+    : [];
+  if (gate.contractConsistency && typeof gate.contractConsistency === "object") {
+    gate.contractConsistency = {
+      status: gate.contractConsistency.status ?? "unknown",
+      summary: gate.contractConsistency.summary ?? ""
+    };
+  }
+  return gate as BusinessCommitGate;
+}
 
 function rowToRun(row: any): BusinessRequirementRun {
   return {
@@ -12,7 +38,9 @@ function rowToRun(row: any): BusinessRequirementRun {
     assignmentPlan: row.assignment_plan_json ? JSON.parse(row.assignment_plan_json) : undefined,
     contractDraft: row.contract_draft_json ? JSON.parse(row.contract_draft_json) : undefined,
     surfaceRuns: JSON.parse(row.surface_runs_json),
-    commitGate: row.commit_gate_json ? JSON.parse(row.commit_gate_json) : undefined,
+    commitGate: normalizeCommitGate(
+      row.commit_gate_json ? JSON.parse(row.commit_gate_json) : undefined
+    ),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

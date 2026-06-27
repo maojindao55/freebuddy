@@ -263,3 +263,34 @@ export function surfaceDependencyOrder(
 ): string[] {
   return orderSurfacesByDependency(plan.surfaces).map((s) => s.surfaceId);
 }
+
+export function groupSurfacesByLevel<T extends OrderedSurface>(
+  surfaces: T[]
+): T[][] {
+  const idToSurface = new Map(surfaces.map((s) => [s.surfaceId, s]));
+  const levelCache = new Map<string, number>();
+
+  const levelOf = (id: string, visiting: Set<string>): number => {
+    if (levelCache.has(id)) return levelCache.get(id)!;
+    const surface = idToSurface.get(id);
+    if (!surface) return 0;
+    if (visiting.has(id)) return 0; // cycle guard
+    visiting.add(id);
+    const deps = surface.dependsOnSurfaceIds.filter((d) => idToSurface.has(d));
+    const lvl =
+      deps.length === 0 ? 0 : Math.max(...deps.map((d) => levelOf(d, visiting))) + 1;
+    visiting.delete(id);
+    levelCache.set(id, lvl);
+    return lvl;
+  };
+
+  const byLevel = new Map<number, T[]>();
+  for (const surface of surfaces) {
+    const lvl = levelOf(surface.surfaceId, new Set());
+    if (!byLevel.has(lvl)) byLevel.set(lvl, []);
+    byLevel.get(lvl)!.push(surface);
+  }
+  return [...byLevel.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, v]) => v);
+}

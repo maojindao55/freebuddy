@@ -33,7 +33,9 @@ export function BusinessCommitGateCard({
 
   const hasOutOfScope =
     !!commitGate &&
-    commitGate.repositories.some((r) => r.outOfScopeFiles.length > 0);
+    commitGate.repositories.some(
+      (r) => (r.outOfScopeFiles ?? []).length > 0
+    );
   const committed = commitGate?.status === "committed";
 
   return (
@@ -87,13 +89,13 @@ export function BusinessCommitGateCard({
                   </div>
                 )}
 
-                {repo.outOfScopeFiles.length > 0 && (
+                {(repo.outOfScopeFiles ?? []).length > 0 && (
                   <div className="business-commit-gate-outofscope">
                     <span className="muted small">
                       {t("business.outOfScope")}:
                     </span>
                     <ul>
-                      {repo.outOfScopeFiles.map((file) => (
+                      {(repo.outOfScopeFiles ?? []).map((file) => (
                         <li key={file}>{file}</li>
                       ))}
                     </ul>

@@ -173,6 +173,42 @@ test("orderSurfacesByDependency handles independent surfaces in input order", ()
   assert.deepEqual(ordered.map((s) => s.surfaceId), ["a", "b"]);
 });
 
+test("groupSurfacesByLevel runs independent surfaces in the same level", () => {
+  const levels = mod.groupSurfacesByLevel([
+    { surfaceId: "client", dependsOnSurfaceIds: [] },
+    { surfaceId: "admin", dependsOnSurfaceIds: [] }
+  ]);
+  assert.equal(levels.length, 1);
+  assert.deepEqual(
+    levels[0].map((s) => s.surfaceId).sort(),
+    ["admin", "client"].sort()
+  );
+});
+
+test("groupSurfacesByLevel puts dependents in a later level than their dependencies", () => {
+  const levels = mod.groupSurfacesByLevel([
+    { surfaceId: "client", dependsOnSurfaceIds: ["server"] },
+    { surfaceId: "server", dependsOnSurfaceIds: [] }
+  ]);
+  assert.equal(levels.length, 2);
+  assert.deepEqual(levels[0].map((s) => s.surfaceId), ["server"]);
+  assert.deepEqual(levels[1].map((s) => s.surfaceId), ["client"]);
+});
+
+test("groupSurfacesByLevel chains three levels and parallelizes siblings", () => {
+  const levels = mod.groupSurfacesByLevel([
+    { surfaceId: "a", dependsOnSurfaceIds: [] },
+    { surfaceId: "b", dependsOnSurfaceIds: ["a"] },
+    { surfaceId: "c", dependsOnSurfaceIds: ["a"] },
+    { surfaceId: "d", dependsOnSurfaceIds: ["b", "c"] }
+  ]);
+  assert.deepEqual(levels.map((l) => l.map((s) => s.surfaceId).sort()), [
+    ["a"],
+    ["b", "c"].sort(),
+    ["d"]
+  ]);
+});
+
 test("renderBranchName substitutes runSlug and surfaceKey", () => {
   assert.equal(
     mod.renderBranchName("fb/{{runSlug}}/{{surfaceKey}}", "add-discount", "server"),

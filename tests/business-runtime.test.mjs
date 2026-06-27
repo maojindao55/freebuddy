@@ -4,12 +4,13 @@ import fs from "node:fs";
 
 const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 
-test("business runtime uses surface repoPath as cwd, orders by dependency, and fails on verify failure", () => {
+test("business runtime uses surface repoPath as cwd, runs in dependency waves, and fails on verify failure", () => {
   const runtime = read("../electron/cli/businessRequirementRuntime.ts");
   assert.match(runtime, /cwd: surfaceRun\.repoPath/);
   assert.match(runtime, /requireCleanRepoBeforeRun/);
   assert.match(runtime, /verifyCommands/);
-  assert.match(runtime, /surfaceDependencyOrder/);
+  assert.match(runtime, /groupSurfacesByLevel/);
+  assert.match(runtime, /Promise\.all/);
   assert.match(runtime, /anyVerifyFailed/);
   assert.match(runtime, /status: anyVerifyFailed \? "failed" : "done"/);
   assert.match(runtime, /STRICT SCOPE/);
@@ -24,6 +25,14 @@ test("business requirement IPC exposes approve and start lifecycle", () => {
   assert.match(ipc, /businessRequirements:getRun/);
   assert.match(preload, /createRun: \(input: unknown\) =>/);
   assert.match(preload, /startRun: \(runId: string\) =>/);
+});
+
+test("commit gate deserialization normalizes missing outOfScopeFiles for old runs", () => {
+  const runs = read("../electron/cli/businessRequirementRuns.ts");
+  assert.match(runs, /normalizeCommitGate/);
+  assert.match(runs, /outOfScopeFiles/);
+  // Defaults to [] when absent so legacy records don't crash the UI.
+  assert.match(runs, /Array\.isArray\(repo\?\.outOfScopeFiles\) \? repo\.outOfScopeFiles : \[\]/);
 });
 
 test("createRun handler re-reads + re-derives server-side and ignores renderer-submitted plans", () => {

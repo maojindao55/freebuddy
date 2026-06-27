@@ -157,6 +157,16 @@ const workflowTeams = {
   seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
+const businessWorkspaces = {
+  list: () => ipcRenderer.invoke("businessWorkspaces:list"),
+  get: (id: string) => ipcRenderer.invoke("businessWorkspaces:get", id),
+  create: (input: unknown) => ipcRenderer.invoke("businessWorkspaces:create", input),
+  update: (args: unknown) => ipcRenderer.invoke("businessWorkspaces:update", args),
+  delete: (id: string) => ipcRenderer.invoke("businessWorkspaces:delete", id),
+  previewAssignment: (input: unknown) =>
+    ipcRenderer.invoke("businessRequirements:previewAssignment", input)
+};
+
 const updater = {
   getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
   check: () =>
@@ -189,6 +199,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   cli,
   workflow,
   workflowTeams,
+  businessWorkspaces,
   settings,
   window,
   updater

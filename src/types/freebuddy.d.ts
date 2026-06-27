@@ -35,6 +35,11 @@ import type {
   WorkflowTeamPolicy,
   WorkflowTemplate2
 } from "@/services/workflowTeams/types";
+import type {
+  BusinessWorkspace,
+  BusinessAssignmentPlan,
+  BusinessContractDraft
+} from "@/services/businessWorkspaces/types";
 
 export {};
 
@@ -222,6 +227,27 @@ declare global {
     seedBuiltins(): Promise<WorkflowTeam[]>;
   }
 
+  interface FreebuddyBusinessWorkspaces {
+    list(): Promise<BusinessWorkspace[]>;
+    get(id: string): Promise<BusinessWorkspace | undefined>;
+    create(input: Omit<BusinessWorkspace, "createdAt" | "updatedAt">): Promise<
+      | { ok: true; workspace: BusinessWorkspace }
+      | { ok: false; errors: string[] }
+    >;
+    update(args: {
+      id: string;
+      patch: Partial<Omit<BusinessWorkspace, "id" | "createdAt" | "updatedAt">>;
+    }): Promise<
+      | { ok: true; workspace: BusinessWorkspace }
+      | { ok: false; errors: string[] }
+    >;
+    delete(id: string): Promise<boolean>;
+    previewAssignment(input: { workspaceId: string; goal: string }): Promise<
+      | { ok: true; assignmentPlan: BusinessAssignmentPlan; contractDraft?: BusinessContractDraft }
+      | { ok: false; errors: string[] }
+    >;
+  }
+
   type UpdaterEvent =
     | { type: "checking-for-update" }
     | {
@@ -264,6 +290,7 @@ declare global {
     cli: FreebuddyCli;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
+    businessWorkspaces: FreebuddyBusinessWorkspaces;
     settings: FreebuddySettings;
     window: FreebuddyWindow;
     updater: FreebuddyUpdater;

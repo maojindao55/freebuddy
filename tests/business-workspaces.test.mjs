@@ -26,3 +26,25 @@ test("business workspace modules expose CRUD and validation", () => {
   assert.match(store, /export function updateBusinessWorkspace/);
   assert.match(store, /export function deleteBusinessWorkspace/);
 });
+
+test("business workspace IPC and preload bridge are wired", () => {
+  const ipc = read("../electron/cli/businessWorkspaceIpc.ts");
+  const cliIpc = read("../electron/cli/ipc.ts");
+  const preload = read("../electron/preload.ts");
+  const globals = read("../src/types/freebuddy.d.ts");
+  for (const channel of [
+    "businessWorkspaces:list",
+    "businessWorkspaces:get",
+    "businessWorkspaces:create",
+    "businessWorkspaces:update",
+    "businessWorkspaces:delete",
+    "businessRequirements:previewAssignment"
+  ]) {
+    assert.match(ipc, new RegExp(channel));
+  }
+  assert.match(cliIpc, /registerBusinessWorkspaceIpc/);
+  assert.match(preload, /const businessWorkspaces = \{/);
+  assert.match(preload, /businessWorkspaces,/);
+  assert.match(globals, /interface FreebuddyBusinessWorkspaces/);
+  assert.match(globals, /businessWorkspaces: FreebuddyBusinessWorkspaces/);
+});

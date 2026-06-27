@@ -10,6 +10,7 @@ import {
   type UpsertBusinessWorkspaceInput
 } from "./businessWorkspaces.js";
 import { validateBusinessWorkspace } from "./businessWorkspaceValidate.js";
+import { previewBusinessAssignment } from "./businessAssignmentPlanner.js";
 import type { WorkflowAgentRef } from "./workflowTypes.js";
 
 export function registerBusinessWorkspaceIpc() {
@@ -38,10 +39,16 @@ export function registerBusinessWorkspaceIpc() {
     }
   );
   ipcMain.handle("businessWorkspaces:delete", (_e, id: string) => deleteBusinessWorkspace(id));
-  ipcMain.handle("businessRequirements:previewAssignment", () => ({
-    ok: false as const,
-    errors: ["assignment planner is not registered yet"]
-  }));
+  ipcMain.handle(
+    "businessRequirements:previewAssignment",
+    (_e, input: { workspaceId: string; goal: string }) => {
+      const workspace = getBusinessWorkspace(input.workspaceId);
+      if (!workspace) return { ok: false as const, errors: ["workspace not found"] };
+      const validation = validateBusinessWorkspace(workspace, businessAgents());
+      if (!validation.ok) return { ok: false as const, errors: validation.errors };
+      return previewBusinessAssignment(workspace, input.goal);
+    }
+  );
 }
 
 function businessAgents(): WorkflowAgentRef[] {

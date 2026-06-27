@@ -29,6 +29,7 @@ import {
   mergeSessionMetaItems,
   type AvailableCommandItem
 } from "@/store/sessionMetaUtils";
+import { buildConversationTitle } from "@/store/conversationUtils";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -489,7 +490,7 @@ export function ChatView() {
         const newConv = await createConversation({
           member: teamMember,
           cwd,
-          title: (prompt || team.name).slice(0, 24),
+          title: buildConversationTitle({ prompt, fallback: team.name }),
           approvalMode: permissionMode
         });
         setNewTaskDraft("");
@@ -547,7 +548,11 @@ export function ChatView() {
       const newConv = await createConversation({
         member: selectedMember,
         cwd: newTaskCwd.trim() || undefined,
-        title: (prompt || attachmentsToSend[0]?.name || t("chat.defaultAttachmentTitle")).slice(0, 24),
+        title: buildConversationTitle({
+          prompt,
+          attachmentName: attachmentsToSend[0]?.name,
+          fallback: t("chat.defaultAttachmentTitle")
+        }),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
@@ -656,7 +661,10 @@ export function ChatView() {
       const newConv = await createConversation({
         member: teamMember,
         cwd,
-        title: (pendingTeamPreview.goal || pendingTeamPreview.teamName || "").slice(0, 24),
+        title: buildConversationTitle({
+          prompt: pendingTeamPreview.goal,
+          fallback: pendingTeamPreview.teamName
+        }),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");

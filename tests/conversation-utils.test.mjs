@@ -182,6 +182,53 @@ test("dedupeCommands collapses renderer duplicates", async () => {
   );
 });
 
+test("buildConversationTitle keeps meaningful workflow goals beyond sidebar length", async () => {
+  const { buildConversationTitle } = await loadConversationUtils();
+  const prompt = "查看工作流标题的逻辑，分析目前的问题并给出可执行的优化建议";
+
+  assert.equal(
+    buildConversationTitle({ prompt, fallback: "Build Review Team" }),
+    prompt
+  );
+  assert.equal(
+    buildConversationTitle({
+      prompt: "   ",
+      attachmentName: "screenshot-with-long-name.png",
+      fallback: "New chat"
+    }),
+    "screenshot-with-long-name.png"
+  );
+});
+
+test("buildConversationTitle normalizes whitespace and caps stored titles", async () => {
+  const { buildConversationTitle } = await loadConversationUtils();
+  const longPrompt = `Fix\n\n${"a".repeat(120)}`;
+
+  const title = buildConversationTitle({ prompt: longPrompt, fallback: "Codex" });
+
+  assert.equal(title.includes("\n"), false);
+  assert.equal(title.length, 80);
+  assert.equal(title.startsWith("Fix "), true);
+});
+
+test("agent session titles do not overwrite workflow conversation titles", async () => {
+  const { shouldApplyAgentSessionTitle } = await loadConversationUtils();
+  const conversation = { id: "conv-1", title: "排查图片预览失败" };
+
+  assert.equal(
+    shouldApplyAgentSessionTitle(conversation, [], "Agent generated title"),
+    true
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      conversation,
+      [{ role: "assistant", workflowRunId: "workflow-1" }],
+      "Agent generated title"
+    ),
+    false
+  );
+});
+
 test("stored assistant messages reuse appendItems normalization", () => {
   const source = fs.readFileSync(
     new URL("../src/components/CLI/MessageBubble.tsx", import.meta.url),

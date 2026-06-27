@@ -107,8 +107,10 @@ test("ConversationList includes workflow runs in the running indicator set", () 
 
 test("ChatView titles team workflow conversations from the prompt", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
-  assert.match(src, /title: \(prompt \|\| team\.name\)\.slice\(0, 24\)/);
-  assert.match(src, /title: \(pendingTeamPreview\.goal \|\| pendingTeamPreview\.teamName/);
+  assert.match(src, /buildConversationTitle\(\{\s*prompt,\s*fallback: team\.name/s);
+  assert.match(src, /buildConversationTitle\(\{\s*prompt: pendingTeamPreview\.goal,\s*fallback: pendingTeamPreview\.teamName/s);
+  assert.doesNotMatch(src, /title: \(prompt \|\| team\.name\)\.slice\(0, 24\)/);
+  assert.doesNotMatch(src, /title: \(pendingTeamPreview\.goal \|\| pendingTeamPreview\.teamName/);
 });
 
 test("workflow i18n keys exist in both locales", () => {

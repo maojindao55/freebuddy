@@ -7031,3 +7031,44 @@ button.ghost:focus-visible,
   justify-content: flex-end;
   margin-top: 6px;
 }
+
+.business-assignment-preview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--fb-surface);
+}
+
+.business-assignment-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.business-assignment-surfaces {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.business-assignment-surface {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--fb-surface);
+}
+
+.business-assignment-surface-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.business-assignment-tasks {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}

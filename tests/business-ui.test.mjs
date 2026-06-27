@@ -22,3 +22,13 @@ test("Business workspace editor captures surfaces, repo paths, agents, and verif
   assert.match(editor, /allowedPaths/);
   assert.match(editor, /contractRole/);
 });
+
+test("ChatView exposes business requirement mode and assignment preview", () => {
+  const chat = read("../src/components/CLI/ChatView.tsx");
+  const preview = read("../src/components/Business/BusinessAssignmentPreviewCard.tsx");
+  assert.match(chat, /taskMode.*business/s);
+  assert.match(chat, /businessRequirement/);
+  assert.match(chat, /BusinessAssignmentPreviewCard/);
+  assert.match(preview, /assignmentPlan\.surfaces/);
+  assert.match(preview, /contractDraft/);
+});

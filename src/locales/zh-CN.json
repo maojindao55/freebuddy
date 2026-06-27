@@ -528,6 +528,11 @@
     "responsibilities": "职责",
     "contractRole": "契约角色",
     "noWorkspaces": "尚未配置业务空间",
-    "confirmDeleteWorkspace": "删除该业务空间？"
+    "confirmDeleteWorkspace": "删除该业务空间？",
+    "requirementMode": "业务需求",
+    "selectWorkspace": "选择业务空间",
+    "assignmentPreview": "认领计划",
+    "contractDraft": "契约草案",
+    "approveAndRun": "确认并执行"
   }
 }

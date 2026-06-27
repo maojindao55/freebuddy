@@ -531,6 +531,11 @@
     "responsibilities": "Responsibilities",
     "contractRole": "Contract role",
     "noWorkspaces": "No business workspaces yet",
-    "confirmDeleteWorkspace": "Delete this business workspace?"
+    "confirmDeleteWorkspace": "Delete this business workspace?",
+    "requirementMode": "Business requirement",
+    "selectWorkspace": "Select workspace",
+    "assignmentPreview": "Assignment plan",
+    "contractDraft": "Contract draft",
+    "approveAndRun": "Approve and run"
   }
 }

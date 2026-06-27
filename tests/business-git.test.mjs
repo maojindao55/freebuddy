@@ -209,6 +209,82 @@ test("groupSurfacesByLevel chains three levels and parallelizes siblings", () =>
   ]);
 });
 
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test("executeSurfaceWaves runs same-level surfaces concurrently", async () => {
+  let active = 0;
+  let maxActive = 0;
+  const runSurface = async () => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await delay(15);
+    active -= 1;
+    return { ok: true };
+  };
+  const result = await mod.executeSurfaceWaves({
+    levels: [
+      [{ id: "a" }, { id: "b" }, { id: "c" }]
+    ],
+    runSurface
+  });
+  assert.equal(result.ok, true);
+  assert.equal(maxActive, 3, "all three same-level surfaces overlapped");
+});
+
+test("executeSurfaceWaves blocks later waves when an earlier wave fails", async () => {
+  const invoked = [];
+  const runSurface = async (surface) => {
+    invoked.push(surface.id);
+    if (surface.id === "a") return { ok: false, error: "a failed" };
+    return { ok: true };
+  };
+  const result = await mod.executeSurfaceWaves({
+    levels: [
+      [{ id: "a" }, { id: "b" }],
+      [{ id: "c" }]
+    ],
+    runSurface
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.errors, ["a failed"]);
+  assert.ok(!invoked.includes("c"), "later wave did not run after a failure");
+});
+
+test("executeSurfaceWaves returns success when all waves succeed", async () => {
+  const result = await mod.executeSurfaceWaves({
+    levels: [[{ id: "a" }], [{ id: "b" }]],
+    runSurface: async () => ({ ok: true })
+  });
+  assert.equal(result.ok, true);
+});
+
+test("applySurfacePatch preserves sibling state under sequential concurrent-style updates", () => {
+  const base = [
+    { id: "a", status: "pending", verificationResults: [] },
+    { id: "b", status: "pending", verificationResults: [] }
+  ];
+  const afterA = mod.applySurfacePatch(base, "a", {
+    status: "done",
+    verificationResults: [{ command: "x", status: "passed" }]
+  });
+  const afterAB = mod.applySurfacePatch(afterA, "b", { status: "done" });
+  const a = afterAB.find((s) => s.id === "a");
+  const b = afterAB.find((s) => s.id === "b");
+  assert.equal(a.status, "done");
+  assert.equal(a.verificationResults.length, 1);
+  assert.equal(b.status, "done");
+});
+
+test("applySurfacePatch only touches the targeted surface", () => {
+  const base = [
+    { id: "a", status: "done", verificationResults: [] },
+    { id: "b", status: "done", verificationResults: [] }
+  ];
+  const next = mod.applySurfacePatch(base, "a", { status: "failed" });
+  assert.equal(next.find((s) => s.id === "a").status, "failed");
+  assert.equal(next.find((s) => s.id === "b").status, "done");
+});
+
 test("renderBranchName substitutes runSlug and surfaceKey", () => {
   assert.equal(
     mod.renderBranchName("fb/{{runSlug}}/{{surfaceKey}}", "add-discount", "server"),

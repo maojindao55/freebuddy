@@ -10,7 +10,8 @@ test("business runtime uses surface repoPath as cwd, runs in dependency waves, a
   assert.match(runtime, /requireCleanRepoBeforeRun/);
   assert.match(runtime, /verifyCommands/);
   assert.match(runtime, /groupSurfacesByLevel/);
-  assert.match(runtime, /Promise\.all/);
+  assert.match(runtime, /executeSurfaceWaves/);
+  assert.match(runtime, /applySurfacePatch/);
   assert.match(runtime, /anyVerifyFailed/);
   assert.match(runtime, /status: anyVerifyFailed \? "failed" : "done"/);
   assert.match(runtime, /STRICT SCOPE/);

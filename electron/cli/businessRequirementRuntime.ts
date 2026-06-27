@@ -11,7 +11,9 @@ import {
   updateBusinessRequirementRun
 } from "./businessRequirementRuns.js";
 import {
+  applySurfacePatch,
   ensureCleanRepo,
+  executeSurfaceWaves,
   groupSurfacesByLevel,
   runVerifyCommand
 } from "./businessGit.js";
@@ -163,8 +165,10 @@ function updateSurfaceRun(
   fallbackRuns: BusinessSurfaceRun[]
 ) {
   const current = getBusinessRequirementRun(runId);
-  const runs = (current?.surfaceRuns ?? fallbackRuns).map((sr) =>
-    sr.id === surfaceRunId ? { ...sr, ...patch } : sr
+  const runs = applySurfacePatch(
+    current?.surfaceRuns ?? fallbackRuns,
+    surfaceRunId,
+    patch
   );
   updateBusinessRequirementRun(runId, { surfaceRuns: runs });
 }
@@ -297,15 +301,13 @@ export async function startBusinessRun(
   // Run surfaces in dependency waves: independent surfaces (e.g. separate
   // client/server/admin repos with no dependency) execute concurrently within
   // a wave; dependents wait for their providers' wave to finish.
-  for (const level of levels) {
-    const outcomes = await Promise.all(
-      level.map((item) => runOneSurface(item.surfaceRun))
-    );
-    const failure = outcomes.find((o) => !o.ok) as { ok: false; error: string } | undefined;
-    if (failure) {
-      updateBusinessRequirementRun(runId, { status: "failed" });
-      return { ok: false, errors: [failure.error] };
-    }
+  const result = await executeSurfaceWaves({
+    levels: levels.map((level) => level.map((item) => item.surfaceRun)),
+    runSurface: runOneSurface
+  });
+  if (!result.ok) {
+    updateBusinessRequirementRun(runId, { status: "failed" });
+    return { ok: false, errors: result.errors };
   }
 
   const finalRun = updateBusinessRequirementRun(runId, {

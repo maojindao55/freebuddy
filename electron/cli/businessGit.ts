@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import path from "node:path";
 import type {
   BusinessAssignmentPlan,
+  BusinessSurfaceRun,
   BusinessVerificationResult
 } from "./businessWorkspaceTypes.js";
 
@@ -262,6 +263,46 @@ export function surfaceDependencyOrder(
   plan: BusinessAssignmentPlan
 ): string[] {
   return orderSurfacesByDependency(plan.surfaces).map((s) => s.surfaceId);
+}
+
+/**
+ * Pure reducer that applies a patch to a single surface run within the list,
+ * preserving every other surface's state. Used by the runtime so concurrent
+ * per-surface updates (run in parallel within a wave) compose without lost
+ * updates: each update reads the latest list, maps over it, and writes back.
+ */
+export function applySurfacePatch(
+  surfaceRuns: BusinessSurfaceRun[],
+  surfaceRunId: string,
+  patch: Partial<BusinessSurfaceRun>
+): BusinessSurfaceRun[] {
+  return surfaceRuns.map((sr) =>
+    sr.id === surfaceRunId ? { ...sr, ...patch } : sr
+  );
+}
+
+export type SurfaceRunOutcome = { ok: true } | { ok: false; error: string };
+
+/**
+ * Run surfaces in dependency waves: each wave's surfaces run concurrently
+ * (runSurface is awaited via Promise.all); a failure short-circuits and later
+ * waves do not execute. Pure with respect to the injected runSurface callback.
+ */
+export async function executeSurfaceWaves<T>(args: {
+  levels: T[][];
+  runSurface: (surface: T) => Promise<SurfaceRunOutcome>;
+}): Promise<{ ok: true } | { ok: false; errors: string[] }> {
+  for (const level of args.levels) {
+    const outcomes = await Promise.all(
+      level.map((surface) => args.runSurface(surface))
+    );
+    for (const outcome of outcomes) {
+      if (!outcome.ok) {
+        return { ok: false, errors: [outcome.error] };
+      }
+    }
+  }
+  return { ok: true };
 }
 
 export function groupSurfacesByLevel<T extends OrderedSurface>(

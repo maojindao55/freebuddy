@@ -7072,3 +7072,56 @@ button.ghost:focus-visible,
   margin: 6px 0 0;
   padding-left: 18px;
 }
+
+.business-commit-gate {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--fb-surface);
+}
+
+.business-commit-gate-repos {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.business-commit-gate-repo {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.business-commit-gate-repo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.business-commit-gate-diff ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.business-commit-gate-verify {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.business-commit-gate-risks {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.business-commit-gate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}

@@ -2,7 +2,8 @@ import type {
   BusinessWorkspace,
   BusinessAssignmentPlan,
   BusinessContractDraft,
-  BusinessRequirementRun
+  BusinessRequirementRun,
+  BusinessCommitGate
 } from "./types";
 
 function api() {
@@ -48,5 +49,27 @@ export const businessWorkspacesClient = {
   },
   getRun(runId: string): Promise<BusinessRequirementRun | undefined> {
     return api().getRun(runId);
+  },
+  previewCommitGate(runId: string) {
+    return api().previewCommitGate(runId) as Promise<
+      | { ok: true; commitGate: BusinessCommitGate }
+      | { ok: false; errors: string[] }
+    >;
+  },
+  approveCommitGate(args: {
+    runId: string;
+    patch?: {
+      repositories?: Array<{
+        surfaceId: string;
+        branchName?: string;
+        commitMessage?: string;
+      }>;
+      allowCommitWithFailures?: boolean;
+    };
+  }) {
+    return api().approveCommitGate(args) as Promise<
+      | { ok: true; run: BusinessRequirementRun }
+      | { ok: false; errors: string[] }
+    >;
   }
 };

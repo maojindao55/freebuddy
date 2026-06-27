@@ -17,6 +17,11 @@ import {
   startBusinessRun,
   type CreateRunFromAssignmentInput
 } from "./businessRequirementRuntime.js";
+import {
+  approveBusinessCommitGateForRun,
+  previewBusinessCommitGateForRun,
+  type CommitGatePatch
+} from "./businessCommitGate.js";
 import type { WorkflowAgentRef } from "./workflowTypes.js";
 
 export function registerBusinessWorkspaceIpc() {
@@ -63,6 +68,14 @@ export function registerBusinessWorkspaceIpc() {
   );
   ipcMain.handle("businessRequirements:getRun", (_e, runId: string) =>
     getBusinessRequirementRun(runId)
+  );
+  ipcMain.handle("businessRequirements:previewCommitGate", (_e, runId: string) =>
+    previewBusinessCommitGateForRun(runId)
+  );
+  ipcMain.handle(
+    "businessRequirements:approveCommitGate",
+    (_e, args: { runId: string; patch?: CommitGatePatch }) =>
+      approveBusinessCommitGateForRun(args.runId, args.patch ?? {})
   );
 }
 

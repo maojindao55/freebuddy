@@ -536,6 +536,11 @@
     "selectWorkspace": "Select workspace",
     "assignmentPreview": "Assignment plan",
     "contractDraft": "Contract draft",
-    "approveAndRun": "Approve and run"
+    "approveAndRun": "Approve and run",
+    "commitGate": "Commit gate",
+    "commitMessage": "Commit message",
+    "diffFiles": "Changed files",
+    "allowFailures": "Allow commit with failures",
+    "approveCommit": "Approve commit"
   }
 }

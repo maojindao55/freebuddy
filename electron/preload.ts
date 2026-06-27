@@ -167,7 +167,11 @@ const businessWorkspaces = {
     ipcRenderer.invoke("businessRequirements:previewAssignment", input),
   createRun: (input: unknown) => ipcRenderer.invoke("businessRequirements:createRun", input),
   startRun: (runId: string) => ipcRenderer.invoke("businessRequirements:startRun", runId),
-  getRun: (runId: string) => ipcRenderer.invoke("businessRequirements:getRun", runId)
+  getRun: (runId: string) => ipcRenderer.invoke("businessRequirements:getRun", runId),
+  previewCommitGate: (runId: string) =>
+    ipcRenderer.invoke("businessRequirements:previewCommitGate", runId),
+  approveCommitGate: (args: unknown) =>
+    ipcRenderer.invoke("businessRequirements:approveCommitGate", args)
 };
 
 const updater = {

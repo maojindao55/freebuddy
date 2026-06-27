@@ -39,7 +39,8 @@ import type {
   BusinessWorkspace,
   BusinessAssignmentPlan,
   BusinessContractDraft,
-  BusinessRequirementRun
+  BusinessRequirementRun,
+  BusinessCommitGate
 } from "@/services/businessWorkspaces/types";
 
 export {};
@@ -263,6 +264,24 @@ declare global {
       | { ok: false; errors: string[] }
     >;
     getRun(runId: string): Promise<BusinessRequirementRun | undefined>;
+    previewCommitGate(runId: string): Promise<
+      | { ok: true; commitGate: BusinessCommitGate }
+      | { ok: false; errors: string[] }
+    >;
+    approveCommitGate(args: {
+      runId: string;
+      patch?: {
+        repositories?: Array<{
+          surfaceId: string;
+          branchName?: string;
+          commitMessage?: string;
+        }>;
+        allowCommitWithFailures?: boolean;
+      };
+    }): Promise<
+      | { ok: true; run: BusinessRequirementRun }
+      | { ok: false; errors: string[] }
+    >;
   }
 
   type UpdaterEvent =

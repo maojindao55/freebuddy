@@ -533,6 +533,11 @@
     "selectWorkspace": "选择业务空间",
     "assignmentPreview": "认领计划",
     "contractDraft": "契约草案",
-    "approveAndRun": "确认并执行"
+    "approveAndRun": "确认并执行",
+    "commitGate": "提交闸门",
+    "commitMessage": "提交信息",
+    "diffFiles": "变更文件",
+    "allowFailures": "允许在验证失败时提交",
+    "approveCommit": "确认提交"
   }
 }

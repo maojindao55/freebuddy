@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { businessWorkspacesClient } from "@/services/businessWorkspaces/client";
 import type {
   BusinessAssignmentPlan,
+  BusinessCommitGate,
   BusinessContractDraft,
   BusinessRequirementRun,
   BusinessWorkspace
@@ -23,6 +24,8 @@ interface State {
     contractDraft?: BusinessContractDraft;
   }): Promise<boolean>;
   refreshActiveRun(runId: string): Promise<void>;
+  previewCommitGate(runId: string): Promise<void>;
+  approveCommitGate(runId: string): Promise<boolean>;
   clearActiveRun(): void;
 }
 
@@ -72,6 +75,24 @@ export const useBusinessRequirementRunStore = create<State>((set) => ({
   async refreshActiveRun(runId) {
     const run = await businessWorkspacesClient.getRun(runId);
     if (run) set({ activeRun: run });
+  },
+  async previewCommitGate(runId) {
+    const res = await businessWorkspacesClient.previewCommitGate(runId);
+    if (res.ok) {
+      const run = await businessWorkspacesClient.getRun(runId);
+      if (run) set({ activeRun: run });
+    } else {
+      set({ pendingErrors: res.errors });
+    }
+  },
+  async approveCommitGate(runId) {
+    const res = await businessWorkspacesClient.approveCommitGate({ runId });
+    if (!res.ok) {
+      set({ pendingErrors: res.errors });
+      return false;
+    }
+    set({ activeRun: res.run });
+    return true;
   },
   clearActiveRun() {
     set({ activeRun: null });

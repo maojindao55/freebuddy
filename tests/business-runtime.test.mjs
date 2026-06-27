@@ -21,3 +21,15 @@ test("business requirement IPC exposes approve and start lifecycle", () => {
   assert.match(preload, /createRun: \(input: unknown\) =>/);
   assert.match(preload, /startRun: \(runId: string\) =>/);
 });
+
+test("business commit gate creates branches and commits only after approval", () => {
+  const gate = read("../electron/cli/businessCommitGate.ts");
+  const ipc = read("../electron/cli/businessWorkspaceIpc.ts");
+  assert.match(gate, /export async function previewBusinessCommitGate/);
+  assert.match(gate, /git diff --name-only/);
+  assert.match(gate, /git checkout -b/);
+  assert.match(gate, /git add/);
+  assert.match(gate, /git commit -m/);
+  assert.match(ipc, /businessRequirements:previewCommitGate/);
+  assert.match(ipc, /businessRequirements:approveCommitGate/);
+});

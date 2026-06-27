@@ -9,6 +9,7 @@ import type {
   CliTaskListArgs,
   CliTaskLogPage,
   CliTaskRow,
+  CodexUsageResult,
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
@@ -49,6 +50,9 @@ export const cliClient = {
 
   listRuntimes(): Promise<CliRuntime[]> {
     return api().listRuntimes();
+  },
+  codexUsage(): Promise<CodexUsageResult> {
+    return api().codexUsage();
   },
   check(adapter: string, binary?: string): Promise<CliCheckResult> {
     return api().check(adapter, binary);

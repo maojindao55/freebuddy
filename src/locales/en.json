@@ -147,7 +147,15 @@
     "noConversation": "No conversation",
     "localAgent": "Local coding agent",
     "createToBegin": "Create a conversation to begin",
-    "sessionConfig": "Session Config"
+    "sessionConfig": "Session Config",
+    "codexUsage": "Codex Usage",
+    "codexUsageRefresh": "Refresh",
+    "codexUsageLoading": "Loading",
+    "codexUsageUnavailable": "Codex usage is unavailable right now.",
+    "codexUsage5h": "5h limit",
+    "codexUsageWeekly": "weekly limit",
+    "codexUsageLeft": "{{percent}}% left",
+    "codexUsageResetIn": "resets in {{time}}"
   },
   "message": {
     "you": "You",

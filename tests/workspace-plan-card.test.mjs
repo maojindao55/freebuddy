@@ -35,12 +35,41 @@ test("session config card truncates values and scrolls when crowded", () => {
   assert.match(styles, /\.session-config-list \.session-config-label\s*\{[^}]*text-overflow:\s*ellipsis/s);
 });
 
-test("workspace panel does not auto-refresh Codex limit status", () => {
-  assert.equal(source.includes("cliClient.codexStatus"), false);
-  assert.equal(source.includes("codex-limits-card"), false);
-  assert.equal(source.includes("workspace.codexLimits"), false);
-  assert.equal(styles.includes("codex-limit-track"), false);
-  assert.equal(styles.includes("codex-limit-fill"), false);
+test("workspace panel renders the Codex usage card from the CLI bridge", () => {
+  assert.match(source, /cliClient\.codexUsage\(\)/);
+  assert.match(source, /className="side-card codex-usage-card"/);
+  assert.match(source, /workspace\.codexUsage/);
+  assert.match(source, /workspace\.codexUsageRefresh/);
+  assert.match(source, /workspace\.codexUsageUnavailable/);
+  assert.match(styles, /\.codex-usage-card\s*\{/);
+  assert.match(styles, /\.codex-limit-track\s*\{/);
+  assert.match(styles, /\.codex-limit-fill\s*\{/);
+});
+
+test("Codex usage card is rendered after the other workspace cards", () => {
+  const codexCard = source.indexOf('className="side-card codex-usage-card"');
+  const runState = source.indexOf('t("workspace.runState")');
+  const configCard = source.indexOf('className="side-card session-config-card"');
+  const planCard = source.indexOf('className="side-card plan-card"');
+
+  assert.ok(codexCard > runState);
+  assert.ok(codexCard > configCard);
+  assert.ok(codexCard > planCard);
+});
+
+test("Codex usage bridge is exposed without leaking token fields to renderer types", () => {
+  const preload = fs.readFileSync(new URL("../electron/preload.ts", import.meta.url), "utf8");
+  const client = fs.readFileSync(new URL("../src/services/cli/client.ts", import.meta.url), "utf8");
+  const types = fs.readFileSync(new URL("../src/types/freebuddy.d.ts", import.meta.url), "utf8");
+  const cliTypes = fs.readFileSync(new URL("../src/services/cli/types.ts", import.meta.url), "utf8");
+
+  assert.match(preload, /codexUsage:\s*\(\)\s*=>\s*ipcRenderer\.invoke\("cli:codexUsage"\)/);
+  assert.match(client, /codexUsage\(\): Promise<CodexUsageResult>/);
+  assert.match(types, /codexUsage\(\): Promise<CodexUsageResult>/);
+  assert.match(cliTypes, /export type CodexUsageResult/);
+  assert.equal(cliTypes.includes("access_token"), false);
+  assert.equal(cliTypes.includes("refresh_token"), false);
+  assert.equal(cliTypes.includes("authorization"), false);
 });
 
 test("workspace panel no longer renders the execution queue card", () => {

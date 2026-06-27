@@ -107,6 +107,36 @@ export interface CliRuntime {
   updatedAt: string;
 }
 
+export interface CodexUsageWindow {
+  usedPercent: number;
+  leftPercent: number;
+  windowSeconds: number;
+  resetAfterSeconds: number;
+  resetAt: number;
+}
+
+export type CodexUsageResult =
+  | {
+      ok: true;
+      allowed: boolean;
+      limitReached: boolean;
+      planType?: string;
+      primaryWindow: CodexUsageWindow;
+      secondaryWindow?: CodexUsageWindow;
+      fetchedAt: string;
+    }
+  | {
+      ok: false;
+      reason:
+        | "missing_auth"
+        | "invalid_auth"
+        | "expired_token"
+        | "request_failed"
+        | "invalid_response";
+      error?: string;
+      fetchedAt: string;
+    };
+
 export interface CliTaskRow {
   id: string;
   agentId: string;

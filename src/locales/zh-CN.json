@@ -147,7 +147,15 @@
     "noConversation": "无会话",
     "localAgent": "本地编码 Agent",
     "createToBegin": "创建会话以开始",
-    "sessionConfig": "会话配置"
+    "sessionConfig": "会话配置",
+    "codexUsage": "Codex 限额",
+    "codexUsageRefresh": "刷新",
+    "codexUsageLoading": "读取中",
+    "codexUsageUnavailable": "暂时无法读取 Codex 限额。",
+    "codexUsage5h": "5h limit",
+    "codexUsageWeekly": "weekly limit",
+    "codexUsageLeft": "剩余 {{percent}}%",
+    "codexUsageResetIn": "{{time}} 后重置"
   },
   "message": {
     "you": "你",

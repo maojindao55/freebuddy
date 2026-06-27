@@ -7,6 +7,7 @@ const cli = {
   resetOverride: (id: string) => ipcRenderer.invoke("cli:resetOverride", id),
 
   listRuntimes: () => ipcRenderer.invoke("cli:listRuntimes"),
+  codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
   check: (adapter: string, binary?: string) =>
     ipcRenderer.invoke("cli:check", { adapter, binary }),
   install: (command: string) => ipcRenderer.invoke("cli:install", command),

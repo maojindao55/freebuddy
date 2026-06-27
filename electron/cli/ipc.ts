@@ -48,6 +48,7 @@ import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
 import { registerWorkflowIpc } from "./workflowIpc.js";
+import { readCodexUsage } from "./codexUsage.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -163,6 +164,7 @@ export function registerCliIpc() {
   ipcMain.handle("cli:resetOverride", (_e, id: string) => resetOverride(id));
 
   ipcMain.handle("cli:listRuntimes", () => listRuntimes());
+  ipcMain.handle("cli:codexUsage", () => readCodexUsage());
   ipcMain.handle(
     "cli:check",
     async (_e, args: { adapter: string; binary?: string }) =>

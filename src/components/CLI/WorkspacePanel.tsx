@@ -3,7 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { displayAgentName } from "@/config/agentDisplay";
-import type { ConversationMessage } from "@/services/cli/types";
+import { cliClient } from "@/services/cli/client";
+import type {
+  CodexUsageResult,
+  CodexUsageWindow,
+  ConversationMessage
+} from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
 import { useWorkflowStore } from "@/store/workflowStore";
@@ -39,6 +44,8 @@ export function WorkspacePanel({
   );
   const [copiedSession, setCopiedSession] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
+  const [codexUsageLoading, setCodexUsageLoading] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowSteps = useWorkflowStore((s) => s.steps);
@@ -50,6 +57,8 @@ export function WorkspacePanel({
 
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
+  const isCodexAgent =
+    active?.adapter === "codex-acp" || active?.agentId === "cli-codex-acp";
 
   const status = live?.status ?? "ready";
   const isLive = status === "running" || status === "starting";
@@ -177,6 +186,41 @@ export function WorkspacePanel({
     isLive,
     now
   ]);
+
+  useEffect(() => {
+    if (!isCodexAgent) {
+      setCodexUsage(undefined);
+      setCodexUsageLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      setCodexUsageLoading(true);
+      try {
+        const result = await cliClient.codexUsage();
+        if (!cancelled) setCodexUsage(result);
+      } catch (error) {
+        if (!cancelled) {
+          setCodexUsage({
+            ok: false,
+            reason: "request_failed",
+            error: error instanceof Error ? error.message : String(error),
+            fetchedAt: new Date().toISOString()
+          });
+        }
+      } finally {
+        if (!cancelled) setCodexUsageLoading(false);
+      }
+    };
+
+    void refresh();
+    const id = window.setInterval(refresh, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [isCodexAgent, status]);
 
   return (
     <div className="workspace-cards" aria-label={t("workspace.panelAria")}>
@@ -355,6 +399,100 @@ export function WorkspacePanel({
           </ol>
         </section>
       )}
+
+      {isCodexAgent && (
+        <section className="side-card codex-usage-card">
+          <div className="side-card-header">
+            <span>{t("workspace.codexUsage")}</span>
+            <button
+              className="codex-usage-refresh"
+              type="button"
+              disabled={codexUsageLoading}
+              onClick={() => {
+                setCodexUsageLoading(true);
+                void cliClient
+                  .codexUsage()
+                  .then(setCodexUsage)
+                  .catch((error) =>
+                    setCodexUsage({
+                      ok: false,
+                      reason: "request_failed",
+                      error: error instanceof Error ? error.message : String(error),
+                      fetchedAt: new Date().toISOString()
+                    })
+                  )
+                  .finally(() => setCodexUsageLoading(false));
+              }}
+            >
+              {codexUsageLoading
+                ? t("workspace.codexUsageLoading")
+                : t("workspace.codexUsageRefresh")}
+            </button>
+          </div>
+          {codexUsage?.ok ? (
+            <div className="codex-limit-list">
+              <CodexLimitRow
+                label={t("workspace.codexUsage5h")}
+                usage={codexUsage.primaryWindow}
+                leftLabel={t("workspace.codexUsageLeft", {
+                  percent: codexUsage.primaryWindow.leftPercent
+                })}
+                resetLabel={t("workspace.codexUsageResetIn", {
+                  time: formatDuration(codexUsage.primaryWindow.resetAfterSeconds * 1000)
+                })}
+              />
+              {codexUsage.secondaryWindow && (
+                <CodexLimitRow
+                  label={t("workspace.codexUsageWeekly")}
+                  usage={codexUsage.secondaryWindow}
+                  leftLabel={t("workspace.codexUsageLeft", {
+                    percent: codexUsage.secondaryWindow.leftPercent
+                  })}
+                  resetLabel={t("workspace.codexUsageResetIn", {
+                    time: formatDuration(
+                      codexUsage.secondaryWindow.resetAfterSeconds * 1000
+                    )
+                  })}
+                />
+              )}
+            </div>
+          ) : (
+            <p className="codex-usage-empty">
+              {codexUsageLoading
+                ? t("workspace.codexUsageLoading")
+                : t("workspace.codexUsageUnavailable")}
+            </p>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function CodexLimitRow({
+  label,
+  usage,
+  leftLabel,
+  resetLabel
+}: {
+  label: string;
+  usage: CodexUsageWindow;
+  leftLabel: string;
+  resetLabel: string;
+}) {
+  return (
+    <div className="codex-limit-row">
+      <div className="codex-limit-meta">
+        <strong>{label}</strong>
+        <span>{leftLabel}</span>
+      </div>
+      <div className="codex-limit-track" aria-hidden="true">
+        <span
+          className="codex-limit-fill"
+          style={{ width: `${usage.usedPercent}%` }}
+        />
+      </div>
+      <small>{resetLabel}</small>
     </div>
   );
 }

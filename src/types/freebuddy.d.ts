@@ -12,6 +12,7 @@ import type {
   CliTaskRow,
   CliTaskLogPage,
   CliTaskListArgs,
+  CodexUsageResult,
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
@@ -46,6 +47,7 @@ declare global {
     resetOverride(id: string): Promise<void>;
 
     listRuntimes(): Promise<CliRuntime[]>;
+    codexUsage(): Promise<CodexUsageResult>;
     check(adapter: string, binary?: string): Promise<CliCheckResult>;
     install(command: string): Promise<CliInstallResult>;
     installStream(

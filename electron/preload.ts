@@ -206,8 +206,8 @@ contextBridge.exposeInMainWorld("freebuddy", {
   cli,
   workflow,
   workflowTeams,
-  businessWorkspaces,
   settings,
   window,
+  businessWorkspaces,
   updater
 });

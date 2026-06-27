@@ -7125,3 +7125,36 @@ button.ghost:focus-visible,
   justify-content: flex-end;
   gap: 8px;
 }
+
+.business-surface-run-panel .business-surface-runs {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.business-surface-run {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.business-surface-run-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.business-surface-verify {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.business-surface-diff {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  max-height: 80px;
+  overflow: auto;
+}

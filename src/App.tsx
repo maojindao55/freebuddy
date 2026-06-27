@@ -13,6 +13,7 @@ import { SettingsModal } from "./components/Settings/SettingsModal";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
+import { useBusinessRequirementRunStore } from "./store/businessRequirementRunStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
@@ -189,6 +190,17 @@ function App() {
     }
     return n;
   });
+  const businessRunActive = useBusinessRequirementRunStore((s) => {
+    const run = s.activeRun;
+    if (!run) return false;
+    return (
+      run.status === "running" ||
+      run.status === "verifying" ||
+      run.status === "awaiting_commit_approval" ||
+      run.status === "committing"
+    );
+  });
+  const effectiveRunningCount = runningCount + (businessRunActive ? 1 : 0);
 
   const renderToggleButton = (extraClass = "") => (
     <button
@@ -278,7 +290,7 @@ function App() {
       </main>
 
       {activeConversation && (
-        <DetailColumn runningCount={runningCount} />
+        <DetailColumn runningCount={effectiveRunningCount} />
       )}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}

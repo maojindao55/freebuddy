@@ -32,3 +32,12 @@ test("ChatView exposes business requirement mode and assignment preview", () => 
   assert.match(preview, /assignmentPlan\.surfaces/);
   assert.match(preview, /contractDraft/);
 });
+
+test("WorkspacePanel mounts business surface run panel", () => {
+  const workspacePanel = read("../src/components/CLI/WorkspacePanel.tsx");
+  const panel = read("../src/components/Business/BusinessSurfaceRunPanel.tsx");
+  assert.match(workspacePanel, /BusinessSurfaceRunPanel/);
+  assert.match(panel, /surfaceRuns/);
+  assert.match(panel, /verificationResults/);
+  assert.match(panel, /commitGate/);
+});

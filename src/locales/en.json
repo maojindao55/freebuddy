@@ -541,6 +541,7 @@
     "commitMessage": "Commit message",
     "diffFiles": "Changed files",
     "allowFailures": "Allow commit with failures",
-    "approveCommit": "Approve commit"
+    "approveCommit": "Approve commit",
+    "runStatus": "Business run"
   }
 }

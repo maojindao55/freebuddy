@@ -1,62 +1,26 @@
-import { spawn } from "node:child_process";
 import path from "node:path";
 
 import {
   getBusinessRequirementRun,
   updateBusinessRequirementRun
 } from "./businessRequirementRuns.js";
+import {
+  createBranch,
+  commitFiles,
+  diffStat,
+  filterFilesByAllowedPaths,
+  headSha,
+  listChangedFiles,
+  renderBranchName,
+  slugify,
+  stageFiles
+} from "./businessGit.js";
 import type {
   BusinessCommitGate,
   BusinessRequirementRun
 } from "./businessWorkspaceTypes.js";
 
-export function renderBranchName(
-  template: string,
-  runSlug: string,
-  surfaceKey: string
-): string {
-  return template
-    .replace(/{{runSlug}}/g, runSlug)
-    .replace(/{{surfaceKey}}/g, surfaceKey);
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-}
-
-function runShell(cwd: string, command: string): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const child = spawn(command, { cwd, shell: true });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on("error", () => resolve({ code: 1, stdout, stderr: "spawn error" }));
-    child.on("close", (code) => resolve({ code: code ?? 0, stdout, stderr }));
-  });
-}
-
-async function changedFiles(repoPath: string): Promise<string[]> {
-  const { code, stdout } = await runShell(repoPath, "git diff --name-only");
-  if (code !== 0) return [];
-  return stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-async function diffStat(repoPath: string): Promise<string> {
-  const { stdout } = await runShell(repoPath, "git diff --stat");
-  return stdout.trim();
-}
+export { renderBranchName };
 
 export async function previewBusinessCommitGate(
   run: BusinessRequirementRun
@@ -69,13 +33,28 @@ export async function previewBusinessCommitGate(
     run.surfaceRuns.map(async (surfaceRun) => {
       const surfaceKey = slugify(surfaceRun.surfaceId) || surfaceRun.surfaceId;
       const branchName = renderBranchName(branchTemplate, runSlug, surfaceKey);
-      const diffFiles = path.isAbsolute(surfaceRun.repoPath)
-        ? await changedFiles(surfaceRun.repoPath)
-        : [];
-      const diffSummary = path.isAbsolute(surfaceRun.repoPath)
-        ? await diffStat(surfaceRun.repoPath)
-        : "";
+      const surface = run.workspaceSnapshot.surfaces.find(
+        (s) => s.id === surfaceRun.surfaceId
+      );
+      const allowedPaths = surface?.allowedPaths ?? [];
+
+      let allChanged: string[] = [];
+      let diffSummary = "";
+      if (path.isAbsolute(surfaceRun.repoPath)) {
+        const changed = await listChangedFiles(surfaceRun.repoPath);
+        allChanged = changed.map((c) => c.path);
+        diffSummary = await diffStat(surfaceRun.repoPath);
+      }
+      const diffFiles = filterFilesByAllowedPaths(allChanged, allowedPaths);
+
       const risks: string[] = [];
+      if (allowedPaths.length === 0 && allChanged.length > 0) {
+        risks.push("no allowedPaths configured; no files will be committed");
+      } else if (allChanged.length > diffFiles.length) {
+        risks.push(
+          `${allChanged.length - diffFiles.length} file(s) outside allowedPaths excluded from commit`
+        );
+      }
       const failed = surfaceRun.verificationResults.filter(
         (r) => r.status === "failed"
       );
@@ -85,6 +64,7 @@ export async function previewBusinessCommitGate(
       if (!path.isAbsolute(surfaceRun.repoPath)) {
         risks.push("repoPath is not absolute");
       }
+
       return {
         surfaceId: surfaceRun.surfaceId,
         repoPath: surfaceRun.repoPath,
@@ -148,28 +128,6 @@ function applyPatch(
     };
   }
   return next;
-}
-
-async function createBranch(repoPath: string, branchName: string): Promise<boolean> {
-  const { code } = await runShell(repoPath, `git checkout -b ${branchName}`);
-  return code === 0;
-}
-
-async function stageFiles(repoPath: string, files: string[]): Promise<boolean> {
-  const list = files.map((f) => `"${f.replace(/"/g, '\\"')}"`).join(" ");
-  const { code } = await runShell(repoPath, `git add -- ${list}`);
-  return code === 0;
-}
-
-async function commitFiles(repoPath: string, message: string): Promise<boolean> {
-  const { code } = await runShell(repoPath, `git commit -m "${message.replace(/"/g, '\\"')}"`);
-  return code === 0;
-}
-
-async function headSha(repoPath: string): Promise<string | undefined> {
-  const { code, stdout } = await runShell(repoPath, "git rev-parse HEAD");
-  if (code !== 0) return undefined;
-  return stdout.trim() || undefined;
 }
 
 export async function approveBusinessCommitGate(

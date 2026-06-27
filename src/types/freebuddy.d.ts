@@ -250,11 +250,8 @@ declare global {
     >;
     createRun(input: {
       workspaceId: string;
-      workspaceSnapshot: BusinessWorkspace;
-      teamId?: string;
       goal: string;
-      assignmentPlan: BusinessAssignmentPlan;
-      contractDraft?: BusinessContractDraft;
+      teamId?: string;
     }): Promise<
       | { ok: true; run: BusinessRequirementRun }
       | { ok: false; errors: string[] }

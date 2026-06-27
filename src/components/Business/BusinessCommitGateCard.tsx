@@ -11,7 +11,7 @@ export function BusinessCommitGateCard({
 }: {
   commitGate: BusinessCommitGate | null;
   errors: string[];
-  onApprove: () => void;
+  onApprove: (allowCommitWithFailures: boolean) => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
@@ -112,7 +112,7 @@ export function BusinessCommitGateCard({
           <button type="button" onClick={onCancel}>
             {t("common.cancel")}
           </button>
-          <button type="button" className="primary" onClick={onApprove}>
+          <button type="button" className="primary" onClick={() => onApprove(allowFailures)}>
             {t("business.approveCommit")}
           </button>
         </div>

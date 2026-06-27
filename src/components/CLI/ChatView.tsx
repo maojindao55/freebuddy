@@ -705,11 +705,8 @@ export function ChatView() {
     try {
       const ok = await approveAndStartBusinessRun({
         workspaceId: selectedWorkspaceId,
-        workspaceSnapshot: workspace,
-        teamId: workspace.defaultTeamId,
         goal,
-        assignmentPlan: pendingBusinessPlan,
-        contractDraft: pendingBusinessContract ?? undefined
+        teamId: workspace.defaultTeamId
       });
       if (!ok && pendingBusinessErrors.length === 0) {
         setPreflightMsg(t("errors.taskFailed", { err: "business run failed to start" }));

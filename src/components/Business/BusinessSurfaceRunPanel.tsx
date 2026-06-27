@@ -1,6 +1,8 @@
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useBusinessRequirementRunStore } from "@/store/businessRequirementRunStore";
+import { BusinessCommitGateCard } from "./BusinessCommitGateCard";
 
 function shortPath(repoPath: string): string {
   return repoPath.split(/[/\\]/).filter(Boolean).slice(-2).join("/") || repoPath;
@@ -9,6 +11,25 @@ function shortPath(repoPath: string): string {
 export function BusinessSurfaceRunPanel() {
   const { t } = useTranslation();
   const run = useBusinessRequirementRunStore((s) => s.activeRun);
+  const previewCommitGate = useBusinessRequirementRunStore((s) => s.previewCommitGate);
+  const approveCommitGate = useBusinessRequirementRunStore((s) => s.approveCommitGate);
+  const clearActiveRun = useBusinessRequirementRunStore((s) => s.clearActiveRun);
+  const errors = useBusinessRequirementRunStore((s) => s.pendingErrors);
+  const previewedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!run) {
+      previewedFor.current = null;
+      return;
+    }
+    if (
+      run.status === "awaiting_commit_approval" &&
+      previewedFor.current !== run.id
+    ) {
+      previewedFor.current = run.id;
+      void previewCommitGate(run.id);
+    }
+  }, [run, previewCommitGate]);
 
   if (!run) return null;
 
@@ -60,12 +81,13 @@ export function BusinessSurfaceRunPanel() {
         ))}
       </ul>
 
-      {run.commitGate && (
-        <div className="business-commit-gate-summary">
-          <span className="muted small">
-            {t("business.commitGate")}: {run.commitGate.status}
-          </span>
-        </div>
+      {(run.status === "awaiting_commit_approval" || run.commitGate) && (
+        <BusinessCommitGateCard
+          commitGate={run.commitGate ?? null}
+          errors={errors}
+          onApprove={(allowFailures) => void approveCommitGate(run.id, { allowCommitWithFailures: allowFailures })}
+          onCancel={() => clearActiveRun()}
+        />
       )}
     </section>
   );

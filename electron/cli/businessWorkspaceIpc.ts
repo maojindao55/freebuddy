@@ -14,8 +14,7 @@ import { previewBusinessAssignment } from "./businessAssignmentPlanner.js";
 import { getBusinessRequirementRun } from "./businessRequirementRuns.js";
 import {
   createRunFromAssignment,
-  startBusinessRun,
-  type CreateRunFromAssignmentInput
+  startBusinessRun
 } from "./businessRequirementRuntime.js";
 import {
   approveBusinessCommitGateForRun,
@@ -60,8 +59,30 @@ export function registerBusinessWorkspaceIpc() {
       return previewBusinessAssignment(workspace, input.goal);
     }
   );
-  ipcMain.handle("businessRequirements:createRun", (_e, input: CreateRunFromAssignmentInput) =>
-    createRunFromAssignment(input)
+  ipcMain.handle(
+    "businessRequirements:createRun",
+    (_e, input: { workspaceId: string; goal: string; teamId?: string }) => {
+      const workspace = getBusinessWorkspace(input.workspaceId);
+      if (!workspace) {
+        return { ok: false as const, errors: ["workspace not found"] };
+      }
+      const validation = validateBusinessWorkspace(workspace, businessAgents());
+      if (!validation.ok) {
+        return { ok: false as const, errors: validation.errors };
+      }
+      // Server is the source of truth: re-derive the assignment plan and
+      // contract draft from the persisted workspace. Renderer-submitted
+      // plans/snapshots are intentionally ignored.
+      const derived = previewBusinessAssignment(workspace, input.goal);
+      if (!derived.ok) return derived;
+      return createRunFromAssignment({
+        workspace,
+        goal: input.goal,
+        teamId: input.teamId,
+        assignmentPlan: derived.assignmentPlan,
+        contractDraft: derived.contractDraft
+      });
+    }
   );
   ipcMain.handle("businessRequirements:startRun", (event, runId: string) =>
     startBusinessRun(event.sender, runId)

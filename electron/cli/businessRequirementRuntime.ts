@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import path from "node:path";
 import type { WebContents } from "electron";
 import { nanoid } from "nanoid";
@@ -11,6 +10,11 @@ import {
   insertBusinessRequirementRun,
   updateBusinessRequirementRun
 } from "./businessRequirementRuns.js";
+import {
+  ensureCleanRepo,
+  runVerifyCommand,
+  surfaceDependencyOrder
+} from "./businessGit.js";
 import type {
   BusinessAssignmentPlan,
   BusinessContractDraft,
@@ -21,10 +25,9 @@ import type {
 } from "./businessWorkspaceTypes.js";
 
 export interface CreateRunFromAssignmentInput {
-  workspaceId: string;
-  workspaceSnapshot: BusinessWorkspace;
-  teamId?: string;
+  workspace: BusinessWorkspace;
   goal: string;
+  teamId?: string;
   assignmentPlan: BusinessAssignmentPlan;
   contractDraft?: BusinessContractDraft;
 }
@@ -45,7 +48,10 @@ function buildSurfaceRuns(
       verificationResults: [],
       branchName: undefined,
       commitMessage: undefined,
-      commitSha: undefined
+      commitSha: undefined,
+      riskSummary: surface && surface.allowedPaths.length === 0
+        ? "no allowedPaths; nothing will be committed for this surface"
+        : undefined
     };
   });
 }
@@ -58,12 +64,12 @@ export function createRunFromAssignment(
   if (input.assignmentPlan.surfaces.length === 0) {
     return { ok: false, errors: ["assignment plan has no surfaces"] };
   }
-  const surfaceRuns = buildSurfaceRuns(input.assignmentPlan, input.workspaceSnapshot);
+  const surfaceRuns = buildSurfaceRuns(input.assignmentPlan, input.workspace);
   const now = new Date().toISOString();
   const run: BusinessRequirementRun = {
     id: nanoid(),
-    workspaceId: input.workspaceId,
-    workspaceSnapshot: input.workspaceSnapshot,
+    workspaceId: input.workspace.id,
+    workspaceSnapshot: input.workspace,
     teamId: input.teamId,
     goal: input.goal,
     status: "running",
@@ -100,74 +106,27 @@ function resolveAgent(agentId: string) {
   };
 }
 
-export function runVerifyCommand(
-  cwd: string,
-  command: string
-): Promise<BusinessVerificationResult> {
-  const startedAt = new Date().toISOString();
-  return new Promise((resolve) => {
-    const child = spawn(command, {
-      cwd,
-      shell: true
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on("error", (err) => {
-      resolve({
-        command,
-        cwd,
-        status: "failed",
-        summary: `failed to start: ${err.message}`,
-        startedAt,
-        endedAt: new Date().toISOString()
-      });
-    });
-    child.on("close", (code) => {
-      const tail = (stdout || stderr).trim().slice(-240);
-      resolve({
-        command,
-        cwd,
-        status: code === 0 ? "passed" : "failed",
-        exitCode: code ?? undefined,
-        summary: tail || `exit ${code}`,
-        startedAt,
-        endedAt: new Date().toISOString()
-      });
-    });
-  });
-}
-
-export function ensureCleanRepo(repoPath: string): Promise<{ ok: boolean; summary: string }> {
-  return new Promise((resolve) => {
-    const child = spawn("git status --porcelain", {
-      cwd: repoPath,
-      shell: true
-    });
-    let stdout = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.on("error", () => {
-      resolve({ ok: false, summary: "git not available" });
-    });
-    child.on("close", (code) => {
-      if (code !== 0) {
-        resolve({ ok: false, summary: `git status exited ${code}` });
-        return;
-      }
-      const dirty = stdout.trim().length > 0;
-      resolve({
-        ok: !dirty,
-        summary: dirty ? "repo has uncommitted changes" : "clean"
-      });
-    });
-  });
+function renderContract(contract: BusinessContractDraft): string {
+  const endpoints = contract.endpoints
+    .map(
+      (e) =>
+        `  ${e.method} ${e.path}\n    request: ${e.request}\n    response: ${e.response}\n    errors: ${e.errors.join(", ")}`
+    )
+    .join("\n");
+  return [
+    `Contract: ${contract.title}`,
+    `Providers: ${contract.providerSurfaceIds.join(", ") || "(none)"}`,
+    `Consumers: ${contract.consumerSurfaceIds.join(", ") || "(none)"}`,
+    endpoints ? `Endpoints:\n${endpoints}` : "",
+    contract.dataRules.length
+      ? `Data rules:\n${contract.dataRules.map((r) => `  - ${r}`).join("\n")}`
+      : "",
+    contract.permissionRules.length
+      ? `Permission rules:\n${contract.permissionRules.map((r) => `  - ${r}`).join("\n")}`
+      : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildPrompt(
@@ -178,15 +137,36 @@ function buildPrompt(
     (s) => s.surfaceId === surfaceRun.surfaceId
   );
   const tasks = planItem?.tasks ?? [];
+  const surface = run.workspaceSnapshot.surfaces.find(
+    (s) => s.id === surfaceRun.surfaceId
+  );
+  const allowed = surface?.allowedPaths ?? [];
+  const scope = allowed.length
+    ? `STRICT SCOPE: only modify files under these relative paths: ${allowed.join(", ")}. Do not touch anything outside this list.`
+    : "STRICT SCOPE: this surface has no allowedPaths declared; do not modify any files unless explicitly approved.";
   const contractNote = run.contractDraft
-    ? `\nContract context: ${run.contractDraft.title} (providers: ${run.contractDraft.providerSurfaceIds.join(", ")}; consumers: ${run.contractDraft.consumerSurfaceIds.join(", ")}).`
+    ? `\n${renderContract(run.contractDraft)}\n`
     : "";
   return [
     `Business goal: ${run.goal}`,
     `Surface: ${surfaceRun.surfaceId}`,
+    scope,
     ...tasks.map((task) => `- ${task}`),
     contractNote
   ].join("\n");
+}
+
+function updateSurfaceRun(
+  runId: string,
+  surfaceRunId: string,
+  patch: Partial<BusinessSurfaceRun>,
+  fallbackRuns: BusinessSurfaceRun[]
+) {
+  const current = getBusinessRequirementRun(runId);
+  const runs = (current?.surfaceRuns ?? fallbackRuns).map((sr) =>
+    sr.id === surfaceRunId ? { ...sr, ...patch } : sr
+  );
+  updateBusinessRequirementRun(runId, { surfaceRuns: runs });
 }
 
 export async function startBusinessRun(
@@ -223,25 +203,30 @@ export async function startBusinessRun(
     }
   }
 
-  for (const surfaceRun of run.surfaceRuns) {
+  const order = run.assignmentPlan
+    ? surfaceDependencyOrder(run.assignmentPlan)
+    : run.surfaceRuns.map((s) => s.surfaceId);
+
+  for (const surfaceId of order) {
+    const surfaceRun = run.surfaceRuns.find((s) => s.surfaceId === surfaceId);
+    if (!surfaceRun) continue;
+
     const agent = resolveAgent(surfaceRun.agentId);
     if (!agent) {
-      updateBusinessRequirementRun(runId, {
-        status: "failed",
-        surfaceRuns: run.surfaceRuns.map((sr) =>
-          sr.id === surfaceRun.id
-            ? { ...sr, status: "failed", riskSummary: `unknown agent ${surfaceRun.agentId}` }
-            : sr
-        )
-      });
+      updateSurfaceRun(
+        runId,
+        surfaceRun.id,
+        {
+          status: "failed",
+          riskSummary: `unknown agent ${surfaceRun.agentId}`
+        },
+        run.surfaceRuns
+      );
+      updateBusinessRequirementRun(runId, { status: "failed" });
       return { ok: false, errors: [`unknown agent: ${surfaceRun.agentId}`] };
     }
 
-    updateBusinessRequirementRun(runId, {
-      surfaceRuns: run.surfaceRuns.map((sr) =>
-        sr.id === surfaceRun.id ? { ...sr, status: "running" } : sr
-      )
-    });
+    updateSurfaceRun(runId, surfaceRun.id, { status: "running" }, run.surfaceRuns);
 
     const args: CliRunArgs = {
       sessionId: `${runId}:${surfaceRun.surfaceId}`,
@@ -255,25 +240,19 @@ export async function startBusinessRun(
       approvalMode: "ask"
     };
 
-    const latestBefore = getBusinessRequirementRun(runId);
-    const currentRuns = (latestBefore ?? run).surfaceRuns;
     try {
       await cliRun(webContents, args);
-      const verifyingRuns = currentRuns.map((sr) =>
-        sr.id === surfaceRun.id ? { ...sr, status: "verifying" as const } : sr
-      );
-      updateBusinessRequirementRun(runId, { surfaceRuns: verifyingRuns });
     } catch (e) {
-      const failedRuns = currentRuns.map((sr) =>
-        sr.id === surfaceRun.id
-          ? {
-              ...sr,
-              status: "failed" as const,
-              riskSummary: e instanceof Error ? e.message : String(e)
-            }
-          : sr
+      updateSurfaceRun(
+        runId,
+        surfaceRun.id,
+        {
+          status: "failed",
+          riskSummary: e instanceof Error ? e.message : String(e)
+        },
+        run.surfaceRuns
       );
-      updateBusinessRequirementRun(runId, { status: "failed", surfaceRuns: failedRuns });
+      updateBusinessRequirementRun(runId, { status: "failed" });
       return {
         ok: false,
         errors: [
@@ -281,6 +260,8 @@ export async function startBusinessRun(
         ]
       };
     }
+
+    updateSurfaceRun(runId, surfaceRun.id, { status: "verifying" }, run.surfaceRuns);
 
     const planItem = run.assignmentPlan?.surfaces.find(
       (s) => s.surfaceId === surfaceRun.surfaceId
@@ -302,23 +283,30 @@ export async function startBusinessRun(
       verificationResults.push(result);
     }
 
-    const verifyingRun = getBusinessRequirementRun(runId);
-    const runsAfterVerify = (verifyingRun ?? run).surfaceRuns.map((sr) =>
-      sr.id === surfaceRun.id
-        ? {
-            ...sr,
-            status: "done" as const,
-            verificationResults,
-            diffSummary: sr.diffSummary
-          }
-        : sr
+    const anyVerifyFailed = verificationResults.some((v) => v.status === "failed");
+    updateSurfaceRun(
+      runId,
+      surfaceRun.id,
+      {
+        status: anyVerifyFailed ? "failed" : "done",
+        verificationResults,
+        riskSummary: anyVerifyFailed
+          ? "verification failed"
+          : surfaceRun.riskSummary
+      },
+      run.surfaceRuns
     );
-    updateBusinessRequirementRun(runId, { surfaceRuns: runsAfterVerify });
+    if (anyVerifyFailed) {
+      updateBusinessRequirementRun(runId, { status: "failed" });
+      return {
+        ok: false,
+        errors: [`surface ${surfaceRun.surfaceId} verification failed`]
+      };
+    }
   }
 
-  const finished = getBusinessRequirementRun(runId);
   const finalRun = updateBusinessRequirementRun(runId, {
     status: "awaiting_commit_approval"
   });
-  return { ok: true, run: finalRun ?? (finished as BusinessRequirementRun) };
+  return { ok: true, run: finalRun ?? run };
 }

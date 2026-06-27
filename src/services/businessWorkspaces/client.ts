@@ -34,14 +34,7 @@ export const businessWorkspacesClient = {
   previewAssignment(input: { workspaceId: string; goal: string }) {
     return api().previewAssignment(input);
   },
-  createRun(input: {
-    workspaceId: string;
-    workspaceSnapshot: BusinessWorkspace;
-    teamId?: string;
-    goal: string;
-    assignmentPlan: BusinessAssignmentPlan;
-    contractDraft?: BusinessContractDraft;
-  }) {
+  createRun(input: { workspaceId: string; goal: string; teamId?: string }) {
     return api().createRun(input);
   },
   startRun(runId: string) {

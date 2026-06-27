@@ -4,8 +4,7 @@ import type {
   BusinessAssignmentPlan,
   BusinessCommitGate,
   BusinessContractDraft,
-  BusinessRequirementRun,
-  BusinessWorkspace
+  BusinessRequirementRun
 } from "@/services/businessWorkspaces/types";
 
 interface State {
@@ -17,15 +16,15 @@ interface State {
   clearPreview(): void;
   approveAndStart(input: {
     workspaceId: string;
-    workspaceSnapshot: BusinessWorkspace;
-    teamId?: string;
     goal: string;
-    assignmentPlan: BusinessAssignmentPlan;
-    contractDraft?: BusinessContractDraft;
+    teamId?: string;
   }): Promise<boolean>;
   refreshActiveRun(runId: string): Promise<void>;
   previewCommitGate(runId: string): Promise<void>;
-  approveCommitGate(runId: string): Promise<boolean>;
+  approveCommitGate(
+    runId: string,
+    patch?: { allowCommitWithFailures?: boolean }
+  ): Promise<boolean>;
   clearActiveRun(): void;
 }
 
@@ -85,8 +84,11 @@ export const useBusinessRequirementRunStore = create<State>((set) => ({
       set({ pendingErrors: res.errors });
     }
   },
-  async approveCommitGate(runId) {
-    const res = await businessWorkspacesClient.approveCommitGate({ runId });
+  async approveCommitGate(runId, patch) {
+    const res = await businessWorkspacesClient.approveCommitGate({
+      runId,
+      patch: patch ?? {}
+    });
     if (!res.ok) {
       set({ pendingErrors: res.errors });
       return false;

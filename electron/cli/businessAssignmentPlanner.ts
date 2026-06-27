@@ -38,7 +38,7 @@ export function previewBusinessAssignment(
         needsContractDraft && !providerIds.has(surface.id)
           ? providers.map((provider) => provider.id)
           : [],
-      writes: surface.allowedPaths.length >= 0,
+      writes: surface.allowedPaths.length > 0,
       verifyCommands: surface.verifyCommands
     })),
     dependencies: needsContractDraft

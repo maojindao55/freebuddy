@@ -5,12 +5,14 @@ import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
+import { BusinessWorkspacesTab } from "./BusinessWorkspacesTab";
 
-type SettingsTab = "general" | "cli" | "workflowTeams" | "about";
+type SettingsTab = "general" | "cli" | "workflowTeams" | "businessWorkspaces" | "about";
 
 const TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
+  { key: "businessWorkspaces", labelKey: "settings.tabs.businessWorkspaces" },
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "about", labelKey: "settings.tabs.about" }
 ];
@@ -48,6 +50,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </SettingsTabErrorBoundary>
             )}
             {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
+            {activeTab === "businessWorkspaces" && <BusinessWorkspacesTab />}
             {activeTab === "about" && <AboutTab />}
           </div>
         </div>

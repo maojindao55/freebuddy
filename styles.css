@@ -6991,3 +6991,43 @@ button.ghost:focus-visible,
   font-size: 9px;
   flex: none;
 }
+
+.business-workspace-list,
+.business-workspace-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.business-workspace-card,
+.business-surface-row {
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--fb-surface);
+}
+
+.business-surface-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.business-workspace-surfaces {
+  display: grid;
+  gap: 10px;
+}
+
+.business-surface-repo {
+  display: flex;
+  gap: 6px;
+}
+
+.business-surface-repo input {
+  flex: 1;
+}
+
+.business-surface-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}

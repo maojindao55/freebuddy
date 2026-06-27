@@ -255,6 +255,7 @@
       "general": "General",
       "cli": "CLI Agents",
       "workflowTeams": "Workflow Teams",
+      "businessWorkspaces": "Business Workspaces",
       "about": "About"
     },
     "cli": {
@@ -515,5 +516,21 @@
     "manualFallbackPlaceholder": "or enter a URL / README.md / data.json / image.png / file.pdf…",
     "emptyNoWorkspace": "No workspace selected. Pick a working directory to preview the agent's output.",
     "emptyNoEntry": "No preview yet. Ask the agent to start a dev server, create a page, write a Markdown doc, or generate an image, then it will open here automatically."
+  },
+  "business": {
+    "workspaceList": "Business workspaces",
+    "workspaceHint": "Group related repositories and assign agents per surface.",
+    "newWorkspace": "New workspace",
+    "workspaceName": "Workspace name",
+    "surface": "Surface",
+    "surfaces": "Surfaces",
+    "repoPath": "Repository path",
+    "defaultAgent": "Default agent",
+    "allowedPaths": "Allowed paths",
+    "verifyCommands": "Verification commands",
+    "responsibilities": "Responsibilities",
+    "contractRole": "Contract role",
+    "noWorkspaces": "No business workspaces yet",
+    "confirmDeleteWorkspace": "Delete this business workspace?"
   }
 }

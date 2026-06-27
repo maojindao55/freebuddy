@@ -274,6 +274,7 @@ declare global {
           commitMessage?: string;
         }>;
         allowCommitWithFailures?: boolean;
+        allowOutOfScope?: boolean;
       };
     }): Promise<
       | { ok: true; run: BusinessRequirementRun }

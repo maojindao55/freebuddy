@@ -23,8 +23,12 @@ interface State {
   previewCommitGate(runId: string): Promise<void>;
   approveCommitGate(
     runId: string,
-    patch?: { allowCommitWithFailures?: boolean }
+    patch?: {
+      allowCommitWithFailures?: boolean;
+      allowOutOfScope?: boolean;
+    }
   ): Promise<boolean>;
+  clearErrors(): void;
   clearActiveRun(): void;
 }
 
@@ -79,7 +83,7 @@ export const useBusinessRequirementRunStore = create<State>((set) => ({
     const res = await businessWorkspacesClient.previewCommitGate(runId);
     if (res.ok) {
       const run = await businessWorkspacesClient.getRun(runId);
-      if (run) set({ activeRun: run });
+      if (run) set({ activeRun: run, pendingErrors: [] });
     } else {
       set({ pendingErrors: res.errors });
     }
@@ -93,8 +97,11 @@ export const useBusinessRequirementRunStore = create<State>((set) => ({
       set({ pendingErrors: res.errors });
       return false;
     }
-    set({ activeRun: res.run });
+    set({ activeRun: res.run, pendingErrors: [] });
     return true;
+  },
+  clearErrors() {
+    set({ pendingErrors: [] });
   },
   clearActiveRun() {
     set({ activeRun: null });

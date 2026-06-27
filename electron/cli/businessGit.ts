@@ -97,6 +97,46 @@ export function filterFilesByAllowedPaths(
   });
 }
 
+export function computeOutOfScopeFiles(
+  allChanged: string[],
+  allowedPaths: string[]
+): string[] {
+  const inScope = new Set(filterFilesByAllowedPaths(allChanged, allowedPaths));
+  return allChanged.filter((f) => !inScope.has(f));
+}
+
+export interface CommitApprovalRepo {
+  outOfScopeFiles: string[];
+  verificationResults: { status: string }[];
+}
+
+export function evaluateCommitApproval(args: {
+  repositories: CommitApprovalRepo[];
+  allowCommitWithFailures: boolean;
+  allowOutOfScope: boolean;
+}): { ok: boolean; reason?: string } {
+  const outOfScopeTotal = args.repositories.reduce(
+    (n, r) => n + r.outOfScopeFiles.length,
+    0
+  );
+  if (outOfScopeTotal > 0 && !args.allowOutOfScope) {
+    return {
+      ok: false,
+      reason: `${outOfScopeTotal} out-of-scope file(s) present; review them, then force through or resolve manually before committing`
+    };
+  }
+  const anyVerifyFailed = args.repositories.some((r) =>
+    r.verificationResults.some((v) => v.status === "failed")
+  );
+  if (anyVerifyFailed && !args.allowCommitWithFailures) {
+    return {
+      ok: false,
+      reason: "verification failed; enable allowCommitWithFailures to commit anyway"
+    };
+  }
+  return { ok: true };
+}
+
 export async function ensureCleanRepo(
   repoPath: string
 ): Promise<{ ok: boolean; summary: string }> {

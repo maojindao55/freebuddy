@@ -117,6 +117,7 @@ export interface BusinessCommitGate {
     branchName: string;
     commitMessage: string;
     diffFiles: string[];
+    outOfScopeFiles: string[];
     diffSummary: string;
     verificationResults: BusinessVerificationResult[];
     risks: string[];

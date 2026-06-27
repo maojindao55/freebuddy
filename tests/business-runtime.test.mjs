@@ -52,6 +52,10 @@ test("business commit gate delegates git operations to the parametric businessGi
   assert.doesNotMatch(gate, /shell:\s*true/);
   assert.match(gate, /from "\.\/businessGit\.js"/);
   assert.match(gate, /filterFilesByAllowedPaths/);
+  // Out-of-scope changes are surfaced and block approval unless explicitly forced.
+  assert.match(gate, /computeOutOfScopeFiles/);
+  assert.match(gate, /evaluateCommitApproval/);
+  assert.match(gate, /allowOutOfScope/);
   // businessGit uses execFile with arg arrays for git ops (no shell). Note:
   // runVerifyCommand intentionally uses shell:true for user-authored commands.
   assert.match(git, /execFile/);

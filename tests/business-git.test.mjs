@@ -107,6 +107,56 @@ test("filterFilesByAllowedPaths does not match sibling prefixes", () => {
   assert.deepEqual(filtered, ["src/x.ts"]);
 });
 
+test("computeOutOfScopeFiles returns the complement of allowedPaths", () => {
+  const all = ["src/a.ts", "src/b.ts", "README.md", "other/c.ts"];
+  const out = mod.computeOutOfScopeFiles(all, ["src"]).sort();
+  assert.deepEqual(out, ["README.md", "other/c.ts"].sort());
+
+  const none = mod.computeOutOfScopeFiles(all, []);
+  assert.deepEqual(none.sort(), all.sort());
+});
+
+test("evaluateCommitApproval blocks on out-of-scope changes unless allowed", () => {
+  const repos = [
+    { outOfScopeFiles: ["x.ts", "y.ts"], verificationResults: [] },
+    { outOfScopeFiles: [], verificationResults: [{ status: "passed" }] }
+  ];
+  const blocked = mod.evaluateCommitApproval({
+    repositories: repos,
+    allowCommitWithFailures: false,
+    allowOutOfScope: false
+  });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason, /out-of-scope/);
+
+  const forced = mod.evaluateCommitApproval({
+    repositories: repos,
+    allowCommitWithFailures: false,
+    allowOutOfScope: true
+  });
+  assert.equal(forced.ok, true);
+});
+
+test("evaluateCommitApproval blocks on verification failure unless allowed", () => {
+  const repos = [
+    { outOfScopeFiles: [], verificationResults: [{ status: "failed" }] }
+  ];
+  const blocked = mod.evaluateCommitApproval({
+    repositories: repos,
+    allowCommitWithFailures: false,
+    allowOutOfScope: true
+  });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason, /verification failed/);
+
+  const allowed = mod.evaluateCommitApproval({
+    repositories: repos,
+    allowCommitWithFailures: true,
+    allowOutOfScope: true
+  });
+  assert.equal(allowed.ok, true);
+});
+
 test("orderSurfacesByDependency puts providers before consumers", () => {
   const ordered = mod.orderSurfacesByDependency([
     { surfaceId: "client", dependsOnSurfaceIds: ["server"] },

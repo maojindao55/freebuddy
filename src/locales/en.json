@@ -6,6 +6,7 @@
     "delete": "Delete",
     "save": "Save",
     "reset": "Reset",
+    "dismiss": "Dismiss",
     "edit": "Edit",
     "check": "Check",
     "install": "Install",
@@ -541,6 +542,10 @@
     "commitMessage": "Commit message",
     "diffFiles": "Changed files",
     "allowFailures": "Allow commit with failures",
+    "allowOutOfScope": "Force through out-of-scope changes",
+    "outOfScope": "Out-of-scope files (not committed)",
+    "outOfScopeHint": "These changes will remain uncommitted in the working tree. Resolve them manually or tick 'Force through' to complete anyway.",
+    "outOfScopeBlockHint": "Review out-of-scope files first, then tick 'Force through'",
     "approveCommit": "Approve commit",
     "runStatus": "Business run"
   }

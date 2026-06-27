@@ -7126,6 +7126,30 @@ button.ghost:focus-visible,
   gap: 8px;
 }
 
+.business-commit-gate-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.business-commit-gate-errors {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--fb-surface);
+}
+
+.business-commit-gate-outofscope ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+button.small {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
 .business-surface-run-panel .business-surface-runs {
   display: grid;
   gap: 6px;

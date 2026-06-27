@@ -58,6 +58,7 @@ export const businessWorkspacesClient = {
         commitMessage?: string;
       }>;
       allowCommitWithFailures?: boolean;
+      allowOutOfScope?: boolean;
     };
   }) {
     return api().approveCommitGate(args) as Promise<

@@ -14,6 +14,7 @@ export function BusinessSurfaceRunPanel() {
   const previewCommitGate = useBusinessRequirementRunStore((s) => s.previewCommitGate);
   const approveCommitGate = useBusinessRequirementRunStore((s) => s.approveCommitGate);
   const clearActiveRun = useBusinessRequirementRunStore((s) => s.clearActiveRun);
+  const clearErrors = useBusinessRequirementRunStore((s) => s.clearErrors);
   const errors = useBusinessRequirementRunStore((s) => s.pendingErrors);
   const previewedFor = useRef<string | null>(null);
 
@@ -85,8 +86,11 @@ export function BusinessSurfaceRunPanel() {
         <BusinessCommitGateCard
           commitGate={run.commitGate ?? null}
           errors={errors}
-          onApprove={(allowFailures) => void approveCommitGate(run.id, { allowCommitWithFailures: allowFailures })}
+          onApprove={(opts) =>
+            void approveCommitGate(run.id, opts)
+          }
           onCancel={() => clearActiveRun()}
+          onClearErrors={() => clearErrors()}
         />
       )}
     </section>

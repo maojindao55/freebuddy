@@ -5,9 +5,11 @@ import {
   updateBusinessRequirementRun
 } from "./businessRequirementRuns.js";
 import {
+  computeOutOfScopeFiles,
   createBranch,
   commitFiles,
   diffStat,
+  evaluateCommitApproval,
   filterFilesByAllowedPaths,
   headSha,
   listChangedFiles,
@@ -46,13 +48,15 @@ export async function previewBusinessCommitGate(
         diffSummary = await diffStat(surfaceRun.repoPath);
       }
       const diffFiles = filterFilesByAllowedPaths(allChanged, allowedPaths);
+      const outOfScopeFiles = computeOutOfScopeFiles(allChanged, allowedPaths);
 
       const risks: string[] = [];
       if (allowedPaths.length === 0 && allChanged.length > 0) {
         risks.push("no allowedPaths configured; no files will be committed");
-      } else if (allChanged.length > diffFiles.length) {
+      }
+      if (outOfScopeFiles.length > 0) {
         risks.push(
-          `${allChanged.length - diffFiles.length} file(s) outside allowedPaths excluded from commit`
+          `${outOfScopeFiles.length} out-of-scope file(s) will NOT be committed and require a decision`
         );
       }
       const failed = surfaceRun.verificationResults.filter(
@@ -71,6 +75,7 @@ export async function previewBusinessCommitGate(
         branchName,
         commitMessage: `${run.goal} (${surfaceRun.surfaceId})`,
         diffFiles,
+        outOfScopeFiles,
         diffSummary,
         verificationResults: surfaceRun.verificationResults,
         risks,
@@ -79,20 +84,65 @@ export async function previewBusinessCommitGate(
     })
   );
 
-  const anyFailed = repositories.some((r) =>
-    r.verificationResults.some((v) => v.status === "failed")
-  );
-
   return {
     status: "pending",
     repositories,
-    contractConsistency: {
-      status: anyFailed ? "failed" : "passed",
-      summary: anyFailed
-        ? "one or more surfaces failed verification"
-        : "all surfaces verified successfully"
-    },
+    contractConsistency: assessContractConsistency(run),
     allowCommitWithFailures
+  };
+}
+
+function assessContractConsistency(run: BusinessRequirementRun): {
+  status: "passed" | "failed" | "unknown";
+  summary: string;
+} {
+  // Structural check only: confirm every provider/consumer surface reached
+  // `done`, and that a contract draft with at least one endpoint exists when
+  // providers and consumers coexist. A semantic cross-repo interface
+  // comparison (field/permission diff) is not implemented in this MVP.
+  const surfaces = run.workspaceSnapshot.surfaces;
+  const providerIds = new Set(
+    surfaces
+      .filter((s) => s.contractRole === "provider" || s.contractRole === "both")
+      .map((s) => s.id)
+  );
+  const consumerIds = new Set(
+    surfaces
+      .filter((s) => s.contractRole === "consumer" || s.contractRole === "both")
+      .map((s) => s.id)
+  );
+  const needsContract = providerIds.size > 0 && consumerIds.size > 0;
+
+  if (!needsContract) {
+    return {
+      status: "passed",
+      summary: "no provider/consumer contract pair; consistency check skipped"
+    };
+  }
+
+  const incomplete = run.surfaceRuns.filter((sr) => {
+    const isParty = providerIds.has(sr.surfaceId) || consumerIds.has(sr.surfaceId);
+    return isParty && sr.status !== "done";
+  });
+  if (incomplete.length > 0) {
+    return {
+      status: "failed",
+      summary: `${incomplete.length} contract party surface(s) did not reach done`
+    };
+  }
+
+  const endpoints = run.contractDraft?.endpoints.length ?? 0;
+  if (endpoints === 0) {
+    return {
+      status: "failed",
+      summary: "contract draft has no endpoints defined"
+    };
+  }
+
+  return {
+    status: "passed",
+    summary:
+      "structural check passed (all parties done, endpoints declared); semantic interface comparison not implemented"
   };
 }
 
@@ -103,6 +153,7 @@ export type CommitGatePatch = {
     commitMessage?: string;
   }>;
   allowCommitWithFailures?: boolean;
+  allowOutOfScope?: boolean;
 };
 
 function applyPatch(
@@ -142,17 +193,14 @@ export async function approveBusinessCommitGate(
 
   const preview = applyPatch(await previewBusinessCommitGate(run), patch);
 
-  if (!preview.allowCommitWithFailures) {
-    const failedRepo = preview.repositories.find((r) =>
-      r.verificationResults.some((v) => v.status === "failed")
-    );
-    if (failedRepo) {
-      updateBusinessRequirementRun(runId, { commitGate: { ...preview, status: "rejected" } });
-      return {
-        ok: false,
-        errors: ["verification failed; enable allowCommitWithFailures to commit anyway"]
-      };
-    }
+  const approval = evaluateCommitApproval({
+    repositories: preview.repositories,
+    allowCommitWithFailures: preview.allowCommitWithFailures,
+    allowOutOfScope: patch.allowOutOfScope ?? false
+  });
+  if (!approval.ok) {
+    updateBusinessRequirementRun(runId, { commitGate: { ...preview, status: "rejected" } });
+    return { ok: false, errors: [approval.reason ?? "commit blocked"] };
   }
 
   const committed: BusinessCommitGate = {
@@ -203,6 +251,16 @@ export async function approveBusinessCommitGate(
   }
 
   committed.status = "committed";
+  for (const repo of committed.repositories) {
+    if (repo.outOfScopeFiles.length === 0) continue;
+    const idx = surfaceRuns.findIndex((sr) => sr.surfaceId === repo.surfaceId);
+    if (idx >= 0) {
+      surfaceRuns[idx] = {
+        ...surfaceRuns[idx],
+        riskSummary: `${repo.outOfScopeFiles.length} out-of-scope file(s) left uncommitted (force-approved): ${repo.outOfScopeFiles.join(", ")}`
+      };
+    }
+  }
   const finalRun = updateBusinessRequirementRun(runId, {
     status: "done",
     commitGate: committed,

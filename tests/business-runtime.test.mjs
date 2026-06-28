@@ -4,18 +4,26 @@ import fs from "node:fs";
 
 const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 
-test("business runtime uses surface repoPath as cwd, runs in dependency waves, and fails on verify failure", () => {
+test("business runtime core runs in dependency waves and fails on verify failure", () => {
+  const core = read("../electron/cli/businessRuntimeCore.ts");
+  assert.match(core, /cwd: surfaceRun\.repoPath/);
+  assert.match(core, /requireCleanRepoBeforeRun/);
+  assert.match(core, /verifyCommands/);
+  assert.match(core, /groupSurfacesByLevel/);
+  assert.match(core, /executeSurfaceWaves/);
+  assert.match(core, /applySurfacePatch/);
+  assert.match(core, /anyVerifyFailed/);
+  assert.match(core, /status: anyVerifyFailed \? "failed" : "done"/);
+  assert.match(core, /STRICT SCOPE/);
+  assert.match(core, /allowedPaths/);
+});
+
+test("electron runtime module is a thin wrapper over the injectable core", () => {
   const runtime = read("../electron/cli/businessRequirementRuntime.ts");
-  assert.match(runtime, /cwd: surfaceRun\.repoPath/);
-  assert.match(runtime, /requireCleanRepoBeforeRun/);
-  assert.match(runtime, /verifyCommands/);
-  assert.match(runtime, /groupSurfacesByLevel/);
-  assert.match(runtime, /executeSurfaceWaves/);
-  assert.match(runtime, /applySurfacePatch/);
-  assert.match(runtime, /anyVerifyFailed/);
-  assert.match(runtime, /status: anyVerifyFailed \? "failed" : "done"/);
-  assert.match(runtime, /STRICT SCOPE/);
-  assert.match(runtime, /allowedPaths/);
+  assert.match(runtime, /from "\.\/businessRuntimeCore\.js"/);
+  assert.match(runtime, /startBusinessRunCore/);
+  assert.match(runtime, /patchSurfaceRuns/);
+  assert.match(runtime, /setStatus/);
 });
 
 test("business requirement IPC exposes approve and start lifecycle", () => {

@@ -1,28 +1,19 @@
-import path from "node:path";
 import type { WebContents } from "electron";
 import { nanoid } from "nanoid";
 
+import { insertBusinessRequirementRun } from "./businessRequirementRuns.js";
+import { ensureCleanRepo, runVerifyCommand } from "./businessGit.js";
+import { getBusinessRequirementRun, updateBusinessRequirementRun } from "./businessRequirementRuns.js";
 import { cliRun } from "./runtime.js";
-import type { CliRunArgs } from "./runtimeShared.js";
-import { builtinCliMembers } from "./members.js";
 import {
-  getBusinessRequirementRun,
-  insertBusinessRequirementRun,
-  updateBusinessRequirementRun
-} from "./businessRequirementRuns.js";
-import {
-  applySurfacePatch,
-  ensureCleanRepo,
-  executeSurfaceWaves,
-  groupSurfacesByLevel,
-  runVerifyCommand
-} from "./businessGit.js";
+  startBusinessRunCore,
+  type BusinessRunDeps
+} from "./businessRuntimeCore.js";
 import type {
   BusinessAssignmentPlan,
   BusinessContractDraft,
   BusinessRequirementRun,
   BusinessSurfaceRun,
-  BusinessVerificationResult,
   BusinessWorkspace
 } from "./businessWorkspaceTypes.js";
 
@@ -51,9 +42,10 @@ function buildSurfaceRuns(
       branchName: undefined,
       commitMessage: undefined,
       commitSha: undefined,
-      riskSummary: surface && surface.allowedPaths.length === 0
-        ? "no allowedPaths; nothing will be committed for this surface"
-        : undefined
+      riskSummary:
+        surface && surface.allowedPaths.length === 0
+          ? "no allowedPaths; nothing will be committed for this surface"
+          : undefined
     };
   });
 }
@@ -97,82 +89,6 @@ export function createRunFromAssignment(
   return { ok: true, run: inserted };
 }
 
-function resolveAgent(agentId: string) {
-  const member = builtinCliMembers.find((m) => m.id === agentId);
-  if (!member) return undefined;
-  return {
-    adapter: member.cli.adapter,
-    agentName: member.name,
-    binary: member.cli.binary,
-    extraArgs: member.cli.extraArgs
-  };
-}
-
-function renderContract(contract: BusinessContractDraft): string {
-  const endpoints = contract.endpoints
-    .map(
-      (e) =>
-        `  ${e.method} ${e.path}\n    request: ${e.request}\n    response: ${e.response}\n    errors: ${e.errors.join(", ")}`
-    )
-    .join("\n");
-  return [
-    `Contract: ${contract.title}`,
-    `Providers: ${contract.providerSurfaceIds.join(", ") || "(none)"}`,
-    `Consumers: ${contract.consumerSurfaceIds.join(", ") || "(none)"}`,
-    endpoints ? `Endpoints:\n${endpoints}` : "",
-    contract.dataRules.length
-      ? `Data rules:\n${contract.dataRules.map((r) => `  - ${r}`).join("\n")}`
-      : "",
-    contract.permissionRules.length
-      ? `Permission rules:\n${contract.permissionRules.map((r) => `  - ${r}`).join("\n")}`
-      : ""
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function buildPrompt(
-  run: BusinessRequirementRun,
-  surfaceRun: BusinessSurfaceRun
-): string {
-  const planItem = run.assignmentPlan?.surfaces.find(
-    (s) => s.surfaceId === surfaceRun.surfaceId
-  );
-  const tasks = planItem?.tasks ?? [];
-  const surface = run.workspaceSnapshot.surfaces.find(
-    (s) => s.id === surfaceRun.surfaceId
-  );
-  const allowed = surface?.allowedPaths ?? [];
-  const scope = allowed.length
-    ? `STRICT SCOPE: only modify files under these relative paths: ${allowed.join(", ")}. Do not touch anything outside this list.`
-    : "STRICT SCOPE: this surface has no allowedPaths declared; do not modify any files unless explicitly approved.";
-  const contractNote = run.contractDraft
-    ? `\n${renderContract(run.contractDraft)}\n`
-    : "";
-  return [
-    `Business goal: ${run.goal}`,
-    `Surface: ${surfaceRun.surfaceId}`,
-    scope,
-    ...tasks.map((task) => `- ${task}`),
-    contractNote
-  ].join("\n");
-}
-
-function updateSurfaceRun(
-  runId: string,
-  surfaceRunId: string,
-  patch: Partial<BusinessSurfaceRun>,
-  fallbackRuns: BusinessSurfaceRun[]
-) {
-  const current = getBusinessRequirementRun(runId);
-  const runs = applySurfacePatch(
-    current?.surfaceRuns ?? fallbackRuns,
-    surfaceRunId,
-    patch
-  );
-  updateBusinessRequirementRun(runId, { surfaceRuns: runs });
-}
-
 export async function startBusinessRun(
   webContents: WebContents,
   runId: string
@@ -183,135 +99,22 @@ export async function startBusinessRun(
   const run = getBusinessRequirementRun(runId);
   if (!run) return { ok: false, errors: ["run not found"] };
 
-  const policy = run.workspaceSnapshot.policy;
-  if (policy.requireCleanRepoBeforeRun) {
-    for (const surfaceRun of run.surfaceRuns) {
-      if (!path.isAbsolute(surfaceRun.repoPath)) continue;
-      const status = await ensureCleanRepo(surfaceRun.repoPath);
-      if (!status.ok) {
-        updateBusinessRequirementRun(runId, {
-          status: "failed",
-          surfaceRuns: run.surfaceRuns.map((sr) =>
-            sr.id === surfaceRun.id
-              ? { ...sr, status: "blocked", riskSummary: status.summary }
-              : sr
-          )
-        });
-        return {
-          ok: false,
-          errors: [
-            `surface ${surfaceRun.surfaceId} repo is not clean: ${status.summary}`
-          ]
-        };
-      }
+  const deps: BusinessRunDeps = {
+    cliRun: (args) => cliRun(webContents, args),
+    ensureCleanRepo,
+    runVerifyCommand,
+    patchSurfaceRuns: (updater) => {
+      const current = getBusinessRequirementRun(runId);
+      if (!current) return;
+      updateBusinessRequirementRun(runId, { surfaceRuns: updater(current.surfaceRuns) });
+    },
+    setStatus: (status) => {
+      updateBusinessRequirementRun(runId, { status });
     }
-  }
-
-  const items = run.surfaceRuns.map((sr) => ({
-    surfaceId: sr.surfaceId,
-    dependsOnSurfaceIds:
-      run.assignmentPlan?.surfaces.find((p) => p.surfaceId === sr.surfaceId)
-        ?.dependsOnSurfaceIds ?? [],
-    surfaceRun: sr
-  }));
-  const levels = groupSurfacesByLevel(items);
-
-  const runOneSurface = async (
-    surfaceRun: BusinessSurfaceRun
-  ): Promise<{ ok: true } | { ok: false; error: string }> => {
-    const agent = resolveAgent(surfaceRun.agentId);
-    if (!agent) {
-      updateSurfaceRun(
-        runId,
-        surfaceRun.id,
-        {
-          status: "failed",
-          riskSummary: `unknown agent ${surfaceRun.agentId}`
-        },
-        run.surfaceRuns
-      );
-      return { ok: false, error: `unknown agent: ${surfaceRun.agentId}` };
-    }
-
-    updateSurfaceRun(runId, surfaceRun.id, { status: "running" }, run.surfaceRuns);
-
-    const args: CliRunArgs = {
-      sessionId: `${runId}:${surfaceRun.surfaceId}`,
-      agentId: surfaceRun.agentId,
-      agentName: agent.agentName,
-      adapter: agent.adapter,
-      binary: agent.binary,
-      extraArgs: agent.extraArgs,
-      cwd: surfaceRun.repoPath,
-      prompt: buildPrompt(run, surfaceRun),
-      approvalMode: "ask"
-    };
-
-    try {
-      await cliRun(webContents, args);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      updateSurfaceRun(
-        runId,
-        surfaceRun.id,
-        { status: "failed", riskSummary: msg },
-        run.surfaceRuns
-      );
-      return { ok: false, error: `surface ${surfaceRun.surfaceId} failed: ${msg}` };
-    }
-
-    updateSurfaceRun(runId, surfaceRun.id, { status: "verifying" }, run.surfaceRuns);
-
-    const planItem = run.assignmentPlan?.surfaces.find(
-      (s) => s.surfaceId === surfaceRun.surfaceId
-    );
-    const verifyCommands = planItem?.verifyCommands ?? [];
-    const verificationResults: BusinessVerificationResult[] = [];
-    for (const command of verifyCommands) {
-      if (!command.trim()) continue;
-      if (!path.isAbsolute(surfaceRun.repoPath)) {
-        verificationResults.push({
-          command,
-          cwd: surfaceRun.repoPath,
-          status: "skipped",
-          summary: "repoPath is not absolute; verification skipped"
-        });
-        continue;
-      }
-      const result = await runVerifyCommand(surfaceRun.repoPath, command);
-      verificationResults.push(result);
-    }
-
-    const anyVerifyFailed = verificationResults.some((v) => v.status === "failed");
-    updateSurfaceRun(
-      runId,
-      surfaceRun.id,
-      {
-        status: anyVerifyFailed ? "failed" : "done",
-        verificationResults,
-        riskSummary: anyVerifyFailed ? "verification failed" : surfaceRun.riskSummary
-      },
-      run.surfaceRuns
-    );
-    return anyVerifyFailed
-      ? { ok: false, error: `surface ${surfaceRun.surfaceId} verification failed` }
-      : { ok: true };
   };
 
-  // Run surfaces in dependency waves: independent surfaces (e.g. separate
-  // client/server/admin repos with no dependency) execute concurrently within
-  // a wave; dependents wait for their providers' wave to finish.
-  const result = await executeSurfaceWaves({
-    levels: levels.map((level) => level.map((item) => item.surfaceRun)),
-    runSurface: runOneSurface
-  });
-  if (!result.ok) {
-    updateBusinessRequirementRun(runId, { status: "failed" });
-    return { ok: false, errors: result.errors };
-  }
-
-  const finalRun = updateBusinessRequirementRun(runId, {
-    status: "awaiting_commit_approval"
-  });
+  const result = await startBusinessRunCore(run, deps);
+  if (!result.ok) return result;
+  const finalRun = getBusinessRequirementRun(runId);
   return { ok: true, run: finalRun ?? run };
 }

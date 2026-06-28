@@ -7006,6 +7006,51 @@ button.ghost:focus-visible,
   background: var(--fb-surface);
 }
 
+.business-workspace-template-picker,
+.business-collaboration-list,
+.business-policy-grid,
+.business-repository-advanced {
+  display: grid;
+  gap: 10px;
+}
+
+.business-workspace-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.business-workspace-template {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px;
+  text-align: left;
+  align-content: start;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-bg);
+}
+
+.business-workspace-template:hover {
+  border-color: var(--fb-brand);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.business-workspace-template span {
+  color: var(--fb-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.business-surface-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .business-surface-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7030,6 +7075,20 @@ button.ghost:focus-visible,
   display: flex;
   justify-content: flex-end;
   margin-top: 6px;
+}
+
+.business-repository-advanced,
+.business-workspace-advanced {
+  border: 1px dashed var(--fb-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--fb-bg);
+}
+
+.business-repository-advanced summary,
+.business-workspace-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .business-assignment-preview {

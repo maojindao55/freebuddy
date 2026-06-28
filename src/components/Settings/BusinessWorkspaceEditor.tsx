@@ -22,6 +22,109 @@ const SURFACE_KINDS: BusinessSurfaceKind[] = [
 ];
 const CONTRACT_ROLES: ContractRole[] = ["provider", "consumer", "both", "none"];
 
+type WorkspaceTemplateId = "client-server-admin" | "client-server" | "single-repo" | "custom";
+
+interface WorkspaceTemplateSurface {
+  id: string;
+  nameKey: string;
+  kind: BusinessSurfaceKind;
+  allowedPaths: string[];
+  verifyCommands: string[];
+  responsibilities: string[];
+  contractRole: ContractRole;
+}
+
+interface WorkspaceTemplate {
+  id: WorkspaceTemplateId;
+  titleKey: string;
+  descKey: string;
+  surfaces: WorkspaceTemplateSurface[];
+}
+
+const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
+  {
+    id: "client-server-admin",
+    titleKey: "business.templateClientServerAdmin",
+    descKey: "business.templateClientServerAdminDesc",
+    surfaces: [
+      {
+        id: "client",
+        nameKey: "business.repoClient",
+        kind: "client",
+        allowedPaths: ["src", "app", "pages"],
+        verifyCommands: ["npm run build"],
+        responsibilities: ["UI", "API consumption"],
+        contractRole: "consumer"
+      },
+      {
+        id: "server",
+        nameKey: "business.repoServer",
+        kind: "server",
+        allowedPaths: ["src", "app", "routes", "database"],
+        verifyCommands: ["npm test"],
+        responsibilities: ["API", "business rules", "persistence"],
+        contractRole: "provider"
+      },
+      {
+        id: "admin",
+        nameKey: "business.repoAdmin",
+        kind: "admin",
+        allowedPaths: ["src", "app", "pages"],
+        verifyCommands: ["npm run build"],
+        responsibilities: ["Admin UI", "API consumption"],
+        contractRole: "consumer"
+      }
+    ]
+  },
+  {
+    id: "client-server",
+    titleKey: "business.templateClientServer",
+    descKey: "business.templateClientServerDesc",
+    surfaces: [
+      {
+        id: "client",
+        nameKey: "business.repoClient",
+        kind: "client",
+        allowedPaths: ["src", "app", "pages"],
+        verifyCommands: ["npm run build"],
+        responsibilities: ["UI", "API consumption"],
+        contractRole: "consumer"
+      },
+      {
+        id: "server",
+        nameKey: "business.repoServer",
+        kind: "server",
+        allowedPaths: ["src", "app", "routes", "database"],
+        verifyCommands: ["npm test"],
+        responsibilities: ["API", "business rules", "persistence"],
+        contractRole: "provider"
+      }
+    ]
+  },
+  {
+    id: "single-repo",
+    titleKey: "business.templateSingleRepo",
+    descKey: "business.templateSingleRepoDesc",
+    surfaces: [
+      {
+        id: "app",
+        nameKey: "business.repoApp",
+        kind: "custom",
+        allowedPaths: ["src"],
+        verifyCommands: ["npm test"],
+        responsibilities: ["Full-stack changes"],
+        contractRole: "none"
+      }
+    ]
+  },
+  {
+    id: "custom",
+    titleKey: "business.templateCustom",
+    descKey: "business.templateCustomDesc",
+    surfaces: []
+  }
+];
+
 function defaultPolicy() {
   return {
     requireAssignmentApproval: true as const,
@@ -58,6 +161,36 @@ function emptySurface(index: number): BusinessSurface {
     responsibilities: [],
     contractRole: "none",
     enabled: true
+  };
+}
+
+function surfaceIdFor(kind: BusinessSurfaceKind, index: number): string {
+  if (kind === "client" || kind === "server" || kind === "admin") return kind;
+  return `repo-${index + 1}`;
+}
+
+function defaultsForKind(kind: BusinessSurfaceKind) {
+  if (kind === "client" || kind === "admin") {
+    return {
+      allowedPaths: ["src", "app", "pages"],
+      verifyCommands: ["npm run build"],
+      responsibilities: kind === "client" ? ["UI", "API consumption"] : ["Admin UI", "API consumption"],
+      contractRole: "consumer" as ContractRole
+    };
+  }
+  if (kind === "server") {
+    return {
+      allowedPaths: ["src", "app", "routes", "database"],
+      verifyCommands: ["npm test"],
+      responsibilities: ["API", "business rules", "persistence"],
+      contractRole: "provider" as ContractRole
+    };
+  }
+  return {
+    allowedPaths: ["src"],
+    verifyCommands: [],
+    responsibilities: [],
+    contractRole: "none" as ContractRole
   };
 }
 
@@ -99,10 +232,56 @@ export function BusinessWorkspaceEditor({
     }));
   };
 
-  const addSurface = () => {
+  const setSurfaceKind = (index: number, kind: BusinessSurfaceKind) => {
     setDraft((d) => ({
       ...d,
-      surfaces: [...d.surfaces, emptySurface(d.surfaces.length)]
+      surfaces: d.surfaces.map((surface, i) => {
+        if (i !== index) return surface;
+        const defaults = defaultsForKind(kind);
+        return {
+          ...surface,
+          kind,
+          allowedPaths: surface.allowedPaths.length > 0 ? surface.allowedPaths : defaults.allowedPaths,
+          verifyCommands:
+            surface.verifyCommands.length > 0 ? surface.verifyCommands : defaults.verifyCommands,
+          responsibilities:
+            surface.responsibilities.length > 0 ? surface.responsibilities : defaults.responsibilities,
+          contractRole: surface.contractRole === "none" ? defaults.contractRole : surface.contractRole
+        };
+      })
+    }));
+  };
+
+  const addSurface = (kind: BusinessSurfaceKind = "client") => {
+    setDraft((d) => ({
+      ...d,
+      surfaces: [
+        ...d.surfaces,
+        {
+          ...emptySurface(d.surfaces.length),
+          id: surfaceIdFor(kind, d.surfaces.length),
+          kind,
+          ...defaultsForKind(kind)
+        }
+      ]
+    }));
+  };
+
+  const applyTemplate = (template: WorkspaceTemplate) => {
+    setDraft((d) => ({
+      ...d,
+      surfaces: template.surfaces.map((surface, index) => ({
+        id: surface.id,
+        name: t(surface.nameKey),
+        kind: surface.kind,
+        repoPath: "",
+        defaultAgentId: "",
+        allowedPaths: surface.allowedPaths,
+        verifyCommands: surface.verifyCommands,
+        responsibilities: surface.responsibilities,
+        contractRole: surface.contractRole,
+        enabled: true
+      }))
     }));
   };
 
@@ -177,6 +356,7 @@ export function BusinessWorkspaceEditor({
       )}
 
       <section className="workflow-team-editor-section">
+        <h5>{t("business.setupBusiness")}</h5>
         <label className="workflow-team-editor-field">
           <span>{t("business.workspaceName")}</span>
           <input
@@ -194,19 +374,39 @@ export function BusinessWorkspaceEditor({
             rows={2}
           />
         </label>
+        <div className="business-workspace-template-picker">
+          <span className="muted small">{t("business.structureTemplate")}</span>
+          <div className="business-workspace-template-grid">
+            {WORKSPACE_TEMPLATES.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className="business-workspace-template"
+                onClick={() => applyTemplate(template)}
+              >
+                <strong>{t(template.titleKey)}</strong>
+                <span>{t(template.descKey)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="workflow-team-editor-section">
-        <h5>{t("business.surfaces")}</h5>
+        <h5>{t("business.codeRepositories")}</h5>
         {draft.surfaces.length === 0 ? (
-          <p className="muted small">{t("business.noWorkspaces")}</p>
+          <p className="muted small">{t("business.noRepositories")}</p>
         ) : (
           <div className="business-workspace-surfaces">
             {draft.surfaces.map((surface, index) => (
               <div key={index} className="business-surface-row">
+                <div className="business-surface-row-header">
+                  <strong>{surface.name || t("business.codeRepository")}</strong>
+                  <span className="workflow-team-badge muted">{surface.kind}</span>
+                </div>
                 <div className="business-surface-grid">
                   <label className="workflow-team-editor-field">
-                    <span>{t("workflow.teamName")}</span>
+                    <span>{t("business.repositoryName")}</span>
                     <input
                       type="text"
                       value={surface.name}
@@ -214,13 +414,11 @@ export function BusinessWorkspaceEditor({
                     />
                   </label>
                   <label className="workflow-team-editor-field">
-                    <span>{t("workflow.teamRoles")}</span>
+                    <span>{t("business.repositoryType")}</span>
                     <select
                       value={surface.kind}
                       onChange={(e) =>
-                        setSurface(index, {
-                          kind: e.target.value as BusinessSurfaceKind
-                        })
+                        setSurfaceKind(index, e.target.value as BusinessSurfaceKind)
                       }
                     >
                       {SURFACE_KINDS.map((kind) => (
@@ -263,63 +461,52 @@ export function BusinessWorkspaceEditor({
                     </select>
                   </label>
                   <label className="workflow-team-editor-field">
-                    <span>{t("business.contractRole")}</span>
-                    <select
-                      value={surface.contractRole}
+                    <span>{t("business.verifyCommands")}</span>
+                    <textarea
+                      rows={2}
+                      value={joinLines(surface.verifyCommands)}
+                      placeholder={t("business.verifyCommandsHint")}
                       onChange={(e) =>
-                        setSurface(index, {
-                          contractRole: e.target.value as ContractRole
-                        })
-                      }
-                    >
-                      {CONTRACT_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="workflow-team-editor-toggle">
-                    <input
-                      type="checkbox"
-                      checked={surface.enabled}
-                      onChange={(e) =>
-                        setSurface(index, { enabled: e.target.checked })
+                        setSurface(index, { verifyCommands: splitLines(e.target.value) })
                       }
                     />
-                    <span>{t("business.surface")}</span>
                   </label>
                 </div>
-                <label className="workflow-team-editor-field">
-                  <span>{t("business.allowedPaths")}</span>
-                  <textarea
-                    rows={2}
-                    value={joinLines(surface.allowedPaths)}
-                    onChange={(e) =>
-                      setSurface(index, { allowedPaths: splitLines(e.target.value) })
-                    }
-                  />
-                </label>
-                <label className="workflow-team-editor-field">
-                  <span>{t("business.verifyCommands")}</span>
-                  <textarea
-                    rows={2}
-                    value={joinLines(surface.verifyCommands)}
-                    onChange={(e) =>
-                      setSurface(index, { verifyCommands: splitLines(e.target.value) })
-                    }
-                  />
-                </label>
-                <label className="workflow-team-editor-field">
-                  <span>{t("business.responsibilities")}</span>
-                  <textarea
-                    rows={2}
-                    value={joinLines(surface.responsibilities)}
-                    onChange={(e) =>
-                      setSurface(index, { responsibilities: splitLines(e.target.value) })
-                    }
-                  />
-                </label>
+                <details className="business-repository-advanced">
+                  <summary>{t("business.repositoryAdvanced")}</summary>
+                  <div className="business-surface-grid">
+                    <label className="workflow-team-editor-field">
+                      <span>{t("business.allowedPaths")}</span>
+                      <textarea
+                        rows={2}
+                        value={joinLines(surface.allowedPaths)}
+                        onChange={(e) =>
+                          setSurface(index, { allowedPaths: splitLines(e.target.value) })
+                        }
+                      />
+                    </label>
+                    <label className="workflow-team-editor-field">
+                      <span>{t("business.responsibilities")}</span>
+                      <textarea
+                        rows={2}
+                        value={joinLines(surface.responsibilities)}
+                        onChange={(e) =>
+                          setSurface(index, { responsibilities: splitLines(e.target.value) })
+                        }
+                      />
+                    </label>
+                    <label className="workflow-team-editor-toggle">
+                      <input
+                        type="checkbox"
+                        checked={surface.enabled}
+                        onChange={(e) =>
+                          setSurface(index, { enabled: e.target.checked })
+                        }
+                      />
+                      <span>{t("business.repositoryEnabled")}</span>
+                    </label>
+                  </div>
+                </details>
                 <div className="business-surface-row-actions">
                   <button
                     type="button"
@@ -333,10 +520,92 @@ export function BusinessWorkspaceEditor({
             ))}
           </div>
         )}
-        <button type="button" onClick={addSurface}>
-          + {t("business.surface")}
+        <button type="button" onClick={() => addSurface()}>
+          + {t("business.codeRepository")}
         </button>
       </section>
+
+      {draft.surfaces.length > 0 && (
+        <section className="workflow-team-editor-section">
+          <h5>{t("business.collaboration")}</h5>
+          <p className="muted small">{t("business.collaborationHint")}</p>
+          <div className="business-collaboration-list">
+            {draft.surfaces.map((surface, index) => (
+              <label key={surface.id || index} className="workflow-team-editor-field">
+                <span>{surface.name || surface.id}</span>
+                <select
+                  value={surface.contractRole}
+                  onChange={(e) =>
+                    setSurface(index, {
+                      contractRole: e.target.value as ContractRole
+                    })
+                  }
+                >
+                  {CONTRACT_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {t(`business.contractRole_${role}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <details className="workflow-team-editor-section business-workspace-advanced">
+        <summary>{t("business.advancedSettings")}</summary>
+        <div className="business-policy-grid">
+          <label className="workflow-team-editor-toggle">
+            <input
+              type="checkbox"
+              checked={draft.policy.requireCleanRepoBeforeRun}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  policy: {
+                    ...draft.policy,
+                    requireCleanRepoBeforeRun: e.target.checked
+                  }
+                })
+              }
+            />
+            <span>{t("business.requireCleanRepoBeforeRun")}</span>
+          </label>
+          <label className="workflow-team-editor-toggle">
+            <input
+              type="checkbox"
+              checked={draft.policy.blockCommitOnVerificationFailure}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  policy: {
+                    ...draft.policy,
+                    blockCommitOnVerificationFailure: e.target.checked
+                  }
+                })
+              }
+            />
+            <span>{t("business.blockCommitOnVerificationFailure")}</span>
+          </label>
+          <label className="workflow-team-editor-field">
+            <span>{t("business.branchNameTemplate")}</span>
+            <input
+              type="text"
+              value={draft.policy.branchNameTemplate}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  policy: {
+                    ...draft.policy,
+                    branchNameTemplate: e.target.value
+                  }
+                })
+              }
+            />
+          </label>
+        </div>
+      </details>
     </div>
   );
 }

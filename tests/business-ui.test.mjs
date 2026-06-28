@@ -14,13 +14,33 @@ test("Settings modal exposes Business Workspaces tab", () => {
   assert.ok(zh.settings.tabs.businessWorkspaces);
 });
 
-test("Business workspace editor captures surfaces, repo paths, agents, and verify commands", () => {
+test("Business workspace editor captures repository projects, agents, and verify commands", () => {
   const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
   assert.match(editor, /repoPath/);
   assert.match(editor, /defaultAgentId/);
   assert.match(editor, /verifyCommands/);
   assert.match(editor, /allowedPaths/);
   assert.match(editor, /contractRole/);
+});
+
+test("Business workspace editor uses a guided user-facing setup model", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+
+  assert.match(editor, /WORKSPACE_TEMPLATES/);
+  assert.match(editor, /applyTemplate/);
+  assert.match(editor, /business\.setupBusiness/);
+  assert.match(editor, /business\.codeRepositories/);
+  assert.match(editor, /business\.collaboration/);
+  assert.match(editor, /business\.advancedSettings/);
+  assert.doesNotMatch(editor, /<span>\{t\("business\.contractRole"\)\}<\/span>/);
+
+  assert.equal(zh.business.setupBusiness, "先说明这个业务");
+  assert.equal(zh.business.codeRepositories, "它包含哪些代码仓库？");
+  assert.equal(zh.business.collaboration, "它们如何协作？");
+  assert.equal(zh.business.advancedSettings, "高级设置");
+  assert.equal(en.business.codeRepositories, "Which code repositories are involved?");
 });
 
 test("ChatView exposes business requirement mode and assignment preview", () => {

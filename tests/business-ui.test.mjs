@@ -33,7 +33,9 @@ test("Business workspace editor uses a guided user-facing setup model", () => {
   assert.match(editor, /business\.setupBusiness/);
   assert.match(editor, /business\.codeRepositories/);
   assert.match(editor, /business\.collaboration/);
-  assert.match(editor, /business\.advancedSettings/);
+  assert.match(editor, /business\.collaborationAndPolicy/);
+  assert.match(editor, /business\.advancedCountHint/);
+  assert.doesNotMatch(editor, /business\.advancedSettings/);
   assert.doesNotMatch(editor, /<span>\{t\("business\.contractRole"\)\}<\/span>/);
 
   assert.equal(zh.business.setupBusiness, "先说明这个业务");
@@ -124,4 +126,10 @@ test("Business workspace editor leads with template hero before basics", () => {
   const nameIdx = editor.indexOf('t("business.workspaceName")');
   assert.ok(heroIdx > -1, "template hero section marker missing");
   assert.ok(heroIdx < nameIdx, "template hero must appear before the name field");
+});
+
+test("Business workspace editor folds collaboration and policy into one region", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /business-workspace-collab-policy/);
+  assert.match(editor, /business-advanced-count/);
 });

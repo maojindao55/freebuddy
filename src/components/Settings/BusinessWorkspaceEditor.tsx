@@ -577,87 +577,95 @@ export function BusinessWorkspaceEditor({
         </button>
       </section>
 
-      {draft.surfaces.length > 0 && (
-        <section className="workflow-team-editor-section">
-          <h5>{t("business.collaboration")}</h5>
-          <p className="muted small">{t("business.collaborationHint")}</p>
-          <div className="business-collaboration-list">
-            {draft.surfaces.map((surface, index) => (
-              <label key={surface.id || index} className="workflow-team-editor-field">
-                <span>{surface.name || surface.id}</span>
-                <select
-                  value={surface.contractRole}
-                  onChange={(e) =>
-                    setSurface(index, {
-                      contractRole: e.target.value as ContractRole
-                    })
-                  }
-                >
-                  {CONTRACT_ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {t(`business.contractRole_${role}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
+      {(draft.surfaces.length > 0 || isNew) && (
+        <details className="workflow-team-editor-section business-workspace-advanced business-workspace-collab-policy">
+          <summary>
+            {t("business.collaborationAndPolicy")}
+            <span className="business-advanced-count">
+              {t("business.advancedCountHint", {
+                count: draft.surfaces.filter((s) => s.enabled).length + 3
+              })}
+            </span>
+          </summary>
+          {draft.surfaces.length > 0 && (
+            <>
+              <h5>{t("business.collaboration")}</h5>
+              <p className="muted small">{t("business.collaborationHint")}</p>
+              <div className="business-collaboration-list">
+                {draft.surfaces.map((surface, index) => (
+                  <label key={surface.id || index} className="workflow-team-editor-field">
+                    <span>{surface.name || surface.id}</span>
+                    <select
+                      value={surface.contractRole}
+                      onChange={(e) =>
+                        setSurface(index, {
+                          contractRole: e.target.value as ContractRole
+                        })
+                      }
+                    >
+                      {CONTRACT_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {t(`business.contractRole_${role}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="business-policy-grid">
+            <label className="workflow-team-editor-toggle">
+              <input
+                type="checkbox"
+                checked={draft.policy.requireCleanRepoBeforeRun}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    policy: {
+                      ...draft.policy,
+                      requireCleanRepoBeforeRun: e.target.checked
+                    }
+                  })
+                }
+              />
+              <span>{t("business.requireCleanRepoBeforeRun")}</span>
+            </label>
+            <label className="workflow-team-editor-toggle">
+              <input
+                type="checkbox"
+                checked={draft.policy.blockCommitOnVerificationFailure}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    policy: {
+                      ...draft.policy,
+                      blockCommitOnVerificationFailure: e.target.checked
+                    }
+                  })
+                }
+              />
+              <span>{t("business.blockCommitOnVerificationFailure")}</span>
+            </label>
+            <label className="workflow-team-editor-field">
+              <span>{t("business.branchNameTemplate")}</span>
+              <input
+                type="text"
+                value={draft.policy.branchNameTemplate}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    policy: {
+                      ...draft.policy,
+                      branchNameTemplate: e.target.value
+                    }
+                  })
+                }
+              />
+            </label>
           </div>
-        </section>
+        </details>
       )}
-
-      <details className="workflow-team-editor-section business-workspace-advanced">
-        <summary>{t("business.advancedSettings")}</summary>
-        <div className="business-policy-grid">
-          <label className="workflow-team-editor-toggle">
-            <input
-              type="checkbox"
-              checked={draft.policy.requireCleanRepoBeforeRun}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  policy: {
-                    ...draft.policy,
-                    requireCleanRepoBeforeRun: e.target.checked
-                  }
-                })
-              }
-            />
-            <span>{t("business.requireCleanRepoBeforeRun")}</span>
-          </label>
-          <label className="workflow-team-editor-toggle">
-            <input
-              type="checkbox"
-              checked={draft.policy.blockCommitOnVerificationFailure}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  policy: {
-                    ...draft.policy,
-                    blockCommitOnVerificationFailure: e.target.checked
-                  }
-                })
-              }
-            />
-            <span>{t("business.blockCommitOnVerificationFailure")}</span>
-          </label>
-          <label className="workflow-team-editor-field">
-            <span>{t("business.branchNameTemplate")}</span>
-            <input
-              type="text"
-              value={draft.policy.branchNameTemplate}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  policy: {
-                    ...draft.policy,
-                    branchNameTemplate: e.target.value
-                  }
-                })
-              }
-            />
-          </label>
-        </div>
-      </details>
     </div>
   );
 }

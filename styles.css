@@ -7037,6 +7037,17 @@ button.ghost:focus-visible,
   background: rgba(16, 185, 129, 0.06);
 }
 
+.business-workspace-template.is-selected {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+.business-workspace-template .business-workspace-template-count {
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
 .business-workspace-template span {
   color: var(--fb-muted);
   font-size: 12px;

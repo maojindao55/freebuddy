@@ -89,3 +89,13 @@ test("Business workspace editor localizes surface kinds via KIND_META", () => {
   // raw kind badge must be gone
   assert.doesNotMatch(editor, /workflow-team-badge muted">\{surface\.kind\}/);
 });
+
+test("Business workspace editor tracks template selection with switch confirm", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /matchTemplate/);
+  assert.match(editor, /selectedTemplateId/);
+  assert.match(editor, /applyTemplateWithConfirm/);
+  assert.match(editor, /business\.switchTemplateConfirm/);
+  assert.match(editor, /is-selected/);
+  assert.match(editor, /business\.templateRepoCount/);
+});

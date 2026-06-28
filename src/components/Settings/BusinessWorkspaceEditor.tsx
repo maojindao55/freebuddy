@@ -211,6 +211,19 @@ const splitLines = (value: string): string[] =>
     .filter(Boolean);
 const joinLines = (value: string[]): string => value.join("\n");
 
+function matchTemplate(surfaces: BusinessSurface[]): WorkspaceTemplateId | undefined {
+  if (surfaces.length === 0) return undefined;
+  const sig = (list: { kind: BusinessSurfaceKind }[]) => list.map((s) => s.kind).join(",");
+  const sigs: Record<WorkspaceTemplateId, string> = {
+    "client-server-admin": "client,server,admin",
+    "client-server": "client,server",
+    "single-repo": "custom",
+    custom: ""
+  };
+  const current = sig(surfaces);
+  return (Object.keys(sigs) as WorkspaceTemplateId[]).find((id) => sigs[id] === current);
+}
+
 export function BusinessWorkspaceEditor({
   workspace,
   onSaved,
@@ -228,6 +241,7 @@ export function BusinessWorkspaceEditor({
   const [draft, setDraft] = useState<BusinessWorkspace>(() =>
     workspace ? structuredClone(workspace) : emptyWorkspace()
   );
+  const selectedTemplateId = matchTemplate(draft.surfaces);
   const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
@@ -293,6 +307,12 @@ export function BusinessWorkspaceEditor({
         enabled: true
       }))
     }));
+  };
+
+  const applyTemplateWithConfirm = (template: WorkspaceTemplate) => {
+    if (template.id === selectedTemplateId) return;
+    if (draft.surfaces.length > 0 && !window.confirm(t("business.switchTemplateConfirm"))) return;
+    applyTemplate(template);
   };
 
   const removeSurface = (index: number) => {
@@ -391,11 +411,14 @@ export function BusinessWorkspaceEditor({
               <button
                 key={template.id}
                 type="button"
-                className="business-workspace-template"
-                onClick={() => applyTemplate(template)}
+                className={`business-workspace-template${selectedTemplateId === template.id ? " is-selected" : ""}`}
+                onClick={() => applyTemplateWithConfirm(template)}
               >
                 <strong>{t(template.titleKey)}</strong>
                 <span>{t(template.descKey)}</span>
+                <span className="business-workspace-template-count">
+                  {t("business.templateRepoCount", { count: template.surfaces.length })}
+                </span>
               </button>
             ))}
           </div>

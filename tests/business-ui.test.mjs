@@ -109,3 +109,11 @@ test("Business workspace editor validates name inline and shows readable save er
   assert.doesNotMatch(editor, /setErrors\(\[t\("business\.workspaceName"\)\]\)/);
   assert.doesNotMatch(editor, /setErrors\(\["save failed"\]\)/);
 });
+
+test("Business workspace editor uses clear directory button and context-aware primary action", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /business\.chooseDirectory/);
+  assert.match(editor, /business\.createWorkspace/);
+  // the bare Unicode-ellipsis (U+2026) directory button must be gone
+  assert.doesNotMatch(editor, />\s*\u2026\s*<\/button>/);
+});

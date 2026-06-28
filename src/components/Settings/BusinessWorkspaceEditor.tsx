@@ -374,7 +374,7 @@ export function BusinessWorkspaceEditor({
             {t("common.cancel")}
           </button>
           <button type="button" className="primary" onClick={() => void handleSave()}>
-            {t("common.save")}
+            {isNew ? t("business.createWorkspace") : t("common.save")}
           </button>
         </div>
       </div>
@@ -491,7 +491,7 @@ export function BusinessWorkspaceEditor({
                         type="button"
                         onClick={() => void pickRepoPath(index)}
                       >
-                        …
+                        {t("business.chooseDirectory")}
                       </button>
                     </div>
                   </label>

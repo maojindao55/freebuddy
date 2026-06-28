@@ -243,10 +243,12 @@ export function BusinessWorkspaceEditor({
   );
   const selectedTemplateId = matchTemplate(draft.surfaces);
   const [errors, setErrors] = useState<string[]>([]);
+  const [nameError, setNameError] = useState(false);
 
   useEffect(() => {
     setDraft(workspace ? structuredClone(workspace) : emptyWorkspace());
     setErrors([]);
+    setNameError(false);
   }, [workspace]);
 
   const setSurface = (index: number, patch: Partial<BusinessSurface>) => {
@@ -334,7 +336,7 @@ export function BusinessWorkspaceEditor({
   const handleSave = async () => {
     setErrors([]);
     if (!draft.name.trim()) {
-      setErrors([t("business.workspaceName")]);
+      setNameError(true);
       return;
     }
     const input = {
@@ -347,7 +349,7 @@ export function BusinessWorkspaceEditor({
     };
     const ok = isNew ? await create(input) : await update(draft.id, input);
     if (!ok) {
-      setErrors(["save failed"]);
+      setErrors([t("business.saveFailed")]);
       return;
     }
     onSaved();
@@ -388,13 +390,27 @@ export function BusinessWorkspaceEditor({
       <section className="workflow-team-editor-section">
         <h5>{t("business.setupBusiness")}</h5>
         <label className="workflow-team-editor-field">
-          <span>{t("business.workspaceName")}</span>
+          <span>
+            {t("business.workspaceName")} <span className="business-required">*</span>
+          </span>
           <input
             type="text"
             value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            required
+            aria-invalid={nameError}
+            aria-describedby={nameError ? "biz-name-error" : undefined}
+            className={nameError ? "business-input-error" : undefined}
+            onChange={(e) => {
+              setDraft({ ...draft, name: e.target.value });
+              setNameError(false);
+            }}
             placeholder={t("business.workspaceName")}
           />
+          {nameError && (
+            <span id="biz-name-error" role="alert" className="business-field-error">
+              {t("business.nameRequired")}
+            </span>
+          )}
         </label>
         <label className="workflow-team-editor-field">
           <span>{t("workflow.teamDescription")}</span>

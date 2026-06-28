@@ -99,3 +99,13 @@ test("Business workspace editor tracks template selection with switch confirm", 
   assert.match(editor, /is-selected/);
   assert.match(editor, /business\.templateRepoCount/);
 });
+
+test("Business workspace editor validates name inline and shows readable save error", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /nameError/);
+  assert.match(editor, /business\.nameRequired/);
+  assert.match(editor, /business\.saveFailed/);
+  // old patterns must be gone
+  assert.doesNotMatch(editor, /setErrors\(\[t\("business\.workspaceName"\)\]\)/);
+  assert.doesNotMatch(editor, /setErrors\(\["save failed"\]\)/);
+});

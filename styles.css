@@ -7066,6 +7066,15 @@ button.ghost:focus-visible,
 .business-kind-badge.tone-docs { background: var(--fb-hover); color: var(--fb-text-secondary); }
 .business-kind-badge.tone-test { background: var(--fb-hover); color: var(--fb-danger); }
 .business-kind-badge.tone-custom { background: var(--fb-hover); color: var(--fb-text-secondary); }
+.business-required { color: var(--fb-danger, #e11d48); margin-left: 2px; }
+.workflow-team-editor-field input.business-input-error {
+  border-color: var(--fb-danger, #e11d48);
+}
+.workflow-team-editor-field input.business-input-error:focus {
+  outline: 2px solid var(--fb-danger, #e11d48);
+  outline-offset: 1px;
+}
+.business-field-error { display: block; color: var(--fb-danger, #e11d48); font-size: 12px; margin-top: 4px; }
 
 .business-surface-row-header {
   display: flex;

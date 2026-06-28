@@ -117,3 +117,11 @@ test("Business workspace editor uses clear directory button and context-aware pr
   // the bare Unicode-ellipsis (U+2026) directory button must be gone
   assert.doesNotMatch(editor, />\s*\u2026\s*<\/button>/);
 });
+
+test("Business workspace editor leads with template hero before basics", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  const heroIdx = editor.indexOf("business-template-hero");
+  const nameIdx = editor.indexOf('t("business.workspaceName")');
+  assert.ok(heroIdx > -1, "template hero section marker missing");
+  assert.ok(heroIdx < nameIdx, "template hero must appear before the name field");
+});

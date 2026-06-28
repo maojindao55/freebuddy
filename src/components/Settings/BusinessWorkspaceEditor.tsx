@@ -387,6 +387,26 @@ export function BusinessWorkspaceEditor({
         </ul>
       )}
 
+      <section className="workflow-team-editor-section business-template-hero">
+        <h5>{t("business.structureTemplate")}</h5>
+        <div className="business-workspace-template-grid">
+          {WORKSPACE_TEMPLATES.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              className={`business-workspace-template${selectedTemplateId === template.id ? " is-selected" : ""}`}
+              onClick={() => applyTemplateWithConfirm(template)}
+            >
+              <strong>{t(template.titleKey)}</strong>
+              <span>{t(template.descKey)}</span>
+              <span className="business-workspace-template-count">
+                {t("business.templateRepoCount", { count: template.surfaces.length })}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="workflow-team-editor-section">
         <h5>{t("business.setupBusiness")}</h5>
         <label className="workflow-team-editor-field">
@@ -420,25 +440,6 @@ export function BusinessWorkspaceEditor({
             rows={2}
           />
         </label>
-        <div className="business-workspace-template-picker">
-          <span className="muted small">{t("business.structureTemplate")}</span>
-          <div className="business-workspace-template-grid">
-            {WORKSPACE_TEMPLATES.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                className={`business-workspace-template${selectedTemplateId === template.id ? " is-selected" : ""}`}
-                onClick={() => applyTemplateWithConfirm(template)}
-              >
-                <strong>{t(template.titleKey)}</strong>
-                <span>{t(template.descKey)}</span>
-                <span className="business-workspace-template-count">
-                  {t("business.templateRepoCount", { count: template.surfaces.length })}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
       </section>
 
       <section className="workflow-team-editor-section">

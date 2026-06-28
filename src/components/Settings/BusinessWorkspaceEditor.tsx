@@ -22,6 +22,16 @@ const SURFACE_KINDS: BusinessSurfaceKind[] = [
 ];
 const CONTRACT_ROLES: ContractRole[] = ["provider", "consumer", "both", "none"];
 
+const KIND_META: Record<BusinessSurfaceKind, { icon: string; labelKey: string; tone: string }> = {
+  client: { icon: "◐", labelKey: "business.kind_client", tone: "client" },
+  server: { icon: "●", labelKey: "business.kind_server", tone: "server" },
+  admin: { icon: "◑", labelKey: "business.kind_admin", tone: "admin" },
+  shared: { icon: "⇄", labelKey: "business.kind_shared", tone: "shared" },
+  docs: { icon: "▤", labelKey: "business.kind_docs", tone: "docs" },
+  test: { icon: "✓", labelKey: "business.kind_test", tone: "test" },
+  custom: { icon: "⬚", labelKey: "business.kind_custom", tone: "custom" }
+};
+
 type WorkspaceTemplateId = "client-server-admin" | "client-server" | "single-repo" | "custom";
 
 interface WorkspaceTemplateSurface {
@@ -402,7 +412,9 @@ export function BusinessWorkspaceEditor({
               <div key={index} className="business-surface-row">
                 <div className="business-surface-row-header">
                   <strong>{surface.name || t("business.codeRepository")}</strong>
-                  <span className="workflow-team-badge muted">{surface.kind}</span>
+                  <span className={`workflow-team-badge business-kind-badge tone-${KIND_META[surface.kind].tone}`}>
+                    {KIND_META[surface.kind].icon} {t(KIND_META[surface.kind].labelKey)}
+                  </span>
                 </div>
                 <div className="business-surface-grid">
                   <label className="workflow-team-editor-field">
@@ -423,7 +435,7 @@ export function BusinessWorkspaceEditor({
                     >
                       {SURFACE_KINDS.map((kind) => (
                         <option key={kind} value={kind}>
-                          {kind}
+                          {KIND_META[kind].icon} {t(KIND_META[kind].labelKey)}
                         </option>
                       ))}
                     </select>

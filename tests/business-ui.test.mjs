@@ -79,3 +79,13 @@ test("Business workspace editor exposes UX redesign i18n keys in both locales", 
   assert.match(zh.business.advancedCountHint, /\{\{count\}\}/);
   assert.match(en.business.templateRepoCount, /\{\{count\}\}/);
 });
+
+test("Business workspace editor localizes surface kinds via KIND_META", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /KIND_META/);
+  assert.match(editor, /business\.kind_client/);
+  // raw kind label in the type <select> must be gone
+  assert.doesNotMatch(editor, /\{kind\}\s*<\/option>/);
+  // raw kind badge must be gone
+  assert.doesNotMatch(editor, /workflow-team-badge muted">\{surface\.kind\}/);
+});

@@ -7043,6 +7043,19 @@ button.ghost:focus-visible,
   line-height: 1.35;
 }
 
+.business-kind-badge {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.business-kind-badge.tone-client { background: var(--fb-brand-glow); color: var(--fb-brand); }
+.business-kind-badge.tone-server { background: var(--fb-workflow-glow); color: var(--fb-workflow); }
+.business-kind-badge.tone-admin { background: var(--fb-hover); color: var(--fb-warning); }
+.business-kind-badge.tone-shared { background: var(--fb-hover); color: var(--fb-text-secondary); }
+.business-kind-badge.tone-docs { background: var(--fb-hover); color: var(--fb-text-secondary); }
+.business-kind-badge.tone-test { background: var(--fb-hover); color: var(--fb-danger); }
+.business-kind-badge.tone-custom { background: var(--fb-hover); color: var(--fb-text-secondary); }
+
 .business-surface-row-header {
   display: flex;
   align-items: center;

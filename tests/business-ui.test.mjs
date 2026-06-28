@@ -61,3 +61,21 @@ test("WorkspacePanel mounts business surface run panel", () => {
   assert.match(panel, /verificationResults/);
   assert.match(panel, /commitGate/);
 });
+
+test("Business workspace editor exposes UX redesign i18n keys in both locales", () => {
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+  const keys = [
+    "chooseDirectory", "saveFailed", "nameRequired", "switchTemplateConfirm",
+    "collaborationAndPolicy", "advancedCountHint", "createWorkspace", "templateRepoCount",
+    "kind_client", "kind_server", "kind_admin", "kind_shared",
+    "kind_docs", "kind_test", "kind_custom"
+  ];
+  for (const k of keys) {
+    assert.ok(en.business[k], `en missing business.${k}`);
+    assert.ok(zh.business[k], `zh missing business.${k}`);
+  }
+  // advancedCountHint / templateRepoCount must support interpolation
+  assert.match(zh.business.advancedCountHint, /\{\{count\}\}/);
+  assert.match(en.business.templateRepoCount, /\{\{count\}\}/);
+});

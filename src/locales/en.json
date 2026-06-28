@@ -6,6 +6,7 @@
     "delete": "Delete",
     "save": "Save",
     "reset": "Reset",
+    "dismiss": "Dismiss",
     "edit": "Edit",
     "check": "Check",
     "install": "Install",
@@ -255,6 +256,7 @@
       "general": "General",
       "cli": "CLI Agents",
       "workflowTeams": "Workflow Teams",
+      "businessWorkspaces": "Business Workspaces",
       "about": "About"
     },
     "cli": {
@@ -515,5 +517,36 @@
     "manualFallbackPlaceholder": "or enter a URL / README.md / data.json / image.png / file.pdf…",
     "emptyNoWorkspace": "No workspace selected. Pick a working directory to preview the agent's output.",
     "emptyNoEntry": "No preview yet. Ask the agent to start a dev server, create a page, write a Markdown doc, or generate an image, then it will open here automatically."
+  },
+  "business": {
+    "workspaceList": "Business workspaces",
+    "workspaceHint": "Group related repositories and assign agents per surface.",
+    "newWorkspace": "New workspace",
+    "workspaceName": "Workspace name",
+    "surface": "Surface",
+    "surfaces": "Surfaces",
+    "repoPath": "Repository path",
+    "defaultAgent": "Default agent",
+    "allowedPaths": "Allowed paths",
+    "verifyCommands": "Verification commands",
+    "responsibilities": "Responsibilities",
+    "contractRole": "Contract role",
+    "noWorkspaces": "No business workspaces yet",
+    "confirmDeleteWorkspace": "Delete this business workspace?",
+    "requirementMode": "Business requirement",
+    "selectWorkspace": "Select workspace",
+    "assignmentPreview": "Assignment plan",
+    "contractDraft": "Contract draft",
+    "approveAndRun": "Approve and run",
+    "commitGate": "Commit gate",
+    "commitMessage": "Commit message",
+    "diffFiles": "Changed files",
+    "allowFailures": "Allow commit with failures",
+    "allowOutOfScope": "Force through out-of-scope changes",
+    "outOfScope": "Out-of-scope files (not committed)",
+    "outOfScopeHint": "These changes will remain uncommitted in the working tree. Resolve them manually or tick 'Force through' to complete anyway.",
+    "outOfScopeBlockHint": "Review out-of-scope files first, then tick 'Force through'",
+    "approveCommit": "Approve commit",
+    "runStatus": "Business run"
   }
 }

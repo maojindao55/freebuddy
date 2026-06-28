@@ -193,6 +193,34 @@ function migrate(db: DB) {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS business_workspaces (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      surfaces_json TEXT NOT NULL,
+      default_team_id TEXT,
+      policy_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS business_requirement_runs (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      workspace_snapshot_json TEXT NOT NULL,
+      team_id TEXT,
+      goal TEXT NOT NULL,
+      status TEXT NOT NULL,
+      assignment_plan_json TEXT,
+      contract_draft_json TEXT,
+      surface_runs_json TEXT NOT NULL,
+      commit_gate_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_business_requirement_runs_workspace
+      ON business_requirement_runs(workspace_id, created_at DESC);
   `);
 
   const overrideCols = db

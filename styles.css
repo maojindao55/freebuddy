@@ -6991,3 +6991,194 @@ button.ghost:focus-visible,
   font-size: 9px;
   flex: none;
 }
+
+.business-workspace-list,
+.business-workspace-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.business-workspace-card,
+.business-surface-row {
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--fb-surface);
+}
+
+.business-surface-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.business-workspace-surfaces {
+  display: grid;
+  gap: 10px;
+}
+
+.business-surface-repo {
+  display: flex;
+  gap: 6px;
+}
+
+.business-surface-repo input {
+  flex: 1;
+}
+
+.business-surface-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.business-assignment-preview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--fb-surface);
+}
+
+.business-assignment-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.business-assignment-surfaces {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.business-assignment-surface {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--fb-surface);
+}
+
+.business-assignment-surface-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.business-assignment-tasks {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.business-commit-gate {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--fb-surface);
+}
+
+.business-commit-gate-repos {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.business-commit-gate-repo {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.business-commit-gate-repo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.business-commit-gate-diff ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.business-commit-gate-verify {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.business-commit-gate-risks {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.business-commit-gate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.business-commit-gate-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.business-commit-gate-errors {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--fb-surface);
+}
+
+.business-commit-gate-outofscope ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+button.small {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.business-surface-run-panel .business-surface-runs {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.business-surface-run {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.business-surface-run-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.business-surface-verify {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.business-surface-diff {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  max-height: 80px;
+  overflow: auto;
+}

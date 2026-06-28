@@ -15,6 +15,7 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
+import { BusinessSurfaceRunPanel } from "../Business/BusinessSurfaceRunPanel";
 import {
   mergeSessionMetaItems
 } from "@/store/sessionMetaUtils";
@@ -225,6 +226,7 @@ export function WorkspacePanel({
   return (
     <div className="workspace-cards" aria-label={t("workspace.panelAria")}>
       <WorkflowRunPanel />
+      <BusinessSurfaceRunPanel />
 
       {isTeamRun ? null : (
         <section className="side-card active-agent-card">

@@ -157,6 +157,23 @@ const workflowTeams = {
   seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
+const businessWorkspaces = {
+  list: () => ipcRenderer.invoke("businessWorkspaces:list"),
+  get: (id: string) => ipcRenderer.invoke("businessWorkspaces:get", id),
+  create: (input: unknown) => ipcRenderer.invoke("businessWorkspaces:create", input),
+  update: (args: unknown) => ipcRenderer.invoke("businessWorkspaces:update", args),
+  delete: (id: string) => ipcRenderer.invoke("businessWorkspaces:delete", id),
+  previewAssignment: (input: unknown) =>
+    ipcRenderer.invoke("businessRequirements:previewAssignment", input),
+  createRun: (input: unknown) => ipcRenderer.invoke("businessRequirements:createRun", input),
+  startRun: (runId: string) => ipcRenderer.invoke("businessRequirements:startRun", runId),
+  getRun: (runId: string) => ipcRenderer.invoke("businessRequirements:getRun", runId),
+  previewCommitGate: (runId: string) =>
+    ipcRenderer.invoke("businessRequirements:previewCommitGate", runId),
+  approveCommitGate: (args: unknown) =>
+    ipcRenderer.invoke("businessRequirements:approveCommitGate", args)
+};
+
 const updater = {
   getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
   check: () =>
@@ -191,5 +208,6 @@ contextBridge.exposeInMainWorld("freebuddy", {
   workflowTeams,
   settings,
   window,
+  businessWorkspaces,
   updater
 });

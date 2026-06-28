@@ -380,6 +380,36 @@ export function defaultTitleFor(member: CLIMember, cwd?: string): string {
   return tail ? `${member.name} · ${tail}` : member.name;
 }
 
+export function buildConversationTitle(input: {
+  prompt?: string;
+  attachmentName?: string;
+  fallback: string;
+  maxLength?: number;
+}): string {
+  const maxLength = input.maxLength ?? 80;
+  const source =
+    normalizeTitleText(input.prompt) ||
+    normalizeTitleText(input.attachmentName) ||
+    normalizeTitleText(input.fallback) ||
+    "New chat";
+  return Array.from(source).slice(0, maxLength).join("");
+}
+
+export function shouldApplyAgentSessionTitle(
+  conversation: { title?: string },
+  messages: Pick<ConversationMessage, "workflowRunId">[],
+  title: string
+): boolean {
+  const nextTitle = normalizeTitleText(title);
+  if (!nextTitle) return false;
+  if ("title" in conversation && conversation.title === nextTitle) return false;
+  return !messages.some((message) => Boolean(message.workflowRunId));
+}
+
+function normalizeTitleText(value: string | undefined): string {
+  return value?.replace(/\s+/g, " ").trim() ?? "";
+}
+
 function mergeMessageAttachments(
   preferred: ConversationMessage | undefined,
   fallback: ConversationMessage | undefined

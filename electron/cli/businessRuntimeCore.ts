@@ -75,6 +75,7 @@ function buildPrompt(
     (s) => s.surfaceId === surfaceRun.surfaceId
   );
   const tasks = planItem?.tasks ?? [];
+  const verifyCommands = planItem?.verifyCommands ?? [];
   const surface = run.workspaceSnapshot.surfaces.find(
     (s) => s.id === surfaceRun.surfaceId
   );
@@ -85,10 +86,18 @@ function buildPrompt(
   const contractNote = run.contractDraft
     ? `\n${renderContract(run.contractDraft)}\n`
     : "";
+  const verificationNote = verifyCommands.length
+    ? `Verification: after implementation, FreeBuddy will run these fixed commands: ${verifyCommands.join(", ")}. You may also run focused checks while working.`
+    : [
+        "Verification: no fixed verification commands are configured.",
+        "Before finishing, inspect project files such as package.json, composer.json, go.mod, Cargo.toml, Makefile, README, or framework docs, then run the most appropriate checks yourself.",
+        "Report exactly which checks you ran and anything you could not run."
+      ].join(" ");
   return [
     `Business goal: ${run.goal}`,
     `Surface: ${surfaceRun.surfaceId}`,
     scope,
+    verificationNote,
     ...tasks.map((task) => `- ${task}`),
     contractNote
   ].join("\n");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -62,7 +62,7 @@ const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
         nameKey: "business.repoClient",
         kind: "client",
         allowedPaths: ["src", "app", "pages"],
-        verifyCommands: ["npm run build"],
+        verifyCommands: [],
         responsibilities: ["UI", "API consumption"],
         contractRole: "consumer"
       },
@@ -71,7 +71,7 @@ const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
         nameKey: "business.repoServer",
         kind: "server",
         allowedPaths: ["src", "app", "routes", "database"],
-        verifyCommands: ["npm test"],
+        verifyCommands: [],
         responsibilities: ["API", "business rules", "persistence"],
         contractRole: "provider"
       },
@@ -80,7 +80,7 @@ const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
         nameKey: "business.repoAdmin",
         kind: "admin",
         allowedPaths: ["src", "app", "pages"],
-        verifyCommands: ["npm run build"],
+        verifyCommands: [],
         responsibilities: ["Admin UI", "API consumption"],
         contractRole: "consumer"
       }
@@ -96,7 +96,7 @@ const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
         nameKey: "business.repoClient",
         kind: "client",
         allowedPaths: ["src", "app", "pages"],
-        verifyCommands: ["npm run build"],
+        verifyCommands: [],
         responsibilities: ["UI", "API consumption"],
         contractRole: "consumer"
       },
@@ -105,7 +105,7 @@ const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
         nameKey: "business.repoServer",
         kind: "server",
         allowedPaths: ["src", "app", "routes", "database"],
-        verifyCommands: ["npm test"],
+        verifyCommands: [],
         responsibilities: ["API", "business rules", "persistence"],
         contractRole: "provider"
       }
@@ -121,7 +121,7 @@ const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
         nameKey: "business.repoApp",
         kind: "custom",
         allowedPaths: ["src"],
-        verifyCommands: ["npm test"],
+        verifyCommands: [],
         responsibilities: ["Full-stack changes"],
         contractRole: "none"
       }
@@ -183,7 +183,7 @@ function defaultsForKind(kind: BusinessSurfaceKind) {
   if (kind === "client" || kind === "admin") {
     return {
       allowedPaths: ["src", "app", "pages"],
-      verifyCommands: ["npm run build"],
+      verifyCommands: [],
       responsibilities: kind === "client" ? ["UI", "API consumption"] : ["Admin UI", "API consumption"],
       contractRole: "consumer" as ContractRole
     };
@@ -191,7 +191,7 @@ function defaultsForKind(kind: BusinessSurfaceKind) {
   if (kind === "server") {
     return {
       allowedPaths: ["src", "app", "routes", "database"],
-      verifyCommands: ["npm test"],
+      verifyCommands: [],
       responsibilities: ["API", "business rules", "persistence"],
       contractRole: "provider" as ContractRole
     };
@@ -238,18 +238,33 @@ export function BusinessWorkspaceEditor({
   const create = useBusinessWorkspaceStore((s) => s.create);
   const update = useBusinessWorkspaceStore((s) => s.update);
   const isNew = !workspace;
+  const editorTopRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<BusinessWorkspace>(() =>
     workspace ? structuredClone(workspace) : emptyWorkspace()
   );
   const selectedTemplateId = matchTemplate(draft.surfaces);
+  const selectedTemplate = selectedTemplateId
+    ? WORKSPACE_TEMPLATES.find((template) => template.id === selectedTemplateId)
+    : undefined;
+  const enabledSurfaceCount = draft.surfaces.filter((surface) => surface.enabled).length;
+  const configuredSurfaceCount = draft.surfaces.filter((surface) => surface.repoPath.trim()).length;
+  const policyItemCount = enabledSurfaceCount + 3;
+  const businessInfoReady = draft.name.trim().length > 0;
+  const repositoriesReady = draft.surfaces.length > 0 && configuredSurfaceCount === draft.surfaces.length;
   const [errors, setErrors] = useState<string[]>([]);
   const [nameError, setNameError] = useState(false);
+  const [editorTab, setEditorTab] = useState<"general" | "repos" | "policies">("general");
 
   useEffect(() => {
     setDraft(workspace ? structuredClone(workspace) : emptyWorkspace());
     setErrors([]);
     setNameError(false);
+    setEditorTab("general");
   }, [workspace]);
+
+  useEffect(() => {
+    editorTopRef.current?.scrollIntoView({ block: "start" });
+  }, [editorTab]);
 
   const setSurface = (index: number, patch: Partial<BusinessSurface>) => {
     setDraft((d) => ({
@@ -317,6 +332,29 @@ export function BusinessWorkspaceEditor({
     applyTemplate(template);
   };
 
+  const selectEditorTab = (tab: "general" | "repos" | "policies") => {
+    if (tab !== "general" && !businessInfoReady) {
+      setNameError(true);
+      setEditorTab("general");
+      return;
+    }
+    if (tab === "policies" && draft.surfaces.length === 0) return;
+    setEditorTab(tab);
+  };
+
+  const goToNextTab = () => {
+    if (editorTab === "general") {
+      selectEditorTab("repos");
+      return;
+    }
+    if (editorTab === "repos") selectEditorTab("policies");
+  };
+
+  const goToPreviousTab = () => {
+    if (editorTab === "repos") setEditorTab("general");
+    else if (editorTab === "policies") setEditorTab("repos");
+  };
+
   const removeSurface = (index: number) => {
     setDraft((d) => ({
       ...d,
@@ -337,6 +375,7 @@ export function BusinessWorkspaceEditor({
     setErrors([]);
     if (!draft.name.trim()) {
       setNameError(true);
+      setEditorTab("general");
       return;
     }
     const input = {
@@ -356,7 +395,7 @@ export function BusinessWorkspaceEditor({
   };
 
   return (
-    <div className="business-workspace-editor">
+    <div ref={editorTopRef} className="business-workspace-editor">
       <div className="workflow-team-editor-header">
         <button
           type="button"
@@ -368,6 +407,13 @@ export function BusinessWorkspaceEditor({
         </button>
         <div className="workflow-team-editor-title">
           <h4>{isNew ? t("business.newWorkspace") : draft.name || draft.id}</h4>
+          <p>
+            {t("business.workspaceDraftSummary", {
+              template: selectedTemplate ? t(selectedTemplate.titleKey) : t("business.templateCustom"),
+              configured: configuredSurfaceCount,
+              total: draft.surfaces.length
+            })}
+          </p>
         </div>
         <div className="workflow-team-editor-actions">
           <button type="button" onClick={onCancel}>
@@ -379,6 +425,46 @@ export function BusinessWorkspaceEditor({
         </div>
       </div>
 
+      <div className="business-editor-tabs">
+        <button
+          type="button"
+          className={`business-editor-tab ${editorTab === "general" ? "active" : ""}`}
+          onClick={() => selectEditorTab("general")}
+        >
+          <span className="business-editor-tab-num">1</span>
+          {t("business.setupBusiness")}
+          <span className={`business-editor-tab-state ${businessInfoReady ? "is-complete" : "is-required"}`}>
+            {businessInfoReady ? t("business.stepReady") : t("business.stepRequired")}
+          </span>
+        </button>
+        <button
+          type="button"
+          className={`business-editor-tab ${editorTab === "repos" ? "active" : ""}`}
+          onClick={() => selectEditorTab("repos")}
+        >
+          <span className="business-editor-tab-num">2</span>
+          {t("business.codeRepositories")}
+          <span className={`business-editor-tab-state ${repositoriesReady ? "is-complete" : ""}`}>
+            {t("business.repositoryProgress", {
+              configured: configuredSurfaceCount,
+              total: draft.surfaces.length
+            })}
+          </span>
+        </button>
+        <button
+          type="button"
+          className={`business-editor-tab ${editorTab === "policies" ? "active" : ""}`}
+          onClick={() => selectEditorTab("policies")}
+          disabled={draft.surfaces.length === 0}
+        >
+          <span className="business-editor-tab-num">3</span>
+          {t("business.collaborationAndPolicy")}
+          <span className="business-advanced-count">
+            {t("business.advancedCountHint", { count: policyItemCount })}
+          </span>
+        </button>
+      </div>
+
       {errors.length > 0 && (
         <ul className="workflow-team-editor-errors">
           {errors.map((e, i) => (
@@ -387,208 +473,260 @@ export function BusinessWorkspaceEditor({
         </ul>
       )}
 
-      <section className="workflow-team-editor-section business-template-hero">
-        <h5>{t("business.structureTemplate")}</h5>
-        <div className="business-workspace-template-grid">
-          {WORKSPACE_TEMPLATES.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              className={`business-workspace-template${selectedTemplateId === template.id ? " is-selected" : ""}`}
-              onClick={() => applyTemplateWithConfirm(template)}
-            >
-              <strong>{t(template.titleKey)}</strong>
-              <span>{t(template.descKey)}</span>
-              <span className="business-workspace-template-count">
-                {t("business.templateRepoCount", { count: template.surfaces.length })}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="workflow-team-editor-section">
-        <h5>{t("business.setupBusiness")}</h5>
-        <label className="workflow-team-editor-field">
-          <span>
-            {t("business.workspaceName")} <span className="business-required">*</span>
-          </span>
-          <input
-            type="text"
-            value={draft.name}
-            required
-            aria-invalid={nameError}
-            aria-describedby={nameError ? "biz-name-error" : undefined}
-            className={nameError ? "business-input-error" : undefined}
-            onChange={(e) => {
-              setDraft({ ...draft, name: e.target.value });
-              setNameError(false);
-            }}
-            placeholder={t("business.workspaceName")}
-          />
-          {nameError && (
-            <span id="biz-name-error" role="alert" className="business-field-error">
-              {t("business.nameRequired")}
-            </span>
-          )}
-        </label>
-        <label className="workflow-team-editor-field">
-          <span>{t("workflow.teamDescription")}</span>
-          <textarea
-            value={draft.description ?? ""}
-            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-            rows={2}
-          />
-        </label>
-      </section>
-
-      <section className="workflow-team-editor-section">
-        <h5>{t("business.codeRepositories")}</h5>
-        {draft.surfaces.length === 0 ? (
-          <p className="muted small">{t("business.noRepositories")}</p>
-        ) : (
-          <div className="business-workspace-surfaces">
-            {draft.surfaces.map((surface, index) => (
-              <div key={index} className="business-surface-row">
-                <div className="business-surface-row-header">
-                  <strong>{surface.name || t("business.codeRepository")}</strong>
-                  <span className={`workflow-team-badge business-kind-badge tone-${KIND_META[surface.kind].tone}`}>
-                    {KIND_META[surface.kind].icon} {t(KIND_META[surface.kind].labelKey)}
-                  </span>
-                </div>
-                <div className="business-surface-grid">
-                  <label className="workflow-team-editor-field">
-                    <span>{t("business.repositoryName")}</span>
-                    <input
-                      type="text"
-                      value={surface.name}
-                      onChange={(e) => setSurface(index, { name: e.target.value })}
-                    />
-                  </label>
-                  <label className="workflow-team-editor-field">
-                    <span>{t("business.repositoryType")}</span>
-                    <select
-                      value={surface.kind}
-                      onChange={(e) =>
-                        setSurfaceKind(index, e.target.value as BusinessSurfaceKind)
-                      }
-                    >
-                      {SURFACE_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {KIND_META[kind].icon} {t(KIND_META[kind].labelKey)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="workflow-team-editor-field">
-                    <span>{t("business.repoPath")}</span>
-                    <div className="business-surface-repo">
-                      <input
-                        type="text"
-                        value={surface.repoPath}
-                        onChange={(e) => setSurface(index, { repoPath: e.target.value })}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void pickRepoPath(index)}
-                      >
-                        {t("business.chooseDirectory")}
-                      </button>
-                    </div>
-                  </label>
-                  <label className="workflow-team-editor-field">
-                    <span>{t("business.defaultAgent")}</span>
-                    <select
-                      value={surface.defaultAgentId}
-                      onChange={(e) =>
-                        setSurface(index, { defaultAgentId: e.target.value })
-                      }
-                    >
-                      <option value="">—</option>
-                      {members.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="workflow-team-editor-field">
-                    <span>{t("business.verifyCommands")}</span>
-                    <textarea
-                      rows={2}
-                      value={joinLines(surface.verifyCommands)}
-                      placeholder={t("business.verifyCommandsHint")}
-                      onChange={(e) =>
-                        setSurface(index, { verifyCommands: splitLines(e.target.value) })
-                      }
-                    />
-                  </label>
-                </div>
-                <details className="business-repository-advanced">
-                  <summary>{t("business.repositoryAdvanced")}</summary>
-                  <div className="business-surface-grid">
-                    <label className="workflow-team-editor-field">
-                      <span>{t("business.allowedPaths")}</span>
-                      <textarea
-                        rows={2}
-                        value={joinLines(surface.allowedPaths)}
-                        onChange={(e) =>
-                          setSurface(index, { allowedPaths: splitLines(e.target.value) })
-                        }
-                      />
-                    </label>
-                    <label className="workflow-team-editor-field">
-                      <span>{t("business.responsibilities")}</span>
-                      <textarea
-                        rows={2}
-                        value={joinLines(surface.responsibilities)}
-                        onChange={(e) =>
-                          setSurface(index, { responsibilities: splitLines(e.target.value) })
-                        }
-                      />
-                    </label>
-                    <label className="workflow-team-editor-toggle">
-                      <input
-                        type="checkbox"
-                        checked={surface.enabled}
-                        onChange={(e) =>
-                          setSurface(index, { enabled: e.target.checked })
-                        }
-                      />
-                      <span>{t("business.repositoryEnabled")}</span>
-                    </label>
-                  </div>
-                </details>
-                <div className="business-surface-row-actions">
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => removeSurface(index)}
-                  >
-                    {t("common.delete")}
-                  </button>
-                </div>
+      <div key={editorTab} className="business-editor-tab-content">
+        {editorTab === "general" && (
+          <>
+            <section className="workflow-team-editor-section business-template-hero">
+              <div className="business-template-hero-copy">
+                <h5>{t("business.structureTemplate")}</h5>
+                <p className="muted small">{t("business.structureTemplateHint")}</p>
               </div>
-            ))}
-          </div>
-        )}
-        <button type="button" onClick={() => addSurface()}>
-          + {t("business.codeRepository")}
-        </button>
-      </section>
+              <div className="business-workspace-template-grid">
+                {WORKSPACE_TEMPLATES.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    className={`business-workspace-template${selectedTemplateId === template.id ? " is-selected" : ""}`}
+                    onClick={() => applyTemplateWithConfirm(template)}
+                  >
+                    <strong>{t(template.titleKey)}</strong>
+                    <span>{t(template.descKey)}</span>
+                    <span className="business-workspace-template-count">
+                      {t("business.templateRepoCount", { count: template.surfaces.length })}
+                    </span>
+                    {selectedTemplateId === template.id && (
+                      <span className="business-template-selected">{t("business.selectedTemplate")}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </section>
 
-      {(draft.surfaces.length > 0 || isNew) && (
-        <details className="workflow-team-editor-section business-workspace-advanced business-workspace-collab-policy">
-          <summary>
-            {t("business.collaborationAndPolicy")}
-            <span className="business-advanced-count">
-              {t("business.advancedCountHint", {
-                count: draft.surfaces.filter((s) => s.enabled).length + 3
-              })}
-            </span>
-          </summary>
-          {draft.surfaces.length > 0 && (
-            <>
+            <section className="workflow-team-editor-section business-basics-section">
+              <h5>{t("business.setupBusiness")}</h5>
+              <label className="workflow-team-editor-field">
+                <span>
+                  {t("business.workspaceName")} <span className="business-required">*</span>
+                </span>
+                <input
+                  type="text"
+                  value={draft.name}
+                  required
+                  aria-invalid={nameError}
+                  aria-describedby={nameError ? "biz-name-error" : undefined}
+                  className={nameError ? "business-input-error" : undefined}
+                  onChange={(e) => {
+                    setDraft({ ...draft, name: e.target.value });
+                    setNameError(false);
+                  }}
+                  placeholder={t("business.workspaceName")}
+                />
+                {nameError && (
+                  <span id="biz-name-error" role="alert" className="business-field-error">
+                    {t("business.nameRequired")}
+                  </span>
+                )}
+              </label>
+              <label className="workflow-team-editor-field">
+                <span>{t("workflow.teamDescription")}</span>
+                <textarea
+                  value={draft.description ?? ""}
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  rows={2}
+                />
+              </label>
+            </section>
+          </>
+        )}
+
+        {editorTab === "repos" && (
+          <section className="workflow-team-editor-section business-repository-section">
+            <div className="business-section-heading">
+              <div>
+                <h5>{t("business.codeRepositories")}</h5>
+                <p className="muted small">{t("business.repositorySetupHint")}</p>
+              </div>
+              <button type="button" className="business-add-repository" onClick={() => addSurface()}>
+                + {t("business.codeRepository")}
+              </button>
+            </div>
+            {draft.surfaces.length === 0 ? (
+              <div className="business-empty-repositories">
+                <strong>{t("business.noRepositoriesTitle")}</strong>
+                <p>{t("business.noRepositories")}</p>
+                <button type="button" onClick={() => addSurface("custom")}>
+                  + {t("business.addRepositoryManually")}
+                </button>
+              </div>
+            ) : (
+              <div className="business-workspace-surfaces">
+                {draft.surfaces.map((surface, index) => {
+                  const assignedAgent = members.find((member) => member.id === surface.defaultAgentId);
+                  const repoReady = surface.repoPath.trim().length > 0;
+                  const surfaceReady = surface.enabled && repoReady;
+
+                  return (
+                    <div key={index} className={`business-surface-row ${surfaceReady ? "is-ready" : "is-incomplete"}`}>
+                      <div className="business-surface-row-header">
+                        <div className="business-surface-title">
+                          <span className="business-surface-index">{String(index + 1).padStart(2, "0")}</span>
+                          <input
+                            type="text"
+                            aria-label={t("business.repositoryName")}
+                            className="business-surface-name-input"
+                            value={surface.name}
+                            placeholder={t("business.codeRepository")}
+                            onChange={(e) => setSurface(index, { name: e.target.value })}
+                          />
+                        </div>
+                        <div className="business-surface-header-actions">
+                          <span className={`workflow-team-badge business-kind-badge tone-${KIND_META[surface.kind].tone}`}>
+                            {KIND_META[surface.kind].icon} {t(KIND_META[surface.kind].labelKey)}
+                          </span>
+                          <select
+                            aria-label={t("business.repositoryType")}
+                            className="business-surface-type-select"
+                            value={surface.kind}
+                            onChange={(e) =>
+                              setSurfaceKind(index, e.target.value as BusinessSurfaceKind)
+                            }
+                          >
+                            {SURFACE_KINDS.map((kind) => (
+                              <option key={kind} value={kind}>
+                                {KIND_META[kind].icon} {t(KIND_META[kind].labelKey)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="business-surface-delete-btn"
+                            onClick={() => removeSurface(index)}
+                            title={t("common.delete")}
+                            aria-label={t("common.delete")}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      <div className="business-surface-meta-row">
+                        <span className={`business-surface-status ${surfaceReady ? "is-ready" : "is-missing"}`}>
+                          {surface.enabled
+                            ? repoReady
+                              ? t("business.repositoryReady")
+                              : t("business.repoPathMissing")
+                            : t("business.repositoryDisabled")}
+                        </span>
+                        <span>{assignedAgent ? assignedAgent.name : t("business.agentNotAssigned")}</span>
+                      </div>
+                      <div className="business-surface-quick-grid">
+                        <label className="workflow-team-editor-field">
+                          <span>{t("business.repoPath")}</span>
+                          <div className="business-surface-repo">
+                            <input
+                              type="text"
+                              value={surface.repoPath}
+                              onChange={(e) => setSurface(index, { repoPath: e.target.value })}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void pickRepoPath(index)}
+                            >
+                              {t("business.chooseDirectory")}
+                            </button>
+                          </div>
+                        </label>
+                        <label className="workflow-team-editor-field">
+                          <span>{t("business.defaultAgent")}</span>
+                          <select
+                            value={surface.defaultAgentId}
+                            onChange={(e) =>
+                              setSurface(index, { defaultAgentId: e.target.value })
+                            }
+                          >
+                            <option value="">—</option>
+                            {members.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <details className="business-repository-advanced">
+                        <summary>
+                          {t("business.repositoryAdvanced")}
+                          <span>{t("business.repositoryAdvancedHint")}</span>
+                        </summary>
+                        <div className="business-surface-grid">
+                          <label className="workflow-team-editor-toggle business-surface-enabled-toggle">
+                            <input
+                              type="checkbox"
+                              checked={surface.enabled}
+                              onChange={(e) =>
+                                setSurface(index, { enabled: e.target.checked })
+                              }
+                            />
+                            <span>{t("business.repositoryEnabled")}</span>
+                          </label>
+                          <label className="workflow-team-editor-field">
+                            <span>
+                              {t("business.verifyCommands")}
+                              <span className="business-field-desc"> - {t("business.agentVerificationDefault")}</span>
+                            </span>
+                            <textarea
+                              rows={2}
+                              value={joinLines(surface.verifyCommands)}
+                              placeholder={t("business.verifyCommandsHint")}
+                              onChange={(e) =>
+                                setSurface(index, { verifyCommands: splitLines(e.target.value) })
+                              }
+                            />
+                          </label>
+                          <label className="workflow-team-editor-field">
+                            <span>{t("business.allowedPaths")}</span>
+                            <textarea
+                              rows={2}
+                              value={joinLines(surface.allowedPaths)}
+                              onChange={(e) =>
+                                setSurface(index, { allowedPaths: splitLines(e.target.value) })
+                              }
+                            />
+                          </label>
+                          <label className="workflow-team-editor-field business-full-width">
+                            <span>{t("business.responsibilities")}</span>
+                            <textarea
+                              rows={2}
+                              value={joinLines(surface.responsibilities)}
+                              onChange={(e) =>
+                                setSurface(index, { responsibilities: splitLines(e.target.value) })
+                              }
+                            />
+                          </label>
+                        </div>
+                      </details>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {editorTab === "policies" && draft.surfaces.length > 0 && (
+          <section className="workflow-team-editor-section business-workspace-advanced-standalone business-workspace-collab-policy">
+            <div className="business-policy-standalone-header">
+              <div>
+                <h5>{t("business.collaborationAndPolicy")}</h5>
+                <p className="muted small business-policy-intro">
+                  {t("business.collaborationAndPolicyHint")}
+                </p>
+              </div>
+              <span className="business-advanced-count">
+                {t("business.advancedCountHint", { count: policyItemCount })}
+              </span>
+            </div>
+
+            <div className="business-collaboration-section">
               <h5>{t("business.collaboration")}</h5>
               <p className="muted small">{t("business.collaborationHint")}</p>
               <div className="business-collaboration-list">
@@ -612,60 +750,98 @@ export function BusinessWorkspaceEditor({
                   </label>
                 ))}
               </div>
-            </>
+            </div>
+
+            <div className="business-policy-section">
+              <h5>{t("business.advancedSettings")}</h5>
+              <div className="business-policy-grid">
+                <label className="workflow-team-editor-toggle">
+                  <input
+                    type="checkbox"
+                    checked={draft.policy.requireCleanRepoBeforeRun}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        policy: {
+                          ...draft.policy,
+                          requireCleanRepoBeforeRun: e.target.checked
+                        }
+                      })
+                    }
+                  />
+                  <span>{t("business.requireCleanRepoBeforeRun")}</span>
+                </label>
+                <label className="workflow-team-editor-toggle">
+                  <input
+                    type="checkbox"
+                    checked={draft.policy.blockCommitOnVerificationFailure}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        policy: {
+                          ...draft.policy,
+                          blockCommitOnVerificationFailure: e.target.checked
+                        }
+                      })
+                    }
+                  />
+                  <span>{t("business.blockCommitOnVerificationFailure")}</span>
+                </label>
+                <label className="workflow-team-editor-field">
+                  <span>{t("business.branchNameTemplate")}</span>
+                  <input
+                    type="text"
+                    value={draft.policy.branchNameTemplate}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        policy: {
+                          ...draft.policy,
+                          branchNameTemplate: e.target.value
+                        }
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+
+      <div className="business-editor-footer">
+        <div className="business-editor-footer-left">
+          {editorTab !== "general" && (
+            <button
+              type="button"
+              className="business-nav-prev-btn"
+              onClick={goToPreviousTab}
+            >
+              ← {t("common.prev")}
+            </button>
           )}
-          <div className="business-policy-grid">
-            <label className="workflow-team-editor-toggle">
-              <input
-                type="checkbox"
-                checked={draft.policy.requireCleanRepoBeforeRun}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    policy: {
-                      ...draft.policy,
-                      requireCleanRepoBeforeRun: e.target.checked
-                    }
-                  })
-                }
-              />
-              <span>{t("business.requireCleanRepoBeforeRun")}</span>
-            </label>
-            <label className="workflow-team-editor-toggle">
-              <input
-                type="checkbox"
-                checked={draft.policy.blockCommitOnVerificationFailure}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    policy: {
-                      ...draft.policy,
-                      blockCommitOnVerificationFailure: e.target.checked
-                    }
-                  })
-                }
-              />
-              <span>{t("business.blockCommitOnVerificationFailure")}</span>
-            </label>
-            <label className="workflow-team-editor-field">
-              <span>{t("business.branchNameTemplate")}</span>
-              <input
-                type="text"
-                value={draft.policy.branchNameTemplate}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    policy: {
-                      ...draft.policy,
-                      branchNameTemplate: e.target.value
-                    }
-                  })
-                }
-              />
-            </label>
-          </div>
-        </details>
-      )}
+        </div>
+        <div className="business-editor-footer-right">
+          {editorTab !== "policies" ? (
+            <button
+              type="button"
+              className="primary business-nav-next-btn"
+              onClick={goToNextTab}
+              disabled={editorTab === "repos" && draft.surfaces.length === 0}
+            >
+              {t("common.next")} →
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary business-save-btn"
+              onClick={() => void handleSave()}
+            >
+              {isNew ? t("business.createWorkspace") : t("common.save")}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

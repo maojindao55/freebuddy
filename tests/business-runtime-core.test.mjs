@@ -221,6 +221,8 @@ test("startBusinessRun: allowedPaths and contract are injected into the prompt",
   const prompt = captured[0];
   assert.match(prompt, /STRICT SCOPE/);
   assert.match(prompt, /src/);
+  assert.match(prompt, /no fixed verification commands are configured/);
+  assert.match(prompt, /composer\.json/);
   assert.match(prompt, /Membership contract/);
   assert.match(prompt, /POST \/api\/x/);
   assert.match(prompt, /rule a/);

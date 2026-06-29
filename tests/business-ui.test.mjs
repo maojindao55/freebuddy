@@ -35,7 +35,8 @@ test("Business workspace editor uses a guided user-facing setup model", () => {
   assert.match(editor, /business\.collaboration/);
   assert.match(editor, /business\.collaborationAndPolicy/);
   assert.match(editor, /business\.advancedCountHint/);
-  assert.doesNotMatch(editor, /business\.advancedSettings/);
+  assert.match(editor, /business-editor-tabs/);
+  assert.match(editor, /selectEditorTab/);
   assert.doesNotMatch(editor, /<span>\{t\("business\.contractRole"\)\}<\/span>/);
 
   assert.equal(zh.business.setupBusiness, "先说明这个业务");
@@ -71,7 +72,12 @@ test("Business workspace editor exposes UX redesign i18n keys in both locales", 
     "chooseDirectory", "saveFailed", "nameRequired", "switchTemplateConfirm",
     "collaborationAndPolicy", "advancedCountHint", "createWorkspace", "templateRepoCount",
     "kind_client", "kind_server", "kind_admin", "kind_shared",
-    "kind_docs", "kind_test", "kind_custom"
+    "kind_docs", "kind_test", "kind_custom", "agentVerificationDefault",
+    "repositorySetupHint", "repositoryAdvancedHint", "collaborationAndPolicyHint",
+    "workspaceDraftSummary", "structureTemplateHint", "selectedTemplate",
+    "stepReady", "stepRequired", "repositoryProgress", "repositoryReady",
+    "repoPathMissing", "agentNotAssigned", "repositoryDisabled",
+    "noRepositoriesTitle", "addRepositoryManually"
   ];
   for (const k of keys) {
     assert.ok(en.business[k], `en missing business.${k}`);
@@ -132,4 +138,39 @@ test("Business workspace editor folds collaboration and policy into one region",
   const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
   assert.match(editor, /business-workspace-collab-policy/);
   assert.match(editor, /business-advanced-count/);
+  assert.match(editor, /policyItemCount/);
+});
+
+test("Business workspace editor defaults to agent-selected verification", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /business\.agentVerificationDefault/);
+  assert.doesNotMatch(editor, /verifyCommands:\s*\["npm/);
+  const advancedIdx = editor.indexOf('className="business-repository-advanced"');
+  const verifyIdx = editor.indexOf('t("business.verifyCommands")');
+  assert.ok(advancedIdx > -1, "repository advanced section missing");
+  assert.ok(verifyIdx > advancedIdx, "fixed verification commands should live in advanced settings");
+});
+
+test("Business workspace editor keeps repository setup lightweight below the fold", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  const styles = read("../styles.css");
+  assert.match(editor, /business-section-heading/);
+  assert.match(editor, /business-surface-quick-grid/);
+  assert.match(editor, /business-surface-name-input/);
+  assert.match(editor, /business\.repositorySetupHint/);
+  assert.match(editor, /business\.repositoryAdvancedHint/);
+  assert.match(editor, /business\.collaborationAndPolicyHint/);
+  assert.match(editor, /business\.workspaceDraftSummary/);
+  assert.match(editor, /business\.repositoryProgress/);
+  assert.match(editor, /business-surface-meta-row/);
+  assert.match(editor, /business-empty-repositories/);
+  assert.match(editor, /business-policy-intro/);
+  assert.doesNotMatch(editor, /business-surface-row-actions/);
+  assert.match(styles, /\.business-surface-quick-grid\s*\{/);
+  assert.match(styles, /\.business-workspace-editor select\s*\{[\s\S]*appearance:\s*none/);
+  assert.match(styles, /\.business-surface-repo button\s*\{/);
+  assert.match(styles, /\.business-add-repository\s*\{/);
+  assert.match(styles, /\.business-editor-tab-state\s*\{/);
+  assert.match(styles, /\.business-empty-repositories\s*\{/);
+  assert.match(styles, /@media \(max-width: 760px\)/);
 });

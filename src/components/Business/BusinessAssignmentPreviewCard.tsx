@@ -67,11 +67,11 @@ export function BusinessAssignmentPreviewCard({
                 {t("business.surfaces")}: {surface.dependsOnSurfaceIds.join(", ")}
               </p>
             )}
-            {surface.verifyCommands.length > 0 && (
-              <p className="muted small">
-                {t("business.verifyCommands")}: {surface.verifyCommands.join(", ")}
-              </p>
-            )}
+            <p className="muted small">
+              {surface.verifyCommands.length > 0
+                ? `${t("business.verifyCommands")}: ${surface.verifyCommands.join(", ")}`
+                : t("business.agentVerificationDefault")}
+            </p>
           </li>
         ))}
       </ul>

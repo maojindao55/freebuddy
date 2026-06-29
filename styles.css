@@ -6461,21 +6461,56 @@ button.ghost:focus-visible,
 }
 .workflow-team-editor-field.inline input { max-width: 72px; }
 .workflow-team-editor-toggle {
-  display: flex;
-  gap: 8px;
+  display: inline-flex;
   align-items: center;
+  position: relative;
+  cursor: pointer;
   font-size: 13px;
   color: var(--fb-text-secondary);
-  cursor: pointer;
+  user-select: none;
 }
 .workflow-team-editor-toggle input[type="checkbox"] {
-  accent-color: var(--fb-brand);
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
 }
-.workflow-team-editor-toggle input[type="checkbox"]:disabled {
-  opacity: 0.4;
+.workflow-team-editor-toggle input[type="checkbox"] + span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  padding-left: 44px;
+}
+.workflow-team-editor-toggle input[type="checkbox"] + span::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--fb-border-strong);
+  transition: background 0.2s ease;
+}
+.workflow-team-editor-toggle input[type="checkbox"] + span::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.workflow-team-editor-toggle input[type="checkbox"]:checked + span::before {
+  background: var(--fb-brand);
+}
+.workflow-team-editor-toggle input[type="checkbox"]:checked + span::after {
+  transform: translateX(16px);
+}
+.workflow-team-editor-toggle input[type="checkbox"]:disabled + span {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 .workflow-team-roles {
@@ -6992,18 +7027,72 @@ button.ghost:focus-visible,
   flex: none;
 }
 
-.business-workspace-list,
-.business-workspace-editor {
+.business-workspace-list {
   display: grid;
   gap: 12px;
+}
+
+.business-workspace-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+}
+
+.business-workspace-editor .workflow-team-editor-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--fb-border);
+  background: var(--fb-panel-bg);
+}
+
+.business-workspace-editor .workflow-team-editor-title {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.business-workspace-editor .workflow-team-editor-title p {
+  margin: 0;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .business-workspace-card,
 .business-surface-row {
   border: 1px solid var(--fb-border);
-  border-radius: 8px;
-  padding: 12px;
-  background: var(--fb-surface);
+  border-radius: 12px;
+  padding: 16px 20px;
+  background: var(--fb-panel-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s ease;
+}
+
+@keyframes business-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.business-surface-row {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: business-row-enter 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.business-surface-row:hover {
+  border-color: var(--fb-border-strong);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
 }
 
 .business-collaboration-list,
@@ -7020,43 +7109,210 @@ button.ghost:focus-visible,
 }
 
 .business-workspace-template {
-  display: grid;
-  gap: 4px;
-  min-height: 72px;
-  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 80px;
+  padding: 16px;
   text-align: left;
-  align-content: start;
   border: 1px solid var(--fb-border);
-  border-radius: 8px;
-  background: var(--fb-bg);
+  border-radius: 12px;
+  background: var(--fb-panel-bg);
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
 }
 
 .business-workspace-template:hover {
-  border-color: var(--fb-brand);
-  background: rgba(16, 185, 129, 0.06);
+  border-color: rgba(16, 185, 129, 0.4);
+  background: var(--fb-panel-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px -4px rgba(16, 185, 129, 0.08), 0 4px 8px -4px rgba(16, 185, 129, 0.04);
 }
 
 .business-workspace-template.is-selected {
   border-color: var(--fb-brand);
   background: var(--fb-brand-glow);
-  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+  box-shadow: 0 0 0 1px var(--fb-brand), 0 4px 12px rgba(16, 185, 129, 0.15);
 }
+
+.business-workspace-template.is-selected::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--fb-brand);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+}
+
+.business-template-hero-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.business-template-hero-copy p {
+  margin: 0;
+}
+
 .business-workspace-template .business-workspace-template-count {
   color: var(--fb-text-tertiary);
   font-size: 11px;
-  margin-top: 2px;
+  font-weight: 600;
+  margin-top: 8px;
+  display: inline-block;
+  background: var(--fb-panel-soft);
+  padding: 4px 8px;
+  border-radius: 6px;
+  align-self: flex-start;
+  margin-bottom: 0;
+}
+
+.business-workspace-template .business-template-selected {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  margin: 0;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--fb-brand);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.business-workspace-template strong {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--fb-text-primary);
 }
 
 .business-workspace-template span {
-  color: var(--fb-muted);
+  color: var(--fb-text-secondary);
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.4;
+  margin-bottom: auto;
+}
+
+.business-basics-section {
+  background: linear-gradient(180deg, var(--fb-panel-bg), var(--fb-panel-soft));
+}
+
+.business-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.business-section-heading h5,
+.business-section-heading p {
+  margin: 0;
+}
+
+.business-section-heading p {
+  margin-top: 4px;
+}
+
+.business-add-repository {
+  flex: none;
+  height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  background: var(--fb-brand);
+  color: #fff;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2);
+  transition: all 0.2s ease;
+}
+
+.business-add-repository:hover {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+}
+
+.business-workspace-editor select {
+  height: 36px;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background-color: var(--fb-panel-soft);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+}
+
+.business-workspace-editor select:hover {
+  border-color: var(--fb-border-strong);
+  background-color: var(--fb-panel-bg);
+}
+
+.business-workspace-editor select:focus {
+  border-color: rgba(16, 185, 129, 0.58);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+}
+
+.business-repository-section .workflow-team-editor-field > span {
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.business-repository-section .workflow-team-editor-field input,
+.business-repository-section .workflow-team-editor-field textarea {
+  border-color: var(--fb-border);
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.business-repository-section .workflow-team-editor-field input {
+  height: 36px;
+}
+
+.business-repository-section .workflow-team-editor-field input:hover,
+.business-repository-section .workflow-team-editor-field textarea:hover {
+  border-color: var(--fb-border-strong);
+}
+
+.business-repository-section .workflow-team-editor-field input:focus,
+.business-repository-section .workflow-team-editor-field textarea:focus {
+  border-color: rgba(16, 185, 129, 0.58);
+  background: var(--fb-panel-bg);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
 .business-kind-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 7px;
+  white-space: nowrap;
   text-transform: none;
   letter-spacing: 0;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
 }
 .business-kind-badge.tone-client { background: var(--fb-brand-glow); color: var(--fb-brand); }
 .business-kind-badge.tone-server { background: var(--fb-workflow-glow); color: var(--fb-workflow); }
@@ -7075,18 +7331,186 @@ button.ghost:focus-visible,
 }
 .business-field-error { display: block; color: var(--fb-danger, #e11d48); font-size: 12px; margin-top: 4px; }
 
+.business-empty-repositories {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  min-height: 150px;
+  padding: 26px;
+  border: 1px dashed var(--fb-border-strong);
+  border-radius: 12px;
+  background: var(--fb-panel-soft);
+  text-align: center;
+}
+
+.business-empty-repositories strong {
+  color: var(--fb-text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.business-empty-repositories p {
+  max-width: 360px;
+  margin: 0;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.business-empty-repositories button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--fb-brand);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.business-empty-repositories button:hover {
+  background: rgba(16, 185, 129, 0.12);
+}
+
 .business-surface-row-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fb-border);
+}
+
+.business-surface-row.is-ready {
+  border-color: rgba(16, 185, 129, 0.24);
+}
+
+.business-surface-row.is-incomplete {
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.business-surface-title {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.business-surface-index {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--fb-home-bg-primary);
+  border: 1px solid var(--fb-border-strong);
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.business-surface-name-input {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.business-surface-name-input:hover {
+  background: var(--fb-hover);
+  border-color: var(--fb-border-strong);
+}
+
+.business-surface-name-input:focus {
+  outline: none;
+  border-color: rgba(16, 185, 129, 0.5);
+  background: var(--fb-panel-bg);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.business-surface-header-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  flex: none;
+}
+
+.business-surface-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: -6px;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+}
+
+.business-surface-status {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.business-surface-status.is-ready {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--fb-brand);
+}
+
+.business-surface-status.is-missing {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.business-surface-header-actions button.danger {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fb-danger);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.business-surface-header-actions button.danger:hover {
+  border-color: rgba(225, 29, 72, 0.25);
+  background: rgba(225, 29, 72, 0.08);
 }
 
 .business-surface-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.business-surface-quick-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(180px, 1fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.business-agent-verification-note {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  color: var(--fb-text-tertiary);
 }
 
 .business-workspace-surfaces {
@@ -7096,11 +7520,52 @@ button.ghost:focus-visible,
 
 .business-surface-repo {
   display: flex;
-  gap: 6px;
+  position: relative;
+  align-items: stretch;
 }
 
 .business-surface-repo input {
   flex: 1;
+  min-width: 0;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
+}
+
+.business-surface-repo button {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--fb-border);
+  border-left: 1px solid var(--fb-border-strong);
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-top-right-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.business-surface-repo button:hover {
+  border-color: rgba(16, 185, 129, 0.36);
+  background: var(--fb-hover);
+  color: var(--fb-brand);
+}
+
+.business-surface-repo input:focus + button {
+  border-top-color: rgba(16, 185, 129, 0.5) !important;
+  border-bottom-color: rgba(16, 185, 129, 0.5) !important;
+  border-right-color: rgba(16, 185, 129, 0.5) !important;
+}
+
+.business-surface-repo button:focus-visible,
+.business-add-repository:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.45);
+  outline-offset: 2px;
 }
 
 .business-surface-row-actions {
@@ -7111,16 +7576,106 @@ button.ghost:focus-visible,
 
 .business-repository-advanced,
 .business-workspace-advanced {
-  border: 1px dashed var(--fb-border);
-  border-radius: 8px;
-  padding: 10px;
-  background: var(--fb-bg);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--fb-home-bg-primary);
+  transition: all 0.2s ease;
+}
+
+.business-repository-advanced:hover,
+.business-workspace-advanced:hover {
+  border-color: rgba(148, 163, 184, 0.25);
 }
 
 .business-repository-advanced summary,
 .business-workspace-advanced summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.business-repository-advanced summary:hover,
+.business-workspace-advanced summary:hover {
+  color: var(--fb-brand);
+}
+
+.business-repository-advanced summary::-webkit-details-marker,
+.business-workspace-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.business-repository-advanced summary span,
+.business-workspace-advanced summary span {
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.business-policy-intro {
+  margin: 8px 0 12px;
+}
+
+@media (max-width: 760px) {
+  .business-editor-tabs {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px 12px;
+  }
+
+  .business-editor-tab {
+    justify-content: flex-start;
+    border-bottom: 0;
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .business-editor-tab.active {
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+  .business-section-heading,
+  .business-surface-row-header,
+  .business-surface-header-actions,
+  .business-policy-standalone-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .business-add-repository,
+  .business-surface-header-actions button.danger,
+  .business-surface-type-select,
+  .business-surface-delete-btn {
+    width: 100%;
+  }
+
+  .business-surface-quick-grid,
+  .business-surface-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .business-repository-advanced summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .business-editor-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .business-editor-footer button {
+    width: 100%;
+  }
 }
 
 .business-advanced-count {
@@ -7139,7 +7694,7 @@ button.ghost:focus-visible,
   border: 1px solid var(--fb-border);
   border-radius: 8px;
   padding: 12px;
-  background: var(--fb-surface);
+  background: var(--fb-panel-bg);
 }
 
 .business-assignment-preview-actions {
@@ -7160,7 +7715,7 @@ button.ghost:focus-visible,
   border: 1px solid var(--fb-border);
   border-radius: 6px;
   padding: 8px 10px;
-  background: var(--fb-surface);
+  background: var(--fb-panel-bg);
 }
 
 .business-assignment-surface-head {
@@ -7180,7 +7735,7 @@ button.ghost:focus-visible,
   border: 1px solid var(--fb-border);
   border-radius: 8px;
   padding: 12px;
-  background: var(--fb-surface);
+  background: var(--fb-panel-bg);
 }
 
 .business-commit-gate-repos {
@@ -7238,7 +7793,7 @@ button.ghost:focus-visible,
   border: 1px solid var(--fb-border);
   border-radius: 6px;
   padding: 8px;
-  background: var(--fb-surface);
+  background: var(--fb-panel-bg);
 }
 
 .business-commit-gate-outofscope ul {
@@ -7282,4 +7837,276 @@ button.small {
   white-space: pre-wrap;
   max-height: 80px;
   overflow: auto;
+}
+
+/* Tabbed Business Workspace Editor styling */
+.business-editor-tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--fb-border);
+  padding: 4px 16px 0;
+  gap: 16px;
+  background: var(--fb-panel-bg);
+}
+
+.business-editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.business-editor-tab-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 20px;
+}
+
+.business-editor-tab-state.is-complete {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--fb-brand);
+}
+
+.business-editor-tab-state.is-required {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.business-editor-tab:hover {
+  color: var(--fb-text-primary);
+}
+
+.business-editor-tab.active {
+  color: var(--fb-brand);
+  border-bottom-color: var(--fb-brand);
+  font-weight: 650;
+}
+
+.business-editor-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.business-editor-tab-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid var(--fb-border-strong);
+  transition: all 0.2s ease;
+}
+
+.business-editor-tab.active .business-editor-tab-num {
+  background: var(--fb-brand);
+  color: #fff;
+  border-color: var(--fb-brand);
+}
+
+.business-editor-tab-content {
+  padding: 16px 20px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.business-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid var(--fb-border);
+  background: var(--fb-panel-bg);
+  margin-top: auto;
+}
+
+.business-nav-prev-btn {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--fb-border);
+  background: transparent;
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.business-nav-prev-btn:hover {
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+}
+
+.business-nav-next-btn,
+.business-save-btn {
+  height: 36px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.business-nav-next-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Standalone Workspace Advanced Settings Tab */
+.business-workspace-advanced-standalone {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.business-policy-standalone-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fb-border);
+}
+
+.business-policy-standalone-header h5 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.business-policy-standalone-header .business-advanced-count {
+  flex: none;
+  margin-top: 2px;
+}
+
+.business-collaboration-section,
+.business-policy-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.business-collaboration-section h5,
+.business-policy-section h5 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--fb-text-primary);
+}
+
+/* Repo Card Header Dropdowns and Actions */
+.business-surface-type-select {
+  height: 28px;
+  width: auto;
+  min-width: 126px;
+  padding: 0 24px 0 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 650;
+  border: 1px solid var(--fb-border);
+  background-color: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.business-surface-type-select:hover {
+  background-color: var(--fb-hover);
+  border-color: var(--fb-border-strong);
+  color: var(--fb-text-primary);
+}
+
+.business-surface-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.business-surface-delete-btn:hover {
+  background: rgba(225, 29, 72, 0.08);
+  color: var(--fb-danger);
+}
+
+.business-field-desc {
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+  font-weight: normal;
+}
+
+.business-full-width {
+  grid-column: 1 / -1;
+}
+
+.business-surface-enabled-toggle {
+  grid-column: 1 / -1;
+  border-bottom: 1px dashed var(--fb-border);
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 760px) {
+  .business-editor-tabs {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px 12px;
+  }
+
+  .business-editor-tab {
+    justify-content: flex-start;
+    border-bottom: 0;
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .business-editor-tab.active {
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+  .business-surface-type-select,
+  .business-surface-delete-btn {
+    width: 100%;
+  }
 }

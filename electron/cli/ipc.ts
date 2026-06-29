@@ -48,6 +48,7 @@ import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
 import { registerWorkflowIpc } from "./workflowIpc.js";
+import { registerBusinessWorkspaceIpc } from "./businessWorkspaceIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
@@ -324,4 +325,5 @@ export function registerCliIpc() {
   });
 
   registerWorkflowIpc();
+  registerBusinessWorkspaceIpc();
 }

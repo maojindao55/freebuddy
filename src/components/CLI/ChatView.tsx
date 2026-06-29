@@ -6,7 +6,10 @@ import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
+import { useBusinessWorkspaceStore } from "@/store/businessWorkspaceStore";
+import { useBusinessRequirementRunStore } from "@/store/businessRequirementRunStore";
 import { cliClient } from "@/services/cli/client";
+import { BusinessAssignmentPreviewCard } from "../Business/BusinessAssignmentPreviewCard";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
 import type {
   WorkflowTeam,
@@ -15,6 +18,11 @@ import type {
 import { workflowTeamName } from "@/services/workflowTeams/types";
 import { workflowFollowupAgentId } from "@/services/workflows/types";
 import { workflowClient } from "@/services/workflows/client";
+import type {
+  BusinessWorkspace,
+  BusinessAssignmentPlan,
+  BusinessContractDraft
+} from "@/services/businessWorkspaces/types";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
   attachmentPreviewUrl,
@@ -29,6 +37,7 @@ import {
   mergeSessionMetaItems,
   type AvailableCommandItem
 } from "@/store/sessionMetaUtils";
+import { buildConversationTitle } from "@/store/conversationUtils";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -219,10 +228,11 @@ export function ChatView() {
     (s) => s.setConversationApprovalMode
   );
 
-  const [taskMode, setTaskMode] = useState<"normal" | "team">(
+  const [taskMode, setTaskMode] = useState<"normal" | "team" | "business">(
     "normal"
   );
   const teamMode = taskMode === "team";
+  const businessMode = taskMode === "business";
   const workflowMode = false;
   const createAndStartTeam = useWorkflowStore((s) => s.createAndStartTeam);
   const activeConversationId = useConversationStore((s) => s.activeId);
@@ -235,6 +245,18 @@ export function ChatView() {
   const previewTeam = useWorkflowTeamStore((s) => s.previewTeam);
   const clearTeamPreview = useWorkflowTeamStore((s) => s.clearPreview);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+
+  const businessWorkspaces = useBusinessWorkspaceStore((s) => s.workspaces);
+  const businessWorkspacesLoaded = useBusinessWorkspaceStore((s) => s.loaded);
+  const loadBusinessWorkspaces = useBusinessWorkspaceStore((s) => s.load);
+  const pendingBusinessPlan = useBusinessRequirementRunStore((s) => s.pendingAssignmentPlan);
+  const pendingBusinessContract = useBusinessRequirementRunStore((s) => s.pendingContractDraft);
+  const pendingBusinessErrors = useBusinessRequirementRunStore((s) => s.pendingErrors);
+  const previewBusinessAssignment = useBusinessRequirementRunStore((s) => s.previewAssignment);
+  const clearBusinessPreview = useBusinessRequirementRunStore((s) => s.clearPreview);
+  const approveAndStartBusinessRun = useBusinessRequirementRunStore((s) => s.approveAndStart);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>("");
+  const [businessGoal, setBusinessGoal] = useState<string>("");
 
   const resolve = useCliExecutorStore((s) => s.resolve);
   const check = useCliExecutorStore((s) => s.check);
@@ -365,6 +387,16 @@ export function ChatView() {
   }, [teamsLoaded, loadTeams]);
 
   useEffect(() => {
+    if (!businessWorkspacesLoaded) void loadBusinessWorkspaces();
+  }, [businessWorkspacesLoaded, loadBusinessWorkspaces]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId && businessWorkspaces.length > 0) {
+      setSelectedWorkspaceId(businessWorkspaces[0].id);
+    }
+  }, [selectedWorkspaceId, businessWorkspaces]);
+
+  useEffect(() => {
     if (!selectedTeamId && teams.length > 0) {
       const firstEnabled = teams.find((t) => t.enabled);
       if (firstEnabled) setSelectedTeamId(firstEnabled.id);
@@ -476,6 +508,12 @@ export function ChatView() {
     const prompt = newTaskDraft.trim();
     const attachmentsToSend = newTaskPendingAttachments;
 
+    if (businessMode) {
+      if (!prompt || !selectedWorkspaceId) return;
+      await onPreviewBusinessAssignment();
+      return;
+    }
+
     if (teamMode) {
       if (!prompt || !selectedTeamId) return;
       const team = teams.find((tt) => tt.id === selectedTeamId);
@@ -489,7 +527,7 @@ export function ChatView() {
         const newConv = await createConversation({
           member: teamMember,
           cwd,
-          title: (prompt || team.name).slice(0, 24),
+          title: buildConversationTitle({ prompt, fallback: team.name }),
           approvalMode: permissionMode
         });
         setNewTaskDraft("");
@@ -547,7 +585,11 @@ export function ChatView() {
       const newConv = await createConversation({
         member: selectedMember,
         cwd: newTaskCwd.trim() || undefined,
-        title: (prompt || attachmentsToSend[0]?.name || t("chat.defaultAttachmentTitle")).slice(0, 24),
+        title: buildConversationTitle({
+          prompt,
+          attachmentName: attachmentsToSend[0]?.name,
+          fallback: t("chat.defaultAttachmentTitle")
+        }),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
@@ -642,6 +684,39 @@ export function ChatView() {
     }
   };
 
+  const onPreviewBusinessAssignment = async () => {
+    const goal = newTaskDraft.trim();
+    if (!goal || !selectedWorkspaceId) return;
+    setBusinessGoal(goal);
+    setPreflightMsg(null);
+    try {
+      await previewBusinessAssignment({ workspaceId: selectedWorkspaceId, goal });
+    } catch (e) {
+      setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+
+  const onApproveBusinessRun = async () => {
+    if (!selectedWorkspaceId || !pendingBusinessPlan) return;
+    const workspace = businessWorkspaces.find((w) => w.id === selectedWorkspaceId);
+    if (!workspace) return;
+    const goal = businessGoal.trim() || newTaskDraft.trim();
+    setPreflightMsg(null);
+    try {
+      const ok = await approveAndStartBusinessRun({
+        workspaceId: selectedWorkspaceId,
+        goal,
+        teamId: workspace.defaultTeamId
+      });
+      if (!ok && pendingBusinessErrors.length === 0) {
+        setPreflightMsg(t("errors.taskFailed", { err: "business run failed to start" }));
+      }
+      setBusinessGoal("");
+    } catch (e) {
+      setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+
   const onCreateTeamConversation = async () => {
     if (!teamMode) return;
     if (!pendingTeamPreview) return;
@@ -656,7 +731,10 @@ export function ChatView() {
       const newConv = await createConversation({
         member: teamMember,
         cwd,
-        title: (pendingTeamPreview.goal || pendingTeamPreview.teamName || "").slice(0, 24),
+        title: buildConversationTitle({
+          prompt: pendingTeamPreview.goal,
+          fallback: pendingTeamPreview.teamName
+        }),
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
@@ -685,6 +763,11 @@ export function ChatView() {
         taskMode={taskMode}
         teams={teams}
         selectedTeamId={selectedTeamId}
+        businessWorkspaces={businessWorkspaces}
+        selectedWorkspaceId={selectedWorkspaceId}
+        pendingBusinessPlan={pendingBusinessPlan}
+        pendingBusinessContract={pendingBusinessContract}
+        pendingBusinessErrors={pendingBusinessErrors}
         preflightMsg={preflightMsg}
         onDraft={setNewTaskDraft}
         onMember={setSelectedMemberId}
@@ -695,8 +778,15 @@ export function ChatView() {
         onTaskMode={(m) => {
           setTaskMode(m);
           clearTeamPreview();
+          clearBusinessPreview();
         }}
         onTeam={setSelectedTeamId}
+        onWorkspace={setSelectedWorkspaceId}
+        onApproveBusinessRun={() => void onApproveBusinessRun()}
+        onCancelBusinessPreview={() => {
+          clearBusinessPreview();
+          setBusinessGoal("");
+        }}
         onSubmit={() => void onCreateAndSend()}
       />
     );
@@ -873,6 +963,11 @@ function NewTaskHome({
   taskMode,
   teams,
   selectedTeamId,
+  businessWorkspaces,
+  selectedWorkspaceId,
+  pendingBusinessPlan,
+  pendingBusinessContract,
+  pendingBusinessErrors,
   preflightMsg,
   onDraft,
   onMember,
@@ -882,6 +977,9 @@ function NewTaskHome({
   onRemoveAttachment,
   onTaskMode,
   onTeam,
+  onWorkspace,
+  onApproveBusinessRun,
+  onCancelBusinessPreview,
   onSubmit
 }: {
   draft: string;
@@ -890,9 +988,14 @@ function NewTaskHome({
   cwd: string;
   permissionMode: "auto" | "ask";
   pendingAttachments: ChatAttachment[];
-  taskMode: "normal" | "team";
+  taskMode: "normal" | "team" | "business";
   teams: WorkflowTeam[];
   selectedTeamId: string;
+  businessWorkspaces: BusinessWorkspace[];
+  selectedWorkspaceId: string;
+  pendingBusinessPlan: BusinessAssignmentPlan | null;
+  pendingBusinessContract: BusinessContractDraft | null;
+  pendingBusinessErrors: string[];
   preflightMsg: string | null;
   onDraft: (value: string) => void;
   onMember: (value: string) => void;
@@ -900,13 +1003,17 @@ function NewTaskHome({
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
-  onTaskMode: (value: "normal" | "team") => void;
+  onTaskMode: (value: "normal" | "team" | "business") => void;
   onTeam: (id: string) => void;
+  onWorkspace: (id: string) => void;
+  onApproveBusinessRun: () => void;
+  onCancelBusinessPreview: () => void;
   onSubmit: () => void;
 }) {
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const teamMode = taskMode === "team";
+  const businessMode = taskMode === "business";
 
   return (
     <div className="new-task-view">
@@ -935,6 +1042,15 @@ function NewTaskHome({
           >
             {t("workflow.teamExecution")}
           </button>
+          <button
+            className={`new-task-mode-tab${businessMode ? " active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={businessMode}
+            onClick={() => onTaskMode("business")}
+          >
+            {t("business.requirementMode")}
+          </button>
         </div>
 
         <section className="new-task-composer" aria-label={t("chat.newTaskAria")}>
@@ -958,7 +1074,27 @@ function NewTaskHome({
         />
 
         <div className="new-task-toolbar">
-          {teamMode ? (
+          {businessMode ? (
+            <label>
+              <span>{t("business.selectWorkspace")}</span>
+              {businessWorkspaces.length === 0 ? (
+                <select disabled value="">
+                  <option value="">{t("business.noWorkspaces")}</option>
+                </select>
+              ) : (
+                <select
+                  value={selectedWorkspaceId}
+                  onChange={(event) => onWorkspace(event.target.value)}
+                >
+                  {businessWorkspaces.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name || w.id}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </label>
+          ) : teamMode ? (
             <label>
               <span>{t("workflow.selectTeam")}</span>
               {teams.filter((tt) => tt.enabled).length === 0 ? (
@@ -1037,13 +1173,25 @@ function NewTaskHome({
               type="button"
               disabled={
                 !(draft.trim() || pendingAttachments.length > 0) ||
-                (teamMode ? !selectedTeamId : members.length === 0)
+                (businessMode
+                  ? !selectedWorkspaceId
+                  : teamMode
+                    ? !selectedTeamId
+                    : members.length === 0)
               }
               title={
-                teamMode ? t("workflow.teamExecution") : t("chat.startTask")
+                businessMode
+                  ? t("business.assignmentPreview")
+                  : teamMode
+                    ? t("workflow.teamExecution")
+                    : t("chat.startTask")
               }
               aria-label={
-                teamMode ? t("workflow.teamExecution") : t("chat.startTask")
+                businessMode
+                  ? t("business.assignmentPreview")
+                  : teamMode
+                    ? t("workflow.teamExecution")
+                    : t("chat.startTask")
               }
               onClick={onSubmit}
             >
@@ -1054,6 +1202,16 @@ function NewTaskHome({
 
         {preflightMsg && <div className="preflight-warn new-task-warn">{preflightMsg}</div>}
       </section>
+
+      {businessMode && (pendingBusinessPlan || pendingBusinessErrors.length > 0) && (
+        <BusinessAssignmentPreviewCard
+          assignmentPlan={pendingBusinessPlan}
+          contractDraft={pendingBusinessContract}
+          errors={pendingBusinessErrors}
+          onRun={onApproveBusinessRun}
+          onCancel={onCancelBusinessPreview}
+        />
+      )}
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ import {
   collectStreamMessageIds,
   defaultTitleFor,
   mergeConversationMessages,
+  shouldApplyAgentSessionTitle,
   upsertConversationMessage
 } from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
@@ -238,7 +239,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       let conversations = s.conversations;
       if (agentTitle) {
         const conversation = conversations.find((entry) => entry.id === id);
-        if (conversation && conversation.title !== agentTitle) {
+        if (conversation && shouldApplyAgentSessionTitle(conversation, list, agentTitle)) {
           conversations = conversations.map((entry) =>
             entry.id === id ? { ...entry, title: agentTitle } : entry
           );

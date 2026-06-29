@@ -1,0 +1,176 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
+
+test("Settings modal exposes Business Workspaces tab", () => {
+  const settings = read("../src/components/Settings/SettingsModal.tsx");
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+  assert.match(settings, /BusinessWorkspacesTab/);
+  assert.match(settings, /workflowTeams[\s\S]*businessWorkspaces[\s\S]*general/);
+  assert.ok(en.settings.tabs.businessWorkspaces);
+  assert.ok(zh.settings.tabs.businessWorkspaces);
+});
+
+test("Business workspace editor captures repository projects, agents, and verify commands", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /repoPath/);
+  assert.match(editor, /defaultAgentId/);
+  assert.match(editor, /verifyCommands/);
+  assert.match(editor, /allowedPaths/);
+  assert.match(editor, /contractRole/);
+});
+
+test("Business workspace editor uses a guided user-facing setup model", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+
+  assert.match(editor, /WORKSPACE_TEMPLATES/);
+  assert.match(editor, /applyTemplate/);
+  assert.match(editor, /business\.setupBusiness/);
+  assert.match(editor, /business\.codeRepositories/);
+  assert.match(editor, /business\.collaboration/);
+  assert.match(editor, /business\.collaborationAndPolicy/);
+  assert.match(editor, /business\.advancedCountHint/);
+  assert.match(editor, /business-editor-tabs/);
+  assert.match(editor, /selectEditorTab/);
+  assert.doesNotMatch(editor, /<span>\{t\("business\.contractRole"\)\}<\/span>/);
+
+  assert.equal(zh.business.setupBusiness, "先说明这个业务");
+  assert.equal(zh.business.codeRepositories, "它包含哪些代码仓库？");
+  assert.equal(zh.business.collaboration, "它们如何协作？");
+  assert.equal(zh.business.advancedSettings, "高级设置");
+  assert.equal(en.business.codeRepositories, "Which code repositories are involved?");
+});
+
+test("ChatView exposes business requirement mode and assignment preview", () => {
+  const chat = read("../src/components/CLI/ChatView.tsx");
+  const preview = read("../src/components/Business/BusinessAssignmentPreviewCard.tsx");
+  assert.match(chat, /taskMode.*business/s);
+  assert.match(chat, /businessRequirement/);
+  assert.match(chat, /BusinessAssignmentPreviewCard/);
+  assert.match(preview, /assignmentPlan\.surfaces/);
+  assert.match(preview, /contractDraft/);
+});
+
+test("WorkspacePanel mounts business surface run panel", () => {
+  const workspacePanel = read("../src/components/CLI/WorkspacePanel.tsx");
+  const panel = read("../src/components/Business/BusinessSurfaceRunPanel.tsx");
+  assert.match(workspacePanel, /BusinessSurfaceRunPanel/);
+  assert.match(panel, /surfaceRuns/);
+  assert.match(panel, /verificationResults/);
+  assert.match(panel, /commitGate/);
+});
+
+test("Business workspace editor exposes UX redesign i18n keys in both locales", () => {
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+  const keys = [
+    "chooseDirectory", "saveFailed", "nameRequired", "switchTemplateConfirm",
+    "collaborationAndPolicy", "advancedCountHint", "createWorkspace", "templateRepoCount",
+    "kind_client", "kind_server", "kind_admin", "kind_shared",
+    "kind_docs", "kind_test", "kind_custom", "agentVerificationDefault",
+    "repositorySetupHint", "repositoryAdvancedHint", "collaborationAndPolicyHint",
+    "workspaceDraftSummary", "structureTemplateHint", "selectedTemplate",
+    "stepReady", "stepRequired", "repositoryProgress", "repositoryReady",
+    "repoPathMissing", "agentNotAssigned", "repositoryDisabled",
+    "noRepositoriesTitle", "addRepositoryManually"
+  ];
+  for (const k of keys) {
+    assert.ok(en.business[k], `en missing business.${k}`);
+    assert.ok(zh.business[k], `zh missing business.${k}`);
+  }
+  // advancedCountHint / templateRepoCount must support interpolation
+  assert.match(zh.business.advancedCountHint, /\{\{count\}\}/);
+  assert.match(en.business.templateRepoCount, /\{\{count\}\}/);
+});
+
+test("Business workspace editor localizes surface kinds via KIND_META", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /KIND_META/);
+  assert.match(editor, /business\.kind_client/);
+  // raw kind label in the type <select> must be gone
+  assert.doesNotMatch(editor, /\{kind\}\s*<\/option>/);
+  // raw kind badge must be gone
+  assert.doesNotMatch(editor, /workflow-team-badge muted">\{surface\.kind\}/);
+});
+
+test("Business workspace editor tracks template selection with switch confirm", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /matchTemplate/);
+  assert.match(editor, /selectedTemplateId/);
+  assert.match(editor, /applyTemplateWithConfirm/);
+  assert.match(editor, /business\.switchTemplateConfirm/);
+  assert.match(editor, /is-selected/);
+  assert.match(editor, /business\.templateRepoCount/);
+});
+
+test("Business workspace editor validates name inline and shows readable save error", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /nameError/);
+  assert.match(editor, /business\.nameRequired/);
+  assert.match(editor, /business\.saveFailed/);
+  // old patterns must be gone
+  assert.doesNotMatch(editor, /setErrors\(\[t\("business\.workspaceName"\)\]\)/);
+  assert.doesNotMatch(editor, /setErrors\(\["save failed"\]\)/);
+});
+
+test("Business workspace editor uses clear directory button and context-aware primary action", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /business\.chooseDirectory/);
+  assert.match(editor, /business\.createWorkspace/);
+  // the bare Unicode-ellipsis (U+2026) directory button must be gone
+  assert.doesNotMatch(editor, />\s*\u2026\s*<\/button>/);
+});
+
+test("Business workspace editor leads with template hero before basics", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  const heroIdx = editor.indexOf("business-template-hero");
+  const nameIdx = editor.indexOf('t("business.workspaceName")');
+  assert.ok(heroIdx > -1, "template hero section marker missing");
+  assert.ok(heroIdx < nameIdx, "template hero must appear before the name field");
+});
+
+test("Business workspace editor folds collaboration and policy into one region", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /business-workspace-collab-policy/);
+  assert.match(editor, /business-advanced-count/);
+  assert.match(editor, /policyItemCount/);
+});
+
+test("Business workspace editor defaults to agent-selected verification", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  assert.match(editor, /business\.agentVerificationDefault/);
+  assert.doesNotMatch(editor, /verifyCommands:\s*\["npm/);
+  const advancedIdx = editor.indexOf('className="business-repository-advanced"');
+  const verifyIdx = editor.indexOf('t("business.verifyCommands")');
+  assert.ok(advancedIdx > -1, "repository advanced section missing");
+  assert.ok(verifyIdx > advancedIdx, "fixed verification commands should live in advanced settings");
+});
+
+test("Business workspace editor keeps repository setup lightweight below the fold", () => {
+  const editor = read("../src/components/Settings/BusinessWorkspaceEditor.tsx");
+  const styles = read("../styles.css");
+  assert.match(editor, /business-section-heading/);
+  assert.match(editor, /business-surface-quick-grid/);
+  assert.match(editor, /business-surface-name-input/);
+  assert.match(editor, /business\.repositorySetupHint/);
+  assert.match(editor, /business\.repositoryAdvancedHint/);
+  assert.match(editor, /business\.collaborationAndPolicyHint/);
+  assert.match(editor, /business\.workspaceDraftSummary/);
+  assert.match(editor, /business\.repositoryProgress/);
+  assert.match(editor, /business-surface-meta-row/);
+  assert.match(editor, /business-empty-repositories/);
+  assert.match(editor, /business-policy-intro/);
+  assert.doesNotMatch(editor, /business-surface-row-actions/);
+  assert.match(styles, /\.business-surface-quick-grid\s*\{/);
+  assert.match(styles, /\.business-workspace-editor select\s*\{[\s\S]*appearance:\s*none/);
+  assert.match(styles, /\.business-surface-repo button\s*\{/);
+  assert.match(styles, /\.business-add-repository\s*\{/);
+  assert.match(styles, /\.business-editor-tab-state\s*\{/);
+  assert.match(styles, /\.business-empty-repositories\s*\{/);
+  assert.match(styles, /@media \(max-width: 760px\)/);
+});

@@ -10,7 +10,7 @@ import { cliClient } from "@/services/cli/client";
 import type { ConversationState } from "./conversationStore";
 import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
-import { appendItems } from "./conversationUtils";
+import { appendItems, shouldApplyAgentSessionTitle } from "./conversationUtils";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 import { useImagePreviewStore } from "./imagePreviewStore";
 import { useTerminalStore } from "./terminalStore";
@@ -44,10 +44,11 @@ function sessionTitleFromItems(items: CliStreamItem[]): string | undefined {
 function applyConversationTitle(
   conversations: ConversationState["conversations"],
   conversationId: string,
-  title: string
+  title: string,
+  messages: ConversationState["messages"][string]
 ): ConversationState["conversations"] {
   const conversation = conversations.find((entry) => entry.id === conversationId);
-  if (!conversation || conversation.title === title) {
+  if (!conversation || !shouldApplyAgentSessionTitle(conversation, messages, title)) {
     return conversations;
   }
   void cliClient.renameConversation(conversationId, title);
@@ -159,7 +160,7 @@ export function handleStreamEvent(
 
       const title = sessionTitleFromItems(e.items);
       const conversations = title
-        ? applyConversationTitle(s.conversations, conversationId, title)
+        ? applyConversationTitle(s.conversations, conversationId, title, messageList)
         : s.conversations;
 
       void cliClient.updateMessage({
@@ -264,7 +265,12 @@ export function handleStreamEvent(
     if (e.type === "items") {
       const title = sessionTitleFromItems(e.items);
       if (title) {
-        conversations = applyConversationTitle(conversations, conversationId, title);
+        conversations = applyConversationTitle(
+          conversations,
+          conversationId,
+          title,
+          s.messages[conversationId] ?? []
+        );
       }
     }
 

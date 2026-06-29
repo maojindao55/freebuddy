@@ -107,7 +107,9 @@ test("ConversationList includes workflow runs in the running indicator set", () 
 
 test("ChatView titles team workflow conversations from the prompt", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
-  assert.match(src, /title: \(prompt \|\| team\.name\)\.slice\(0, 24\)/);
+  assert.match(src, /attachmentsToSend\[0\]\?\.name/);
+  assert.match(src, /t\("chat\.defaultAttachmentTitle"\)/);
+  assert.match(src, /team\.name/);
   assert.match(src, /title: \(pendingTeamPreview\.goal \|\| pendingTeamPreview\.teamName/);
 });
 

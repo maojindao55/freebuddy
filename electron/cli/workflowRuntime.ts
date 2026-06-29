@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 
-import type { CliEvent, CliRunArgs } from "./runtimeShared.js";
+import type { CliEvent, CliPromptAttachment, CliRunArgs } from "./runtimeShared.js";
 import { cliRun, cliKill } from "./runtime.js";
 import {
   appendMessage,
+  listMessages,
   updateMessage
 } from "./conversations.js";
 import type {
@@ -65,6 +66,7 @@ export interface StepExecutor {
     binary?: string;
     extraArgs?: string[];
     prompt: string;
+    promptAttachments?: CliPromptAttachment[];
     cwd?: string;
     onEvent: (e: CliEvent) => void;
   }): Promise<void>;
@@ -130,6 +132,22 @@ type ImplementReviewCheckpoint =
       reviewStatus?: string;
       loopDecision?: string;
     };
+
+function promptAttachmentsFromConversation(
+  conversationId: string | undefined
+): CliRunArgs["promptAttachments"] {
+  if (!conversationId) return undefined;
+  const userMessage = listMessages(conversationId).find(
+    (message) => message.role === "user" && message.attachments?.length
+  );
+  if (!userMessage?.attachments?.length) return undefined;
+  return userMessage.attachments.map((attachment) => ({
+    path: attachment.path,
+    kind: attachment.kind,
+    mimeType: attachment.mimeType,
+    name: attachment.name
+  }));
+}
 
 export class WorkflowRuntime {
   private active = new Map<string, ActiveRun>();
@@ -760,6 +778,7 @@ export class WorkflowRuntime {
         binary: resolved.binary,
         extraArgs: resolved.extraArgs,
         prompt,
+        promptAttachments: promptAttachmentsFromConversation(run.conversationId),
         cwd: run.cwd,
         onEvent: (e: CliEvent) => {
           if (e.type === "items" && e.items?.length) {
@@ -901,6 +920,7 @@ export function createCliStepExecutor(
         binary: args.binary,
         extraArgs: args.extraArgs,
         prompt: args.prompt,
+        promptAttachments: args.promptAttachments,
         cwd: args.cwd,
         approvalMode: "auto",
         resumeToolSession: false

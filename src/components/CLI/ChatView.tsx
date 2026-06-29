@@ -18,6 +18,7 @@ import { workflowClient } from "@/services/workflows/client";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
   attachmentPreviewUrl,
+  composeMessageWithAttachments,
   createChatAttachment,
   formatBytes,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -29,6 +30,7 @@ import {
   mergeSessionMetaItems,
   type AvailableCommandItem
 } from "@/store/sessionMetaUtils";
+import { upsertConversationMessage } from "@/store/conversationUtils";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -477,7 +479,7 @@ export function ChatView() {
     const attachmentsToSend = newTaskPendingAttachments;
 
     if (teamMode) {
-      if (!prompt || !selectedTeamId) return;
+      if ((!prompt && attachmentsToSend.length === 0) || !selectedTeamId) return;
       const team = teams.find((tt) => tt.id === selectedTeamId);
       if (!team) return;
       const teamMember = teamConversationMember(team, members);
@@ -489,45 +491,55 @@ export function ChatView() {
         const newConv = await createConversation({
           member: teamMember,
           cwd,
-          title: (prompt || team.name).slice(0, 24),
+          title: (
+            prompt ||
+            attachmentsToSend[0]?.name ||
+            t("chat.defaultAttachmentTitle") ||
+            team.name
+          ).slice(0, 24),
           approvalMode: permissionMode
         });
         setNewTaskDraft("");
         setNewTaskPendingAttachments([]);
         const userMsgId = nanoid();
         const now = new Date().toISOString();
-        await cliClient.appendMessage({
+        const savedUser = await cliClient.appendMessage({
           id: userMsgId,
           conversationId: newConv.id,
           role: "user",
           status: "sent",
-          content: prompt
+          content: prompt,
+          attachments: attachmentsToSend
         });
         useConversationStore.setState((s) => ({
           messages: {
             ...s.messages,
-            [newConv.id]: [
-              ...(s.messages[newConv.id] ?? []),
+            [newConv.id]: upsertConversationMessage(
+              s.messages[newConv.id] ?? [],
               {
                 id: userMsgId,
                 conversationId: newConv.id,
                 role: "user",
                 status: "sent",
                 content: prompt,
+                ...(attachmentsToSend.length
+                  ? { attachments: savedUser.attachments ?? attachmentsToSend }
+                  : {}),
                 createdAt: now,
                 updatedAt: now
               }
-            ]
+            )
           }
         }));
         await createAndStartTeam({
           teamId: team.id,
           conversationId: newConv.id,
-          goal: prompt,
+          goal: composeMessageWithAttachments(prompt, attachmentsToSend),
           cwd
         });
       } catch (e) {
         setNewTaskDraft(prompt);
+        setNewTaskPendingAttachments(attachmentsToSend);
         setPreflightMsg(
           t("errors.taskFailed", {
             err: e instanceof Error ? e.message : String(e)

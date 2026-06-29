@@ -234,6 +234,17 @@ test("ChatView onCreateAndSend starts team directly without preview", () => {
   assert.match(src, /createAndStartTeam\(\{\s*teamId: team\.id/);
 });
 
+test("ChatView team onCreateAndSend persists user message attachments", () => {
+  const src = read("../src/components/CLI/ChatView.tsx");
+  assert.match(
+    src,
+    /if \(\(!prompt && attachmentsToSend\.length === 0\) \|\| !selectedTeamId\) return;/
+  );
+  assert.match(src, /attachments: attachmentsToSend/);
+  assert.match(src, /savedUser\.attachments/);
+  assert.match(src, /goal: composeMessageWithAttachments\(prompt, attachmentsToSend\)/);
+});
+
 test("conversation_messages schema carries agent and workflow columns", () => {
   const db = read("../electron/cli/db.ts");
   for (const col of [
@@ -254,6 +265,14 @@ test("workflow runtime appends per-step messages and broadcasts", () => {
   assert.match(rt, /roleLabel/);
   assert.match(rt, /broadcastMessageEvent/);
   assert.match(rt, /workflow:\/\/message\//);
+});
+
+test("workflow runtime passes conversation attachments to executor", () => {
+  const rt = read("../electron/cli/workflowRuntime.ts");
+  assert.match(rt, /promptAttachmentsFromConversation/);
+  assert.match(rt, /promptAttachments:\s*promptAttachmentsFromConversation\(run\.conversationId\)/);
+  assert.match(rt, /listMessages\(conversationId\)/);
+  assert.match(rt, /promptAttachments:\s*args\.promptAttachments/);
 });
 
 test("team runs persist team metadata for later audit", () => {

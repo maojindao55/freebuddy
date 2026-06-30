@@ -65,6 +65,7 @@ function rowToStep(r: any): WorkflowStepRow {
     summary: r.summary ?? undefined,
     resultJson: r.result_json ?? undefined,
     cliTaskId: r.cli_task_id ?? undefined,
+    toolSessionId: r.tool_session_id ?? undefined,
     startedAt: r.started_at ?? undefined,
     endedAt: r.ended_at ?? undefined,
     createdAt: r.created_at,
@@ -240,6 +241,7 @@ export interface UpdateWorkflowStepPatch {
   summary?: string | null;
   resultJson?: string | null;
   cliTaskId?: string | null;
+  toolSessionId?: string | null;
   startedAt?: string | null;
   endedAt?: string | null;
 }
@@ -269,6 +271,10 @@ export function updateWorkflowStep(
   if (patch.cliTaskId !== undefined) {
     fields.push("cli_task_id = ?");
     params.push(patch.cliTaskId);
+  }
+  if (patch.toolSessionId !== undefined) {
+    fields.push("tool_session_id = ?");
+    params.push(patch.toolSessionId);
   }
   if (patch.startedAt !== undefined) {
     fields.push("started_at = ?");

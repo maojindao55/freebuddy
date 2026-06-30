@@ -3,6 +3,7 @@ import type { WebContents } from "electron";
 
 import type { CliEvent, CliPromptAttachment, CliRunArgs } from "./runtimeShared.js";
 import { cliRun, cliKill } from "./runtime.js";
+import { getToolSession } from "./store.js";
 import {
   appendMessage,
   listMessages,
@@ -67,6 +68,9 @@ export interface StepExecutor {
     extraArgs?: string[];
     prompt: string;
     promptAttachments?: CliPromptAttachment[];
+    toolSessionScope?: string;
+    toolSessionId?: string;
+    resumeToolSession?: boolean;
     cwd?: string;
     onEvent: (e: CliEvent) => void;
   }): Promise<void>;
@@ -114,6 +118,23 @@ function extractStepOutputFromResultJson(resultJson: string | undefined): string
   }
 }
 
+function workflowStepToolSessionScope(
+  runId: string,
+  step: WorkflowStepRow
+): string {
+  return `workflow:${runId}:${step.stepId}:${step.agentId}`;
+}
+
+function shouldResumeWorkflowStep(
+  plan: WorkflowPlan,
+  step: WorkflowStepRow
+): boolean {
+  return (
+    isImplementReviewLoopPlan(plan) &&
+    step.stepId === IMPLEMENT_REVIEW_STEP_ID
+  );
+}
+
 type ImplementReviewCheckpoint =
   | { action: "continue" }
   | {
@@ -147,6 +168,28 @@ function promptAttachmentsFromConversation(
     mimeType: attachment.mimeType,
     name: attachment.name
   }));
+}
+
+function resetWorkflowStepForRetry(stepRowId: string): void {
+  updateWorkflowStep(stepRowId, {
+    status: "pending",
+    summary: null,
+    resultJson: null,
+    cliTaskId: null,
+    startedAt: null,
+    endedAt: null
+  });
+}
+
+function markRunningWorkflowStepsStopped(runId: string, endedAt: string): void {
+  for (const step of getWorkflowSteps(runId)) {
+    if (step.status !== "running") continue;
+    updateWorkflowStep(step.id, {
+      status: "failed",
+      summary: step.summary ?? "Stopped by user.",
+      endedAt
+    });
+  }
 }
 
 export class WorkflowRuntime {
@@ -292,19 +335,13 @@ export class WorkflowRuntime {
     const phase = plan.phases[phaseIndex];
     if (!phase) return;
     for (const stepRowId of resumableStepRowIds(phase.id, states)) {
-      updateWorkflowStep(stepRowId, {
-        status: "pending",
-        summary: null,
-        resultJson: null,
-        cliTaskId: null,
-        startedAt: null,
-        endedAt: null
-      });
+      resetWorkflowStepForRetry(stepRowId);
     }
   }
 
   stop(runId: string): void {
     const run = this.active.get(runId);
+    const endedAt = new Date().toISOString();
     if (run) {
       run.stopped = true;
       for (const sessionId of run.activeSessions) {
@@ -315,9 +352,10 @@ export class WorkflowRuntime {
         }
       }
     }
+    markRunningWorkflowStepsStopped(runId, endedAt);
     updateWorkflowRun(runId, {
       status: "killed",
-      endedAt: new Date().toISOString()
+      endedAt
     });
     this.active.delete(runId);
   }
@@ -325,14 +363,7 @@ export class WorkflowRuntime {
   async retryStep(runId: string, stepRowId: string): Promise<void> {
     // Mark the failed step pending again and re-drive. Retry creates a new
     // CLI task (new sessionId) rather than mutating the old task record.
-    updateWorkflowStep(stepRowId, {
-      status: "pending",
-      summary: null,
-      resultJson: null,
-      cliTaskId: null,
-      startedAt: null,
-      endedAt: null
-    });
+    resetWorkflowStepForRetry(stepRowId);
     updateWorkflowRun(runId, { status: "running" });
     await this.start(runId);
   }
@@ -704,6 +735,12 @@ export class WorkflowRuntime {
     );
 
     const sessionId = randomUUID();
+    const toolSessionScope = workflowStepToolSessionScope(runId, step);
+    const resumeToolSession = shouldResumeWorkflowStep(plan, step);
+    const toolSessionId = resumeToolSession
+      ? step.toolSessionId ??
+        getToolSession(step.agentId, toolSessionScope)?.sessionId
+      : undefined;
     const collected: unknown[] = [];
     let exitCode: number | null = null;
     let errored: string | null = null;
@@ -779,6 +816,9 @@ export class WorkflowRuntime {
         extraArgs: resolved.extraArgs,
         prompt,
         promptAttachments: promptAttachmentsFromConversation(run.conversationId),
+        toolSessionScope,
+        toolSessionId,
+        resumeToolSession,
         cwd: run.cwd,
         onEvent: (e: CliEvent) => {
           if (e.type === "items" && e.items?.length) {
@@ -798,6 +838,9 @@ export class WorkflowRuntime {
 
     if (state.stopped) return;
 
+    const capturedToolSessionId =
+      getToolSession(step.agentId, toolSessionScope)?.sessionId ??
+      step.toolSessionId;
     const decisionText = collectDecisionTextFromItems(collected);
     const failed = errored !== null || (exitCode !== null && exitCode !== 0);
     let summary = ensureReviewStatusInSummary(
@@ -816,6 +859,7 @@ export class WorkflowRuntime {
       status: stepStatus,
       summary,
       resultJson: JSON.stringify({ items: collected, exitCode, error: errored }),
+      ...(capturedToolSessionId ? { toolSessionId: capturedToolSessionId } : {}),
       endedAt: new Date().toISOString()
     });
 
@@ -921,9 +965,11 @@ export function createCliStepExecutor(
         extraArgs: args.extraArgs,
         prompt: args.prompt,
         promptAttachments: args.promptAttachments,
+        toolSessionScope: args.toolSessionScope,
+        toolSessionId: args.toolSessionId,
         cwd: args.cwd,
         approvalMode: "auto",
-        resumeToolSession: false
+        resumeToolSession: args.resumeToolSession
       };
       await cliRun(webContents, runArgs, args.onEvent);
     }

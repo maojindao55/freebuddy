@@ -51,11 +51,18 @@ test("WorkflowPhaseList renders inline step details for the selected step", () =
   assert.match(src, /workflowStepTitle\(step, t\)/);
 });
 
-test("WorkflowStepDetails renders failed-state retry", () => {
+test("WorkflowStepDetails renders retry when the selected step is retryable", () => {
   const src = read("../src/components/Workflows/WorkflowStepDetails.tsx");
-  assert.match(src, /step\.status === "failed"/);
+  assert.match(src, /canRetry \? canRetry\(step\) : step\.status === "failed"/);
   assert.match(src, /workflow-retry-button/);
   assert.match(src, /workflowStepTitle\(step, t\)/);
+});
+
+test("WorkflowRunPanel allows retry for stopped stale running steps", () => {
+  const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  assert.match(src, /step\.status === "blocked"/);
+  assert.match(src, /step\.status === "running" && !isLive/);
+  assert.match(src, /canRetry=\{canRetryStep\}/);
 });
 
 test("ReviewLoopSummary renders final status text", () => {
@@ -215,7 +222,8 @@ test("conversationStore routes workflow follow-ups to the workflow summary agent
   assert.match(types, /step\.mode !== "write"/);
   assert.match(src, /workflowRunForConversation/);
   assert.match(src, /memberForWorkflowFollowup\(workflowRun, get\(\)\.members\)/);
-  assert.match(src, /workflow:\$\{workflowRun\.id\}:\$\{member\.id\}/);
+  assert.match(src, /workflow-followup:\$\{run\.id\}:\$\{member\.id\}/);
+  assert.match(src, /workflowFollowupContextForRun\(workflowRun\)/);
   assert.match(src, /conversation:\$\{conv\.id\}/);
   assert.doesNotMatch(src, /: conv\.cwd \?\? `conversation:\$\{conv\.id\}`/);
   assert.match(chat, /workflowFollowupAgentId\(activeRun\)/);

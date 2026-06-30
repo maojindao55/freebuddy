@@ -16,7 +16,10 @@ import type {
   Conversation,
   ConversationMessage
 } from "@/services/cli/types";
-import type { WorkflowRunRow } from "@/services/workflows/types";
+import type {
+  WorkflowRunRow,
+  WorkflowStepRow
+} from "@/services/workflows/types";
 import { workflowFollowupAgentId } from "@/services/workflows/types";
 import { workflowClient } from "@/services/workflows/client";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
@@ -166,6 +169,76 @@ function memberForWorkflowFollowup(
   const agentId = run ? workflowFollowupAgentId(run) : undefined;
   if (!agentId) return undefined;
   return members.find((member) => member.id === agentId);
+}
+
+function truncateWorkflowContext(text: string | undefined, max = 1200): string {
+  const trimmed = (text ?? "").trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max).trimEnd()}\n[truncated]`;
+}
+
+function workflowFollowupToolSessionScope(
+  run: WorkflowRunRow,
+  member: CLIMember
+): string {
+  return `workflow-followup:${run.id}:${member.id}`;
+}
+
+function workflowPlanPhaseList(run: WorkflowRunRow): string {
+  try {
+    const plan = JSON.parse(run.planJson) as {
+      phases?: Array<{ id: string; title: string }>;
+    };
+    return (plan.phases ?? [])
+      .map((phase) => `${phase.id}: ${phase.title}`)
+      .join(" -> ");
+  } catch {
+    return "";
+  }
+}
+
+function buildWorkflowFollowupContext(
+  run: WorkflowRunRow,
+  steps: WorkflowStepRow[]
+): string {
+  const lines: string[] = [
+    "You are answering a follow-up about a completed FreeBuddy team workflow.",
+    "Use the workflow record below as the source of truth. Do not claim you personally performed steps assigned to other roles; attribute them by role or agent when relevant.",
+    "",
+    "Workflow run:",
+    `- id: ${run.id}`,
+    `- name: ${run.name}`,
+    `- status: ${run.status}`,
+    `- goal: ${run.goal}`,
+    `- loop: ${run.loopIndex + 1}/${run.maxLoops}`
+  ];
+
+  if (run.teamId) lines.push(`- team: ${run.teamId}`);
+  const phases = workflowPlanPhaseList(run);
+  if (phases) lines.push(`- route: ${phases}`);
+  if (run.summary?.trim()) {
+    lines.push("", "Final workflow summary:", truncateWorkflowContext(run.summary, 2400));
+  }
+
+  const visibleSteps = steps.filter((step) => step.status !== "pending");
+  if (visibleSteps.length) {
+    lines.push("", "Step summaries:");
+    for (const step of visibleSteps) {
+      lines.push(
+        `- ${step.phaseId}/${step.stepId} [${step.status}] ${step.title} (${step.agentName}): ${truncateWorkflowContext(step.summary, 700) || "(no summary)"}`
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
+async function workflowFollowupContextForRun(
+  run: WorkflowRunRow | undefined
+): Promise<string | undefined> {
+  if (!run || !workflowClient.isAvailable()) return undefined;
+  const steps = await workflowClient.getSteps(run.id);
+  return buildWorkflowFollowupContext(run, steps);
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
@@ -441,7 +514,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...(member.cli.extraArgs ?? [])
     ];
     const toolSessionScope = workflowRun
-      ? `workflow:${workflowRun.id}:${member.id}`
+      ? workflowFollowupToolSessionScope(workflowRun, member)
       : `conversation:${conv.id}`;
 
     let resumedFromSessionId: string | undefined;
@@ -450,10 +523,20 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       if (prev && prev.adapter === member.cli.adapter) {
         resumedFromSessionId = prev.sessionId;
       }
-      resumedFromSessionId ??= latestSessionIdFromMessages(
-        get().messages[conversationId] ?? []
-      );
+      if (!workflowRun) {
+        resumedFromSessionId ??= latestSessionIdFromMessages(
+          get().messages[conversationId] ?? []
+        );
+      }
     }
+    const userPrompt = composeMessageWithAttachments(trimmed, attachments);
+    const workflowFollowupContext =
+      workflowRun && (wantFresh || !resumedFromSessionId)
+        ? await workflowFollowupContextForRun(workflowRun)
+        : undefined;
+    const promptWithWorkflowContext = workflowFollowupContext
+      ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPrompt}`
+      : userPrompt;
 
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
@@ -462,7 +545,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       adapter: member.cli.adapter,
       binary,
       extraArgs,
-      prompt: composeMessageWithAttachments(trimmed, attachments),
+      prompt: promptWithWorkflowContext,
       promptAttachments: attachments.map((attachment) => ({
         path: attachment.path,
         kind: attachment.kind,

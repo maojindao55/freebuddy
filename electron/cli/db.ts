@@ -169,6 +169,7 @@ function migrate(db: DB) {
       summary TEXT,
       result_json TEXT,
       cli_task_id TEXT,
+      tool_session_id TEXT,
       started_at TEXT,
       ended_at TEXT,
       created_at TEXT NOT NULL,
@@ -251,5 +252,12 @@ function migrate(db: DB) {
     db.exec(
       "ALTER TABLE workflow_runs ADD COLUMN plan_version INTEGER NOT NULL DEFAULT 1"
     );
+  }
+
+  const workflowStepCols = db
+    .prepare("PRAGMA table_info(workflow_steps)")
+    .all() as Array<{ name: string }>;
+  if (!workflowStepCols.some((c) => c.name === "tool_session_id")) {
+    db.exec("ALTER TABLE workflow_steps ADD COLUMN tool_session_id TEXT");
   }
 }

@@ -31,6 +31,17 @@ test("retry clears stale metadata with explicit null patches", () => {
   assert.match(runtimeSource, /endedAt: null/);
 });
 
+test("stop marks running workflow steps failed so they can be retried", () => {
+  assert.match(runtimeSource, /markRunningWorkflowStepsStopped/);
+  assert.match(runtimeSource, /step\.status !== "running"/);
+  assert.match(runtimeSource, /summary: step\.summary \?\? "Stopped by user\."/);
+});
+
+test("retry and resume share the same workflow step reset path", () => {
+  assert.match(runtimeSource, /function resetWorkflowStepForRetry/);
+  assert.match(runtimeSource, /resetWorkflowStepForRetry\(stepRowId\)/);
+});
+
 test("review loop replay clears prior manual approvals before rerunning write steps", () => {
   assert.match(runtimeSource, /approvedPhases\.clear\(\)/);
   assert.match(runtimeSource, /resetWorkflowStepsForLoop\(runId, REVIEW_LOOP_PHASES\)/);

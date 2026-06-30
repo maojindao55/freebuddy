@@ -140,6 +140,10 @@ export function WorkflowRunPanel() {
     (plan.template === "implement-review-loop" ||
       activeRun.template === "implement-review-loop") &&
     (reviewNeedsRetry || verifyNeedsRetry);
+  const canRetryStep = (step: WorkflowStepRow) =>
+    step.status === "failed" ||
+    step.status === "blocked" ||
+    (step.status === "running" && !isLive);
 
   return (
     <section className="side-card workflow-run-panel">
@@ -216,6 +220,7 @@ export function WorkflowRunPanel() {
           setSelectedId((cur) => (cur === step.id ? undefined : step.id))
         }
         onRetry={(step) => void retryStep(activeRun.id, step.id)}
+        canRetry={canRetryStep}
       />
     </section>
   );

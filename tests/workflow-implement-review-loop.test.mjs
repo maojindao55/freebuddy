@@ -293,6 +293,44 @@ test("runtime loops build review when verification has unresolved issues", () =>
   assert.match(src, /verification feedback from the previous round/);
 });
 
+test("runtime resumes implementer sessions but keeps review and verify fresh", () => {
+  const src = fs.readFileSync(
+    new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(src, /function shouldResumeWorkflowStep/);
+  assert.match(src, /step\.stepId === IMPLEMENT_REVIEW_STEP_ID/);
+  assert.match(src, /const resumeToolSession = shouldResumeWorkflowStep\(plan, step\)/);
+  assert.match(src, /toolSessionScope: args\.toolSessionScope/);
+  assert.match(src, /toolSessionId: args\.toolSessionId/);
+  assert.match(src, /resumeToolSession: args\.resumeToolSession/);
+});
+
+test("workflow steps persist reusable tool session ids separately from task ids", () => {
+  const db = fs.readFileSync(
+    new URL("../electron/cli/db.ts", import.meta.url),
+    "utf8"
+  );
+  const workflows = fs.readFileSync(
+    new URL("../electron/cli/workflows.ts", import.meta.url),
+    "utf8"
+  );
+  const electronTypes = fs.readFileSync(
+    new URL("../electron/cli/workflowTypes.ts", import.meta.url),
+    "utf8"
+  );
+  const rendererTypes = fs.readFileSync(
+    new URL("../src/services/workflows/types.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(db, /tool_session_id TEXT/);
+  assert.match(db, /ALTER TABLE workflow_steps ADD COLUMN tool_session_id TEXT/);
+  assert.match(workflows, /toolSessionId: r\.tool_session_id/);
+  assert.match(workflows, /tool_session_id = \?/);
+  assert.match(electronTypes, /toolSessionId\?: string/);
+  assert.match(rendererTypes, /toolSessionId\?: string/);
+});
+
 test("findResumePhaseIndex skips finished phases", async () => {
   const { findResumePhaseIndex } = await import(
     "../dist-electron/cli/workflowScheduler.js"

@@ -312,3 +312,13 @@ test("conversationStore subscribes to workflow message events", () => {
   assert.match(src, /ensureWorkflowMessageSubscription/);
   assert.match(src, /onStepMessage/);
 });
+
+test("conversationStore uses a team follow-up context and dedicated session scope", () => {
+  const src = read("../src/store/conversationStore.ts");
+  assert.match(src, /function buildWorkflowFollowupContext/);
+  assert.match(src, /workflow-followup:\$\{run\.id\}:\$\{member\.id\}/);
+  assert.match(src, /workflowFollowupContextForRun\(workflowRun\)/);
+  assert.match(src, /User follow-up:/);
+  assert.match(src, /if \(!workflowRun\) \{/);
+  assert.match(src, /latestSessionIdFromMessages/);
+});

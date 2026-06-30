@@ -25,13 +25,15 @@ export function WorkflowPhaseList({
   steps,
   selectedStepId,
   onSelect,
-  onRetry
+  onRetry,
+  canRetry
 }: {
   phases: WorkflowPhase[];
   steps: WorkflowStepRowData[];
   selectedStepId?: string;
   onSelect?: (step: WorkflowStepRowData) => void;
   onRetry?: (step: WorkflowStepRowData) => void;
+  canRetry?: (step: WorkflowStepRowData) => boolean;
 }) {
   const { t } = useTranslation();
 
@@ -104,7 +106,11 @@ export function WorkflowPhaseList({
         items={items}
       />
       {selectedStep && onSelect && (
-        <WorkflowStepDetails step={selectedStep} onRetry={onRetry} />
+        <WorkflowStepDetails
+          step={selectedStep}
+          onRetry={onRetry}
+          canRetry={canRetry}
+        />
       )}
     </div>
   );

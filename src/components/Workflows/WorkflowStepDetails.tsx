@@ -5,15 +5,20 @@ import { workflowStepTitle } from "@/services/workflows/types";
 
 export function WorkflowStepDetails({
   step,
-  onRetry
+  onRetry,
+  canRetry
 }: {
   step: WorkflowStepRow | undefined;
   onRetry?: (step: WorkflowStepRow) => void;
+  canRetry?: (step: WorkflowStepRow) => boolean;
 }) {
   const { t } = useTranslation();
   if (!step) {
     return <p className="workflow-step-details-empty">{t("workflow.noActiveRun")}</p>;
   }
+  const retryable =
+    Boolean(onRetry) &&
+    (canRetry ? canRetry(step) : step.status === "failed");
   return (
     <div className="workflow-step-details">
       <header>
@@ -29,7 +34,7 @@ export function WorkflowStepDetails({
           <p>{step.summary}</p>
         </details>
       )}
-      {step.status === "failed" && onRetry && (
+      {retryable && onRetry && (
         <button
           type="button"
           className="primary workflow-retry-button"

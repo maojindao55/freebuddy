@@ -125,6 +125,8 @@ const workflow = {
   retryStep: (args: unknown) => ipcRenderer.invoke("workflow:retryStep", args),
   approveGate: (args: unknown) =>
     ipcRenderer.invoke("workflow:approveGate", args),
+  requestGateChanges: (args: unknown) =>
+    ipcRenderer.invoke("workflow:requestGateChanges", args),
   continueImplementReview: (runId: string) =>
     ipcRenderer.invoke("workflow:continueImplementReview", runId),
   getRun: (runId: string) => ipcRenderer.invoke("workflow:getRun", runId),

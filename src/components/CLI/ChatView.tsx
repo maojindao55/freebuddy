@@ -13,7 +13,11 @@ import type {
   WorkflowTeamPreview
 } from "@/services/workflowTeams/types";
 import { workflowTeamName } from "@/services/workflowTeams/types";
-import { workflowFollowupAgentId } from "@/services/workflows/types";
+import {
+  workflowFollowupAgentId,
+  type WorkflowPlan
+} from "@/services/workflows/types";
+import { pendingWriteApprovalPhaseId } from "@/services/workflows/planning";
 import { workflowClient } from "@/services/workflows/client";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
@@ -200,6 +204,46 @@ function teamConversationMember(
   );
 }
 
+function WorkflowApprovalCard({
+  phaseTitle,
+  onApprove,
+  onRequestChanges,
+  onStop
+}: {
+  phaseTitle: string;
+  onApprove: () => void;
+  onRequestChanges: () => void;
+  onStop: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="msg msg-assistant workflow-approval-msg">
+      <div className="workflow-approval-spacer" aria-hidden="true" />
+      <div className="msg-content-wrapper">
+        <div className="msg-bubble workflow-approval-card">
+          <div className="workflow-approval-card-main">
+            <span className="workflow-approval-eyebrow">
+              {t("workflow.approvalCardEyebrow", { phase: phaseTitle })}
+            </span>
+            <p>{t("workflow.approvalCardBody")}</p>
+          </div>
+          <div className="workflow-approval-card-actions">
+            <button type="button" onClick={onRequestChanges}>
+              {t("workflow.requestChanges")}
+            </button>
+            <button type="button" className="primary" onClick={onApprove}>
+              {t("workflow.approveGate")}
+            </button>
+            <button type="button" className="danger" onClick={onStop}>
+              {t("workflow.stop")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ChatView() {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
@@ -227,6 +271,10 @@ export function ChatView() {
   const teamMode = taskMode === "team";
   const workflowMode = false;
   const createAndStartTeam = useWorkflowStore((s) => s.createAndStartTeam);
+  const workflowSteps = useWorkflowStore((s) => s.steps);
+  const approveGate = useWorkflowStore((s) => s.approveGate);
+  const requestGateChanges = useWorkflowStore((s) => s.requestGateChanges);
+  const stopWorkflow = useWorkflowStore((s) => s.stop);
   const activeConversationId = useConversationStore((s) => s.activeId);
 
   const teams = useWorkflowTeamStore((s) => s.teams);
@@ -256,6 +304,15 @@ export function ChatView() {
     createdAt: string;
     userMessageId: string;
     assistantMessageId: string;
+  } | null>(null);
+  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<{
+    runId: string;
+    phaseId: string;
+    type: "request_changes";
+  } | null>(null);
+  const [approvedWorkflowGate, setApprovedWorkflowGate] = useState<{
+    runId: string;
+    phaseId: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -302,6 +359,31 @@ export function ChatView() {
 
   const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
 
+  const workflowPlan = useMemo<WorkflowPlan | null>(() => {
+    if (!activeRun || activeRun.conversationId !== conv?.id) return null;
+    try {
+      return JSON.parse(activeRun.planJson) as WorkflowPlan;
+    } catch {
+      return null;
+    }
+  }, [activeRun, conv?.id]);
+
+  const gatingPhaseId = useMemo(() => {
+    if (!workflowPlan) return undefined;
+    return pendingWriteApprovalPhaseId(
+      workflowPlan.phases,
+      workflowSteps.map((s) => ({ stepId: s.stepId, status: s.status }))
+    );
+  }, [workflowPlan, workflowSteps]);
+
+  const gatingPhase = workflowPlan?.phases.find(
+    (phase) => phase.id === gatingPhaseId
+  );
+  const workflowGateApprovedLocally =
+    approvedWorkflowGate !== null &&
+    approvedWorkflowGate.runId === activeRun?.id &&
+    approvedWorkflowGate.phaseId === gatingPhaseId;
+
   const filteredSlashCommands = useMemo(() => {
     if (!slashDraft) return [];
     const query = slashDraft.query.trim().toLowerCase();
@@ -313,6 +395,16 @@ export function ChatView() {
   useEffect(() => {
     setSlashIndex(0);
   }, [draft]);
+
+  useEffect(() => {
+    if (!approvedWorkflowGate) return;
+    if (
+      activeRun?.id !== approvedWorkflowGate.runId ||
+      gatingPhaseId !== approvedWorkflowGate.phaseId
+    ) {
+      setApprovedWorkflowGate(null);
+    }
+  }, [activeRun?.id, approvedWorkflowGate, gatingPhaseId]);
 
   const previewMessages = useMemo<ConversationMessage[]>(() => {
     if (!conv || submitPreview?.conversationId !== conv.id) return [];
@@ -385,7 +477,17 @@ export function ChatView() {
     if (el && isNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, live, submitPreview]);
+  }, [messages, live, submitPreview, gatingPhaseId]);
+
+  useEffect(() => {
+    if (!pendingWorkflowAction) return;
+    if (
+      activeRun?.id !== pendingWorkflowAction.runId ||
+      gatingPhaseId !== pendingWorkflowAction.phaseId
+    ) {
+      setPendingWorkflowAction(null);
+    }
+  }, [activeRun?.id, gatingPhaseId, pendingWorkflowAction]);
 
   const mergeSelectedAttachments = (
     current: ChatAttachment[],
@@ -595,6 +697,60 @@ export function ChatView() {
   const onSend = async () => {
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
+    if (pendingWorkflowAction) {
+      if (!conv || !prompt || sending) return;
+      setPreflightMsg(null);
+      isNearBottomRef.current = true;
+      const userMessageId = nanoid();
+      const now = new Date().toISOString();
+      setDraft("");
+      setPendingAttachments([]);
+      try {
+        const savedUser = await cliClient.appendMessage({
+          id: userMessageId,
+          conversationId: conv.id,
+          role: "user",
+          status: "sent",
+          content: prompt,
+          attachments: attachmentsToSend
+        });
+        useConversationStore.setState((s) => ({
+          messages: {
+            ...s.messages,
+            [conv.id]: upsertConversationMessage(
+              s.messages[conv.id] ?? [],
+              {
+                id: userMessageId,
+                conversationId: conv.id,
+                role: "user",
+                status: "sent",
+                content: prompt,
+                ...(attachmentsToSend.length
+                  ? { attachments: savedUser.attachments ?? attachmentsToSend }
+                  : {}),
+                createdAt: now,
+                updatedAt: now
+              }
+            )
+          }
+        }));
+        const ok = await requestGateChanges(
+          pendingWorkflowAction.runId,
+          pendingWorkflowAction.phaseId,
+          composeMessageWithAttachments(prompt, attachmentsToSend)
+        );
+        if (ok) {
+          setPendingWorkflowAction(null);
+        } else {
+          setPreflightMsg(t("workflow.requestChangesFailed"));
+        }
+      } catch (e) {
+        setDraft(prompt);
+        setPendingAttachments(attachmentsToSend);
+        setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
+      }
+      return;
+    }
     const targetMember = await resolveWorkflowFollowupMember();
     if (!conv || !targetMember || (!prompt && attachmentsToSend.length === 0) || sending) return;
     setPreflightMsg(null);
@@ -741,6 +897,33 @@ export function ChatView() {
         {[...messages, ...previewMessages].map((m) => (
           <MessageBubble key={m.id} message={m} adapter={conv?.adapter} />
         ))}
+        {activeRun?.conversationId === conv.id &&
+          gatingPhaseId &&
+          gatingPhase &&
+          !workflowGateApprovedLocally && (
+          <WorkflowApprovalCard
+            phaseTitle={gatingPhase.title}
+            onApprove={() => {
+              const runId = activeRun.id;
+              const phaseId = gatingPhaseId;
+              setApprovedWorkflowGate({ runId, phaseId });
+              void approveGate(runId, phaseId)
+                .then((ok) => {
+                  if (!ok) setApprovedWorkflowGate(null);
+                })
+                .catch(() => setApprovedWorkflowGate(null));
+            }}
+            onRequestChanges={() => {
+              setPendingWorkflowAction({
+                runId: activeRun.id,
+                phaseId: gatingPhaseId,
+                type: "request_changes"
+              });
+              window.setTimeout(() => chatTextareaRef.current?.focus(), 0);
+            }}
+            onStop={() => void stopWorkflow(activeRun.id)}
+          />
+        )}
       </div>
 
       {preflightMsg && <div className="preflight-warn">{preflightMsg}</div>}
@@ -769,7 +952,9 @@ export function ChatView() {
             value={draft}
             disabled={sending}
             placeholder={
-              sending
+              pendingWorkflowAction
+                ? t("workflow.requestChangesPlaceholder")
+                : sending
                 ? t("chat.agentRunning")
                 : availableCommands.length > 0
                   ? t("chat.inputPlaceholderWithSlash")

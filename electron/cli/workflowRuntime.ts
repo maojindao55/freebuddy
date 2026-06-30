@@ -99,6 +99,13 @@ function hasWriteApproval(state: ActiveRun): boolean {
   return state.allowImmediateWrite || state.approvedPhases.size > 0;
 }
 
+function phaseRequiresEntryApproval(phase: WorkflowPhase): boolean {
+  return (
+    phase.gate?.type === "manual_approval" &&
+    phase.steps.some((step) => step.mode === "write")
+  );
+}
+
 function findPlanStep(plan: WorkflowPlan, stepId: string): WorkflowStep | undefined {
   for (const phase of plan.phases) {
     const step = phase.steps.find((s) => s.id === stepId);
@@ -130,8 +137,10 @@ function shouldResumeWorkflowStep(
   step: WorkflowStepRow
 ): boolean {
   return (
-    isImplementReviewLoopPlan(plan) &&
-    step.stepId === IMPLEMENT_REVIEW_STEP_ID
+    (Boolean(step.toolSessionId) &&
+      step.prompt.includes("User requested changes before approval:")) ||
+    (isImplementReviewLoopPlan(plan) &&
+      step.stepId === IMPLEMENT_REVIEW_STEP_ID)
   );
 }
 
@@ -179,6 +188,17 @@ function resetWorkflowStepForRetry(stepRowId: string): void {
     startedAt: null,
     endedAt: null
   });
+}
+
+function appendGateChangeFeedback(prompt: string, feedback: string): string {
+  return [
+    prompt.trimEnd(),
+    "",
+    "User requested changes before approval:",
+    feedback.trim(),
+    "",
+    "Continue from the existing planning context and revise the plan to address this feedback. Do not modify files."
+  ].join("\n");
 }
 
 function markRunningWorkflowStepsStopped(runId: string, endedAt: string): void {
@@ -285,9 +305,92 @@ export class WorkflowRuntime {
     }
   }
 
-  approveGate(runId: string, phaseId: string): void {
+  approveGate(runId: string, phaseId: string): boolean {
     const run = this.active.get(runId);
-    if (run) run.approvedPhases.add(phaseId);
+    if (!run) return false;
+    run.approvedPhases.add(phaseId);
+    updateWorkflowRun(runId, { status: "running" });
+    return true;
+  }
+
+  async requestGateChanges(
+    runId: string,
+    phaseId: string,
+    feedback: string
+  ): Promise<boolean> {
+    const trimmed = feedback.trim();
+    if (!trimmed) return false;
+    const run = getWorkflowRun(runId);
+    if (!run) return false;
+    const plan = this.resolveWorkflowPlan(run);
+    const gateIndex = plan.phases.findIndex((phase) => phase.id === phaseId);
+    if (gateIndex < 0) return false;
+    const gatePhase = plan.phases[gateIndex];
+    const targetIndex = phaseRequiresEntryApproval(gatePhase)
+      ? gateIndex - 1
+      : gateIndex;
+    const targetPhase = plan.phases[targetIndex];
+    if (!targetPhase) return false;
+
+    const active = this.active.get(runId);
+    if (active) {
+      active.stopped = true;
+      for (let i = 0; i < 30 && this.active.has(runId); i += 1) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+
+    const replayPhaseIds = plan.phases
+      .slice(targetIndex)
+      .map((phase) => phase.id);
+    const steps = getWorkflowSteps(runId);
+    const replayStepIds = new Set(
+      plan.phases
+        .slice(targetIndex)
+        .flatMap((phase) => phase.steps.map((step) => step.id))
+    );
+    const targetStepIds = new Set(targetPhase.steps.map((step) => step.id));
+    const nextPlan: WorkflowPlan = {
+      ...plan,
+      phases: plan.phases.map((phase) => {
+        if (phase.id !== targetPhase.id) return phase;
+        return {
+          ...phase,
+          steps: phase.steps.map((step) => ({
+            ...step,
+            prompt: targetStepIds.has(step.id)
+              ? appendGateChangeFeedback(step.prompt, trimmed)
+              : step.prompt
+          }))
+        };
+      })
+    };
+
+    for (const step of steps) {
+      if (!replayPhaseIds.includes(step.phaseId) && !replayStepIds.has(step.stepId)) {
+        continue;
+      }
+      const planStep = findPlanStep(nextPlan, step.stepId);
+      updateWorkflowStep(step.id, {
+        status: "pending",
+        prompt: targetStepIds.has(step.stepId)
+          ? appendGateChangeFeedback(step.prompt, trimmed)
+          : (planStep?.prompt ?? step.prompt),
+        summary: null,
+        resultJson: null,
+        cliTaskId: null,
+        startedAt: null,
+        endedAt: null
+      });
+    }
+
+    updateWorkflowRun(runId, {
+      status: "running",
+      planJson: JSON.stringify(nextPlan),
+      endedAt: null
+    });
+    void this.start(runId);
+    return true;
   }
 
   pause(runId: string): void {
@@ -444,6 +547,18 @@ export class WorkflowRuntime {
       while (phaseIndex < plan.phases.length) {
         if (state.stopped) return;
         const phase = plan.phases[phaseIndex];
+
+        if (
+          phaseRequiresEntryApproval(phase) &&
+          !state.approvedPhases.has(phase.id)
+        ) {
+          updateWorkflowRun(runId, { status: "paused" });
+          while (!state.approvedPhases.has(phase.id) && !state.stopped) {
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          if (state.stopped) return;
+          updateWorkflowRun(runId, { status: "running" });
+        }
 
         // Run this phase's steps to completion. Returns false if a step failed
         // or is blocked, in which case we halt the run for a user decision.

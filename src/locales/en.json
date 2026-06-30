@@ -153,9 +153,9 @@
     "codexUsageLoading": "Loading",
     "codexUsageUnavailable": "Codex usage is unavailable right now.",
     "codexUsage5h": "5h limit",
-    "codexUsageWeekly": "weekly limit",
+    "codexUsageWeekly": "Weekly limit",
     "codexUsageLeft": "{{percent}}% left",
-    "codexUsageResetIn": "resets in {{time}}"
+    "codexUsageResetAt": "resets at {{time}}"
   },
   "message": {
     "you": "You",
@@ -327,6 +327,11 @@
     "cancel": "Cancel",
     "editPrompt": "Edit",
     "approveGate": "Approve & continue",
+    "approvalCardEyebrow": "Awaiting approval for {{phase}}",
+    "approvalCardBody": "Approve the plan above to continue. Need changes? Request changes, then send feedback in the composer.",
+    "requestChanges": "Request changes",
+    "requestChangesPlaceholder": "Describe what should change in the plan...",
+    "requestChangesFailed": "Could not request changes for this workflow.",
     "pause": "Pause",
     "resume": "Resume",
     "resumeAfterFailure": "Retry & continue",

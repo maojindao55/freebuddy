@@ -153,6 +153,11 @@ declare global {
     stop(runId: string): Promise<boolean>;
     retryStep(args: { runId: string; stepRowId: string }): Promise<void>;
     approveGate(args: { runId: string; phaseId: string }): Promise<boolean>;
+    requestGateChanges(args: {
+      runId: string;
+      phaseId: string;
+      feedback: string;
+    }): Promise<boolean>;
     continueImplementReview(runId: string): Promise<boolean>;
     getRun(runId: string): Promise<WorkflowRunRow | undefined>;
     listActiveRuns(): Promise<WorkflowRunRow[]>;

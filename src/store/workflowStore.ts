@@ -9,6 +9,8 @@ import type {
   WorkflowValidationResult
 } from "@/services/workflows/types";
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 interface State {
   pendingPlan: WorkflowPlan | null;
   pendingErrors: string[];
@@ -40,7 +42,12 @@ interface State {
   resume(runId: string): Promise<void>;
   stop(runId: string): Promise<void>;
   retryStep(runId: string, stepRowId: string): Promise<void>;
-  approveGate(runId: string, phaseId: string): Promise<void>;
+  approveGate(runId: string, phaseId: string): Promise<boolean>;
+  requestGateChanges(
+    runId: string,
+    phaseId: string,
+    feedback: string
+  ): Promise<boolean>;
   continueImplementReview(runId: string): Promise<void>;
   validate(plan: WorkflowPlan): Promise<WorkflowValidationResult>;
 }
@@ -149,8 +156,33 @@ export const useWorkflowStore = create<State>((set, get) => ({
     await get().refresh(runId);
   },
   async approveGate(runId, phaseId) {
-    await workflowClient.approveGate({ runId, phaseId });
+    const ok = await workflowClient.approveGate({ runId, phaseId });
     await get().refresh(runId);
+    if (!ok) return false;
+
+    for (let i = 0; i < 6; i += 1) {
+      await delay(250);
+      await get().refresh(runId);
+      const { activeRun, steps } = get();
+      if (activeRun?.id !== runId) break;
+      const phaseSteps = steps.filter((step) => step.phaseId === phaseId);
+      if (
+        activeRun.status !== "paused" ||
+        phaseSteps.some((step) => step.status !== "pending")
+      ) {
+        break;
+      }
+    }
+    return true;
+  },
+  async requestGateChanges(runId, phaseId, feedback) {
+    const ok = await workflowClient.requestGateChanges({
+      runId,
+      phaseId,
+      feedback
+    });
+    await get().refresh(runId);
+    return ok;
   },
   async continueImplementReview(runId) {
     await workflowClient.continueImplementReview(runId);

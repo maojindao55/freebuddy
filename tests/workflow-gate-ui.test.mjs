@@ -40,6 +40,16 @@ test("returns the manual-gate phase when its steps are done and the next phase i
   assert.equal(result, "review");
 });
 
+test("write approval helper ignores completed non-write manual gates", async () => {
+  const { pendingWriteApprovalPhaseId } = await loadPlanning();
+  const result = pendingWriteApprovalPhaseId(phases(reviewGate), [
+    { stepId: "b", status: "done" },
+    { stepId: "r", status: "done" },
+    { stepId: "i", status: "pending" }
+  ]);
+  assert.equal(result, undefined);
+});
+
 test("returns undefined when no manual gate is pending (all_done gates)", async () => {
   const { pendingManualGatePhaseId } = await loadPlanning();
   const result = pendingManualGatePhaseId(phases(allDone), [
@@ -65,4 +75,34 @@ test("returns the earlier manual-gate phase when later steps have not started", 
     { stepId: "r", status: "done" }
   ]);
   assert.equal(result, "review");
+});
+
+test("returns a manual-gated write phase before its write step starts", async () => {
+  const { pendingManualGatePhaseId, pendingWriteApprovalPhaseId } = await loadPlanning();
+  const planPhases = phases(allDone);
+  planPhases[2].gate = reviewGate;
+  const result = pendingManualGatePhaseId(planPhases, [
+    { stepId: "b", status: "done" },
+    { stepId: "r", status: "done" },
+    { stepId: "i", status: "pending" }
+  ]);
+  assert.equal(result, "implement");
+  const writeApproval = pendingWriteApprovalPhaseId(planPhases, [
+    { stepId: "b", status: "done" },
+    { stepId: "r", status: "done" },
+    { stepId: "i", status: "pending" }
+  ]);
+  assert.equal(writeApproval, "implement");
+});
+
+test("does not return a manual-gated write phase after the write step starts", async () => {
+  const { pendingManualGatePhaseId } = await loadPlanning();
+  const planPhases = phases(allDone);
+  planPhases[2].gate = reviewGate;
+  const result = pendingManualGatePhaseId(planPhases, [
+    { stepId: "b", status: "done" },
+    { stepId: "r", status: "done" },
+    { stepId: "i", status: "running" }
+  ]);
+  assert.equal(result, undefined);
 });

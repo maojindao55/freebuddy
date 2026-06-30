@@ -15,6 +15,7 @@ const METHODS = [
   "stop",
   "retryStep",
   "approveGate",
+  "requestGateChanges",
   "getRun",
   "getSteps",
   "listRuns"
@@ -27,6 +28,13 @@ test("workflow IPC handlers are registered", () => {
   }
   const registrar = read("../electron/cli/ipc.ts");
   assert.match(registrar, /registerWorkflowIpc\(\)/);
+});
+
+test("workflow approveGate returns the runtime approval result", () => {
+  const ipc = read("../electron/cli/workflowIpc.ts");
+  assert.match(ipc, /workflow:approveGate/);
+  assert.match(ipc, /ensureRuntime\(event\)\.approveGate\(args\.runId, args\.phaseId\)/);
+  assert.doesNotMatch(ipc, /approveGate\(args\.runId, args\.phaseId\);\s*return true/s);
 });
 
 test("preload exposes the workflow client object", () => {

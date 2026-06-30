@@ -293,12 +293,14 @@ test("runtime loops build review when verification has unresolved issues", () =>
   assert.match(src, /verification feedback from the previous round/);
 });
 
-test("runtime resumes implementer sessions but keeps review and verify fresh", () => {
+test("runtime resumes gated plan revisions and implementer review-loop sessions", () => {
   const src = fs.readFileSync(
     new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
     "utf8"
   );
   assert.match(src, /function shouldResumeWorkflowStep/);
+  assert.match(src, /Boolean\(step\.toolSessionId\)/);
+  assert.match(src, /step\.prompt\.includes\("User requested changes before approval:"\)/);
   assert.match(src, /step\.stepId === IMPLEMENT_REVIEW_STEP_ID/);
   assert.match(src, /const resumeToolSession = shouldResumeWorkflowStep\(plan, step\)/);
   assert.match(src, /toolSessionScope: args\.toolSessionScope/);

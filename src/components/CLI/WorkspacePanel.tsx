@@ -31,7 +31,7 @@ export function WorkspacePanel({
 }: {
   runningCount: number;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
   // Subscribe only to the active conversation's slices so background
@@ -437,8 +437,12 @@ export function WorkspacePanel({
                 leftLabel={t("workspace.codexUsageLeft", {
                   percent: codexUsage.primaryWindow.leftPercent
                 })}
-                resetLabel={t("workspace.codexUsageResetIn", {
-                  time: formatDuration(codexUsage.primaryWindow.resetAfterSeconds * 1000)
+                resetLabel={t("workspace.codexUsageResetAt", {
+                  time: formatCodexResetAt(
+                    codexUsage.primaryWindow.resetAt,
+                    i18n.language,
+                    "time"
+                  )
                 })}
               />
               {codexUsage.secondaryWindow && (
@@ -448,9 +452,10 @@ export function WorkspacePanel({
                   leftLabel={t("workspace.codexUsageLeft", {
                     percent: codexUsage.secondaryWindow.leftPercent
                   })}
-                  resetLabel={t("workspace.codexUsageResetIn", {
-                    time: formatDuration(
-                      codexUsage.secondaryWindow.resetAfterSeconds * 1000
+                  resetLabel={t("workspace.codexUsageResetAt", {
+                    time: formatCodexResetAt(
+                      codexUsage.secondaryWindow.resetAt,
+                      i18n.language
                     )
                   })}
                 />
@@ -555,6 +560,31 @@ function shortPath(path: string) {
 function shortSessionId(id: string) {
   if (id.length <= 18) return id;
   return `${id.slice(0, 8)}\u2026${id.slice(-6)}`;
+}
+
+function formatCodexResetAt(
+  resetAt: number,
+  lang: string,
+  variant: "time" | "dateTime" = "dateTime"
+): string {
+  const millis = resetAt > 1_000_000_000_000 ? resetAt : resetAt * 1000;
+  const date = new Date(millis);
+  if (Number.isNaN(date.getTime())) return "";
+  if (variant === "time") {
+    return new Intl.DateTimeFormat(lang || undefined, {
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(date);
+  }
+  const now = new Date();
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return new Intl.DateTimeFormat(lang || undefined, {
+    year: sameYear ? undefined : "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function formatTokens(n: number): string {

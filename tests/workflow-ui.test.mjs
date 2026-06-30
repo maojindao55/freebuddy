@@ -91,6 +91,38 @@ test("ChatView wires the team-mode trigger and plan preview", () => {
   assert.match(src, /teamMode/);
 });
 
+test("ChatView renders workflow approval decisions in the chat stream", () => {
+  const src = read("../src/components/CLI/ChatView.tsx");
+  const css = read("../styles.css");
+  assert.match(src, /WorkflowApprovalCard/);
+  assert.match(src, /pendingWriteApprovalPhaseId/);
+  assert.doesNotMatch(src, /pendingManualGatePhaseId/);
+  assert.doesNotMatch(src, /approvalCardTitle/);
+  assert.doesNotMatch(src, /workflow-approval-avatar/);
+  assert.doesNotMatch(css, /workflow-approval-avatar/);
+  assert.match(src, /workflow-approval-spacer/);
+  assert.match(src, /workflow-approval-card/);
+  assert.match(src, /approvedWorkflowGate/);
+  assert.match(src, /workflowGateApprovedLocally/);
+  assert.match(src, /setApprovedWorkflowGate/);
+  assert.match(src, /then\(\(ok\) =>/);
+  assert.match(css, /\.workflow-approval-spacer\s*\{[^}]*flex:\s*0 0 16px/s);
+  assert.doesNotMatch(css, /\.workflow-approval-msg\s*\{[^}]*margin-left/s);
+  assert.match(src, /requestGateChanges/);
+  assert.match(src, /requestChangesPlaceholder/);
+  assert.match(css, /\.workflow-approval-card/);
+});
+
+test("workflow store follows approval progress after acknowledging a gate", () => {
+  const src = read("../src/store/workflowStore.ts");
+  assert.match(src, /approveGate\(runId: string, phaseId: string\): Promise<boolean>/);
+  assert.match(src, /const ok = await workflowClient\.approveGate\(\{ runId, phaseId \}\)/);
+  assert.match(src, /if \(!ok\) return false/);
+  assert.match(src, /await delay\(250\)/);
+  assert.match(src, /activeRun\.status !== "paused"/);
+  assert.match(src, /return true/);
+});
+
 test("new-task page exposes mode tabs and team submit", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
   assert.match(src, /taskMode=\{taskMode\}/);
@@ -123,7 +155,7 @@ test("ChatView titles team workflow conversations from the prompt", () => {
 test("workflow i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
-  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk", "runningIndicator", "phaseTitles", "stepTitles"]) {
+  for (const key of ["mode", "normalMode", "run", "cancel", "summary", "progress", "gates", "risk", "runningIndicator", "phaseTitles", "stepTitles", "approvalCardEyebrow", "approvalCardBody", "requestChanges", "requestChangesPlaceholder"]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }

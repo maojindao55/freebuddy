@@ -129,10 +129,17 @@ export function registerWorkflowIpc() {
   );
   ipcMain.handle(
     "workflow:approveGate",
-    (event, args: { runId: string; phaseId: string }) => {
-      ensureRuntime(event).approveGate(args.runId, args.phaseId);
-      return true;
-    }
+    (event, args: { runId: string; phaseId: string }) =>
+      ensureRuntime(event).approveGate(args.runId, args.phaseId)
+  );
+  ipcMain.handle(
+    "workflow:requestGateChanges",
+    (event, args: { runId: string; phaseId: string; feedback: string }) =>
+      ensureRuntime(event).requestGateChanges(
+        args.runId,
+        args.phaseId,
+        args.feedback
+      )
   );
   ipcMain.handle("workflow:continueImplementReview", (event, runId: string) =>
     ensureRuntime(event).continueImplementReview(runId)

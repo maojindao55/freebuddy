@@ -131,7 +131,7 @@ export function expandTeamToPlan(
     ) {
       gate = {
         type: "manual_approval",
-        reason: "Approve write step before execution."
+        reason: "Review the completed plan and approve the write step before execution."
       };
     } else if (
       node.mode === "write" &&

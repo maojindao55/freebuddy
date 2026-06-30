@@ -2592,6 +2592,96 @@ button {
   border-radius: 2px var(--fb-rounded-lg) var(--fb-rounded-lg) var(--fb-rounded-lg);
 }
 
+.workflow-approval-msg .msg-content-wrapper {
+  max-width: min(620px, 100%);
+  gap: 0;
+}
+
+.workflow-approval-spacer {
+  width: 16px;
+  height: 1px;
+  flex: 0 0 16px;
+  pointer-events: none;
+}
+
+.workflow-approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 620px;
+  padding: 14px 16px 15px;
+  border-radius: 8px;
+}
+
+.workflow-approval-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workflow-approval-eyebrow {
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.workflow-approval-card p {
+  margin: 0;
+  max-width: 58ch;
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.workflow-approval-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.workflow-approval-card-actions button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.workflow-approval-card-actions button:hover {
+  background: var(--fb-hover);
+}
+
+.workflow-approval-card-actions button.primary {
+  border-color: transparent;
+  background: var(--fb-brand);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
+}
+
+.workflow-approval-card-actions button.primary:hover {
+  background: var(--fb-brand-strong, var(--fb-brand));
+}
+
+.workflow-approval-card-actions button.danger {
+  border-color: rgba(239, 68, 68, 0.28);
+  color: var(--fb-danger, #ef4444);
+  background: transparent;
+}
+
+.workflow-approval-card-actions button.danger:hover {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: rgba(239, 68, 68, 0.06);
+}
+
 .msg-meta {
   display: flex;
   gap: 8px;

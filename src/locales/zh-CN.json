@@ -152,10 +152,10 @@
     "codexUsageRefresh": "刷新",
     "codexUsageLoading": "读取中",
     "codexUsageUnavailable": "暂时无法读取 Codex 限额。",
-    "codexUsage5h": "5h limit",
-    "codexUsageWeekly": "weekly limit",
+    "codexUsage5h": "5 小时限额",
+    "codexUsageWeekly": "每周限额",
     "codexUsageLeft": "剩余 {{percent}}%",
-    "codexUsageResetIn": "{{time}} 后重置"
+    "codexUsageResetAt": "{{time}} 重置"
   },
   "message": {
     "you": "你",
@@ -324,6 +324,11 @@
     "cancel": "取消",
     "editPrompt": "编辑",
     "approveGate": "批准并继续",
+    "approvalCardEyebrow": "等待确认：{{phase}}",
+    "approvalCardBody": "确认上方方案后继续执行。需要调整时，点击修改方案后在输入框发送反馈。",
+    "requestChanges": "修改方案",
+    "requestChangesPlaceholder": "输入你希望调整的地方...",
+    "requestChangesFailed": "未能提交方案修改请求。",
     "pause": "暂停",
     "resume": "继续",
     "resumeAfterFailure": "重试并继续",

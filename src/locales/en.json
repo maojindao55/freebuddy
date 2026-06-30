@@ -155,7 +155,20 @@
     "codexUsage5h": "5h limit",
     "codexUsageWeekly": "Weekly limit",
     "codexUsageLeft": "{{percent}}% left",
-    "codexUsageResetAt": "resets at {{time}}"
+    "codexUsageResetAt": "resets at {{time}}",
+    "codexResetCredits": "Reset credits",
+    "codexResetCreditsCount": "{{available}} available / {{total}} total",
+    "codexResetCreditsExpireAt": "next expires at {{time}}",
+    "codexResetCreditsExpand": "Show reset credit details",
+    "codexResetCreditsCollapse": "Hide reset credit details",
+    "codexResetCreditTitle": "Credit {{index}}",
+    "codexResetCreditExpiresAt": "expires at {{time}}",
+    "codexResetCreditNoExpiry": "no expiry",
+    "codexResetCreditStatus": {
+      "available": "Available",
+      "used": "Used",
+      "unknown": "Unknown"
+    }
   },
   "message": {
     "you": "You",

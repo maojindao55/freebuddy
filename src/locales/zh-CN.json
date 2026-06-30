@@ -155,7 +155,20 @@
     "codexUsage5h": "5 小时限额",
     "codexUsageWeekly": "每周限额",
     "codexUsageLeft": "剩余 {{percent}}%",
-    "codexUsageResetAt": "{{time}} 重置"
+    "codexUsageResetAt": "{{time}} 重置",
+    "codexResetCredits": "重置次数",
+    "codexResetCreditsCount": "{{available}} 可用 / {{total}} 总计",
+    "codexResetCreditsExpireAt": "下次 {{time}} 过期",
+    "codexResetCreditsExpand": "展开重置次数详情",
+    "codexResetCreditsCollapse": "收起重置次数详情",
+    "codexResetCreditTitle": "次数 {{index}}",
+    "codexResetCreditExpiresAt": "{{time}} 过期",
+    "codexResetCreditNoExpiry": "无过期时间",
+    "codexResetCreditStatus": {
+      "available": "可用",
+      "used": "已用",
+      "unknown": "未知"
+    }
   },
   "message": {
     "you": "你",

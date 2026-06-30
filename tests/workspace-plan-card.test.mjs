@@ -41,9 +41,16 @@ test("workspace panel renders the Codex usage card from the CLI bridge", () => {
   assert.match(source, /workspace\.codexUsage/);
   assert.match(source, /workspace\.codexUsageRefresh/);
   assert.match(source, /workspace\.codexUsageUnavailable/);
+  assert.match(source, /workspace\.codexResetCredits/);
+  assert.match(source, /workspace\.codexResetCreditsCount/);
+  assert.match(source, /resetCreditsExpanded/);
+  assert.match(source, /CodexResetCreditRow/);
   assert.match(styles, /\.codex-usage-card\s*\{/);
   assert.match(styles, /\.codex-limit-track\s*\{/);
   assert.match(styles, /\.codex-limit-fill\s*\{/);
+  assert.match(styles, /\.codex-reset-credits\s*\{/);
+  assert.match(styles, /\.codex-reset-credit-list\s*\{/);
+  assert.match(styles, /\.codex-reset-credit-row\s*\{/);
 });
 
 test("Codex usage card is rendered after the other workspace cards", () => {

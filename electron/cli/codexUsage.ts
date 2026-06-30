@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const RESET_CREDITS_URL =
+  "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 
 export type CodexUsageWindow = {
   usedPercent: number;
@@ -10,6 +12,18 @@ export type CodexUsageWindow = {
   windowSeconds: number;
   resetAfterSeconds: number;
   resetAt: number;
+};
+
+export type CodexResetCredit = {
+  status: string;
+  expiresAt?: number;
+};
+
+export type CodexResetCredits = {
+  availableCount: number;
+  totalCount: number;
+  nextExpiresAt?: number;
+  credits: CodexResetCredit[];
 };
 
 export type CodexUsageResult =
@@ -20,6 +34,7 @@ export type CodexUsageResult =
       planType?: string;
       primaryWindow: CodexUsageWindow;
       secondaryWindow?: CodexUsageWindow;
+      resetCredits?: CodexResetCredits;
       fetchedAt: string;
     }
   | {
@@ -63,14 +78,15 @@ export async function readCodexUsage(options: {
 
   const fetchImpl = options.fetchImpl ?? fetch;
   try {
+    const headers = {
+      accept: "*/*",
+      authorization: `Bearer ${auth.accessToken}`,
+      "chatgpt-account-id": auth.accountId,
+      "user-agent": "freebuddy/codex-usage"
+    };
     const response = await fetchImpl(USAGE_URL, {
       method: "GET",
-      headers: {
-        accept: "*/*",
-        authorization: `Bearer ${auth.accessToken}`,
-        "chatgpt-account-id": auth.accountId,
-        "user-agent": "freebuddy/codex-usage"
-      }
+      headers
     });
     if (!response.ok) {
       return {
@@ -80,7 +96,11 @@ export async function readCodexUsage(options: {
         fetchedAt
       };
     }
-    return normalizeUsageResponse(await response.json(), fetchedAt);
+    const result = normalizeUsageResponse(await response.json(), fetchedAt);
+    if (!result.ok) return result;
+
+    const resetCredits = await fetchResetCredits(fetchImpl, headers);
+    return resetCredits ? { ...result, resetCredits } : result;
   } catch (error) {
     return {
       ok: false,
@@ -88,6 +108,22 @@ export async function readCodexUsage(options: {
       error: error instanceof Error ? error.message : String(error),
       fetchedAt
     };
+  }
+}
+
+async function fetchResetCredits(
+  fetchImpl: FetchLike,
+  headers: Record<string, string>
+): Promise<CodexResetCredits | undefined> {
+  try {
+    const response = await fetchImpl(RESET_CREDITS_URL, {
+      method: "GET",
+      headers
+    });
+    if (!response.ok) return undefined;
+    return normalizeResetCreditsResponse(await response.json());
+  } catch {
+    return undefined;
   }
 }
 
@@ -181,6 +217,52 @@ function normalizeWindow(value: unknown): CodexUsageWindow | undefined {
   };
 }
 
+function normalizeResetCreditsResponse(
+  payload: unknown
+): CodexResetCredits | undefined {
+  const rawCredits = Array.isArray(payload)
+    ? payload
+    : arrayValue(objectValue(payload, "credits"));
+  if (!rawCredits) return undefined;
+
+  const credits = rawCredits
+    .map(normalizeResetCredit)
+    .filter((credit): credit is CodexResetCredit => credit != null)
+    .sort(sortResetCredits);
+  const availableCount =
+    Array.isArray(payload) ? undefined : numberValue(payload, "available_count");
+  const availableCredits = credits.filter((credit) => credit.status === "available");
+  const nextExpiresAt = availableCredits
+    .map((credit) => credit.expiresAt)
+    .filter((value): value is number => value != null)
+    .sort((a, b) => a - b)[0];
+
+  return {
+    availableCount:
+      availableCount == null ? availableCredits.length : Math.max(0, Math.round(availableCount)),
+    totalCount: credits.length,
+    nextExpiresAt,
+    credits
+  };
+}
+
+function normalizeResetCredit(value: unknown): CodexResetCredit | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return {
+    status: stringValue(value, "status") ?? "unknown",
+    expiresAt: epochSecondsValue(value, "expires_at")
+  };
+}
+
+function sortResetCredits(lhs: CodexResetCredit, rhs: CodexResetCredit): number {
+  if (lhs.expiresAt != null && rhs.expiresAt != null) {
+    return lhs.expiresAt - rhs.expiresAt;
+  }
+  if (lhs.expiresAt != null) return -1;
+  if (rhs.expiresAt != null) return 1;
+  return lhs.status.localeCompare(rhs.status);
+}
+
 function decodeJwtPayload(token: string): unknown {
   const parts = token.split(".");
   if (parts.length !== 3) return undefined;
@@ -196,6 +278,10 @@ function objectValue(source: unknown, key: string): unknown {
   return (source as Record<string, unknown>)[key];
 }
 
+function arrayValue(source: unknown): unknown[] | undefined {
+  return Array.isArray(source) ? source : undefined;
+}
+
 function stringValue(source: unknown, key: string): string | undefined {
   const value = objectValue(source, key);
   return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -204,6 +290,18 @@ function stringValue(source: unknown, key: string): string | undefined {
 function numberValue(source: unknown, key: string): number | undefined {
   const value = objectValue(source, key);
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function epochSecondsValue(source: unknown, key: string): number | undefined {
+  const value = objectValue(source, key);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.floor(value > 1_000_000_000_000 ? value / 1000 : value);
+  }
+  if (typeof value === "string" && value.length > 0) {
+    const millis = Date.parse(value);
+    return Number.isFinite(millis) ? Math.floor(millis / 1000) : undefined;
+  }
+  return undefined;
 }
 
 function booleanValue(source: unknown, key: string): boolean | undefined {

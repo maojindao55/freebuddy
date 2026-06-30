@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { displayAgentName } from "@/config/agentDisplay";
 import { cliClient } from "@/services/cli/client";
 import type {
+  CodexResetCredit,
   CodexUsageResult,
   CodexUsageWindow,
   ConversationMessage
@@ -46,6 +47,7 @@ export function WorkspacePanel({
   const [now, setNow] = useState(() => Date.now());
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
+  const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowSteps = useWorkflowStore((s) => s.steps);
@@ -460,6 +462,54 @@ export function WorkspacePanel({
                   })}
                 />
               )}
+              {codexUsage.resetCredits && (
+                <div className="codex-reset-credits">
+                  <button
+                    className="codex-reset-credits-summary"
+                    type="button"
+                    aria-expanded={resetCreditsExpanded}
+                    aria-label={
+                      resetCreditsExpanded
+                        ? t("workspace.codexResetCreditsCollapse")
+                        : t("workspace.codexResetCreditsExpand")
+                    }
+                    onClick={() => setResetCreditsExpanded((value) => !value)}
+                  >
+                    <strong>
+                      {t("workspace.codexResetCredits")}
+                      <span className="codex-reset-credits-chevron" aria-hidden="true" />
+                    </strong>
+                    <span>
+                      {t("workspace.codexResetCreditsCount", {
+                        available: codexUsage.resetCredits.availableCount,
+                        total: codexUsage.resetCredits.totalCount
+                      })}
+                    </span>
+                  </button>
+                  {codexUsage.resetCredits.nextExpiresAt && (
+                    <small>
+                      {t("workspace.codexResetCreditsExpireAt", {
+                        time: formatCodexResetAt(
+                          codexUsage.resetCredits.nextExpiresAt,
+                          i18n.language
+                        )
+                      })}
+                    </small>
+                  )}
+                  {resetCreditsExpanded && (
+                    <div className="codex-reset-credit-list">
+                      {codexUsage.resetCredits.credits.map((credit, index) => (
+                        <CodexResetCreditRow
+                          key={`${credit.status}-${credit.expiresAt ?? "none"}-${index}`}
+                          credit={credit}
+                          index={index}
+                          language={i18n.language}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <p className="codex-usage-empty">
@@ -470,6 +520,34 @@ export function WorkspacePanel({
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+function CodexResetCreditRow({
+  credit,
+  index,
+  language
+}: {
+  credit: CodexResetCredit;
+  index: number;
+  language: string;
+}) {
+  const { t } = useTranslation();
+  const statusKey = codexResetCreditStatusKey(credit.status);
+  return (
+    <div className="codex-reset-credit-row">
+      <strong>{t("workspace.codexResetCreditTitle", { index: index + 1 })}</strong>
+      <span className={`codex-reset-credit-status ${statusKey}`}>
+        {t(`workspace.codexResetCreditStatus.${statusKey}`)}
+      </span>
+      <small>
+        {credit.expiresAt
+          ? t("workspace.codexResetCreditExpiresAt", {
+              time: formatCodexResetAt(credit.expiresAt, language)
+            })
+          : t("workspace.codexResetCreditNoExpiry")}
+      </small>
     </div>
   );
 }
@@ -500,6 +578,11 @@ function CodexLimitRow({
       <small>{resetLabel}</small>
     </div>
   );
+}
+
+function codexResetCreditStatusKey(status: string): "available" | "used" | "unknown" {
+  if (status === "available" || status === "used") return status;
+  return "unknown";
 }
 
 function latestPlanFromMessages(

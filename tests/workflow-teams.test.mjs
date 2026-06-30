@@ -163,6 +163,14 @@ test("seeding removes retired builtin workflow teams", () => {
   assert.match(src, /DELETE FROM workflow_teams WHERE id = \? AND source = 'builtin'/);
 });
 
+test("seeding preserves customized builtin team role agents", () => {
+  const src = read("../electron/cli/workflowTeams.ts");
+  assert.match(src, /function mergeBuiltinRoles/);
+  assert.match(src, /existingAgentByRoleId\.get\(role\.id\) \?\? role\.agentId/);
+  assert.match(src, /roles:\s*mergeBuiltinRoles\(saved, team\)/);
+  assert.match(src, /enabled:\s*saved\.enabled/);
+});
+
 test("validateWorkflowTeam rejects unknown agent on required role", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"

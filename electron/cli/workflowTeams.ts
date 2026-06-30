@@ -144,6 +144,30 @@ const removedBuiltinWorkflowTeamIds = [
   "team-readonly-analysis"
 ];
 
+function mergeBuiltinRoles(
+  existing: WorkflowTeam,
+  builtin: WorkflowTeam
+): WorkflowTeamRole[] {
+  const existingAgentByRoleId = new Map(
+    existing.roles.map((role) => [role.id, role.agentId])
+  );
+  return builtin.roles.map((role) => ({
+    ...role,
+    agentId: existingAgentByRoleId.get(role.id) ?? role.agentId
+  }));
+}
+
+function mergeBuiltinPolicy(
+  existing: WorkflowTeam,
+  builtin: WorkflowTeam
+): WorkflowTeamPolicy {
+  return {
+    ...builtin.policy,
+    ...existing.policy,
+    maxParallelWriteSteps: 1
+  };
+}
+
 export function seedBuiltinWorkflowTeams(): void {
   const db = getDb();
   for (const id of removedBuiltinWorkflowTeamIds) {
@@ -151,22 +175,22 @@ export function seedBuiltinWorkflowTeams(): void {
   }
 
   const existing = listWorkflowTeams();
-  const existingIds = new Set(existing.map((t) => t.id));
+  const existingById = new Map(existing.map((t) => [t.id, t]));
   for (const team of builtinWorkflowTeams()) {
-    if (!existingIds.has(team.id)) {
+    const saved = existingById.get(team.id);
+    if (!saved) {
       insertWorkflowTeam(team);
       continue;
     }
-    if (team.id === "team-implement-review-loop" || team.source === "builtin") {
-      updateWorkflowTeam(team.id, {
-        name: team.name,
-        description: team.description,
-        icon: team.icon,
-        enabled: team.enabled,
-        roles: team.roles,
-        template: team.template,
-        policy: team.policy
-      });
-    }
+    if (saved.source !== "builtin") continue;
+    updateWorkflowTeam(team.id, {
+      name: team.name,
+      description: team.description,
+      icon: team.icon,
+      enabled: saved.enabled,
+      roles: mergeBuiltinRoles(saved, team),
+      template: team.template,
+      policy: mergeBuiltinPolicy(saved, team)
+    });
   }
 }

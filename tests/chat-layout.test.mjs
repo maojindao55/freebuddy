@@ -36,7 +36,7 @@ test("desktop shell is pinned to the actual viewport in fullscreen", () => {
 test("workspace keeps the composer inside the visible column", () => {
   assert.match(stylesSource, /\.workspace\s*\{[^}]*overflow:\s*hidden;/m);
   assert.match(stylesSource, /\.chat-section\s*\{[^}]*position:\s*relative;[^}]*min-height:\s*0;/m);
-  assert.match(stylesSource, /\.chat-view\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s*auto;/m);
+  assert.match(stylesSource, /\.chat-view\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;/m);
   assert.match(stylesSource, /\.chat-composer\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*18px;/m);
   assert.match(stylesSource, /\.chat-composer\s*\{[^}]*left:\s*272px;[^}]*right:\s*var\(--fb-detail-width,\s*440px\);/m);
 });

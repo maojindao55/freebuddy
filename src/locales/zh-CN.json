@@ -82,6 +82,20 @@
     "removeAttachmentAria": "移除 {{name}}",
     "newTaskAria": "新建任务",
     "commonTasksAria": "常用任务",
+    "replay": {
+      "title": "对话回放",
+      "entry": "回放",
+      "play": "播放",
+      "pause": "暂停",
+      "prev": "上一条消息",
+      "next": "下一条消息",
+      "exit": "退出回放",
+      "speed": "播放速度",
+      "speedOption": "{{speed}}x",
+      "progress": "{{n}}/{{total}}",
+      "disabledRunning": "Agent 运行中无法回放",
+      "disabledEmpty": "暂无消息可回放"
+    },
     "starter": {
       "one": "先分析当前项目结构，给我下一步实现建议",
       "two": "检查刚才的改动有没有 UI/UX 问题",

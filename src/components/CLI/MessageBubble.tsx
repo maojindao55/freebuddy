@@ -12,6 +12,7 @@ import { sanitizeStreamItems } from "@/utils/streamMedia";
 import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
+import { isVisibleItem, visibleBlocks } from "./messageBlocks";
 
 const HIDDEN_CODEX_EVENTS = new Set([
   "thread.started",
@@ -144,92 +145,6 @@ export function normalizeStoredItems(items: CliStreamItem[]): CliStreamItem[] {
   }
 
   return out;
-}
-
-function isVisibleItem(item: CliStreamItem, hideDiagnosticStderr = false) {
-  if (
-    hideDiagnosticStderr &&
-    item.kind === "command-output" &&
-    item.stream === "stderr"
-  ) {
-    return false;
-  }
-  return item.kind !== "session" &&
-    item.kind !== "usage" &&
-    item.kind !== "plan" &&
-    item.kind !== "available-commands" &&
-    item.kind !== "config-options";
-}
-
-type VisibleBlock =
-  | { kind: "single"; item: CliStreamItem }
-  | {
-      kind: "tool";
-      call: Extract<CliStreamItem, { kind: "tool-call" }>;
-      results: Extract<CliStreamItem, { kind: "tool-result" }>[];
-      commands: Extract<CliStreamItem, { kind: "command" }>[];
-      extras: CliStreamItem[];
-    };
-
-function sameToolInvocation(
-  call: Extract<CliStreamItem, { kind: "tool-call" }>,
-  result: Extract<CliStreamItem, { kind: "tool-result" }>
-) {
-  if (call.id || result.id) return call.id === result.id;
-  return true;
-}
-
-function syntheticToolResult(
-  call: Extract<CliStreamItem, { kind: "tool-call" }>
-): Extract<CliStreamItem, { kind: "tool-result" }> | undefined {
-  if (call.output === undefined) return undefined;
-  return {
-    kind: "tool-result",
-    id: call.id,
-    tool: call.tool,
-    content: call.output,
-    ...(call.isError ? { isError: true } : {})
-  };
-}
-
-function visibleBlocks(items: CliStreamItem[]): VisibleBlock[] {
-  const blocks: VisibleBlock[] = [];
-
-  for (let i = 0; i < items.length; i += 1) {
-    const item = items[i];
-    if (item.kind !== "tool-call") {
-      blocks.push({ kind: "single", item });
-      continue;
-    }
-
-    const results: Extract<CliStreamItem, { kind: "tool-result" }>[] = [];
-    const commands: Extract<CliStreamItem, { kind: "command" }>[] = [];
-    const synthetic = syntheticToolResult(item);
-    if (synthetic) results.push(synthetic);
-
-    let cursor = i + 1;
-    while (cursor < items.length) {
-      const next = items[cursor];
-      if (next.kind !== "tool-result" && next.kind !== "command") break;
-      if (next.kind === "tool-result") {
-        if (!sameToolInvocation(item, next)) break;
-        results.push(next);
-      } else {
-        commands.push(next);
-      }
-      cursor += 1;
-    }
-    blocks.push({
-      kind: "tool",
-      call: item,
-      results,
-      commands,
-      extras: item.toolOutputs ?? []
-    });
-    i = cursor - 1;
-  }
-
-  return blocks;
 }
 
 function copyableItemText(item: CliStreamItem): string {
@@ -386,10 +301,14 @@ function MessageAttachments({
 
 export const MessageBubble = memo(function MessageBubble({
   message,
-  adapter
+  adapter,
+  blockLimit,
+  typingChars
 }: {
   message: ConversationMessage;
   adapter?: string;
+  blockLimit?: number;
+  typingChars?: number;
 }) {
   const { t } = useTranslation();
   const items = useMemo<CliStreamItem[]>(() => {
@@ -419,10 +338,31 @@ export const MessageBubble = memo(function MessageBubble({
     return items.filter((item) => isVisibleItem(item, hideDiagnosticStderr));
   }, [items]);
   const blocks = useMemo(() => visibleBlocks(visibleItems), [visibleItems]);
+  const renderedBlocks = useMemo(() => {
+    const sliced = blockLimit != null ? blocks.slice(0, blockLimit) : blocks;
+    if (typingChars == null || sliced.length === 0) return sliced;
+    const lastIdx = sliced.length - 1;
+    const last = sliced[lastIdx];
+    if (
+      last.kind === "single" &&
+      (last.item.kind === "text" || last.item.kind === "raw")
+    ) {
+      const next = sliced.slice();
+      next[lastIdx] = {
+        ...last,
+        item: {
+          ...last.item,
+          content: (last.item.content ?? "").slice(0, typingChars)
+        }
+      };
+      return next;
+    }
+    return sliced;
+  }, [blocks, blockLimit, typingChars]);
   const isWaitingForAgent =
     message.role === "assistant" &&
     (message.status === "running" || message.status === "starting") &&
-    blocks.length === 0;
+    renderedBlocks.length === 0;
 
   const timeStr = useMemo(() => {
     try {
@@ -597,10 +537,10 @@ export const MessageBubble = memo(function MessageBubble({
             </span>
           )}
         </div>
-        {blocks.length > 0 && (
+        {renderedBlocks.length > 0 && (
           <div className="msg-bubble">
             <div className="msg-items">
-              {blocks.map((block, i) => (
+              {renderedBlocks.map((block, i) => (
                 block.kind === "tool" ? (
                   <StreamToolInvocation
                     key={i}

@@ -82,6 +82,20 @@
     "removeAttachmentAria": "Remove {{name}}",
     "newTaskAria": "New task",
     "commonTasksAria": "Common tasks",
+    "replay": {
+      "title": "Conversation replay",
+      "entry": "Replay",
+      "play": "Play",
+      "pause": "Pause",
+      "prev": "Previous message",
+      "next": "Next message",
+      "exit": "Exit replay",
+      "speed": "Playback speed",
+      "speedOption": "{{speed}}x",
+      "progress": "{{n}}/{{total}}",
+      "disabledRunning": "Replay is unavailable while the agent is running",
+      "disabledEmpty": "No messages to replay yet"
+    },
     "starter": {
       "one": "Analyze the current project structure and suggest next steps",
       "two": "Check recent changes for UI/UX issues",

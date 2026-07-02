@@ -16,8 +16,16 @@ export function pendingManualGatePhaseId(
     st === "done" || st === "skipped";
   const isNotStarted = (st: WorkflowStepStatus | undefined) =>
     st === undefined || st === "pending";
+  const hasStarted = (st: WorkflowStepStatus | undefined) =>
+    st !== undefined && st !== "pending";
   let gatingId: string | undefined;
   for (const phase of phases) {
+    if (
+      gatingId &&
+      phase.steps.some((s) => hasStarted(statusByStep.get(s.id)))
+    ) {
+      return undefined;
+    }
     const allTerminal = phase.steps.every((s) =>
       isTerminal(statusByStep.get(s.id))
     );

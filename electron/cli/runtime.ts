@@ -14,6 +14,7 @@ import { runAcpAgent } from "./acpRuntime.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getLogDir } from "./db.js";
 import { updateRuntimeRun } from "./check.js";
+import { safeSendToWebContents } from "./ipcSend.js";
 import { getToolSession } from "./store.js";
 import {
   appendLog,
@@ -120,7 +121,7 @@ export async function cliRun(
   const channel = channelName(args.sessionId);
   const emit = createItemsBatchingEmit((e) => {
     if (onEvent) onEvent(e);
-    if (!webContents.isDestroyed()) webContents.send(channel, e);
+    safeSendToWebContents(webContents, channel, e);
   });
 
   const logFile = path.join(getLogDir(), `${args.sessionId}.jsonl`);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { useTranslation } from "react-i18next";
 
@@ -17,7 +17,7 @@ import {
   workflowFollowupAgentId,
   type WorkflowPlan
 } from "@/services/workflows/types";
-import { pendingWriteApprovalPhaseId } from "@/services/workflows/planning";
+import { pendingManualGatePhaseId } from "@/services/workflows/planning";
 import { workflowClient } from "@/services/workflows/client";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
@@ -29,6 +29,7 @@ import {
   validateAttachmentCandidate
 } from "@/utils/chatAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { useReplayStore } from "@/store/replayStore";
 import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
 import {
   mergeSessionMetaItems,
@@ -334,6 +335,10 @@ export function ChatView() {
   const sending =
     running ||
     (submitPreview !== null && submitPreview.conversationId === conv?.id);
+  const replayConvId = useReplayStore((s) => s.conversationId);
+  const replayIndex = useReplayStore((s) => s.index);
+  const stopReplay = useReplayStore((s) => s.stop);
+  const replaying = replayConvId === conv?.id && replayConvId !== null;
   const starterPrompts = [
     t("chat.starter.one"),
     t("chat.starter.two"),
@@ -370,7 +375,7 @@ export function ChatView() {
 
   const gatingPhaseId = useMemo(() => {
     if (!workflowPlan) return undefined;
-    return pendingWriteApprovalPhaseId(
+    return pendingManualGatePhaseId(
       workflowPlan.phases,
       workflowSteps.map((s) => ({ stepId: s.stepId, status: s.status }))
     );
@@ -383,6 +388,11 @@ export function ChatView() {
     approvedWorkflowGate !== null &&
     approvedWorkflowGate.runId === activeRun?.id &&
     approvedWorkflowGate.phaseId === gatingPhaseId;
+  const workflowGateIsActionable =
+    activeRun?.status === "running" ||
+    activeRun?.status === "paused" ||
+    activeRun?.status === "blocked" ||
+    activeRun?.status === "pending_approval";
 
   const filteredSlashCommands = useMemo(() => {
     if (!slashDraft) return [];
@@ -435,6 +445,32 @@ export function ChatView() {
     return preview.filter((m) => !existing.has(m.id));
   }, [conv, submitPreview, messages]);
 
+  const storeFrames = useReplayStore((s) => s.frames);
+  const replayFrame =
+    replaying && replayIndex >= 0 && replayIndex < storeFrames.length
+      ? storeFrames[replayIndex]
+      : undefined;
+  const displayMessages = useMemo<ConversationMessage[]>(() => {
+    if (!replaying) return [...messages, ...previewMessages];
+    if (!replayFrame) return [];
+    return messages.slice(0, replayFrame.messageIndex + 1);
+  }, [replaying, replayFrame, messages, previewMessages]);
+  const replayPartial = useMemo<{
+    messageId: string;
+    blockLimit?: number;
+    typingChars?: number;
+  } | null>(() => {
+    if (!replaying || !replayFrame) return null;
+    const message = messages[replayFrame.messageIndex];
+    return message
+      ? {
+          messageId: message.id,
+          blockLimit: replayFrame.blockLimit,
+          typingChars: replayFrame.typingChars
+        }
+      : null;
+  }, [replaying, replayFrame, messages]);
+
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -449,6 +485,10 @@ export function ChatView() {
   useEffect(() => {
     isNearBottomRef.current = true;
   }, [activeId]);
+
+  useEffect(() => {
+    stopReplay();
+  }, [activeId, stopReplay]);
 
   useEffect(() => {
     clearTeamPreview();
@@ -472,12 +512,12 @@ export function ChatView() {
     }
   }, [activeId, conv?.approvalMode, member?.cli.approvalMode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && isNearBottomRef.current) {
+    if (el && (replaying || isNearBottomRef.current)) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, live, submitPreview, gatingPhaseId]);
+  }, [messages, live, submitPreview, gatingPhaseId, replaying, replayIndex]);
 
   useEffect(() => {
     if (!pendingWorkflowAction) return;
@@ -874,7 +914,7 @@ export function ChatView() {
 
   return (
     <div className="chat-view">
-      <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
+      <div className={`chat-scroll${replaying ? " replay-active" : ""}`} ref={scrollRef} onScroll={handleScroll}>
         {messages.length === 0 && (
           <div className="chat-empty chat-empty-hero">
             <p className="eyebrow">{t("chat.newAgentChat")}</p>
@@ -894,10 +934,23 @@ export function ChatView() {
             </div>
           </div>
         )}
-        {[...messages, ...previewMessages].map((m) => (
-          <MessageBubble key={m.id} message={m} adapter={conv?.adapter} />
-        ))}
+        {displayMessages.map((m) => {
+          const partial =
+            replayPartial && replayPartial.messageId === m.id
+              ? replayPartial
+              : undefined;
+          return (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              adapter={conv?.adapter}
+              blockLimit={partial?.blockLimit}
+              typingChars={partial?.typingChars}
+            />
+          );
+        })}
         {activeRun?.conversationId === conv.id &&
+          workflowGateIsActionable &&
           gatingPhaseId &&
           gatingPhase &&
           !workflowGateApprovedLocally && (
@@ -928,7 +981,7 @@ export function ChatView() {
 
       {preflightMsg && <div className="preflight-warn">{preflightMsg}</div>}
 
-      <div className="chat-composer">
+      <div className={`chat-composer${replaying ? " replay-disabled" : ""}`}>
         <div className="composer-context-row">
           <span>{agentDisplayName}</span>
           <span>{conv.cwd ? conv.cwd : t("chat.noWorkspace")}</span>
@@ -950,7 +1003,7 @@ export function ChatView() {
             ref={chatTextareaRef}
             rows={3}
             value={draft}
-            disabled={sending}
+            disabled={sending || replaying}
             placeholder={
               pendingWorkflowAction
                 ? t("workflow.requestChangesPlaceholder")

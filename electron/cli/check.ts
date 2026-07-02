@@ -1,6 +1,7 @@
 import spawn from "cross-spawn";
 import { adapterBinary, getCliCheckProbe } from "./adapters.js";
 import { getDb } from "./db.js";
+import { safeSendToWebContents } from "./ipcSend.js";
 
 export interface CliCheckResult {
   installed: boolean;
@@ -264,7 +265,7 @@ export function cliInstallStream(
 
     const channel = "cli://install";
     const send = (payload: { type: "stdout" | "stderr"; content: string }) => {
-      webContents?.send(channel, payload);
+      safeSendToWebContents(webContents, channel, payload);
     };
 
     const child = spawn(shell, args, { env: process.env });
@@ -273,7 +274,7 @@ export function cliInstallStream(
     const timer = setTimeout(() => {
       child.kill();
       send({ type: "stderr", content: "Install timed out after 10 minutes." });
-      webContents?.send(channel, { type: "done", exitCode: 1 });
+      safeSendToWebContents(webContents, channel, { type: "done", exitCode: 1 });
     }, 10 * 60 * 1000);
 
     child.stdout!.on("data", (d) => {
@@ -289,12 +290,12 @@ export function cliInstallStream(
     child.on("error", (err) => {
       clearTimeout(timer);
       send({ type: "stderr", content: String(err) });
-      webContents?.send(channel, { type: "done", exitCode: 1 });
+      safeSendToWebContents(webContents, channel, { type: "done", exitCode: 1 });
       reject(err);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      webContents?.send(channel, { type: "done", exitCode: code });
+      safeSendToWebContents(webContents, channel, { type: "done", exitCode: code });
       resolve({
         success: code === 0,
         exitCode: code,

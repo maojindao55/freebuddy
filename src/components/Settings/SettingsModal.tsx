@@ -6,7 +6,7 @@ import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
 
-type SettingsTab = "general" | "cli" | "workflowTeams" | "about";
+export type SettingsTab = "general" | "cli" | "workflowTeams" | "about";
 
 const TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
@@ -15,9 +15,15 @@ const TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "about", labelKey: "settings.tabs.about" }
 ];
 
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+export function SettingsModal({
+  onClose,
+  initialTab = "cli"
+}: {
+  onClose: () => void;
+  initialTab?: SettingsTab;
+}) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("cli");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

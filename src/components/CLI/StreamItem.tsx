@@ -1,6 +1,17 @@
-import type { ReactNode } from "react";
-
 import type { TFunction } from "i18next";
+import {
+  Brain,
+  Download,
+  FileText,
+  MoveRight,
+  Search,
+  SlidersHorizontal,
+  SquarePen,
+  SquareTerminal,
+  Trash2,
+  Wrench,
+  type LucideIcon
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
@@ -451,114 +462,49 @@ function truncate(value: string, max = 96) {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
 }
 
-function StreamStepIcon({ children }: { children: ReactNode }) {
-  return (
-    <span className="stream-step-icon" aria-hidden="true">
-      <svg
-        className="stream-step-icon-svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {children}
-      </svg>
-    </span>
-  );
-}
-
 function ToolKindIcon({
   toolKind
 }: {
   toolKind?: Extract<CliStreamItem, { kind: "tool-call" }>["toolKind"];
 }) {
+  let Icon: LucideIcon;
   switch (toolKind) {
     case "read":
-      return (
-        <StreamStepIcon>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-        </StreamStepIcon>
-      );
+      Icon = FileText;
+      break;
     case "edit":
-      return (
-        <StreamStepIcon>
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-        </StreamStepIcon>
-      );
+      Icon = SquarePen;
+      break;
     case "delete":
-      return (
-        <StreamStepIcon>
-          <path d="M3 6h18" />
-          <path d="M8 6V4h8v2" />
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-          <line x1="10" y1="11" x2="10" y2="17" />
-          <line x1="14" y1="11" x2="14" y2="17" />
-        </StreamStepIcon>
-      );
+      Icon = Trash2;
+      break;
     case "move":
-      return (
-        <StreamStepIcon>
-          <path d="M5 12h14" />
-          <path d="m13 18 6-6-6-6" />
-        </StreamStepIcon>
-      );
+      Icon = MoveRight;
+      break;
     case "search":
-      return (
-        <StreamStepIcon>
-          <circle cx="11" cy="11" r="7" />
-          <path d="m20 20-3.5-3.5" />
-        </StreamStepIcon>
-      );
+      Icon = Search;
+      break;
     case "execute":
-      return (
-        <StreamStepIcon>
-          <polyline points="4 17 10 11 4 5" />
-          <line x1="12" y1="19" x2="20" y2="19" />
-        </StreamStepIcon>
-      );
+      Icon = SquareTerminal;
+      break;
     case "fetch":
-      return (
-        <StreamStepIcon>
-          <path d="M12 3v12" />
-          <path d="m7 10 5 5 5-5" />
-          <path d="M5 21h14" />
-        </StreamStepIcon>
-      );
+      Icon = Download;
+      break;
     case "think":
-      return (
-        <StreamStepIcon>
-          <path d="M9 18h6" />
-          <path d="M10 22h4" />
-          <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Z" />
-        </StreamStepIcon>
-      );
+      Icon = Brain;
+      break;
     case "mode":
-      return (
-        <StreamStepIcon>
-          <line x1="4" y1="21" x2="4" y2="14" />
-          <line x1="4" y1="10" x2="4" y2="3" />
-          <line x1="12" y1="21" x2="12" y2="12" />
-          <line x1="12" y1="8" x2="12" y2="3" />
-          <line x1="20" y1="21" x2="20" y2="16" />
-          <line x1="20" y1="12" x2="20" y2="3" />
-          <line x1="2" y1="14" x2="6" y2="14" />
-          <line x1="10" y1="8" x2="14" y2="8" />
-          <line x1="18" y1="16" x2="22" y2="16" />
-        </StreamStepIcon>
-      );
+      Icon = SlidersHorizontal;
+      break;
     default:
-      return (
-        <StreamStepIcon>
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-        </StreamStepIcon>
-      );
+      Icon = Wrench;
+      break;
   }
+  return (
+    <span className="stream-step-icon" aria-hidden="true">
+      <Icon className="stream-step-icon-svg" />
+    </span>
+  );
 }
 
 function toolStatusMeta(
@@ -679,7 +625,9 @@ export function StreamToolInvocation({
 
   return (
     <details
-      className={`stream-tool-invocation${hasError ? " error" : ""}${
+      className={`stream-tool-invocation${hasBody ? " has-body" : ""}${
+        hasError ? " error" : ""
+      }${
         statusMeta ? ` status-${statusMeta.className}` : ""
       }`}
       open={call.status === "running" ? true : undefined}
@@ -813,7 +761,10 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
     case "thinking":
       return (
         <details className="stream-thinking">
-          <summary>{t("stream.thinking")}</summary>
+          <summary>
+            <ToolKindIcon toolKind="think" />
+            <span>{t("stream.thinking")}</span>
+          </summary>
           <MarkdownText content={item.content} />
         </details>
       );

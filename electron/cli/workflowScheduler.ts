@@ -159,6 +159,13 @@ export function collectDecisionTextFromItems(items: unknown[]): string {
   return pieces.join("\n");
 }
 
+export function reviewDecisionTextFromItems(items: unknown[]): string {
+  const visible = extractVisibleStepOutput(items).trim();
+  if (extractReviewStatus(visible)) return visible;
+  const full = collectDecisionTextFromItems(items).trim();
+  return full || visible;
+}
+
 interface StreamLike {
   kind?: string;
   content?: string;
@@ -349,7 +356,7 @@ export function resolveReviewDecisionText(
   if (resultJson) {
     try {
       const parsed = JSON.parse(resultJson) as { items?: unknown[] };
-      const full = collectDecisionTextFromItems(parsed.items ?? []).trim();
+      const full = reviewDecisionTextFromItems(parsed.items ?? []).trim();
       if (full) return full;
     } catch {
       /* fall through to summary */
@@ -468,6 +475,23 @@ export interface ConsumedStepRef {
   title: string;
   summary?: string;
   output?: string;
+}
+
+const WORKFLOW_LANGUAGE_HEADER = "FreeBuddy workflow response language:";
+
+export function applyWorkflowLanguagePreference(
+  prompt: string,
+  language: string | null | undefined
+): string {
+  if (prompt.startsWith(WORKFLOW_LANGUAGE_HEADER)) return prompt;
+  const outputLanguage = language === "zh-CN" ? "Simplified Chinese" : "English";
+  return [
+    `${WORKFLOW_LANGUAGE_HEADER} Write all user-facing prose in ${outputLanguage}.`,
+    "Keep code, file paths, commands, logs, identifiers, and required machine-readable workflow markers exactly as written.",
+    "Do not translate required markers such as REVIEW_STATUS: PASS, REVIEW_STATUS: FAIL, <<<REVIEW_PASS>>>, <<<REVIEW_FAIL>>>, or UNRESOLVED: <count>.",
+    "",
+    prompt
+  ].join("\n");
 }
 
 /** Append upstream step summaries referenced by consumes ids. */

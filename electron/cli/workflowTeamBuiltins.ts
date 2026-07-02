@@ -18,138 +18,61 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
   const opencode = pickAgent(["cli-opencode-acp", "cli-codex-acp"]);
   const now = new Date().toISOString();
 
-  const quickTeam: WorkflowTeam = {
-    id: "team-quick-implement",
-    name: "Quick Implementation",
+  const deliveryExampleTeam: WorkflowTeam = {
+    id: "team-delivery-example",
+    name: "Standard Delivery Team",
     description:
-      "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing.",
-    icon: "team-quick",
+      "Standard delivery workflow built from configurable nodes: plan approval, implementation, review, verification, and summary.",
+    icon: "team-delivery-example",
     enabled: true,
     source: "builtin",
     roles: [
       { id: "role-planner", label: "Planner", kind: "planner", agentId: codex, required: true, canWrite: false },
       { id: "role-implementer", label: "Implementer", kind: "implementer", agentId: claude, required: true, canWrite: true },
+      { id: "role-reviewer", label: "Reviewer", kind: "reviewer", agentId: pickAgent(["cli-kimi-acp", "cli-codex-acp"]), required: true, canWrite: false },
       { id: "role-verifier", label: "Verifier", kind: "verifier", agentId: opencode, required: true, canWrite: false },
       { id: "role-summarizer", label: "Summarizer", kind: "summarizer", agentId: codex, required: true, canWrite: false }
     ],
     template: {
-      id: "tpl-quick-implement",
-      name: "Quick Implementation",
+      id: "tpl-configurable-delivery",
+      name: "Configurable Delivery",
       version: 1,
       nodes: [
-        { id: "plan-task", title: "Plan task", roleId: "role-planner", mode: "research", promptTemplate: "Plan the work needed for goal: {{goal}}. List the concrete steps required." },
-        { id: "implement", title: "Implement", roleId: "role-implementer", mode: "write", promptTemplate: "Implement the plan for: {{goal}}. Make focused, minimal changes." },
-        { id: "verify", title: "Verify", roleId: "role-verifier", mode: "verify", promptTemplate: "Verify the implementation. End your response with: UNRESOLVED: <count>" },
-        { id: "summarize", title: "Summarize", roleId: "role-summarizer", mode: "summarize", promptTemplate: "Summarize what was done, what was changed, and what remains unresolved." }
+        {
+          id: "plan",
+          title: "Plan",
+          roleId: "role-planner",
+          mode: "research",
+          contract: "plan",
+          promptTemplate: "Plan {{goal}}",
+          gates: [
+            {
+              id: "approve-plan",
+              type: "manual_approval",
+              placement: "after",
+              label: "Approve plan",
+              reason: "Review and approve the plan before implementation.",
+              blocks: "implement"
+            }
+          ]
+        },
+        { id: "implement", title: "Implement", roleId: "role-implementer", mode: "write", contract: "implement", promptTemplate: "Implement {{goal}}" },
+        { id: "review", title: "Review", roleId: "role-reviewer", mode: "review", contract: "review", promptTemplate: "Review {{goal}}" },
+        { id: "verify", title: "Verify", roleId: "role-verifier", mode: "verify", contract: "verify", promptTemplate: "Verify {{goal}}" },
+        { id: "summarize", title: "Summarize", roleId: "role-summarizer", mode: "summarize", contract: "summarize", promptTemplate: "Summarize {{goal}}" }
       ],
       edges: [
-        { id: "e1", from: "plan-task", to: "implement" },
-        { id: "e2", from: "implement", to: "verify" },
-        { id: "e3", from: "verify", to: "summarize" }
+        { id: "e1", from: "plan", to: "implement" },
+        { id: "e2", from: "implement", to: "review" },
+        { id: "e3", from: "review", to: "verify" },
+        { id: "e4", from: "verify", to: "summarize" }
       ],
-      startNodeIds: ["plan-task"],
+      startNodeIds: ["plan"],
       finalNodeIds: ["summarize"]
     },
     policy: {
       allowWrites: true,
       requireApprovalBeforeWrite: true,
-      requireApprovalAfterReview: false,
-      maxParallelReadSteps: 1,
-      maxParallelWriteSteps: 1,
-      maxLoops: 1,
-      stopOnVerifyFailure: false
-    },
-    createdAt: now,
-    updatedAt: now
-  };
-
-  const implementReviewTeam: WorkflowTeam = {
-    id: "team-implement-review-loop",
-    name: "Build Review Team",
-    description:
-      "Implement, review, verify, and summarize. Review or verification failures loop back to implementation until PASS or max loops.",
-    icon: "team-implement-review",
-    enabled: true,
-    source: "builtin",
-    roles: [
-      {
-        id: "role-implementer",
-        label: "Implementer",
-        kind: "implementer",
-        agentId: opencode,
-        required: true,
-        canWrite: true
-      },
-      {
-        id: "role-reviewer",
-        label: "Reviewer",
-        kind: "reviewer",
-        agentId: pickAgent(["cli-kimi-acp", "cli-codex-acp"]),
-        required: true,
-        canWrite: false
-      },
-      {
-        id: "role-verifier",
-        label: "Verifier",
-        kind: "verifier",
-        agentId: codex,
-        required: true,
-        canWrite: false
-      },
-      {
-        id: "role-summarizer",
-        label: "Summarizer",
-        kind: "summarizer",
-        agentId: claude,
-        required: true,
-        canWrite: false
-      }
-    ],
-    template: {
-      id: "tpl-implement-review-loop",
-      name: "Build Review Team",
-      version: 1,
-      nodes: [
-        {
-          id: "implement",
-          title: "Implement",
-          roleId: "role-implementer",
-          mode: "write",
-          promptTemplate: "Implement: {{goal}}"
-        },
-        {
-          id: "review",
-          title: "Review",
-          roleId: "role-reviewer",
-          mode: "review",
-          promptTemplate: "Review: {{goal}}"
-        },
-        {
-          id: "verify",
-          title: "Verify",
-          roleId: "role-verifier",
-          mode: "verify",
-          promptTemplate: "Verify: {{goal}}"
-        },
-        {
-          id: "summarize",
-          title: "Summarize",
-          roleId: "role-summarizer",
-          mode: "summarize",
-          promptTemplate: "Summarize: {{goal}}"
-        }
-      ],
-      edges: [
-        { id: "e1", from: "implement", to: "review" },
-        { id: "e2", from: "review", to: "verify" },
-        { id: "e3", from: "verify", to: "summarize" }
-      ],
-      startNodeIds: ["implement"],
-      finalNodeIds: ["summarize"]
-    },
-    policy: {
-      allowWrites: true,
-      requireApprovalBeforeWrite: false,
       requireApprovalAfterReview: false,
       maxParallelReadSteps: 1,
       maxParallelWriteSteps: 1,
@@ -338,5 +261,5 @@ export function builtinWorkflowTeams(): WorkflowTeam[] {
     updatedAt: now
   };
 
-  return [quickTeam, implementReviewTeam, rootCauseTeam, researchReportTeam];
+  return [deliveryExampleTeam, rootCauseTeam, researchReportTeam];
 }

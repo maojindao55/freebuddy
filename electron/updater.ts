@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import electronUpdater from "electron-updater";
 import { APP_VERSION } from "./app-meta.js";
+import { safeSendToWebContents } from "./cli/ipcSend.js";
 
 const { autoUpdater } = electronUpdater;
 
@@ -24,9 +25,7 @@ let bound = false;
 
 function broadcast(event: UpdaterEvent) {
   for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) {
-      win.webContents.send(UPDATE_EVENT_CHANNEL, event);
-    }
+    if (!win.isDestroyed()) safeSendToWebContents(win.webContents, UPDATE_EVENT_CHANNEL, event);
   }
 }
 

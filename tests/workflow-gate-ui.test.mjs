@@ -77,6 +77,26 @@ test("returns the earlier manual-gate phase when later steps have not started", 
   assert.equal(result, "review");
 });
 
+test("does not return an earlier manual gate after downstream work has started", async () => {
+  const { pendingManualGatePhaseId } = await loadPlanning();
+  const result = pendingManualGatePhaseId(phases(reviewGate), [
+    { stepId: "b", status: "done" },
+    { stepId: "r", status: "done" },
+    { stepId: "i", status: "running" }
+  ]);
+  assert.equal(result, undefined);
+});
+
+test("does not return an earlier manual gate after downstream work is complete", async () => {
+  const { pendingManualGatePhaseId } = await loadPlanning();
+  const result = pendingManualGatePhaseId(phases(reviewGate), [
+    { stepId: "b", status: "done" },
+    { stepId: "r", status: "done" },
+    { stepId: "i", status: "done" }
+  ]);
+  assert.equal(result, undefined);
+});
+
 test("returns a manual-gated write phase before its write step starts", async () => {
   const { pendingManualGatePhaseId, pendingWriteApprovalPhaseId } = await loadPlanning();
   const planPhases = phases(allDone);

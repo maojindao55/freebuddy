@@ -25,6 +25,16 @@ test("WorkflowRunPanel renders running actions and pause/resume/stop", () => {
   assert.match(src, /setInterval/);
 });
 
+test("WorkflowRunPanel uses replay workflow snapshots as read-only state", () => {
+  const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  assert.match(src, /useReplayStore/);
+  assert.match(src, /replayFrames\[replayIndex\]\?\.workflow/);
+  assert.match(src, /const activeRun = replaySnapshot\?\.run \?\? storeActiveRun/);
+  assert.match(src, /const steps = replaySnapshot\?\.steps \?\? storeSteps/);
+  assert.match(src, /!replayingWorkflow && \(isLive \|\| gatingPhaseId \|\| canContinueImplementReview\)/);
+  assert.match(src, /replayingWorkflow[\s\S]*\? undefined[\s\S]*: \(step\) => void retryStep/);
+});
+
 test("WorkflowRunPanel can continue build review after verification failure", () => {
   const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
   assert.match(src, /verifyStep/);
@@ -78,6 +88,17 @@ test("WorkspacePanel mounts the WorkflowRunPanel", () => {
   assert.match(src, /<WorkflowRunPanel/);
 });
 
+test("WorkspacePanel syncs the run-state card with replay frames", () => {
+  const src = read("../src/components/CLI/WorkspacePanel.tsx");
+  assert.match(src, /useReplayStore/);
+  assert.match(src, /const replayFrame =[\s\S]*?replayFrames\[replayIndex\]/);
+  assert.match(src, /const displayMessages = replayFrame[\s\S]*?messages\.slice\(0, replayFrame\.messageIndex \+ 1\)[\s\S]*?: messages/);
+  assert.match(src, /const displayLive = replayFrame \? undefined : live/);
+  assert.match(src, /const displayRun = replayWorkflow\?\.run \?\? activeRun/);
+  assert.match(src, /!replayFrame &&[\s\S]*?isTeamRun/);
+  assert.match(src, /const end = replayWorkflow\?\.at[\s\S]*?Date\.parse\(replayWorkflow\.at\)/);
+});
+
 test("WorkflowStepRow shows the agent avatar inline", () => {
   const src = read("../src/components/Workflows/WorkflowStepRow.tsx");
   assert.match(src, /AgentAvatar/);
@@ -95,8 +116,10 @@ test("ChatView renders workflow approval decisions in the chat stream", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
   const css = read("../styles.css");
   assert.match(src, /WorkflowApprovalCard/);
-  assert.match(src, /pendingWriteApprovalPhaseId/);
-  assert.doesNotMatch(src, /pendingManualGatePhaseId/);
+  assert.match(src, /pendingManualGatePhaseId/);
+  assert.match(src, /workflowGateIsActionable/);
+  assert.match(src, /activeRun\?\.status === "blocked"/);
+  assert.doesNotMatch(src, /pendingWriteApprovalPhaseId/);
   assert.doesNotMatch(src, /approvalCardTitle/);
   assert.doesNotMatch(src, /workflow-approval-avatar/);
   assert.doesNotMatch(css, /workflow-approval-avatar/);
@@ -159,7 +182,7 @@ test("workflow i18n keys exist in both locales", () => {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }
-  for (const teamId of ["team-quick-implement", "team-implement-review-loop", "team-root-cause-analysis", "team-research-report"]) {
+  for (const teamId of ["team-delivery-example", "team-root-cause-analysis", "team-research-report"]) {
     assert.ok(en.workflow.builtinTeams?.[teamId]?.name, `missing en workflow.builtinTeams.${teamId}.name`);
     assert.ok(en.workflow.builtinTeams?.[teamId]?.description, `missing en workflow.builtinTeams.${teamId}.description`);
     assert.ok(zh.workflow.builtinTeams?.[teamId]?.name, `missing zh-CN workflow.builtinTeams.${teamId}.name`);
@@ -169,18 +192,26 @@ test("workflow i18n keys exist in both locales", () => {
   assert.ok(zh.workflow.status?.running);
   assert.ok(en.workflow.stepStatus?.failed);
   assert.ok(zh.workflow.stepStatus?.failed);
+  assert.ok(en.workflow.phaseTitles?.plan);
+  assert.ok(zh.workflow.phaseTitles?.plan);
+  assert.ok(en.workflow.stepTitles?.["plan-delivery"]);
+  assert.ok(zh.workflow.stepTitles?.["plan-delivery"]);
+  assert.ok(en.workflow.stepTitles?.["summarize-delivery"]);
+  assert.ok(zh.workflow.stepTitles?.["summarize-delivery"]);
 });
 
 test("WorkflowRunPanel translates workflow run names", () => {
   const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
   assert.match(src, /workflowRunName/);
+  assert.match(src, /workflow\.builtinTeams\.team-delivery-example\.name/);
   assert.match(src, /workflow\.builtinTeams\.team-research-report\.name/);
   assert.match(src, /workflow\.implementReviewLoop/);
 });
 
 test("Settings modal opens with CLI agents before General", () => {
   const src = read("../src/components/Settings/SettingsModal.tsx");
-  assert.match(src, /useState<SettingsTab>\("cli"\)/);
+  assert.match(src, /initialTab = "cli"/);
+  assert.match(src, /useState<SettingsTab>\(initialTab\)/);
   assert.match(src, /const TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
 });
 
@@ -193,15 +224,79 @@ test("MessageBubble supports right-click and inline copy button", () => {
   assert.match(src, /getSelectionText/);
   assert.match(src, /copyableItemText/);
   assert.match(src, /item\.kind === "text" \|\| item\.kind === "raw"/);
-  assert.doesNotMatch(src, /case "tool-call"[\s\S]*return/);
+  const copyableHelper = src.match(/function copyableItemText[\s\S]*?function messageText/)?.[0] ?? src;
+  assert.doesNotMatch(copyableHelper, /tool-call/);
   assert.match(src, /showActionBar = message\.role === "assistant" && message\.status === "done"/);
   assert.match(src, /msg-actions/);
   assert.match(src, /msg-action-btn/);
+  assert.match(src, /<Copy className="msg-action-icon"/);
+  assert.match(src, /<Check className="msg-action-icon"/);
+  assert.match(src, /<ThumbsUp className="msg-action-icon"/);
+  assert.match(src, /<ThumbsDown className="msg-action-icon"/);
   assert.match(src, /message\.upvote/);
   assert.match(src, /message\.downvote/);
   assert.match(css, /\.message-context-menu/);
   assert.match(css, /\.msg-actions/);
+  assert.match(css, /\.msg-action-btn\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*26px;/);
+  assert.match(css, /\.msg-action-icon\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;[\s\S]*?flex:\s*0 0 16px;/);
   assert.doesNotMatch(css, /msg-content-wrapper:hover \.msg-actions/);
+});
+
+test("MessageBubble compacts execution process while preserving final text", () => {
+  const src = read("../src/components/CLI/MessageBubble.tsx");
+  const css = read("../styles.css");
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+  assert.match(src, /function StreamProcessGroup/);
+  assert.match(src, /const hasRunning = blocks\.some\(blockIsRunning\)/);
+  assert.doesNotMatch(src, /messageStatus=\{message\.status\}/);
+  assert.match(src, /countProcessActivity/);
+  assert.match(src, /countProcessOutcomes/);
+  assert.match(src, /formatOutcomeSummary/);
+  assert.match(src, /if \(counts\.failed <= 0\) \{\s*return "";\s*\}/);
+  assert.match(src, /parts\.join\(" \/ "\)/);
+  assert.match(src, /stream-process-outcome/);
+  assert.match(src, /<span className="stream-process-outcome">\{outcomeSummary\}<\/span>/);
+  assert.doesNotMatch(src, /displaySummary/);
+  assert.match(src, /dominantActivityIcon/);
+  assert.match(src, /if \(counts\.edit > 0\) return SquarePen/);
+  assert.match(src, /if \(counts\.command > 0\) return SquareTerminal/);
+  assert.match(src, /function buildDisplaySections/);
+  assert.match(src, /function isProcessBlock/);
+  assert.match(src, /section\.kind === "process"/);
+  assert.match(src, /renderMessageBlock\(section\.block, `block-\$\{i\}`\)/);
+  assert.match(src, /<StreamItem key=\{key\} item=\{block\.item\} \/>/);
+  assert.match(src, /stream-process-running-text/);
+  assert.match(src, /stream-process-title-separator/);
+  assert.doesNotMatch(src, /open=\{hasIssue \? true : undefined\}/);
+  assert.doesNotMatch(src, /activityNeedsAttention/);
+  assert.doesNotMatch(src, /hasIssue \? " failed" : ""/);
+  assert.doesNotMatch(src, /item\.kind === "command-output" && item\.stream === "stderr"/);
+  assert.doesNotMatch(src, /open=\{hasRunning \|\| hasIssue \? true : undefined\}/);
+  assert.doesNotMatch(src, /stream-process-head/);
+  assert.doesNotMatch(src, /stream-process-recent/);
+  assert.match(css, /\.stream-process\s*\{/);
+  assert.match(css, /\.stream-process > summary\s*\{/);
+  assert.match(css, /\.stream-process > summary::after\s*\{/);
+  assert.match(css, /\.stream-process\[open\] > summary::after\s*\{/);
+  assert.doesNotMatch(css, /\.stream-process summary::after\s*\{/);
+  assert.doesNotMatch(css, /\.stream-process\[open\] summary::after\s*\{/);
+  assert.match(css, /\.stream-process-title\s*\{/);
+  assert.match(css, /\.stream-process-title\s*\{[\s\S]*?display:\s*inline-flex;/);
+  assert.match(css, /\.stream-process-outcome\s*\{[\s\S]*?color:\s*#9fa7b2;[\s\S]*?font-size:\s*inherit;[\s\S]*?font-weight:\s*600;/);
+  assert.doesNotMatch(css, /\.stream-process-outcome::before/);
+  assert.match(css, /\.stream-process\.running \.stream-process-running-text\s*\{/);
+  assert.doesNotMatch(css, /\.stream-process\.running \.stream-process-title\s*\{/);
+  assert.doesNotMatch(css, /\.stream-process\.failed/);
+  assert.match(css, /stream-process-title-shimmer/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /\.stream-process-icon\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;[\s\S]*?flex:\s*0 0 16px;/);
+  assert.equal(en.stream.activityEditedFiles_one, "Edited {{count}} file");
+  assert.equal(en.stream.activitySucceeded_one, "{{count}} succeeded");
+  assert.equal(en.stream.activityFailed_one, "{{count}} failed");
+  assert.equal(zh.stream.activitySucceeded, "成功 {{count}} 次");
+  assert.equal(zh.stream.activityFailed, "失败 {{count}} 次");
+  assert.equal(zh.stream.activityRanCommands, "已运行 {{count}} 条命令");
 });
 
 test("AgentBridgeListener keeps status/error events out of chat history", () => {

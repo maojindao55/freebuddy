@@ -30,6 +30,16 @@ test("workflow IPC handlers are registered", () => {
   assert.match(registrar, /registerWorkflowIpc\(\)/);
 });
 
+test("workflow IPC registration recovers interrupted running workflows", () => {
+  const ipc = read("../electron/cli/workflowIpc.ts");
+  const workflows = read("../electron/cli/workflows.ts");
+  assert.match(ipc, /recoverInterruptedWorkflowRuns/);
+  assert.match(ipc, /recoverInterruptedWorkflowRuns\(\)/);
+  assert.match(workflows, /WHERE status = 'running'/);
+  assert.match(workflows, /status = 'blocked'/);
+  assert.match(workflows, /Interrupted by app restart/);
+});
+
 test("workflow approveGate returns the runtime approval result", () => {
   const ipc = read("../electron/cli/workflowIpc.ts");
   assert.match(ipc, /workflow:approveGate/);

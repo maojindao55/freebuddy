@@ -10,7 +10,8 @@ import {
   getWorkflowRun,
   getWorkflowSteps,
   listActiveWorkflowRuns,
-  listWorkflowRunsByConversation
+  listWorkflowRunsByConversation,
+  recoverInterruptedWorkflowRuns
 } from "./workflows.js";
 import type {
   WorkflowAgentRef,
@@ -55,6 +56,8 @@ function ensureRuntime(event: IpcMainInvokeEvent): WorkflowRuntime {
 }
 
 export function registerWorkflowIpc() {
+  recoverInterruptedWorkflowRuns();
+
   ipcMain.handle("workflow:validate", (_e, plan: WorkflowPlan) =>
     validateWorkflowPlan(plan, workflowAgents())
   );

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
+import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
 import { handleDraftRequest } from "./draftProtocol.js";
 import { startPreviewServer } from "./previewServer.js";
@@ -31,7 +32,10 @@ function handleSchemeUrl(raw: string) {
     const parsed = new URL(raw);
     const action = parsed.hostname || parsed.pathname.replace(/^\//, "");
     if (action === "preview" && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("freebuddy://bridge", { action: "preview", params: {} });
+      safeSendToWebContents(mainWindow.webContents, "freebuddy://bridge", {
+        action: "preview",
+        params: {}
+      });
     }
   } catch {
     // ignore malformed scheme urls
@@ -153,7 +157,11 @@ function createWindow() {
 
   const sendChromeVisible = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send("window:chrome", !mainWindow.isFullScreen());
+    safeSendToWebContents(
+      mainWindow.webContents,
+      "window:chrome",
+      !mainWindow.isFullScreen()
+    );
   };
   mainWindow.on("enter-full-screen", sendChromeVisible);
   mainWindow.on("leave-full-screen", sendChromeVisible);

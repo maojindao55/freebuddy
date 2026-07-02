@@ -2,10 +2,16 @@ import { app } from "electron";
 import { getDb } from "./db.js";
 
 type AppLocale = "en" | "zh-CN";
+type LanguagePreference = "system" | AppLocale;
 
 function detectLocale(tag: string | undefined): AppLocale {
   if (!tag) return "en";
   return tag.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+}
+
+function normalizeLanguagePreference(value: string | null): LanguagePreference {
+  if (value === "system" || value === "en" || value === "zh-CN") return value;
+  return "system";
 }
 
 export function getSetting(key: string): string | null {
@@ -24,8 +30,12 @@ export function setSetting(key: string, value: string): void {
     .run(key, value);
 }
 
+export function getLanguagePreference(): LanguagePreference {
+  return normalizeLanguagePreference(getSetting("language"));
+}
+
 export function getLanguage(): AppLocale {
-  const stored = getSetting("language");
+  const stored = getLanguagePreference();
   if (stored === "en" || stored === "zh-CN") return stored;
   return detectLocale(app.getLocale());
 }

@@ -280,15 +280,19 @@ test("appendItems replaces toolOutputs when replaceToolOutputs is set", async ()
 });
 
 test("tool block renderer groups command items with the tool call", () => {
-  const source = fs.readFileSync(
+  const blockSource = fs.readFileSync(
+    new URL("../src/components/CLI/messageBlocks.ts", import.meta.url),
+    "utf8"
+  );
+  const bubbleSource = fs.readFileSync(
     new URL("../src/components/CLI/MessageBubble.tsx", import.meta.url),
     "utf8"
   );
 
-  assert.match(source, /commands: Extract<CliStreamItem, \{ kind: "command" \}>\[\]/);
-  assert.match(source, /next\.kind !== "tool-result" && next\.kind !== "command"/);
-  assert.match(source, /commands=\{block\.commands\}/);
-  assert.match(source, /extras=\{block\.extras\}/);
+  assert.match(blockSource, /commands: Extract<CliStreamItem, \{ kind: "command" \}>\[\]/);
+  assert.match(blockSource, /next\.kind !== "tool-result" && next\.kind !== "command"/);
+  assert.match(bubbleSource, /commands=\{block\.commands\}/);
+  assert.match(bubbleSource, /extras=\{block\.extras\}/);
 });
 
 test("tool invocation renderer applies final result deduplication", () => {
@@ -311,6 +315,9 @@ test("tool invocation renderer shows ACP status and structured outputs", () => {
   assert.match(source, /stream-tool-status/);
   assert.match(source, /extras = \[\]/);
   assert.match(source, /function ToolKindIcon/);
+  assert.match(source, /type LucideIcon/);
+  assert.match(source, /Icon className="stream-step-icon-svg"/);
+  assert.match(source, /hasBody \? " has-body" : ""/);
   assert.match(source, /stream-step-icon-svg/);
   assert.match(source, /case "terminal-embed":/);
 });

@@ -1,3 +1,14 @@
+import {
+  Brain,
+  FileText,
+  LoaderCircle,
+  Pencil,
+  Search,
+  SquareTerminal,
+  TriangleAlert,
+  Wrench,
+  type LucideIcon
+} from "lucide-react";
 import { memo, useMemo, useState, type MouseEvent } from "react";
 
 import { useTranslation } from "react-i18next";
@@ -13,6 +24,20 @@ import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
 import { isVisibleItem, visibleBlocks } from "./messageBlocks";
+
+type MessageBlock = ReturnType<typeof visibleBlocks>[number];
+type MessageSection =
+  | { kind: "block"; block: MessageBlock }
+  | { kind: "process"; blocks: MessageBlock[] };
+type Translate = ReturnType<typeof useTranslation>["t"];
+type ProcessActivityKind =
+  | "edit"
+  | "command"
+  | "read"
+  | "search"
+  | "thinking"
+  | "tool";
+type ProcessActivityCounts = Record<ProcessActivityKind, number>;
 
 const HIDDEN_CODEX_EVENTS = new Set([
   "thread.started",
@@ -155,6 +180,324 @@ function copyableItemText(item: CliStreamItem): string {
 function messageText(message: ConversationMessage, items: CliStreamItem[]): string {
   if (message.role === "user" || message.role === "system") return message.content;
   return items.map(copyableItemText).filter(Boolean).join("\n\n");
+}
+
+function emptyActivityCounts(): ProcessActivityCounts {
+  return {
+    edit: 0,
+    command: 0,
+    read: 0,
+    search: 0,
+    thinking: 0,
+    tool: 0
+  };
+}
+
+function addActivityCounts(
+  target: ProcessActivityCounts,
+  source: ProcessActivityCounts
+) {
+  target.edit += source.edit;
+  target.command += source.command;
+  target.read += source.read;
+  target.search += source.search;
+  target.thinking += source.thinking;
+  target.tool += source.tool;
+}
+
+function countSingleActivity(
+  item: CliStreamItem,
+  counts: ProcessActivityCounts
+) {
+  switch (item.kind) {
+    case "thinking":
+      counts.thinking += 1;
+      break;
+    case "tool-call":
+      switch (item.toolKind) {
+        case "edit":
+        case "delete":
+        case "move":
+          counts.edit += Math.max(1, countNestedActivity(item.toolOutputs ?? []).edit);
+          break;
+        case "execute":
+          counts.command += Math.max(
+            1,
+            countNestedActivity(item.toolOutputs ?? []).command
+          );
+          break;
+        case "read":
+          counts.read += 1;
+          addActivityCounts(counts, countNestedActivity(item.toolOutputs ?? []));
+          break;
+        case "search":
+        case "fetch":
+          counts.search += 1;
+          addActivityCounts(counts, countNestedActivity(item.toolOutputs ?? []));
+          break;
+        case "think":
+          counts.thinking += 1;
+          addActivityCounts(counts, countNestedActivity(item.toolOutputs ?? []));
+          break;
+        default:
+          counts.tool += 1;
+          addActivityCounts(counts, countNestedActivity(item.toolOutputs ?? []));
+          break;
+      }
+      break;
+    case "command":
+    case "terminal-embed":
+      counts.command += 1;
+      break;
+    case "file-edit":
+      counts.edit += 1;
+      break;
+    case "command-output":
+    case "tool-result":
+      counts.tool += 1;
+      break;
+    default:
+      break;
+  }
+}
+
+function countNestedActivity(items: CliStreamItem[]): ProcessActivityCounts {
+  const counts = emptyActivityCounts();
+  for (const item of items) countSingleActivity(item, counts);
+  return counts;
+}
+
+function countProcessActivity(blocks: MessageBlock[]): ProcessActivityCounts {
+  const counts = emptyActivityCounts();
+  for (const block of blocks) {
+    if (block.kind === "single") {
+      countSingleActivity(block.item, counts);
+      continue;
+    }
+
+    const nested = countNestedActivity(block.extras);
+    const commandCount = block.commands.length + nested.command;
+    switch (block.call.toolKind) {
+      case "edit":
+      case "delete":
+      case "move":
+        counts.edit += Math.max(1, nested.edit);
+        break;
+      case "execute":
+        counts.command += Math.max(1, commandCount);
+        break;
+      case "read":
+        counts.read += 1;
+        break;
+      case "search":
+      case "fetch":
+        counts.search += 1;
+        break;
+      case "think":
+        counts.thinking += 1;
+        break;
+      default:
+        counts.tool += 1;
+        break;
+    }
+    counts.edit += block.call.toolKind === "edit" ? 0 : nested.edit;
+    counts.command += block.call.toolKind === "execute" ? 0 : commandCount;
+    counts.read += nested.read;
+    counts.search += nested.search;
+    counts.thinking += nested.thinking;
+    counts.tool += nested.tool;
+  }
+  return counts;
+}
+
+function activityLabel(kind: ProcessActivityKind, count: number, t: Translate) {
+  switch (kind) {
+    case "edit":
+      return t("stream.activityEditedFiles", { count });
+    case "command":
+      return t("stream.activityRanCommands", { count });
+    case "read":
+      return t("stream.activityReadFiles", { count });
+    case "search":
+      return t("stream.activitySearched", { count });
+    case "thinking":
+      return t("stream.activityAnalyzed", { count });
+    case "tool":
+      return t("stream.activityUsedTools", { count });
+  }
+}
+
+function formatActivitySummary(
+  counts: ProcessActivityCounts,
+  blockCount: number,
+  t: Translate
+) {
+  const parts: string[] = [];
+  const order: ProcessActivityKind[] = [
+    "edit",
+    "command",
+    "read",
+    "search",
+    "thinking",
+    "tool"
+  ];
+  for (const kind of order) {
+    const count = counts[kind];
+    if (count > 0) parts.push(activityLabel(kind, count, t));
+  }
+  return parts.length > 0
+    ? parts.join(" ")
+    : t("stream.activityProcessed", { count: blockCount });
+}
+
+function dominantActivityIcon(
+  counts: ProcessActivityCounts,
+  hasIssue: boolean,
+  hasRunning: boolean
+): LucideIcon {
+  if (hasIssue) return TriangleAlert;
+  if (
+    hasRunning &&
+    counts.edit === 0 &&
+    counts.command === 0 &&
+    counts.read === 0 &&
+    counts.search === 0 &&
+    counts.thinking === 0
+  ) {
+    return LoaderCircle;
+  }
+  if (counts.edit > 0) return Pencil;
+  if (counts.command > 0) return SquareTerminal;
+  if (counts.read > 0) return FileText;
+  if (counts.search > 0) return Search;
+  if (counts.thinking > 0) return Brain;
+  return Wrench;
+}
+
+function isProcessBlock(block: MessageBlock): boolean {
+  if (block.kind === "tool") return true;
+  switch (block.item.kind) {
+    case "thinking":
+    case "tool-call":
+    case "tool-result":
+    case "command":
+    case "command-output":
+    case "file-edit":
+    case "terminal-embed":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function blockHasIssue(block: MessageBlock): boolean {
+  if (block.kind === "tool") {
+    return (
+      block.call.isError === true ||
+      block.call.status === "failed" ||
+      block.results.some((result) => result.isError === true)
+    );
+  }
+  const item = block.item;
+  return (
+    (item.kind === "tool-call" && (item.isError === true || item.status === "failed")) ||
+    (item.kind === "tool-result" && item.isError === true) ||
+    (item.kind === "command-output" && item.stream === "stderr") ||
+    (item.kind === "terminal-embed" && item.exitCode != null && item.exitCode !== 0)
+  );
+}
+
+function blockIsRunning(block: MessageBlock): boolean {
+  if (block.kind === "tool") {
+    return block.call.status === "pending" || block.call.status === "running";
+  }
+  const item = block.item;
+  return (
+    (item.kind === "tool-call" &&
+      (item.status === "pending" || item.status === "running")) ||
+    (item.kind === "terminal-embed" && item.running === true)
+  );
+}
+
+function buildDisplaySections(blocks: MessageBlock[]): MessageSection[] {
+  const sections: MessageSection[] = [];
+  let processRun: MessageBlock[] = [];
+  const flushProcessRun = () => {
+    if (processRun.length > 0) {
+      sections.push({ kind: "process", blocks: processRun });
+      processRun = [];
+    }
+  };
+
+  for (const block of blocks) {
+    if (isProcessBlock(block)) {
+      processRun.push(block);
+    } else {
+      flushProcessRun();
+      sections.push({ kind: "block", block });
+    }
+  }
+  flushProcessRun();
+  return sections;
+}
+
+function renderMessageBlock(block: MessageBlock, key: string | number) {
+  return block.kind === "tool" ? (
+    <StreamToolInvocation
+      key={key}
+      call={block.call}
+      results={block.results}
+      commands={block.commands}
+      extras={block.extras}
+    />
+  ) : (
+    <StreamItem key={key} item={block.item} />
+  );
+}
+
+function StreamProcessGroup({
+  blocks,
+  messageStatus
+}: {
+  blocks: MessageBlock[];
+  messageStatus: ConversationMessage["status"];
+}) {
+  const { t } = useTranslation();
+  const hasIssue = blocks.some(blockHasIssue);
+  const hasRunning =
+    messageStatus === "running" ||
+    messageStatus === "starting" ||
+    blocks.some(blockIsRunning);
+  const activityCounts = countProcessActivity(blocks);
+  const summary = formatActivitySummary(activityCounts, blocks.length, t);
+  const Icon = dominantActivityIcon(activityCounts, hasIssue, hasRunning);
+  const isSpinnerIcon = Icon === LoaderCircle;
+  const title = hasIssue
+    ? t("stream.activityNeedsAttention")
+    : hasRunning
+      ? `${t("stream.activityProcessing")} · ${summary}`
+      : summary;
+
+  return (
+    <details
+      className={`stream-process${hasRunning ? " running" : ""}${hasIssue ? " failed" : ""}`}
+      open={hasIssue ? true : undefined}
+      aria-label={t("stream.processDetails", { count: blocks.length })}
+    >
+      <summary>
+        <Icon
+          className={`stream-process-icon${isSpinnerIcon ? " spinning" : ""}`}
+          aria-hidden="true"
+        />
+        <span className="stream-process-title">{title}</span>
+      </summary>
+      <div className="stream-process-detail-list">
+        {blocks.map((block, index) =>
+          renderMessageBlock(block, `process-${index}`)
+        )}
+      </div>
+    </details>
+  );
 }
 
 function attachmentSummary(attachment: ChatAttachment): string {
@@ -359,6 +702,10 @@ export const MessageBubble = memo(function MessageBubble({
     }
     return sliced;
   }, [blocks, blockLimit, typingChars]);
+  const renderedSections = useMemo(
+    () => buildDisplaySections(renderedBlocks),
+    [renderedBlocks]
+  );
   const isWaitingForAgent =
     message.role === "assistant" &&
     (message.status === "running" || message.status === "starting") &&
@@ -540,19 +887,17 @@ export const MessageBubble = memo(function MessageBubble({
         {renderedBlocks.length > 0 && (
           <div className="msg-bubble">
             <div className="msg-items">
-              {renderedBlocks.map((block, i) => (
-                block.kind === "tool" ? (
-                  <StreamToolInvocation
-                    key={i}
-                    call={block.call}
-                    results={block.results}
-                    commands={block.commands}
-                    extras={block.extras}
+              {renderedSections.map((section, i) =>
+                section.kind === "process" ? (
+                  <StreamProcessGroup
+                    key={`process-${i}`}
+                    blocks={section.blocks}
+                    messageStatus={message.status}
                   />
                 ) : (
-                  <StreamItem key={i} item={block.item} />
+                  renderMessageBlock(section.block, `block-${i}`)
                 )
-              ))}
+              )}
             </div>
           </div>
         )}

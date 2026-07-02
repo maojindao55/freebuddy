@@ -2216,7 +2216,7 @@ button {
   inset: 0;
   --chat-composer-reserve: 190px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
   background: transparent;
@@ -2225,7 +2225,7 @@ button {
 .chat-scroll {
   display: flex;
   flex-direction: column;
-  grid-row: 2;
+  grid-row: 1;
   min-height: 0;
   overflow-y: auto;
   gap: 14px;
@@ -2245,145 +2245,59 @@ button {
   border: 0;
 }
 
-.chat-topbar {
-  grid-row: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--fb-border);
-  background: var(--fb-panel-bg);
-}
-
-.chat-topbar.replaying {
-  justify-content: center;
-  padding: 6px 16px;
-}
-
-.replay-entry-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  font-size: 12px;
-  color: var(--fb-text-secondary);
-  background: transparent;
-  border: 1px solid var(--fb-border-strong);
-  border-radius: var(--fb-rounded-md);
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-}
-
-.replay-entry-btn:hover:not(:disabled) {
-  color: var(--fb-text-primary);
-  background: var(--fb-hover);
-  border-color: var(--fb-text-tertiary);
-}
-
-.replay-entry-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.replay-entry-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.replay-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  max-width: 640px;
-}
-
-.replay-bar button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
+.titlebar-actions-plain {
   padding: 0;
-  color: var(--fb-text-secondary);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--fb-rounded-sm);
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s;
 }
 
-.replay-bar button:hover:not(:disabled) {
+.title-replay-btn {
+  display: inline-flex;
+  height: 30px;
+  min-width: 68px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.title-replay-btn:hover:not(:disabled) {
   color: var(--fb-text-primary);
-  background: var(--fb-hover);
+  background: var(--fb-panel-soft);
+  border-color: var(--fb-border-strong);
 }
 
-.replay-bar button:disabled {
-  opacity: 0.4;
+.title-replay-btn.replaying {
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.title-replay-btn.replaying:hover:not(:disabled) {
+  color: var(--fb-brand);
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.36);
+}
+
+.title-replay-btn:disabled {
+  opacity: 0.48;
   cursor: not-allowed;
 }
 
-.replay-bar button svg {
-  width: 16px;
-  height: 16px;
+.title-replay-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
-.replay-play-btn {
-  color: var(--fb-active-fg);
-  background: var(--fb-active);
-}
-
-.replay-play-btn:hover:not(:disabled) {
-  color: var(--fb-active-fg);
-  background: var(--fb-active);
-  opacity: 0.9;
-}
-
-.replay-progress {
-  flex: 1;
-  min-width: 80px;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--fb-border-strong);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.replay-progress::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--fb-active);
-  border: none;
-}
-
-.replay-progress::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: none;
-  border-radius: 50%;
-  background: var(--fb-active);
-}
-
-.replay-count {
-  font-size: 12px;
-  color: var(--fb-text-secondary);
-  min-width: 56px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.replay-speed select {
-  font-size: 12px;
-  padding: 3px 6px;
-  color: var(--fb-text-secondary);
-  background: var(--fb-panel-bg);
-  border: 1px solid var(--fb-border-strong);
-  border-radius: var(--fb-rounded-sm);
-  cursor: pointer;
+.title-replay-label {
+  white-space: nowrap;
 }
 
 .chat-composer.replay-disabled {
@@ -5229,6 +5143,87 @@ button.ghost:focus-visible,
   padding: 0;
 }
 
+.stream-process {
+  margin: 8px 0 12px;
+  color: #969ba3;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.stream-process summary {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  color: #969ba3;
+  font-weight: 650;
+  outline: none;
+  transition: color 120ms ease;
+}
+
+.stream-process summary:hover {
+  color: #6f7681;
+}
+
+.stream-process summary::-webkit-details-marker {
+  display: none;
+}
+
+.stream-process summary::after {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  content: "";
+  opacity: 0.62;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 120ms ease;
+}
+
+.stream-process[open] summary::after {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.stream-process-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: currentColor;
+  stroke-width: 1.85;
+}
+
+.stream-process-icon.spinning {
+  animation: stream-process-spin 1s linear infinite;
+}
+
+.stream-process.failed summary {
+  color: #b45353;
+}
+
+.stream-process-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stream-process-detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0 24px;
+  padding: 0;
+}
+
+@keyframes stream-process-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .msg-system {
   display: flex;
   flex-direction: column;
@@ -6108,6 +6103,18 @@ button.ghost:focus-visible,
 
 [data-theme="dark"] .stream-text {
   color: #e5e7eb;
+}
+
+[data-theme="dark"] .stream-process {
+  color: rgba(203, 213, 225, 0.62);
+}
+
+[data-theme="dark"] .stream-process summary:hover {
+  color: rgba(226, 232, 240, 0.82);
+}
+
+[data-theme="dark"] .stream-process.failed summary {
+  color: rgba(248, 113, 113, 0.86);
 }
 
 [data-theme="dark"] .markdown-body code,

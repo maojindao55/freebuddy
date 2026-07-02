@@ -29,13 +29,7 @@ import {
   validateAttachmentCandidate
 } from "@/utils/chatAttachments";
 import { MessageBubble } from "./MessageBubble";
-import { ReplayBar } from "./ReplayBar";
-import { computeMessageBlocks } from "./messageBlocks";
-import {
-  splitTextSteps,
-  useReplayStore,
-  type ReplayFrame
-} from "@/store/replayStore";
+import { useReplayStore } from "@/store/replayStore";
 import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
 import {
   mergeSessionMetaItems,
@@ -44,40 +38,6 @@ import {
 import { upsertConversationMessage } from "@/store/conversationUtils";
 
 const EMPTY_MESSAGES: never[] = [];
-
-function buildReplayFrames(messages: ConversationMessage[]): ReplayFrame[] {
-  const frames: ReplayFrame[] = [];
-  messages.forEach((message, idx) => {
-    if (message.role === "assistant") {
-      const blocks = computeMessageBlocks(message.content);
-      if (blocks.length === 0) {
-        frames.push({ messageIndex: idx });
-        return;
-      }
-      blocks.forEach((block, bi) => {
-        const blockLimit = bi + 1;
-        if (block.kind === "single") {
-          const item = block.item;
-          if (item.kind === "text" || item.kind === "raw") {
-            const steps = splitTextSteps(item.content);
-            if (steps.length === 0) {
-              frames.push({ messageIndex: idx, blockLimit });
-            } else {
-              for (const chars of steps) {
-                frames.push({ messageIndex: idx, blockLimit, typingChars: chars });
-              }
-            }
-            return;
-          }
-        }
-        frames.push({ messageIndex: idx, blockLimit });
-      });
-    } else {
-      frames.push({ messageIndex: idx });
-    }
-  });
-  return frames;
-}
 
 function attachmentSummary(attachment: ChatAttachment): string {
   return [
@@ -150,23 +110,6 @@ function ResumeIcon() {
       aria-hidden="true"
     >
       <polygon points="7 4 19 12 7 20 7 4" fill="currentColor" />
-    </svg>
-  );
-}
-
-function ReplayIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <polygon points="10 7.5 16 12 10 16.5 10 7.5" fill="currentColor" />
     </svg>
   );
 }
@@ -394,10 +337,8 @@ export function ChatView() {
     (submitPreview !== null && submitPreview.conversationId === conv?.id);
   const replayConvId = useReplayStore((s) => s.conversationId);
   const replayIndex = useReplayStore((s) => s.index);
-  const startReplay = useReplayStore((s) => s.start);
   const stopReplay = useReplayStore((s) => s.stop);
   const replaying = replayConvId === conv?.id && replayConvId !== null;
-  const canEnterReplay = messages.length >= 2 && !running && !replaying;
   const starterPrompts = [
     t("chat.starter.one"),
     t("chat.starter.two"),
@@ -967,30 +908,6 @@ export function ChatView() {
 
   return (
     <div className="chat-view">
-      <div className={`chat-topbar${replaying ? " replaying" : ""}`}>
-        {replaying ? (
-          <ReplayBar />
-        ) : (
-          <button
-            type="button"
-            className="replay-entry-btn"
-            onClick={() =>
-              conv && startReplay(conv.id, buildReplayFrames(messages))
-            }
-            disabled={!canEnterReplay}
-            title={
-              running
-                ? t("chat.replay.disabledRunning")
-                : messages.length < 2
-                  ? t("chat.replay.disabledEmpty")
-                  : t("chat.replay.entry")
-            }
-          >
-            <ReplayIcon />
-            <span>{t("chat.replay.entry")}</span>
-          </button>
-        )}
-      </div>
       <div className={`chat-scroll${replaying ? " replay-active" : ""}`} ref={scrollRef} onScroll={handleScroll}>
         {messages.length === 0 && (
           <div className="chat-empty chat-empty-hero">

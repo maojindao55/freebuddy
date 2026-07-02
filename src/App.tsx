@@ -3,6 +3,7 @@ import { ConfigProvider, theme as antdTheme } from "antd";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
+import { ReplayButton } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
@@ -269,6 +270,11 @@ function App() {
           <div className="breadcrumb">
             <strong>{activeConversation?.title ?? t("app.chat")}</strong>
           </div>
+          {activeConversation && (
+            <div className="titlebar-actions titlebar-actions-plain">
+              <ReplayButton />
+            </div>
+          )}
 
         </header>
 

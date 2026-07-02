@@ -25,6 +25,16 @@ test("WorkflowRunPanel renders running actions and pause/resume/stop", () => {
   assert.match(src, /setInterval/);
 });
 
+test("WorkflowRunPanel uses replay workflow snapshots as read-only state", () => {
+  const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  assert.match(src, /useReplayStore/);
+  assert.match(src, /replayFrames\[replayIndex\]\?\.workflow/);
+  assert.match(src, /const activeRun = replaySnapshot\?\.run \?\? storeActiveRun/);
+  assert.match(src, /const steps = replaySnapshot\?\.steps \?\? storeSteps/);
+  assert.match(src, /!replayingWorkflow && \(isLive \|\| gatingPhaseId \|\| canContinueImplementReview\)/);
+  assert.match(src, /replayingWorkflow[\s\S]*\? undefined[\s\S]*: \(step\) => void retryStep/);
+});
+
 test("WorkflowRunPanel can continue build review after verification failure", () => {
   const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
   assert.match(src, /verifyStep/);
@@ -76,6 +86,17 @@ test("WorkspacePanel mounts the WorkflowRunPanel", () => {
   const src = read("../src/components/CLI/WorkspacePanel.tsx");
   assert.match(src, /import \{ WorkflowRunPanel \}/);
   assert.match(src, /<WorkflowRunPanel/);
+});
+
+test("WorkspacePanel syncs the run-state card with replay frames", () => {
+  const src = read("../src/components/CLI/WorkspacePanel.tsx");
+  assert.match(src, /useReplayStore/);
+  assert.match(src, /const replayFrame =[\s\S]*?replayFrames\[replayIndex\]/);
+  assert.match(src, /const displayMessages = replayFrame[\s\S]*?messages\.slice\(0, replayFrame\.messageIndex \+ 1\)[\s\S]*?: messages/);
+  assert.match(src, /const displayLive = replayFrame \? undefined : live/);
+  assert.match(src, /const displayRun = replayWorkflow\?\.run \?\? activeRun/);
+  assert.match(src, /!replayFrame &&[\s\S]*?isTeamRun/);
+  assert.match(src, /const end = replayWorkflow\?\.at[\s\S]*?Date\.parse\(replayWorkflow\.at\)/);
 });
 
 test("WorkflowStepRow shows the agent avatar inline", () => {
@@ -202,7 +223,8 @@ test("MessageBubble supports right-click and inline copy button", () => {
   assert.match(src, /getSelectionText/);
   assert.match(src, /copyableItemText/);
   assert.match(src, /item\.kind === "text" \|\| item\.kind === "raw"/);
-  assert.doesNotMatch(src, /case "tool-call"[\s\S]*return/);
+  const copyableHelper = src.match(/function copyableItemText[\s\S]*?function messageText/)?.[0] ?? src;
+  assert.doesNotMatch(copyableHelper, /tool-call/);
   assert.match(src, /showActionBar = message\.role === "assistant" && message\.status === "done"/);
   assert.match(src, /msg-actions/);
   assert.match(src, /msg-action-btn/);
@@ -211,6 +233,30 @@ test("MessageBubble supports right-click and inline copy button", () => {
   assert.match(css, /\.message-context-menu/);
   assert.match(css, /\.msg-actions/);
   assert.doesNotMatch(css, /msg-content-wrapper:hover \.msg-actions/);
+});
+
+test("MessageBubble compacts execution process while preserving final text", () => {
+  const src = read("../src/components/CLI/MessageBubble.tsx");
+  const css = read("../styles.css");
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+  assert.match(src, /function StreamProcessGroup/);
+  assert.match(src, /countProcessActivity/);
+  assert.match(src, /dominantActivityIcon/);
+  assert.match(src, /function buildDisplaySections/);
+  assert.match(src, /function isProcessBlock/);
+  assert.match(src, /section\.kind === "process"/);
+  assert.match(src, /renderMessageBlock\(section\.block, `block-\$\{i\}`\)/);
+  assert.match(src, /<StreamItem key=\{key\} item=\{block\.item\} \/>/);
+  assert.match(src, /open=\{hasIssue \? true : undefined\}/);
+  assert.doesNotMatch(src, /open=\{hasRunning \|\| hasIssue \? true : undefined\}/);
+  assert.doesNotMatch(src, /stream-process-head/);
+  assert.doesNotMatch(src, /stream-process-recent/);
+  assert.match(css, /\.stream-process\s*\{/);
+  assert.match(css, /\.stream-process summary\s*\{/);
+  assert.match(css, /\.stream-process-title\s*\{/);
+  assert.equal(en.stream.activityEditedFiles_one, "Edited {{count}} file");
+  assert.equal(zh.stream.activityRanCommands, "已运行 {{count}} 条命令");
 });
 
 test("AgentBridgeListener keeps status/error events out of chat history", () => {

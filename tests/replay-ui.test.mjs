@@ -4,19 +4,21 @@ import fs from "node:fs";
 
 const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 
-test("replayStore exposes speeds, 1.5 default, and typing helpers", () => {
+test("replayStore exposes fixed timing and typing helpers", () => {
   const src = read("../src/store/replayStore.ts");
-  assert.match(src, /REPLAY_SPEEDS = \[1, 1\.5, 2, 4, 8\]/);
-  assert.match(src, /REPLAY_DEFAULT_SPEED[\s\S]*?1\.5/);
+  assert.match(src, /REPLAY_BASE_INTERVAL_MS/);
   assert.match(src, /REPLAY_TYPING_INTERVAL_MS/);
   assert.match(src, /export function splitTextSteps/);
   assert.match(src, /export function clampIndex/);
+  assert.match(src, /export interface ReplayWorkflowSnapshot/);
+  assert.match(src, /at\?: string/);
   assert.match(src, /export interface ReplayFrame/);
+  assert.match(src, /workflow\?: ReplayWorkflowSnapshot/);
 });
 
-test("replayStore start stores frames and resets to the beginning", () => {
+test("replayStore start stores frames and starts playback", () => {
   const src = read("../src/store/replayStore.ts");
-  assert.match(src, /start\(conversationId, frames\)[\s\S]*?set\(\{ \.\.\.EMPTY, conversationId, frames, speed: REPLAY_DEFAULT_SPEED \}\)/);
+  assert.match(src, /start\(conversationId, frames\)[\s\S]*?set\(\{ \.\.\.EMPTY, conversationId, frames, playing: frames\.length > 0 \}\)/);
   assert.match(src, /frames: \[\] as ReplayFrame\[\]/);
   assert.match(src, /const EMPTY[\s\S]*?index: -1[\s\S]*?playing: false/);
 });
@@ -31,9 +33,9 @@ test("replayStore next auto-pauses at the last frame", () => {
   assert.match(src, /const atEnd = index >= total - 1[\s\S]*?if \(atEnd\)[\s\S]*?set\(\{ index: total - 1, playing: false \}\)/);
 });
 
-test("replayStore setIndex clamps against frames length and pauses", () => {
+test("replayStore prev clamps against frames length", () => {
   const src = read("../src/store/replayStore.ts");
-  assert.match(src, /setIndex\(i\)[\s\S]*?set\(\{ index: clampIndex\(i, get\(\)\.frames\.length\), playing: false \}\)/);
+  assert.match(src, /prev\(\)[\s\S]*?set\(\{ index: clampIndex\(index - 1, frames\.length\) \}\)/);
 });
 
 test("splitTextSteps chunks long text into typing milestones", () => {
@@ -51,14 +53,29 @@ test("messageBlocks exports block helpers including computeMessageBlocks", () =>
   assert.match(src, /export type VisibleBlock/);
 });
 
-test("ReplayBar drives playback with speed- and typing-scaled intervals", () => {
+test("ReplayButton drives titlebar playback with typing-scaled intervals", () => {
   const src = read("../src/components/CLI/ReplayBar.tsx");
+  assert.match(src, /export function ReplayButton/);
+  assert.match(src, /import \{ RotateCcw, Square \} from "lucide-react"/);
+  assert.match(src, /REPLAY_FIXED_SPEED = 1\.5/);
   assert.match(src, /REPLAY_TYPING_INTERVAL_MS/);
   assert.match(src, /const isTyping = current\?\.typingChars != null/);
   assert.match(src, /const base = isTyping \? REPLAY_TYPING_INTERVAL_MS : REPLAY_BASE_INTERVAL_MS/);
   assert.match(src, /window\.setInterval\(\(\) => next\(\)/);
-  assert.match(src, /role="toolbar"/);
-  assert.match(src, /s\) => s\.frames\.length/);
+  assert.match(src, /useConversationStore/);
+  assert.match(src, /useWorkflowStore/);
+  assert.match(src, /function buildWorkflowSnapshot/);
+  assert.match(src, /messageComplete/);
+  assert.match(src, /const at = frame\.messageComplete === true[\s\S]*?currentMessage\?\.updatedAt[\s\S]*?currentMessage\?\.createdAt/);
+  assert.match(src, /const workflow = buildWorkflowSnapshot/);
+  assert.match(src, /WORKFLOW_REPLAY_BLOCKED_STATUSES = new Set<WorkflowRunStatus>\(\[[\s\S]*?"running"[\s\S]*?"paused"[\s\S]*?"blocked"[\s\S]*?\]\)/);
+  assert.match(src, /const workflowBlocksReplay =[\s\S]*?activeRun != null[\s\S]*?activeRun\.conversationId === activeId[\s\S]*?WORKFLOW_REPLAY_BLOCKED_STATUSES\.has\(activeRun\.status\)/);
+  assert.match(src, /const canReplay =[\s\S]*?!running[\s\S]*?!workflowBlocksReplay/);
+  assert.match(src, /buttonTitle = t\("chat\.replay\.disabledWorkflowActive"\)/);
+  assert.match(src, /start\(activeId, nextFrames\)/);
+  assert.match(src, /aria-pressed=\{replaying\}/);
+  assert.match(src, /const Icon = replaying \? Square : RotateCcw/);
+  assert.match(src, /title-replay-label/);
 });
 
 test("MessageBubble supports blockLimit and typingChars for incremental replay", () => {
@@ -66,28 +83,19 @@ test("MessageBubble supports blockLimit and typingChars for incremental replay",
   assert.match(src, /blockLimit\?: number/);
   assert.match(src, /typingChars\?: number/);
   assert.match(src, /const renderedBlocks = useMemo/);
+  assert.match(src, /const renderedSections = useMemo/);
+  assert.match(src, /buildDisplaySections\(renderedBlocks\)/);
   assert.match(src, /content: \(last\.item\.content \?\? ""\)\.slice\(0, typingChars\)/);
-  assert.match(src, /renderedBlocks\.map\(\(block, i\)/);
+  assert.match(src, /renderedSections\.map\(\(section, i\)/);
   assert.match(src, /import \{ isVisibleItem, visibleBlocks \} from "\.\/messageBlocks"/);
 });
 
-test("ChatView plays back at block granularity with typing text and exposes the entry button", () => {
+test("ChatView plays back at block granularity with typing text and locks the composer", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
-  assert.match(src, /import \{ ReplayBar \} from "\.\/ReplayBar"/);
-  assert.match(src, /import \{ computeMessageBlocks \} from "\.\/messageBlocks"/);
-  assert.match(src, /splitTextSteps,/);
-  assert.match(src, /type ReplayFrame/);
   assert.match(src, /const replaying = replayConvId === conv\?\.id && replayConvId !== null/);
-  assert.match(src, /canEnterReplay = messages\.length >= 2 && !running && !replaying/);
-  assert.match(src, /function buildReplayFrames/);
-  assert.match(src, /computeMessageBlocks\(message\.content\)/);
-  assert.match(src, /splitTextSteps\(item\.content\)/);
-  assert.match(src, /typingChars: chars/);
   assert.match(src, /const storeFrames = useReplayStore\(\(s\) => s\.frames\)/);
   assert.match(src, /blockLimit=\{replayPartial\.blockLimit\}/);
   assert.match(src, /typingChars=\{replayPartial\.typingChars\}/);
-  assert.match(src, /startReplay\(conv\.id, buildReplayFrames\(messages\)\)/);
-  assert.match(src, /replay-entry-btn/);
   assert.match(src, /disabled=\{sending \|\| replaying\}/);
   assert.match(src, /replay-disabled/);
   assert.match(src, /stopReplay\(\)/);
@@ -95,12 +103,11 @@ test("ChatView plays back at block granularity with typing text and exposes the 
 
 test("replay styles exist in the stylesheet", () => {
   const css = read("../styles.css");
-  assert.match(css, /\.chat-topbar\s*\{/);
-  assert.match(css, /\.replay-entry-btn\s*\{/);
-  assert.match(css, /\.replay-bar\s*\{/);
-  assert.match(css, /\.replay-play-btn\s*\{/);
-  assert.match(css, /\.replay-progress\s*\{/);
-  assert.match(css, /\.replay-count\s*\{/);
+  assert.match(css, /\.titlebar-actions-plain\s*\{/);
+  assert.match(css, /\.title-replay-btn\s*\{/);
+  assert.match(css, /\.title-replay-btn\.replaying\s*\{/);
+  assert.match(css, /\.title-replay-btn\.replaying\s*\{[\s\S]*?background: var\(--fb-brand-glow\)/);
+  assert.match(css, /\.title-replay-label\s*\{/);
   assert.match(css, /\.chat-composer\.replay-disabled\s*\{/);
   assert.match(css, /\.chat-scroll\.replay-active > \.msg:last-child/);
   assert.match(css, /@keyframes replay-fade-in/);
@@ -110,14 +117,16 @@ test("replay i18n keys exist in both locales", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
   const keys = [
-    "title", "entry", "play", "pause", "prev", "next", "exit",
-    "speed", "speedOption", "progress", "disabledRunning", "disabledEmpty"
+    "title", "entry", "play", "pause", "exitShort", "exit",
+    "progress", "disabledRunning", "disabledWorkflowActive", "disabledEmpty"
   ];
   for (const key of keys) {
     assert.ok(en.chat.replay?.[key], `missing en chat.replay.${key}`);
     assert.ok(zh.chat.replay?.[key], `missing zh-CN chat.replay.${key}`);
   }
-  assert.equal(en.chat.replay.speedOption, "{{speed}}x");
+  assert.equal(en.chat.replay.exitShort, "Exit");
   assert.equal(en.chat.replay.progress, "{{n}}/{{total}}");
   assert.equal(zh.chat.replay.entry, "回放");
+  assert.equal(zh.chat.replay.exitShort, "退出");
+  assert.equal(zh.chat.replay.disabledWorkflowActive, "团队工作流处理中无法回放");
 });

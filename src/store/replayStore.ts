@@ -1,16 +1,23 @@
 import { create } from "zustand";
 
-export const REPLAY_SPEEDS = [1, 1.5, 2, 4, 8] as const;
-export type ReplaySpeed = (typeof REPLAY_SPEEDS)[number];
-export const REPLAY_DEFAULT_SPEED: ReplaySpeed = 1.5;
+import type { WorkflowRunRow, WorkflowStepRow } from "@/services/workflows/types";
+
 export const REPLAY_BASE_INTERVAL_MS = 800;
 export const REPLAY_TYPING_INTERVAL_MS = 32;
 export const REPLAY_TYPING_STEP = 3;
+
+export interface ReplayWorkflowSnapshot {
+  run: WorkflowRunRow;
+  steps: WorkflowStepRow[];
+  at?: string;
+}
 
 export interface ReplayFrame {
   messageIndex: number;
   blockLimit?: number;
   typingChars?: number;
+  messageComplete?: boolean;
+  workflow?: ReplayWorkflowSnapshot;
 }
 
 export interface ReplayState {
@@ -18,7 +25,6 @@ export interface ReplayState {
   frames: ReplayFrame[];
   index: number;
   playing: boolean;
-  speed: number;
   start(conversationId: string, frames: ReplayFrame[]): void;
   stop(): void;
   play(): void;
@@ -26,8 +32,6 @@ export interface ReplayState {
   toggle(): void;
   next(): void;
   prev(): void;
-  setIndex(i: number): void;
-  setSpeed(s: number): void;
 }
 
 const EMPTY = {
@@ -58,10 +62,9 @@ export function splitTextSteps(text: string): number[] {
 
 export const useReplayStore = create<ReplayState>((set, get) => ({
   ...EMPTY,
-  speed: REPLAY_DEFAULT_SPEED,
 
   start(conversationId, frames) {
-    set({ ...EMPTY, conversationId, frames, speed: REPLAY_DEFAULT_SPEED });
+    set({ ...EMPTY, conversationId, frames, playing: frames.length > 0 });
   },
   stop() {
     set({ ...EMPTY });
@@ -98,11 +101,5 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   prev() {
     const { index, frames } = get();
     set({ index: clampIndex(index - 1, frames.length) });
-  },
-  setIndex(i) {
-    set({ index: clampIndex(i, get().frames.length), playing: false });
-  },
-  setSpeed(s) {
-    set({ speed: s });
   }
 }));

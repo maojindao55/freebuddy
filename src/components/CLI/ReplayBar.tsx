@@ -1,157 +1,320 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { RotateCcw, Square } from "lucide-react";
 
+import type { ConversationMessage } from "@/services/cli/types";
+import { pendingManualGatePhaseId } from "@/services/workflows/planning";
+import type {
+  WorkflowPlan,
+  WorkflowRunRow,
+  WorkflowRunStatus,
+  WorkflowStepRow,
+  WorkflowStepStatus
+} from "@/services/workflows/types";
+import { useConversationStore } from "@/store/conversationStore";
 import {
   REPLAY_BASE_INTERVAL_MS,
-  REPLAY_SPEEDS,
   REPLAY_TYPING_INTERVAL_MS,
-  useReplayStore
+  splitTextSteps,
+  useReplayStore,
+  type ReplayWorkflowSnapshot,
+  type ReplayFrame
 } from "@/store/replayStore";
+import { useWorkflowStore } from "@/store/workflowStore";
+import { computeMessageBlocks } from "./messageBlocks";
 
-function PrevIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polygon points="18 5 9 12 18 19 18 5" fill="currentColor" />
-      <line x1="6" y1="5" x2="6" y2="19" />
-    </svg>
-  );
+const REPLAY_FIXED_SPEED = 1.5;
+const EMPTY_MESSAGES: ConversationMessage[] = [];
+const WORKFLOW_REPLAY_BLOCKED_STATUSES = new Set<WorkflowRunStatus>([
+  "running",
+  "paused",
+  "blocked"
+]);
+
+interface WorkflowReplaySource {
+  conversationId: string;
+  run: WorkflowRunRow | null;
+  steps: WorkflowStepRow[];
 }
 
-function NextIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polygon points="6 5 15 12 6 19 6 5" fill="currentColor" />
-      <line x1="18" y1="5" x2="18" y2="19" />
-    </svg>
-  );
+const WORKFLOW_TERMINAL_OK = new Set<WorkflowStepStatus>(["done", "skipped"]);
+
+function sanitizePendingStep(step: WorkflowStepRow): WorkflowStepRow {
+  return {
+    ...step,
+    status: "pending",
+    summary: undefined,
+    resultJson: undefined,
+    cliTaskId: undefined,
+    startedAt: undefined,
+    endedAt: undefined
+  };
 }
 
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polygon points="7 4 19 12 7 20 7 4" fill="currentColor" />
-    </svg>
-  );
+function statusFromWorkflowMessage(
+  message: ConversationMessage,
+  complete: boolean
+): WorkflowStepStatus {
+  if (!complete) return "running";
+  if (message.status === "failed" || message.status === "killed") return "failed";
+  if (message.status === "done" || message.status === "sent") return "done";
+  return "running";
 }
 
-function PauseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="7" y="5" width="3" height="14" rx="1" fill="currentColor" />
-      <rect x="14" y="5" width="3" height="14" rx="1" fill="currentColor" />
-    </svg>
-  );
+function parseWorkflowPlan(run: WorkflowRunRow): WorkflowPlan | null {
+  try {
+    return JSON.parse(run.planJson) as WorkflowPlan;
+  } catch {
+    return null;
+  }
 }
 
-function ExitIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="6" y1="6" x2="18" y2="18" />
-      <line x1="18" y1="6" x2="6" y2="18" />
-    </svg>
-  );
+function deriveReplayRunStatus(
+  run: WorkflowRunRow,
+  plan: WorkflowPlan | null,
+  steps: WorkflowStepRow[]
+): WorkflowRunStatus {
+  if (steps.some((step) => step.status === "running")) return "running";
+  if (steps.some((step) => step.status === "failed" || step.status === "blocked")) {
+    return run.status === "failed" ? "failed" : "blocked";
+  }
+  if (
+    plan &&
+    pendingManualGatePhaseId(
+      plan.phases,
+      steps.map((step) => ({ stepId: step.stepId, status: step.status }))
+    )
+  ) {
+    return "paused";
+  }
+  if (steps.length > 0 && steps.every((step) => WORKFLOW_TERMINAL_OK.has(step.status))) {
+    return run.status;
+  }
+  return run.status === "pending_approval" ? "pending_approval" : "running";
 }
 
-export function ReplayBar() {
+function buildWorkflowSnapshot(
+  messages: ConversationMessage[],
+  frame: ReplayFrame,
+  source?: WorkflowReplaySource
+): ReplayWorkflowSnapshot | undefined {
+  if (
+    !source?.run ||
+    source.run.conversationId !== source.conversationId ||
+    source.steps.length === 0
+  ) {
+    return undefined;
+  }
+
+  const steps = source.steps.map(sanitizePendingStep);
+  const stepIndexById = new Map(steps.map((step, index) => [step.id, index]));
+
+  const applyMessage = (message: ConversationMessage | undefined, complete: boolean) => {
+    if (
+      !message?.workflowStepRowId ||
+      message.workflowRunId !== source.run?.id
+    ) {
+      return;
+    }
+    const index = stepIndexById.get(message.workflowStepRowId);
+    if (index == null) return;
+    const original = source.steps[index];
+    const status = statusFromWorkflowMessage(message, complete);
+    const terminal = status === "done" || status === "failed" || status === "skipped";
+    steps[index] = {
+      ...original,
+      status,
+      summary: terminal ? original.summary : undefined,
+      resultJson: terminal ? original.resultJson : undefined,
+      endedAt: terminal ? original.endedAt : undefined
+    };
+  };
+
+  for (let i = 0; i < frame.messageIndex; i += 1) {
+    applyMessage(messages[i], true);
+  }
+  applyMessage(messages[frame.messageIndex], frame.messageComplete === true);
+
+  const plan = parseWorkflowPlan(source.run);
+  const status = deriveReplayRunStatus(source.run, plan, steps);
+  const complete = steps.length > 0 && steps.every((step) => WORKFLOW_TERMINAL_OK.has(step.status));
+  const currentMessage = messages[frame.messageIndex];
+  const at = frame.messageComplete === true
+    ? currentMessage?.updatedAt
+    : currentMessage?.createdAt;
+  return {
+    run: {
+      ...source.run,
+      status,
+      summary: complete ? source.run.summary : undefined,
+      endedAt: complete ? source.run.endedAt : undefined
+    },
+    steps,
+    at
+  };
+}
+
+function withWorkflowSnapshot(
+  frame: ReplayFrame,
+  messages: ConversationMessage[],
+  source?: WorkflowReplaySource
+): ReplayFrame {
+  const workflow = buildWorkflowSnapshot(messages, frame, source);
+  return workflow ? { ...frame, workflow } : frame;
+}
+
+function buildReplayFrames(
+  messages: ConversationMessage[],
+  workflow?: WorkflowReplaySource
+): ReplayFrame[] {
+  const frames: ReplayFrame[] = [];
+  messages.forEach((message, idx) => {
+    if (message.role === "assistant") {
+      const blocks = computeMessageBlocks(message.content);
+      if (blocks.length === 0) {
+        frames.push(
+          withWorkflowSnapshot(
+            { messageIndex: idx, messageComplete: true },
+            messages,
+            workflow
+          )
+        );
+        return;
+      }
+      blocks.forEach((block, bi) => {
+        const blockLimit = bi + 1;
+        const isLastBlock = blockLimit === blocks.length;
+        if (block.kind === "single") {
+          const item = block.item;
+          if (item.kind === "text" || item.kind === "raw") {
+            const steps = splitTextSteps(item.content);
+            if (steps.length === 0) {
+              frames.push(
+                withWorkflowSnapshot(
+                  { messageIndex: idx, blockLimit, messageComplete: isLastBlock },
+                  messages,
+                  workflow
+                )
+              );
+            } else {
+              for (let si = 0; si < steps.length; si += 1) {
+                const chars = steps[si];
+                frames.push(
+                  withWorkflowSnapshot(
+                    {
+                      messageIndex: idx,
+                      blockLimit,
+                      typingChars: chars,
+                      messageComplete: isLastBlock && si === steps.length - 1
+                    },
+                    messages,
+                    workflow
+                  )
+                );
+              }
+            }
+            return;
+          }
+        }
+        frames.push(
+          withWorkflowSnapshot(
+            { messageIndex: idx, blockLimit, messageComplete: isLastBlock },
+            messages,
+            workflow
+          )
+        );
+      });
+    } else {
+      frames.push(
+        withWorkflowSnapshot(
+          { messageIndex: idx, messageComplete: true },
+          messages,
+          workflow
+        )
+      );
+    }
+  });
+  return frames;
+}
+
+export function ReplayButton() {
   const { t } = useTranslation();
+  const activeId = useConversationStore((s) => s.activeId);
+  const messages = useConversationStore((s) => activeId ? s.messages[activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES);
+  const running = useConversationStore((s) => activeId ? s.live[activeId]?.status === "running" || s.live[activeId]?.status === "starting" : false);
+  const activeRun = useWorkflowStore((s) => s.activeRun);
+  const workflowSteps = useWorkflowStore((s) => s.steps);
+  const replayConvId = useReplayStore((s) => s.conversationId);
   const index = useReplayStore((s) => s.index);
-  const total = useReplayStore((s) => s.frames.length);
   const frames = useReplayStore((s) => s.frames);
   const playing = useReplayStore((s) => s.playing);
-  const speed = useReplayStore((s) => s.speed);
-  const toggle = useReplayStore((s) => s.toggle);
-  const next = useReplayStore((s) => s.next);
-  const prev = useReplayStore((s) => s.prev);
-  const setIndex = useReplayStore((s) => s.setIndex);
-  const setSpeed = useReplayStore((s) => s.setSpeed);
+  const start = useReplayStore((s) => s.start);
   const stop = useReplayStore((s) => s.stop);
+  const next = useReplayStore((s) => s.next);
+
+  const replaying = replayConvId === activeId && replayConvId !== null;
+  const workflowBlocksReplay =
+    activeRun != null &&
+    activeRun.conversationId === activeId &&
+    WORKFLOW_REPLAY_BLOCKED_STATUSES.has(activeRun.status);
+  const canReplay =
+    Boolean(activeId) &&
+    messages.length >= 2 &&
+    !running &&
+    !workflowBlocksReplay;
 
   useEffect(() => {
-    if (!playing) return;
+    if (!replaying || !playing) return;
     const current = frames[index];
     const isTyping = current?.typingChars != null;
     const base = isTyping ? REPLAY_TYPING_INTERVAL_MS : REPLAY_BASE_INTERVAL_MS;
-    const interval = Math.max(16, base / speed);
+    const interval = Math.max(16, base / REPLAY_FIXED_SPEED);
     const id = window.setInterval(() => next(), interval);
     return () => window.clearInterval(id);
-  }, [playing, speed, next, frames, index]);
+  }, [replaying, playing, next, frames, index]);
 
-  const safeMax = Math.max(total, 1);
-  const atEnd = index >= total - 1;
+  if (!activeId) return null;
+
+  const handleClick = () => {
+    if (replaying) {
+      stop();
+      return;
+    }
+    if (!canReplay || !activeId) return;
+    const nextFrames = buildReplayFrames(messages, {
+      conversationId: activeId,
+      run: activeRun?.conversationId === activeId ? activeRun : null,
+      steps: activeRun?.conversationId === activeId ? workflowSteps : []
+    });
+    start(activeId, nextFrames);
+    next();
+  };
+
+  const label = replaying ? t("chat.replay.exitShort") : t("chat.replay.entry");
+  const Icon = replaying ? Square : RotateCcw;
+  let buttonTitle = t("chat.replay.entry");
+  if (replaying) {
+    buttonTitle = t("chat.replay.exit");
+  } else if (running) {
+    buttonTitle = t("chat.replay.disabledRunning");
+  } else if (workflowBlocksReplay) {
+    buttonTitle = t("chat.replay.disabledWorkflowActive");
+  } else if (messages.length < 2) {
+    buttonTitle = t("chat.replay.disabledEmpty");
+  }
 
   return (
-    <div className="replay-bar" role="toolbar" aria-label={t("chat.replay.title")}>
-      <button
-        type="button"
-        className="replay-step-btn"
-        onClick={prev}
-        disabled={index <= -1}
-        aria-label={t("chat.replay.prev")}
-        title={t("chat.replay.prev")}
-      >
-        <PrevIcon />
-      </button>
-
-      <button
-        type="button"
-        className="replay-play-btn"
-        onClick={toggle}
-        disabled={total <= 0}
-        aria-label={playing ? t("chat.replay.pause") : t("chat.replay.play")}
-        title={playing ? t("chat.replay.pause") : t("chat.replay.play")}
-      >
-        {playing ? <PauseIcon /> : <PlayIcon />}
-      </button>
-
-      <button
-        type="button"
-        className="replay-step-btn"
-        onClick={next}
-        disabled={atEnd}
-        aria-label={t("chat.replay.next")}
-        title={t("chat.replay.next")}
-      >
-        <NextIcon />
-      </button>
-
-      <input
-        type="range"
-        className="replay-progress"
-        min={0}
-        max={safeMax}
-        value={Math.min(index + 1, safeMax)}
-        onChange={(e) => setIndex(Number(e.target.value) - 1)}
-        aria-label={t("chat.replay.progress", { n: index + 1, total })}
-      />
-
-      <span className="replay-count">
-        {t("chat.replay.progress", { n: Math.max(index + 1, 0), total })}
-      </span>
-
-      <label className="replay-speed">
-        <span className="sr-only">{t("chat.replay.speed")}</span>
-        <select
-          value={String(speed)}
-          onChange={(e) => setSpeed(Number(e.target.value))}
-          aria-label={t("chat.replay.speed")}
-        >
-          {REPLAY_SPEEDS.map((s) => (
-            <option key={s} value={String(s)}>
-              {t("chat.replay.speedOption", { speed: s })}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <button
-        type="button"
-        className="replay-exit-btn"
-        onClick={stop}
-        aria-label={t("chat.replay.exit")}
-        title={t("chat.replay.exit")}
-      >
-        <ExitIcon />
-      </button>
-    </div>
+    <button
+      type="button"
+      className={`title-replay-btn${replaying ? " replaying" : ""}`}
+      onClick={handleClick}
+      disabled={!replaying && !canReplay}
+      aria-pressed={replaying}
+      aria-label={replaying ? t("chat.replay.exit") : t("chat.replay.entry")}
+      title={buttonTitle}
+    >
+      <Icon aria-hidden="true" strokeWidth={1.8} />
+      <span className="title-replay-label">{label}</span>
+    </button>
   );
 }

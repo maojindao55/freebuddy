@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import type { WorkflowPlan, WorkflowStepRow } from "@/services/workflows/types";
 import { pendingManualGatePhaseId } from "@/services/workflows/planning";
+import { useConversationStore } from "@/store/conversationStore";
+import { useReplayStore } from "@/store/replayStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { WorkflowPhaseList } from "./WorkflowPhaseList";
 
@@ -70,8 +72,12 @@ function workflowRunName(name: string, template: string | undefined, t: ReturnTy
 
 export function WorkflowRunPanel() {
   const { t } = useTranslation();
-  const activeRun = useWorkflowStore((s) => s.activeRun);
-  const steps = useWorkflowStore((s) => s.steps);
+  const activeId = useConversationStore((s) => s.activeId);
+  const storeActiveRun = useWorkflowStore((s) => s.activeRun);
+  const storeSteps = useWorkflowStore((s) => s.steps);
+  const replayConvId = useReplayStore((s) => s.conversationId);
+  const replayIndex = useReplayStore((s) => s.index);
+  const replayFrames = useReplayStore((s) => s.frames);
   const refresh = useWorkflowStore((s) => s.refresh);
   const pause = useWorkflowStore((s) => s.pause);
   const resume = useWorkflowStore((s) => s.resume);
@@ -80,6 +86,13 @@ export function WorkflowRunPanel() {
   const approveGate = useWorkflowStore((s) => s.approveGate);
   const continueImplementReview = useWorkflowStore((s) => s.continueImplementReview);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const replaySnapshot =
+    replayConvId === activeId && replayIndex >= 0
+      ? replayFrames[replayIndex]?.workflow
+      : undefined;
+  const activeRun = replaySnapshot?.run ?? storeActiveRun;
+  const steps = replaySnapshot?.steps ?? storeSteps;
+  const replayingWorkflow = Boolean(replaySnapshot);
 
   let plan: WorkflowPlan | null = null;
   if (activeRun) {
@@ -90,15 +103,16 @@ export function WorkflowRunPanel() {
     }
   }
   const isLive =
-    activeRun?.status === "running" ||
-    activeRun?.status === "paused" ||
-    activeRun?.status === "blocked";
+    !replayingWorkflow &&
+    (activeRun?.status === "running" ||
+      activeRun?.status === "paused" ||
+      activeRun?.status === "blocked");
 
   useEffect(() => {
-    if (!activeRun || !isLive) return;
+    if (replayingWorkflow || !activeRun || !isLive) return;
     const id = window.setInterval(() => void refresh(activeRun.id), 1500);
     return () => window.clearInterval(id);
-  }, [activeRun?.id, isLive, refresh]);
+  }, [activeRun?.id, isLive, refresh, replayingWorkflow]);
 
   const progress = useMemo(() => {
     if (!steps.length) return { done: 0, total: 0, percent: 0 };
@@ -137,14 +151,16 @@ export function WorkflowRunPanel() {
     `${verifyStep?.summary ?? ""}\n${verifyStep?.resultJson ?? ""}`
   );
   const canContinueImplementReview =
+    !replayingWorkflow &&
     activeRun.status === "partial" &&
     (plan.template === "implement-review-loop" ||
       activeRun.template === "implement-review-loop") &&
     (reviewNeedsRetry || verifyNeedsRetry);
   const canRetryStep = (step: WorkflowStepRow) =>
-    step.status === "failed" ||
-    step.status === "blocked" ||
-    (step.status === "running" && !isLive);
+    !replayingWorkflow &&
+    (step.status === "failed" ||
+      step.status === "blocked" ||
+      (step.status === "running" && !isLive));
 
   return (
     <section className="side-card workflow-run-panel">
@@ -168,7 +184,7 @@ export function WorkflowRunPanel() {
         </div>
       </div>
 
-      {(isLive || gatingPhaseId || canContinueImplementReview) && (
+      {!replayingWorkflow && (isLive || gatingPhaseId || canContinueImplementReview) && (
         <div className="workflow-run-actions">
           {canContinueImplementReview && (
             <button
@@ -220,7 +236,11 @@ export function WorkflowRunPanel() {
         onSelect={(step: WorkflowStepRow) =>
           setSelectedId((cur) => (cur === step.id ? undefined : step.id))
         }
-        onRetry={(step) => void retryStep(activeRun.id, step.id)}
+        onRetry={
+          replayingWorkflow
+            ? undefined
+            : (step) => void retryStep(activeRun.id, step.id)
+        }
         canRetry={canRetryStep}
       />
     </section>

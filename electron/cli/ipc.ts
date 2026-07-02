@@ -318,8 +318,11 @@ export function registerCliIpc() {
   ipcMain.handle("settings:get", (_e, key: string) => getSetting(key));
   ipcMain.handle("settings:set", (_e, args: { key: string; value: string }) => {
     setSetting(args.key, args.value);
-    if (args.key === "language" && (args.value === "en" || args.value === "zh-CN")) {
-      setApplicationMenuForLanguage(args.value);
+    if (
+      args.key === "language" &&
+      (args.value === "system" || args.value === "en" || args.value === "zh-CN")
+    ) {
+      setApplicationMenuForLanguage(getLanguage());
     }
   });
 

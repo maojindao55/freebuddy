@@ -5,6 +5,7 @@ import type { CliEvent, CliPromptAttachment, CliRunArgs } from "./runtimeShared.
 import { cliRun, cliKill } from "./runtime.js";
 import { getToolSession } from "./store.js";
 import { safeSendToWebContents } from "./ipcSend.js";
+import { getLanguage } from "./settings.js";
 import {
   appendMessage,
   listMessages,
@@ -36,8 +37,8 @@ import {
   VERIFY_CHANGES_STEP_ID
 } from "./workflowTemplates.js";
 import {
+  applyWorkflowLanguagePreference,
   augmentPromptWithConsumedSummaries,
-  collectDecisionTextFromItems,
   decideImplementReviewLoop,
   decideReviewLoop,
   deriveStepSummary,
@@ -46,6 +47,7 @@ import {
   extractReviewStatus,
   findResumePhaseIndex,
   phaseGateSatisfied,
+  reviewDecisionTextFromItems,
   resumableStepRowIds,
   resolveReviewDecisionText,
   selectRunnableSteps,
@@ -862,6 +864,7 @@ export class WorkflowRuntime {
       planStep?.consumes,
       stepsById
     );
+    const localizedPrompt = applyWorkflowLanguagePreference(prompt, getLanguage());
 
     const sessionId = randomUUID();
     const toolSessionScope = workflowStepToolSessionScope(runId, step);
@@ -943,7 +946,7 @@ export class WorkflowRuntime {
         adapter: resolved.adapter,
         binary: resolved.binary,
         extraArgs: resolved.extraArgs,
-        prompt,
+        prompt: localizedPrompt,
         promptAttachments: promptAttachmentsFromConversation(run.conversationId),
         toolSessionScope,
         toolSessionId,
@@ -970,7 +973,7 @@ export class WorkflowRuntime {
     const capturedToolSessionId =
       getToolSession(step.agentId, toolSessionScope)?.sessionId ??
       step.toolSessionId;
-    const decisionText = collectDecisionTextFromItems(collected);
+    const decisionText = reviewDecisionTextFromItems(collected);
     const failed = errored !== null || (exitCode !== null && exitCode !== 0);
     let summary = ensureReviewStatusInSummary(
       deriveStepSummary(collected),

@@ -2216,7 +2216,7 @@ button {
   inset: 0;
   --chat-composer-reserve: 190px;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
   background: transparent;
@@ -2225,7 +2225,7 @@ button {
 .chat-scroll {
   display: flex;
   flex-direction: column;
-  grid-row: 1;
+  grid-row: 2;
   min-height: 0;
   overflow-y: auto;
   gap: 14px;
@@ -2305,19 +2305,12 @@ button {
   pointer-events: none;
 }
 
-.chat-scroll.replay-active > .msg:last-child {
-  animation: replay-fade-in 0.28s ease-out;
+.chat-scroll.replay-active {
+  scroll-behavior: auto;
 }
 
-@keyframes replay-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.chat-scroll.replay-active > .msg {
+  animation: none;
 }
 
 .chat-scroll > .msg,
@@ -2514,8 +2507,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2542,9 +2535,11 @@ button {
 }
 
 .msg-action-icon {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   display: block;
+  flex: 0 0 16px;
+  stroke-width: 1.9;
 }
 
 .msg-action-time {
@@ -3332,6 +3327,7 @@ button {
 }
 
 .footer-toggle {
+  position: relative;
   display: grid;
   width: 30px;
   height: 30px;
@@ -3344,6 +3340,18 @@ button {
   font-size: 15px;
   line-height: 1;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.footer-toggle[data-theme-preference="system"]::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--fb-brand);
+  box-shadow: 0 0 0 2px var(--fb-sidebar-bg);
 }
 
 .footer-toggle:hover {
@@ -5150,7 +5158,7 @@ button.ghost:focus-visible,
   line-height: 22px;
 }
 
-.stream-process summary {
+.stream-process > summary {
   display: inline-flex;
   max-width: 100%;
   align-items: center;
@@ -5164,15 +5172,15 @@ button.ghost:focus-visible,
   transition: color 120ms ease;
 }
 
-.stream-process summary:hover {
+.stream-process > summary:hover {
   color: #6f7681;
 }
 
-.stream-process summary::-webkit-details-marker {
+.stream-process > summary::-webkit-details-marker {
   display: none;
 }
 
-.stream-process summary::after {
+.stream-process > summary::after {
   width: 6px;
   height: 6px;
   flex: 0 0 6px;
@@ -5184,14 +5192,14 @@ button.ghost:focus-visible,
   transition: transform 120ms ease;
 }
 
-.stream-process[open] summary::after {
+.stream-process[open] > summary::after {
   transform: rotate(225deg) translateY(-1px);
 }
 
 .stream-process-icon {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   color: currentColor;
   stroke-width: 1.85;
 }
@@ -5200,15 +5208,47 @@ button.ghost:focus-visible,
   animation: stream-process-spin 1s linear infinite;
 }
 
-.stream-process.failed summary {
-  color: #b45353;
-}
-
 .stream-process-title {
+  display: inline-flex;
   min-width: 0;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.stream-process-outcome {
+  flex: 0 0 auto;
+  color: #9fa7b2;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.stream-process-title-separator {
+  color: #a9aeb6;
+}
+
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .stream-process.running .stream-process-running-text {
+    color: transparent;
+    background:
+      linear-gradient(
+        100deg,
+        #969ba3 0%,
+        #969ba3 34%,
+        #14a477 45%,
+        #85d8b7 50%,
+        #14a477 55%,
+        #969ba3 66%,
+        #969ba3 100%
+      );
+    background-size: 260% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: stream-process-title-shimmer 1.75s linear infinite;
+  }
 }
 
 .stream-process-detail-list {
@@ -5221,6 +5261,24 @@ button.ghost:focus-visible,
 @keyframes stream-process-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes stream-process-title-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-process.running .stream-process-running-text {
+    color: #969ba3;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    animation: none;
   }
 }
 
@@ -5643,13 +5701,14 @@ button.ghost:focus-visible,
   flex: 0 0 16px;
   align-items: center;
   justify-content: center;
-  color: #9a9a9a;
+  color: #98a1ad;
 }
 
 .stream-step-icon-svg {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.85;
 }
 
 .stream-tool-call {
@@ -5680,45 +5739,65 @@ button.ghost:focus-visible,
   color: #8a8a8a;
   font-weight: 500;
   line-height: 22px;
+  cursor: default;
+}
+
+.stream-tool-invocation.has-body > summary,
+.stream-thinking > summary,
+.stream-tool-result > summary,
+.stream-file-edit > summary {
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.stream-tool-invocation.has-body > summary:hover,
+.stream-thinking > summary:hover,
+.stream-tool-result > summary:hover,
+.stream-file-edit > summary:hover {
+  background: rgba(148, 163, 184, 0.08);
+  color: #68707b;
+}
+
+.stream-tool-invocation > summary {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+
+.stream-tool-invocation.has-body > summary {
   cursor: pointer;
 }
 
-.stream-tool-invocation summary {
+.stream-thinking > summary {
   display: flex;
-  max-width: 100%;
   align-items: center;
   gap: 7px;
   list-style: none;
 }
 
-.stream-thinking summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+.stream-tool-result > summary,
+.stream-file-edit > summary {
   list-style: none;
 }
 
 .stream-thinking summary::-webkit-details-marker,
+.stream-tool-result summary::-webkit-details-marker,
+.stream-file-edit summary::-webkit-details-marker,
 .stream-tool-invocation summary::-webkit-details-marker {
   display: none;
 }
 
-.stream-thinking summary::before,
-.stream-tool-invocation summary::before {
-  flex: 0 0 auto;
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid #9a9a9a;
+.stream-thinking summary::marker,
+.stream-tool-result summary::marker,
+.stream-file-edit summary::marker,
+.stream-tool-invocation summary::marker {
   content: "";
-  transition: transform 120ms ease;
-  transform: rotate(0deg);
-}
-
-.stream-thinking[open] summary::before,
-.stream-tool-invocation[open] summary::before {
-  transform: rotate(90deg);
+  font-size: 0;
 }
 
 .stream-tool-summary-main {
@@ -5757,8 +5836,14 @@ button.ghost:focus-visible,
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 5px;
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .stream-tool-status.pending {
@@ -5770,7 +5855,8 @@ button.ghost:focus-visible,
 }
 
 .stream-tool-status.completed {
-  color: #16a34a;
+  background: rgba(16, 185, 129, 0.1);
+  color: #0f9f72;
 }
 
 .stream-tool-status.failed,
@@ -5891,6 +5977,8 @@ button.ghost:focus-visible,
   display: grid;
   gap: 8px;
   margin: 8px 0 0 28px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
   min-width: 0;
 }
 
@@ -5939,6 +6027,7 @@ button.ghost:focus-visible,
   padding: 10px 12px;
   overflow: auto;
   border: 1px solid #ececec;
+  border-left-color: rgba(148, 163, 184, 0.28);
   border-radius: 8px;
   background: #fafafa;
   color: #4a4a4a;
@@ -5949,6 +6038,8 @@ button.ghost:focus-visible,
 
 .stream-thinking .markdown-body {
   margin: 8px 0 0 22px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
   color: #777777;
   font-size: 13px;
 }
@@ -6109,12 +6200,8 @@ button.ghost:focus-visible,
   color: rgba(203, 213, 225, 0.62);
 }
 
-[data-theme="dark"] .stream-process summary:hover {
+[data-theme="dark"] .stream-process > summary:hover {
   color: rgba(226, 232, 240, 0.82);
-}
-
-[data-theme="dark"] .stream-process.failed summary {
-  color: rgba(248, 113, 113, 0.86);
 }
 
 [data-theme="dark"] .markdown-body code,
@@ -6467,8 +6554,16 @@ button.ghost:focus-visible,
 .settings-section h3 { margin: 0 0 8px; font-size: 13px; }
 .settings-section select { padding: 6px 8px; border-radius: 6px; }
 
-/* Sidebar version + update badge */
+/* Sidebar version + update capsule */
 .sidebar-footer .footer-action { position: relative; }
+.footer-version-wrap {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .footer-version {
   flex: 0 0 auto;
   font-size: 11px;
@@ -6476,15 +6571,41 @@ button.ghost:focus-visible,
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.footer-badge {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+
+.footer-update-pill {
+  display: inline-flex;
+  height: 18px;
+  max-width: 74px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 999px;
+  color: var(--fb-brand, #10b981);
+  background: var(--fb-brand-glow, rgba(16, 185, 129, 0.12));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.footer-update-pill:hover {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(16, 185, 129, 0.16);
+  color: #059669;
+}
+
+.footer-update-pill.downloaded {
+  color: #ffffff;
+  border-color: var(--fb-brand, #10b981);
   background: var(--fb-brand, #10b981);
-  box-shadow: 0 0 0 2px var(--fb-sidebar-bg);
+}
+
+.footer-update-pill.downloaded:hover {
+  color: #ffffff;
+  background: #059669;
 }
 
 /* About / Updates tab */

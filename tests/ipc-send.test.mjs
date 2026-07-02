@@ -25,3 +25,16 @@ test("long-running main-process streams use safe IPC send", () => {
     assert.match(src, /safeSendToWebContents/);
   }
 });
+
+test("main-process one-off broadcasts use safe IPC send", () => {
+  for (const path of [
+    "../electron/previewServer.ts",
+    "../electron/main.ts",
+    "../electron/updater.ts"
+  ]) {
+    const src = read(path);
+    assert.match(src, /safeSendToWebContents/);
+    assert.doesNotMatch(src, /\.webContents\.send\(/);
+    assert.doesNotMatch(src, /\bwc\.send\(/);
+  }
+});

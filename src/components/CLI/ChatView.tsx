@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { useTranslation } from "react-i18next";
 
@@ -446,24 +446,30 @@ export function ChatView() {
   }, [conv, submitPreview, messages]);
 
   const storeFrames = useReplayStore((s) => s.frames);
-  const replayFull = useMemo<ConversationMessage[]>(() => {
+  const replayFrame =
+    replaying && replayIndex >= 0 && replayIndex < storeFrames.length
+      ? storeFrames[replayIndex]
+      : undefined;
+  const displayMessages = useMemo<ConversationMessage[]>(() => {
     if (!replaying) return [...messages, ...previewMessages];
-    if (replayIndex < 0 || replayIndex >= storeFrames.length) return [];
-    return messages.slice(0, storeFrames[replayIndex].messageIndex);
-  }, [replaying, replayIndex, storeFrames, messages, previewMessages]);
+    if (!replayFrame) return [];
+    return messages.slice(0, replayFrame.messageIndex + 1);
+  }, [replaying, replayFrame, messages, previewMessages]);
   const replayPartial = useMemo<{
-    message: ConversationMessage;
+    messageId: string;
     blockLimit?: number;
     typingChars?: number;
   } | null>(() => {
-    if (!replaying) return null;
-    if (replayIndex < 0 || replayIndex >= storeFrames.length) return null;
-    const frame = storeFrames[replayIndex];
-    const message = messages[frame.messageIndex];
+    if (!replaying || !replayFrame) return null;
+    const message = messages[replayFrame.messageIndex];
     return message
-      ? { message, blockLimit: frame.blockLimit, typingChars: frame.typingChars }
+      ? {
+          messageId: message.id,
+          blockLimit: replayFrame.blockLimit,
+          typingChars: replayFrame.typingChars
+        }
       : null;
-  }, [replaying, replayIndex, storeFrames, messages]);
+  }, [replaying, replayFrame, messages]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -506,7 +512,7 @@ export function ChatView() {
     }
   }, [activeId, conv?.approvalMode, member?.cli.approvalMode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && (replaying || isNearBottomRef.current)) {
       el.scrollTop = el.scrollHeight;
@@ -928,18 +934,21 @@ export function ChatView() {
             </div>
           </div>
         )}
-        {replayFull.map((m) => (
-          <MessageBubble key={m.id} message={m} adapter={conv?.adapter} />
-        ))}
-        {replayPartial && (
-          <MessageBubble
-            key={replayPartial.message.id}
-            message={replayPartial.message}
-            adapter={conv?.adapter}
-            blockLimit={replayPartial.blockLimit}
-            typingChars={replayPartial.typingChars}
-          />
-        )}
+        {displayMessages.map((m) => {
+          const partial =
+            replayPartial && replayPartial.messageId === m.id
+              ? replayPartial
+              : undefined;
+          return (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              adapter={conv?.adapter}
+              blockLimit={partial?.blockLimit}
+              typingChars={partial?.typingChars}
+            />
+          );
+        })}
         {activeRun?.conversationId === conv.id &&
           workflowGateIsActionable &&
           gatingPhaseId &&

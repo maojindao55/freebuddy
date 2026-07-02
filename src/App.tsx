@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
+import { Monitor, Moon, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
@@ -10,7 +11,7 @@ import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { DetailColumn } from "./components/CLI/DetailColumn";
 import { AgentBridgeListener } from "./components/AgentBridge/AgentBridgeListener";
 import { AgentBridgeToasts } from "./components/AgentBridge/AgentBridgeToasts";
-import { SettingsModal } from "./components/Settings/SettingsModal";
+import { SettingsModal, type SettingsTab } from "./components/Settings/SettingsModal";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
@@ -19,8 +20,6 @@ import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
-
-type Theme = "light" | "dark";
 
 function GearIcon() {
   return (
@@ -40,39 +39,10 @@ function GearIcon() {
   );
 }
 
-function SunIcon() {
-  return (
-    <svg
-      className="footer-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg
-      className="footer-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
-  );
+function nextThemePreference(theme: "system" | "light" | "dark") {
+  if (theme === "system") return "light";
+  if (theme === "light") return "dark";
+  return "system";
 }
 
 function BrandMark() {
@@ -107,8 +77,8 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 }
 
 function App() {
-  const [theme, setTheme] = useState<Theme>("light");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("cli");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
 
@@ -134,9 +104,22 @@ function App() {
 
   const { t } = useTranslation();
   const loadSettings = useSettingsStore((s) => s.load);
+  const themePreference = useSettingsStore((s) => s.theme);
+  const theme = useSettingsStore((s) => s.resolvedTheme);
+  const setTheme = useSettingsStore((s) => s.setTheme);
+  const refreshSystemTheme = useSettingsStore((s) => s.refreshSystemTheme);
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => refreshSystemTheme();
+    media.addEventListener?.("change", handleChange);
+    return () => {
+      media.removeEventListener?.("change", handleChange);
+    };
+  }, [refreshSystemTheme]);
 
   const loadUpdater = useUpdaterStore((s) => s.load);
   useEffect(() => {
@@ -161,8 +144,26 @@ function App() {
     detailWidth,
     Math.max(DETAIL_MIN_WIDTH, winWidth - sidebarWidth - 420 - 8)
   );
-  const updateReady = useUpdaterStore((s) => s.status === "downloaded");
+  const updateStatus = useUpdaterStore((s) => s.status);
   const appVersion = useUpdaterStore((s) => s.appVersion);
+  const latestVersion = useUpdaterStore((s) => s.latestVersion);
+  const downloadPercent = useUpdaterStore((s) => s.downloadPercent);
+
+  const openSettings = (tab: SettingsTab = "cli") => {
+    setSettingsInitialTab(tab);
+    setSettingsOpen(true);
+  };
+
+  const showUpdateCapsule =
+    updateStatus === "available" ||
+    updateStatus === "downloading" ||
+    updateStatus === "downloaded";
+  const updateCapsuleText =
+    updateStatus === "downloaded"
+      ? t("updater.footerInstall")
+      : updateStatus === "downloading"
+        ? t("updater.footerDownloading", { percent: Math.round(downloadPercent) })
+        : t("updater.footerUpdate");
 
   useEffect(() => {
     document.documentElement.lang = i18next.language ?? "en";
@@ -246,20 +247,41 @@ function App() {
         <div className="sidebar-footer">
           <button
             className="footer-action"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => openSettings("cli")}
           >
             <GearIcon />
             {t("common.settings")}
-            {updateReady && <span className="footer-badge" aria-label={t("updater.installNow")} />}
           </button>
-          {appVersion && <span className="footer-version">v{appVersion}</span>}
+          {appVersion && (
+            <span className="footer-version-wrap">
+              <span className="footer-version">v{appVersion}</span>
+              {showUpdateCapsule && (
+                <button
+                  type="button"
+                  className={`footer-update-pill ${updateStatus}`}
+                  title={t("updater.footerOpen", { version: latestVersion ?? "" })}
+                  aria-label={t("updater.footerOpen", { version: latestVersion ?? "" })}
+                  onClick={() => openSettings("about")}
+                >
+                  {updateCapsuleText}
+                </button>
+              )}
+            </span>
+          )}
           <button
             className="footer-toggle"
             title={t("sidebar.toggleTheme")}
             aria-label={t("sidebar.toggleTheme")}
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            data-theme-preference={themePreference}
+            onClick={() => void setTheme(nextThemePreference(themePreference))}
           >
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+            {themePreference === "system" ? (
+              <Monitor className="footer-icon" strokeWidth={1.7} />
+            ) : themePreference === "dark" ? (
+              <Sun className="footer-icon" strokeWidth={1.7} />
+            ) : (
+              <Moon className="footer-icon" strokeWidth={1.7} />
+            )}
           </button>
         </div>
       </aside>
@@ -287,7 +309,12 @@ function App() {
         <DetailColumn runningCount={runningCount} />
       )}
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsModal
+          initialTab={settingsInitialTab}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       <CliInstallPanelHost />
       <PermissionDialog />
       <AgentBridgeListener />

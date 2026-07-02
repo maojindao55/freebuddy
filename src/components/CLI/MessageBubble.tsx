@@ -1,11 +1,14 @@
 import {
   Brain,
+  Check,
+  Copy,
   FileText,
   LoaderCircle,
-  Pencil,
   Search,
+  SquarePen,
   SquareTerminal,
-  TriangleAlert,
+  ThumbsDown,
+  ThumbsUp,
   Wrench,
   type LucideIcon
 } from "lucide-react";
@@ -38,6 +41,10 @@ type ProcessActivityKind =
   | "thinking"
   | "tool";
 type ProcessActivityCounts = Record<ProcessActivityKind, number>;
+interface ProcessOutcomeCounts {
+  succeeded: number;
+  failed: number;
+}
 
 const HIDDEN_CODEX_EVENTS = new Set([
   "thread.started",
@@ -352,10 +359,8 @@ function formatActivitySummary(
 
 function dominantActivityIcon(
   counts: ProcessActivityCounts,
-  hasIssue: boolean,
   hasRunning: boolean
 ): LucideIcon {
-  if (hasIssue) return TriangleAlert;
   if (
     hasRunning &&
     counts.edit === 0 &&
@@ -366,7 +371,7 @@ function dominantActivityIcon(
   ) {
     return LoaderCircle;
   }
-  if (counts.edit > 0) return Pencil;
+  if (counts.edit > 0) return SquarePen;
   if (counts.command > 0) return SquareTerminal;
   if (counts.read > 0) return FileText;
   if (counts.search > 0) return Search;
@@ -402,9 +407,50 @@ function blockHasIssue(block: MessageBlock): boolean {
   return (
     (item.kind === "tool-call" && (item.isError === true || item.status === "failed")) ||
     (item.kind === "tool-result" && item.isError === true) ||
-    (item.kind === "command-output" && item.stream === "stderr") ||
     (item.kind === "terminal-embed" && item.exitCode != null && item.exitCode !== 0)
   );
+}
+
+function blockOutcome(block: MessageBlock): keyof ProcessOutcomeCounts | undefined {
+  if (blockHasIssue(block)) return "failed";
+  if (block.kind === "tool") {
+    return block.call.status === "completed" ? "succeeded" : undefined;
+  }
+  const item = block.item;
+  if (item.kind === "tool-call") {
+    return item.status === "completed" ? "succeeded" : undefined;
+  }
+  if (item.kind === "tool-result") {
+    return item.isError ? "failed" : "succeeded";
+  }
+  if (item.kind === "terminal-embed" && item.exitCode != null) {
+    return item.exitCode === 0 ? "succeeded" : "failed";
+  }
+  return undefined;
+}
+
+function countProcessOutcomes(blocks: MessageBlock[]): ProcessOutcomeCounts {
+  const counts: ProcessOutcomeCounts = { succeeded: 0, failed: 0 };
+  for (const block of blocks) {
+    const outcome = blockOutcome(block);
+    if (outcome) counts[outcome] += 1;
+  }
+  return counts;
+}
+
+function formatOutcomeSummary(counts: ProcessOutcomeCounts, t: Translate): string {
+  if (counts.failed <= 0) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  if (counts.succeeded > 0) {
+    parts.push(t("stream.activitySucceeded", { count: counts.succeeded }));
+  }
+  if (counts.failed > 0) {
+    parts.push(t("stream.activityFailed", { count: counts.failed }));
+  }
+  return parts.join(" / ");
 }
 
 function blockIsRunning(block: MessageBlock): boolean {
@@ -455,33 +501,22 @@ function renderMessageBlock(block: MessageBlock, key: string | number) {
   );
 }
 
-function StreamProcessGroup({
-  blocks,
-  messageStatus
-}: {
-  blocks: MessageBlock[];
-  messageStatus: ConversationMessage["status"];
-}) {
+function StreamProcessGroup({ blocks }: { blocks: MessageBlock[] }) {
   const { t } = useTranslation();
-  const hasIssue = blocks.some(blockHasIssue);
-  const hasRunning =
-    messageStatus === "running" ||
-    messageStatus === "starting" ||
-    blocks.some(blockIsRunning);
+  const hasRunning = blocks.some(blockIsRunning);
   const activityCounts = countProcessActivity(blocks);
+  const outcomeCounts = countProcessOutcomes(blocks);
   const summary = formatActivitySummary(activityCounts, blocks.length, t);
-  const Icon = dominantActivityIcon(activityCounts, hasIssue, hasRunning);
+  const outcomeSummary = formatOutcomeSummary(outcomeCounts, t);
+  const outcomeNode = outcomeSummary ? (
+    <span className="stream-process-outcome">{outcomeSummary}</span>
+  ) : null;
+  const Icon = dominantActivityIcon(activityCounts, hasRunning);
   const isSpinnerIcon = Icon === LoaderCircle;
-  const title = hasIssue
-    ? t("stream.activityNeedsAttention")
-    : hasRunning
-      ? `${t("stream.activityProcessing")} · ${summary}`
-      : summary;
 
   return (
     <details
-      className={`stream-process${hasRunning ? " running" : ""}${hasIssue ? " failed" : ""}`}
-      open={hasIssue ? true : undefined}
+      className={`stream-process${hasRunning ? " running" : ""}`}
       aria-label={t("stream.processDetails", { count: blocks.length })}
     >
       <summary>
@@ -489,7 +524,23 @@ function StreamProcessGroup({
           className={`stream-process-icon${isSpinnerIcon ? " spinning" : ""}`}
           aria-hidden="true"
         />
-        <span className="stream-process-title">{title}</span>
+        <span className="stream-process-title">
+          {hasRunning ? (
+            <>
+              <span className="stream-process-running-text">
+                {t("stream.activityProcessing")}
+              </span>
+              <span className="stream-process-title-separator"> · </span>
+              <span>{summary}</span>
+              {outcomeNode}
+            </>
+          ) : (
+            <>
+              <span>{summary}</span>
+              {outcomeNode}
+            </>
+          )}
+        </span>
       </summary>
       <div className="stream-process-detail-list">
         {blocks.map((block, index) =>
@@ -774,14 +825,9 @@ export const MessageBubble = memo(function MessageBubble({
         aria-label={t("message.copy")}
       >
         {copied ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
+          <Check className="msg-action-icon" aria-hidden="true" />
         ) : (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
-            <rect x="9" y="9" width="11" height="11" rx="2" />
-            <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-          </svg>
+          <Copy className="msg-action-icon" aria-hidden="true" />
         )}
       </button>
       <button
@@ -791,10 +837,7 @@ export const MessageBubble = memo(function MessageBubble({
         title={t("message.upvote")}
         aria-label={t("message.upvote")}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
-          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.3a2 2 0 0 0 2-1.7l1.4-9a2 2 0 0 0-2-2.3H14Z" />
-          <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-        </svg>
+        <ThumbsUp className="msg-action-icon" aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -803,10 +846,7 @@ export const MessageBubble = memo(function MessageBubble({
         title={t("message.downvote")}
         aria-label={t("message.downvote")}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="msg-action-icon">
-          <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.7a2 2 0 0 0-2 1.7l-1.4 9A2 2 0 0 0 4.3 15H10Z" />
-          <path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
-        </svg>
+        <ThumbsDown className="msg-action-icon" aria-hidden="true" />
       </button>
       {timeStr && <span className="msg-action-time">{timeStr}</span>}
     </div>
@@ -892,7 +932,6 @@ export const MessageBubble = memo(function MessageBubble({
                   <StreamProcessGroup
                     key={`process-${i}`}
                     blocks={section.blocks}
-                    messageStatus={message.status}
                   />
                 ) : (
                   renderMessageBlock(section.block, `block-${i}`)

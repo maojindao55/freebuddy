@@ -228,6 +228,21 @@ test("builtin team editor shows the same node config surface as readonly", () =>
   assert.doesNotMatch(src, /setDeliveryNodeEnabled\("approval"/);
 });
 
+test("builtin team editor allows changing role agents", () => {
+  const src = read("../src/components/Settings/WorkflowTeamEditor.tsx");
+  const roleSelectIndex = src.indexOf("<select");
+  assert.ok(roleSelectIndex > 0, "missing role agent select");
+  const roleSelectBlock = src.slice(roleSelectIndex, src.indexOf("</select>", roleSelectIndex));
+  assert.match(roleSelectBlock, /value=\{role\.agentId\}/);
+  assert.match(roleSelectBlock, /onChange=\{\(e\) => setRoleAgent\(role\.id, e\.target\.value\)\}/);
+  assert.doesNotMatch(roleSelectBlock, /disabled=\{isBuiltin\}/);
+  const saveButtonBlock = src.slice(
+    src.indexOf('className="primary"'),
+    src.indexOf("{t(\"common.save\")}", src.indexOf('className="primary"'))
+  );
+  assert.doesNotMatch(saveButtonBlock, /disabled=\{isBuiltin\}/);
+});
+
 test("Settings modal mounts the WorkflowTeamsTab", () => {
   const src = read("../src/components/Settings/SettingsModal.tsx");
   assert.match(src, /<WorkflowTeamsTab/);

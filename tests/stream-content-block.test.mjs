@@ -33,11 +33,20 @@ test("styles include content-block and markdown quote rules", () => {
   assert.match(stylesSource, /\.markdown-body a\b/);
 });
 
-test("thinking and tool invocations share the same disclosure chevron", () => {
-  assert.match(
-    stylesSource,
-    /\.stream-thinking summary::before,\s*\n\.stream-tool-invocation summary::before/
-  );
-  assert.match(stylesSource, /\.stream-thinking\[open\] summary::before,/);
-  assert.doesNotMatch(stylesSource, /content: "▼"/);
+test("tool invocation rows avoid disclosure arrows", () => {
+  assert.match(streamItemSource, /case "thinking":[\s\S]*<ToolKindIcon toolKind="think" \/>/);
+  assert.match(stylesSource, /\.stream-thinking summary::-webkit-details-marker/);
+  assert.match(stylesSource, /\.stream-tool-result summary::-webkit-details-marker/);
+  assert.match(stylesSource, /\.stream-file-edit summary::-webkit-details-marker/);
+  assert.match(stylesSource, /\.stream-tool-invocation summary::marker/);
+  assert.match(stylesSource, /\.stream-tool-invocation\.has-body > summary/);
+  assert.match(stylesSource, /\.stream-tool-invocation\.has-body > summary:hover/);
+  assert.match(stylesSource, /\.stream-thinking > summary:hover/);
+  assert.match(stylesSource, /\.stream-tool-body\s*\{[\s\S]*border-left:\s*1px solid rgba\(148,\s*163,\s*184,\s*0\.22\)/);
+  assert.match(stylesSource, /\.stream-thinking \.markdown-body\s*\{[\s\S]*border-left:\s*1px solid rgba\(148,\s*163,\s*184,\s*0\.22\)/);
+  assert.doesNotMatch(stylesSource, /\.stream-thinking summary::before/);
+  assert.doesNotMatch(stylesSource, /\.stream-thinking\[open\] summary::before/);
+  assert.doesNotMatch(stylesSource, /\.stream-tool-invocation summary::before/);
+  assert.doesNotMatch(stylesSource, /\.stream-tool-invocation\.has-body summary::after/);
+  assert.doesNotMatch(stylesSource, /\.stream-tool-invocation\.has-body\[open\] summary::after/);
 });

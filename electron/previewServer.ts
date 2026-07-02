@@ -1,6 +1,7 @@
 import http from "node:http";
 import type { WebContents } from "electron";
 
+import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { BRIDGE_PORT, isKnownBridgeAction, parseBridgeRequest } from "./agentBridge.js";
 
 let previewServer: http.Server | null = null;
@@ -12,10 +13,7 @@ export function startPreviewServer(
   const server = http.createServer((req, res) => {
     const parsed = parseBridgeRequest(req.url || "");
     if (parsed && isKnownBridgeAction(parsed.action)) {
-      const wc = getWebContents();
-      if (wc && !wc.isDestroyed()) {
-        wc.send("freebuddy://bridge", parsed);
-      }
+      safeSendToWebContents(getWebContents(), "freebuddy://bridge", parsed);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, action: parsed.action }));
       return;

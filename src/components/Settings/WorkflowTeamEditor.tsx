@@ -431,7 +431,6 @@ export function WorkflowTeamEditor({
             type="button"
             className="primary"
             onClick={() => void handleSave()}
-            disabled={isBuiltin}
           >
             {t("common.save")}
           </button>
@@ -500,7 +499,6 @@ export function WorkflowTeamEditor({
                   <select
                     value={role.agentId}
                     onChange={(e) => setRoleAgent(role.id, e.target.value)}
-                    disabled={isBuiltin}
                   >
                     {members.map((m) => (
                       <option key={m.id} value={m.id}>

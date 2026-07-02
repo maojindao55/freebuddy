@@ -94,8 +94,15 @@ test("ChatView plays back at block granularity with typing text and locks the co
   const src = read("../src/components/CLI/ChatView.tsx");
   assert.match(src, /const replaying = replayConvId === conv\?\.id && replayConvId !== null/);
   assert.match(src, /const storeFrames = useReplayStore\(\(s\) => s\.frames\)/);
-  assert.match(src, /blockLimit=\{replayPartial\.blockLimit\}/);
-  assert.match(src, /typingChars=\{replayPartial\.typingChars\}/);
+  assert.match(src, /const displayMessages = useMemo<ConversationMessage\[\]>/);
+  assert.match(src, /messages\.slice\(0, replayFrame\.messageIndex \+ 1\)/);
+  assert.match(src, /displayMessages\.map\(\(m\) =>/);
+  assert.match(src, /replayPartial && replayPartial\.messageId === m\.id/);
+  assert.match(src, /blockLimit=\{partial\?\.blockLimit\}/);
+  assert.match(src, /typingChars=\{partial\?\.typingChars\}/);
+  assert.match(src, /useLayoutEffect\(\(\) => \{[\s\S]*?el\.scrollTop = el\.scrollHeight/);
+  assert.doesNotMatch(src, /const replayFull/);
+  assert.doesNotMatch(src, /\{replayPartial && \(/);
   assert.match(src, /disabled=\{sending \|\| replaying\}/);
   assert.match(src, /replay-disabled/);
   assert.match(src, /stopReplay\(\)/);
@@ -109,8 +116,9 @@ test("replay styles exist in the stylesheet", () => {
   assert.match(css, /\.title-replay-btn\.replaying\s*\{[\s\S]*?background: var\(--fb-brand-glow\)/);
   assert.match(css, /\.title-replay-label\s*\{/);
   assert.match(css, /\.chat-composer\.replay-disabled\s*\{/);
-  assert.match(css, /\.chat-scroll\.replay-active > \.msg:last-child/);
-  assert.match(css, /@keyframes replay-fade-in/);
+  assert.match(css, /\.chat-scroll\.replay-active\s*\{[\s\S]*?scroll-behavior:\s*auto/);
+  assert.match(css, /\.chat-scroll\.replay-active > \.msg\s*\{[\s\S]*?animation:\s*none/);
+  assert.doesNotMatch(css, /replay-fade-in/);
 });
 
 test("replay i18n keys exist in both locales", () => {

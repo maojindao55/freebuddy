@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const scheduler = await import("../dist-electron/cli/workflowScheduler.js");
 const {
+  applyWorkflowLanguagePreference,
   decideImplementReviewLoop,
   reviewerHasFail,
   augmentPromptWithConsumedSummaries
@@ -199,6 +200,28 @@ test("collectDecisionTextFromItems reads content-block and tool-call output", as
   assert.equal(extractReviewStatus(text), "FAIL");
 });
 
+test("review decision prefers visible assistant status over tool prompt examples", async () => {
+  const { reviewDecisionTextFromItems, extractReviewStatus } = scheduler;
+  const text = reviewDecisionTextFromItems([
+    {
+      kind: "text",
+      role: "assistant",
+      content: "No concrete issues found.\nREVIEW_STATUS: PASS"
+    },
+    {
+      kind: "tool-call",
+      tool: "read",
+      input: {
+        prompt:
+          "Required machine-readable format:\nREVIEW_STATUS: PASS\nor\nREVIEW_STATUS: FAIL"
+      },
+      output: "The source file mentions REVIEW_STATUS: FAIL as an example."
+    }
+  ]);
+  assert.equal(extractReviewStatus(text), "PASS");
+  assert.equal(decideImplementReviewLoop("done", text, 0, 5), "finish");
+});
+
 test("decideImplementReviewLoop returns partial when reviewer failed without status", () => {
   assert.equal(
     decideImplementReviewLoop("failed", "Tool error", 0, 5),
@@ -240,6 +263,22 @@ test("augmentPromptWithConsumedSummaries prefers visible output over compact sum
   assert.match(out, /confirmed fact/);
   assert.match(out, /final evidence/);
   assert.doesNotMatch(out, /I need to search first/);
+});
+
+test("workflow step prompts carry the configured response language", () => {
+  const zh = applyWorkflowLanguagePreference(
+    "Review the implementation. End with REVIEW_STATUS: PASS",
+    "zh-CN"
+  );
+  assert.match(zh, /Write all user-facing prose in Simplified Chinese/);
+  assert.match(zh, /REVIEW_STATUS: PASS/);
+  assert.match(zh, /UNRESOLVED: <count>/);
+  assert.match(zh, /Review the implementation/);
+
+  const en = applyWorkflowLanguagePreference("Summarize the delivery.", "en");
+  assert.match(en, /Write all user-facing prose in English/);
+
+  assert.equal(applyWorkflowLanguagePreference(zh, "zh-CN"), zh);
 });
 
 test("runtime exposes continueImplementReview for max-loop FAIL follow-up", () => {

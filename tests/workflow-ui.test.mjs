@@ -95,8 +95,10 @@ test("ChatView renders workflow approval decisions in the chat stream", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
   const css = read("../styles.css");
   assert.match(src, /WorkflowApprovalCard/);
-  assert.match(src, /pendingWriteApprovalPhaseId/);
-  assert.doesNotMatch(src, /pendingManualGatePhaseId/);
+  assert.match(src, /pendingManualGatePhaseId/);
+  assert.match(src, /workflowGateIsActionable/);
+  assert.match(src, /activeRun\?\.status === "blocked"/);
+  assert.doesNotMatch(src, /pendingWriteApprovalPhaseId/);
   assert.doesNotMatch(src, /approvalCardTitle/);
   assert.doesNotMatch(src, /workflow-approval-avatar/);
   assert.doesNotMatch(css, /workflow-approval-avatar/);
@@ -159,7 +161,7 @@ test("workflow i18n keys exist in both locales", () => {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }
-  for (const teamId of ["team-quick-implement", "team-implement-review-loop", "team-root-cause-analysis", "team-research-report"]) {
+  for (const teamId of ["team-delivery-example", "team-root-cause-analysis", "team-research-report"]) {
     assert.ok(en.workflow.builtinTeams?.[teamId]?.name, `missing en workflow.builtinTeams.${teamId}.name`);
     assert.ok(en.workflow.builtinTeams?.[teamId]?.description, `missing en workflow.builtinTeams.${teamId}.description`);
     assert.ok(zh.workflow.builtinTeams?.[teamId]?.name, `missing zh-CN workflow.builtinTeams.${teamId}.name`);
@@ -169,11 +171,18 @@ test("workflow i18n keys exist in both locales", () => {
   assert.ok(zh.workflow.status?.running);
   assert.ok(en.workflow.stepStatus?.failed);
   assert.ok(zh.workflow.stepStatus?.failed);
+  assert.ok(en.workflow.phaseTitles?.plan);
+  assert.ok(zh.workflow.phaseTitles?.plan);
+  assert.ok(en.workflow.stepTitles?.["plan-delivery"]);
+  assert.ok(zh.workflow.stepTitles?.["plan-delivery"]);
+  assert.ok(en.workflow.stepTitles?.["summarize-delivery"]);
+  assert.ok(zh.workflow.stepTitles?.["summarize-delivery"]);
 });
 
 test("WorkflowRunPanel translates workflow run names", () => {
   const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
   assert.match(src, /workflowRunName/);
+  assert.match(src, /workflow\.builtinTeams\.team-delivery-example\.name/);
   assert.match(src, /workflow\.builtinTeams\.team-research-report\.name/);
   assert.match(src, /workflow\.implementReviewLoop/);
 });

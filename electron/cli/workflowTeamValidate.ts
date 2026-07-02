@@ -5,6 +5,17 @@ import type {
   WorkflowTemplate2
 } from "./workflowTeamTypes.js";
 
+const CONTRACT_MODES = new Map([
+  ["plan", "research"],
+  ["approval", "approval"],
+  ["implement", "write"],
+  ["review", "review"],
+  ["verify", "verify"],
+  ["summarize", "summarize"],
+  ["research", "research"],
+  ["report", "summarize"]
+]);
+
 export function validateWorkflowTeam(
   team: WorkflowTeam,
   agents: WorkflowAgentRef[]
@@ -70,6 +81,24 @@ function validateTemplate(
       errors.push(`duplicate node id: ${node.id}`);
     }
     nodeIds.add(node.id);
+    if (node.contract) {
+      const expectedMode = CONTRACT_MODES.get(node.contract);
+      if (!expectedMode) {
+        errors.push(`node ${node.id} has unknown contract: ${node.contract}`);
+      } else if (node.mode !== expectedMode) {
+        errors.push(
+          `node ${node.id} contract ${node.contract} requires mode ${expectedMode}`
+        );
+      }
+    }
+    for (const gate of node.gates ?? []) {
+      if (gate.type !== "manual_approval") {
+        errors.push(`node ${node.id} has unsupported gate: ${gate.type}`);
+      }
+      if (gate.placement !== "before" && gate.placement !== "after") {
+        errors.push(`node ${node.id} gate ${gate.id} has invalid placement`);
+      }
+    }
     if (node.mode !== "approval") {
       if (!node.roleId) {
         errors.push(`node ${node.id} has no role`);

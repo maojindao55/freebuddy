@@ -17,7 +17,7 @@ import {
   workflowFollowupAgentId,
   type WorkflowPlan
 } from "@/services/workflows/types";
-import { pendingWriteApprovalPhaseId } from "@/services/workflows/planning";
+import { pendingManualGatePhaseId } from "@/services/workflows/planning";
 import { workflowClient } from "@/services/workflows/client";
 import { displayAgentName } from "@/config/agentDisplay";
 import {
@@ -370,7 +370,7 @@ export function ChatView() {
 
   const gatingPhaseId = useMemo(() => {
     if (!workflowPlan) return undefined;
-    return pendingWriteApprovalPhaseId(
+    return pendingManualGatePhaseId(
       workflowPlan.phases,
       workflowSteps.map((s) => ({ stepId: s.stepId, status: s.status }))
     );
@@ -383,6 +383,11 @@ export function ChatView() {
     approvedWorkflowGate !== null &&
     approvedWorkflowGate.runId === activeRun?.id &&
     approvedWorkflowGate.phaseId === gatingPhaseId;
+  const workflowGateIsActionable =
+    activeRun?.status === "running" ||
+    activeRun?.status === "paused" ||
+    activeRun?.status === "blocked" ||
+    activeRun?.status === "pending_approval";
 
   const filteredSlashCommands = useMemo(() => {
     if (!slashDraft) return [];
@@ -898,6 +903,7 @@ export function ChatView() {
           <MessageBubble key={m.id} message={m} adapter={conv?.adapter} />
         ))}
         {activeRun?.conversationId === conv.id &&
+          workflowGateIsActionable &&
           gatingPhaseId &&
           gatingPhase &&
           !workflowGateApprovedLocally && (

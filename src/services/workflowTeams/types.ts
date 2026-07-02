@@ -38,11 +38,33 @@ export type WorkflowTemplateNodeMode =
   | "summarize"
   | "approval";
 
+export type WorkflowNodeContract =
+  | "plan"
+  | "approval"
+  | "implement"
+  | "review"
+  | "verify"
+  | "summarize"
+  | "research"
+  | "report"
+  | "custom";
+
+export interface WorkflowTemplateNodeGate {
+  id: string;
+  type: "manual_approval";
+  placement: "before" | "after";
+  label?: string;
+  reason?: string;
+  blocks?: string;
+}
+
 export interface WorkflowTemplateNode {
   id: string;
   title: string;
   roleId?: string;
   mode: WorkflowTemplateNodeMode;
+  contract?: WorkflowNodeContract;
+  gates?: WorkflowTemplateNodeGate[];
   promptTemplate?: string;
   targetPathTemplates?: string[];
   retry?: {

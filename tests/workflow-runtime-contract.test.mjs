@@ -78,3 +78,13 @@ test("review loop replay clears prior manual approvals before rerunning write st
   assert.match(runtimeSource, /approvedPhases\.clear\(\)/);
   assert.match(runtimeSource, /resetWorkflowStepsForLoop\(runId, REVIEW_LOOP_PHASES\)/);
 });
+
+test("implement-review replay preserves approved plan gates across review failures", () => {
+  const loopStart = runtimeSource.indexOf('if (checkpoint.action === "loop")');
+  const loopEnd = runtimeSource.indexOf('if (checkpoint.action === "partial")', loopStart);
+  assert.notEqual(loopStart, -1);
+  assert.notEqual(loopEnd, -1);
+  const implementReviewLoopBranch = runtimeSource.slice(loopStart, loopEnd);
+  assert.doesNotMatch(implementReviewLoopBranch, /approvedPhases\.clear\(\)/);
+  assert.match(implementReviewLoopBranch, /resetWorkflowStepsForLoop\(runId, IMPLEMENT_REVIEW_LOOP_PHASES\)/);
+});

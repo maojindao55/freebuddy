@@ -38,7 +38,7 @@ test("renderer types declare the FreebuddyWorkflowTeams interface", () => {
   assert.match(types, /listActiveRuns\(\): Promise<WorkflowRunRow\[]>/);
 });
 
-test("expandTeamToPlan produces a workflow plan for the quick team", async () => {
+test("expandTeamToPlan produces a configurable plan for the official delivery example", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
   );
@@ -46,21 +46,28 @@ test("expandTeamToPlan produces a workflow plan for the quick team", async () =>
     "../dist-electron/cli/workflowTeamAdapter.js"
   );
   const teams = builtinWorkflowTeams();
-  const quick = teams.find((t) => t.id === "team-quick-implement");
-  assert.ok(quick);
-  const agents = quick.roles.map((r) => ({
+  const delivery = teams.find((t) => t.id === "team-delivery-example");
+  assert.ok(delivery);
+  const agents = delivery.roles.map((r) => ({
     id: r.agentId,
     name: r.agentId,
     adapter: "stub-acp",
     enabled: true
   }));
-  const result = expandTeamToPlan(quick, { goal: "fix bug" }, agents);
+  const result = expandTeamToPlan(delivery, { goal: "fix bug" }, agents);
   assert.equal(result.ok, true);
   assert.ok(result.preview);
-  assert.equal(result.preview.teamId, "team-quick-implement");
+  assert.equal(result.preview.teamId, "team-delivery-example");
   assert.equal(result.preview.plan.goal, "fix bug");
-  assert.ok(result.preview.plan.phases.length >= 3);
-  assert.ok(result.preview.writeNodeCount >= 1);
+  assert.equal(result.preview.plan.template, "implement-review-loop");
+  assert.deepEqual(
+    result.preview.plan.phases.map((phase) => phase.id),
+    ["plan", "implement", "review", "verify", "summarize", "loop_or_finish"]
+  );
+  assert.equal(result.preview.plan.phases[0].gate.type, "manual_approval");
+  assert.equal(result.preview.plan.phases[1].gate.type, "all_done");
+  assert.equal(result.preview.writeNodeCount, 1);
+  assert.equal(result.preview.approvalNodeCount, 1);
 });
 
 test("builtin workflow teams include the default teams", async () => {
@@ -71,8 +78,7 @@ test("builtin workflow teams include the default teams", async () => {
   assert.deepEqual(
     teams.map((t) => t.id),
     [
-      "team-quick-implement",
-      "team-implement-review-loop",
+      "team-delivery-example",
       "team-root-cause-analysis",
       "team-research-report"
     ]
@@ -160,6 +166,8 @@ test("seeding removes retired builtin workflow teams", () => {
   assert.match(src, /removedBuiltinWorkflowTeamIds/);
   assert.match(src, /team-code-review/);
   assert.match(src, /team-readonly-analysis/);
+  assert.match(src, /team-quick-implement/);
+  assert.match(src, /team-implement-review-loop/);
   assert.match(src, /DELETE FROM workflow_teams WHERE id = \? AND source = 'builtin'/);
 });
 
@@ -179,8 +187,8 @@ test("validateWorkflowTeam rejects unknown agent on required role", async () => 
     "../dist-electron/cli/workflowTeamValidate.js"
   );
   const teams = builtinWorkflowTeams();
-  const quick = teams.find((t) => t.id === "team-quick-implement");
-  const result = validateWorkflowTeam(quick, []);
+  const delivery = teams.find((t) => t.id === "team-delivery-example");
+  const result = validateWorkflowTeam(delivery, []);
   assert.equal(result.ok, false);
   assert.ok(result.errors.some((e) => e.includes("unknown agent")));
 });
@@ -204,11 +212,20 @@ test("team i18n keys exist in both locales", () => {
   }
 });
 
-test("new team button shows coming soon instead of opening editor", () => {
+test("new team button opens the workflow team editor", () => {
   const src = read("../src/components/Settings/WorkflowTeamList.tsx");
-  assert.match(src, /workflow\.newTeamComingSoon/);
-  assert.match(src, /window\.alert/);
-  assert.doesNotMatch(src, /onClick=\{onNew\}/);
+  assert.match(src, /onClick=\{onNew\}/);
+  assert.doesNotMatch(src, /window\.alert/);
+});
+
+test("builtin team editor shows the same node config surface as readonly", () => {
+  const src = read("../src/components/Settings/WorkflowTeamEditor.tsx");
+  assert.match(src, /className=\{`workflow-node-config \$\{isBuiltin \? "readonly" : ""\}`\}/);
+  assert.match(src, /aria-disabled=\{isBuiltin\}/);
+  assert.match(src, /disabled=\{isBuiltin \|\| def\.required\}/);
+  assert.match(src, /disabled=\{isBuiltin\}/);
+  assert.doesNotMatch(src, /!\s*isBuiltin\s*&&\s*\(\s*<div className="workflow-node-config"/);
+  assert.doesNotMatch(src, /setDeliveryNodeEnabled\("approval"/);
 });
 
 test("Settings modal mounts the WorkflowTeamsTab", () => {
@@ -251,6 +268,81 @@ test("ChatView team onCreateAndSend persists user message attachments", () => {
   assert.match(src, /attachments: attachmentsToSend/);
   assert.match(src, /savedUser\.attachments/);
   assert.match(src, /goal: composeMessageWithAttachments\(prompt, attachmentsToSend\)/);
+});
+
+test("configurable delivery team expands to the unified loop runtime plan", async () => {
+  const { expandTeamToPlan } = await import(
+    "../dist-electron/cli/workflowTeamAdapter.js"
+  );
+  const team = {
+    id: "team-user-delivery",
+    name: "Custom Delivery",
+    enabled: true,
+    source: "user",
+    roles: [
+      { id: "role-planner", label: "Planner", kind: "planner", agentId: "planner", required: true, canWrite: false },
+      { id: "role-implementer", label: "Implementer", kind: "implementer", agentId: "implementer", required: true, canWrite: true },
+      { id: "role-verifier", label: "Verifier", kind: "verifier", agentId: "verifier", required: true, canWrite: false },
+      { id: "role-summarizer", label: "Summarizer", kind: "summarizer", agentId: "summarizer", required: true, canWrite: false }
+    ],
+    template: {
+      id: "tpl-configurable-delivery",
+      name: "Configurable delivery",
+      version: 1,
+      nodes: [
+        {
+          id: "plan",
+          title: "Plan",
+          mode: "research",
+          contract: "plan",
+          roleId: "role-planner",
+          promptTemplate: "Plan {{goal}}",
+          gates: [
+            {
+              id: "approve-plan",
+              type: "manual_approval",
+              placement: "after",
+              label: "Approve plan",
+              blocks: "implement"
+            }
+          ]
+        },
+        { id: "implement", title: "Implement", mode: "write", contract: "implement", roleId: "role-implementer", promptTemplate: "Implement {{goal}}" },
+        { id: "verify", title: "Verify", mode: "verify", contract: "verify", roleId: "role-verifier", promptTemplate: "Verify {{goal}}" },
+        { id: "summarize", title: "Summarize", mode: "summarize", contract: "summarize", roleId: "role-summarizer", promptTemplate: "Summarize {{goal}}" }
+      ],
+      edges: [],
+      startNodeIds: ["plan"],
+      finalNodeIds: ["summarize"]
+    },
+    policy: {
+      allowWrites: true,
+      requireApprovalBeforeWrite: true,
+      requireApprovalAfterReview: false,
+      maxParallelReadSteps: 1,
+      maxParallelWriteSteps: 1,
+      maxLoops: 2,
+      stopOnVerifyFailure: false
+    },
+    createdAt: "",
+    updatedAt: ""
+  };
+  const agents = ["planner", "implementer", "verifier", "summarizer"].map((id) => ({
+    id,
+    name: id,
+    adapter: "stub-acp",
+    enabled: true
+  }));
+  const result = expandTeamToPlan(team, { goal: "fix bug" }, agents);
+  assert.equal(result.ok, true);
+  assert.equal(result.preview.plan.template, "implement-review-loop");
+  assert.deepEqual(
+    result.preview.plan.phases.map((phase) => phase.id),
+    ["plan", "implement", "verify", "summarize", "loop_or_finish"]
+  );
+  assert.equal(result.preview.plan.phases[0].gate.type, "manual_approval");
+  assert.equal(result.preview.plan.phases[1].gate.type, "all_done");
+  assert.equal(result.preview.approvalNodeCount, 1);
 });
 
 test("conversation_messages schema carries agent and workflow columns", () => {

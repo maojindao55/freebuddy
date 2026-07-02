@@ -385,6 +385,7 @@
       "implement": "Implement",
       "verify": "Verify",
       "loop_or_finish": "Loop or finish",
+      "plan": "Plan",
       "plan-task": "Plan task",
       "summarize": "Summarize",
       "research": "Research",
@@ -398,6 +399,8 @@
       "verify-changes": "Verify changes and report unresolved issues",
       "implement-changes": "Implement changes",
       "review-changes": "Review changes",
+      "plan-delivery": "Plan delivery",
+      "summarize-delivery": "Summarize delivery",
       "plan-task-step": "Plan task",
       "implement-step": "Implement",
       "verify-step": "Verify",
@@ -420,7 +423,7 @@
     "teamPolicy": "Policy",
     "teamPolicyGates": "Approval gates",
     "teamPolicyLimits": "Limits",
-    "teamBuiltinLocked": "Built-in templates are read-only. Duplicate to customize.",
+    "teamBuiltinLocked": "Built-in templates are read-only. Their configuration is shown for reference.",
     "teamAdvanced": "Advanced",
     "teamEditor": "Team editor",
     "teamList": "Teams",
@@ -465,7 +468,26 @@
     "graphViewer": "Graph viewer",
     "startNodes": "Start nodes",
     "finalNodes": "Final nodes",
+    "nodeConfigHint": "Choose the delivery nodes for this custom team. Implement is always required.",
+    "nodePlan": "Plan",
+    "nodeApproval": "Approve plan",
+    "nodeImplement": "Implement",
+    "nodeReview": "Review",
+    "nodeVerify": "Verify",
+    "nodeSummarize": "Summarize",
+    "nodeContract": {
+      "plan": "Agent prepares the work plan before edits.",
+      "approval": "Approve the plan before file writes.",
+      "implement": "Agent is allowed to edit files.",
+      "review": "Agent reviews the change and emits REVIEW_STATUS.",
+      "verify": "Agent runs checks and emits UNRESOLVED.",
+      "summarize": "Agent writes the final handoff summary."
+    },
     "builtinTeams": {
+      "team-delivery-example": {
+        "name": "Standard Delivery Team",
+        "description": "Standard configurable-node delivery workflow: plan approval, implementation, review, verification, and summary."
+      },
       "team-quick-implement": {
         "name": "Quick Implementation",
         "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing."

@@ -141,7 +141,9 @@ export { builtinWorkflowTeams };
 
 const removedBuiltinWorkflowTeamIds = [
   "team-code-review",
-  "team-readonly-analysis"
+  "team-readonly-analysis",
+  "team-quick-implement",
+  "team-implement-review-loop"
 ];
 
 function mergeBuiltinRoles(

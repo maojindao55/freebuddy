@@ -252,7 +252,7 @@ test("runtime exposes continueImplementReview for max-loop FAIL follow-up", () =
   assert.match(src, /resetWorkflowStepsForLoop\(runId, IMPLEMENT_REVIEW_LOOP_PHASES\)/);
 });
 
-test("expandTeamToPlan uses build review template for loop team", async () => {
+test("official delivery example uses configurable nodes with review loop runtime", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
   );
@@ -260,7 +260,7 @@ test("expandTeamToPlan uses build review template for loop team", async () => {
     "../dist-electron/cli/workflowTeamAdapter.js"
   );
   const team = builtinWorkflowTeams().find(
-    (t) => t.id === "team-implement-review-loop"
+    (t) => t.id === "team-delivery-example"
   );
   assert.ok(team);
   const agentRefs = team.roles.map((r) => ({
@@ -274,11 +274,13 @@ test("expandTeamToPlan uses build review template for loop team", async () => {
   assert.equal(result.preview.plan.template, "implement-review-loop");
   assert.deepEqual(
     result.preview.plan.phases.map((phase) => phase.id),
-    ["implement", "review", "verify", "summarize", "loop_or_finish"]
+    ["plan", "implement", "review", "verify", "summarize", "loop_or_finish"]
   );
+  assert.equal(result.preview.plan.phases[0].gate.type, "manual_approval");
+  assert.equal(result.preview.plan.phases[1].gate.type, "all_done");
   assert.deepEqual(
     result.preview.routeSummary.map((route) => route.nodeId),
-    ["implement", "review", "verify", "summarize"]
+    ["plan", "implement", "review", "verify", "summarize"]
   );
 });
 

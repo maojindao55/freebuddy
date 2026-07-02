@@ -58,6 +58,7 @@ function StopIcon() {
 function workflowRunName(name: string, template: string | undefined, t: ReturnType<typeof useTranslation>["t"]) {
   if (template === "implement-review-loop") return t("workflow.implementReviewLoop");
   if (template === "review-loop") return t("workflow.reviewLoop");
+  if (name === "Standard Delivery Team") return t("workflow.builtinTeams.team-delivery-example.name");
   if (name === "Research Report") return t("workflow.builtinTeams.team-research-report.name");
   if (name === "Quick Implementation") return t("workflow.builtinTeams.team-quick-implement.name");
   if (name === "Root Cause Analysis") return t("workflow.builtinTeams.team-root-cause-analysis.name");

@@ -6846,6 +6846,82 @@ button.ghost:focus-visible,
 .workflow-team-node-role {
   color: var(--fb-text-secondary);
 }
+.workflow-node-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.workflow-node-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+.workflow-node-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+  cursor: pointer;
+}
+.workflow-node-option.selected {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+.workflow-node-option.readonly,
+.workflow-node-config.readonly .workflow-node-gate-option {
+  cursor: default;
+  opacity: 0.68;
+}
+.workflow-node-option.readonly.selected {
+  border-color: var(--fb-border);
+  background: var(--fb-panel-soft);
+}
+.workflow-node-option input {
+  margin-top: 2px;
+  accent-color: var(--fb-brand);
+}
+.workflow-node-option input:disabled {
+  cursor: not-allowed;
+}
+.workflow-node-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.workflow-node-option-main strong {
+  font-size: 13px;
+  color: var(--fb-text-primary);
+}
+.workflow-node-option-main small {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fb-text-tertiary);
+}
+.workflow-node-gate-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 6px;
+  padding: 7px 8px;
+  border-left: 2px solid var(--fb-brand);
+  background: var(--fb-panel-bg);
+  border-radius: 6px;
+}
+.workflow-node-gate-option input {
+  margin-top: 2px;
+}
+.workflow-node-gate-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.workflow-node-gate-option strong {
+  font-size: 12px;
+}
 .workflow-team-nodes.timeline {
   padding-left: 8px;
   position: relative;

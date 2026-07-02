@@ -192,6 +192,38 @@ export function listActiveWorkflowRuns(): WorkflowRunRow[] {
   return rows.map(rowToRun);
 }
 
+export function recoverInterruptedWorkflowRuns(): number {
+  const now = new Date().toISOString();
+  const rows = getDb()
+    .prepare(`SELECT id FROM workflow_runs WHERE status = 'running'`)
+    .all() as Array<{ id: string }>;
+
+  const updateRunningSteps = getDb().prepare(
+    `UPDATE workflow_steps
+     SET status = 'blocked',
+         summary = COALESCE(summary, 'Interrupted by app restart. Resume the workflow to continue.'),
+         ended_at = COALESCE(ended_at, ?),
+         updated_at = ?
+     WHERE workflow_run_id = ? AND status = 'running'`
+  );
+  const updateRun = getDb().prepare(
+    `UPDATE workflow_runs
+     SET status = 'blocked',
+         summary = COALESCE(summary, 'Interrupted by app restart. Resume the workflow to continue.'),
+         updated_at = ?
+     WHERE id = ? AND status = 'running'`
+  );
+
+  const tx = getDb().transaction(() => {
+    for (const row of rows) {
+      updateRunningSteps.run(now, now, row.id);
+      updateRun.run(now, row.id);
+    }
+  });
+  tx();
+  return rows.length;
+}
+
 export interface CreateWorkflowStepInput {
   id: string;
   workflowRunId: string;

@@ -4,6 +4,7 @@ import type { WebContents } from "electron";
 import type { CliEvent, CliPromptAttachment, CliRunArgs } from "./runtimeShared.js";
 import { cliRun, cliKill } from "./runtime.js";
 import { getToolSession } from "./store.js";
+import { safeSendToWebContents } from "./ipcSend.js";
 import {
   appendMessage,
   listMessages,
@@ -112,6 +113,18 @@ function findPlanStep(plan: WorkflowPlan, stepId: string): WorkflowStep | undefi
     if (step) return step;
   }
   return undefined;
+}
+
+function hasRunnablePhaseAfter(
+  plan: WorkflowPlan,
+  phaseId: string,
+  ignoredPhaseIds = new Set(["loop_or_finish"])
+): boolean {
+  const phaseIndex = plan.phases.findIndex((phase) => phase.id === phaseId);
+  if (phaseIndex < 0) return false;
+  return plan.phases
+    .slice(phaseIndex + 1)
+    .some((phase) => !ignoredPhaseIds.has(phase.id) && phase.steps.length > 0);
 }
 
 function extractStepOutputFromResultJson(resultJson: string | undefined): string | undefined {
@@ -611,7 +624,6 @@ export class WorkflowRuntime {
               checkpoint.feedback,
               checkpoint.feedbackKind
             );
-            state.approvedPhases.clear();
             resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
             const implementIdx = plan.phases.findIndex((p) => p.id === "implement");
             updateWorkflowRun(runId, {
@@ -714,8 +726,10 @@ export class WorkflowRuntime {
       if (decision === "partial") {
         return { action: "partial", loopDecision: decision, reviewStatus };
       }
-      const hasVerification = Boolean(findPlanStep(plan, VERIFY_CHANGES_STEP_ID));
-      return hasVerification
+      const hasLaterWork =
+        Boolean(findPlanStep(plan, VERIFY_CHANGES_STEP_ID)) ||
+        hasRunnablePhaseAfter(plan, phaseId);
+      return hasLaterWork
         ? { action: "continue" }
         : { action: "finish", loopDecision: decision, reviewStatus };
     }
@@ -997,13 +1011,11 @@ export class WorkflowRuntime {
     conversationId: string;
     messageId: string;
   }): void {
-    const wc = this.deps.webContents;
-    if (!wc || wc.isDestroyed?.()) return;
-    try {
-      wc.send(`workflow://message/${payload.conversationId}`, payload);
-    } catch {
-      /* noop */
-    }
+    safeSendToWebContents(
+      this.deps.webContents,
+      `workflow://message/${payload.conversationId}`,
+      payload
+    );
   }
 
   private finalize(

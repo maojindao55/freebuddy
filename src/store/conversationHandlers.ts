@@ -116,7 +116,8 @@ export function handleStreamEvent(
   conversationId: string,
   e: CliEvent,
   parser: ReturnType<typeof getParser>,
-  parseCtx: ParseContext
+  parseCtx: ParseContext,
+  preserveConversationTitle = false
 ): void {
   if (e.type === "permission") {
     usePermissionStore.getState().enqueue(conversationId, e.request);
@@ -157,7 +158,7 @@ export function handleStreamEvent(
         updatedAt: new Date().toISOString()
       };
 
-      const title = sessionTitleFromItems(e.items);
+      const title = preserveConversationTitle ? undefined : sessionTitleFromItems(e.items);
       const conversations = title
         ? applyConversationTitle(s.conversations, conversationId, title)
         : s.conversations;
@@ -263,7 +264,7 @@ export function handleStreamEvent(
 
     if (e.type === "items") {
       const title = sessionTitleFromItems(e.items);
-      if (title) {
+      if (title && !live.preserveConversationTitle && !preserveConversationTitle) {
         conversations = applyConversationTitle(conversations, conversationId, title);
       }
     }

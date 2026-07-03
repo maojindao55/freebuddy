@@ -44,9 +44,14 @@ test("WorkflowRunPanel can continue build review after verification failure", ()
 
 test("WorkflowRunPanel shows a progress bar and inline step details", () => {
   const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
+  const styles = read("../styles.css");
   assert.match(src, /workflow-progress-bar/);
   assert.match(src, /workflow-progress-fill/);
   assert.match(src, /WorkflowPhaseList/);
+  assert.match(styles, /\.workflow-run-panel\s*\{[^}]*max-height:/s);
+  assert.match(styles, /\.workflow-run-panel\s*\{[^}]*overflow:\s*hidden/s);
+  assert.match(styles, /\.workflow-steps-antd\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(styles, /\.workflow-steps-antd\s*\{[^}]*min-height:\s*0/s);
   // approve gate button merged into the run-actions row
   assert.match(src, /workflow\.approveGate/);
   // separate details-card removed

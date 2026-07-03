@@ -44,6 +44,7 @@ export interface LiveAssistant {
   errorMessage?: string;
   resumedFromSessionId?: string;
   capturedSessionId?: string;
+  preserveConversationTitle?: boolean;
 }
 
 export interface ConversationState {
@@ -79,6 +80,7 @@ export interface ConversationState {
     userMessageId?: string;
     assistantMessageId?: string;
     approvalModeOverride?: "auto" | "ask";
+    preserveConversationTitle?: boolean;
   }): Promise<void>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
@@ -431,7 +433,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     attachments = [],
     userMessageId,
     assistantMessageId,
-    approvalModeOverride
+    approvalModeOverride,
+    preserveConversationTitle
   }) {
     const trimmed = prompt.trim();
     if (!trimmed && attachments.length === 0) return;
@@ -588,7 +591,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           taskSessionId,
           items: [],
           status: "starting",
-          resumedFromSessionId
+          resumedFromSessionId,
+          preserveConversationTitle
         }
       },
       pendingFreshContext: {
@@ -604,7 +608,15 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
 
     const unsubscribe = cliClient.onEvent(taskSessionId, (e: CliEvent) => {
-      handleStreamEvent(set, get, conversationId, e, parser, parseCtx);
+      handleStreamEvent(
+        set,
+        get,
+        conversationId,
+        e,
+        parser,
+        parseCtx,
+        preserveConversationTitle
+      );
     });
     runCtxMap.set(taskSessionId, {
       conversationId,

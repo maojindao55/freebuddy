@@ -53,7 +53,7 @@ test("workspace panel renders the Codex usage card from the CLI bridge", () => {
   assert.match(styles, /\.codex-reset-credit-row\s*\{/);
 });
 
-test("Codex usage card is rendered after the other workspace cards", () => {
+test("Codex usage card is rendered after the primary workspace cards", () => {
   const codexCard = source.indexOf('className="side-card codex-usage-card"');
   const runState = source.indexOf('t("workspace.runState")');
   const configCard = source.indexOf('className="side-card session-config-card"');
@@ -62,6 +62,17 @@ test("Codex usage card is rendered after the other workspace cards", () => {
   assert.ok(codexCard > runState);
   assert.ok(codexCard > configCard);
   assert.ok(codexCard > planCard);
+});
+
+test("feed card is rendered last because it is a secondary workspace affordance", () => {
+  const feedCard = source.lastIndexOf("<FeedCard />");
+  const codexCard = source.indexOf('className="side-card codex-usage-card"');
+  const runState = source.indexOf('t("workspace.runState")');
+  const planCard = source.indexOf('className="side-card plan-card"');
+
+  assert.ok(feedCard > runState);
+  assert.ok(feedCard > planCard);
+  assert.ok(feedCard > codexCard);
 });
 
 test("Codex usage bridge is exposed without leaking token fields to renderer types", () => {

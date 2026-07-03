@@ -43,6 +43,18 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
+import {
+  addFeedSource,
+  deleteFeedSource,
+  listFeedItems,
+  listFeedSources,
+  markFeedItemInterpreted,
+  refreshAllFeedSources,
+  refreshFeedSource,
+  updateFeedSource,
+  type AddFeedSourceInput,
+  type UpdateFeedSourceInput
+} from "./feed.js";
 import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
 import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
@@ -325,6 +337,27 @@ export function registerCliIpc() {
       setApplicationMenuForLanguage(getLanguage());
     }
   });
+
+  ipcMain.handle("feed:listSources", () => listFeedSources());
+  ipcMain.handle("feed:addSource", (_e, input: AddFeedSourceInput) =>
+    addFeedSource(input)
+  );
+  ipcMain.handle("feed:updateSource", (_e, input: UpdateFeedSourceInput) =>
+    updateFeedSource(input)
+  );
+  ipcMain.handle("feed:deleteSource", (_e, id: string) =>
+    deleteFeedSource(id)
+  );
+  ipcMain.handle("feed:listItems", (_e, args: { limit?: number; offset?: number } = {}) =>
+    listFeedItems(args)
+  );
+  ipcMain.handle("feed:refreshSource", (_e, id: string) =>
+    refreshFeedSource(id)
+  );
+  ipcMain.handle("feed:refreshAll", () => refreshAllFeedSources());
+  ipcMain.handle("feed:markInterpreted", (_e, id: string) =>
+    markFeedItemInterpreted(id)
+  );
 
   registerWorkflowIpc();
 }

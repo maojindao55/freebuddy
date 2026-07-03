@@ -133,6 +133,37 @@ function migrate(db: DB) {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS feed_sources (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_fetched_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS feed_items (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      link TEXT NOT NULL,
+      summary TEXT,
+      author TEXT,
+      published_at TEXT,
+      raw_id TEXT,
+      read_at TEXT,
+      interpreted_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(source_id) REFERENCES feed_sources(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_feed_items_latest
+      ON feed_items(COALESCE(published_at, created_at) DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_items_source_link
+      ON feed_items(source_id, link);
+
     CREATE TABLE IF NOT EXISTS workflow_runs (
       id TEXT PRIMARY KEY,
       conversation_id TEXT,

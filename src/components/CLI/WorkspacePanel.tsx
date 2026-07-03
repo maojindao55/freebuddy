@@ -16,6 +16,7 @@ import { useReplayStore } from "@/store/replayStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
+import { FeedCard } from "../Feeds/FeedCard";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
 
@@ -548,6 +549,8 @@ export function WorkspacePanel({
           )}
         </section>
       )}
+
+      <FeedCard />
     </div>
   );
 }

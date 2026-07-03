@@ -272,6 +272,7 @@ export function ChatView() {
   const teamMode = taskMode === "team";
   const workflowMode = false;
   const createAndStartTeam = useWorkflowStore((s) => s.createAndStartTeam);
+  const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const workflowSteps = useWorkflowStore((s) => s.steps);
   const approveGate = useWorkflowStore((s) => s.approveGate);
   const requestGateChanges = useWorkflowStore((s) => s.requestGateChanges);
@@ -479,12 +480,16 @@ export function ChatView() {
   };
 
   useEffect(() => {
-    if (!selectedMemberId && members[0]) setSelectedMemberId(selectedMemberId);
+    if (!selectedMemberId && members[0]) setSelectedMemberId(members[0].id);
   }, [members, selectedMemberId]);
 
   useEffect(() => {
     isNearBottomRef.current = true;
   }, [activeId]);
+
+  useEffect(() => {
+    if (activeId) void loadWorkflowForConversation(activeId);
+  }, [activeId, loadWorkflowForConversation]);
 
   useEffect(() => {
     stopReplay();
@@ -673,12 +678,17 @@ export function ChatView() {
             )
           }
         }));
-        await createAndStartTeam({
+        const started = await createAndStartTeam({
           teamId: team.id,
           conversationId: newConv.id,
           goal: composeMessageWithAttachments(prompt, attachmentsToSend),
           cwd
         });
+        if (!started) {
+          const errors = useWorkflowStore.getState().pendingErrors;
+          throw new Error(errors.length ? errors.join("; ") : "workflow did not start");
+        }
+        await loadWorkflowForConversation(newConv.id);
       } catch (e) {
         setNewTaskDraft(prompt);
         setNewTaskPendingAttachments(attachmentsToSend);
@@ -869,13 +879,18 @@ export function ChatView() {
       });
       setNewTaskDraft("");
       setNewTaskPendingAttachments([]);
-      clearTeamPreview();
-      await createAndStartTeam({
+      const started = await createAndStartTeam({
         teamId: pendingTeamPreview.teamId,
         conversationId: newConv.id,
         goal: pendingTeamPreview.goal,
         cwd: pendingTeamPreview.cwd ?? cwd
       });
+      if (!started) {
+        const errors = useWorkflowStore.getState().pendingErrors;
+        throw new Error(errors.length ? errors.join("; ") : "workflow did not start");
+      }
+      clearTeamPreview();
+      await loadWorkflowForConversation(newConv.id);
     } catch (e) {
       setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
     }

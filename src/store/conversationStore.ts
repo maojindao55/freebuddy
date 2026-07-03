@@ -99,6 +99,16 @@ let workflowMessageConversationId: string | null = null;
 let workflowRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 const workflowPendingMessageIds = new Set<string>();
 
+function hasActiveWorkflowMessages(messages: ConversationMessage[] | undefined): boolean {
+  return (
+    messages?.some(
+      (message) =>
+        Boolean(message.workflowRunId && message.workflowStepRowId) &&
+        (message.status === "running" || message.status === "starting")
+    ) ?? false
+  );
+}
+
 function ensureWorkflowMessageSubscription(
   conversationId: string | undefined,
   refresh: (id: string, messageIds?: string[]) => Promise<void>
@@ -270,7 +280,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   async setActive(id) {
     set({ activeId: id });
-    if (id && !get().messages[id]) {
+    const cachedMessages = id ? get().messages[id] : undefined;
+    if (id && (!cachedMessages || hasActiveWorkflowMessages(cachedMessages))) {
       await get().loadMessages(id);
     }
     ensureWorkflowMessageSubscription(id, async (cid, messageIds) => {

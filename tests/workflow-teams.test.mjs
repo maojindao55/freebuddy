@@ -210,6 +210,48 @@ test("team i18n keys exist in both locales", () => {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
   }
+  for (const key of ["planner", "researcher", "reviewer", "implementer", "verifier", "summarizer", "custom"]) {
+    assert.ok(en.workflow.roleKinds?.[key], `missing en workflow.roleKinds.${key}`);
+    assert.ok(zh.workflow.roleKinds?.[key], `missing zh-CN workflow.roleKinds.${key}`);
+  }
+  for (const key of ["research", "review", "write", "verify", "summarize", "approval"]) {
+    assert.ok(en.workflow.nodeModes?.[key], `missing en workflow.nodeModes.${key}`);
+    assert.ok(zh.workflow.nodeModes?.[key], `missing zh-CN workflow.nodeModes.${key}`);
+  }
+  const builtinKeys = {
+    "team-delivery-example": {
+      roles: ["role-planner", "role-implementer", "role-reviewer", "role-verifier", "role-summarizer"],
+      nodes: ["plan", "implement", "review", "verify", "summarize"]
+    },
+    "team-root-cause-analysis": {
+      roles: ["role-investigator", "role-skeptic", "role-verifier", "role-summarizer"],
+      nodes: ["collect-evidence", "challenge-hypothesis", "verify-root-cause", "summarize-findings"]
+    },
+    "team-research-report": {
+      roles: ["role-researcher", "role-analyst", "role-reporter"],
+      nodes: ["research", "analysis", "report"]
+    }
+  };
+  for (const [teamId, keys] of Object.entries(builtinKeys)) {
+    for (const roleId of keys.roles) {
+      assert.ok(en.workflow.builtinTeams?.[teamId]?.roles?.[roleId], `missing en workflow.builtinTeams.${teamId}.roles.${roleId}`);
+      assert.ok(zh.workflow.builtinTeams?.[teamId]?.roles?.[roleId], `missing zh-CN workflow.builtinTeams.${teamId}.roles.${roleId}`);
+    }
+    for (const nodeId of keys.nodes) {
+      assert.ok(en.workflow.builtinTeams?.[teamId]?.nodes?.[nodeId], `missing en workflow.builtinTeams.${teamId}.nodes.${nodeId}`);
+      assert.ok(zh.workflow.builtinTeams?.[teamId]?.nodes?.[nodeId], `missing zh-CN workflow.builtinTeams.${teamId}.nodes.${nodeId}`);
+    }
+  }
+});
+
+test("workflow team settings editor localizes builtin role and node labels", () => {
+  const src = read("../src/components/Settings/WorkflowTeamEditor.tsx");
+  assert.match(src, /workflowTeamRoleLabel\(draft, role, t\)/);
+  assert.match(src, /workflowTeamRoleKind\(role\.kind, t\)/);
+  assert.match(src, /workflowTeamNodeTitle\(draft, n, t\)/);
+  assert.match(src, /workflowTeamNodeMode\(n\.mode, t\)/);
+  assert.doesNotMatch(src, /<strong>\{role\.label\}<\/strong>/);
+  assert.doesNotMatch(src, /\{n\.mode\}<\/span>/);
 });
 
 test("new team button opens the workflow team editor", () => {
@@ -218,13 +260,14 @@ test("new team button opens the workflow team editor", () => {
   assert.doesNotMatch(src, /window\.alert/);
 });
 
-test("builtin team editor shows the same node config surface as readonly", () => {
+test("workflow team editor keeps node config for custom teams only", () => {
   const src = read("../src/components/Settings/WorkflowTeamEditor.tsx");
-  assert.match(src, /className=\{`workflow-node-config \$\{isBuiltin \? "readonly" : ""\}`\}/);
-  assert.match(src, /aria-disabled=\{isBuiltin\}/);
-  assert.match(src, /disabled=\{isBuiltin \|\| def\.required\}/);
-  assert.match(src, /disabled=\{isBuiltin\}/);
-  assert.doesNotMatch(src, /!\s*isBuiltin\s*&&\s*\(\s*<div className="workflow-node-config"/);
+  assert.match(src, /!\s*isBuiltin\s*&&\s*\(/);
+  assert.match(src, /<div className="workflow-node-config">/);
+  assert.match(src, /disabled=\{def\.required\}/);
+  assert.doesNotMatch(src, /workflow-node-config \$\{isBuiltin \? "readonly" : ""\}/);
+  assert.doesNotMatch(src, /aria-disabled=\{isBuiltin\}/);
+  assert.doesNotMatch(src, /disabled=\{isBuiltin \|\| def\.required\}/);
   assert.doesNotMatch(src, /setDeliveryNodeEnabled\("approval"/);
 });
 

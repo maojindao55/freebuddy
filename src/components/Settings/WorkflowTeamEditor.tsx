@@ -11,7 +11,11 @@ import type {
 } from "@/services/workflowTeams/types";
 import {
   workflowTeamDescription,
-  workflowTeamName
+  workflowTeamName,
+  workflowTeamNodeMode,
+  workflowTeamNodeTitle,
+  workflowTeamRoleKind,
+  workflowTeamRoleLabel
 } from "@/services/workflowTeams/types";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -375,7 +379,7 @@ export function WorkflowTeamEditor({
         policy: draft.policy
       });
       if (!res.ok) {
-        setErrors(res.errors ?? ["unknown error"]);
+        setErrors(res.errors ?? [t("errors.unknown")]);
         return;
       }
     } else {
@@ -389,7 +393,7 @@ export function WorkflowTeamEditor({
         policy: draft.policy
       });
       if (!res.ok) {
-        setErrors(res.errors ?? ["unknown error"]);
+        setErrors(res.errors ?? [t("errors.unknown")]);
         return;
       }
     }
@@ -486,8 +490,10 @@ export function WorkflowTeamEditor({
             {draft.roles.map((role) => (
               <li key={role.id}>
                 <div className="workflow-team-role-info">
-                  <strong>{role.label}</strong>
-                  <span className="workflow-team-badge muted">{role.kind}</span>
+                  <strong>{workflowTeamRoleLabel(draft, role, t)}</strong>
+                  <span className="workflow-team-badge muted">
+                    {workflowTeamRoleKind(role.kind, t)}
+                  </span>
                   {role.canWrite && (
                     <span className="workflow-team-badge write">
                       {t("workflow.writeNodes")}
@@ -515,60 +521,56 @@ export function WorkflowTeamEditor({
 
       <section className="workflow-team-editor-section">
         <h5>{t("workflow.teamWorkflow")}</h5>
-        <div
-          className={`workflow-node-config ${isBuiltin ? "readonly" : ""}`}
-          aria-disabled={isBuiltin}
-        >
-          <p className="workflow-team-editor-section-desc">
-            {t("workflow.nodeConfigHint")}
-          </p>
-          <div className="workflow-node-options">
-            {DELIVERY_NODE_DEFS.map((def) => {
-              const checked = selectedDeliveryContracts.includes(def.contract);
-              return (
-                <label
-                  key={def.contract}
-                  className={`workflow-node-option ${checked ? "selected" : ""} ${
-                    isBuiltin ? "readonly" : ""
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={isBuiltin || def.required}
-                    onChange={(e) =>
-                      setDeliveryNodeEnabled(def.contract, e.target.checked)
-                    }
-                  />
-                  <span className="workflow-node-option-main">
-                    <strong>{t(def.titleKey)}</strong>
-                    <small>{t(`workflow.nodeContract.${def.contract}`)}</small>
-                    {def.contract === "plan" && checked && (
-                      <span
-                        className="workflow-node-gate-option"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={planApprovalEnabled}
-                          disabled={isBuiltin}
+        {!isBuiltin && (
+          <div className="workflow-node-config">
+            <p className="workflow-team-editor-section-desc">
+              {t("workflow.nodeConfigHint")}
+            </p>
+            <div className="workflow-node-options">
+              {DELIVERY_NODE_DEFS.map((def) => {
+                const checked = selectedDeliveryContracts.includes(def.contract);
+                return (
+                  <label
+                    key={def.contract}
+                    className={`workflow-node-option ${checked ? "selected" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={def.required}
+                      onChange={(e) =>
+                        setDeliveryNodeEnabled(def.contract, e.target.checked)
+                      }
+                    />
+                    <span className="workflow-node-option-main">
+                      <strong>{t(def.titleKey)}</strong>
+                      <small>{t(`workflow.nodeContract.${def.contract}`)}</small>
+                      {def.contract === "plan" && checked && (
+                        <span
+                          className="workflow-node-gate-option"
                           onClick={(e) => e.stopPropagation()}
-                          onChange={(e) =>
-                            setPlanApprovalEnabled(e.target.checked)
-                          }
-                        />
-                        <span>
-                          <strong>{t("workflow.nodeApproval")}</strong>
-                          <small>{t("workflow.nodeContract.approval")}</small>
+                        >
+                          <input
+                            type="checkbox"
+                            checked={planApprovalEnabled}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              setPlanApprovalEnabled(e.target.checked)
+                            }
+                          />
+                          <span>
+                            <strong>{t("workflow.nodeApproval")}</strong>
+                            <small>{t("workflow.nodeContract.approval")}</small>
+                          </span>
                         </span>
-                      </span>
-                    )}
-                  </span>
-                </label>
-              );
-            })}
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
         <p className="workflow-team-editor-section-desc">
           {draft.template.nodes.length} {t("workflow.steps").toLowerCase()}
           {writeNodeCount > 0 && (
@@ -588,12 +590,14 @@ export function WorkflowTeamEditor({
             return (
               <li key={n.id} className={n.mode}>
                 <div className="workflow-team-node-content">
-                  <strong>{n.title}</strong>
+                  <strong>{workflowTeamNodeTitle(draft, n, t)}</strong>
                   <div className="workflow-team-node-meta">
-                    <span className="workflow-team-badge muted">{n.mode}</span>
+                    <span className="workflow-team-badge muted">
+                      {workflowTeamNodeMode(n.mode, t)}
+                    </span>
                     {role && (
                       <span className="workflow-team-node-role">
-                        {role.label} · {roleAgentName(role)}
+                        {workflowTeamRoleLabel(draft, role, t)} · {roleAgentName(role)}
                       </span>
                     )}
                   </div>

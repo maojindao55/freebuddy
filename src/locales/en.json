@@ -276,7 +276,8 @@
     "agentInterrupted": "Agent run interrupted.",
     "agentFailed": "Agent run failed with exit code {{code}}.{{detail}}",
     "rawLogCollapsed": "Raw CLI log collapsed for easier debugging.",
-    "cliNoStructured": "The CLI returned no parseable structured content."
+    "cliNoStructured": "The CLI returned no parseable structured content.",
+    "unknown": "Unknown error"
   },
   "attachments": {
     "review": "Please review these attachments.",
@@ -456,6 +457,23 @@
       "analysis-step": "Analyze",
       "report-step": "Report"
     },
+    "roleKinds": {
+      "planner": "Planner",
+      "researcher": "Researcher",
+      "reviewer": "Reviewer",
+      "implementer": "Implementer",
+      "verifier": "Verifier",
+      "summarizer": "Summarizer",
+      "custom": "Custom"
+    },
+    "nodeModes": {
+      "research": "Research",
+      "review": "Review",
+      "write": "Write",
+      "verify": "Verify",
+      "summarize": "Summarize",
+      "approval": "Approval"
+    },
     "invalidPlan": "The generated plan is invalid",
     "summary": "Workflow summary",
     "teamExecution": "Team execution",
@@ -533,23 +551,83 @@
     "builtinTeams": {
       "team-delivery-example": {
         "name": "Standard Delivery Team",
-        "description": "Standard configurable-node delivery workflow: plan approval, implementation, review, verification, and summary."
+        "description": "Standard configurable-node delivery workflow: plan approval, implementation, review, verification, and summary.",
+        "roles": {
+          "role-planner": "Planner",
+          "role-implementer": "Implementer",
+          "role-reviewer": "Reviewer",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "plan": "Plan",
+          "implement": "Implement",
+          "review": "Review",
+          "verify": "Verify",
+          "summarize": "Summarize"
+        }
       },
       "team-quick-implement": {
         "name": "Quick Implementation",
-        "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing."
+        "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing.",
+        "roles": {
+          "role-planner": "Planner",
+          "role-implementer": "Implementer",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "plan-task": "Plan task",
+          "implement": "Implement",
+          "verify": "Verify",
+          "summarize": "Summarize"
+        }
       },
       "team-implement-review-loop": {
         "name": "Build Review Team",
-        "description": "Implement, review, verify, and summarize. Review or verification failures loop back to implementation until PASS or max loops."
+        "description": "Implement, review, verify, and summarize. Review or verification failures loop back to implementation until PASS or max loops.",
+        "roles": {
+          "role-implementer": "Implementer",
+          "role-reviewer": "Reviewer",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "implement": "Implement",
+          "review": "Review",
+          "verify": "Verify",
+          "summarize": "Summarize"
+        }
       },
       "team-root-cause-analysis": {
         "name": "Root Cause Analysis",
-        "description": "Collect evidence, challenge the hypothesis, verify the root cause, and produce a concise investigation report."
+        "description": "Collect evidence, challenge the hypothesis, verify the root cause, and produce a concise investigation report.",
+        "roles": {
+          "role-investigator": "Investigator",
+          "role-skeptic": "Skeptic",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "collect-evidence": "Collect evidence",
+          "challenge-hypothesis": "Challenge hypothesis",
+          "verify-root-cause": "Verify root cause",
+          "summarize-findings": "Summarize findings"
+        }
       },
       "team-research-report": {
         "name": "Research Report",
-        "description": "Research a non-coding topic, analyze scenarios, and produce a concise report with conclusions and confidence."
+        "description": "Research a non-coding topic, analyze scenarios, and produce a concise report with conclusions and confidence.",
+        "roles": {
+          "role-researcher": "Researcher",
+          "role-analyst": "Analyst",
+          "role-reporter": "Reporter"
+        },
+        "nodes": {
+          "research": "Research",
+          "analysis": "Analyze",
+          "report": "Report"
+        }
       }
     }
   },

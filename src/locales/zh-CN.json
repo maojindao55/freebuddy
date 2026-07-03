@@ -265,7 +265,8 @@
     "agentInterrupted": "Agent 运行已中断。",
     "agentFailed": "Agent 运行失败，退出码 {{code}}。{{detail}}",
     "rawLogCollapsed": "已收起原始 CLI 日志，方便排查。",
-    "cliNoStructured": "CLI 没有返回可解析的结构化内容。"
+    "cliNoStructured": "CLI 没有返回可解析的结构化内容。",
+    "unknown": "未知错误"
   },
   "attachments": {
     "review": "请查看这些附件。",
@@ -444,6 +445,23 @@
       "analysis-step": "分析",
       "report-step": "报告"
     },
+    "roleKinds": {
+      "planner": "规划者",
+      "researcher": "调研者",
+      "reviewer": "审查者",
+      "implementer": "执行者",
+      "verifier": "验证者",
+      "summarizer": "汇总者",
+      "custom": "自定义"
+    },
+    "nodeModes": {
+      "research": "调研",
+      "review": "审查",
+      "write": "写入",
+      "verify": "验证",
+      "summarize": "总结",
+      "approval": "审批"
+    },
     "invalidPlan": "生成的计划无效",
     "summary": "工作流总结",
     "teamExecution": "团队执行",
@@ -521,23 +539,83 @@
     "builtinTeams": {
       "team-delivery-example": {
         "name": "标准交付团队",
-        "description": "基于可配置节点的标准交付流程：计划审批、实现、审查、验证和总结。"
+        "description": "基于可配置节点的标准交付流程：计划审批、实现、审查、验证和总结。",
+        "roles": {
+          "role-planner": "规划者",
+          "role-implementer": "执行者",
+          "role-reviewer": "审查者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "plan": "规划",
+          "implement": "实现",
+          "review": "审查",
+          "verify": "验证",
+          "summarize": "总结"
+        }
       },
       "team-quick-implement": {
         "name": "快速实现",
-        "description": "规划、实现、验证并总结。适合小而聚焦的改动，写入前有一次审批。"
+        "description": "规划、实现、验证并总结。适合小而聚焦的改动，写入前有一次审批。",
+        "roles": {
+          "role-planner": "规划者",
+          "role-implementer": "执行者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "plan-task": "规划任务",
+          "implement": "实现",
+          "verify": "验证",
+          "summarize": "总结"
+        }
       },
       "team-implement-review-loop": {
         "name": "实现审查团队",
-        "description": "实现、审查、验证并总结。审查或验证失败时回到实现，直到通过或达到最大循环次数。"
+        "description": "实现、审查、验证并总结。审查或验证失败时回到实现，直到通过或达到最大循环次数。",
+        "roles": {
+          "role-implementer": "执行者",
+          "role-reviewer": "审查者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "implement": "实现",
+          "review": "审查",
+          "verify": "验证",
+          "summarize": "总结"
+        }
       },
       "team-root-cause-analysis": {
         "name": "问题排查团队",
-        "description": "收集证据、质疑假设、验证根因，并输出简洁的问题排查报告。"
+        "description": "收集证据、质疑假设、验证根因，并输出简洁的问题排查报告。",
+        "roles": {
+          "role-investigator": "调查者",
+          "role-skeptic": "质疑者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "collect-evidence": "收集证据",
+          "challenge-hypothesis": "质疑假设",
+          "verify-root-cause": "验证根因",
+          "summarize-findings": "总结结论"
+        }
       },
       "team-research-report": {
         "name": "分析调研报告",
-        "description": "调研非开发类主题，分析不同情景，并输出带结论和置信度的简洁报告。"
+        "description": "调研非开发类主题，分析不同情景，并输出带结论和置信度的简洁报告。",
+        "roles": {
+          "role-researcher": "调研者",
+          "role-analyst": "分析师",
+          "role-reporter": "报告人"
+        },
+        "nodes": {
+          "research": "调研",
+          "analysis": "分析",
+          "report": "报告"
+        }
       }
     }
   },

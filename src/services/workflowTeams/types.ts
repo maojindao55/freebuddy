@@ -129,6 +129,44 @@ export function workflowTeamDescription(
   });
 }
 
+export function workflowTeamRoleLabel(
+  team: WorkflowTeam,
+  role: WorkflowTeamRole,
+  t: TFunction
+): string {
+  if (team.source !== "builtin") return role.label;
+  return t(`workflow.builtinTeams.${team.id}.roles.${role.id}`, {
+    defaultValue: t(`workflow.roleKinds.${role.kind}`, {
+      defaultValue: role.label
+    })
+  });
+}
+
+export function workflowTeamNodeTitle(
+  team: WorkflowTeam,
+  node: WorkflowTemplateNode,
+  t: TFunction
+): string {
+  if (team.source !== "builtin") return node.title;
+  return t(`workflow.builtinTeams.${team.id}.nodes.${node.id}`, {
+    defaultValue: node.title
+  });
+}
+
+export function workflowTeamNodeMode(
+  mode: WorkflowTemplateNodeMode,
+  t: TFunction
+): string {
+  return t(`workflow.nodeModes.${mode}`, { defaultValue: mode });
+}
+
+export function workflowTeamRoleKind(
+  kind: WorkflowTeamRoleKind,
+  t: TFunction
+): string {
+  return t(`workflow.roleKinds.${kind}`, { defaultValue: kind });
+}
+
 export function workflowTeamPreviewName(
   preview: WorkflowTeamPreview,
   t: TFunction

@@ -25,14 +25,31 @@ test("agent plan card scrolls internally when it has many entries", () => {
   assert.equal(/\.plan-list\s*\{[^}]*max-height:/s.test(styles), false);
 });
 
-test("session config card truncates values and scrolls when crowded", () => {
-  assert.match(source, /session-config-scroll/);
-  assert.match(source, /session-config-label" title=\{label\}/);
-  assert.match(source, /<dd title=\{value\}>/);
-  assert.match(styles, /\.session-config-scroll\s*\{[^}]*overflow-y:\s*auto/s);
-  assert.match(styles, /\.session-config-scroll\s*\{[^}]*max-height:/s);
-  assert.match(styles, /\.session-config-list dd\s*\{[^}]*text-overflow:\s*ellipsis/s);
-  assert.match(styles, /\.session-config-list \.session-config-label\s*\{[^}]*text-overflow:\s*ellipsis/s);
+test("third column card stack scrolls within the visible overview space", () => {
+  assert.match(styles, /\.detail-tab-body\s*\{[^}]*min-height:\s*0/s);
+  assert.match(styles, /\.workspace-cards\s*\{[^}]*flex:\s*1 1 0/s);
+  assert.match(styles, /\.workspace-cards\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(styles, /\.workspace-cards\s*\{[^}]*overflow-x:\s*hidden/s);
+  assert.match(styles, /\.workspace-cards\s*\{[^}]*scrollbar-gutter:\s*stable/s);
+  assert.match(styles, /\.workspace-cards > \.side-card:not\(\.plan-card\)\s*\{[^}]*flex-shrink:\s*0/s);
+  assert.equal(/\.workspace-cards\s*\{[^}]*height:\s*100%/s.test(styles), false);
+});
+
+test("active agent subtitle truncates merged session config values", () => {
+  assert.match(source, /const sessionConfigSummary = useMemo/);
+  assert.match(source, /sessionConfigValues\.join\(" \/ "\)/);
+  assert.match(styles, /\.agent-lockup small\s*\{[^}]*color:\s*var\(--fb-text-tertiary\)/s);
+  assert.match(styles, /\.agent-lockup strong,\s*\.agent-lockup small\s*\{[^}]*text-overflow:\s*ellipsis/s);
+  assert.match(styles, /\.agent-lockup strong,\s*\.agent-lockup small\s*\{[^}]*white-space:\s*nowrap/s);
+});
+
+test("active agent card absorbs session config values", () => {
+  assert.match(source, /const sessionConfigSummary = useMemo/);
+  assert.match(source, /sessionConfigValues\.join\(" \/ "\)/);
+  assert.match(source, /<small title=\{sessionConfigSummary\}>\{sessionConfigSummary\}<\/small>/);
+  assert.match(source, /workspace\.localAgent/);
+  assert.match(source, /workspace\.runState/);
+  assert.doesNotMatch(source, /className="side-card session-config-card"/);
 });
 
 test("workspace panel renders the Codex usage card from the CLI bridge", () => {
@@ -55,22 +72,22 @@ test("workspace panel renders the Codex usage card from the CLI bridge", () => {
 
 test("Codex usage card is rendered after the primary workspace cards", () => {
   const codexCard = source.indexOf('className="side-card codex-usage-card"');
-  const runState = source.indexOf('t("workspace.runState")');
-  const configCard = source.indexOf('className="side-card session-config-card"');
+  const activeAgent = source.indexOf('className="side-card active-agent-card"');
+  const runStateCard = source.indexOf('workspace.runState');
   const planCard = source.indexOf('className="side-card plan-card"');
 
-  assert.ok(codexCard > runState);
-  assert.ok(codexCard > configCard);
+  assert.ok(codexCard > activeAgent);
+  assert.ok(codexCard > runStateCard);
   assert.ok(codexCard > planCard);
 });
 
 test("feed card is rendered last because it is a secondary workspace affordance", () => {
   const feedCard = source.lastIndexOf("<FeedCard />");
   const codexCard = source.indexOf('className="side-card codex-usage-card"');
-  const runState = source.indexOf('t("workspace.runState")');
+  const activeAgent = source.indexOf('className="side-card active-agent-card"');
   const planCard = source.indexOf('className="side-card plan-card"');
 
-  assert.ok(feedCard > runState);
+  assert.ok(feedCard > activeAgent);
   assert.ok(feedCard > planCard);
   assert.ok(feedCard > codexCard);
 });

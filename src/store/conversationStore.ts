@@ -28,7 +28,9 @@ import { useCliExecutorStore } from "./cliExecutorStore";
 import {
   collectStreamMessageIds,
   defaultTitleFor,
+  feedArticleTitleFromMessages,
   mergeConversationMessages,
+  shouldApplyAgentSessionTitle,
   upsertConversationMessage
 } from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
@@ -321,10 +323,26 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => {
       const sessionInfo = latestSessionInfoFromMessages(list);
       const agentTitle = sessionInfo?.title?.trim();
+      const feedArticleTitle = feedArticleTitleFromMessages(list);
       let conversations = s.conversations;
       if (agentTitle) {
         const conversation = conversations.find((entry) => entry.id === id);
-        if (conversation && conversation.title !== agentTitle) {
+        const nextTitle =
+          conversation &&
+          feedArticleTitle &&
+          conversation.title === agentTitle &&
+          feedArticleTitle !== conversation.title
+            ? feedArticleTitle
+            : undefined;
+        if (conversation && nextTitle) {
+          conversations = conversations.map((entry) =>
+            entry.id === id ? { ...entry, title: nextTitle } : entry
+          );
+          void cliClient.renameConversation(id, nextTitle);
+        } else if (
+          conversation &&
+          shouldApplyAgentSessionTitle(conversation, agentTitle)
+        ) {
           conversations = conversations.map((entry) =>
             entry.id === id ? { ...entry, title: agentTitle } : entry
           );

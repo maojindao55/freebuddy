@@ -9,6 +9,8 @@ import type {
   UpdateFeedSourceInput
 } from "@/services/feed/types";
 
+const FEED_ITEM_LOAD_LIMIT = 200;
+
 interface FeedState {
   sources: FeedSource[];
   items: FeedItem[];
@@ -41,7 +43,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
     try {
       const [sources, items] = await Promise.all([
         feedClient.listSources(),
-        feedClient.listItems({ limit: 60 })
+        feedClient.listItems({ limit: FEED_ITEM_LOAD_LIMIT })
       ]);
       set({ sources, items, loaded: true });
     } catch (error) {
@@ -53,7 +55,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
 
   async loadItems() {
     if (!feedClient.isAvailable()) return;
-    const items = await feedClient.listItems({ limit: 60 });
+    const items = await feedClient.listItems({ limit: FEED_ITEM_LOAD_LIMIT });
     set({ items });
   },
 
@@ -94,7 +96,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
       const result = await feedClient.refreshSource(id);
       const [sources, items] = await Promise.all([
         feedClient.listSources(),
-        feedClient.listItems({ limit: 60 })
+        feedClient.listItems({ limit: FEED_ITEM_LOAD_LIMIT })
       ]);
       set({ sources, items });
       return result;
@@ -113,7 +115,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
       const results = await feedClient.refreshAll();
       const [sources, items] = await Promise.all([
         feedClient.listSources(),
-        feedClient.listItems({ limit: 60 })
+        feedClient.listItems({ limit: FEED_ITEM_LOAD_LIMIT })
       ]);
       set({ sources, items });
       return results;

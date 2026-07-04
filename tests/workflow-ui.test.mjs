@@ -336,6 +336,8 @@ test("DraftCanvas renders markdown, document, pdf, and image targets without ifr
   assert.match(src, /MAX_IMAGE_ZOOM = 8/);
   assert.doesNotMatch(src, /useEffect\(\(\) => \{\s*setPan\(\{ x: 0, y: 0 \}\);\s*\}, \[zoom\]\)/);
   assert.match(toolbarSrc, /MAX_ZOOM = 8/);
+  assert.match(toolbarSrc, /isRemoteHttpUrl\(url\)/);
+  assert.match(toolbarSrc, /window\.open\(url, "_blank", "noopener,noreferrer"\)/);
   assert.match(src, /translate\(\$\{pan\.x\}px, \$\{pan\.y\}px\) scale\(\$\{zoom\}\)/);
   assert.doesNotMatch(src, /\bzoom,\n\s*transform: `translate/);
   assert.match(src, /draft-markdown-wrap/);

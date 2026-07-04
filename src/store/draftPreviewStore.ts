@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 export interface DraftPreviewEntry {
   cwd: string;
-  /** User/agent-set preview target: relative path or localhost URL. */
+  /** User/agent-set preview target: relative path, local file, or HTTP(S) URL. */
   manualEntry?: string;
   /** Entry resolution finished. */
   ready: boolean;
@@ -64,7 +64,7 @@ export function composeDraftPreviewUrl(
   nonce: number
 ): string {
   if (!target) return "";
-  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(target)) {
+  if (/^https?:\/\//i.test(target)) {
     return withDraftNonce(target, nonce);
   }
   if (/^freebuddy-file:\/\//i.test(target)) {

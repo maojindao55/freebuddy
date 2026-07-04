@@ -126,10 +126,16 @@ function App() {
     void loadUpdater();
   }, [loadUpdater]);
   const loadDetailLayout = useDetailLayoutStore((s) => s.load);
+  const activeDetailTab = useDetailLayoutStore((s) => s.activeTab);
   const detailWidth = useDetailLayoutStore(selectDetailWidth);
   useEffect(() => {
     void loadDetailLayout();
   }, [loadDetailLayout]);
+  useEffect(() => {
+    if (activeDetailTab === "preview") {
+      setSidebarCollapsed(true);
+    }
+  }, [activeDetailTab]);
 
   const [winWidth, setWinWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 1280

@@ -56,6 +56,7 @@ import {
   type UpdateFeedSourceInput
 } from "./feed.js";
 import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
+import { resolveAttachmentFilePath } from "../freebuddyFileProtocol.js";
 import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
@@ -268,8 +269,13 @@ export function registerCliIpc() {
 
   ipcMain.handle("cli:openDraftExternal", async (_e, url: string) => {
     if (!url) return false;
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url)) {
+    if (/^https?:\/\//i.test(url)) {
       await shell.openExternal(url);
+      return true;
+    }
+    if (url.startsWith("freebuddy-file://")) {
+      const filePath = resolveAttachmentFilePath(url);
+      await shell.openExternal(pathToFileURL(filePath).toString());
       return true;
     }
     if (!url.startsWith("freebuddy-draft://")) return false;

@@ -1,6 +1,6 @@
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { CLIMember } from "@/config/aiMembers";
-import type { ConversationMessage } from "@/services/cli/types";
+import type { Conversation, ConversationMessage } from "@/services/cli/types";
 
 type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
@@ -395,19 +395,65 @@ export function buildConversationTitle(input: {
   return Array.from(source).slice(0, maxLength).join("");
 }
 
-export function shouldApplyAgentSessionTitle(
-  conversation: { title?: string },
-  messages: Pick<ConversationMessage, "workflowRunId">[],
-  title: string
-): boolean {
-  const nextTitle = normalizeTitleText(title);
-  if (!nextTitle) return false;
-  if ("title" in conversation && conversation.title === nextTitle) return false;
-  return !messages.some((message) => Boolean(message.workflowRunId));
-}
-
 function normalizeTitleText(value: string | undefined): string {
   return value?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function defaultTitleForConversation(
+  conversation: Pick<Conversation, "agentName" | "cwd">
+): string {
+  const tail = conversation.cwd
+    ? conversation.cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
+    : undefined;
+  return tail ? `${conversation.agentName} · ${tail}` : conversation.agentName;
+}
+
+export function shouldApplyAgentSessionTitle(
+  conversation: Pick<Conversation, "title"> &
+    Partial<Pick<Conversation, "agentName" | "cwd">>,
+  messagesOrTitle:
+    | Pick<ConversationMessage, "workflowRunId">[]
+    | string
+    | undefined,
+  maybeTitle?: string
+): boolean {
+  const messages = Array.isArray(messagesOrTitle) ? messagesOrTitle : [];
+  const title = normalizeTitleText(
+    Array.isArray(messagesOrTitle) ? maybeTitle : messagesOrTitle
+  );
+  if (!title || conversation.title === title) return false;
+  if (messages.some((message) => Boolean(message.workflowRunId))) return false;
+  if (!conversation.agentName) return true;
+  return conversation.title ===
+    defaultTitleForConversation({
+      agentName: conversation.agentName,
+      cwd: conversation.cwd
+    });
+}
+
+function clipConversationTitle(value: string, max = 80): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max).trimEnd()}...`;
+}
+
+function feedArticleTitleFromPrompt(content: string): string | undefined {
+  const match =
+    content.match(/(?:^|\n)\s*\u6587\u7ae0\u6807\u9898[:\uff1a]\s*([^\n\r]+)/) ??
+    content.match(/(?:^|\n)\s*Article title:\s*([^\n\r]+)/i);
+  const title = match?.[1]?.trim();
+  return title ? clipConversationTitle(title) : undefined;
+}
+
+export function feedArticleTitleFromMessages(
+  messages: Pick<ConversationMessage, "role" | "content">[]
+): string | undefined {
+  for (const message of messages) {
+    if (message.role !== "user") continue;
+    const title = feedArticleTitleFromPrompt(message.content);
+    if (title) return title;
+  }
+  return undefined;
 }
 
 function mergeMessageAttachments(

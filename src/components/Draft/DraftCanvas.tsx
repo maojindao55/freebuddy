@@ -4,9 +4,16 @@ import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { ConversationMessage } from "@/services/cli/types";
+import type { FeedItem } from "@/services/feed/types";
 import { cliClient } from "@/services/cli/client";
 import { useConversationStore } from "@/store/conversationStore";
 import { useDraftPreviewStore } from "@/store/draftPreviewStore";
+import { useFeedStore } from "@/store/feedStore";
+import {
+  buildFeedInterpretPrompt,
+  clipFeedTitle,
+  isFeedInterpretConversation
+} from "../Feeds/feedInterpretation";
 import { DraftToolbar, type DraftViewport } from "./DraftToolbar";
 import { MarkdownText } from "../CLI/StreamItem";
 
@@ -134,8 +141,10 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const panStart = useRef({ x: 0, y: 0 });
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [documentText, setDocumentText] = useState<string | null>(null);
+  const [feedActionId, setFeedActionId] = useState<string | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const activeId = useConversationStore((s) => s.activeId);
+  const conversations = useConversationStore((s) => s.conversations);
   const cwd = useConversationStore((s) => {
     const conv = s.conversations.find((c) => c.id === s.activeId);
     return conv?.cwd;
@@ -146,9 +155,15 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const messages = useConversationStore((s) =>
     s.activeId ? s.messages[s.activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
   );
+  const members = useConversationStore((s) => s.members);
+  const newConversation = useConversationStore((s) => s.newConversation);
+  const sendMessage = useConversationStore((s) => s.sendMessage);
+  const feedItems = useFeedStore((s) => s.items);
+  const markInterpreted = useFeedStore((s) => s.markInterpreted);
   const entry = useDraftPreviewStore((s) =>
     activeId ? s.byConv[activeId] : undefined
   );
+  const active = conversations.find((conv) => conv.id === activeId);
   const hasEntry = Boolean(entry?.url);
   const isMarkdown = isMarkdownTarget(entry?.manualEntry, entry?.url);
   const isImage = isImageDraftTarget(entry?.manualEntry, entry?.url);
@@ -157,6 +172,11 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const pdfUrl = isPdf && entry?.url ? `${entry.url}#view=FitH&navpanes=0` : "";
   const documentExtension = draftTargetExtension(entry?.manualEntry, entry?.url);
   const frameWidth = FRAME_WIDTH[viewport];
+  const currentFeedItem = useMemo(
+    () => feedItems.find((item) => item.link === entry?.manualEntry),
+    [feedItems, entry?.manualEntry]
+  );
+  const isActiveFeedConversation = isFeedInterpretConversation(messages);
 
   useEffect(() => {
     if (!activeId) return;
@@ -239,6 +259,55 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
 
   const resetPan = useCallback(() => setPan({ x: 0, y: 0 }), []);
 
+  const handleMarkFeedItemRead = useCallback(
+    async (item: FeedItem) => {
+      setFeedActionId(item.id);
+      try {
+        await markInterpreted(item.id);
+      } finally {
+        setFeedActionId(null);
+      }
+    },
+    [markInterpreted]
+  );
+
+  const handleInterpretFeedItem = useCallback(
+    async (item: FeedItem) => {
+      const member =
+        members.find((entry) => entry.id === active?.agentId) ?? members[0];
+      if (!member) return;
+      setFeedActionId(item.id);
+      try {
+        const conv =
+          active && isActiveFeedConversation
+            ? active
+            : await newConversation({
+                member,
+                cwd: active?.cwd,
+                title: clipFeedTitle(item.title),
+                approvalMode: active?.approvalMode ?? member.cli.approvalMode
+              });
+        await markInterpreted(item.id);
+        await sendMessage({
+          conversationId: conv.id,
+          prompt: buildFeedInterpretPrompt(item, t),
+          preserveConversationTitle: true
+        });
+      } finally {
+        setFeedActionId(null);
+      }
+    },
+    [
+      active,
+      isActiveFeedConversation,
+      markInterpreted,
+      members,
+      newConversation,
+      sendMessage,
+      t
+    ]
+  );
+
   const onImageWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const gestureZoom = event.ctrlKey || event.metaKey;
     if (!gestureZoom) return;
@@ -273,8 +342,12 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
         url={entry?.url}
         viewport={viewport}
         zoom={zoom}
+        feedItem={currentFeedItem}
+        feedActionBusy={Boolean(feedActionId)}
         onViewportChange={setViewport}
         onZoomChange={setZoom}
+        onInterpretFeedItem={handleInterpretFeedItem}
+        onMarkFeedItemRead={handleMarkFeedItemRead}
         onClose={onClose}
       />
       <div

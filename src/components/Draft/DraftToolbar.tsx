@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cliClient } from "@/services/cli/client";
+import type { FeedItem } from "@/services/feed/types";
 import { useConversationStore } from "@/store/conversationStore";
 import { useDraftPreviewStore } from "@/store/draftPreviewStore";
 
@@ -27,28 +28,59 @@ const ICON_PROPS = {
   "aria-hidden": true
 };
 
+function isRemoteHttpUrl(value: string | undefined): value is string {
+  return /^https?:\/\//i.test(value ?? "");
+}
+
 export function DraftToolbar({
   url,
   viewport,
   zoom,
+  feedItem,
+  feedActionBusy,
   onViewportChange,
   onZoomChange,
+  onInterpretFeedItem,
+  onMarkFeedItemRead,
   onClose
 }: {
   url?: string;
   viewport: DraftViewport;
   zoom: number;
+  feedItem?: FeedItem;
+  feedActionBusy?: boolean;
   onViewportChange: (viewport: DraftViewport) => void;
   onZoomChange: (zoom: number) => void;
+  onInterpretFeedItem?: (item: FeedItem) => void;
+  onMarkFeedItemRead?: (item: FeedItem) => void;
   onClose?: () => void;
 }) {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
-  const canOpenExternal = Boolean(url && cliClient.isAvailable());
+  const canOpenExternal = Boolean(
+    url && (cliClient.isAvailable() || isRemoteHttpUrl(url))
+  );
 
   const openExternal = () => {
     if (!url || !canOpenExternal) return;
-    void cliClient.openDraftExternal(url);
+    if (cliClient.isAvailable()) {
+      void cliClient
+        .openDraftExternal(url)
+        .then((opened) => {
+          if (!opened && isRemoteHttpUrl(url)) {
+            window.open(url, "_blank", "noopener,noreferrer");
+          }
+        })
+        .catch(() => {
+          if (isRemoteHttpUrl(url)) {
+            window.open(url, "_blank", "noopener,noreferrer");
+          }
+        });
+      return;
+    }
+    if (isRemoteHttpUrl(url)) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   };
 
   const viewportOptions = useMemo(() => VIEWPORTS, []);
@@ -127,6 +159,30 @@ export function DraftToolbar({
           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
         </svg>
       </button>
+      {feedItem && (
+        <div className="draft-feed-actions">
+          <button
+            type="button"
+            className="draft-feed-action"
+            title={t("draft.feedInterpret")}
+            aria-label={t("draft.feedInterpret")}
+            disabled={feedActionBusy || !onInterpretFeedItem}
+            onClick={() => onInterpretFeedItem?.(feedItem)}
+          >
+            {t("draft.feedInterpret")}
+          </button>
+          <button
+            type="button"
+            className="draft-feed-action"
+            title={t("draft.feedMarkRead")}
+            aria-label={t("draft.feedMarkRead")}
+            disabled={feedActionBusy || Boolean(feedItem.interpretedAt) || !onMarkFeedItemRead}
+            onClick={() => onMarkFeedItemRead?.(feedItem)}
+          >
+            {feedItem.interpretedAt ? t("feed.interpreted") : t("draft.feedMarkRead")}
+          </button>
+        </div>
+      )}
       {onClose && (
         <button
           type="button"

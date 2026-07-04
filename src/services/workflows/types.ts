@@ -96,6 +96,7 @@ export interface WorkflowStepRow {
   summary?: string;
   resultJson?: string;
   cliTaskId?: string;
+  toolSessionId?: string;
   startedAt?: string;
   endedAt?: string;
   createdAt: string;

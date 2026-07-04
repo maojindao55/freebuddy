@@ -2216,7 +2216,7 @@ button {
   inset: 0;
   --chat-composer-reserve: 190px;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
   background: transparent;
@@ -2225,12 +2225,92 @@ button {
 .chat-scroll {
   display: flex;
   flex-direction: column;
-  grid-row: 1;
+  grid-row: 2;
   min-height: 0;
   overflow-y: auto;
   gap: 14px;
   padding: 24px 24px calc(var(--chat-composer-reserve) + 18px);
   scroll-padding-bottom: var(--chat-composer-reserve);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.titlebar-actions-plain {
+  padding: 0;
+  background: transparent;
+}
+
+.title-replay-btn {
+  display: inline-flex;
+  height: 30px;
+  min-width: 68px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.title-replay-btn:hover:not(:disabled) {
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-soft);
+  border-color: var(--fb-border-strong);
+}
+
+.title-replay-btn.replaying {
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.title-replay-btn.replaying:hover:not(:disabled) {
+  color: var(--fb-brand);
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.36);
+}
+
+.title-replay-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.title-replay-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.title-replay-label {
+  white-space: nowrap;
+}
+
+.chat-composer.replay-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.chat-scroll.replay-active {
+  scroll-behavior: auto;
+}
+
+.chat-scroll.replay-active > .msg {
+  animation: none;
 }
 
 .chat-scroll > .msg,
@@ -2427,8 +2507,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2455,9 +2535,11 @@ button {
 }
 
 .msg-action-icon {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   display: block;
+  flex: 0 0 16px;
+  stroke-width: 1.9;
 }
 
 .msg-action-time {
@@ -2590,6 +2672,96 @@ button {
 .msg-assistant .msg-bubble {
   width: 100%;
   border-radius: 2px var(--fb-rounded-lg) var(--fb-rounded-lg) var(--fb-rounded-lg);
+}
+
+.workflow-approval-msg .msg-content-wrapper {
+  max-width: min(620px, 100%);
+  gap: 0;
+}
+
+.workflow-approval-spacer {
+  width: 16px;
+  height: 1px;
+  flex: 0 0 16px;
+  pointer-events: none;
+}
+
+.workflow-approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 620px;
+  padding: 14px 16px 15px;
+  border-radius: 8px;
+}
+
+.workflow-approval-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workflow-approval-eyebrow {
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.workflow-approval-card p {
+  margin: 0;
+  max-width: 58ch;
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.workflow-approval-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.workflow-approval-card-actions button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.workflow-approval-card-actions button:hover {
+  background: var(--fb-hover);
+}
+
+.workflow-approval-card-actions button.primary {
+  border-color: transparent;
+  background: var(--fb-brand);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
+}
+
+.workflow-approval-card-actions button.primary:hover {
+  background: var(--fb-brand-strong, var(--fb-brand));
+}
+
+.workflow-approval-card-actions button.danger {
+  border-color: rgba(239, 68, 68, 0.28);
+  color: var(--fb-danger, #ef4444);
+  background: transparent;
+}
+
+.workflow-approval-card-actions button.danger:hover {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: rgba(239, 68, 68, 0.06);
 }
 
 .msg-meta {
@@ -3155,6 +3327,7 @@ button {
 }
 
 .footer-toggle {
+  position: relative;
   display: grid;
   width: 30px;
   height: 30px;
@@ -3167,6 +3340,18 @@ button {
   font-size: 15px;
   line-height: 1;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.footer-toggle[data-theme-preference="system"]::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--fb-brand);
+  box-shadow: 0 0 0 2px var(--fb-sidebar-bg);
 }
 
 .footer-toggle:hover {
@@ -3487,10 +3672,15 @@ button.ghost:disabled {
   flex: 1 1 0;
   flex-direction: column;
   gap: 16px;
-  height: 100%;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-right: 2px;
+  scrollbar-gutter: stable;
+}
+
+.workspace-cards > .side-card:not(.plan-card) {
+  flex-shrink: 0;
 }
 
 .detail-resizer {
@@ -3627,6 +3817,7 @@ button.ghost:disabled {
 
 .draft-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -3716,6 +3907,37 @@ button.ghost:disabled {
 .draft-action:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.draft-feed-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.draft-feed-action {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fb-brand);
+  background: var(--fb-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--fb-brand) 22%, transparent);
+  border-radius: var(--fb-rounded-md, 8px);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.draft-feed-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fb-brand) 14%, var(--fb-panel-bg));
+  border-color: var(--fb-brand);
+}
+
+.draft-feed-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .draft-frame-wrap {
@@ -4028,82 +4250,6 @@ button.ghost:disabled {
   white-space: nowrap;
 }
 
-.session-config-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex-shrink: 0;
-}
-
-.session-config-card .session-config-scroll {
-  max-height: min(240px, 36vh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-  padding: 0 14px 14px;
-}
-
-.session-config-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.session-config-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.35);
-}
-
-.session-config-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.session-config-card .compact-dl {
-  gap: 0;
-  padding: 0;
-}
-
-.session-config-list .session-config-row {
-  align-items: flex-start;
-  padding: 9px 0;
-  border-top: 1px solid var(--fb-border);
-}
-
-.session-config-list .session-config-row:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.session-config-list dt {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.35;
-}
-
-.session-config-list .session-config-label {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--fb-text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-config-list dd {
-  flex: 0 1 58%;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--fb-text-primary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.45;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .session-id-copy {
   max-width: 150px;
   padding: 1px 6px;
@@ -4166,6 +4312,95 @@ button.ghost:disabled {
   gap: 6px;
 }
 
+.codex-reset-credits {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--fb-border);
+  padding-top: 10px;
+}
+
+.codex-reset-credits-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  gap: 10px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.codex-reset-credits-summary:hover strong {
+  color: var(--fb-brand);
+}
+
+.codex-reset-credits-chevron {
+  display: inline-flex;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  align-items: center;
+  justify-content: center;
+}
+
+.codex-reset-credits-chevron::before {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--fb-text-tertiary);
+  border-bottom: 1.5px solid var(--fb-text-tertiary);
+  content: "";
+  transform: rotate(-45deg);
+  transform-origin: center;
+}
+
+.codex-reset-credits-summary[aria-expanded="true"] .codex-reset-credits-chevron::before {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.codex-reset-credit-list {
+  display: grid;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.codex-reset-credit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  border-radius: var(--fb-rounded-sm);
+  background: var(--fb-panel-soft);
+  padding: 7px 8px;
+}
+
+.codex-reset-credit-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fb-text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-reset-credit-status {
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.codex-reset-credit-status.available {
+  color: var(--fb-brand);
+}
+
+.codex-reset-credit-status.used {
+  color: var(--fb-text-tertiary);
+}
+
 .codex-limit-meta {
   display: flex;
   align-items: center;
@@ -4173,7 +4408,11 @@ button.ghost:disabled {
   gap: 10px;
 }
 
+.codex-reset-credits-summary strong,
 .codex-limit-meta strong {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
   overflow: hidden;
   color: var(--fb-text-primary);
@@ -4184,6 +4423,7 @@ button.ghost:disabled {
   white-space: nowrap;
 }
 
+.codex-reset-credits-summary > span,
 .codex-limit-meta span {
   flex: 0 0 auto;
   color: var(--fb-brand);
@@ -4206,12 +4446,20 @@ button.ghost:disabled {
   background: var(--fb-brand-gradient);
 }
 
+.codex-reset-credits small,
 .codex-limit-row small,
 .codex-usage-empty {
   margin: 0;
   color: var(--fb-text-tertiary);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.codex-reset-credit-row small {
+  grid-column: 1 / -1;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .codex-usage-empty {
@@ -4419,6 +4667,7 @@ button.ghost:disabled {
 .chat-scroll::-webkit-scrollbar,
 .sidebar-nav::-webkit-scrollbar,
 .conv-list ul::-webkit-scrollbar,
+.workspace-cards::-webkit-scrollbar,
 .workspace-panel::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -4426,6 +4675,7 @@ button.ghost:disabled {
 .chat-scroll::-webkit-scrollbar-thumb,
 .sidebar-nav::-webkit-scrollbar-thumb,
 .conv-list ul::-webkit-scrollbar-thumb,
+.workspace-cards::-webkit-scrollbar-thumb,
 .workspace-panel::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.1);
   border-radius: 999px;
@@ -4433,18 +4683,21 @@ button.ghost:disabled {
 .chat-scroll::-webkit-scrollbar-thumb:hover,
 .sidebar-nav::-webkit-scrollbar-thumb:hover,
 .conv-list ul::-webkit-scrollbar-thumb:hover,
+.workspace-cards::-webkit-scrollbar-thumb:hover,
 .workspace-panel::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.2);
 }
 [data-theme="dark"] .chat-scroll::-webkit-scrollbar-thumb,
 [data-theme="dark"] .sidebar-nav::-webkit-scrollbar-thumb,
 [data-theme="dark"] .conv-list ul::-webkit-scrollbar-thumb,
+[data-theme="dark"] .workspace-cards::-webkit-scrollbar-thumb,
 [data-theme="dark"] .workspace-panel::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
 }
 [data-theme="dark"] .chat-scroll::-webkit-scrollbar-thumb:hover,
 [data-theme="dark"] .sidebar-nav::-webkit-scrollbar-thumb:hover,
 [data-theme="dark"] .conv-list ul::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .workspace-cards::-webkit-scrollbar-thumb:hover,
 [data-theme="dark"] .workspace-panel::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
@@ -4862,6 +5115,137 @@ button.ghost:focus-visible,
 .msg-assistant .msg-items {
   gap: 10px;
   padding: 0;
+}
+
+.stream-process {
+  margin: 8px 0 12px;
+  color: #969ba3;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.stream-process > summary {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  color: #969ba3;
+  font-weight: 650;
+  outline: none;
+  transition: color 120ms ease;
+}
+
+.stream-process > summary:hover {
+  color: #6f7681;
+}
+
+.stream-process > summary::-webkit-details-marker {
+  display: none;
+}
+
+.stream-process > summary::after {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  content: "";
+  opacity: 0.62;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 120ms ease;
+}
+
+.stream-process[open] > summary::after {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.stream-process-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: currentColor;
+  stroke-width: 1.85;
+}
+
+.stream-process-icon.spinning {
+  animation: stream-process-spin 1s linear infinite;
+}
+
+.stream-process-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stream-process-outcome {
+  flex: 0 0 auto;
+  color: #9fa7b2;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.stream-process-title-separator {
+  color: #a9aeb6;
+}
+
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .stream-process.running .stream-process-running-text {
+    color: transparent;
+    background:
+      linear-gradient(
+        100deg,
+        #969ba3 0%,
+        #969ba3 34%,
+        #14a477 45%,
+        #85d8b7 50%,
+        #14a477 55%,
+        #969ba3 66%,
+        #969ba3 100%
+      );
+    background-size: 260% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: stream-process-title-shimmer 1.75s linear infinite;
+  }
+}
+
+.stream-process-detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0 24px;
+  padding: 0;
+}
+
+@keyframes stream-process-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes stream-process-title-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-process.running .stream-process-running-text {
+    color: #969ba3;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    animation: none;
+  }
 }
 
 .msg-system {
@@ -5283,13 +5667,14 @@ button.ghost:focus-visible,
   flex: 0 0 16px;
   align-items: center;
   justify-content: center;
-  color: #9a9a9a;
+  color: #98a1ad;
 }
 
 .stream-step-icon-svg {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.85;
 }
 
 .stream-tool-call {
@@ -5320,45 +5705,65 @@ button.ghost:focus-visible,
   color: #8a8a8a;
   font-weight: 500;
   line-height: 22px;
+  cursor: default;
+}
+
+.stream-tool-invocation.has-body > summary,
+.stream-thinking > summary,
+.stream-tool-result > summary,
+.stream-file-edit > summary {
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.stream-tool-invocation.has-body > summary:hover,
+.stream-thinking > summary:hover,
+.stream-tool-result > summary:hover,
+.stream-file-edit > summary:hover {
+  background: rgba(148, 163, 184, 0.08);
+  color: #68707b;
+}
+
+.stream-tool-invocation > summary {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+
+.stream-tool-invocation.has-body > summary {
   cursor: pointer;
 }
 
-.stream-tool-invocation summary {
+.stream-thinking > summary {
   display: flex;
-  max-width: 100%;
   align-items: center;
   gap: 7px;
   list-style: none;
 }
 
-.stream-thinking summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+.stream-tool-result > summary,
+.stream-file-edit > summary {
   list-style: none;
 }
 
 .stream-thinking summary::-webkit-details-marker,
+.stream-tool-result summary::-webkit-details-marker,
+.stream-file-edit summary::-webkit-details-marker,
 .stream-tool-invocation summary::-webkit-details-marker {
   display: none;
 }
 
-.stream-thinking summary::before,
-.stream-tool-invocation summary::before {
-  flex: 0 0 auto;
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid #9a9a9a;
+.stream-thinking summary::marker,
+.stream-tool-result summary::marker,
+.stream-file-edit summary::marker,
+.stream-tool-invocation summary::marker {
   content: "";
-  transition: transform 120ms ease;
-  transform: rotate(0deg);
-}
-
-.stream-thinking[open] summary::before,
-.stream-tool-invocation[open] summary::before {
-  transform: rotate(90deg);
+  font-size: 0;
 }
 
 .stream-tool-summary-main {
@@ -5397,8 +5802,14 @@ button.ghost:focus-visible,
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 5px;
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
 }
 
 .stream-tool-status.pending {
@@ -5410,7 +5821,8 @@ button.ghost:focus-visible,
 }
 
 .stream-tool-status.completed {
-  color: #16a34a;
+  background: rgba(16, 185, 129, 0.1);
+  color: #0f9f72;
 }
 
 .stream-tool-status.failed,
@@ -5531,6 +5943,8 @@ button.ghost:focus-visible,
   display: grid;
   gap: 8px;
   margin: 8px 0 0 28px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
   min-width: 0;
 }
 
@@ -5579,6 +5993,7 @@ button.ghost:focus-visible,
   padding: 10px 12px;
   overflow: auto;
   border: 1px solid #ececec;
+  border-left-color: rgba(148, 163, 184, 0.28);
   border-radius: 8px;
   background: #fafafa;
   color: #4a4a4a;
@@ -5589,6 +6004,8 @@ button.ghost:focus-visible,
 
 .stream-thinking .markdown-body {
   margin: 8px 0 0 22px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
   color: #777777;
   font-size: 13px;
 }
@@ -5743,6 +6160,14 @@ button.ghost:focus-visible,
 
 [data-theme="dark"] .stream-text {
   color: #e5e7eb;
+}
+
+[data-theme="dark"] .stream-process {
+  color: rgba(203, 213, 225, 0.62);
+}
+
+[data-theme="dark"] .stream-process > summary:hover {
+  color: rgba(226, 232, 240, 0.82);
 }
 
 [data-theme="dark"] .markdown-body code,
@@ -6095,8 +6520,16 @@ button.ghost:focus-visible,
 .settings-section h3 { margin: 0 0 8px; font-size: 13px; }
 .settings-section select { padding: 6px 8px; border-radius: 6px; }
 
-/* Sidebar version + update badge */
+/* Sidebar version + update capsule */
 .sidebar-footer .footer-action { position: relative; }
+.footer-version-wrap {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .footer-version {
   flex: 0 0 auto;
   font-size: 11px;
@@ -6104,15 +6537,41 @@ button.ghost:focus-visible,
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.footer-badge {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+
+.footer-update-pill {
+  display: inline-flex;
+  height: 18px;
+  max-width: 74px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 999px;
+  color: var(--fb-brand, #10b981);
+  background: var(--fb-brand-glow, rgba(16, 185, 129, 0.12));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.footer-update-pill:hover {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(16, 185, 129, 0.16);
+  color: #059669;
+}
+
+.footer-update-pill.downloaded {
+  color: #ffffff;
+  border-color: var(--fb-brand, #10b981);
   background: var(--fb-brand, #10b981);
-  box-shadow: 0 0 0 2px var(--fb-sidebar-bg);
+}
+
+.footer-update-pill.downloaded:hover {
+  color: #ffffff;
+  background: #059669;
 }
 
 /* About / Updates tab */
@@ -6654,6 +7113,82 @@ button.ghost:focus-visible,
 .workflow-team-node-role {
   color: var(--fb-text-secondary);
 }
+.workflow-node-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.workflow-node-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+.workflow-node-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+  cursor: pointer;
+}
+.workflow-node-option.selected {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+.workflow-node-option.readonly,
+.workflow-node-config.readonly .workflow-node-gate-option {
+  cursor: default;
+  opacity: 0.68;
+}
+.workflow-node-option.readonly.selected {
+  border-color: var(--fb-border);
+  background: var(--fb-panel-soft);
+}
+.workflow-node-option input {
+  margin-top: 2px;
+  accent-color: var(--fb-brand);
+}
+.workflow-node-option input:disabled {
+  cursor: not-allowed;
+}
+.workflow-node-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.workflow-node-option-main strong {
+  font-size: 13px;
+  color: var(--fb-text-primary);
+}
+.workflow-node-option-main small {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fb-text-tertiary);
+}
+.workflow-node-gate-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 6px;
+  padding: 7px 8px;
+  border-left: 2px solid var(--fb-brand);
+  background: var(--fb-panel-bg);
+  border-radius: 6px;
+}
+.workflow-node-gate-option input {
+  margin-top: 2px;
+}
+.workflow-node-gate-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.workflow-node-gate-option strong {
+  font-size: 12px;
+}
 .workflow-team-nodes.timeline {
   padding-left: 8px;
   position: relative;
@@ -6694,7 +7229,13 @@ button.ghost:focus-visible,
 .new-task-team-selector { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .new-task-team-selector label { font-size: 12px; color: var(--muted, #6b7280); }
 .new-task-team-selector select { padding: 8px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 8px; font-size: 14px; }
-.workflow-run-panel { display: flex; flex-direction: column; }
+.workflow-run-panel {
+  display: flex;
+  max-height: min(560px, 58vh);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
 .workflow-run-header {
   display: flex;
   flex-direction: column;
@@ -6797,7 +7338,12 @@ button.ghost:focus-visible,
   color: #b91c1c;
   border-color: #fecaca;
 }
-.workflow-steps-antd { padding: 0 14px 14px; }
+.workflow-steps-antd {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+}
 .workflow-steps-antd .ant-steps {
   font-family: var(--fb-font);
 }
@@ -6990,4 +7536,337 @@ button.ghost:focus-visible,
   height: 20px !important;
   font-size: 9px;
   flex: none;
+}
+
+/* Feed */
+.feed-settings-tab {
+  gap: 14px;
+}
+
+.feed-add-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(220px, 1.4fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.feed-add-form label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.feed-add-form input {
+  height: 32px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  outline: none;
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-bg);
+  font: inherit;
+}
+
+.feed-add-form input:focus {
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+
+.feed-add-form .primary-btn {
+  height: 32px;
+  white-space: nowrap;
+}
+
+.feed-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--fb-danger);
+  background: rgba(225, 29, 72, 0.1);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.feed-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+}
+
+.feed-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feed-empty {
+  margin: 8px 0 0;
+}
+
+.feed-source-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-panel-bg);
+}
+
+.feed-source-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.feed-source-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.feed-source-title strong {
+  overflow: hidden;
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-source-status {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--fb-text-tertiary);
+  background: var(--fb-panel-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.feed-source-status.enabled {
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
+.feed-source-url {
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--fb-text-secondary);
+  font-family: var(--fb-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
+.feed-source-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.feed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.feed-toggle input {
+  margin: 0;
+}
+
+.feed-card {
+  overflow: hidden;
+}
+
+.feed-card-header {
+  align-items: center;
+  padding: 12px 14px 8px;
+}
+
+.feed-card-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.feed-source-select {
+  max-width: 126px;
+  height: 24px;
+  padding: 0 22px 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-sm);
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-soft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-source-select:focus {
+  border-color: var(--fb-brand);
+  outline: none;
+}
+
+.feed-card-action {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--fb-rounded-sm);
+  color: var(--fb-text-tertiary);
+  background: transparent;
+}
+
+.feed-card-action:hover:not(:disabled) {
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
+.feed-card-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.feed-card-empty {
+  margin: 0;
+  padding: 2px 14px 14px;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.feed-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 2px 14px 12px;
+  list-style: none;
+}
+
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--fb-border);
+}
+
+.feed-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.feed-item-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.feed-item-title {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: var(--fb-text-primary);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.feed-item-title:hover {
+  color: var(--fb-brand);
+}
+
+.feed-item-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-item-title svg {
+  flex: 0 0 auto;
+  opacity: 0.65;
+}
+
+.feed-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  margin-top: 3px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.feed-item.interpreted .feed-item-title {
+  color: var(--fb-text-secondary);
+}
+
+.feed-item.interpreted .feed-item-title:hover {
+  color: var(--fb-brand);
+}
+
+.feed-interpret-btn {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--fb-rounded-sm);
+  color: var(--fb-text-tertiary);
+  background: var(--fb-panel-soft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.feed-interpret-btn:hover:not(:disabled) {
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
+.feed-interpret-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 900px) {
+  .feed-add-form {
+    grid-template-columns: 1fr;
+  }
 }

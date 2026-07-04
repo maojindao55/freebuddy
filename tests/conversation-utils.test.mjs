@@ -229,6 +229,44 @@ test("agent session titles do not overwrite workflow conversation titles", async
   );
 });
 
+test("agent session titles do not override custom conversation titles", async () => {
+  const { feedArticleTitleFromMessages, shouldApplyAgentSessionTitle } =
+    await loadConversationUtils();
+
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      {
+        title: "Meta决定卖算力,真的是因为“产能过剩”吗?",
+        agentName: "Kimi",
+        cwd: "/Users/me/project"
+      },
+      "请解读这篇文章,提炼关键信息和可能影响。"
+    ),
+    false
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      {
+        title: "Kimi · project",
+        agentName: "Kimi",
+        cwd: "/Users/me/project"
+      },
+      "Implement auth flow"
+    ),
+    true
+  );
+  assert.equal(
+    feedArticleTitleFromMessages([
+      {
+        role: "user",
+        content:
+          "请解读这篇文章,提炼关键信息和可能影响。\n\n文章标题:Meta决定卖算力,真的是因为“产能过剩”吗?\n来源:MIT 科技评论 - 本周热榜"
+      }
+    ]),
+    "Meta决定卖算力,真的是因为“产能过剩”吗?"
+  );
+});
+
 test("stored assistant messages reuse appendItems normalization", () => {
   const source = fs.readFileSync(
     new URL("../src/components/CLI/MessageBubble.tsx", import.meta.url),
@@ -327,15 +365,19 @@ test("appendItems replaces toolOutputs when replaceToolOutputs is set", async ()
 });
 
 test("tool block renderer groups command items with the tool call", () => {
-  const source = fs.readFileSync(
+  const blockSource = fs.readFileSync(
+    new URL("../src/components/CLI/messageBlocks.ts", import.meta.url),
+    "utf8"
+  );
+  const bubbleSource = fs.readFileSync(
     new URL("../src/components/CLI/MessageBubble.tsx", import.meta.url),
     "utf8"
   );
 
-  assert.match(source, /commands: Extract<CliStreamItem, \{ kind: "command" \}>\[\]/);
-  assert.match(source, /next\.kind !== "tool-result" && next\.kind !== "command"/);
-  assert.match(source, /commands=\{block\.commands\}/);
-  assert.match(source, /extras=\{block\.extras\}/);
+  assert.match(blockSource, /commands: Extract<CliStreamItem, \{ kind: "command" \}>\[\]/);
+  assert.match(blockSource, /next\.kind !== "tool-result" && next\.kind !== "command"/);
+  assert.match(bubbleSource, /commands=\{block\.commands\}/);
+  assert.match(bubbleSource, /extras=\{block\.extras\}/);
 });
 
 test("tool invocation renderer applies final result deduplication", () => {
@@ -358,6 +400,9 @@ test("tool invocation renderer shows ACP status and structured outputs", () => {
   assert.match(source, /stream-tool-status/);
   assert.match(source, /extras = \[\]/);
   assert.match(source, /function ToolKindIcon/);
+  assert.match(source, /type LucideIcon/);
+  assert.match(source, /Icon className="stream-step-icon-svg"/);
+  assert.match(source, /hasBody \? " has-body" : ""/);
   assert.match(source, /stream-step-icon-svg/);
   assert.match(source, /case "terminal-embed":/);
 });

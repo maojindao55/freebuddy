@@ -35,6 +35,13 @@ import type {
   WorkflowTeamPolicy,
   WorkflowTemplate2
 } from "@/services/workflowTeams/types";
+import type {
+  AddFeedSourceInput,
+  FeedItem,
+  FeedRefreshResult,
+  FeedSource,
+  UpdateFeedSourceInput
+} from "@/services/feed/types";
 
 export {};
 
@@ -125,6 +132,17 @@ declare global {
     setSetting(key: string, value: string): Promise<void>;
   }
 
+  interface FreebuddyFeed {
+    listSources(): Promise<FeedSource[]>;
+    addSource(input: AddFeedSourceInput): Promise<FeedSource>;
+    updateSource(input: UpdateFeedSourceInput): Promise<FeedSource | undefined>;
+    deleteSource(id: string): Promise<boolean>;
+    listItems(args?: { limit?: number; offset?: number }): Promise<FeedItem[]>;
+    refreshSource(id: string): Promise<FeedRefreshResult>;
+    refreshAll(): Promise<FeedRefreshResult[]>;
+    markInterpreted(id: string): Promise<FeedItem | undefined>;
+  }
+
   interface FreebuddyWorkflow {
     validate(plan: WorkflowPlan): Promise<WorkflowValidationResult>;
     previewReviewLoop(input: {
@@ -153,6 +171,11 @@ declare global {
     stop(runId: string): Promise<boolean>;
     retryStep(args: { runId: string; stepRowId: string }): Promise<void>;
     approveGate(args: { runId: string; phaseId: string }): Promise<boolean>;
+    requestGateChanges(args: {
+      runId: string;
+      phaseId: string;
+      feedback: string;
+    }): Promise<boolean>;
     continueImplementReview(runId: string): Promise<boolean>;
     getRun(runId: string): Promise<WorkflowRunRow | undefined>;
     listActiveRuns(): Promise<WorkflowRunRow[]>;
@@ -265,6 +288,7 @@ declare global {
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
     settings: FreebuddySettings;
+    feed: FreebuddyFeed;
     window: FreebuddyWindow;
     updater: FreebuddyUpdater;
   }

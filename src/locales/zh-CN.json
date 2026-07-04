@@ -23,8 +23,13 @@
   },
   "general": {
     "languageLabel": "语言",
+    "languageSystem": "跟随系统",
     "languageEn": "English",
-    "languageZhCN": "简体中文"
+    "languageZhCN": "简体中文",
+    "themeLabel": "外观",
+    "themeSystem": "跟随系统",
+    "themeLight": "浅色",
+    "themeDark": "深色"
   },
   "app": { "brand": "FreeBuddy", "chat": "聊天" },
   "sidebar": {
@@ -82,6 +87,18 @@
     "removeAttachmentAria": "移除 {{name}}",
     "newTaskAria": "新建任务",
     "commonTasksAria": "常用任务",
+    "replay": {
+      "title": "对话回放",
+      "entry": "回放",
+      "play": "播放",
+      "pause": "暂停",
+      "exitShort": "退出",
+      "exit": "退出回放",
+      "progress": "{{n}}/{{total}}",
+      "disabledRunning": "Agent 运行中无法回放",
+      "disabledWorkflowActive": "团队工作流处理中无法回放",
+      "disabledEmpty": "暂无消息可回放"
+    },
     "starter": {
       "one": "先分析当前项目结构，给我下一步实现建议",
       "two": "检查刚才的改动有没有 UI/UX 问题",
@@ -152,10 +169,23 @@
     "codexUsageRefresh": "刷新",
     "codexUsageLoading": "读取中",
     "codexUsageUnavailable": "暂时无法读取 Codex 限额。",
-    "codexUsage5h": "5h limit",
-    "codexUsageWeekly": "weekly limit",
+    "codexUsage5h": "5 小时限额",
+    "codexUsageWeekly": "每周限额",
     "codexUsageLeft": "剩余 {{percent}}%",
-    "codexUsageResetIn": "{{time}} 后重置"
+    "codexUsageResetAt": "{{time}} 重置",
+    "codexResetCredits": "重置次数",
+    "codexResetCreditsCount": "{{available}} 可用 / {{total}} 总计",
+    "codexResetCreditsExpireAt": "下次 {{time}} 过期",
+    "codexResetCreditsExpand": "展开重置次数详情",
+    "codexResetCreditsCollapse": "收起重置次数详情",
+    "codexResetCreditTitle": "次数 {{index}}",
+    "codexResetCreditExpiresAt": "{{time}} 过期",
+    "codexResetCreditNoExpiry": "无过期时间",
+    "codexResetCreditStatus": {
+      "available": "可用",
+      "used": "已用",
+      "unknown": "未知"
+    }
   },
   "message": {
     "you": "你",
@@ -178,6 +208,27 @@
     "viewRawLog": "查看原始日志 ({{count}})",
     "summaryResult": "结果",
     "summaryDone": "完成",
+    "commandOutput": "命令输出",
+    "processSummaryTitle": "执行摘要",
+    "processRunning": "正在{{action}}",
+    "processFailed": "执行需要注意",
+    "processCount": "{{count}} 项过程记录",
+    "processToolCount": "{{count}} 个工具",
+    "processCommandCount": "{{count}} 条命令",
+    "processThinkingCount": "{{count}} 次分析",
+    "processRecent": "最近动作",
+    "processDetails": "执行明细 {{count}} 项",
+    "processStep": "过程步骤",
+    "activityEditedFiles": "已编辑 {{count}} 个文件",
+    "activityRanCommands": "已运行 {{count}} 条命令",
+    "activityReadFiles": "已读取 {{count}} 个文件",
+    "activitySearched": "已搜索 {{count}} 次",
+    "activityAnalyzed": "已分析 {{count}} 次",
+    "activityUsedTools": "已调用 {{count}} 个工具",
+    "activityProcessed": "已处理 {{count}} 项",
+    "activityProcessing": "正在处理",
+    "activitySucceeded": "成功 {{count}} 次",
+    "activityFailed": "失败 {{count}} 次",
     "statusPending": "等待中",
     "statusRunning": "运行中",
     "statusCompleted": "完成",
@@ -214,7 +265,8 @@
     "agentInterrupted": "Agent 运行已中断。",
     "agentFailed": "Agent 运行失败，退出码 {{code}}。{{detail}}",
     "rawLogCollapsed": "已收起原始 CLI 日志，方便排查。",
-    "cliNoStructured": "CLI 没有返回可解析的结构化内容。"
+    "cliNoStructured": "CLI 没有返回可解析的结构化内容。",
+    "unknown": "未知错误"
   },
   "attachments": {
     "review": "请查看这些附件。",
@@ -252,6 +304,7 @@
       "general": "通用",
       "cli": "CLI Agent",
       "workflowTeams": "工作流团队",
+      "feed": "订阅资讯",
       "about": "关于"
     },
     "cli": {
@@ -324,6 +377,11 @@
     "cancel": "取消",
     "editPrompt": "编辑",
     "approveGate": "批准并继续",
+    "approvalCardEyebrow": "等待确认：{{phase}}",
+    "approvalCardBody": "确认上方方案后继续执行。需要调整时，点击修改方案后在输入框发送反馈。",
+    "requestChanges": "修改方案",
+    "requestChangesPlaceholder": "输入你希望调整的地方...",
+    "requestChangesFailed": "未能提交方案修改请求。",
     "pause": "暂停",
     "resume": "继续",
     "resumeAfterFailure": "重试并继续",
@@ -364,6 +422,7 @@
       "implement": "实现",
       "verify": "验证",
       "loop_or_finish": "循环或结束",
+      "plan": "规划",
       "plan-task": "规划任务",
       "summarize": "总结",
       "research": "调研",
@@ -377,6 +436,8 @@
       "verify-changes": "验证改动并报告未解决问题",
       "implement-changes": "实现改动",
       "review-changes": "审查改动",
+      "plan-delivery": "规划方案",
+      "summarize-delivery": "总结交付",
       "plan-task-step": "规划任务",
       "implement-step": "实现",
       "verify-step": "验证",
@@ -384,6 +445,23 @@
       "research-step": "调研",
       "analysis-step": "分析",
       "report-step": "报告"
+    },
+    "roleKinds": {
+      "planner": "规划者",
+      "researcher": "调研者",
+      "reviewer": "审查者",
+      "implementer": "执行者",
+      "verifier": "验证者",
+      "summarizer": "汇总者",
+      "custom": "自定义"
+    },
+    "nodeModes": {
+      "research": "调研",
+      "review": "审查",
+      "write": "写入",
+      "verify": "验证",
+      "summarize": "总结",
+      "approval": "审批"
     },
     "invalidPlan": "生成的计划无效",
     "summary": "工作流总结",
@@ -399,7 +477,7 @@
     "teamPolicy": "策略",
     "teamPolicyGates": "审批关卡",
     "teamPolicyLimits": "执行限制",
-    "teamBuiltinLocked": "内置模板为只读，复制后可自定义。",
+    "teamBuiltinLocked": "内置模板的流程结构只读，角色 Agent 可以更换。",
     "teamAdvanced": "高级",
     "teamEditor": "团队编辑",
     "teamList": "团队",
@@ -407,7 +485,7 @@
     "routeSummary": "路线摘要",
     "role": "角色",
     "writeNodes": "写入步骤",
-    "approvalNodes": "审批节点",
+    "approvalNodes": "审批关卡",
     "loops": "最大循环",
     "allowed": "允许",
     "denied": "禁止",
@@ -444,22 +522,101 @@
     "graphViewer": "图查看器",
     "startNodes": "起始节点",
     "finalNodes": "结束节点",
+    "nodeConfigHint": "选择这个自定义团队的交付节点。实现节点始终必选。",
+    "nodePlan": "规划",
+    "nodeApproval": "审批计划",
+    "nodeImplement": "实现",
+    "nodeReview": "审查",
+    "nodeVerify": "验证",
+    "nodeSummarize": "总结",
+    "nodeContract": {
+      "plan": "Agent 在改动前整理执行计划。",
+      "approval": "审批计划后再写入文件。",
+      "implement": "Agent 可以编辑文件。",
+      "review": "Agent 审查改动并输出 REVIEW_STATUS。",
+      "verify": "Agent 运行检查并输出 UNRESOLVED。",
+      "summarize": "Agent 输出最终交付总结。"
+    },
     "builtinTeams": {
+      "team-delivery-example": {
+        "name": "标准交付团队",
+        "description": "基于可配置节点的标准交付流程：计划审批、实现、审查、验证和总结。",
+        "roles": {
+          "role-planner": "规划者",
+          "role-implementer": "执行者",
+          "role-reviewer": "审查者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "plan": "规划",
+          "implement": "实现",
+          "review": "审查",
+          "verify": "验证",
+          "summarize": "总结"
+        }
+      },
       "team-quick-implement": {
         "name": "快速实现",
-        "description": "规划、实现、验证并总结。适合小而聚焦的改动，写入前有一次审批。"
+        "description": "规划、实现、验证并总结。适合小而聚焦的改动，写入前有一次审批。",
+        "roles": {
+          "role-planner": "规划者",
+          "role-implementer": "执行者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "plan-task": "规划任务",
+          "implement": "实现",
+          "verify": "验证",
+          "summarize": "总结"
+        }
       },
       "team-implement-review-loop": {
         "name": "实现审查团队",
-        "description": "实现、审查、验证并总结。审查或验证失败时回到实现，直到通过或达到最大循环次数。"
+        "description": "实现、审查、验证并总结。审查或验证失败时回到实现，直到通过或达到最大循环次数。",
+        "roles": {
+          "role-implementer": "执行者",
+          "role-reviewer": "审查者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "implement": "实现",
+          "review": "审查",
+          "verify": "验证",
+          "summarize": "总结"
+        }
       },
       "team-root-cause-analysis": {
         "name": "问题排查团队",
-        "description": "收集证据、质疑假设、验证根因，并输出简洁的问题排查报告。"
+        "description": "收集证据、质疑假设、验证根因，并输出简洁的问题排查报告。",
+        "roles": {
+          "role-investigator": "调查者",
+          "role-skeptic": "质疑者",
+          "role-verifier": "验证者",
+          "role-summarizer": "汇总者"
+        },
+        "nodes": {
+          "collect-evidence": "收集证据",
+          "challenge-hypothesis": "质疑假设",
+          "verify-root-cause": "验证根因",
+          "summarize-findings": "总结结论"
+        }
       },
       "team-research-report": {
         "name": "分析调研报告",
-        "description": "调研非开发类主题，分析不同情景，并输出带结论和置信度的简洁报告。"
+        "description": "调研非开发类主题，分析不同情景，并输出带结论和置信度的简洁报告。",
+        "roles": {
+          "role-researcher": "调研者",
+          "role-analyst": "分析师",
+          "role-reporter": "报告人"
+        },
+        "nodes": {
+          "research": "调研",
+          "analysis": "分析",
+          "report": "报告"
+        }
       }
     }
   },
@@ -470,6 +627,10 @@
     "check": "检查更新",
     "downloadNow": "立即下载",
     "installNow": "安装并重启",
+    "footerUpdate": "更新",
+    "footerDownloading": "{{percent}}%",
+    "footerInstall": "安装",
+    "footerOpen": "打开更新详情",
     "releaseNotes": "更新日志",
     "autoCheckHint": "FreeBuddy 会在启动时自动检查更新，并在后台下载。",
     "unavailable": "需要在桌面端构建中才能检查更新。",
@@ -493,6 +654,45 @@
       "error": "检查更新失败。"
     }
   },
+  "feed": {
+    "settingsTitle": "订阅资讯",
+    "settingsDescription": "管理 RSS 和 Atom 订阅源，在 agent 运行时快速浏览。",
+    "sourceName": "名称",
+    "sourceNamePlaceholder": "可选",
+    "sourceUrl": "订阅地址",
+    "sourceUrlPlaceholder": "https://example.com/feed.xml",
+    "addSource": "添加订阅源",
+    "urlRequired": "请输入订阅地址。",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "lastFetched": "上次刷新 {{time}}",
+    "neverFetched": "从未",
+    "refresh": "刷新",
+    "refreshOne": "刷新此源",
+    "refreshAll": "全部刷新",
+    "refreshing": "刷新中…",
+    "loading": "加载中…",
+    "sourceCount": "{{count}} 个订阅源",
+    "noSources": "还没有订阅源。",
+    "deleteConfirm": "删除“{{title}}”?",
+    "cardTitle": "订阅资讯",
+    "cardCount": "{{count}} 条",
+    "allSources": "全部订阅源",
+    "sourceFilter": "筛选订阅源",
+    "nextBatch": "换一批",
+    "cardNoSources": "到设置里添加订阅源后，这里会显示最新内容。",
+    "cardNoItems": "还没有订阅内容。先刷新订阅源。",
+    "interpret": "解读",
+    "interpreted": "已读",
+    "openingConversation": "打开中…",
+    "conversationTitle": "{{title}}",
+    "interpretPromptIntro": "请解读这篇文章，提炼关键信息和可能影响。",
+    "interpretPromptTitle": "文章标题：{{title}}",
+    "interpretPromptSource": "来源：{{source}}",
+    "interpretPromptLink": "链接：{{link}}",
+    "interpretPromptSummary": "Feed 摘要：",
+    "interpretPromptOutput": "请输出：\n1. 3 句话摘要\n2. 关键事实与背景\n3. 可能的影响或值得关注的变化\n4. 是否值得阅读全文，以及理由"
+  },
   "draft": {
     "title": "预览",
     "tabOverview": "概览",
@@ -501,6 +701,8 @@
     "refresh": "刷新",
     "resetEntry": "恢复自动入口",
     "openExternal": "在浏览器打开",
+    "feedInterpret": "解读",
+    "feedMarkRead": "标记已读",
     "viewport": "预览尺寸",
     "viewportResponsive": "自适应",
     "zoom": "缩放",

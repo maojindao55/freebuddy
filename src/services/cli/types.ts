@@ -115,6 +115,18 @@ export interface CodexUsageWindow {
   resetAt: number;
 }
 
+export interface CodexResetCredit {
+  status: string;
+  expiresAt?: number;
+}
+
+export interface CodexResetCredits {
+  availableCount: number;
+  totalCount: number;
+  nextExpiresAt?: number;
+  credits: CodexResetCredit[];
+}
+
 export type CodexUsageResult =
   | {
       ok: true;
@@ -123,6 +135,7 @@ export type CodexUsageResult =
       planType?: string;
       primaryWindow: CodexUsageWindow;
       secondaryWindow?: CodexUsageWindow;
+      resetCredits?: CodexResetCredits;
       fetchedAt: string;
     }
   | {

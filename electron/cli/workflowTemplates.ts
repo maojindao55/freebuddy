@@ -115,7 +115,23 @@ export interface ImplementReviewLoopInput {
   maxLoops?: number;
 }
 
+export interface ConfigurableDeliveryInput {
+  name?: string;
+  goal: string;
+  cwd?: string;
+  planner?: WorkflowAgentRef;
+  implementer: WorkflowAgentRef;
+  reviewer?: WorkflowAgentRef;
+  verifier?: WorkflowAgentRef;
+  summarizer?: WorkflowAgentRef;
+  targetPaths?: string[];
+  maxLoops?: number;
+  requireApprovalBeforeWrite?: boolean;
+}
+
 export const IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID = "tpl-implement-review-loop";
+export const CONFIGURABLE_DELIVERY_TEMPLATE_ID = "tpl-configurable-delivery";
+export const PLAN_DELIVERY_STEP_ID = "plan-delivery";
 export const IMPLEMENT_REVIEW_STEP_ID = "implement-changes";
 export const REVIEW_CHANGES_STEP_ID = "review-changes";
 export const VERIFY_CHANGES_STEP_ID = "verify-changes";
@@ -237,6 +253,160 @@ export function buildImplementReviewLoopPlan(
     name: input.verifier || input.summarizer
       ? "Build Review Team"
       : "Implement-Review Loop",
+    goal: input.goal,
+    cwd: input.cwd,
+    template: "implement-review-loop",
+    maxLoops,
+    phases
+  };
+}
+
+export function buildConfigurableDeliveryPlan(
+  input: ConfigurableDeliveryInput
+): WorkflowPlan {
+  const hasFeedbackNode = Boolean(input.reviewer || input.verifier);
+  const maxLoops = hasFeedbackNode
+    ? Math.max(input.maxLoops ?? 3, 2)
+    : Math.max(input.maxLoops ?? 1, 1);
+  const target = (input.targetPaths ?? []).join(", ");
+  const goalLine = `Goal: ${input.goal}.` + (target ? ` Target: ${target}.` : "");
+  const phases: WorkflowPlan["phases"] = [];
+  let upstreamStepId: string | undefined;
+
+  if (input.planner) {
+    phases.push({
+      id: "plan",
+      title: "Plan",
+      parallelism: 1,
+      steps: [
+        {
+          id: PLAN_DELIVERY_STEP_ID,
+          title: "Plan delivery",
+          agentId: input.planner.id,
+          mode: "research",
+          prompt:
+            `Plan the requested change. ${goalLine} ` +
+            "List the concrete implementation steps, risks, files likely involved, and verification approach.",
+          targetPaths: input.targetPaths
+        }
+      ],
+      gate: input.requireApprovalBeforeWrite
+        ? {
+            type: "manual_approval",
+            reason: "Review the plan and approve the write step before execution."
+          }
+        : { type: "all_done" }
+    });
+    upstreamStepId = PLAN_DELIVERY_STEP_ID;
+  }
+
+  phases.push({
+    id: "implement",
+    title: "Implement",
+    parallelism: 1,
+    steps: [
+      {
+        id: IMPLEMENT_REVIEW_STEP_ID,
+        title: "Implement changes",
+        agentId: input.implementer.id,
+        mode: "write",
+        prompt:
+          `Implement the requested change. ${goalLine} ` +
+          "Make focused, minimal edits. Run quick sanity checks if appropriate.",
+        targetPaths: input.targetPaths,
+        ...(upstreamStepId ? { consumes: [upstreamStepId] } : {})
+      }
+    ],
+    gate: !input.planner && input.requireApprovalBeforeWrite
+      ? {
+          type: "manual_approval",
+          reason: "Review the plan and approve the write step before execution."
+        }
+      : { type: "all_done" }
+  });
+  upstreamStepId = IMPLEMENT_REVIEW_STEP_ID;
+
+  if (input.reviewer) {
+    phases.push({
+      id: "review",
+      title: "Review",
+      parallelism: 1,
+      steps: [
+        {
+          id: REVIEW_CHANGES_STEP_ID,
+          title: "Review changes",
+          agentId: input.reviewer.id,
+          mode: "review",
+          prompt:
+            `Review the implementation for: ${input.goal}. ` +
+            "List concrete issues if any.\n\n" +
+            "Required machine-readable format (first AND last line of your reply):\n" +
+            "REVIEW_STATUS: PASS\n" +
+            "or\n" +
+            "REVIEW_STATUS: FAIL\n\n" +
+            "If FAIL, include a FINDINGS section with actionable bullets.\n" +
+            "You may also end with <<<REVIEW_PASS>>> or <<<REVIEW_FAIL>>>.",
+          consumes: [upstreamStepId]
+        }
+      ],
+      gate: { type: "all_done" }
+    });
+    upstreamStepId = REVIEW_CHANGES_STEP_ID;
+  }
+
+  if (input.verifier) {
+    phases.push({
+      id: "verify",
+      title: "Verify",
+      parallelism: 1,
+      steps: [
+        {
+          id: VERIFY_CHANGES_STEP_ID,
+          title: "Verify delivery",
+          agentId: input.verifier.id,
+          mode: "verify",
+          prompt:
+            `Verify the implementation for: ${input.goal}. ` +
+            "Run the most relevant checks you can. If checks cannot run, explain why and count that as unresolved unless the risk is clearly harmless. End your response with a line in the form: UNRESOLVED: <count>",
+          consumes: [upstreamStepId]
+        }
+      ],
+      gate: { type: "all_done" }
+    });
+    upstreamStepId = VERIFY_CHANGES_STEP_ID;
+  }
+
+  if (input.summarizer) {
+    phases.push({
+      id: "summarize",
+      title: "Summarize",
+      parallelism: 1,
+      steps: [
+        {
+          id: SUMMARIZE_DELIVERY_STEP_ID,
+          title: "Summarize delivery",
+          agentId: input.summarizer.id,
+          mode: "summarize",
+          prompt:
+            `Summarize the final delivery for: ${input.goal}. ` +
+            "Tell the user what changed, what was reviewed or verified, and any remaining risks or follow-ups.",
+          consumes: [upstreamStepId]
+        }
+      ],
+      gate: { type: "all_done" }
+    });
+  }
+
+  phases.push({
+    id: "loop_or_finish",
+    title: "Loop or Finish",
+    parallelism: 1,
+    steps: [],
+    gate: { type: "all_done" }
+  });
+
+  return {
+    name: input.name ?? "Delivery Workflow",
     goal: input.goal,
     cwd: input.cwd,
     template: "implement-review-loop",

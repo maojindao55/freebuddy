@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 
-import type { CliEvent, CliRunArgs } from "./runtimeShared.js";
+import type { CliEvent, CliPromptAttachment, CliRunArgs } from "./runtimeShared.js";
 import { cliRun, cliKill } from "./runtime.js";
+import { getToolSession } from "./store.js";
+import { safeSendToWebContents } from "./ipcSend.js";
+import { getLanguage } from "./settings.js";
 import {
   appendMessage,
+  listMessages,
   updateMessage
 } from "./conversations.js";
 import type {
@@ -33,8 +37,8 @@ import {
   VERIFY_CHANGES_STEP_ID
 } from "./workflowTemplates.js";
 import {
+  applyWorkflowLanguagePreference,
   augmentPromptWithConsumedSummaries,
-  collectDecisionTextFromItems,
   decideImplementReviewLoop,
   decideReviewLoop,
   deriveStepSummary,
@@ -43,6 +47,7 @@ import {
   extractReviewStatus,
   findResumePhaseIndex,
   phaseGateSatisfied,
+  reviewDecisionTextFromItems,
   resumableStepRowIds,
   resolveReviewDecisionText,
   selectRunnableSteps,
@@ -65,6 +70,10 @@ export interface StepExecutor {
     binary?: string;
     extraArgs?: string[];
     prompt: string;
+    promptAttachments?: CliPromptAttachment[];
+    toolSessionScope?: string;
+    toolSessionId?: string;
+    resumeToolSession?: boolean;
     cwd?: string;
     onEvent: (e: CliEvent) => void;
   }): Promise<void>;
@@ -93,12 +102,31 @@ function hasWriteApproval(state: ActiveRun): boolean {
   return state.allowImmediateWrite || state.approvedPhases.size > 0;
 }
 
+function phaseRequiresEntryApproval(phase: WorkflowPhase): boolean {
+  return (
+    phase.gate?.type === "manual_approval" &&
+    phase.steps.some((step) => step.mode === "write")
+  );
+}
+
 function findPlanStep(plan: WorkflowPlan, stepId: string): WorkflowStep | undefined {
   for (const phase of plan.phases) {
     const step = phase.steps.find((s) => s.id === stepId);
     if (step) return step;
   }
   return undefined;
+}
+
+function hasRunnablePhaseAfter(
+  plan: WorkflowPlan,
+  phaseId: string,
+  ignoredPhaseIds = new Set(["loop_or_finish"])
+): boolean {
+  const phaseIndex = plan.phases.findIndex((phase) => phase.id === phaseId);
+  if (phaseIndex < 0) return false;
+  return plan.phases
+    .slice(phaseIndex + 1)
+    .some((phase) => !ignoredPhaseIds.has(phase.id) && phase.steps.length > 0);
 }
 
 function extractStepOutputFromResultJson(resultJson: string | undefined): string | undefined {
@@ -110,6 +138,25 @@ function extractStepOutputFromResultJson(resultJson: string | undefined): string
   } catch {
     return undefined;
   }
+}
+
+function workflowStepToolSessionScope(
+  runId: string,
+  step: WorkflowStepRow
+): string {
+  return `workflow:${runId}:${step.stepId}:${step.agentId}`;
+}
+
+function shouldResumeWorkflowStep(
+  plan: WorkflowPlan,
+  step: WorkflowStepRow
+): boolean {
+  return (
+    (Boolean(step.toolSessionId) &&
+      step.prompt.includes("User requested changes before approval:")) ||
+    (isImplementReviewLoopPlan(plan) &&
+      step.stepId === IMPLEMENT_REVIEW_STEP_ID)
+  );
 }
 
 type ImplementReviewCheckpoint =
@@ -130,6 +177,55 @@ type ImplementReviewCheckpoint =
       reviewStatus?: string;
       loopDecision?: string;
     };
+
+function promptAttachmentsFromConversation(
+  conversationId: string | undefined
+): CliRunArgs["promptAttachments"] {
+  if (!conversationId) return undefined;
+  const userMessage = listMessages(conversationId).find(
+    (message) => message.role === "user" && message.attachments?.length
+  );
+  if (!userMessage?.attachments?.length) return undefined;
+  return userMessage.attachments.map((attachment) => ({
+    path: attachment.path,
+    kind: attachment.kind,
+    mimeType: attachment.mimeType,
+    name: attachment.name
+  }));
+}
+
+function resetWorkflowStepForRetry(stepRowId: string): void {
+  updateWorkflowStep(stepRowId, {
+    status: "pending",
+    summary: null,
+    resultJson: null,
+    cliTaskId: null,
+    startedAt: null,
+    endedAt: null
+  });
+}
+
+function appendGateChangeFeedback(prompt: string, feedback: string): string {
+  return [
+    prompt.trimEnd(),
+    "",
+    "User requested changes before approval:",
+    feedback.trim(),
+    "",
+    "Continue from the existing planning context and revise the plan to address this feedback. Do not modify files."
+  ].join("\n");
+}
+
+function markRunningWorkflowStepsStopped(runId: string, endedAt: string): void {
+  for (const step of getWorkflowSteps(runId)) {
+    if (step.status !== "running") continue;
+    updateWorkflowStep(step.id, {
+      status: "failed",
+      summary: step.summary ?? "Stopped by user.",
+      endedAt
+    });
+  }
+}
 
 export class WorkflowRuntime {
   private active = new Map<string, ActiveRun>();
@@ -224,9 +320,92 @@ export class WorkflowRuntime {
     }
   }
 
-  approveGate(runId: string, phaseId: string): void {
+  approveGate(runId: string, phaseId: string): boolean {
     const run = this.active.get(runId);
-    if (run) run.approvedPhases.add(phaseId);
+    if (!run) return false;
+    run.approvedPhases.add(phaseId);
+    updateWorkflowRun(runId, { status: "running" });
+    return true;
+  }
+
+  async requestGateChanges(
+    runId: string,
+    phaseId: string,
+    feedback: string
+  ): Promise<boolean> {
+    const trimmed = feedback.trim();
+    if (!trimmed) return false;
+    const run = getWorkflowRun(runId);
+    if (!run) return false;
+    const plan = this.resolveWorkflowPlan(run);
+    const gateIndex = plan.phases.findIndex((phase) => phase.id === phaseId);
+    if (gateIndex < 0) return false;
+    const gatePhase = plan.phases[gateIndex];
+    const targetIndex = phaseRequiresEntryApproval(gatePhase)
+      ? gateIndex - 1
+      : gateIndex;
+    const targetPhase = plan.phases[targetIndex];
+    if (!targetPhase) return false;
+
+    const active = this.active.get(runId);
+    if (active) {
+      active.stopped = true;
+      for (let i = 0; i < 30 && this.active.has(runId); i += 1) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+
+    const replayPhaseIds = plan.phases
+      .slice(targetIndex)
+      .map((phase) => phase.id);
+    const steps = getWorkflowSteps(runId);
+    const replayStepIds = new Set(
+      plan.phases
+        .slice(targetIndex)
+        .flatMap((phase) => phase.steps.map((step) => step.id))
+    );
+    const targetStepIds = new Set(targetPhase.steps.map((step) => step.id));
+    const nextPlan: WorkflowPlan = {
+      ...plan,
+      phases: plan.phases.map((phase) => {
+        if (phase.id !== targetPhase.id) return phase;
+        return {
+          ...phase,
+          steps: phase.steps.map((step) => ({
+            ...step,
+            prompt: targetStepIds.has(step.id)
+              ? appendGateChangeFeedback(step.prompt, trimmed)
+              : step.prompt
+          }))
+        };
+      })
+    };
+
+    for (const step of steps) {
+      if (!replayPhaseIds.includes(step.phaseId) && !replayStepIds.has(step.stepId)) {
+        continue;
+      }
+      const planStep = findPlanStep(nextPlan, step.stepId);
+      updateWorkflowStep(step.id, {
+        status: "pending",
+        prompt: targetStepIds.has(step.stepId)
+          ? appendGateChangeFeedback(step.prompt, trimmed)
+          : (planStep?.prompt ?? step.prompt),
+        summary: null,
+        resultJson: null,
+        cliTaskId: null,
+        startedAt: null,
+        endedAt: null
+      });
+    }
+
+    updateWorkflowRun(runId, {
+      status: "running",
+      planJson: JSON.stringify(nextPlan),
+      endedAt: null
+    });
+    void this.start(runId);
+    return true;
   }
 
   pause(runId: string): void {
@@ -274,19 +453,13 @@ export class WorkflowRuntime {
     const phase = plan.phases[phaseIndex];
     if (!phase) return;
     for (const stepRowId of resumableStepRowIds(phase.id, states)) {
-      updateWorkflowStep(stepRowId, {
-        status: "pending",
-        summary: null,
-        resultJson: null,
-        cliTaskId: null,
-        startedAt: null,
-        endedAt: null
-      });
+      resetWorkflowStepForRetry(stepRowId);
     }
   }
 
   stop(runId: string): void {
     const run = this.active.get(runId);
+    const endedAt = new Date().toISOString();
     if (run) {
       run.stopped = true;
       for (const sessionId of run.activeSessions) {
@@ -297,9 +470,10 @@ export class WorkflowRuntime {
         }
       }
     }
+    markRunningWorkflowStepsStopped(runId, endedAt);
     updateWorkflowRun(runId, {
       status: "killed",
-      endedAt: new Date().toISOString()
+      endedAt
     });
     this.active.delete(runId);
   }
@@ -307,14 +481,7 @@ export class WorkflowRuntime {
   async retryStep(runId: string, stepRowId: string): Promise<void> {
     // Mark the failed step pending again and re-drive. Retry creates a new
     // CLI task (new sessionId) rather than mutating the old task record.
-    updateWorkflowStep(stepRowId, {
-      status: "pending",
-      summary: null,
-      resultJson: null,
-      cliTaskId: null,
-      startedAt: null,
-      endedAt: null
-    });
+    resetWorkflowStepForRetry(stepRowId);
     updateWorkflowRun(runId, { status: "running" });
     await this.start(runId);
   }
@@ -396,6 +563,18 @@ export class WorkflowRuntime {
         if (state.stopped) return;
         const phase = plan.phases[phaseIndex];
 
+        if (
+          phaseRequiresEntryApproval(phase) &&
+          !state.approvedPhases.has(phase.id)
+        ) {
+          updateWorkflowRun(runId, { status: "paused" });
+          while (!state.approvedPhases.has(phase.id) && !state.stopped) {
+            await new Promise((r) => setTimeout(r, 200));
+          }
+          if (state.stopped) return;
+          updateWorkflowRun(runId, { status: "running" });
+        }
+
         // Run this phase's steps to completion. Returns false if a step failed
         // or is blocked, in which case we halt the run for a user decision.
         const completed = await this.runPhase(runId, run, plan, phase, state);
@@ -447,7 +626,6 @@ export class WorkflowRuntime {
               checkpoint.feedback,
               checkpoint.feedbackKind
             );
-            state.approvedPhases.clear();
             resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
             const implementIdx = plan.phases.findIndex((p) => p.id === "implement");
             updateWorkflowRun(runId, {
@@ -550,8 +728,10 @@ export class WorkflowRuntime {
       if (decision === "partial") {
         return { action: "partial", loopDecision: decision, reviewStatus };
       }
-      const hasVerification = Boolean(findPlanStep(plan, VERIFY_CHANGES_STEP_ID));
-      return hasVerification
+      const hasLaterWork =
+        Boolean(findPlanStep(plan, VERIFY_CHANGES_STEP_ID)) ||
+        hasRunnablePhaseAfter(plan, phaseId);
+      return hasLaterWork
         ? { action: "continue" }
         : { action: "finish", loopDecision: decision, reviewStatus };
     }
@@ -684,8 +864,15 @@ export class WorkflowRuntime {
       planStep?.consumes,
       stepsById
     );
+    const localizedPrompt = applyWorkflowLanguagePreference(prompt, getLanguage());
 
     const sessionId = randomUUID();
+    const toolSessionScope = workflowStepToolSessionScope(runId, step);
+    const resumeToolSession = shouldResumeWorkflowStep(plan, step);
+    const toolSessionId = resumeToolSession
+      ? step.toolSessionId ??
+        getToolSession(step.agentId, toolSessionScope)?.sessionId
+      : undefined;
     const collected: unknown[] = [];
     let exitCode: number | null = null;
     let errored: string | null = null;
@@ -759,7 +946,11 @@ export class WorkflowRuntime {
         adapter: resolved.adapter,
         binary: resolved.binary,
         extraArgs: resolved.extraArgs,
-        prompt,
+        prompt: localizedPrompt,
+        promptAttachments: promptAttachmentsFromConversation(run.conversationId),
+        toolSessionScope,
+        toolSessionId,
+        resumeToolSession,
         cwd: run.cwd,
         onEvent: (e: CliEvent) => {
           if (e.type === "items" && e.items?.length) {
@@ -779,7 +970,10 @@ export class WorkflowRuntime {
 
     if (state.stopped) return;
 
-    const decisionText = collectDecisionTextFromItems(collected);
+    const capturedToolSessionId =
+      getToolSession(step.agentId, toolSessionScope)?.sessionId ??
+      step.toolSessionId;
+    const decisionText = reviewDecisionTextFromItems(collected);
     const failed = errored !== null || (exitCode !== null && exitCode !== 0);
     let summary = ensureReviewStatusInSummary(
       deriveStepSummary(collected),
@@ -797,6 +991,7 @@ export class WorkflowRuntime {
       status: stepStatus,
       summary,
       resultJson: JSON.stringify({ items: collected, exitCode, error: errored }),
+      ...(capturedToolSessionId ? { toolSessionId: capturedToolSessionId } : {}),
       endedAt: new Date().toISOString()
     });
 
@@ -819,13 +1014,11 @@ export class WorkflowRuntime {
     conversationId: string;
     messageId: string;
   }): void {
-    const wc = this.deps.webContents;
-    if (!wc || wc.isDestroyed?.()) return;
-    try {
-      wc.send(`workflow://message/${payload.conversationId}`, payload);
-    } catch {
-      /* noop */
-    }
+    safeSendToWebContents(
+      this.deps.webContents,
+      `workflow://message/${payload.conversationId}`,
+      payload
+    );
   }
 
   private finalize(
@@ -901,9 +1094,12 @@ export function createCliStepExecutor(
         binary: args.binary,
         extraArgs: args.extraArgs,
         prompt: args.prompt,
+        promptAttachments: args.promptAttachments,
+        toolSessionScope: args.toolSessionScope,
+        toolSessionId: args.toolSessionId,
         cwd: args.cwd,
         approvalMode: "auto",
-        resumeToolSession: false
+        resumeToolSession: args.resumeToolSession
       };
       await cliRun(webContents, runArgs, args.onEvent);
     }

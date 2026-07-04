@@ -9,6 +9,7 @@ import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 
 export function WorkflowTeamList({
   teams,
+  onNew,
   onEdit
 }: {
   teams: WorkflowTeam[];
@@ -25,7 +26,7 @@ export function WorkflowTeamList({
         <button
           type="button"
           className="primary"
-          onClick={() => window.alert(t("workflow.newTeamComingSoon"))}
+          onClick={onNew}
         >
           + {t("workflow.newTeam")}
         </button>

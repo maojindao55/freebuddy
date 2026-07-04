@@ -43,7 +43,20 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
+import {
+  addFeedSource,
+  deleteFeedSource,
+  listFeedItems,
+  listFeedSources,
+  markFeedItemInterpreted,
+  refreshAllFeedSources,
+  refreshFeedSource,
+  updateFeedSource,
+  type AddFeedSourceInput,
+  type UpdateFeedSourceInput
+} from "./feed.js";
 import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
+import { resolveAttachmentFilePath } from "../freebuddyFileProtocol.js";
 import { ensureAgentGuides } from "../agentGuides.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
@@ -256,8 +269,13 @@ export function registerCliIpc() {
 
   ipcMain.handle("cli:openDraftExternal", async (_e, url: string) => {
     if (!url) return false;
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url)) {
+    if (/^https?:\/\//i.test(url)) {
       await shell.openExternal(url);
+      return true;
+    }
+    if (url.startsWith("freebuddy-file://")) {
+      const filePath = resolveAttachmentFilePath(url);
+      await shell.openExternal(pathToFileURL(filePath).toString());
       return true;
     }
     if (!url.startsWith("freebuddy-draft://")) return false;
@@ -318,10 +336,34 @@ export function registerCliIpc() {
   ipcMain.handle("settings:get", (_e, key: string) => getSetting(key));
   ipcMain.handle("settings:set", (_e, args: { key: string; value: string }) => {
     setSetting(args.key, args.value);
-    if (args.key === "language" && (args.value === "en" || args.value === "zh-CN")) {
-      setApplicationMenuForLanguage(args.value);
+    if (
+      args.key === "language" &&
+      (args.value === "system" || args.value === "en" || args.value === "zh-CN")
+    ) {
+      setApplicationMenuForLanguage(getLanguage());
     }
   });
+
+  ipcMain.handle("feed:listSources", () => listFeedSources());
+  ipcMain.handle("feed:addSource", (_e, input: AddFeedSourceInput) =>
+    addFeedSource(input)
+  );
+  ipcMain.handle("feed:updateSource", (_e, input: UpdateFeedSourceInput) =>
+    updateFeedSource(input)
+  );
+  ipcMain.handle("feed:deleteSource", (_e, id: string) =>
+    deleteFeedSource(id)
+  );
+  ipcMain.handle("feed:listItems", (_e, args: { limit?: number; offset?: number } = {}) =>
+    listFeedItems(args)
+  );
+  ipcMain.handle("feed:refreshSource", (_e, id: string) =>
+    refreshFeedSource(id)
+  );
+  ipcMain.handle("feed:refreshAll", () => refreshAllFeedSources());
+  ipcMain.handle("feed:markInterpreted", (_e, id: string) =>
+    markFeedItemInterpreted(id)
+  );
 
   registerWorkflowIpc();
 }

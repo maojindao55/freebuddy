@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const scheduler = await import("../dist-electron/cli/workflowScheduler.js");
 const {
+  applyWorkflowLanguagePreference,
   decideImplementReviewLoop,
   reviewerHasFail,
   augmentPromptWithConsumedSummaries
@@ -199,6 +200,28 @@ test("collectDecisionTextFromItems reads content-block and tool-call output", as
   assert.equal(extractReviewStatus(text), "FAIL");
 });
 
+test("review decision prefers visible assistant status over tool prompt examples", async () => {
+  const { reviewDecisionTextFromItems, extractReviewStatus } = scheduler;
+  const text = reviewDecisionTextFromItems([
+    {
+      kind: "text",
+      role: "assistant",
+      content: "No concrete issues found.\nREVIEW_STATUS: PASS"
+    },
+    {
+      kind: "tool-call",
+      tool: "read",
+      input: {
+        prompt:
+          "Required machine-readable format:\nREVIEW_STATUS: PASS\nor\nREVIEW_STATUS: FAIL"
+      },
+      output: "The source file mentions REVIEW_STATUS: FAIL as an example."
+    }
+  ]);
+  assert.equal(extractReviewStatus(text), "PASS");
+  assert.equal(decideImplementReviewLoop("done", text, 0, 5), "finish");
+});
+
 test("decideImplementReviewLoop returns partial when reviewer failed without status", () => {
   assert.equal(
     decideImplementReviewLoop("failed", "Tool error", 0, 5),
@@ -242,6 +265,22 @@ test("augmentPromptWithConsumedSummaries prefers visible output over compact sum
   assert.doesNotMatch(out, /I need to search first/);
 });
 
+test("workflow step prompts carry the configured response language", () => {
+  const zh = applyWorkflowLanguagePreference(
+    "Review the implementation. End with REVIEW_STATUS: PASS",
+    "zh-CN"
+  );
+  assert.match(zh, /Write all user-facing prose in Simplified Chinese/);
+  assert.match(zh, /REVIEW_STATUS: PASS/);
+  assert.match(zh, /UNRESOLVED: <count>/);
+  assert.match(zh, /Review the implementation/);
+
+  const en = applyWorkflowLanguagePreference("Summarize the delivery.", "en");
+  assert.match(en, /Write all user-facing prose in English/);
+
+  assert.equal(applyWorkflowLanguagePreference(zh, "zh-CN"), zh);
+});
+
 test("runtime exposes continueImplementReview for max-loop FAIL follow-up", () => {
   const src = fs.readFileSync(
     new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
@@ -252,7 +291,7 @@ test("runtime exposes continueImplementReview for max-loop FAIL follow-up", () =
   assert.match(src, /resetWorkflowStepsForLoop\(runId, IMPLEMENT_REVIEW_LOOP_PHASES\)/);
 });
 
-test("expandTeamToPlan uses build review template for loop team", async () => {
+test("official delivery example uses configurable nodes with review loop runtime", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
   );
@@ -260,7 +299,7 @@ test("expandTeamToPlan uses build review template for loop team", async () => {
     "../dist-electron/cli/workflowTeamAdapter.js"
   );
   const team = builtinWorkflowTeams().find(
-    (t) => t.id === "team-implement-review-loop"
+    (t) => t.id === "team-delivery-example"
   );
   assert.ok(team);
   const agentRefs = team.roles.map((r) => ({
@@ -274,11 +313,13 @@ test("expandTeamToPlan uses build review template for loop team", async () => {
   assert.equal(result.preview.plan.template, "implement-review-loop");
   assert.deepEqual(
     result.preview.plan.phases.map((phase) => phase.id),
-    ["implement", "review", "verify", "summarize", "loop_or_finish"]
+    ["plan", "implement", "review", "verify", "summarize", "loop_or_finish"]
   );
+  assert.equal(result.preview.plan.phases[0].gate.type, "manual_approval");
+  assert.equal(result.preview.plan.phases[1].gate.type, "all_done");
   assert.deepEqual(
     result.preview.routeSummary.map((route) => route.nodeId),
-    ["implement", "review", "verify", "summarize"]
+    ["plan", "implement", "review", "verify", "summarize"]
   );
 });
 
@@ -291,6 +332,46 @@ test("runtime loops build review when verification has unresolved issues", () =>
   assert.match(src, /stepId === VERIFY_CHANGES_STEP_ID/);
   assert.match(src, /verifierHasUnresolved\(verifier\?\.summary\)/);
   assert.match(src, /verification feedback from the previous round/);
+});
+
+test("runtime resumes gated plan revisions and implementer review-loop sessions", () => {
+  const src = fs.readFileSync(
+    new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(src, /function shouldResumeWorkflowStep/);
+  assert.match(src, /Boolean\(step\.toolSessionId\)/);
+  assert.match(src, /step\.prompt\.includes\("User requested changes before approval:"\)/);
+  assert.match(src, /step\.stepId === IMPLEMENT_REVIEW_STEP_ID/);
+  assert.match(src, /const resumeToolSession = shouldResumeWorkflowStep\(plan, step\)/);
+  assert.match(src, /toolSessionScope: args\.toolSessionScope/);
+  assert.match(src, /toolSessionId: args\.toolSessionId/);
+  assert.match(src, /resumeToolSession: args\.resumeToolSession/);
+});
+
+test("workflow steps persist reusable tool session ids separately from task ids", () => {
+  const db = fs.readFileSync(
+    new URL("../electron/cli/db.ts", import.meta.url),
+    "utf8"
+  );
+  const workflows = fs.readFileSync(
+    new URL("../electron/cli/workflows.ts", import.meta.url),
+    "utf8"
+  );
+  const electronTypes = fs.readFileSync(
+    new URL("../electron/cli/workflowTypes.ts", import.meta.url),
+    "utf8"
+  );
+  const rendererTypes = fs.readFileSync(
+    new URL("../src/services/workflows/types.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(db, /tool_session_id TEXT/);
+  assert.match(db, /ALTER TABLE workflow_steps ADD COLUMN tool_session_id TEXT/);
+  assert.match(workflows, /toolSessionId: r\.tool_session_id/);
+  assert.match(workflows, /tool_session_id = \?/);
+  assert.match(electronTypes, /toolSessionId\?: string/);
+  assert.match(rendererTypes, /toolSessionId\?: string/);
 });
 
 test("findResumePhaseIndex skips finished phases", async () => {

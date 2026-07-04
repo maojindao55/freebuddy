@@ -53,6 +53,13 @@ export const workflowClient = {
   approveGate(args: { runId: string; phaseId: string }): Promise<boolean> {
     return api().approveGate(args);
   },
+  requestGateChanges(args: {
+    runId: string;
+    phaseId: string;
+    feedback: string;
+  }): Promise<boolean> {
+    return api().requestGateChanges(args);
+  },
   continueImplementReview(runId: string): Promise<boolean> {
     return api().continueImplementReview(runId);
   },

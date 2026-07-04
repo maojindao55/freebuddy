@@ -5,19 +5,20 @@ import { useTranslation } from "react-i18next";
 import { displayAgentName } from "@/config/agentDisplay";
 import { cliClient } from "@/services/cli/client";
 import type {
+  CodexResetCredit,
   CodexUsageResult,
   CodexUsageWindow,
   ConversationMessage
 } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
+import { useReplayStore } from "@/store/replayStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
+import { FeedCard } from "../Feeds/FeedCard";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
-import {
-  mergeSessionMetaItems
-} from "@/store/sessionMetaUtils";
+import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
@@ -31,7 +32,7 @@ export function WorkspacePanel({
 }: {
   runningCount: number;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
   // Subscribe only to the active conversation's slices so background
@@ -42,33 +43,49 @@ export function WorkspacePanel({
   const live = useConversationStore((s) =>
     s.activeId ? s.live[s.activeId] : undefined
   );
-  const [copiedSession, setCopiedSession] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
+  const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
+  const [copiedSession, setCopiedSession] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowSteps = useWorkflowStore((s) => s.steps);
+  const replayConvId = useReplayStore((s) => s.conversationId);
+  const replayIndex = useReplayStore((s) => s.index);
+  const replayFrames = useReplayStore((s) => s.frames);
 
   useEffect(() => {
     if (!activeId) return;
     void loadWorkflowForConversation(activeId);
   }, [activeId, loadWorkflowForConversation]);
 
+  const replayFrame =
+    replayConvId === activeId && replayIndex >= 0
+      ? replayFrames[replayIndex]
+      : undefined;
+  const replayWorkflow = replayFrame?.workflow;
+  const displayMessages = replayFrame
+    ? messages.slice(0, replayFrame.messageIndex + 1)
+    : messages;
+  const displayLive = replayFrame ? undefined : live;
+  const displayRun = replayWorkflow?.run ?? activeRun;
+
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
   const isCodexAgent =
     active?.adapter === "codex-acp" || active?.agentId === "cli-codex-acp";
 
-  const status = live?.status ?? "ready";
+  const status = displayLive?.status ?? "ready";
   const isLive = status === "running" || status === "starting";
 
-  const isTeamRun = !!activeRun && activeRun.conversationId === activeId;
+  const isTeamRun = !!displayRun && displayRun.conversationId === activeId;
   const isTeamLive =
+    !replayFrame &&
     isTeamRun &&
-    (activeRun!.status === "running" ||
-      activeRun!.status === "paused" ||
-      activeRun!.status === "blocked");
+    (displayRun!.status === "running" ||
+      displayRun!.status === "paused" ||
+      displayRun!.status === "blocked");
 
   useEffect(() => {
     if (!isLive && !isTeamLive) return;
@@ -79,22 +96,22 @@ export function WorkspacePanel({
   const totalMessages = useMemo(
     () =>
       isTeamRun
-        ? messages.filter((m) => m.role !== "system").length
-        : messages.length,
-    [isTeamRun, messages]
+        ? displayMessages.filter((m) => m.role !== "system").length
+        : displayMessages.length,
+    [isTeamRun, displayMessages]
   );
   const assistantTurns = useMemo(
-    () => messages.filter((m) => m.role === "assistant").length,
-    [messages]
+    () => displayMessages.filter((m) => m.role === "assistant").length,
+    [displayMessages]
   );
 
   const latestSessionId = useMemo(() => {
     if (isTeamRun) return undefined;
-    const fromLive = live?.capturedSessionId ?? live?.resumedFromSessionId;
+    const fromLive = displayLive?.capturedSessionId ?? displayLive?.resumedFromSessionId;
     if (fromLive) return fromLive;
 
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i];
+    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
+      const message = displayMessages[i];
       if (message.role !== "assistant") continue;
       try {
         const items = JSON.parse(message.content) as unknown[];
@@ -111,11 +128,11 @@ export function WorkspacePanel({
     }
 
     return undefined;
-  }, [isTeamRun, live?.capturedSessionId, live?.resumedFromSessionId, messages]);
+  }, [isTeamRun, displayLive?.capturedSessionId, displayLive?.resumedFromSessionId, displayMessages]);
 
   const latestUsage = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i];
+    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
+      const message = displayMessages[i];
       if (message.role !== "assistant") continue;
       try {
         const items = JSON.parse(message.content) as unknown[];
@@ -138,16 +155,16 @@ export function WorkspacePanel({
       }
     }
     return undefined;
-  }, [messages]);
+  }, [displayMessages]);
 
   const latestPlan = useMemo(
-    () => (isTeamRun ? undefined : latestPlanFromMessages(messages)),
-    [isTeamRun, messages]
+    () => (isTeamRun ? undefined : latestPlanFromMessages(displayMessages)),
+    [isTeamRun, displayMessages]
   );
 
   const latestConfigOptions = useMemo(() => {
     if (isTeamRun) return [];
-    const messageItems = messages
+    const messageItems = displayMessages
       .filter((message) => message.role === "assistant")
       .flatMap((message) => {
         try {
@@ -157,35 +174,58 @@ export function WorkspacePanel({
           return [];
         }
       });
-    return mergeSessionMetaItems(messageItems, live?.items).configOptions;
-  }, [isTeamRun, live, messages]);
+    return mergeSessionMetaItems(messageItems, displayLive?.items).configOptions;
+  }, [isTeamRun, displayLive, displayMessages]);
 
   const durationMs = useMemo(() => {
-    if (isTeamRun && activeRun?.createdAt) {
-      const start = Date.parse(activeRun.createdAt);
-      const end = activeRun.endedAt ? Date.parse(activeRun.endedAt) : now;
+    if (isTeamRun && displayRun?.createdAt) {
+      const start = Date.parse(displayRun.createdAt);
+      const end = replayWorkflow?.at
+        ? Date.parse(replayWorkflow.at)
+        : displayRun.endedAt
+          ? Date.parse(displayRun.endedAt)
+          : now;
       if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
       const ms = end - start;
-      return ms >= 0 ? ms : undefined;
+      return Math.max(ms, 0);
     }
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i];
+    const replayMessage = replayFrame ? messages[replayFrame.messageIndex] : undefined;
+    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
+      const message = displayMessages[i];
       if (message.role !== "assistant") continue;
       const start = Date.parse(message.createdAt);
-      const end = isLive ? now : Date.parse(message.updatedAt);
+      const replayingMessage = Boolean(replayFrame && message.id === replayMessage?.id);
+      const end = replayingMessage
+        ? Date.parse(replayFrame?.messageComplete ? message.updatedAt : message.createdAt)
+        : isLive
+          ? now
+          : Date.parse(message.updatedAt);
       if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
       const ms = end - start;
-      return ms >= 0 ? ms : undefined;
+      return Math.max(ms, 0);
     }
     return undefined;
   }, [
     isTeamRun,
-    activeRun?.createdAt,
-    activeRun?.endedAt,
+    displayRun?.createdAt,
+    displayRun?.endedAt,
+    replayWorkflow?.at,
+    replayFrame,
+    replayFrame?.messageComplete,
     messages,
+    displayMessages,
     isLive,
     now
   ]);
+
+  const sessionConfigSummary = useMemo(() => {
+    const sessionConfigValues = latestConfigOptions
+      .map((option) => option.currentLabel ?? option.currentValue)
+      .filter((value): value is string => Boolean(value));
+    return sessionConfigValues.length > 0
+      ? sessionConfigValues.join(" / ")
+      : t("workspace.localAgent");
+  }, [latestConfigOptions, t]);
 
   useEffect(() => {
     if (!isCodexAgent) {
@@ -244,7 +284,7 @@ export function WorkspacePanel({
             />
             <div>
               <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
-              <small>{active ? t("workspace.localAgent") : t("workspace.createToBegin")}</small>
+              <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
             </div>
           </div>
         </section>
@@ -341,34 +381,6 @@ export function WorkspacePanel({
         </dl>
       </section>
 
-      {latestConfigOptions.length > 0 && (
-        <section className="side-card session-config-card">
-          <div className="side-card-header">
-            <span>{t("workspace.sessionConfig")}</span>
-            <strong>{latestConfigOptions.length}</strong>
-          </div>
-          <div className="session-config-scroll">
-            <dl className="compact-dl session-config-list">
-              {latestConfigOptions.map((option) => {
-                const label = option.name ?? option.id;
-                const value =
-                  option.currentLabel ?? option.currentValue ?? t("workspace.notSet");
-                return (
-                  <div key={option.id} className="session-config-row">
-                    <dt>
-                      <span className="session-config-label" title={label}>
-                        {label}
-                      </span>
-                    </dt>
-                    <dd title={value}>{value}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-          </div>
-        </section>
-      )}
-
       {latestPlan && (
         <section className="side-card plan-card">
           <div className="side-card-header">
@@ -437,8 +449,12 @@ export function WorkspacePanel({
                 leftLabel={t("workspace.codexUsageLeft", {
                   percent: codexUsage.primaryWindow.leftPercent
                 })}
-                resetLabel={t("workspace.codexUsageResetIn", {
-                  time: formatDuration(codexUsage.primaryWindow.resetAfterSeconds * 1000)
+                resetLabel={t("workspace.codexUsageResetAt", {
+                  time: formatCodexResetAt(
+                    codexUsage.primaryWindow.resetAt,
+                    i18n.language,
+                    "time"
+                  )
                 })}
               />
               {codexUsage.secondaryWindow && (
@@ -448,12 +464,61 @@ export function WorkspacePanel({
                   leftLabel={t("workspace.codexUsageLeft", {
                     percent: codexUsage.secondaryWindow.leftPercent
                   })}
-                  resetLabel={t("workspace.codexUsageResetIn", {
-                    time: formatDuration(
-                      codexUsage.secondaryWindow.resetAfterSeconds * 1000
+                  resetLabel={t("workspace.codexUsageResetAt", {
+                    time: formatCodexResetAt(
+                      codexUsage.secondaryWindow.resetAt,
+                      i18n.language
                     )
                   })}
                 />
+              )}
+              {codexUsage.resetCredits && (
+                <div className="codex-reset-credits">
+                  <button
+                    className="codex-reset-credits-summary"
+                    type="button"
+                    aria-expanded={resetCreditsExpanded}
+                    aria-label={
+                      resetCreditsExpanded
+                        ? t("workspace.codexResetCreditsCollapse")
+                        : t("workspace.codexResetCreditsExpand")
+                    }
+                    onClick={() => setResetCreditsExpanded((value) => !value)}
+                  >
+                    <strong>
+                      {t("workspace.codexResetCredits")}
+                      <span className="codex-reset-credits-chevron" aria-hidden="true" />
+                    </strong>
+                    <span>
+                      {t("workspace.codexResetCreditsCount", {
+                        available: codexUsage.resetCredits.availableCount,
+                        total: codexUsage.resetCredits.totalCount
+                      })}
+                    </span>
+                  </button>
+                  {codexUsage.resetCredits.nextExpiresAt && (
+                    <small>
+                      {t("workspace.codexResetCreditsExpireAt", {
+                        time: formatCodexResetAt(
+                          codexUsage.resetCredits.nextExpiresAt,
+                          i18n.language
+                        )
+                      })}
+                    </small>
+                  )}
+                  {resetCreditsExpanded && (
+                    <div className="codex-reset-credit-list">
+                      {codexUsage.resetCredits.credits.map((credit, index) => (
+                        <CodexResetCreditRow
+                          key={`${credit.status}-${credit.expiresAt ?? "none"}-${index}`}
+                          credit={credit}
+                          index={index}
+                          language={i18n.language}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ) : (
@@ -465,6 +530,36 @@ export function WorkspacePanel({
           )}
         </section>
       )}
+
+      <FeedCard />
+    </div>
+  );
+}
+
+function CodexResetCreditRow({
+  credit,
+  index,
+  language
+}: {
+  credit: CodexResetCredit;
+  index: number;
+  language: string;
+}) {
+  const { t } = useTranslation();
+  const statusKey = codexResetCreditStatusKey(credit.status);
+  return (
+    <div className="codex-reset-credit-row">
+      <strong>{t("workspace.codexResetCreditTitle", { index: index + 1 })}</strong>
+      <span className={`codex-reset-credit-status ${statusKey}`}>
+        {t(`workspace.codexResetCreditStatus.${statusKey}`)}
+      </span>
+      <small>
+        {credit.expiresAt
+          ? t("workspace.codexResetCreditExpiresAt", {
+              time: formatCodexResetAt(credit.expiresAt, language)
+            })
+          : t("workspace.codexResetCreditNoExpiry")}
+      </small>
     </div>
   );
 }
@@ -495,6 +590,11 @@ function CodexLimitRow({
       <small>{resetLabel}</small>
     </div>
   );
+}
+
+function codexResetCreditStatusKey(status: string): "available" | "used" | "unknown" {
+  if (status === "available" || status === "used") return status;
+  return "unknown";
 }
 
 function latestPlanFromMessages(
@@ -555,6 +655,31 @@ function shortPath(path: string) {
 function shortSessionId(id: string) {
   if (id.length <= 18) return id;
   return `${id.slice(0, 8)}\u2026${id.slice(-6)}`;
+}
+
+function formatCodexResetAt(
+  resetAt: number,
+  lang: string,
+  variant: "time" | "dateTime" = "dateTime"
+): string {
+  const millis = resetAt > 1_000_000_000_000 ? resetAt : resetAt * 1000;
+  const date = new Date(millis);
+  if (Number.isNaN(date.getTime())) return "";
+  if (variant === "time") {
+    return new Intl.DateTimeFormat(lang || undefined, {
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(date);
+  }
+  const now = new Date();
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return new Intl.DateTimeFormat(lang || undefined, {
+    year: sameYear ? undefined : "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function formatTokens(n: number): string {

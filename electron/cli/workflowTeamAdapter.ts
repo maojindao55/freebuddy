@@ -1,6 +1,8 @@
 import { builtinCliMembers } from "./members.js";
 import {
+  buildConfigurableDeliveryPlan,
   buildImplementReviewLoopPlan,
+  CONFIGURABLE_DELIVERY_TEMPLATE_ID,
   IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID
 } from "./workflowTemplates.js";
 import type {
@@ -13,6 +15,7 @@ import type {
 } from "./workflowTypes.js";
 import type {
   WorkflowTeam,
+  WorkflowNodeContract,
   WorkflowTeamPreview,
   WorkflowTemplateNode,
   WorkflowTemplateNodeMode
@@ -59,6 +62,9 @@ export function expandTeamToPlan(
 ): TeamPreviewResult {
   if (team.template.id === IMPLEMENT_REVIEW_LOOP_TEMPLATE_ID) {
     return expandImplementReviewTeamToPlan(team, input, agents);
+  }
+  if (isConfigurableDeliveryTeam(team)) {
+    return expandConfigurableDeliveryTeamToPlan(team, input, agents);
   }
 
   const errors: string[] = [];
@@ -131,7 +137,7 @@ export function expandTeamToPlan(
     ) {
       gate = {
         type: "manual_approval",
-        reason: "Approve write step before execution."
+        reason: "Review the completed plan and approve the write step before execution."
       };
     } else if (
       node.mode === "write" &&
@@ -194,6 +200,147 @@ export function expandTeamToPlan(
     writeNodeCount,
     approvalNodeCount,
     maxLoops: team.policy.maxLoops,
+    plan
+  };
+
+  return { ok: true, preview };
+}
+
+function isConfigurableDeliveryTeam(team: WorkflowTeam): boolean {
+  const deliveryContracts: WorkflowNodeContract[] = [
+    "plan",
+    "approval",
+    "implement",
+    "review",
+    "verify",
+    "summarize"
+  ];
+  return (
+    team.template.id === CONFIGURABLE_DELIVERY_TEMPLATE_ID ||
+    team.template.nodes.some((node) =>
+      node.contract ? deliveryContracts.includes(node.contract) : false
+    )
+  );
+}
+
+function teamHasManualApprovalGate(team: WorkflowTeam): boolean {
+  return team.template.nodes.some(
+    (node) =>
+      node.mode === "approval" ||
+      node.gates?.some((gate) => gate.type === "manual_approval")
+  );
+}
+
+function roleSummaryForTeam(
+  team: WorkflowTeam,
+  agents: WorkflowAgentRef[]
+): WorkflowTeamPreview["roleSummary"] {
+  return team.roles.map((role) => {
+    const agent = agents.find((entry) => entry.id === role.agentId);
+    const m = builtinCliMembers.find((x) => x.id === role.agentId);
+    return {
+      roleId: role.id,
+      roleLabel: role.label,
+      kind: role.kind,
+      agentId: role.agentId,
+      agentName: agent?.name ?? m?.name ?? role.agentId
+    };
+  });
+}
+
+function expandConfigurableDeliveryTeamToPlan(
+  team: WorkflowTeam,
+  input: TeamRunInput,
+  agents: WorkflowAgentRef[]
+): TeamPreviewResult {
+  const errors: string[] = [];
+  if (!team.enabled) errors.push("team is disabled");
+
+  const nodeByContract = new Map(
+    team.template.nodes
+      .filter((node) => node.contract)
+      .map((node) => [node.contract!, node])
+  );
+  const implementNode = nodeByContract.get("implement");
+  if (!implementNode?.roleId) {
+    errors.push("configurable delivery team requires an implement node");
+  }
+
+  const roleAgentId = (contract: WorkflowNodeContract) => {
+    const node = nodeByContract.get(contract);
+    const role = node?.roleId ? team.roles.find((r) => r.id === node.roleId) : undefined;
+    return role?.agentId;
+  };
+  const resolveContractAgent = (contract: WorkflowNodeContract) => {
+    const agentId = roleAgentId(contract);
+    return agentId ? agents.find((agent) => agent.id === agentId) : undefined;
+  };
+
+  const implementer = resolveContractAgent("implement");
+  const planner = resolveContractAgent("plan");
+  const reviewer = resolveContractAgent("review");
+  const verifier = resolveContractAgent("verify");
+  const summarizer = resolveContractAgent("summarize");
+  for (const contract of ["plan", "implement", "review", "verify", "summarize"] as const) {
+    if (nodeByContract.has(contract) && !resolveContractAgent(contract)) {
+      errors.push(`node ${contract} cannot resolve to a valid agent`);
+    }
+  }
+  if (!team.policy.allowWrites) {
+    errors.push("configurable delivery team requires write permission for implement");
+  }
+  if (errors.length > 0 || !implementer) {
+    return { ok: false, errors };
+  }
+
+  const hasApproval = teamHasManualApprovalGate(team);
+  const plan = buildConfigurableDeliveryPlan({
+    name: team.name,
+    goal: input.goal,
+    cwd: input.cwd,
+    targetPaths: input.targetPaths,
+    planner,
+    implementer,
+    reviewer,
+    verifier,
+    summarizer,
+    maxLoops: team.policy.maxLoops,
+    requireApprovalBeforeWrite: hasApproval || team.policy.requireApprovalBeforeWrite
+  });
+
+  const routeSummary: WorkflowTeamPreview["routeSummary"] = [];
+  for (const node of team.template.nodes) {
+    const role = node.roleId
+      ? team.roles.find((r) => r.id === node.roleId)
+      : undefined;
+    const agent = role
+      ? agents.find((entry) => entry.id === role.agentId)
+      : undefined;
+    routeSummary.push({
+      nodeId: node.id,
+      title: node.title,
+      mode: node.mode,
+      roleLabel: role?.label,
+      agentName: agent?.name
+    });
+  }
+
+  const preview: WorkflowTeamPreview = {
+    teamId: team.id,
+    teamName: team.name,
+    goal: input.goal,
+    cwd: input.cwd,
+    roleSummary: roleSummaryForTeam(team, agents),
+    routeSummary,
+    writeNodeCount: team.template.nodes.filter((node) => node.mode === "write").length,
+    approvalNodeCount: team.template.nodes.reduce(
+      (count, node) =>
+        count +
+        (node.mode === "approval" ? 1 : 0) +
+        (node.gates?.filter((gate) => gate.type === "manual_approval").length ?? 0),
+      0
+    ),
+    maxLoops: plan.maxLoops ?? team.policy.maxLoops,
     plan
   };
 

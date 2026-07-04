@@ -23,8 +23,13 @@
   },
   "general": {
     "languageLabel": "Language",
+    "languageSystem": "Follow system",
     "languageEn": "English",
-    "languageZhCN": "简体中文"
+    "languageZhCN": "简体中文",
+    "themeLabel": "Appearance",
+    "themeSystem": "Follow system",
+    "themeLight": "Light",
+    "themeDark": "Dark"
   },
   "app": { "brand": "FreeBuddy", "chat": "Chat" },
   "sidebar": {
@@ -82,6 +87,18 @@
     "removeAttachmentAria": "Remove {{name}}",
     "newTaskAria": "New task",
     "commonTasksAria": "Common tasks",
+    "replay": {
+      "title": "Conversation replay",
+      "entry": "Replay",
+      "play": "Play",
+      "pause": "Pause",
+      "exitShort": "Exit",
+      "exit": "Exit replay",
+      "progress": "{{n}}/{{total}}",
+      "disabledRunning": "Replay is unavailable while the agent is running",
+      "disabledWorkflowActive": "Replay is unavailable while the team workflow needs attention",
+      "disabledEmpty": "No messages to replay yet"
+    },
     "starter": {
       "one": "Analyze the current project structure and suggest next steps",
       "two": "Check recent changes for UI/UX issues",
@@ -153,9 +170,22 @@
     "codexUsageLoading": "Loading",
     "codexUsageUnavailable": "Codex usage is unavailable right now.",
     "codexUsage5h": "5h limit",
-    "codexUsageWeekly": "weekly limit",
+    "codexUsageWeekly": "Weekly limit",
     "codexUsageLeft": "{{percent}}% left",
-    "codexUsageResetIn": "resets in {{time}}"
+    "codexUsageResetAt": "resets at {{time}}",
+    "codexResetCredits": "Reset credits",
+    "codexResetCreditsCount": "{{available}} available / {{total}} total",
+    "codexResetCreditsExpireAt": "next expires at {{time}}",
+    "codexResetCreditsExpand": "Show reset credit details",
+    "codexResetCreditsCollapse": "Hide reset credit details",
+    "codexResetCreditTitle": "Credit {{index}}",
+    "codexResetCreditExpiresAt": "expires at {{time}}",
+    "codexResetCreditNoExpiry": "no expiry",
+    "codexResetCreditStatus": {
+      "available": "Available",
+      "used": "Used",
+      "unknown": "Unknown"
+    }
   },
   "message": {
     "you": "You",
@@ -180,6 +210,36 @@
     "viewRawLog": "View raw log ({{count}})",
     "summaryResult": "result",
     "summaryDone": "done",
+    "commandOutput": "Command output",
+    "processSummaryTitle": "Execution summary",
+    "processRunning": "Now: {{action}}",
+    "processFailed": "Execution needs attention",
+    "processCount": "{{count}} process items",
+    "processToolCount": "{{count}} tools",
+    "processCommandCount": "{{count}} commands",
+    "processThinkingCount": "{{count}} reasoning steps",
+    "processRecent": "Recent actions",
+    "processDetails": "Execution details {{count}}",
+    "processStep": "Process step",
+    "activityEditedFiles_one": "Edited {{count}} file",
+    "activityEditedFiles_other": "Edited {{count}} files",
+    "activityRanCommands_one": "Ran {{count}} command",
+    "activityRanCommands_other": "Ran {{count}} commands",
+    "activityReadFiles_one": "Read {{count}} file",
+    "activityReadFiles_other": "Read {{count}} files",
+    "activitySearched_one": "Searched {{count}} time",
+    "activitySearched_other": "Searched {{count}} times",
+    "activityAnalyzed_one": "Analyzed {{count}} step",
+    "activityAnalyzed_other": "Analyzed {{count}} steps",
+    "activityUsedTools_one": "Used {{count}} tool",
+    "activityUsedTools_other": "Used {{count}} tools",
+    "activityProcessed_one": "Processed {{count}} item",
+    "activityProcessed_other": "Processed {{count}} items",
+    "activityProcessing": "Processing",
+    "activitySucceeded_one": "{{count}} succeeded",
+    "activitySucceeded_other": "{{count}} succeeded",
+    "activityFailed_one": "{{count}} failed",
+    "activityFailed_other": "{{count}} failed",
     "statusPending": "pending",
     "statusRunning": "running",
     "statusCompleted": "done",
@@ -216,7 +276,8 @@
     "agentInterrupted": "Agent run interrupted.",
     "agentFailed": "Agent run failed with exit code {{code}}.{{detail}}",
     "rawLogCollapsed": "Raw CLI log collapsed for easier debugging.",
-    "cliNoStructured": "The CLI returned no parseable structured content."
+    "cliNoStructured": "The CLI returned no parseable structured content.",
+    "unknown": "Unknown error"
   },
   "attachments": {
     "review": "Please review these attachments.",
@@ -255,6 +316,7 @@
       "general": "General",
       "cli": "CLI Agents",
       "workflowTeams": "Workflow Teams",
+      "feed": "Feed",
       "about": "About"
     },
     "cli": {
@@ -327,6 +389,11 @@
     "cancel": "Cancel",
     "editPrompt": "Edit",
     "approveGate": "Approve & continue",
+    "approvalCardEyebrow": "Awaiting approval for {{phase}}",
+    "approvalCardBody": "Approve the plan above to continue. Need changes? Request changes, then send feedback in the composer.",
+    "requestChanges": "Request changes",
+    "requestChangesPlaceholder": "Describe what should change in the plan...",
+    "requestChangesFailed": "Could not request changes for this workflow.",
     "pause": "Pause",
     "resume": "Resume",
     "resumeAfterFailure": "Retry & continue",
@@ -367,6 +434,7 @@
       "implement": "Implement",
       "verify": "Verify",
       "loop_or_finish": "Loop or finish",
+      "plan": "Plan",
       "plan-task": "Plan task",
       "summarize": "Summarize",
       "research": "Research",
@@ -380,6 +448,8 @@
       "verify-changes": "Verify changes and report unresolved issues",
       "implement-changes": "Implement changes",
       "review-changes": "Review changes",
+      "plan-delivery": "Plan delivery",
+      "summarize-delivery": "Summarize delivery",
       "plan-task-step": "Plan task",
       "implement-step": "Implement",
       "verify-step": "Verify",
@@ -387,6 +457,23 @@
       "research-step": "Research",
       "analysis-step": "Analyze",
       "report-step": "Report"
+    },
+    "roleKinds": {
+      "planner": "Planner",
+      "researcher": "Researcher",
+      "reviewer": "Reviewer",
+      "implementer": "Implementer",
+      "verifier": "Verifier",
+      "summarizer": "Summarizer",
+      "custom": "Custom"
+    },
+    "nodeModes": {
+      "research": "Research",
+      "review": "Review",
+      "write": "Write",
+      "verify": "Verify",
+      "summarize": "Summarize",
+      "approval": "Approval"
     },
     "invalidPlan": "The generated plan is invalid",
     "summary": "Workflow summary",
@@ -402,7 +489,7 @@
     "teamPolicy": "Policy",
     "teamPolicyGates": "Approval gates",
     "teamPolicyLimits": "Limits",
-    "teamBuiltinLocked": "Built-in templates are read-only. Duplicate to customize.",
+    "teamBuiltinLocked": "Built-in templates keep their workflow structure read-only. Role agents can be changed.",
     "teamAdvanced": "Advanced",
     "teamEditor": "Team editor",
     "teamList": "Teams",
@@ -447,22 +534,101 @@
     "graphViewer": "Graph viewer",
     "startNodes": "Start nodes",
     "finalNodes": "Final nodes",
+    "nodeConfigHint": "Choose the delivery nodes for this custom team. Implement is always required.",
+    "nodePlan": "Plan",
+    "nodeApproval": "Approve plan",
+    "nodeImplement": "Implement",
+    "nodeReview": "Review",
+    "nodeVerify": "Verify",
+    "nodeSummarize": "Summarize",
+    "nodeContract": {
+      "plan": "Agent prepares the work plan before edits.",
+      "approval": "Approve the plan before file writes.",
+      "implement": "Agent is allowed to edit files.",
+      "review": "Agent reviews the change and emits REVIEW_STATUS.",
+      "verify": "Agent runs checks and emits UNRESOLVED.",
+      "summarize": "Agent writes the final handoff summary."
+    },
     "builtinTeams": {
+      "team-delivery-example": {
+        "name": "Standard Delivery Team",
+        "description": "Standard configurable-node delivery workflow: plan approval, implementation, review, verification, and summary.",
+        "roles": {
+          "role-planner": "Planner",
+          "role-implementer": "Implementer",
+          "role-reviewer": "Reviewer",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "plan": "Plan",
+          "implement": "Implement",
+          "review": "Review",
+          "verify": "Verify",
+          "summarize": "Summarize"
+        }
+      },
       "team-quick-implement": {
         "name": "Quick Implementation",
-        "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing."
+        "description": "Plan, implement, verify, summarize. Small focused changes with one approval gate before writing.",
+        "roles": {
+          "role-planner": "Planner",
+          "role-implementer": "Implementer",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "plan-task": "Plan task",
+          "implement": "Implement",
+          "verify": "Verify",
+          "summarize": "Summarize"
+        }
       },
       "team-implement-review-loop": {
         "name": "Build Review Team",
-        "description": "Implement, review, verify, and summarize. Review or verification failures loop back to implementation until PASS or max loops."
+        "description": "Implement, review, verify, and summarize. Review or verification failures loop back to implementation until PASS or max loops.",
+        "roles": {
+          "role-implementer": "Implementer",
+          "role-reviewer": "Reviewer",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "implement": "Implement",
+          "review": "Review",
+          "verify": "Verify",
+          "summarize": "Summarize"
+        }
       },
       "team-root-cause-analysis": {
         "name": "Root Cause Analysis",
-        "description": "Collect evidence, challenge the hypothesis, verify the root cause, and produce a concise investigation report."
+        "description": "Collect evidence, challenge the hypothesis, verify the root cause, and produce a concise investigation report.",
+        "roles": {
+          "role-investigator": "Investigator",
+          "role-skeptic": "Skeptic",
+          "role-verifier": "Verifier",
+          "role-summarizer": "Summarizer"
+        },
+        "nodes": {
+          "collect-evidence": "Collect evidence",
+          "challenge-hypothesis": "Challenge hypothesis",
+          "verify-root-cause": "Verify root cause",
+          "summarize-findings": "Summarize findings"
+        }
       },
       "team-research-report": {
         "name": "Research Report",
-        "description": "Research a non-coding topic, analyze scenarios, and produce a concise report with conclusions and confidence."
+        "description": "Research a non-coding topic, analyze scenarios, and produce a concise report with conclusions and confidence.",
+        "roles": {
+          "role-researcher": "Researcher",
+          "role-analyst": "Analyst",
+          "role-reporter": "Reporter"
+        },
+        "nodes": {
+          "research": "Research",
+          "analysis": "Analyze",
+          "report": "Report"
+        }
       }
     }
   },
@@ -473,6 +639,10 @@
     "check": "Check for updates",
     "downloadNow": "Download now",
     "installNow": "Install and restart",
+    "footerUpdate": "Update",
+    "footerDownloading": "{{percent}}%",
+    "footerInstall": "Install",
+    "footerOpen": "Open update details",
     "releaseNotes": "Release notes",
     "autoCheckHint": "FreeBuddy checks for updates automatically on startup and downloads them in the background.",
     "unavailable": "Update checks require the desktop build.",
@@ -496,6 +666,45 @@
       "error": "Update check failed."
     }
   },
+  "feed": {
+    "settingsTitle": "Feed",
+    "settingsDescription": "Manage RSS and Atom subscriptions for quick reading while agents run.",
+    "sourceName": "Name",
+    "sourceNamePlaceholder": "Optional",
+    "sourceUrl": "Feed URL",
+    "sourceUrlPlaceholder": "https://example.com/feed.xml",
+    "addSource": "Add feed",
+    "urlRequired": "Enter a feed URL.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "lastFetched": "Last fetched {{time}}",
+    "neverFetched": "never",
+    "refresh": "Refresh",
+    "refreshOne": "Refresh feed",
+    "refreshAll": "Refresh all",
+    "refreshing": "Refreshing…",
+    "loading": "Loading…",
+    "sourceCount": "{{count}} sources",
+    "noSources": "No feeds yet.",
+    "deleteConfirm": "Delete \"{{title}}\"?",
+    "cardTitle": "Feed",
+    "cardCount": "{{count}} items",
+    "allSources": "All feeds",
+    "sourceFilter": "Filter feed source",
+    "nextBatch": "Next batch",
+    "cardNoSources": "Add a feed in Settings to see updates here.",
+    "cardNoItems": "No feed items yet. Refresh your subscriptions.",
+    "interpret": "Interpret",
+    "interpreted": "read",
+    "openingConversation": "Opening…",
+    "conversationTitle": "{{title}}",
+    "interpretPromptIntro": "Please interpret this article and extract the key information and possible impact.",
+    "interpretPromptTitle": "Article title: {{title}}",
+    "interpretPromptSource": "Source: {{source}}",
+    "interpretPromptLink": "Link: {{link}}",
+    "interpretPromptSummary": "Feed summary:",
+    "interpretPromptOutput": "Please output:\n1. A three-sentence summary\n2. Key facts and context\n3. Possible impact or notable changes\n4. Whether the full article is worth reading, and why"
+  },
   "draft": {
     "title": "Preview",
     "tabOverview": "Overview",
@@ -504,6 +713,8 @@
     "refresh": "Refresh",
     "resetEntry": "Reset to auto entry",
     "openExternal": "Open in browser",
+    "feedInterpret": "Interpret",
+    "feedMarkRead": "Mark read",
     "viewport": "Preview size",
     "viewportResponsive": "Responsive",
     "zoom": "Zoom",

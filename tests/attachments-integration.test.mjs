@@ -70,7 +70,8 @@ test("conversation send flow composes agent prompts from attachments", () => {
   assert.match(files.store, /attachments/);
   assert.match(files.store, /upsertConversationMessage/);
   assert.match(files.store, /savedUser\.attachments/);
-  assert.match(files.store, /prompt:\s*composeMessageWithAttachments\(trimmed,\s*attachments/);
+  assert.match(files.store, /const userPrompt = composeMessageWithAttachments\(trimmed,\s*attachments\)/);
+  assert.match(files.store, /prompt:\s*promptWithWorkflowContext/);
 });
 
 test("chat composer supports pending and attachment-only sends", () => {

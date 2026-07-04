@@ -42,6 +42,29 @@ test("readCodexUsage reads local Codex auth and returns sanitized usage windows"
     nowMs: Date.UTC(2026, 5, 27),
     fetchImpl: async (url, init) => {
       calls.push({ url, init });
+      if (url.endsWith("/rate-limit-reset-credits")) {
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return {
+              available_count: 1,
+              credits: [
+                {
+                  id: "credit-1",
+                  status: "available",
+                  expires_at: "2026-07-01T00:00:00Z"
+                },
+                {
+                  id: "credit-2",
+                  status: "used",
+                  expires_at: 1782864000
+                }
+              ]
+            };
+          }
+        };
+      }
       return {
         ok: true,
         status: 200,
@@ -80,8 +103,28 @@ test("readCodexUsage reads local Codex auth and returns sanitized usage windows"
     resetAt: 1782586824
   });
   assert.equal(result.secondaryWindow?.usedPercent, 44);
+  assert.deepEqual(result.resetCredits, {
+    availableCount: 1,
+    totalCount: 2,
+    nextExpiresAt: 1782864000,
+    credits: [
+      {
+        status: "available",
+        expiresAt: 1782864000
+      },
+      {
+        status: "used",
+        expiresAt: 1782864000
+      }
+    ]
+  });
   assert.equal(calls[0].url, "https://chatgpt.com/backend-api/wham/usage");
+  assert.equal(
+    calls[1].url,
+    "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+  );
   assert.equal(calls[0].init.headers["chatgpt-account-id"], "acct_123");
+  assert.equal(calls[1].init.headers["chatgpt-account-id"], "acct_123");
   assert.match(calls[0].init.headers.authorization, /^Bearer /);
   assert.equal(JSON.stringify(result).includes("refresh-secret"), false);
   assert.equal(JSON.stringify(result).includes(calls[0].init.headers.authorization), false);

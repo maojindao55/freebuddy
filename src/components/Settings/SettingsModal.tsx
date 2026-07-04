@@ -5,19 +5,27 @@ import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
+import { FeedTab } from "./FeedTab";
 
-type SettingsTab = "general" | "cli" | "workflowTeams" | "about";
+export type SettingsTab = "general" | "cli" | "workflowTeams" | "feed" | "about";
 
 const TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
+  { key: "feed", labelKey: "settings.tabs.feed" },
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "about", labelKey: "settings.tabs.about" }
 ];
 
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+export function SettingsModal({
+  onClose,
+  initialTab = "cli"
+}: {
+  onClose: () => void;
+  initialTab?: SettingsTab;
+}) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("cli");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -48,6 +56,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </SettingsTabErrorBoundary>
             )}
             {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
+            {activeTab === "feed" && <FeedTab />}
             {activeTab === "about" && <AboutTab />}
           </div>
         </div>

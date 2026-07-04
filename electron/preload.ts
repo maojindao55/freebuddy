@@ -111,6 +111,17 @@ const settings: {
     ipcRenderer.invoke("settings:set", { key, value })
 };
 
+const feed = {
+  listSources: () => ipcRenderer.invoke("feed:listSources"),
+  addSource: (input: unknown) => ipcRenderer.invoke("feed:addSource", input),
+  updateSource: (input: unknown) => ipcRenderer.invoke("feed:updateSource", input),
+  deleteSource: (id: string) => ipcRenderer.invoke("feed:deleteSource", id),
+  listItems: (args?: unknown) => ipcRenderer.invoke("feed:listItems", args),
+  refreshSource: (id: string) => ipcRenderer.invoke("feed:refreshSource", id),
+  refreshAll: () => ipcRenderer.invoke("feed:refreshAll"),
+  markInterpreted: (id: string) => ipcRenderer.invoke("feed:markInterpreted", id)
+};
+
 const workflow = {
   validate: (plan: unknown) => ipcRenderer.invoke("workflow:validate", plan),
   previewReviewLoop: (input: unknown) =>
@@ -125,6 +136,8 @@ const workflow = {
   retryStep: (args: unknown) => ipcRenderer.invoke("workflow:retryStep", args),
   approveGate: (args: unknown) =>
     ipcRenderer.invoke("workflow:approveGate", args),
+  requestGateChanges: (args: unknown) =>
+    ipcRenderer.invoke("workflow:requestGateChanges", args),
   continueImplementReview: (runId: string) =>
     ipcRenderer.invoke("workflow:continueImplementReview", runId),
   getRun: (runId: string) => ipcRenderer.invoke("workflow:getRun", runId),
@@ -190,6 +203,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   workflow,
   workflowTeams,
   settings,
+  feed,
   window,
   updater
 });

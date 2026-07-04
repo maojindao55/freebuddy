@@ -1,6 +1,6 @@
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { CLIMember } from "@/config/aiMembers";
-import type { ConversationMessage } from "@/services/cli/types";
+import type { Conversation, ConversationMessage } from "@/services/cli/types";
 
 type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
@@ -378,6 +378,49 @@ export function defaultTitleFor(member: CLIMember, cwd?: string): string {
     ? cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
     : undefined;
   return tail ? `${member.name} · ${tail}` : member.name;
+}
+
+function defaultTitleForConversation(
+  conversation: Pick<Conversation, "agentName" | "cwd">
+): string {
+  const tail = conversation.cwd
+    ? conversation.cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
+    : undefined;
+  return tail ? `${conversation.agentName} · ${tail}` : conversation.agentName;
+}
+
+export function shouldApplyAgentSessionTitle(
+  conversation: Pick<Conversation, "title" | "agentName" | "cwd">,
+  agentTitle: string | undefined
+): boolean {
+  const title = agentTitle?.trim();
+  if (!title || conversation.title === title) return false;
+  return conversation.title === defaultTitleForConversation(conversation);
+}
+
+function clipConversationTitle(value: string, max = 80): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max).trimEnd()}...`;
+}
+
+function feedArticleTitleFromPrompt(content: string): string | undefined {
+  const match =
+    content.match(/(?:^|\n)\s*\u6587\u7ae0\u6807\u9898[:\uff1a]\s*([^\n\r]+)/) ??
+    content.match(/(?:^|\n)\s*Article title:\s*([^\n\r]+)/i);
+  const title = match?.[1]?.trim();
+  return title ? clipConversationTitle(title) : undefined;
+}
+
+export function feedArticleTitleFromMessages(
+  messages: Pick<ConversationMessage, "role" | "content">[]
+): string | undefined {
+  for (const message of messages) {
+    if (message.role !== "user") continue;
+    const title = feedArticleTitleFromPrompt(message.content);
+    if (title) return title;
+  }
+  return undefined;
 }
 
 function mergeMessageAttachments(

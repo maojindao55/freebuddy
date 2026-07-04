@@ -73,6 +73,14 @@ test("sidebar collapse toggle hides the sidebar column", () => {
   );
 });
 
+test("opening the draft preview collapses the conversation sidebar", () => {
+  assert.match(appSource, /const activeDetailTab = useDetailLayoutStore\(\(s\) => s\.activeTab\)/);
+  assert.match(
+    appSource,
+    /useEffect\(\(\) => \{[\s\S]*if \(activeDetailTab === "preview"\) \{[\s\S]*setSidebarCollapsed\(true\);[\s\S]*\}[\s\S]*\}, \[activeDetailTab\]\);/
+  );
+});
+
 test("new-task page sending flag is not stuck true without an active conversation", () => {
   // submitPreview is null and conv is undefined on the new-task page, so both
   // sides would be `undefined`. The guard must require submitPreview !== null

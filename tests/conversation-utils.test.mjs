@@ -182,6 +182,44 @@ test("dedupeCommands collapses renderer duplicates", async () => {
   );
 });
 
+test("agent session titles do not override custom conversation titles", async () => {
+  const { feedArticleTitleFromMessages, shouldApplyAgentSessionTitle } =
+    await loadConversationUtils();
+
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      {
+        title: "Meta决定卖算力,真的是因为“产能过剩”吗?",
+        agentName: "Kimi",
+        cwd: "/Users/me/project"
+      },
+      "请解读这篇文章,提炼关键信息和可能影响。"
+    ),
+    false
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      {
+        title: "Kimi · project",
+        agentName: "Kimi",
+        cwd: "/Users/me/project"
+      },
+      "Implement auth flow"
+    ),
+    true
+  );
+  assert.equal(
+    feedArticleTitleFromMessages([
+      {
+        role: "user",
+        content:
+          "请解读这篇文章,提炼关键信息和可能影响。\n\n文章标题:Meta决定卖算力,真的是因为“产能过剩”吗?\n来源:MIT 科技评论 - 本周热榜"
+      }
+    ]),
+    "Meta决定卖算力,真的是因为“产能过剩”吗?"
+  );
+});
+
 test("stored assistant messages reuse appendItems normalization", () => {
   const source = fs.readFileSync(
     new URL("../src/components/CLI/MessageBubble.tsx", import.meta.url),

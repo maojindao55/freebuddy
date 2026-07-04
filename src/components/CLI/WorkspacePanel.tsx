@@ -16,6 +16,7 @@ import { useReplayStore } from "@/store/replayStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
+import { FeedCard } from "../Feeds/FeedCard";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
 
@@ -42,11 +43,11 @@ export function WorkspacePanel({
   const live = useConversationStore((s) =>
     s.activeId ? s.live[s.activeId] : undefined
   );
-  const [copiedSession, setCopiedSession] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
   const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
+  const [copiedSession, setCopiedSession] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowSteps = useWorkflowStore((s) => s.steps);
@@ -217,6 +218,15 @@ export function WorkspacePanel({
     now
   ]);
 
+  const sessionConfigSummary = useMemo(() => {
+    const sessionConfigValues = latestConfigOptions
+      .map((option) => option.currentLabel ?? option.currentValue)
+      .filter((value): value is string => Boolean(value));
+    return sessionConfigValues.length > 0
+      ? sessionConfigValues.join(" / ")
+      : t("workspace.localAgent");
+  }, [latestConfigOptions, t]);
+
   useEffect(() => {
     if (!isCodexAgent) {
       setCodexUsage(undefined);
@@ -274,7 +284,7 @@ export function WorkspacePanel({
             />
             <div>
               <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
-              <small>{active ? t("workspace.localAgent") : t("workspace.createToBegin")}</small>
+              <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
             </div>
           </div>
         </section>
@@ -370,34 +380,6 @@ export function WorkspacePanel({
             )}
         </dl>
       </section>
-
-      {latestConfigOptions.length > 0 && (
-        <section className="side-card session-config-card">
-          <div className="side-card-header">
-            <span>{t("workspace.sessionConfig")}</span>
-            <strong>{latestConfigOptions.length}</strong>
-          </div>
-          <div className="session-config-scroll">
-            <dl className="compact-dl session-config-list">
-              {latestConfigOptions.map((option) => {
-                const label = option.name ?? option.id;
-                const value =
-                  option.currentLabel ?? option.currentValue ?? t("workspace.notSet");
-                return (
-                  <div key={option.id} className="session-config-row">
-                    <dt>
-                      <span className="session-config-label" title={label}>
-                        {label}
-                      </span>
-                    </dt>
-                    <dd title={value}>{value}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-          </div>
-        </section>
-      )}
 
       {latestPlan && (
         <section className="side-card plan-card">
@@ -548,6 +530,8 @@ export function WorkspacePanel({
           )}
         </section>
       )}
+
+      <FeedCard />
     </div>
   );
 }

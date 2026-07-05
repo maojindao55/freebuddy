@@ -2,7 +2,22 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+<p align="center">
+  <a href="https://github.com/maojindao55/freebuddy/blob/main/LICENSE"><img src="https://img.shields.io/github/license/maojindao55/freebuddy?style=flat-square&color=blue" alt="License"></a>
+  <img src="https://img.shields.io/badge/Electron-25.0+-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron">
+  <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+</p>
+
 **A local-first desktop workspace for coding agents.**
+
+<p align="center">
+  <a href="https://www.bilibili.com/video/BV1zQTp6HERQ/" target="_blank">
+    <img src="assets/video-poster.jpg" width="100%" alt="FreeBuddy Demo Video" style="border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);"/>
+  </a>
+</p>
+
+
 
 FreeBuddy turns tools like Codex, ClaudeCode, OpenCode, and Cursor into
 first-class teammates inside one focused desktop app. Pick an agent, point it at

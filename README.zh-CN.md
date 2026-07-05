@@ -2,7 +2,22 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+<p align="center">
+  <a href="https://github.com/maojindao55/freebuddy/blob/main/LICENSE"><img src="https://img.shields.io/github/license/maojindao55/freebuddy?style=flat-square&color=blue" alt="License"></a>
+  <img src="https://img.shields.io/badge/Electron-25.0+-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron">
+  <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+</p>
+
 **面向本地编码 Agent 的桌面工作台。**
+
+<p align="center">
+  <a href="https://www.bilibili.com/video/BV1zQTp6HERQ/" target="_blank">
+    <img src="assets/video-poster.jpg" width="100%" alt="FreeBuddy Demo Video" style="border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);"/>
+  </a>
+</p>
+
+
 
 FreeBuddy 把 Codex、ClaudeCode、OpenCode、Cursor 这类本地编码 Agent 变成一个桌面应用里的“团队成员”。选择一个 Agent，指定工作目录，附上有用的上下文，然后像派发任务一样让它开始工作。你看到的不是黑盒聊天，而是一条清晰、可追踪、可复盘的结构化执行流。
 

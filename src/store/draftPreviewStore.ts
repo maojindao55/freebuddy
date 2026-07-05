@@ -41,6 +41,14 @@ function withDraftNonce(target: string, nonce: number): string {
   return url.toString();
 }
 
+function shouldKeepRemoteUrlExact(target: string): boolean {
+  try {
+    return new URL(target).hostname === "mp.weixin.qq.com";
+  } catch {
+    return false;
+  }
+}
+
 function localFileExtension(target: string): string {
   return target.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
 }
@@ -65,6 +73,7 @@ export function composeDraftPreviewUrl(
 ): string {
   if (!target) return "";
   if (/^https?:\/\//i.test(target)) {
+    if (shouldKeepRemoteUrlExact(target)) return target;
     return withDraftNonce(target, nonce);
   }
   if (/^freebuddy-file:\/\//i.test(target)) {

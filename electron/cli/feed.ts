@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 
 import { getDb } from "./db.js";
+import { getSetting } from "./settings.js";
+
+const RSSHUB_BASE_URL_SETTING_KEY = "feed.rsshubBaseUrl";
+const RSSHUB_DEFAULT_BASE_URL = "https://rsshub.app";
+const RSSHUB_LEGACY_BASE_URL = "https://rsshub.app";
 
 export interface FeedSource {
   id: string;
@@ -58,13 +63,88 @@ function stableId(value: string): string {
   return crypto.createHash("sha1").update(value).digest("hex").slice(0, 24);
 }
 
-function normalizeUrl(value: string): string {
-  const trimmed = value.trim();
+function normalizeRsshubBaseUrl(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return RSSHUB_DEFAULT_BASE_URL;
   const parsed = new URL(trimmed);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http and https feed URLs are supported");
+    throw new Error("RSSHub instance URL must start with http or https");
+  }
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString().replace(/\/$/, "");
+}
+
+function rsshubBaseUrl(): string {
+  return normalizeRsshubBaseUrl(getSetting(RSSHUB_BASE_URL_SETTING_KEY));
+}
+
+export function normalizeFeedUrl(value: string): string {
+  const trimmed = value.trim();
+  const parsed = new URL(trimmed);
+  if (parsed.protocol === "rsshub:") {
+    const hasCustomInstance = parsed.hostname.includes(".");
+    const baseUrl = hasCustomInstance
+      ? `https://${parsed.host}`
+      : rsshubBaseUrl();
+    const rsshubPath = [
+      hasCustomInstance ? "" : parsed.hostname,
+      parsed.pathname.replace(/^\/+/, "")
+    ].filter(Boolean).join("/");
+    return new URL(rsshubPath, baseUrl).toString();
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http, https, and rsshub feed URLs are supported");
   }
   return parsed.toString();
+}
+
+function rsshubFallbackUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin !== new URL(RSSHUB_LEGACY_BASE_URL).origin) return undefined;
+    const fallbackBaseUrl = rsshubBaseUrl();
+    if (parsed.origin === new URL(fallbackBaseUrl).origin) return undefined;
+    return new URL(`${parsed.pathname}${parsed.search}`, fallbackBaseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function extractRsshubErrorMessage(text: string): string | undefined {
+  const match = text.match(/Error Message:<br\/><code[^>]*>([\s\S]*?)<\/code>/i);
+  if (!match?.[1]) return undefined;
+  return stripHtml(match[1]) || undefined;
+}
+
+async function fetchFeedXml(sourceUrl: string): Promise<{ xml: string; fetchedUrl: string }> {
+  const candidates = [sourceUrl, rsshubFallbackUrl(sourceUrl)].filter(Boolean) as string[];
+  let lastError: Error | undefined;
+
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate, {
+        headers: {
+          accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+          "user-agent": "FreeBuddy/FeedReader"
+        }
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        const rsshubError = extractRsshubErrorMessage(text);
+        if (rsshubError) {
+          throw new Error(`Fetch failed with HTTP ${response.status}: ${rsshubError}`);
+        }
+        throw new Error(`Fetch failed with HTTP ${response.status}`);
+      }
+      return { xml: await response.text(), fetchedUrl: candidate };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  throw lastError ?? new Error("Fetch failed");
 }
 
 function rowToSource(row: any): FeedSource {
@@ -105,7 +185,7 @@ export function listFeedSources(): FeedSource[] {
 }
 
 export function addFeedSource(input: AddFeedSourceInput): FeedSource {
-  const url = normalizeUrl(input.url);
+  const url = normalizeFeedUrl(input.url);
   const title = input.title?.trim() || new URL(url).hostname;
   const id = stableId(url);
   const now = nowIso();
@@ -126,7 +206,7 @@ export function addFeedSource(input: AddFeedSourceInput): FeedSource {
 export function updateFeedSource(input: UpdateFeedSourceInput): FeedSource | undefined {
   const current = getFeedSource(input.id);
   if (!current) return undefined;
-  const url = input.url === undefined ? current.url : normalizeUrl(input.url);
+  const url = input.url === undefined ? current.url : normalizeFeedUrl(input.url);
   const title = input.title === undefined ? current.title : input.title.trim();
   const enabled = input.enabled === undefined ? current.enabled : input.enabled;
   const now = nowIso();
@@ -325,17 +405,8 @@ export async function refreshFeedSource(id: string): Promise<FeedRefreshResult> 
   }
 
   try {
-    const response = await fetch(source.url, {
-      headers: {
-        accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-        "user-agent": "FreeBuddy/FeedReader"
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`Fetch failed with HTTP ${response.status}`);
-    }
-    const xml = await response.text();
-    const parsed = parseFeed(xml, source.url);
+    const { xml, fetchedUrl } = await fetchFeedXml(source.url);
+    const parsed = parseFeed(xml, fetchedUrl);
     const now = nowIso();
     let added = 0;
     let updated = 0;
@@ -378,9 +449,9 @@ export async function refreshFeedSource(id: string): Promise<FeedRefreshResult> 
     insertMany(parsed.items);
     db.prepare(
       `UPDATE feed_sources
-       SET title = ?, last_fetched_at = ?, last_error = NULL, updated_at = ?
+       SET title = ?, url = ?, last_fetched_at = ?, last_error = NULL, updated_at = ?
        WHERE id = ?`
-    ).run(parsed.title || source.title, now, now, source.id);
+    ).run(parsed.title || source.title, fetchedUrl, now, now, source.id);
     return { sourceId: source.id, ok: true, added, updated };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

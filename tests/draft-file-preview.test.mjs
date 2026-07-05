@@ -105,6 +105,29 @@ test("Draft preview keeps remote article URLs inside the preview target", async 
   assert.equal(parsed.searchParams.get("freebuddyDraft"), "11");
 });
 
+test("Draft preview keeps WeChat article URLs exact because they are signed", async () => {
+  const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
+  const source = "https://mp.weixin.qq.com/s?__biz=test&mid=1&idx=1&sn=abc#rd";
+  const url = composeDraftPreviewUrl("/Users/me/workspace", source, 11);
+  const parsed = new URL(url);
+
+  assert.equal(parsed.hostname, "mp.weixin.qq.com");
+  assert.equal(parsed.searchParams.get("__biz"), "test");
+  assert.equal(parsed.searchParams.get("freebuddyDraft"), null);
+  assert.equal(parsed.hash, "#rd");
+});
+
+test("Draft preview treats WeChat articles as external-only targets", async () => {
+  const { isExternalOnlyDraftTarget } = await loadDraftCanvasModule();
+  const source = "https://mp.weixin.qq.com/s?__biz=test&mid=1&idx=1&sn=abc#rd";
+
+  assert.equal(isExternalOnlyDraftTarget(source), true);
+  assert.equal(isExternalOnlyDraftTarget("https://example.com/article"), false);
+  assert.match(draftCanvasSource, /const isExternalOnly = isExternalOnlyDraftTarget/);
+  assert.match(draftCanvasSource, /draft\.externalOnlyTitle/);
+  assert.match(draftCanvasSource, /draft-external-only/);
+});
+
 test("Draft external open supports remote article URLs", () => {
   assert.match(ipcSource, /\^https\?:\\\/\\\//);
   assert.doesNotMatch(ipcSource, /https\?:\\\/\\\/\(localhost\|127/);

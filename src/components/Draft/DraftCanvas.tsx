@@ -80,6 +80,16 @@ function isPdfTarget(target: string | undefined, url: string | undefined): boole
   return draftTargetExtension(target, url) === "pdf";
 }
 
+export function isExternalOnlyDraftTarget(value: string | undefined): boolean {
+  if (!value || !/^https?:\/\//i.test(value)) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname === "mp.weixin.qq.com";
+  } catch {
+    return false;
+  }
+}
+
 function documentRel(target: string | undefined): string | null {
   if (!target || /^https?:\/\//i.test(target)) return null;
   const rel = target.split("?")[0].trim();
@@ -169,6 +179,7 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   const isImage = isImageDraftTarget(entry?.manualEntry, entry?.url);
   const isDocument = isDocumentTarget(entry?.manualEntry, entry?.url);
   const isPdf = isPdfTarget(entry?.manualEntry, entry?.url);
+  const isExternalOnly = isExternalOnlyDraftTarget(entry?.manualEntry);
   const pdfUrl = isPdf && entry?.url ? `${entry.url}#view=FitH&navpanes=0` : "";
   const documentExtension = draftTargetExtension(entry?.manualEntry, entry?.url);
   const frameWidth = FRAME_WIDTH[viewport];
@@ -351,14 +362,28 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
         onClose={onClose}
       />
       <div
-        className={`draft-frame-wrap${isMarkdown || isDocument ? " markdown" : ""}${isImage ? " image" : ""}${isPdf ? " pdf" : ""}`}
-        onMouseDown={hasEntry && !isMarkdown && !isDocument && !isImage && !isPdf ? focusFrame : undefined}
+        className={`draft-frame-wrap${isMarkdown || isDocument ? " markdown" : ""}${isImage ? " image" : ""}${isPdf ? " pdf" : ""}${isExternalOnly ? " external-only" : ""}`}
+        onMouseDown={hasEntry && !isMarkdown && !isDocument && !isImage && !isPdf && !isExternalOnly ? focusFrame : undefined}
       >
         {hasEntry ? (
           <>
             {isLoading && <div className="draft-status">{t("draft.loading")}</div>}
             {error && <div className="draft-status draft-error">{error}</div>}
-            {isMarkdown ? (
+            {isExternalOnly ? (
+              <div className="draft-external-only">
+                <strong>{t("draft.externalOnlyTitle")}</strong>
+                <p>{t("draft.externalOnlyBody")}</p>
+                {entry?.url && (
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => void cliClient.openDraftExternal(entry.url)}
+                  >
+                    {t("draft.openExternal")}
+                  </button>
+                )}
+              </div>
+            ) : isMarkdown ? (
               <div
                 className="draft-markdown-wrap"
                 style={{ transform: `scale(${zoom})`, transformOrigin: "top center" }}

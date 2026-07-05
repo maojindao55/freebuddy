@@ -3974,6 +3974,11 @@ button.ghost:disabled {
   background: #2f2f2f;
 }
 
+.draft-frame-wrap.external-only {
+  align-items: center;
+  background: var(--fb-panel-bg);
+}
+
 .draft-frame {
   width: 100%;
   min-height: 100%;
@@ -4052,6 +4057,28 @@ button.ghost:disabled {
   font-size: 13px;
   line-height: 1.6;
   text-align: center;
+}
+
+.draft-external-only {
+  width: min(100% - 48px, 460px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--fb-text-secondary);
+  text-align: center;
+}
+
+.draft-external-only strong {
+  color: var(--fb-text-primary);
+  font-size: 14px;
+}
+
+.draft-external-only p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .draft-status {
@@ -7540,17 +7567,51 @@ button.ghost:focus-visible,
 
 /* Feed */
 .feed-settings-tab {
-  gap: 14px;
+  gap: 10px;
+}
+
+.feed-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.feed-add-section {
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--fb-border);
+}
+
+.feed-section-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.feed-section-copy strong,
+.feed-list-toolbar strong {
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.feed-section-copy span,
+.feed-list-toolbar span {
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .feed-add-form {
   display: grid;
-  grid-template-columns: minmax(120px, 0.7fr) minmax(220px, 1.4fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   gap: 10px;
   align-items: end;
 }
 
-.feed-add-form label {
+.feed-add-form label,
+.feed-rsshub-settings label {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -7560,25 +7621,113 @@ button.ghost:focus-visible,
   font-weight: 600;
 }
 
-.feed-add-form input {
+.feed-add-form input,
+.feed-rsshub-settings input {
   height: 32px;
   min-width: 0;
   padding: 0 10px;
   border: 1px solid var(--fb-border);
-  border-radius: 8px;
+  border-radius: 7px;
   outline: none;
   color: var(--fb-text-primary);
   background: var(--fb-panel-bg);
   font: inherit;
 }
 
-.feed-add-form input:focus {
+.feed-add-form input:focus,
+.feed-rsshub-settings input:focus {
   border-color: var(--fb-brand);
   box-shadow: 0 0 0 3px var(--fb-brand-glow);
 }
 
 .feed-add-form .primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 32px;
+  white-space: nowrap;
+}
+
+.feed-rsshub-settings {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 8px 10px;
+  align-items: end;
+  padding: 10px 0 2px;
+}
+
+.feed-rsshub-settings .ghost {
+  height: 32px;
+  white-space: nowrap;
+}
+
+.feed-rsshub-settings code {
+  width: max-content;
+  max-width: 100%;
+  padding: 3px 7px;
+  overflow: hidden;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-sm);
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-soft);
+  font-family: var(--fb-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-rsshub-settings p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.feed-advanced {
+  margin-top: 2px;
+}
+
+.feed-advanced summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+}
+
+.feed-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.feed-advanced summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.feed-advanced[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.feed-advanced summary small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fb-text-tertiary);
+  font-family: var(--fb-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -7597,14 +7746,36 @@ button.ghost:focus-visible,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: var(--fb-text-tertiary);
-  font-size: 12px;
+}
+
+.feed-list-toolbar > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feed-list-toolbar .ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  white-space: nowrap;
+}
+
+.feed-source-summary {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .feed-source-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
+  border-top: 1px solid var(--fb-border);
 }
 
 .feed-empty {
@@ -7615,10 +7786,10 @@ button.ghost:focus-visible,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--fb-border);
-  border-radius: 10px;
-  background: var(--fb-panel-bg);
+  min-height: 54px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--fb-border);
+  background: transparent;
 }
 
 .feed-source-main {
@@ -7629,7 +7800,6 @@ button.ghost:focus-visible,
 .feed-source-title {
   display: flex;
   align-items: center;
-  gap: 8px;
   min-width: 0;
 }
 
@@ -7642,24 +7812,8 @@ button.ghost:focus-visible,
   white-space: nowrap;
 }
 
-.feed-source-status {
-  flex: 0 0 auto;
-  padding: 2px 7px;
-  border-radius: 999px;
-  color: var(--fb-text-tertiary);
-  background: var(--fb-panel-soft);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.feed-source-status.enabled {
-  color: var(--fb-brand);
-  background: var(--fb-brand-glow);
-}
-
 .feed-source-url {
   overflow: hidden;
-  margin-top: 4px;
   color: var(--fb-text-secondary);
   font-family: var(--fb-mono);
   font-size: 11px;
@@ -7667,13 +7821,28 @@ button.ghost:focus-visible,
   white-space: nowrap;
 }
 
-.feed-source-meta {
+.feed-source-details {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  align-items: center;
   gap: 8px;
-  margin-top: 5px;
+  margin-top: 4px;
   color: var(--fb-text-tertiary);
   font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.feed-source-details > span:not(.feed-source-url) {
+  flex: 0 0 auto;
+}
+
+.feed-source-error {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--fb-danger);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .feed-source-actions {
@@ -7683,17 +7852,58 @@ button.ghost:focus-visible,
   gap: 6px;
 }
 
-.feed-toggle {
+.feed-switch {
+  position: relative;
   display: inline-flex;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 5px;
-  color: var(--fb-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  cursor: pointer;
 }
 
-.feed-toggle input {
+.feed-switch input {
+  position: absolute;
+  inset: 0;
   margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.feed-switch span {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--fb-border);
+  border-radius: 999px;
+  background: var(--fb-panel-soft);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.feed-switch span::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--fb-text-tertiary);
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.feed-switch input:checked + span {
+  border-color: transparent;
+  background: var(--fb-brand-glow);
+}
+
+.feed-switch input:checked + span::after {
+  background: var(--fb-brand);
+  transform: translateX(14px);
+}
+
+.feed-switch input:focus-visible + span {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 2px;
 }
 
 .feed-card {
@@ -7866,7 +8076,22 @@ button.ghost:focus-visible,
 }
 
 @media (max-width: 900px) {
-  .feed-add-form {
+  .feed-add-form,
+  .feed-rsshub-settings {
     grid-template-columns: 1fr;
+  }
+
+  .feed-list-toolbar,
+  .feed-source-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .feed-source-actions {
+    justify-content: flex-end;
+  }
+
+  .feed-rsshub-settings code {
+    grid-column: 1 / -1;
   }
 }

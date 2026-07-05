@@ -52,8 +52,65 @@ test("feed tables and refresh service are wired", () => {
   assert.match(db, /idx_feed_items_source_link/);
   assert.match(feed, /export async function refreshFeedSource/);
   assert.match(feed, /export async function refreshAllFeedSources/);
-  assert.match(feed, /fetch\(source\.url/);
-  assert.match(feed, /parseFeed\(xml, source\.url\)/);
+  assert.match(feed, /fetchFeedXml\(source\.url\)/);
+  assert.match(feed, /parseFeed\(xml, fetchedUrl\)/);
+});
+
+test("feed sources accept rsshub protocol aliases", () => {
+  assert.match(feed, /const RSSHUB_DEFAULT_BASE_URL = "https:\/\/rsshub\.app"/);
+  assert.match(feed, /const RSSHUB_BASE_URL_SETTING_KEY = "feed\.rsshubBaseUrl"/);
+  assert.match(feed, /const RSSHUB_LEGACY_BASE_URL = "https:\/\/rsshub\.app"/);
+  assert.match(feed, /export function normalizeFeedUrl/);
+  assert.match(feed, /function extractRsshubErrorMessage/);
+  assert.match(feed, /await response\.text\(\)/);
+  assert.match(feed, /throw new Error\(`Fetch failed with HTTP \$\{response\.status\}: \$\{rsshubError\}`\)/);
+  assert.match(feed, /function rsshubBaseUrl/);
+  assert.match(feed, /getSetting\(RSSHUB_BASE_URL_SETTING_KEY\)/);
+  assert.match(feed, /parsed\.protocol === "rsshub:"/);
+  assert.match(feed, /const hasCustomInstance = parsed\.hostname\.includes\("\."\)/);
+  assert.match(feed, /`https:\/\/\$\{parsed\.host\}`/);
+  assert.match(feed, /function rsshubFallbackUrl/);
+  assert.match(feed, /fetchFeedXml\(source\.url\)/);
+});
+
+test("settings feed tab lets users configure the RSSHub instance", () => {
+  assert.match(feedTab, /RSSHUB_BASE_URL_SETTING_KEY = "feed\.rsshubBaseUrl"/);
+  assert.match(feedTab, /cliClient\.getSetting\(RSSHUB_BASE_URL_SETTING_KEY\)/);
+  assert.match(feedTab, /cliClient\.setSetting\(RSSHUB_BASE_URL_SETTING_KEY, normalized\)/);
+  assert.match(feedTab, /feed\.rsshubBaseUrl/);
+  assert.match(feedTab, /feed\.rsshubBaseUrlHelp/);
+  assert.equal(en.feed.rsshubBaseUrl, "RSSHub instance");
+  assert.equal(zh.feed.rsshubBaseUrl, "RSSHub 实例地址");
+});
+
+test("settings feed tab keeps subscription setup compact and scannable", () => {
+  assert.match(feedTab, /const enabledCount = sources\.filter\(\(source\) => source\.enabled\)\.length/);
+  assert.match(feedTab, /const errorCount = sources\.filter\(\(source\) => Boolean\(source\.lastError\)\)\.length/);
+  assert.match(feedTab, /const neverFetchedCount = sources\.filter\(\(source\) => !source\.lastFetchedAt\)\.length/);
+  assert.match(feedTab, /className="feed-settings-section feed-add-section"/);
+  assert.match(feedTab, /className="feed-advanced"/);
+  assert.match(feedTab, /className="feed-source-summary"/);
+  assert.match(feedTab, /className="feed-source-details"/);
+  assert.match(feedTab, /className="feed-switch"/);
+  assert.doesNotMatch(feedTab, /const \[title, setTitle\]/);
+  assert.doesNotMatch(feedTab, /feed\.sourceName/);
+  assert.doesNotMatch(feedTab, /feed-source-status/);
+  assert.match(feedTab, /feed\.rsshubRouteExample/);
+  assert.match(feedTab, /feed\.enabledSummary/);
+  assert.match(feedTab, /feed\.errorSummary/);
+  assert.match(feedTab, /feed\.neverFetchedSummary/);
+  assert.doesNotMatch(feedTab, /className="feed-summary-strip"/);
+  assert.match(styles, /\.feed-settings-section/);
+  assert.match(styles, /\.feed-advanced/);
+  assert.match(styles, /\.feed-source-details/);
+  assert.match(styles, /\.feed-switch/);
+  assert.doesNotMatch(styles, /\.feed-source-status/);
+  assert.match(styles, /\.feed-source-error/);
+  assert.match(styles, /grid-template-columns: minmax\(260px, 1fr\) auto;/);
+  assert.equal(zh.feed.sourceUrlPlaceholder, "https://example.com/feed.xml");
+  assert.equal(en.feed.sourceUrlPlaceholder, "https://example.com/feed.xml");
+  assert.equal(zh.feed.addSourceHint, "支持标准 RSS/Atom，也支持 rsshub:// 路由。");
+  assert.equal(en.feed.addSourceHint, "Supports standard RSS/Atom feeds and rsshub:// routes.");
 });
 
 test("feed bridge is exposed across ipc preload types and client", () => {

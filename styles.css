@@ -173,6 +173,11 @@ button {
   padding-top: 8px;
 }
 
+.electron-shell.platform-darwin:not(.chrome-hidden) .titlebar {
+  height: 44px;
+  padding-top: 0;
+}
+
 .sidebar {
   display: flex;
   height: 100%;
@@ -241,8 +246,8 @@ button {
    position: relative above). */
 .electron-shell.platform-darwin:not(.chrome-hidden) .sidebar-header > .sidebar-toggle {
   position: absolute;
-  top: 10px;
-  left: 82px;
+  top: 8px;
+  left: 66px;
   z-index: 40;
   -webkit-app-region: no-drag;
 }
@@ -264,7 +269,8 @@ button {
 }
 
 .electron-shell.platform-darwin:not(.chrome-hidden) .sidebar-toggle.floating {
-  left: 82px;
+  top: 8px;
+  left: 66px;
 }
 
 .electron-shell.chrome-hidden.sidebar-collapsed .titlebar {

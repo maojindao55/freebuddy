@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
@@ -54,26 +54,8 @@ function BrandMark() {
 }
 
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg
-      className="footer-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="4" width="18" height="16" rx="2.5" />
-      <path d="M9 4v16" />
-      {collapsed ? (
-        <path d="M14 10l3 2-3 2" />
-      ) : (
-        <path d="M17 10l-3 2 3 2" />
-      )}
-    </svg>
-  );
+  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  return <Icon className="footer-icon" strokeWidth={1.7} aria-hidden="true" />;
 }
 
 function App() {

@@ -66,7 +66,7 @@ test("theme setting defaults to following the system", () => {
   assert.match(generalTab, /system:\s*"general\.themeSystem"/);
   assert.match(generalTab, /light:\s*"general\.themeLight"/);
   assert.match(generalTab, /dark:\s*"general\.themeDark"/);
-  assert.match(app, /import \{ Monitor, Moon, Sun \} from "lucide-react"/);
+  assert.match(app, /import \{[^}]*Monitor[^}]*Moon[^}]*Sun[^}]*\} from "lucide-react"/);
   assert.match(app, /function nextThemePreference/);
   assert.match(app, /const themePreference = useSettingsStore\(\(s\) => s\.theme\)/);
   assert.match(app, /const theme = useSettingsStore\(\(s\) => s\.resolvedTheme\)/);

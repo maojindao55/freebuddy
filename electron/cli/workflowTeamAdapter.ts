@@ -1,4 +1,4 @@
-import { builtinCliMembers } from "./members.js";
+import { builtinCliMembers } from "./cliMemberBuiltins.js";
 import {
   buildConfigurableDeliveryPlan,
   buildImplementReviewLoopPlan,

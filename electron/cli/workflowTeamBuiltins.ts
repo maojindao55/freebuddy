@@ -1,5 +1,5 @@
 import type { WorkflowTeam } from "./workflowTeamTypes.js";
-import { builtinCliMembers } from "./members.js";
+import { builtinCliMembers } from "./cliMemberBuiltins.js";
 
 function pickAgent(preferredIds: string[]): string {
   for (const id of preferredIds) {

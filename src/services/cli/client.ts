@@ -125,6 +125,12 @@ export const cliClient = {
   renameConversation(id: string, title: string): Promise<void> {
     return api().renameConversation(id, title);
   },
+  updateConversationAgentName(
+    agentId: string,
+    agentName: string
+  ): Promise<void> {
+    return api().updateConversationAgentName(agentId, agentName);
+  },
   archiveConversation(id: string, archived: boolean): Promise<void> {
     return api().archiveConversation(id, archived);
   },

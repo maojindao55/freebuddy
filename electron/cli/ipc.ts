@@ -36,6 +36,7 @@ import {
   listMessages,
   renameConversation,
   setConversationApprovalMode,
+  updateConversationAgentName,
   updateMessage,
   type AppendMessageInput,
   type CreateConversationInput,
@@ -304,6 +305,11 @@ export function registerCliIpc() {
     "cli:renameConversation",
     (_e, args: { id: string; title: string }) =>
       renameConversation(args.id, args.title)
+  );
+  ipcMain.handle(
+    "cli:updateConversationAgentName",
+    (_e, args: { agentId: string; agentName: string }) =>
+      updateConversationAgentName(args.agentId, args.agentName)
   );
   ipcMain.handle(
     "cli:archiveConversation",

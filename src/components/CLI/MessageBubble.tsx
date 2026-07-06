@@ -696,11 +696,13 @@ function MessageAttachments({
 export const MessageBubble = memo(function MessageBubble({
   message,
   adapter,
+  agentName,
   blockLimit,
   typingChars
 }: {
   message: ConversationMessage;
   adapter?: string;
+  agentName?: string;
   blockLimit?: number;
   typingChars?: number;
 }) {
@@ -901,7 +903,7 @@ export const MessageBubble = memo(function MessageBubble({
   }
 
   const roleLabel = message.roleLabel;
-  const agentLabel = message.agentName ?? displayAgentName(undefined, adapter);
+  const agentLabel = displayAgentName(message.agentName ?? agentName, adapter);
   const statusText =
     message.status !== "ready" ? t(`status.${message.status}`) : null;
 

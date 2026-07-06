@@ -1393,6 +1393,17 @@ button {
   transform: translateY(0);
 }
 
+.modal-actions .danger {
+  border-color: rgba(244, 63, 94, 0.35);
+  color: #e11d48;
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.modal-actions .danger:hover {
+  border-color: rgba(244, 63, 94, 0.55);
+  background: rgba(244, 63, 94, 0.12);
+}
+
 .settings-tab {
   display: flex;
   flex-direction: column;
@@ -1655,6 +1666,91 @@ button {
   gap: 8px;
 }
 
+.avatar-picker-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar-picker-preview {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.avatar-picker-preview:hover {
+  border-color: var(--fb-brand);
+  background: var(--fb-hover);
+}
+
+.avatar-picker-preview-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+  place-items: center;
+}
+
+.avatar-picker-preview-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.avatar-picker-preview-title {
+  overflow: hidden;
+  color: var(--fb-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar-picker-preview-subtitle {
+  overflow: hidden;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar-picker-toggle {
+  height: 32px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.avatar-picker-toggle:hover {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+}
+
 .avatar-picker-controls {
   display: flex;
   flex-direction: column;
@@ -1713,7 +1809,7 @@ button {
   grid-template-columns: repeat(auto-fill, 44px);
   justify-content: start;
   gap: 8px;
-  max-height: 240px;
+  max-height: 156px;
   overflow-y: auto;
   padding: 8px;
   border: 1px solid var(--fb-border);

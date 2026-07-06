@@ -89,8 +89,10 @@ function App() {
   const loadExecutors = useCliExecutorStore((s) => s.load);
   const loadConversations = useConversationStore((s) => s.load);
   useEffect(() => {
-    void loadExecutors();
-    void loadConversations();
+    void (async () => {
+      await loadExecutors();
+      await loadConversations();
+    })();
   }, [loadExecutors, loadConversations]);
 
   useEffect(() => {

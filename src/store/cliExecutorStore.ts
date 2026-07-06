@@ -12,9 +12,12 @@ import type {
 } from "@/services/cli/types";
 
 export interface ResolvedExecutor extends CLIAdapterDefinition {
+  baseAdapter?: CLIAdapterId;
+  isClone?: boolean;
   binary: string;
   extraArgs: string[];
   env?: Record<string, string>;
+  icon?: string;
   enabled: boolean;
   runtime?: CliRuntime;
   override?: CLIExecutorOverride;
@@ -75,17 +78,17 @@ export const useCliExecutorStore = create<State>((set, get) => ({
 
   async check(adapter) {
     if (!cliClient.isAvailable()) return;
-    const override = get().overrides[adapter];
-    await cliClient.check(adapter, override?.binary);
+    const resolved = get().resolve(adapter);
+    if (!resolved) return;
+    await cliClient.check(resolved.baseAdapter ?? resolved.id, resolved.binary);
     await get().refreshRuntimes();
   },
 
   async checkAll() {
     if (!cliClient.isAvailable()) return;
-    const { adapters, overrides } = get();
-    const acpAdapters = adapters.filter((a) => a.protocol === "acp");
+    const acpAdapters = get().listResolved().filter((a) => a.protocol === "acp");
     for (const adapter of acpAdapters) {
-      await cliClient.check(adapter.id, overrides[adapter.id]?.binary);
+      await cliClient.check(adapter.baseAdapter ?? adapter.id, adapter.binary);
     }
     await get().refreshRuntimes();
   },
@@ -108,24 +111,35 @@ export const useCliExecutorStore = create<State>((set, get) => ({
 
   resolve(id) {
     const { adapters, overrides, runtimes } = get();
-    const def = adapters.find((a) => a.id === id);
-    if (!def) return undefined;
     const o = overrides[id];
+    const baseAdapter = o?.baseAdapter ?? id;
+    const def = adapters.find((a) => a.id === baseAdapter);
+    if (!def) return undefined;
+    const isClone = def.id !== id;
     return {
       ...def,
+      id,
+      baseAdapter: isClone ? def.id : undefined,
+      isClone,
       label: o?.label?.trim() || def.label,
       binary: (o?.binary?.trim() || def.defaultBinary) ?? def.id,
       extraArgs: o?.extraArgs?.filter(Boolean) ?? [],
       env: o?.env,
+      icon: o?.icon,
       enabled: o?.enabled !== false,
-      runtime: runtimes[id],
+      runtime: runtimes[id] ?? runtimes[def.id],
       override: o
     };
   },
 
   listResolved() {
-    return get()
-      .adapters.map((a) => get().resolve(a.id))
+    const { adapters, overrides } = get();
+    const ids = new Set<string>(adapters.map((a) => a.id));
+    for (const override of Object.values(overrides)) {
+      if (override.baseAdapter) ids.add(override.id);
+    }
+    return Array.from(ids)
+      .map((id) => get().resolve(id))
       .filter((x): x is ResolvedExecutor => !!x);
   }
 }));

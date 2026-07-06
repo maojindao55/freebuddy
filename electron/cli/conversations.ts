@@ -175,6 +175,18 @@ export function renameConversation(id: string, title: string): void {
     .run(title, now, id);
 }
 
+export function updateConversationAgentName(
+  agentId: string,
+  agentName: string
+): void {
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE conversations SET agent_name = ?, updated_at = ? WHERE agent_id = ?`
+    )
+    .run(agentName, now, agentId);
+}
+
 export function archiveConversation(id: string, archived: boolean): void {
   const now = new Date().toISOString();
   getDb()

@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { nanoid } from "nanoid";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
+import { useConversationStore } from "@/store/conversationStore";
 import { cliClient } from "@/services/cli/client";
 import type { CLIExecutorOverride } from "@/services/cli/types";
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
 import { useCliInstallStore } from "@/store/cliInstallStore";
+import { getAgentIconId } from "@/config/agentIcon";
+
+const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 
 function extractModelArg(args: string[]): { model: string; args: string[] } {
   const rest: string[] = [];
@@ -52,7 +57,30 @@ function sortAdapters(list: ResolvedExecutor[]): ResolvedExecutor[] {
 
 function cliRuntimeErrorKey(lastError: string | undefined): string {
   if (lastError === "binary not found") return "settings.cli.commandNotFound";
+  if (lastError === CODEX_ACP_UPGRADE_REQUIRED) {
+    return "settings.cli.codexAcpUpgradeRequired";
+  }
   return "settings.cli.checkProbeFailed";
+}
+
+function needsForcedInstall(ex: ResolvedExecutor): boolean {
+  return (
+    ex.id === "codex-acp" &&
+    ex.runtime?.installed === false &&
+    ex.runtime.lastError === CODEX_ACP_UPGRADE_REQUIRED &&
+    Boolean(ex.installHint)
+  );
+}
+
+function nextCloneLabel(source: ResolvedExecutor, list: ResolvedExecutor[]): string {
+  const base = `${source.label} Copy`;
+  const existing = new Set(list.map((item) => item.label));
+  if (!existing.has(base)) return base;
+  for (let i = 2; i < 100; i += 1) {
+    const candidate = `${base} ${i}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  return `${base} ${nanoid(4)}`;
 }
 
 export function CLIAdaptersTab() {
@@ -62,9 +90,11 @@ export function CLIAdaptersTab() {
   const adapters = useCliExecutorStore((s) => s.adapters);
   const overrides = useCliExecutorStore((s) => s.overrides);
   const runtimes = useCliExecutorStore((s) => s.runtimes);
-  const resolve = useCliExecutorStore((s) => s.resolve);
+  const listResolved = useCliExecutorStore((s) => s.listResolved);
+  const upsertOverride = useCliExecutorStore((s) => s.upsertOverride);
   const check = useCliExecutorStore((s) => s.check);
   const checkAll = useCliExecutorStore((s) => s.checkAll);
+  const refreshMembers = useConversationStore((s) => s.refreshMembers);
   const startInstall = useCliInstallStore((s) => s.startJob);
   const installJobs = useCliInstallStore((s) => s.jobs);
   const installingIdSet = useMemo(
@@ -75,12 +105,9 @@ export function CLIAdaptersTab() {
   const list = useMemo<ResolvedExecutor[]>(
     () =>
       sortAdapters(
-        adapters
-          .filter((a) => a.protocol === "acp")
-          .map((a) => resolve(a.id))
-          .filter((x): x is ResolvedExecutor => !!x)
+        listResolved().filter((executor) => executor.protocol === "acp")
       ),
-    [adapters, overrides, runtimes, resolve]
+    [adapters, overrides, runtimes, listResolved]
   );
 
   const installedCount = useMemo(
@@ -92,6 +119,7 @@ export function CLIAdaptersTab() {
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const [checkingAll, setCheckingAll] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const autoInstallAttemptedRef = useRef<Set<string>>(new Set());
 
   const handleCheck = useCallback(
     async (id: string) => {
@@ -125,9 +153,48 @@ export function CLIAdaptersTab() {
     }
   }, [checkAll, list]);
 
+  const handleClone = useCallback(
+    async (source: ResolvedExecutor) => {
+      const baseAdapter = source.baseAdapter ?? source.id;
+      const id = `${baseAdapter}-clone-${nanoid(8)}`;
+      const override: CLIExecutorOverride = {
+        id,
+        baseAdapter,
+        label: nextCloneLabel(source, list),
+        binary:
+          source.binary && source.binary !== source.defaultBinary
+            ? source.binary
+            : undefined,
+        extraArgs: source.extraArgs,
+        env: source.env,
+        icon: source.icon ?? getAgentIconId(baseAdapter) ?? undefined,
+        enabled: true
+      };
+      await upsertOverride(override);
+      refreshMembers();
+      setEditingId(id);
+    },
+    [list, refreshMembers, upsertOverride]
+  );
+
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    for (const ex of list) {
+      if (!needsForcedInstall(ex)) continue;
+      if (installingIdSet.has(ex.id)) continue;
+      if (autoInstallAttemptedRef.current.has(ex.id)) continue;
+      autoInstallAttemptedRef.current.add(ex.id);
+      startInstall({
+        adapterId: ex.id,
+        label: ex.label,
+        command: ex.installHint!
+      });
+    }
+  }, [installingIdSet, list, loaded, startInstall]);
 
   if (!cliClient.isAvailable()) {
     return (
@@ -186,6 +253,7 @@ export function CLIAdaptersTab() {
               ex={ex}
               checking={checkingIds.has(ex.id)}
               onCheck={() => void handleCheck(ex.id)}
+              onClone={() => void handleClone(ex)}
               onEdit={() => setEditingId(ex.id)}
               onInstall={() => {
                 if (!ex.installHint) return;
@@ -215,6 +283,7 @@ function AdapterRow({
   ex,
   checking,
   onCheck,
+  onClone,
   onEdit,
   onInstall,
   installing
@@ -222,6 +291,7 @@ function AdapterRow({
   ex: ResolvedExecutor;
   checking: boolean;
   onCheck: () => void;
+  onClone: () => void;
   onEdit: () => void;
   onInstall: () => void;
   installing: boolean;
@@ -271,6 +341,9 @@ function AdapterRow({
         <button type="button" onClick={onCheck} disabled={checking || installing}>
           {checking ? t("settings.cli.checking") : t("common.check")}
         </button>
+        <button type="button" onClick={onClone} disabled={checking || installing}>
+          {t("common.clone")}
+        </button>
         {!rt?.installed && ex.installHint && (
           <button
             type="button"
@@ -302,7 +375,9 @@ function EditOverrideDialog({
   const ex = resolve(executorId);
   const upsert = useCliExecutorStore((s) => s.upsertOverride);
   const reset = useCliExecutorStore((s) => s.resetOverride);
+  const refreshMembers = useConversationStore((s) => s.refreshMembers);
 
+  const [label, setLabel] = useState(ex?.label ?? "");
   const [binary, setBinary] = useState(
     ex?.override?.binary && ex.override.binary !== ex.defaultBinary
       ? ex.override.binary
@@ -322,6 +397,8 @@ function EditOverrideDialog({
 
   if (!ex) return null;
 
+  const isClone = Boolean(ex.isClone);
+
   const onSave = async () => {
     const cleanedExtraArgs = extraArgs
       .split(/\r?\n/)
@@ -339,6 +416,8 @@ function EditOverrideDialog({
 
     const override: CLIExecutorOverride = {
       id: ex.id,
+      baseAdapter: ex.baseAdapter,
+      label: isClone ? label.trim() || ex.label : undefined,
       binary:
         binary.trim() && binary.trim() !== ex.defaultBinary
           ? binary.trim()
@@ -349,11 +428,19 @@ function EditOverrideDialog({
       enabled: true
     };
     await upsert(override);
+    refreshMembers();
     onClose();
   };
 
-  const onReset = async () => {
+  const onResetOrDelete = async () => {
+    if (
+      isClone &&
+      !window.confirm(t("settings.cli.deleteAgentConfirm", { label: ex.label }))
+    ) {
+      return;
+    }
     await reset(ex.id);
+    refreshMembers();
     onClose();
   };
 
@@ -372,10 +459,21 @@ function EditOverrideDialog({
           <AvatarPicker
             value={icon}
             onChange={setIcon}
-            defaultAdapter={ex.id}
+            defaultAdapter={ex.baseAdapter ?? ex.id}
             defaultLabel={ex.label}
           />
         </div>
+
+        {isClone && (
+          <label>
+            {t("settings.cli.name")}
+            <input
+              value={label}
+              placeholder={ex.label}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+          </label>
+        )}
 
         <label>
           {t("settings.cli.commandOverride")}
@@ -423,7 +521,12 @@ function EditOverrideDialog({
         )}
 
         <div className="modal-actions">
-          <button onClick={onReset}>{t("common.reset")}</button>
+          <button
+            className={isClone ? "danger" : undefined}
+            onClick={onResetOrDelete}
+          >
+            {isClone ? t("common.delete") : t("common.reset")}
+          </button>
           <button onClick={onClose}>{t("common.cancel")}</button>
           <button className="primary" onClick={onSave}>
             {t("common.save")}

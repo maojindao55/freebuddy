@@ -59,6 +59,7 @@ export interface ResolvedAgent {
   agentName: string;
   binary?: string;
   extraArgs?: string[];
+  env?: Record<string, string>;
 }
 
 export interface StepExecutor {
@@ -69,6 +70,7 @@ export interface StepExecutor {
     adapter: string;
     binary?: string;
     extraArgs?: string[];
+    env?: Record<string, string>;
     prompt: string;
     promptAttachments?: CliPromptAttachment[];
     toolSessionScope?: string;
@@ -946,6 +948,7 @@ export class WorkflowRuntime {
         adapter: resolved.adapter,
         binary: resolved.binary,
         extraArgs: resolved.extraArgs,
+        env: resolved.env,
         prompt: localizedPrompt,
         promptAttachments: promptAttachmentsFromConversation(run.conversationId),
         toolSessionScope,
@@ -1093,6 +1096,7 @@ export function createCliStepExecutor(
         adapter: args.adapter as any,
         binary: args.binary,
         extraArgs: args.extraArgs,
+        env: args.env,
         prompt: args.prompt,
         promptAttachments: args.promptAttachments,
         toolSessionScope: args.toolSessionScope,

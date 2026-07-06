@@ -3,6 +3,8 @@ import { adapterBinary, getCliCheckProbe } from "./adapters.js";
 import { getDb } from "./db.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 
+const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
+
 export interface CliCheckResult {
   installed: boolean;
   path?: string;
@@ -114,12 +116,16 @@ export async function cliCheck(
   const probe = getCliCheckProbe(adapter);
   const probeResult = await runCheckProbe(resolved, probe.args);
   if (!probeResult.ok || (!probe.versionOptional && !probeResult.output)) {
+    const error =
+      adapter === "codex-acp"
+        ? CODEX_ACP_UPGRADE_REQUIRED
+        : `binary found but ${probe.args.join(" ")} failed; try reinstalling`;
     upsertRuntime(
       adapter,
       false,
       resolved,
       undefined,
-      `binary found but ${probe.args.join(" ")} failed; try reinstalling`
+      error
     );
     return { installed: false };
   }

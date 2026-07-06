@@ -286,6 +286,12 @@ export interface AppendMessageInput {
   content: string;
   attachments?: ChatAttachment[];
   taskId?: string;
+  agentId?: string;
+  agentName?: string;
+  adapter?: string;
+  roleLabel?: string;
+  workflowRunId?: string;
+  workflowStepRowId?: string;
 }
 
 export interface UpdateMessageInput {

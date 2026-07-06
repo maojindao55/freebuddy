@@ -98,6 +98,10 @@ declare global {
       input: CreateConversationInput
     ): Promise<Conversation>;
     renameConversation(id: string, title: string): Promise<void>;
+    updateConversationAgentName(
+      agentId: string,
+      agentName: string
+    ): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(

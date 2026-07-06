@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from "electron";
 
-import { builtinCliMembers } from "./members.js";
+import { listCliMembers } from "./members.js";
 import {
   buildReviewLoopPlan,
   reviewLoopCoordinatorPrompt
@@ -42,13 +42,14 @@ function ensureRuntime(event: IpcMainInvokeEvent): WorkflowRuntime {
     executor,
     webContents: win?.webContents,
     resolveAgent(agentId) {
-      const member = builtinCliMembers.find((m) => m.id === agentId);
+      const member = listCliMembers().find((m) => m.id === agentId);
       if (!member) return undefined;
       return {
         adapter: member.cli.adapter,
         agentName: member.name,
         binary: member.cli.binary,
-        extraArgs: member.cli.extraArgs
+        extraArgs: member.cli.extraArgs,
+        env: member.cli.env
       };
     }
   });
@@ -278,7 +279,7 @@ export function registerWorkflowIpc() {
 }
 
 function workflowAgents(): WorkflowAgentRef[] {
-  return builtinCliMembers.map((m) => ({
+  return listCliMembers().map((m) => ({
     id: m.id,
     name: m.name,
     adapter: m.cli.adapter,

@@ -19,6 +19,19 @@ test("workflow team IPC handlers are registered", () => {
   }
 });
 
+test("workflow team IPC uses cloned cli members", () => {
+  const ipc = read("../electron/cli/workflowIpc.ts");
+  const members = read("../electron/cli/members.ts");
+  const runtime = read("../electron/cli/workflowRuntime.ts");
+  assert.match(ipc, /import \{ listCliMembers \}/);
+  assert.match(ipc, /listCliMembers\(\)\.find/);
+  assert.match(ipc, /return listCliMembers\(\)\.map/);
+  assert.match(members, /filter\(\(override\) => override\.baseAdapter\)/);
+  assert.match(members, /id: `cli-\$\{override\.id\}`/);
+  assert.match(runtime, /env\?: Record<string, string>/);
+  assert.match(runtime, /env: resolved\.env/);
+});
+
 test("preload exposes the workflowTeams client object", () => {
   const preload = read("../electron/preload.ts");
   assert.match(preload, /const workflowTeams = \{/);

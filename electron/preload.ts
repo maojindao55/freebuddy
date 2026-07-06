@@ -46,6 +46,8 @@ const cli = {
     ipcRenderer.invoke("cli:createConversation", input),
   renameConversation: (id: string, title: string) =>
     ipcRenderer.invoke("cli:renameConversation", { id, title }),
+  updateConversationAgentName: (agentId: string, agentName: string) =>
+    ipcRenderer.invoke("cli:updateConversationAgentName", { agentId, agentName }),
   archiveConversation: (id: string, archived: boolean) =>
     ipcRenderer.invoke("cli:archiveConversation", { id, archived }),
   deleteConversation: (id: string) =>

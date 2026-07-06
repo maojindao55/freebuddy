@@ -58,6 +58,7 @@ export interface ConversationState {
   pendingFreshContext: Record<string, boolean>;
 
   load(): Promise<void>;
+  refreshMembers(): void;
   setActive(id: string | undefined): Promise<void>;
   loadMessages(id: string, messageIds?: string[]): Promise<void>;
 
@@ -198,6 +199,94 @@ function workflowFollowupToolSessionScope(
   return `workflow-followup:${run.id}:${member.id}`;
 }
 
+function buildConversationMembers(): CLIMember[] {
+  const customMembers = useCliExecutorStore
+    .getState()
+    .listResolved()
+    .filter((executor) => executor.isClone && executor.baseAdapter)
+    .map((executor): CLIMember => ({
+      id: `cli-${executor.id}`,
+      kind: "cli",
+      name: executor.label,
+      avatar: executor.icon,
+      description: `Custom ${executor.label} agent.`,
+      source: "user",
+      enabled: executor.enabled,
+      cli: {
+        adapter: executor.baseAdapter!,
+        binary: executor.binary,
+        extraArgs: executor.extraArgs,
+        env: executor.env,
+        approvalMode: "auto",
+        showStderr: true
+      }
+    }));
+  return [...builtinCliMembers, ...customMembers];
+}
+
+function defaultTitleForAgentName(agentName: string, cwd?: string): string {
+  const tail = cwd
+    ? cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
+    : undefined;
+  return tail ? `${agentName} · ${tail}` : agentName;
+}
+
+function syncConversationAgentNames(
+  conversations: Conversation[],
+  members: CLIMember[]
+): {
+  conversations: Conversation[];
+  agentNameChanges: Map<string, string>;
+  titleChanges: Array<{ id: string; title: string }>;
+} {
+  const membersById = new Map(members.map((member) => [member.id, member]));
+  const agentNameChanges = new Map<string, string>();
+  const titleChanges: Array<{ id: string; title: string }> = [];
+  let changed = false;
+  const next = conversations.map((conversation) => {
+    const member = membersById.get(conversation.agentId);
+    if (!member || member.name === conversation.agentName) {
+      return conversation;
+    }
+    changed = true;
+    agentNameChanges.set(conversation.agentId, member.name);
+    const oldDefaultTitle = defaultTitleForAgentName(
+      conversation.agentName,
+      conversation.cwd
+    );
+    const title =
+      conversation.title === oldDefaultTitle
+        ? defaultTitleForAgentName(member.name, conversation.cwd)
+        : conversation.title;
+    if (title !== conversation.title) {
+      titleChanges.push({ id: conversation.id, title });
+    }
+    return {
+      ...conversation,
+      agentName: member.name,
+      title
+    };
+  });
+  return {
+    conversations: changed ? next : conversations,
+    agentNameChanges,
+    titleChanges
+  };
+}
+
+function persistSyncedConversationAgentNames(input: {
+  agentNameChanges: Map<string, string>;
+  titleChanges: Array<{ id: string; title: string }>;
+}) {
+  if (!cliClient.isAvailable()) return;
+  input.agentNameChanges.forEach((agentName, agentId) => {
+    void cliClient.updateConversationAgentName(agentId, agentName);
+  });
+  input.titleChanges.forEach(({ id, title }) => {
+    void cliClient.renameConversation(id, title);
+  });
+}
+
 function workflowPlanPhaseList(run: WorkflowRunRow): string {
   try {
     const plan = JSON.parse(run.planJson) as {
@@ -256,7 +345,7 @@ async function workflowFollowupContextForRun(
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => ({
-  members: builtinCliMembers,
+  members: buildConversationMembers(),
   conversations: [],
   activeId: undefined,
   messages: {},
@@ -265,8 +354,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   async load() {
     if (!cliClient.isAvailable()) return;
+    const members = buildConversationMembers();
     const list = await cliClient.listConversations({ archived: false });
-    set({ conversations: list });
+    const synced = syncConversationAgentNames(list, members);
+    persistSyncedConversationAgentNames(synced);
+    set({ members, conversations: synced.conversations });
     const cur = get().activeId;
     if (cur && !list.find((c) => c.id === cur)) {
       set({ activeId: list[0]?.id });
@@ -280,6 +372,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     ensureWorkflowMessageSubscription(active, async (cid, messageIds) => {
       await get().loadMessages(cid, messageIds);
     });
+  },
+
+  refreshMembers() {
+    const members = buildConversationMembers();
+    const synced = syncConversationAgentNames(get().conversations, members);
+    persistSyncedConversationAgentNames(synced);
+    set({ members, conversations: synced.conversations });
   },
 
   async setActive(id) {
@@ -515,6 +614,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       role: "assistant",
       status: "running",
       content: "[]",
+      agentId: member.id,
+      agentName: member.name,
+      adapter: member.cli.adapter,
       createdAt: now,
       updatedAt: now
     };
@@ -532,7 +634,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       conversationId,
       role: "assistant",
       status: "running",
-      content: "[]"
+      content: "[]",
+      agentId: member.id,
+      agentName: member.name,
+      adapter: member.cli.adapter
     });
 
     const taskSessionId = nanoid();

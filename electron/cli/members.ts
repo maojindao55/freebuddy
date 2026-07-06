@@ -1,3 +1,6 @@
+import { getAdapterDefinition } from "./adapters.js";
+import { listOverrides } from "./store.js";
+
 export interface CLIMember {
   id: string;
   name: string;
@@ -50,3 +53,28 @@ export const builtinCliMembers: CLIMember[] = [
     cli: { adapter: "qoder-acp", approvalMode: "auto", showStderr: true }
   }
 ];
+
+export function listCliMembers(): CLIMember[] {
+  const customMembers = listOverrides()
+    .filter((override) => override.baseAdapter)
+    .map((override): CLIMember | undefined => {
+      const baseAdapter = override.baseAdapter!;
+      const definition = getAdapterDefinition(baseAdapter);
+      if (!definition) return undefined;
+      return {
+        id: `cli-${override.id}`,
+        name: override.label?.trim() || definition.label,
+        enabled: override.enabled !== false,
+        cli: {
+          adapter: baseAdapter,
+          binary: override.binary,
+          extraArgs: override.extraArgs,
+          env: override.env,
+          approvalMode: "auto",
+          showStderr: true
+        }
+      };
+    })
+    .filter((member): member is CLIMember => Boolean(member));
+  return [...builtinCliMembers, ...customMembers];
+}

@@ -42,8 +42,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "npm install -g @zed-industries/codex-acp",
-    docsUrl: "https://github.com/zed-industries/codex-acp",
+    installHint: "npm install -g --force @agentclientprotocol/codex-acp",
+    docsUrl: "https://github.com/agentclientprotocol/codex-acp",
     protocol: "acp"
   },
   {

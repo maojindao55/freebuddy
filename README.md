@@ -72,7 +72,7 @@ they do it. FreeBuddy wraps that workflow in a calm desktop interface:
 
 | Agent | Command | Install hint |
 | --- | --- | --- |
-| Codex | `codex-acp` | `npm install -g @zed-industries/codex-acp` |
+| Codex | `codex-acp` | `npm install -g --force @agentclientprotocol/codex-acp` |
 | ClaudeCode | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` |
 | OpenCode | `opencode` | `npm install -g opencode-ai` |
 | Cursor | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |

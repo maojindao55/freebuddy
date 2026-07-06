@@ -14,7 +14,10 @@ export function displayAgentName(
   adapter?: string
 ) {
   const adapterLabel = adapter ? getAdapter(adapter)?.label : undefined;
-  if (adapterLabel) return adapterLabel;
-  if (!agentName) return "Agent";
-  return legacyNameMap[agentName] ?? agentName.replace(/\s+(ACP|Legacy)\b/g, "");
+  if (agentName) {
+    const normalized =
+      legacyNameMap[agentName] ?? agentName.replace(/\s+(ACP|Legacy)\b/g, "");
+    if (!adapterLabel || normalized !== adapterLabel) return normalized;
+  }
+  return adapterLabel ?? "Agent";
 }

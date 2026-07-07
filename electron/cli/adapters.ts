@@ -8,6 +8,7 @@ export type CLIAdapterId =
   | "cursor-agent-acp"
   | "kimi-acp"
   | "qoder-acp"
+  | "codebuddy-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -168,6 +169,20 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
         ? "irm https://qoder.com/install.ps1 | iex"
         : "curl -fsSL https://qoder.com/install | bash",
     docsUrl: "https://docs.qoder.com/en/cli/acp",
+    protocol: "acp"
+  },
+  {
+    id: "codebuddy-acp",
+    label: "CodeBuddy",
+    defaultBinary: "codebuddy",
+    checkProbe: { args: ["--version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "codebuddy",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g @tencent-ai/codebuddy-code",
+    docsUrl: "https://www.codebuddy.cn/docs/cli/acp",
     protocol: "acp"
   }
 ];
@@ -434,6 +449,16 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
       };
     }
     case "qoder-acp": {
+      const args: string[] = ["--acp"];
+      args.push(...extra);
+      return {
+        bin,
+        args,
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "codebuddy-acp": {
       const args: string[] = ["--acp"];
       args.push(...extra);
       return {

@@ -697,12 +697,14 @@ export const MessageBubble = memo(function MessageBubble({
   message,
   adapter,
   agentName,
+  agentIconKey,
   blockLimit,
   typingChars
 }: {
   message: ConversationMessage;
   adapter?: string;
   agentName?: string;
+  agentIconKey?: string;
   blockLimit?: number;
   typingChars?: number;
 }) {
@@ -912,6 +914,7 @@ export const MessageBubble = memo(function MessageBubble({
       <AgentAvatar
         adapter={message.adapter ?? adapter}
         agentId={message.agentId}
+        iconKey={agentIconKey}
         className="msg-avatar agent-avatar"
         fallback={<span>✦</span>}
       />

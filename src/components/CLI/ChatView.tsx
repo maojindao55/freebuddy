@@ -969,6 +969,7 @@ export function ChatView() {
               message={m}
               adapter={conv?.adapter}
               agentName={conv?.agentName}
+              agentIconKey={member?.avatar}
               blockLimit={partial?.blockLimit}
               typingChars={partial?.typingChars}
             />

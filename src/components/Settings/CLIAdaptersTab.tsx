@@ -108,6 +108,7 @@ export function CLIAdaptersTab() {
   const listResolved = useCliExecutorStore((s) => s.listResolved);
   const upsertOverride = useCliExecutorStore((s) => s.upsertOverride);
   const check = useCliExecutorStore((s) => s.check);
+  const checkAll = useCliExecutorStore((s) => s.checkAll);
   const refreshMembers = useConversationStore((s) => s.refreshMembers);
   const startInstall = useCliInstallStore((s) => s.startJob);
   const installJobs = useCliInstallStore((s) => s.jobs);
@@ -126,6 +127,8 @@ export function CLIAdaptersTab() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
+  const [checkingAll, setCheckingAll] = useState(false);
+  const autoCheckedRef = useRef(false);
   const autoInstallAttemptedRef = useRef<Set<string>>(new Set());
   const selectedExecutor = useMemo(
     () => list.find((ex) => ex.id === editingId),
@@ -169,6 +172,21 @@ export function CLIAdaptersTab() {
     [check]
   );
 
+  const handleCheckAll = useCallback(async () => {
+    setCheckingAll(true);
+    setCheckingIds((prev) => {
+      const next = new Set(prev);
+      for (const ex of list) next.add(ex.id);
+      return next;
+    });
+    try {
+      await checkAll();
+    } finally {
+      setCheckingAll(false);
+      setCheckingIds(() => new Set());
+    }
+  }, [checkAll, list]);
+
   const handleClone = useCallback(
     async (source: ResolvedExecutor) => {
       const baseAdapter = source.baseAdapter ?? source.id;
@@ -196,6 +214,12 @@ export function CLIAdaptersTab() {
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
+
+  useEffect(() => {
+    if (!loaded || autoCheckedRef.current) return;
+    autoCheckedRef.current = true;
+    void checkAll();
+  }, [loaded, checkAll]);
 
   useEffect(() => {
     if (!loaded) return;

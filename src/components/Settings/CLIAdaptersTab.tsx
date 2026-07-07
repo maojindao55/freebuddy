@@ -55,6 +55,21 @@ function sortAdapters(list: ResolvedExecutor[]): ResolvedExecutor[] {
   });
 }
 
+type AgentCategory = "builtin" | "custom";
+
+function categoryOf(ex: ResolvedExecutor): AgentCategory {
+  return ex.isClone ? "custom" : "builtin";
+}
+
+function matchesQuery(ex: ResolvedExecutor, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    String(ex.label ?? "").toLowerCase().includes(q) ||
+    String(ex.id).toLowerCase().includes(q)
+  );
+}
+
 function cliRuntimeErrorKey(lastError: string | undefined): string {
   if (lastError === "binary not found") return "settings.cli.commandNotFound";
   if (lastError === CODEX_ACP_UPGRADE_REQUIRED) {
@@ -93,7 +108,6 @@ export function CLIAdaptersTab() {
   const listResolved = useCliExecutorStore((s) => s.listResolved);
   const upsertOverride = useCliExecutorStore((s) => s.upsertOverride);
   const check = useCliExecutorStore((s) => s.check);
-  const checkAll = useCliExecutorStore((s) => s.checkAll);
   const refreshMembers = useConversationStore((s) => s.refreshMembers);
   const startInstall = useCliInstallStore((s) => s.startJob);
   const installJobs = useCliInstallStore((s) => s.jobs);
@@ -110,19 +124,33 @@ export function CLIAdaptersTab() {
     [adapters, overrides, runtimes, listResolved]
   );
 
-  const installedCount = useMemo(
-    () => list.filter((ex) => ex.runtime?.installed).length,
-    [list]
-  );
-
   const [editingId, setEditingId] = useState<string | null>(null);
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
-  const [checkingAll, setCheckingAll] = useState(false);
-  const [checkError, setCheckError] = useState<string | null>(null);
   const autoInstallAttemptedRef = useRef<Set<string>>(new Set());
   const selectedExecutor = useMemo(
     () => list.find((ex) => ex.id === editingId),
     [editingId, list]
+  );
+
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<AgentCategory>("builtin");
+
+  const categoryCounts = useMemo(() => {
+    let builtin = 0;
+    let custom = 0;
+    for (const ex of list) {
+      if (ex.isClone) custom += 1;
+      else builtin += 1;
+    }
+    return { builtin, custom };
+  }, [list]);
+
+  const filteredList = useMemo(
+    () =>
+      list.filter(
+        (ex) => categoryOf(ex) === category && matchesQuery(ex, query)
+      ),
+    [list, category, query]
   );
 
   const handleCheck = useCallback(
@@ -140,22 +168,6 @@ export function CLIAdaptersTab() {
     },
     [check]
   );
-
-  const handleCheckAll = useCallback(async () => {
-    setCheckingAll(true);
-    setCheckError(null);
-    setCheckingIds(new Set(list.map((ex) => ex.id)));
-    try {
-      await checkAll();
-    } catch (err) {
-      setCheckError(
-        err instanceof Error ? err.message : String(err)
-      );
-    } finally {
-      setCheckingAll(false);
-      setCheckingIds(new Set());
-    }
-  }, [checkAll, list]);
 
   const handleClone = useCallback(
     async (source: ResolvedExecutor) => {
@@ -212,6 +224,27 @@ export function CLIAdaptersTab() {
     }
   }, [installingIdSet, list, loaded, startInstall]);
 
+  const renderRow = (ex: ResolvedExecutor) => (
+    <AdapterRow
+      key={ex.id}
+      ex={ex}
+      checking={checkingIds.has(ex.id)}
+      selected={editingId === ex.id}
+      onCheck={() => void handleCheck(ex.id)}
+      onClone={() => void handleClone(ex)}
+      onEdit={() => setEditingId(ex.id)}
+      onInstall={() => {
+        if (!ex.installHint) return;
+        startInstall({
+          adapterId: ex.id,
+          label: ex.label,
+          command: ex.installHint
+        });
+      }}
+      installing={installingIdSet.has(ex.id)}
+    />
+  );
+
   if (!cliClient.isAvailable()) {
     return (
       <div className="settings-tab">
@@ -235,56 +268,39 @@ export function CLIAdaptersTab() {
       </div>
 
       <div className="adapter-list-toolbar">
-        <span className="adapter-list-summary">
-          {loaded
-            ? t("settings.cli.summary", {
-                installed: installedCount,
-                total: list.length
-              })
-            : t("settings.cli.loading")}
-        </span>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => void handleCheckAll()}
-          disabled={!loaded || checkingAll || list.length === 0}
-        >
-          {checkingAll ? t("settings.cli.checkingAll") : t("settings.cli.checkAll")}
-        </button>
+        <div className="adapter-filter-tabs" role="tablist">
+          {(["builtin", "custom"] as AgentCategory[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              role="tab"
+              aria-selected={category === c}
+              className={category === c ? "active" : undefined}
+              onClick={() => setCategory(c)}
+              disabled={!loaded}
+            >
+              {t(`settings.cli.category.${c}`)} ({categoryCounts[c]})
+            </button>
+          ))}
+        </div>
+        <input
+          type="search"
+          className="adapter-search"
+          placeholder={t("settings.cli.searchAgents")}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </div>
-
-      {checkError && (
-        <p className="adapter-check-error" role="alert">
-          {t("errors.checkFailed", { err: checkError })}
-        </p>
-      )}
 
       <div className="adapter-settings-workspace">
         <div className="adapter-list-panel">
           <div className="adapter-list">
             {!loaded ? (
               <p className="muted">{t("settings.cli.loading")}</p>
+            ) : filteredList.length === 0 ? (
+              <p className="muted adapter-empty">{t("settings.cli.noResults")}</p>
             ) : (
-              list.map((ex) => (
-                <AdapterRow
-                  key={ex.id}
-                  ex={ex}
-                  checking={checkingIds.has(ex.id)}
-                  selected={editingId === ex.id}
-                  onCheck={() => void handleCheck(ex.id)}
-                  onClone={() => void handleClone(ex)}
-                  onEdit={() => setEditingId(ex.id)}
-                  onInstall={() => {
-                    if (!ex.installHint) return;
-                    startInstall({
-                      adapterId: ex.id,
-                      label: ex.label,
-                      command: ex.installHint
-                    });
-                  }}
-                  installing={installingIdSet.has(ex.id)}
-                />
-              ))
+              filteredList.map((ex) => renderRow(ex))
             )}
           </div>
         </div>

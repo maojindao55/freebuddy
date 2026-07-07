@@ -373,6 +373,12 @@
       "checking": "检查中…",
       "checkingAll": "正在检查…",
       "summary": "{{installed}}/{{total}} 已安装",
+      "searchAgents": "搜索 Agent（名称或 ID）",
+      "noResults": "没有匹配的 Agent",
+      "category": {
+        "builtin": "内置",
+        "custom": "自定义"
+      },
       "loading": "加载中…",
       "runInBackground": "后台运行",
       "installBackgroundHint": "安装会在后台继续，你可以关闭此面板并使用其他功能。",

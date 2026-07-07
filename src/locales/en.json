@@ -385,6 +385,12 @@
       "checking": "Checking…",
       "checkingAll": "Checking…",
       "summary": "{{installed}}/{{total}} installed",
+      "searchAgents": "Search agents (name or id)",
+      "noResults": "No matching agents",
+      "category": {
+        "builtin": "Built-in",
+        "custom": "Custom"
+      },
       "loading": "Loading…",
       "runInBackground": "Run in background",
       "installBackgroundHint": "Installation continues in the background. Close this panel and keep using FreeBuddy.",

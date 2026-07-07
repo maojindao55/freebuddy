@@ -10,7 +10,9 @@
     "clone": "克隆",
     "check": "检查",
     "install": "安装",
-    "installing": "安装中…"
+    "installing": "安装中…",
+    "saving": "保存中…",
+    "saved": "已保存"
   },
   "status": {
     "running": "运行中",
@@ -301,6 +303,7 @@
     "close": "关闭预览"
   },
   "settings": {
+    "backToApp": "返回应用",
     "tabs": {
       "general": "通用",
       "cli": "CLI Agent",
@@ -314,6 +317,27 @@
       "name": "名称",
       "commandOverride": "命令覆盖",
       "model": "模型",
+      "saveSuccess": "已保存",
+      "saveFailed": "保存失败：{{err}}",
+      "byok": {
+        "title": "API Key",
+        "description": "选择这个 Agent 使用默认配置，还是在启动时临时注入你自己的模型服务。",
+        "modeDefault": "使用 Agent 默认配置",
+        "modeCustom": "使用自己的 API Key",
+        "advanced": "高级设置",
+        "providerId": "内部 Provider ID",
+        "providerName": "Provider 显示名",
+        "baseUrl": "Base URL",
+        "baseUrlHintCodex": "例如 https://api.openai.com/v1，或兼容 OpenAI 的代理地址。",
+        "baseUrlHintClaude": "例如 https://api.anthropic.com，或兼容 Anthropic 的代理地址。",
+        "envKey": "密钥环境变量名",
+        "wireApi": "Wire API",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "粘贴 Key 以保存或替换",
+        "newKeyHint": "保存后不会再显示明文。",
+        "savedKeyHint": "已保存 {{preview}}；留空会继续使用当前 Key。",
+        "hint": "Key 只保存在本机，运行这个 Agent 时临时注入。"
+      },
       "extraArgs": "附加参数（每行一个）",
       "environment": "环境变量（每行 KEY=value）",
       "docs": "文档：",

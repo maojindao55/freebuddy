@@ -214,11 +214,12 @@ test("WorkflowRunPanel translates workflow run names", () => {
   assert.match(src, /workflow\.implementReviewLoop/);
 });
 
-test("Settings modal opens with CLI agents before General", () => {
+test("Settings page opens with CLI agents before General", () => {
   const src = read("../src/components/Settings/SettingsModal.tsx");
   assert.match(src, /initialTab = "cli"/);
   assert.match(src, /useState<SettingsTab>\(initialTab\)/);
-  assert.match(src, /const TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
+  assert.match(src, /export function SettingsPage/);
+  assert.match(src, /export const SETTINGS_TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
 });
 
 test("MessageBubble supports right-click and inline copy button", () => {

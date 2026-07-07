@@ -37,6 +37,70 @@ test("coding agent settings expose model as a first-class field", () => {
   assert.equal(settingsSource.includes("withModelArg"), true);
 });
 
+test("coding agent settings expose Codex BYOK without echoing saved keys", () => {
+  assert.equal(settingsSource.includes("settings.cli.byok.title"), true);
+  assert.equal(settingsSource.includes("settings-choice-group"), true);
+  assert.equal(settingsSource.includes("settings.cli.byok.modeCustom"), true);
+  assert.equal(settingsSource.includes("settings.cli.byok.advanced"), true);
+  assert.equal(settingsSource.includes("codexByok"), true);
+  assert.equal(settingsSource.includes("claudeByok"), true);
+  assert.equal(settingsSource.includes("ANTHROPIC_API_KEY"), true);
+  assert.equal(settingsSource.includes("settings.cli.byok.baseUrlHintClaude"), true);
+  assert.equal(settingsSource.includes("type=\"password\""), true);
+  assert.equal(settingsSource.includes("apiKeyPreview"), true);
+  assert.equal(settingsSource.includes("value={codexApiKey}"), true);
+  assert.equal(settingsSource.includes("value={savedByok?.apiKey"), false);
+  assert.equal(zhLocale.settings.cli.byok.title, "API Key");
+  assert.equal(zhLocale.settings.cli.byok.modeCustom, "使用自己的 API Key");
+  assert.equal(enLocale.settings.cli.byok.title, "API Key");
+  assert.equal(enLocale.settings.cli.byok.modeCustom, "Use my own API key");
+});
+
+test("coding agent settings use an inline master detail editor", () => {
+  assert.equal(settingsSource.includes("adapter-settings-workspace"), true);
+  assert.equal(settingsSource.includes("adapter-editor-panel"), true);
+  assert.equal(settingsSource.includes("EditOverridePanel"), true);
+  assert.equal(settingsSource.includes("EditOverrideDialog"), false);
+  assert.equal(settingsSource.includes("modal-backdrop"), false);
+});
+
+test("coding agent settings show save progress and reload public override state", () => {
+  assert.equal(settingsSource.includes("saveStatus"), true);
+  assert.equal(settingsSource.includes("settings.cli.saveSuccess"), true);
+  assert.equal(settingsSource.includes("settings.cli.saveFailed"), true);
+  assert.equal(settingsSource.includes("adapter-save-feedback"), true);
+  assert.equal(storeSource.includes("await cliClient.listOverrides()"), true);
+  assert.equal(zhLocale.common.saving, "保存中…");
+  assert.equal(zhLocale.common.saved, "已保存");
+  assert.equal(enLocale.common.saving, "Saving…");
+  assert.equal(enLocale.common.saved, "Saved");
+  assert.equal(zhLocale.settings.cli.saveSuccess, "已保存");
+  assert.equal(enLocale.settings.cli.saveSuccess, "Saved");
+});
+
+test("coding agent reset and delete actions use the secondary footer style", () => {
+  assert.equal(settingsSource.includes("adapter-secondary-action"), true);
+  const footer = settingsSource.slice(settingsSource.indexOf("adapter-editor-actions"));
+  assert.equal(footer.includes("onResetOrDelete"), true);
+  assert.match(footer, /adapter-secondary-action/);
+});
+
+test("coding agent runtime stores Claude BYOK separately from Codex BYOK", () => {
+  const electronStoreSource = fs.readFileSync(
+    new URL("../electron/cli/store.ts", import.meta.url),
+    "utf8"
+  );
+  const electronRuntimeSource = fs.readFileSync(
+    new URL("../electron/cli/runtime.ts", import.meta.url),
+    "utf8"
+  );
+  assert.equal(electronStoreSource.includes("claude_byok"), true);
+  assert.equal(electronStoreSource.includes("resolveClaudeByokEnv"), true);
+  assert.equal(electronStoreSource.includes("ANTHROPIC_API_KEY"), true);
+  assert.equal(electronStoreSource.includes("ANTHROPIC_BASE_URL"), true);
+  assert.equal(electronRuntimeSource.includes("resolveCliByokEnv"), true);
+});
+
 test("coding agent settings let only cloned agents rename their display label", () => {
   assert.equal(settingsSource.includes("settings.cli.name"), true);
   assert.equal(settingsSource.includes("const [label, setLabel]"), true);

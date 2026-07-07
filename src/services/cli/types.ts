@@ -12,6 +12,27 @@ export interface CLIExecutorOverride {
   docsUrl?: string;
   icon?: string;
   enabled?: boolean;
+  codexByok?: CLICodexByokConfig;
+  claudeByok?: CLIClaudeByokConfig;
+}
+
+export interface CLICodexByokConfig {
+  enabled?: boolean;
+  providerId?: string;
+  providerName?: string;
+  baseUrl?: string;
+  envKey?: string;
+  wireApi?: "responses";
+  apiKey?: string;
+  apiKeyPreview?: string;
+}
+
+export interface CLIClaudeByokConfig {
+  enabled?: boolean;
+  baseUrl?: string;
+  envKey?: string;
+  apiKey?: string;
+  apiKeyPreview?: string;
 }
 
 export interface CliPromptAttachment {

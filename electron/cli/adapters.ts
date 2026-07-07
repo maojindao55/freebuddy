@@ -232,29 +232,98 @@ export interface BuiltCommand {
   protocol?: "legacy-cli-json" | "acp";
 }
 
-function tomlString(value: string): string {
-  return JSON.stringify(value);
+function parseCodexConfigValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    trimmed.startsWith("[") ||
+    trimmed.startsWith("{")
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
 }
 
-function normalizeCodexAcpArgs(args: string[]): string[] {
+function setDottedConfigValue(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown
+) {
+  const parts = key.split(".").map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return;
+  let cursor: Record<string, unknown> = target;
+  for (const part of parts.slice(0, -1)) {
+    const existing = cursor[part];
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      cursor[part] = {};
+    }
+    cursor = cursor[part] as Record<string, unknown>;
+  }
+  cursor[parts[parts.length - 1]] = value;
+}
+
+function normalizeCodexAcpArgs(args: string[]): {
+  args: string[];
+  env?: Record<string, string>;
+} {
   const normalized: string[] = [];
+  const config: Record<string, unknown> = {};
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "-m" || arg === "--model") {
       const model = args[i + 1];
       if (model) {
-        normalized.push("-c", `model=${tomlString(model)}`);
+        config.model = model;
         i += 1;
         continue;
       }
     }
     if (arg.startsWith("--model=")) {
-      normalized.push("-c", `model=${tomlString(arg.slice("--model=".length))}`);
+      config.model = arg.slice("--model=".length);
+      continue;
+    }
+    if (arg === "-c" || arg === "--config") {
+      const pair = args[i + 1];
+      if (pair) {
+        const eq = pair.indexOf("=");
+        if (eq > 0) {
+          setDottedConfigValue(
+            config,
+            pair.slice(0, eq),
+            parseCodexConfigValue(pair.slice(eq + 1))
+          );
+        }
+        i += 1;
+        continue;
+      }
+    }
+    if (arg.startsWith("-c=") || arg.startsWith("--config=")) {
+      const pair = arg.slice(arg.indexOf("=") + 1);
+      const eq = pair.indexOf("=");
+      if (eq > 0) {
+        setDottedConfigValue(
+          config,
+          pair.slice(0, eq),
+          parseCodexConfigValue(pair.slice(eq + 1))
+        );
+      }
       continue;
     }
     normalized.push(arg);
   }
-  return normalized;
+  return {
+    args: normalized,
+    ...(Object.keys(config).length
+      ? { env: { CODEX_CONFIG: JSON.stringify(config) } }
+      : {})
+  };
 }
 
 function splitModelArg(args: string[]): {
@@ -305,13 +374,16 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
       args.push(input.prompt);
       return { bin, args, promptViaStdin: false, protocol: "legacy-cli-json" };
     }
-    case "codex-acp":
+    case "codex-acp": {
+      const normalized = normalizeCodexAcpArgs(extra);
       return {
         bin,
-        args: normalizeCodexAcpArgs(extra),
+        args: normalized.args,
+        ...(normalized.env ? { env: normalized.env } : {}),
         promptViaStdin: false,
         protocol: "acp"
       };
+    }
     case "claude-agent-acp": {
       const { model, args } = splitModelArg(extra);
       return {

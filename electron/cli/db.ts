@@ -44,6 +44,8 @@ function migrate(db: DB) {
       install_hint TEXT,
       docs_url TEXT,
       enabled INTEGER DEFAULT 1,
+      codex_byok TEXT,
+      claude_byok TEXT,
       updated_at TEXT NOT NULL
     );
 
@@ -232,6 +234,12 @@ function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!overrideCols.some((c) => c.name === "icon")) {
     db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN icon TEXT");
+  }
+  if (!overrideCols.some((c) => c.name === "codex_byok")) {
+    db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN codex_byok TEXT");
+  }
+  if (!overrideCols.some((c) => c.name === "claude_byok")) {
+    db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN claude_byok TEXT");
   }
 
   const messageCols = db

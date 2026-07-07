@@ -11,7 +11,11 @@ import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { DetailColumn } from "./components/CLI/DetailColumn";
 import { AgentBridgeListener } from "./components/AgentBridge/AgentBridgeListener";
 import { AgentBridgeToasts } from "./components/AgentBridge/AgentBridgeToasts";
-import { SettingsModal, type SettingsTab } from "./components/Settings/SettingsModal";
+import {
+  SettingsNav,
+  SettingsPage,
+  type SettingsTab
+} from "./components/Settings/SettingsModal";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
@@ -217,72 +221,113 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${isNewTask ? " new-task-mode" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && isNewTask ? " new-task-mode" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
       style={{ "--fb-detail-width": `${effectiveDetailWidth}px` } as CSSProperties}
     >
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="sidebar-brand">
-            <BrandMark />
-            <div className="sidebar-brand-text">
-              <h1>{t("app.brand")}</h1>
+      <aside className={`sidebar${settingsOpen ? " settings-sidebar" : ""}`}>
+        {settingsOpen ? (
+          <>
+            <div className="settings-sidebar-header">
+              <button
+                type="button"
+                className="settings-back-button"
+                onClick={() => setSettingsOpen(false)}
+              >
+                <span aria-hidden="true">←</span>
+                {t("settings.backToApp")}
+              </button>
             </div>
-          </div>
-          {renderToggleButton()}
-        </div>
+            <SettingsNav
+              activeTab={settingsInitialTab}
+              onTabChange={setSettingsInitialTab}
+              className="settings-nav-sidebar"
+            />
+          </>
+        ) : (
+          <>
+            <div className="sidebar-header">
+              <div className="sidebar-brand">
+                <BrandMark />
+                <div className="sidebar-brand-text">
+                  <h1>{t("app.brand")}</h1>
+                </div>
+              </div>
+              {renderToggleButton()}
+            </div>
 
-        <ConversationList onNew={() => void setActive(undefined)} />
+            <ConversationList
+              onNew={() => {
+                setSettingsOpen(false);
+                void setActive(undefined);
+              }}
+            />
 
-        <div className="sidebar-footer">
-          <button
-            className="footer-action"
-            onClick={() => openSettings("cli")}
-          >
-            <GearIcon />
-            {t("common.settings")}
-          </button>
-          {appVersion && (
-            <span className="footer-version-wrap">
-              <span className="footer-version">v{appVersion}</span>
-              {showUpdateCapsule && (
-                <button
-                  type="button"
-                  className={`footer-update-pill ${updateStatus}`}
-                  title={t("updater.footerOpen", { version: latestVersion ?? "" })}
-                  aria-label={t("updater.footerOpen", { version: latestVersion ?? "" })}
-                  onClick={() => openSettings("about")}
-                >
-                  {updateCapsuleText}
-                </button>
+            <div className="sidebar-footer">
+              <button
+                className="footer-action"
+                onClick={() => openSettings("cli")}
+              >
+                <GearIcon />
+                {t("common.settings")}
+              </button>
+              {appVersion && (
+                <span className="footer-version-wrap">
+                  <span className="footer-version">v{appVersion}</span>
+                  {showUpdateCapsule && (
+                    <button
+                      type="button"
+                      className={`footer-update-pill ${updateStatus}`}
+                      title={t("updater.footerOpen", { version: latestVersion ?? "" })}
+                      aria-label={t("updater.footerOpen", { version: latestVersion ?? "" })}
+                      onClick={() => openSettings("about")}
+                    >
+                      {updateCapsuleText}
+                    </button>
+                  )}
+                </span>
               )}
-            </span>
-          )}
-          <button
-            className="footer-toggle"
-            title={t("sidebar.toggleTheme")}
-            aria-label={t("sidebar.toggleTheme")}
-            data-theme-preference={themePreference}
-            onClick={() => void setTheme(nextThemePreference(themePreference))}
-          >
-            {themePreference === "system" ? (
-              <Monitor className="footer-icon" strokeWidth={1.7} />
-            ) : themePreference === "dark" ? (
-              <Sun className="footer-icon" strokeWidth={1.7} />
-            ) : (
-              <Moon className="footer-icon" strokeWidth={1.7} />
-            )}
-          </button>
-        </div>
+              <button
+                className="footer-toggle"
+                title={t("sidebar.toggleTheme")}
+                aria-label={t("sidebar.toggleTheme")}
+                data-theme-preference={themePreference}
+                onClick={() => void setTheme(nextThemePreference(themePreference))}
+              >
+                {themePreference === "system" ? (
+                  <Monitor className="footer-icon" strokeWidth={1.7} />
+                ) : themePreference === "dark" ? (
+                  <Sun className="footer-icon" strokeWidth={1.7} />
+                ) : (
+                  <Moon className="footer-icon" strokeWidth={1.7} />
+                )}
+              </button>
+            </div>
+          </>
+        )}
       </aside>
 
-      <main className="workspace">
+      <main className={`workspace${settingsOpen ? " settings-workspace" : ""}`}>
         <header className="titlebar">
           {sidebarCollapsed && renderToggleButton("floating")}
           <div className="breadcrumb">
-            <strong>{activeConversation?.title ?? t("app.chat")}</strong>
+            <strong>
+              {settingsOpen
+                ? t("common.settings")
+                : activeConversation?.title ?? t("app.chat")}
+            </strong>
           </div>
-          {activeConversation && (
+          {settingsOpen ? (
+            <div className="titlebar-actions titlebar-actions-plain">
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setSettingsOpen(false)}
+              >
+                {t("common.close")}
+              </button>
+            </div>
+          ) : activeConversation && (
             <div className="titlebar-actions titlebar-actions-plain">
               <ReplayButton />
             </div>
@@ -290,21 +335,26 @@ function App() {
 
         </header>
 
-        <section className="chat-section" aria-label={t("app.chat")}>
-          <ChatView />
+        <section
+          className={`chat-section${settingsOpen ? " settings-section-host" : ""}`}
+          aria-label={settingsOpen ? t("common.settings") : t("app.chat")}
+        >
+          {settingsOpen ? (
+            <SettingsPage
+              activeTab={settingsInitialTab}
+              onTabChange={setSettingsInitialTab}
+              onClose={() => setSettingsOpen(false)}
+            />
+          ) : (
+            <ChatView />
+          )}
         </section>
       </main>
 
-      {activeConversation && (
+      {activeConversation && !settingsOpen && (
         <DetailColumn runningCount={runningCount} />
       )}
 
-      {settingsOpen && (
-        <SettingsModal
-          initialTab={settingsInitialTab}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
       <CliInstallPanelHost />
       <PermissionDialog />
       <AgentBridgeListener />

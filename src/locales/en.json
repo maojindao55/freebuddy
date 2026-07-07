@@ -10,7 +10,9 @@
     "clone": "Clone",
     "check": "Check",
     "install": "Install",
-    "installing": "Installing…"
+    "installing": "Installing…",
+    "saving": "Saving…",
+    "saved": "Saved"
   },
   "status": {
     "running": "Running",
@@ -313,6 +315,7 @@
     "close": "Close preview"
   },
   "settings": {
+    "backToApp": "Back to app",
     "tabs": {
       "general": "General",
       "cli": "CLI Agents",
@@ -326,6 +329,27 @@
       "name": "Name",
       "commandOverride": "Command override",
       "model": "Model",
+      "saveSuccess": "Saved",
+      "saveFailed": "Save failed: {{err}}",
+      "byok": {
+        "title": "API Key",
+        "description": "Choose whether this agent uses the default setup or injects your own model service when it starts.",
+        "modeDefault": "Use agent default setup",
+        "modeCustom": "Use my own API key",
+        "advanced": "Advanced settings",
+        "providerId": "Internal Provider ID",
+        "providerName": "Provider display name",
+        "baseUrl": "Base URL",
+        "baseUrlHintCodex": "For example, https://api.openai.com/v1 or an OpenAI-compatible proxy.",
+        "baseUrlHintClaude": "For example, https://api.anthropic.com or an Anthropic-compatible proxy.",
+        "envKey": "Key environment variable",
+        "wireApi": "Wire API",
+        "apiKey": "API key",
+        "apiKeyPlaceholder": "Paste a key to save or replace",
+        "newKeyHint": "The plaintext key will not be shown again after saving.",
+        "savedKeyHint": "Saved {{preview}}; leave blank to keep the current key.",
+        "hint": "The key is stored only on this device and injected when this agent starts."
+      },
       "extraArgs": "Extra args (one per line)",
       "environment": "Environment (KEY=value per line)",
       "docs": "Docs:",

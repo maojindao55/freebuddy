@@ -19,6 +19,8 @@ export interface ResolvedExecutor extends CLIAdapterDefinition {
   env?: Record<string, string>;
   icon?: string;
   enabled: boolean;
+  codexByok?: CLIExecutorOverride["codexByok"];
+  claudeByok?: CLIExecutorOverride["claudeByok"];
   runtime?: CliRuntime;
   override?: CLIExecutorOverride;
 }
@@ -96,7 +98,10 @@ export const useCliExecutorStore = create<State>((set, get) => ({
   async upsertOverride(o) {
     if (!cliClient.isAvailable()) return;
     await cliClient.upsertOverride(o);
-    set((s) => ({ overrides: { ...s.overrides, [o.id]: o } }));
+    const overrides = await cliClient.listOverrides();
+    const overridesMap: Record<string, CLIExecutorOverride> = {};
+    overrides.forEach((override) => (overridesMap[override.id] = override));
+    set({ overrides: overridesMap });
   },
 
   async resetOverride(id) {
@@ -127,6 +132,8 @@ export const useCliExecutorStore = create<State>((set, get) => ({
       env: o?.env,
       icon: o?.icon,
       enabled: o?.enabled !== false,
+      codexByok: o?.codexByok,
+      claudeByok: o?.claudeByok,
       runtime: runtimes[id] ?? runtimes[def.id],
       override: o
     };

@@ -100,7 +100,10 @@ test("sidebar version area shows update capsule for available updates", () => {
   assert.match(app, /updateStatus === "downloaded"/);
   assert.match(app, /footer-update-pill/);
   assert.match(app, /onClick=\{\(\) => openSettings\("about"\)\}/);
-  assert.match(app, /<SettingsModal\s+initialTab=\{settingsInitialTab\}/);
+  assert.match(app, /<SettingsNav\s+activeTab=\{settingsInitialTab\}/);
+  assert.match(app, /<SettingsPage\s+activeTab=\{settingsInitialTab\}/);
+  assert.match(settingsModal, /export function SettingsPage/);
+  assert.match(settingsModal, /export function SettingsNav/);
   assert.doesNotMatch(app, /footer-badge/);
   assert.match(css, /\.footer-version-wrap/);
   assert.match(css, /\.footer-update-pill/);
@@ -111,6 +114,8 @@ test("sidebar version area shows update capsule for available updates", () => {
   assert.equal(zhJson.updater.footerUpdate, "更新");
   assert.equal(zhJson.updater.footerInstall, "安装");
   assert.equal(zhJson.updater.footerOpen, "打开更新详情");
+  assert.equal(enJson.settings.backToApp, "Back to app");
+  assert.equal(zhJson.settings.backToApp, "返回应用");
 });
 
 test("preload exposes settings get/set", () => {

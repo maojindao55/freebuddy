@@ -27,6 +27,7 @@ import {
   type Running
 } from "./runtimeShared.js";
 import { killProcessTree } from "./process-kill.js";
+import { resolveCliByokEnv } from "./store.js";
 
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
@@ -86,13 +87,34 @@ function createItemsBatchingEmit(
   };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepMergeJsonObjects(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const next = { ...current };
+  for (const [key, value] of Object.entries(patch)) {
+    const existing = next[key];
+    next[key] =
+      isPlainObject(existing) && isPlainObject(value)
+        ? deepMergeJsonObjects(existing, value)
+        : value;
+  }
+  return next;
+}
+
 function mergeJsonEnvValue(current: string | undefined, patch: string) {
   if (!current) return patch;
   try {
-    return JSON.stringify({
-      ...JSON.parse(current),
-      ...JSON.parse(patch)
-    });
+    const currentJson = JSON.parse(current);
+    const patchJson = JSON.parse(patch);
+    if (isPlainObject(currentJson) && isPlainObject(patchJson)) {
+      return JSON.stringify(deepMergeJsonObjects(currentJson, patchJson));
+    }
+    return patch;
   } catch {
     return patch;
   }
@@ -106,7 +128,7 @@ function mergeBuiltEnv(
   const next = { ...base };
   for (const [key, value] of Object.entries(patch)) {
     next[key] =
-      key === "OPENCODE_CONFIG_CONTENT"
+      key === "OPENCODE_CONFIG_CONTENT" || key === "CODEX_CONFIG"
         ? mergeJsonEnvValue(next[key], value)
         : value;
   }
@@ -178,7 +200,13 @@ export async function cliRun(
     return;
   }
 
-  const env = mergeBuiltEnv({ ...process.env, ...(args.env || {}) }, built.env);
+  const env = mergeBuiltEnv(
+    mergeBuiltEnv(
+      { ...process.env, ...(args.env || {}) },
+      resolveCliByokEnv(args.agentId, args.adapter)
+    ),
+    built.env
+  );
 
   const child = spawn(built.bin, built.args, {
     cwd: args.cwd,

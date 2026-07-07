@@ -101,20 +101,50 @@ test("buildCommand translates Codex model shorthand for codex-acp", () => {
     }),
     {
       bin: "codex-acp",
-      args: ["-c", 'model="gpt-5"', "--config", "approval_policy=never"],
+      args: [],
+      env: {
+        CODEX_CONFIG: JSON.stringify({
+          model: "gpt-5",
+          approval_policy: "never"
+        })
+      },
       promptViaStdin: false,
       protocol: "acp"
     }
   );
 
-  assert.deepEqual(
-    buildCommand({
-      adapter: "codex-acp",
-      prompt: "hello",
-      extraArgs: ["--model=o3"]
-    }).args,
-    ["-c", 'model="o3"']
-  );
+  const withEquals = buildCommand({
+    adapter: "codex-acp",
+    prompt: "hello",
+    extraArgs: ["--model=o3"]
+  });
+  assert.deepEqual(withEquals.args, []);
+  assert.deepEqual(withEquals.env, {
+    CODEX_CONFIG: JSON.stringify({ model: "o3" })
+  });
+});
+
+test("buildCommand maps Codex ACP config args to CODEX_CONFIG for new codex-acp", () => {
+  const built = buildCommand({
+    adapter: "codex-acp",
+    prompt: "hello",
+    extraArgs: [
+      "-c",
+      "model_provider=proxy",
+      "--config",
+      'model_providers.proxy.base_url="https://proxy.example.com/v1"'
+    ]
+  });
+
+  assert.deepEqual(built.args, []);
+  assert.deepEqual(JSON.parse(built.env.CODEX_CONFIG), {
+    model_provider: "proxy",
+    model_providers: {
+      proxy: {
+        base_url: "https://proxy.example.com/v1"
+      }
+    }
+  });
 });
 
 test("buildCommand applies ClaudeCode ACP model through environment", () => {

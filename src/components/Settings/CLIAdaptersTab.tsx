@@ -120,6 +120,10 @@ export function CLIAdaptersTab() {
   const [checkingAll, setCheckingAll] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const autoInstallAttemptedRef = useRef<Set<string>>(new Set());
+  const selectedExecutor = useMemo(
+    () => list.find((ex) => ex.id === editingId),
+    [editingId, list]
+  );
 
   const handleCheck = useCallback(
     async (id: string) => {
@@ -183,6 +187,18 @@ export function CLIAdaptersTab() {
 
   useEffect(() => {
     if (!loaded) return;
+    if (!editingId && list[0]) {
+      setEditingId(list[0].id);
+      return;
+    }
+    if (editingId && !list.some((ex) => ex.id === editingId)) {
+      setEditingId(list[0]?.id ?? null);
+      return;
+    }
+  }, [editingId, list, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
     for (const ex of list) {
       if (!needsForcedInstall(ex)) continue;
       if (installingIdSet.has(ex.id)) continue;
@@ -243,38 +259,51 @@ export function CLIAdaptersTab() {
         </p>
       )}
 
-      <div className="adapter-list">
-        {!loaded ? (
-          <p className="muted">{t("settings.cli.loading")}</p>
-        ) : (
-          list.map((ex) => (
-            <AdapterRow
-              key={ex.id}
-              ex={ex}
-              checking={checkingIds.has(ex.id)}
-              onCheck={() => void handleCheck(ex.id)}
-              onClone={() => void handleClone(ex)}
-              onEdit={() => setEditingId(ex.id)}
-              onInstall={() => {
-                if (!ex.installHint) return;
-                startInstall({
-                  adapterId: ex.id,
-                  label: ex.label,
-                  command: ex.installHint
-                });
-              }}
-              installing={installingIdSet.has(ex.id)}
-            />
-          ))
-        )}
-      </div>
+      <div className="adapter-settings-workspace">
+        <div className="adapter-list-panel">
+          <div className="adapter-list">
+            {!loaded ? (
+              <p className="muted">{t("settings.cli.loading")}</p>
+            ) : (
+              list.map((ex) => (
+                <AdapterRow
+                  key={ex.id}
+                  ex={ex}
+                  checking={checkingIds.has(ex.id)}
+                  selected={editingId === ex.id}
+                  onCheck={() => void handleCheck(ex.id)}
+                  onClone={() => void handleClone(ex)}
+                  onEdit={() => setEditingId(ex.id)}
+                  onInstall={() => {
+                    if (!ex.installHint) return;
+                    startInstall({
+                      adapterId: ex.id,
+                      label: ex.label,
+                      command: ex.installHint
+                    });
+                  }}
+                  installing={installingIdSet.has(ex.id)}
+                />
+              ))
+            )}
+          </div>
+        </div>
 
-      {editingId && (
-        <EditOverrideDialog
-          executorId={editingId}
-          onClose={() => setEditingId(null)}
-        />
-      )}
+        <div className="adapter-editor-panel">
+          {selectedExecutor ? (
+            <EditOverridePanel
+              key={selectedExecutor.id}
+              executorId={selectedExecutor.id}
+              onResetSelection={() => setEditingId(null)}
+            />
+          ) : (
+            <div className="adapter-editor-empty">
+              <h3>{t("settings.cli.title")}</h3>
+              <p className="muted">{t("settings.cli.loading")}</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -282,6 +311,7 @@ export function CLIAdaptersTab() {
 function AdapterRow({
   ex,
   checking,
+  selected,
   onCheck,
   onClone,
   onEdit,
@@ -290,6 +320,7 @@ function AdapterRow({
 }: {
   ex: ResolvedExecutor;
   checking: boolean;
+  selected: boolean;
   onCheck: () => void;
   onClone: () => void;
   onEdit: () => void;
@@ -301,13 +332,13 @@ function AdapterRow({
   const parsedExtraArgs = extractModelArg(ex.extraArgs);
   const model = parsedExtraArgs.model;
   return (
-    <div className="adapter-row">
+    <div className={`adapter-row${selected ? " selected" : ""}`}>
       <AgentAvatar
         adapter={ex.id}
         className="adapter-avatar"
         fallback={<span>{ex.label.slice(0, 2).toUpperCase()}</span>}
       />
-      <div className="adapter-row-main">
+      <button type="button" className="adapter-row-main" onClick={onEdit}>
         <div className="adapter-row-title">
           <strong>{ex.label}</strong>
         </div>
@@ -336,7 +367,7 @@ function AdapterRow({
             </span>
           )}
         </div>
-      </div>
+      </button>
       <div className="adapter-row-actions">
         <button type="button" onClick={onCheck} disabled={checking || installing}>
           {checking ? t("settings.cli.checking") : t("common.check")}
@@ -354,7 +385,7 @@ function AdapterRow({
             {installing ? t("common.installing") : t("common.install")}
           </button>
         )}
-        <button type="button" onClick={onEdit} disabled={checking}>
+        <button type="button" onClick={onEdit} disabled={checking || selected}>
           {t("common.edit")}
         </button>
       </div>
@@ -362,12 +393,12 @@ function AdapterRow({
   );
 }
 
-function EditOverrideDialog({
+function EditOverridePanel({
   executorId,
-  onClose
+  onResetSelection
 }: {
   executorId: string;
-  onClose: () => void;
+  onResetSelection: () => void;
 }) {
   const { t } = useTranslation();
   const resolve = useCliExecutorStore((s) => s.resolve);
@@ -394,12 +425,62 @@ function EditOverrideDialog({
       .join("\n")
   );
   const [icon, setIcon] = useState(ex?.override?.icon ?? "");
+  const adapterForConfig = ex?.baseAdapter ?? ex?.id;
+  const isCodex = adapterForConfig === "codex-acp";
+  const isClaude =
+    adapterForConfig === "claude-agent-acp" || adapterForConfig === "claude";
+  const savedCodexByok = ex?.override?.codexByok;
+  const savedClaudeByok = ex?.override?.claudeByok;
+  const savedByok = isCodex
+    ? savedCodexByok
+    : isClaude
+      ? savedClaudeByok
+      : undefined;
+  const [codexByokEnabled, setCodexByokEnabled] = useState(
+    savedByok?.enabled === true
+  );
+  const [codexProviderId, setCodexProviderId] = useState(
+    savedCodexByok?.providerId ?? "proxy"
+  );
+  const [codexProviderName, setCodexProviderName] = useState(
+    savedCodexByok?.providerName ?? "BYOK provider"
+  );
+  const [codexBaseUrl, setCodexBaseUrl] = useState(savedByok?.baseUrl ?? "");
+  const [codexEnvKey, setCodexEnvKey] = useState(
+    savedByok?.envKey ?? (isClaude ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY")
+  );
+  const [codexWireApi, setCodexWireApi] = useState<
+    NonNullable<NonNullable<CLIExecutorOverride["codexByok"]>["wireApi"]>
+  >(savedCodexByok?.wireApi ?? "responses");
+  const [codexApiKey, setCodexApiKey] = useState("");
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    setSaveStatus("idle");
+    setSaveError("");
+  }, [executorId]);
+
+  useEffect(() => {
+    if (saveStatus !== "saved") return;
+    const timer = window.setTimeout(() => setSaveStatus("idle"), 2200);
+    return () => window.clearTimeout(timer);
+  }, [saveStatus]);
 
   if (!ex) return null;
 
   const isClone = Boolean(ex.isClone);
+  const supportsByok = isCodex || isClaude;
+  const byokBaseUrlPlaceholder = isClaude
+    ? "https://api.anthropic.com"
+    : "https://api.openai.com/v1";
 
   const onSave = async () => {
+    if (saveStatus === "saving") return;
+    setSaveStatus("saving");
+    setSaveError("");
     const cleanedExtraArgs = extraArgs
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -414,6 +495,30 @@ function EditOverrideDialog({
         if (eq > 0) env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
       });
 
+    const codexByokConfig =
+      isCodex && codexByokEnabled
+        ? {
+            enabled: true,
+            providerId: codexProviderId.trim() || "proxy",
+            providerName: codexProviderName.trim() || "BYOK provider",
+            baseUrl: codexBaseUrl.trim(),
+            envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
+            wireApi: codexWireApi,
+            apiKey: codexApiKey.trim() || undefined,
+            apiKeyPreview: savedByok?.apiKeyPreview
+          }
+        : undefined;
+    const claudeByokConfig =
+      isClaude && codexByokEnabled
+        ? {
+            enabled: true,
+            baseUrl: codexBaseUrl.trim(),
+            envKey: codexEnvKey.trim() || "ANTHROPIC_API_KEY",
+            apiKey: codexApiKey.trim() || undefined,
+            apiKeyPreview: savedClaudeByok?.apiKeyPreview
+          }
+        : undefined;
+
     const override: CLIExecutorOverride = {
       id: ex.id,
       baseAdapter: ex.baseAdapter,
@@ -425,35 +530,60 @@ function EditOverrideDialog({
       extraArgs: withModelArg(cleanedExtraArgs, model),
       env: Object.keys(env).length ? env : undefined,
       icon: icon || undefined,
+      codexByok: codexByokConfig,
+      claudeByok: claudeByokConfig,
       enabled: true
     };
-    await upsert(override);
-    refreshMembers();
-    onClose();
+    try {
+      await upsert(override);
+      refreshMembers();
+      setCodexApiKey("");
+      setSaveStatus("saved");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveStatus("error");
+    }
   };
 
   const onResetOrDelete = async () => {
+    if (saveStatus === "saving") return;
+    setSaveStatus("idle");
+    setSaveError("");
     if (
       isClone &&
       !window.confirm(t("settings.cli.deleteAgentConfirm", { label: ex.label }))
     ) {
       return;
     }
-    await reset(ex.id);
-    refreshMembers();
-    onClose();
+    try {
+      await reset(ex.id);
+      refreshMembers();
+      onResetSelection();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveStatus("error");
+    }
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <header className="modal-header">
-          <h2>{t("settings.cli.editTitle", { label: ex.label })}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
-            ✕
-          </button>
-        </header>
+    <section className="adapter-editor-form">
+      <header className="adapter-editor-header">
+        <div>
+          <span className="adapter-editor-kicker">{t("common.edit")}</span>
+          <h3>{ex.label}</h3>
+        </div>
+        {ex.runtime?.installed ? (
+          <span className="adapter-status ok">
+            {t("settings.cli.installed")}
+          </span>
+        ) : (
+          <span className="adapter-status muted">
+            {t("settings.cli.notChecked")}
+          </span>
+        )}
+      </header>
 
+      <div className="adapter-editor-scroll">
         <div className="icon-picker-field">
           <span className="icon-picker-label">{t("settings.cli.avatar")}</span>
           <AvatarPicker
@@ -493,6 +623,123 @@ function EditOverrideDialog({
           />
         </label>
 
+        {supportsByok && (
+          <fieldset className="settings-fieldset">
+            <legend>{t("settings.cli.byok.title")}</legend>
+            <p className="settings-fieldset-desc">
+              {t("settings.cli.byok.description")}
+            </p>
+
+            <div className="settings-choice-group" role="group">
+              <button
+                type="button"
+                className={!codexByokEnabled ? "active" : undefined}
+                onClick={() => setCodexByokEnabled(false)}
+              >
+                {t("settings.cli.byok.modeDefault")}
+              </button>
+              <button
+                type="button"
+                className={codexByokEnabled ? "active" : undefined}
+                onClick={() => setCodexByokEnabled(true)}
+              >
+                {t("settings.cli.byok.modeCustom")}
+              </button>
+            </div>
+
+            {codexByokEnabled && (
+              <>
+                <label>
+                  {t("settings.cli.byok.baseUrl")}
+                  <input
+                    type="url"
+                    value={codexBaseUrl}
+                    placeholder={byokBaseUrlPlaceholder}
+                    onChange={(e) => setCodexBaseUrl(e.target.value)}
+                  />
+                  <span className="settings-field-hint">
+                    {t(
+                      isClaude
+                        ? "settings.cli.byok.baseUrlHintClaude"
+                        : "settings.cli.byok.baseUrlHintCodex"
+                    )}
+                  </span>
+                </label>
+                <label>
+                  {t("settings.cli.byok.apiKey")}
+                  <input
+                    type="password"
+                    value={codexApiKey}
+                    placeholder={
+                      savedByok?.apiKeyPreview ||
+                      t("settings.cli.byok.apiKeyPlaceholder")
+                    }
+                    onChange={(e) => setCodexApiKey(e.target.value)}
+                  />
+                  <span className="settings-field-hint">
+                    {savedByok?.apiKeyPreview
+                      ? t("settings.cli.byok.savedKeyHint", {
+                          preview: savedByok.apiKeyPreview
+                        })
+                      : t("settings.cli.byok.newKeyHint")}
+                  </span>
+                </label>
+
+                <details className="settings-advanced-panel">
+                  <summary>{t("settings.cli.byok.advanced")}</summary>
+                  {isCodex && (
+                    <>
+                      <label>
+                        {t("settings.cli.byok.providerId")}
+                        <input
+                          value={codexProviderId}
+                          placeholder="proxy"
+                          onChange={(e) => setCodexProviderId(e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        {t("settings.cli.byok.providerName")}
+                        <input
+                          value={codexProviderName}
+                          placeholder="OpenAI proxy"
+                          onChange={(e) => setCodexProviderName(e.target.value)}
+                        />
+                      </label>
+                    </>
+                  )}
+                  <label>
+                    {t("settings.cli.byok.envKey")}
+                    <input
+                      value={codexEnvKey}
+                      placeholder={
+                        isClaude ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY"
+                      }
+                      onChange={(e) => setCodexEnvKey(e.target.value)}
+                    />
+                  </label>
+                  {isCodex && (
+                    <label>
+                      {t("settings.cli.byok.wireApi")}
+                      <select
+                        value={codexWireApi}
+                        onChange={(e) =>
+                          setCodexWireApi(e.target.value as typeof codexWireApi)
+                        }
+                      >
+                        <option value="responses">responses</option>
+                      </select>
+                    </label>
+                  )}
+                </details>
+
+                <p className="settings-secure-note">
+                  {t("settings.cli.byok.hint")}
+                </p>
+              </>
+            )}
+          </fieldset>
+        )}
+
         <label>
           {t("settings.cli.extraArgs")}
           <textarea
@@ -519,20 +766,42 @@ function EditOverrideDialog({
             </a>
           </p>
         )}
-
-        <div className="modal-actions">
-          <button
-            className={isClone ? "danger" : undefined}
-            onClick={onResetOrDelete}
-          >
-            {isClone ? t("common.delete") : t("common.reset")}
-          </button>
-          <button onClick={onClose}>{t("common.cancel")}</button>
-          <button className="primary" onClick={onSave}>
-            {t("common.save")}
-          </button>
-        </div>
       </div>
-    </div>
+
+      <div className="adapter-editor-actions modal-actions">
+        <div className="adapter-save-feedback">
+          {saveStatus === "saved" && (
+            <span className="adapter-save-message ok" role="status">
+              {t("settings.cli.saveSuccess")}
+            </span>
+          )}
+          {saveStatus === "error" && (
+            <span className="adapter-save-message error" role="alert">
+              {t("settings.cli.saveFailed", { err: saveError })}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          className={`adapter-secondary-action${isClone ? " danger" : ""}`}
+          onClick={onResetOrDelete}
+          disabled={saveStatus === "saving"}
+        >
+          {isClone ? t("common.delete") : t("common.reset")}
+        </button>
+        <button
+          type="button"
+          className="primary"
+          onClick={onSave}
+          disabled={saveStatus === "saving"}
+        >
+          {saveStatus === "saving"
+            ? t("common.saving")
+            : saveStatus === "saved"
+              ? t("common.saved")
+              : t("common.save")}
+        </button>
+      </div>
+    </section>
   );
 }

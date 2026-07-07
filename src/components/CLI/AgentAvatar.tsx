@@ -33,7 +33,7 @@ export function AgentAvatar({
     }
     return adapter ? s.overrides[adapter]?.icon : undefined;
   });
-  const iconId = iconKey ?? getAgentIconId(adapter, storedIcon);
+  const iconId = getAgentIconId(adapter, iconKey ?? storedIcon);
   const url = iconId && !errored ? lobehubAvatarUrl(iconId) : undefined;
 
   if (!url) {

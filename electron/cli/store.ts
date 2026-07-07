@@ -43,6 +43,7 @@ export interface CLIExecutorOverride {
 
 const SAFE_STORAGE_PREFIX = "safe:";
 const FALLBACK_STORAGE_PREFIX = "base64:";
+const secretDecryptCache = new Map<string, string>();
 
 function redactApiKey(value: string): string {
   const trimmed = value.trim();
@@ -60,17 +61,23 @@ function encryptSecret(value: string): string {
 
 function decryptSecret(value: string | undefined): string | undefined {
   if (!value) return undefined;
+  const cached = secretDecryptCache.get(value);
+  if (cached !== undefined) return cached;
   try {
     if (value.startsWith(SAFE_STORAGE_PREFIX)) {
-      return safeStorage.decryptString(
+      const decrypted = safeStorage.decryptString(
         Buffer.from(value.slice(SAFE_STORAGE_PREFIX.length), "base64")
       );
+      secretDecryptCache.set(value, decrypted);
+      return decrypted;
     }
     if (value.startsWith(FALLBACK_STORAGE_PREFIX)) {
-      return Buffer.from(
+      const decrypted = Buffer.from(
         value.slice(FALLBACK_STORAGE_PREFIX.length),
         "base64"
       ).toString("utf8");
+      secretDecryptCache.set(value, decrypted);
+      return decrypted;
     }
   } catch {
     return undefined;

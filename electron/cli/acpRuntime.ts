@@ -586,6 +586,27 @@ export async function runAcpAgent({
     );
   };
 
+  const isLikelyAuthError = (err: unknown) => {
+    const e = err as Error & { code?: number };
+    if (e?.code === 401 || e?.code === 403) return true;
+    const message = String(e?.message ?? err).toLowerCase();
+    return /\b(auth|unauthorized|unauthenticated|login|credential|api key|subscription)\b/.test(
+      message
+    );
+  };
+
+  const isMissingSavedSessionError = (err: unknown) => {
+    const e = err as Error & { code?: number };
+    return e?.code === -32002 && /resource not found/i.test(e.message ?? "");
+  };
+
+  const savedSessionUnavailableError = (sessionId: string, err: unknown) => {
+    const message = (err as Error)?.message || String(err);
+    return new Error(
+      `Saved agent session is no longer available (${sessionId}). The agent returned: ${message}. Start a new conversation or choose a workspace and retry so FreeBuddy can create a fresh agent session.`
+    );
+  };
+
   try {
     const init = await request(buildInitializeRequest(nextId()));
     agentCaps = init?.agentCapabilities ?? {};
@@ -595,7 +616,12 @@ export async function runAcpAgent({
       await establishSession();
     } catch (sessionErr) {
       // The agent advertised auth methods and rejected session creation.
-      if (!finished && authMethods.length > 0) throw authRequiredError(authMethods);
+      if (!finished && authMethods.length > 0 && isLikelyAuthError(sessionErr)) {
+        throw authRequiredError(authMethods);
+      }
+      if (!finished && toolSessionId && isMissingSavedSessionError(sessionErr)) {
+        throw savedSessionUnavailableError(toolSessionId, sessionErr);
+      }
       throw sessionErr;
     }
 

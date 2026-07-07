@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import { buildCommand, cliAdapterDefinitions } from "../dist-electron/cli/adapters.js";
 import {
@@ -15,6 +16,11 @@ import {
   shouldEmitAcpUpdate,
   shouldSkipUserMessageChunk
 } from "../dist-electron/cli/acp.js";
+
+const acpRuntimeSource = fs.readFileSync(
+  new URL("../electron/cli/acpRuntime.ts", import.meta.url),
+  "utf8"
+);
 
 test("buildCommand starts OpenCode through its ACP server", () => {
   const built = buildCommand({
@@ -275,6 +281,20 @@ test("buildSessionLoadRequest loads Cursor-style ACP sessions", () => {
       mcpServers: []
     }
   });
+});
+
+test("ACP runtime reports missing saved sessions separately from auth failures", () => {
+  assert.match(acpRuntimeSource, /Saved agent session is no longer available/);
+  assert.match(acpRuntimeSource, /function isLikelyAuthError|const isLikelyAuthError/);
+  assert.match(
+    acpRuntimeSource,
+    /authMethods\.length > 0 && isLikelyAuthError\(sessionErr\)/
+  );
+  assert.match(
+    acpRuntimeSource,
+    /toolSessionId && isMissingSavedSessionError\(sessionErr\)/
+  );
+  assert.doesNotMatch(acpRuntimeSource, /authMethods\.length > 0\) throw authRequiredError/);
 });
 
 test("parseAcpLine parses JSON-RPC messages and ignores blank lines", () => {

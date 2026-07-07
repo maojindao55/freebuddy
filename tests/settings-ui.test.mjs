@@ -108,6 +108,9 @@ test("coding agent runtime stores Claude BYOK separately from Codex BYOK", () =>
   assert.equal(electronStoreSource.includes("codex-wrappers"), true);
   assert.equal(electronStoreSource.includes("readCodexModelTemplate"), true);
   assert.equal(electronStoreSource.includes("readOverrideExtraArgs"), true);
+  assert.equal(electronStoreSource.includes("secretDecryptCache"), true);
+  assert.match(electronStoreSource, /secretDecryptCache\.get\(value\)/);
+  assert.match(electronStoreSource, /secretDecryptCache\.set\(value, decrypted\)/);
   assert.equal(electronRuntimeSource.includes("resolveCliByokEnv"), true);
 });
 

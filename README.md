@@ -1,70 +1,88 @@
 # FreeBuddy
 
 <p align="center">
-  <a href="https://github.com/maojindao55/freebuddy/stargazers"><img src="https://img.shields.io/github/stars/maojindao55/freebuddy?style=social" alt="GitHub Stars"></a>
-  <a href="https://github.com/maojindao55/freebuddy/releases"><img src="https://img.shields.io/github/downloads/maojindao55/freebuddy/total?style=social" alt="Downloads"></a>
-  <a href="https://github.com/maojindao55/freebuddy/blob/main/LICENSE"><img src="https://img.shields.io/github/license/maojindao55/freebuddy?style=flat-square&color=blue" alt="License"></a>
-  <img src="https://img.shields.io/badge/Electron-25.0+-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron">
-  <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite">
-  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <a href="https://freebuddy.dev"><img src="assets/logo.png" alt="FreeBuddy Logo" width="120"></a>
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/freebuddy"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://twitter.com/freebuddy"><img src="https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white" alt="X(Twitter)"></a>
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-<p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | <a href="README.es.md">Español</a>
-</p>
+**A local-first desktop workspace for coding agents.** ⚡
 
-**A local-first desktop workspace for coding agents.** ⚡️
+Run Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy side-by-side — each in its own workspace, tracked in one place.
 
-<p align="center">
-  <a href="https://www.bilibili.com/video/BV1zQTp6HERQ/" target="_blank">
-    <img src="assets/video-poster.jpg" width="960px" alt="FreeBuddy Demo Video" style="border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);">
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/maojindao55/freebuddy/releases/latest"><strong>⬇️ Download FreeBuddy</strong></a>
-</p>
+### [⬇️ Download FreeBuddy](https://github.com/maojindao55/freebuddy/releases/latest)
 
 ---
 
-## 🚀 Why FreeBuddy?
+## Features
 
-FreeBuddy turns tools like **Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy** into first-class teammates inside one focused desktop app.
+### Multi-Agent Support
 
-AI coding tools are most useful when they can work where your code already lives, keep context across follow-up turns, and show what they are doing while they do it. FreeBuddy wraps that workflow in a calm desktop interface:
+Switch between Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy without rebuilding your workflow around each CLI.
 
-- **🤖 One workspace for many agents** — switch between Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy without rebuilding your workflow around each CLI.
-- **📁 Local project context** — start from a real workdir, send prompts with file attachments, and keep the conversation tied to the codebase that matters.
-- **🔍 Transparent execution** — assistant messages, tool calls, commands, file edits, usage, stderr, and errors render live as structured task events.
-- **🔄 Session continuity** — follow-up turns can resume the saved tool session for the same `(agent, workspace)` pair, so iterative work does not restart from zero.
-- **💾 Local-first storage** — task history, runtime checks, overrides, sessions, and logs live on your machine.
-- **🔌 Agent Client Protocol inside** — FreeBuddy uses ACP as the product-facing runtime layer so the UI can focus on agents and tasks rather than protocol glue.
+[Learn more →](#-built-in-agents)
+
+### Structured Task Stream
+
+Watch assistant messages, tool calls, commands, file edits, usage, stderr, and errors unfold as auditable events in real-time.
+
+[Task Stream Docs →](https://github.com/maojindao55/freebuddy/wiki/task-stream)
+
+### Session Resume
+
+Resume previous tool sessions for iterative work without losing context. The same `(agent, workspace)` pair remembers your conversation.
+
+[Session Docs →](https://github.com/maojindao55/freebuddy/wiki/sessions)
+
+### File Attachments
+
+Drag and drop files, images, and documents directly into prompts. The agent reasons with that context automatically.
+
+[Attachments Docs →](https://github.com/maojindao55/freebuddy/wiki/attachments)
+
+### Agent Bridge
+
+Let agents call back to FreeBuddy for previews, notifications, and more. Built-in local HTTP server (port 17878) for agent-to-app communication.
+
+[Bridge Docs →](https://github.com/maojindao55/freebuddy/wiki/agent-bridge)
+
+### Workflow Teams
+
+Orchestrate multi-agent workflows with team templates. Run Codex for implementation, ClaudeCode for review, and Kimi for testing — all in parallel.
+
+[Workflows Docs →](https://github.com/maojindao55/freebuddy/wiki/workflows)
+
+### Local-First Storage
+
+All data lives on your machine — task history, runtime checks, overrides, sessions, and logs. No cloud dependency.
+
+[Storage Docs →](https://github.com/maojindao55/freebuddy/wiki/storage)
+
+### ACP Protocol Native
+
+FreeBuddy uses ACP (Agent Client Protocol) as the product-facing runtime layer. The UI focuses on agents and tasks rather than protocol glue.
+
+[ACP Docs →](https://www.codebuddy.cn/docs/cli/acp)
+
+### Quick Open (Command Palette)
+
+Global search across worktrees, files, agents, commands, and repository context. Never interrupt your workflow.
+
+[Quick Open Docs →](https://github.com/maojindao55/freebuddy/wiki/quick-open)
+
+### Account Switching & Usage Tracking
+
+Real-time view of Claude, Codex usage and rate limit reset times. Hot-switch accounts without re-login.
+
+[Usage Docs →](https://github.com/maojindao55/freebuddy/wiki/usage-tracking)
 
 ---
 
-## ✨ Core Features
+## Built-In Agents
 
-| Feature | Description | Docs |
-|---------|-------------|------|
-| **Multi-Agent Support** | Run Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy side by side | [Agents →](#-built-in-agents) |
-| **Structured Task Stream** | Watch assistant messages, tool calls, commands, and file edits unfold as auditable events | [Task Stream →]() |
-| **Session Resume** | Resume previous tool sessions for iterative work without losing context | [Sessions →]() |
-| **File Attachments** | Drag and drop files, images, and documents into prompts | [Attachments →]() |
-| **Agent Bridge** | Let agents call back to FreeBuddy for previews, notifications, and more | [Bridge →]() |
-| **Workflow Teams** | Orchestrate multi-agent workflows with team templates | [Workflows →]() |
-| **Local-First** | All data stored locally in SQLite — no cloud dependency | [Storage →]() |
-| **ACP Protocol** | Native support for Agent Client Protocol (ACP) | [ACP Docs →](https://www.codebuddy.cn/docs/cli/acp) |
-
----
-
-## 📦 Built-In Agents
-
-FreeBuddy supports **all CLI-based AI coding tools**. Currently adapted agents:
+FreeBuddy is compatible with **all CLI-based AI coding tools**. Currently adapted agents:
 
 | Agent | Command | Install | Status |
 |--------|---------|--------|--------|
@@ -88,37 +106,11 @@ Open **Settings → Coding Agents** to:
 
 ---
 
-## 🎯 What You Can Do
+## Install
 
-- 🔍 **Analyze repositories** before touching risky changes
-- 🐛 **Send bug reports, logs, screenshots, or design notes** as attachments
-- 🚀 **Run implementation, review, and debugging tasks** from the same desktop surface
-- ⚖️ **Compare how different local agents** approach the same codebase
-- 🔄 **Resume previous tool sessions** when a feature needs several rounds of work
-- 📜 **Keep a readable history** of what happened, which agent ran, and which workspace it acted on
+### Desktop (macOS / Windows / Linux)
 
----
-
-## 💻 Desktop Capabilities
-
-FreeBuddy uses Electron because coding-agent work needs more than a browser tab:
-
-- ✅ Access to local files and workspace directories
-- ✅ Local agent processes
-- ✅ Terminal-style execution streams
-- ✅ Persistent task history and JSONL logs
-- ✅ Runtime checks and per-agent configuration
-- ✅ Permission prompts and task interruption
-
-> 💡 **Tip:** The browser preview is useful for visual iteration, but only the desktop app can reach the CLI bridge.
-
----
-
-## 🛠️ Quick Start
-
-### 1. Download & Install
-
-Download the latest release for your platform:
+**Quick download:** [FreeBuddy Releases](https://github.com/maojindao55/freebuddy/releases/latest)
 
 | Platform | Download | Package Manager |
 |----------|---------|----------------|
@@ -127,76 +119,43 @@ Download the latest release for your platform:
 | **Windows** | `.exe` installer | - |
 | **Linux** | `.AppImage` | AUR: `yay -S freebuddy-bin` |
 
-👉 **[Download Latest Release →](https://github.com/maojindao55/freebuddy/releases/latest)**
+### Build from Source
 
-### 2. Run FreeBuddy
-
-1. Open FreeBuddy
-2. Choose a coding agent
-3. Select a workspace directory (or leave unset for general tasks)
-4. Type a prompt, optionally attach local files, and start the task
-5. Follow the live stream of messages, commands, edits, usage, and errors
-6. Continue the conversation later with the same agent and workspace context
-
----
-
-## 🏗️ Build from Source
-
-### Prerequisites
-
-- Node.js 18+
-- npm 9+
-
-### Install Dependencies
+Prerequisites: Node.js 18+, npm 9+
 
 ```bash
+# Clone the repo
+git clone https://github.com/maojindao55/freebuddy.git
+cd freebuddy
+
+# Install dependencies
 npm install
-```
 
-`postinstall` runs `electron-rebuild` for `better-sqlite3` so the native binding matches your Electron version.
-
-### Run the Desktop App (Dev Mode)
-
-```bash
+# Run in dev mode
 npm run dev
-```
 
-### Build for Production
-
-```bash
+# Build for production
 npm run build
 npm run start
 ```
 
-### Browser Preview (Limited)
-
-```bash
-npm run preview
-```
-
-> ⚠️ **Note:** The browser preview cannot reach the CLI bridge; it is only useful for visual iteration.
+> **Note:** `postinstall` runs `electron-rebuild` for `better-sqlite3` so the native binding matches your Electron version.
 
 ---
 
-## 📂 Storage
-
-State lives under `<userData>/freebuddy/`:
-
-- `freebuddy.db` — SQLite database for executor overrides, tasks, runtimes, conversations, messages, and tool sessions
-- `cli-logs/<sessionId>.jsonl` — per-task JSONL log
-
----
-
-## 🤝 Community & Support
+## Community & Support
 
 - 💬 **Discord:** [Join our community](https://discord.gg/freebuddy)
 - 🐦 **X (Twitter):** [@freebuddy](https://twitter.com/freebuddy)
 - 🐛 **Issues:** [Report bugs or request features](https://github.com/maojindao55/freebuddy/issues)
 - 📖 **Wiki:** [Documentation](https://github.com/maojindao55/freebuddy/wiki)
+- 🔒 **Privacy:** [Telemetry & Data Collection](https://github.com/maojindao55/freebuddy/wiki/privacy)
+
+**Support this project:** ⭐ [Star the repo](https://github.com/maojindao55/freebuddy) to follow daily updates!
 
 ---
 
-## 🔮 Roadmap
+## Roadmap
 
 - [ ] Mobile companion app (like Orca)
 - [ ] Terminal split-screen (built-in terminal)
@@ -211,7 +170,7 @@ State lives under `<userData>/freebuddy/`:
 
 ---
 
-## 👥 Contributing
+## Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) before getting started.
 
@@ -223,21 +182,9 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 ---
 
-## 📄 License
+## License
 
 FreeBuddy is [MIT licensed](LICENSE).
-
----
-
-## ⭐️ Star History
-
-<a href="https://star-history.com/#maojindao55/freebuddy&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=maojindao55/freebuddy&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=maojindao55/freebuddy&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=maojindao55/freebuddy&type=Date" />
-  </picture>
-</a>
 
 ---
 

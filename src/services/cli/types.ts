@@ -22,7 +22,7 @@ export interface CLICodexByokConfig {
   providerName?: string;
   baseUrl?: string;
   envKey?: string;
-  wireApi?: "responses";
+  wireApi?: "responses" | "chat";
   apiKey?: string;
   apiKeyPreview?: string;
 }

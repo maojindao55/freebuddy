@@ -110,6 +110,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     installHint: "curl -fsSL https://qoder.com/install | bash",
     docsUrl: "https://docs.qoder.com/en/cli/acp",
     protocol: "acp"
+  },
+  {
+    id: "codebuddy-acp",
+    label: "CodeBuddy",
+    defaultBinary: "codebuddy",
+    streamMode: "raw",
+    commandGroup: "codebuddy",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g @tencent-ai/codebuddy-code",
+    docsUrl: "https://www.codebuddy.cn/docs/cli/acp",
+    protocol: "acp"
   }
 ];
 

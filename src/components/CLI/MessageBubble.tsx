@@ -911,6 +911,7 @@ export const MessageBubble = memo(function MessageBubble({
     <div className="msg msg-assistant">
       <AgentAvatar
         adapter={message.adapter ?? adapter}
+        agentId={message.agentId}
         className="msg-avatar agent-avatar"
         fallback={<span>✦</span>}
       />

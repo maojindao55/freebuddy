@@ -98,6 +98,16 @@ test("coding agent runtime stores Claude BYOK separately from Codex BYOK", () =>
   assert.equal(electronStoreSource.includes("resolveClaudeByokEnv"), true);
   assert.equal(electronStoreSource.includes("ANTHROPIC_API_KEY"), true);
   assert.equal(electronStoreSource.includes("ANTHROPIC_BASE_URL"), true);
+  assert.equal(
+    electronStoreSource.includes("model_supports_reasoning_summaries"),
+    true
+  );
+  assert.equal(electronStoreSource.includes("model_catalog_json"), true);
+  assert.equal(electronStoreSource.includes("codex-model-catalogs"), true);
+  assert.equal(electronStoreSource.includes("CODEX_PATH"), true);
+  assert.equal(electronStoreSource.includes("codex-wrappers"), true);
+  assert.equal(electronStoreSource.includes("readCodexModelTemplate"), true);
+  assert.equal(electronStoreSource.includes("readOverrideExtraArgs"), true);
   assert.equal(electronRuntimeSource.includes("resolveCliByokEnv"), true);
 });
 

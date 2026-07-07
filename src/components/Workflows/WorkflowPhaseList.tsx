@@ -77,6 +77,7 @@ export function WorkflowPhaseList({
           )}
           <AgentAvatar
             adapter={step.adapter}
+            agentId={step.agentId}
             className="workflow-step-agent-avatar"
             fallback={<span>{agentLabel.slice(0, 2).toUpperCase()}</span>}
           />

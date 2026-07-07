@@ -1,6 +1,9 @@
 import { safeStorage } from "electron";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { CLIAdapterId } from "./adapters.js";
-import { getDb } from "./db.js";
+import { getDataDir, getDb } from "./db.js";
 
 export interface CLICodexByokConfig {
   enabled?: boolean;
@@ -73,6 +76,167 @@ function decryptSecret(value: string | undefined): string | undefined {
     return undefined;
   }
   return undefined;
+}
+
+function readOverrideExtraArgs(id: string): string[] {
+  const row = getDb()
+    .prepare(`SELECT extra_args FROM cli_executor_overrides WHERE id = ?`)
+    .get(id) as { extra_args: string | null } | undefined;
+  if (!row?.extra_args) return [];
+  try {
+    const parsed = JSON.parse(row.extra_args);
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function extractModelArg(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "-m" || arg === "--model") {
+      const model = args[i + 1]?.trim();
+      if (model) return model;
+      continue;
+    }
+    if (arg.startsWith("--model=")) {
+      const model = arg.slice("--model=".length).trim();
+      if (model) return model;
+    }
+    if (arg === "-c" || arg === "--config") {
+      const model = extractModelFromConfigPair(args[i + 1]);
+      if (model) return model;
+      i += args[i + 1] ? 1 : 0;
+      continue;
+    }
+    if (arg.startsWith("-c=") || arg.startsWith("--config=")) {
+      const model = extractModelFromConfigPair(arg.slice(arg.indexOf("=") + 1));
+      if (model) return model;
+    }
+  }
+  return undefined;
+}
+
+function extractModelFromConfigPair(pair: string | undefined): string | undefined {
+  if (!pair) return undefined;
+  const eq = pair.indexOf("=");
+  if (eq <= 0 || pair.slice(0, eq).trim() !== "model") return undefined;
+  const raw = pair.slice(eq + 1).trim();
+  const quoted = raw.match(/^(['"])(.*)\1$/);
+  return (quoted ? quoted[2] : raw).trim() || undefined;
+}
+
+function shouldCreateCodexModelCatalog(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized) return false;
+  return !/^(gpt-|o[1345](?:-|$)|openai[/:])/.test(normalized);
+}
+
+function safeCatalogFilePart(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64url").slice(0, 80);
+}
+
+function readCodexModelTemplate(): Record<string, unknown> | undefined {
+  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+  const cacheFile = path.join(codexHome, "models_cache.json");
+  try {
+    const parsed = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    const models = Array.isArray(parsed?.models) ? parsed.models : [];
+    return (
+      models.find((entry: any) => entry?.slug === "gpt-5.4") ??
+      models.find((entry: any) => entry?.slug === "gpt-5.5") ??
+      models[0]
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function fallbackCodexModelTemplate(): Record<string, unknown> {
+  return {
+    default_reasoning_level: "medium",
+    supported_reasoning_levels: [
+      { effort: "low", description: "Fast responses" },
+      { effort: "medium", description: "Balanced responses" },
+      { effort: "high", description: "Deeper reasoning" }
+    ],
+    shell_type: "shell_command",
+    visibility: "list",
+    supported_in_api: true,
+    priority: 0,
+    additional_speed_tiers: [],
+    service_tiers: [],
+    base_instructions:
+      "You are Codex, a coding agent. Help the user with software engineering tasks, inspect the workspace before making changes, keep edits focused, and verify your work with relevant checks.",
+    supports_reasoning_summaries: true,
+    default_reasoning_summary: "none",
+    support_verbosity: true,
+    default_verbosity: "low",
+    apply_patch_tool_type: "freeform",
+    web_search_tool_type: "text_and_image",
+    truncation_policy: { mode: "tokens", limit: 10000 },
+    supports_parallel_tool_calls: true,
+    supports_image_detail_original: true,
+    context_window: 128000,
+    max_context_window: 128000,
+    effective_context_window_percent: 95,
+    experimental_supported_tools: [],
+    input_modalities: ["text"],
+    supports_search_tool: false,
+    use_responses_lite: false
+  };
+}
+
+function createCodexByokModelCatalog(model: string): string | undefined {
+  if (!shouldCreateCodexModelCatalog(model)) return undefined;
+  const trimmed = model.trim();
+  const template = readCodexModelTemplate() ?? fallbackCodexModelTemplate();
+  const catalog = {
+    models: [
+      {
+        ...template,
+        slug: trimmed,
+        display_name: trimmed,
+        description: "Custom BYOK model",
+        supported_in_api: true,
+        visibility: "list",
+        supports_reasoning_summaries: true
+      }
+    ]
+  };
+  const dir = path.join(getDataDir(), "codex-model-catalogs");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${safeCatalogFilePart(trimmed)}.json`);
+  fs.writeFileSync(file, JSON.stringify(catalog, null, 2), "utf8");
+  return file;
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function createCodexAppServerWrapper(
+  modelCatalogPath: string
+): string | undefined {
+  const dir = path.join(getDataDir(), "codex-wrappers");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${safeCatalogFilePart(modelCatalogPath)}.sh`);
+  const catalogArg = `model_catalog_json=${JSON.stringify(modelCatalogPath)}`;
+  const script = `#!/bin/sh
+catalog_arg=${shellSingleQuote(catalogArg)}
+for candidate in "$FREEBUDDY_CODEX_BIN" "$(command -v codex 2>/dev/null)" "/opt/homebrew/bin/codex" "/usr/local/bin/codex"; do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    exec "$candidate" "$@" -c "$catalog_arg"
+  fi
+done
+echo "FreeBuddy Codex BYOK wrapper could not find the codex binary." >&2
+exit 127
+`;
+  fs.writeFileSync(file, script, { encoding: "utf8", mode: 0o755 });
+  fs.chmodSync(file, 0o755);
+  return file;
 }
 
 function readByokPublic<T extends { apiKey?: string; apiKeyEncrypted?: string }>(
@@ -252,8 +416,16 @@ export function resolveCodexByokEnv(
   const apiKey = decryptSecret(byok.apiKeyEncrypted);
   const providerId = byok.providerId?.trim() || "proxy";
   const envKey = byok.envKey?.trim() || "OPENAI_API_KEY";
+  const model = extractModelArg(readOverrideExtraArgs(overrideId));
+  const modelCatalogPath = model
+    ? createCodexByokModelCatalog(model)
+    : undefined;
+  const codexPath = modelCatalogPath
+    ? createCodexAppServerWrapper(modelCatalogPath)
+    : undefined;
   const config: Record<string, unknown> = {
     model_provider: providerId,
+    model_supports_reasoning_summaries: true,
     model_providers: {
       [providerId]: {
         name: byok.providerName?.trim() || "BYOK provider",
@@ -261,12 +433,14 @@ export function resolveCodexByokEnv(
         env_key: envKey,
         wire_api: byok.wireApi || "responses"
       }
-    }
+    },
+    ...(modelCatalogPath ? { model_catalog_json: modelCatalogPath } : {})
   };
   const env: Record<string, string> = {
     CODEX_CONFIG: JSON.stringify(config),
     MODEL_PROVIDER: providerId
   };
+  if (codexPath) env.CODEX_PATH = codexPath;
   if (apiKey) env[envKey] = apiKey;
   return env;
 }

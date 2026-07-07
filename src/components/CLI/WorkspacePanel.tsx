@@ -275,6 +275,7 @@ export function WorkspacePanel({
           <div className="agent-lockup">
             <AgentAvatar
               adapter={active?.adapter}
+              agentId={active?.agentId}
               className="agent-avatar"
               fallback={
                 <span>

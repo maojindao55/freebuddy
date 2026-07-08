@@ -37,7 +37,21 @@ Run Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy side-by-side
 
 ## Built-In Agents
 
-FreeBuddy is compatible with **all CLI-based AI coding tools**. Currently adapted agents:
+FreeBuddy is compatible with **all CLI-based AI coding tools** — if it runs in a terminal, it runs in FreeBuddy.
+
+<p>
+  <a href="https://www.npmjs.com/package/@agentclientprotocol/codex-acp"><kbd><img src="https://www.google.com/s2/favicons?domain=openai.com&sz=64" alt="Codex logo" width="16" valign="middle" /> Codex</kbd></a> &nbsp;
+  <a href="https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp"><kbd><img src="https://www.google.com/s2/favicons?domain=anthropic.com&sz=64" alt="ClaudeCode logo" width="16" valign="middle" /> ClaudeCode</kbd></a> &nbsp;
+  <a href="https://www.npmjs.com/package/opencode-ai"><kbd><img src="https://www.google.com/s2/favicons?domain=opencode.ai&sz=64" alt="OpenCode logo" width="16" valign="middle" /> OpenCode</kbd></a> &nbsp;
+  <a href="https://cursor.com/install"><kbd><img src="https://www.google.com/s2/favicons?domain=cursor.com&sz=64" alt="Cursor logo" width="16" valign="middle" /> Cursor</kbd></a> &nbsp;
+  <a href="https://code.kimi.com"><kbd><img src="https://www.google.com/s2/favicons?domain=moonshot.cn&sz=64" alt="Kimi logo" width="16" valign="middle" /> Kimi</kbd></a> &nbsp;
+  <a href="https://qoder.com/install"><kbd><img src="https://www.google.com/s2/favicons?domain=qoder.com&sz=64" alt="Qoder logo" width="16" valign="middle" /> Qoder</kbd></a> &nbsp;
+  <a href="https://www.npmjs.com/package/@tencent-ai/codebuddy-code"><kbd><img src="https://www.google.com/s2/favicons?domain=cloud.tencent.com&sz=64" alt="CodeBuddy logo" width="16" valign="middle" /> CodeBuddy</kbd></a> &nbsp;
+  <kbd>+ any CLI agent</kbd>
+</p>
+
+<details>
+<summary>Install commands</summary>
 
 | Agent | Command | Install | Status |
 |--------|---------|--------|--------|
@@ -48,7 +62,8 @@ FreeBuddy is compatible with **all CLI-based AI coding tools**. Currently adapte
 | **Kimi** | `kimi` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` | ✅ |
 | **Qoder** | `qodercli` | `curl -fsSL https://qoder.com/install \| bash` | ✅ |
 | **CodeBuddy** | `codebuddy` | `npm install -g @tencent-ai/codebuddy-code` | 🆕 |
-| **Your CLI** | *any* | *any* | ✅ |
+
+</details>
 
 > **New:** CodeBuddy Code is now supported! Read the [ACP integration docs](https://www.codebuddy.cn/docs/cli/acp).
 
@@ -107,21 +122,6 @@ npm run start
 - 🔒 **Privacy:** [Telemetry & Data Collection](https://github.com/maojindao55/freebuddy/wiki/privacy)
 
 **Support this project:** ⭐ [Star the repo](https://github.com/maojindao55/freebuddy) to follow daily updates!
-
----
-
-## Roadmap
-
-- [ ] Mobile companion app (like Orca)
-- [ ] Terminal split-screen (built-in terminal)
-- [ ] Design mode (click-to-inspect UI elements)
-- [ ] GitHub & Linear native integration
-- [ ] SSH worktrees (remote server support)
-- [ ] AI code diff annotations
-- [ ] File drag-to-agent
-- [ ] FreeBuddy CLI (scriptable workflows)
-
-👉 **[View full roadmap →](https://github.com/maojindao55/freebuddy/projects)**
 
 ---
 

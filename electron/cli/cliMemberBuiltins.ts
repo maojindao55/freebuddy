@@ -48,5 +48,11 @@ export const builtinCliMembers: CLIMember[] = [
     name: "Qoder",
     enabled: true,
     cli: { adapter: "qoder-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-codebuddy-acp",
+    name: "CodeBuddy",
+    enabled: true,
+    cli: { adapter: "codebuddy-acp", approvalMode: "auto", showStderr: true }
   }
 ];

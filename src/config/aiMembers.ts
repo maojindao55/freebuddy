@@ -72,5 +72,14 @@ export const builtinCliMembers: CLIMember[] = [
     source: "builtin",
     enabled: true,
     cli: { adapter: "qoder-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-codebuddy-acp",
+    kind: "cli",
+    name: "CodeBuddy",
+    description: "Local CodeBuddy coding agent.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "codebuddy-acp", approvalMode: "auto", showStderr: true }
   }
 ];

@@ -72,7 +72,8 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "opencode-acp", label: "OpenCode", protocol: "acp" },
       { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" },
       { id: "kimi-acp", label: "Kimi", protocol: "acp" },
-      { id: "qoder-acp", label: "Qoder", protocol: "acp" }
+      { id: "qoder-acp", label: "Qoder", protocol: "acp" },
+      { id: "codebuddy-acp", label: "CodeBuddy", protocol: "acp" }
     ]
   );
 });

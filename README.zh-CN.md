@@ -119,13 +119,7 @@ npm run start
 
 ## 社区与支持
 
-- 💬 **Discord：** [加入我们的社区](https://discord.gg/freebuddy)
-- 🐦 **X (Twitter):** [@freebuddy](https://twitter.com/freebuddy)
-- 🐛 **问题反馈：** [报告 Bug 或请求新功能](https://github.com/maojindao55/freebuddy/issues)
-- 📖 **Wiki：** [文档](https://github.com/maojindao55/freebuddy/wiki)
-- 🔒 **隐私：** [遥测与数据收集](https://github.com/maojindao55/freebuddy/wiki/privacy)
-
-**支持这个项目：** ⭐ [给仓库点 Star](https://github.com/maojindao55/freebuddy) 以关注每日更新！
+- 🐧 **QQ群：** [点击链接加入群聊](https://qm.qq.com/q/Lgu4uyIWCC)
 
 ---
 

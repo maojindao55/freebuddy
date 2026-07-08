@@ -1,16 +1,21 @@
 # FreeBuddy
 
 <p align="center">
-  <a href="https://freebuddy.dev"><img src="assets/logo.png" alt="FreeBuddy Logo" width="120"></a>
+  <a href=""><img src="assets/app-icon.png" alt="FreeBuddy Logo" width="120"></a>
 </p>
 
 <p align="center">
   <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-**A local-first desktop workspace for coding agents.** ⚡
+**A desktop workbench for local coding agents.** ⚡
 
-Run Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy side-by-side — each in its own workspace, tracked in one place.
+Use Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy side by side in one interface — each agent runs in its own workspace, with all tasks tracked in one place. Two modes are supported:
+* **Normal Mode**
+![hero](assets/fbd-hero.png)
+
+* **Team Execution Mode (Multi-Agent Collaboration)**
+![Task Flow](assets/fbd-hero2.png)
 
 ### [⬇️ Download FreeBuddy](https://github.com/maojindao55/freebuddy/releases/latest)
 
@@ -18,20 +23,22 @@ Run Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy side-by-side
 
 ## Features
 
-| Feature | Description | Screenshot |
-|---------|-------------|-------------|
-| **Multi-Agent Support** | Switch between Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy without rebuilding your workflow around each CLI. | ![Multi-Agent](assets/features/multi-agent.gif) |
-| **Structured Task Stream** | Watch assistant messages, tool calls, commands, file edits, usage, stderr, and errors unfold as auditable events in real-time. | ![Task Stream](assets/features/task-stream.gif) |
-| **Session Resume** | Resume previous tool sessions for iterative work without losing context. The same `(agent, workspace)` pair remembers your conversation. | ![Session](assets/features/session-resume.gif) |
-| **File Attachments** | Drag and drop files, images, and documents directly into prompts. The agent reasons with that context automatically. | ![Attachments](assets/features/attachments.gif) |
-| **Agent Bridge** | Let agents call back to FreeBuddy for previews, notifications, and more. Built-in local HTTP server (port 17878). | ![Bridge](assets/features/agent-bridge.gif) |
-| **Workflow Teams** | Orchestrate multi-agent workflows with team templates. Run Codex for implementation, ClaudeCode for review — all in parallel. | ![Workflows](assets/features/workflow-teams.gif) |
-| **Local-First Storage** | All data lives on your machine — task history, runtimes, sessions, and logs. No cloud dependency. | ![Storage](assets/features/local-storage.gif) |
-| **ACP Protocol Native** | FreeBuddy uses ACP as the product-facing runtime layer. The UI focuses on agents and tasks rather than protocol glue. | ![ACP](assets/features/acp-protocol.gif) |
-| **Quick Open** | Global search across worktrees, files, agents, commands, and repository context. Never interrupt your workflow. | ![Quick Open](assets/features/quick-open.gif) |
-| **Usage Tracking** | Real-time view of Claude, Codex usage and rate limit reset times. Hot-switch accounts without re-login. | ![Usage](assets/features/usage-tracking.gif) |
+| Feature | Description | Demo |
+|---------|-------------|------|
+| **Multi-Agent Support** | Automatically detects locally installed agents | ![Multi-Agent](assets/FreeBuddy-multi-agents.gif) |
+| **BYOK Support** | Codex and ClaudeCode support BYOK — use third-party or proxy APIs | ![BYOK](assets/FreeBuddy-BYOK.gif) |
+| **Codex Usage Card** | Real-time view of Codex usage and rate limit reset times. Hot-switch accounts without re-login. | ![Usage Card](assets/FreeBuddy-limit-card.gif) |
 
-> 📸 **Screenshots coming soon!** GIFs will be added in the next release.
+### 🎬 Workflow Teams
+Orchestrate multi-agent workflows with team templates. Run Codex for implementation, ClaudeCode for review, Kimi for testing — all in parallel.
+
+https://github.com/user-attachments/assets/9665bf24-9150-4ffa-b571-10eece2d2062
+
+### 📰 FeedRSS Card
+Stay up to date with the latest news while waiting for agents to finish executing.
+
+https://github.com/user-attachments/assets/380965e3-d4eb-4ad1-bb0d-ded33c5272e9
+
 
 ---
 
@@ -46,14 +53,14 @@ FreeBuddy is compatible with **all CLI-based AI coding tools** — if it runs in
   <a href="https://cursor.com/install"><kbd><img src="https://www.google.com/s2/favicons?domain=cursor.com&sz=64" alt="Cursor logo" width="16" valign="middle" /> Cursor</kbd></a> &nbsp;
   <a href="https://code.kimi.com"><kbd><img src="https://www.google.com/s2/favicons?domain=moonshot.cn&sz=64" alt="Kimi logo" width="16" valign="middle" /> Kimi</kbd></a> &nbsp;
   <a href="https://qoder.com/install"><kbd><img src="https://www.google.com/s2/favicons?domain=qoder.com&sz=64" alt="Qoder logo" width="16" valign="middle" /> Qoder</kbd></a> &nbsp;
-  <a href="https://www.npmjs.com/package/@tencent-ai/codebuddy-code"><kbd><img src="https://www.google.com/s2/favicons?domain=cloud.tencent.com&sz=64" alt="CodeBuddy logo" width="16" valign="middle" /> CodeBuddy</kbd></a> &nbsp;
+  <a href="https://www.npmjs.com/package/@tencent-ai/codebuddy-code"><kbd><img src="https://www.google.com/s2/favicons?domain=codebuddy.cn&sz=64" alt="CodeBuddy logo" width="16" valign="middle" /> CodeBuddy</kbd></a> &nbsp;
   <kbd>+ any CLI agent</kbd>
 </p>
 
 <details>
-<summary>Install commands</summary>
+<summary>Installation Commands</summary>
 
-| Agent | Command | Install | Status |
+| Agent | Command | Installation | Status |
 |--------|---------|--------|--------|
 | **Codex** | `codex-acp` | `npm install -g --force @agentclientprotocol/codex-acp` | ✅ |
 | **ClaudeCode** | `claude-agent-acp` | `npm install -g @agentclientprotocol/claude-agent-acp` | ✅ |
@@ -65,63 +72,54 @@ FreeBuddy is compatible with **all CLI-based AI coding tools** — if it runs in
 
 </details>
 
-> **New:** CodeBuddy Code is now supported! Read the [ACP integration docs](https://www.codebuddy.cn/docs/cli/acp).
-
 Open **Settings → Coding Agents** to:
 - ✅ Check installed runtimes
-- 📥 Run the recommended install command
-- ⚙️ Customize binary path, model, extra arguments
+- 📥 Run recommended install commands
+- ⚙️ Customize binary paths, models, and extra arguments
 - 🌐 Configure environment variables
-- 🎨 Choose an agent avatar
+- 🎨 Choose agent avatars
 
 ---
 
-## Install
+## Installation
 
 ### Desktop (macOS / Windows / Linux)
 
-**Quick download:** [FreeBuddy Releases](https://github.com/maojindao55/freebuddy/releases/latest)
+**Quick Download:** [FreeBuddy Releases](https://github.com/maojindao55/freebuddy/releases/latest)
 
 | Platform | Download | Package Manager |
 |----------|---------|----------------|
 | **macOS (Apple Silicon)** | `.dmg` | `brew install --cask maojindao55/freebuddy/freebuddy` |
 | **macOS (Intel)** | `.dmg` | - |
 | **Windows** | `.exe` installer | - |
-| **Linux** | `.AppImage` | AUR: `yay -S freebuddy-bin` |
 
 ### Build from Source
 
 Prerequisites: Node.js 18+, npm 9+
 
 ```bash
-# Clone the repo
+# Clone the repository
 git clone https://github.com/maojindao55/freebuddy.git
 cd freebuddy
 
 # Install dependencies
 npm install
 
-# Run in dev mode
+# Run in development mode
 npm run dev
 
-# Build for production
+# Production build
 npm run build
 npm run start
 ```
 
-> **Note:** `postinstall` runs `electron-rebuild` for `better-sqlite3` so the native binding matches your Electron version.
+> **Note:** `postinstall` runs `electron-rebuild` for `better-sqlite3` to ensure the native binding matches your Electron version.
 
 ---
 
 ## Community & Support
 
-- 💬 **Discord:** [Join our community](https://discord.gg/freebuddy)
-- 🐦 **X (Twitter):** [@freebuddy](https://twitter.com/freebuddy)
-- 🐛 **Issues:** [Report bugs or request features](https://github.com/maojindao55/freebuddy/issues)
-- 📖 **Wiki:** [Documentation](https://github.com/maojindao55/freebuddy/wiki)
-- 🔒 **Privacy:** [Telemetry & Data Collection](https://github.com/maojindao55/freebuddy/wiki/privacy)
-
-**Support this project:** ⭐ [Star the repo](https://github.com/maojindao55/freebuddy) to follow daily updates!
+- 🐧 **QQ Group:** [Click to join](https://qm.qq.com/q/Lgu4uyIWCC)
 
 ---
 
@@ -139,10 +137,10 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 ## License
 
-FreeBuddy is [MIT licensed](LICENSE).
+FreeBuddy is licensed under the [MIT License](LICENSE).
 
 ---
 
 <p align="center">
-  Built with ❤️ by <a href="https://github.com/maojindao55">maojindao55</a>
+  Made with ❤️ by <a href="https://github.com/maojindao55">maojindao55</a>
 </p>

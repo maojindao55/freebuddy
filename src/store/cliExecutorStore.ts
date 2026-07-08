@@ -68,6 +68,8 @@ export const useCliExecutorStore = create<State>((set, get) => ({
       overrides: overridesMap,
       runtimes: runtimesMap
     });
+    // Auto-check all agents in the background so install status is fresh on startup
+    void get().checkAll();
   },
 
   async refreshRuntimes() {

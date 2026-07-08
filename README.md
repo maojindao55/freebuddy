@@ -18,65 +18,20 @@ Run Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy side-by-side
 
 ## Features
 
-### Multi-Agent Support
+| Feature | Description | Screenshot |
+|---------|-------------|-------------|
+| **Multi-Agent Support** | Switch between Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy without rebuilding your workflow around each CLI. | ![Multi-Agent](assets/features/multi-agent.gif) |
+| **Structured Task Stream** | Watch assistant messages, tool calls, commands, file edits, usage, stderr, and errors unfold as auditable events in real-time. | ![Task Stream](assets/features/task-stream.gif) |
+| **Session Resume** | Resume previous tool sessions for iterative work without losing context. The same `(agent, workspace)` pair remembers your conversation. | ![Session](assets/features/session-resume.gif) |
+| **File Attachments** | Drag and drop files, images, and documents directly into prompts. The agent reasons with that context automatically. | ![Attachments](assets/features/attachments.gif) |
+| **Agent Bridge** | Let agents call back to FreeBuddy for previews, notifications, and more. Built-in local HTTP server (port 17878). | ![Bridge](assets/features/agent-bridge.gif) |
+| **Workflow Teams** | Orchestrate multi-agent workflows with team templates. Run Codex for implementation, ClaudeCode for review — all in parallel. | ![Workflows](assets/features/workflow-teams.gif) |
+| **Local-First Storage** | All data lives on your machine — task history, runtimes, sessions, and logs. No cloud dependency. | ![Storage](assets/features/local-storage.gif) |
+| **ACP Protocol Native** | FreeBuddy uses ACP as the product-facing runtime layer. The UI focuses on agents and tasks rather than protocol glue. | ![ACP](assets/features/acp-protocol.gif) |
+| **Quick Open** | Global search across worktrees, files, agents, commands, and repository context. Never interrupt your workflow. | ![Quick Open](assets/features/quick-open.gif) |
+| **Usage Tracking** | Real-time view of Claude, Codex usage and rate limit reset times. Hot-switch accounts without re-login. | ![Usage](assets/features/usage-tracking.gif) |
 
-Switch between Codex, ClaudeCode, OpenCode, Cursor, Kimi, Qoder, and CodeBuddy without rebuilding your workflow around each CLI.
-
-[Learn more →](#-built-in-agents)
-
-### Structured Task Stream
-
-Watch assistant messages, tool calls, commands, file edits, usage, stderr, and errors unfold as auditable events in real-time.
-
-[Task Stream Docs →](https://github.com/maojindao55/freebuddy/wiki/task-stream)
-
-### Session Resume
-
-Resume previous tool sessions for iterative work without losing context. The same `(agent, workspace)` pair remembers your conversation.
-
-[Session Docs →](https://github.com/maojindao55/freebuddy/wiki/sessions)
-
-### File Attachments
-
-Drag and drop files, images, and documents directly into prompts. The agent reasons with that context automatically.
-
-[Attachments Docs →](https://github.com/maojindao55/freebuddy/wiki/attachments)
-
-### Agent Bridge
-
-Let agents call back to FreeBuddy for previews, notifications, and more. Built-in local HTTP server (port 17878) for agent-to-app communication.
-
-[Bridge Docs →](https://github.com/maojindao55/freebuddy/wiki/agent-bridge)
-
-### Workflow Teams
-
-Orchestrate multi-agent workflows with team templates. Run Codex for implementation, ClaudeCode for review, and Kimi for testing — all in parallel.
-
-[Workflows Docs →](https://github.com/maojindao55/freebuddy/wiki/workflows)
-
-### Local-First Storage
-
-All data lives on your machine — task history, runtime checks, overrides, sessions, and logs. No cloud dependency.
-
-[Storage Docs →](https://github.com/maojindao55/freebuddy/wiki/storage)
-
-### ACP Protocol Native
-
-FreeBuddy uses ACP (Agent Client Protocol) as the product-facing runtime layer. The UI focuses on agents and tasks rather than protocol glue.
-
-[ACP Docs →](https://www.codebuddy.cn/docs/cli/acp)
-
-### Quick Open (Command Palette)
-
-Global search across worktrees, files, agents, commands, and repository context. Never interrupt your workflow.
-
-[Quick Open Docs →](https://github.com/maojindao55/freebuddy/wiki/quick-open)
-
-### Account Switching & Usage Tracking
-
-Real-time view of Claude, Codex usage and rate limit reset times. Hot-switch accounts without re-login.
-
-[Usage Docs →](https://github.com/maojindao55/freebuddy/wiki/usage-tracking)
+> 📸 **Screenshots coming soon!** GIFs will be added in the next release.
 
 ---
 

@@ -1,3 +1,5 @@
+import path from "node:path";
+import fs from "node:fs";
 import spawn from "cross-spawn";
 import { adapterBinary, getCliCheckProbe } from "./adapters.js";
 import { getDb } from "./db.js";
@@ -11,16 +13,88 @@ export interface CliCheckResult {
   version?: string;
 }
 
-function which(bin: string): Promise<string | undefined> {
+function which(
+  bin: string,
+  env?: Record<string, string>
+): Promise<string | undefined> {
+  const mergedEnv = { ...process.env, ...(env || {}) };
+  const isWindows = process.platform === "win32";
+  if (path.isAbsolute(bin)) {
+    try {
+      if (fs.existsSync(bin)) return Promise.resolve(bin);
+      if (isWindows) {
+        for (const ext of [".cmd", ".exe", ".bat", ".ps1"]) {
+          if (fs.existsSync(bin + ext)) return Promise.resolve(bin + ext);
+        }
+      }
+    } catch {}
+  }
+
   return new Promise((resolve) => {
-    const cmd = process.platform === "win32" ? "where" : "which";
-    const child = spawn(cmd, [bin], { env: process.env });
+    const cmd = isWindows ? "where" : "which";
+    const child = spawn(cmd, [bin], { env: mergedEnv });
     let out = "";
     child.stdout!.on("data", (d) => (out += d.toString()));
     child.on("error", () => resolve(undefined));
     child.on("close", (code) => {
-      if (code !== 0) return resolve(undefined);
-      resolve(out.split(/\r?\n/).find(Boolean));
+      if (code === 0) {
+        const found = out.split(/\r?\n/).find(Boolean);
+        if (found) return resolve(found);
+      }
+
+      // Fallback search if the desktop app inherited a narrower PATH.
+      if (isWindows) {
+        try {
+          const appData = mergedEnv.APPDATA;
+          const localAppData = mergedEnv.LOCALAPPDATA;
+          const userProfile = mergedEnv.USERPROFILE || "";
+          const programFiles = mergedEnv.ProgramFiles || "C:\\Program Files";
+          const programFilesX86 = mergedEnv["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+
+          const searchDirs: string[] = [];
+          if (appData) searchDirs.push(path.join(appData, "npm"));
+          if (localAppData) {
+            searchDirs.push(path.join(localAppData, "pnpm"));
+            searchDirs.push(path.join(localAppData, "fnm_multishells"));
+            searchDirs.push(path.join(localAppData, "yarn", "bin"));
+          }
+          if (userProfile) {
+            searchDirs.push(path.join(userProfile, "scoop", "shims"));
+            searchDirs.push(path.join(userProfile, ".bun", "bin"));
+          }
+          searchDirs.push(path.join(programFiles, "nodejs"));
+          searchDirs.push(path.join(programFilesX86, "nodejs"));
+
+          const exts = [".cmd", ".exe", ".bat", ".ps1", ""];
+          for (const dir of searchDirs) {
+            for (const ext of exts) {
+              const fullPath = path.join(dir, bin + ext);
+              if (fs.existsSync(fullPath)) {
+                return resolve(fullPath);
+              }
+            }
+          }
+        } catch {}
+      } else {
+        try {
+          const home = mergedEnv.HOME || "";
+          const searchDirs = [
+            ...(mergedEnv.PATH || "").split(path.delimiter),
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            ...(home ? [path.join(home, ".local", "bin"), path.join(home, ".npm-global", "bin")] : [])
+          ].filter(Boolean);
+
+          for (const dir of searchDirs) {
+            const fullPath = path.join(dir, bin);
+            if (fs.existsSync(fullPath)) {
+              return resolve(fullPath);
+            }
+          }
+        } catch {}
+      }
+
+      resolve(undefined);
     });
   });
 }
@@ -34,9 +108,14 @@ function firstNonEmptyLine(value: string): string | undefined {
   return value.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim();
 }
 
-function runCheckProbe(bin: string, args: string[]): Promise<CliProbeResult> {
+function runCheckProbe(
+  bin: string,
+  args: string[],
+  env?: Record<string, string>
+): Promise<CliProbeResult> {
   return new Promise((resolve) => {
-    const child = spawn(bin, args, { env: process.env });
+    const mergedEnv = { ...process.env, ...(env || {}) };
+    const child = spawn(bin, args, { env: mergedEnv });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -105,23 +184,26 @@ export function updateRuntimeRun(adapter: string, error?: string): void {
 
 export async function cliCheck(
   adapter: string,
-  binary?: string
+  binary?: string,
+  env?: Record<string, string>,
+  runtimeAdapter?: string
 ): Promise<CliCheckResult> {
+  const runtimeKey = runtimeAdapter?.trim() || adapter;
   const bin = binary?.trim() || adapterBinary(adapter) || adapter;
-  const resolved = await which(bin);
+  const resolved = await which(bin, env);
   if (!resolved) {
-    upsertRuntime(adapter, false, undefined, undefined, "binary not found");
+    upsertRuntime(runtimeKey, false, undefined, undefined, "binary not found");
     return { installed: false };
   }
   const probe = getCliCheckProbe(adapter);
-  const probeResult = await runCheckProbe(resolved, probe.args);
+  const probeResult = await runCheckProbe(resolved, probe.args, env);
   if (!probeResult.ok || (!probe.versionOptional && !probeResult.output)) {
     const error =
       adapter === "codex-acp"
         ? CODEX_ACP_UPGRADE_REQUIRED
         : `binary found but ${probe.args.join(" ")} failed; try reinstalling`;
     upsertRuntime(
-      adapter,
+      runtimeKey,
       false,
       resolved,
       undefined,
@@ -134,7 +216,7 @@ export async function cliCheck(
     path: resolved,
     version: probe.versionOptional ? undefined : probeResult.output
   };
-  upsertRuntime(adapter, true, resolved, result.version);
+  upsertRuntime(runtimeKey, true, resolved, result.version);
   return result;
 }
 

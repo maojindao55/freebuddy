@@ -82,7 +82,12 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     if (!cliClient.isAvailable()) return;
     const resolved = get().resolve(adapter);
     if (!resolved) return;
-    await cliClient.check(resolved.baseAdapter ?? resolved.id, resolved.binary);
+    await cliClient.check(
+      resolved.baseAdapter ?? resolved.id,
+      resolved.binary,
+      resolved.env,
+      resolved.id
+    );
     await get().refreshRuntimes();
   },
 
@@ -90,7 +95,8 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     if (!cliClient.isAvailable()) return;
     const acpAdapters = get().listResolved().filter((a) => a.protocol === "acp");
     for (const adapter of acpAdapters) {
-      await cliClient.check(adapter.baseAdapter ?? adapter.id, adapter.binary);
+      const targetId = adapter.baseAdapter ?? adapter.id;
+      await cliClient.check(targetId, adapter.binary, adapter.env, adapter.id);
     }
     await get().refreshRuntimes();
   },
@@ -134,7 +140,7 @@ export const useCliExecutorStore = create<State>((set, get) => ({
       enabled: o?.enabled !== false,
       codexByok: o?.codexByok,
       claudeByok: o?.claudeByok,
-      runtime: runtimes[id] ?? runtimes[def.id],
+      runtime: isClone ? runtimes[id] : runtimes[def.id],
       override: o
     };
   },

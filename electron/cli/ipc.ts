@@ -181,8 +181,15 @@ export function registerCliIpc() {
   ipcMain.handle("cli:codexUsage", () => readCodexUsage());
   ipcMain.handle(
     "cli:check",
-    async (_e, args: { adapter: string; binary?: string }) =>
-      cliCheck(args.adapter, args.binary)
+    async (
+      _e,
+      args: {
+        adapter: string;
+        binary?: string;
+        env?: Record<string, string>;
+        runtimeAdapter?: string;
+      }
+    ) => cliCheck(args.adapter, args.binary, args.env, args.runtimeAdapter)
   );
   ipcMain.handle("cli:install", async (_e, command: string) =>
     cliInstall(command)

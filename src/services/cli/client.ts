@@ -54,8 +54,13 @@ export const cliClient = {
   codexUsage(): Promise<CodexUsageResult> {
     return api().codexUsage();
   },
-  check(adapter: string, binary?: string): Promise<CliCheckResult> {
-    return api().check(adapter, binary);
+  check(
+    adapter: string,
+    binary?: string,
+    env?: Record<string, string>,
+    runtimeAdapter?: string
+  ): Promise<CliCheckResult> {
+    return api().check(adapter, binary, env, runtimeAdapter);
   },
   install(command: string): Promise<CliInstallResult> {
     return api().install(command);

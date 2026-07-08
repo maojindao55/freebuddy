@@ -8,8 +8,12 @@ const cli = {
 
   listRuntimes: () => ipcRenderer.invoke("cli:listRuntimes"),
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
-  check: (adapter: string, binary?: string) =>
-    ipcRenderer.invoke("cli:check", { adapter, binary }),
+  check: (
+    adapter: string,
+    binary?: string,
+    env?: Record<string, string>,
+    runtimeAdapter?: string
+  ) => ipcRenderer.invoke("cli:check", { adapter, binary, env, runtimeAdapter }),
   install: (command: string) => ipcRenderer.invoke("cli:install", command),
   installStream: (
     command: string,

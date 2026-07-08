@@ -55,7 +55,12 @@ declare global {
 
     listRuntimes(): Promise<CliRuntime[]>;
     codexUsage(): Promise<CodexUsageResult>;
-    check(adapter: string, binary?: string): Promise<CliCheckResult>;
+    check(
+      adapter: string,
+      binary?: string,
+      env?: Record<string, string>,
+      runtimeAdapter?: string
+    ): Promise<CliCheckResult>;
     install(command: string): Promise<CliInstallResult>;
     installStream(
       command: string,

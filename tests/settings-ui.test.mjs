@@ -10,6 +10,14 @@ const storeSource = fs.readFileSync(
   new URL("../src/store/cliExecutorStore.ts", import.meta.url),
   "utf8"
 );
+const cliCheckSource = fs.readFileSync(
+  new URL("../electron/cli/check.ts", import.meta.url),
+  "utf8"
+);
+const preloadSource = fs.readFileSync(
+  new URL("../electron/preload.ts", import.meta.url),
+  "utf8"
+);
 const conversationStoreSource = fs.readFileSync(
   new URL("../src/store/conversationStore.ts", import.meta.url),
   "utf8"
@@ -145,6 +153,21 @@ test("coding agent settings support bulk check and auto-check on load", () => {
   assert.equal(settingsSource.includes("lastCheckAt"), false);
   assert.equal(storeSource.includes("async checkAll()"), true);
   assert.match(storeSource, /for \(const adapter of acpAdapters\)/);
+});
+
+test("cloned coding agents keep independent check status", () => {
+  assert.equal(preloadSource.includes("runtimeAdapter"), true);
+  assert.match(storeSource, /resolved\.env,\s*resolved\.id/s);
+  assert.match(storeSource, /adapter\.env,\s*adapter\.id/s);
+  assert.match(storeSource, /runtime:\s*isClone \? runtimes\[id\] : runtimes\[def\.id\]/);
+  assert.match(cliCheckSource, /const runtimeKey = runtimeAdapter\?\.trim\(\) \|\| adapter/);
+  assert.match(cliCheckSource, /upsertRuntime\(runtimeKey/);
+});
+
+test("coding agent checks search common desktop CLI install paths", () => {
+  assert.equal(cliCheckSource.includes("mergedEnv.PATH"), true);
+  assert.equal(cliCheckSource.includes("/opt/homebrew/bin"), true);
+  assert.equal(cliCheckSource.includes("/usr/local/bin"), true);
 });
 
 test("coding agent settings explain binary lookup failures separately", () => {

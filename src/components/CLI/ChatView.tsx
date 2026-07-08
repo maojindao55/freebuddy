@@ -291,8 +291,7 @@ export function ChatView() {
   const clearTeamPreview = useWorkflowTeamStore((s) => s.clearPreview);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
-  const resolve = useCliExecutorStore((s) => s.resolve);
-  const check = useCliExecutorStore((s) => s.check);
+  const refreshRuntimes = useCliExecutorStore((s) => s.refreshRuntimes);
 
   const [draft, setDraft] = useState("");
   const [newTaskDraft, setNewTaskDraft] = useState("");
@@ -608,12 +607,19 @@ export function ChatView() {
       return false;
     }
     try {
-      const r = await cliClient.check(targetMember.cli.adapter, targetMember.cli.binary);
-      await check(targetMember.cli.adapter);
+      const runtimeAdapter = targetMember.id.startsWith("cli-")
+        ? targetMember.id.slice(4)
+        : targetMember.cli.adapter;
+      const r = await cliClient.check(
+        targetMember.cli.adapter,
+        targetMember.cli.binary,
+        targetMember.cli.env,
+        runtimeAdapter
+      );
+      await refreshRuntimes();
       if (!r.installed) {
-        const resolved = resolve(targetMember.cli.adapter);
         setPreflightMsg(
-          t("errors.agentNotInstalled", { agent: resolved?.label ?? t("chat.agent") })
+          t("errors.agentNotInstalled", { agent: targetMember.name ?? t("chat.agent") })
         );
         return false;
       }

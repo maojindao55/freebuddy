@@ -27,9 +27,17 @@
 |---------|-------------|-------------|
 | **多 Agent 支持** | 自动识别本地agent | ![多Agent](assets/FreeBuddy-multi-agents.gif) |
 | **BYOK 支持** | Codex和ClaudeCode支持BYOK，可以使用三方或中转站API | ![多Agent](assets/FreeBuddy-BYOK.gif) |
-| **工作流团队** | 使用团队模板编排多 Agent 工作流。并行运行 Codex 实现、ClaudeCode 审查、Kimi 测试。 | ![工作流视频](https://github.com/user-attachments/assets/9665bf24-9150-4ffa-b571-10eece2d2062) |
 | **Codex限额用量卡片** | 实时查看 Codex 用量和速率限制重置时间。热切换账号，无需重新登录。 | ![用量卡](assets/FreeBuddy-limit-card.gif) |
-| **FeedRSS卡片** | 等待agent执行gab过程，可实时关注资讯 | ![feedcard](https://github.com/user-attachments/assets/380965e3-d4eb-4ad1-bb0d-ded33c5272e9) |
+
+### 🎬 工作流团队
+使用团队模板编排多 Agent 工作流。并行运行 Codex 实现、ClaudeCode 审查、Kimi 测试。
+
+https://github.com/user-attachments/assets/9665bf24-9150-4ffa-b571-10eece2d2062
+
+### 📰 FeedRSS卡片
+等待agent执行gap过程，可实时关注资讯
+
+https://github.com/user-attachments/assets/380965e3-d4eb-4ad1-bb0d-ded33c5272e9
 
 
 ---

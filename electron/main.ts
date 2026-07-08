@@ -103,7 +103,45 @@ function registerDraftProtocol() {
 }
 
 async function injectShellPath() {
-  if (process.platform === "win32") return;
+  if (process.platform === "win32") {
+    // On Windows, Electron launched from shortcuts may not inherit the full
+    // user PATH. Ensure common npm/node binary directories are present so
+    // `where` can find globally-installed CLI agents like codex-acp.
+    try {
+      const appData = process.env.APPDATA;
+      const localAppData = process.env.LOCALAPPDATA;
+      const userProfile = process.env.USERPROFILE || process.env.HOME || "";
+      const extraDirs: string[] = [];
+
+      // npm global bin directory (%APPDATA%\npm)
+      if (appData) extraDirs.push(path.join(appData, "npm"));
+
+      // pnpm global bin
+      if (localAppData) extraDirs.push(path.join(localAppData, "pnpm"));
+
+      // fnm shims
+      if (localAppData) extraDirs.push(path.join(localAppData, "fnm_multishells"));
+
+      // nvm-windows current
+      if (process.env.NVM_SYMLINK) extraDirs.push(process.env.NVM_SYMLINK);
+      if (process.env.NVM_HOME) extraDirs.push(process.env.NVM_HOME);
+
+      // Scoop shims
+      if (userProfile) extraDirs.push(path.join(userProfile, "scoop", "shims"));
+
+      const currentPath = process.env.PATH || "";
+      const currentLower = currentPath.toLowerCase();
+      const missing = extraDirs.filter(
+        (d) => d && !currentLower.includes(d.toLowerCase())
+      );
+      if (missing.length) {
+        process.env.PATH = [...missing, currentPath].join(";");
+      }
+    } catch {
+      /* best-effort */
+    }
+    return;
+  }
   try {
     const env = await shellEnv();
     for (const [k, v] of Object.entries(env)) {

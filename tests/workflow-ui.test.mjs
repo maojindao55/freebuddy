@@ -249,6 +249,16 @@ test("MessageBubble supports right-click and inline copy button", () => {
   assert.doesNotMatch(css, /msg-content-wrapper:hover \.msg-actions/);
 });
 
+test("ChatView resolves agent avatars per message", () => {
+  const src = read("../src/components/CLI/ChatView.tsx");
+  assert.match(src, /membersById/);
+  assert.match(src, /membersByName/);
+  assert.match(src, /const messageMember =/);
+  assert.match(src, /m\.agentId \? membersById\.get\(m\.agentId\)/);
+  assert.match(src, /agentIconKey=\{messageMember\?\.avatar\}/);
+  assert.doesNotMatch(src, /agentIconKey=\{member\?\.avatar\}/);
+});
+
 test("MessageBubble compacts execution process while preserving final text", () => {
   const src = read("../src/components/CLI/MessageBubble.tsx");
   const css = read("../styles.css");

@@ -332,6 +332,14 @@ export function ChatView() {
   const member = conv
     ? members.find((m) => m.id === (workflowFollowupAgent ?? conv.agentId))
     : undefined;
+  const membersById = useMemo(
+    () => new Map(members.map((entry) => [entry.id, entry])),
+    [members]
+  );
+  const membersByName = useMemo(
+    () => new Map(members.map((entry) => [entry.name, entry])),
+    [members]
+  );
   const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, member?.cli.adapter ?? conv?.adapter);
   const running =
     live?.status === "running" || live?.status === "starting";
@@ -969,13 +977,16 @@ export function ChatView() {
             replayPartial && replayPartial.messageId === m.id
               ? replayPartial
               : undefined;
+          const messageMember =
+            (m.agentId ? membersById.get(m.agentId) : undefined) ??
+            (m.agentName ? membersByName.get(m.agentName) : undefined);
           return (
             <MessageBubble
               key={m.id}
               message={m}
-              adapter={conv?.adapter}
-              agentName={conv?.agentName}
-              agentIconKey={member?.avatar}
+              adapter={m.adapter ?? messageMember?.cli.adapter ?? conv?.adapter}
+              agentName={m.agentName ?? messageMember?.name ?? conv?.agentName}
+              agentIconKey={messageMember?.avatar}
               blockLimit={partial?.blockLimit}
               typingChars={partial?.typingChars}
             />

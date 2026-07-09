@@ -33,14 +33,12 @@ import { useReplayStore } from "@/store/replayStore";
 import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
 import {
   mergeSessionMetaItems,
-  type AvailableCommandItem,
-  type ConfigOptionItem
+  type AvailableCommandItem
 } from "@/store/sessionMetaUtils";
 import {
   buildConversationTitle,
   upsertConversationMessage
 } from "@/store/conversationUtils";
-import { SessionConfigPicker } from "./SessionConfigPicker";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -270,9 +268,6 @@ export function ChatView() {
   const setApprovalMode = useConversationStore(
     (s) => s.setConversationApprovalMode
   );
-  const setConfigOptionOverrides = useConversationStore(
-    (s) => s.setConversationConfigOptionOverrides
-  );
 
   const [taskMode, setTaskMode] = useState<"normal" | "team">(
     "normal"
@@ -362,7 +357,7 @@ export function ChatView() {
   ];
 
   const sessionMeta = useMemo(() => {
-    if (!conv) return { commands: [] as AvailableCommandItem[], configOptions: [] as ConfigOptionItem[] };
+    if (!conv) return { commands: [] as AvailableCommandItem[] };
     return mergeSessionMetaItems(
       messages
         .filter((message) => message.role === "assistant")
@@ -378,7 +373,6 @@ export function ChatView() {
     );
   }, [conv, live?.items, messages]);
   const availableCommands = sessionMeta.commands;
-  const sessionConfigOptions = sessionMeta.configOptions;
 
   const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
 
@@ -1033,17 +1027,7 @@ export function ChatView() {
 
       <div className={`chat-composer${replaying ? " replay-disabled" : ""}`}>
         <div className="composer-context-row">
-          <div className="composer-context-leading">
-            <SessionConfigPicker
-              options={sessionConfigOptions}
-              overrides={conv?.configOptionOverrides}
-              disabled={sending || replaying}
-              onChange={(next) => {
-                if (conv?.id) void setConfigOptionOverrides(conv.id, next);
-              }}
-            />
-            <span className="composer-context-agent">{agentDisplayName}</span>
-          </div>
+          <span>{agentDisplayName}</span>
           <span>{conv.cwd ? conv.cwd : t("chat.noWorkspace")}</span>
         </div>
         <AttachmentTray

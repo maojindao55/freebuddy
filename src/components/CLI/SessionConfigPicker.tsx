@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ConfigOptionItem } from "@/store/sessionMetaUtils";
@@ -12,6 +12,8 @@ type Props = {
   options: ConfigOptionItem[];
   overrides?: Record<string, string>;
   disabled?: boolean;
+  className?: string;
+  fallback?: ReactNode;
   onChange: (next: Record<string, string>) => void;
 };
 
@@ -36,6 +38,8 @@ export function SessionConfigPicker({
   options,
   overrides,
   disabled,
+  className,
+  fallback = null,
   onChange
 }: Props) {
   const { t } = useTranslation();
@@ -83,7 +87,7 @@ export function SessionConfigPicker({
     if (disabled) setOpen(false);
   }, [disabled]);
 
-  if (filtered.length === 0 || !modelOption) return null;
+  if (filtered.length === 0 || !modelOption) return <>{fallback}</>;
 
   const handleChange = (option: ConfigOptionItem, selected: string) => {
     const next: Record<string, string> = { ...(overrides ?? {}) };
@@ -95,37 +99,40 @@ export function SessionConfigPicker({
     onChange(next);
   };
 
+  const rootClassName = ["session-config-picker", className]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="composer-session-config" ref={rootRef}>
+    <div className={rootClassName} ref={rootRef}>
       <button
         type="button"
-        className="composer-permission composer-session-config-trigger"
+        className="session-config-picker-trigger"
         title={t("chat.modelPickerHint")}
         disabled={disabled}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="composer-permission-label">{t("chat.modelPicker")}</span>
-        <span className="composer-session-config-value">{summaryLabel}</span>
+        <span className="session-config-picker-value">{summaryLabel}</span>
       </button>
       {open ? (
         <div
           id={panelId}
-          className="composer-session-config-panel"
+          className="session-config-picker-panel"
           role="dialog"
           aria-label={t("chat.modelPickerHint")}
         >
           {filtered.map((option, index) => (
             <label
               key={`${option.category ?? ""}:${option.id}:${index}`}
-              className="composer-session-config-row"
+              className="session-config-picker-row"
             >
-              <span className="composer-session-config-row-label">
+              <span className="session-config-picker-row-label">
                 {categoryLabel(option, t)}
               </span>
               <select
-                className="composer-session-config-row-select"
+                className="session-config-picker-row-select"
                 value={displayConfigOptionValue(option, overrides) ?? ""}
                 disabled={disabled}
                 aria-label={categoryLabel(option, t)}

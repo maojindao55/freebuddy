@@ -3446,8 +3446,8 @@ button {
   width: var(--whip-w);
   height: var(--whip-h);
   /* Tip sits far left of the SVG; pin that tip onto the avatar. */
-  margin-left: calc(var(--whip-w) * 0.14);
-  margin-top: calc(var(--whip-h) * -0.94);
+  margin-left: calc(var(--whip-w) * 0.2);
+  margin-top: calc(var(--whip-h) * -0.96);
   transform-origin: 94% 70%;
   animation: code-whip-swing 2.3s cubic-bezier(0.22, 0.7, 0.18, 1) both;
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
@@ -3461,8 +3461,8 @@ button {
 
 .code-whip-cord,
 .code-whip-cord-thin {
-  stroke-dasharray: 1200;
-  stroke-dashoffset: 1200;
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
   animation: code-whip-unfurl 0.55s ease-out both;
 }
 
@@ -3603,7 +3603,7 @@ button {
 
 @keyframes code-whip-unfurl {
   from {
-    stroke-dashoffset: 1200;
+    stroke-dashoffset: 1000;
   }
   to {
     stroke-dashoffset: 0;

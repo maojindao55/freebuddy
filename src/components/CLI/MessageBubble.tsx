@@ -12,7 +12,7 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { useTranslation } from "react-i18next";
 
@@ -784,11 +784,32 @@ export const MessageBubble = memo(function MessageBubble({
   const [copyMenu, setCopyMenu] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [vote, setVote] = useState<"up" | "down" | null>(null);
+  const avatarRef = useRef<HTMLButtonElement | null>(null);
+  const whipActive = useWhipEffectStore(
+    (s) => s.active && s.targetMessageId === message.id
+  );
   const canWhip = message.role === "assistant";
   const handleWhip = useCallback(() => {
     if (!canWhip) return;
-    useWhipEffectStore.getState().trigger();
-  }, [canWhip]);
+    const avatarEl = avatarRef.current;
+    const chatView = avatarEl?.closest(".chat-view");
+    if (!avatarEl || !chatView) {
+      useWhipEffectStore.getState().trigger({
+        messageId: message.id,
+        target: { x: 120, y: 120 }
+      });
+      return;
+    }
+    const avatarRect = avatarEl.getBoundingClientRect();
+    const chatRect = chatView.getBoundingClientRect();
+    useWhipEffectStore.getState().trigger({
+      messageId: message.id,
+      target: {
+        x: avatarRect.left - chatRect.left + avatarRect.width / 2,
+        y: avatarRect.top - chatRect.top + avatarRect.height / 2
+      }
+    });
+  }, [canWhip, message.id]);
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
   const getSelectionText = () => {
@@ -919,7 +940,8 @@ export const MessageBubble = memo(function MessageBubble({
     <div className="msg msg-assistant">
       <button
         type="button"
-        className={`msg-avatar-whip-target${canWhip ? " whipable" : ""}`}
+        ref={avatarRef}
+        className={`msg-avatar-whip-target${canWhip ? " whipable" : ""}${whipActive ? " whip-hit" : ""}`}
         onClick={canWhip ? handleWhip : undefined}
         disabled={!canWhip}
         aria-label={canWhip ? t("message.whipAvatar") : undefined}

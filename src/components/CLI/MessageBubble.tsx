@@ -952,7 +952,7 @@ export const MessageBubble = memo(function MessageBubble({
           <>
             <span className="whip-arc" aria-hidden="true" />
             <span className="whip-crack" aria-hidden="true">
-              啪
+              {t("message.whipCrack")}
             </span>
             <span className="whip-spark whip-spark-1" aria-hidden="true" />
             <span className="whip-spark whip-spark-2" aria-hidden="true" />

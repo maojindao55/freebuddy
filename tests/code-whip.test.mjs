@@ -21,5 +21,5 @@ test("styles define whip-hit comedy effect and reduced-motion fallback", () => {
   assert.match(css, /\.whip-hit/);
   assert.match(css, /@keyframes whip/);
   assert.match(css, /prefers-reduced-motion/);
-  assert.match(css, /whip-crack|啪/);
+  assert.match(css, /whip-crack/);
 });

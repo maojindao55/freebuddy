@@ -23,6 +23,10 @@ import type {
 import { workflowFollowupAgentId } from "@/services/workflows/types";
 import { workflowClient } from "@/services/workflows/client";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
+import {
+  filterSessionConfigPickerOptions,
+  pruneConfigOptionOverrides
+} from "@/utils/sessionConfigOptions";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
 import {
@@ -34,7 +38,11 @@ import {
   upsertConversationMessage
 } from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
-import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
+import {
+  latestConfigOptionsFromItems,
+  latestConfigOptionsFromMessages,
+  latestSessionInfoFromMessages
+} from "./sessionMetaUtils";
 
 export interface LiveAssistant {
   messageId: string;
@@ -74,6 +82,10 @@ export interface ConversationState {
   setConversationApprovalMode(
     id: string,
     approvalMode: "auto" | "ask"
+  ): Promise<void>;
+  setConversationConfigOptionOverrides(
+    id: string,
+    overrides: Record<string, string>
   ): Promise<void>;
 
   sendMessage(input: {
@@ -539,6 +551,25 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }));
   },
 
+  async setConversationConfigOptionOverrides(id, overrides) {
+    const next =
+      Object.keys(overrides).length > 0 ? overrides : null;
+    const updated = await cliClient.setConversationConfigOptionOverrides(
+      id,
+      next
+    );
+    set((s) => ({
+      conversations: s.conversations.map((c) => {
+        if (c.id !== id) return c;
+        if (updated) return updated;
+        return {
+          ...c,
+          configOptionOverrides: next ?? undefined
+        };
+      })
+    }));
+  },
+
   isRunning(id) {
     const live = get().live[id];
     return !!live && (live.status === "starting" || live.status === "running");
@@ -675,6 +706,24 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPrompt}`
       : userPrompt;
 
+    const msgs = get().messages[conversationId] ?? [];
+    const liveItems = get().live[conversationId]?.items;
+    const fromMessages = latestConfigOptionsFromMessages(msgs);
+    const fromLive = latestConfigOptionsFromItems(liveItems ?? []);
+    const configOptions = fromLive.length > 0 ? fromLive : fromMessages;
+    const pickerOptions = filterSessionConfigPickerOptions(configOptions);
+    const prunedOverrides = pruneConfigOptionOverrides(
+      conv.configOptionOverrides,
+      pickerOptions.length ? pickerOptions : configOptions
+    );
+    const overridesToSend =
+      Object.keys(prunedOverrides).length > 0
+        ? prunedOverrides
+        : conv.configOptionOverrides &&
+            Object.keys(conv.configOptionOverrides).length > 0
+          ? conv.configOptionOverrides
+          : undefined;
+
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       agentId: member.id,
@@ -695,6 +744,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
       approvalMode:
         approvalModeOverride ?? conv.approvalMode ?? member.cli.approvalMode,
+      ...(overridesToSend && Object.keys(overridesToSend).length
+        ? { configOptionOverrides: overridesToSend }
+        : {}),
       showStderr: member.cli.showStderr,
       resumeToolSession: !wantFresh,
       userMessageId: userMsgId,

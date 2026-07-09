@@ -192,13 +192,13 @@ export function SessionConfigPicker({
         type="button"
         className="composer-permission session-config-picker-trigger"
         title={t("chat.modelPickerHint")}
+        aria-label={`${t("chat.modelPicker")}: ${summaryLabel}`}
         disabled={disabled}
         aria-expanded={open}
         aria-controls={panelId}
         aria-haspopup="dialog"
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="composer-permission-label">{t("chat.modelPicker")}</span>
         <span className="session-config-picker-value">{summaryLabel}</span>
       </button>
       {open && position

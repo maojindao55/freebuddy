@@ -2945,9 +2945,9 @@ button {
 }
 
 .composer-session-config .session-config-picker-trigger {
-  max-width: 168px;
+  max-width: 180px;
   height: 30px;
-  gap: 6px;
+  gap: 0;
   padding: 0 10px 0 12px;
   border: 1px solid var(--fb-border);
   border-radius: 999px;
@@ -2972,7 +2972,7 @@ button {
 
 .composer-session-config .session-config-picker-value {
   display: inline-block;
-  max-width: 88px;
+  max-width: 148px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

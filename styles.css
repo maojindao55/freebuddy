@@ -3464,32 +3464,20 @@ button {
   opacity: 1;
 }
 
-/* Kinematic chain: each joint pivots at its own start point (in the SVG's
-   local coordinate space) and rotates independently, so rotation composes
-   naturally down the chain — a real traveling whip wave, not a path morph. */
-.code-whip-joint-1 {
-  transform-origin: 372px 150px;
-  animation: code-whip-joint-1 2.3s ease-in-out both;
-}
-
-.code-whip-joint-2 {
-  transform-origin: 312px 158px;
-  animation: code-whip-joint-2 2.3s ease-in-out both;
-}
-
-.code-whip-joint-3 {
-  transform-origin: 246px 178px;
-  animation: code-whip-joint-3 2.3s ease-in-out both;
-}
-
-.code-whip-joint-4 {
-  transform-origin: 176px 204px;
-  animation: code-whip-joint-4 2.3s ease-in-out both;
+/*
+ * The rope itself is driven frame-by-frame from JS (see whipMotion.ts /
+ * CodeWhipOverlay) using a continuous traveling-wave formula rather than
+ * discrete CSS keyframes, so it flows like a real rope/snake instead of a
+ * jointed arm. `.code-whip-base` / `.code-whip-rope` just need their base
+ * stroke styling here; their `d` attribute is set imperatively.
+ */
+.code-whip-base,
+.code-whip-rope {
+  vector-effect: non-scaling-stroke;
 }
 
 .code-whip-cracker {
-  transform-origin: 108px 226px;
-  animation: code-whip-cracker-flick 2.3s ease-out both;
+  pointer-events: none;
 }
 
 .code-whip-hit-fx {
@@ -3587,198 +3575,39 @@ button {
   }
 }
 
-/* Wind-up stays compact so the tip never leaves the chat viewport. */
+/*
+ * Coarse arm swing only — the rope itself (driven by whipMotion.ts) now
+ * carries most of the visible "life", so this just needs a gentle wind-up
+ * and a moderate forward snap timed to land near WHIP_HIT_AT_MS (~46%).
+ * Kept compact so the tip never leaves the chat viewport.
+ */
 @keyframes code-whip-swing {
   0% {
-    transform: rotate(42deg) scale(0.94);
+    transform: rotate(26deg) scale(0.96);
     opacity: 0;
   }
   6% {
     opacity: 1;
   }
-  18% {
-    transform: rotate(34deg) scale(1);
+  20% {
+    transform: rotate(20deg) scale(1);
   }
-  32% {
-    transform: rotate(48deg) scale(1.02);
+  34% {
+    transform: rotate(28deg) scale(1.01);
   }
-  42% {
-    transform: rotate(38deg) scale(1.03);
-  }
-  48% {
-    transform: rotate(-8deg) scale(1.05);
+  46% {
+    transform: rotate(-6deg) scale(1.03);
   }
   56% {
-    transform: rotate(3deg) scale(1);
+    transform: rotate(2deg) scale(1);
   }
   72% {
     transform: rotate(-1deg) scale(0.99);
     opacity: 1;
   }
   100% {
-    transform: rotate(-3deg) scale(0.97);
+    transform: rotate(-2deg) scale(0.97);
     opacity: 0;
-  }
-}
-
-@keyframes code-whip-unfurl {
-  from {
-    stroke-dashoffset: 1000;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-/*
- * Traveling whip wave: joint-1 (near handle) leads with a small, early
- * ripple; each later joint has a larger swing that peaks progressively
- * later, so the motion visibly cascades from handle to tip and lands the
- * sharp "crack" at joint-4 / the cracker right around WHIP_HIT_AT_MS
- * (~46% of the 2.3s effect).
- */
-@keyframes code-whip-joint-1 {
-  0%,
-  10% {
-    transform: rotate(0deg);
-  }
-  22% {
-    transform: rotate(4deg);
-  }
-  30% {
-    transform: rotate(-5deg);
-  }
-  38% {
-    transform: rotate(6deg);
-  }
-  44% {
-    transform: rotate(-6deg);
-  }
-  52% {
-    transform: rotate(3deg);
-  }
-  62% {
-    transform: rotate(-2deg);
-  }
-  76%,
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes code-whip-joint-2 {
-  0%,
-  14% {
-    transform: rotate(0deg);
-  }
-  26% {
-    transform: rotate(-6deg);
-  }
-  34% {
-    transform: rotate(8deg);
-  }
-  41% {
-    transform: rotate(-9deg);
-  }
-  46% {
-    transform: rotate(9deg);
-  }
-  54% {
-    transform: rotate(-5deg);
-  }
-  64% {
-    transform: rotate(2deg);
-  }
-  80%,
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes code-whip-joint-3 {
-  0%,
-  18% {
-    transform: rotate(0deg);
-  }
-  30% {
-    transform: rotate(9deg);
-  }
-  38% {
-    transform: rotate(-12deg);
-  }
-  44% {
-    transform: rotate(13deg);
-  }
-  48% {
-    transform: rotate(-15deg);
-  }
-  56% {
-    transform: rotate(7deg);
-  }
-  68% {
-    transform: rotate(-3deg);
-  }
-  84%,
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes code-whip-joint-4 {
-  0%,
-  22% {
-    transform: rotate(0deg);
-  }
-  33% {
-    transform: rotate(-11deg);
-  }
-  40% {
-    transform: rotate(15deg);
-  }
-  44% {
-    transform: rotate(-20deg);
-  }
-  46% {
-    transform: rotate(26deg);
-  }
-  52% {
-    transform: rotate(-16deg);
-  }
-  60% {
-    transform: rotate(8deg);
-  }
-  70% {
-    transform: rotate(-4deg);
-  }
-  86%,
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes code-whip-cracker-flick {
-  0%,
-  30% {
-    transform: rotate(0deg);
-  }
-  38% {
-    transform: rotate(-14deg);
-  }
-  44% {
-    transform: rotate(20deg);
-  }
-  46% {
-    transform: rotate(-30deg);
-  }
-  50% {
-    transform: rotate(14deg);
-  }
-  58% {
-    transform: rotate(-6deg);
-  }
-  70%,
-  100% {
-    transform: rotate(0deg);
   }
 }
 
@@ -3853,14 +3682,6 @@ button {
   .code-whip-stage {
     transform: none !important;
     opacity: 0.85;
-  }
-
-  .code-whip-joint-1,
-  .code-whip-joint-2,
-  .code-whip-joint-3,
-  .code-whip-joint-4,
-  .code-whip-cracker {
-    animation: none !important;
   }
 
   .msg-avatar-whip-target.whip-hit .msg-avatar {

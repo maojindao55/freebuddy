@@ -1,13 +1,56 @@
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useWhipEffectStore } from "@/store/whipEffectStore";
+import {
+  useWhipEffectStore,
+  WHIP_EFFECT_MS,
+  WHIP_HIT_AT_MS
+} from "@/store/whipEffectStore";
+import { computeWhipFrame } from "@/utils/whipMotion";
 
 export function CodeWhipOverlay() {
   const { t } = useTranslation();
   const active = useWhipEffectStore((s) => s.active);
   const nonce = useWhipEffectStore((s) => s.nonce);
   const target = useWhipEffectStore((s) => s.target);
+
+  const ropeRef = useRef<SVGPathElement | null>(null);
+  const baseRef = useRef<SVGPathElement | null>(null);
+  const crackerRef = useRef<SVGGElement | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    const applyFrame = (elapsed: number) => {
+      const frame = computeWhipFrame(elapsed, WHIP_HIT_AT_MS);
+      ropeRef.current?.setAttribute("d", frame.ropeD);
+      baseRef.current?.setAttribute("d", frame.baseD);
+      crackerRef.current?.setAttribute(
+        "transform",
+        `translate(${frame.tipX} ${frame.tipY}) rotate(${(frame.tipAngle * 180) / Math.PI})`
+      );
+    };
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      // Hold a single "mid-crack" pose instead of animating through the
+      // full wind-up/snap/ring-down sequence.
+      applyFrame(WHIP_HIT_AT_MS + 60);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = () => {
+      const elapsed = Math.min(performance.now() - start, WHIP_EFFECT_MS);
+      applyFrame(elapsed);
+      if (elapsed < WHIP_EFFECT_MS) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active, nonce]);
+
   if (!active || !target) return null;
 
   const hitStyle: CSSProperties = {
@@ -65,76 +108,46 @@ export function CodeWhipOverlay() {
           </g>
 
           {/*
-            Jointed lash: a kinematic chain of nested groups, each pivoting
-            at the previous segment's end. A traveling wave (increasing
-            amplitude + delayed phase per joint) simulates a real bullwhip
-            crack instead of a single warped path.
+            Rope driven by requestAnimationFrame (see computeWhipFrame): a
+            continuous traveling wave, not discrete CSS keyframes, so the
+            lash flows like a real cracking whip rather than a jointed arm.
+            The thicker base path fakes a taper toward the thin tip.
           */}
           <g className="code-whip-tip">
             <path
-              className="code-whip-seg code-whip-seg-1"
-              d="M430 152 L372 150"
+              ref={baseRef}
+              className="code-whip-base"
               fill="none"
-              stroke="#6b4220"
-              strokeWidth="3.6"
+              stroke="#5c3819"
+              strokeWidth="4.2"
               strokeLinecap="round"
             />
-            <g className="code-whip-joint code-whip-joint-1">
+            <path
+              ref={ropeRef}
+              className="code-whip-rope"
+              fill="none"
+              stroke="#2a1a0c"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
+            <g ref={crackerRef} className="code-whip-cracker">
+              {/* Local +x continues along the rope's current direction
+                  (rotate() maps it there), so these extend past the tip. */}
               <path
-                className="code-whip-seg code-whip-seg-2"
-                d="M372 150 L312 158"
+                d="M0 0 L22 -8"
                 fill="none"
-                stroke="#5c3819"
-                strokeWidth="3.2"
+                stroke="#2a1a0c"
+                strokeWidth="1.6"
                 strokeLinecap="round"
               />
-              <g className="code-whip-joint code-whip-joint-2">
-                <path
-                  className="code-whip-seg code-whip-seg-3"
-                  d="M312 158 L246 178"
-                  fill="none"
-                  stroke="#4d3015"
-                  strokeWidth="2.8"
-                  strokeLinecap="round"
-                />
-                <g className="code-whip-joint code-whip-joint-3">
-                  <path
-                    className="code-whip-seg code-whip-seg-4"
-                    d="M246 178 L176 204"
-                    fill="none"
-                    stroke="#3f2712"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                  />
-                  <g className="code-whip-joint code-whip-joint-4">
-                    <path
-                      className="code-whip-seg code-whip-seg-5"
-                      d="M176 204 L108 226"
-                      fill="none"
-                      stroke="#2a1a0c"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    <g className="code-whip-cracker">
-                      <path
-                        d="M108 226 L86 234"
-                        fill="none"
-                        stroke="#2a1a0c"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M108 230 L82 240"
-                        fill="none"
-                        stroke="#1a1008"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                      />
-                      <circle cx="88" cy="236" r="3" fill="#1a1008" />
-                    </g>
-                  </g>
-                </g>
-              </g>
+              <path
+                d="M0 2 L26 14"
+                fill="none"
+                stroke="#1a1008"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+              <circle cx="18" cy="4" r="3" fill="#1a1008" />
             </g>
           </g>
         </svg>

@@ -14,6 +14,7 @@ type Props = {
   disabled?: boolean;
   className?: string;
   fallback?: ReactNode;
+  panelPlacement?: "up" | "down";
   onChange: (next: Record<string, string>) => void;
 };
 
@@ -40,6 +41,7 @@ export function SessionConfigPicker({
   disabled,
   className,
   fallback = null,
+  panelPlacement = "up",
   onChange
 }: Props) {
   const { t } = useTranslation();
@@ -107,19 +109,20 @@ export function SessionConfigPicker({
     <div className={rootClassName} ref={rootRef}>
       <button
         type="button"
-        className="session-config-picker-trigger"
+        className="composer-permission session-config-picker-trigger"
         title={t("chat.modelPickerHint")}
         disabled={disabled}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
       >
+        <span className="composer-permission-label">{t("chat.modelPicker")}</span>
         <span className="session-config-picker-value">{summaryLabel}</span>
       </button>
       {open ? (
         <div
           id={panelId}
-          className="session-config-picker-panel"
+          className={`session-config-picker-panel session-config-picker-panel-${panelPlacement}`}
           role="dialog"
           aria-label={t("chat.modelPickerHint")}
         >

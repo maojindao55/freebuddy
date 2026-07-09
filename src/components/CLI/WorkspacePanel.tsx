@@ -18,12 +18,7 @@ import { formatDuration } from "@/utils/duration";
 import { AgentAvatar } from "./AgentAvatar";
 import { FeedCard } from "../Feeds/FeedCard";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
-import { SessionConfigPicker } from "./SessionConfigPicker";
 import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
-import {
-  displayConfigOptionLabel,
-  filterSessionConfigPickerOptions
-} from "@/utils/sessionConfigOptions";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
@@ -47,9 +42,6 @@ export function WorkspacePanel({
   );
   const live = useConversationStore((s) =>
     s.activeId ? s.live[s.activeId] : undefined
-  );
-  const setConfigOptionOverrides = useConversationStore(
-    (s) => s.setConversationConfigOptionOverrides
   );
   const [now, setNow] = useState(() => Date.now());
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
@@ -227,34 +219,13 @@ export function WorkspacePanel({
   ]);
 
   const sessionConfigSummary = useMemo(() => {
-    const pickerOptions = filterSessionConfigPickerOptions(latestConfigOptions);
-    if (pickerOptions.length === 0) {
-      const sessionConfigValues = latestConfigOptions
-        .map((option) => option.currentLabel ?? option.currentValue)
-        .filter((value): value is string => Boolean(value));
-      return sessionConfigValues.length > 0
-        ? sessionConfigValues.join(" / ")
-        : t("workspace.localAgent");
-    }
-
-    const overrides = active?.configOptionOverrides;
-    return pickerOptions
-      .map(
-        (option) =>
-          displayConfigOptionLabel(option, overrides) ??
-          option.currentLabel ??
-          option.currentValue
-      )
-      .filter((value): value is string => Boolean(value))
-      .join(" / ");
-  }, [active?.configOptionOverrides, latestConfigOptions, t]);
-
-  const canEditSessionConfig =
-    !isTeamRun &&
-    Boolean(active?.id) &&
-    status !== "running" &&
-    status !== "starting" &&
-    !replayFrame;
+    const sessionConfigValues = latestConfigOptions
+      .map((option) => option.currentLabel ?? option.currentValue)
+      .filter((value): value is string => Boolean(value));
+    return sessionConfigValues.length > 0
+      ? sessionConfigValues.join(" / ")
+      : t("workspace.localAgent");
+  }, [latestConfigOptions, t]);
 
   useEffect(() => {
     if (!isCodexAgent) {
@@ -312,24 +283,9 @@ export function WorkspacePanel({
                 </span>
               }
             />
-            <div className="agent-lockup-copy">
+            <div>
               <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
-              {active && !isTeamRun ? (
-                <SessionConfigPicker
-                  className="agent-session-config"
-                  options={latestConfigOptions}
-                  overrides={active.configOptionOverrides}
-                  disabled={!canEditSessionConfig}
-                  fallback={
-                    <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
-                  }
-                  onChange={(next) => {
-                    void setConfigOptionOverrides(active.id, next);
-                  }}
-                />
-              ) : (
-                <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
-              )}
+              <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
             </div>
           </div>
         </section>

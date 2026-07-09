@@ -1,104 +1,133 @@
 /**
- * Continuous rope-chain model of a bullwhip crack.
+ * Verlet-rope bullwhip, adapted from a classic canvas demo:
+ *   - many mass points linked by distance constraints
+ *   - the handle (root) is driven along a wind-up → snap → recover path
+ *   - gravity + damping let the soft rope lag and crack like a real lash
+ *   - tip speed above a threshold spawns a crack burst
  *
- * Instead of a handful of discrete CSS keyframes (which reads as a
- * mechanical, multi-segment robot arm), the rope is sampled at many points
- * and each point's rotation relative to the previous one is a smooth
- * function of time: a traveling wave that reaches point `u` after
- * `u * crackAtMs`, snaps forward once it arrives, and rings down. Rotations
- * compound down the chain (like a real rope), and the sampled points are
- * rendered through a Catmull-Rom spline so the curve stays fluid — no
- * visible joints.
- *
- * This module has no runtime dependencies on the rest of the app (the
- * caller passes `crackAtMs`, which should match
- * `whipEffectStore.WHIP_HIT_AT_MS`) so the wave math can be unit tested in
- * isolation.
+ * Pure math / simulation — no React. The overlay owns the RAF loop and
+ * feeds `elapsedMs` in; unit tests step the same sim without a DOM.
  */
 
-interface Point {
+export interface Point {
   x: number;
   y: number;
 }
 
+interface VerletPoint {
+  x: number;
+  y: number;
+  px: number;
+  py: number;
+}
+
+export interface CrackParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  size: number;
+  hue: number;
+  ring?: boolean;
+  r?: number;
+}
+
+/** Rest attach of the lash on the decorative handle (viewBox 560×300). */
 export const WHIP_ATTACH_POINT: Point = { x: 430, y: 152 };
-
-/** Rest-shape control points for a relaxed S-curve from handle to tip. */
-const REST_CONTROL: [Point, Point, Point] = [
-  { x: 358, y: 96 },
-  { x: 186, y: 108 },
-  { x: 96, y: 230 }
-];
-
-const JOINT_COUNT = 9; // sample points including the fixed attach point
-
-function restBezierPoint(t: number): Point {
-  const [p1, p2, p3] = REST_CONTROL;
-  const mt = 1 - t;
-  const a = mt * mt * mt;
-  const b = 3 * mt * mt * t;
-  const c = 3 * mt * t * t;
-  const d = t * t * t;
-  return {
-    x: a * WHIP_ATTACH_POINT.x + b * p1.x + c * p2.x + d * p3.x,
-    y: a * WHIP_ATTACH_POINT.y + b * p1.y + c * p2.y + d * p3.y
-  };
-}
-
-interface RestJoint {
-  /** Normalized position along the rope, 0 = handle, 1 = tip. */
-  u: number;
-  /** Rest turn relative to the previous segment's direction (radians). */
-  relativeAngle: number;
-  length: number;
-}
-
-function buildRestJoints(): RestJoint[] {
-  const points: Point[] = [];
-  for (let i = 0; i < JOINT_COUNT; i += 1) {
-    const t = i / (JOINT_COUNT - 1);
-    points.push(i === 0 ? WHIP_ATTACH_POINT : restBezierPoint(t));
-  }
-  const joints: RestJoint[] = [];
-  let prevAngle = 0;
-  for (let i = 1; i < points.length; i += 1) {
-    const dx = points[i].x - points[i - 1].x;
-    const dy = points[i].y - points[i - 1].y;
-    const angle = Math.atan2(dy, dx);
-    joints.push({
-      u: i / (JOINT_COUNT - 1),
-      relativeAngle: i === 1 ? angle : angle - prevAngle,
-      length: Math.hypot(dx, dy)
-    });
-    prevAngle = angle;
-  }
-  return joints;
-}
-
-const REST_JOINTS = buildRestJoints();
 
 /** Default time-to-crack, matching whipEffectStore.WHIP_HIT_AT_MS. */
 export const DEFAULT_CRACK_AT_MS = 1050;
-/** Peak swing amplitude at the tip (u=1), in radians. */
-const AMP_MAX = 0.46;
-/** Oscillation period once the wave reaches a point. */
-const PERIOD_MS = 260;
-/** Ring-down time constant after the wave passes a point. */
-const DECAY_TAU_MS = 230;
+export const DEFAULT_TOTAL_MS = 2300;
 
-/**
- * Local bend at normalized position `u`, `localT` ms after the traveling
- * wave reached it. Starts pulled back (anticipation), snaps forward through
- * zero at the half period (the crack), then rings down and settles.
- */
-function bendDelta(u: number, localT: number): number {
-  if (localT < 0) return 0;
-  const amp = AMP_MAX * Math.pow(u, 1.6);
-  const decay = Math.exp(-localT / DECAY_TAU_MS);
-  return amp * decay * -Math.cos((2 * Math.PI * localT) / PERIOD_MS);
+const SEGMENTS = 32;
+const SEG_LEN = 11;
+const GRAVITY = 0.42;
+const DAMPING = 0.995;
+const CONSTRAINT_ITERS = 28;
+const TIP_SPEED_CRACK = 32;
+const CRACK_COOLDOWN_FRAMES = 28;
+const FRAME_MS = 1000 / 60;
+
+/** Wind-up occupies the first ~42% of the time-to-crack (same as before). */
+const WINDUP_FRACTION = 0.42;
+
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
 }
 
-/** Catmull-Rom → cubic Bezier smoothing through a point sequence. */
+function easeOutQuad(x: number): number {
+  return 1 - (1 - x) * (1 - x);
+}
+
+function easeInQuad(x: number): number {
+  return x * x;
+}
+
+function easeOutCubic(x: number): number {
+  const c = 1 - x;
+  return 1 - c * c * c;
+}
+
+/**
+ * Map wall-clock elapsed time onto the demo's 0→1 swing progress so the
+ * tip-speed peak lands near `crackAtMs` (snap phase 0.35→0.6).
+ */
+export function swingProgress(
+  elapsedMs: number,
+  crackAtMs: number = DEFAULT_CRACK_AT_MS,
+  totalMs: number = DEFAULT_TOTAL_MS
+): number {
+  const windupEnd = crackAtMs * WINDUP_FRACTION;
+  if (elapsedMs <= 0) return 0;
+  if (elapsedMs <= windupEnd) {
+    return 0.35 * easeOutQuad(clamp01(elapsedMs / windupEnd));
+  }
+  if (elapsedMs <= crackAtMs) {
+    const k = clamp01((elapsedMs - windupEnd) / Math.max(crackAtMs - windupEnd, 1));
+    return 0.35 + 0.25 * easeInQuad(k);
+  }
+  const k = clamp01((elapsedMs - crackAtMs) / Math.max(totalMs - crackAtMs, 1));
+  return 0.6 + 0.4 * easeOutCubic(k);
+}
+
+/**
+ * Handle trajectory in viewBox space. Mirrored from the canvas demo so the
+ * grip sits on the right and the lash cracks toward the left (avatar).
+ *
+ *   0→0.35  wind-up: pull back right + up
+ *   0.35→0.6 snap: accelerate left + down
+ *   0.6→1   recover toward rest
+ */
+export function handlePos(progress: number, base: Point = WHIP_ATTACH_POINT): Point {
+  const p = clamp01(progress);
+  if (p < 0.35) {
+    const k = p / 0.35;
+    const e = easeOutQuad(k);
+    return { x: base.x + e * 88, y: base.y - e * 108 };
+  }
+  if (p < 0.6) {
+    const k = (p - 0.35) / 0.25;
+    const e = easeInQuad(k);
+    return { x: base.x + 88 - e * 210, y: base.y - 108 + e * 155 };
+  }
+  const k = (p - 0.6) / 0.4;
+  const e = easeOutCubic(k);
+  return { x: base.x - 122 + e * 122, y: base.y + 47 - e * 47 };
+}
+
+function createHangChain(base: Point): VerletPoint[] {
+  const points: VerletPoint[] = [];
+  for (let i = 0; i < SEGMENTS; i += 1) {
+    const t = i / Math.max(SEGMENTS - 1, 1);
+    // Rest hang: left and slightly down toward the avatar contact zone.
+    const x = base.x - t * (SEG_LEN * (SEGMENTS - 1)) * 0.92;
+    const y = base.y + t * (SEG_LEN * (SEGMENTS - 1)) * 0.28;
+    points.push({ x, y, px: x, py: y });
+  }
+  return points;
+}
+
 function smoothPath(points: Point[]): string {
   if (points.length === 0) return "";
   if (points.length === 1) return `M${points[0].x} ${points[0].y}`;
@@ -118,115 +147,237 @@ function smoothPath(points: Point[]): string {
 }
 
 export interface WhipFrame {
-  /** Smooth path `d` for the full rope, from the handle attach point. */
   ropeD: string;
-  /** Smooth path `d` for just the base half — layered thicker for taper. */
   baseD: string;
   tipX: number;
   tipY: number;
-  /** Direction (radians) the last segment points, for the cracker flourish. */
   tipAngle: number;
-}
-
-function clamp01(x: number): number {
-  return Math.min(1, Math.max(0, x));
-}
-
-function easeOutCubic(x: number): number {
-  const c = 1 - x;
-  return 1 - c * c * c;
-}
-
-function easeInCubic(x: number): number {
-  return x * x * x;
-}
-
-const WINDUP_ANGLE_DEG = 24;
-const SNAP_ANGLE_DEG = -9;
-const SETTLE_ANGLE_DEG = -2;
-const SNAP_SCALE = 1.05;
-/** Wind-up occupies the first ~42% of the time-to-crack. */
-const WINDUP_FRACTION = 0.42;
-
-export interface ArmSwing {
-  /** Rotation in degrees (apply directly as `rotate(${deg}deg)`). */
-  deg: number;
-  scale: number;
+  tipSpeed: number;
+  handleX: number;
+  handleY: number;
+  /** Stage opacity (fade in / out). */
   opacity: number;
+  /** True on the frame the tip first exceeds the crack threshold. */
+  cracked: boolean;
+  particles: CrackParticle[];
+}
+
+export interface WhipSimulation {
+  /** Advance one ~60fps physics frame at the given swing progress. */
+  step(progress: number): WhipFrame;
+  /**
+   * Catch the sim up to `elapsedMs` with fixed 60fps substeps (for tests /
+   * reduced-motion pose sampling).
+   */
+  advanceTo(
+    elapsedMs: number,
+    crackAtMs?: number,
+    totalMs?: number
+  ): WhipFrame;
+  reset(): void;
+}
+
+function fadeOpacity(elapsedMs: number, totalMs: number): number {
+  const fadeInMs = 140;
+  const fadeOutMs = 260;
+  if (elapsedMs < fadeInMs) return clamp01(elapsedMs / fadeInMs);
+  return clamp01((totalMs - elapsedMs) / fadeOutMs);
+}
+
+export function createWhipSimulation(
+  base: Point = WHIP_ATTACH_POINT
+): WhipSimulation {
+  let points = createHangChain(base);
+  let particles: CrackParticle[] = [];
+  let crackCooldown = 0;
+  let lastElapsed = -FRAME_MS;
+  let crackedThisStep = false;
+
+  function spawnCrack(x: number, y: number, vx: number, vy: number) {
+    for (let i = 0; i < 22; i += 1) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 2 + Math.random() * 8;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(a) * s + vx * 0.22,
+        vy: Math.sin(a) * s + vy * 0.22,
+        life: 1,
+        size: 1 + Math.random() * 2.8,
+        hue: 28 + Math.random() * 28
+      });
+    }
+    particles.push({
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      life: 1,
+      size: 0,
+      hue: 40,
+      ring: true,
+      r: 4
+    });
+  }
+
+  function snapshot(tipSpeed: number): WhipFrame {
+    const pts: Point[] = points.map((p) => ({ x: p.x, y: p.y }));
+    const tip = pts[pts.length - 1];
+    const prev = pts[pts.length - 2] ?? tip;
+    const tipAngle = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+    const handle = pts[0];
+    const baseCount = Math.min(pts.length, Math.ceil(pts.length * 0.45));
+    return {
+      ropeD: smoothPath(pts),
+      baseD: smoothPath(pts.slice(0, baseCount)),
+      tipX: tip.x,
+      tipY: tip.y,
+      tipAngle,
+      tipSpeed,
+      handleX: handle.x,
+      handleY: handle.y,
+      opacity: 1,
+      cracked: crackedThisStep,
+      particles: particles.map((p) => ({ ...p }))
+    };
+  }
+
+  function physicsStep(progress: number): WhipFrame {
+    crackedThisStep = false;
+    const h = handlePos(progress, base);
+
+    for (let i = 1; i < SEGMENTS; i += 1) {
+      const p = points[i];
+      const vx = (p.x - p.px) * DAMPING;
+      const vy = (p.y - p.py) * DAMPING;
+      p.px = p.x;
+      p.py = p.y;
+      p.x += vx;
+      p.y += vy + GRAVITY;
+    }
+
+    points[0].x = h.x;
+    points[0].y = h.y;
+    points[0].px = h.x;
+    points[0].py = h.y;
+
+    for (let iter = 0; iter < CONSTRAINT_ITERS; iter += 1) {
+      for (let i = 0; i < SEGMENTS - 1; i += 1) {
+        const a = points[i];
+        const b = points[i + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 0.001;
+        const diff = (dist - SEG_LEN) / dist;
+        if (i === 0) {
+          b.x -= dx * diff;
+          b.y -= dy * diff;
+        } else {
+          a.x += dx * diff * 0.5;
+          a.y += dy * diff * 0.5;
+          b.x -= dx * diff * 0.5;
+          b.y -= dy * diff * 0.5;
+        }
+      }
+    }
+
+    const tip = points[SEGMENTS - 1];
+    const tvx = tip.x - tip.px;
+    const tvy = tip.y - tip.py;
+    const tipSpeed = Math.hypot(tvx, tvy);
+
+    if (crackCooldown > 0) crackCooldown -= 1;
+    if (tipSpeed > TIP_SPEED_CRACK && crackCooldown === 0) {
+      spawnCrack(tip.x, tip.y, tvx, tvy);
+      crackCooldown = CRACK_COOLDOWN_FRAMES;
+      crackedThisStep = true;
+    }
+
+    for (let i = particles.length - 1; i >= 0; i -= 1) {
+      const p = particles[i];
+      if (p.ring) {
+        p.r = (p.r ?? 4) + 7;
+        p.life -= 0.07;
+      } else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.14;
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+        p.life -= 0.035;
+      }
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    return snapshot(tipSpeed);
+  }
+
+  return {
+    step(progress: number) {
+      return physicsStep(progress);
+    },
+    advanceTo(elapsedMs, crackAtMs = DEFAULT_CRACK_AT_MS, totalMs = DEFAULT_TOTAL_MS) {
+      const target = Math.max(0, elapsedMs);
+      // First call (or after reset): step from 0 up to target.
+      let t = Math.max(0, lastElapsed);
+      if (t < 0) t = 0;
+      let frame = snapshot(0);
+      if (target <= t && lastElapsed >= 0) {
+        frame = physicsStep(swingProgress(target, crackAtMs, totalMs));
+        frame.opacity = fadeOpacity(target, totalMs);
+        lastElapsed = target;
+        return frame;
+      }
+      while (t < target) {
+        t = Math.min(t + FRAME_MS, target);
+        frame = physicsStep(swingProgress(t, crackAtMs, totalMs));
+      }
+      frame.opacity = fadeOpacity(target, totalMs);
+      lastElapsed = target;
+      return frame;
+    },
+    reset() {
+      points = createHangChain(base);
+      particles = [];
+      crackCooldown = 0;
+      lastElapsed = -FRAME_MS;
+      crackedThisStep = false;
+    }
+  };
 }
 
 /**
- * The arm's own swing (wind-up → forward snap → settle), computed with the
- * same "continuous function of time" philosophy as the rope wave so both
- * move as one connected gesture instead of two independently-timed
- * animations (a CSS keyframe swing layered over a JS-driven rope tends to
- * read as two things happening at once, not one whip crack).
- *
- * The forward-snap phase uses an ease-IN curve (slow → fast), so angular
- * velocity peaks right as `crackAtMs` is reached — that peak velocity,
- * not the peak angle, is what should read as "the crack".
+ * Convenience for reduced-motion / one-shot sampling: run a fresh sim up to
+ * `elapsedMs` and return that frame (with fade opacity applied).
  */
-export function computeArmSwing(
-  elapsedMs: number,
-  crackAtMs: number = DEFAULT_CRACK_AT_MS,
-  totalMs = 2300
-): ArmSwing {
-  const windupEnd = crackAtMs * WINDUP_FRACTION;
-  let deg: number;
-  let scale: number;
-
-  if (elapsedMs <= windupEnd) {
-    const p = easeOutCubic(clamp01(elapsedMs / windupEnd));
-    deg = p * WINDUP_ANGLE_DEG;
-    scale = 1 + p * 0.02;
-  } else if (elapsedMs <= crackAtMs) {
-    const p = easeInCubic(
-      clamp01((elapsedMs - windupEnd) / (crackAtMs - windupEnd))
-    );
-    deg = WINDUP_ANGLE_DEG + p * (SNAP_ANGLE_DEG - WINDUP_ANGLE_DEG);
-    scale = 1.02 + p * (SNAP_SCALE - 1.02);
-  } else {
-    const t = elapsedMs - crackAtMs;
-    const settleSpan = Math.max(totalMs - crackAtMs, 1);
-    const p = easeOutCubic(clamp01(t / settleSpan));
-    const wiggle = 3 * Math.exp(-t / 350) * Math.cos((2 * Math.PI * t) / 450);
-    deg = SNAP_ANGLE_DEG + p * (SETTLE_ANGLE_DEG - SNAP_ANGLE_DEG) + wiggle;
-    scale = SNAP_SCALE + p * (1 - SNAP_SCALE);
-  }
-
-  const fadeInMs = 140;
-  const fadeOutMs = 260;
-  const opacity =
-    elapsedMs < fadeInMs
-      ? clamp01(elapsedMs / fadeInMs)
-      : clamp01((totalMs - elapsedMs) / fadeOutMs);
-
-  return { deg, scale, opacity: Math.min(1, opacity) };
-}
-
 export function computeWhipFrame(
   elapsedMs: number,
-  crackAtMs: number = DEFAULT_CRACK_AT_MS
+  crackAtMs: number = DEFAULT_CRACK_AT_MS,
+  totalMs: number = DEFAULT_TOTAL_MS
 ): WhipFrame {
-  const points: Point[] = [WHIP_ATTACH_POINT];
-  let cumAngle = 0;
-  for (const joint of REST_JOINTS) {
-    const delay = joint.u * crackAtMs;
-    const localT = elapsedMs - delay;
-    cumAngle += joint.relativeAngle + bendDelta(joint.u, localT);
-    const prev = points[points.length - 1];
-    points.push({
-      x: prev.x + joint.length * Math.cos(cumAngle),
-      y: prev.y + joint.length * Math.sin(cumAngle)
-    });
-  }
-  const tip = points[points.length - 1];
-  const baseCount = Math.min(points.length, 6);
+  const sim = createWhipSimulation();
+  return sim.advanceTo(elapsedMs, crackAtMs, totalMs);
+}
+
+/**
+ * Stage no longer rotates independently — the Verlet handle path *is* the
+ * swing. Kept as a thin fade helper so the overlay can still set opacity
+ * without a second animation timeline.
+ */
+export function computeStageFade(
+  elapsedMs: number,
+  totalMs: number = DEFAULT_TOTAL_MS
+): { opacity: number; deg: number; scale: number } {
   return {
-    ropeD: smoothPath(points),
-    baseD: smoothPath(points.slice(0, baseCount)),
-    tipX: tip.x,
-    tipY: tip.y,
-    tipAngle: cumAngle
+    opacity: fadeOpacity(elapsedMs, totalMs),
+    deg: 0,
+    scale: 1
   };
 }
+
+/** @deprecated Use computeStageFade — arm rotation is now handle-driven. */
+export const computeArmSwing = (
+  elapsedMs: number,
+  _crackAtMs?: number,
+  totalMs: number = DEFAULT_TOTAL_MS
+) => computeStageFade(elapsedMs, totalMs);

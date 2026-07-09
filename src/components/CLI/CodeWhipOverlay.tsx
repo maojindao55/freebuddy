@@ -6,7 +6,13 @@ import {
   WHIP_EFFECT_MS,
   WHIP_HIT_AT_MS
 } from "@/store/whipEffectStore";
-import { computeArmSwing, computeWhipFrame } from "@/utils/whipMotion";
+import {
+  computeStageFade,
+  createWhipSimulation,
+  swingProgress,
+  WHIP_ATTACH_POINT,
+  type CrackParticle
+} from "@/utils/whipMotion";
 
 export function CodeWhipOverlay() {
   const { t } = useTranslation();
@@ -15,40 +21,59 @@ export function CodeWhipOverlay() {
   const target = useWhipEffectStore((s) => s.target);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const handleRef = useRef<SVGGElement | null>(null);
   const ropeRef = useRef<SVGPathElement | null>(null);
   const baseRef = useRef<SVGPathElement | null>(null);
   const crackerRef = useRef<SVGGElement | null>(null);
+  const particlesRef = useRef<SVGGElement | null>(null);
 
   useEffect(() => {
     if (!active) return;
-    const applyFrame = (elapsed: number, opacityOverride?: number) => {
-      const swing = computeArmSwing(elapsed, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
-      const frame = computeWhipFrame(elapsed, WHIP_HIT_AT_MS);
+
+    const sim = createWhipSimulation();
+    const paint = (
+      elapsed: number,
+      frame: ReturnType<typeof sim.advanceTo>,
+      opacityOverride?: number
+    ) => {
+      const fade = computeStageFade(elapsed, WHIP_EFFECT_MS);
       if (stageRef.current) {
-        stageRef.current.style.transform = `rotate(${swing.deg}deg) scale(${swing.scale})`;
-        stageRef.current.style.opacity = String(opacityOverride ?? swing.opacity);
+        stageRef.current.style.opacity = String(
+          opacityOverride ?? fade.opacity
+        );
       }
+      const dx = frame.handleX - WHIP_ATTACH_POINT.x;
+      const dy = frame.handleY - WHIP_ATTACH_POINT.y;
+      handleRef.current?.setAttribute("transform", `translate(${dx} ${dy})`);
       ropeRef.current?.setAttribute("d", frame.ropeD);
       baseRef.current?.setAttribute("d", frame.baseD);
       crackerRef.current?.setAttribute(
         "transform",
         `translate(${frame.tipX} ${frame.tipY}) rotate(${(frame.tipAngle * 180) / Math.PI})`
       );
+      paintParticles(particlesRef.current, frame.particles);
     };
+
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) {
-      // Hold a single "mid-crack" pose instead of animating through the
-      // full wind-up/snap/ring-down sequence.
-      applyFrame(WHIP_HIT_AT_MS + 60, 1);
+      // Hold a single mid-crack pose instead of animating the full swing.
+      const frame = sim.advanceTo(WHIP_HIT_AT_MS + 60, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
+      paint(WHIP_HIT_AT_MS + 60, frame, 1);
       return;
     }
+
     let raf = 0;
     const start = performance.now();
     const tick = () => {
       const elapsed = Math.min(performance.now() - start, WHIP_EFFECT_MS);
-      applyFrame(elapsed);
+      // One physics step per display frame, driven by swing progress so the
+      // tip-speed peak lands near WHIP_HIT_AT_MS (same as the canvas demo).
+      const progress = swingProgress(elapsed, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
+      const frame = sim.step(progress);
+      frame.opacity = computeStageFade(elapsed, WHIP_EFFECT_MS).opacity;
+      paint(elapsed, frame);
       if (elapsed < WHIP_EFFECT_MS) {
         raf = requestAnimationFrame(tick);
       }
@@ -90,8 +115,12 @@ export function CodeWhipOverlay() {
             </linearGradient>
           </defs>
 
-          {/* Short straight handle on the right */}
-          <g className="code-whip-handle">
+          {/*
+            Decorative handle translates with the Verlet root each frame
+            (see createWhipSimulation / handlePos). The soft lash is a
+            distance-constrained rope driven by that same root motion.
+          */}
+          <g className="code-whip-handle" ref={handleRef}>
             <circle cx="508" cy="198" r="10" fill="#2a2a2a" />
             <circle cx="508" cy="198" r="6.5" fill="#3d3d3d" />
             <circle cx="496" cy="191" r="7" fill="#d4a017" />
@@ -117,12 +146,6 @@ export function CodeWhipOverlay() {
             <circle cx="436" cy="155" r="5.5" fill="#3d3d3d" />
           </g>
 
-          {/*
-            Rope driven by requestAnimationFrame (see computeWhipFrame): a
-            continuous traveling wave, not discrete CSS keyframes, so the
-            lash flows like a real cracking whip rather than a jointed arm.
-            The thicker base path fakes a taper toward the thin tip.
-          */}
           <g className="code-whip-tip">
             <path
               ref={baseRef}
@@ -141,8 +164,6 @@ export function CodeWhipOverlay() {
               strokeLinecap="round"
             />
             <g ref={crackerRef} className="code-whip-cracker">
-              {/* Local +x continues along the rope's current direction
-                  (rotate() maps it there), so these extend past the tip. */}
               <path
                 d="M0 0 L22 -8"
                 fill="none"
@@ -159,6 +180,7 @@ export function CodeWhipOverlay() {
               />
               <circle cx="18" cy="4" r="3" fill="#1a1008" />
             </g>
+            <g ref={particlesRef} className="code-whip-particles" />
           </g>
         </svg>
       </div>
@@ -172,4 +194,38 @@ export function CodeWhipOverlay() {
       </div>
     </div>
   );
+}
+
+function paintParticles(
+  group: SVGGElement | null,
+  particles: CrackParticle[]
+) {
+  if (!group) return;
+  while (group.firstChild) group.removeChild(group.firstChild);
+  const ns = "http://www.w3.org/2000/svg";
+  for (const p of particles) {
+    if (p.ring) {
+      const ring = document.createElementNS(ns, "circle");
+      ring.setAttribute("cx", String(p.x));
+      ring.setAttribute("cy", String(p.y));
+      ring.setAttribute("r", String(p.r ?? 4));
+      ring.setAttribute("fill", "none");
+      ring.setAttribute(
+        "stroke",
+        `rgba(255, 220, 150, ${Math.max(0, p.life * 0.7)})`
+      );
+      ring.setAttribute("stroke-width", String(Math.max(0.5, 3 * p.life)));
+      group.appendChild(ring);
+    } else {
+      const dot = document.createElementNS(ns, "circle");
+      dot.setAttribute("cx", String(p.x));
+      dot.setAttribute("cy", String(p.y));
+      dot.setAttribute("r", String(Math.max(0.2, p.size * p.life)));
+      dot.setAttribute(
+        "fill",
+        `hsla(${p.hue}, 100%, 65%, ${Math.max(0, p.life)})`
+      );
+      group.appendChild(dot);
+    }
+  }
 }

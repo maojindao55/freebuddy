@@ -20,26 +20,28 @@ test("ChatView mounts a full-chat code whip overlay driven by whipMotion", () =>
   assert.match(overlay, /code-whip-overlay/);
   assert.match(overlay, /code-whip-svg/);
   assert.match(overlay, /whip-grip-grad/);
-  assert.match(overlay, /computeWhipFrame/);
-  assert.match(overlay, /computeArmSwing/);
+  assert.match(overlay, /createWhipSimulation/);
+  assert.match(overlay, /swingProgress/);
   assert.match(overlay, /requestAnimationFrame/);
   assert.match(overlay, /prefers-reduced-motion/);
   assert.match(overlay, /code-whip-cracker/);
   assert.match(overlay, /--whip-hit-x/);
 });
 
-test("the arm swing and rope wave share one JS-driven timeline, not two", () => {
+test("Verlet handle path drives the rope; stage has no CSS swing keyframes", () => {
   const overlay = read("../src/components/CLI/CodeWhipOverlay.tsx");
   const styles = read("../styles.css");
-  // The stage's transform/opacity must be set imperatively alongside the
-  // rope, not via a separate CSS keyframe animation running independently.
-  assert.match(overlay, /stageRef\.current\.style\.transform/);
+  const motion = read("../src/utils/whipMotion.ts");
+  // Soft rope is a Verlet sim; decorative handle translates with the root.
+  assert.match(motion, /CONSTRAINT_ITERS|constraint/i);
+  assert.match(motion, /handlePos/);
+  assert.match(overlay, /handleRef/);
   assert.match(overlay, /stageRef\.current\.style\.opacity/);
   assert.doesNotMatch(styles, /@keyframes code-whip-swing/);
   assert.doesNotMatch(styles, /\.code-whip-stage\s*\{[^}]*\banimation:/);
 });
 
-test("styles support the JS-driven rope wave and avatar hit shake", () => {
+test("styles support the JS-driven Verlet rope and avatar hit shake", () => {
   const css = read("../styles.css");
   assert.match(css, /\.code-whip-overlay/);
   assert.match(css, /@keyframes code-whip-avatar-hit/);

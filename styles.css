@@ -3448,12 +3448,10 @@ button {
   /* Cracker contact point (~96,230 of the 560x300 viewBox) pins onto the avatar. */
   margin-left: calc(var(--whip-w) * -0.171);
   margin-top: calc(var(--whip-h) * -0.767);
-  /* Pivot near the handle/wrist so wind-up stays in the chat viewport. */
+  /* Pivot near the handle/wrist; the Verlet root swings in SVG space so
+     the stage itself no longer needs an independent CSS rotate. */
   transform-origin: 88% 62%;
-  /* transform + opacity are set imperatively per frame from
-     computeArmSwing() in CodeWhipOverlay, so the arm's swing and the
-     rope's wave share one continuous, physically-motivated timeline
-     instead of running as two independently-timed animations. */
+  /* Opacity is set imperatively per frame from computeStageFade(). */
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
 }
 
@@ -3468,11 +3466,9 @@ button {
 }
 
 /*
- * The rope itself is driven frame-by-frame from JS (see whipMotion.ts /
- * CodeWhipOverlay) using a continuous traveling-wave formula rather than
- * discrete CSS keyframes, so it flows like a real rope/snake instead of a
- * jointed arm. `.code-whip-base` / `.code-whip-rope` just need their base
- * stroke styling here; their `d` attribute is set imperatively.
+ * Soft lash is a Verlet rope (whipMotion.ts) stepped each RAF frame from
+ * CodeWhipOverlay. Paths are set imperatively; these rules only style the
+ * stroke taper layers.
  */
 .code-whip-base,
 .code-whip-rope {

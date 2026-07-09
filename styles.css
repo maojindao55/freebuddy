@@ -3414,7 +3414,7 @@ button {
 }
 
 .msg-avatar-whip-target.whip-hit .msg-avatar {
-  animation: code-whip-avatar-hit 0.7s cubic-bezier(0.36, 0.07, 0.19, 0.97) 0.34s both;
+  animation: code-whip-avatar-hit 0.85s cubic-bezier(0.36, 0.07, 0.19, 0.97) 1.05s both;
 }
 
 .code-whip-overlay {
@@ -3434,22 +3434,22 @@ button {
     rgba(239, 68, 68, 0.1) 34%,
     transparent 68%
   );
-  animation: code-whip-flash 1.3s ease-out both;
+  animation: code-whip-flash 2.3s ease-out both;
 }
 
 .code-whip-stage {
-  --whip-w: min(88vw, 560px);
-  --whip-h: calc(var(--whip-w) * 0.615);
+  --whip-w: min(96vw, 720px);
+  --whip-h: calc(var(--whip-w) * 0.5625);
   position: absolute;
   left: var(--whip-hit-x, 50%);
   top: var(--whip-hit-y, 40%);
   width: var(--whip-w);
   height: var(--whip-h);
-  /* Tip sits near the left of the SVG; pin that tip onto the avatar. */
-  margin-left: calc(var(--whip-w) * 0.02);
-  margin-top: calc(var(--whip-h) * -0.645);
-  transform-origin: 91% 74%;
-  animation: code-whip-swing 1.3s cubic-bezier(0.16, 0.84, 0.18, 1) both;
+  /* Tip sits near the far left of the SVG; pin that tip onto the avatar. */
+  margin-left: calc(var(--whip-w) * 0.12);
+  margin-top: calc(var(--whip-h) * -0.82);
+  transform-origin: 92% 76%;
+  animation: code-whip-swing 2.3s cubic-bezier(0.22, 0.7, 0.18, 1) both;
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
 }
 
@@ -3461,15 +3461,15 @@ button {
 
 .code-whip-cord,
 .code-whip-cord-thin {
-  stroke-dasharray: 620;
-  stroke-dashoffset: 620;
-  animation: code-whip-unfurl 0.42s ease-out both;
+  stroke-dasharray: 900;
+  stroke-dashoffset: 900;
+  animation: code-whip-unfurl 0.55s ease-out both;
 }
 
 .code-whip-tip,
 .code-whip-tip-dot {
   opacity: 0;
-  animation: code-whip-tip 0.42s ease-out both;
+  animation: code-whip-tip 0.55s ease-out both;
 }
 
 .code-whip-hit-fx {
@@ -3490,7 +3490,7 @@ button {
   border-radius: 50%;
   border: 3px solid rgba(239, 68, 68, 0.9);
   opacity: 0;
-  animation: code-whip-impact-ring 0.45s ease-out 0.34s both;
+  animation: code-whip-impact-ring 0.5s ease-out 1.05s both;
 }
 
 .code-whip-crack {
@@ -3504,7 +3504,7 @@ button {
   text-shadow:
     0 2px 0 #fff,
     3px 3px 0 rgba(0, 0, 0, 0.2);
-  animation: code-whip-crack-pop 0.65s ease-out 0.34s both;
+  animation: code-whip-crack-pop 0.75s ease-out 1.05s both;
   white-space: nowrap;
 }
 
@@ -3514,7 +3514,7 @@ button {
   height: 12px;
   border-radius: 50%;
   background: #fbbf24;
-  animation: code-whip-spark-fly 0.65s ease-out 0.36s both;
+  animation: code-whip-spark-fly 0.75s ease-out 1.08s both;
 }
 
 .code-whip-spark-1 {
@@ -3528,7 +3528,7 @@ button {
   width: 9px;
   height: 9px;
   background: #f97316;
-  animation-delay: 0.4s;
+  animation-delay: 1.12s;
 }
 
 .code-whip-spark-3 {
@@ -3537,7 +3537,7 @@ button {
   width: 10px;
   height: 10px;
   background: #fde68a;
-  animation-delay: 0.42s;
+  animation-delay: 1.14s;
 }
 
 .code-whip-spark-4 {
@@ -3546,14 +3546,20 @@ button {
   width: 7px;
   height: 7px;
   background: #fb7185;
-  animation-delay: 0.44s;
+  animation-delay: 1.16s;
 }
 
 @keyframes code-whip-flash {
   0% {
     opacity: 0;
   }
-  18% {
+  8% {
+    opacity: 0.35;
+  }
+  35% {
+    opacity: 0.2;
+  }
+  46% {
     opacity: 1;
   }
   100% {
@@ -3561,32 +3567,43 @@ button {
   }
 }
 
+/* Wind-up (抡鞭) then crack onto the avatar tip pin. */
 @keyframes code-whip-swing {
   0% {
-    transform: rotate(92deg) scale(0.88);
+    transform: rotate(118deg) scale(0.9);
     opacity: 0;
   }
-  10% {
+  6% {
     opacity: 1;
   }
-  26% {
-    transform: rotate(58deg) scale(1);
+  18% {
+    transform: rotate(98deg) scale(1);
   }
-  38% {
-    transform: rotate(-8deg) scale(1.06);
+  32% {
+    transform: rotate(128deg) scale(1.02);
   }
-  52% {
-    transform: rotate(2deg) scale(1);
+  42% {
+    transform: rotate(108deg) scale(1.04);
+  }
+  48% {
+    transform: rotate(-10deg) scale(1.08);
+  }
+  56% {
+    transform: rotate(4deg) scale(1);
+  }
+  72% {
+    transform: rotate(-2deg) scale(0.99);
+    opacity: 1;
   }
   100% {
-    transform: rotate(-4deg) scale(0.97);
+    transform: rotate(-6deg) scale(0.96);
     opacity: 0;
   }
 }
 
 @keyframes code-whip-unfurl {
   from {
-    stroke-dashoffset: 620;
+    stroke-dashoffset: 900;
   }
   to {
     stroke-dashoffset: 0;

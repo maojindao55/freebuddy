@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
-export const WHIP_EFFECT_MS = 1300;
-export const WHIP_HIT_AT_MS = 380;
+export const WHIP_EFFECT_MS = 2300;
+export const WHIP_HIT_AT_MS = 1050;
 
 export interface WhipTargetPoint {
   /** Center X of the avatar, relative to the chat-view overlay. */

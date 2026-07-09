@@ -408,9 +408,27 @@ function defaultTitleForConversation(
   return tail ? `${conversation.agentName} · ${tail}` : conversation.agentName;
 }
 
+export type ConversationTitleSource = "default" | "prompt" | "agent" | "user";
+
+type ConversationForTitleSource = Pick<Conversation, "title"> &
+  Partial<Pick<Conversation, "agentName" | "cwd">> & {
+    titleSource?: ConversationTitleSource;
+  };
+
+export function inferConversationTitleSource(
+  conversation: ConversationForTitleSource
+): ConversationTitleSource {
+  if (conversation.titleSource) return conversation.titleSource;
+  if (!conversation.agentName) return "prompt";
+  const defaultTitle = defaultTitleForConversation({
+    agentName: conversation.agentName,
+    cwd: conversation.cwd
+  });
+  return conversation.title === defaultTitle ? "default" : "prompt";
+}
+
 export function shouldApplyAgentSessionTitle(
-  conversation: Pick<Conversation, "title"> &
-    Partial<Pick<Conversation, "agentName" | "cwd">>,
+  conversation: ConversationForTitleSource,
   messagesOrTitle:
     | Pick<ConversationMessage, "workflowRunId">[]
     | string
@@ -423,12 +441,8 @@ export function shouldApplyAgentSessionTitle(
   );
   if (!title || conversation.title === title) return false;
   if (messages.some((message) => Boolean(message.workflowRunId))) return false;
-  if (!conversation.agentName) return true;
-  return conversation.title ===
-    defaultTitleForConversation({
-      agentName: conversation.agentName,
-      cwd: conversation.cwd
-    });
+  const source = inferConversationTitleSource(conversation);
+  return source === "default" || source === "prompt";
 }
 
 function clipConversationTitle(value: string, max = 80): string {

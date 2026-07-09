@@ -229,6 +229,71 @@ test("agent session titles do not overwrite workflow conversation titles", async
   );
 });
 
+test("shouldApplyAgentSessionTitle respects titleSource state machine", async () => {
+  const {
+    shouldApplyAgentSessionTitle,
+    inferConversationTitleSource
+  } = await loadConversationUtils();
+
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "Codex · project", agentName: "Codex", cwd: "/tmp/project", titleSource: "default" },
+      [],
+      "Fix login bug"
+    ),
+    true
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "please fix the login bug for me today", titleSource: "prompt" },
+      [],
+      "Fix login bug"
+    ),
+    true
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "Fix login bug", titleSource: "agent" },
+      [],
+      "Another title"
+    ),
+    false
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "My custom name", titleSource: "user" },
+      [],
+      "Agent title"
+    ),
+    false
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "排查图片预览失败", titleSource: "prompt" },
+      [{ role: "assistant", workflowRunId: "workflow-1" }],
+      "Agent generated title"
+    ),
+    false
+  );
+
+  assert.equal(
+    inferConversationTitleSource({
+      title: "Kimi · project",
+      agentName: "Kimi",
+      cwd: "/Users/me/project"
+    }),
+    "default"
+  );
+  assert.equal(
+    inferConversationTitleSource({
+      title: "please implement auth",
+      agentName: "Kimi",
+      cwd: "/Users/me/project"
+    }),
+    "prompt"
+  );
+});
+
 test("agent session titles do not override custom conversation titles", async () => {
   const { feedArticleTitleFromMessages, shouldApplyAgentSessionTitle } =
     await loadConversationUtils();
@@ -238,7 +303,8 @@ test("agent session titles do not override custom conversation titles", async ()
       {
         title: "Meta决定卖算力,真的是因为“产能过剩”吗?",
         agentName: "Kimi",
-        cwd: "/Users/me/project"
+        cwd: "/Users/me/project",
+        titleSource: "user"
       },
       "请解读这篇文章,提炼关键信息和可能影响。"
     ),

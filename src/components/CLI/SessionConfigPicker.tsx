@@ -32,6 +32,7 @@ type PanelPosition = {
   bottom?: number;
   left: number;
   width: number;
+  maxHeight: number;
 };
 
 function categoryLabel(
@@ -60,23 +61,24 @@ function computePanelPosition(trigger: HTMLElement): PanelPosition {
     window.innerWidth - width - 8
   );
 
-  // Anchor to the trigger chip: open upward when there is room, else downward.
-  const estimatedHeight = Math.min(360, window.innerHeight - 24);
-  const spaceAbove = rect.top - gap;
-  const openUp = spaceAbove >= Math.min(estimatedHeight, 220);
+  const spaceAbove = Math.max(120, rect.top - gap - 8);
+  const spaceBelow = Math.max(120, window.innerHeight - rect.bottom - gap - 8);
+  const openUp = spaceAbove >= Math.min(spaceBelow, 220) || spaceAbove >= 180;
 
   if (openUp) {
     return {
       bottom: window.innerHeight - rect.top + gap,
       left,
-      width
+      width,
+      maxHeight: Math.min(360, spaceAbove)
     };
   }
 
   return {
     top: rect.bottom + gap,
     left,
-    width
+    width,
+    maxHeight: Math.min(360, spaceBelow)
   };
 }
 

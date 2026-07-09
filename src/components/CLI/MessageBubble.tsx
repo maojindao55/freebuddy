@@ -12,7 +12,7 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { memo, useMemo, useState, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { useTranslation } from "react-i18next";
 
@@ -783,6 +783,27 @@ export const MessageBubble = memo(function MessageBubble({
   const [copyMenu, setCopyMenu] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [vote, setVote] = useState<"up" | "down" | null>(null);
+  const [whipping, setWhipping] = useState(false);
+  const [whipNonce, setWhipNonce] = useState(0);
+  const whipTimerRef = useRef<number | null>(null);
+  const canWhip =
+    message.role === "assistant" &&
+    (message.status === "running" || message.status === "starting");
+  const handleWhip = useCallback(() => {
+    if (!canWhip || whipping) return;
+    setWhipping(true);
+    setWhipNonce((n) => n + 1);
+    if (whipTimerRef.current != null) window.clearTimeout(whipTimerRef.current);
+    whipTimerRef.current = window.setTimeout(() => {
+      setWhipping(false);
+      whipTimerRef.current = null;
+    }, 800);
+  }, [canWhip, whipping]);
+  useEffect(() => {
+    return () => {
+      if (whipTimerRef.current != null) window.clearTimeout(whipTimerRef.current);
+    };
+  }, []);
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
   const getSelectionText = () => {
@@ -911,13 +932,34 @@ export const MessageBubble = memo(function MessageBubble({
 
   return (
     <div className="msg msg-assistant">
-      <AgentAvatar
-        adapter={message.adapter ?? adapter}
-        agentId={message.agentId}
-        iconKey={agentIconKey}
-        className="msg-avatar agent-avatar"
-        fallback={<span>✦</span>}
-      />
+      <button
+        type="button"
+        className={`msg-avatar-whip-target${whipping ? " whip-hit" : ""}${canWhip ? " whipable" : ""}`}
+        onClick={canWhip ? handleWhip : undefined}
+        disabled={!canWhip}
+        aria-label={canWhip ? t("message.whipAvatar") : undefined}
+        tabIndex={canWhip ? 0 : -1}
+      >
+        <AgentAvatar
+          key={whipNonce}
+          adapter={message.adapter ?? adapter}
+          agentId={message.agentId}
+          iconKey={agentIconKey}
+          className="msg-avatar agent-avatar"
+          fallback={<span>✦</span>}
+        />
+        {whipping && (
+          <>
+            <span className="whip-arc" aria-hidden="true" />
+            <span className="whip-crack" aria-hidden="true">
+              啪
+            </span>
+            <span className="whip-spark whip-spark-1" aria-hidden="true" />
+            <span className="whip-spark whip-spark-2" aria-hidden="true" />
+            <span className="whip-spark whip-spark-3" aria-hidden="true" />
+          </>
+        )}
+      </button>
       <div className="msg-content-wrapper" onContextMenu={handleContextMenu}>
         <div className="msg-header">
           <span className="msg-author">{agentLabel}</span>

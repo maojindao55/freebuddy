@@ -58,6 +58,7 @@ export interface CliRunArgs {
   toolSessionId?: string;
   env?: Record<string, string>;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   showStderr?: boolean;
   resumeToolSession?: boolean;
   timeoutMs?: number;
@@ -249,6 +250,7 @@ export interface Conversation {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   archived: boolean;
   createdAt: string;
   updatedAt: string;

@@ -18,6 +18,7 @@ export interface Conversation {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +45,32 @@ export interface ConversationMessage {
   updatedAt: string;
 }
 
+function parseConfigOptionOverrides(
+  raw: unknown
+): Record<string, string> | undefined {
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (
+    entries.length === 0 ||
+    !entries.every(
+      ([, v]) => typeof v === "string"
+    )
+  ) {
+    return undefined;
+  }
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
 function rowToConversation(r: any): Conversation {
   return {
     id: r.id,
@@ -56,6 +83,9 @@ function rowToConversation(r: any): Conversation {
       r.approval_mode === "ask" || r.approval_mode === "auto"
         ? r.approval_mode
         : undefined,
+    configOptionOverrides: parseConfigOptionOverrides(
+      r.config_option_overrides
+    ),
     archived: r.archived === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -135,6 +165,22 @@ export function setConversationApprovalMode(
       `UPDATE conversations SET approval_mode = ?, updated_at = ? WHERE id = ?`
     )
     .run(approvalMode, now, id);
+}
+
+export function setConversationConfigOptionOverrides(
+  id: string,
+  overrides: Record<string, string> | null
+): void {
+  const now = new Date().toISOString();
+  const value =
+    overrides && Object.keys(overrides).length > 0
+      ? JSON.stringify(overrides)
+      : null;
+  getDb()
+    .prepare(
+      `UPDATE conversations SET config_option_overrides = ?, updated_at = ? WHERE id = ?`
+    )
+    .run(value, now, id);
 }
 
 export function getConversation(id: string): Conversation | undefined {

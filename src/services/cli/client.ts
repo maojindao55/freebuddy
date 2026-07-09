@@ -148,6 +148,12 @@ export const cliClient = {
   ): Promise<void> {
     return api().setConversationApprovalMode(id, approvalMode);
   },
+  setConversationConfigOptionOverrides(
+    id: string,
+    overrides: Record<string, string> | null
+  ): Promise<Conversation | undefined> {
+    return api().setConversationConfigOptionOverrides(id, overrides);
+  },
   listMessages(conversationId: string): Promise<ConversationMessage[]> {
     return api().listMessages(conversationId);
   },

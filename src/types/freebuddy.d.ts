@@ -113,6 +113,10 @@ declare global {
       id: string,
       approvalMode: "auto" | "ask" | null
     ): Promise<void>;
+    setConversationConfigOptionOverrides(
+      id: string,
+      overrides: Record<string, string> | null
+    ): Promise<Conversation | undefined>;
 
     listMessages(conversationId: string): Promise<ConversationMessage[]>;
     listMessage(id: string): Promise<ConversationMessage | undefined>;

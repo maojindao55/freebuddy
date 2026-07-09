@@ -101,6 +101,7 @@ function migrate(db: DB) {
       adapter TEXT NOT NULL,
       cwd TEXT,
       approval_mode TEXT,
+      config_option_overrides TEXT,
       archived INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -276,6 +277,9 @@ function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!conversationCols.some((c) => c.name === "approval_mode")) {
     db.exec("ALTER TABLE conversations ADD COLUMN approval_mode TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "config_option_overrides")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN config_option_overrides TEXT");
   }
 
   const workflowRunCols = db

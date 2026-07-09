@@ -60,6 +60,14 @@ const cli = {
     id: string,
     approvalMode: "auto" | "ask" | null
   ) => ipcRenderer.invoke("cli:setConversationApprovalMode", { id, approvalMode }),
+  setConversationConfigOptionOverrides: (
+    id: string,
+    overrides: Record<string, string> | null
+  ) =>
+    ipcRenderer.invoke("cli:setConversationConfigOptionOverrides", {
+      id,
+      overrides
+    }),
   listMessages: (conversationId: string) =>
     ipcRenderer.invoke("cli:listMessages", conversationId),
   listMessage: (id: string) =>

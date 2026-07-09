@@ -29,6 +29,7 @@ export interface CliRunArgs {
   toolSessionId?: string;
   env?: Record<string, string>;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   showStderr?: boolean;
   resumeToolSession?: boolean;
   timeoutMs?: number;

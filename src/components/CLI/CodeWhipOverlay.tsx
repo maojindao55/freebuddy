@@ -35,10 +35,6 @@ export function CodeWhipOverlay() {
               <stop offset="45%" stopColor="#6b1f24" />
               <stop offset="100%" stopColor="#4a1418" />
             </linearGradient>
-            <linearGradient id="whip-tip-grad" x1="1" y1="0" x2="0" y2="0">
-              <stop offset="0%" stopColor="#6b4220" />
-              <stop offset="100%" stopColor="#2a1a0c" />
-            </linearGradient>
           </defs>
 
           {/* Short straight handle on the right */}
@@ -68,50 +64,77 @@ export function CodeWhipOverlay() {
             <circle cx="436" cy="155" r="5.5" fill="#3d3d3d" />
           </g>
 
-          {/* Shorter tip — stays inside viewBox during wind-up */}
+          {/*
+            Jointed lash: a kinematic chain of nested groups, each pivoting
+            at the previous segment's end. A traveling wave (increasing
+            amplitude + delayed phase per joint) simulates a real bullwhip
+            crack instead of a single warped path.
+          */}
           <g className="code-whip-tip">
             <path
-              className="code-whip-cord"
-              d="M430 152 C370 120, 310 98, 250 96 C190 94, 140 112, 100 140 C70 162, 48 188, 32 214"
+              className="code-whip-seg code-whip-seg-1"
+              d="M430 152 L372 150"
               fill="none"
-              stroke="url(#whip-tip-grad)"
-              strokeWidth="3.4"
+              stroke="#6b4220"
+              strokeWidth="3.6"
               strokeLinecap="round"
-            >
-              <animate
-                attributeName="d"
-                dur="2.3s"
-                fill="freeze"
-                calcMode="spline"
-                keyTimes="0;0.2;0.35;0.48;0.58;0.75;1"
-                keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.2 0 0.1 1;0.4 0 0.2 1;0.4 0 0.2 1"
-                values="
-M430 152 C380 138, 330 132, 280 136 C230 140, 185 156, 145 178 C115 196, 90 218, 70 240;
-M430 152 C372 118, 314 96, 256 94 C198 92, 148 112, 108 142 C80 164, 56 192, 38 218;
-M430 152 C368 128, 308 108, 248 104 C188 100, 138 120, 98 150 C70 172, 48 198, 30 222;
-M430 152 C374 116, 316 94, 254 90 C192 86, 140 108, 98 140 C68 164, 44 194, 26 220;
-M430 152 C370 120, 310 98, 250 96 C190 94, 140 112, 100 140 C70 162, 48 188, 32 214;
-M430 152 C374 124, 316 104, 256 100 C196 96, 146 116, 106 146 C78 168, 56 194, 38 218;
-M430 152 C378 130, 324 112, 268 110 C212 108, 164 126, 124 152 C98 170, 78 192, 62 214
-"
-              />
-            </path>
-            <g className="code-whip-cracker">
+            />
+            <g className="code-whip-joint code-whip-joint-1">
               <path
-                d="M40 208 L18 228"
+                className="code-whip-seg code-whip-seg-2"
+                d="M372 150 L312 158"
                 fill="none"
-                stroke="#3f2410"
-                strokeWidth="1.7"
+                stroke="#5c3819"
+                strokeWidth="3.2"
                 strokeLinecap="round"
               />
-              <path
-                d="M40 212 L14 234"
-                fill="none"
-                stroke="#2a1a0c"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-              <circle cx="20" cy="226" r="3" fill="#1a1008" />
+              <g className="code-whip-joint code-whip-joint-2">
+                <path
+                  className="code-whip-seg code-whip-seg-3"
+                  d="M312 158 L246 178"
+                  fill="none"
+                  stroke="#4d3015"
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                />
+                <g className="code-whip-joint code-whip-joint-3">
+                  <path
+                    className="code-whip-seg code-whip-seg-4"
+                    d="M246 178 L176 204"
+                    fill="none"
+                    stroke="#3f2712"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                  />
+                  <g className="code-whip-joint code-whip-joint-4">
+                    <path
+                      className="code-whip-seg code-whip-seg-5"
+                      d="M176 204 L108 226"
+                      fill="none"
+                      stroke="#2a1a0c"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <g className="code-whip-cracker">
+                      <path
+                        d="M108 226 L86 234"
+                        fill="none"
+                        stroke="#2a1a0c"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M108 230 L82 240"
+                        fill="none"
+                        stroke="#1a1008"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                      />
+                      <circle cx="88" cy="236" r="3" fill="#1a1008" />
+                    </g>
+                  </g>
+                </g>
+              </g>
             </g>
           </g>
         </svg>

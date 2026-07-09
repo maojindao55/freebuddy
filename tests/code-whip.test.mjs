@@ -13,23 +13,28 @@ test("MessageBubble aims whip at avatar coordinates", () => {
   assert.match(src, /whip-hit/);
 });
 
-test("ChatView mounts a full-chat code whip overlay", () => {
+test("ChatView mounts a full-chat code whip overlay with a jointed lash", () => {
   const chat = read("../src/components/CLI/ChatView.tsx");
   const overlay = read("../src/components/CLI/CodeWhipOverlay.tsx");
   assert.match(chat, /CodeWhipOverlay/);
   assert.match(overlay, /code-whip-overlay/);
   assert.match(overlay, /code-whip-svg/);
-  assert.match(overlay, /whip-grip-grad|whip-tip-grad/);
-  assert.match(overlay, /code-whip-cord/);
+  assert.match(overlay, /whip-grip-grad/);
+  assert.match(overlay, /code-whip-joint code-whip-joint-1/);
+  assert.match(overlay, /code-whip-joint code-whip-joint-4/);
+  assert.match(overlay, /code-whip-cracker/);
   assert.match(overlay, /--whip-hit-x/);
 });
 
-test("styles aim whip tip at avatar and shake hit avatar", () => {
+test("styles chain per-joint whip waves into a crack timed at avatar hit", () => {
   const css = read("../styles.css");
   assert.match(css, /\.code-whip-overlay/);
   assert.match(css, /@keyframes code-whip-swing/);
   assert.match(css, /@keyframes code-whip-avatar-hit/);
-  assert.match(css, /@keyframes code-whip-tip-wave/);
+  assert.match(css, /@keyframes code-whip-joint-1/);
+  assert.match(css, /@keyframes code-whip-joint-4/);
+  assert.match(css, /@keyframes code-whip-cracker-flick/);
+  assert.match(css, /\.code-whip-joint-4\s*\{[^}]*transform-origin/);
   assert.match(css, /\.msg-avatar-whip-target\.whip-hit/);
   assert.match(css, /--whip-hit-x/);
 });

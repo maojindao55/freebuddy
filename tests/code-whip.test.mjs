@@ -20,6 +20,7 @@ test("ChatView mounts a full-chat code whip overlay", () => {
   assert.match(overlay, /code-whip-overlay/);
   assert.match(overlay, /code-whip-svg/);
   assert.match(overlay, /whip-grip-grad|whip-lash-grad/);
+  assert.match(overlay, /code-whip-seg/);
   assert.match(overlay, /--whip-hit-x/);
 });
 
@@ -28,6 +29,7 @@ test("styles aim whip tip at avatar and shake hit avatar", () => {
   assert.match(css, /\.code-whip-overlay/);
   assert.match(css, /@keyframes code-whip-swing/);
   assert.match(css, /@keyframes code-whip-avatar-hit/);
+  assert.match(css, /@keyframes code-whip-snake/);
   assert.match(css, /\.msg-avatar-whip-target\.whip-hit/);
   assert.match(css, /--whip-hit-x/);
 });

@@ -37,7 +37,7 @@ export function CodeWhipOverlay() {
             </linearGradient>
           </defs>
 
-          {/* Short straight handle on the right: pommel → gold → grip → gold → ferrule */}
+          {/* Short straight handle on the right */}
           <g className="code-whip-handle">
             <circle cx="678" cy="248" r="11" fill="#2a2a2a" />
             <circle cx="678" cy="248" r="7" fill="#3d3d3d" />
@@ -64,35 +64,65 @@ export function CodeWhipOverlay() {
             <circle cx="592" cy="198" r="6" fill="#3d3d3d" />
           </g>
 
-          {/* Long thin tip only — no thick lash body */}
-          <g className="code-whip-tip">
-            <path
-              className="code-whip-cord"
-              d="M586 194
-                 C480 140, 360 96, 250 88
-                 C160 82, 80 110, 20 160
-                 C-20 194, -60 240, -100 290
-                 C-118 312, -136 332, -156 350"
-              fill="none"
-              stroke="#2a1a0c"
-              strokeWidth="2.8"
-              strokeLinecap="round"
-            />
-            <path
-              d="M-130 328 L-168 342"
-              fill="none"
-              stroke="#3f2410"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <path
-              d="M-130 332 L-164 358"
-              fill="none"
-              stroke="#2a1a0c"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <circle className="code-whip-tip-dot" cx="-158" cy="352" r="3" fill="#1a1008" />
+          {/* Segmented tip: wave travels handle → tip */}
+          <g className="code-whip-tip code-whip-seg code-whip-seg-1">
+            <g className="code-whip-seg code-whip-seg-2">
+              <g className="code-whip-seg code-whip-seg-3">
+                <g className="code-whip-seg code-whip-seg-4">
+                  <path
+                    className="code-whip-cord"
+                    d="M586 194
+                       C500 150, 420 112, 340 98
+                       C260 84, 180 96, 110 130
+                       C50 160, 0 204, -40 250
+                       C-70 284, -104 318, -140 348"
+                    fill="none"
+                    stroke="#2a1a0c"
+                    strokeWidth="2.8"
+                    strokeLinecap="round"
+                  >
+                    <animate
+                      attributeName="d"
+                      dur="2.3s"
+                      fill="freeze"
+                      keyTimes="0;0.18;0.32;0.45;0.55;0.72;1"
+                      values="
+M586 194 C520 168, 460 150, 400 148 C340 146, 280 160, 220 186 C160 212, 100 250, 40 292 C10 314, -20 334, -50 350;
+M586 194 C500 140, 430 100, 360 92 C290 84, 220 100, 150 136 C90 168, 30 214, -20 260 C-50 288, -84 318, -120 344;
+M586 194 C490 160, 410 130, 330 118 C250 106, 170 120, 100 156 C40 188, -10 232, -50 276 C-78 302, -110 328, -142 350;
+M586 194 C505 145, 425 105, 345 90 C265 76, 185 90, 115 128 C55 160, 0 208, -45 256 C-75 288, -110 322, -148 352;
+M586 194 C500 150, 420 112, 340 98 C260 84, 180 96, 110 130 C50 160, 0 204, -40 250 C-70 284, -104 318, -140 348;
+M586 194 C510 155, 430 120, 350 108 C270 96, 190 110, 120 148 C60 180, 10 224, -30 268 C-58 296, -90 326, -128 350;
+M586 194 C515 160, 440 130, 365 120 C290 110, 215 128, 145 164 C90 194, 40 234, 0 272 C-24 296, -52 322, -80 344
+"
+                    />
+                  </path>
+                  <g className="code-whip-cracker">
+                    <path
+                      d="M-118 330 L-158 348"
+                      fill="none"
+                      stroke="#3f2410"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M-118 334 L-154 360"
+                      fill="none"
+                      stroke="#2a1a0c"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                    <circle
+                      className="code-whip-tip-dot"
+                      cx="-148"
+                      cy="352"
+                      r="3"
+                      fill="#1a1008"
+                    />
+                  </g>
+                </g>
+              </g>
+            </g>
           </g>
         </svg>
       </div>

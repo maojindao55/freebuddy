@@ -3463,13 +3463,50 @@ button {
 .code-whip-cord-thin {
   stroke-dasharray: 1000;
   stroke-dashoffset: 1000;
-  animation: code-whip-unfurl 0.55s ease-out both;
+  animation: code-whip-unfurl 0.7s ease-out both;
 }
 
-.code-whip-tip,
+.code-whip-tip {
+  opacity: 0;
+  animation: code-whip-tip 0.55s ease-out both;
+  transform-box: fill-box;
+  transform-origin: right center;
+}
+
 .code-whip-tip-dot {
   opacity: 0;
   animation: code-whip-tip 0.55s ease-out both;
+}
+
+.code-whip-seg {
+  transform-box: fill-box;
+  transform-origin: right center;
+}
+
+.code-whip-seg-1 {
+  animation: code-whip-snake-1 2.3s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  transform-origin: 586px 194px;
+}
+
+.code-whip-seg-2 {
+  animation: code-whip-snake-2 2.3s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  transform-origin: 420px 120px;
+}
+
+.code-whip-seg-3 {
+  animation: code-whip-snake-3 2.3s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  transform-origin: 220px 150px;
+}
+
+.code-whip-seg-4 {
+  animation: code-whip-snake-4 2.3s cubic-bezier(0.33, 0.1, 0.25, 1) both;
+  transform-origin: 40px 230px;
+}
+
+.code-whip-cracker {
+  animation: code-whip-cracker-flick 2.3s ease-out both;
+  transform-origin: -118px 332px;
+  transform-box: fill-box;
 }
 
 .code-whip-hit-fx {
@@ -3619,6 +3656,131 @@ button {
   }
 }
 
+/* Snake wave: each segment lags the previous, handle → tip */
+@keyframes code-whip-snake-1 {
+  0%,
+  8% {
+    transform: rotate(0deg);
+  }
+  18% {
+    transform: rotate(7deg);
+  }
+  28% {
+    transform: rotate(-5deg);
+  }
+  38% {
+    transform: rotate(4deg);
+  }
+  48% {
+    transform: rotate(-8deg);
+  }
+  58% {
+    transform: rotate(2deg);
+  }
+  72%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes code-whip-snake-2 {
+  0%,
+  12% {
+    transform: rotate(0deg);
+  }
+  22% {
+    transform: rotate(-9deg);
+  }
+  32% {
+    transform: rotate(7deg);
+  }
+  42% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+  60% {
+    transform: rotate(-3deg);
+  }
+  76%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes code-whip-snake-3 {
+  0%,
+  16% {
+    transform: rotate(0deg);
+  }
+  26% {
+    transform: rotate(11deg);
+  }
+  36% {
+    transform: rotate(-9deg);
+  }
+  46% {
+    transform: rotate(6deg);
+  }
+  52% {
+    transform: rotate(-12deg);
+  }
+  64% {
+    transform: rotate(4deg);
+  }
+  80%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes code-whip-snake-4 {
+  0%,
+  20% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(-13deg);
+  }
+  40% {
+    transform: rotate(12deg);
+  }
+  48% {
+    transform: rotate(-8deg);
+  }
+  54% {
+    transform: rotate(14deg);
+  }
+  68% {
+    transform: rotate(-4deg);
+  }
+  84%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes code-whip-cracker-flick {
+  0%,
+  42% {
+    transform: rotate(0deg);
+  }
+  48% {
+    transform: rotate(18deg);
+  }
+  54% {
+    transform: rotate(-22deg);
+  }
+  62% {
+    transform: rotate(8deg);
+  }
+  72%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
 @keyframes code-whip-avatar-hit {
   0%,
   100% {
@@ -3683,13 +3845,20 @@ button {
   .code-whip-crack,
   .code-whip-spark,
   .code-whip-flash,
-  .code-whip-impact {
+  .code-whip-impact,
+  .code-whip-seg,
+  .code-whip-cracker {
     animation-duration: 0.25s !important;
   }
 
   .code-whip-stage {
     transform: none !important;
     opacity: 0.85;
+  }
+
+  .code-whip-seg,
+  .code-whip-cracker {
+    animation: none !important;
   }
 
   .msg-avatar-whip-target.whip-hit .msg-avatar {

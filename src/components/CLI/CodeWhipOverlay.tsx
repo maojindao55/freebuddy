@@ -41,50 +41,50 @@ export function CodeWhipOverlay() {
               <stop offset="100%" stopColor="#1a1008" />
             </linearGradient>
           </defs>
-          {/* Straight wooden handle on the right */}
+          {/* Short straight wooden handle on the right */}
           <path
-            d="M586 268 L508 224"
+            d="M586 268 L548 246"
             fill="none"
             stroke="url(#whip-handle-grad)"
-            strokeWidth="24"
+            strokeWidth="22"
             strokeLinecap="round"
           />
           <path
-            d="M576 260 L528 234"
+            d="M580 262 L558 250"
             fill="none"
             stroke="#6b3f1d"
-            strokeWidth="3.5"
+            strokeWidth="3"
             strokeLinecap="round"
             opacity="0.5"
           />
-          <circle cx="590" cy="270" r="9" fill="#3f2410" />
-          {/* Long cord arcs left toward the tip */}
+          <circle cx="590" cy="270" r="8" fill="#3f2410" />
+          {/* Longer cord arcs left toward the tip */}
           <path
             className="code-whip-cord"
-            d="M508 224 C430 170, 350 118, 270 98 C190 76, 120 92, 70 130 C40 152, 18 178, 4 206 C-6 226, -16 246, -28 268"
+            d="M548 246 C460 188, 370 120, 280 96 C190 70, 110 88, 52 132 C18 158, -8 190, -28 224 C-42 248, -58 274, -78 300"
             fill="none"
             stroke="url(#whip-cord-grad)"
-            strokeWidth="12"
+            strokeWidth="11"
             strokeLinecap="round"
           />
           <path
             className="code-whip-cord-thin"
-            d="M270 98 C190 76, 120 92, 70 130 C40 152, 18 178, 4 206 C-6 226, -16 246, -28 268"
+            d="M280 96 C190 70, 110 88, 52 132 C18 158, -8 190, -28 224 C-42 248, -58 274, -78 300"
             fill="none"
             stroke="#1a1008"
-            strokeWidth="5.5"
+            strokeWidth="5"
             strokeLinecap="round"
           />
-          {/* Longer tip / popper on the left */}
+          {/* Extra-long tip / popper on the left */}
           <path
             className="code-whip-tip"
-            d="M-28 268 L-78 302"
+            d="M-78 300 L-148 348"
             fill="none"
             stroke="#111"
-            strokeWidth="2.8"
+            strokeWidth="2.6"
             strokeLinecap="round"
           />
-          <circle className="code-whip-tip-dot" cx="-80" cy="304" r="4.5" fill="#111" />
+          <circle className="code-whip-tip-dot" cx="-150" cy="350" r="4.5" fill="#111" />
         </svg>
       </div>
       <div className="code-whip-hit-fx" style={hitStyle}>

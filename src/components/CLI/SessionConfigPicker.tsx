@@ -53,25 +53,28 @@ function categoryLabel(
 
 function computePanelPosition(trigger: HTMLElement): PanelPosition {
   const width = 260;
-  const gap = 10;
-  const composer = trigger.closest(".chat-composer") as HTMLElement | null;
-  const anchor = composer?.getBoundingClientRect() ?? trigger.getBoundingClientRect();
+  const gap = 8;
+  const rect = trigger.getBoundingClientRect();
   const left = Math.min(
-    Math.max(8, anchor.right - width),
+    Math.max(8, rect.right - width),
     window.innerWidth - width - 8
   );
 
-  // Prefer floating completely above the composer so the textarea stays clear.
-  if (anchor.top > 180) {
+  // Anchor to the trigger chip: open upward when there is room, else downward.
+  const estimatedHeight = Math.min(360, window.innerHeight - 24);
+  const spaceAbove = rect.top - gap;
+  const openUp = spaceAbove >= Math.min(estimatedHeight, 220);
+
+  if (openUp) {
     return {
-      bottom: window.innerHeight - anchor.top + gap,
+      bottom: window.innerHeight - rect.top + gap,
       left,
       width
     };
   }
 
   return {
-    top: Math.min(anchor.bottom + gap, window.innerHeight - 200),
+    top: rect.bottom + gap,
     left,
     width
   };
@@ -175,7 +178,8 @@ export function SessionConfigPicker({
         top: position.top,
         bottom: position.bottom,
         left: position.left,
-        width: position.width
+        width: position.width,
+        maxHeight: position.maxHeight
       }
     : undefined;
 

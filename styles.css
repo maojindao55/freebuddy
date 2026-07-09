@@ -3438,17 +3438,18 @@ button {
 }
 
 .code-whip-stage {
-  --whip-w: min(98vw, 780px);
-  --whip-h: calc(var(--whip-w) * 0.5);
+  --whip-w: min(78vw, 520px);
+  --whip-h: calc(var(--whip-w) * 0.535);
   position: absolute;
   left: var(--whip-hit-x, 50%);
   top: var(--whip-hit-y, 40%);
   width: var(--whip-w);
   height: var(--whip-h);
-  /* Tip sits far left of the SVG; pin that tip onto the avatar. */
-  margin-left: calc(var(--whip-w) * 0.2);
-  margin-top: calc(var(--whip-h) * -0.96);
-  transform-origin: 94% 70%;
+  /* Tip (~4% from left, ~75% down) pins onto the avatar. */
+  margin-left: calc(var(--whip-w) * -0.04);
+  margin-top: calc(var(--whip-h) * -0.75);
+  /* Pivot near the handle so wind-up stays in the chat viewport. */
+  transform-origin: 88% 62%;
   animation: code-whip-swing 2.3s cubic-bezier(0.22, 0.7, 0.18, 1) both;
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
 }
@@ -3467,12 +3468,12 @@ button {
 
 .code-whip-tip {
   opacity: 1;
-  transform-origin: 586px 194px;
+  transform-origin: 430px 152px;
   animation: code-whip-tip-wave 2.3s cubic-bezier(0.33, 0.1, 0.25, 1) both;
 }
 
 .code-whip-cracker {
-  transform-origin: -118px 332px;
+  transform-origin: 40px 212px;
   animation: code-whip-cracker-flick 2.3s ease-out both;
 }
 
@@ -3571,36 +3572,36 @@ button {
   }
 }
 
-/* Wind-up (抡鞭) then crack onto the avatar tip pin. */
+/* Wind-up stays compact so the tip never leaves the chat viewport. */
 @keyframes code-whip-swing {
   0% {
-    transform: rotate(118deg) scale(0.9);
+    transform: rotate(42deg) scale(0.94);
     opacity: 0;
   }
   6% {
     opacity: 1;
   }
   18% {
-    transform: rotate(98deg) scale(1);
+    transform: rotate(34deg) scale(1);
   }
   32% {
-    transform: rotate(128deg) scale(1.02);
+    transform: rotate(48deg) scale(1.02);
   }
   42% {
-    transform: rotate(108deg) scale(1.04);
+    transform: rotate(38deg) scale(1.03);
   }
   48% {
-    transform: rotate(-10deg) scale(1.08);
+    transform: rotate(-8deg) scale(1.05);
   }
   56% {
-    transform: rotate(4deg) scale(1);
+    transform: rotate(3deg) scale(1);
   }
   72% {
-    transform: rotate(-2deg) scale(0.99);
+    transform: rotate(-1deg) scale(0.99);
     opacity: 1;
   }
   100% {
-    transform: rotate(-6deg) scale(0.96);
+    transform: rotate(-3deg) scale(0.97);
     opacity: 0;
   }
 }
@@ -3620,16 +3621,16 @@ button {
     transform: rotate(0deg);
   }
   22% {
-    transform: rotate(6deg);
-  }
-  34% {
-    transform: rotate(-5deg);
-  }
-  46% {
     transform: rotate(4deg);
   }
+  34% {
+    transform: rotate(-3deg);
+  }
+  46% {
+    transform: rotate(3deg);
+  }
   52% {
-    transform: rotate(-7deg);
+    transform: rotate(-5deg);
   }
   64% {
     transform: rotate(2deg);

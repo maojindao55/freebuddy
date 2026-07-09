@@ -3413,131 +3413,157 @@ button {
   cursor: default;
 }
 
-.whip-hit .msg-avatar {
-  animation: whip-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) 0.22s both;
-}
-
-.whip-lash {
+.code-whip-overlay {
   position: absolute;
-  left: -18px;
-  top: -58px;
-  width: 120px;
-  height: 80px;
-  transform-origin: 12px 62px;
-  animation: whip-swing 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  inset: 0;
+  z-index: 40;
   pointer-events: none;
-  z-index: 3;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+  overflow: hidden;
+  display: grid;
+  place-items: center;
 }
 
-.whip-lash-svg {
-  display: block;
+.code-whip-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 55% 42%,
+    rgba(255, 214, 102, 0.28),
+    rgba(239, 68, 68, 0.08) 42%,
+    transparent 70%
+  );
+  animation: code-whip-flash 1.2s ease-out both;
+}
+
+.code-whip-stage {
+  position: relative;
+  width: min(92vw, 720px);
+  height: min(52vh, 420px);
+  display: grid;
+  place-items: center;
+  transform-origin: 18% 78%;
+  animation: code-whip-swing 1.2s cubic-bezier(0.18, 0.82, 0.2, 1) both;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28));
+}
+
+.code-whip-svg {
+  width: 100%;
+  height: auto;
   overflow: visible;
 }
 
-.whip-lash-cord {
-  stroke-dasharray: 140;
-  stroke-dashoffset: 140;
-  animation: whip-cord-unfurl 0.28s ease-out both;
+.code-whip-cord {
+  stroke-dasharray: 520;
+  stroke-dashoffset: 520;
+  animation: code-whip-unfurl 0.35s ease-out both;
 }
 
-.whip-lash-tip {
+.code-whip-tip {
   opacity: 0;
-  animation: whip-tip-appear 0.28s ease-out both;
+  animation: code-whip-tip 0.35s ease-out both;
 }
 
-.whip-crack {
+.code-whip-crack {
   position: absolute;
-  left: 50%;
-  top: -18px;
-  margin-left: 10px;
-  font-size: 22px;
+  left: 58%;
+  top: 34%;
+  font-size: clamp(48px, 8vw, 96px);
   font-weight: 900;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: #ef4444;
   text-shadow:
-    0 1px 0 #fff,
-    2px 2px 0 rgba(0, 0, 0, 0.18);
-  animation: whip-crack-pop 0.5s ease-out 0.22s both;
-  pointer-events: none;
+    0 2px 0 #fff,
+    4px 4px 0 rgba(0, 0, 0, 0.2);
+  animation: code-whip-crack-pop 0.7s ease-out 0.28s both;
   white-space: nowrap;
-  z-index: 4;
 }
 
-.whip-impact {
+.code-whip-spark {
   position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  border: 3px solid rgba(239, 68, 68, 0.85);
-  opacity: 0;
-  animation: whip-impact-ring 0.4s ease-out 0.22s both;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.whip-spark {
-  position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #fbbf24;
-  pointer-events: none;
-  animation: whip-spark-fly 0.55s ease-out 0.22s both;
-  z-index: 4;
+  animation: code-whip-spark-fly 0.7s ease-out 0.3s both;
 }
 
-.whip-spark-1 {
-  top: 0;
-  right: -4px;
+.code-whip-spark-1 {
+  left: 62%;
+  top: 40%;
 }
 
-.whip-spark-2 {
-  top: 14px;
-  right: -10px;
+.code-whip-spark-2 {
+  left: 68%;
+  top: 46%;
+  width: 10px;
+  height: 10px;
   background: #f97316;
-  animation-delay: 0.26s;
+  animation-delay: 0.34s;
 }
 
-.whip-spark-3 {
-  top: -6px;
-  right: 10px;
+.code-whip-spark-3 {
+  left: 56%;
+  top: 36%;
+  width: 12px;
+  height: 12px;
   background: #fde68a;
-  animation-delay: 0.28s;
+  animation-delay: 0.36s;
 }
 
-@keyframes whip-swing {
+.code-whip-spark-4 {
+  left: 72%;
+  top: 38%;
+  width: 8px;
+  height: 8px;
+  background: #fb7185;
+  animation-delay: 0.38s;
+}
+
+@keyframes code-whip-flash {
   0% {
-    transform: rotate(-78deg) scale(0.92);
     opacity: 0;
   }
-  12% {
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes code-whip-swing {
+  0% {
+    transform: translate(-18%, -8%) rotate(-86deg) scale(0.86);
+    opacity: 0;
+  }
+  10% {
     opacity: 1;
   }
   28% {
-    transform: rotate(-52deg) scale(1);
+    transform: translate(-8%, -2%) rotate(-48deg) scale(1);
   }
   42% {
-    transform: rotate(18deg) scale(1.05);
+    transform: translate(4%, 2%) rotate(22deg) scale(1.08);
   }
   58% {
-    transform: rotate(8deg) scale(1);
+    transform: translate(2%, 0) rotate(8deg) scale(1);
   }
   100% {
-    transform: rotate(4deg) scale(0.98);
+    transform: translate(6%, -4%) rotate(2deg) scale(0.96);
     opacity: 0;
   }
 }
 
-@keyframes whip-cord-unfurl {
+@keyframes code-whip-unfurl {
   from {
-    stroke-dashoffset: 140;
+    stroke-dashoffset: 520;
   }
   to {
     stroke-dashoffset: 0;
   }
 }
 
-@keyframes whip-tip-appear {
+@keyframes code-whip-tip {
   from {
     opacity: 0;
   }
@@ -3546,85 +3572,47 @@ button {
   }
 }
 
-@keyframes whip-shake {
-  0%,
-  100% {
-    transform: translate(0, 0) rotate(0) scale(1);
-  }
-  12% {
-    transform: translate(-5px, 2px) rotate(-14deg) scale(0.94);
-  }
-  28% {
-    transform: translate(6px, -2px) rotate(12deg) scale(1.06);
-  }
-  44% {
-    transform: translate(-4px, 2px) rotate(-9deg) scale(0.98);
-  }
-  60% {
-    transform: translate(3px, -1px) rotate(6deg);
-  }
-  76% {
-    transform: translate(-2px, 0) rotate(-3deg);
-  }
-}
-
-@keyframes whip-crack-pop {
+@keyframes code-whip-crack-pop {
   0% {
-    transform: scale(0.2) rotate(-8deg);
+    transform: scale(0.2) rotate(-10deg);
     opacity: 0;
   }
-  28% {
-    transform: scale(1.55) rotate(4deg);
+  30% {
+    transform: scale(1.35) rotate(4deg);
     opacity: 1;
   }
   100% {
-    transform: scale(1) translateY(-10px) rotate(0);
+    transform: scale(1) translateY(-24px);
     opacity: 0;
   }
 }
 
-@keyframes whip-impact-ring {
-  0% {
-    transform: scale(0.55);
-    opacity: 0.9;
-  }
-  100% {
-    transform: scale(1.55);
-    opacity: 0;
-  }
-}
-
-@keyframes whip-spark-fly {
+@keyframes code-whip-spark-fly {
   0% {
     transform: translate(0, 0) scale(1);
     opacity: 1;
   }
   100% {
-    transform: translate(14px, -16px) scale(0);
+    transform: translate(48px, -56px) scale(0);
     opacity: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .whip-lash,
-  .whip-crack,
-  .whip-impact,
-  .whip-spark {
-    display: none !important;
+  .code-whip-stage,
+  .code-whip-crack,
+  .code-whip-spark,
+  .code-whip-flash {
+    animation-duration: 0.25s !important;
   }
 
-  .whip-hit .msg-avatar {
-    animation: whip-shake-reduced 0.2s ease-out both;
+  .code-whip-stage {
+    transform: none !important;
+    opacity: 0.85;
   }
-}
 
-@keyframes whip-shake-reduced {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(2px, 0);
+  .code-whip-crack {
+    font-size: 36px;
   }
 }
 

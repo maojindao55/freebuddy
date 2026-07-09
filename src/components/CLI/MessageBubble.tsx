@@ -12,7 +12,7 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { useTranslation } from "react-i18next";
 
@@ -27,6 +27,7 @@ import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
 import { isVisibleItem, visibleBlocks } from "./messageBlocks";
+import { useWhipEffectStore } from "@/store/whipEffectStore";
 
 type MessageBlock = ReturnType<typeof visibleBlocks>[number];
 type MessageSection =
@@ -783,27 +784,11 @@ export const MessageBubble = memo(function MessageBubble({
   const [copyMenu, setCopyMenu] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [vote, setVote] = useState<"up" | "down" | null>(null);
-  const [whipping, setWhipping] = useState(false);
-  const [whipNonce, setWhipNonce] = useState(0);
-  const whipTimerRef = useRef<number | null>(null);
-  const canWhip =
-    message.role === "assistant" &&
-    (message.status === "running" || message.status === "starting");
+  const canWhip = message.role === "assistant";
   const handleWhip = useCallback(() => {
-    if (!canWhip || whipping) return;
-    setWhipping(true);
-    setWhipNonce((n) => n + 1);
-    if (whipTimerRef.current != null) window.clearTimeout(whipTimerRef.current);
-    whipTimerRef.current = window.setTimeout(() => {
-      setWhipping(false);
-      whipTimerRef.current = null;
-    }, 800);
-  }, [canWhip, whipping]);
-  useEffect(() => {
-    return () => {
-      if (whipTimerRef.current != null) window.clearTimeout(whipTimerRef.current);
-    };
-  }, []);
+    if (!canWhip) return;
+    useWhipEffectStore.getState().trigger();
+  }, [canWhip]);
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
   const getSelectionText = () => {
@@ -934,63 +919,19 @@ export const MessageBubble = memo(function MessageBubble({
     <div className="msg msg-assistant">
       <button
         type="button"
-        className={`msg-avatar-whip-target${whipping ? " whip-hit" : ""}${canWhip ? " whipable" : ""}`}
+        className={`msg-avatar-whip-target${canWhip ? " whipable" : ""}`}
         onClick={canWhip ? handleWhip : undefined}
         disabled={!canWhip}
         aria-label={canWhip ? t("message.whipAvatar") : undefined}
         tabIndex={canWhip ? 0 : -1}
       >
         <AgentAvatar
-          key={whipNonce}
           adapter={message.adapter ?? adapter}
           agentId={message.agentId}
           iconKey={agentIconKey}
           className="msg-avatar agent-avatar"
           fallback={<span>✦</span>}
         />
-        {whipping && (
-          <>
-            <span className="whip-lash" aria-hidden="true">
-              <svg
-                className="whip-lash-svg"
-                viewBox="0 0 120 80"
-                width="120"
-                height="80"
-              >
-                <path
-                  className="whip-lash-handle"
-                  d="M8 62 L28 48"
-                  fill="none"
-                  stroke="#8B5A2B"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                />
-                <path
-                  className="whip-lash-cord"
-                  d="M28 48 C48 28, 78 12, 108 18"
-                  fill="none"
-                  stroke="#5C3317"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-                <circle
-                  className="whip-lash-tip"
-                  cx="108"
-                  cy="18"
-                  r="3.5"
-                  fill="#3f2a14"
-                />
-              </svg>
-            </span>
-            <span className="whip-crack" aria-hidden="true">
-              {t("message.whipCrack")}
-            </span>
-            <span className="whip-impact" aria-hidden="true" />
-            <span className="whip-spark whip-spark-1" aria-hidden="true" />
-            <span className="whip-spark whip-spark-2" aria-hidden="true" />
-            <span className="whip-spark whip-spark-3" aria-hidden="true" />
-          </>
-        )}
       </button>
       <div className="msg-content-wrapper" onContextMenu={handleContextMenu}>
         <div className="msg-header">

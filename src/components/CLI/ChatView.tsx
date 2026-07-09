@@ -29,6 +29,7 @@ import {
   validateAttachmentCandidate
 } from "@/utils/chatAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { CodeWhipOverlay } from "./CodeWhipOverlay";
 import { useReplayStore } from "@/store/replayStore";
 import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
 import {
@@ -964,6 +965,7 @@ export function ChatView() {
 
   return (
     <div className="chat-view">
+      <CodeWhipOverlay />
       <div className={`chat-scroll${replaying ? " replay-active" : ""}`} ref={scrollRef} onScroll={handleScroll}>
         {messages.length === 0 && (
           <div className="chat-empty chat-empty-hero">

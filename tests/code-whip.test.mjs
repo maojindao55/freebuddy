@@ -4,30 +4,34 @@ import fs from "node:fs";
 
 const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 
-test("MessageBubble gates code whip to running/starting assistant avatars", () => {
+test("MessageBubble allows whipping any assistant avatar", () => {
   const src = read("../src/components/CLI/MessageBubble.tsx");
-  assert.match(src, /whipNonce/);
-  assert.match(src, /whipping/);
-  assert.match(src, /whip-hit/);
-  assert.match(
-    src,
-    /status === "running" \|\| message\.status === "starting"/
-  );
-  assert.match(src, /handleWhip|onWhip|whipAvatar/);
+  assert.match(src, /canWhip = message\.role === "assistant"/);
+  assert.match(src, /useWhipEffectStore/);
+  assert.match(src, /handleWhip/);
+  assert.match(src, /\.trigger\(\)/);
 });
 
-test("styles define whip-hit comedy effect and reduced-motion fallback", () => {
+test("ChatView mounts a full-chat code whip overlay", () => {
+  const chat = read("../src/components/CLI/ChatView.tsx");
+  const overlay = read("../src/components/CLI/CodeWhipOverlay.tsx");
+  assert.match(chat, /CodeWhipOverlay/);
+  assert.match(overlay, /code-whip-overlay/);
+  assert.match(overlay, /code-whip-svg/);
+  assert.match(overlay, /useWhipEffectStore/);
+});
+
+test("styles define livestream-style center whip effect", () => {
   const css = read("../styles.css");
-  assert.match(css, /\.whip-hit/);
-  assert.match(css, /@keyframes whip-swing/);
+  assert.match(css, /\.code-whip-overlay/);
+  assert.match(css, /@keyframes code-whip-swing/);
+  assert.match(css, /\.code-whip-crack/);
   assert.match(css, /prefers-reduced-motion/);
-  assert.match(css, /whip-crack/);
-  assert.match(css, /\.whip-lash/);
 });
 
-test("MessageBubble renders a big SVG whip lash on hit", () => {
-  const src = read("../src/components/CLI/MessageBubble.tsx");
-  assert.match(src, /whip-lash/);
-  assert.match(src, /whip-lash-svg/);
-  assert.match(src, /whip-lash-cord/);
+test("whip effect store exposes trigger cooldown", () => {
+  const src = read("../src/store/whipEffectStore.ts");
+  assert.match(src, /WHIP_EFFECT_MS/);
+  assert.match(src, /trigger:/);
+  assert.match(src, /active: true/);
 });

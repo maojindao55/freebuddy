@@ -3438,17 +3438,17 @@ button {
 }
 
 .code-whip-stage {
-  --whip-w: min(96vw, 720px);
-  --whip-h: calc(var(--whip-w) * 0.5625);
+  --whip-w: min(98vw, 780px);
+  --whip-h: calc(var(--whip-w) * 0.5);
   position: absolute;
   left: var(--whip-hit-x, 50%);
   top: var(--whip-hit-y, 40%);
   width: var(--whip-w);
   height: var(--whip-h);
-  /* Tip sits further left of the SVG; pin that tip onto the avatar. */
-  margin-left: calc(var(--whip-w) * 0.22);
+  /* Tip sits far left of the SVG; pin that tip onto the avatar. */
+  margin-left: calc(var(--whip-w) * 0.14);
   margin-top: calc(var(--whip-h) * -0.94);
-  transform-origin: 93% 76%;
+  transform-origin: 94% 70%;
   animation: code-whip-swing 2.3s cubic-bezier(0.22, 0.7, 0.18, 1) both;
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
 }
@@ -3461,8 +3461,8 @@ button {
 
 .code-whip-cord,
 .code-whip-cord-thin {
-  stroke-dasharray: 1100;
-  stroke-dashoffset: 1100;
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
   animation: code-whip-unfurl 0.55s ease-out both;
 }
 
@@ -3603,7 +3603,7 @@ button {
 
 @keyframes code-whip-unfurl {
   from {
-    stroke-dashoffset: 1100;
+    stroke-dashoffset: 1200;
   }
   to {
     stroke-dashoffset: 0;

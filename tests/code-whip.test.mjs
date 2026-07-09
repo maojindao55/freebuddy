@@ -19,7 +19,7 @@ test("ChatView mounts a full-chat code whip overlay", () => {
   assert.match(chat, /CodeWhipOverlay/);
   assert.match(overlay, /code-whip-overlay/);
   assert.match(overlay, /code-whip-svg/);
-  assert.match(overlay, /whip-handle-grad/);
+  assert.match(overlay, /whip-grip-grad|whip-lash-grad/);
   assert.match(overlay, /--whip-hit-x/);
 });
 

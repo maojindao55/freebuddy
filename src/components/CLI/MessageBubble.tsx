@@ -12,7 +12,7 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { memo, useMemo, useState, type MouseEvent } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import { useTranslation } from "react-i18next";
 
@@ -27,6 +27,7 @@ import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
 import { isVisibleItem, visibleBlocks } from "./messageBlocks";
+import { useWhipEffectStore, type WhipTargetPoint } from "@/store/whipEffectStore";
 
 type MessageBlock = ReturnType<typeof visibleBlocks>[number];
 type MessageSection =
@@ -783,6 +784,100 @@ export const MessageBubble = memo(function MessageBubble({
   const [copyMenu, setCopyMenu] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [vote, setVote] = useState<"up" | "down" | null>(null);
+  const avatarRef = useRef<HTMLButtonElement | null>(null);
+  const whipActive = useWhipEffectStore(
+    (s) => s.active && s.targetMessageId === message.id
+  );
+  const whipPower = useWhipEffectStore((s) =>
+    s.active && s.targetMessageId === message.id ? s.power : 1
+  );
+  const canWhip = message.role === "assistant";
+  const [charging, setCharging] = useState(false);
+  const chargeStartRef = useRef<number | null>(null);
+  const comboRef = useRef<{ count: number; lastFire: number }>({ count: 0, lastFire: 0 });
+
+  const computeWhipTarget = useCallback((): WhipTargetPoint => {
+    const avatarEl = avatarRef.current;
+    const chatView = avatarEl?.closest(".chat-view");
+    if (!avatarEl || !chatView) return { x: 120, y: 120 };
+    const ar = avatarEl.getBoundingClientRect();
+    const cr = chatView.getBoundingClientRect();
+    return {
+      x: ar.left - cr.left + ar.width / 2,
+      y: ar.top - cr.top + ar.height / 2
+    };
+  }, []);
+
+  const powerFromChargeMs = useCallback((ms: number): number => {
+    if (ms <= 120) return 0.9;
+    if (ms >= 1300) return 1.9;
+    return 0.9 + (ms - 120) / 1180;
+  }, []);
+
+  const fireWhip = useCallback(
+    (chargePower: number) => {
+      const state = useWhipEffectStore.getState();
+      if (state.active) return;
+      const now = performance.now();
+      const combo = comboRef.current;
+      const inWindow = now - combo.lastFire < 2500;
+      combo.count = inWindow ? combo.count + 1 : 0;
+      combo.lastFire = now;
+      const power = Math.min(1.9, chargePower + combo.count * 0.2);
+      state.trigger({
+        messageId: message.id,
+        target: computeWhipTarget(),
+        power
+      });
+    },
+    [computeWhipTarget, message.id]
+  );
+
+  const handleWhipStart = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!canWhip) return;
+      e.preventDefault();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      chargeStartRef.current = performance.now();
+      setCharging(true);
+    },
+    [canWhip]
+  );
+
+  const handleWhipRelease = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!canWhip || chargeStartRef.current == null) return;
+      const dur = performance.now() - chargeStartRef.current;
+      chargeStartRef.current = null;
+      setCharging(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      fireWhip(powerFromChargeMs(dur));
+    },
+    [canWhip, fireWhip, powerFromChargeMs]
+  );
+
+  const handleWhipCancel = useCallback(() => {
+    chargeStartRef.current = null;
+    setCharging(false);
+  }, []);
+
+  const handleWhipKeyActivate = useCallback(
+    (e: MouseEvent) => {
+      // Pointer-driven clicks (detail > 0) are handled by pointerup; this
+      // branch only fires for keyboard activation (Enter / Space).
+      if (e.detail > 0 || !canWhip) return;
+      fireWhip(1);
+    },
+    [canWhip, fireWhip]
+  );
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
   const getSelectionText = () => {
@@ -911,13 +1006,27 @@ export const MessageBubble = memo(function MessageBubble({
 
   return (
     <div className="msg msg-assistant">
-      <AgentAvatar
-        adapter={message.adapter ?? adapter}
-        agentId={message.agentId}
-        iconKey={agentIconKey}
-        className="msg-avatar agent-avatar"
-        fallback={<span>✦</span>}
-      />
+      <button
+        type="button"
+        ref={avatarRef}
+        className={`msg-avatar-whip-target${canWhip ? " whipable" : ""}${whipActive ? " whip-hit" : ""}${charging ? " charging" : ""}`}
+        onClick={canWhip ? handleWhipKeyActivate : undefined}
+        onPointerDown={canWhip ? handleWhipStart : undefined}
+        onPointerUp={canWhip ? handleWhipRelease : undefined}
+        onPointerCancel={canWhip ? handleWhipCancel : undefined}
+        disabled={!canWhip}
+        aria-label={canWhip ? t("message.whipAvatar") : undefined}
+        tabIndex={canWhip ? 0 : -1}
+        style={{ "--whip-power": whipPower } as CSSProperties}
+      >
+        <AgentAvatar
+          adapter={message.adapter ?? adapter}
+          agentId={message.agentId}
+          iconKey={agentIconKey}
+          className="msg-avatar agent-avatar"
+          fallback={<span>✦</span>}
+        />
+      </button>
       <div className="msg-content-wrapper" onContextMenu={handleContextMenu}>
         <div className="msg-header">
           <span className="msg-author">{agentLabel}</span>

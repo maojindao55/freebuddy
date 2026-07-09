@@ -3382,6 +3382,283 @@ button {
   transition: transform 0.2s ease;
 }
 
+.msg-avatar-whip-target {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.msg-avatar-whip-target .msg-avatar {
+  width: 100%;
+  height: 100%;
+  box-shadow: none;
+  transition: transform 0.18s ease-out;
+}
+
+.msg-avatar-whip-target.whipable {
+  cursor: pointer;
+}
+
+.msg-avatar-whip-target.whipable:hover .msg-avatar {
+  transform: scale(1.12);
+}
+
+.msg-avatar-whip-target:disabled {
+  cursor: default;
+}
+
+.msg-avatar-whip-target.whip-hit .msg-avatar {
+  animation: code-whip-avatar-hit 0.85s cubic-bezier(0.36, 0.07, 0.19, 0.97) 1.05s both;
+}
+
+.msg-avatar-whip-target.charging .msg-avatar {
+  transition: transform 1.3s cubic-bezier(0.3, 0, 0.7, 1);
+  transform: scale(0.78) rotate(-4deg);
+}
+
+.code-whip-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.code-whip-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--whip-hit-x, 50%) var(--whip-hit-y, 40%),
+    rgba(255, 214, 102, 0.34),
+    rgba(239, 68, 68, 0.1) 34%,
+    transparent 68%
+  );
+  animation: code-whip-flash 2.3s ease-out both;
+}
+
+.code-whip-shake {
+  position: absolute;
+  inset: 0;
+  animation: code-whip-shake 0.45s ease-out 1.02s both;
+}
+
+@keyframes code-whip-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  15% {
+    transform: translate(calc(-9px * var(--whip-power, 1)), calc(5px * var(--whip-power, 1)));
+  }
+  30% {
+    transform: translate(calc(8px * var(--whip-power, 1)), calc(-4px * var(--whip-power, 1)));
+  }
+  45% {
+    transform: translate(calc(-5px * var(--whip-power, 1)), calc(3px * var(--whip-power, 1)));
+  }
+  60% {
+    transform: translate(calc(3px * var(--whip-power, 1)), 0);
+  }
+}
+
+.code-whip-stage {
+  --whip-w: min(78vw, 520px);
+  --whip-h: calc(var(--whip-w) * 0.536);
+  position: absolute;
+  left: var(--whip-hit-x, 50%);
+  top: var(--whip-hit-y, 40%);
+  width: var(--whip-w);
+  height: var(--whip-h);
+  /* Cracker contact point (~96,230 of the 560x300 viewBox) pins onto the avatar. */
+  margin-left: calc(var(--whip-w) * -0.171);
+  margin-top: calc(var(--whip-h) * -0.767);
+  /* Pivot near the handle/wrist; the Verlet root swings in SVG space so
+     the stage itself no longer needs an independent CSS rotate. */
+  transform-origin: 88% 62%;
+  /* Opacity is set imperatively per frame from computeStageFade(). */
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
+}
+
+.code-whip-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.code-whip-tip {
+  opacity: 1;
+}
+
+/*
+ * Soft lash is a Verlet rope (whipMotion.ts) stepped each RAF frame from
+ * CodeWhipOverlay. Paths are set imperatively; these rules only style the
+ * stroke taper layers.
+ */
+.code-whip-base,
+.code-whip-rope {
+  vector-effect: non-scaling-stroke;
+}
+
+.code-whip-cracker {
+  pointer-events: none;
+}
+
+.code-whip-hit-fx {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+}
+
+.code-whip-star {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  background: #fde047;
+  filter: drop-shadow(0 0 6px rgba(253, 224, 71, 0.95));
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  opacity: 0;
+  animation: code-whip-star-burst 0.7s ease-out both;
+}
+
+.code-whip-crack {
+  position: absolute;
+  left: 18px;
+  top: -34px;
+  font-size: calc(clamp(34px, 5.5vw, 64px) * var(--whip-power, 1));
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #ef4444;
+  text-shadow:
+    0 2px 0 #fff,
+    3px 3px 0 rgba(0, 0, 0, 0.2);
+  animation: code-whip-crack-pop 0.75s ease-out 1.05s both;
+  white-space: nowrap;
+}
+
+@keyframes code-whip-flash {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: calc(0.35 * var(--whip-power, 1));
+  }
+  35% {
+    opacity: calc(0.2 * var(--whip-power, 1));
+  }
+  46% {
+    opacity: var(--whip-power, 1);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes code-whip-avatar-hit {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0) scale(1);
+  }
+  14% {
+    transform: translate(calc(-7px * var(--whip-power, 1)), calc(3px * var(--whip-power, 1))) rotate(calc(-16deg * var(--whip-power, 1))) scale(0.9);
+  }
+  30% {
+    transform: translate(calc(8px * var(--whip-power, 1)), calc(-3px * var(--whip-power, 1))) rotate(calc(14deg * var(--whip-power, 1))) scale(1.12);
+  }
+  46% {
+    transform: translate(calc(-5px * var(--whip-power, 1)), calc(2px * var(--whip-power, 1))) rotate(calc(-10deg * var(--whip-power, 1))) scale(0.96);
+  }
+  62% {
+    transform: translate(calc(4px * var(--whip-power, 1)), calc(-1px * var(--whip-power, 1))) rotate(calc(7deg * var(--whip-power, 1)));
+  }
+  78% {
+    transform: translate(calc(-2px * var(--whip-power, 1)), 0) rotate(calc(-3deg * var(--whip-power, 1)));
+  }
+}
+
+@keyframes code-whip-crack-pop {
+  0% {
+    transform: scale(0.2) rotate(-10deg);
+    opacity: 0;
+  }
+  30% {
+    transform: scale(1.35) rotate(4deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translateY(-18px);
+    opacity: 0;
+  }
+}
+
+@keyframes code-whip-star-burst {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1.4) rotate(90deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--bx, 0px)), calc(-50% + var(--by, 0px))) scale(0.2) rotate(420deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-whip-crack,
+  .code-whip-flash,
+  .code-whip-star {
+    animation-duration: 0.25s !important;
+  }
+
+  .code-whip-stage {
+    transform: none !important;
+    opacity: 0.85 !important;
+  }
+
+  .code-whip-shake {
+    animation: none !important;
+  }
+
+  .msg-avatar-whip-target.charging .msg-avatar {
+    transform: none !important;
+  }
+
+  .msg-avatar-whip-target.whip-hit .msg-avatar {
+    animation: code-whip-avatar-hit-reduced 0.2s ease-out both;
+  }
+
+  .code-whip-crack {
+    font-size: 28px;
+  }
+}
+
+@keyframes code-whip-avatar-hit-reduced {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(2px, 0);
+  }
+}
+
 .msg:hover .msg-avatar {
   transform: scale(1.05);
 }

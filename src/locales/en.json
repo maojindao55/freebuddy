@@ -198,6 +198,8 @@
   "message": {
     "you": "You",
     "thinking": "Thinking",
+    "whipAvatar": "Code whip",
+    "whipCrack": "Whap",
     "system": "System",
     "copy": "Copy",
     "copySelection": "Copy selection",

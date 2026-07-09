@@ -30,36 +30,38 @@ export function CodeWhipOverlay() {
           height="320"
         >
           <defs>
-            <linearGradient id="whip-handle-grad" x1="0" y1="0" x2="1" y2="1">
+            <linearGradient id="whip-handle-grad" x1="1" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#c48a4a" />
               <stop offset="55%" stopColor="#8b5a2b" />
               <stop offset="100%" stopColor="#5c3317" />
             </linearGradient>
-            <linearGradient id="whip-cord-grad" x1="0" y1="0" x2="1" y2="0">
+            <linearGradient id="whip-cord-grad" x1="1" y1="0" x2="0" y2="0">
               <stop offset="0%" stopColor="#4a2c14" />
               <stop offset="70%" stopColor="#2b1a0d" />
               <stop offset="100%" stopColor="#1a1008" />
             </linearGradient>
           </defs>
+          {/* Straight wooden handle on the right */}
           <path
-            d="M46 248 C52 236, 70 228, 92 220 L118 208"
+            d="M472 236 L402 198"
             fill="none"
             stroke="url(#whip-handle-grad)"
             strokeWidth="22"
             strokeLinecap="round"
           />
           <path
-            d="M54 246 C60 238, 74 232, 90 224"
+            d="M464 230 L418 206"
             fill="none"
             stroke="#6b3f1d"
-            strokeWidth="4"
+            strokeWidth="3.5"
             strokeLinecap="round"
-            opacity="0.55"
+            opacity="0.5"
           />
-          <circle cx="48" cy="250" r="8" fill="#3f2410" />
+          <circle cx="476" cy="238" r="8" fill="#3f2410" />
+          {/* Cord arcs left toward the tip */}
           <path
             className="code-whip-cord"
-            d="M118 208 C168 168, 214 112, 268 92 C330 68, 392 78, 458 118 C478 130, 492 148, 502 168"
+            d="M402 198 C348 160, 292 118, 236 102 C176 84, 118 96, 72 132 C48 148, 30 166, 18 186"
             fill="none"
             stroke="url(#whip-cord-grad)"
             strokeWidth="11"
@@ -67,21 +69,22 @@ export function CodeWhipOverlay() {
           />
           <path
             className="code-whip-cord-thin"
-            d="M268 92 C330 68, 392 78, 458 118 C478 130, 492 148, 502 168"
+            d="M236 102 C176 84, 118 96, 72 132 C48 148, 30 166, 18 186"
             fill="none"
             stroke="#1a1008"
             strokeWidth="5"
             strokeLinecap="round"
           />
+          {/* Tip / popper on the left */}
           <path
             className="code-whip-tip"
-            d="M502 168 L528 186"
+            d="M18 186 L-8 204"
             fill="none"
             stroke="#111"
             strokeWidth="2.5"
             strokeLinecap="round"
           />
-          <circle className="code-whip-tip-dot" cx="530" cy="188" r="4" fill="#111" />
+          <circle className="code-whip-tip-dot" cx="-10" cy="206" r="4" fill="#111" />
         </svg>
       </div>
       <div className="code-whip-hit-fx" style={hitStyle}>

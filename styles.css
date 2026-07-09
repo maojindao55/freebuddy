@@ -3445,10 +3445,10 @@ button {
   top: var(--whip-hit-y, 40%);
   width: var(--whip-w);
   height: var(--whip-h);
-  /* Tip sits near the right/bottom of the SVG; pin that tip onto the avatar. */
-  margin-left: calc(var(--whip-w) * -0.98);
-  margin-top: calc(var(--whip-h) * -0.62);
-  transform-origin: 10% 82%;
+  /* Tip sits near the left of the SVG; pin that tip onto the avatar. */
+  margin-left: calc(var(--whip-w) * 0.02);
+  margin-top: calc(var(--whip-h) * -0.645);
+  transform-origin: 91% 74%;
   animation: code-whip-swing 1.3s cubic-bezier(0.16, 0.84, 0.18, 1) both;
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
 }
@@ -3563,23 +3563,23 @@ button {
 
 @keyframes code-whip-swing {
   0% {
-    transform: rotate(-92deg) scale(0.88);
+    transform: rotate(92deg) scale(0.88);
     opacity: 0;
   }
   10% {
     opacity: 1;
   }
   26% {
-    transform: rotate(-58deg) scale(1);
+    transform: rotate(58deg) scale(1);
   }
   38% {
-    transform: rotate(8deg) scale(1.06);
+    transform: rotate(-8deg) scale(1.06);
   }
   52% {
-    transform: rotate(-2deg) scale(1);
+    transform: rotate(2deg) scale(1);
   }
   100% {
-    transform: rotate(4deg) scale(0.97);
+    transform: rotate(-4deg) scale(0.97);
     opacity: 0;
   }
 }

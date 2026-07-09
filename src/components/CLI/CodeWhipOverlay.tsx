@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -19,6 +19,7 @@ export function CodeWhipOverlay() {
   const active = useWhipEffectStore((s) => s.active);
   const nonce = useWhipEffectStore((s) => s.nonce);
   const target = useWhipEffectStore((s) => s.target);
+  const power = useWhipEffectStore((s) => s.power);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<SVGGElement | null>(null);
@@ -30,7 +31,7 @@ export function CodeWhipOverlay() {
   useEffect(() => {
     if (!active) return;
 
-    const sim = createWhipSimulation();
+    const sim = createWhipSimulation(WHIP_ATTACH_POINT, { power });
     const paint = (
       elapsed: number,
       frame: ReturnType<typeof sim.advanceTo>,
@@ -80,7 +81,23 @@ export function CodeWhipOverlay() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [active, nonce]);
+  }, [active, nonce, power]);
+
+  const stars = useMemo(() => {
+    const count = Math.round(14 + power * 8);
+    const colors = ["#fde047", "#fef08a", "#fbbf24", "#fff7cd", "#facc15", "#ffffff"];
+    return Array.from({ length: count }, () => {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 38 + Math.random() * 64;
+      return {
+        bx: Math.cos(angle) * dist,
+        by: Math.sin(angle) * dist - 12,
+        delay: 1.0 + Math.random() * 0.14,
+        size: 12 + Math.random() * 14,
+        color: colors[Math.floor(Math.random() * colors.length)]
+      };
+    });
+  }, [nonce, power]);
 
   if (!active || !target) return null;
 
@@ -94,8 +111,9 @@ export function CodeWhipOverlay() {
   } as CSSProperties;
 
   return (
-    <div className="code-whip-overlay" key={nonce} aria-hidden="true">
+    <div className="code-whip-overlay" key={nonce} aria-hidden="true" style={{ "--whip-power": power } as CSSProperties}>
       <div className="code-whip-flash" style={aimStyle} />
+      <div className="code-whip-shake">
       <div
         className="code-whip-stage"
         ref={stageRef}
@@ -109,9 +127,8 @@ export function CodeWhipOverlay() {
         >
           <defs>
             <linearGradient id="whip-grip-grad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#8a2f2f" />
-              <stop offset="45%" stopColor="#6b1f24" />
-              <stop offset="100%" stopColor="#4a1418" />
+              <stop offset="0%" stopColor="#8b5a2b" />
+              <stop offset="100%" stopColor="#5c3a1a" />
             </linearGradient>
           </defs>
 
@@ -121,29 +138,13 @@ export function CodeWhipOverlay() {
             distance-constrained rope driven by that same root motion.
           */}
           <g className="code-whip-handle" ref={handleRef}>
-            <circle cx="508" cy="198" r="10" fill="#2a2a2a" />
-            <circle cx="508" cy="198" r="6.5" fill="#3d3d3d" />
-            <circle cx="496" cy="191" r="7" fill="#d4a017" />
-            <circle cx="496" cy="191" r="4" fill="#f0c94a" />
             <path
-              d="M490 187 L454 166"
+              d="M436 156 L506 198"
               fill="none"
               stroke="url(#whip-grip-grad)"
-              strokeWidth="15"
-              strokeLinecap="butt"
-            />
-            <path
-              d="M484 184 L478 180 M476 179 L470 175 M468 174 L462 170"
-              fill="none"
-              stroke="#3a1014"
-              strokeWidth="1.5"
+              strokeWidth="13"
               strokeLinecap="round"
-              opacity="0.55"
             />
-            <circle cx="448" cy="162" r="7" fill="#d4a017" />
-            <circle cx="448" cy="162" r="4" fill="#f0c94a" />
-            <circle cx="436" cy="155" r="9" fill="#2a2a2a" />
-            <circle cx="436" cy="155" r="5.5" fill="#3d3d3d" />
           </g>
 
           <g className="code-whip-tip">
@@ -185,12 +186,22 @@ export function CodeWhipOverlay() {
         </svg>
       </div>
       <div className="code-whip-hit-fx" style={hitStyle}>
-        <div className="code-whip-impact" />
         <div className="code-whip-crack">{t("message.whipCrack")}</div>
-        <div className="code-whip-spark code-whip-spark-1" />
-        <div className="code-whip-spark code-whip-spark-2" />
-        <div className="code-whip-spark code-whip-spark-3" />
-        <div className="code-whip-spark code-whip-spark-4" />
+        {stars.map((s, i) => (
+          <span
+            key={i}
+            className="code-whip-star"
+            style={{
+              "--bx": `${s.bx}px`,
+              "--by": `${s.by}px`,
+              width: `${s.size}px`,
+              height: `${s.size}px`,
+              background: s.color,
+              animationDelay: `${s.delay}s`
+            } as CSSProperties}
+          />
+        ))}
+      </div>
       </div>
     </div>
   );

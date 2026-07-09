@@ -3393,12 +3393,17 @@ button {
   border: 0;
   background: transparent;
   cursor: default;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .msg-avatar-whip-target .msg-avatar {
   width: 100%;
   height: 100%;
   box-shadow: none;
+  transition: transform 0.18s ease-out;
 }
 
 .msg-avatar-whip-target.whipable {
@@ -3415,6 +3420,11 @@ button {
 
 .msg-avatar-whip-target.whip-hit .msg-avatar {
   animation: code-whip-avatar-hit 0.85s cubic-bezier(0.36, 0.07, 0.19, 0.97) 1.05s both;
+}
+
+.msg-avatar-whip-target.charging .msg-avatar {
+  transition: transform 1.3s cubic-bezier(0.3, 0, 0.7, 1);
+  transform: scale(0.78) rotate(-4deg);
 }
 
 .code-whip-overlay {
@@ -3435,6 +3445,31 @@ button {
     transparent 68%
   );
   animation: code-whip-flash 2.3s ease-out both;
+}
+
+.code-whip-shake {
+  position: absolute;
+  inset: 0;
+  animation: code-whip-shake 0.45s ease-out 1.02s both;
+}
+
+@keyframes code-whip-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  15% {
+    transform: translate(calc(-9px * var(--whip-power, 1)), calc(5px * var(--whip-power, 1)));
+  }
+  30% {
+    transform: translate(calc(8px * var(--whip-power, 1)), calc(-4px * var(--whip-power, 1)));
+  }
+  45% {
+    transform: translate(calc(-5px * var(--whip-power, 1)), calc(3px * var(--whip-power, 1)));
+  }
+  60% {
+    transform: translate(calc(3px * var(--whip-power, 1)), 0);
+  }
 }
 
 .code-whip-stage {
@@ -3487,24 +3522,24 @@ button {
   z-index: 5;
 }
 
-.code-whip-impact {
+.code-whip-star {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 54px;
-  height: 54px;
-  margin: -27px 0 0 -27px;
-  border-radius: 50%;
-  border: 3px solid rgba(239, 68, 68, 0.9);
+  width: 14px;
+  height: 14px;
+  background: #fde047;
+  filter: drop-shadow(0 0 6px rgba(253, 224, 71, 0.95));
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
   opacity: 0;
-  animation: code-whip-impact-ring 0.5s ease-out 1.05s both;
+  animation: code-whip-star-burst 0.7s ease-out both;
 }
 
 .code-whip-crack {
   position: absolute;
   left: 18px;
   top: -34px;
-  font-size: clamp(34px, 5.5vw, 64px);
+  font-size: calc(clamp(34px, 5.5vw, 64px) * var(--whip-power, 1));
   font-weight: 900;
   letter-spacing: 0.04em;
   color: #ef4444;
@@ -3515,59 +3550,18 @@ button {
   white-space: nowrap;
 }
 
-.code-whip-spark {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #fbbf24;
-  animation: code-whip-spark-fly 0.75s ease-out 1.08s both;
-}
-
-.code-whip-spark-1 {
-  left: 6px;
-  top: -8px;
-}
-
-.code-whip-spark-2 {
-  left: 14px;
-  top: 4px;
-  width: 9px;
-  height: 9px;
-  background: #f97316;
-  animation-delay: 1.12s;
-}
-
-.code-whip-spark-3 {
-  left: -10px;
-  top: -12px;
-  width: 10px;
-  height: 10px;
-  background: #fde68a;
-  animation-delay: 1.14s;
-}
-
-.code-whip-spark-4 {
-  left: 18px;
-  top: -18px;
-  width: 7px;
-  height: 7px;
-  background: #fb7185;
-  animation-delay: 1.16s;
-}
-
 @keyframes code-whip-flash {
   0% {
     opacity: 0;
   }
   8% {
-    opacity: 0.35;
+    opacity: calc(0.35 * var(--whip-power, 1));
   }
   35% {
-    opacity: 0.2;
+    opacity: calc(0.2 * var(--whip-power, 1));
   }
   46% {
-    opacity: 1;
+    opacity: var(--whip-power, 1);
   }
   100% {
     opacity: 0;
@@ -3580,19 +3574,19 @@ button {
     transform: translate(0, 0) rotate(0) scale(1);
   }
   14% {
-    transform: translate(-7px, 3px) rotate(-16deg) scale(0.9);
+    transform: translate(calc(-7px * var(--whip-power, 1)), calc(3px * var(--whip-power, 1))) rotate(calc(-16deg * var(--whip-power, 1))) scale(0.9);
   }
   30% {
-    transform: translate(8px, -3px) rotate(14deg) scale(1.12);
+    transform: translate(calc(8px * var(--whip-power, 1)), calc(-3px * var(--whip-power, 1))) rotate(calc(14deg * var(--whip-power, 1))) scale(1.12);
   }
   46% {
-    transform: translate(-5px, 2px) rotate(-10deg) scale(0.96);
+    transform: translate(calc(-5px * var(--whip-power, 1)), calc(2px * var(--whip-power, 1))) rotate(calc(-10deg * var(--whip-power, 1))) scale(0.96);
   }
   62% {
-    transform: translate(4px, -1px) rotate(7deg);
+    transform: translate(calc(4px * var(--whip-power, 1)), calc(-1px * var(--whip-power, 1))) rotate(calc(7deg * var(--whip-power, 1)));
   }
   78% {
-    transform: translate(-2px, 0) rotate(-3deg);
+    transform: translate(calc(-2px * var(--whip-power, 1)), 0) rotate(calc(-3deg * var(--whip-power, 1)));
   }
 }
 
@@ -3611,39 +3605,39 @@ button {
   }
 }
 
-@keyframes code-whip-impact-ring {
+@keyframes code-whip-star-burst {
   0% {
-    transform: scale(0.45);
-    opacity: 0.95;
-  }
-  100% {
-    transform: scale(1.7);
+    transform: translate(-50%, -50%) scale(0) rotate(0deg);
     opacity: 0;
   }
-}
-
-@keyframes code-whip-spark-fly {
-  0% {
-    transform: translate(0, 0) scale(1);
+  25% {
+    transform: translate(-50%, -50%) scale(1.4) rotate(90deg);
     opacity: 1;
   }
   100% {
-    transform: translate(36px, -42px) scale(0);
+    transform: translate(calc(-50% + var(--bx, 0px)), calc(-50% + var(--by, 0px))) scale(0.2) rotate(420deg);
     opacity: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .code-whip-crack,
-  .code-whip-spark,
   .code-whip-flash,
-  .code-whip-impact {
+  .code-whip-star {
     animation-duration: 0.25s !important;
   }
 
   .code-whip-stage {
     transform: none !important;
     opacity: 0.85 !important;
+  }
+
+  .code-whip-shake {
+    animation: none !important;
+  }
+
+  .msg-avatar-whip-target.charging .msg-avatar {
+    transform: none !important;
   }
 
   .msg-avatar-whip-target.whip-hit .msg-avatar {

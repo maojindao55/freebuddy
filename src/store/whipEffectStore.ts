@@ -13,11 +13,14 @@ export interface WhipTargetPoint {
 interface WhipEffectState {
   nonce: number;
   active: boolean;
+  /** Whip power for the current shot (drives lash force + feedback). ~0.6–1.6. */
+  power: number;
   targetMessageId?: string;
   target?: WhipTargetPoint;
   trigger: (input: {
     messageId: string;
     target: WhipTargetPoint;
+    power: number;
   }) => void;
   clear: () => void;
 }
@@ -27,14 +30,16 @@ let clearTimer: number | null = null;
 export const useWhipEffectStore = create<WhipEffectState>((set, get) => ({
   nonce: 0,
   active: false,
+  power: 1,
   targetMessageId: undefined,
   target: undefined,
-  trigger: ({ messageId, target }) => {
+  trigger: ({ messageId, target, power }) => {
     if (get().active) return;
     const nonce = get().nonce + 1;
     set({
       active: true,
       nonce,
+      power,
       targetMessageId: messageId,
       target
     });
@@ -43,6 +48,7 @@ export const useWhipEffectStore = create<WhipEffectState>((set, get) => ({
       clearTimer = null;
       set({
         active: false,
+        power: 1,
         targetMessageId: undefined,
         target: undefined
       });
@@ -55,6 +61,7 @@ export const useWhipEffectStore = create<WhipEffectState>((set, get) => ({
     }
     set({
       active: false,
+      power: 1,
       targetMessageId: undefined,
       target: undefined
     });

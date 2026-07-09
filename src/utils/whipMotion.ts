@@ -43,7 +43,7 @@ export const DEFAULT_TOTAL_MS = 2300;
 const SEGMENTS = 32;
 const SEG_LEN = 11;
 const GRAVITY = 0.32;
-const DAMPING = 0.988;
+const DAMPING = 0.993;
 const CONSTRAINT_ITERS = 24;
 const TIP_SPEED_CRACK = 28;
 const CRACK_COOLDOWN_FRAMES = 28;
@@ -52,21 +52,46 @@ const FRAME_MS = 1000 / 60;
 /** Wind-up occupies the first ~42% of the time-to-crack (same as before). */
 const WINDUP_FRACTION = 0.42;
 
-/** Shoulder-ish pivot: left of and slightly below the rest attach. */
-const PIVOT_DX = -118;
-const PIVOT_DY = 28;
 /**
- * Wind-up lean (radians, counterclockwise from rest): lifts the grip up
- * and back so the throw has room to come over the top.
+ * Keyframe grip path (offsets from the rest attach, in viewBox units).
+ *
+ * A real bullwhip crack is a linear "pull back → lash forward → abrupt
+ * halt": the hand stops dead while the soft rope keeps flying, and the tip
+ * overshoots past the sound barrier. That is the opposite of a circular
+ * windmill, so the grip follows waypoints in space instead of a pivot angle.
  */
-const WINDUP_DELTA = 1.25;
+interface GripWaypoint {
+  dx: number;
+  dy: number;
+}
+/** Rest at the decorative handle. */
+const GRIP_REST: GripWaypoint = { dx: 0, dy: 0 };
+/** Raise the grip high overhead to load the downward lash. */
+const GRIP_WINDUP: GripWaypoint = { dx: 35, dy: -155 };
+/** Drive the lash straight down toward the avatar. */
+const GRIP_SNAP: GripWaypoint = { dx: -145, dy: 135 };
+/** Abrupt halt at the contact zone with a tiny pull-back up — the stop that lets the tip crack. */
+const GRIP_RECOIL: GripWaypoint = { dx: -115, dy: 100 };
+
+function lerpWaypoint(a: GripWaypoint, b: GripWaypoint, k: number): GripWaypoint {
+  return { dx: a.dx + (b.dx - a.dx) * k, dy: a.dy + (b.dy - a.dy) * k };
+}
+
 /**
- * Forward throw past the wind-up peak (radians, still counterclockwise).
- * Combined with wind-up this is ~250° over the top — a full circular crack.
+ * Scale a waypoint away from an anchor by `power` (1 = unchanged). Heavier
+ * whip power lengthens/strengthens the lash; the wind-up anchor stays put so
+ * the wind-up pose is identical regardless of power.
  */
-const SNAP_DELTA = 3.15;
-/** Radius stretch at peak snap so the throw reads bigger / harder. */
-const SNAP_RADIUS_BOOST = 1.45;
+function scaleFromAnchor(
+  anchor: GripWaypoint,
+  target: GripWaypoint,
+  power: number
+): GripWaypoint {
+  return {
+    dx: anchor.dx + (target.dx - anchor.dx) * power,
+    dy: anchor.dy + (target.dy - anchor.dy) * power
+  };
+}
 
 function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
@@ -109,53 +134,37 @@ export function swingProgress(
 }
 
 /**
- * Handle trajectory: one big circular throw around a shoulder-ish pivot.
+ * Handle trajectory: a "raise overhead → drive straight down → halt" along
+ * waypoints, not a circular throw around a pivot.
  *
- * Screen y grows downward. From rest (grip to the right of the pivot),
- * counterclockwise lifts the grip up/back, then continues over the top
- * and down toward the avatar on the left — a full circular throw.
- *
- *   0→0.35  wind-up: lean back up
- *   0.35→0.6 snap: accelerate ~250° over the top
- *   0.6→1   recover toward rest
+ *   0→0.32  wind-up: ease the grip up overhead to load the lash
+ *   0.32→0.58 lash: ease-IN quartic so velocity explodes straight down toward the target
+ *   0.58→0.63 halt: snap to a near-stop + tiny reverse — this stop cracks the tip
+ *   0.63→1   recover: ease straight back to rest (no unwinding lap)
  */
-export function handlePos(progress: number, base: Point = WHIP_ATTACH_POINT): Point {
+export function handlePos(
+  progress: number,
+  base: Point = WHIP_ATTACH_POINT,
+  power: number = 1
+): Point {
   const p = clamp01(progress);
-  const cx = base.x + PIVOT_DX;
-  const cy = base.y + PIVOT_DY;
-  const restDx = base.x - cx;
-  const restDy = base.y - cy;
-  const restAngle = Math.atan2(restDy, restDx);
-  const restR = Math.hypot(restDx, restDy);
-
-  let angle: number;
-  let radius = restR;
-
-  if (p < 0.35) {
-    const k = easeOutQuad(p / 0.35);
-    // Counterclockwise = up and back from rest.
-    angle = restAngle - k * WINDUP_DELTA;
-    radius = restR * (1 + k * 0.14);
-  } else if (p < 0.6) {
-    const k = easeInQuart((p - 0.35) / 0.25);
-    // Keep going the long way: wind-up peak → over the top → forward crack.
-    const from = restAngle - WINDUP_DELTA;
-    const to = restAngle - WINDUP_DELTA - SNAP_DELTA;
-    angle = from + k * (to - from);
-    radius = restR * (1.14 + k * (SNAP_RADIUS_BOOST - 1.14));
+  const snap = scaleFromAnchor(GRIP_WINDUP, GRIP_SNAP, power);
+  const recoil = scaleFromAnchor(GRIP_WINDUP, GRIP_RECOIL, power);
+  let wp: GripWaypoint;
+  if (p < 0.32) {
+    const k = easeOutQuad(p / 0.32);
+    wp = lerpWaypoint(GRIP_REST, GRIP_WINDUP, k);
+  } else if (p < 0.58) {
+    const k = easeInQuart((p - 0.32) / (0.58 - 0.32));
+    wp = lerpWaypoint(GRIP_WINDUP, snap, k);
+  } else if (p < 0.63) {
+    const k = easeOutQuad((p - 0.58) / (0.63 - 0.58));
+    wp = lerpWaypoint(snap, recoil, k);
   } else {
-    const k = easeOutCubic((p - 0.6) / 0.4);
-    const from = restAngle - WINDUP_DELTA - SNAP_DELTA;
-    // Shortest recover back toward rest (unwrap toward restAngle - 2π).
-    const to = restAngle - Math.PI * 2;
-    angle = from + k * (to - from);
-    radius = restR * (SNAP_RADIUS_BOOST + k * (1 - SNAP_RADIUS_BOOST));
+    const k = easeOutCubic((p - 0.63) / (1 - 0.63));
+    wp = lerpWaypoint(recoil, GRIP_REST, k);
   }
-
-  return {
-    x: cx + Math.cos(angle) * radius,
-    y: cy + Math.sin(angle) * radius
-  };
+  return { x: base.x + wp.dx, y: base.y + wp.dy };
 }
 
 function createHangChain(base: Point): VerletPoint[] {
@@ -227,16 +236,25 @@ function fadeOpacity(elapsedMs: number, totalMs: number): number {
 }
 
 export function createWhipSimulation(
-  base: Point = WHIP_ATTACH_POINT
+  base: Point = WHIP_ATTACH_POINT,
+  options?: { power?: number }
 ): WhipSimulation {
+  const power = options?.power ?? 1;
   let points = createHangChain(base);
   let particles: CrackParticle[] = [];
   let crackCooldown = 0;
   let lastElapsed = -FRAME_MS;
   let crackedThisStep = false;
 
-  function spawnCrack(x: number, y: number, vx: number, vy: number) {
-    for (let i = 0; i < 22; i += 1) {
+  function spawnCrack(
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    crackPower: number
+  ) {
+    const count = Math.max(6, Math.round(22 * crackPower));
+    for (let i = 0; i < count; i += 1) {
       const a = Math.random() * Math.PI * 2;
       const s = 2 + Math.random() * 8;
       particles.push({
@@ -286,7 +304,7 @@ export function createWhipSimulation(
 
   function physicsStep(progress: number): WhipFrame {
     crackedThisStep = false;
-    const h = handlePos(progress, base);
+    const h = handlePos(progress, base, power);
 
     for (let i = 1; i < SEGMENTS; i += 1) {
       const p = points[i];
@@ -330,7 +348,7 @@ export function createWhipSimulation(
 
     if (crackCooldown > 0) crackCooldown -= 1;
     if (tipSpeed > TIP_SPEED_CRACK && crackCooldown === 0) {
-      spawnCrack(tip.x, tip.y, tvx, tvy);
+      spawnCrack(tip.x, tip.y, tvx, tvy, power);
       crackCooldown = CRACK_COOLDOWN_FRAMES;
       crackedThisStep = true;
     }

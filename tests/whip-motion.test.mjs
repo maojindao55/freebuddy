@@ -19,33 +19,57 @@ async function loadWhipMotion() {
   );
 }
 
-test("handlePos winds up over the top, then cracks through a big circular throw", async () => {
+test("handlePos raises overhead then lashes straight down, not a windmill", async () => {
   const { handlePos, WHIP_ATTACH_POINT } = await loadWhipMotion();
   const rest = handlePos(0);
   assert.equal(rest.x, WHIP_ATTACH_POINT.x);
   assert.equal(rest.y, WHIP_ATTACH_POINT.y);
 
-  const windup = handlePos(0.35);
-  assert.ok(windup.y < WHIP_ATTACH_POINT.y - 40, "wind-up lifts the grip high");
-  assert.ok(windup.x < WHIP_ATTACH_POINT.x, "wind-up leans back toward the pivot");
+  // Wind-up raises the grip high overhead to load a downward lash.
+  const windup = handlePos(0.32);
+  assert.ok(
+    windup.y < WHIP_ATTACH_POINT.y - 100,
+    "wind-up lifts the grip overhead"
+  );
+  assert.ok(
+    windup.x > WHIP_ATTACH_POINT.x,
+    "wind-up stays back, away from the target"
+  );
 
-  // Mid-snap should still be high/left — the long way over the top.
-  const midSnap = handlePos(0.5);
-  assert.ok(midSnap.x < windup.x, "snap continues left over the top");
+  // The lash drives the grip straight down toward the avatar.
+  const lash = handlePos(0.45);
+  assert.ok(lash.y > windup.y, "lash drives the grip downward");
+  assert.ok(lash.x < windup.x, "lash also drifts toward the target");
+  const snap = handlePos(0.58);
+  assert.ok(
+    snap.y > WHIP_ATTACH_POINT.y + 100,
+    "crack lands near the bottom of the throw"
+  );
+  assert.ok(snap.x < WHIP_ATTACH_POINT.x, "crack lands left toward the avatar");
 
-  const snap = handlePos(0.6);
-  assert.ok(snap.y > WHIP_ATTACH_POINT.y, "crack lands below rest after the circular throw");
-  assert.ok(snap.x < WHIP_ATTACH_POINT.x, "crack still aims left toward the tip");
+  // The hand halts hard just past the crack: the halt segment is far
+  // shorter than the lash segment, then the grip reverses a touch. That
+  // abrupt stop is what lets the soft tip overshoot and crack.
+  const lashSeg = Math.hypot(
+    handlePos(0.58).x - handlePos(0.5).x,
+    handlePos(0.58).y - handlePos(0.5).y
+  );
+  const haltSeg = Math.hypot(
+    handlePos(0.63).x - handlePos(0.58).x,
+    handlePos(0.63).y - handlePos(0.58).y
+  );
+  assert.ok(
+    haltSeg < lashSeg * 0.5,
+    `expected an abrupt halt, lash=${lashSeg.toFixed(0)} halt=${haltSeg.toFixed(0)}`
+  );
+  assert.ok(handlePos(0.63).y < snap.y, "slight pull-back up after the halt");
 
-  // Arc length of the throw should be large ("抡圆了"), not a short jab.
-  let arc = 0;
-  let prev = handlePos(0.35);
-  for (let i = 1; i <= 20; i += 1) {
-    const cur = handlePos(0.35 + (0.25 * i) / 20);
-    arc += Math.hypot(cur.x - prev.x, cur.y - prev.y);
-    prev = cur;
-  }
-  assert.ok(arc > 350, `expected a long circular snap arc, got ${arc.toFixed(0)}`);
+  // Recovery eases straight back to rest — no unwinding lap around a pivot.
+  const mid = handlePos(0.8);
+  assert.ok(
+    mid.x > handlePos(0.63).x && mid.x < WHIP_ATTACH_POINT.x,
+    "recover heads straight back to rest"
+  );
 
   const end = handlePos(1);
   assert.ok(Math.abs(end.x - WHIP_ATTACH_POINT.x) < 2);

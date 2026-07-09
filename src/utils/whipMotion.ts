@@ -113,7 +113,7 @@ export function swingProgress(
  *
  * Screen y grows downward. From rest (grip to the right of the pivot),
  * counterclockwise lifts the grip up/back, then continues over the top
- * and down toward the avatar on the left — a full "抡圆了" arc.
+ * and down toward the avatar on the left — a full circular throw.
  *
  *   0→0.35  wind-up: lean back up
  *   0.35→0.6 snap: accelerate ~250° over the top

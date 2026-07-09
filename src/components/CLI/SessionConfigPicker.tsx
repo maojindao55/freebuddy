@@ -52,8 +52,11 @@ export function SessionConfigPicker({
 
   return (
     <div className="composer-session-config" title={t("chat.modelPickerHint")}>
-      {filtered.map((option) => (
-        <label key={option.id} className="composer-permission">
+      {filtered.map((option, index) => (
+        <label
+          key={`${option.category ?? ""}:${option.id}:${index}`}
+          className="composer-permission"
+        >
           <span className="composer-permission-label">
             {categoryLabel(option, t)}
           </span>

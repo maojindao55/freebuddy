@@ -1033,7 +1033,17 @@ export function ChatView() {
 
       <div className={`chat-composer${replaying ? " replay-disabled" : ""}`}>
         <div className="composer-context-row">
-          <span>{agentDisplayName}</span>
+          <div className="composer-context-leading">
+            <SessionConfigPicker
+              options={sessionConfigOptions}
+              overrides={conv?.configOptionOverrides}
+              disabled={sending || replaying}
+              onChange={(next) => {
+                if (conv?.id) void setConfigOptionOverrides(conv.id, next);
+              }}
+            />
+            <span className="composer-context-agent">{agentDisplayName}</span>
+          </div>
           <span>{conv.cwd ? conv.cwd : t("chat.noWorkspace")}</span>
         </div>
         <AttachmentTray
@@ -1130,14 +1140,6 @@ export function ChatView() {
                 <option value="ask">{t("chat.approvalAsk")}</option>
               </select>
             </label>
-            <SessionConfigPicker
-              options={sessionConfigOptions}
-              overrides={conv?.configOptionOverrides}
-              disabled={sending}
-              onChange={(next) => {
-                if (conv?.id) void setConfigOptionOverrides(conv.id, next);
-              }}
-            />
           </div>
           <div className="composer-tail">
             <span className="composer-hint">{t("chat.enterHint")}</span>

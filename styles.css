@@ -2939,12 +2939,28 @@ button {
   position: relative;
   display: inline-flex;
   align-items: center;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .composer-session-config-trigger {
-  max-width: 220px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  height: 22px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
   cursor: pointer;
+}
+
+.composer-session-config-trigger:hover:not(:disabled) {
+  color: var(--fb-brand);
 }
 
 .composer-session-config-trigger:disabled {
@@ -2952,16 +2968,23 @@ button {
   cursor: not-allowed;
 }
 
+.composer-session-config-trigger .composer-permission-label {
+  color: inherit;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .composer-session-config-value {
   display: inline-block;
-  max-width: 120px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-right: 14px;
+  padding-right: 12px;
+  color: var(--fb-text-secondary);
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 5px) 50%, calc(100% - 1px) 50%;
+  background-position: calc(100% - 3px) 50%, calc(100% + 1px) 50%;
   background-size: 4px 4px, 4px 4px;
   background-repeat: no-repeat;
 }
@@ -2969,7 +2992,7 @@ button {
 .composer-session-config-panel {
   position: absolute;
   left: 0;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   z-index: 40;
   display: grid;
   gap: 10px;
@@ -3915,6 +3938,7 @@ button {
 .composer-context-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 9px 12px 7px;
   color: var(--fb-text-tertiary);
@@ -3923,7 +3947,21 @@ button {
   border-bottom: 1px solid var(--fb-border);
 }
 
-.composer-context-row span {
+.composer-context-leading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.composer-context-agent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-context-row > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

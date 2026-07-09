@@ -16,6 +16,7 @@ import {
   buildSessionNewRequest,
   buildSessionPromptRequest,
   buildSessionResumeRequest,
+  buildSessionSetConfigOptionRequest,
   parseAcpLine,
   shouldEmitAcpUpdate,
   shouldSkipUserMessageChunk,
@@ -629,6 +630,41 @@ export async function runAcpAgent({
       throw new Error("ACP agent did not return a sessionId");
     }
 
+    const applyConfigOptionOverrides = async () => {
+      const overrides = args.configOptionOverrides;
+      if (!overrides || !activeAcpSessionId) return;
+      for (const [configId, value] of Object.entries(overrides)) {
+        if (!configId || value == null || value === "") continue;
+        try {
+          const result = await request(
+            buildSessionSetConfigOptionRequest(
+              nextId(),
+              activeAcpSessionId,
+              configId,
+              value
+            )
+          );
+          const items = acpSessionSetupToItems(activeAcpSessionId, {
+            sessionId: activeAcpSessionId,
+            ...(result && typeof result === "object" ? result : {})
+          }).filter((item) => item.kind === "config-options");
+          if (items.length) emit({ type: "items", items });
+        } catch (err) {
+          appendLog(
+            logStream,
+            "system",
+            `set_config_option failed id=${configId}: ${(err as Error)?.message || String(err)}`
+          );
+          emit({
+            type: "stderr",
+            content: `Failed to set config option ${configId}: ${(err as Error)?.message || String(err)}`
+          });
+          // do not block prompt
+        }
+      }
+    };
+
+    await applyConfigOptionOverrides();
     await runPromptOnSession();
     await syncSessionMetadataFromList();
 

@@ -1,6 +1,12 @@
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { CLIMember } from "@/config/aiMembers";
-import type { Conversation, ConversationMessage } from "@/services/cli/types";
+import type {
+  Conversation,
+  ConversationMessage,
+  ConversationTitleSource
+} from "@/services/cli/types";
+
+export type { ConversationTitleSource };
 
 type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
@@ -408,9 +414,25 @@ function defaultTitleForConversation(
   return tail ? `${conversation.agentName} · ${tail}` : conversation.agentName;
 }
 
+type ConversationForTitleSource = Pick<
+  Conversation,
+  "title" | "agentName" | "cwd" | "titleSource"
+>;
+
+export function inferConversationTitleSource(
+  conversation: ConversationForTitleSource
+): ConversationTitleSource {
+  if (conversation.titleSource) return conversation.titleSource;
+  if (!conversation.agentName) return "prompt";
+  const defaultTitle = defaultTitleForConversation({
+    agentName: conversation.agentName,
+    cwd: conversation.cwd
+  });
+  return conversation.title === defaultTitle ? "default" : "prompt";
+}
+
 export function shouldApplyAgentSessionTitle(
-  conversation: Pick<Conversation, "title"> &
-    Partial<Pick<Conversation, "agentName" | "cwd">>,
+  conversation: ConversationForTitleSource,
   messagesOrTitle:
     | Pick<ConversationMessage, "workflowRunId">[]
     | string
@@ -423,12 +445,8 @@ export function shouldApplyAgentSessionTitle(
   );
   if (!title || conversation.title === title) return false;
   if (messages.some((message) => Boolean(message.workflowRunId))) return false;
-  if (!conversation.agentName) return true;
-  return conversation.title ===
-    defaultTitleForConversation({
-      agentName: conversation.agentName,
-      cwd: conversation.cwd
-    });
+  const source = inferConversationTitleSource(conversation);
+  return source === "default" || source === "prompt";
 }
 
 function clipConversationTitle(value: string, max = 80): string {

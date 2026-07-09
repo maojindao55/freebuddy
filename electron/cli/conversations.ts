@@ -10,6 +10,8 @@ export interface ChatAttachment {
   extension?: string;
 }
 
+export type ConversationTitleSource = "default" | "prompt" | "agent" | "user";
+
 export interface Conversation {
   id: string;
   title: string;
@@ -18,6 +20,8 @@ export interface Conversation {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
+  titleSource?: ConversationTitleSource;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +48,45 @@ export interface ConversationMessage {
   updatedAt: string;
 }
 
+function parseConfigOptionOverrides(
+  raw: unknown
+): Record<string, string> | undefined {
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (
+    entries.length === 0 ||
+    !entries.every(
+      ([, v]) => typeof v === "string"
+    )
+  ) {
+    return undefined;
+  }
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
+const TITLE_SOURCES: ConversationTitleSource[] = [
+  "default",
+  "prompt",
+  "agent",
+  "user"
+];
+
+function parseTitleSource(raw: unknown): ConversationTitleSource | undefined {
+  return TITLE_SOURCES.includes(raw as ConversationTitleSource)
+    ? (raw as ConversationTitleSource)
+    : undefined;
+}
+
 function rowToConversation(r: any): Conversation {
   return {
     id: r.id,
@@ -56,6 +99,10 @@ function rowToConversation(r: any): Conversation {
       r.approval_mode === "ask" || r.approval_mode === "auto"
         ? r.approval_mode
         : undefined,
+    configOptionOverrides: parseConfigOptionOverrides(
+      r.config_option_overrides
+    ),
+    titleSource: parseTitleSource(r.title_source),
     archived: r.archived === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -101,6 +148,7 @@ export interface CreateConversationInput {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  titleSource?: ConversationTitleSource;
 }
 
 export function createConversation(input: CreateConversationInput): Conversation {
@@ -108,8 +156,8 @@ export function createConversation(input: CreateConversationInput): Conversation
   getDb()
     .prepare(
       `INSERT INTO conversations
-         (id, title, agent_id, agent_name, adapter, cwd, approval_mode, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+         (id, title, agent_id, agent_name, adapter, cwd, approval_mode, title_source, archived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     )
     .run(
       input.id,
@@ -119,6 +167,7 @@ export function createConversation(input: CreateConversationInput): Conversation
       input.adapter,
       input.cwd ?? null,
       input.approvalMode ?? null,
+      input.titleSource ?? "default",
       now,
       now
     );
@@ -135,6 +184,22 @@ export function setConversationApprovalMode(
       `UPDATE conversations SET approval_mode = ?, updated_at = ? WHERE id = ?`
     )
     .run(approvalMode, now, id);
+}
+
+export function setConversationConfigOptionOverrides(
+  id: string,
+  overrides: Record<string, string> | null
+): void {
+  const now = new Date().toISOString();
+  const value =
+    overrides && Object.keys(overrides).length > 0
+      ? JSON.stringify(overrides)
+      : null;
+  getDb()
+    .prepare(
+      `UPDATE conversations SET config_option_overrides = ?, updated_at = ? WHERE id = ?`
+    )
+    .run(value, now, id);
 }
 
 export function getConversation(id: string): Conversation | undefined {
@@ -168,11 +233,23 @@ export function listConversations(args: ListConversationsArgs = {}): Conversatio
   return (getDb().prepare(sql).all(...params) as any[]).map(rowToConversation);
 }
 
-export function renameConversation(id: string, title: string): void {
+export function renameConversation(
+  id: string,
+  title: string,
+  titleSource?: ConversationTitleSource | null
+): void {
   const now = new Date().toISOString();
-  getDb()
-    .prepare(`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`)
-    .run(title, now, id);
+  if (titleSource) {
+    getDb()
+      .prepare(
+        `UPDATE conversations SET title = ?, title_source = ?, updated_at = ? WHERE id = ?`
+      )
+      .run(title, titleSource, now, id);
+  } else {
+    getDb()
+      .prepare(`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`)
+      .run(title, now, id);
+  }
 }
 
 export function updateConversationAgentName(

@@ -58,6 +58,7 @@ export interface CliRunArgs {
   toolSessionId?: string;
   env?: Record<string, string>;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   showStderr?: boolean;
   resumeToolSession?: boolean;
   timeoutMs?: number;
@@ -241,6 +242,8 @@ export interface AttachmentCandidate {
   mime_type?: string;
 }
 
+export type ConversationTitleSource = "default" | "prompt" | "agent" | "user";
+
 export interface Conversation {
   id: string;
   title: string;
@@ -249,6 +252,8 @@ export interface Conversation {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
+  titleSource?: ConversationTitleSource;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -291,6 +296,7 @@ export interface CreateConversationInput {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  titleSource?: ConversationTitleSource;
 }
 
 export interface ListConversationsArgs {

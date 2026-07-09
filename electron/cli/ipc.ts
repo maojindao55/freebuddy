@@ -36,9 +36,11 @@ import {
   listMessages,
   renameConversation,
   setConversationApprovalMode,
+  setConversationConfigOptionOverrides,
   updateConversationAgentName,
   updateMessage,
   type AppendMessageInput,
+  type ConversationTitleSource,
   type CreateConversationInput,
   type ListConversationsArgs,
   type UpdateMessageInput
@@ -310,8 +312,14 @@ export function registerCliIpc() {
   );
   ipcMain.handle(
     "cli:renameConversation",
-    (_e, args: { id: string; title: string }) =>
-      renameConversation(args.id, args.title)
+    (
+      _e,
+      args: {
+        id: string;
+        title: string;
+        titleSource?: ConversationTitleSource | null;
+      }
+    ) => renameConversation(args.id, args.title, args.titleSource)
   );
   ipcMain.handle(
     "cli:updateConversationAgentName",
@@ -331,6 +339,17 @@ export function registerCliIpc() {
     "cli:setConversationApprovalMode",
     (_e, args: { id: string; approvalMode: "auto" | "ask" | null }) =>
       setConversationApprovalMode(args.id, args.approvalMode)
+  );
+
+  ipcMain.handle(
+    "cli:setConversationConfigOptionOverrides",
+    (
+      _e,
+      args: { id: string; overrides: Record<string, string> | null }
+    ) => {
+      setConversationConfigOptionOverrides(args.id, args.overrides);
+      return getConversation(args.id);
+    }
   );
 
   ipcMain.handle("cli:listMessages", (_e, conversationId: string) =>

@@ -51,9 +51,11 @@ function applyConversationTitle(
   if (!conversation || !shouldApplyAgentSessionTitle(conversation, messages, title)) {
     return conversations;
   }
-  void cliClient.renameConversation(conversationId, title);
+  void cliClient.renameConversation(conversationId, title, "agent");
   return conversations.map((entry) =>
-    entry.id === conversationId ? { ...entry, title } : entry
+    entry.id === conversationId
+      ? { ...entry, title, titleSource: "agent" as const }
+      : entry
   );
 }
 

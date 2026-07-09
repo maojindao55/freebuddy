@@ -33,12 +33,14 @@ import { useReplayStore } from "@/store/replayStore";
 import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
 import {
   mergeSessionMetaItems,
-  type AvailableCommandItem
+  type AvailableCommandItem,
+  type ConfigOptionItem
 } from "@/store/sessionMetaUtils";
 import {
   buildConversationTitle,
   upsertConversationMessage
 } from "@/store/conversationUtils";
+import { SessionConfigPicker } from "./SessionConfigPicker";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -268,6 +270,9 @@ export function ChatView() {
   const setApprovalMode = useConversationStore(
     (s) => s.setConversationApprovalMode
   );
+  const setConfigOptionOverrides = useConversationStore(
+    (s) => s.setConversationConfigOptionOverrides
+  );
 
   const [taskMode, setTaskMode] = useState<"normal" | "team">(
     "normal"
@@ -356,8 +361,13 @@ export function ChatView() {
     t("chat.starter.three")
   ];
 
-  const availableCommands = useMemo(() => {
-    if (!conv) return [];
+  const sessionMeta = useMemo(() => {
+    if (!conv) {
+      return {
+        commands: [] as AvailableCommandItem[],
+        configOptions: [] as ConfigOptionItem[]
+      };
+    }
     return mergeSessionMetaItems(
       messages
         .filter((message) => message.role === "assistant")
@@ -370,8 +380,10 @@ export function ChatView() {
           }
         }),
       live?.items
-    ).commands;
+    );
   }, [conv, live?.items, messages]);
+  const availableCommands = sessionMeta.commands;
+  const sessionConfigOptions = sessionMeta.configOptions;
 
   const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
 
@@ -1125,7 +1137,18 @@ export function ChatView() {
             </label>
           </div>
           <div className="composer-tail">
-            <span className="composer-hint">{t("chat.enterHint")}</span>
+            <SessionConfigPicker
+              className="composer-session-config"
+              options={sessionConfigOptions}
+              overrides={conv?.configOptionOverrides}
+              disabled={sending || replaying}
+              fallback={
+                <span className="composer-hint">{t("chat.enterHint")}</span>
+              }
+              onChange={(next) => {
+                if (conv?.id) void setConfigOptionOverrides(conv.id, next);
+              }}
+            />
             {sending ? (
               <button
                 className="danger stop-icon-button"

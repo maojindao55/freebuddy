@@ -48,8 +48,12 @@ const cli = {
   getConversation: (id: string) => ipcRenderer.invoke("cli:getConversation", id),
   createConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversation", input),
-  renameConversation: (id: string, title: string) =>
-    ipcRenderer.invoke("cli:renameConversation", { id, title }),
+  renameConversation: (
+    id: string,
+    title: string,
+    titleSource?: "default" | "prompt" | "agent" | "user" | null
+  ) =>
+    ipcRenderer.invoke("cli:renameConversation", { id, title, titleSource }),
   updateConversationAgentName: (agentId: string, agentName: string) =>
     ipcRenderer.invoke("cli:updateConversationAgentName", { agentId, agentName }),
   archiveConversation: (id: string, archived: boolean) =>
@@ -60,6 +64,14 @@ const cli = {
     id: string,
     approvalMode: "auto" | "ask" | null
   ) => ipcRenderer.invoke("cli:setConversationApprovalMode", { id, approvalMode }),
+  setConversationConfigOptionOverrides: (
+    id: string,
+    overrides: Record<string, string> | null
+  ) =>
+    ipcRenderer.invoke("cli:setConversationConfigOptionOverrides", {
+      id,
+      overrides
+    }),
   listMessages: (conversationId: string) =>
     ipcRenderer.invoke("cli:listMessages", conversationId),
   listMessage: (id: string) =>

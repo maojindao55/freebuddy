@@ -11,6 +11,7 @@ import {
   buildPromptContentBlocks,
   buildSessionLoadRequest,
   buildSessionPromptRequest,
+  buildSessionSetConfigOptionRequest,
   contentBlockToItems,
   parseAcpLine,
   shouldEmitAcpUpdate,
@@ -296,6 +297,19 @@ test("buildSessionPromptRequest sends a text content block", () => {
     params: {
       sessionId: "sess-1",
       prompt: [{ type: "text", text: "hello" }]
+    }
+  });
+});
+
+test("buildSessionSetConfigOptionRequest shapes stable ACP params", () => {
+  assert.deepEqual(buildSessionSetConfigOptionRequest(7, "sess-1", "model", "m2"), {
+    jsonrpc: "2.0",
+    id: 7,
+    method: "session/set_config_option",
+    params: {
+      sessionId: "sess-1",
+      configId: "model",
+      value: "m2"
     }
   });
 });

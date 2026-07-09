@@ -23,6 +23,10 @@ import type {
 import { workflowFollowupAgentId } from "@/services/workflows/types";
 import { workflowClient } from "@/services/workflows/client";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
+import {
+  filterSessionConfigPickerOptions,
+  pruneConfigOptionOverrides
+} from "@/utils/sessionConfigOptions";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
 import {
@@ -34,7 +38,11 @@ import {
   upsertConversationMessage
 } from "./conversationUtils";
 import { handleStreamEvent, killConversation } from "./conversationHandlers";
-import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
+import {
+  latestConfigOptionsFromItems,
+  latestConfigOptionsFromMessages,
+  latestSessionInfoFromMessages
+} from "./sessionMetaUtils";
 
 export interface LiveAssistant {
   messageId: string;
@@ -74,6 +82,10 @@ export interface ConversationState {
   setConversationApprovalMode(
     id: string,
     approvalMode: "auto" | "ask"
+  ): Promise<void>;
+  setConversationConfigOptionOverrides(
+    id: string,
+    overrides: Record<string, string>
   ): Promise<void>;
 
   sendMessage(input: {
@@ -264,7 +276,10 @@ function syncConversationAgentNames(
     return {
       ...conversation,
       agentName: member.name,
-      title
+      title,
+      ...(title !== conversation.title
+        ? { titleSource: "default" as const }
+        : {})
     };
   });
   return {
@@ -283,7 +298,7 @@ function persistSyncedConversationAgentNames(input: {
     void cliClient.updateConversationAgentName(agentId, agentName);
   });
   input.titleChanges.forEach(({ id, title }) => {
-    void cliClient.renameConversation(id, title);
+    void cliClient.renameConversation(id, title, "default");
   });
 }
 
@@ -435,17 +450,21 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             : undefined;
         if (conversation && nextTitle) {
           conversations = conversations.map((entry) =>
-            entry.id === id ? { ...entry, title: nextTitle } : entry
+            entry.id === id
+              ? { ...entry, title: nextTitle, titleSource: "user" as const }
+              : entry
           );
-          void cliClient.renameConversation(id, nextTitle);
+          void cliClient.renameConversation(id, nextTitle, "user");
         } else if (
           conversation &&
           shouldApplyAgentSessionTitle(conversation, list, agentTitle)
         ) {
           conversations = conversations.map((entry) =>
-            entry.id === id ? { ...entry, title: agentTitle } : entry
+            entry.id === id
+              ? { ...entry, title: agentTitle, titleSource: "agent" as const }
+              : entry
           );
-          void cliClient.renameConversation(id, agentTitle);
+          void cliClient.renameConversation(id, agentTitle, "agent");
         }
       }
       return {
@@ -467,7 +486,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       agentName: member.name,
       adapter: member.cli.adapter,
       cwd,
-      approvalMode: approvalMode ?? member.cli.approvalMode
+      approvalMode: approvalMode ?? member.cli.approvalMode,
+      titleSource: title ? "prompt" : "default"
     });
     set((s) => ({
       conversations: [conv, ...s.conversations.filter((c) => c.id !== conv.id)],
@@ -487,10 +507,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async renameConversation(id, title) {
-    await cliClient.renameConversation(id, title);
+    await cliClient.renameConversation(id, title, "user");
     set((s) => ({
       conversations: s.conversations.map((c) =>
-        c.id === id ? { ...c, title } : c
+        c.id === id ? { ...c, title, titleSource: "user" as const } : c
       )
     }));
   },
@@ -536,6 +556,25 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       conversations: s.conversations.map((c) =>
         c.id === id ? { ...c, approvalMode } : c
       )
+    }));
+  },
+
+  async setConversationConfigOptionOverrides(id, overrides) {
+    const next =
+      Object.keys(overrides).length > 0 ? overrides : null;
+    const updated = await cliClient.setConversationConfigOptionOverrides(
+      id,
+      next
+    );
+    set((s) => ({
+      conversations: s.conversations.map((c) => {
+        if (c.id !== id) return c;
+        if (updated) return updated;
+        return {
+          ...c,
+          configOptionOverrides: next ?? undefined
+        };
+      })
     }));
   },
 
@@ -675,6 +714,24 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPrompt}`
       : userPrompt;
 
+    const msgs = get().messages[conversationId] ?? [];
+    const liveItems = get().live[conversationId]?.items;
+    const fromMessages = latestConfigOptionsFromMessages(msgs);
+    const fromLive = latestConfigOptionsFromItems(liveItems ?? []);
+    const configOptions = fromLive.length > 0 ? fromLive : fromMessages;
+    const pickerOptions = filterSessionConfigPickerOptions(configOptions);
+    const prunedOverrides = pruneConfigOptionOverrides(
+      conv.configOptionOverrides,
+      pickerOptions.length ? pickerOptions : configOptions
+    );
+    const overridesToSend =
+      Object.keys(prunedOverrides).length > 0
+        ? prunedOverrides
+        : conv.configOptionOverrides &&
+            Object.keys(conv.configOptionOverrides).length > 0
+          ? conv.configOptionOverrides
+          : undefined;
+
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       agentId: member.id,
@@ -695,6 +752,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
       approvalMode:
         approvalModeOverride ?? conv.approvalMode ?? member.cli.approvalMode,
+      ...(overridesToSend && Object.keys(overridesToSend).length
+        ? { configOptionOverrides: overridesToSend }
+        : {}),
       showStderr: member.cli.showStderr,
       resumeToolSession: !wantFresh,
       userMessageId: userMsgId,

@@ -310,7 +310,14 @@ function App() {
       <main className={`workspace${settingsOpen ? " settings-workspace" : ""}`}>
         <header className="titlebar">
           {sidebarCollapsed && renderToggleButton("floating")}
-          <div className="breadcrumb">
+          <div
+            className="breadcrumb"
+            title={
+              settingsOpen
+                ? t("common.settings")
+                : activeConversation?.title ?? t("app.chat")
+            }
+          >
             <strong>
               {settingsOpen
                 ? t("common.settings")

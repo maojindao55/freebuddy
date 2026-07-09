@@ -81,5 +81,14 @@ export const builtinCliMembers: CLIMember[] = [
     source: "builtin",
     enabled: true,
     cli: { adapter: "codebuddy-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-grok-acp",
+    kind: "cli",
+    name: "Grok",
+    description: "Local Grok coding agent.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "grok-acp", approvalMode: "auto", showStderr: true }
   }
 ];

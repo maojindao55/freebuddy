@@ -364,6 +364,7 @@
       "codexAcpUpgradeRequired": "需要新版 Codex ACP — 请安装",
       "checkProbeFailed": "检测失败 — 请重试",
       "editTitle": "编辑 {{label}}",
+      "backToList": "返回列表",
       "unavailable": "Agent 管理不可用。请运行桌面端以管理本地 Agent。",
       "installed": "✓ 已安装",
       "notInstalled": "未安装",

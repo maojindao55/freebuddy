@@ -64,9 +64,11 @@ test("coding agent settings expose Codex BYOK without echoing saved keys", () =>
   assert.equal(enLocale.settings.cli.byok.modeCustom, "Use my own API key");
 });
 
-test("coding agent settings use an inline master detail editor", () => {
+test("coding agent settings open editor from the list view", () => {
   assert.equal(settingsSource.includes("adapter-settings-workspace"), true);
-  assert.equal(settingsSource.includes("adapter-editor-panel"), true);
+  assert.equal(settingsSource.includes("adapter-edit-workspace"), true);
+  assert.equal(settingsSource.includes("onBackToList"), true);
+  assert.equal(settingsSource.includes("settings.cli.backToList"), true);
   assert.equal(settingsSource.includes("EditOverridePanel"), true);
   assert.equal(settingsSource.includes("EditOverrideDialog"), false);
   assert.equal(settingsSource.includes("modal-backdrop"), false);
@@ -127,7 +129,7 @@ test("coding agent settings let only cloned agents rename their display label", 
   assert.equal(settingsSource.includes("const [label, setLabel]"), true);
   assert.equal(settingsSource.includes("const isClone = Boolean(ex.isClone)"), true);
   assert.match(settingsSource, /label:\s*isClone \? label\.trim\(\) \|\| ex\.label : undefined/);
-  assert.match(settingsSource, /\{isClone && \(\s*<label>\s*\{t\("settings\.cli\.name"\)\}/s);
+  assert.match(settingsSource, /\{isClone && \(\s*<label[^>]*>[\s\S]*settings\.cli\.name/s);
   assert.equal(conversationStoreSource.includes("syncConversationAgentNames"), true);
   assert.equal(conversationStoreSource.includes("updateConversationAgentName"), true);
   assert.equal(agentDisplaySource.includes("normalized !== adapterLabel"), true);
@@ -150,9 +152,15 @@ test("coding agent settings support bulk check and auto-check on load", () => {
   assert.equal(settingsSource.includes("installJobs"), true);
   assert.equal(settingsSource.includes("installingIdSet"), true);
   assert.equal(settingsSource.includes("sortAdapters"), true);
+  assert.equal(settingsSource.includes("categoryCounts"), true);
+  assert.equal(settingsSource.includes("common.check"), true);
   assert.equal(settingsSource.includes("lastCheckAt"), false);
   assert.equal(storeSource.includes("async checkAll()"), true);
   assert.match(storeSource, /for \(const adapter of acpAdapters\)/);
+  assert.equal(zhLocale.settings.cli.category.builtin, "内置");
+  assert.equal(zhLocale.settings.cli.category.custom, "自定义");
+  assert.equal(enLocale.settings.cli.category.builtin, "Built-in");
+  assert.equal(enLocale.settings.cli.category.custom, "Custom");
 });
 
 test("cloned coding agents keep independent check status", () => {

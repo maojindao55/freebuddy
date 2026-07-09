@@ -151,7 +151,8 @@ export function CLIAdaptersTab() {
   const filteredList = useMemo(
     () =>
       list.filter(
-        (ex) => categoryOf(ex) === category && matchesQuery(ex, query)
+        (ex) =>
+          categoryOf(ex) === category && matchesQuery(ex, query)
       ),
     [list, category, query]
   );
@@ -223,12 +224,8 @@ export function CLIAdaptersTab() {
 
   useEffect(() => {
     if (!loaded) return;
-    if (!editingId && list[0]) {
-      setEditingId(list[0].id);
-      return;
-    }
     if (editingId && !list.some((ex) => ex.id === editingId)) {
-      setEditingId(list[0]?.id ?? null);
+      setEditingId(null);
       return;
     }
   }, [editingId, list, loaded]);
@@ -253,7 +250,7 @@ export function CLIAdaptersTab() {
       key={ex.id}
       ex={ex}
       checking={checkingIds.has(ex.id)}
-      selected={editingId === ex.id}
+      selected={false}
       onCheck={() => void handleCheck(ex.id)}
       onClone={() => void handleClone(ex)}
       onEdit={() => setEditingId(ex.id)}
@@ -282,6 +279,21 @@ export function CLIAdaptersTab() {
     );
   }
 
+  if (editingId && selectedExecutor) {
+    return (
+      <div className="settings-tab">
+        <div className="adapter-edit-workspace">
+          <EditOverridePanel
+            key={selectedExecutor.id}
+            executorId={selectedExecutor.id}
+            onBackToList={() => setEditingId(null)}
+            onResetSelection={() => setEditingId(null)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="settings-tab">
       <div className="settings-section-heading">
@@ -303,7 +315,8 @@ export function CLIAdaptersTab() {
               onClick={() => setCategory(c)}
               disabled={!loaded}
             >
-              {t(`settings.cli.category.${c}`)} ({categoryCounts[c]})
+              {t(`settings.cli.category.${c}`)}{" "}
+              <span>{categoryCounts[c]}</span>
             </button>
           ))}
         </div>
@@ -327,21 +340,6 @@ export function CLIAdaptersTab() {
               filteredList.map((ex) => renderRow(ex))
             )}
           </div>
-        </div>
-
-        <div className="adapter-editor-panel">
-          {selectedExecutor ? (
-            <EditOverridePanel
-              key={selectedExecutor.id}
-              executorId={selectedExecutor.id}
-              onResetSelection={() => setEditingId(null)}
-            />
-          ) : (
-            <div className="adapter-editor-empty">
-              <h3>{t("settings.cli.title")}</h3>
-              <p className="muted">{t("settings.cli.loading")}</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -371,6 +369,13 @@ function AdapterRow({
   const rt = ex.runtime;
   const parsedExtraArgs = extractModelArg(ex.extraArgs);
   const model = parsedExtraArgs.model;
+  const statusKind = checking
+    ? "checking"
+    : rt?.installed
+      ? "available"
+      : rt
+        ? "unavailable"
+        : "unchecked";
   return (
     <div className={`adapter-row${selected ? " selected" : ""}`}>
       <AgentAvatar
@@ -381,6 +386,15 @@ function AdapterRow({
       <button type="button" className="adapter-row-main" onClick={onEdit}>
         <div className="adapter-row-title">
           <strong>{ex.label}</strong>
+          <span className={`adapter-availability ${statusKind}`}>
+            {checking
+              ? t("settings.cli.checking")
+              : rt?.installed
+                ? t("settings.cli.installed")
+                : rt
+                  ? t("settings.cli.notInstalled")
+                  : t("settings.cli.notChecked")}
+          </span>
         </div>
         <div className="adapter-row-meta">
           {checking ? (
@@ -409,12 +423,6 @@ function AdapterRow({
         </div>
       </button>
       <div className="adapter-row-actions">
-        <button type="button" onClick={onCheck} disabled={checking || installing}>
-          {checking ? t("settings.cli.checking") : t("common.check")}
-        </button>
-        <button type="button" onClick={onClone} disabled={checking || installing}>
-          {t("common.clone")}
-        </button>
         {!rt?.installed && ex.installHint && (
           <button
             type="button"
@@ -425,8 +433,14 @@ function AdapterRow({
             {installing ? t("common.installing") : t("common.install")}
           </button>
         )}
-        <button type="button" onClick={onEdit} disabled={checking || selected}>
-          {t("common.edit")}
+        <button type="button" onClick={onCheck} disabled={checking || installing}>
+          {checking ? t("settings.cli.checking") : t("common.check")}
+        </button>
+        <button type="button" onClick={onClone} disabled={checking || installing}>
+          {t("common.clone")}
+        </button>
+        <button type="button" className="adapter-row-edit-btn" onClick={onEdit} disabled={checking || selected}>
+          ›
         </button>
       </div>
     </div>
@@ -435,9 +449,11 @@ function AdapterRow({
 
 function EditOverridePanel({
   executorId,
+  onBackToList,
   onResetSelection
 }: {
   executorId: string;
+  onBackToList: () => void;
   onResetSelection: () => void;
 }) {
   const { t } = useTranslation();
@@ -608,61 +624,90 @@ function EditOverridePanel({
   return (
     <section className="adapter-editor-form">
       <header className="adapter-editor-header">
-        <div>
-          <span className="adapter-editor-kicker">{t("common.edit")}</span>
-          <h3>{ex.label}</h3>
+        <div className="adapter-editor-titlebar">
+          <button
+            type="button"
+            className="adapter-editor-back"
+            onClick={onBackToList}
+          >
+            <span className="adapter-editor-back-chevron">‹</span>
+            {t("settings.cli.backToList")}
+          </button>
+          <div className="adapter-editor-heading">
+            <AgentAvatar
+              adapter={ex.baseAdapter ?? ex.id}
+              agentId={`cli-${ex.id}`}
+              className="adapter-editor-avatar"
+              fallback={<span>{ex.label.slice(0, 2).toUpperCase()}</span>}
+            />
+            <div className="adapter-editor-heading-text">
+              <h3>{ex.label}</h3>
+              {ex.docsUrl && (
+                <a className="adapter-editor-docs-link" href={ex.docsUrl} target="_blank" rel="noreferrer">
+                  {t("settings.cli.setupGuide")} ↗
+                </a>
+              )}
+            </div>
+          </div>
         </div>
         {ex.runtime?.installed ? (
-          <span className="adapter-status ok">
+          <span className="adapter-status adapter-editor-status ok">
             {t("settings.cli.installed")}
           </span>
         ) : (
-          <span className="adapter-status muted">
+          <span className="adapter-status adapter-editor-status muted">
             {t("settings.cli.notChecked")}
           </span>
         )}
       </header>
 
       <div className="adapter-editor-scroll">
-        <div className="icon-picker-field">
-          <span className="icon-picker-label">{t("settings.cli.avatar")}</span>
-          <AvatarPicker
-            value={icon}
-            onChange={setIcon}
-            defaultAdapter={ex.baseAdapter ?? ex.id}
-            defaultLabel={ex.label}
-          />
+        {/* ── Identity section ── */}
+        <div className="adapter-editor-section">
+          <div className="icon-picker-field">
+            <span className="icon-picker-label">{t("settings.cli.avatar")}</span>
+            <AvatarPicker
+              value={icon}
+              onChange={setIcon}
+              defaultAdapter={ex.baseAdapter ?? ex.id}
+              defaultLabel={ex.label}
+            />
+          </div>
+
+          {isClone && (
+            <label className="adapter-editor-field">
+              <span className="adapter-editor-field-label">{t("settings.cli.name")}</span>
+              <input
+                value={label}
+                placeholder={ex.label}
+                onChange={(e) => setLabel(e.target.value)}
+              />
+            </label>
+          )}
         </div>
 
-        {isClone && (
-          <label>
-            {t("settings.cli.name")}
+        {/* ── Command Configuration section ── */}
+        <div className="adapter-editor-section">
+          <label className="adapter-editor-field">
+            <span className="adapter-editor-field-label">{t("settings.cli.commandOverride")}</span>
             <input
-              value={label}
-              placeholder={ex.label}
-              onChange={(e) => setLabel(e.target.value)}
+              value={binary}
+              placeholder={t("settings.cli.useDefault")}
+              onChange={(e) => setBinary(e.target.value)}
             />
           </label>
-        )}
 
-        <label>
-          {t("settings.cli.commandOverride")}
-          <input
-            value={binary}
-            placeholder={t("settings.cli.useDefault")}
-            onChange={(e) => setBinary(e.target.value)}
-          />
-        </label>
+          <label className="adapter-editor-field">
+            <span className="adapter-editor-field-label">{t("settings.cli.model")}</span>
+            <input
+              value={model}
+              placeholder={t("settings.cli.useAgentDefault")}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          </label>
+        </div>
 
-        <label>
-          {t("settings.cli.model")}
-          <input
-            value={model}
-            placeholder={t("settings.cli.useAgentDefault")}
-            onChange={(e) => setModel(e.target.value)}
-          />
-        </label>
-
+        {/* ── API Key (BYOK) section ── */}
         {supportsByok && (
           <fieldset className="settings-fieldset">
             <legend>{t("settings.cli.byok.title")}</legend>
@@ -689,8 +734,8 @@ function EditOverridePanel({
 
             {codexByokEnabled && (
               <>
-                <label>
-                  {t("settings.cli.byok.baseUrl")}
+                <label className="adapter-editor-field">
+                  <span className="adapter-editor-field-label">{t("settings.cli.byok.baseUrl")}</span>
                   <input
                     type="url"
                     value={codexBaseUrl}
@@ -705,8 +750,8 @@ function EditOverridePanel({
                     )}
                   </span>
                 </label>
-                <label>
-                  {t("settings.cli.byok.apiKey")}
+                <label className="adapter-editor-field">
+                  <span className="adapter-editor-field-label">{t("settings.cli.byok.apiKey")}</span>
                   <input
                     type="password"
                     value={codexApiKey}
@@ -729,16 +774,16 @@ function EditOverridePanel({
                   <summary>{t("settings.cli.byok.advanced")}</summary>
                   {isCodex && (
                     <>
-                      <label>
-                        {t("settings.cli.byok.providerId")}
+                      <label className="adapter-editor-field">
+                        <span className="adapter-editor-field-label">{t("settings.cli.byok.providerId")}</span>
                         <input
                           value={codexProviderId}
                           placeholder="proxy"
                           onChange={(e) => setCodexProviderId(e.target.value)}
                         />
                       </label>
-                      <label>
-                        {t("settings.cli.byok.providerName")}
+                      <label className="adapter-editor-field">
+                        <span className="adapter-editor-field-label">{t("settings.cli.byok.providerName")}</span>
                         <input
                           value={codexProviderName}
                           placeholder="OpenAI proxy"
@@ -747,8 +792,8 @@ function EditOverridePanel({
                       </label>
                     </>
                   )}
-                  <label>
-                    {t("settings.cli.byok.envKey")}
+                  <label className="adapter-editor-field">
+                    <span className="adapter-editor-field-label">{t("settings.cli.byok.envKey")}</span>
                     <input
                       value={codexEnvKey}
                       placeholder={
@@ -758,8 +803,8 @@ function EditOverridePanel({
                     />
                   </label>
                   {isCodex && (
-                    <label>
-                      {t("settings.cli.byok.wireApi")}
+                    <label className="adapter-editor-field">
+                      <span className="adapter-editor-field-label">{t("settings.cli.byok.wireApi")}</span>
                       <select
                         value={codexWireApi}
                         onChange={(e) =>
@@ -780,39 +825,33 @@ function EditOverridePanel({
           </fieldset>
         )}
 
-        <label>
-          {t("settings.cli.extraArgs")}
-          <textarea
-            rows={4}
-            value={extraArgs}
-            onChange={(e) => setExtraArgs(e.target.value)}
-          />
-        </label>
+        {/* ── Advanced section ── */}
+        <div className="adapter-editor-section">
+          <label className="adapter-editor-field">
+            <span className="adapter-editor-field-label">{t("settings.cli.extraArgs")}</span>
+            <textarea
+              rows={3}
+              value={extraArgs}
+              onChange={(e) => setExtraArgs(e.target.value)}
+            />
+          </label>
 
-        <label>
-          {t("settings.cli.environment")}
-          <textarea
-            rows={4}
-            value={envText}
-            onChange={(e) => setEnvText(e.target.value)}
-          />
-        </label>
-
-        {ex.docsUrl && (
-          <p className="muted">
-            {t("settings.cli.docs")}{" "}
-            <a href={ex.docsUrl} target="_blank" rel="noreferrer">
-              {t("settings.cli.setupGuide")}
-            </a>
-          </p>
-        )}
+          <label className="adapter-editor-field">
+            <span className="adapter-editor-field-label">{t("settings.cli.environment")}</span>
+            <textarea
+              rows={3}
+              value={envText}
+              onChange={(e) => setEnvText(e.target.value)}
+            />
+          </label>
+        </div>
       </div>
 
       <div className="adapter-editor-actions modal-actions">
         <div className="adapter-save-feedback">
           {saveStatus === "saved" && (
             <span className="adapter-save-message ok" role="status">
-              {t("settings.cli.saveSuccess")}
+              ✓ {t("settings.cli.saveSuccess")}
             </span>
           )}
           {saveStatus === "error" && (
@@ -831,7 +870,7 @@ function EditOverridePanel({
         </button>
         <button
           type="button"
-          className="primary"
+          className="primary adapter-save-btn"
           onClick={onSave}
           disabled={saveStatus === "saving"}
         >
@@ -845,3 +884,4 @@ function EditOverridePanel({
     </section>
   );
 }
+

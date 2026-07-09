@@ -9,6 +9,7 @@ export type CLIAdapterId =
   | "kimi-acp"
   | "qoder-acp"
   | "codebuddy-acp"
+  | "grok-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -183,6 +184,23 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g @tencent-ai/codebuddy-code",
     docsUrl: "https://www.codebuddy.cn/docs/cli/acp",
+    protocol: "acp"
+  },
+  {
+    id: "grok-acp",
+    label: "Grok",
+    defaultBinary: "grok",
+    checkProbe: { args: ["version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "grok",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint:
+      process.platform === "win32"
+        ? "irm https://x.ai/cli/install.ps1 | iex"
+        : "curl -fsSL https://x.ai/cli/install.sh | bash",
+    docsUrl: "https://docs.x.ai/build/cli/reference",
     protocol: "acp"
   }
 ];
@@ -461,6 +479,15 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
     case "codebuddy-acp": {
       const args: string[] = ["--acp"];
       args.push(...extra);
+      return {
+        bin,
+        args,
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "grok-acp": {
+      const args: string[] = [...extra, "agent", "stdio"];
       return {
         bin,
         args,

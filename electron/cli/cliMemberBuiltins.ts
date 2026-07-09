@@ -54,5 +54,11 @@ export const builtinCliMembers: CLIMember[] = [
     name: "CodeBuddy",
     enabled: true,
     cli: { adapter: "codebuddy-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-grok-acp",
+    name: "Grok",
+    enabled: true,
+    cli: { adapter: "grok-acp", approvalMode: "auto", showStderr: true }
   }
 ];

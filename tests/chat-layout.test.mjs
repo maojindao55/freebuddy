@@ -41,6 +41,18 @@ test("workspace keeps the composer inside the visible column", () => {
   assert.match(stylesSource, /\.chat-composer\s*\{[^}]*left:\s*272px;[^}]*right:\s*var\(--fb-detail-width,\s*440px\);/m);
 });
 
+test("titlebar truncates long conversation titles to one line", () => {
+  assert.match(
+    stylesSource,
+    /\.breadcrumb\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;/m
+  );
+  assert.match(
+    stylesSource,
+    /\.breadcrumb strong\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/m
+  );
+  assert.match(appSource, /className="breadcrumb"[\s\S]*title=\{/m);
+});
+
 test("sending a message restores auto-follow to the latest output", () => {
   assert.match(
     chatViewSource,

@@ -73,7 +73,8 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" },
       { id: "kimi-acp", label: "Kimi", protocol: "acp" },
       { id: "qoder-acp", label: "Qoder", protocol: "acp" },
-      { id: "codebuddy-acp", label: "CodeBuddy", protocol: "acp" }
+      { id: "codebuddy-acp", label: "CodeBuddy", protocol: "acp" },
+      { id: "grok-acp", label: "Grok", protocol: "acp" }
     ]
   );
 });
@@ -235,6 +236,34 @@ test("buildCommand forwards extra args to Qoder ACP server", () => {
   });
 
   assert.deepEqual(built.args, ["--acp", "--yolo", "--some-flag"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand starts Grok through its ACP stdio agent", () => {
+  const built = buildCommand({ adapter: "grok-acp", prompt: "hello" });
+
+  assert.equal(built.bin, "grok");
+  assert.deepEqual(built.args, ["agent", "stdio"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand keeps Grok global flags before the ACP subcommand", () => {
+  const built = buildCommand({
+    adapter: "grok-acp",
+    prompt: "hello",
+    extraArgs: ["--model=grok-4.5", "--effort", "low", "--always-approve"]
+  });
+
+  assert.deepEqual(built.args, [
+    "--model=grok-4.5",
+    "--effort",
+    "low",
+    "--always-approve",
+    "agent",
+    "stdio"
+  ]);
   assert.equal(built.promptViaStdin, false);
   assert.equal(built.protocol, "acp");
 });

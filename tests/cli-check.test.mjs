@@ -24,6 +24,13 @@ test("Claude ACP checks the delegated CLI version instead of starting ACP", () =
   });
 });
 
+test("Grok ACP checks the local Grok CLI version command", () => {
+  assert.deepEqual(getCliCheckProbe("grok-acp"), {
+    args: ["version"],
+    versionOptional: false
+  });
+});
+
 test("legacy adapters still require a version response", () => {
   assert.deepEqual(getCliCheckProbe("codex"), {
     args: ["--version"],

@@ -11,7 +11,8 @@ const defaultAgentIcon: Partial<Record<CLIAdapterId, string>> = {
   "cursor-agent-acp": "Cursor",
   "kimi-acp": "Kimi",
   "qoder-acp": "Qoder",
-  "codebuddy-acp": "CodeBuddy"
+  "codebuddy-acp": "CodeBuddy",
+  "grok-acp": "Grok"
 };
 
 /**

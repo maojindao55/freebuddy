@@ -376,6 +376,7 @@
       "codexAcpUpgradeRequired": "new Codex ACP required — install",
       "checkProbeFailed": "check failed — retry",
       "editTitle": "Edit {{label}}",
+      "backToList": "Back to list",
       "unavailable": "Agent management is unavailable. Run the desktop app to manage local agents.",
       "installed": "✓ installed",
       "notInstalled": "not installed",

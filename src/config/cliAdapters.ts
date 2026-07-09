@@ -8,6 +8,8 @@ export type CLIAdapterId =
   | "cursor-agent-acp"
   | "kimi-acp"
   | "qoder-acp"
+  | "codebuddy-acp"
+  | "grok-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -122,6 +124,20 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g @tencent-ai/codebuddy-code",
     docsUrl: "https://www.codebuddy.cn/docs/cli/acp",
+    protocol: "acp"
+  },
+  {
+    id: "grok-acp",
+    label: "Grok",
+    defaultBinary: "grok",
+    streamMode: "raw",
+    commandGroup: "grok",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint:
+      "curl -fsSL https://x.ai/cli/install.sh | bash",
+    docsUrl: "https://docs.x.ai/build/cli/reference",
     protocol: "acp"
   }
 ];

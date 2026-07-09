@@ -2936,10 +2936,91 @@ button {
 }
 
 .composer-session-config {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+.composer-session-config-trigger {
+  max-width: 220px;
+  cursor: pointer;
+}
+
+.composer-session-config-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.composer-session-config-value {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 14px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 5px) 50%, calc(100% - 1px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.composer-session-config-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+  max-width: min(320px, 70vw);
+  padding: 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 12px;
+  background: var(--fb-panel-bg);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+
+.composer-session-config-row {
+  display: grid;
   gap: 6px;
+}
+
+.composer-session-config-row-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fb-text-secondary);
+}
+
+.composer-session-config-row-select {
+  width: 100%;
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fb-text);
+  font: inherit;
+  font-size: 13px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.composer-session-config-row-select:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 2px;
+}
+
+.composer-session-config-row-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .select-dir-btn {

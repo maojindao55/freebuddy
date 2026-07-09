@@ -10,6 +10,8 @@ export interface ChatAttachment {
   extension?: string;
 }
 
+export type ConversationTitleSource = "default" | "prompt" | "agent" | "user";
+
 export interface Conversation {
   id: string;
   title: string;
@@ -19,6 +21,7 @@ export interface Conversation {
   cwd?: string;
   approvalMode?: "auto" | "ask";
   configOptionOverrides?: Record<string, string>;
+  titleSource?: ConversationTitleSource;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -71,6 +74,19 @@ function parseConfigOptionOverrides(
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
+const TITLE_SOURCES: ConversationTitleSource[] = [
+  "default",
+  "prompt",
+  "agent",
+  "user"
+];
+
+function parseTitleSource(raw: unknown): ConversationTitleSource | undefined {
+  return TITLE_SOURCES.includes(raw as ConversationTitleSource)
+    ? (raw as ConversationTitleSource)
+    : undefined;
+}
+
 function rowToConversation(r: any): Conversation {
   return {
     id: r.id,
@@ -86,6 +102,7 @@ function rowToConversation(r: any): Conversation {
     configOptionOverrides: parseConfigOptionOverrides(
       r.config_option_overrides
     ),
+    titleSource: parseTitleSource(r.title_source),
     archived: r.archived === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -131,6 +148,7 @@ export interface CreateConversationInput {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  titleSource?: ConversationTitleSource;
 }
 
 export function createConversation(input: CreateConversationInput): Conversation {
@@ -138,8 +156,8 @@ export function createConversation(input: CreateConversationInput): Conversation
   getDb()
     .prepare(
       `INSERT INTO conversations
-         (id, title, agent_id, agent_name, adapter, cwd, approval_mode, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+         (id, title, agent_id, agent_name, adapter, cwd, approval_mode, title_source, archived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     )
     .run(
       input.id,
@@ -149,6 +167,7 @@ export function createConversation(input: CreateConversationInput): Conversation
       input.adapter,
       input.cwd ?? null,
       input.approvalMode ?? null,
+      input.titleSource ?? "default",
       now,
       now
     );
@@ -214,11 +233,23 @@ export function listConversations(args: ListConversationsArgs = {}): Conversatio
   return (getDb().prepare(sql).all(...params) as any[]).map(rowToConversation);
 }
 
-export function renameConversation(id: string, title: string): void {
+export function renameConversation(
+  id: string,
+  title: string,
+  titleSource?: ConversationTitleSource | null
+): void {
   const now = new Date().toISOString();
-  getDb()
-    .prepare(`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`)
-    .run(title, now, id);
+  if (titleSource) {
+    getDb()
+      .prepare(
+        `UPDATE conversations SET title = ?, title_source = ?, updated_at = ? WHERE id = ?`
+      )
+      .run(title, titleSource, now, id);
+  } else {
+    getDb()
+      .prepare(`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`)
+      .run(title, now, id);
+  }
 }
 
 export function updateConversationAgentName(

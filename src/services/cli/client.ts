@@ -13,6 +13,7 @@ import type {
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
+  ConversationTitleSource,
   AttachmentCandidate,
   CreateConversationInput,
   ListConversationsArgs,
@@ -127,8 +128,12 @@ export const cliClient = {
   createConversation(input: CreateConversationInput): Promise<Conversation> {
     return api().createConversation(input);
   },
-  renameConversation(id: string, title: string): Promise<void> {
-    return api().renameConversation(id, title);
+  renameConversation(
+    id: string,
+    title: string,
+    titleSource?: ConversationTitleSource | null
+  ): Promise<void> {
+    return api().renameConversation(id, title, titleSource);
   },
   updateConversationAgentName(
     agentId: string,

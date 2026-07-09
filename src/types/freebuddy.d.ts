@@ -16,6 +16,7 @@ import type {
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
+  ConversationTitleSource,
   AttachmentCandidate,
   CreateConversationInput,
   ListConversationsArgs,
@@ -102,7 +103,11 @@ declare global {
     createConversation(
       input: CreateConversationInput
     ): Promise<Conversation>;
-    renameConversation(id: string, title: string): Promise<void>;
+    renameConversation(
+      id: string,
+      title: string,
+      titleSource?: ConversationTitleSource | null
+    ): Promise<void>;
     updateConversationAgentName(
       agentId: string,
       agentName: string

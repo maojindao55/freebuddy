@@ -102,6 +102,7 @@ function migrate(db: DB) {
       cwd TEXT,
       approval_mode TEXT,
       config_option_overrides TEXT,
+      title_source TEXT,
       archived INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -280,6 +281,9 @@ function migrate(db: DB) {
   }
   if (!conversationCols.some((c) => c.name === "config_option_overrides")) {
     db.exec("ALTER TABLE conversations ADD COLUMN config_option_overrides TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "title_source")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN title_source TEXT");
   }
 
   const workflowRunCols = db

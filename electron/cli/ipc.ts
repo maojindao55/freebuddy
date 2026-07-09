@@ -40,6 +40,7 @@ import {
   updateConversationAgentName,
   updateMessage,
   type AppendMessageInput,
+  type ConversationTitleSource,
   type CreateConversationInput,
   type ListConversationsArgs,
   type UpdateMessageInput
@@ -311,8 +312,14 @@ export function registerCliIpc() {
   );
   ipcMain.handle(
     "cli:renameConversation",
-    (_e, args: { id: string; title: string }) =>
-      renameConversation(args.id, args.title)
+    (
+      _e,
+      args: {
+        id: string;
+        title: string;
+        titleSource?: ConversationTitleSource | null;
+      }
+    ) => renameConversation(args.id, args.title, args.titleSource)
   );
   ipcMain.handle(
     "cli:updateConversationAgentName",

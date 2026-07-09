@@ -276,7 +276,10 @@ function syncConversationAgentNames(
     return {
       ...conversation,
       agentName: member.name,
-      title
+      title,
+      ...(title !== conversation.title
+        ? { titleSource: "default" as const }
+        : {})
     };
   });
   return {
@@ -295,7 +298,7 @@ function persistSyncedConversationAgentNames(input: {
     void cliClient.updateConversationAgentName(agentId, agentName);
   });
   input.titleChanges.forEach(({ id, title }) => {
-    void cliClient.renameConversation(id, title);
+    void cliClient.renameConversation(id, title, "default");
   });
 }
 
@@ -447,17 +450,21 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             : undefined;
         if (conversation && nextTitle) {
           conversations = conversations.map((entry) =>
-            entry.id === id ? { ...entry, title: nextTitle } : entry
+            entry.id === id
+              ? { ...entry, title: nextTitle, titleSource: "user" as const }
+              : entry
           );
-          void cliClient.renameConversation(id, nextTitle);
+          void cliClient.renameConversation(id, nextTitle, "user");
         } else if (
           conversation &&
           shouldApplyAgentSessionTitle(conversation, list, agentTitle)
         ) {
           conversations = conversations.map((entry) =>
-            entry.id === id ? { ...entry, title: agentTitle } : entry
+            entry.id === id
+              ? { ...entry, title: agentTitle, titleSource: "agent" as const }
+              : entry
           );
-          void cliClient.renameConversation(id, agentTitle);
+          void cliClient.renameConversation(id, agentTitle, "agent");
         }
       }
       return {
@@ -479,7 +486,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       agentName: member.name,
       adapter: member.cli.adapter,
       cwd,
-      approvalMode: approvalMode ?? member.cli.approvalMode
+      approvalMode: approvalMode ?? member.cli.approvalMode,
+      titleSource: title ? "prompt" : "default"
     });
     set((s) => ({
       conversations: [conv, ...s.conversations.filter((c) => c.id !== conv.id)],
@@ -499,10 +507,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async renameConversation(id, title) {
-    await cliClient.renameConversation(id, title);
+    await cliClient.renameConversation(id, title, "user");
     set((s) => ({
       conversations: s.conversations.map((c) =>
-        c.id === id ? { ...c, title } : c
+        c.id === id ? { ...c, title, titleSource: "user" as const } : c
       )
     }));
   },

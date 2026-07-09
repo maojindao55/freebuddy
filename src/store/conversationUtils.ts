@@ -1,6 +1,12 @@
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { CLIMember } from "@/config/aiMembers";
-import type { Conversation, ConversationMessage } from "@/services/cli/types";
+import type {
+  Conversation,
+  ConversationMessage,
+  ConversationTitleSource
+} from "@/services/cli/types";
+
+export type { ConversationTitleSource };
 
 type ToolResultItem = Extract<CliStreamItem, { kind: "tool-result" }>;
 type CommandItem = Extract<CliStreamItem, { kind: "command" }>;
@@ -408,12 +414,10 @@ function defaultTitleForConversation(
   return tail ? `${conversation.agentName} · ${tail}` : conversation.agentName;
 }
 
-export type ConversationTitleSource = "default" | "prompt" | "agent" | "user";
-
-type ConversationForTitleSource = Pick<Conversation, "title"> &
-  Partial<Pick<Conversation, "agentName" | "cwd">> & {
-    titleSource?: ConversationTitleSource;
-  };
+type ConversationForTitleSource = Pick<
+  Conversation,
+  "title" | "agentName" | "cwd" | "titleSource"
+>;
 
 export function inferConversationTitleSource(
   conversation: ConversationForTitleSource

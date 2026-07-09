@@ -19,19 +19,33 @@ async function loadWhipMotion() {
   );
 }
 
-test("handlePos winds up right, snaps left, then recovers", async () => {
+test("handlePos winds up over the top, then cracks through a big circular throw", async () => {
   const { handlePos, WHIP_ATTACH_POINT } = await loadWhipMotion();
   const rest = handlePos(0);
   assert.equal(rest.x, WHIP_ATTACH_POINT.x);
   assert.equal(rest.y, WHIP_ATTACH_POINT.y);
 
   const windup = handlePos(0.35);
-  assert.ok(windup.x > WHIP_ATTACH_POINT.x, "wind-up pulls the grip right");
-  assert.ok(windup.y < WHIP_ATTACH_POINT.y, "wind-up lifts the grip");
+  assert.ok(windup.y < WHIP_ATTACH_POINT.y - 40, "wind-up lifts the grip high");
+  assert.ok(windup.x < WHIP_ATTACH_POINT.x, "wind-up leans back toward the pivot");
+
+  // Mid-snap should still be high/left — the long way over the top.
+  const midSnap = handlePos(0.5);
+  assert.ok(midSnap.x < windup.x, "snap continues left over the top");
 
   const snap = handlePos(0.6);
-  assert.ok(snap.x < WHIP_ATTACH_POINT.x, "snap throws the grip left toward the tip");
-  assert.ok(snap.x < windup.x, "snap travels past the wind-up peak");
+  assert.ok(snap.y > WHIP_ATTACH_POINT.y, "crack lands below rest after the circular throw");
+  assert.ok(snap.x < WHIP_ATTACH_POINT.x, "crack still aims left toward the tip");
+
+  // Arc length of the throw should be large ("抡圆了"), not a short jab.
+  let arc = 0;
+  let prev = handlePos(0.35);
+  for (let i = 1; i <= 20; i += 1) {
+    const cur = handlePos(0.35 + (0.25 * i) / 20);
+    arc += Math.hypot(cur.x - prev.x, cur.y - prev.y);
+    prev = cur;
+  }
+  assert.ok(arc > 350, `expected a long circular snap arc, got ${arc.toFixed(0)}`);
 
   const end = handlePos(1);
   assert.ok(Math.abs(end.x - WHIP_ATTACH_POINT.x) < 2);
@@ -69,22 +83,25 @@ test("Verlet sim produces continuous motion through the swing", async () => {
   assert.ok(Number.isFinite(c.tipSpeed));
 });
 
-test("tip speed peaks during the forward snap", async () => {
+test("tip speed peaks hard during the forward snap", async () => {
   const { createWhipSimulation } = await loadWhipMotion();
   const sim = createWhipSimulation();
   let peak = 0;
   let peakP = 0;
-  for (let i = 0; i <= 60; i += 1) {
-    const p = i / 60;
+  let cracked = false;
+  for (let i = 0; i <= 90; i += 1) {
+    const p = i / 90;
     const frame = sim.step(p);
+    if (frame.cracked) cracked = true;
     if (frame.tipSpeed > peak) {
       peak = frame.tipSpeed;
       peakP = p;
     }
   }
-  assert.ok(peak > 20, `expected a real crack-speed peak, got ${peak}`);
-  // Snap phase is 0.35→0.6; peak should land in/near that window.
-  assert.ok(peakP >= 0.3 && peakP <= 0.75, `peak at progress ${peakP}`);
+  assert.ok(peak > 40, `expected a hard crack-speed peak, got ${peak}`);
+  // Soft rope lags the handle, so the tip peak lands near/just after snap.
+  assert.ok(peakP >= 0.4 && peakP <= 0.9, `peak at progress ${peakP}`);
+  assert.equal(cracked, true, "tip speed should trigger a crack burst");
 });
 
 test("computeWhipFrame stays finite across the full effect duration", async () => {

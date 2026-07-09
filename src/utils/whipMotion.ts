@@ -42,15 +42,31 @@ export const DEFAULT_TOTAL_MS = 2300;
 
 const SEGMENTS = 32;
 const SEG_LEN = 11;
-const GRAVITY = 0.42;
-const DAMPING = 0.995;
-const CONSTRAINT_ITERS = 28;
-const TIP_SPEED_CRACK = 32;
+const GRAVITY = 0.32;
+const DAMPING = 0.988;
+const CONSTRAINT_ITERS = 24;
+const TIP_SPEED_CRACK = 28;
 const CRACK_COOLDOWN_FRAMES = 28;
 const FRAME_MS = 1000 / 60;
 
 /** Wind-up occupies the first ~42% of the time-to-crack (same as before). */
 const WINDUP_FRACTION = 0.42;
+
+/** Shoulder-ish pivot: left of and slightly below the rest attach. */
+const PIVOT_DX = -118;
+const PIVOT_DY = 28;
+/**
+ * Wind-up lean (radians, counterclockwise from rest): lifts the grip up
+ * and back so the throw has room to come over the top.
+ */
+const WINDUP_DELTA = 1.25;
+/**
+ * Forward throw past the wind-up peak (radians, still counterclockwise).
+ * Combined with wind-up this is ~250° over the top — a full circular crack.
+ */
+const SNAP_DELTA = 3.15;
+/** Radius stretch at peak snap so the throw reads bigger / harder. */
+const SNAP_RADIUS_BOOST = 1.45;
 
 function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
@@ -60,8 +76,8 @@ function easeOutQuad(x: number): number {
   return 1 - (1 - x) * (1 - x);
 }
 
-function easeInQuad(x: number): number {
-  return x * x;
+function easeInQuart(x: number): number {
+  return x * x * x * x;
 }
 
 function easeOutCubic(x: number): number {
@@ -84,36 +100,62 @@ export function swingProgress(
     return 0.35 * easeOutQuad(clamp01(elapsedMs / windupEnd));
   }
   if (elapsedMs <= crackAtMs) {
+    // Ease-IN quartic: slow → very fast so angular velocity peaks at crack.
     const k = clamp01((elapsedMs - windupEnd) / Math.max(crackAtMs - windupEnd, 1));
-    return 0.35 + 0.25 * easeInQuad(k);
+    return 0.35 + 0.25 * easeInQuart(k);
   }
   const k = clamp01((elapsedMs - crackAtMs) / Math.max(totalMs - crackAtMs, 1));
   return 0.6 + 0.4 * easeOutCubic(k);
 }
 
 /**
- * Handle trajectory in viewBox space. Mirrored from the canvas demo so the
- * grip sits on the right and the lash cracks toward the left (avatar).
+ * Handle trajectory: one big circular throw around a shoulder-ish pivot.
  *
- *   0→0.35  wind-up: pull back right + up
- *   0.35→0.6 snap: accelerate left + down
+ * Screen y grows downward. From rest (grip to the right of the pivot),
+ * counterclockwise lifts the grip up/back, then continues over the top
+ * and down toward the avatar on the left — a full "抡圆了" arc.
+ *
+ *   0→0.35  wind-up: lean back up
+ *   0.35→0.6 snap: accelerate ~250° over the top
  *   0.6→1   recover toward rest
  */
 export function handlePos(progress: number, base: Point = WHIP_ATTACH_POINT): Point {
   const p = clamp01(progress);
+  const cx = base.x + PIVOT_DX;
+  const cy = base.y + PIVOT_DY;
+  const restDx = base.x - cx;
+  const restDy = base.y - cy;
+  const restAngle = Math.atan2(restDy, restDx);
+  const restR = Math.hypot(restDx, restDy);
+
+  let angle: number;
+  let radius = restR;
+
   if (p < 0.35) {
-    const k = p / 0.35;
-    const e = easeOutQuad(k);
-    return { x: base.x + e * 88, y: base.y - e * 108 };
+    const k = easeOutQuad(p / 0.35);
+    // Counterclockwise = up and back from rest.
+    angle = restAngle - k * WINDUP_DELTA;
+    radius = restR * (1 + k * 0.14);
+  } else if (p < 0.6) {
+    const k = easeInQuart((p - 0.35) / 0.25);
+    // Keep going the long way: wind-up peak → over the top → forward crack.
+    const from = restAngle - WINDUP_DELTA;
+    const to = restAngle - WINDUP_DELTA - SNAP_DELTA;
+    angle = from + k * (to - from);
+    radius = restR * (1.14 + k * (SNAP_RADIUS_BOOST - 1.14));
+  } else {
+    const k = easeOutCubic((p - 0.6) / 0.4);
+    const from = restAngle - WINDUP_DELTA - SNAP_DELTA;
+    // Shortest recover back toward rest (unwrap toward restAngle - 2π).
+    const to = restAngle - Math.PI * 2;
+    angle = from + k * (to - from);
+    radius = restR * (SNAP_RADIUS_BOOST + k * (1 - SNAP_RADIUS_BOOST));
   }
-  if (p < 0.6) {
-    const k = (p - 0.35) / 0.25;
-    const e = easeInQuad(k);
-    return { x: base.x + 88 - e * 210, y: base.y - 108 + e * 155 };
-  }
-  const k = (p - 0.6) / 0.4;
-  const e = easeOutCubic(k);
-  return { x: base.x - 122 + e * 122, y: base.y + 47 - e * 47 };
+
+  return {
+    x: cx + Math.cos(angle) * radius,
+    y: cy + Math.sin(angle) * radius
+  };
 }
 
 function createHangChain(base: Point): VerletPoint[] {

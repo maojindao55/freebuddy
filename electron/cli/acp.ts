@@ -312,6 +312,24 @@ export function buildSessionCloseRequest(
   };
 }
 
+export function buildSessionSetConfigOptionRequest(
+  id: AcpRequestId,
+  sessionId: string,
+  configId: string,
+  value: string
+): AcpMessage {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "session/set_config_option",
+    params: {
+      sessionId,
+      configId,
+      value
+    }
+  };
+}
+
 export function buildSessionListRequest(
   id: AcpRequestId,
   cwd?: string

@@ -35,6 +35,10 @@ export function CodeWhipOverlay() {
               <stop offset="45%" stopColor="#6b1f24" />
               <stop offset="100%" stopColor="#4a1418" />
             </linearGradient>
+            <linearGradient id="whip-tip-grad" x1="1" y1="0" x2="0" y2="0">
+              <stop offset="0%" stopColor="#6b4220" />
+              <stop offset="100%" stopColor="#2a1a0c" />
+            </linearGradient>
           </defs>
 
           {/* Short straight handle on the right */}
@@ -64,64 +68,50 @@ export function CodeWhipOverlay() {
             <circle cx="592" cy="198" r="6" fill="#3d3d3d" />
           </g>
 
-          {/* Segmented tip: wave travels handle → tip */}
-          <g className="code-whip-tip code-whip-seg code-whip-seg-1">
-            <g className="code-whip-seg code-whip-seg-2">
-              <g className="code-whip-seg code-whip-seg-3">
-                <g className="code-whip-seg code-whip-seg-4">
-                  <path
-                    className="code-whip-cord"
-                    d="M586 194
-                       C500 150, 420 112, 340 98
-                       C260 84, 180 96, 110 130
-                       C50 160, 0 204, -40 250
-                       C-70 284, -104 318, -140 348"
-                    fill="none"
-                    stroke="#2a1a0c"
-                    strokeWidth="2.8"
-                    strokeLinecap="round"
-                  >
-                    <animate
-                      attributeName="d"
-                      dur="2.3s"
-                      fill="freeze"
-                      keyTimes="0;0.18;0.32;0.45;0.55;0.72;1"
-                      values="
-M586 194 C520 168, 460 150, 400 148 C340 146, 280 160, 220 186 C160 212, 100 250, 40 292 C10 314, -20 334, -50 350;
-M586 194 C500 140, 430 100, 360 92 C290 84, 220 100, 150 136 C90 168, 30 214, -20 260 C-50 288, -84 318, -120 344;
-M586 194 C490 160, 410 130, 330 118 C250 106, 170 120, 100 156 C40 188, -10 232, -50 276 C-78 302, -110 328, -142 350;
-M586 194 C505 145, 425 105, 345 90 C265 76, 185 90, 115 128 C55 160, 0 208, -45 256 C-75 288, -110 322, -148 352;
+          {/* Long thin tip with snake-wave path morph — always visible */}
+          <g className="code-whip-tip">
+            <path
+              className="code-whip-cord"
+              d="M586 194 C500 150, 420 112, 340 98 C260 84, 180 96, 110 130 C50 160, 0 204, -40 250 C-70 284, -104 318, -140 348"
+              fill="none"
+              stroke="url(#whip-tip-grad)"
+              strokeWidth="3.6"
+              strokeLinecap="round"
+            >
+              <animate
+                attributeName="d"
+                dur="2.3s"
+                fill="freeze"
+                calcMode="spline"
+                keyTimes="0;0.2;0.35;0.48;0.58;0.75;1"
+                keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.2 0 0.1 1;0.4 0 0.2 1;0.4 0 0.2 1"
+                values="
+M586 194 C530 170, 470 156, 410 158 C350 160, 290 178, 230 206 C170 234, 110 270, 50 308 C20 328, -10 344, -40 356;
+M586 194 C505 145, 435 108, 365 96 C295 84, 225 100, 155 138 C95 170, 35 216, -15 262 C-45 290, -80 320, -118 346;
+M586 194 C495 158, 420 128, 345 114 C270 100, 195 116, 125 154 C65 186, 10 230, -35 274 C-65 300, -98 328, -132 350;
+M586 194 C508 142, 432 102, 352 88 C272 74, 192 90, 120 130 C58 164, 2 214, -42 262 C-72 292, -108 326, -146 354;
 M586 194 C500 150, 420 112, 340 98 C260 84, 180 96, 110 130 C50 160, 0 204, -40 250 C-70 284, -104 318, -140 348;
-M586 194 C510 155, 430 120, 350 108 C270 96, 190 110, 120 148 C60 180, 10 224, -30 268 C-58 296, -90 326, -128 350;
-M586 194 C515 160, 440 130, 365 120 C290 110, 215 128, 145 164 C90 194, 40 234, 0 272 C-24 296, -52 322, -80 344
+M586 194 C512 156, 432 122, 352 110 C272 98, 192 114, 122 152 C62 184, 12 228, -28 270 C-56 298, -88 328, -124 350;
+M586 194 C518 162, 442 132, 366 122 C290 112, 214 130, 144 168 C90 198, 40 238, 0 276 C-24 300, -52 326, -80 346
 "
-                    />
-                  </path>
-                  <g className="code-whip-cracker">
-                    <path
-                      d="M-118 330 L-158 348"
-                      fill="none"
-                      stroke="#3f2410"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M-118 334 L-154 360"
-                      fill="none"
-                      stroke="#2a1a0c"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                    />
-                    <circle
-                      className="code-whip-tip-dot"
-                      cx="-148"
-                      cy="352"
-                      r="3"
-                      fill="#1a1008"
-                    />
-                  </g>
-                </g>
-              </g>
+              />
+            </path>
+            <g className="code-whip-cracker">
+              <path
+                d="M-118 330 L-162 352"
+                fill="none"
+                stroke="#3f2410"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+              <path
+                d="M-118 334 L-158 362"
+                fill="none"
+                stroke="#2a1a0c"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+              <circle cx="-150" cy="354" r="3.2" fill="#1a1008" />
             </g>
           </g>
         </svg>

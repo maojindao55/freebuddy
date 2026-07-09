@@ -128,6 +128,82 @@ export interface WhipFrame {
   tipAngle: number;
 }
 
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
+}
+
+function easeOutCubic(x: number): number {
+  const c = 1 - x;
+  return 1 - c * c * c;
+}
+
+function easeInCubic(x: number): number {
+  return x * x * x;
+}
+
+const WINDUP_ANGLE_DEG = 24;
+const SNAP_ANGLE_DEG = -9;
+const SETTLE_ANGLE_DEG = -2;
+const SNAP_SCALE = 1.05;
+/** Wind-up occupies the first ~42% of the time-to-crack. */
+const WINDUP_FRACTION = 0.42;
+
+export interface ArmSwing {
+  /** Rotation in degrees (apply directly as `rotate(${deg}deg)`). */
+  deg: number;
+  scale: number;
+  opacity: number;
+}
+
+/**
+ * The arm's own swing (wind-up → forward snap → settle), computed with the
+ * same "continuous function of time" philosophy as the rope wave so both
+ * move as one connected gesture instead of two independently-timed
+ * animations (a CSS keyframe swing layered over a JS-driven rope tends to
+ * read as two things happening at once, not one whip crack).
+ *
+ * The forward-snap phase uses an ease-IN curve (slow → fast), so angular
+ * velocity peaks right as `crackAtMs` is reached — that peak velocity,
+ * not the peak angle, is what should read as "the crack".
+ */
+export function computeArmSwing(
+  elapsedMs: number,
+  crackAtMs: number = DEFAULT_CRACK_AT_MS,
+  totalMs = 2300
+): ArmSwing {
+  const windupEnd = crackAtMs * WINDUP_FRACTION;
+  let deg: number;
+  let scale: number;
+
+  if (elapsedMs <= windupEnd) {
+    const p = easeOutCubic(clamp01(elapsedMs / windupEnd));
+    deg = p * WINDUP_ANGLE_DEG;
+    scale = 1 + p * 0.02;
+  } else if (elapsedMs <= crackAtMs) {
+    const p = easeInCubic(
+      clamp01((elapsedMs - windupEnd) / (crackAtMs - windupEnd))
+    );
+    deg = WINDUP_ANGLE_DEG + p * (SNAP_ANGLE_DEG - WINDUP_ANGLE_DEG);
+    scale = 1.02 + p * (SNAP_SCALE - 1.02);
+  } else {
+    const t = elapsedMs - crackAtMs;
+    const settleSpan = Math.max(totalMs - crackAtMs, 1);
+    const p = easeOutCubic(clamp01(t / settleSpan));
+    const wiggle = 3 * Math.exp(-t / 350) * Math.cos((2 * Math.PI * t) / 450);
+    deg = SNAP_ANGLE_DEG + p * (SETTLE_ANGLE_DEG - SNAP_ANGLE_DEG) + wiggle;
+    scale = SNAP_SCALE + p * (1 - SNAP_SCALE);
+  }
+
+  const fadeInMs = 140;
+  const fadeOutMs = 260;
+  const opacity =
+    elapsedMs < fadeInMs
+      ? clamp01(elapsedMs / fadeInMs)
+      : clamp01((totalMs - elapsedMs) / fadeOutMs);
+
+  return { deg, scale, opacity: Math.min(1, opacity) };
+}
+
 export function computeWhipFrame(
   elapsedMs: number,
   crackAtMs: number = DEFAULT_CRACK_AT_MS

@@ -6,7 +6,7 @@ import {
   WHIP_EFFECT_MS,
   WHIP_HIT_AT_MS
 } from "@/store/whipEffectStore";
-import { computeWhipFrame } from "@/utils/whipMotion";
+import { computeArmSwing, computeWhipFrame } from "@/utils/whipMotion";
 
 export function CodeWhipOverlay() {
   const { t } = useTranslation();
@@ -14,14 +14,20 @@ export function CodeWhipOverlay() {
   const nonce = useWhipEffectStore((s) => s.nonce);
   const target = useWhipEffectStore((s) => s.target);
 
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const ropeRef = useRef<SVGPathElement | null>(null);
   const baseRef = useRef<SVGPathElement | null>(null);
   const crackerRef = useRef<SVGGElement | null>(null);
 
   useEffect(() => {
     if (!active) return;
-    const applyFrame = (elapsed: number) => {
+    const applyFrame = (elapsed: number, opacityOverride?: number) => {
+      const swing = computeArmSwing(elapsed, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
       const frame = computeWhipFrame(elapsed, WHIP_HIT_AT_MS);
+      if (stageRef.current) {
+        stageRef.current.style.transform = `rotate(${swing.deg}deg) scale(${swing.scale})`;
+        stageRef.current.style.opacity = String(opacityOverride ?? swing.opacity);
+      }
       ropeRef.current?.setAttribute("d", frame.ropeD);
       baseRef.current?.setAttribute("d", frame.baseD);
       crackerRef.current?.setAttribute(
@@ -35,7 +41,7 @@ export function CodeWhipOverlay() {
     if (reduceMotion) {
       // Hold a single "mid-crack" pose instead of animating through the
       // full wind-up/snap/ring-down sequence.
-      applyFrame(WHIP_HIT_AT_MS + 60);
+      applyFrame(WHIP_HIT_AT_MS + 60, 1);
       return;
     }
     let raf = 0;
@@ -65,7 +71,11 @@ export function CodeWhipOverlay() {
   return (
     <div className="code-whip-overlay" key={nonce} aria-hidden="true">
       <div className="code-whip-flash" style={aimStyle} />
-      <div className="code-whip-stage" style={aimStyle}>
+      <div
+        className="code-whip-stage"
+        ref={stageRef}
+        style={{ ...aimStyle, opacity: 0 }}
+      >
         <svg
           className="code-whip-svg"
           viewBox="0 0 560 300"

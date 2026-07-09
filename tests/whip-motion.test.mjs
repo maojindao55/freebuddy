@@ -70,3 +70,38 @@ test("computeWhipFrame settles back near the rest tip after the ring-down", asyn
   assert.ok(Math.abs(settled.tipX - 96) < 6);
   assert.ok(Math.abs(settled.tipY - 230) < 6);
 });
+
+test("computeArmSwing fades in, winds up, then snaps negative right at the crack", async () => {
+  const { computeArmSwing, DEFAULT_CRACK_AT_MS } = await loadWhipMotion();
+  const start = computeArmSwing(0, DEFAULT_CRACK_AT_MS, 2300);
+  assert.ok(start.opacity < 0.05, "starts nearly invisible (fade-in)");
+  assert.ok(Math.abs(start.deg) < 1, "starts with no rotation");
+
+  const windupPeak = computeArmSwing(
+    DEFAULT_CRACK_AT_MS * 0.42,
+    DEFAULT_CRACK_AT_MS,
+    2300
+  );
+  assert.ok(windupPeak.deg > 15, "wound up into a positive lean-back angle");
+
+  const atCrack = computeArmSwing(DEFAULT_CRACK_AT_MS, DEFAULT_CRACK_AT_MS, 2300);
+  assert.ok(atCrack.deg < 0, "the crack lands on a negative (forward) angle");
+  assert.ok(atCrack.deg < windupPeak.deg, "swung forward past the wind-up peak");
+});
+
+test("computeArmSwing settles and fades out by the end of the effect", async () => {
+  const { computeArmSwing, DEFAULT_CRACK_AT_MS } = await loadWhipMotion();
+  const end = computeArmSwing(2300, DEFAULT_CRACK_AT_MS, 2300);
+  assert.ok(end.opacity < 0.05, "fades out by the end");
+  assert.ok(Math.abs(end.deg) < 6, "settles close to a small resting angle");
+});
+
+test("computeArmSwing stays finite across the full effect duration", async () => {
+  const { computeArmSwing, DEFAULT_CRACK_AT_MS } = await loadWhipMotion();
+  for (let t = 0; t <= 2300; t += 25) {
+    const swing = computeArmSwing(t, DEFAULT_CRACK_AT_MS, 2300);
+    assert.ok(Number.isFinite(swing.deg), `deg finite at t=${t}`);
+    assert.ok(Number.isFinite(swing.scale), `scale finite at t=${t}`);
+    assert.ok(swing.opacity >= 0 && swing.opacity <= 1, `opacity in [0,1] at t=${t}`);
+  }
+});

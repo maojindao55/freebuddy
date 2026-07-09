@@ -3450,7 +3450,10 @@ button {
   margin-top: calc(var(--whip-h) * -0.767);
   /* Pivot near the handle/wrist so wind-up stays in the chat viewport. */
   transform-origin: 88% 62%;
-  animation: code-whip-swing 2.3s cubic-bezier(0.22, 0.7, 0.18, 1) both;
+  /* transform + opacity are set imperatively per frame from
+     computeArmSwing() in CodeWhipOverlay, so the arm's swing and the
+     rope's wave share one continuous, physically-motivated timeline
+     instead of running as two independently-timed animations. */
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
 }
 
@@ -3575,42 +3578,6 @@ button {
   }
 }
 
-/*
- * Coarse arm swing only — the rope itself (driven by whipMotion.ts) now
- * carries most of the visible "life", so this just needs a gentle wind-up
- * and a moderate forward snap timed to land near WHIP_HIT_AT_MS (~46%).
- * Kept compact so the tip never leaves the chat viewport.
- */
-@keyframes code-whip-swing {
-  0% {
-    transform: rotate(26deg) scale(0.96);
-    opacity: 0;
-  }
-  6% {
-    opacity: 1;
-  }
-  20% {
-    transform: rotate(20deg) scale(1);
-  }
-  34% {
-    transform: rotate(28deg) scale(1.01);
-  }
-  46% {
-    transform: rotate(-6deg) scale(1.03);
-  }
-  56% {
-    transform: rotate(2deg) scale(1);
-  }
-  72% {
-    transform: rotate(-1deg) scale(0.99);
-    opacity: 1;
-  }
-  100% {
-    transform: rotate(-2deg) scale(0.97);
-    opacity: 0;
-  }
-}
-
 @keyframes code-whip-avatar-hit {
   0%,
   100% {
@@ -3671,7 +3638,6 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .code-whip-stage,
   .code-whip-crack,
   .code-whip-spark,
   .code-whip-flash,
@@ -3681,7 +3647,7 @@ button {
 
   .code-whip-stage {
     transform: none !important;
-    opacity: 0.85;
+    opacity: 0.85 !important;
   }
 
   .msg-avatar-whip-target.whip-hit .msg-avatar {

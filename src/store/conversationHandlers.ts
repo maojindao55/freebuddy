@@ -41,7 +41,7 @@ function sessionTitleFromItems(items: CliStreamItem[]): string | undefined {
   return undefined;
 }
 
-function applyConversationTitle(
+export function applyConversationTitle(
   conversations: ConversationState["conversations"],
   conversationId: string,
   title: string,
@@ -323,6 +323,22 @@ async function finalizeRun(
     status: finalStatus,
     content: JSON.stringify(live.items)
   });
+
+  if (reason === "done" && !live.preserveConversationTitle) {
+    const title = sessionTitleFromItems(live.items);
+    if (title) {
+      set((s) => {
+        const conversations = applyConversationTitle(
+          s.conversations,
+          conversationId,
+          title,
+          s.messages[conversationId] ?? []
+        );
+        if (conversations === s.conversations) return s;
+        return { conversations };
+      });
+    }
+  }
 
   const ctx = runCtxMap.get(live.taskSessionId);
   ctx?.unsubscribe();

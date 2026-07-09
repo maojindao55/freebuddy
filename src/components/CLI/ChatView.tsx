@@ -1142,7 +1142,6 @@ export function ChatView() {
               options={sessionConfigOptions}
               overrides={conv?.configOptionOverrides}
               disabled={sending || replaying}
-              panelPlacement="up"
               fallback={
                 <span className="composer-hint">{t("chat.enterHint")}</span>
               }

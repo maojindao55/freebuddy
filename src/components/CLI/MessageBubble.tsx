@@ -950,10 +950,42 @@ export const MessageBubble = memo(function MessageBubble({
         />
         {whipping && (
           <>
-            <span className="whip-arc" aria-hidden="true" />
+            <span className="whip-lash" aria-hidden="true">
+              <svg
+                className="whip-lash-svg"
+                viewBox="0 0 120 80"
+                width="120"
+                height="80"
+              >
+                <path
+                  className="whip-lash-handle"
+                  d="M8 62 L28 48"
+                  fill="none"
+                  stroke="#8B5A2B"
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                />
+                <path
+                  className="whip-lash-cord"
+                  d="M28 48 C48 28, 78 12, 108 18"
+                  fill="none"
+                  stroke="#5C3317"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+                <circle
+                  className="whip-lash-tip"
+                  cx="108"
+                  cy="18"
+                  r="3.5"
+                  fill="#3f2a14"
+                />
+              </svg>
+            </span>
             <span className="whip-crack" aria-hidden="true">
               {t("message.whipCrack")}
             </span>
+            <span className="whip-impact" aria-hidden="true" />
             <span className="whip-spark whip-spark-1" aria-hidden="true" />
             <span className="whip-spark whip-spark-2" aria-hidden="true" />
             <span className="whip-spark whip-spark-3" aria-hidden="true" />

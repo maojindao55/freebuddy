@@ -299,7 +299,7 @@ button {
 .electron-shell.platform-darwin:not(.chrome-hidden) .sidebar-header > .sidebar-toggle {
   position: absolute;
   top: 8px;
-  left: 66px;
+  left: 74px;
   z-index: 40;
   -webkit-app-region: no-drag;
 }
@@ -322,7 +322,7 @@ button {
 
 .electron-shell.platform-darwin:not(.chrome-hidden) .sidebar-toggle.floating {
   top: 8px;
-  left: 66px;
+  left: 74px;
 }
 
 .electron-shell.chrome-hidden.sidebar-collapsed .titlebar {
@@ -2711,6 +2711,7 @@ button {
 }
 
 .new-task-composer {
+  position: relative;
   width: 100%;
   overflow: hidden;
   border: 1px solid var(--fb-border-strong);
@@ -4240,6 +4241,27 @@ button {
 .chat-composer:focus-within {
   border-color: rgba(148, 163, 184, 0.34);
   box-shadow: 0 -4px 24px -6px rgba(15, 23, 42, 0.05), 0 18px 46px rgba(15, 23, 42, 0.1);
+}
+
+.chat-composer.attachment-drop-active,
+.new-task-composer.attachment-drop-active {
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18), 0 -4px 24px -6px rgba(15, 23, 42, 0.05);
+}
+
+.attachment-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border-radius: inherit;
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--fb-accent, #2563eb);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .composer-context-row {

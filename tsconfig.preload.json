@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -11,5 +11,5 @@
     "rootDir": "electron",
     "types": ["node"]
   },
-  "include": ["electron/preload.ts"]
+  "include": ["electron/preload.ts", "electron/shared/collectPreparedAttachmentsUntilLimit.ts"]
 }

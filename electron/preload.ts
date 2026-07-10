@@ -1,4 +1,6 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
+
+import { collectPreparedAttachmentsUntilLimit, managedPathsToDiscardAfterPrepare } from "./shared/collectPreparedAttachmentsUntilLimit.js";
 
 const cli = {
   listAdapters: () => ipcRenderer.invoke("cli:listAdapters"),
@@ -89,6 +91,91 @@ const cli = {
 
   selectDirectory: () => ipcRenderer.invoke("cli:selectDirectory"),
   selectAttachments: () => ipcRenderer.invoke("cli:selectAttachments"),
+  prepareAttachmentFiles: async (files: File[], limit?: number, existingPaths?: string[]) => {
+    const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+    const createdManagedPaths: string[] = [];
+
+    const trackCreatedManagedFromBatch = (batch: {
+      candidates?: Array<{ managed?: boolean; created?: boolean; path?: string }>;
+    }) => {
+      for (const item of batch?.candidates ?? []) {
+        if (item?.created && item?.managed && typeof item.path === "string") {
+          createdManagedPaths.push(item.path);
+        }
+      }
+    };
+
+    const prepareFile = async (file: File) => {
+      const filePath = webUtils.getPathForFile(file);
+      if (filePath) {
+        return ipcRenderer.invoke("cli:prepareAttachmentFiles", [
+          { kind: "path", path: filePath }
+        ]);
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        return {
+          candidates: [],
+          rejections: [
+            {
+              name: file.name || "clipboard-image",
+              reason: "file_too_large"
+            }
+          ]
+        };
+      }
+      const data = await file.arrayBuffer();
+      const batch = await ipcRenderer.invoke("cli:prepareAttachmentFiles", [
+        {
+          kind: "buffer",
+          name: file.name || "clipboard-image",
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          data
+        }
+      ]);
+      trackCreatedManagedFromBatch(batch);
+      return batch;
+    };
+
+    try {
+      const result = await collectPreparedAttachmentsUntilLimit(
+        files,
+        limit,
+        async (file) => {
+          const batch = await prepareFile(file);
+          return {
+            candidates: batch?.candidates ?? [],
+            rejections: batch?.rejections ?? []
+          };
+        },
+        {
+          existingPaths,
+          getCandidatePath: (candidate: { path?: string }) =>
+            typeof candidate?.path === "string" ? candidate.path : null
+        }
+      );
+
+      for (const managedPath of managedPathsToDiscardAfterPrepare(
+        createdManagedPaths,
+        result.candidates
+      )) {
+        await ipcRenderer.invoke("cli:discardManagedAttachment", managedPath);
+      }
+
+      return result;
+    } catch (error) {
+      for (const managedPath of createdManagedPaths) {
+        await ipcRenderer.invoke("cli:discardManagedAttachment", managedPath);
+      }
+      throw error;
+    }
+  },
+  discardManagedAttachment: (filePath: string) =>
+    ipcRenderer.invoke("cli:discardManagedAttachment", filePath),
+  discardManagedAttachmentIfUnreferenced: (filePath: string) =>
+    ipcRenderer.invoke("cli:discardManagedAttachmentIfUnreferenced", filePath),
+  discardManagedAttachments: (paths: string[]) =>
+    ipcRenderer.send("cli:discardManagedAttachments", paths),
 
   resolveDraftEntry: (cwd: string) =>
     ipcRenderer.invoke("cli:resolveDraftEntry", cwd),

@@ -15,6 +15,7 @@ import type {
   ConversationMessage,
   ConversationTitleSource,
   AttachmentCandidate,
+  PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
   AppendMessageInput,
@@ -176,6 +177,22 @@ export const cliClient = {
   },
   selectAttachments(): Promise<AttachmentCandidate[]> {
     return api().selectAttachments();
+  },
+  prepareAttachmentFiles(
+    files: File[],
+    limit?: number,
+    existingPaths?: string[]
+  ): Promise<PrepareAttachmentFilesResult> {
+    return api().prepareAttachmentFiles(files, limit, existingPaths);
+  },
+  discardManagedAttachment(filePath: string): Promise<boolean> {
+    return api().discardManagedAttachment(filePath);
+  },
+  discardManagedAttachmentIfUnreferenced(filePath: string): Promise<boolean> {
+    return api().discardManagedAttachmentIfUnreferenced(filePath);
+  },
+  discardManagedAttachments(paths: string[]): void {
+    api().discardManagedAttachments(paths);
   },
   resolveDraftEntry(cwd: string): Promise<string | null> {
     return api().resolveDraftEntry(cwd);

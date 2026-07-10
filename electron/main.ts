@@ -10,6 +10,7 @@ import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
 import { handleDraftRequest } from "./draftProtocol.js";
 import { startPreviewServer } from "./previewServer.js";
 import { getDb } from "./cli/db.js";
+import { cleanupOrphanManagedAttachments } from "./cli/attachments.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { initApplicationMenu } from "./menu.js";
 import { APP_NAME, APP_VERSION } from "./app-meta.js";
@@ -183,7 +184,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: false
     }
   });
 
@@ -240,6 +241,7 @@ app.whenReady().then(async () => {
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
   getDb();
+  cleanupOrphanManagedAttachments();
   seedBuiltinWorkflowTeams();
   registerCliIpc();
   registerUpdaterIpc();

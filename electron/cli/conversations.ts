@@ -1,4 +1,8 @@
 import { getDb } from "./db.js";
+import {
+  discardManagedAttachmentIfUnreferenced,
+  isManagedAttachmentPath
+} from "./attachments.js";
 
 export interface ChatAttachment {
   id: string;
@@ -8,6 +12,7 @@ export interface ChatAttachment {
   mimeType?: string;
   size?: number;
   extension?: string;
+  managed?: boolean;
 }
 
 export type ConversationTitleSource = "default" | "prompt" | "agent" | "user";
@@ -274,7 +279,31 @@ export function archiveConversation(id: string, archived: boolean): void {
 }
 
 export function deleteConversation(id: string): void {
+  const managedPaths: string[] = [];
+  const rows = getDb()
+    .prepare(
+      `SELECT attachments FROM conversation_messages WHERE conversation_id = ? AND attachments IS NOT NULL`
+    )
+    .all(id) as Array<{ attachments: string | null }>;
+
+  for (const row of rows) {
+    if (!row.attachments) continue;
+    try {
+      const attachments = JSON.parse(row.attachments) as ChatAttachment[];
+      for (const attachment of attachments) {
+        if (isManagedAttachmentPath(attachment.path)) {
+          managedPaths.push(attachment.path);
+        }
+      }
+    } catch {
+      // ignore malformed attachment JSON
+    }
+  }
+
   getDb().prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
+  for (const filePath of managedPaths) {
+    discardManagedAttachmentIfUnreferenced(filePath);
+  }
 }
 
 function touchConversation(id: string, lastMessageAt?: string) {

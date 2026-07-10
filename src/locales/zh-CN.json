@@ -93,6 +93,7 @@
     "defaultAttachmentTitle": "附件",
     "pendingAttachmentsAria": "待发送附件",
     "removeAttachmentAria": "移除 {{name}}",
+    "dropAttachmentsHint": "释放以添加附件",
     "newTaskAria": "新建任务",
     "commonTasksAria": "常用任务",
     "replay": {
@@ -267,6 +268,7 @@
     "attachmentType": "{{name}} 不是支持的附件类型。",
     "attachmentDesktopOnly": "附件功能需要在 Electron 桌面端使用。",
     "attachmentSelectFailed": "选择附件失败：{{err}}",
+    "attachmentImportEmpty": "没有可添加的附件。",
     "cliBridgeUnavailable": "FreeBuddy CLI 桥接不可用。请在 Electron 桌面端运行。",
     "agentNotInstalled": "{{agent}} 未安装。请在“设置 → Cli Agents”中安装。",
     "checkFailed": "检查失败：{{err}}",

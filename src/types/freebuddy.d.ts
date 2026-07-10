@@ -18,6 +18,7 @@ import type {
   ConversationMessage,
   ConversationTitleSource,
   AttachmentCandidate,
+  PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
   AppendMessageInput,
@@ -131,6 +132,14 @@ declare global {
 
     selectDirectory(): Promise<string | null>;
     selectAttachments(): Promise<AttachmentCandidate[]>;
+  prepareAttachmentFiles(
+    files: File[],
+    limit?: number,
+    existingPaths?: string[]
+  ): Promise<PrepareAttachmentFilesResult>;
+    discardManagedAttachment(filePath: string): Promise<boolean>;
+    discardManagedAttachmentIfUnreferenced(filePath: string): Promise<boolean>;
+    discardManagedAttachments(paths: string[]): void;
     resolveDraftEntry(cwd: string): Promise<string | null>;
     readDraftMarkdown(cwd: string, rel: string): Promise<string | null>;
     openDraftExternal(url: string): Promise<boolean>;

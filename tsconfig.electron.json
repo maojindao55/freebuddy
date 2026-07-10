@@ -11,5 +11,5 @@
     "rootDir": "electron",
     "types": ["node"]
   },
-  "include": ["electron/main.ts", "electron/menu.ts", "electron/app-meta.ts", "electron/cli/**/*.ts"]
+  "include": ["electron/main.ts", "electron/menu.ts", "electron/app-meta.ts", "electron/cli/**/*.ts", "electron/shared/**/*.ts"]
 }

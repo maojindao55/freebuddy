@@ -20,15 +20,32 @@ This is path-based attachment support. FreeBuddy will not upload, copy, encode, 
 - Show sent attachments in user message bubbles.
 - Allow text-only, attachment-only, and text-plus-attachment messages.
 - Preserve existing text-only conversation behavior.
+- Drag-and-drop files onto the composer input area.
+- Paste files or clipboard images into the composer.
+- For clipboard images without a local path (screenshots, browser copies), save a managed copy under app user data and mark `managed: true` on the attachment metadata.
 
 Out of scope:
 
 - Server upload.
-- Copying files into app data.
+- Copying user-selected local files into app data (path-based attachments stay on disk where the user placed them).
 - Reading file bytes into the prompt.
 - Multimodal API payloads.
-- Drag-and-drop and paste attachments.
-- Image thumbnail rendering in this first pass, because Electron would need an additional safe local-file URL bridge.
+
+## Managed clipboard images
+
+When paste or drag yields image bytes without a trusted local path, the main process:
+
+- Validates MIME type, extension, and size before writing.
+- Writes to `userData/freebuddy/managed-attachments/` with an unpredictable filename.
+- Returns a normal path-based `AttachmentCandidate` with `managed: true`.
+
+Lifecycle:
+
+- Removing a pending managed attachment deletes its managed file.
+- Failed sends that restore pending attachments keep managed files.
+- Sent managed files are kept for history preview and agent access.
+- Deleting a conversation removes managed files referenced only by that conversation's messages.
+- User-owned original files are never deleted by FreeBuddy.
 
 ## Message Model
 
@@ -43,6 +60,7 @@ export interface ChatAttachment {
   mimeType?: string;
   size?: number;
   extension?: string;
+  managed?: boolean;
 }
 ```
 

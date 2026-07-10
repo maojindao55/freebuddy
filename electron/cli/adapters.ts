@@ -443,13 +443,13 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
       };
     }
     case "cursor-agent-acp": {
-      const { model, args: acpArgs } = splitModelArg(extra);
-      const args: string[] = ["acp"];
-      args.push(...acpArgs);
+      const { model, args: globalArgs } = splitModelArg(extra);
+      const args: string[] = [];
+      if (model) args.push("--model", model);
+      args.push(...globalArgs, "acp");
       return {
         bin,
         args,
-        ...(model ? { env: { CURSOR_MODEL: model } } : {}),
         promptViaStdin: false,
         protocol: "acp"
       };

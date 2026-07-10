@@ -135,7 +135,7 @@ test("new-task page separates normal and team modes into tabs above the composer
     chatViewSource.indexOf("function NewTaskHome")
   );
   const tabsStart = newTaskHome.indexOf('className="new-task-mode-tabs"');
-  const composerStart = newTaskHome.indexOf('className="new-task-composer"');
+  const composerStart = newTaskHome.indexOf("new-task-composer");
   assert.ok(tabsStart > -1, "missing new-task mode tabs");
   assert.ok(tabsStart < composerStart, "mode tabs should sit above the composer");
   assert.match(newTaskHome, /workflow\.normalMode/);

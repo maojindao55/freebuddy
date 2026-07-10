@@ -26,15 +26,17 @@ const cli = {
     env?: Record<string, string>,
     runtimeAdapter?: string
   ) => ipcRenderer.invoke("cli:check", { adapter, binary, env, runtimeAdapter }),
-  install: (command: string) => ipcRenderer.invoke("cli:install", command),
+  install: (adapter: string, command: string) =>
+    ipcRenderer.invoke("cli:install", { adapter, command }),
   installStream: (
+    adapter: string,
     command: string,
     cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
   ): (() => void) => {
     const channel = "cli://install";
     const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload as any);
     ipcRenderer.on(channel, handler);
-    ipcRenderer.invoke("cli:installStream", command).catch((err) => {
+    ipcRenderer.invoke("cli:installStream", { adapter, command }).catch((err) => {
       cb({ type: "stderr", content: String(err) });
       cb({ type: "done", exitCode: 1 });
     });

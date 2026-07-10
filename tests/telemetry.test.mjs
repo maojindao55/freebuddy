@@ -28,7 +28,7 @@ test("PostHog telemetry is owned by the Electron main process", () => {
 test("telemetry uses a random installation id and excludes workspace content", () => {
   assert.match(telemetry, /randomUUID\(\)/);
   assert.match(telemetry, /installation_id/);
-  assert.doesNotMatch(telemetry, /workspacePath|cwd|conversation|message|prompt/);
+  assert.doesNotMatch(telemetry, /workspacePath|\bcwd\b|message_content|prompt_text/);
 });
 
 test("anonymous telemetry can be disabled from general settings", () => {

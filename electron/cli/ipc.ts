@@ -46,7 +46,8 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
-import { setTelemetryEnabled } from "../telemetry.js";
+import { setTelemetryEnabled, trackTelemetryEvent } from "../telemetry.js";
+import { normalizeTelemetryAdapter } from "../telemetryPrivacy.js";
 import {
   addFeedSource,
   deleteFeedSource,
@@ -227,11 +228,15 @@ export function registerCliIpc() {
       }
     ) => cliCheck(args.adapter, args.binary, args.env, args.runtimeAdapter)
   );
-  ipcMain.handle("cli:install", async (_e, command: string) =>
-    cliInstall(command)
+  ipcMain.handle("cli:install", async (_e, args: { adapter: string; command: string }) =>
+    cliInstall(args.command, args.adapter)
   );
-  ipcMain.handle("cli:installStream", async (_e, command: string) =>
-    cliInstallStream(command, BrowserWindow.getFocusedWindow()?.webContents)
+  ipcMain.handle("cli:installStream", async (_e, args: { adapter: string; command: string }) =>
+    cliInstallStream(
+      args.command,
+      BrowserWindow.getFocusedWindow()?.webContents,
+      args.adapter
+    )
   );
 
   ipcMain.handle("cli:run", async (event, args: CliRunArgs) => {
@@ -354,7 +359,15 @@ export function registerCliIpc() {
   ipcMain.handle("cli:getConversation", (_e, id: string) => getConversation(id));
   ipcMain.handle(
     "cli:createConversation",
-    (_e, input: CreateConversationInput) => createConversation(input)
+    (_e, input: CreateConversationInput) => {
+      const conversation = createConversation(input);
+      trackTelemetryEvent("conversation_created", {
+        adapter: normalizeTelemetryAdapter(input.adapter),
+        has_workspace: Boolean(input.cwd),
+        approval_mode: input.approvalMode ?? "default"
+      });
+      return conversation;
+    }
   );
   ipcMain.handle(
     "cli:renameConversation",

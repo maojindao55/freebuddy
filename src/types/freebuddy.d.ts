@@ -66,8 +66,9 @@ declare global {
       env?: Record<string, string>,
       runtimeAdapter?: string
     ): Promise<CliCheckResult>;
-    install(command: string): Promise<CliInstallResult>;
+    install(adapter: string, command: string): Promise<CliInstallResult>;
     installStream(
+      adapter: string,
       command: string,
       cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
     ): () => void;

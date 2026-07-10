@@ -109,7 +109,7 @@ export const useCliInstallStore = create<State>((set, get) => ({
       jobs: [...s.jobs.filter((j) => j.adapterId !== adapterId), job]
     }));
 
-    const off = cliClient.installStream(command, (event) => {
+    const off = cliClient.installStream(adapterId, command, (event) => {
       if (event.type === "stdout" || event.type === "stderr") {
         pendingOutput.set(adapterId, (pendingOutput.get(adapterId) ?? "") + event.content);
         scheduleFlush(adapterId, set);

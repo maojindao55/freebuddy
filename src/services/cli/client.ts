@@ -64,14 +64,15 @@ export const cliClient = {
   ): Promise<CliCheckResult> {
     return api().check(adapter, binary, env, runtimeAdapter);
   },
-  install(command: string): Promise<CliInstallResult> {
-    return api().install(command);
+  install(adapter: string, command: string): Promise<CliInstallResult> {
+    return api().install(adapter, command);
   },
   installStream(
+    adapter: string,
     command: string,
     cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
   ): () => void {
-    return api().installStream(command, cb);
+    return api().installStream(adapter, command, cb);
   },
 
   run(args: CliRunArgs): Promise<{ sessionId: string }> {

@@ -5,6 +5,12 @@ import type { Readable, Writable } from "node:stream";
 import { getDb } from "./db.js";
 import type { CLIAdapterId } from "./adapters.js";
 import type { AcpStreamItem } from "./acp.js";
+import { trackTelemetryEvent } from "../telemetry.js";
+import {
+  categorizeTelemetryError,
+  normalizeTelemetryAdapter,
+  telemetryDurationMs
+} from "../telemetryPrivacy.js";
 
 export interface CliPromptAttachment {
   path: string;
@@ -129,6 +135,17 @@ export function insertTask(
       now,
       now
     );
+  trackTelemetryEvent("agent_run_started", {
+    adapter: normalizeTelemetryAdapter(args.adapter),
+    run_context: args.toolSessionScope?.startsWith("workflow:")
+      ? "workflow"
+      : "conversation",
+    resumed_session: Boolean(toolSessionId),
+    has_attachments: Boolean(args.promptAttachments?.length),
+    attachment_count: args.promptAttachments?.length ?? 0,
+    approval_mode: args.approvalMode ?? "default",
+    has_workspace: Boolean(args.cwd)
+  });
 }
 
 export function updateTaskStatus(
@@ -137,6 +154,11 @@ export function updateTaskStatus(
   exitCode?: number | null,
   errorMessage?: string | null
 ) {
+  const previous = getDb()
+    .prepare(`SELECT adapter, status, started_at FROM cli_tasks WHERE id = ?`)
+    .get(id) as
+    | { adapter: string; status: string; started_at: string | null }
+    | undefined;
   const now = new Date().toISOString();
   const endedAt = status === "running" ? null : now;
   getDb()
@@ -150,6 +172,17 @@ export function updateTaskStatus(
        WHERE id = ?`
     )
     .run(status, exitCode ?? null, errorMessage ?? null, endedAt, now, id);
+  if (status !== "running" && previous?.status === "running") {
+    trackTelemetryEvent("agent_run_finished", {
+      adapter: normalizeTelemetryAdapter(previous.adapter),
+      status,
+      duration_ms: telemetryDurationMs(previous.started_at ?? undefined),
+      ...(typeof exitCode === "number" ? { exit_code: exitCode } : {}),
+      ...(status === "failed"
+        ? { error_category: categorizeTelemetryError(errorMessage) }
+        : {})
+    });
+  }
 }
 
 export function setTaskPid(id: string, pid: number) {

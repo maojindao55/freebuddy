@@ -19,6 +19,70 @@ interface TelemetryConfig {
   host: string;
 }
 
+export type TelemetryEvent =
+  | "app_first_launch"
+  | "app_launched"
+  | "app_updated"
+  | "conversation_created"
+  | "agent_run_started"
+  | "agent_run_finished"
+  | "workflow_run_started"
+  | "workflow_run_finished"
+  | "agent_setup_completed";
+
+export type TelemetryProperties = Record<string, string | number | boolean>;
+
+interface ProductTelemetryEventProperties {
+  conversation_created: {
+    adapter: string;
+    has_workspace: boolean;
+    approval_mode: string;
+  };
+  agent_run_started: {
+    adapter: string;
+    run_context: "conversation" | "workflow";
+    resumed_session: boolean;
+    has_attachments: boolean;
+    attachment_count: number;
+    approval_mode: string;
+    has_workspace: boolean;
+  };
+  agent_run_finished: {
+    adapter: string;
+    status: string;
+    duration_ms: number;
+    exit_code?: number;
+    error_category?: string;
+  };
+  workflow_run_started: {
+    team_source: string;
+    template: string;
+    phase_count: number;
+    step_count: number;
+    agent_count: number;
+    has_workspace: boolean;
+    max_loops: number;
+  };
+  workflow_run_finished: {
+    status: string;
+    duration_ms: number;
+    team_source: string;
+    template: string;
+    step_count: number;
+    agent_count: number;
+    failed_step_count: number;
+    loop_count: number;
+    max_loops: number;
+    has_workspace: boolean;
+  };
+  agent_setup_completed: {
+    adapter: string;
+    setup_action: "check" | "install";
+    result: string;
+    error_category?: string;
+  };
+}
+
 let client: PostHog | null = null;
 let initialized = false;
 
@@ -61,8 +125,8 @@ function getOrCreateInstallationId(): { id: string; created: boolean } {
 
 function capture(
   installationId: string,
-  event: "app_first_launch" | "app_launched" | "app_updated",
-  properties: Record<string, string | boolean> = {}
+  event: TelemetryEvent,
+  properties: TelemetryProperties = {}
 ): void {
   client?.capture({
     distinctId: installationId,
@@ -72,12 +136,21 @@ function capture(
       $process_person_profile: false,
       installation_id: installationId,
       app_version: APP_VERSION,
+      event_schema_version: 1,
       platform: process.platform,
       arch: process.arch,
       packaged: app.isPackaged,
       ...properties
     }
   });
+}
+
+export function trackTelemetryEvent<E extends keyof ProductTelemetryEventProperties>(
+  event: E,
+  properties: ProductTelemetryEventProperties[E]
+): void {
+  if (!client || !isTelemetryEnabled()) return;
+  capture(getOrCreateInstallationId().id, event, properties as TelemetryProperties);
 }
 
 export function initializeTelemetry(): void {

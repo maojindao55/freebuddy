@@ -53,6 +53,8 @@ import {
   selectRunnableSteps,
   verifierHasUnresolved
 } from "./workflowScheduler.js";
+import { trackTelemetryEvent } from "../telemetry.js";
+import { telemetryDurationMs } from "../telemetryPrivacy.js";
 
 export interface ResolvedAgent {
   adapter: string;
@@ -96,6 +98,25 @@ interface ActiveRun {
   activeSessions: Set<string>;
   /** Write steps may run without a prior manual gate (implement-first loops). */
   allowImmediateWrite: boolean;
+  telemetryStartedAt: number;
+}
+
+function workflowTemplate(value?: string): string {
+  return value === "review-loop" ||
+    value === "implement-review-loop" ||
+    value === "custom"
+    ? value
+    : "unknown";
+}
+
+function workflowTeamSource(snapshot?: string): string {
+  if (!snapshot) return "none";
+  try {
+    const source = (JSON.parse(snapshot) as { source?: unknown }).source;
+    return source === "builtin" || source === "user" ? source : "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 const REVIEW_LOOP_PHASES = ["review", "implement", "verify"];
@@ -302,17 +323,32 @@ export class WorkflowRuntime {
     if (this.active.has(runId)) return;
     const plan = JSON.parse(run.planJson) as WorkflowPlan;
     const resolvedPlan = this.resolveWorkflowPlan(run, plan);
+    const telemetryStartedAt = Date.now();
     this.active.set(runId, {
       paused: false,
       stopped: false,
       approvedPhases: new Set(),
       activeSessions: new Set(),
-      allowImmediateWrite: isImplementReviewLoopPlan(resolvedPlan)
+      allowImmediateWrite: isImplementReviewLoopPlan(resolvedPlan),
+      telemetryStartedAt
     });
     updateWorkflowRun(runId, { status: "running" });
+    if (run.status === "pending_approval") {
+      const allSteps = resolvedPlan.phases.flatMap((phase) => phase.steps);
+      trackTelemetryEvent("workflow_run_started", {
+        team_source: workflowTeamSource(run.teamSnapshotJson),
+        template: workflowTemplate(run.template ?? resolvedPlan.template),
+        phase_count: resolvedPlan.phases.length,
+        step_count: allSteps.length,
+        agent_count: new Set(allSteps.map((step) => step.agentId)).size,
+        has_workspace: Boolean(run.cwd),
+        max_loops: run.maxLoops
+      });
+    }
     try {
       await this.drive(runId);
     } catch (err) {
+      this.trackWorkflowFinished(runId, resolvedPlan, "failed");
       updateWorkflowRun(runId, {
         status: "failed",
         endedAt: new Date().toISOString(),
@@ -472,6 +508,11 @@ export class WorkflowRuntime {
           /* noop */
         }
       }
+    }
+    const persisted = getWorkflowRun(runId);
+    if (persisted) {
+      const plan = JSON.parse(persisted.planJson) as WorkflowPlan;
+      this.trackWorkflowFinished(runId, plan, "killed");
     }
     markRunningWorkflowStepsStopped(runId, endedAt);
     updateWorkflowRun(runId, {
@@ -1042,10 +1083,40 @@ export class WorkflowRuntime {
     const steps = getWorkflowSteps(runId);
 
     const summary = this.composeSummary(plan, steps, status, meta);
+    this.trackWorkflowFinished(runId, plan, status, meta);
     updateWorkflowRun(runId, {
       status,
       summary,
       endedAt: new Date().toISOString()
+    });
+  }
+
+  private trackWorkflowFinished(
+    runId: string,
+    plan: WorkflowPlan,
+    status: WorkflowRunStatus,
+    meta?: { loopIndex?: number }
+  ): void {
+    if (!new Set<WorkflowRunStatus>(["completed", "failed", "killed", "partial"]).has(status)) {
+      return;
+    }
+    const run = getWorkflowRun(runId);
+    if (!run || ["completed", "failed", "killed", "partial"].includes(run.status)) return;
+    const steps = getWorkflowSteps(runId);
+    const startedAt = this.active.get(runId)?.telemetryStartedAt;
+    trackTelemetryEvent("workflow_run_finished", {
+      status,
+      duration_ms: startedAt
+        ? Math.max(0, Date.now() - startedAt)
+        : telemetryDurationMs(run.createdAt),
+      team_source: workflowTeamSource(run.teamSnapshotJson),
+      template: workflowTemplate(run.template ?? plan.template),
+      step_count: steps.length,
+      agent_count: new Set(steps.map((step) => step.agentId)).size,
+      failed_step_count: steps.filter((step) => step.status === "failed").length,
+      loop_count: Math.max(1, (meta?.loopIndex ?? run.loopIndex) + 1),
+      max_loops: run.maxLoops,
+      has_workspace: Boolean(run.cwd)
     });
   }
 

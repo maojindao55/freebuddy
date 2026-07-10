@@ -6,6 +6,11 @@ import { adapterBinary, getCliCheckProbe } from "./adapters.js";
 import { getDb } from "./db.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { compareSemver, extractSemver } from "./version.js";
+import { trackTelemetryEvent } from "../telemetry.js";
+import {
+  categorizeTelemetryError,
+  normalizeTelemetryAdapter
+} from "../telemetryPrivacy.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const CODEX_ACP_ADAPTER = "codex-acp";
@@ -37,6 +42,20 @@ export interface CliCheckResult {
   installed: boolean;
   path?: string;
   version?: string;
+}
+
+function trackAgentSetup(
+  adapter: string,
+  setupAction: "check" | "install",
+  result: "detected" | "missing" | "probe_failed" | "installed" | "failed" | "timeout",
+  error?: unknown
+): void {
+  trackTelemetryEvent("agent_setup_completed", {
+    adapter: normalizeTelemetryAdapter(adapter),
+    setup_action: setupAction,
+    result,
+    ...(error === undefined ? {} : { error_category: categorizeTelemetryError(error) })
+  });
 }
 
 function which(
@@ -219,6 +238,7 @@ export async function cliCheck(
   const resolved = await which(bin, env);
   if (!resolved) {
     upsertRuntime(runtimeKey, false, undefined, undefined, "binary not found");
+    trackAgentSetup(adapter, "check", "missing", "binary not found");
     return { installed: false };
   }
   const probe = getCliCheckProbe(adapter);
@@ -235,6 +255,7 @@ export async function cliCheck(
       undefined,
       error
     );
+    trackAgentSetup(adapter, "check", "probe_failed", error);
     return { installed: false };
   }
   const result: CliCheckResult = {
@@ -243,6 +264,7 @@ export async function cliCheck(
     version: probe.versionOptional ? undefined : probeResult.output
   };
   upsertRuntime(runtimeKey, true, resolved, result.version);
+  trackAgentSetup(adapter, "check", "detected");
   return result;
 }
 
@@ -558,7 +580,7 @@ export interface CliInstallResult {
   stderr: string;
 }
 
-export function cliInstall(command: string): Promise<CliInstallResult> {
+export function cliInstall(command: string, adapter = "custom"): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
     const trimmed = command.trim();
     if (!trimmed) return reject(new Error("install command required"));
@@ -591,15 +613,30 @@ export function cliInstall(command: string): Promise<CliInstallResult> {
     const child = spawn(shell, args, { env: process.env });
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => child.kill(), 10 * 60 * 1000);
+    let timedOut = false;
+    let setupTracked = false;
+    const reportSetup = (result: "installed" | "failed" | "timeout", error?: unknown) => {
+      if (setupTracked) return;
+      setupTracked = true;
+      trackAgentSetup(adapter, "install", result, error);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, 10 * 60 * 1000);
     child.stdout!.on("data", (d) => (stdout += d.toString()));
     child.stderr!.on("data", (d) => (stderr += d.toString()));
     child.on("error", (err) => {
       clearTimeout(timer);
+      reportSetup("failed", err);
       reject(err);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      reportSetup(
+        timedOut ? "timeout" : code === 0 ? "installed" : "failed",
+        timedOut ? "timeout" : code === 0 ? undefined : `process exited ${code ?? "unknown"}`
+      );
       resolve({
         success: code === 0,
         exitCode: code,
@@ -612,7 +649,8 @@ export function cliInstall(command: string): Promise<CliInstallResult> {
 
 export function cliInstallStream(
   command: string,
-  webContents?: Electron.WebContents | null
+  webContents?: Electron.WebContents | null,
+  adapter = "custom"
 ): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
     const trimmed = command.trim();
@@ -651,8 +689,17 @@ export function cliInstallStream(
     const child = spawn(shell, args, { env: process.env });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    let setupTracked = false;
+    const reportSetup = (result: "installed" | "failed" | "timeout", error?: unknown) => {
+      if (setupTracked) return;
+      setupTracked = true;
+      trackAgentSetup(adapter, "install", result, error);
+    };
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill();
+      reportSetup("timeout", "timeout");
       send({ type: "stderr", content: "Install timed out after 10 minutes." });
       safeSendToWebContents(webContents, channel, { type: "done", exitCode: 1 });
     }, 10 * 60 * 1000);
@@ -669,12 +716,17 @@ export function cliInstallStream(
     });
     child.on("error", (err) => {
       clearTimeout(timer);
+      reportSetup("failed", err);
       send({ type: "stderr", content: String(err) });
       safeSendToWebContents(webContents, channel, { type: "done", exitCode: 1 });
       reject(err);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      reportSetup(
+        timedOut ? "timeout" : code === 0 ? "installed" : "failed",
+        timedOut ? "timeout" : code === 0 ? undefined : `process exited ${code ?? "unknown"}`
+      );
       safeSendToWebContents(webContents, channel, { type: "done", exitCode: code });
       resolve({
         success: code === 0,

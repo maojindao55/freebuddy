@@ -74,6 +74,17 @@ test("creates and validates attachment metadata", async () => {
   );
 });
 
+test("createChatAttachment preserves managed and created flags", async () => {
+  const { createChatAttachment } = await loadModule();
+  const attachment = createChatAttachment({
+    path: "/tmp/freebuddy/managed-attachments/abc.png",
+    managed: true,
+    created: true
+  });
+  assert.equal(attachment.managed, true);
+  assert.equal(attachment.created, true);
+});
+
 test("handles windows paths and custom mime types", async () => {
   const { createChatAttachment } = await loadModule();
 

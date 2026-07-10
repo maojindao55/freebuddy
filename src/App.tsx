@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun } from "lucide-react";
+import { Menu, Monitor, Moon, PanelLeft, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
@@ -58,7 +58,7 @@ function BrandMark() {
 }
 
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
-  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const Icon = collapsed ? Menu : PanelLeft;
   return <Icon className="footer-icon" strokeWidth={1.7} aria-hidden="true" />;
 }
 

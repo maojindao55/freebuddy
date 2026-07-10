@@ -61,6 +61,14 @@ import {
 import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
 import { resolveAttachmentFilePath } from "../freebuddyFileProtocol.js";
 import { ensureAgentGuides } from "../agentGuides.js";
+import {
+  cleanupManagedAttachments,
+  cleanupManagedAttachmentsIfUnreferenced,
+  discardManagedAttachment,
+  discardManagedAttachmentIfUnreferenced,
+  prepareAttachmentFiles,
+  type PrepareAttachmentPayload
+} from "./attachments.js";
 import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
 import { registerWorkflowIpc } from "./workflowIpc.js";
@@ -168,6 +176,29 @@ export function registerCliIpc() {
         }
       })
       .map(attachmentCandidate);
+  });
+
+  ipcMain.handle(
+    "cli:prepareAttachmentFiles",
+    (_e, payloads: PrepareAttachmentPayload[]) =>
+      prepareAttachmentFiles(Array.isArray(payloads) ? payloads : [])
+  );
+
+  ipcMain.handle("cli:discardManagedAttachment", (_e, filePath: string) =>
+    discardManagedAttachment(typeof filePath === "string" ? filePath : "")
+  );
+
+  ipcMain.handle(
+    "cli:discardManagedAttachmentIfUnreferenced",
+    (_e, filePath: string) =>
+      discardManagedAttachmentIfUnreferenced(typeof filePath === "string" ? filePath : "")
+  );
+
+  ipcMain.on("cli:discardManagedAttachments", (_e, paths: unknown) => {
+    if (!Array.isArray(paths)) return;
+    cleanupManagedAttachmentsIfUnreferenced(
+      paths.filter((entry): entry is string => typeof entry === "string")
+    );
   });
 
   ipcMain.handle("cli:listAdapters", () => cliAdapterDefinitions);

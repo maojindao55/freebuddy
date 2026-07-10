@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { nanoid } from "nanoid";
 import { useTranslation } from "react-i18next";
 
@@ -7,7 +7,11 @@ import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { cliClient } from "@/services/cli/client";
-import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
+import type {
+  AttachmentPrepareRejection,
+  ChatAttachment,
+  ConversationMessage
+} from "@/services/cli/types";
 import type {
   WorkflowTeam,
   WorkflowTeamPreview
@@ -23,11 +27,13 @@ import { displayAgentName } from "@/config/agentDisplay";
 import {
   attachmentPreviewUrl,
   composeMessageWithAttachments,
-  createChatAttachment,
   formatBytes,
-  MAX_ATTACHMENTS_PER_MESSAGE,
-  validateAttachmentCandidate
+  MAX_ATTACHMENTS_PER_MESSAGE
 } from "@/utils/chatAttachments";
+import {
+  mergeSelectedAttachments as mergePendingAttachments,
+  shouldDiscardCreatedManagedCandidate
+} from "@/utils/mergeSelectedAttachments";
 import { MessageBubble } from "./MessageBubble";
 import { CodeWhipOverlay } from "./CodeWhipOverlay";
 import { useReplayStore } from "@/store/replayStore";
@@ -42,8 +48,35 @@ import {
   upsertConversationMessage
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
+import { useAttachmentImport } from "@/hooks/useAttachmentImport";
+import { resolveDeferredAttachmentImport } from "@/utils/attachmentImport";
+import {
+  isManagedAttachmentPathProtected,
+  protectManagedAttachments,
+  unprotectManagedAttachments
+} from "@/utils/managedAttachmentProtection";
 
 const EMPTY_MESSAGES: never[] = [];
+
+function detachAttachmentsForSend(
+  snapshot: ChatAttachment[],
+  current: ChatAttachment[]
+): ChatAttachment[] {
+  if (snapshot.length === 0) return current;
+  const snapshotPaths = new Set(snapshot.map((attachment) => attachment.path));
+  return current.filter((attachment) => !snapshotPaths.has(attachment.path));
+}
+
+function restoreAttachmentsForSend(
+  snapshot: ChatAttachment[],
+  current: ChatAttachment[]
+): ChatAttachment[] {
+  const byPath = new Map(current.map((attachment) => [attachment.path, attachment]));
+  for (const attachment of snapshot) {
+    byPath.set(attachment.path, attachment);
+  }
+  return Array.from(byPath.values());
+}
 
 function attachmentSummary(attachment: ChatAttachment): string {
   return [
@@ -139,10 +172,12 @@ function FolderIcon() {
 
 function AttachmentTray({
   attachments,
-  onRemove
+  onRemove,
+  removeDisabled = false
 }: {
   attachments: ChatAttachment[];
   onRemove: (id: string) => void;
+  removeDisabled?: boolean;
 }) {
   const { t } = useTranslation();
   if (attachments.length === 0) return null;
@@ -187,6 +222,7 @@ function AttachmentTray({
             type="button"
             className="attachment-chip-remove"
             aria-label={t("chat.removeAttachmentAria", { name: attachment.name })}
+            disabled={removeDisabled}
             onClick={() => onRemove(attachment.id)}
           >
             x
@@ -303,6 +339,11 @@ export function ChatView() {
   const [newTaskDraft, setNewTaskDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [newTaskPendingAttachments, setNewTaskPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [sendLock, setSendLock] = useState(false);
+  const [newTaskSendLock, setNewTaskSendLock] = useState(false);
+  const sendInFlightRef = useRef(false);
+  const newTaskSendInFlightRef = useRef(false);
   const [selectedMemberId, setSelectedMemberId] = useState(members[0]?.id ?? "");
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [permissionMode, setPermissionMode] = useState<"auto" | "ask">("auto");
@@ -326,6 +367,9 @@ export function ChatView() {
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingAttachmentsRef = useRef(pendingAttachments);
+  const newTaskPendingAttachmentsRef = useRef(newTaskPendingAttachments);
+  const attachmentImportGenerationRef = useRef(0);
   const isNearBottomRef = useRef(true);
   const [slashIndex, setSlashIndex] = useState(0);
 
@@ -557,69 +601,231 @@ export function ChatView() {
     }
   }, [activeRun?.id, gatingPhaseId, pendingWorkflowAction]);
 
-  const mergeSelectedAttachments = (
-    current: ChatAttachment[],
-    selected: Awaited<ReturnType<typeof cliClient.selectAttachments>>
+  const formatMergeWarnings = (
+    warnings: ReturnType<typeof mergePendingAttachments>["warnings"]
+  ) =>
+    warnings.map((warning) => {
+      if (warning.code === "attachmentLimit") {
+        return t("errors.attachmentLimit", { count: MAX_ATTACHMENTS_PER_MESSAGE });
+      }
+      const name = warning.name ?? "";
+      return warning.code === "attachmentTooLarge"
+        ? t("errors.attachmentTooLarge", { name })
+        : t("errors.attachmentType", { name });
+    });
+
+  const applyAttachmentCandidates = (
+    target: "chat" | "new",
+    selected: Awaited<ReturnType<typeof cliClient.selectAttachments>>,
+    extraWarnings: string[] = []
   ) => {
-    const byPath = new Map(current.map((attachment) => [attachment.path, attachment]));
-    const warnings: string[] = [];
+    const setter =
+      target === "chat" ? setPendingAttachments : setNewTaskPendingAttachments;
 
-    for (const candidate of selected) {
-      if (byPath.size >= MAX_ATTACHMENTS_PER_MESSAGE) {
-        warnings.push(t("errors.attachmentLimit", { count: MAX_ATTACHMENTS_PER_MESSAGE }));
-        break;
+    setter((current) => {
+      const { attachments, warnings } = mergePendingAttachments(current, selected);
+      const acceptedPaths = new Set(attachments.map((attachment) => attachment.path));
+      for (const candidate of selected) {
+        if (
+          shouldDiscardCreatedManagedCandidate(candidate) &&
+          !acceptedPaths.has(candidate.path)
+        ) {
+          void cliClient.discardManagedAttachmentIfUnreferenced(candidate.path);
+        }
       }
-
-      const attachment = createChatAttachment(candidate);
-      const validation = validateAttachmentCandidate(attachment);
-      if (!validation.ok) {
-        const name = candidate.name || candidate.path;
-        warnings.push(
-          validation.reason === "file_too_large"
-            ? t("errors.attachmentTooLarge", { name })
-            : t("errors.attachmentType", { name })
-        );
-        continue;
-      }
-      if (!attachment || byPath.has(attachment.path)) continue;
-      byPath.set(attachment.path, attachment);
-    }
-
-    return { attachments: Array.from(byPath.values()), warnings };
+      setPreflightMsg([...extraWarnings, ...formatMergeWarnings(warnings)][0] ?? null);
+      return attachments;
+    });
   };
 
-  const handleSelectAttachments = async (target: "chat" | "new") => {
-    if (sending) return;
+  const attachmentRejectionWarnings = (rejections: AttachmentPrepareRejection[]) =>
+    rejections.map((rejection) =>
+      rejection.reason === "file_too_large"
+        ? t("errors.attachmentTooLarge", { name: rejection.name })
+        : t("errors.attachmentType", { name: rejection.name })
+    );
+
+  const discardRejectedManagedCandidates = (
+    selected: Awaited<ReturnType<typeof cliClient.selectAttachments>>
+  ) => {
+    for (const candidate of selected) {
+      if (shouldDiscardCreatedManagedCandidate(candidate)) {
+        void cliClient.discardManagedAttachmentIfUnreferenced(candidate.path);
+      }
+    }
+  };
+
+  const discardAttachmentIfManaged = (attachment: ChatAttachment | undefined) => {
+    if (attachment?.managed && attachment.created) {
+      void cliClient.discardManagedAttachmentIfUnreferenced(attachment.path);
+    }
+  };
+
+  const cleanupPendingManagedIfUnreferenced = () => {
+    if (!cliClient.isAvailable()) return;
+    const paths = [
+      ...pendingAttachmentsRef.current,
+      ...newTaskPendingAttachmentsRef.current
+    ]
+      .filter(
+        (attachment) =>
+          attachment.managed &&
+          attachment.created &&
+          !isManagedAttachmentPathProtected(attachment.path)
+      )
+      .map((attachment) => attachment.path);
+    if (paths.length > 0) {
+      cliClient.discardManagedAttachments(paths);
+    }
+  };
+
+  const canImportAttachments = (target: "chat" | "new") => {
+    if (attachmentBusy) return false;
+    if (target === "chat") {
+      if (sending || replaying || sendLock || sendInFlightRef.current) return false;
+    } else if (newTaskSendLock || newTaskSendInFlightRef.current) {
+      return false;
+    }
+    const current =
+      target === "chat" ? pendingAttachments : newTaskPendingAttachments;
+    return current.length < MAX_ATTACHMENTS_PER_MESSAGE;
+  };
+
+  const isImportBlockedBySendLock = (target: "chat" | "new") =>
+    target === "chat"
+      ? sendLock || sendInFlightRef.current
+      : newTaskSendLock || newTaskSendInFlightRef.current;
+
+  const handleImportAttachments = async (target: "chat" | "new", files: File[]) => {
+    if (files.length === 0 || !canImportAttachments(target)) return;
     if (!cliClient.isAvailable()) {
       setPreflightMsg(t("errors.attachmentDesktopOnly"));
       return;
     }
 
+    const currentAttachments =
+      target === "chat"
+        ? pendingAttachmentsRef.current
+        : newTaskPendingAttachmentsRef.current;
+    const remaining = MAX_ATTACHMENTS_PER_MESSAGE - currentAttachments.length;
+    if (remaining <= 0) return;
+
+    const existingPaths = currentAttachments.map((attachment) => attachment.path);
+
+    const importGeneration = ++attachmentImportGenerationRef.current;
+
+    setAttachmentBusy(true);
     try {
-      const selected = await cliClient.selectAttachments();
-      if (selected.length === 0) return;
-      const current =
-        target === "chat" ? pendingAttachments : newTaskPendingAttachments;
-      const { attachments, warnings } = mergeSelectedAttachments(current, selected);
-      if (target === "chat") {
-        setPendingAttachments(attachments);
-      } else {
-        setNewTaskPendingAttachments(attachments);
+      const { candidates, rejections, overflow } = await cliClient.prepareAttachmentFiles(
+        files,
+        remaining,
+        existingPaths
+      );
+      const rejectionWarnings = [
+        ...(overflow
+          ? [t("errors.attachmentLimit", { count: MAX_ATTACHMENTS_PER_MESSAGE })]
+          : []),
+        ...attachmentRejectionWarnings(rejections)
+      ];
+      if (
+        importGeneration !== attachmentImportGenerationRef.current ||
+        isImportBlockedBySendLock(target)
+      ) {
+        discardRejectedManagedCandidates(candidates);
+        return;
       }
-      setPreflightMsg(warnings[0] ?? null);
+      if (candidates.length === 0) {
+        setPreflightMsg(rejectionWarnings[0] ?? t("errors.attachmentImportEmpty"));
+        return;
+      }
+      applyAttachmentCandidates(target, candidates, rejectionWarnings);
     } catch (error) {
-      setPreflightMsg(t("errors.attachmentSelectFailed", { err: error instanceof Error ? error.message : String(error) }));
+      setPreflightMsg(
+        t("errors.attachmentSelectFailed", {
+          err: error instanceof Error ? error.message : String(error)
+        })
+      );
+    } finally {
+      if (importGeneration === attachmentImportGenerationRef.current) {
+        setAttachmentBusy(false);
+      }
     }
   };
 
+  useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments;
+  }, [pendingAttachments]);
+
+  useEffect(() => {
+    newTaskPendingAttachmentsRef.current = newTaskPendingAttachments;
+  }, [newTaskPendingAttachments]);
+
+  useEffect(() => {
+    const onBeforeUnload = () => cleanupPendingManagedIfUnreferenced();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      attachmentImportGenerationRef.current += 1;
+      cleanupPendingManagedIfUnreferenced();
+    };
+  }, []);
+
+  const handleSelectAttachments = async (target: "chat" | "new") => {
+    if (!canImportAttachments(target)) return;
+    if (!cliClient.isAvailable()) {
+      setPreflightMsg(t("errors.attachmentDesktopOnly"));
+      return;
+    }
+
+    const importGeneration = attachmentImportGenerationRef.current;
+
+    try {
+      const selected = await cliClient.selectAttachments();
+      const deferredImport = resolveDeferredAttachmentImport({
+        capturedGeneration: importGeneration,
+        currentGeneration: attachmentImportGenerationRef.current,
+        sendLockBlocked: isImportBlockedBySendLock(target),
+        canImport: canImportAttachments(target),
+        selected
+      });
+      if (!deferredImport.shouldApply) {
+        discardRejectedManagedCandidates([...deferredImport.selected]);
+        return;
+      }
+      applyAttachmentCandidates(target, [...deferredImport.selected]);
+    } catch (error) {
+      setPreflightMsg(
+        t("errors.attachmentSelectFailed", {
+          err: error instanceof Error ? error.message : String(error)
+        })
+      );
+    }
+  };
+
+  const chatAttachmentImport = useAttachmentImport({
+    disabled: !canImportAttachments("chat"),
+    onImport: (files) => void handleImportAttachments("chat", files)
+  });
+
+  const newTaskAttachmentImport = useAttachmentImport({
+    disabled: !canImportAttachments("new"),
+    onImport: (files) => void handleImportAttachments("new", files)
+  });
+
   const handleRemovePendingAttachment = (id: string) => {
-    setPendingAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
+    if (attachmentBusy || sendLock || sendInFlightRef.current) return;
+    setPendingAttachments((prev) => {
+      discardAttachmentIfManaged(prev.find((attachment) => attachment.id === id));
+      return prev.filter((attachment) => attachment.id !== id);
+    });
   };
 
   const handleRemoveNewTaskPendingAttachment = (id: string) => {
-    setNewTaskPendingAttachments((prev) =>
-      prev.filter((attachment) => attachment.id !== id)
-    );
+    if (attachmentBusy || newTaskSendLock || newTaskSendInFlightRef.current) return;
+    setNewTaskPendingAttachments((prev) => {
+      discardAttachmentIfManaged(prev.find((attachment) => attachment.id === id));
+      return prev.filter((attachment) => attachment.id !== id);
+    });
   };
 
   const preflightMember = async (targetMember: typeof members[number]) => {
@@ -652,17 +858,29 @@ export function ChatView() {
   };
 
   const onCreateAndSend = async () => {
+    if (attachmentBusy || newTaskSendInFlightRef.current || newTaskSendLock) return;
     const prompt = newTaskDraft.trim();
     const attachmentsToSend = newTaskPendingAttachments;
 
     if (teamMode) {
       if ((!prompt && attachmentsToSend.length === 0) || !selectedTeamId) return;
       const team = teams.find((tt) => tt.id === selectedTeamId);
-      if (!team) return;
-      const teamMember = teamConversationMember(team, members);
-      if (!teamMember) return;
-      setPreflightMsg(null);
-      try {
+      if (!team || !teamConversationMember(team, members)) return;
+    } else {
+      const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
+      if ((!prompt && attachmentsToSend.length === 0) || !selectedMember) return;
+    }
+
+    newTaskSendInFlightRef.current = true;
+    setNewTaskSendLock(true);
+    attachmentImportGenerationRef.current += 1;
+    protectManagedAttachments(attachmentsToSend);
+    setPreflightMsg(null);
+
+    try {
+      if (teamMode) {
+        const team = teams.find((tt) => tt.id === selectedTeamId)!;
+        const teamMember = teamConversationMember(team, members)!;
         if (!(await preflightMember(teamMember))) return;
         const cwd = newTaskCwd.trim() || undefined;
         const newConv = await createConversation({
@@ -676,7 +894,9 @@ export function ChatView() {
           approvalMode: permissionMode
         });
         setNewTaskDraft("");
-        setNewTaskPendingAttachments([]);
+        setNewTaskPendingAttachments((prev) =>
+          detachAttachmentsForSend(attachmentsToSend, prev)
+        );
         const userMsgId = nanoid();
         const now = new Date().toISOString();
         const savedUser = await cliClient.appendMessage({
@@ -718,23 +938,10 @@ export function ChatView() {
           throw new Error(errors.length ? errors.join("; ") : "workflow did not start");
         }
         await loadWorkflowForConversation(newConv.id);
-      } catch (e) {
-        setNewTaskDraft(prompt);
-        setNewTaskPendingAttachments(attachmentsToSend);
-        setPreflightMsg(
-          t("errors.taskFailed", {
-            err: e instanceof Error ? e.message : String(e)
-          })
-        );
+        return;
       }
-      return;
-    }
 
-    const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
-    if ((!prompt && attachmentsToSend.length === 0) || !selectedMember) return;
-
-    setPreflightMsg(null);
-    try {
+      const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0]!;
       if (!(await preflightMember(selectedMember))) return;
 
       const newConv = await createConversation({
@@ -748,7 +955,9 @@ export function ChatView() {
         approvalMode: permissionMode
       });
       setNewTaskDraft("");
-      setNewTaskPendingAttachments([]);
+      setNewTaskPendingAttachments((prev) =>
+        detachAttachmentsForSend(attachmentsToSend, prev)
+      );
       await sendMessage({
         conversationId: newConv.id,
         prompt,
@@ -757,8 +966,18 @@ export function ChatView() {
       });
     } catch (e) {
       setNewTaskDraft(prompt);
-      setNewTaskPendingAttachments(attachmentsToSend);
-      setPreflightMsg(t("errors.taskFailed", { err: e instanceof Error ? e.message : String(e) }));
+      setNewTaskPendingAttachments((prev) =>
+        restoreAttachmentsForSend(attachmentsToSend, prev)
+      );
+      setPreflightMsg(
+        t("errors.taskFailed", {
+          err: e instanceof Error ? e.message : String(e)
+        })
+      );
+    } finally {
+      unprotectManagedAttachments(attachmentsToSend);
+      newTaskSendInFlightRef.current = false;
+      setNewTaskSendLock(false);
     }
   };
 
@@ -778,88 +997,110 @@ export function ChatView() {
   };
 
   const onSend = async () => {
+    if (attachmentBusy || sendInFlightRef.current || sendLock) return;
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
+
     if (pendingWorkflowAction) {
       if (!conv || !prompt || sending) return;
+    } else if (!conv || (!prompt && attachmentsToSend.length === 0) || sending) {
+      return;
+    }
+
+    sendInFlightRef.current = true;
+    setSendLock(true);
+    attachmentImportGenerationRef.current += 1;
+    protectManagedAttachments(attachmentsToSend);
+
+    try {
+      if (pendingWorkflowAction) {
+        setPreflightMsg(null);
+        isNearBottomRef.current = true;
+        const userMessageId = nanoid();
+        const now = new Date().toISOString();
+        setDraft("");
+        setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
+        try {
+          const savedUser = await cliClient.appendMessage({
+            id: userMessageId,
+            conversationId: conv!.id,
+            role: "user",
+            status: "sent",
+            content: prompt,
+            attachments: attachmentsToSend
+          });
+          useConversationStore.setState((s) => ({
+            messages: {
+              ...s.messages,
+              [conv!.id]: upsertConversationMessage(
+                s.messages[conv!.id] ?? [],
+                {
+                  id: userMessageId,
+                  conversationId: conv!.id,
+                  role: "user",
+                  status: "sent",
+                  content: prompt,
+                  ...(attachmentsToSend.length
+                    ? { attachments: savedUser.attachments ?? attachmentsToSend }
+                    : {}),
+                  createdAt: now,
+                  updatedAt: now
+                }
+              )
+            }
+          }));
+          const ok = await requestGateChanges(
+            pendingWorkflowAction.runId,
+            pendingWorkflowAction.phaseId,
+            composeMessageWithAttachments(prompt, attachmentsToSend)
+          );
+          if (ok) {
+            setPendingWorkflowAction(null);
+          } else {
+            setPreflightMsg(t("workflow.requestChangesFailed"));
+          }
+        } catch (e) {
+          setDraft(prompt);
+          setPendingAttachments((prev) =>
+            restoreAttachmentsForSend(attachmentsToSend, prev)
+          );
+          setPreflightMsg(
+            t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) })
+          );
+        }
+        return;
+      }
+
+      const targetMember = await resolveWorkflowFollowupMember();
+      if (!conv || !targetMember || (!prompt && attachmentsToSend.length === 0) || sending) {
+        return;
+      }
+
       setPreflightMsg(null);
       isNearBottomRef.current = true;
       const userMessageId = nanoid();
-      const now = new Date().toISOString();
+      const assistantMessageId = nanoid();
+      const preview = {
+        conversationId: conv.id,
+        prompt,
+        attachments: attachmentsToSend,
+        createdAt: new Date().toISOString(),
+        userMessageId,
+        assistantMessageId
+      };
+      setSubmitPreview(preview);
       setDraft("");
-      setPendingAttachments([]);
-      try {
-        const savedUser = await cliClient.appendMessage({
-          id: userMessageId,
-          conversationId: conv.id,
-          role: "user",
-          status: "sent",
-          content: prompt,
-          attachments: attachmentsToSend
-        });
-        useConversationStore.setState((s) => ({
-          messages: {
-            ...s.messages,
-            [conv.id]: upsertConversationMessage(
-              s.messages[conv.id] ?? [],
-              {
-                id: userMessageId,
-                conversationId: conv.id,
-                role: "user",
-                status: "sent",
-                content: prompt,
-                ...(attachmentsToSend.length
-                  ? { attachments: savedUser.attachments ?? attachmentsToSend }
-                  : {}),
-                createdAt: now,
-                updatedAt: now
-              }
-            )
-          }
-        }));
-        const ok = await requestGateChanges(
-          pendingWorkflowAction.runId,
-          pendingWorkflowAction.phaseId,
-          composeMessageWithAttachments(prompt, attachmentsToSend)
-        );
-        if (ok) {
-          setPendingWorkflowAction(null);
-        } else {
-          setPreflightMsg(t("workflow.requestChangesFailed"));
-        }
-      } catch (e) {
-        setDraft(prompt);
-        setPendingAttachments(attachmentsToSend);
-        setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
-      }
-      return;
-    }
-    const targetMember = await resolveWorkflowFollowupMember();
-    if (!conv || !targetMember || (!prompt && attachmentsToSend.length === 0) || sending) return;
-    setPreflightMsg(null);
-    isNearBottomRef.current = true;
-    const userMessageId = nanoid();
-    const assistantMessageId = nanoid();
-    const preview = {
-      conversationId: conv.id,
-      prompt,
-      attachments: attachmentsToSend,
-      createdAt: new Date().toISOString(),
-      userMessageId,
-      assistantMessageId
-    };
-    setSubmitPreview(preview);
-    setDraft("");
-    setPendingAttachments([]);
-    try {
+      setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
+
       if (!(await preflightMember(targetMember))) {
         setSubmitPreview(null);
         setDraft(prompt);
-        setPendingAttachments(attachmentsToSend);
+        setPendingAttachments((prev) =>
+          restoreAttachmentsForSend(attachmentsToSend, prev)
+        );
         return;
       }
-      // submitPreview stays set until the real (same-id) messages are in the
-      // store; the deduped merged list hands off in place (no remount/flash).
+
       await sendMessage({
         conversationId: conv.id,
         prompt,
@@ -872,8 +1113,14 @@ export function ChatView() {
     } catch (e) {
       setSubmitPreview(null);
       setDraft(prompt);
-      setPendingAttachments(attachmentsToSend);
+      setPendingAttachments((prev) =>
+        restoreAttachmentsForSend(attachmentsToSend, prev)
+      );
       setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      unprotectManagedAttachments(attachmentsToSend);
+      sendInFlightRef.current = false;
+      setSendLock(false);
     }
   };
 
@@ -951,11 +1198,19 @@ export function ChatView() {
         onPermissionMode={setPermissionMode}
         onSelectAttachments={() => void handleSelectAttachments("new")}
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
+        attachmentBusy={attachmentBusy}
+        attachmentDropActive={newTaskAttachmentImport.dragActive}
+        onAttachmentDragEnter={newTaskAttachmentImport.handleDragEnter}
+        onAttachmentDragLeave={newTaskAttachmentImport.handleDragLeave}
+        onAttachmentDragOver={newTaskAttachmentImport.handleDragOver}
+        onAttachmentDrop={newTaskAttachmentImport.handleDrop}
+        onAttachmentPaste={newTaskAttachmentImport.handlePaste}
         onTaskMode={(m) => {
           setTaskMode(m);
           clearTeamPreview();
         }}
         onTeam={setSelectedTeamId}
+        sendLocked={newTaskSendLock}
         onSubmit={() => void onCreateAndSend()}
       />
     );
@@ -1038,7 +1293,18 @@ export function ChatView() {
 
       {preflightMsg && <div className="preflight-warn">{preflightMsg}</div>}
 
-      <div className={`chat-composer${replaying ? " replay-disabled" : ""}`}>
+      <div
+        className={`chat-composer${replaying ? " replay-disabled" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}`}
+        onDragEnter={chatAttachmentImport.handleDragEnter}
+        onDragLeave={chatAttachmentImport.handleDragLeave}
+        onDragOver={chatAttachmentImport.handleDragOver}
+        onDrop={chatAttachmentImport.handleDrop}
+      >
+        {chatAttachmentImport.dragActive ? (
+          <div className="attachment-drop-overlay" aria-hidden="true">
+            {t("chat.dropAttachmentsHint")}
+          </div>
+        ) : null}
         <div className="composer-context-row">
           <span>{agentDisplayName}</span>
           <span>{conv.cwd ? conv.cwd : t("chat.noWorkspace")}</span>
@@ -1046,6 +1312,7 @@ export function ChatView() {
         <AttachmentTray
           attachments={pendingAttachments}
           onRemove={handleRemovePendingAttachment}
+          removeDisabled={attachmentBusy || sendLock}
         />
         <div className="composer-input-wrap">
           {slashDraft && availableCommands.length > 0 ? (
@@ -1060,7 +1327,7 @@ export function ChatView() {
             ref={chatTextareaRef}
             rows={3}
             value={draft}
-            disabled={sending || replaying}
+            disabled={sending || replaying || attachmentBusy || sendLock}
             placeholder={
               pendingWorkflowAction
                 ? t("workflow.requestChangesPlaceholder")
@@ -1071,6 +1338,7 @@ export function ChatView() {
                   : t("chat.inputPlaceholder")
             }
             onChange={(e) => setDraft(e.target.value)}
+            onPaste={chatAttachmentImport.handlePaste}
             onKeyDown={(e) => {
               if (slashDraft && filteredSlashCommands.length > 0) {
                 if (e.key === "ArrowDown") {
@@ -1101,7 +1369,7 @@ export function ChatView() {
               }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void onSend();
+                if (!attachmentBusy && !sendLock) void onSend();
               }
             }}
           />
@@ -1112,7 +1380,7 @@ export function ChatView() {
               className="composer-tool-chip"
               type="button"
               title={t("chat.attachFile")}
-              disabled={sending || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+              disabled={sending || attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
               onClick={() => void handleSelectAttachments("chat")}
             >
               <PaperclipIcon />
@@ -1166,7 +1434,11 @@ export function ChatView() {
               <button
                 className="primary send-icon-button"
                 type="button"
-                disabled={!(draft.trim() || pendingAttachments.length > 0)}
+                disabled={
+                  sendLock ||
+                  attachmentBusy ||
+                  !(draft.trim() || pendingAttachments.length > 0)
+                }
                 title={t("chat.send")}
                 aria-label={t("chat.sendAria")}
                 onClick={onSend}
@@ -1198,6 +1470,14 @@ function NewTaskHome({
   onPermissionMode,
   onSelectAttachments,
   onRemoveAttachment,
+  attachmentBusy,
+  sendLocked,
+  attachmentDropActive,
+  onAttachmentDragEnter,
+  onAttachmentDragLeave,
+  onAttachmentDragOver,
+  onAttachmentDrop,
+  onAttachmentPaste,
   onTaskMode,
   onTeam,
   onSubmit
@@ -1218,6 +1498,14 @@ function NewTaskHome({
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
+  attachmentBusy: boolean;
+  sendLocked: boolean;
+  attachmentDropActive: boolean;
+  onAttachmentDragEnter: (event: DragEvent) => void;
+  onAttachmentDragLeave: (event: DragEvent) => void;
+  onAttachmentDragOver: (event: DragEvent) => void;
+  onAttachmentDrop: (event: DragEvent) => void;
+  onAttachmentPaste: (event: ClipboardEvent) => void;
   onTaskMode: (value: "normal" | "team") => void;
   onTeam: (id: string) => void;
   onSubmit: () => void;
@@ -1255,22 +1543,37 @@ function NewTaskHome({
           </button>
         </div>
 
-        <section className="new-task-composer" aria-label={t("chat.newTaskAria")}>
+        <section
+          className={`new-task-composer${attachmentDropActive ? " attachment-drop-active" : ""}`}
+          aria-label={t("chat.newTaskAria")}
+          onDragEnter={onAttachmentDragEnter}
+          onDragLeave={onAttachmentDragLeave}
+          onDragOver={onAttachmentDragOver}
+          onDrop={onAttachmentDrop}
+        >
+        {attachmentDropActive ? (
+          <div className="attachment-drop-overlay" aria-hidden="true">
+            {t("chat.dropAttachmentsHint")}
+          </div>
+        ) : null}
         <AttachmentTray
           attachments={pendingAttachments}
           onRemove={onRemoveAttachment}
+          removeDisabled={attachmentBusy || sendLocked}
         />
         <textarea
           ref={textareaRef}
           autoFocus
           rows={4}
           value={draft}
+          disabled={attachmentBusy || sendLocked}
           placeholder={t("chat.inputPlaceholder")}
           onChange={(event) => onDraft(event.target.value)}
+          onPaste={onAttachmentPaste}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              onSubmit();
+              if (!attachmentBusy && !sendLocked) onSubmit();
             }
           }}
         />
@@ -1321,7 +1624,7 @@ function NewTaskHome({
             className="composer-tool-chip"
             type="button"
             title={t("chat.attachFile")}
-            disabled={pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+            disabled={attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
             onClick={onSelectAttachments}
           >
             <PaperclipIcon />
@@ -1354,6 +1657,8 @@ function NewTaskHome({
               className="new-task-send send-icon-button"
               type="button"
               disabled={
+                sendLocked ||
+                attachmentBusy ||
                 !(draft.trim() || pendingAttachments.length > 0) ||
                 (teamMode ? !selectedTeamId : members.length === 0)
               }

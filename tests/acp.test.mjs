@@ -181,15 +181,15 @@ test("buildCommand starts Cursor through its ACP server", () => {
   assert.equal(built.protocol, "acp");
 });
 
-test("buildCommand applies Cursor ACP model through CURSOR_MODEL env", () => {
+test("buildCommand keeps Cursor global flags before the ACP subcommand", () => {
   const built = buildCommand({
     adapter: "cursor-agent-acp",
     prompt: "hello",
     extraArgs: ["-m", "gpt-5", "--print"]
   });
 
-  assert.deepEqual(built.args, ["acp", "--print"]);
-  assert.deepEqual(built.env, { CURSOR_MODEL: "gpt-5" });
+  assert.deepEqual(built.args, ["--model", "gpt-5", "--print", "acp"]);
+  assert.equal(built.env, undefined);
 });
 
 test("buildCommand starts Kimi through its ACP server", () => {

@@ -242,6 +242,8 @@ export interface ChatAttachment {
   mimeType?: string;
   size?: number;
   extension?: string;
+  managed?: boolean;
+  created?: boolean;
 }
 
 export interface AttachmentCandidate {
@@ -250,6 +252,21 @@ export interface AttachmentCandidate {
   size?: number;
   mimeType?: string;
   mime_type?: string;
+  managed?: boolean;
+  created?: boolean;
+}
+
+export type AttachmentPrepareRejectionReason = "unsupported_type" | "file_too_large";
+
+export interface AttachmentPrepareRejection {
+  name: string;
+  reason: AttachmentPrepareRejectionReason;
+}
+
+export interface PrepareAttachmentFilesResult {
+  candidates: AttachmentCandidate[];
+  rejections: AttachmentPrepareRejection[];
+  overflow?: boolean;
 }
 
 export type ConversationTitleSource = "default" | "prompt" | "agent" | "user";

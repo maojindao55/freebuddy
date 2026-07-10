@@ -13,6 +13,8 @@ export interface ChatAttachment {
   mimeType?: string;
   size?: number;
   extension?: string;
+  managed?: boolean;
+  created?: boolean;
 }
 
 export interface AttachmentCandidate {
@@ -21,6 +23,8 @@ export interface AttachmentCandidate {
   size?: number;
   mimeType?: string;
   mime_type?: string;
+  managed?: boolean;
+  created?: boolean;
 }
 
 export type AttachmentValidationReason =
@@ -136,6 +140,13 @@ export function createChatAttachment(
     candidate.size >= 0
   ) {
     attachment.size = candidate.size;
+  }
+
+  if (candidate.managed) {
+    attachment.managed = true;
+  }
+  if (candidate.created) {
+    attachment.created = true;
   }
 
   return attachment;

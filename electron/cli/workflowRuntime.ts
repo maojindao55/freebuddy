@@ -65,6 +65,7 @@ export interface ResolvedAgent {
 export interface StepExecutor {
   run(args: {
     sessionId: string;
+    conversationId?: string;
     agentId: string;
     agentName: string;
     adapter: string;
@@ -943,6 +944,7 @@ export class WorkflowRuntime {
     try {
       await this.deps.executor.run({
         sessionId,
+        conversationId: run.conversationId,
         agentId: step.agentId,
         agentName: resolved.agentName,
         adapter: resolved.adapter,
@@ -1091,6 +1093,7 @@ export function createCliStepExecutor(
       }
       const runArgs: CliRunArgs = {
         sessionId: args.sessionId,
+        conversationId: args.conversationId,
         agentId: args.agentId,
         agentName: args.agentName,
         adapter: args.adapter as any,

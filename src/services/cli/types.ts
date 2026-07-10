@@ -44,6 +44,8 @@ export interface CliPromptAttachment {
 
 export interface CliRunArgs {
   sessionId: string;
+  /** FreeBuddy conversation that owns UI-scoped tools such as Draft. */
+  conversationId?: string;
   agentId: string;
   agentName: string;
   adapter: CLIAdapterId;
@@ -64,6 +66,63 @@ export interface CliRunArgs {
   timeoutMs?: number;
   userMessageId?: string;
   knownStreamMessageIds?: string[];
+}
+
+export type DraftToolAction = "show" | "inspect" | "report";
+
+export type DraftLoadState = "idle" | "loading" | "ready" | "error";
+
+export interface DraftCaptureRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DraftScreenshot {
+  mimeType: "image/png";
+  data: string;
+  width: number;
+  height: number;
+}
+
+export interface DraftConsoleEntry {
+  level: "debug" | "info" | "warning" | "error";
+  message: string;
+  source?: string;
+  line?: number;
+  timestamp: string;
+}
+
+export interface DraftToolEvent {
+  requestId: string;
+  conversationId: string;
+  cwd: string;
+  action: DraftToolAction;
+  params: Record<string, unknown>;
+}
+
+export interface DraftToolResult {
+  ok: boolean;
+  conversationId: string;
+  cwd: string;
+  target?: string;
+  resolvedUrl?: string;
+  loadState?: DraftLoadState;
+  visible?: boolean;
+  message?: string;
+  error?: string;
+  updatedAt?: string;
+  diagnostics?: { console: DraftConsoleEntry[] };
+  screenshot?: DraftScreenshot;
+  screenshotError?: string;
+  /** Renderer-only capture hint, stripped before the result reaches the agent. */
+  captureRect?: DraftCaptureRect;
+}
+
+export interface DraftToolResolution {
+  requestId: string;
+  result: DraftToolResult;
 }
 
 export interface CliPermissionOption {

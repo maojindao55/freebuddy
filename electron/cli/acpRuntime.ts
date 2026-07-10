@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { type ChildProcessByStdio } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
+import type { WebContents } from "electron";
 
 import {
   acpSessionListToItems,
@@ -40,6 +41,11 @@ import {
   type Running
 } from "./runtimeShared.js";
 import { killProcessTree } from "./process-kill.js";
+import {
+  registerDraftToolSession,
+  unregisterDraftToolSession
+} from "../draftToolService.js";
+import type { AcpStdioMcpServer } from "../shared/draftToolProtocol.js";
 
 function writeAcp(
   child: ChildProcessByStdio<Writable, Readable, Readable>,
@@ -50,6 +56,7 @@ function writeAcp(
 
 export interface AcpRuntimeInput {
   child: ChildProcessByStdio<Writable, Readable, Readable>;
+  webContents: WebContents;
   args: CliRunArgs;
   pid: number;
   logStream: fs.WriteStream | null;
@@ -62,6 +69,7 @@ export interface AcpRuntimeInput {
 
 export async function runAcpAgent({
   child,
+  webContents,
   args,
   pid,
   logStream,
@@ -76,6 +84,7 @@ export async function runAcpAgent({
   let finished = false;
   let promptStarted = false;
   let promptHadContent = false;
+  let mcpServers: AcpStdioMcpServer[] = [];
   const replayMessageIds = new Set(args.knownStreamMessageIds ?? []);
   const terminalManager = createAcpTerminalManager({
     defaultCwd: args.cwd,
@@ -123,6 +132,7 @@ export async function runAcpAgent({
     finished = true;
     terminalManager.dispose();
     running.delete(args.sessionId);
+    unregisterDraftToolSession(args.sessionId);
     clearPermissionResolversForSession(args.sessionId);
     if (errorMessage) emit({ type: "error", message: errorMessage });
     emit({ type: "done", exitCode });
@@ -531,18 +541,20 @@ export async function runAcpAgent({
 
     if (toolSessionId && agentCaps?.loadSession) {
       const loaded = await request(
-        buildSessionLoadRequest(nextId(), toolSessionId, args.cwd)
+        buildSessionLoadRequest(nextId(), toolSessionId, args.cwd, mcpServers)
       );
       activeAcpSessionId = toolSessionId;
       emitSetupItems(loaded);
     } else if (toolSessionId && agentCaps?.sessionCapabilities?.resume) {
       const resumed = await request(
-        buildSessionResumeRequest(nextId(), toolSessionId, args.cwd)
+        buildSessionResumeRequest(nextId(), toolSessionId, args.cwd, mcpServers)
       );
       activeAcpSessionId = toolSessionId;
       emitSetupItems(resumed);
     } else {
-      const created = await request(buildSessionNewRequest(nextId(), args.cwd));
+      const created = await request(
+        buildSessionNewRequest(nextId(), args.cwd, mcpServers)
+      );
       activeAcpSessionId = created?.sessionId ?? created?.session_id;
       emitSetupItems(created);
     }
@@ -612,6 +624,17 @@ export async function runAcpAgent({
     const init = await request(buildInitializeRequest(nextId()));
     agentCaps = init?.agentCapabilities ?? {};
     authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
+
+    if (args.conversationId && args.cwd) {
+      mcpServers = [
+        await registerDraftToolSession({
+          taskSessionId: args.sessionId,
+          conversationId: args.conversationId,
+          cwd: args.cwd,
+          webContents
+        })
+      ];
+    }
 
     try {
       await establishSession();

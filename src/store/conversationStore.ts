@@ -408,8 +408,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (id) {
       const conv = get().conversations.find((c) => c.id === id);
       if (conv?.cwd) {
-        void cliClient.ensureAgentGuides(conv.cwd).catch(() => {
+        void cliClient.ensureAgentGuides(conv.cwd, {
+          nativeDraftTools:
+            useCliExecutorStore.getState().resolve(conv.adapter)?.protocol === "acp"
+        }).catch((err) => {
           // best-effort: guide files are optional
+          if (import.meta.env?.DEV) {
+            console.warn("[FreeBuddy] Failed to ensure agent guides:", err);
+          }
         });
       }
     }
@@ -499,8 +505,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       await get().loadMessages(cid, messageIds);
     });
     if (cwd) {
-      void cliClient.ensureAgentGuides(cwd).catch(() => {
+      void cliClient.ensureAgentGuides(cwd, {
+        nativeDraftTools:
+          useCliExecutorStore.getState().resolve(conv.adapter)?.protocol === "acp"
+      }).catch((err) => {
         // best-effort: guide files are optional
+        if (import.meta.env?.DEV) {
+          console.warn("[FreeBuddy] Failed to ensure agent guides:", err);
+        }
       });
     }
     return conv;
@@ -734,6 +746,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
+      conversationId,
       agentId: member.id,
       agentName: member.name,
       adapter: member.cli.adapter,

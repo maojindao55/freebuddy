@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@lobehub/icons": "^5.10.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "antd": "^6.4.5",
     "better-sqlite3": "^12.11.1",
     "cross-spawn": "^7.0.6",
@@ -39,6 +40,7 @@
     "react-dom": "^19.2.3",
     "react-i18next": "^17.0.8",
     "shell-env": "^4.0.3",
+    "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 
 import { collectPreparedAttachmentsUntilLimit, managedPathsToDiscardAfterPrepare } from "./shared/collectPreparedAttachmentsUntilLimit.js";
+import type {
+  DraftToolEvent,
+  DraftToolResolution
+} from "./shared/draftToolProtocol.js";
 
 const cli = {
   listAdapters: () => ipcRenderer.invoke("cli:listAdapters"),
@@ -184,8 +188,8 @@ const cli = {
   openDraftExternal: (url: string) =>
     ipcRenderer.invoke("cli:openDraftExternal", url),
 
-  ensureAgentGuides: (cwd: string) =>
-    ipcRenderer.invoke("cli:ensureAgentGuides", cwd),
+  ensureAgentGuides: (cwd: string, options?: { nativeDraftTools?: boolean }) =>
+    ipcRenderer.invoke("cli:ensureAgentGuides", { cwd, options }),
 
   onEvent(sessionId: string, cb: (event: unknown) => void): () => void {
     const channel = `cli://${sessionId}`;
@@ -210,6 +214,14 @@ const window = {
     ) => cb(payload);
     ipcRenderer.on("freebuddy://bridge", handler);
     return () => ipcRenderer.off("freebuddy://bridge", handler);
+  },
+  onDraftTool(cb: (event: DraftToolEvent) => void): () => void {
+    const handler = (_e: IpcRendererEvent, payload: DraftToolEvent) => cb(payload);
+    ipcRenderer.on("freebuddy://draft-tool", handler);
+    return () => ipcRenderer.off("freebuddy://draft-tool", handler);
+  },
+  resolveDraftTool(resolution: DraftToolResolution): Promise<boolean> {
+    return ipcRenderer.invoke("draft-tool:resolve", resolution);
   }
 };
 

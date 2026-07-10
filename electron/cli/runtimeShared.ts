@@ -15,6 +15,8 @@ export interface CliPromptAttachment {
 
 export interface CliRunArgs {
   sessionId: string;
+  /** FreeBuddy conversation that owns UI-scoped tools such as Draft. */
+  conversationId?: string;
   agentId: string;
   agentName: string;
   adapter: CLIAdapterId;

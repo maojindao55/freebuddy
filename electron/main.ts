@@ -9,6 +9,7 @@ import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
 import { handleDraftRequest } from "./draftProtocol.js";
 import { startPreviewServer } from "./previewServer.js";
+import { initFileBridge } from "./fileBridge.js";
 import { getDb } from "./cli/db.js";
 import { cleanupOrphanManagedAttachments } from "./cli/attachments.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
@@ -238,6 +239,9 @@ app.whenReady().then(async () => {
   registerLocalFileProtocol();
   registerDraftProtocol();
   startPreviewServer(() =>
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
+  );
+  initFileBridge(() =>
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
   getDb();

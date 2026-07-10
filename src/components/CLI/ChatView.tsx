@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { nanoid } from "nanoid";
 import { useTranslation } from "react-i18next";
+import posthog from "@/posthog";
 
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
@@ -625,6 +626,13 @@ export function ChatView() {
     setter((current) => {
       const { attachments, warnings } = mergePendingAttachments(current, selected);
       const acceptedPaths = new Set(attachments.map((attachment) => attachment.path));
+      const newCount = attachments.length - current.length;
+      if (newCount > 0) {
+        posthog.capture("attachment_added", {
+          count: newCount,
+          target,
+        });
+      }
       for (const candidate of selected) {
         if (
           shouldDiscardCreatedManagedCandidate(candidate) &&
@@ -937,6 +945,12 @@ export function ChatView() {
           const errors = useWorkflowStore.getState().pendingErrors;
           throw new Error(errors.length ? errors.join("; ") : "workflow did not start");
         }
+        posthog.capture("team_workflow_started", {
+          team_id: team.id,
+          has_cwd: Boolean(cwd),
+          has_attachments: attachmentsToSend.length > 0,
+          attachment_count: attachmentsToSend.length,
+        });
         await loadWorkflowForConversation(newConv.id);
         return;
       }
@@ -953,6 +967,14 @@ export function ChatView() {
           fallback: t("chat.defaultAttachmentTitle")
         }),
         approvalMode: permissionMode
+      });
+      posthog.capture("task_created", {
+        agent_id: selectedMember.id,
+        adapter: selectedMember.cli.adapter,
+        approval_mode: permissionMode,
+        has_cwd: Boolean(newTaskCwd.trim()),
+        has_attachments: attachmentsToSend.length > 0,
+        attachment_count: attachmentsToSend.length,
       });
       setNewTaskDraft("");
       setNewTaskPendingAttachments((prev) =>
@@ -1108,6 +1130,13 @@ export function ChatView() {
         userMessageId,
         assistantMessageId,
         approvalModeOverride: permissionMode
+      });
+      posthog.capture("message_sent", {
+        agent_id: targetMember.id,
+        adapter: targetMember.cli.adapter,
+        approval_mode: permissionMode,
+        has_attachments: attachmentsToSend.length > 0,
+        attachment_count: attachmentsToSend.length,
       });
       setSubmitPreview(null);
     } catch (e) {
@@ -1271,6 +1300,7 @@ export function ChatView() {
             onApprove={() => {
               const runId = activeRun.id;
               const phaseId = gatingPhaseId;
+              posthog.capture("workflow_gate_approved", { phase_id: phaseId });
               setApprovedWorkflowGate({ runId, phaseId });
               void approveGate(runId, phaseId)
                 .then((ok) => {
@@ -1279,6 +1309,7 @@ export function ChatView() {
                 .catch(() => setApprovedWorkflowGate(null));
             }}
             onRequestChanges={() => {
+              posthog.capture("workflow_gate_changes_requested", { phase_id: gatingPhaseId });
               setPendingWorkflowAction({
                 runId: activeRun.id,
                 phaseId: gatingPhaseId,
@@ -1426,7 +1457,13 @@ export function ChatView() {
                 disabled={!running}
                 title={running ? t("chat.stop") : t("status.starting")}
                 aria-label={running ? t("chat.stopAria") : t("chat.startingAria")}
-                onClick={() => void stopActive(conv.id)}
+                onClick={() => {
+                  posthog.capture("agent_stopped", {
+                    agent_id: member?.id,
+                    adapter: member?.cli.adapter,
+                  });
+                  void stopActive(conv.id);
+                }}
               >
                 {running ? <StopIcon /> : <span className="starting-spinner">…</span>}
               </button>

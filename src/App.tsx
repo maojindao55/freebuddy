@@ -24,6 +24,7 @@ import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
+import posthog from "./posthog";
 
 function GearIcon() {
   return (
@@ -292,7 +293,11 @@ function App() {
                 title={t("sidebar.toggleTheme")}
                 aria-label={t("sidebar.toggleTheme")}
                 data-theme-preference={themePreference}
-                onClick={() => void setTheme(nextThemePreference(themePreference))}
+                onClick={() => {
+                  const next = nextThemePreference(themePreference);
+                  posthog.capture("theme_changed", { theme: next });
+                  void setTheme(next);
+                }}
               >
                 {themePreference === "system" ? (
                   <Monitor className="footer-icon" strokeWidth={1.7} />

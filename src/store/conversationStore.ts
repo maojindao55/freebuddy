@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
+import posthog from "@/posthog";
 
 import type { CLIMember } from "@/config/aiMembers";
 import { builtinCliMembers } from "@/config/aiMembers";
@@ -538,6 +539,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         /* best-effort: still remove the conversation */
       }
     }
+    const conv = get().conversations.find((c) => c.id === id);
+    posthog.capture("conversation_deleted", {
+      agent_id: conv?.agentId,
+      adapter: conv?.adapter,
+    });
     await cliClient.deleteConversation(id);
     set((s) => {
       const next = s.conversations.filter((c) => c.id !== id);

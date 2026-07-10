@@ -8,6 +8,7 @@ import {
   optionKeyFor,
   permissionTargets
 } from "@/utils/permissionDisplay";
+import posthog from "@/posthog";
 
 function optionVariant(option: CliPermissionOption): string {
   const k = (option.kind ?? "").toLowerCase();
@@ -90,12 +91,17 @@ export function PermissionDialog() {
                 type="button"
                 className={`permission-btn permission-btn-${variant}`}
                 disabled={current.resolving}
-                onClick={() =>
+                onClick={() => {
+                  posthog.capture("permission_decision_made", {
+                    outcome: "selected",
+                    option_id: option.optionId,
+                    tool_kind: current.toolCall?.kind,
+                  });
                   void decide(current.requestId, {
                     outcome: "selected",
                     optionId: option.optionId
-                  })
-                }
+                  });
+                }}
               >
                 {label}
               </button>
@@ -105,9 +111,13 @@ export function PermissionDialog() {
             type="button"
             className="permission-btn permission-btn-ghost"
             disabled={current.resolving}
-            onClick={() =>
-              void decide(current.requestId, { outcome: "cancelled" })
-            }
+            onClick={() => {
+              posthog.capture("permission_decision_made", {
+                outcome: "cancelled",
+                tool_kind: current.toolCall?.kind,
+              });
+              void decide(current.requestId, { outcome: "cancelled" });
+            }}
           >
             {t("common.cancel")}
           </button>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
+import posthog from "@/posthog";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -207,6 +208,7 @@ export function CLIAdaptersTab() {
       };
       await upsertOverride(override);
       refreshMembers();
+      posthog.capture("agent_cloned", { base_adapter: baseAdapter });
       setEditingId(id);
     },
     [list, refreshMembers, upsertOverride]
@@ -654,6 +656,11 @@ function EditOverridePanel({
     try {
       await upsert(override);
       refreshMembers();
+      posthog.capture("agent_settings_saved", {
+        adapter: ex.baseAdapter ?? ex.id,
+        is_clone: isClone,
+        byok_enabled: codexByokEnabled,
+      });
       setCodexApiKey("");
       setSaveStatus("saved");
     } catch (err) {

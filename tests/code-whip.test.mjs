@@ -21,11 +21,14 @@ test("ChatView mounts a full-chat code whip overlay driven by whipMotion", () =>
   assert.match(overlay, /code-whip-svg/);
   assert.match(overlay, /whip-grip-grad/);
   assert.match(overlay, /createWhipSimulation/);
-  assert.match(overlay, /swingProgress/);
+  assert.match(overlay, /advanceTo/);
+  assert.match(overlay, /computeWhipImpactPoint/);
   assert.match(overlay, /requestAnimationFrame/);
   assert.match(overlay, /prefers-reduced-motion/);
   assert.match(overlay, /code-whip-cracker/);
   assert.match(overlay, /--whip-hit-x/);
+  assert.match(overlay, /--whip-impact-offset-x/);
+  assert.match(overlay, /M436 156 L366 198/);
 });
 
 test("Verlet handle path drives the rope; stage has no CSS swing keyframes", () => {

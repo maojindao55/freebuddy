@@ -8,9 +8,11 @@ import {
 } from "@/store/whipEffectStore";
 import {
   computeStageFade,
+  computeWhipImpactPoint,
   createWhipSimulation,
-  swingProgress,
   WHIP_ATTACH_POINT,
+  WHIP_VIEWBOX_HEIGHT,
+  WHIP_VIEWBOX_WIDTH,
   type CrackParticle
 } from "@/utils/whipMotion";
 
@@ -59,9 +61,9 @@ export function CodeWhipOverlay() {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) {
-      // Hold a single mid-crack pose instead of animating the full swing.
-      const frame = sim.advanceTo(WHIP_HIT_AT_MS + 60, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
-      paint(WHIP_HIT_AT_MS + 60, frame, 1);
+      // Hold the exact contact pose instead of animating the full swing.
+      const frame = sim.advanceTo(WHIP_HIT_AT_MS, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
+      paint(WHIP_HIT_AT_MS, frame, 1);
       return;
     }
 
@@ -69,10 +71,7 @@ export function CodeWhipOverlay() {
     const start = performance.now();
     const tick = () => {
       const elapsed = Math.min(performance.now() - start, WHIP_EFFECT_MS);
-      // One physics step per display frame, driven by swing progress so the
-      // tip-speed peak lands near WHIP_HIT_AT_MS (same as the canvas demo).
-      const progress = swingProgress(elapsed, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
-      const frame = sim.step(progress);
+      const frame = sim.advanceTo(elapsed, WHIP_HIT_AT_MS, WHIP_EFFECT_MS);
       frame.opacity = computeStageFade(elapsed, WHIP_EFFECT_MS).opacity;
       paint(elapsed, frame);
       if (elapsed < WHIP_EFFECT_MS) {
@@ -99,6 +98,11 @@ export function CodeWhipOverlay() {
     });
   }, [nonce, power]);
 
+  const impactPoint = useMemo(
+    () => computeWhipImpactPoint(power, WHIP_HIT_AT_MS),
+    [power]
+  );
+
   if (!active || !target) return null;
 
   const hitStyle: CSSProperties = {
@@ -107,7 +111,16 @@ export function CodeWhipOverlay() {
   };
   const aimStyle = {
     "--whip-hit-x": `${target.x}px`,
-    "--whip-hit-y": `${target.y}px`
+    "--whip-hit-y": `${target.y}px`,
+    // The throw is mirrored so the hand stays to the right of the left-side
+    // assistant avatar. Anchor the actual simulated tip at the hit timestamp
+    // instead of pinning an estimated/resting tip coordinate.
+    "--whip-impact-offset-x": String(
+      -((WHIP_VIEWBOX_WIDTH - impactPoint.x) / WHIP_VIEWBOX_WIDTH)
+    ),
+    "--whip-impact-offset-y": String(
+      -(impactPoint.y / WHIP_VIEWBOX_HEIGHT)
+    )
   } as CSSProperties;
 
   return (
@@ -121,9 +134,9 @@ export function CodeWhipOverlay() {
       >
         <svg
           className="code-whip-svg"
-          viewBox="0 0 560 300"
-          width="560"
-          height="300"
+          viewBox={`0 0 ${WHIP_VIEWBOX_WIDTH} ${WHIP_VIEWBOX_HEIGHT}`}
+          width={WHIP_VIEWBOX_WIDTH}
+          height={WHIP_VIEWBOX_HEIGHT}
         >
           <defs>
             <linearGradient id="whip-grip-grad" x1="0" y1="0" x2="1" y2="1">
@@ -137,51 +150,56 @@ export function CodeWhipOverlay() {
             (see createWhipSimulation / handlePos). The soft lash is a
             distance-constrained rope driven by that same root motion.
           */}
-          <g className="code-whip-handle" ref={handleRef}>
-            <path
-              d="M436 156 L506 198"
-              fill="none"
-              stroke="url(#whip-grip-grad)"
-              strokeWidth="13"
-              strokeLinecap="round"
-            />
-          </g>
-
-          <g className="code-whip-tip">
-            <path
-              ref={baseRef}
-              className="code-whip-base"
-              fill="none"
-              stroke="#5c3819"
-              strokeWidth="4.2"
-              strokeLinecap="round"
-            />
-            <path
-              ref={ropeRef}
-              className="code-whip-rope"
-              fill="none"
-              stroke="#2a1a0c"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-            />
-            <g ref={crackerRef} className="code-whip-cracker">
+          <g
+            className="code-whip-throw"
+            transform={`translate(${WHIP_VIEWBOX_WIDTH} 0) scale(-1 1)`}
+          >
+            <g className="code-whip-handle" ref={handleRef}>
               <path
-                d="M0 0 L22 -8"
+                d="M436 156 L366 198"
+                fill="none"
+                stroke="url(#whip-grip-grad)"
+                strokeWidth="13"
+                strokeLinecap="round"
+              />
+            </g>
+
+            <g className="code-whip-tip">
+              <path
+                ref={baseRef}
+                className="code-whip-base"
+                fill="none"
+                stroke="#5c3819"
+                strokeWidth="4.2"
+                strokeLinecap="round"
+              />
+              <path
+                ref={ropeRef}
+                className="code-whip-rope"
                 fill="none"
                 stroke="#2a1a0c"
-                strokeWidth="1.6"
+                strokeWidth="2.2"
                 strokeLinecap="round"
               />
-              <path
-                d="M0 2 L26 14"
-                fill="none"
-                stroke="#1a1008"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-              <circle cx="18" cy="4" r="3" fill="#1a1008" />
+              <g ref={crackerRef} className="code-whip-cracker">
+                <path
+                  d="M0 0 L22 -8"
+                  fill="none"
+                  stroke="#2a1a0c"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M0 2 L26 14"
+                  fill="none"
+                  stroke="#1a1008"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
+                <circle cx="18" cy="4" r="3" fill="#1a1008" />
+              </g>
+              <g ref={particlesRef} className="code-whip-particles" />
             </g>
-            <g ref={particlesRef} className="code-whip-particles" />
           </g>
         </svg>
       </div>

@@ -141,6 +141,39 @@ test("computeWhipFrame stays finite across the full effect duration", async () =
   }
 });
 
+test("advanceTo follows the same fixed-step path at 60 Hz and 120 Hz", async () => {
+  const { createWhipSimulation } = await loadWhipMotion();
+  const at60 = createWhipSimulation();
+  const at120 = createWhipSimulation();
+  let frame60;
+  let frame120;
+
+  for (let t = 0; t <= 1050; t += 1000 / 60) frame60 = at60.advanceTo(t);
+  for (let t = 0; t <= 1050; t += 1000 / 120) frame120 = at120.advanceTo(t);
+  frame60 = at60.advanceTo(1050);
+  frame120 = at120.advanceTo(1050);
+
+  assert.ok(Math.abs(frame60.tipX - frame120.tipX) < 1e-9);
+  assert.ok(Math.abs(frame60.tipY - frame120.tipY) < 1e-9);
+});
+
+test("computed impact point is the simulated tip at the avatar-hit timestamp", async () => {
+  const {
+    computeWhipImpactPoint,
+    createWhipSimulation,
+    DEFAULT_CRACK_AT_MS
+  } = await loadWhipMotion();
+
+  for (const power of [0.9, 1, 1.5, 1.9]) {
+    const expected = createWhipSimulation(undefined, { power }).advanceTo(
+      DEFAULT_CRACK_AT_MS
+    );
+    const impact = computeWhipImpactPoint(power);
+    assert.ok(Math.abs(impact.x - expected.tipX) < 1e-9);
+    assert.ok(Math.abs(impact.y - expected.tipY) < 1e-9);
+  }
+});
+
 test("computeStageFade fades in then out; no independent arm rotation", async () => {
   const { computeStageFade, computeArmSwing } = await loadWhipMotion();
   const start = computeStageFade(0, 2300);

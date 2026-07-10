@@ -3480,9 +3480,9 @@ button {
   top: var(--whip-hit-y, 40%);
   width: var(--whip-w);
   height: var(--whip-h);
-  /* Cracker contact point (~96,230 of the 560x300 viewBox) pins onto the avatar. */
-  margin-left: calc(var(--whip-w) * -0.171);
-  margin-top: calc(var(--whip-h) * -0.767);
+  /* CodeWhipOverlay computes the real rope-tip position at the hit frame. */
+  margin-left: calc(var(--whip-w) * var(--whip-impact-offset-x, -0.171));
+  margin-top: calc(var(--whip-h) * var(--whip-impact-offset-y, -0.767));
   /* Pivot near the handle/wrist; the Verlet root swings in SVG space so
      the stage itself no longer needs an independent CSS rotate. */
   transform-origin: 88% 62%;

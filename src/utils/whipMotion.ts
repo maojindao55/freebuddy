@@ -39,6 +39,8 @@ export const WHIP_ATTACH_POINT: Point = { x: 430, y: 152 };
 /** Default time-to-crack, matching whipEffectStore.WHIP_HIT_AT_MS. */
 export const DEFAULT_CRACK_AT_MS = 1050;
 export const DEFAULT_TOTAL_MS = 2300;
+export const WHIP_VIEWBOX_WIDTH = 560;
+export const WHIP_VIEWBOX_HEIGHT = 300;
 
 const SEGMENTS = 32;
 const SEG_LEN = 11;
@@ -243,8 +245,9 @@ export function createWhipSimulation(
   let points = createHangChain(base);
   let particles: CrackParticle[] = [];
   let crackCooldown = 0;
-  let lastElapsed = -FRAME_MS;
+  let simulatedElapsed = 0;
   let crackedThisStep = false;
+  let currentFrame: WhipFrame;
 
   function spawnCrack(
     x: number,
@@ -372,38 +375,57 @@ export function createWhipSimulation(
     return snapshot(tipSpeed);
   }
 
+  currentFrame = snapshot(0);
+
   return {
     step(progress: number) {
       return physicsStep(progress);
     },
     advanceTo(elapsedMs, crackAtMs = DEFAULT_CRACK_AT_MS, totalMs = DEFAULT_TOTAL_MS) {
       const target = Math.max(0, elapsedMs);
-      // First call (or after reset): step from 0 up to target.
-      let t = Math.max(0, lastElapsed);
-      if (t < 0) t = 0;
-      let frame = snapshot(0);
-      if (target <= t && lastElapsed >= 0) {
-        frame = physicsStep(swingProgress(target, crackAtMs, totalMs));
-        frame.opacity = fadeOpacity(target, totalMs);
-        lastElapsed = target;
-        return frame;
+      if (target < simulatedElapsed) {
+        points = createHangChain(base);
+        particles = [];
+        crackCooldown = 0;
+        simulatedElapsed = 0;
+        crackedThisStep = false;
+        currentFrame = snapshot(0);
       }
-      while (t < target) {
-        t = Math.min(t + FRAME_MS, target);
-        frame = physicsStep(swingProgress(t, crackAtMs, totalMs));
+
+      // Advance on a fixed 60 Hz clock. requestAnimationFrame can run at 60,
+      // 90, 120, or 144 Hz; tying one physics step to each display frame makes
+      // the rope follow a different path on high-refresh-rate Mac displays.
+      while (simulatedElapsed + FRAME_MS <= target + 1e-6) {
+        simulatedElapsed += FRAME_MS;
+        currentFrame = physicsStep(
+          swingProgress(simulatedElapsed, crackAtMs, totalMs)
+        );
       }
-      frame.opacity = fadeOpacity(target, totalMs);
-      lastElapsed = target;
-      return frame;
+
+      return {
+        ...currentFrame,
+        opacity: fadeOpacity(target, totalMs)
+      };
     },
     reset() {
       points = createHangChain(base);
       particles = [];
       crackCooldown = 0;
-      lastElapsed = -FRAME_MS;
+      simulatedElapsed = 0;
       crackedThisStep = false;
+      currentFrame = snapshot(0);
     }
   };
+}
+
+/** Deterministic rope-tip position at the visual/avatar hit timestamp. */
+export function computeWhipImpactPoint(
+  power: number = 1,
+  hitAtMs: number = DEFAULT_CRACK_AT_MS
+): Point {
+  const sim = createWhipSimulation(WHIP_ATTACH_POINT, { power });
+  const frame = sim.advanceTo(hitAtMs, hitAtMs, DEFAULT_TOTAL_MS);
+  return { x: frame.tipX, y: frame.tipY };
 }
 
 /**

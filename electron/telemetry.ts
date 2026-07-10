@@ -89,8 +89,8 @@ export function initializeTelemetry(): void {
 
   client = new PostHog(config.apiKey, {
     host: config.host,
-    flushAt: 1,
-    flushInterval: 0,
+    flushAt: 20,
+    flushInterval: 1000,
     disableGeoip: true,
     enableExceptionAutocapture: false
   });

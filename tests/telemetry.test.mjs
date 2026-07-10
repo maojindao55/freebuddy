@@ -21,6 +21,8 @@ test("PostHog telemetry is owned by the Electron main process", () => {
   assert.match(telemetry, /app_updated/);
   assert.match(telemetry, /disableGeoip:\s*true/);
   assert.match(telemetry, /\$process_person_profile:\s*false/);
+  assert.match(telemetry, /flushAt:\s*20/);
+  assert.match(telemetry, /flushInterval:\s*1000/);
 });
 
 test("telemetry uses a random installation id and excludes workspace content", () => {

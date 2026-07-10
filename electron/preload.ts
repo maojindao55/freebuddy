@@ -7,6 +7,12 @@ const cli = {
   resetOverride: (id: string) => ipcRenderer.invoke("cli:resetOverride", id),
 
   listRuntimes: () => ipcRenderer.invoke("cli:listRuntimes"),
+  onRuntimeUpdated: (cb: (runtime: unknown) => void): (() => void) => {
+    const channel = "cli://runtime";
+    const handler = (_e: IpcRendererEvent, runtime: unknown) => cb(runtime);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
   check: (
     adapter: string,

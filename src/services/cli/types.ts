@@ -123,6 +123,16 @@ export interface CliRuntime {
   installed: boolean;
   binaryPath?: string;
   version?: string;
+  latestVersion?: string;
+  updateStatus?:
+    | "idle"
+    | "checking"
+    | "current"
+    | "updating"
+    | "updated"
+    | "error";
+  lastUpdateCheckAt?: string;
+  lastUpdateError?: string;
   lastCheckAt?: string;
   lastRunAt?: string;
   lastError?: string;

@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { cliClient } from "@/services/cli/client";
-import type { CLIExecutorOverride } from "@/services/cli/types";
+import type { CLIExecutorOverride, CliRuntime } from "@/services/cli/types";
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
 import { useCliInstallStore } from "@/store/cliInstallStore";
@@ -367,6 +367,7 @@ function AdapterRow({
 }) {
   const { t } = useTranslation();
   const rt = ex.runtime;
+  const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
   const parsedExtraArgs = extractModelArg(ex.extraArgs);
   const model = parsedExtraArgs.model;
   const statusKind = checking
@@ -376,6 +377,7 @@ function AdapterRow({
       : rt
         ? "unavailable"
         : "unchecked";
+  const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
   return (
     <div className={`adapter-row${selected ? " selected" : ""}`}>
       <AgentAvatar
@@ -415,6 +417,21 @@ function AdapterRow({
               {t(cliRuntimeErrorKey(rt.lastError))}
             </span>
           )}
+          {ex.id === "codex-acp" && codexCliRuntime?.installed && (
+            <span className="muted">
+              Codex CLI: <code>{codexCliRuntime.version}</code>
+            </span>
+          )}
+          <RuntimeAutoUpdateStatus
+            runtime={codexUpdateStatus ? rt : undefined}
+            label="Codex ACP"
+          />
+          {ex.id === "codex-acp" && (
+            <RuntimeAutoUpdateStatus
+              runtime={codexCliRuntime}
+              label="Codex CLI"
+            />
+          )}
           {model && (
             <span className="muted">
               {t("settings.cli.modelLabel")}: <code>{model}</code>
@@ -445,6 +462,50 @@ function AdapterRow({
       </div>
     </div>
   );
+}
+
+function RuntimeAutoUpdateStatus({
+  runtime,
+  label
+}: {
+  runtime?: CliRuntime;
+  label: string;
+}) {
+  const { t } = useTranslation();
+  switch (runtime?.updateStatus) {
+    case "checking":
+      return (
+        <span className="adapter-status muted">
+          {t("settings.cli.autoUpdateChecking", { target: label })}
+        </span>
+      );
+    case "updating":
+      return (
+        <span className="adapter-status muted">
+          {t("settings.cli.autoUpdating", {
+            target: label,
+            version: runtime.latestVersion ?? ""
+          })}
+        </span>
+      );
+    case "updated":
+      return (
+        <span className="adapter-status ok">
+          {t("settings.cli.autoUpdated", {
+            target: label,
+            version: runtime.latestVersion ?? ""
+          })}
+        </span>
+      );
+    case "error":
+      return (
+        <span className="adapter-status error" title={runtime.lastUpdateError}>
+          {t("settings.cli.autoUpdateFailed", { target: label })}
+        </span>
+      );
+    default:
+      return null;
+  }
 }
 
 function EditOverridePanel({

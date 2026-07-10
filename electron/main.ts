@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
+import { startCodexToolchainAutoUpdate } from "./cli/check.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
 import { handleDraftRequest } from "./draftProtocol.js";
@@ -247,6 +248,7 @@ app.whenReady().then(async () => {
     app.dock.setIcon(appIcon);
   }
   createWindow();
+  void startCodexToolchainAutoUpdate();
   initAutoUpdater();
 
   app.on("activate", () => {

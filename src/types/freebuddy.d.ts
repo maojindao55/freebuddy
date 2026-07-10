@@ -55,6 +55,7 @@ declare global {
     resetOverride(id: string): Promise<void>;
 
     listRuntimes(): Promise<CliRuntime[]>;
+    onRuntimeUpdated(cb: (runtime: CliRuntime) => void): () => void;
     codexUsage(): Promise<CodexUsageResult>;
     check(
       adapter: string,

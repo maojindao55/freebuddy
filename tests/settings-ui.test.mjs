@@ -199,6 +199,34 @@ test("coding agent settings force-install the new Codex ACP when the old package
   assert.match(settingsSource, /startInstall\(\{\s*adapterId: ex\.id,\s*label: ex\.label,\s*command: ex\.installHint!/s);
 });
 
+test("Codex CLI and ACP updates run in the background and surface runtime status", () => {
+  assert.equal(cliCheckSource.includes("startCodexToolchainAutoUpdate"), true);
+  assert.equal(cliCheckSource.includes("CODEX_UPDATE_INTERVAL_MS"), true);
+  assert.equal(cliCheckSource.includes("isNpmManagedBinary"), true);
+  assert.equal(cliCheckSource.includes('CODEX_CLI_PACKAGE = "@openai/codex"'), true);
+  assert.equal(
+    cliCheckSource.includes(
+      'CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp"'
+    ),
+    true
+  );
+  assert.match(cliCheckSource, /NPM_CONFIG_OFFLINE:\s*"false"/);
+  assert.match(cliCheckSource, /"npm",\s*\["view", packageName/);
+  assert.match(cliCheckSource, /"install",\s*"-g",\s*"--force"/);
+  assert.equal(settingsSource.includes("Codex CLI:"), true);
+  assert.equal(settingsSource.includes("settings.cli.autoUpdating"), true);
+  assert.equal(settingsSource.includes("settings.cli.autoUpdated"), true);
+  assert.equal(settingsSource.includes("settings.cli.autoUpdateFailed"), true);
+  assert.equal(
+    enLocale.settings.cli.autoUpdateFailed,
+    "{{target}} automatic update failed"
+  );
+  assert.equal(
+    zhLocale.settings.cli.autoUpdateFailed,
+    "{{target}} 自动更新失败"
+  );
+});
+
 test("avatar picker is compact until users choose to change the icon", () => {
   const avatarSource = fs.readFileSync(
     new URL("../src/components/Settings/AvatarPicker.tsx", import.meta.url),

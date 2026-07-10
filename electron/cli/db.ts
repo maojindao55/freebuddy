@@ -54,6 +54,10 @@ function migrate(db: DB) {
       installed INTEGER NOT NULL DEFAULT 0,
       binary_path TEXT,
       version TEXT,
+      latest_version TEXT,
+      update_status TEXT,
+      last_update_check_at TEXT,
+      last_update_error TEXT,
       last_check_at TEXT,
       last_run_at TEXT,
       last_error TEXT,
@@ -242,6 +246,22 @@ function migrate(db: DB) {
   }
   if (!overrideCols.some((c) => c.name === "claude_byok")) {
     db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN claude_byok TEXT");
+  }
+
+  const runtimeCols = db
+    .prepare("PRAGMA table_info(cli_runtimes)")
+    .all() as Array<{ name: string }>;
+  if (!runtimeCols.some((c) => c.name === "latest_version")) {
+    db.exec("ALTER TABLE cli_runtimes ADD COLUMN latest_version TEXT");
+  }
+  if (!runtimeCols.some((c) => c.name === "update_status")) {
+    db.exec("ALTER TABLE cli_runtimes ADD COLUMN update_status TEXT");
+  }
+  if (!runtimeCols.some((c) => c.name === "last_update_check_at")) {
+    db.exec("ALTER TABLE cli_runtimes ADD COLUMN last_update_check_at TEXT");
+  }
+  if (!runtimeCols.some((c) => c.name === "last_update_error")) {
+    db.exec("ALTER TABLE cli_runtimes ADD COLUMN last_update_error TEXT");
   }
 
   const messageCols = db

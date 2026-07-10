@@ -13,7 +13,7 @@ import {
 import { runAcpAgent } from "./acpRuntime.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getLogDir } from "./db.js";
-import { updateRuntimeRun } from "./check.js";
+import { updateRuntimeRun, waitForCodexToolchainAutoUpdate } from "./check.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { getToolSession } from "./store.js";
 import {
@@ -178,6 +178,10 @@ export async function cliRun(
     "system",
     `start adapter=${args.adapter} cwd=${args.cwd ?? "."} resume=${toolSessionId ?? "-"}`
   );
+
+  // Avoid spawning codex-acp while npm is replacing its global package files.
+  // A failed background update is non-fatal and resolves this wait normally.
+  await waitForCodexToolchainAutoUpdate(args.adapter);
 
   let built;
   try {

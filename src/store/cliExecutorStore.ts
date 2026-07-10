@@ -42,6 +42,8 @@ interface State {
   listResolved(): ResolvedExecutor[];
 }
 
+let runtimeUpdatesSubscribed = false;
+
 export const useCliExecutorStore = create<State>((set, get) => ({
   loaded: false,
   adapters: cliAdapterDefinitions,
@@ -52,6 +54,14 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     if (!cliClient.isAvailable()) {
       set({ loaded: true });
       return;
+    }
+    if (!runtimeUpdatesSubscribed) {
+      runtimeUpdatesSubscribed = true;
+      window.freebuddy?.cli?.onRuntimeUpdated?.((runtime) => {
+        set((state) => ({
+          runtimes: { ...state.runtimes, [runtime.adapter]: runtime }
+        }));
+      });
     }
     const [adapters, overrides, runtimes] = await Promise.all([
       cliClient.listAdapters(),
@@ -82,6 +92,12 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     if (!cliClient.isAvailable()) return;
     const resolved = get().resolve(adapter);
     if (!resolved) return;
+    if (
+      resolved.id === "codex-acp" &&
+      resolved.runtime?.updateStatus === "updating"
+    ) {
+      return;
+    }
     await cliClient.check(
       resolved.baseAdapter ?? resolved.id,
       resolved.binary,
@@ -95,6 +111,12 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     if (!cliClient.isAvailable()) return;
     const acpAdapters = get().listResolved().filter((a) => a.protocol === "acp");
     for (const adapter of acpAdapters) {
+      if (
+        adapter.id === "codex-acp" &&
+        adapter.runtime?.updateStatus === "updating"
+      ) {
+        continue;
+      }
       const targetId = adapter.baseAdapter ?? adapter.id;
       await cliClient.check(targetId, adapter.binary, adapter.env, adapter.id);
     }

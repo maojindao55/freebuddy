@@ -143,7 +143,7 @@ declare global {
     resolveDraftEntry(cwd: string): Promise<string | null>;
     readDraftMarkdown(cwd: string, rel: string): Promise<string | null>;
     openDraftExternal(url: string): Promise<boolean>;
-    ensureAgentGuides(cwd: string): Promise<string[]>;
+    ensureAgentGuides(cwd: string): Promise<{ path: string; action: "created" | "updated" }[]>;
 
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;
   }

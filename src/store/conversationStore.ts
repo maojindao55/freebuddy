@@ -408,8 +408,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (id) {
       const conv = get().conversations.find((c) => c.id === id);
       if (conv?.cwd) {
-        void cliClient.ensureAgentGuides(conv.cwd).catch(() => {
+        void cliClient.ensureAgentGuides(conv.cwd).catch((err) => {
           // best-effort: guide files are optional
+          if (import.meta.env?.DEV) {
+            console.warn("[FreeBuddy] Failed to ensure agent guides:", err);
+          }
         });
       }
     }
@@ -499,8 +502,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       await get().loadMessages(cid, messageIds);
     });
     if (cwd) {
-      void cliClient.ensureAgentGuides(cwd).catch(() => {
+      void cliClient.ensureAgentGuides(cwd).catch((err) => {
         // best-effort: guide files are optional
+        if (import.meta.env?.DEV) {
+          console.warn("[FreeBuddy] Failed to ensure agent guides:", err);
+        }
       });
     }
     return conv;

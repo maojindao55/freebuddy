@@ -17,7 +17,16 @@ export interface BridgeAction {
  *  - HTTP routing (previewServer.ts -> parseBridgeRequest)
  *  - the capability list injected into workspace guide files (agentGuides.ts)
  */
-export const BRIDGE_PORT = 17878;
+export const DEFAULT_BRIDGE_PORT = 17878;
+export let BRIDGE_PORT = DEFAULT_BRIDGE_PORT;
+
+export function getActiveBridgePort(): number {
+  return BRIDGE_PORT;
+}
+
+export function setActiveBridgePort(port: number): void {
+  BRIDGE_PORT = port;
+}
 
 export const BRIDGE_ACTIONS: BridgeAction[] = [
   {
@@ -141,6 +150,7 @@ export function buildBridgeSection(port: number): string {
     `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=%2Ftmp%2Fposter.png"`,
     `curl -s "http://127.0.0.1:${port}/freebuddy/navigate?to=freebuddy-file%3A%2F%2Fopen%3Fpath%3D%252Ftmp%252Fposter.png"`,
     "```",
+    "",
     "",
     "Available actions:",
     ""

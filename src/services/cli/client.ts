@@ -203,7 +203,7 @@ export const cliClient = {
   openDraftExternal(url: string): Promise<boolean> {
     return api().openDraftExternal(url);
   },
-  ensureAgentGuides(cwd: string): Promise<string[]> {
+  ensureAgentGuides(cwd: string): Promise<{ path: string; action: "created" | "updated" }[]> {
     return api().ensureAgentGuides(cwd);
   },
 

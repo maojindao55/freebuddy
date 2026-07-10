@@ -212,11 +212,20 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
     setError(null);
     setMarkdown(null);
     setDocumentText(null);
-  }, [entry?.url]);
+    if (activeId) {
+      useDraftPreviewStore.getState().setLoadState(activeId, "loading");
+    }
+  }, [activeId, entry?.url]);
+
+  useEffect(() => {
+    if (!activeId || !entry?.url || !isExternalOnly) return;
+    setIsLoading(false);
+    useDraftPreviewStore.getState().setLoadState(activeId, "ready");
+  }, [activeId, entry?.url, isExternalOnly]);
 
   useEffect(() => {
     const rel = documentRel(entry?.manualEntry);
-    if (!entry?.url || (!isMarkdown && !isDocument) || !cwd || !rel) return;
+    if (!activeId || !entry?.url || (!isMarkdown && !isDocument) || !cwd || !rel) return;
     let cancelled = false;
     setIsLoading(true);
     setError(null);
@@ -233,6 +242,7 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
           setMarkdown(null);
         }
         setIsLoading(false);
+        useDraftPreviewStore.getState().setLoadState(activeId, "ready");
       })
       .catch(() => {
         if (cancelled) return;
@@ -240,6 +250,9 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
         setDocumentText(null);
         setIsLoading(false);
         setError(t("draft.loadError"));
+        useDraftPreviewStore
+          .getState()
+          .setLoadState(activeId, "error", t("draft.loadError"));
       });
     return () => {
       cancelled = true;
@@ -416,10 +429,20 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
                     transformOrigin: "center center"
                   }}
                   draggable={false}
-                  onLoad={() => setIsLoading(false)}
+                  onLoad={() => {
+                    setIsLoading(false);
+                    if (activeId) {
+                      useDraftPreviewStore.getState().setLoadState(activeId, "ready");
+                    }
+                  }}
                   onError={() => {
                     setIsLoading(false);
                     setError(t("draft.loadError"));
+                    if (activeId) {
+                      useDraftPreviewStore
+                        .getState()
+                        .setLoadState(activeId, "error", t("draft.loadError"));
+                    }
                   }}
                 />
               </div>
@@ -429,10 +452,20 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
                 src={pdfUrl}
                 className="draft-pdf"
                 type="application/pdf"
-                onLoad={() => setIsLoading(false)}
+                onLoad={() => {
+                  setIsLoading(false);
+                  if (activeId) {
+                    useDraftPreviewStore.getState().setLoadState(activeId, "ready");
+                  }
+                }}
                 onError={() => {
                   setIsLoading(false);
                   setError(t("draft.loadError"));
+                  if (activeId) {
+                    useDraftPreviewStore
+                      .getState()
+                      .setLoadState(activeId, "error", t("draft.loadError"));
+                  }
                 }}
               />
             ) : (
@@ -452,10 +485,18 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
                 onLoad={() => {
                   setIsLoading(false);
                   focusFrame();
+                  if (activeId) {
+                    useDraftPreviewStore.getState().setLoadState(activeId, "ready");
+                  }
                 }}
                 onError={() => {
                   setIsLoading(false);
                   setError(t("draft.loadError"));
+                  if (activeId) {
+                    useDraftPreviewStore
+                      .getState()
+                      .setLoadState(activeId, "error", t("draft.loadError"));
+                  }
                 }}
               />
             )}

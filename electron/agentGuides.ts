@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getActiveBridgePort, buildBridgeSection } from "./agentBridge.js";
-import { startWatchingFileBridge } from "./fileBridge.js";
+import {
+  startWatchingFileBridge,
+  stopWatchingFileBridge
+} from "./fileBridge.js";
 
 const ROOT_GUIDE_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules"];
 const FB_SIGNATURE = "auto-created by FreeBuddy";
@@ -68,6 +71,11 @@ export interface AgentGuideStatus {
   action: "created" | "updated";
 }
 
+export interface AgentGuideOptions {
+  /** ACP sessions receive Draft as a native MCP tool and do not need repo files. */
+  nativeDraftTools?: boolean;
+}
+
 async function ensureGitignore(cwd: string): Promise<void> {
   const gitignorePath = path.join(cwd, ".gitignore");
   let content = "";
@@ -107,10 +115,16 @@ async function ensureGitignore(cwd: string): Promise<void> {
 }
 
 export async function ensureAgentGuides(
-  cwd: string
+  cwd: string,
+  options: AgentGuideOptions = {}
 ): Promise<AgentGuideStatus[]> {
   const written: AgentGuideStatus[] = [];
   if (!cwd || !path.isAbsolute(cwd)) return written;
+
+  if (options.nativeDraftTools) {
+    stopWatchingFileBridge();
+    return written;
+  }
 
   // Start watching the file bridge for this cwd
   void startWatchingFileBridge(cwd).catch((err: any) => {

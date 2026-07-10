@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import type { AcpStdioMcpServer } from "../shared/draftToolProtocol.js";
+
 export type AcpRequestId = number | string | null;
 
 export interface AcpMessage {
@@ -168,7 +170,8 @@ export function buildInitializeRequest(id: AcpRequestId): AcpMessage {
 
 export function buildSessionNewRequest(
   id: AcpRequestId,
-  cwd?: string
+  cwd?: string,
+  mcpServers: AcpStdioMcpServer[] = []
 ): AcpMessage {
   return {
     jsonrpc: "2.0",
@@ -176,7 +179,7 @@ export function buildSessionNewRequest(
     method: "session/new",
     params: {
       cwd: cwd || process.cwd(),
-      mcpServers: []
+      mcpServers
     }
   };
 }
@@ -184,7 +187,8 @@ export function buildSessionNewRequest(
 export function buildSessionResumeRequest(
   id: AcpRequestId,
   sessionId: string,
-  cwd?: string
+  cwd?: string,
+  mcpServers: AcpStdioMcpServer[] = []
 ): AcpMessage {
   return {
     jsonrpc: "2.0",
@@ -193,7 +197,7 @@ export function buildSessionResumeRequest(
     params: {
       sessionId,
       cwd: cwd || process.cwd(),
-      mcpServers: []
+      mcpServers
     }
   };
 }
@@ -201,7 +205,8 @@ export function buildSessionResumeRequest(
 export function buildSessionLoadRequest(
   id: AcpRequestId,
   sessionId: string,
-  cwd?: string
+  cwd?: string,
+  mcpServers: AcpStdioMcpServer[] = []
 ): AcpMessage {
   return {
     jsonrpc: "2.0",
@@ -210,7 +215,7 @@ export function buildSessionLoadRequest(
     params: {
       sessionId,
       cwd: cwd || process.cwd(),
-      mcpServers: []
+      mcpServers
     }
   };
 }

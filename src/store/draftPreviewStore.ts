@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import type { DraftLoadState } from "@/services/cli/types";
+
 export interface DraftPreviewEntry {
   cwd: string;
   /** User/agent-set preview target: relative path, local file, or HTTP(S) URL. */
@@ -10,6 +12,10 @@ export interface DraftPreviewEntry {
   reloadNonce: number;
   /** Fully composed preview url, empty when no target. */
   url: string;
+  /** Renderer-observed load state used by the Draft MCP tool. */
+  loadState: DraftLoadState;
+  error?: string;
+  updatedAt: string;
 }
 
 interface DraftPreviewState {
@@ -21,6 +27,7 @@ interface DraftPreviewState {
   clearManualEntry(convId: string): void;
   reload(convId: string): void;
   scheduleReload(convId: string, delay?: number): void;
+  setLoadState(convId: string, state: DraftLoadState, error?: string): void;
 }
 
 const LOCAL_PREVIEW_EXTENSIONS = new Set([
@@ -111,7 +118,10 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
             manualEntry,
             ready: true,
             reloadNonce: nonce,
-            url: composeDraftPreviewUrl(cwd ?? "", manualEntry, nonce)
+            url: composeDraftPreviewUrl(cwd ?? "", manualEntry, nonce),
+            loadState: manualEntry ? existing?.loadState ?? "loading" : "idle",
+            error: existing?.error,
+            updatedAt: existing?.updatedAt ?? new Date().toISOString()
           }
         }
       };
@@ -135,7 +145,10 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
             manualEntry: target,
             ready: true,
             reloadNonce: nonce,
-            url: composeDraftPreviewUrl(cwd, target, nonce)
+            url: composeDraftPreviewUrl(cwd, target, nonce),
+            loadState: "loading",
+            error: undefined,
+            updatedAt: new Date().toISOString()
           }
         }
       };
@@ -154,7 +167,10 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
             ...entry,
             manualEntry: undefined,
             reloadNonce: nonce,
-            url: composeDraftPreviewUrl(entry.cwd, undefined, nonce)
+            url: composeDraftPreviewUrl(entry.cwd, undefined, nonce),
+            loadState: "idle",
+            error: undefined,
+            updatedAt: new Date().toISOString()
           }
         }
       };
@@ -172,7 +188,10 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
           [convId]: {
             ...entry,
             reloadNonce: nonce,
-            url: composeDraftPreviewUrl(entry.cwd, entryOf(entry), nonce)
+            url: composeDraftPreviewUrl(entry.cwd, entryOf(entry), nonce),
+            loadState: "loading",
+            error: undefined,
+            updatedAt: new Date().toISOString()
           }
         }
       };
@@ -191,5 +210,23 @@ export const useDraftPreviewStore = create<DraftPreviewState>((set, get) => ({
       get().reload(convId);
     }, delay);
     set((s) => ({ timers: { ...s.timers, [convId]: t } }));
+  },
+
+  setLoadState(convId, loadState, error) {
+    set((s) => {
+      const entry = s.byConv[convId];
+      if (!entry) return s;
+      return {
+        byConv: {
+          ...s.byConv,
+          [convId]: {
+            ...entry,
+            loadState,
+            error: error || undefined,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      };
+    });
   }
 }));

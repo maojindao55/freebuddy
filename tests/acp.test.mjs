@@ -10,7 +10,9 @@ import {
   buildInitializeRequest,
   buildPromptContentBlocks,
   buildSessionLoadRequest,
+  buildSessionNewRequest,
   buildSessionPromptRequest,
+  buildSessionResumeRequest,
   buildSessionSetConfigOptionRequest,
   contentBlockToItems,
   parseAcpLine,
@@ -325,6 +327,45 @@ test("buildSessionLoadRequest loads Cursor-style ACP sessions", () => {
       mcpServers: []
     }
   });
+});
+
+test("ACP session lifecycle injects FreeBuddy stdio MCP servers", () => {
+  const mcpServers = [
+    {
+      name: "freebuddy-draft",
+      command: "/Applications/FreeBuddy",
+      args: ["/app/dist-electron/mcp/draftMcpServer.js"],
+      env: [
+        { name: "ELECTRON_RUN_AS_NODE", value: "1" },
+        { name: "FREEBUDDY_DRAFT_TOKEN", value: "token" }
+      ]
+    }
+  ];
+
+  assert.deepEqual(buildSessionNewRequest(1, "/tmp/project", mcpServers), {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "session/new",
+    params: { cwd: "/tmp/project", mcpServers }
+  });
+  assert.deepEqual(
+    buildSessionResumeRequest(2, "sess-1", "/tmp/project", mcpServers),
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "session/resume",
+      params: { sessionId: "sess-1", cwd: "/tmp/project", mcpServers }
+    }
+  );
+  assert.deepEqual(
+    buildSessionLoadRequest(3, "sess-1", "/tmp/project", mcpServers),
+    {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "session/load",
+      params: { sessionId: "sess-1", cwd: "/tmp/project", mcpServers }
+    }
+  );
 });
 
 test("ACP runtime reports missing saved sessions separately from auth failures", () => {

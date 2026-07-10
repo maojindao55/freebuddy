@@ -73,6 +73,8 @@ import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
 import { registerWorkflowIpc } from "./workflowIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
+import { resolveDraftToolRequest } from "../draftToolService.js";
+import type { DraftToolResolution } from "../shared/draftToolProtocol.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -239,6 +241,11 @@ export function registerCliIpc() {
     return { sessionId: args.sessionId };
   });
   ipcMain.handle("cli:kill", (_e, sessionId: string) => cliKill(sessionId));
+  ipcMain.handle(
+    "draft-tool:resolve",
+    (event, resolution: DraftToolResolution) =>
+      resolveDraftToolRequest(event.sender, resolution)
+  );
 
   ipcMain.handle(
     "cli:permissionDecision",
@@ -327,8 +334,15 @@ export function registerCliIpc() {
     return true;
   });
 
-  ipcMain.handle("cli:ensureAgentGuides", (_e, cwd: string) =>
-    ensureAgentGuides(cwd ?? "")
+  ipcMain.handle(
+    "cli:ensureAgentGuides",
+    (
+      _e,
+      input: { cwd?: string; options?: { nativeDraftTools?: boolean } } | string
+    ) =>
+      typeof input === "string"
+        ? ensureAgentGuides(input)
+        : ensureAgentGuides(input?.cwd ?? "", input?.options)
   );
 
   // ---- Conversations -----------------------------------------------------

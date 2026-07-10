@@ -19,6 +19,11 @@ export interface BridgeAction {
  */
 export const DEFAULT_BRIDGE_PORT = 17878;
 export let BRIDGE_PORT = DEFAULT_BRIDGE_PORT;
+let hasActiveBridgePort = false;
+let resolveActiveBridgePort: ((port: number) => void) | undefined;
+const activeBridgePortReady = new Promise<number>((resolve) => {
+  resolveActiveBridgePort = resolve;
+});
 
 export function getActiveBridgePort(): number {
   return BRIDGE_PORT;
@@ -26,6 +31,29 @@ export function getActiveBridgePort(): number {
 
 export function setActiveBridgePort(port: number): void {
   BRIDGE_PORT = port;
+  if (!hasActiveBridgePort) {
+    hasActiveBridgePort = true;
+    resolveActiveBridgePort?.(port);
+    resolveActiveBridgePort = undefined;
+  }
+}
+
+export async function waitForActiveBridgePort(timeoutMs = 10_000): Promise<number> {
+  if (hasActiveBridgePort) return BRIDGE_PORT;
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      activeBridgePortReady,
+      new Promise<number>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("FreeBuddy Draft bridge did not start in time.")),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 export const BRIDGE_ACTIONS: BridgeAction[] = [

@@ -8,6 +8,7 @@ import {
   isKnownBridgeAction,
   parseBridgeRequest
 } from "./agentBridge.js";
+import { handleDraftToolHttpRequest } from "./draftToolService.js";
 
 let previewServer: http.Server | null = null;
 
@@ -26,15 +27,27 @@ export function startPreviewServer(
     }
 
     const server = http.createServer((req, res) => {
-      const parsed = parseBridgeRequest(req.url || "");
-      if (parsed && isKnownBridgeAction(parsed.action)) {
-        safeSendToWebContents(getWebContents(), "freebuddy://bridge", parsed);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true, action: parsed.action }));
-        return;
-      }
-      res.writeHead(404);
-      res.end("not found");
+      void (async () => {
+        if (await handleDraftToolHttpRequest(req, res)) return;
+        const parsed = parseBridgeRequest(req.url || "");
+        if (parsed && isKnownBridgeAction(parsed.action)) {
+          safeSendToWebContents(getWebContents(), "freebuddy://bridge", parsed);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, action: parsed.action }));
+          return;
+        }
+        res.writeHead(404);
+        res.end("not found");
+      })().catch((error) => {
+        if (res.headersSent) return;
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: (error as Error)?.message || String(error)
+          })
+        );
+      });
     });
 
     server.on("error", (err: any) => {

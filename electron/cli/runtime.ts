@@ -247,6 +247,7 @@ export async function cliRun(
   if (built.protocol === "acp") {
     await runAcpAgent({
       child,
+      webContents,
       args,
       pid,
       logStream,

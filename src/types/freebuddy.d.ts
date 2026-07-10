@@ -22,7 +22,9 @@ import type {
   CreateConversationInput,
   ListConversationsArgs,
   AppendMessageInput,
-  UpdateMessageInput
+  UpdateMessageInput,
+  DraftToolEvent,
+  DraftToolResolution
 } from "@/services/cli/types";
 import type {
   WorkflowPlan,
@@ -143,7 +145,10 @@ declare global {
     resolveDraftEntry(cwd: string): Promise<string | null>;
     readDraftMarkdown(cwd: string, rel: string): Promise<string | null>;
     openDraftExternal(url: string): Promise<boolean>;
-    ensureAgentGuides(cwd: string): Promise<{ path: string; action: "created" | "updated" }[]>;
+    ensureAgentGuides(
+      cwd: string,
+      options?: { nativeDraftTools?: boolean }
+    ): Promise<{ path: string; action: "created" | "updated" }[]>;
 
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;
   }
@@ -153,6 +158,8 @@ declare global {
     onBridge(
       cb: (event: { action: string; params: Record<string, string> }) => void
     ): () => void;
+    onDraftTool(cb: (event: DraftToolEvent) => void): () => void;
+    resolveDraftTool(resolution: DraftToolResolution): Promise<boolean>;
   }
 
   interface FreebuddySettings {

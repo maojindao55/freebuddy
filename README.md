@@ -39,6 +39,11 @@ Stay up to date with the latest news while waiting for agents to finish executin
 
 https://github.com/user-attachments/assets/380965e3-d4eb-4ad1-bb0d-ded33c5272e9
 
+### 💥 Code Whip
+Feeling frustrated? Give your agent a good whipping — speed it up and relieve some stress.
+
+https://github.com/user-attachments/assets/8bab605f-6f1b-4e53-a520-c3f5a6645ace
+
 
 ---
 

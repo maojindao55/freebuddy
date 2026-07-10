@@ -40,6 +40,12 @@ https://github.com/user-attachments/assets/9665bf24-9150-4ffa-b571-10eece2d2062
 https://github.com/user-attachments/assets/380965e3-d4eb-4ad1-bb0d-ded33c5272e9
 
 
+### 💥 码鞭道具
+心情焦躁？用力抽打agent提速x1、解压
+
+https://github.com/user-attachments/assets/8bab605f-6f1b-4e53-a520-c3f5a6645ace
+
+
 ---
 
 ## 内置 Agent

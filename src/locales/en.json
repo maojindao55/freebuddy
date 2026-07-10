@@ -32,7 +32,10 @@
     "themeLabel": "Appearance",
     "themeSystem": "Follow system",
     "themeLight": "Light",
-    "themeDark": "Dark"
+    "themeDark": "Dark",
+    "telemetryLabel": "Anonymous usage data",
+    "telemetryEnabled": "Help improve FreeBuddy",
+    "telemetryDescription": "Sends anonymous install, launch, update, app version, operating system, and CPU architecture data. Conversations, prompts, file paths, and workspace contents are never sent."
   },
   "app": { "brand": "FreeBuddy", "chat": "Chat" },
   "sidebar": {

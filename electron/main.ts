@@ -16,6 +16,7 @@ import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { initApplicationMenu } from "./menu.js";
 import { APP_NAME, APP_VERSION } from "./app-meta.js";
 import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
+import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -245,6 +246,7 @@ app.whenReady().then(async () => {
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
   getDb();
+  initializeTelemetry();
   cleanupOrphanManagedAttachments();
   seedBuiltinWorkflowTeams();
   registerCliIpc();
@@ -268,4 +270,12 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+let telemetryShutdownStarted = false;
+app.on("before-quit", (event) => {
+  if (telemetryShutdownStarted) return;
+  telemetryShutdownStarted = true;
+  event.preventDefault();
+  void shutdownTelemetry().finally(() => app.quit());
 });

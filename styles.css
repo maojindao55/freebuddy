@@ -7831,6 +7831,22 @@ button.ghost:focus-visible,
 .settings-section { padding: 12px 0; border-bottom: 1px solid var(--border, #e5e7eb); }
 .settings-section h3 { margin: 0 0 8px; font-size: 13px; }
 .settings-section select { padding: 6px 8px; border-radius: 6px; }
+.telemetry-setting-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 620px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.telemetry-setting-toggle input { margin-top: 3px; }
+.telemetry-setting-toggle span { display: grid; gap: 4px; }
+.telemetry-setting-toggle strong { font-size: 13px; font-weight: 600; }
+.telemetry-setting-toggle small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 /* Sidebar version + update capsule */
 .sidebar-footer .footer-action { position: relative; }

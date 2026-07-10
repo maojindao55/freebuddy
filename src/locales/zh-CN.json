@@ -32,7 +32,10 @@
     "themeLabel": "外观",
     "themeSystem": "跟随系统",
     "themeLight": "浅色",
-    "themeDark": "深色"
+    "themeDark": "深色",
+    "telemetryLabel": "匿名使用数据",
+    "telemetryEnabled": "帮助改进 FreeBuddy",
+    "telemetryDescription": "发送匿名安装、启动、升级、应用版本、操作系统和 CPU 架构；不会发送对话、提示词、文件路径或工作区内容。"
   },
   "app": { "brand": "FreeBuddy", "chat": "聊天" },
   "sidebar": {

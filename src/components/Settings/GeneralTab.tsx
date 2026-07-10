@@ -27,6 +27,8 @@ export function GeneralTab() {
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const theme = useSettingsStore((s) => s.theme);
   const setTheme = useSettingsStore((s) => s.setTheme);
+  const telemetryEnabled = useSettingsStore((s) => s.telemetryEnabled);
+  const setTelemetryEnabled = useSettingsStore((s) => s.setTelemetryEnabled);
 
   return (
     <>
@@ -56,6 +58,21 @@ export function GeneralTab() {
             </option>
           ))}
         </select>
+      </section>
+
+      <section className="settings-section">
+        <h3>{t("general.telemetryLabel")}</h3>
+        <label className="telemetry-setting-toggle">
+          <input
+            type="checkbox"
+            checked={telemetryEnabled}
+            onChange={(event) => void setTelemetryEnabled(event.target.checked)}
+          />
+          <span>
+            <strong>{t("general.telemetryEnabled")}</strong>
+            <small>{t("general.telemetryDescription")}</small>
+          </span>
+        </label>
       </section>
     </>
   );

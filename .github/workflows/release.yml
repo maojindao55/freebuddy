@@ -80,6 +80,8 @@ jobs:
 
       - name: Build Electron app
         env:
+          FREEBUDDY_POSTHOG_KEY: ${{ secrets.FREEBUDDY_POSTHOG_KEY }}
+          FREEBUDDY_POSTHOG_HOST: ${{ vars.FREEBUDDY_POSTHOG_HOST }}
           # macOS code signing (REQUIRED for Squirrel.Mac auto-update to work).
           # Scoped to macOS only: the Apple Development cert cannot sign
           # Windows exes, and feeding the multi-cert .p12 to Windows

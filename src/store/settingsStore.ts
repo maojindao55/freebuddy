@@ -21,9 +21,11 @@ interface SettingsState {
   resolvedLanguage: AppLocale;
   theme: ThemePreference;
   resolvedTheme: ResolvedTheme;
+  telemetryEnabled: boolean;
   load(): Promise<void>;
   setLanguage(lng: LanguagePreference): Promise<void>;
   setTheme(theme: ThemePreference): Promise<void>;
+  setTelemetryEnabled(enabled: boolean): Promise<void>;
   refreshSystemTheme(): void;
 }
 
@@ -33,6 +35,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   resolvedLanguage: "en",
   theme: "system",
   resolvedTheme: getSystemTheme(),
+  telemetryEnabled: true,
 
   async load() {
     const systemLanguage =
@@ -46,7 +49,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         language: "system",
         resolvedLanguage: resolved,
         theme: "system",
-        resolvedTheme: resolveThemePreference("system", systemTheme)
+        resolvedTheme: resolveThemePreference("system", systemTheme),
+        telemetryEnabled: true
       });
       return;
     }
@@ -54,6 +58,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const preference = normalizeLanguagePreference(stored);
     const resolved = resolveLanguagePreference(preference, systemLanguage);
     const storedTheme = await cliClient.getSetting("theme");
+    const storedTelemetryEnabled = await cliClient.getSetting("telemetry.enabled");
     const themePreference = normalizeThemePreference(storedTheme);
     const resolvedTheme = resolveThemePreference(themePreference, systemTheme);
     await i18next.changeLanguage(resolved);
@@ -62,7 +67,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       language: preference,
       resolvedLanguage: resolved,
       theme: themePreference,
-      resolvedTheme
+      resolvedTheme,
+      telemetryEnabled: storedTelemetryEnabled !== "false"
     });
   },
 
@@ -82,6 +88,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ theme, resolvedTheme });
     if (cliClient.isAvailable()) {
       await cliClient.setSetting("theme", theme);
+    }
+  },
+
+  async setTelemetryEnabled(enabled) {
+    set({ telemetryEnabled: enabled });
+    if (cliClient.isAvailable()) {
+      await cliClient.setSetting("telemetry.enabled", enabled ? "true" : "false");
     }
   },
 

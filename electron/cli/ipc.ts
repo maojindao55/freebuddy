@@ -46,6 +46,7 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
+import { setTelemetryEnabled } from "../telemetry.js";
 import {
   addFeedSource,
   deleteFeedSource,
@@ -412,6 +413,10 @@ export function registerCliIpc() {
 
   ipcMain.handle("settings:get", (_e, key: string) => getSetting(key));
   ipcMain.handle("settings:set", (_e, args: { key: string; value: string }) => {
+    if (args.key === "telemetry.enabled") {
+      setTelemetryEnabled(args.value === "true");
+      return;
+    }
     setSetting(args.key, args.value);
     if (
       args.key === "language" &&

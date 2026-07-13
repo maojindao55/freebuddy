@@ -81,15 +81,15 @@ test("Codex usage card is rendered after the primary workspace cards", () => {
   assert.ok(codexCard > planCard);
 });
 
-test("feed card is rendered last because it is a secondary workspace affordance", () => {
-  const feedCard = source.lastIndexOf("<FeedCard />");
+test("information card host is rendered last because it is a secondary workspace affordance", () => {
+  const infoCardHost = source.lastIndexOf("<InfoCardHost />");
   const codexCard = source.indexOf('className="side-card codex-usage-card"');
   const activeAgent = source.indexOf('className="side-card active-agent-card"');
   const planCard = source.indexOf('className="side-card plan-card"');
 
-  assert.ok(feedCard > activeAgent);
-  assert.ok(feedCard > planCard);
-  assert.ok(feedCard > codexCard);
+  assert.ok(infoCardHost > activeAgent);
+  assert.ok(infoCardHost > planCard);
+  assert.ok(infoCardHost > codexCard);
 });
 
 test("Codex usage bridge is exposed without leaking token fields to renderer types", () => {

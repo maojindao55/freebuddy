@@ -13,8 +13,10 @@ const types = read("../src/types/freebuddy.d.ts");
 const client = read("../src/services/feed/client.ts");
 const store = read("../src/store/feedStore.ts");
 const settingsModal = read("../src/components/Settings/SettingsModal.tsx");
+const infoCardsTab = read("../src/components/Settings/InfoCardsTab.tsx");
 const feedTab = read("../src/components/Settings/FeedTab.tsx");
 const workspacePanel = read("../src/components/CLI/WorkspacePanel.tsx");
+const infoCardHost = read("../src/components/InfoCards/InfoCardHost.tsx");
 const feedCard = read("../src/components/Feeds/FeedCard.tsx");
 const feedInterpretation = read("../src/components/Feeds/feedInterpretation.ts");
 const styles = read("../styles.css");
@@ -136,18 +138,20 @@ test("feed bridge is exposed across ipc preload types and client", () => {
 test("settings modal mounts the feed management tab", () => {
   assert.match(settingsModal, /"feed" \| "about"/);
   assert.match(settingsModal, /settings\.tabs\.feed/);
-  assert.match(settingsModal, /<FeedTab \/>/);
+  assert.match(settingsModal, /<InfoCardsTab \/>/);
+  assert.match(infoCardsTab, /<FeedTab \/>/);
   assert.match(feedTab, /addSource/);
   assert.match(feedTab, /refreshAll/);
-  assert.equal(en.settings.tabs.feed, "Feed");
-  assert.equal(zh.settings.tabs.feed, "订阅资讯");
+  assert.equal(en.settings.tabs.feed, "Information Cards");
+  assert.equal(zh.settings.tabs.feed, "信息卡片");
 });
 
 test("workspace feed card starts an interpretation conversation", () => {
-  assert.match(workspacePanel, /import \{ FeedCard \}/);
-  assert.match(workspacePanel, /<FeedCard \/>/);
+  assert.match(workspacePanel, /import \{ InfoCardHost \}/);
+  assert.match(workspacePanel, /<InfoCardHost \/>/);
+  assert.match(infoCardHost, /<FeedCard key=\{card\.id\} title=\{card\.title\} \/>/);
   assert.ok(
-    workspacePanel.lastIndexOf("<FeedCard />") >
+    workspacePanel.lastIndexOf("<InfoCardHost />") >
       workspacePanel.indexOf('className="side-card codex-usage-card"')
   );
   assert.match(feedCard, /newConversation/);

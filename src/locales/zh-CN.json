@@ -335,7 +335,7 @@
       "general": "通用",
       "cli": "CLI Agent",
       "workflowTeams": "工作流团队",
-      "feed": "订阅资讯",
+      "feed": "信息卡片",
       "about": "关于"
     },
     "cli": {
@@ -729,6 +729,54 @@
       "downloading": "下载中… {{percent}}%",
       "downloaded": "{{version}} 已准备就绪，可立即安装。",
       "error": "检查更新失败。"
+    }
+  },
+  "infoCards": {
+    "settingsTitle": "信息卡片",
+    "settingsDescription": "配置第三列中的 RSS、指数行情和足球篮球赛况卡片。网页数据由隔离浏览器按确定性规则采集。",
+    "addCard": "添加卡片",
+    "types": {
+      "rss": "RSS 资讯",
+      "market": "指数行情",
+      "sports": "足球篮球赛况"
+    },
+    "builtinRss": "内置资讯队列",
+    "cardTitle": "卡片标题",
+    "manageRssSources": "管理 RSS 订阅源",
+    "deleteConfirm": "删除卡片“{{title}}”？",
+    "agentRecipeHint": "可以手动填写 CSS 选择器，也可以在会话中让 Agent 使用浏览器工具分析网页并保存规则。网页内容只作为不可信数据处理。",
+    "sourceUrl": "HTTPS 数据页面",
+    "waitForSelector": "加载完成选择器（可选）",
+    "rowSelector": "每一行选择器",
+    "refreshMinutes": "刷新间隔（分钟）",
+    "maxItems": "最多展示条数",
+    "fields": {
+      "name": "指数名称选择器",
+      "value": "点位选择器",
+      "change": "涨跌选择器",
+      "status": "状态选择器",
+      "league": "联赛选择器",
+      "home": "主队选择器",
+      "away": "客队选择器",
+      "score": "比分选择器"
+    },
+    "saved": "已保存",
+    "saving": "保存中…",
+    "openSource": "打开数据来源",
+    "refresh": "刷新卡片",
+    "refreshing": "正在采集网页数据…",
+    "needsRecipe": "尚未配置网页采集规则。可到设置填写，或让 Agent 通过浏览器生成。",
+    "noData": "暂无可展示的数据。",
+    "unknownItem": "未知指数",
+    "sports": "赛况",
+    "updatedAt": "更新于 {{time}}",
+    "notUpdated": "尚未成功更新",
+    "sourceError": "数据源异常，当前展示上次缓存",
+    "analyze": "让 Agent 解读",
+    "analyzing": "发送中…",
+    "prompts": {
+      "market": "请分析下面的指数行情快照。先说明数据时间和是否过期，再总结整体涨跌、显著变化、可能值得继续关注的信号。不要把它当作投资建议。",
+      "sports": "请解读下面的足球或篮球赛况快照。区分进行中、未开始和已结束比赛，总结关键比分与值得关注的比赛；数据不足时明确说明。"
     }
   },
   "feed": {

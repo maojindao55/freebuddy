@@ -48,6 +48,12 @@ import type {
   FeedSource,
   UpdateFeedSourceInput
 } from "@/services/feed/types";
+import type {
+  CreateInfoCardInput,
+  InfoCardConfig,
+  InfoCardSnapshot,
+  UpdateInfoCardInput
+} from "@/services/infoCards/types";
 
 export {};
 
@@ -198,6 +204,17 @@ declare global {
     markInterpreted(id: string): Promise<FeedItem | undefined>;
   }
 
+  interface FreebuddyInfoCards {
+    list(): Promise<InfoCardConfig[]>;
+    create(input: CreateInfoCardInput): Promise<InfoCardConfig>;
+    update(input: UpdateInfoCardInput): Promise<InfoCardConfig | undefined>;
+    delete(id: string): Promise<boolean>;
+    reorder(ids: string[]): Promise<InfoCardConfig[]>;
+    snapshot(id: string): Promise<InfoCardSnapshot>;
+    refresh(id: string): Promise<InfoCardSnapshot>;
+    onChanged(cb: () => void): () => void;
+  }
+
   interface FreebuddyWorkflow {
     validate(plan: WorkflowPlan): Promise<WorkflowValidationResult>;
     previewReviewLoop(input: {
@@ -344,6 +361,7 @@ declare global {
     workflowTeams: FreebuddyWorkflowTeams;
     settings: FreebuddySettings;
     feed: FreebuddyFeed;
+    infoCards: FreebuddyInfoCards;
     window: FreebuddyWindow;
     updater: FreebuddyUpdater;
   }

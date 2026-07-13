@@ -348,7 +348,7 @@
       "general": "General",
       "cli": "CLI Agents",
       "workflowTeams": "Workflow Teams",
-      "feed": "Feed",
+      "feed": "Information Cards",
       "about": "About"
     },
     "cli": {
@@ -743,6 +743,54 @@
       "downloading": "Downloading… {{percent}}%",
       "downloaded": "Version {{version}} is ready to install.",
       "error": "Update check failed."
+    }
+  },
+  "infoCards": {
+    "settingsTitle": "Information cards",
+    "settingsDescription": "Configure RSS, market-index, and football or basketball score cards in the third column. Web data is collected by deterministic rules in an isolated browser.",
+    "addCard": "Add card",
+    "types": {
+      "rss": "RSS news",
+      "market": "Market indices",
+      "sports": "Football & basketball scores"
+    },
+    "builtinRss": "Built-in unread queue",
+    "cardTitle": "Card title",
+    "manageRssSources": "Manage RSS sources",
+    "deleteConfirm": "Delete the “{{title}}” card?",
+    "agentRecipeHint": "Enter CSS selectors manually, or ask an Agent in a conversation to inspect the page with browser tools and save a recipe. Page content is always treated as untrusted data.",
+    "sourceUrl": "HTTPS data page",
+    "waitForSelector": "Ready selector (optional)",
+    "rowSelector": "Row selector",
+    "refreshMinutes": "Refresh interval (minutes)",
+    "maxItems": "Maximum rows",
+    "fields": {
+      "name": "Index name selector",
+      "value": "Value selector",
+      "change": "Change selector",
+      "status": "Status selector",
+      "league": "League selector",
+      "home": "Home-team selector",
+      "away": "Away-team selector",
+      "score": "Score selector"
+    },
+    "saved": "Saved",
+    "saving": "Saving…",
+    "openSource": "Open data source",
+    "refresh": "Refresh card",
+    "refreshing": "Collecting web data…",
+    "needsRecipe": "No browser extraction recipe yet. Configure one in Settings or ask an Agent to create it with the browser tools.",
+    "noData": "No data to show yet.",
+    "unknownItem": "Unknown index",
+    "sports": "Scores",
+    "updatedAt": "Updated {{time}}",
+    "notUpdated": "Not updated yet",
+    "sourceError": "Source error; showing the last cached result",
+    "analyze": "Ask Agent to analyze",
+    "analyzing": "Sending…",
+    "prompts": {
+      "market": "Analyze this market-index snapshot. State the data time and staleness first, then summarize direction, notable moves, and signals worth monitoring. Do not present this as financial advice.",
+      "sports": "Interpret this football or basketball score snapshot. Separate live, upcoming, and completed games, then summarize notable scores and matches. Clearly state when the data is insufficient."
     }
   },
   "feed": {

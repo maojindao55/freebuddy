@@ -30,7 +30,7 @@ function formatFeedTime(value: string | undefined) {
   }).format(date);
 }
 
-export function FeedCard() {
+export function FeedCard({ title }: { title?: string } = {}) {
   const { t } = useTranslation();
   const loaded = useFeedStore((s) => s.loaded);
   const loading = useFeedStore((s) => s.loading);
@@ -141,7 +141,7 @@ export function FeedCard() {
   return (
     <section className="side-card feed-card">
       <div className="side-card-header feed-card-header">
-        <span>{t("feed.cardTitle")}</span>
+        <span>{title || t("feed.cardTitle")}</span>
         <div className="feed-card-actions">
           <select
             className="feed-source-select"

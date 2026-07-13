@@ -9513,3 +9513,295 @@ button.ghost:focus-visible,
     grid-column: 1 / -1;
   }
 }
+
+/* Configurable third-column information cards */
+.info-card-add-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-md);
+  background: var(--fb-panel-soft);
+}
+
+.info-card-add-row select {
+  min-width: 220px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-sm);
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-bg);
+}
+
+.info-card-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-card-editor {
+  padding: 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-md);
+  background: var(--fb-panel-soft);
+}
+
+.info-card-editor-header,
+.info-card-editor-actions,
+.info-card-header,
+.info-card-actions {
+  display: flex;
+  align-items: center;
+}
+
+.info-card-editor-header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.info-card-editor-header > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.info-card-editor-header small {
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
+.info-card-editor-actions,
+.info-card-actions {
+  gap: 6px;
+}
+
+.info-card-title-field,
+.info-card-recipe-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+}
+
+.info-card-title-field {
+  margin-top: 12px;
+}
+
+.info-card-title-field input,
+.info-card-recipe-editor input {
+  width: 100%;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-sm);
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-bg);
+}
+
+.info-card-recipe-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fb-border);
+}
+
+.info-card-recipe-editor > p {
+  margin: 0;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.info-card-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.info-card-rss-settings {
+  margin-top: 12px;
+  border-top: 1px solid var(--fb-border);
+}
+
+.info-card-rss-settings > summary {
+  padding: 12px 0 0;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.info-card-rss-settings .feed-settings-tab {
+  padding: 12px 0 0;
+}
+
+.info-card-rss-settings .settings-section-heading {
+  display: none;
+}
+
+.info-data-card {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.info-card-header {
+  justify-content: space-between;
+}
+
+.info-card-empty {
+  margin: 0;
+  padding: 4px 14px 12px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.market-index-list,
+.sports-score-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 2px 14px 8px;
+  list-style: none;
+}
+
+.market-index-list li,
+.sports-score-list li {
+  border-top: 1px solid var(--fb-border);
+}
+
+.market-index-list li:first-child,
+.sports-score-list li:first-child {
+  border-top: 0;
+}
+
+.market-index-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.market-index-list li > div:first-child,
+.market-index-value {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.market-index-list strong,
+.sports-score-match {
+  color: var(--fb-text-primary);
+  font-size: 12px;
+}
+
+.market-index-list small,
+.market-index-value span,
+.sports-score-meta {
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+}
+
+.market-index-value {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.market-index-value .positive {
+  color: var(--fb-brand);
+}
+
+.market-index-value .negative {
+  color: var(--fb-danger);
+}
+
+.sports-score-list li {
+  padding: 8px 0;
+}
+
+.sports-score-meta,
+.sports-score-match {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sports-score-match {
+  margin-top: 4px;
+}
+
+.sports-score-match span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sports-score-match span:last-child {
+  text-align: right;
+}
+
+.info-card-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 14px 8px;
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+}
+
+.info-card-status.stale,
+.info-card-status span:last-child:not(:first-child) {
+  color: var(--fb-warning);
+}
+
+.info-card-analyze {
+  display: flex;
+  width: calc(100% - 28px);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 14px 12px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--fb-rounded-sm);
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.info-card-analyze:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.feed-card-action .spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@media (max-width: 900px) {
+  .info-card-add-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .info-card-add-row select,
+  .info-card-selector-grid {
+    width: 100%;
+  }
+
+  .info-card-selector-grid {
+    grid-template-columns: 1fr;
+  }
+}

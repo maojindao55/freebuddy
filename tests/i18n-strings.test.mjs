@@ -24,6 +24,7 @@ const migratedFiles = [
   "../src/components/CLI/MessageBubble.tsx",
   "../src/components/CLI/StreamItem.tsx",
   "../src/components/CLI/PermissionDialog.tsx",
+  "../src/components/CLI/AuthenticationDialog.tsx",
   "../src/components/CLI/ImageLightbox.tsx",
   "../src/components/Settings/SettingsModal.tsx",
   "../src/components/Settings/CLIAdaptersTab.tsx",

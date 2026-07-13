@@ -20,6 +20,9 @@ const cli = {
     return () => ipcRenderer.off(channel, handler);
   },
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
+  probeAuthentication: (args: unknown) =>
+    ipcRenderer.invoke("cli:probeAuthentication", args),
+  logout: (args: unknown) => ipcRenderer.invoke("cli:logout", args),
   check: (
     adapter: string,
     binary?: string,
@@ -47,6 +50,12 @@ const cli = {
   kill: (sessionId: string) => ipcRenderer.invoke("cli:kill", sessionId),
   permissionDecision: (args: unknown) =>
     ipcRenderer.invoke("cli:permissionDecision", args),
+  authenticationDecision: (args: unknown) =>
+    ipcRenderer.invoke("cli:authenticationDecision", args),
+  authenticationTerminalInput: (args: unknown) =>
+    ipcRenderer.invoke("cli:authenticationTerminalInput", args),
+  authenticationTerminalCancel: (args: unknown) =>
+    ipcRenderer.invoke("cli:authenticationTerminalCancel", args),
 
   listTasks: (args: unknown) => ipcRenderer.invoke("cli:listTasks", args),
   getTask: (id: string) => ipcRenderer.invoke("cli:getTask", id),

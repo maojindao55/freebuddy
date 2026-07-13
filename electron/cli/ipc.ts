@@ -18,7 +18,10 @@ import {
   cliRun,
   type CliRunArgs
 } from "./runtime.js";
-import { takePermissionResolver } from "./runtimeShared.js";
+import {
+  takeAuthenticationResolver,
+  takePermissionResolver
+} from "./runtimeShared.js";
 import {
   getTask,
   listTasks,
@@ -77,6 +80,15 @@ import { registerWorkflowIpc } from "./workflowIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
 import { resolveDraftToolRequest } from "../draftToolService.js";
 import type { DraftToolResolution } from "../shared/draftToolProtocol.js";
+import {
+  logoutAcpAgent,
+  probeAcpAuthentication,
+  type CliAuthControlArgs
+} from "./acpAuth.js";
+import {
+  cancelAuthenticationTerminal,
+  writeAuthenticationTerminal
+} from "./acpAuthTerminal.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -216,6 +228,12 @@ export function registerCliIpc() {
 
   ipcMain.handle("cli:listRuntimes", () => listRuntimes());
   ipcMain.handle("cli:codexUsage", () => readCodexUsage());
+  ipcMain.handle("cli:probeAuthentication", (_e, args: CliAuthControlArgs) =>
+    probeAcpAuthentication(args)
+  );
+  ipcMain.handle("cli:logout", (_e, args: CliAuthControlArgs) =>
+    logoutAcpAgent(args)
+  );
   ipcMain.handle(
     "cli:check",
     async (
@@ -273,6 +291,39 @@ export function registerCliIpc() {
       }
       return true;
     }
+  );
+
+  ipcMain.handle(
+    "cli:authenticationDecision",
+    (
+      _e,
+      args: {
+        sessionId: string;
+        requestId: string;
+        outcome: "selected" | "cancelled";
+        methodId?: string;
+      }
+    ) => {
+      const resolver = takeAuthenticationResolver(args.sessionId, args.requestId);
+      if (!resolver) return false;
+      if (args.outcome === "selected" && args.methodId) {
+        resolver({ outcome: "selected", methodId: args.methodId });
+      } else {
+        resolver({ outcome: "cancelled" });
+      }
+      return true;
+    }
+  );
+
+  ipcMain.handle(
+    "cli:authenticationTerminalInput",
+    (_e, args: { sessionId: string; requestId: string; data: string }) =>
+      writeAuthenticationTerminal(args.sessionId, args.requestId, args.data)
+  );
+  ipcMain.handle(
+    "cli:authenticationTerminalCancel",
+    (_e, args: { sessionId: string; requestId: string }) =>
+      cancelAuthenticationTerminal(args.sessionId, args.requestId)
   );
 
   ipcMain.handle("cli:listTasks", (_e, args: CliTaskListArgs = {}) =>

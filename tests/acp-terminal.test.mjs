@@ -36,7 +36,7 @@ test("terminal manager enforces output byte limits", async () => {
   const { terminalId } = manager.create({
     sessionId: "sess-2",
     command: process.execPath,
-    args: ["-e", "process.stdout.write('x'.repeat(200))"],
+    args: ["-e", "process.stdout.write('prefix-' + 'x'.repeat(200) + '-tail')"],
     outputByteLimit: 32
   });
 
@@ -45,6 +45,28 @@ test("terminal manager enforces output byte limits", async () => {
 
   assert.equal(snap.truncated, true);
   assert.ok(Buffer.byteLength(snap.output, "utf8") <= 32);
+  assert.match(snap.output, /-tail$/);
+  assert.doesNotMatch(snap.output, /^prefix-/);
+
+  manager.release(terminalId);
+});
+
+test("terminal manager truncates UTF-8 output at character boundaries", async () => {
+  const manager = createAcpTerminalManager({});
+  const { terminalId } = manager.create({
+    sessionId: "sess-3",
+    command: process.execPath,
+    args: ["-e", "process.stdout.write('前缀内容🙂最终')"],
+    outputByteLimit: 10
+  });
+
+  await manager.waitForExit(terminalId);
+  const snap = manager.output(terminalId);
+
+  assert.equal(snap.truncated, true);
+  assert.ok(Buffer.byteLength(snap.output, "utf8") <= 10);
+  assert.match(snap.output, /最终$/);
+  assert.doesNotMatch(snap.output, /�/);
 
   manager.release(terminalId);
 });

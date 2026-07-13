@@ -8,8 +8,8 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev-electron.mjs",
-    "postinstall": "electron-rebuild -f -w better-sqlite3",
-    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 -w node-pty && node scripts/fix-node-pty-permissions.mjs",
+    "rebuild": "electron-rebuild -f -w better-sqlite3 -w node-pty && node scripts/fix-node-pty-permissions.mjs",
     "build": "npm run build:renderer && npm run build:electron",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && node scripts/write-telemetry-config.mjs",
@@ -36,6 +36,7 @@
     "i18next": "^26.3.1",
     "lucide-react": "^0.562.0",
     "nanoid": "^5.1.11",
+    "node-pty": "^1.1.0",
     "posthog-node": "^5.40.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
@@ -45,6 +46,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@agentclientprotocol/sdk": "^1.2.1",
     "@electron/rebuild": "^4.0.4",
     "@google/design.md": "^0.3.0",
     "@types/better-sqlite3": "^7.6.13",
@@ -53,6 +55,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "ajv": "^8.20.0",
     "electron": "^39.2.7",
     "electron-builder": "^26.15.3",
     "typescript": "^5.9.3",

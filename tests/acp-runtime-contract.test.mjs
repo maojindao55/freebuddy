@@ -32,3 +32,7 @@ test("ACP runtime still treats process close as a fallback finish signal", () =>
     /finish\(exitCode === 0 \? "done" : "failed", exitCode\)/
   );
 });
+
+test("ACP terminal output uses the stable exitStatus response shape", () => {
+  assert.match(acpRuntimeSource, /buildTerminalOutputResponse\(snap\)/);
+});

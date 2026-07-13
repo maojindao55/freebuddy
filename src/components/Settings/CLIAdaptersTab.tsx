@@ -5,7 +5,11 @@ import { nanoid } from "nanoid";
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { cliClient } from "@/services/cli/client";
-import type { CLIExecutorOverride, CliRuntime } from "@/services/cli/types";
+import type {
+  CliAuthProbeResult,
+  CLIExecutorOverride,
+  CliRuntime
+} from "@/services/cli/types";
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
 import { useCliInstallStore } from "@/store/cliInstallStore";
@@ -128,6 +132,13 @@ export function CLIAdaptersTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [checkingIds, setCheckingIds] = useState<Set<string>>(() => new Set());
   const [checkingAll, setCheckingAll] = useState(false);
+  const [authProbes, setAuthProbes] = useState<
+    Record<string, CliAuthProbeResult>
+  >({});
+  const [authBusyIds, setAuthBusyIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [authMessages, setAuthMessages] = useState<Record<string, string>>({});
   const autoCheckedRef = useRef(false);
   const autoInstallAttemptedRef = useRef<Set<string>>(new Set());
   const selectedExecutor = useMemo(
@@ -212,6 +223,67 @@ export function CLIAdaptersTab() {
     [list, refreshMembers, upsertOverride]
   );
 
+  const authControlArgs = useCallback((ex: ResolvedExecutor) => ({
+    agentId: `cli-${ex.id}`,
+    adapter: ex.baseAdapter ?? ex.id,
+    binary: ex.binary,
+    extraArgs: ex.extraArgs,
+    env: ex.env
+  }), []);
+
+  const handleAuthProbe = useCallback(async (ex: ResolvedExecutor) => {
+    setAuthBusyIds((current) => new Set(current).add(ex.id));
+    setAuthMessages((current) => ({ ...current, [ex.id]: "" }));
+    try {
+      const result = await cliClient.probeAuthentication(authControlArgs(ex));
+      setAuthProbes((current) => ({ ...current, [ex.id]: result }));
+      setAuthMessages((current) => ({
+        ...current,
+        [ex.id]: t("settings.cli.authMethodsFound", {
+          count: result.authMethods.length
+        })
+      }));
+    } catch (error) {
+      setAuthMessages((current) => ({
+        ...current,
+        [ex.id]: t("settings.cli.authProbeFailed", {
+          error: (error as Error)?.message || String(error)
+        })
+      }));
+    } finally {
+      setAuthBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(ex.id);
+        return next;
+      });
+    }
+  }, [authControlArgs, t]);
+
+  const handleLogout = useCallback(async (ex: ResolvedExecutor) => {
+    setAuthBusyIds((current) => new Set(current).add(ex.id));
+    setAuthMessages((current) => ({ ...current, [ex.id]: "" }));
+    try {
+      await cliClient.logout(authControlArgs(ex));
+      setAuthMessages((current) => ({
+        ...current,
+        [ex.id]: t("settings.cli.logoutSuccess")
+      }));
+    } catch (error) {
+      setAuthMessages((current) => ({
+        ...current,
+        [ex.id]: t("settings.cli.logoutFailed", {
+          error: (error as Error)?.message || String(error)
+        })
+      }));
+    } finally {
+      setAuthBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(ex.id);
+        return next;
+      });
+    }
+  }, [authControlArgs, t]);
+
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
@@ -262,6 +334,11 @@ export function CLIAdaptersTab() {
           command: ex.installHint
         });
       }}
+      authProbe={authProbes[ex.id]}
+      authBusy={authBusyIds.has(ex.id)}
+      authMessage={authMessages[ex.id]}
+      onAuthProbe={() => void handleAuthProbe(ex)}
+      onLogout={() => void handleLogout(ex)}
       installing={installingIdSet.has(ex.id)}
     />
   );
@@ -354,6 +431,11 @@ function AdapterRow({
   onClone,
   onEdit,
   onInstall,
+  authProbe,
+  authBusy,
+  authMessage,
+  onAuthProbe,
+  onLogout,
   installing
 }: {
   ex: ResolvedExecutor;
@@ -363,6 +445,11 @@ function AdapterRow({
   onClone: () => void;
   onEdit: () => void;
   onInstall: () => void;
+  authProbe?: CliAuthProbeResult;
+  authBusy: boolean;
+  authMessage?: string;
+  onAuthProbe: () => void;
+  onLogout: () => void;
   installing: boolean;
 }) {
   const { t } = useTranslation();
@@ -437,6 +524,11 @@ function AdapterRow({
               {t("settings.cli.modelLabel")}: <code>{model}</code>
             </span>
           )}
+          {authMessage && (
+            <span className="adapter-status muted" title={authMessage}>
+              {authMessage}
+            </span>
+          )}
         </div>
       </button>
       <div className="adapter-row-actions">
@@ -453,6 +545,23 @@ function AdapterRow({
         <button type="button" onClick={onCheck} disabled={checking || installing}>
           {checking ? t("settings.cli.checking") : t("common.check")}
         </button>
+        {rt?.installed && !authProbe && (
+          <button type="button" onClick={onAuthProbe} disabled={authBusy}>
+            {authBusy
+              ? t("settings.cli.authChecking")
+              : t("settings.cli.checkAuthentication")}
+          </button>
+        )}
+        {rt?.installed && authProbe?.logoutSupported && (
+          <button
+            type="button"
+            className="danger"
+            onClick={onLogout}
+            disabled={authBusy}
+          >
+            {authBusy ? t("settings.cli.loggingOut") : t("settings.cli.logout")}
+          </button>
+        )}
         <button type="button" onClick={onClone} disabled={checking || installing}>
           {t("common.clone")}
         </button>
@@ -945,4 +1054,3 @@ function EditOverridePanel({
     </section>
   );
 }
-

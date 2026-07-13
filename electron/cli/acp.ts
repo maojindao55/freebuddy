@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import type {
+  AuthenticateRequest,
+  InitializeRequest,
+  LogoutRequest,
+  TerminalOutputResponse
+} from "@agentclientprotocol/sdk";
 
 import type { AcpStdioMcpServer } from "../shared/draftToolProtocol.js";
 
@@ -16,13 +22,55 @@ export interface AcpMessage {
 }
 
 /** An ACP authentication method advertised by an agent in `initialize`.
- *  FreeBuddy does not drive the auth flow; it only reads these to detect that
- *  authentication is required and surface a clear error. */
+ *  Stable ACP v1 supports agent-driven authentication. Draft agents may also
+ *  advertise richer method types, which are kept here so we can reject them
+ *  with an actionable error instead of pretending the client supports them. */
 export interface AcpAuthMethod {
   id: string;
   type?: "agent" | "env_var" | "terminal";
   name?: string;
   description?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  _meta?: Record<string, unknown>;
+}
+
+export function selectAcpAuthMethod(
+  methods: AcpAuthMethod[],
+  env: NodeJS.ProcessEnv = process.env
+): AcpAuthMethod | undefined {
+  const supported = methods.filter(
+    (method) =>
+      typeof method?.id === "string" &&
+      method.id.length > 0 &&
+      (method.type == null ||
+        method.type === "agent" ||
+        method.type === "terminal")
+  );
+  if (supported.length <= 1) return supported[0];
+
+  const apiKeyMethod = supported.find((method) =>
+    /api[-_ ]?key/i.test(`${method.id} ${method.name ?? ""}`)
+  );
+  const apiKeyMeta = apiKeyMethod?._meta?.["api-key"];
+  const provider =
+    apiKeyMeta && typeof apiKeyMeta === "object"
+      ? String((apiKeyMeta as Record<string, unknown>).provider ?? "").toLowerCase()
+      : "";
+  const hasApiKey =
+    provider === "openai"
+      ? Boolean(env.CODEX_API_KEY || env.OPENAI_API_KEY)
+      : provider === "anthropic"
+        ? Boolean(env.ANTHROPIC_API_KEY)
+        : false;
+  if (apiKeyMethod && hasApiKey) return apiKeyMethod;
+
+  const interactiveMethods = supported.filter((method) =>
+    /chat[-_ ]?gpt|oauth|browser|device|log[-_ ]?in|account|subscription|github|google|wechat|ioa/i.test(
+      `${method.id} ${method.name ?? ""} ${method.description ?? ""}`
+    )
+  );
+  return interactiveMethods.length === 1 ? interactiveMethods[0] : undefined;
 }
 
 export type AcpStreamItem =
@@ -145,7 +193,11 @@ export type AcpStreamItem =
 
 type AcpPlanEntry = Extract<AcpStreamItem, { kind: "plan" }>["entries"][number];
 
-export function buildInitializeRequest(id: AcpRequestId): AcpMessage {
+export function buildInitializeRequest(
+  id: AcpRequestId,
+  clientVersion =
+    process.env.FB_APP_VERSION || process.env.npm_package_version || "unknown"
+): AcpMessage & { params: InitializeRequest } {
   return {
     jsonrpc: "2.0",
     id,
@@ -153,18 +205,59 @@ export function buildInitializeRequest(id: AcpRequestId): AcpMessage {
     params: {
       protocolVersion: 1,
       clientCapabilities: {
-        // Opt in to receive terminal-type auth methods so we can detect when
-        // an agent requires authentication and surface a clear error. We do not
-        // drive the login flow; the user logs in via the agent's own CLI.
-        auth: { terminal: true },
-        terminal: true
+        terminal: true,
+        auth: { terminal: true }
       },
       clientInfo: {
         name: "freebuddy",
         title: "FreeBuddy",
-        version: "0.1.0"
+        version: clientVersion
       }
     }
+  };
+}
+
+export function buildAuthenticateRequest(
+  id: AcpRequestId,
+  methodId: string
+): AcpMessage & { params: AuthenticateRequest } {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "authenticate",
+    params: { methodId }
+  };
+}
+
+export function buildLogoutRequest(
+  id: AcpRequestId
+): AcpMessage & { params: LogoutRequest } {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "logout",
+    params: {}
+  };
+}
+
+export function buildTerminalOutputResponse(snapshot: {
+  output: string;
+  truncated: boolean;
+  exited: boolean;
+  exitCode?: number | null;
+  signal?: string | null;
+}): TerminalOutputResponse {
+  return {
+    output: snapshot.output,
+    truncated: snapshot.truncated,
+    ...(snapshot.exited
+      ? {
+          exitStatus: {
+            exitCode: snapshot.exitCode ?? null,
+            signal: snapshot.signal ?? null
+          }
+        }
+      : {})
   };
 }
 

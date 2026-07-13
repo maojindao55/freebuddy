@@ -9,6 +9,7 @@ import {
   acpSessionListToItems,
   acpSessionSetupToItems,
   acpUpdateToItems,
+  buildAuthenticateRequest,
   buildInitializeRequest,
   buildSessionCancelNotification,
   buildSessionCloseRequest,
@@ -18,7 +19,9 @@ import {
   buildSessionPromptRequest,
   buildSessionResumeRequest,
   buildSessionSetConfigOptionRequest,
+  buildTerminalOutputResponse,
   parseAcpLine,
+  selectAcpAuthMethod,
   shouldEmitAcpUpdate,
   shouldSkipUserMessageChunk,
   type AcpAuthMethod,
@@ -30,7 +33,9 @@ import { updateRuntimeRun } from "./check.js";
 import { saveToolSession } from "./store.js";
 import {
   appendLog,
+  clearAuthenticationResolversForSession,
   clearPermissionResolversForSession,
+  registerAuthenticationResolver,
   registerPermissionResolver,
   setTaskToolSessionId,
   updateTaskStatus,
@@ -46,6 +51,10 @@ import {
   unregisterDraftToolSession
 } from "../draftToolService.js";
 import type { AcpStdioMcpServer } from "../shared/draftToolProtocol.js";
+import {
+  clearAuthenticationTerminalsForSession,
+  runAuthenticationTerminal
+} from "./acpAuthTerminal.js";
 
 function writeAcp(
   child: ChildProcessByStdio<Writable, Readable, Readable>,
@@ -65,20 +74,34 @@ export interface AcpRuntimeInput {
   running: Map<string, Running>;
   capturedSessions: Map<string, string>;
   emit: (e: CliEvent) => void;
+  agentCommand: {
+    bin: string;
+    args: string[];
+    cwd?: string;
+    env: Record<string, string | undefined>;
+  };
+  restartAgent: () => Promise<{
+    child: ChildProcessByStdio<Writable, Readable, Readable>;
+    pid: number;
+  }>;
 }
 
 export async function runAcpAgent({
-  child,
+  child: initialChild,
   webContents,
   args,
-  pid,
+  pid: initialPid,
   logStream,
   toolSessionId,
   toolSessionScope,
   running,
   capturedSessions,
-  emit
+  emit,
+  agentCommand,
+  restartAgent
 }: AcpRuntimeInput): Promise<void> {
+  let child = initialChild;
+  let pid = initialPid;
   let requestId = 0;
   let activeAcpSessionId: string | undefined;
   let finished = false;
@@ -133,6 +156,8 @@ export async function runAcpAgent({
     terminalManager.dispose();
     running.delete(args.sessionId);
     unregisterDraftToolSession(args.sessionId);
+    clearAuthenticationTerminalsForSession(args.sessionId);
+    clearAuthenticationResolversForSession(args.sessionId);
     clearPermissionResolversForSession(args.sessionId);
     if (errorMessage) emit({ type: "error", message: errorMessage });
     emit({ type: "done", exitCode });
@@ -146,10 +171,8 @@ export async function runAcpAgent({
     logStream?.end();
   };
 
-  running.set(args.sessionId, {
-    child,
-    pid,
-    cancel: () => {
+  const cancelRun = () => {
+      clearAuthenticationTerminalsForSession(args.sessionId);
       if (activeAcpSessionId) {
         notify(buildSessionCancelNotification(activeAcpSessionId));
       }
@@ -163,11 +186,13 @@ export async function runAcpAgent({
           }
         }
       }, 500);
-    }
-  });
+  };
+  const updateRunningProcess = () => {
+    running.set(args.sessionId, { child, pid, cancel: cancelRun });
+  };
+  updateRunningProcess();
 
-  const rlOut = readline.createInterface({ input: child.stdout });
-  rlOut.on("line", (line) => {
+  const handleAcpLine = (line: string) => {
     appendLog(logStream, "stdout", line);
     const msg = parseAcpLine(line);
     if (!msg) {
@@ -243,7 +268,7 @@ export async function runAcpAgent({
         });
       }
     }
-  });
+  };
 
   function normalizePermissionOptions(raw: unknown): CliPermissionOption[] {
     if (!Array.isArray(raw)) return [];
@@ -461,11 +486,7 @@ export async function runAcpAgent({
             return;
           }
           const snap = terminalManager.output(terminalId);
-          respond({
-            output: snap.output,
-            truncated: snap.truncated,
-            ...(snap.exited ? { exitCode: snap.exitCode, exited: true } : {})
-          });
+          respond(buildTerminalOutputResponse(snap));
           return;
         }
         case "terminal/wait_for_exit": {
@@ -512,25 +533,84 @@ export async function runAcpAgent({
     }
   }
 
-  const rlErr = readline.createInterface({ input: child.stderr });
-  rlErr.on("line", (line) => {
-    appendLog(logStream, "stderr", line);
-    if (args.showStderr !== false) emit({ type: "stderr", content: line });
-  });
+  let connectionEpoch = 0;
+  let rlOut: readline.Interface | undefined;
+  let rlErr: readline.Interface | undefined;
 
-  child.on("close", (code) => {
-    const exitCode = code ?? -1;
-    for (const waiter of pending.values()) {
-      waiter.reject(new Error(`ACP agent exited with code ${exitCode}`));
-    }
-    pending.clear();
-    if (finished) return;
-    appendLog(logStream, "system", `exit code=${exitCode}`);
-    finish(exitCode === 0 ? "done" : "failed", exitCode);
-  });
+  const attachConnection = () => {
+    const epoch = ++connectionEpoch;
+    rlOut = readline.createInterface({ input: child.stdout });
+    rlOut.on("line", (line) => {
+      if (epoch === connectionEpoch) handleAcpLine(line);
+    });
+    rlErr = readline.createInterface({ input: child.stderr });
+    rlErr.on("line", (line) => {
+      if (epoch !== connectionEpoch) return;
+      appendLog(logStream, "stderr", line);
+      if (args.showStderr !== false) emit({ type: "stderr", content: line });
+    });
+    child.on("close", (code) => {
+      if (epoch !== connectionEpoch) return;
+      const exitCode = code ?? -1;
+      for (const waiter of pending.values()) {
+        waiter.reject(new Error(`ACP agent exited with code ${exitCode}`));
+      }
+      pending.clear();
+      if (finished) return;
+      appendLog(logStream, "system", `exit code=${exitCode}`);
+      finish(exitCode === 0 ? "done" : "failed", exitCode);
+    });
+  };
+  attachConnection();
 
   let agentCaps: any = {};
   let authMethods: AcpAuthMethod[] = [];
+  let authenticationAttempted = false;
+
+  const stopAcpConnectionForAuthentication = async () => {
+    const stoppingChild = child;
+    connectionEpoch += 1;
+    rlOut?.close();
+    rlErr?.close();
+    for (const waiter of pending.values()) {
+      waiter.reject(new Error("ACP connection restarting for authentication."));
+    }
+    pending.clear();
+    await new Promise<void>((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (resolved) return;
+        resolved = true;
+        resolve();
+      };
+      stoppingChild.once("close", done);
+      setTimeout(done, 2000);
+      try {
+        killProcessTree(stoppingChild, "term");
+      } catch {
+        done();
+      }
+    });
+  };
+
+  const restartAndInitialize = async () => {
+    const restarted = await restartAgent();
+    child = restarted.child;
+    pid = restarted.pid;
+    activeAcpSessionId = undefined;
+    promptStarted = false;
+    promptHadContent = false;
+    updateRunningProcess();
+    attachConnection();
+    const init = await request(buildInitializeRequest(nextId()));
+    if (init?.protocolVersion !== 1) {
+      throw new Error(
+        `Unsupported ACP protocol version ${String(init?.protocolVersion ?? "missing")}; FreeBuddy supports version 1.`
+      );
+    }
+    agentCaps = init?.agentCapabilities ?? {};
+    authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
+  };
 
   const establishSession = async () => {
     const emitSetupItems = (result: any) => {
@@ -588,19 +668,96 @@ export async function runAcpAgent({
     );
   };
 
-  /** Build a clear error telling the user the agent needs authentication.
-   *  FreeBuddy does not drive the login flow; the user logs in via the agent's
-   *  own CLI, then retries the task. */
   const authRequiredError = (methods: AcpAuthMethod[]) => {
-    const method = methods[0];
+    const selected = selectAcpAuthMethod(methods);
+    const method = selected ?? methods[0];
     const label = method?.name ? ` (${method.name})` : "";
+    const unsupportedType =
+      method?.type && method.type !== "agent"
+        ? ` The agent requested unsupported ${method.type} authentication.`
+        : "";
     return new Error(
-      `Authentication required${label}. Log in to this agent from your terminal (for example via its login command), then retry the task.`
+      `Authentication required${label}.${unsupportedType} Log in to this agent from your terminal, then retry the task.`
     );
   };
 
-  const isLikelyAuthError = (err: unknown) => {
+  const chooseAuthMethod = async (
+    methods: AcpAuthMethod[]
+  ): Promise<AcpAuthMethod> => {
+    const automatic = selectAcpAuthMethod(methods);
+    if (automatic) return automatic;
+
+    const supported = methods.filter(
+      (method) =>
+        typeof method?.id === "string" &&
+        method.id.length > 0 &&
+        (method.type == null ||
+          method.type === "agent" ||
+          method.type === "terminal")
+    );
+    if (supported.length < 2) throw authRequiredError(methods);
+
+    const requestId = randomUUID();
+    return new Promise<AcpAuthMethod>((resolve, reject) => {
+      registerAuthenticationResolver(args.sessionId, requestId, (decision) => {
+        emit({ type: "authentication-resolved", requestId });
+        if (decision.outcome !== "selected") {
+          reject(new Error("Authentication cancelled."));
+          return;
+        }
+        const selected = supported.find(
+          (method) => method.id === decision.methodId
+        );
+        if (!selected) {
+          reject(new Error("The selected authentication method is unavailable."));
+          return;
+        }
+        resolve(selected);
+      });
+      emit({
+        type: "authentication",
+        request: {
+          requestId,
+          sessionId: args.sessionId,
+          agentName: args.agentName,
+          methods: supported.map((method) => ({
+            methodId: method.id,
+            name: method.name ?? method.id,
+            ...(method.description ? { description: method.description } : {})
+          }))
+        }
+      });
+    });
+  };
+
+  const authenticate = async (methods: AcpAuthMethod[]) => {
+    const method = await chooseAuthMethod(methods);
+    authenticationAttempted = true;
+    appendLog(
+      logStream,
+      "system",
+      `authenticating with ACP method ${method.id}`
+    );
+    if (method.type === "terminal") {
+      await stopAcpConnectionForAuthentication();
+      await runAuthenticationTerminal({
+        sessionId: args.sessionId,
+        agentName: args.agentName,
+        method,
+        command: agentCommand,
+        emit
+      });
+      await restartAndInitialize();
+      await request(buildAuthenticateRequest(nextId(), method.id));
+      return true;
+    }
+    await request(buildAuthenticateRequest(nextId(), method.id));
+    return false;
+  };
+
+  const isAuthenticationRequiredError = (err: unknown) => {
     const e = err as Error & { code?: number };
+    if (e?.code === -32000) return true;
     if (e?.code === 401 || e?.code === 403) return true;
     const message = String(e?.message ?? err).toLowerCase();
     return /\b(auth|unauthorized|unauthenticated|login|credential|api key|subscription)\b/.test(
@@ -622,6 +779,11 @@ export async function runAcpAgent({
 
   try {
     const init = await request(buildInitializeRequest(nextId()));
+    if (init?.protocolVersion !== 1) {
+      throw new Error(
+        `Unsupported ACP protocol version ${String(init?.protocolVersion ?? "missing")}; FreeBuddy supports version 1.`
+      );
+    }
     agentCaps = init?.agentCapabilities ?? {};
     authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
 
@@ -639,14 +801,22 @@ export async function runAcpAgent({
     try {
       await establishSession();
     } catch (sessionErr) {
-      // The agent advertised auth methods and rejected session creation.
-      if (!finished && authMethods.length > 0 && isLikelyAuthError(sessionErr)) {
-        throw authRequiredError(authMethods);
-      }
-      if (!finished && toolSessionId && isMissingSavedSessionError(sessionErr)) {
+      if (
+        !finished &&
+        authMethods.length > 0 &&
+        isAuthenticationRequiredError(sessionErr)
+      ) {
+        await authenticate(authMethods);
+        await establishSession();
+      } else if (
+        !finished &&
+        toolSessionId &&
+        isMissingSavedSessionError(sessionErr)
+      ) {
         throw savedSessionUnavailableError(toolSessionId, sessionErr);
+      } else {
+        throw sessionErr;
       }
-      throw sessionErr;
     }
 
     if (!activeAcpSessionId) {
@@ -688,7 +858,22 @@ export async function runAcpAgent({
     };
 
     await applyConfigOptionOverrides();
-    await runPromptOnSession();
+    try {
+      await runPromptOnSession();
+    } catch (promptErr) {
+      if (
+        !finished &&
+        !promptHadContent &&
+        authMethods.length > 0 &&
+        isAuthenticationRequiredError(promptErr)
+      ) {
+        const restarted = await authenticate(authMethods);
+        if (restarted) await establishSession();
+        await runPromptOnSession();
+      } else {
+        throw promptErr;
+      }
+    }
     await syncSessionMetadataFromList();
 
     // Some agents (e.g. kimi when signed out) let session creation succeed but
@@ -696,7 +881,12 @@ export async function runAcpAgent({
     // agent advertised auth methods and produced nothing, treat it as a missing
     // login rather than a silent success.
     if (!promptHadContent && authMethods.length > 0 && !finished) {
-      throw authRequiredError(authMethods);
+      if (!authenticationAttempted) {
+        const restarted = await authenticate(authMethods);
+        if (restarted) await establishSession();
+        await runPromptOnSession();
+      }
+      if (!promptHadContent) throw authRequiredError(authMethods);
     }
 
     if (agentCaps?.sessionCapabilities?.close) {

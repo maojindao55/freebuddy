@@ -7838,6 +7838,113 @@ button.ghost:focus-visible,
   background: rgba(148, 163, 184, 0.16);
 }
 
+.authentication-description {
+  margin: 4px 0 0;
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.authentication-methods {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.authentication-method {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.authentication-method:hover:not(:disabled) {
+  border-color: var(--fb-brand);
+  background: var(--fb-panel-bg);
+  transform: translateY(-1px);
+}
+
+.authentication-method:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 2px;
+}
+
+.authentication-method:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.authentication-method-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.authentication-method-description {
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.authentication-method-action {
+  margin-top: 4px;
+  color: var(--fb-brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .authentication-method {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+[data-theme="dark"] .authentication-method:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.authentication-terminal-output {
+  min-height: 220px;
+  max-height: 380px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: #08101f;
+  color: #dbeafe;
+  font-family: var(--fb-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.authentication-terminal-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.authentication-terminal-input-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font-family: var(--fb-mono);
+}
+
 .settings-section { padding: 12px 0; border-bottom: 1px solid var(--border, #e5e7eb); }
 .settings-section h3 { margin: 0 0 8px; font-size: 13px; }
 .settings-section select { padding: 6px 8px; border-radius: 6px; }

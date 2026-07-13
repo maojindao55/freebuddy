@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { displayAgentName } from "@/config/agentDisplay";
@@ -444,35 +445,23 @@ export function WorkspacePanel({
           </div>
           {codexUsage?.ok ? (
             <div className="codex-limit-list">
-              <CodexLimitRow
-                label={t("workspace.codexUsage5h")}
-                usage={codexUsage.primaryWindow}
-                leftLabel={t("workspace.codexUsageLeft", {
-                  percent: codexUsage.primaryWindow.leftPercent
-                })}
-                resetLabel={t("workspace.codexUsageResetAt", {
-                  time: formatCodexResetAt(
-                    codexUsage.primaryWindow.resetAt,
-                    i18n.language,
-                    "time"
-                  )
-                })}
-              />
-              {codexUsage.secondaryWindow && (
+              {codexUsage.windows.map((usage) => (
                 <CodexLimitRow
-                  label={t("workspace.codexUsageWeekly")}
-                  usage={codexUsage.secondaryWindow}
+                  key={`${usage.windowSeconds}-${usage.resetAt}`}
+                  label={codexUsageWindowLabel(usage.windowSeconds, t)}
+                  usage={usage}
                   leftLabel={t("workspace.codexUsageLeft", {
-                    percent: codexUsage.secondaryWindow.leftPercent
+                    percent: usage.leftPercent
                   })}
                   resetLabel={t("workspace.codexUsageResetAt", {
                     time: formatCodexResetAt(
-                      codexUsage.secondaryWindow.resetAt,
-                      i18n.language
+                      usage.resetAt,
+                      i18n.language,
+                      usage.windowSeconds < 86_400 ? "time" : "dateTime"
                     )
                   })}
                 />
-              )}
+              ))}
               {codexUsage.resetCredits && (
                 <div className="codex-reset-credits">
                   <button
@@ -591,6 +580,18 @@ function CodexLimitRow({
       <small>{resetLabel}</small>
     </div>
   );
+}
+
+function codexUsageWindowLabel(
+  windowSeconds: number,
+  t: TFunction
+): string {
+  if (windowSeconds === 604_800) return t("workspace.codexUsageWeekly");
+  if (windowSeconds === 86_400) return t("workspace.codexUsageDaily");
+  if (windowSeconds > 0 && windowSeconds % 3_600 === 0) {
+    return t("workspace.codexUsageHours", { hours: windowSeconds / 3_600 });
+  }
+  return t("workspace.codexUsageWindow");
 }
 
 function codexResetCreditStatusKey(status: string): "available" | "used" | "unknown" {

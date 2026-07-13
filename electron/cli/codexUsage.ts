@@ -32,8 +32,7 @@ export type CodexUsageResult =
       allowed: boolean;
       limitReached: boolean;
       planType?: string;
-      primaryWindow: CodexUsageWindow;
-      secondaryWindow?: CodexUsageWindow;
+      windows: CodexUsageWindow[];
       resetCredits?: CodexResetCredits;
       fetchedAt: string;
     }
@@ -179,8 +178,13 @@ function normalizeUsageResponse(
   fetchedAt: string
 ): CodexUsageResult {
   const rateLimit = objectValue(payload, "rate_limit");
-  const primary = normalizeWindow(objectValue(rateLimit, "primary_window"));
-  if (!primary) {
+  const windows = [
+    normalizeWindow(objectValue(rateLimit, "primary_window")),
+    normalizeWindow(objectValue(rateLimit, "secondary_window"))
+  ]
+    .filter((window): window is CodexUsageWindow => window != null)
+    .sort((lhs, rhs) => lhs.windowSeconds - rhs.windowSeconds);
+  if (windows.length === 0) {
     return { ok: false, reason: "invalid_response", fetchedAt };
   }
   return {
@@ -188,8 +192,7 @@ function normalizeUsageResponse(
     allowed: booleanValue(rateLimit, "allowed") ?? true,
     limitReached: booleanValue(rateLimit, "limit_reached") ?? false,
     planType: stringValue(payload, "plan_type"),
-    primaryWindow: primary,
-    secondaryWindow: normalizeWindow(objectValue(rateLimit, "secondary_window")),
+    windows,
     fetchedAt
   };
 }

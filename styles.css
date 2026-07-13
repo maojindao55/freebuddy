@@ -2754,7 +2754,7 @@ button {
   background: var(--fb-panel-bg);
 }
 
-.new-task-toolbar label {
+.new-task-toolbar label:not(.composer-permission) {
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -2764,7 +2764,7 @@ button {
   font-weight: 500;
 }
 
-.new-task-toolbar select {
+.new-task-toolbar label:not(.composer-permission) select {
   height: 30px;
   border: 0;
   border-radius: 999px;
@@ -2782,8 +2782,18 @@ button {
   transition: all 0.2s ease;
 }
 
-.new-task-toolbar select:hover {
+.new-task-toolbar label:not(.composer-permission) select:hover {
   background-color: var(--fb-hover);
+}
+
+.new-task-agent-picker {
+  flex: 0 1 auto;
+}
+
+.new-task-agent-picker select {
+  max-width: 160px;
+  padding-left: 12px;
+  color: var(--fb-text-primary);
 }
 
 .new-task-toolbar .new-task-send {

@@ -224,8 +224,7 @@ export type CodexUsageResult =
       allowed: boolean;
       limitReached: boolean;
       planType?: string;
-      primaryWindow: CodexUsageWindow;
-      secondaryWindow?: CodexUsageWindow;
+      windows: CodexUsageWindow[];
       resetCredits?: CodexResetCredits;
       fetchedAt: string;
     }

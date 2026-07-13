@@ -130,6 +130,22 @@ test("new-task page merges attach, workspace, agent, and send into one toolbar r
   assert.match(toolbar, /className="new-task-send/);
 });
 
+test("new-task toolbar keeps agent compact and reuses the chat permission pill", () => {
+  const newTaskHome = chatViewSource.slice(
+    chatViewSource.indexOf("function NewTaskHome")
+  );
+  const toolbarStart = newTaskHome.indexOf('className="new-task-toolbar"');
+  const toolbarEnd = newTaskHome.indexOf("new-task-warn", toolbarStart);
+  const toolbar = newTaskHome.slice(toolbarStart, toolbarEnd);
+
+  assert.match(toolbar, /className="new-task-agent-picker"/);
+  assert.match(toolbar, /aria-label=\{t\("chat\.agent"\)\}/);
+  assert.doesNotMatch(toolbar, /<span>\{t\("chat\.agent"\)\}<\/span>/);
+  assert.match(toolbar, /className="composer-permission"/);
+  assert.match(toolbar, /className="composer-permission-label"/);
+  assert.match(toolbar, /className="composer-permission-select"/);
+});
+
 test("new-task page separates normal and team modes into tabs above the composer", () => {
   const newTaskHome = chatViewSource.slice(
     chatViewSource.indexOf("function NewTaskHome")

@@ -1602,9 +1602,12 @@ function NewTaskHome({
               )}
             </label>
           ) : (
-            <label>
-              <span>{t("chat.agent")}</span>
-              <select value={selectedMemberId} onChange={(event) => onMember(event.target.value)}>
+            <label className="new-task-agent-picker" title={t("chat.agent")}>
+              <select
+                aria-label={t("chat.agent")}
+                value={selectedMemberId}
+                onChange={(event) => onMember(event.target.value)}
+              >
                 {members.map((member) => (
                   <option key={member.id} value={member.id}>
                     {member.name}
@@ -1613,9 +1616,18 @@ function NewTaskHome({
               </select>
             </label>
           )}
-          <label>
-            <span>{t("chat.permission")}</span>
-            <select value={permissionMode} onChange={(event) => onPermissionMode(event.target.value as "auto" | "ask")}>
+          <label
+            className="composer-permission"
+            title={t("chat.permissionHint")}
+          >
+            <span className="composer-permission-label">{t("chat.permission")}</span>
+            <select
+              className="composer-permission-select"
+              value={permissionMode}
+              onChange={(event) =>
+                onPermissionMode(event.target.value as "auto" | "ask")
+              }
+            >
               <option value="auto">{t("chat.approvalAuto")}</option>
               <option value="ask">{t("chat.approvalAsk")}</option>
             </select>

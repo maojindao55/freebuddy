@@ -99,7 +99,7 @@ export function AgentBridgeListener() {
             result = draftResult(conversationId, cwd, {
               ok: false,
               error:
-                "Draft has no preview target. Pass a workspace-relative file or localhost URL to draft_show."
+                "Draft has no resolvable preview target. Select a working directory for workspace-relative files, or pass an absolute local path or URL to draft_show."
             });
           } else if (params.waitForReady !== false && isActive) {
             await waitForDraft(conversationId);

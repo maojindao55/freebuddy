@@ -787,15 +787,23 @@ export async function runAcpAgent({
     agentCaps = init?.agentCapabilities ?? {};
     authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
 
-    if (args.conversationId && args.cwd) {
+    if (args.conversationId) {
       mcpServers = [
         await registerDraftToolSession({
           taskSessionId: args.sessionId,
           conversationId: args.conversationId,
-          cwd: args.cwd,
+          // Keep an unscoped conversation unscoped. ACP itself requires a cwd
+          // and falls back to process.cwd(), but Draft must not treat the app's
+          // launch directory as a user-selected workspace.
+          cwd: args.cwd ?? "",
           webContents
         })
       ];
+      appendLog(
+        logStream,
+        "system",
+        `mcp servers=${mcpServers.map((server) => server.name).join(",")} draftCwd=${args.cwd || "<none>"}`
+      );
     }
 
     try {

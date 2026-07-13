@@ -41,12 +41,94 @@ test("Draft tool contract stays bound across ACP, preload, and renderer", () => 
 
   assert.match(runtime, /registerDraftToolSession/);
   assert.match(runtime, /conversationId: args\.conversationId/);
+  assert.match(runtime, /if \(args\.conversationId\) \{/);
+  assert.doesNotMatch(runtime, /args\.conversationId && args\.cwd/);
+  assert.match(runtime, /cwd: args\.cwd \?\? ""/);
+  assert.match(runtime, /mcp servers=/);
   assert.match(preload, /freebuddy:\/\/draft-tool/);
   assert.match(preload, /draft-tool:resolve/);
   assert.match(listener, /event\.conversationId|conversationId/);
   assert.match(listener, /waitForDraft/);
   assert.match(store, /loadState: DraftLoadState/);
   assert.match(store, /setLoadState/);
+});
+
+test("Draft MCP remains available without a selected workspace", async () => {
+  setActiveBridgePort(17880);
+  const sent = [];
+  let webContents;
+  webContents = {
+    id: 43,
+    isDestroyed: () => false,
+    on: () => webContents,
+    once: () => webContents,
+    mainFrame: {
+      isDestroyed: () => false,
+      send(channel, payload) {
+        sent.push({ channel, payload });
+        setImmediate(() => {
+          resolveDraftToolRequest(webContents, {
+            requestId: payload.requestId,
+            result: {
+              ok: true,
+              conversationId: payload.conversationId,
+              cwd: payload.cwd,
+              target: payload.params.target,
+              resolvedUrl: payload.params.target,
+              loadState: "ready",
+              visible: true
+            }
+          });
+        });
+      }
+    }
+  };
+
+  const config = await registerDraftToolSession({
+    taskSessionId: "task-no-workspace",
+    conversationId: "conv-no-workspace",
+    cwd: "",
+    webContents
+  });
+  const token = config.env.find(
+    (entry) => entry.name === "FREEBUDDY_DRAFT_TOKEN"
+  )?.value;
+  assert.ok(token);
+
+  let statusCode = 0;
+  let responseBody = "";
+  const request = Readable.from([
+    JSON.stringify({
+      action: "show",
+      params: { target: "https://example.com/preview" }
+    })
+  ]);
+  Object.assign(request, {
+    url: "/freebuddy/draft-tool",
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` }
+  });
+  const response = {
+    writeHead(code) {
+      statusCode = code;
+    },
+    end(body = "") {
+      responseBody = String(body);
+    }
+  };
+
+  try {
+    assert.equal(await handleDraftToolHttpRequest(request, response), true);
+    assert.equal(statusCode, 200);
+    assert.equal(
+      JSON.parse(responseBody).resolvedUrl,
+      "https://example.com/preview"
+    );
+    assert.equal(sent[0].payload.cwd, "");
+    assert.equal(sent[0].payload.action, "show");
+  } finally {
+    unregisterDraftToolSession("task-no-workspace");
+  }
 });
 
 test("Draft tool capability token routes a request to its bound conversation", async () => {

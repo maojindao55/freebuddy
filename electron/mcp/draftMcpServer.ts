@@ -114,7 +114,7 @@ export function createDraftMcpServer(): McpServer {
           .min(1)
           .optional()
           .describe(
-            "Workspace-relative file, absolute local preview file, freebuddy-file URL, or http(s) localhost URL. Omit to open the existing target."
+            "Workspace-relative file (requires a selected working directory), absolute local preview file, freebuddy-file URL, or http(s) URL. Omit to open the existing target."
           ),
         open: z
           .boolean()

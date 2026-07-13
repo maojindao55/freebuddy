@@ -6,6 +6,7 @@ export interface TerminalSnapshot {
   output: string;
   truncated: boolean;
   exitCode?: number | null;
+  signal?: string | null;
   exited: boolean;
 }
 
@@ -48,6 +49,7 @@ function snapshot(record: TerminalRecord): TerminalSnapshot {
     output: record.chunks.join(""),
     truncated: record.truncated,
     exitCode: record.exitCode,
+    signal: record.signal,
     exited: record.exited
   };
 }
@@ -59,29 +61,25 @@ export function createAcpTerminalManager(options: {
   const terminals = new Map<string, TerminalRecord>();
 
   function appendOutput(record: TerminalRecord, data: Buffer) {
-    if (record.truncated) return;
     const text = data.toString("utf8");
-    const bytes = Buffer.byteLength(text, "utf8");
-    if (record.outputBytes + bytes > record.byteLimit) {
-      const remaining = record.byteLimit - record.outputBytes;
-      if (remaining > 0) {
-        let used = 0;
-        let sliceEnd = 0;
-        for (const char of text) {
-          const charBytes = Buffer.byteLength(char, "utf8");
-          if (used + charBytes > remaining) break;
-          used += charBytes;
-          sliceEnd += char.length;
-        }
-        if (sliceEnd > 0) {
-          record.chunks.push(text.slice(0, sliceEnd));
-          record.outputBytes += used;
-        }
+    const combined = record.chunks.join("") + text;
+    const combinedBytes = Buffer.byteLength(combined, "utf8");
+    if (combinedBytes > record.byteLimit) {
+      let used = 0;
+      const chars = Array.from(combined);
+      let start = chars.length;
+      while (start > 0) {
+        const charBytes = Buffer.byteLength(chars[start - 1], "utf8");
+        if (used + charBytes > record.byteLimit) break;
+        used += charBytes;
+        start -= 1;
       }
+      record.chunks = [chars.slice(start).join("")];
+      record.outputBytes = used;
       record.truncated = true;
     } else {
-      record.chunks.push(text);
-      record.outputBytes += bytes;
+      record.chunks = [combined];
+      record.outputBytes = combinedBytes;
     }
     options.onOutput?.(record.id, snapshot(record));
   }

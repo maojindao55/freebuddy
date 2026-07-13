@@ -10,6 +10,7 @@ import { cliClient } from "@/services/cli/client";
 import type { ConversationState } from "./conversationStore";
 import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
+import { useAuthenticationStore } from "./authenticationStore";
 import { appendItems, shouldApplyAgentSessionTitle } from "./conversationUtils";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 import { useImagePreviewStore } from "./imagePreviewStore";
@@ -128,6 +129,30 @@ export function handleStreamEvent(
   }
   if (e.type === "permission-resolved") {
     usePermissionStore.getState().remove(e.requestId);
+    return;
+  }
+  if (e.type === "authentication") {
+    useAuthenticationStore.getState().enqueue(conversationId, e.request);
+    return;
+  }
+  if (e.type === "authentication-resolved") {
+    useAuthenticationStore.getState().remove(e.requestId);
+    return;
+  }
+  if (e.type === "authentication-terminal-started") {
+    useAuthenticationStore.getState().startTerminal(conversationId, e.request);
+    return;
+  }
+  if (e.type === "authentication-terminal-update") {
+    useAuthenticationStore.getState().updateTerminal(e.requestId, {
+      output: e.output,
+      running: e.running,
+      exitCode: e.exitCode
+    });
+    return;
+  }
+  if (e.type === "authentication-terminal-resolved") {
+    useAuthenticationStore.getState().removeTerminal(e.requestId);
     return;
   }
 
@@ -297,6 +322,7 @@ export function handleStreamEvent(
 
   if (e.type === "done") {
     usePermissionStore.getState().removeForConversation(conversationId);
+    useAuthenticationStore.getState().removeForConversation(conversationId);
     const live = get().live[conversationId];
     const reason = live?.status === "killed" ? "killed" : "done";
     void finalizeRun(set, get, conversationId, reason);

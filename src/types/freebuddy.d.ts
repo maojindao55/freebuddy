@@ -13,6 +13,8 @@ import type {
   CliTaskLogPage,
   CliTaskListArgs,
   CodexUsageResult,
+  CliAuthControlArgs,
+  CliAuthProbeResult,
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
@@ -60,6 +62,8 @@ declare global {
     listRuntimes(): Promise<CliRuntime[]>;
     onRuntimeUpdated(cb: (runtime: CliRuntime) => void): () => void;
     codexUsage(): Promise<CodexUsageResult>;
+    probeAuthentication(args: CliAuthControlArgs): Promise<CliAuthProbeResult>;
+    logout(args: CliAuthControlArgs): Promise<void>;
     check(
       adapter: string,
       binary?: string,
@@ -80,6 +84,21 @@ declare global {
       requestId: string;
       outcome: "selected" | "cancelled";
       optionId?: string;
+    }): Promise<boolean>;
+    authenticationDecision(args: {
+      sessionId: string;
+      requestId: string;
+      outcome: "selected" | "cancelled";
+      methodId?: string;
+    }): Promise<boolean>;
+    authenticationTerminalInput(args: {
+      sessionId: string;
+      requestId: string;
+      data: string;
+    }): Promise<boolean>;
+    authenticationTerminalCancel(args: {
+      sessionId: string;
+      requestId: string;
     }): Promise<boolean>;
 
     listTasks(args?: CliTaskListArgs): Promise<CliTaskRow[]>;

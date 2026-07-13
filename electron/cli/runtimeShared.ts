@@ -74,6 +74,26 @@ export interface CliPermissionRequest {
   options: CliPermissionOption[];
 }
 
+export interface CliAuthenticationMethod {
+  methodId: string;
+  name: string;
+  description?: string;
+}
+
+export interface CliAuthenticationRequest {
+  requestId: string;
+  sessionId: string;
+  agentName: string;
+  methods: CliAuthenticationMethod[];
+}
+
+export interface CliAuthenticationTerminalRequest {
+  requestId: string;
+  sessionId: string;
+  agentName: string;
+  methodName: string;
+}
+
 export type CliEvent =
   | { type: "started"; pid: number }
   | { type: "stdout"; content: string }
@@ -90,6 +110,21 @@ export type CliEvent =
     }
   | { type: "permission"; request: CliPermissionRequest }
   | { type: "permission-resolved"; requestId: string }
+  | { type: "authentication"; request: CliAuthenticationRequest }
+  | { type: "authentication-resolved"; requestId: string }
+  | {
+      type: "authentication-terminal-started";
+      request: CliAuthenticationTerminalRequest;
+    }
+  | {
+      type: "authentication-terminal-update";
+      requestId: string;
+      output: string;
+      running: boolean;
+      exitCode?: number;
+      signal?: number;
+    }
+  | { type: "authentication-terminal-resolved"; requestId: string }
   | { type: "done"; exitCode: number }
   | { type: "error"; message: string };
 
@@ -307,4 +342,59 @@ export function clearPermissionResolversForSession(sessionId: string) {
     }
   }
   permissionRegistry.delete(sessionId);
+}
+
+// ---- Authentication method registry ------------------------------------
+
+export type CliAuthenticationDecision =
+  | { outcome: "selected"; methodId: string }
+  | { outcome: "cancelled" };
+
+export type CliAuthenticationResolver = (
+  decision: CliAuthenticationDecision
+) => void;
+
+const authenticationRegistry = new Map<
+  string,
+  Map<string, CliAuthenticationResolver>
+>();
+
+export function registerAuthenticationResolver(
+  sessionId: string,
+  requestId: string,
+  resolver: CliAuthenticationResolver
+) {
+  let bucket = authenticationRegistry.get(sessionId);
+  if (!bucket) {
+    bucket = new Map();
+    authenticationRegistry.set(sessionId, bucket);
+  }
+  bucket.set(requestId, resolver);
+}
+
+export function takeAuthenticationResolver(
+  sessionId: string,
+  requestId: string
+): CliAuthenticationResolver | undefined {
+  const bucket = authenticationRegistry.get(sessionId);
+  if (!bucket) return undefined;
+  const resolver = bucket.get(requestId);
+  if (resolver) {
+    bucket.delete(requestId);
+    if (bucket.size === 0) authenticationRegistry.delete(sessionId);
+  }
+  return resolver;
+}
+
+export function clearAuthenticationResolversForSession(sessionId: string) {
+  const bucket = authenticationRegistry.get(sessionId);
+  if (!bucket) return;
+  for (const resolver of bucket.values()) {
+    try {
+      resolver({ outcome: "cancelled" });
+    } catch {
+      /* noop */
+    }
+  }
+  authenticationRegistry.delete(sessionId);
 }

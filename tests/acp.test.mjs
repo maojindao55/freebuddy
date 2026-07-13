@@ -7,15 +7,19 @@ import {
   acpSessionListToItems,
   acpSessionSetupToItems,
   acpUpdateToItems,
+  buildAuthenticateRequest,
   buildInitializeRequest,
+  buildLogoutRequest,
   buildPromptContentBlocks,
   buildSessionLoadRequest,
   buildSessionNewRequest,
   buildSessionPromptRequest,
   buildSessionResumeRequest,
   buildSessionSetConfigOptionRequest,
+  buildTerminalOutputResponse,
   contentBlockToItems,
   parseAcpLine,
+  selectAcpAuthMethod,
   shouldEmitAcpUpdate,
   shouldSkipUserMessageChunk
 } from "../dist-electron/cli/acp.js";
@@ -271,24 +275,102 @@ test("buildCommand keeps Grok global flags before the ACP subcommand", () => {
   assert.equal(built.protocol, "acp");
 });
 
-test("buildInitializeRequest advertises conservative client capabilities", () => {
-  assert.deepEqual(buildInitializeRequest(7), {
+test("buildInitializeRequest advertises only implemented stable capabilities", () => {
+  assert.deepEqual(buildInitializeRequest(7, "0.4.9-test"), {
     jsonrpc: "2.0",
     id: 7,
     method: "initialize",
     params: {
       protocolVersion: 1,
       clientCapabilities: {
-        auth: { terminal: true },
-        terminal: true
+        terminal: true,
+        auth: { terminal: true }
       },
       clientInfo: {
         name: "freebuddy",
         title: "FreeBuddy",
-        version: "0.1.0"
+        version: "0.4.9-test"
       }
     }
   });
+});
+
+test("ACP auth request builders use stable v1 method shapes", () => {
+  assert.deepEqual(buildAuthenticateRequest(8, "agent-login"), {
+    jsonrpc: "2.0",
+    id: 8,
+    method: "authenticate",
+    params: { methodId: "agent-login" }
+  });
+  assert.deepEqual(buildLogoutRequest(9), {
+    jsonrpc: "2.0",
+    id: 9,
+    method: "logout",
+    params: {}
+  });
+});
+
+test("ACP auth selection prefers available API keys, otherwise interactive login", () => {
+  const methods = [
+    {
+      id: "api-key",
+      name: "API Key",
+      _meta: { "api-key": { provider: "openai" } }
+    },
+    { id: "chat-gpt", name: "ChatGPT" }
+  ];
+
+  assert.equal(selectAcpAuthMethod(methods, {})?.id, "chat-gpt");
+  assert.equal(
+    selectAcpAuthMethod(methods, { ANTHROPIC_API_KEY: "unrelated-key" })?.id,
+    "chat-gpt"
+  );
+  assert.equal(
+    selectAcpAuthMethod(methods, { OPENAI_API_KEY: "test-key" })?.id,
+    "api-key"
+  );
+  assert.equal(
+    selectAcpAuthMethod(
+      [{ id: "login", type: "terminal", name: "Login" }],
+      {}
+    )?.id,
+    "login"
+  );
+  assert.equal(
+    selectAcpAuthMethod(
+      [
+        { id: "ioa", name: "Login with iOA" },
+        { id: "external", name: "Login with Google/GitHub" }
+      ],
+      {}
+    ),
+    undefined
+  );
+});
+
+test("terminal/output uses the stable ACP exitStatus shape", () => {
+  assert.deepEqual(
+    buildTerminalOutputResponse({
+      output: "done",
+      truncated: false,
+      exited: true,
+      exitCode: 0,
+      signal: null
+    }),
+    {
+      output: "done",
+      truncated: false,
+      exitStatus: { exitCode: 0, signal: null }
+    }
+  );
+  assert.deepEqual(
+    buildTerminalOutputResponse({
+      output: "running",
+      truncated: false,
+      exited: false
+    }),
+    { output: "running", truncated: false }
+  );
 });
 
 test("buildSessionPromptRequest sends a text content block", () => {
@@ -368,18 +450,19 @@ test("ACP session lifecycle injects FreeBuddy stdio MCP servers", () => {
   );
 });
 
-test("ACP runtime reports missing saved sessions separately from auth failures", () => {
+test("ACP runtime authenticates standard auth-required errors and separates missing sessions", () => {
   assert.match(acpRuntimeSource, /Saved agent session is no longer available/);
-  assert.match(acpRuntimeSource, /function isLikelyAuthError|const isLikelyAuthError/);
+  assert.match(acpRuntimeSource, /isAuthenticationRequiredError/);
+  assert.match(acpRuntimeSource, /e\?\.code === -32000/);
   assert.match(
     acpRuntimeSource,
-    /authMethods\.length > 0 && isLikelyAuthError\(sessionErr\)/
+    /buildAuthenticateRequest\(nextId\(\), method\.id\)/
   );
   assert.match(
     acpRuntimeSource,
-    /toolSessionId && isMissingSavedSessionError\(sessionErr\)/
+    /toolSessionId\s*&&\s*isMissingSavedSessionError\(sessionErr\)/
   );
-  assert.doesNotMatch(acpRuntimeSource, /authMethods\.length > 0\) throw authRequiredError/);
+  assert.match(acpRuntimeSource, /Unsupported ACP protocol version/);
 });
 
 test("parseAcpLine parses JSON-RPC messages and ignores blank lines", () => {

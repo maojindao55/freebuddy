@@ -312,6 +312,19 @@
     },
     "morePending_other": "还有 {{count}} 个待处理请求"
   },
+  "authentication": {
+    "eyebrow": "需要登录",
+    "title": "选择 {{agent}} 的登录方式",
+    "description": "该 Agent 支持多种认证方式。请选择一种，登录后当前任务会自动继续。",
+    "continueWith": "使用 {{name}} 登录",
+    "terminalEyebrow": "交互式登录",
+    "terminalTitle": "登录 {{agent}}",
+    "terminalDescription": "请在下方终端完成 {{method}}。登录完成后 Agent 会自动重启。",
+    "terminalStarting": "正在启动认证终端…",
+    "terminalInput": "输入终端内容",
+    "sendInput": "发送",
+    "morePending_other": "还有 {{count}} 个登录请求"
+  },
   "lightbox": {
     "preview": "图片预览",
     "close": "关闭预览"
@@ -332,6 +345,14 @@
       "commandOverride": "命令覆盖",
       "model": "模型",
       "saveSuccess": "已保存",
+      "checkAuthentication": "检查登录",
+      "authChecking": "检查中…",
+      "authMethodsFound_other": "发现 {{count}} 种登录方式",
+      "authProbeFailed": "登录检查失败：{{error}}",
+      "logout": "退出登录",
+      "loggingOut": "退出中…",
+      "logoutSuccess": "已退出登录",
+      "logoutFailed": "退出登录失败：{{error}}",
       "saveFailed": "保存失败：{{err}}",
       "byok": {
         "title": "API Key",

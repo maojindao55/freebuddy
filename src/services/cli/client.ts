@@ -4,6 +4,8 @@ import type {
   CliCheckResult,
   CliEvent,
   CliInstallResult,
+  CliAuthControlArgs,
+  CliAuthProbeResult,
   CliRunArgs,
   CliRuntime,
   CliTaskListArgs,
@@ -56,6 +58,12 @@ export const cliClient = {
   codexUsage(): Promise<CodexUsageResult> {
     return api().codexUsage();
   },
+  probeAuthentication(args: CliAuthControlArgs): Promise<CliAuthProbeResult> {
+    return api().probeAuthentication(args);
+  },
+  logout(args: CliAuthControlArgs): Promise<void> {
+    return api().logout(args);
+  },
   check(
     adapter: string,
     binary?: string,
@@ -88,6 +96,27 @@ export const cliClient = {
     optionId?: string;
   }): Promise<boolean> {
     return api().permissionDecision(args);
+  },
+  authenticationDecision(args: {
+    sessionId: string;
+    requestId: string;
+    outcome: "selected" | "cancelled";
+    methodId?: string;
+  }): Promise<boolean> {
+    return api().authenticationDecision(args);
+  },
+  authenticationTerminalInput(args: {
+    sessionId: string;
+    requestId: string;
+    data: string;
+  }): Promise<boolean> {
+    return api().authenticationTerminalInput(args);
+  },
+  authenticationTerminalCancel(args: {
+    sessionId: string;
+    requestId: string;
+  }): Promise<boolean> {
+    return api().authenticationTerminalCancel(args);
   },
 
   listTasks(args?: CliTaskListArgs): Promise<CliTaskRow[]> {

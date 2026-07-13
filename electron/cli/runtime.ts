@@ -120,7 +120,7 @@ function mergeJsonEnvValue(current: string | undefined, patch: string) {
   }
 }
 
-function mergeBuiltEnv(
+export function mergeBuiltEnv(
   base: Record<string, string | undefined>,
   patch?: Record<string, string>
 ) {
@@ -255,7 +255,31 @@ export async function cliRun(
       toolSessionScope,
       running,
       capturedSessions,
-      emit
+      emit,
+      agentCommand: {
+        bin: built.bin,
+        args: built.args,
+        cwd: args.cwd,
+        env
+      },
+      restartAgent: async () => {
+        const restarted = spawn(built.bin, built.args, {
+          cwd: args.cwd,
+          env,
+          stdio: ["pipe", "pipe", "pipe"]
+        }) as ChildProcessByStdio<Writable, Readable, Readable>;
+        await new Promise<void>((resolve, reject) => {
+          restarted.once("spawn", resolve);
+          restarted.once("error", reject);
+        });
+        const restartedPid = restarted.pid ?? 0;
+        if (!restartedPid) {
+          throw new Error("Restarted ACP agent did not report a process id.");
+        }
+        setTaskPid(args.sessionId, restartedPid);
+        emit({ type: "started", pid: restartedPid });
+        return { child: restarted, pid: restartedPid };
+      }
     });
     return;
   }

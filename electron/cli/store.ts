@@ -559,3 +559,9 @@ export function saveToolSession(
       now
     );
 }
+
+export function clearToolSessionsForAgent(agentId: string): void {
+  getDb()
+    .prepare("DELETE FROM cli_tool_sessions WHERE agent_id = ?")
+    .run(agentId);
+}

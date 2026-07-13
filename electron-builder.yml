@@ -18,6 +18,7 @@ extraResources:
 
 asarUnpack:
   - node_modules/better-sqlite3/**/*
+  - node_modules/node-pty/**/*
 
 publish:
   - provider: github

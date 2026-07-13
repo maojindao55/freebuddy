@@ -145,6 +145,45 @@ export interface CliPermissionRequest {
   options: CliPermissionOption[];
 }
 
+export interface CliAuthenticationMethod {
+  methodId: string;
+  name: string;
+  description?: string;
+}
+
+export interface CliAuthenticationRequest {
+  requestId: string;
+  sessionId: string;
+  agentName: string;
+  methods: CliAuthenticationMethod[];
+}
+
+export interface CliAuthenticationTerminalRequest {
+  requestId: string;
+  sessionId: string;
+  agentName: string;
+  methodName: string;
+}
+
+export interface CliAuthControlArgs {
+  agentId: string;
+  adapter: CLIAdapterId;
+  binary?: string;
+  extraArgs?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+export interface CliAuthProbeResult {
+  authMethods: Array<{
+    methodId: string;
+    name: string;
+    description?: string;
+    type: "agent" | "terminal" | "env_var";
+  }>;
+  logoutSupported: boolean;
+}
+
 export type CliEvent =
   | { type: "started"; pid: number }
   | { type: "stdout"; content: string }
@@ -161,6 +200,21 @@ export type CliEvent =
     }
   | { type: "permission"; request: CliPermissionRequest }
   | { type: "permission-resolved"; requestId: string }
+  | { type: "authentication"; request: CliAuthenticationRequest }
+  | { type: "authentication-resolved"; requestId: string }
+  | {
+      type: "authentication-terminal-started";
+      request: CliAuthenticationTerminalRequest;
+    }
+  | {
+      type: "authentication-terminal-update";
+      requestId: string;
+      output: string;
+      running: boolean;
+      exitCode?: number;
+      signal?: number;
+    }
+  | { type: "authentication-terminal-resolved"; requestId: string }
   | { type: "done"; exitCode: number }
   | { type: "error"; message: string };
 

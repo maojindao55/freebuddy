@@ -8,6 +8,7 @@ import { ReplayButton } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
+import { AuthenticationDialog } from "./components/CLI/AuthenticationDialog";
 import { DetailColumn } from "./components/CLI/DetailColumn";
 import { AgentBridgeListener } from "./components/AgentBridge/AgentBridgeListener";
 import { AgentBridgeToasts } from "./components/AgentBridge/AgentBridgeToasts";
@@ -364,6 +365,7 @@ function App() {
 
       <CliInstallPanelHost />
       <PermissionDialog />
+      <AuthenticationDialog />
       <AgentBridgeListener />
       <AgentBridgeToasts />
     </div>

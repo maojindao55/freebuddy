@@ -324,6 +324,20 @@
     "morePending_one": "+{{count}} more pending request",
     "morePending_other": "+{{count}} more pending requests"
   },
+  "authentication": {
+    "eyebrow": "Sign in required",
+    "title": "Choose how to sign in to {{agent}}",
+    "description": "This agent supports multiple authentication methods. Select one to continue the current task after sign-in.",
+    "continueWith": "Continue with {{name}}",
+    "terminalEyebrow": "Interactive sign-in",
+    "terminalTitle": "Sign in to {{agent}}",
+    "terminalDescription": "Complete {{method}} in the terminal below. The agent will restart automatically after sign-in.",
+    "terminalStarting": "Starting authentication terminal…",
+    "terminalInput": "Type terminal input",
+    "sendInput": "Send",
+    "morePending_one": "+{{count}} more sign-in request",
+    "morePending_other": "+{{count}} more sign-in requests"
+  },
   "lightbox": {
     "preview": "Image preview",
     "close": "Close preview"
@@ -344,6 +358,15 @@
       "commandOverride": "Command override",
       "model": "Model",
       "saveSuccess": "Saved",
+      "checkAuthentication": "Check sign-in",
+      "authChecking": "Checking…",
+      "authMethodsFound_one": "{{count}} sign-in method",
+      "authMethodsFound_other": "{{count}} sign-in methods",
+      "authProbeFailed": "Sign-in check failed: {{error}}",
+      "logout": "Sign out",
+      "loggingOut": "Signing out…",
+      "logoutSuccess": "Signed out",
+      "logoutFailed": "Sign-out failed: {{error}}",
       "saveFailed": "Save failed: {{err}}",
       "byok": {
         "title": "API Key",

@@ -480,6 +480,10 @@
     "runWeekdays": "Run on",
     "monthDay": "Day of month",
     "executionMode": "Execution mode",
+    "workingDirectory": "Working directory (optional)",
+    "selectDirectory": "Choose folder",
+    "clearDirectory": "Clear working directory",
+    "workingDirectoryHint": "The agent reads and writes files in this folder. Leave it empty to use the default directory.",
     "execution": {
       "new": "New conversation each run",
       "continuous": "Continue in one conversation"

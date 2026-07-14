@@ -10758,6 +10758,76 @@ button.ghost:focus-visible,
   line-height: 1.4;
 }
 
+.scheduled-task-workspace-field {
+  display: flex;
+  max-width: 680px;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.scheduled-task-workspace-field small {
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.scheduled-task-workspace-picker {
+  display: flex;
+  min-width: 0;
+  gap: 7px;
+}
+
+.scheduled-task-workspace-select,
+.scheduled-task-workspace-clear {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-soft);
+  cursor: pointer;
+}
+
+.scheduled-task-workspace-select {
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-start;
+  padding: 7px 11px;
+}
+
+.scheduled-task-workspace-select span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduled-task-workspace-clear {
+  width: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+}
+
+.scheduled-task-workspace-select:hover,
+.scheduled-task-workspace-clear:hover {
+  border-color: var(--fb-border-strong);
+  color: var(--fb-text-primary);
+}
+
+.scheduled-task-workspace-meta {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .scheduled-task-weekday-field {
   display: flex;
   flex-direction: column;

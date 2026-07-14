@@ -19,6 +19,7 @@ export interface ScheduledTask {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  cwd?: string;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
   nextRunAt?: string;
@@ -40,6 +41,7 @@ export interface ScheduledTaskInput {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  cwd?: string;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
 }

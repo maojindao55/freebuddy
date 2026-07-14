@@ -1,5 +1,7 @@
 import { BrowserWindow, ipcMain, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
+import path from "node:path";
 
 import { getDb } from "./db.js";
 import { appendMessage, createConversation, getConversation } from "./conversations.js";
@@ -29,6 +31,7 @@ export interface ScheduledTask {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  cwd?: string;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
   nextRunAt?: string;
@@ -50,6 +53,7 @@ export interface ScheduledTaskInput {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  cwd?: string;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
 }
@@ -75,6 +79,7 @@ interface ScheduledTaskRow {
   schedule_date: string | null;
   weekdays: string | null;
   month_day: number | null;
+  cwd: string | null;
   execution_mode: string;
   enabled: number;
   next_run_at: string | null;
@@ -143,6 +148,7 @@ function rowToTask(row: ScheduledTaskRow): ScheduledTask {
     scheduleDate: row.schedule_date ?? undefined,
     weekdays: parseWeekdays(row.weekdays),
     monthDay: row.month_day ?? undefined,
+    cwd: row.cwd ?? undefined,
     executionMode: EXECUTION_MODES.has(row.execution_mode as ScheduledTaskExecutionMode)
       ? (row.execution_mode as ScheduledTaskExecutionMode)
       : "new_conversation",
@@ -211,6 +217,9 @@ function validateInput(input: ScheduledTaskInput): string[] {
   if (!input.prompt?.trim()) errors.push("task instructions are required");
   if (!SCHEDULE_TYPES.has(input.scheduleType)) errors.push("schedule type is invalid");
   if (!EXECUTION_MODES.has(input.executionMode)) errors.push("execution mode is invalid");
+  if (input.cwd?.trim() && !path.isAbsolute(input.cwd.trim())) {
+    errors.push("working directory must be an absolute path");
+  }
   if (
     input.scheduleType !== "manual" &&
     input.scheduleType !== "hourly" &&
@@ -268,9 +277,9 @@ export function createScheduledTask(
     .prepare(
       `INSERT INTO scheduled_tasks
         (id, title, prompt, agent_id, time_local, schedule_type,
-         schedule_date, weekdays, month_day, execution_mode, enabled,
+         schedule_date, weekdays, month_day, cwd, execution_mode, enabled,
          next_run_at, last_status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`
     )
     .run(
       id,
@@ -282,6 +291,7 @@ export function createScheduledTask(
       input.scheduleType === "once" ? input.scheduleDate ?? null : null,
       input.scheduleType === "weekly" ? JSON.stringify(input.weekdays ?? []) : null,
       input.scheduleType === "monthly" ? input.monthDay ?? null : null,
+      input.cwd?.trim() || null,
       input.executionMode,
       input.enabled ? 1 : 0,
       nextRunAt(input),
@@ -306,7 +316,7 @@ export function updateScheduledTask(
       `UPDATE scheduled_tasks
        SET title = ?, prompt = ?, agent_id = ?, time_local = ?,
            schedule_type = ?, schedule_date = ?, weekdays = ?,
-           month_day = ?, execution_mode = ?, enabled = ?, next_run_at = ?, updated_at = ?
+           month_day = ?, cwd = ?, execution_mode = ?, enabled = ?, next_run_at = ?, updated_at = ?
        WHERE id = ?`
     )
     .run(
@@ -318,6 +328,7 @@ export function updateScheduledTask(
       input.scheduleType === "once" ? input.scheduleDate ?? null : null,
       input.scheduleType === "weekly" ? JSON.stringify(input.weekdays ?? []) : null,
       input.scheduleType === "monthly" ? input.monthDay ?? null : null,
+      input.cwd?.trim() || null,
       input.executionMode,
       input.enabled ? 1 : 0,
       nextRunAt(input),
@@ -452,16 +463,27 @@ export async function runScheduledTask(
       (candidate) => candidate.id === task.agentId && candidate.enabled !== false
     );
     if (!member) throw new Error("selected agent is unavailable");
+    if (task.cwd) {
+      try {
+        if (!statSync(task.cwd).isDirectory()) throw new Error("not a directory");
+      } catch {
+        throw new Error(`working directory is unavailable: ${task.cwd}`);
+      }
+    }
 
     const existingConversation =
       task.executionMode === "continuous" && task.lastConversationId
         ? getConversation(task.lastConversationId)
         : undefined;
     const conversationId =
-      existingConversation?.agentId === member.id
+      existingConversation?.agentId === member.id && existingConversation.cwd === task.cwd
         ? existingConversation.id
         : randomUUID();
-    if (!existingConversation || existingConversation.agentId !== member.id) {
+    if (
+      !existingConversation ||
+      existingConversation.agentId !== member.id ||
+      existingConversation.cwd !== task.cwd
+    ) {
       createConversation({
         id: conversationId,
         title: `${task.title} · ${new Intl.DateTimeFormat(undefined, {
@@ -472,6 +494,7 @@ export async function runScheduledTask(
         agentId: member.id,
         agentName: member.name,
         adapter: member.cli.adapter,
+        cwd: task.cwd,
         approvalMode: "auto"
       });
     }
@@ -489,6 +512,7 @@ export async function runScheduledTask(
     const plan: WorkflowPlan = {
       name: task.title,
       goal: task.prompt,
+      cwd: task.cwd,
       template: "custom",
       phases: [
         {

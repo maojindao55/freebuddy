@@ -253,6 +253,7 @@ function migrate(db: DB) {
       schedule_date TEXT,
       weekdays TEXT,
       month_day INTEGER,
+      cwd TEXT,
       execution_mode TEXT NOT NULL DEFAULT 'new_conversation',
       enabled INTEGER NOT NULL DEFAULT 1,
       next_run_at TEXT,
@@ -392,6 +393,9 @@ function migrate(db: DB) {
   if (!scheduledTaskCols.some((c) => c.name === "month_day")) {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN month_day INTEGER");
   }
+  if (!scheduledTaskCols.some((c) => c.name === "cwd")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN cwd TEXT");
+  }
   if (!scheduledTaskCols.some((c) => c.name === "execution_mode")) {
     db.exec(
       "ALTER TABLE scheduled_tasks ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'new_conversation'"
@@ -420,6 +424,7 @@ function migrate(db: DB) {
           schedule_date TEXT,
           weekdays TEXT,
           month_day INTEGER,
+          cwd TEXT,
           execution_mode TEXT NOT NULL DEFAULT 'new_conversation',
           enabled INTEGER NOT NULL DEFAULT 1,
           next_run_at TEXT,
@@ -433,11 +438,11 @@ function migrate(db: DB) {
         );
         INSERT INTO scheduled_tasks_next
           (id, title, prompt, agent_id, time_local, schedule_type,
-           schedule_date, weekdays, month_day, execution_mode, enabled, next_run_at,
+           schedule_date, weekdays, month_day, cwd, execution_mode, enabled, next_run_at,
            last_run_at, last_status, last_error, last_conversation_id,
            last_workflow_run_id, created_at, updated_at)
         SELECT id, title, prompt, agent_id, time_local, schedule_type,
-               schedule_date, weekdays, month_day, execution_mode, enabled, next_run_at,
+               schedule_date, weekdays, month_day, cwd, execution_mode, enabled, next_run_at,
                last_run_at, last_status, last_error, last_conversation_id,
                last_workflow_run_id, created_at, updated_at
         FROM scheduled_tasks;

@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock3,
+  FolderOpen,
   History,
   Loader2,
   Pencil,
@@ -14,9 +15,11 @@ import {
   Plus,
   Save,
   Trash2,
+  X,
   XCircle
 } from "lucide-react";
 
+import { cliClient } from "@/services/cli/client";
 import { scheduledTasksClient } from "@/services/scheduledTasks/client";
 import type {
   ScheduledTask,
@@ -57,6 +60,7 @@ function blankInput(agentId = ""): ScheduledTaskInput {
     scheduleDate: localDateAfter(1),
     weekdays: [1, 2, 3, 4, 5],
     monthDay: new Date().getDate(),
+    cwd: undefined,
     executionMode: "new_conversation",
     enabled: true
   };
@@ -72,6 +76,7 @@ function inputFromTask(task: ScheduledTask): ScheduledTaskInput {
     scheduleDate: task.scheduleDate ?? localDateAfter(1),
     weekdays: task.weekdays?.length ? task.weekdays : [1, 2, 3, 4, 5],
     monthDay: task.monthDay ?? new Date().getDate(),
+    cwd: task.cwd,
     executionMode: task.executionMode,
     enabled: task.enabled
   };
@@ -259,6 +264,13 @@ export function ScheduledTasksTab({
     });
   };
 
+  const chooseWorkingDirectory = async () => {
+    const directory = await cliClient.selectDirectory();
+    if (directory) {
+      setDraft((current) => ({ ...current, cwd: directory }));
+    }
+  };
+
   if (editingId) {
     return (
       <div className="scheduled-task-editor">
@@ -364,6 +376,33 @@ export function ScheduledTasksTab({
             </select>
             <small>{t(`scheduledTasks.executionHint.${draft.executionMode}`)}</small>
           </label>
+
+          <div className="scheduled-task-workspace-field">
+            <span>{t("scheduledTasks.workingDirectory")}</span>
+            <div className="scheduled-task-workspace-picker">
+              <button
+                type="button"
+                className="scheduled-task-workspace-select"
+                onClick={() => void chooseWorkingDirectory()}
+                title={draft.cwd || t("scheduledTasks.selectDirectory")}
+              >
+                <FolderOpen size={15} />
+                <span>{draft.cwd || t("scheduledTasks.selectDirectory")}</span>
+              </button>
+              {draft.cwd && (
+                <button
+                  type="button"
+                  className="scheduled-task-workspace-clear"
+                  onClick={() => setDraft({ ...draft, cwd: undefined })}
+                  aria-label={t("scheduledTasks.clearDirectory")}
+                  title={t("scheduledTasks.clearDirectory")}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <small>{t("scheduledTasks.workingDirectoryHint")}</small>
+          </div>
 
           {draft.scheduleType === "once" && (
             <label className="scheduled-task-condition-field">
@@ -491,6 +530,11 @@ export function ScheduledTasksTab({
                   <span><Clock3 size={12} />{formatSchedule(task)}</span>
                   <span>{t("scheduledTasks.agentValue", { agent: agentNames.get(task.agentId) ?? task.agentId })}</span>
                   <span>{t(`scheduledTasks.execution.${task.executionMode === "continuous" ? "continuous" : "new"}`)}</span>
+                  {task.cwd && (
+                    <span className="scheduled-task-workspace-meta" title={task.cwd}>
+                      <FolderOpen size={12} />{task.cwd}
+                    </span>
+                  )}
                   {task.scheduleType !== "manual" && (
                     <span>{t("scheduledTasks.nextRun", { time: formatDate(task.nextRunAt) })}</span>
                   )}

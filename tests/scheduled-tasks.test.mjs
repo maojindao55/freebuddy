@@ -117,11 +117,13 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
 
   assert.match(db, /CREATE TABLE IF NOT EXISTS scheduled_tasks/);
   assert.match(db, /schedule_type TEXT NOT NULL DEFAULT 'daily'/);
+  assert.match(db, /cwd TEXT/);
   assert.match(db, /CREATE TABLE IF NOT EXISTS scheduled_task_runs/);
   assert.match(service, /scheduledTasks:list/);
   assert.match(service, /scheduledTasks:listRuns/);
   assert.match(service, /scheduledTasks:run/);
   assert.match(service, /buildScheduledTaskPrompt/);
+  assert.match(service, /cwd: task\.cwd/);
   assert.doesNotMatch(service, /fetchPage|buildScheduledReportPrompt/);
   assert.doesNotMatch(component, /sourceUrl|type="url"|timeZone/);
   assert.match(component, /value="once"/);
@@ -131,6 +133,7 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
   assert.match(component, /value="weekly"/);
   assert.match(component, /value="monthly"/);
   assert.match(component, /value="continuous"/);
+  assert.match(component, /cliClient\.selectDirectory/);
   assert.match(preload, /scheduledTasks:\/\/changed/);
   assert.match(main, /initializeScheduledTaskScheduler/);
   assert.match(settings, /ScheduledTasksTab/);

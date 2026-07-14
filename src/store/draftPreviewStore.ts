@@ -50,7 +50,16 @@ function withDraftNonce(target: string, nonce: number): string {
 
 function shouldKeepRemoteUrlExact(target: string): boolean {
   try {
-    return new URL(target).hostname === "mp.weixin.qq.com";
+    const { hostname } = new URL(target);
+    return (
+      hostname === "mp.weixin.qq.com" ||
+      hostname.endsWith(".weibo.com") ||
+      hostname === "weibo.com" ||
+      hostname.endsWith(".weibo.cn") ||
+      hostname === "weibo.cn" ||
+      hostname === "v2ex.com" ||
+      hostname.endsWith(".v2ex.com")
+    );
   } catch {
     return false;
   }

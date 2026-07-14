@@ -83,8 +83,16 @@ function isPdfTarget(target: string | undefined, url: string | undefined): boole
 export function isExternalOnlyDraftTarget(value: string | undefined): boolean {
   if (!value || !/^https?:\/\//i.test(value)) return false;
   try {
-    const parsed = new URL(value);
-    return parsed.hostname === "mp.weixin.qq.com";
+    const { hostname } = new URL(value);
+    return (
+      hostname === "mp.weixin.qq.com" ||
+      hostname.endsWith(".weibo.com") ||
+      hostname === "weibo.com" ||
+      hostname.endsWith(".weibo.cn") ||
+      hostname === "weibo.cn" ||
+      hostname === "v2ex.com" ||
+      hostname.endsWith(".v2ex.com")
+    );
   } catch {
     return false;
   }

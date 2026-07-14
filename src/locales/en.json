@@ -884,7 +884,7 @@
     "loading": "Loading preview…",
     "loadError": "Preview failed to load. Check the entry path or build output.",
     "externalOnlyTitle": "Open this page in an external browser",
-    "externalOnlyBody": "WeChat articles trigger verification or block embedded preview panels. Open it in your browser to read it.",
+    "externalOnlyBody": "Pages such as WeChat articles and Weibo posts trigger verification or block embedded preview panels. Open it in your browser to read it.",
     "manualFallbackPlaceholder": "or enter a URL / README.md / data.json / image.png / file.pdf…",
     "emptyNoWorkspace": "No workspace selected. Pick a working directory to preview the agent's output.",
     "emptyNoEntry": "No preview yet. Ask the agent to start a dev server, create a page, write a Markdown doc, or generate an image, then it will open here automatically."

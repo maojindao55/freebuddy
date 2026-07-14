@@ -105,6 +105,14 @@ test("Draft preview keeps remote article URLs inside the preview target", async 
   assert.equal(parsed.searchParams.get("freebuddyDraft"), "11");
 });
 
+test("Draft preview supports remote URLs but not relative files without a workspace", async () => {
+  const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
+  const remote = composeDraftPreviewUrl("", "https://example.com/article", 4);
+
+  assert.equal(new URL(remote).hostname, "example.com");
+  assert.equal(composeDraftPreviewUrl("", "index.html", 4), "");
+});
+
 test("Draft preview keeps WeChat article URLs exact because they are signed", async () => {
   const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
   const source = "https://mp.weixin.qq.com/s?__biz=test&mid=1&idx=1&sn=abc#rd";

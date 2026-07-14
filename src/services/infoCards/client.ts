@@ -3,7 +3,7 @@ import type {
   InfoCardConfig,
   InfoCardSnapshot,
   MarketProviderConfig,
-  UpdateMarketProviderInput,
+  MarketSymbolSearchResult,
   UpdateInfoCardInput
 } from "./types";
 
@@ -41,7 +41,7 @@ export const infoCardClient = {
   marketProvider(): Promise<MarketProviderConfig> {
     return api().marketProvider();
   },
-  updateMarketProvider(input: UpdateMarketProviderInput): Promise<MarketProviderConfig> {
-    return api().updateMarketProvider(input);
+  searchMarketSymbols(query: string): Promise<MarketSymbolSearchResult[]> {
+    return api().searchMarketSymbols(query);
   }
 };

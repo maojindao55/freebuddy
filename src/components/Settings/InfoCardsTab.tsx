@@ -1,217 +1,83 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowDown, ArrowUp, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Save, Search, Trash2, X } from "lucide-react";
 
+import { infoCardClient } from "@/services/infoCards/client";
 import type {
-  BrowserExtractionRecipe,
-  InfoCardConfig
+  InfoCardConfig,
+  MarketSymbolSearchResult
 } from "@/services/infoCards/types";
 import { useInfoCardStore } from "@/store/infoCardStore";
 import { FeedTab } from "./FeedTab";
 
-const FIELD_KEYS = {
-  market: ["name", "value", "change", "status"],
-  sports: ["league", "home", "away", "score", "status"]
-} as const;
-
-function recipeDraft(card: InfoCardConfig): BrowserExtractionRecipe {
-  const keys = card.type === "sports" ? FIELD_KEYS.sports : FIELD_KEYS.market;
-  return {
-    url: card.recipe?.url ?? "",
-    waitForSelector: card.recipe?.waitForSelector ?? "",
-    rowSelector: card.recipe?.rowSelector ?? "",
-    fields: Object.fromEntries(keys.map((key) => [key, card.recipe?.fields[key] ?? ""])),
-    maxItems: card.recipe?.maxItems ?? 6
-  };
-}
-
-function RecipeEditor({ card }: { card: InfoCardConfig }) {
-  const { t } = useTranslation();
-  const updateCard = useInfoCardStore((state) => state.updateCard);
-  const [recipe, setRecipe] = useState(() => recipeDraft(card));
-  const [refreshMinutes, setRefreshMinutes] = useState(card.refreshMinutes);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const keys = card.type === "sports" ? FIELD_KEYS.sports : FIELD_KEYS.market;
-
-  useEffect(() => {
-    setRecipe(recipeDraft(card));
-    setRefreshMinutes(card.refreshMinutes);
-  }, [card]);
-
-  const save = async () => {
-    setSaving(true);
-    setSaved(false);
-    try {
-      await updateCard({ id: card.id, recipe, refreshMinutes });
-      setSaved(true);
-      window.setTimeout(() => setSaved(false), 1500);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="info-card-recipe-editor">
-      <p>{t("infoCards.agentRecipeHint")}</p>
-      <label>
-        <span>{t("infoCards.sourceUrl")}</span>
-        <input
-          value={recipe.url}
-          placeholder="https://example.com"
-          onChange={(event) => setRecipe({ ...recipe, url: event.currentTarget.value })}
-        />
-      </label>
-      <div className="info-card-selector-grid">
-        <label>
-          <span>{t("infoCards.refreshMinutes")}</span>
-          <input
-            type="number"
-            min={1}
-            max={120}
-            value={refreshMinutes}
-            onChange={(event) =>
-              setRefreshMinutes(Math.max(1, Math.min(120, Number(event.currentTarget.value) || 1)))
-            }
-          />
-        </label>
-        <label>
-          <span>{t("infoCards.maxItems")}</span>
-          <input
-            type="number"
-            min={1}
-            max={20}
-            value={recipe.maxItems ?? 6}
-            onChange={(event) =>
-              setRecipe({
-                ...recipe,
-                maxItems: Math.max(1, Math.min(20, Number(event.currentTarget.value) || 1))
-              })
-            }
-          />
-        </label>
-        <label>
-          <span>{t("infoCards.waitForSelector")}</span>
-          <input
-            value={recipe.waitForSelector ?? ""}
-            placeholder=".loaded"
-            onChange={(event) =>
-              setRecipe({ ...recipe, waitForSelector: event.currentTarget.value })
-            }
-          />
-        </label>
-        <label>
-          <span>{t("infoCards.rowSelector")}</span>
-          <input
-            value={recipe.rowSelector}
-            placeholder=".data-row"
-            onChange={(event) =>
-              setRecipe({ ...recipe, rowSelector: event.currentTarget.value })
-            }
-          />
-        </label>
-        {keys.map((key) => (
-          <label key={key}>
-            <span>{t(`infoCards.fields.${key}`)}</span>
-            <input
-              value={recipe.fields[key] ?? ""}
-              placeholder={`.${key}`}
-              onChange={(event) =>
-                setRecipe({
-                  ...recipe,
-                  fields: { ...recipe.fields, [key]: event.currentTarget.value }
-                })
-              }
-            />
-          </label>
-        ))}
-      </div>
-      <button type="button" className="ghost" disabled={saving} onClick={() => void save()}>
-        <Save size={14} />
-        {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
-      </button>
-    </div>
-  );
-}
-
-function MarketProviderEditor() {
-  const { t } = useTranslation();
-  const provider = useInfoCardStore((state) => state.marketProvider);
-  const updateMarketProvider = useInfoCardStore((state) => state.updateMarketProvider);
-  const [apiKey, setApiKey] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const save = async () => {
-    if (!apiKey.trim()) return;
-    setSaving(true);
-    setSaved(false);
-    try {
-      await updateMarketProvider(apiKey.trim());
-      setApiKey("");
-      setSaved(true);
-      window.setTimeout(() => setSaved(false), 1500);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <section className="info-card-editor market-provider-editor">
-      <div className="info-card-editor-header">
-        <div>
-          <strong>{t("infoCards.alphaVantage.title")}</strong>
-          <small>
-            {provider?.configured
-              ? t("infoCards.alphaVantage.connected", { preview: provider.apiKeyPreview })
-              : t("infoCards.alphaVantage.notConfigured")}
-          </small>
-        </div>
-      </div>
-      <div className="info-card-selector-grid">
-        <label>
-          <span>{t("infoCards.alphaVantage.endpoint")}</span>
-          <input value={provider?.endpoint ?? "https://mcp.alphavantage.co/mcp"} readOnly />
-        </label>
-        <label>
-          <span>{t("infoCards.alphaVantage.apiKey")}</span>
-          <input
-            type="password"
-            value={apiKey}
-            autoComplete="off"
-            placeholder={
-              provider?.apiKeyPreview ?? t("infoCards.alphaVantage.apiKeyPlaceholder")
-            }
-            onChange={(event) => setApiKey(event.currentTarget.value)}
-          />
-        </label>
-      </div>
-      <p>{t("infoCards.alphaVantage.securityHint")}</p>
-      <button
-        type="button"
-        className="ghost"
-        disabled={saving || !apiKey.trim()}
-        onClick={() => void save()}
-      >
-        <Save size={14} />
-        {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
-      </button>
-    </section>
-  );
-}
-
 function MarketCardEditor({ card }: { card: InfoCardConfig }) {
   const { t } = useTranslation();
   const updateCard = useInfoCardStore((state) => state.updateCard);
-  const [symbols, setSymbols] = useState((card.marketSymbols ?? []).join(", "));
+  const snapshot = useInfoCardStore((state) => state.snapshots[card.id]);
+  const [symbols, setSymbols] = useState<string[]>(card.marketSymbols ?? []);
+  const [symbolNames, setSymbolNames] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<MarketSymbolSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [refreshMinutes, setRefreshMinutes] = useState(card.refreshMinutes);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const selectedNames = useMemo(() => {
+    const names = { ...symbolNames };
+    for (const row of snapshot?.items ?? []) {
+      const matched = row.name?.match(/^(.*?)\s*·\s*((?:SH|SZ)\d{6})$/i);
+      if (matched) names[matched[2].toLowerCase()] = matched[1].trim();
+    }
+    return names;
+  }, [snapshot?.items, symbolNames]);
 
   useEffect(() => {
-    setSymbols((card.marketSymbols ?? []).join(", "));
+    setSymbols(card.marketSymbols ?? []);
+    setSymbolNames({});
     setRefreshMinutes(card.refreshMinutes);
   }, [card]);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearching(false);
+      setSearchError(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    setSearchError(false);
+    const timer = window.setTimeout(() => {
+      void infoCardClient
+        .searchMarketSymbols(trimmed)
+        .then((next) => {
+          if (!cancelled) setResults(next);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setResults([]);
+            setSearchError(true);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  const addSymbol = (result: MarketSymbolSearchResult) => {
+    if (symbols.length >= 10 || symbols.includes(result.symbol)) return;
+    setSymbols([...symbols, result.symbol]);
+    setSymbolNames((current) => ({ ...current, [result.symbol]: result.name }));
+    setQuery("");
+    setResults([]);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -219,7 +85,7 @@ function MarketCardEditor({ card }: { card: InfoCardConfig }) {
     try {
       await updateCard({
         id: card.id,
-        marketSymbols: symbols.split(/[\s,;]+/).filter(Boolean),
+        marketSymbols: symbols,
         refreshMinutes
       });
       setSaved(true);
@@ -230,16 +96,83 @@ function MarketCardEditor({ card }: { card: InfoCardConfig }) {
   };
 
   return (
-    <div className="info-card-recipe-editor">
-      <p>{t("infoCards.alphaVantage.symbolHint")}</p>
+    <div className="info-card-config-editor">
+      <p>{t("infoCards.ashare.symbolHint")}</p>
+      <div className="market-symbol-chips" aria-label={t("infoCards.ashare.selectedSymbols")}>
+        {symbols.map((symbol) => (
+          <span className="market-symbol-chip" key={symbol}>
+            <span>
+              <strong>{selectedNames[symbol] || symbol.toUpperCase()}</strong>
+              {selectedNames[symbol] && <small>{symbol.toUpperCase()}</small>}
+            </span>
+            <button
+              type="button"
+              title={t("infoCards.ashare.removeSymbol", {
+                name: selectedNames[symbol] || symbol.toUpperCase()
+              })}
+              aria-label={t("infoCards.ashare.removeSymbol", {
+                name: selectedNames[symbol] || symbol.toUpperCase()
+              })}
+              onClick={() => setSymbols(symbols.filter((entry) => entry !== symbol))}
+            >
+              <X size={13} />
+            </button>
+          </span>
+        ))}
+        {!symbols.length && (
+          <span className="market-symbols-empty">{t("infoCards.ashare.noSelectedSymbols")}</span>
+        )}
+        <small className="market-symbol-count">
+          {t("infoCards.ashare.selectedCount", { count: symbols.length })}
+        </small>
+      </div>
       <div className="info-card-selector-grid">
-        <label>
-          <span>{t("infoCards.alphaVantage.symbols")}</span>
-          <input
-            value={symbols}
-            placeholder="SPY, QQQ, DIA"
-            onChange={(event) => setSymbols(event.currentTarget.value)}
-          />
+        <label className="market-symbol-search">
+          <span>{t("infoCards.ashare.searchLabel")}</span>
+          <div className="market-symbol-search-input">
+            <Search size={15} aria-hidden="true" />
+            <input
+              value={query}
+              placeholder={t("infoCards.ashare.searchPlaceholder")}
+              autoComplete="off"
+              disabled={symbols.length >= 10}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+          </div>
+          {query.trim().length >= 2 && (
+            <div className="market-symbol-results" role="listbox">
+              {searching ? (
+                <p>{t("infoCards.ashare.searching")}</p>
+              ) : searchError ? (
+                <p>{t("infoCards.ashare.searchError")}</p>
+              ) : results.length ? (
+                results.map((result) => {
+                  const selected = symbols.includes(result.symbol);
+                  return (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      key={result.symbol}
+                      disabled={selected || symbols.length >= 10}
+                      onClick={() => addSymbol(result)}
+                    >
+                      <span>
+                        <strong>{result.name}</strong>
+                        <small>
+                          {result.code} · {t(`infoCards.ashare.exchanges.${result.exchange}`)}
+                          {result.securityType ? ` · ${result.securityType}` : ""}
+                        </small>
+                      </span>
+                      <span>{selected ? t("infoCards.ashare.selected") : t("infoCards.ashare.add")}</span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p>{t("infoCards.ashare.noSearchResults")}</p>
+              )}
+            </div>
+          )}
         </label>
         <label>
           <span>{t("infoCards.refreshMinutes")}</span>
@@ -255,6 +188,59 @@ function MarketCardEditor({ card }: { card: InfoCardConfig }) {
         </label>
       </div>
       <button type="button" className="ghost" disabled={saving} onClick={() => void save()}>
+        <Save size={14} />
+        {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
+      </button>
+    </div>
+  );
+}
+
+function SportsCardEditor({ card }: { card: InfoCardConfig }) {
+  const { t } = useTranslation();
+  const updateCard = useInfoCardStore((state) => state.updateCard);
+  const [refreshMinutes, setRefreshMinutes] = useState(card.refreshMinutes);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setRefreshMinutes(card.refreshMinutes);
+  }, [card]);
+
+  const save = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateCard({ id: card.id, refreshMinutes });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1500);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="info-card-config-editor sports-card-editor">
+      <p>{t("infoCards.sportsProviderHint")}</p>
+      <div className="info-card-selector-grid">
+        <label>
+          <span>{t("infoCards.refreshMinutes")}</span>
+          <input
+            type="number"
+            min={1}
+            max={120}
+            value={refreshMinutes}
+            onChange={(event) =>
+              setRefreshMinutes(Math.max(1, Math.min(120, Number(event.currentTarget.value) || 1)))
+            }
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        className="ghost"
+        disabled={saving}
+        onClick={() => void save()}
+      >
         <Save size={14} />
         {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
       </button>
@@ -339,7 +325,7 @@ function CardEditor({ card, index, total }: { card: InfoCardConfig; index: numbe
       ) : card.type === "market" ? (
         <MarketCardEditor card={card} />
       ) : (
-        <RecipeEditor card={card} />
+        <SportsCardEditor card={card} />
       )}
     </section>
   );
@@ -354,6 +340,7 @@ export function InfoCardsTab() {
   const createCard = useInfoCardStore((state) => state.createCard);
   const [type, setType] = useState<"market" | "sports">("market");
   const ordered = useMemo(() => [...cards].sort((a, b) => a.order - b.order), [cards]);
+  const selectedTypeExists = cards.some((card) => card.type === type);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -369,15 +356,20 @@ export function InfoCardsTab() {
         <h3 className="settings-section-title">{t("infoCards.settingsTitle")}</h3>
         <span className="settings-section-desc">{t("infoCards.settingsDescription")}</span>
       </div>
-      <MarketProviderEditor />
       <section className="info-card-add-row">
         <select value={type} onChange={(event) => setType(event.currentTarget.value as "market" | "sports")}>
           <option value="market">{t("infoCards.types.market")}</option>
           <option value="sports">{t("infoCards.types.sports")}</option>
         </select>
-        <button type="button" className="primary-btn" disabled={loading} onClick={() => void createCard({ type })}>
+        <button
+          type="button"
+          className="primary-btn"
+          disabled={!loaded || loading || selectedTypeExists}
+          title={selectedTypeExists ? t("infoCards.typeAlreadyAdded") : undefined}
+          onClick={() => void createCard({ type })}
+        >
           <Plus size={15} />
-          {t("infoCards.addCard")}
+          {selectedTypeExists ? t("infoCards.typeAlreadyAdded") : t("infoCards.addCard")}
         </button>
       </section>
       <div className="info-card-editor-list">

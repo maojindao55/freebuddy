@@ -23,7 +23,6 @@ interface InfoCardState {
   deleteCard(id: string): Promise<boolean>;
   reorderCards(ids: string[]): Promise<void>;
   refreshCard(id: string): Promise<InfoCardSnapshot>;
-  updateMarketProvider(apiKey: string): Promise<MarketProviderConfig>;
 }
 
 function sorted(cards: InfoCardConfig[]): InfoCardConfig[] {
@@ -112,11 +111,5 @@ export const useInfoCardStore = create<InfoCardState>((set, get) => ({
     } finally {
       set((state) => ({ refreshing: { ...state.refreshing, [id]: false } }));
     }
-  },
-
-  async updateMarketProvider(apiKey) {
-    const marketProvider = await infoCardClient.updateMarketProvider({ apiKey });
-    set({ marketProvider });
-    return marketProvider;
   }
 }));

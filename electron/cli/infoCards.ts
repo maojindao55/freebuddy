@@ -1,36 +1,40 @@
 import { randomUUID } from "node:crypto";
-import { BrowserWindow, safeStorage } from "electron";
+import { BrowserWindow } from "electron";
 
-import { collectBrowserRecipe } from "../browserCollector.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import {
-  ALPHA_VANTAGE_MCP_ENDPOINT,
-  fetchAlphaVantageQuotes
-} from "./alphaVantage.js";
+  ASHARE_SOURCE_URL,
+  fetchAshareQuotes,
+  normalizeAshareSymbol,
+  searchAshareSecurities
+} from "./ashareMarket.js";
+import {
+  fetchNbaScores,
+  SPORTS_EVENTS_SOURCE_URL
+} from "./sportsEvents.js";
 import type {
-  BrowserExtractionRecipe,
   CreateInfoCardInput,
   InfoCardConfig,
   InfoCardSnapshot,
   InfoCardType,
   MarketProviderConfig,
-  UpdateMarketProviderInput,
+  SportsDateOffset,
   UpdateInfoCardInput
 } from "../shared/infoCardProtocol.js";
 import { getDb } from "./db.js";
 import { getSetting, setSetting } from "./settings.js";
-import { decryptSecret, encryptSecret, redactApiKey } from "./store.js";
 
 const INFO_CARDS_SETTING_KEY = "workspace.infoCards.v1";
-const ALPHA_VANTAGE_SETTING_KEY = "workspace.alphaVantage.v1";
 const DEFAULT_RSS_CARD_ID = "rss-default";
-const DEFAULT_MARKET_SYMBOLS = ["SPY", "QQQ", "DIA"];
+const DEFAULT_MARKET_SYMBOLS = ["sh000001", "sz399001", "sz399006", "sh000300"];
+const LEGACY_ALPHA_VANTAGE_DEFAULTS = new Set(["SPY", "QQQ", "DIA"]);
+const LEGACY_SPORTS_TITLES = new Set([
+  "Sports scores",
+  "Football & basketball scores",
+  "足球篮球赛况"
+]);
+const MAX_MARKET_SYMBOLS = 10;
 const refreshes = new Map<string, Promise<InfoCardSnapshot>>();
-
-interface StoredAlphaVantageConfig {
-  apiKeyEncrypted?: string;
-  apiKeyPreview?: string;
-}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -38,7 +42,7 @@ function nowIso(): string {
 
 function defaultTitle(type: InfoCardType): string {
   if (type === "market") return "Market indices";
-  if (type === "sports") return "Sports scores";
+  if (type === "sports") return "Sports events";
   return "Feed";
 }
 
@@ -56,100 +60,42 @@ function defaultRssCard(): InfoCardConfig {
   };
 }
 
-function sanitizeRecipe(
-  value: BrowserExtractionRecipe | null | undefined
-): BrowserExtractionRecipe | undefined {
-  if (!value) return undefined;
-  const url = value.url?.trim() ?? "";
-  const rowSelector = value.rowSelector?.trim() ?? "";
-  const fields = Object.fromEntries(
-    Object.entries(value.fields ?? {})
-      .map(([key, selector]) => [key.trim(), selector.trim()])
-      .filter(([key, selector]) => key && selector)
-  );
-  if (!url && !rowSelector && Object.keys(fields).length === 0) return undefined;
-  if (url) {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:") {
-      throw new Error("Info card sources must use HTTPS.");
-    }
-  }
-  return {
-    url,
-    rowSelector,
-    fields,
-    ...(value.waitForSelector?.trim()
-      ? { waitForSelector: value.waitForSelector.trim() }
-      : {}),
-    maxItems: Math.max(1, Math.min(value.maxItems ?? 6, 20))
-  };
-}
-
 function sanitizeMarketSymbols(value: unknown): string[] {
   if (!Array.isArray(value)) return [...DEFAULT_MARKET_SYMBOLS];
+  const raw = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (
+    raw.length === LEGACY_ALPHA_VANTAGE_DEFAULTS.size &&
+    raw.every((entry) => LEGACY_ALPHA_VANTAGE_DEFAULTS.has(entry.toUpperCase()))
+  ) {
+    return [...DEFAULT_MARKET_SYMBOLS];
+  }
   const symbols = Array.from(
     new Set(
-      value
-        .filter((entry): entry is string => typeof entry === "string")
-        .map((entry) => entry.trim().toUpperCase())
-        .filter((entry) => /^[A-Z0-9.^_-]{1,20}$/.test(entry))
+      raw.map((entry) => normalizeAshareSymbol(entry) ?? entry.toUpperCase()).filter((entry) =>
+        /^[A-Z0-9.^_-]{1,20}$|^(?:sh|sz)\d{6}$/.test(entry)
+      )
     )
   );
-  return symbols.slice(0, 5);
+  return symbols.slice(0, MAX_MARKET_SYMBOLS);
 }
 
-function storedAlphaVantageConfig(): StoredAlphaVantageConfig {
-  const stored = getSetting(ALPHA_VANTAGE_SETTING_KEY);
-  if (!stored) return {};
-  try {
-    const parsed = JSON.parse(stored) as StoredAlphaVantageConfig;
-    return {
-      apiKeyEncrypted:
-        typeof parsed.apiKeyEncrypted === "string" ? parsed.apiKeyEncrypted : undefined,
-      apiKeyPreview:
-        typeof parsed.apiKeyPreview === "string" ? parsed.apiKeyPreview : undefined
-    };
-  } catch {
-    return {};
-  }
-}
-
-function alphaVantageApiKey(): string | undefined {
-  return (
-    decryptSecret(storedAlphaVantageConfig().apiKeyEncrypted)?.trim() ||
-    process.env.ALPHAVANTAGE_API_KEY?.trim() ||
-    undefined
-  );
+function sanitizeSportsDateOffset(value: unknown): SportsDateOffset {
+  return value === -1 || value === 1 ? value : 0;
 }
 
 export function getMarketProviderConfig(): MarketProviderConfig {
-  const stored = storedAlphaVantageConfig();
-  const environmentKey = process.env.ALPHAVANTAGE_API_KEY?.trim();
   return {
-    endpoint: ALPHA_VANTAGE_MCP_ENDPOINT,
-    configured: Boolean(alphaVantageApiKey()),
-    apiKeyPreview: stored.apiKeyPreview || (environmentKey ? redactApiKey(environmentKey) : undefined)
+    id: "ashare",
+    name: "Ashare",
+    sourceUrl: ASHARE_SOURCE_URL,
+    configured: true
   };
 }
 
-export function updateMarketProvider(
-  input: UpdateMarketProviderInput
-): MarketProviderConfig {
-  const apiKey = input.apiKey?.trim();
-  if (!apiKey) throw new Error("Enter an Alpha Vantage API key.");
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error("Operating-system secret storage is unavailable.");
-  }
-  setSetting(
-    ALPHA_VANTAGE_SETTING_KEY,
-    JSON.stringify({
-      apiKeyEncrypted: encryptSecret(apiKey),
-      apiKeyPreview: redactApiKey(apiKey)
-    } satisfies StoredAlphaVantageConfig)
-  );
-  notifyInfoCardsChanged();
-  return getMarketProviderConfig();
-}
+export const searchMarketSymbols = searchAshareSecurities;
 
 function normalizeCard(value: unknown, index: number): InfoCardConfig | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -159,27 +105,36 @@ function normalizeCard(value: unknown, index: number): InfoCardConfig | undefine
   }
   const now = nowIso();
   const isLegacyMarketCard = input.type === "market" && !Array.isArray(input.marketSymbols);
+  const isAlphaVantageDefault =
+    input.type === "market" &&
+    Array.isArray(input.marketSymbols) &&
+    input.marketSymbols.length === LEGACY_ALPHA_VANTAGE_DEFAULTS.size &&
+    input.marketSymbols.every((entry) =>
+      LEGACY_ALPHA_VANTAGE_DEFAULTS.has(String(entry).toUpperCase())
+    );
+  const storedTitle = typeof input.title === "string" ? input.title.trim() : "";
   return {
     id: typeof input.id === "string" && input.id.trim() ? input.id : randomUUID(),
     type: input.type,
     title:
-      typeof input.title === "string" && input.title.trim()
-        ? input.title.trim().slice(0, 80)
+      storedTitle && !(input.type === "sports" && LEGACY_SPORTS_TITLES.has(storedTitle))
+        ? storedTitle.slice(0, 80)
         : defaultTitle(input.type),
     enabled: input.enabled !== false,
     order: Number.isFinite(input.order) ? Number(input.order) : index,
-    refreshMinutes: isLegacyMarketCard
-      ? 240
+    refreshMinutes: isLegacyMarketCard || isAlphaVantageDefault
+      ? 5
       : Math.max(
           1,
           Math.min(
-            Number(input.refreshMinutes) || (input.type === "market" ? 240 : 15),
+            Number(input.refreshMinutes) || (input.type === "market" ? 5 : 15),
             input.type === "market" ? 720 : 120
           )
         ),
     marketSymbols:
       input.type === "market" ? sanitizeMarketSymbols(input.marketSymbols) : undefined,
-    recipe: input.type === "sports" ? sanitizeRecipe(input.recipe) : undefined,
+    sportsDateOffset:
+      input.type === "sports" ? sanitizeSportsDateOffset(input.sportsDateOffset) : undefined,
     createdAt: typeof input.createdAt === "string" ? input.createdAt : now,
     updatedAt: typeof input.updatedAt === "string" ? input.updatedAt : now
   };
@@ -225,6 +180,9 @@ export function createInfoCard(input: CreateInfoCardInput): InfoCardConfig {
     throw new Error("Only market and sports cards can be added.");
   }
   const cards = listInfoCards();
+  if (cards.some((card) => card.type === input.type)) {
+    throw new Error(`Only one ${input.type} information card can be added.`);
+  }
   const now = nowIso();
   const card: InfoCardConfig = {
     id: randomUUID(),
@@ -232,8 +190,9 @@ export function createInfoCard(input: CreateInfoCardInput): InfoCardConfig {
     title: input.title?.trim().slice(0, 80) || defaultTitle(input.type),
     enabled: true,
     order: cards.length,
-    refreshMinutes: input.type === "market" ? 240 : 5,
+    refreshMinutes: 5,
     marketSymbols: input.type === "market" ? [...DEFAULT_MARKET_SYMBOLS] : undefined,
+    sportsDateOffset: input.type === "sports" ? 0 : undefined,
     createdAt: now,
     updatedAt: now
   };
@@ -264,8 +223,8 @@ export function updateInfoCard(input: UpdateInfoCardInput): InfoCardConfig | und
     ...(input.marketSymbols !== undefined && current.type === "market"
       ? { marketSymbols: sanitizeMarketSymbols(input.marketSymbols) }
       : {}),
-    ...(input.recipe !== undefined && current.type === "sports"
-      ? { recipe: sanitizeRecipe(input.recipe) }
+    ...(input.sportsDateOffset !== undefined && current.type === "sports"
+      ? { sportsDateOffset: sanitizeSportsDateOffset(input.sportsDateOffset) }
       : {}),
     updatedAt: nowIso()
   };
@@ -353,7 +312,11 @@ function saveSnapshot(
     )
     .run(
       card.id,
-      (card.type === "market" ? ALPHA_VANTAGE_MCP_ENDPOINT : card.recipe?.url) ||
+      (card.type === "market"
+        ? ASHARE_SOURCE_URL
+        : card.type === "sports"
+          ? SPORTS_EVENTS_SOURCE_URL
+          : undefined) ||
         previous.sourceUrl ||
         null,
       JSON.stringify(nextItems),
@@ -369,25 +332,21 @@ async function performRefresh(cardId: string): Promise<InfoCardSnapshot> {
   if (!card) throw new Error("Info card not found.");
   if (card.type === "rss") return getInfoCardSnapshot(card.id);
   if (card.type === "market") {
-    const apiKey = alphaVantageApiKey();
-    if (!apiKey) return saveSnapshot(card, [], "Alpha Vantage API key is not configured.");
     const symbols = sanitizeMarketSymbols(card.marketSymbols);
     if (!symbols.length) return saveSnapshot(card, [], "Add at least one market symbol.");
     try {
-      return saveSnapshot(card, await fetchAlphaVantageQuotes(apiKey, symbols));
+      return saveSnapshot(card, await fetchAshareQuotes(symbols));
     } catch (error) {
       return saveSnapshot(card, [], (error as Error)?.message || String(error));
     }
   }
-  if (!card.recipe?.url || !card.recipe.rowSelector || !Object.keys(card.recipe.fields).length) {
-    return saveSnapshot(card, [], "Browser extraction recipe is incomplete.");
-  }
   try {
-    const rows = await collectBrowserRecipe(card.recipe);
-    if (!rows.length) {
-      return saveSnapshot(card, [], "The extraction rule returned no rows.");
-    }
-    return saveSnapshot(card, rows);
+    return saveSnapshot(
+      card,
+      await fetchNbaScores({
+        dateOffset: sanitizeSportsDateOffset(card.sportsDateOffset)
+      })
+    );
   } catch (error) {
     return saveSnapshot(card, [], (error as Error)?.message || String(error));
   }

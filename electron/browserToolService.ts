@@ -12,7 +12,6 @@ import {
   typeBrowserSession
 } from "./browserCollector.js";
 import { waitForActiveBridgePort } from "./agentBridge.js";
-import { listInfoCards, updateInfoCard } from "./cli/infoCards.js";
 import type { AcpStdioMcpServer } from "./shared/draftToolProtocol.js";
 import type { BrowserExtractionRecipe } from "./shared/infoCardProtocol.js";
 
@@ -28,8 +27,6 @@ type BrowserAction =
   | "type"
   | "scroll"
   | "extract"
-  | "listCards"
-  | "saveRecipe"
   | "close";
 
 function browserMcpServerPath(): string {
@@ -113,24 +110,6 @@ async function dispatch(
     );
     return { ok: true, rows };
   }
-  if (action === "listCards") {
-    return { ok: true, cards: listInfoCards() };
-  }
-  if (action === "saveRecipe") {
-    const cardId = stringParam(params, "cardId");
-    const card = listInfoCards().find((entry) => entry.id === cardId);
-    if (!card || card.type !== "sports") {
-      throw new Error("A sports information card is required. Market cards use Alpha Vantage MCP.");
-    }
-    const recipe = recipeFromParams(params);
-    await openBrowserSession(taskSessionId, recipe.url);
-    const rows = await extractBrowserSession(taskSessionId, recipe);
-    if (!rows.length) {
-      throw new Error("The extraction recipe returned no rows and was not saved.");
-    }
-    const updated = updateInfoCard({ id: cardId, recipe });
-    return { ok: true, card: updated, previewRows: rows };
-  }
   closeBrowserSession(taskSessionId);
   return { ok: true };
 }
@@ -196,8 +175,6 @@ function isAction(value: unknown): value is BrowserAction {
     "type",
     "scroll",
     "extract",
-    "listCards",
-    "saveRecipe",
     "close"
   ].includes(String(value));
 }

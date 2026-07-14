@@ -733,53 +733,58 @@
   },
   "infoCards": {
     "settingsTitle": "信息卡片",
-    "settingsDescription": "配置第三列中的 RSS、Alpha Vantage 指数行情和足球篮球赛况卡片。",
-    "alphaVantage": {
-      "title": "Alpha Vantage MCP",
-      "endpoint": "MCP 地址",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "粘贴 Alpha Vantage API Key",
-      "connected": "已连接（{{preview}}）",
-      "notConfigured": "尚未配置 API Key",
-      "securityHint": "API Key 由操作系统加密保存，保存后不会再返回渲染进程。",
-      "symbols": "指数代理代码",
-      "symbolHint": "输入最多 5 个代码，以逗号分隔。SPY、QQQ、DIA 分别代表标普 500、纳斯达克 100 和道琼斯；每次刷新每个代码会消耗一次 Alpha Vantage 请求。"
+    "settingsDescription": "配置第三列中的 RSS、Ashare A 股行情和体育赛事卡片。",
+    "ashare": {
+      "symbols": "证券行情",
+      "symbolHint": "输入证券名称或六位代码搜索，无需判断上交所或深交所；最多添加 10 个指数、股票或 ETF。",
+      "searchLabel": "搜索证券",
+      "searchPlaceholder": "例如：纳指、159941、沪深 300",
+      "searching": "正在搜索…",
+      "searchError": "搜索暂时不可用，请稍后重试。",
+      "noSearchResults": "没有找到可用的沪深证券。",
+      "selectedSymbols": "已选证券",
+      "noSelectedSymbols": "尚未添加证券",
+      "selectedCount": "已添加 {{count}}/10",
+      "selected": "已添加",
+      "add": "添加",
+      "removeSymbol": "移除 {{name}}",
+      "exchanges": {
+        "sh": "上交所",
+        "sz": "深交所"
+      }
     },
     "addCard": "添加卡片",
+    "typeAlreadyAdded": "已添加",
     "types": {
       "rss": "RSS 资讯",
       "market": "指数行情",
-      "sports": "足球篮球赛况"
+      "sports": "体育赛事"
     },
     "builtinRss": "内置资讯队列",
     "cardTitle": "卡片标题",
     "manageRssSources": "管理 RSS 订阅源",
     "deleteConfirm": "删除卡片“{{title}}”？",
-    "agentRecipeHint": "可以手动填写 CSS 选择器，也可以在会话中让 Agent 使用浏览器工具分析网页并保存规则。网页内容只作为不可信数据处理。",
-    "sourceUrl": "HTTPS 数据页面",
-    "waitForSelector": "加载完成选择器（可选）",
-    "rowSelector": "每一行选择器",
     "refreshMinutes": "刷新间隔（分钟）",
-    "maxItems": "最多展示条数",
-    "fields": {
-      "name": "指数名称选择器",
-      "value": "点位选择器",
-      "change": "涨跌选择器",
-      "status": "状态选择器",
-      "league": "联赛选择器",
-      "home": "主队选择器",
-      "away": "客队选择器",
-      "score": "比分选择器"
-    },
+    "sportsProviderHint": "固定抓取 NBA 比分，无需 API Key；包含常规赛事和 Summer League，最多展示 10 场，进行中比赛优先。",
     "saved": "已保存",
     "saving": "保存中…",
     "openSource": "打开数据来源",
     "refresh": "刷新卡片",
     "refreshing": "正在刷新数据…",
-    "needsRecipe": "尚未配置此卡片的数据源，请先到设置完成配置。",
+    "needsConfiguration": "尚未完成卡片配置，请先到设置中选择内容。",
     "noData": "暂无可展示的数据。",
     "unknownItem": "未知指数",
-    "sports": "赛况",
+    "sports": "体育赛事",
+    "sportsStatus": {
+      "live": "进行中",
+      "finished": "已结束"
+    },
+    "sportsDates": {
+      "label": "比赛日期",
+      "yesterday": "昨日",
+      "today": "今日",
+      "tomorrow": "明日"
+    },
     "updatedAt": "更新于 {{time}}",
     "notUpdated": "尚未成功更新",
     "sourceError": "数据源异常，当前展示上次缓存",
@@ -787,7 +792,7 @@
     "analyzing": "发送中…",
     "prompts": {
       "market": "请分析下面的指数行情快照。先说明数据时间和是否过期，再总结整体涨跌、显著变化、可能值得继续关注的信号。不要把它当作投资建议。",
-      "sports": "请解读下面的足球或篮球赛况快照。区分进行中、未开始和已结束比赛，总结关键比分与值得关注的比赛；数据不足时明确说明。"
+      "sports": "请解读下面的体育赛事快照。区分进行中、未开始和已结束比赛，总结关键比分与值得关注的比赛；数据不足时明确说明。"
     }
   },
   "feed": {

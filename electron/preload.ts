@@ -265,8 +265,8 @@ const infoCards = {
   snapshot: (id: string) => ipcRenderer.invoke("infoCards:snapshot", id),
   refresh: (id: string) => ipcRenderer.invoke("infoCards:refresh", id),
   marketProvider: () => ipcRenderer.invoke("infoCards:marketProvider"),
-  updateMarketProvider: (input: unknown) =>
-    ipcRenderer.invoke("infoCards:updateMarketProvider", input),
+  searchMarketSymbols: (query: string) =>
+    ipcRenderer.invoke("infoCards:searchMarketSymbols", query),
   onChanged: (cb: () => void): (() => void) => {
     const handler = () => cb();
     ipcRenderer.on("infoCards://changed", handler);

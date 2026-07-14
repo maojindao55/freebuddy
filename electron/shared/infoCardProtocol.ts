@@ -1,4 +1,5 @@
 export type InfoCardType = "rss" | "market" | "sports";
+export type SportsDateOffset = -1 | 0 | 1;
 
 export interface BrowserExtractionRecipe {
   url: string;
@@ -16,15 +17,24 @@ export interface InfoCardConfig {
   order: number;
   refreshMinutes: number;
   marketSymbols?: string[];
-  recipe?: BrowserExtractionRecipe;
+  sportsDateOffset?: SportsDateOffset;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface MarketProviderConfig {
-  endpoint: string;
+  id: "ashare";
+  name: string;
+  sourceUrl: string;
   configured: boolean;
-  apiKeyPreview?: string;
+}
+
+export interface MarketSymbolSearchResult {
+  symbol: string;
+  code: string;
+  name: string;
+  exchange: "sh" | "sz";
+  securityType: string;
 }
 
 export interface InfoCardSnapshot {
@@ -48,9 +58,5 @@ export interface UpdateInfoCardInput {
   order?: number;
   refreshMinutes?: number;
   marketSymbols?: string[];
-  recipe?: BrowserExtractionRecipe | null;
-}
-
-export interface UpdateMarketProviderInput {
-  apiKey: string;
+  sportsDateOffset?: SportsDateOffset;
 }

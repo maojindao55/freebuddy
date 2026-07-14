@@ -12,8 +12,6 @@ type BrowserAction =
   | "type"
   | "scroll"
   | "extract"
-  | "listCards"
-  | "saveRecipe"
   | "close";
 
 interface BrowserToolResponse {
@@ -23,7 +21,6 @@ interface BrowserToolResponse {
 }
 
 const recipeSchema = {
-  url: z.string().trim().url().startsWith("https://"),
   waitForSelector: z.string().trim().max(500).optional(),
   rowSelector: z.string().trim().min(1).max(500),
   fields: z.record(z.string().trim().min(1).max(80), z.string().trim().min(1).max(500)),
@@ -216,44 +213,6 @@ export function createBrowserMcpServer(): McpServer {
     async (args) => {
       try {
         return toolResult(await invokeBrowserBridge("extract", args));
-      } catch (error) {
-        return toolError(error);
-      }
-    }
-  );
-
-  server.registerTool(
-    "browser_list_info_cards",
-    {
-      title: "List Information Cards",
-      description: "List configurable workspace information cards and their current recipes.",
-      inputSchema: {},
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
-    },
-    async () => {
-      try {
-        return toolResult(await invokeBrowserBridge("listCards", {}));
-      } catch (error) {
-        return toolError(error);
-      }
-    }
-  );
-
-  server.registerTool(
-    "browser_save_info_card_recipe",
-    {
-      title: "Save Information Card Recipe",
-      description:
-        "Reload the source, verify a deterministic extraction recipe returns rows, then save it to an existing sports information card. Market cards use Alpha Vantage MCP instead.",
-      inputSchema: {
-        cardId: z.string().trim().min(1).max(100),
-        ...recipeSchema
-      },
-      annotations: { destructiveHint: false, openWorldHint: false }
-    },
-    async (args) => {
-      try {
-        return toolResult(await invokeBrowserBridge("saveRecipe", args));
       } catch (error) {
         return toolError(error);
       }

@@ -53,7 +53,7 @@ import type {
   InfoCardConfig,
   InfoCardSnapshot,
   MarketProviderConfig,
-  UpdateMarketProviderInput,
+  MarketSymbolSearchResult,
   UpdateInfoCardInput
 } from "@/services/infoCards/types";
 
@@ -215,7 +215,7 @@ declare global {
     snapshot(id: string): Promise<InfoCardSnapshot>;
     refresh(id: string): Promise<InfoCardSnapshot>;
     marketProvider(): Promise<MarketProviderConfig>;
-    updateMarketProvider(input: UpdateMarketProviderInput): Promise<MarketProviderConfig>;
+    searchMarketSymbols(query: string): Promise<MarketSymbolSearchResult[]>;
     onChanged(cb: () => void): () => void;
   }
 

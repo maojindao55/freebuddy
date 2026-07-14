@@ -22,7 +22,7 @@ test("information cards are persisted, bridged, and mounted in the workspace", (
   assert.match(db, /CREATE TABLE IF NOT EXISTS info_card_snapshots/);
   assert.match(service, /workspace\.infoCards\.v1/);
   assert.match(service, /DEFAULT_RSS_CARD_ID/);
-  assert.match(service, /collectBrowserRecipe/);
+  assert.match(service, /fetchNbaScores/);
   for (const channel of [
     "infoCards:list",
     "infoCards:create",
@@ -37,14 +37,15 @@ test("information cards are persisted, bridged, and mounted in the workspace", (
   }
   assert.match(types, /interface FreebuddyInfoCards/);
   assert.match(types, /infoCards: FreebuddyInfoCards/);
-  assert.match(settings, /FIELD_KEYS/);
-  assert.match(settings, /infoCards\.agentRecipeHint/);
+  assert.match(settings, /SportsCardEditor/);
+  assert.doesNotMatch(settings, /sportsCompetitions|sports-kind-options/);
+  assert.doesNotMatch(settings, /rowSelector|waitForSelector|agentRecipeHint/);
   assert.match(host, /card\.type === "rss"/);
   assert.match(host, /<InfoDataCard/);
   assert.match(workspace, /<InfoCardHost \/>/);
 });
 
-test("browser collector is isolated and recipe based", () => {
+test("browser collector remains isolated for general browser extraction", () => {
   const collector = read("../electron/browserCollector.ts");
   const service = read("../electron/browserToolService.ts");
   const runtime = read("../electron/cli/acpRuntime.ts");
@@ -62,14 +63,13 @@ test("browser collector is isolated and recipe based", () => {
   assert.match(collector, /protocol !== "https:"/);
   assert.match(service, /randomBytes\(32\)/);
   assert.match(service, /invalid_capability_token/);
-  assert.match(service, /extraction recipe returned no rows and was not saved/);
-  assert.match(service, /updateInfoCard\(\{ id: cardId, recipe \}\)/);
+  assert.doesNotMatch(service, /saveRecipe|listCards|updateInfoCard/);
   assert.match(runtime, /registerBrowserToolSession/);
   assert.match(runtime, /unregisterBrowserToolSession/);
   assert.match(previewServer, /handleBrowserToolHttpRequest/);
 });
 
-test("Browser MCP exposes bounded collection tools and forwards recipes", async (t) => {
+test("Browser MCP exposes bounded general collection tools", async (t) => {
   const calls = [];
   const originalFetch = globalThis.fetch;
   process.env.FREEBUDDY_BROWSER_ENDPOINT =
@@ -124,9 +124,7 @@ test("Browser MCP exposes bounded collection tools and forwards recipes", async 
       "browser_close",
       "browser_extract",
       "browser_inspect",
-      "browser_list_info_cards",
       "browser_open",
-      "browser_save_info_card_recipe",
       "browser_scroll",
       "browser_type"
     ]
@@ -148,15 +146,13 @@ test("Browser MCP exposes bounded collection tools and forwards recipes", async 
     true
   );
   await client.callTool({
-    name: "browser_save_info_card_recipe",
+    name: "browser_extract",
     arguments: {
-      cardId: "sports-1",
-      url: "https://example.com/scores",
       rowSelector: ".match",
       fields: { home: ".home", away: ".away", score: ".score" },
       maxItems: 6
     }
   });
-  assert.deepEqual(calls.map((call) => call.action), ["open", "inspect", "saveRecipe"]);
+  assert.deepEqual(calls.map((call) => call.action), ["open", "inspect", "extract"]);
   assert.equal(calls.every((call) => call.authorization === "Bearer browser-test-token"), true);
 });

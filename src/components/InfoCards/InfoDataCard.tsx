@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, RefreshCw, Sparkles } from "lucide-react";
 
-import type { InfoCardConfig } from "@/services/infoCards/types";
+import type { InfoCardConfig, SportsDateOffset } from "@/services/infoCards/types";
 import { useConversationStore } from "@/store/conversationStore";
 import { useInfoCardStore } from "@/store/infoCardStore";
 import { buildInfoCardPrompt, isInfoCardConversation } from "./infoCardInterpretation";
@@ -26,11 +26,19 @@ function valueClass(value: string | undefined): string {
   return "";
 }
 
+function marketIdentity(value: string | undefined): { name: string; symbol?: string } {
+  const normalized = value?.trim() ?? "";
+  const matched = normalized.match(/^(.*?)\s*·\s*((?:SH|SZ)\d{6})$/i);
+  if (!matched) return { name: normalized };
+  return { name: matched[1].trim(), symbol: matched[2].toUpperCase() };
+}
+
 export function InfoDataCard({ card }: { card: InfoCardConfig }) {
   const { t } = useTranslation();
   const snapshot = useInfoCardStore((state) => state.snapshots[card.id]);
   const refreshing = useInfoCardStore((state) => Boolean(state.refreshing[card.id]));
   const refreshCard = useInfoCardStore((state) => state.refreshCard);
+  const updateCard = useInfoCardStore((state) => state.updateCard);
   const marketProvider = useInfoCardStore((state) => state.marketProvider);
   const activeId = useConversationStore((state) => state.activeId);
   const conversations = useConversationStore((state) => state.conversations);
@@ -39,14 +47,16 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
   const newConversation = useConversationStore((state) => state.newConversation);
   const sendMessage = useConversationStore((state) => state.sendMessage);
   const [analyzing, setAnalyzing] = useState(false);
+  const [switchingDate, setSwitchingDate] = useState(false);
   const active = conversations.find((entry) => entry.id === activeId);
   const activeMessages = activeId ? messages[activeId] ?? [] : [];
   const configured =
     card.type === "market"
       ? Boolean(marketProvider?.configured && card.marketSymbols?.length)
-      : Boolean(card.recipe?.url && card.recipe.rowSelector && Object.keys(card.recipe.fields).length);
+      : true;
   const sourceUrl =
-    card.type === "market" ? marketProvider?.endpoint : card.recipe?.url;
+    card.type === "market" ? marketProvider?.sourceUrl : snapshot?.sourceUrl;
+  const sportsDateOffset = card.sportsDateOffset ?? 0;
 
   useEffect(() => {
     if (!configured || snapshot?.fetchedAt || snapshot?.lastError) return;
@@ -93,7 +103,26 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
     }
   };
 
+  const handleSportsDateChange = async (dateOffset: SportsDateOffset) => {
+    if (
+      card.type !== "sports" ||
+      dateOffset === sportsDateOffset ||
+      switchingDate ||
+      refreshing
+    ) {
+      return;
+    }
+    setSwitchingDate(true);
+    try {
+      await updateCard({ id: card.id, sportsDateOffset: dateOffset });
+      await refreshCard(card.id);
+    } finally {
+      setSwitchingDate(false);
+    }
+  };
+
   const rows = snapshot?.items ?? [];
+  const visibleRows = switchingDate ? [] : rows;
   return (
     <section className={`side-card info-data-card ${card.type}-card`}>
       <div className="side-card-header info-card-header">
@@ -123,39 +152,103 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
         </div>
       </div>
 
+      {card.type === "sports" && (
+        <div
+          className="sports-date-filter"
+          role="group"
+          aria-label={t("infoCards.sportsDates.label")}
+        >
+          {([-1, 0, 1] as SportsDateOffset[]).map((dateOffset) => (
+            <button
+              key={dateOffset}
+              type="button"
+              className={sportsDateOffset === dateOffset ? "active" : ""}
+              aria-pressed={sportsDateOffset === dateOffset}
+              disabled={switchingDate || refreshing}
+              onClick={() => void handleSportsDateChange(dateOffset)}
+            >
+              {t(
+                dateOffset === -1
+                  ? "infoCards.sportsDates.yesterday"
+                  : dateOffset === 1
+                    ? "infoCards.sportsDates.tomorrow"
+                    : "infoCards.sportsDates.today"
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {!configured ? (
-        <p className="info-card-empty">{t("infoCards.needsRecipe")}</p>
-      ) : rows.length === 0 ? (
+        <p className="info-card-empty">{t("infoCards.needsConfiguration")}</p>
+      ) : visibleRows.length === 0 ? (
         <p className="info-card-empty">
-          {refreshing ? t("infoCards.refreshing") : t("infoCards.noData")}
+          {refreshing || switchingDate ? t("infoCards.refreshing") : t("infoCards.noData")}
         </p>
       ) : card.type === "market" ? (
         <ol className="market-index-list">
-          {rows.map((row, index) => (
-            <li key={`${row.name || "market"}-${index}`}>
-              <div>
-                <strong>{row.name || t("infoCards.unknownItem")}</strong>
-                {row.status && <small>{row.status}</small>}
-              </div>
-              <div className="market-index-value">
-                <strong>{row.value || "—"}</strong>
-                <span className={valueClass(row.change)}>{row.change || "—"}</span>
-              </div>
-            </li>
-          ))}
+          {visibleRows.map((row, index) => {
+            const identity = marketIdentity(row.name);
+            return (
+              <li key={`${row.name || "market"}-${index}`}>
+                <div>
+                  <strong>{identity.name || t("infoCards.unknownItem")}</strong>
+                  {identity.symbol && <small>{identity.symbol}</small>}
+                </div>
+                <div className="market-index-value">
+                  <strong>{row.value || "—"}</strong>
+                  <span className={valueClass(row.change)}>{row.change || "—"}</span>
+                </div>
+              </li>
+            );
+          })}
         </ol>
       ) : (
         <ol className="sports-score-list">
-          {rows.map((row, index) => (
+          {visibleRows.map((row, index) => (
             <li key={`${row.home || "home"}-${row.away || "away"}-${index}`}>
               <div className="sports-score-meta">
                 <span>{row.league || t("infoCards.sports")}</span>
-                <span>{row.status || ""}</span>
+                <span>
+                  {row.state === "pre"
+                    ? formatTime(row.startTime)
+                    : row.state === "in"
+                      ? row.status && !/^(?:in progress|live)$/i.test(row.status)
+                        ? `${t("infoCards.sportsStatus.live")} · ${row.status}`
+                        : t("infoCards.sportsStatus.live")
+                      : row.state === "post"
+                        ? t("infoCards.sportsStatus.finished")
+                        : row.status || ""}
+                </span>
               </div>
               <div className="sports-score-match">
-                <span>{row.home || "—"}</span>
-                <strong>{row.score || "vs"}</strong>
-                <span>{row.away || "—"}</span>
+                <span className="sports-score-team">
+                  {row.homeLogo && (
+                    <img
+                      src={row.homeLogo}
+                      alt=""
+                      loading="lazy"
+                      onError={(event) => {
+                        event.currentTarget.hidden = true;
+                      }}
+                    />
+                  )}
+                  <span>{row.home || "—"}</span>
+                </span>
+                <strong>{row.score || "— : —"}</strong>
+                <span className="sports-score-team away">
+                  <span>{row.away || "—"}</span>
+                  {row.awayLogo && (
+                    <img
+                      src={row.awayLogo}
+                      alt=""
+                      loading="lazy"
+                      onError={(event) => {
+                        event.currentTarget.hidden = true;
+                      }}
+                    />
+                  )}
+                </span>
               </div>
             </li>
           ))}
@@ -176,7 +269,7 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
       <button
         type="button"
         className="info-card-analyze"
-        disabled={!rows.length || analyzing}
+        disabled={!visibleRows.length || analyzing || switchingDate}
         onClick={() => void handleAnalyze()}
       >
         <Sparkles size={13} strokeWidth={1.8} />

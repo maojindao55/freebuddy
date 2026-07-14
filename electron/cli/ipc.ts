@@ -71,12 +71,11 @@ import {
   listInfoCards,
   reorderInfoCards,
   refreshInfoCard,
-  updateInfoCard,
-  updateMarketProvider
+  searchMarketSymbols,
+  updateInfoCard
 } from "./infoCards.js";
 import type {
   CreateInfoCardInput,
-  UpdateMarketProviderInput,
   UpdateInfoCardInput
 } from "../shared/infoCardProtocol.js";
 import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
@@ -543,9 +542,8 @@ export function registerCliIpc() {
   );
   ipcMain.handle("infoCards:refresh", (_e, id: string) => refreshInfoCard(id));
   ipcMain.handle("infoCards:marketProvider", () => getMarketProviderConfig());
-  ipcMain.handle(
-    "infoCards:updateMarketProvider",
-    (_e, input: UpdateMarketProviderInput) => updateMarketProvider(input)
+  ipcMain.handle("infoCards:searchMarketSymbols", (_e, query: string) =>
+    searchMarketSymbols(query)
   );
 
   registerWorkflowIpc();

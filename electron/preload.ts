@@ -256,6 +256,25 @@ const feed = {
   markInterpreted: (id: string) => ipcRenderer.invoke("feed:markInterpreted", id)
 };
 
+const infoCards = {
+  list: () => ipcRenderer.invoke("infoCards:list"),
+  create: (input: unknown) => ipcRenderer.invoke("infoCards:create", input),
+  update: (input: unknown) => ipcRenderer.invoke("infoCards:update", input),
+  delete: (id: string) => ipcRenderer.invoke("infoCards:delete", id),
+  reorder: (ids: string[]) => ipcRenderer.invoke("infoCards:reorder", ids),
+  snapshot: (id: string) => ipcRenderer.invoke("infoCards:snapshot", id),
+  refresh: (id: string, timeZone?: string) =>
+    ipcRenderer.invoke("infoCards:refresh", id, timeZone),
+  marketProvider: () => ipcRenderer.invoke("infoCards:marketProvider"),
+  searchMarketSymbols: (query: string) =>
+    ipcRenderer.invoke("infoCards:searchMarketSymbols", query),
+  onChanged: (cb: () => void): (() => void) => {
+    const handler = () => cb();
+    ipcRenderer.on("infoCards://changed", handler);
+    return () => ipcRenderer.off("infoCards://changed", handler);
+  }
+};
+
 const workflow = {
   validate: (plan: unknown) => ipcRenderer.invoke("workflow:validate", plan),
   previewReviewLoop: (input: unknown) =>
@@ -338,6 +357,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   workflowTeams,
   settings,
   feed,
+  infoCards,
   window,
   updater
 });

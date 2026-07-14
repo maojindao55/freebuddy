@@ -348,7 +348,7 @@
       "general": "General",
       "cli": "CLI Agents",
       "workflowTeams": "Workflow Teams",
-      "feed": "Feed",
+      "feed": "Information Cards",
       "about": "About"
     },
     "cli": {
@@ -743,6 +743,73 @@
       "downloading": "Downloading… {{percent}}%",
       "downloaded": "Version {{version}} is ready to install.",
       "error": "Update check failed."
+    }
+  },
+  "infoCards": {
+    "settingsTitle": "Information cards",
+    "settingsDescription": "Configure RSS, Ashare-powered A-share quotes, and sports event cards in the third column.",
+    "rssDescription": "Manage RSS feeds and aggregate news articles that you follow in one place.",
+    "marketDescription": "Track A-share market indices and stock details, with custom stock pickers.",
+    "sportsDescription": "Track NBA and live sports scores, schedules, and select match dates.",
+    "ashare": {
+      "symbols": "Market securities",
+      "symbolHint": "Search by security name or six-digit code; the exchange is resolved automatically. Add up to 10 indices, stocks, or ETFs.",
+      "searchLabel": "Search securities",
+      "searchPlaceholder": "For example: Nasdaq, 159941, CSI 300",
+      "searching": "Searching…",
+      "searchError": "Search is temporarily unavailable. Try again later.",
+      "noSearchResults": "No supported Shanghai or Shenzhen securities found.",
+      "selectedSymbols": "Selected securities",
+      "noSelectedSymbols": "No securities added yet",
+      "selectedCount": "{{count}}/10 added",
+      "selected": "Added",
+      "add": "Add",
+      "removeSymbol": "Remove {{name}}",
+      "exchanges": {
+        "sh": "SSE",
+        "sz": "SZSE"
+      }
+    },
+    "addCard": "Add card",
+    "typeAlreadyAdded": "Already added",
+    "types": {
+      "rss": "RSS news",
+      "market": "Market indices",
+      "sports": "Sports events"
+    },
+    "builtinRss": "Built-in unread queue",
+    "cardTitle": "Card title",
+    "manageRssSources": "Manage RSS sources",
+    "deleteConfirm": "Delete the “{{title}}” card?",
+    "refreshMinutes": "Refresh interval (minutes)",
+    "sportsProviderHint": "Always fetches NBA scores with no API key, including regular games and Summer League. Shows up to 10 games with live scores first.",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "openSource": "Open data source",
+    "refresh": "Refresh card",
+    "refreshing": "Refreshing data…",
+    "needsConfiguration": "This card is not configured yet. Choose its content in Settings.",
+    "noData": "No data to show yet.",
+    "unknownItem": "Unknown index",
+    "sports": "Sports events",
+    "sportsStatus": {
+      "live": "Live",
+      "finished": "Finished"
+    },
+    "sportsDates": {
+      "label": "Game date",
+      "yesterday": "Yesterday",
+      "today": "Today",
+      "tomorrow": "Tomorrow"
+    },
+    "updatedAt": "Updated {{time}}",
+    "notUpdated": "Not updated yet",
+    "sourceError": "Source error; showing the last cached result",
+    "analyze": "Ask Agent to analyze",
+    "analyzing": "Sending…",
+    "prompts": {
+      "market": "Analyze this market-index snapshot. State the data time and staleness first, then summarize direction, notable moves, and signals worth monitoring. Do not present this as financial advice.",
+      "sports": "Interpret this sports event snapshot. Separate live, upcoming, and completed games, then summarize notable scores and matches. Clearly state when the data is insufficient."
     }
   },
   "feed": {

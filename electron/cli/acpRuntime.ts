@@ -50,6 +50,10 @@ import {
   registerDraftToolSession,
   unregisterDraftToolSession
 } from "../draftToolService.js";
+import {
+  registerBrowserToolSession,
+  unregisterBrowserToolSession
+} from "../browserToolService.js";
 import type { AcpStdioMcpServer } from "../shared/draftToolProtocol.js";
 import {
   clearAuthenticationTerminalsForSession,
@@ -156,6 +160,7 @@ export async function runAcpAgent({
     terminalManager.dispose();
     running.delete(args.sessionId);
     unregisterDraftToolSession(args.sessionId);
+    unregisterBrowserToolSession(args.sessionId);
     clearAuthenticationTerminalsForSession(args.sessionId);
     clearAuthenticationResolversForSession(args.sessionId);
     clearPermissionResolversForSession(args.sessionId);
@@ -794,7 +799,8 @@ export async function runAcpAgent({
           conversationId: args.conversationId,
           cwd: args.cwd,
           webContents
-        })
+        }),
+        await registerBrowserToolSession(args.sessionId)
       ];
     }
 

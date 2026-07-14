@@ -172,6 +172,15 @@ function migrate(db: DB) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_items_source_link
       ON feed_items(source_id, link);
 
+    CREATE TABLE IF NOT EXISTS info_card_snapshots (
+      card_id TEXT PRIMARY KEY,
+      source_url TEXT,
+      payload_json TEXT NOT NULL DEFAULT '[]',
+      fetched_at TEXT,
+      last_error TEXT,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS workflow_runs (
       id TEXT PRIMARY KEY,
       conversation_id TEXT,

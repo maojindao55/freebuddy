@@ -5,7 +5,7 @@ import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
-import { FeedTab } from "./FeedTab";
+import { InfoCardsTab } from "./InfoCardsTab";
 
 export type SettingsTab = "general" | "cli" | "workflowTeams" | "feed" | "about";
 
@@ -87,7 +87,7 @@ function SettingsContent({
         </SettingsTabErrorBoundary>
       )}
       {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
-      {activeTab === "feed" && <FeedTab />}
+      {activeTab === "feed" && <InfoCardsTab />}
       {activeTab === "about" && <AboutTab />}
     </>
   );

@@ -63,6 +63,21 @@ import {
   type AddFeedSourceInput,
   type UpdateFeedSourceInput
 } from "./feed.js";
+import {
+  createInfoCard,
+  deleteInfoCard,
+  getInfoCardSnapshot,
+  getMarketProviderConfig,
+  listInfoCards,
+  reorderInfoCards,
+  refreshInfoCard,
+  searchMarketSymbols,
+  updateInfoCard
+} from "./infoCards.js";
+import type {
+  CreateInfoCardInput,
+  UpdateInfoCardInput
+} from "../shared/infoCardProtocol.js";
 import { parseDraftUrl, readDraftMarkdown, resolveDraftEntry } from "../draftProtocol.js";
 import { resolveAttachmentFilePath } from "../freebuddyFileProtocol.js";
 import { ensureAgentGuides } from "../agentGuides.js";
@@ -509,6 +524,28 @@ export function registerCliIpc() {
   ipcMain.handle("feed:refreshAll", () => refreshAllFeedSources());
   ipcMain.handle("feed:markInterpreted", (_e, id: string) =>
     markFeedItemInterpreted(id)
+  );
+
+  ipcMain.handle("infoCards:list", () => listInfoCards());
+  ipcMain.handle("infoCards:create", (_e, input: CreateInfoCardInput) =>
+    createInfoCard(input)
+  );
+  ipcMain.handle("infoCards:update", (_e, input: UpdateInfoCardInput) =>
+    updateInfoCard(input)
+  );
+  ipcMain.handle("infoCards:delete", (_e, id: string) => deleteInfoCard(id));
+  ipcMain.handle("infoCards:reorder", (_e, ids: string[]) =>
+    reorderInfoCards(ids)
+  );
+  ipcMain.handle("infoCards:snapshot", (_e, id: string) =>
+    getInfoCardSnapshot(id)
+  );
+  ipcMain.handle("infoCards:refresh", (_e, id: string, timeZone?: string) =>
+    refreshInfoCard(id, timeZone)
+  );
+  ipcMain.handle("infoCards:marketProvider", () => getMarketProviderConfig());
+  ipcMain.handle("infoCards:searchMarketSymbols", (_e, query: string) =>
+    searchMarketSymbols(query)
   );
 
   registerWorkflowIpc();

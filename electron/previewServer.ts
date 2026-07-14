@@ -9,6 +9,7 @@ import {
   parseBridgeRequest
 } from "./agentBridge.js";
 import { handleDraftToolHttpRequest } from "./draftToolService.js";
+import { handleBrowserToolHttpRequest } from "./browserToolService.js";
 
 let previewServer: http.Server | null = null;
 
@@ -29,6 +30,7 @@ export function startPreviewServer(
     const server = http.createServer((req, res) => {
       void (async () => {
         if (await handleDraftToolHttpRequest(req, res)) return;
+        if (await handleBrowserToolHttpRequest(req, res)) return;
         const parsed = parseBridgeRequest(req.url || "");
         if (parsed && isKnownBridgeAction(parsed.action)) {
           safeSendToWebContents(getWebContents(), "freebuddy://bridge", parsed);

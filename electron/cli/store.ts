@@ -45,21 +45,21 @@ const SAFE_STORAGE_PREFIX = "safe:";
 const FALLBACK_STORAGE_PREFIX = "base64:";
 const secretDecryptCache = new Map<string, string>();
 
-function redactApiKey(value: string): string {
+export function redactApiKey(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
   const suffix = trimmed.slice(-4);
   return `${"•".repeat(8)}${suffix}`;
 }
 
-function encryptSecret(value: string): string {
+export function encryptSecret(value: string): string {
   if (safeStorage.isEncryptionAvailable()) {
     return `${SAFE_STORAGE_PREFIX}${safeStorage.encryptString(value).toString("base64")}`;
   }
   return `${FALLBACK_STORAGE_PREFIX}${Buffer.from(value, "utf8").toString("base64")}`;
 }
 
-function decryptSecret(value: string | undefined): string | undefined {
+export function decryptSecret(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const cached = secretDecryptCache.get(value);
   if (cached !== undefined) return cached;

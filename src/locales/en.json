@@ -772,6 +772,11 @@
     },
     "addCard": "Add card",
     "typeAlreadyAdded": "Already added",
+    "galleryTitle": "Card gallery",
+    "builtinStatus": "Built-in",
+    "manageRssAction": "Sources",
+    "statusNotAdded": "Not added",
+    "configureAction": "Configure",
     "types": {
       "rss": "RSS news",
       "market": "Market indices",

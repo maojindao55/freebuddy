@@ -325,20 +325,18 @@ function CardEditor({
   const deleteCard = useInfoCardStore((state) => state.deleteCard);
   const reorderCards = useInfoCardStore((state) => state.reorderCards);
 
-  // Helper to check if a title is default
   const isDefaultTitle = (val: string | undefined) => {
     const lowercase = (val || "").trim().toLowerCase();
     return (
       !lowercase ||
       lowercase === "feed" ||
-      lowercase === "rss news" ||
-      lowercase === "rss 资讯" ||
-      lowercase === "builtin rss" ||
-      lowercase === "内置资讯队列" ||
       lowercase === "market indices" ||
-      lowercase === "指数行情" ||
       lowercase === "sports events" ||
-      lowercase === "体育赛事"
+      lowercase === "builtin rss" ||
+      lowercase === t("infoCards.types.rss").toLowerCase() ||
+      lowercase === t("infoCards.builtinRss").toLowerCase() ||
+      lowercase === t("infoCards.types.market").toLowerCase() ||
+      lowercase === t("infoCards.types.sports").toLowerCase()
     );
   };
 
@@ -448,11 +446,88 @@ function CardEditor({
   );
 }
 
-export function InfoCardsTab() {
+function GalleryCard({
+  cardType,
+  icon: Icon,
+  themeClass,
+  onConfigure,
+  onCreate
+}: {
+  cardType: "market" | "sports";
+  icon: typeof TrendingUp;
+  themeClass: string;
+  onConfigure: () => void;
+  onCreate: () => void;
+}) {
   const { t } = useTranslation();
   const cards = useInfoCardStore((state) => state.cards);
   const loaded = useInfoCardStore((state) => state.loaded);
   const loading = useInfoCardStore((state) => state.loading);
+  const updateCard = useInfoCardStore((state) => state.updateCard);
+  const card = cards.find((c) => c.type === cardType);
+  const selectedTypeExists = Boolean(card);
+
+  return (
+    <div className={`info-card-template-card ${themeClass}`}>
+      <div className="info-card-template-header">
+        <div className="info-card-template-icon-wrapper">
+          <Icon size={18} />
+        </div>
+        {selectedTypeExists ? (
+          <span className="info-card-status-badge added">
+            {t("infoCards.typeAlreadyAdded")}
+          </span>
+        ) : (
+          <span className="info-card-status-badge not-added">
+            {t("infoCards.statusNotAdded")}
+          </span>
+        )}
+      </div>
+      <div className="info-card-template-info">
+        <h4>{t(`infoCards.types.${cardType}`)}</h4>
+        <p>{t(`infoCards.${cardType}Description`)}</p>
+      </div>
+      <div className="info-card-template-footer">
+        {card && (
+          <>
+            <label
+              className="feed-switch"
+              title={card.enabled ? t("feed.enabled") : t("feed.disabled")}
+            >
+              <input
+                type="checkbox"
+                checked={card.enabled}
+                onChange={(event) => {
+                  void updateCard({ id: card.id, enabled: event.currentTarget.checked });
+                }}
+              />
+              <span aria-hidden="true" />
+            </label>
+            <button type="button" className="action-btn" onClick={onConfigure}>
+              <Settings2 size={12} />
+              {t("infoCards.configureAction")}
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          className={`action-btn ${selectedTypeExists ? "" : "primary"}`}
+          disabled={!loaded || loading || selectedTypeExists}
+          onClick={onCreate}
+          style={selectedTypeExists ? undefined : { width: "100%", justifyContent: "center" }}
+        >
+          <Plus size={12} />
+          {t("infoCards.addCard")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function InfoCardsTab() {
+  const { t } = useTranslation();
+  const cards = useInfoCardStore((state) => state.cards);
+  const loaded = useInfoCardStore((state) => state.loaded);
   const load = useInfoCardStore((state) => state.load);
   const createCard = useInfoCardStore((state) => state.createCard);
   const updateCard = useInfoCardStore((state) => state.updateCard);
@@ -461,10 +536,7 @@ export function InfoCardsTab() {
 
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
 
-  // Find cards for templates status
   const rssCard = useMemo(() => cards.find((c) => c.type === "rss"), [cards]);
-  const marketCard = useMemo(() => cards.find((c) => c.type === "market"), [cards]);
-  const sportsCard = useMemo(() => cards.find((c) => c.type === "sports"), [cards]);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -514,7 +586,7 @@ export function InfoCardsTab() {
       </div>
 
       <div className="info-card-gallery">
-        <h4 className="info-card-gallery-title">{t("infoCards.galleryTitle", "卡片组件库")}</h4>
+        <h4 className="info-card-gallery-title">{t("infoCards.galleryTitle")}</h4>
         
         <div className="info-card-gallery-grid">
           {/* RSS News Feed Card */}
@@ -524,7 +596,7 @@ export function InfoCardsTab() {
                 <Rss size={18} />
               </div>
               <span className="info-card-status-badge builtin">
-                {t("infoCards.builtinStatus", "内置")}
+                {t("infoCards.builtinStatus")}
               </span>
             </div>
             <div className="info-card-template-info">
@@ -555,132 +627,28 @@ export function InfoCardsTab() {
                 onClick={() => scrollToEditor("rss")}
               >
                 <Settings2 size={12} />
-                {t("infoCards.manageRssAction", "订阅源")}
+                {t("infoCards.manageRssAction")}
               </button>
             </div>
           </div>
 
           {/* Market Indices Card */}
-          <div className="info-card-template-card market-theme">
-            <div className="info-card-template-header">
-              <div className="info-card-template-icon-wrapper">
-                <TrendingUp size={18} />
-              </div>
-              {marketCard ? (
-                <span className="info-card-status-badge added">
-                  {t("infoCards.typeAlreadyAdded")}
-                </span>
-              ) : (
-                <span className="info-card-status-badge not-added">
-                  {t("infoCards.statusNotAdded", "未添加")}
-                </span>
-              )}
-            </div>
-            <div className="info-card-template-info">
-              <h4>{t("infoCards.types.market")}</h4>
-              <p>{t("infoCards.marketDescription")}</p>
-            </div>
-            <div className="info-card-template-footer">
-              {marketCard ? (
-                <>
-                  <label 
-                    className="feed-switch" 
-                    title={marketCard.enabled ? t("feed.enabled") : t("feed.disabled")}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={marketCard.enabled}
-                      onChange={(event) => {
-                        void updateCard({ id: marketCard.id, enabled: event.currentTarget.checked });
-                      }}
-                    />
-                    <span aria-hidden="true" />
-                  </label>
-
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => scrollToEditor("market")}
-                  >
-                    <Settings2 size={12} />
-                    {t("infoCards.configureAction", "配置")}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="action-btn primary"
-                  disabled={!loaded || loading}
-                  onClick={() => handleCreate("market")}
-                  style={{ width: '100%', justifyContent: 'center' }}
-                >
-                  <Plus size={12} />
-                  {t("infoCards.addCard")}
-                </button>
-              )}
-            </div>
-          </div>
+          <GalleryCard
+            cardType="market"
+            icon={TrendingUp}
+            themeClass="market-theme"
+            onConfigure={() => scrollToEditor("market")}
+            onCreate={() => handleCreate("market")}
+          />
 
           {/* Sports Matches Card */}
-          <div className="info-card-template-card sports-theme">
-            <div className="info-card-template-header">
-              <div className="info-card-template-icon-wrapper">
-                <Trophy size={18} />
-              </div>
-              {sportsCard ? (
-                <span className="info-card-status-badge added">
-                  {t("infoCards.typeAlreadyAdded")}
-                </span>
-              ) : (
-                <span className="info-card-status-badge not-added">
-                  {t("infoCards.statusNotAdded", "未添加")}
-                </span>
-              )}
-            </div>
-            <div className="info-card-template-info">
-              <h4>{t("infoCards.types.sports")}</h4>
-              <p>{t("infoCards.sportsDescription")}</p>
-            </div>
-            <div className="info-card-template-footer">
-              {sportsCard ? (
-                <>
-                  <label 
-                    className="feed-switch" 
-                    title={sportsCard.enabled ? t("feed.enabled") : t("feed.disabled")}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={sportsCard.enabled}
-                      onChange={(event) => {
-                        void updateCard({ id: sportsCard.id, enabled: event.currentTarget.checked });
-                      }}
-                    />
-                    <span aria-hidden="true" />
-                  </label>
-
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => scrollToEditor("sports")}
-                  >
-                    <Settings2 size={12} />
-                    {t("infoCards.configureAction", "配置")}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="action-btn primary"
-                  disabled={!loaded || loading}
-                  onClick={() => handleCreate("sports")}
-                  style={{ width: '100%', justifyContent: 'center' }}
-                >
-                  <Plus size={12} />
-                  {t("infoCards.addCard")}
-                </button>
-              )}
-            </div>
-          </div>
+          <GalleryCard
+            cardType="sports"
+            icon={Trophy}
+            themeClass="sports-theme"
+            onConfigure={() => scrollToEditor("sports")}
+            onCreate={() => handleCreate("sports")}
+          />
         </div>
       </div>
 

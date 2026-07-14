@@ -758,6 +758,11 @@
     },
     "addCard": "添加卡片",
     "typeAlreadyAdded": "已添加",
+    "galleryTitle": "卡片组件库",
+    "builtinStatus": "内置",
+    "manageRssAction": "订阅源",
+    "statusNotAdded": "未添加",
+    "configureAction": "配置",
     "types": {
       "rss": "RSS 资讯",
       "market": "指数行情",

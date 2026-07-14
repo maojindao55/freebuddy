@@ -1,6 +1,6 @@
 import type { MarketSymbolSearchResult } from "../shared/infoCardProtocol.js";
 
-export const ASHARE_SOURCE_URL = "https://finance.sina.com.cn/";
+export const ASHARE_SOURCE_URL = "https://github.com/mpquant/Ashare";
 
 const TENCENT_ENDPOINT = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
 const SINA_ENDPOINT =

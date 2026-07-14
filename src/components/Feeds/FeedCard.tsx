@@ -18,6 +18,17 @@ import {
   isFeedInterpretConversation
 } from "./feedInterpretation";
 
+function isDefaultFeedTitle(title: string, t: (key: string) => string): boolean {
+  const lower = title.trim().toLowerCase();
+  return (
+    lower === "feed" ||
+    lower === "rss news" ||
+    lower === "builtin rss" ||
+    lower === t("infoCards.types.rss").toLowerCase() ||
+    lower === t("infoCards.builtinRss").toLowerCase()
+  );
+}
+
 function formatFeedTime(value: string | undefined) {
   if (!value) return "";
   const date = new Date(value);
@@ -142,9 +153,8 @@ export function FeedCard({ title }: { title?: string } = {}) {
     <section className="side-card feed-card">
       <div className="side-card-header feed-card-header">
         <span>
-          {(!title || 
-            /^(?:feed|rss news|rss 资讯|builtin rss|内置资讯队列)$/i.test(title.trim())
-          ) ? t("feed.cardTitle") : title}
+          {(!title || isDefaultFeedTitle(title, t))
+            ? t("feed.cardTitle") : title}
         </span>
         <div className="feed-card-actions">
           <select

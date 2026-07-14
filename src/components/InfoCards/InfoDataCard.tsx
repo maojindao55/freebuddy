@@ -7,6 +7,20 @@ import { useConversationStore } from "@/store/conversationStore";
 import { useInfoCardStore } from "@/store/infoCardStore";
 import { buildInfoCardPrompt, isInfoCardConversation } from "./infoCardInterpretation";
 
+function isDefaultCardTitle(title: string, t: (key: string) => string): boolean {
+  const lower = title.trim().toLowerCase();
+  return (
+    lower === "feed" ||
+    lower === "market indices" ||
+    lower === "sports events" ||
+    lower === "builtin rss" ||
+    lower === t("infoCards.types.rss").toLowerCase() ||
+    lower === t("infoCards.builtinRss").toLowerCase() ||
+    lower === t("infoCards.types.market").toLowerCase() ||
+    lower === t("infoCards.types.sports").toLowerCase()
+  );
+}
+
 function formatTime(value: string | undefined): string {
   if (!value) return "";
   const date = new Date(value);
@@ -132,9 +146,8 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
     <section className={`side-card info-data-card ${card.type}-card`}>
       <div className="side-card-header info-card-header">
         <span>
-          {(!card.title || 
-            /^(?:feed|rss news|rss 资讯|builtin rss|内置资讯队列|market indices|指数行情|sports events|体育赛事)$/i.test(card.title.trim())
-          ) ? t(`infoCards.types.${card.type}`) : card.title}
+          {(!card.title || isDefaultCardTitle(card.title, t))
+            ? t(`infoCards.types.${card.type}`) : card.title}
         </span>
         <div className="info-card-actions">
           {sourceUrl && (

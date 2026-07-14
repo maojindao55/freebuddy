@@ -1,7 +1,14 @@
 const LOCAL_TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export type ScheduledTaskScheduleType = "once" | "daily" | "weekly" | "monthly";
+export type ScheduledTaskScheduleType =
+  | "manual"
+  | "hourly"
+  | "once"
+  | "daily"
+  | "weekdays"
+  | "weekly"
+  | "monthly";
 
 export interface ScheduledTaskSchedule {
   scheduleType: ScheduledTaskScheduleType;
@@ -100,6 +107,13 @@ export function nextScheduledOccurrence(
   timeZone: string,
   after = new Date()
 ): Date | undefined {
+  if (schedule.scheduleType === "manual") return undefined;
+  if (schedule.scheduleType === "hourly") {
+    const next = new Date(after);
+    next.setUTCMinutes(0, 0, 0);
+    next.setUTCHours(next.getUTCHours() + 1);
+    return next;
+  }
   if (!isValidLocalTime(schedule.timeLocal)) throw new Error("invalid local time");
   const [hour, minute] = schedule.timeLocal.split(":").map(Number);
 
@@ -126,6 +140,9 @@ export function nextScheduledOccurrence(
     );
     const matches =
       schedule.scheduleType === "daily" ||
+      (schedule.scheduleType === "weekdays" &&
+        calendarDay.getUTCDay() >= 1 &&
+        calendarDay.getUTCDay() <= 5) ||
       (schedule.scheduleType === "weekly" &&
         (schedule.weekdays ?? []).includes(calendarDay.getUTCDay())) ||
       (schedule.scheduleType === "monthly" &&
@@ -162,16 +179,23 @@ export function buildScheduledTaskPrompt(input: {
   title: string;
   prompt: string;
   startedAt: string;
+  previousContext?: string;
 }): string {
-  return [
+  const lines = [
     "You are running an automated task configured by the user.",
     "Complete it autonomously using the tools available to you.",
     "If a required resource is unavailable, explain the blocker clearly in the final response.",
     "",
     `Task: ${input.title}`,
-    `Started at: ${input.startedAt}`,
-    "",
-    "User instructions:",
-    input.prompt.trim()
-  ].join("\n");
+    `Started at: ${input.startedAt}`
+  ];
+  if (input.previousContext?.trim()) {
+    lines.push(
+      "",
+      "Context from the previous run in this continuous task:",
+      input.previousContext.trim()
+    );
+  }
+  lines.push("", "User instructions:", input.prompt.trim());
+  return lines.join("\n");
 }

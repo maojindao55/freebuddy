@@ -453,8 +453,11 @@
     "agent": "Agent",
     "scheduleType": "\u8fd0\u884c\u8ba1\u5212",
     "schedule": {
+      "manual": "\u624b\u52a8\u89e6\u53d1",
+      "hourly": "\u6bcf\u5c0f\u65f6",
       "once": "\u4ec5\u4e00\u6b21",
       "daily": "\u6bcf\u5929",
+      "weekdays": "\u5de5\u4f5c\u65e5",
       "weekly": "\u6bcf\u5468",
       "monthly": "\u6bcf\u6708"
     },
@@ -462,6 +465,15 @@
     "runDate": "\u8fd0\u884c\u65e5\u671f",
     "runWeekdays": "\u8fd0\u884c\u65e5",
     "monthDay": "\u6bcf\u6708\u51e0\u53f7",
+    "executionMode": "\u6267\u884c\u6a21\u5f0f",
+    "execution": {
+      "new": "\u6bcf\u6b21\u65b0\u5efa\u4f1a\u8bdd",
+      "continuous": "\u5728\u540c\u4e00\u4f1a\u8bdd\u4e2d\u6301\u7eed\u6267\u884c"
+    },
+    "executionHint": {
+      "new_conversation": "\u6bcf\u6b21\u72ec\u7acb\u8fd0\u884c\uff0c\u9002\u5408\u65e5\u62a5\u3001\u5de1\u68c0\u548c\u5b9a\u671f\u6c47\u603b\u3002",
+      "continuous": "\u8fd0\u884c\u7ed3\u679c\u4fdd\u7559\u5728\u540c\u4e00\u4f1a\u8bdd\u4e2d\uff0c\u5e76\u5c06\u4e0a\u6b21\u7ed3\u679c\u4f5c\u4e3a\u4e0b\u6b21\u4e0a\u4e0b\u6587\u3002"
+    },
     "enabled": "\u542f\u7528\u4efb\u52a1",
     "deleteConfirm": "\u5220\u9664\u5b9a\u65f6\u4efb\u52a1\u201c{{title}}\u201d\uff1f",
     "runningNote": "\u81ea\u52a8\u4f7f\u7528\u7cfb\u7edf\u672c\u5730\u65f6\u95f4\u3002\u4efb\u52a1\u5728 FreeBuddy \u6253\u5f00\u65f6\u8fd0\u884c\uff1b\u5173\u95ed\u671f\u95f4\u9519\u8fc7\u7684\u4efb\u52a1\uff0c\u4e0b\u6b21\u6253\u5f00\u540e\u4f1a\u8865\u8dd1\u4e00\u6b21\u3002",
@@ -471,6 +483,8 @@
     "nextRun": "\u4e0b\u6b21\uff1a{{time}}",
     "openResult": "\u67e5\u770b\u7ed3\u679c",
     "runNow": "\u7acb\u5373\u8fd0\u884c",
+    "history": "\u6267\u884c\u5386\u53f2",
+    "noHistory": "\u6682\u65e0\u6267\u884c\u8bb0\u5f55",
     "weekdays": {
       "sun": "\u5468\u65e5",
       "mon": "\u5468\u4e00",
@@ -481,8 +495,11 @@
       "sat": "\u5468\u516d"
     },
     "summary": {
+      "manual": "\u4ec5\u624b\u52a8\u89e6\u53d1",
+      "hourly": "\u6bcf\u5c0f\u65f6",
       "once": "{{date}} {{time}}",
       "daily": "\u6bcf\u5929 {{time}}",
+      "weekdays": "\u5de5\u4f5c\u65e5 {{time}}",
       "weekly": "{{days}} {{time}}",
       "monthly": "\u6bcf\u6708 {{day}} \u53f7 {{time}}"
     },

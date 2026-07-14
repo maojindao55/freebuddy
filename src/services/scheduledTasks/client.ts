@@ -2,7 +2,8 @@ import type {
   ScheduledTask,
   ScheduledTaskAgent,
   ScheduledTaskInput,
-  ScheduledTaskMutationResult
+  ScheduledTaskMutationResult,
+  ScheduledTaskRun
 } from "./types";
 
 function api() {
@@ -17,6 +18,9 @@ export const scheduledTasksClient = {
   },
   list(): Promise<ScheduledTask[]> {
     return api().list();
+  },
+  listRuns(taskId: string): Promise<ScheduledTaskRun[]> {
+    return api().listRuns(taskId);
   },
   listAgents(): Promise<ScheduledTaskAgent[]> {
     return api().listAgents();

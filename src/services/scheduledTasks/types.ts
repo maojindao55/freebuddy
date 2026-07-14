@@ -1,5 +1,13 @@
 export type ScheduledTaskStatus = "idle" | "running" | "completed" | "failed";
-export type ScheduledTaskScheduleType = "once" | "daily" | "weekly" | "monthly";
+export type ScheduledTaskScheduleType =
+  | "manual"
+  | "hourly"
+  | "once"
+  | "daily"
+  | "weekdays"
+  | "weekly"
+  | "monthly";
+export type ScheduledTaskExecutionMode = "new_conversation" | "continuous";
 
 export interface ScheduledTask {
   id: string;
@@ -11,6 +19,7 @@ export interface ScheduledTask {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
   nextRunAt?: string;
   lastRunAt?: string;
@@ -31,7 +40,19 @@ export interface ScheduledTaskInput {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
+}
+
+export interface ScheduledTaskRun {
+  id: string;
+  taskId: string;
+  status: Exclude<ScheduledTaskStatus, "idle">;
+  startedAt: string;
+  endedAt?: string;
+  conversationId?: string;
+  workflowRunId?: string;
+  error?: string;
 }
 
 export interface ScheduledTaskAgent {

@@ -10505,6 +10505,7 @@ button.ghost:focus-visible,
 
 .scheduled-task-card {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   padding: 14px 16px;
   border: 1px solid var(--fb-border);
@@ -10620,6 +10621,58 @@ button.ghost:focus-visible,
 
 .scheduled-task-card-actions button.danger { color: var(--fb-danger); }
 
+.scheduled-task-history {
+  display: flex;
+  flex: 0 0 100%;
+  flex-direction: column;
+  border-top: 1px solid var(--fb-border);
+}
+
+.scheduled-task-history-empty,
+.scheduled-task-history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+}
+
+.scheduled-task-history-row + .scheduled-task-history-row {
+  border-top: 1px solid var(--fb-border);
+}
+
+.scheduled-task-history-row time {
+  min-width: 132px;
+}
+
+.scheduled-task-history-status {
+  min-width: 48px;
+  font-weight: 650;
+}
+
+.scheduled-task-history-status.running { color: var(--fb-brand); }
+.scheduled-task-history-status.completed { color: var(--fb-success); }
+.scheduled-task-history-status.failed,
+.scheduled-task-history-error { color: var(--fb-danger); }
+
+.scheduled-task-history-error {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduled-task-history-row button {
+  margin-left: auto;
+  padding: 3px 7px;
+  border: 0;
+  color: var(--fb-brand);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+}
+
 .scheduled-task-switch {
   position: relative;
   display: inline-flex !important;
@@ -10696,6 +10749,13 @@ button.ghost:focus-visible,
 
 .scheduled-task-condition-field {
   max-width: 340px;
+}
+
+.scheduled-task-condition-field small {
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .scheduled-task-weekday-field {

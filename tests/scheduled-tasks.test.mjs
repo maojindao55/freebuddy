@@ -16,6 +16,35 @@ test("daily schedules use the requested local wall-clock time", () => {
   assert.equal(next.toISOString(), "2026-07-15T00:00:00.000Z");
 });
 
+test("hourly schedules run at the next full hour", () => {
+  const next = utils.nextScheduledOccurrence(
+    { scheduleType: "hourly", timeLocal: "08:00" },
+    "Asia/Shanghai",
+    new Date("2026-07-14T00:01:00.000Z")
+  );
+  assert.equal(next.toISOString(), "2026-07-14T01:00:00.000Z");
+});
+
+test("manual schedules have no automatic occurrence", () => {
+  assert.equal(
+    utils.nextScheduledOccurrence(
+      { scheduleType: "manual", timeLocal: "08:00" },
+      "Asia/Shanghai",
+      new Date("2026-07-14T00:01:00.000Z")
+    ),
+    undefined
+  );
+});
+
+test("weekday schedules skip weekends", () => {
+  const next = utils.nextScheduledOccurrence(
+    { scheduleType: "weekdays", timeLocal: "08:00" },
+    "Asia/Shanghai",
+    new Date("2026-07-17T00:01:00.000Z")
+  );
+  assert.equal(next.toISOString(), "2026-07-20T00:00:00.000Z");
+});
+
 test("weekly schedules run only on selected weekdays", () => {
   const next = utils.nextScheduledOccurrence(
     { scheduleType: "weekly", timeLocal: "08:00", weekdays: [5] },
@@ -88,14 +117,20 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
 
   assert.match(db, /CREATE TABLE IF NOT EXISTS scheduled_tasks/);
   assert.match(db, /schedule_type TEXT NOT NULL DEFAULT 'daily'/);
+  assert.match(db, /CREATE TABLE IF NOT EXISTS scheduled_task_runs/);
   assert.match(service, /scheduledTasks:list/);
+  assert.match(service, /scheduledTasks:listRuns/);
   assert.match(service, /scheduledTasks:run/);
   assert.match(service, /buildScheduledTaskPrompt/);
   assert.doesNotMatch(service, /fetchPage|buildScheduledReportPrompt/);
   assert.doesNotMatch(component, /sourceUrl|type="url"|timeZone/);
   assert.match(component, /value="once"/);
+  assert.match(component, /value="manual"/);
+  assert.match(component, /value="hourly"/);
+  assert.match(component, /value="weekdays"/);
   assert.match(component, /value="weekly"/);
   assert.match(component, /value="monthly"/);
+  assert.match(component, /value="continuous"/);
   assert.match(preload, /scheduledTasks:\/\/changed/);
   assert.match(main, /initializeScheduledTaskScheduler/);
   assert.match(settings, /ScheduledTasksTab/);

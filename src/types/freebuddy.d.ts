@@ -60,7 +60,8 @@ import type {
   ScheduledTask,
   ScheduledTaskAgent,
   ScheduledTaskInput,
-  ScheduledTaskMutationResult
+  ScheduledTaskMutationResult,
+  ScheduledTaskRun
 } from "@/services/scheduledTasks/types";
 
 export {};
@@ -329,6 +330,7 @@ declare global {
 
   interface FreebuddyScheduledTasks {
     list(): Promise<ScheduledTask[]>;
+    listRuns(taskId: string): Promise<ScheduledTaskRun[]>;
     listAgents(): Promise<ScheduledTaskAgent[]>;
     create(input: ScheduledTaskInput): Promise<ScheduledTaskMutationResult>;
     update(args: {

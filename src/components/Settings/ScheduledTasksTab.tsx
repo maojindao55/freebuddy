@@ -4,7 +4,10 @@ import {
   ArrowLeft,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
+  History,
   Loader2,
   Pencil,
   Play,
@@ -19,6 +22,7 @@ import type {
   ScheduledTask,
   ScheduledTaskAgent,
   ScheduledTaskInput,
+  ScheduledTaskRun,
   ScheduledTaskScheduleType
 } from "@/services/scheduledTasks/types";
 
@@ -53,6 +57,7 @@ function blankInput(agentId = ""): ScheduledTaskInput {
     scheduleDate: localDateAfter(1),
     weekdays: [1, 2, 3, 4, 5],
     monthDay: new Date().getDate(),
+    executionMode: "new_conversation",
     enabled: true
   };
 }
@@ -67,6 +72,7 @@ function inputFromTask(task: ScheduledTask): ScheduledTaskInput {
     scheduleDate: task.scheduleDate ?? localDateAfter(1),
     weekdays: task.weekdays?.length ? task.weekdays : [1, 2, 3, 4, 5],
     monthDay: task.monthDay ?? new Date().getDate(),
+    executionMode: task.executionMode,
     enabled: task.enabled
   };
 }
@@ -94,6 +100,8 @@ export function ScheduledTasksTab({
   const [draft, setDraft] = useState<ScheduledTaskInput>(() => blankInput());
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [runsByTask, setRunsByTask] = useState<Record<string, ScheduledTaskRun[]>>({});
 
   const agentNames = useMemo(
     () => new Map(agents.map((agent) => [agent.id, agent.name])),
@@ -118,13 +126,26 @@ export function ScheduledTasksTab({
   useEffect(() => {
     void load().finally(() => setLoading(false));
     if (!scheduledTasksClient.isAvailable()) return;
-    return scheduledTasksClient.onChanged(() => void load());
-  }, []);
+    return scheduledTasksClient.onChanged((task) => {
+      void load();
+      if (task?.id && task.id === expandedId) {
+        void scheduledTasksClient.listRuns(task.id).then((runs) =>
+          setRunsByTask((current) => ({ ...current, [task.id]: runs }))
+        );
+      }
+    });
+  }, [expandedId]);
 
   const weekdayLabel = (day: number) =>
     t(`scheduledTasks.weekdays.${WEEKDAY_KEYS[day]}`);
 
   const formatSchedule = (task: ScheduledTask): string => {
+    if (task.scheduleType === "manual") {
+      return t("scheduledTasks.summary.manual");
+    }
+    if (task.scheduleType === "hourly") {
+      return t("scheduledTasks.summary.hourly");
+    }
     if (task.scheduleType === "once") {
       return t("scheduledTasks.summary.once", {
         date: task.scheduleDate,
@@ -147,7 +168,20 @@ export function ScheduledTasksTab({
         time: task.timeLocal
       });
     }
+    if (task.scheduleType === "weekdays") {
+      return t("scheduledTasks.summary.weekdays", { time: task.timeLocal });
+    }
     return t("scheduledTasks.summary.daily", { time: task.timeLocal });
+  };
+
+  const toggleHistory = async (taskId: string) => {
+    if (expandedId === taskId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(taskId);
+    const runs = await scheduledTasksClient.listRuns(taskId);
+    setRunsByTask((current) => ({ ...current, [taskId]: runs }));
   };
 
   const startCreate = () => {
@@ -208,7 +242,11 @@ export function ScheduledTasksTab({
   };
 
   const setScheduleType = (scheduleType: ScheduledTaskScheduleType) => {
-    setDraft({ ...draft, scheduleType });
+    setDraft({
+      ...draft,
+      scheduleType,
+      enabled: scheduleType === "manual" ? true : draft.enabled
+    });
   };
 
   const toggleWeekday = (day: number) => {
@@ -289,21 +327,43 @@ export function ScheduledTasksTab({
                   setScheduleType(event.currentTarget.value as ScheduledTaskScheduleType)
                 }
               >
+                <option value="manual">{t("scheduledTasks.schedule.manual")}</option>
+                <option value="hourly">{t("scheduledTasks.schedule.hourly")}</option>
                 <option value="once">{t("scheduledTasks.schedule.once")}</option>
                 <option value="daily">{t("scheduledTasks.schedule.daily")}</option>
+                <option value="weekdays">{t("scheduledTasks.schedule.weekdays")}</option>
                 <option value="weekly">{t("scheduledTasks.schedule.weekly")}</option>
                 <option value="monthly">{t("scheduledTasks.schedule.monthly")}</option>
               </select>
             </label>
-            <label>
-              <span>{t("scheduledTasks.runTime")}</span>
-              <input
-                type="time"
-                value={draft.timeLocal}
-                onChange={(event) => setDraft({ ...draft, timeLocal: event.currentTarget.value })}
-              />
-            </label>
+            {draft.scheduleType !== "manual" && draft.scheduleType !== "hourly" && (
+              <label>
+                <span>{t("scheduledTasks.runTime")}</span>
+                <input
+                  type="time"
+                  value={draft.timeLocal}
+                  onChange={(event) => setDraft({ ...draft, timeLocal: event.currentTarget.value })}
+                />
+              </label>
+            )}
           </div>
+
+          <label className="scheduled-task-condition-field">
+            <span>{t("scheduledTasks.executionMode")}</span>
+            <select
+              value={draft.executionMode}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  executionMode: event.currentTarget.value as ScheduledTaskInput["executionMode"]
+                })
+              }
+            >
+              <option value="new_conversation">{t("scheduledTasks.execution.new")}</option>
+              <option value="continuous">{t("scheduledTasks.execution.continuous")}</option>
+            </select>
+            <small>{t(`scheduledTasks.executionHint.${draft.executionMode}`)}</small>
+          </label>
 
           {draft.scheduleType === "once" && (
             <label className="scheduled-task-condition-field">
@@ -356,14 +416,16 @@ export function ScheduledTasksTab({
             </label>
           )}
 
-          <label className="scheduled-task-enabled">
-            <input
-              type="checkbox"
-              checked={draft.enabled}
-              onChange={(event) => setDraft({ ...draft, enabled: event.currentTarget.checked })}
-            />
-            <span>{t("scheduledTasks.enabled")}</span>
-          </label>
+          {draft.scheduleType !== "manual" && (
+            <label className="scheduled-task-enabled">
+              <input
+                type="checkbox"
+                checked={draft.enabled}
+                onChange={(event) => setDraft({ ...draft, enabled: event.currentTarget.checked })}
+              />
+              <span>{t("scheduledTasks.enabled")}</span>
+            </label>
+          )}
 
           <div className="scheduled-task-form-actions">
             <button type="button" className="ghost" onClick={() => setEditingId(null)}>
@@ -428,19 +490,24 @@ export function ScheduledTasksTab({
                 <div className="scheduled-task-meta">
                   <span><Clock3 size={12} />{formatSchedule(task)}</span>
                   <span>{t("scheduledTasks.agentValue", { agent: agentNames.get(task.agentId) ?? task.agentId })}</span>
-                  <span>{t("scheduledTasks.nextRun", { time: formatDate(task.nextRunAt) })}</span>
+                  <span>{t(`scheduledTasks.execution.${task.executionMode === "continuous" ? "continuous" : "new"}`)}</span>
+                  {task.scheduleType !== "manual" && (
+                    <span>{t("scheduledTasks.nextRun", { time: formatDate(task.nextRunAt) })}</span>
+                  )}
                 </div>
                 {task.lastError && <p className="scheduled-task-error">{task.lastError}</p>}
               </div>
               <div className="scheduled-task-card-actions">
-                <label className="scheduled-task-switch" title={t("scheduledTasks.enabled")}>
-                  <input
-                    type="checkbox"
-                    checked={task.enabled}
-                    onChange={() => void toggleEnabled(task)}
-                  />
-                  <span />
-                </label>
+                {task.scheduleType !== "manual" && (
+                  <label className="scheduled-task-switch" title={t("scheduledTasks.enabled")}>
+                    <input
+                      type="checkbox"
+                      checked={task.enabled}
+                      onChange={() => void toggleEnabled(task)}
+                    />
+                    <span />
+                  </label>
+                )}
                 {task.lastConversationId && (
                   <button type="button" onClick={() => onOpenConversation?.(task.lastConversationId!)}>
                     {t("scheduledTasks.openResult")}
@@ -453,6 +520,10 @@ export function ScheduledTasksTab({
                 >
                   <Play size={12} />
                   {t("scheduledTasks.runNow")}
+                </button>
+                <button type="button" onClick={() => void toggleHistory(task.id)}>
+                  {expandedId === task.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  {t("scheduledTasks.history")}
                 </button>
                 <button type="button" onClick={() => startEdit(task)} aria-label={t("common.edit")}>
                   <Pencil size={13} />
@@ -467,6 +538,31 @@ export function ScheduledTasksTab({
                   <Trash2 size={13} />
                 </button>
               </div>
+              {expandedId === task.id && (
+                <div className="scheduled-task-history">
+                  {(runsByTask[task.id] ?? []).length === 0 ? (
+                    <div className="scheduled-task-history-empty">
+                      <History size={14} />
+                      {t("scheduledTasks.noHistory")}
+                    </div>
+                  ) : (
+                    (runsByTask[task.id] ?? []).map((run) => (
+                      <div key={run.id} className="scheduled-task-history-row">
+                        <span className={`scheduled-task-history-status ${run.status}`}>
+                          {t(`scheduledTasks.status.${run.status}`)}
+                        </span>
+                        <time>{formatDate(run.startedAt)}</time>
+                        {run.error && <span className="scheduled-task-history-error">{run.error}</span>}
+                        {run.conversationId && (
+                          <button type="button" onClick={() => onOpenConversation?.(run.conversationId!)}>
+                            {t("scheduledTasks.openResult")}
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>

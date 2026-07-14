@@ -253,6 +253,7 @@ function migrate(db: DB) {
       schedule_date TEXT,
       weekdays TEXT,
       month_day INTEGER,
+      execution_mode TEXT NOT NULL DEFAULT 'new_conversation',
       enabled INTEGER NOT NULL DEFAULT 1,
       next_run_at TEXT,
       last_run_at TEXT,
@@ -265,6 +266,20 @@ function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due
       ON scheduled_tasks(enabled, next_run_at);
+
+    CREATE TABLE IF NOT EXISTS scheduled_task_runs (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      conversation_id TEXT,
+      workflow_run_id TEXT,
+      error TEXT,
+      FOREIGN KEY(task_id) REFERENCES scheduled_tasks(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_task
+      ON scheduled_task_runs(task_id, started_at DESC);
   `);
 
   const overrideCols = db
@@ -377,6 +392,11 @@ function migrate(db: DB) {
   if (!scheduledTaskCols.some((c) => c.name === "month_day")) {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN month_day INTEGER");
   }
+  if (!scheduledTaskCols.some((c) => c.name === "execution_mode")) {
+    db.exec(
+      "ALTER TABLE scheduled_tasks ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'new_conversation'"
+    );
+  }
   const hasLegacyUrl = scheduledTaskCols.some((c) => c.name === "url");
   const hasLegacyTimeZone = scheduledTaskCols.some((c) => c.name === "time_zone");
   if (hasLegacyUrl || hasLegacyTimeZone) {
@@ -400,6 +420,7 @@ function migrate(db: DB) {
           schedule_date TEXT,
           weekdays TEXT,
           month_day INTEGER,
+          execution_mode TEXT NOT NULL DEFAULT 'new_conversation',
           enabled INTEGER NOT NULL DEFAULT 1,
           next_run_at TEXT,
           last_run_at TEXT,
@@ -412,11 +433,11 @@ function migrate(db: DB) {
         );
         INSERT INTO scheduled_tasks_next
           (id, title, prompt, agent_id, time_local, schedule_type,
-           schedule_date, weekdays, month_day, enabled, next_run_at,
+           schedule_date, weekdays, month_day, execution_mode, enabled, next_run_at,
            last_run_at, last_status, last_error, last_conversation_id,
            last_workflow_run_id, created_at, updated_at)
         SELECT id, title, prompt, agent_id, time_local, schedule_type,
-               schedule_date, weekdays, month_day, enabled, next_run_at,
+               schedule_date, weekdays, month_day, execution_mode, enabled, next_run_at,
                last_run_at, last_status, last_error, last_conversation_id,
                last_workflow_run_id, created_at, updated_at
         FROM scheduled_tasks;

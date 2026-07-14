@@ -467,8 +467,11 @@
     "agent": "Agent",
     "scheduleType": "Schedule",
     "schedule": {
+      "manual": "Manual only",
+      "hourly": "Every hour",
       "once": "Once",
       "daily": "Every day",
+      "weekdays": "Weekdays",
       "weekly": "Every week",
       "monthly": "Every month"
     },
@@ -476,6 +479,15 @@
     "runDate": "Run date",
     "runWeekdays": "Run on",
     "monthDay": "Day of month",
+    "executionMode": "Execution mode",
+    "execution": {
+      "new": "New conversation each run",
+      "continuous": "Continue in one conversation"
+    },
+    "executionHint": {
+      "new_conversation": "Each run starts independently, which works well for reports, checks, and recurring summaries.",
+      "continuous": "Results stay in one conversation and the previous result is supplied as context for the next run."
+    },
     "enabled": "Task enabled",
     "deleteConfirm": "Delete the scheduled task “{{title}}”?",
     "runningNote": "Times use your system time automatically. Tasks run while FreeBuddy is open; a missed run is performed once when the app opens again.",
@@ -485,6 +497,8 @@
     "nextRun": "Next: {{time}}",
     "openResult": "Open result",
     "runNow": "Run now",
+    "history": "History",
+    "noHistory": "No runs yet",
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",
@@ -495,8 +509,11 @@
       "sat": "Sat"
     },
     "summary": {
+      "manual": "Manual only",
+      "hourly": "Every hour",
       "once": "{{date}} at {{time}}",
       "daily": "Every day at {{time}}",
+      "weekdays": "Weekdays at {{time}}",
       "weekly": "{{days}} at {{time}}",
       "monthly": "Day {{day}} at {{time}}"
     },

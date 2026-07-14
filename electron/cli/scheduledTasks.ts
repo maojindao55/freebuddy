@@ -2,9 +2,10 @@ import { BrowserWindow, ipcMain, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 
 import { getDb } from "./db.js";
-import { appendMessage, createConversation } from "./conversations.js";
+import { appendMessage, createConversation, getConversation } from "./conversations.js";
 import { listCliMembers } from "./members.js";
 import { createCliStepExecutor, WorkflowRuntime } from "./workflowRuntime.js";
+import { extractVisibleStepOutput } from "./workflowScheduler.js";
 import type { WorkflowAgentRef, WorkflowPlan } from "./workflowTypes.js";
 import {
   buildScheduledTaskPrompt,
@@ -16,6 +17,7 @@ import {
 } from "./scheduledTaskUtils.js";
 
 export type ScheduledTaskStatus = "idle" | "running" | "completed" | "failed";
+export type ScheduledTaskExecutionMode = "new_conversation" | "continuous";
 
 export interface ScheduledTask {
   id: string;
@@ -27,6 +29,7 @@ export interface ScheduledTask {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
   nextRunAt?: string;
   lastRunAt?: string;
@@ -47,7 +50,19 @@ export interface ScheduledTaskInput {
   scheduleDate?: string;
   weekdays?: number[];
   monthDay?: number;
+  executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
+}
+
+export interface ScheduledTaskRun {
+  id: string;
+  taskId: string;
+  status: Exclude<ScheduledTaskStatus, "idle">;
+  startedAt: string;
+  endedAt?: string;
+  conversationId?: string;
+  workflowRunId?: string;
+  error?: string;
 }
 
 interface ScheduledTaskRow {
@@ -60,6 +75,7 @@ interface ScheduledTaskRow {
   schedule_date: string | null;
   weekdays: string | null;
   month_day: number | null;
+  execution_mode: string;
   enabled: number;
   next_run_at: string | null;
   last_run_at: string | null;
@@ -71,11 +87,29 @@ interface ScheduledTaskRow {
   updated_at: string;
 }
 
+interface ScheduledTaskRunRow {
+  id: string;
+  task_id: string;
+  status: Exclude<ScheduledTaskStatus, "idle">;
+  started_at: string;
+  ended_at: string | null;
+  conversation_id: string | null;
+  workflow_run_id: string | null;
+  error: string | null;
+}
+
 const SCHEDULE_TYPES = new Set<ScheduledTaskScheduleType>([
   "once",
+  "manual",
+  "hourly",
   "daily",
+  "weekdays",
   "weekly",
   "monthly"
+]);
+const EXECUTION_MODES = new Set<ScheduledTaskExecutionMode>([
+  "new_conversation",
+  "continuous"
 ]);
 const runningTaskIds = new Set<string>();
 let schedulerTimer: ReturnType<typeof setInterval> | undefined;
@@ -109,6 +143,9 @@ function rowToTask(row: ScheduledTaskRow): ScheduledTask {
     scheduleDate: row.schedule_date ?? undefined,
     weekdays: parseWeekdays(row.weekdays),
     monthDay: row.month_day ?? undefined,
+    executionMode: EXECUTION_MODES.has(row.execution_mode as ScheduledTaskExecutionMode)
+      ? (row.execution_mode as ScheduledTaskExecutionMode)
+      : "new_conversation",
     enabled: Boolean(row.enabled),
     nextRunAt: row.next_run_at ?? undefined,
     lastRunAt: row.last_run_at ?? undefined,
@@ -118,6 +155,19 @@ function rowToTask(row: ScheduledTaskRow): ScheduledTask {
     lastWorkflowRunId: row.last_workflow_run_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function rowToRun(row: ScheduledTaskRunRow): ScheduledTaskRun {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    status: row.status,
+    startedAt: row.started_at,
+    endedAt: row.ended_at ?? undefined,
+    conversationId: row.conversation_id ?? undefined,
+    workflowRunId: row.workflow_run_id ?? undefined,
+    error: row.error ?? undefined
   };
 }
 
@@ -132,6 +182,17 @@ export function getScheduledTask(id: string): ScheduledTask | undefined {
     .prepare("SELECT * FROM scheduled_tasks WHERE id = ?")
     .get(id) as ScheduledTaskRow | undefined;
   return row ? rowToTask(row) : undefined;
+}
+
+export function listScheduledTaskRuns(taskId: string): ScheduledTaskRun[] {
+  return (getDb()
+    .prepare(
+      `SELECT * FROM scheduled_task_runs
+       WHERE task_id = ?
+       ORDER BY started_at DESC
+       LIMIT 50`
+    )
+    .all(taskId) as ScheduledTaskRunRow[]).map(rowToRun);
 }
 
 function scheduleOf(input: ScheduledTaskInput | ScheduledTask) {
@@ -149,7 +210,14 @@ function validateInput(input: ScheduledTaskInput): string[] {
   if (!input.title?.trim()) errors.push("task title is required");
   if (!input.prompt?.trim()) errors.push("task instructions are required");
   if (!SCHEDULE_TYPES.has(input.scheduleType)) errors.push("schedule type is invalid");
-  if (!isValidLocalTime(input.timeLocal)) errors.push("run time must use HH:mm");
+  if (!EXECUTION_MODES.has(input.executionMode)) errors.push("execution mode is invalid");
+  if (
+    input.scheduleType !== "manual" &&
+    input.scheduleType !== "hourly" &&
+    !isValidLocalTime(input.timeLocal)
+  ) {
+    errors.push("run time must use HH:mm");
+  }
   if (
     input.scheduleType === "once" &&
     (!input.scheduleDate || !isValidLocalDate(input.scheduleDate))
@@ -200,9 +268,9 @@ export function createScheduledTask(
     .prepare(
       `INSERT INTO scheduled_tasks
         (id, title, prompt, agent_id, time_local, schedule_type,
-         schedule_date, weekdays, month_day, enabled,
+         schedule_date, weekdays, month_day, execution_mode, enabled,
          next_run_at, last_status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`
     )
     .run(
       id,
@@ -214,6 +282,7 @@ export function createScheduledTask(
       input.scheduleType === "once" ? input.scheduleDate ?? null : null,
       input.scheduleType === "weekly" ? JSON.stringify(input.weekdays ?? []) : null,
       input.scheduleType === "monthly" ? input.monthDay ?? null : null,
+      input.executionMode,
       input.enabled ? 1 : 0,
       nextRunAt(input),
       now,
@@ -237,7 +306,7 @@ export function updateScheduledTask(
       `UPDATE scheduled_tasks
        SET title = ?, prompt = ?, agent_id = ?, time_local = ?,
            schedule_type = ?, schedule_date = ?, weekdays = ?,
-           month_day = ?, enabled = ?, next_run_at = ?, updated_at = ?
+           month_day = ?, execution_mode = ?, enabled = ?, next_run_at = ?, updated_at = ?
        WHERE id = ?`
     )
     .run(
@@ -249,6 +318,7 @@ export function updateScheduledTask(
       input.scheduleType === "once" ? input.scheduleDate ?? null : null,
       input.scheduleType === "weekly" ? JSON.stringify(input.weekdays ?? []) : null,
       input.scheduleType === "monthly" ? input.monthDay ?? null : null,
+      input.executionMode,
       input.enabled ? 1 : 0,
       nextRunAt(input),
       now,
@@ -257,6 +327,27 @@ export function updateScheduledTask(
   const task = getScheduledTask(id)!;
   notifyChanged(task);
   return { ok: true, task };
+}
+
+function previousRunContext(task: ScheduledTask): string | undefined {
+  if (task.executionMode !== "continuous" || !task.lastWorkflowRunId) return undefined;
+  const row = getDb()
+    .prepare(
+      `SELECT result_json
+       FROM workflow_steps
+       WHERE workflow_run_id = ? AND status = 'done' AND result_json IS NOT NULL
+       ORDER BY COALESCE(ended_at, updated_at) DESC
+       LIMIT 1`
+    )
+    .get(task.lastWorkflowRunId) as { result_json: string } | undefined;
+  if (!row?.result_json) return undefined;
+  try {
+    const parsed = JSON.parse(row.result_json) as { items?: unknown[] };
+    const output = extractVisibleStepOutput(parsed.items ?? []).trim();
+    return output ? output.slice(-12_000) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function deleteScheduledTask(id: string): boolean {
@@ -336,6 +427,13 @@ export async function runScheduledTask(
   if (!task || runningTaskIds.has(id)) return false;
   runningTaskIds.add(id);
   const startedAt = new Date();
+  const taskRunId = randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO scheduled_task_runs (id, task_id, status, started_at)
+       VALUES (?, ?, 'running', ?)`
+    )
+    .run(taskRunId, task.id, startedAt.toISOString());
   const next = task.enabled ? nextRunAt(task, startedAt) : null;
   const running = updateRunState(id, {
     enabled: task.scheduleType === "once" && !next ? false : undefined,
@@ -355,19 +453,28 @@ export async function runScheduledTask(
     );
     if (!member) throw new Error("selected agent is unavailable");
 
-    const conversationId = randomUUID();
-    createConversation({
-      id: conversationId,
-      title: `${task.title} · ${new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short"
-      }).format(startedAt)}`,
-      titleSource: "user",
-      agentId: member.id,
-      agentName: member.name,
-      adapter: member.cli.adapter,
-      approvalMode: "auto"
-    });
+    const existingConversation =
+      task.executionMode === "continuous" && task.lastConversationId
+        ? getConversation(task.lastConversationId)
+        : undefined;
+    const conversationId =
+      existingConversation?.agentId === member.id
+        ? existingConversation.id
+        : randomUUID();
+    if (!existingConversation || existingConversation.agentId !== member.id) {
+      createConversation({
+        id: conversationId,
+        title: `${task.title} · ${new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short"
+        }).format(startedAt)}`,
+        titleSource: "user",
+        agentId: member.id,
+        agentName: member.name,
+        adapter: member.cli.adapter,
+        approvalMode: "auto"
+      });
+    }
     appendMessage({
       id: randomUUID(),
       conversationId,
@@ -397,7 +504,8 @@ export async function runScheduledTask(
               prompt: buildScheduledTaskPrompt({
                 title: task.title,
                 prompt: task.prompt,
-                startedAt: startedAt.toISOString()
+                startedAt: startedAt.toISOString(),
+                previousContext: previousRunContext(task)
               })
             }
           ]
@@ -415,6 +523,13 @@ export async function runScheduledTask(
       lastConversationId: conversationId,
       lastWorkflowRunId: created.run.id
     });
+    getDb()
+      .prepare(
+        `UPDATE scheduled_task_runs
+         SET conversation_id = ?, workflow_run_id = ?
+         WHERE id = ?`
+      )
+      .run(conversationId, created.run.id, taskRunId);
     await runtime.start(created.run.id);
     const run = runtime.getRun(created.run.id);
     if (!run || run.status !== "completed") {
@@ -426,6 +541,13 @@ export async function runScheduledTask(
       lastConversationId: conversationId,
       lastWorkflowRunId: created.run.id
     });
+    getDb()
+      .prepare(
+        `UPDATE scheduled_task_runs
+         SET status = 'completed', ended_at = ?
+         WHERE id = ?`
+      )
+      .run(new Date().toISOString(), taskRunId);
     if (completed) notifyChanged(completed);
     return true;
   } catch (error) {
@@ -433,6 +555,13 @@ export async function runScheduledTask(
       lastStatus: "failed",
       lastError: (error as Error).message
     });
+    getDb()
+      .prepare(
+        `UPDATE scheduled_task_runs
+         SET status = 'failed', ended_at = ?, error = ?
+         WHERE id = ?`
+      )
+      .run(new Date().toISOString(), (error as Error).message, taskRunId);
     if (failed) notifyChanged(failed);
     return false;
   } finally {
@@ -497,6 +626,9 @@ export function initializeScheduledTaskScheduler(
 
 export function registerScheduledTaskIpc(): void {
   ipcMain.handle("scheduledTasks:list", () => listScheduledTasks());
+  ipcMain.handle("scheduledTasks:listRuns", (_event, taskId: string) =>
+    listScheduledTaskRuns(taskId)
+  );
   ipcMain.handle("scheduledTasks:listAgents", () =>
     listCliMembers()
       .filter((member) => member.enabled !== false)

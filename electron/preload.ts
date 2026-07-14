@@ -325,6 +325,7 @@ const workflowTeams = {
 
 const scheduledTasks = {
   list: () => ipcRenderer.invoke("scheduledTasks:list"),
+  listRuns: (taskId: string) => ipcRenderer.invoke("scheduledTasks:listRuns", taskId),
   listAgents: () => ipcRenderer.invoke("scheduledTasks:listAgents"),
   create: (input: unknown) => ipcRenderer.invoke("scheduledTasks:create", input),
   update: (args: unknown) => ipcRenderer.invoke("scheduledTasks:update", args),

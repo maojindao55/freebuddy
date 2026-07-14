@@ -242,6 +242,29 @@ function migrate(db: DB) {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      time_local TEXT NOT NULL,
+      schedule_type TEXT NOT NULL DEFAULT 'daily',
+      schedule_date TEXT,
+      weekdays TEXT,
+      month_day INTEGER,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      next_run_at TEXT,
+      last_run_at TEXT,
+      last_status TEXT,
+      last_error TEXT,
+      last_conversation_id TEXT,
+      last_workflow_run_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due
+      ON scheduled_tasks(enabled, next_run_at);
   `);
 
   const overrideCols = db
@@ -335,5 +358,73 @@ function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!workflowStepCols.some((c) => c.name === "tool_session_id")) {
     db.exec("ALTER TABLE workflow_steps ADD COLUMN tool_session_id TEXT");
+  }
+
+  const scheduledTaskCols = db
+    .prepare("PRAGMA table_info(scheduled_tasks)")
+    .all() as Array<{ name: string }>;
+  if (!scheduledTaskCols.some((c) => c.name === "schedule_type")) {
+    db.exec(
+      "ALTER TABLE scheduled_tasks ADD COLUMN schedule_type TEXT NOT NULL DEFAULT 'daily'"
+    );
+  }
+  if (!scheduledTaskCols.some((c) => c.name === "schedule_date")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN schedule_date TEXT");
+  }
+  if (!scheduledTaskCols.some((c) => c.name === "weekdays")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN weekdays TEXT");
+  }
+  if (!scheduledTaskCols.some((c) => c.name === "month_day")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN month_day INTEGER");
+  }
+  const hasLegacyUrl = scheduledTaskCols.some((c) => c.name === "url");
+  const hasLegacyTimeZone = scheduledTaskCols.some((c) => c.name === "time_zone");
+  if (hasLegacyUrl || hasLegacyTimeZone) {
+    db.transaction(() => {
+      if (hasLegacyUrl) {
+        db.exec(`
+          UPDATE scheduled_tasks
+          SET prompt = prompt || '\n\nSource: ' || url
+          WHERE TRIM(COALESCE(url, '')) <> ''
+        `);
+      }
+      db.exec(`
+        DROP TABLE IF EXISTS scheduled_tasks_next;
+        CREATE TABLE scheduled_tasks_next (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          agent_id TEXT NOT NULL,
+          time_local TEXT NOT NULL,
+          schedule_type TEXT NOT NULL DEFAULT 'daily',
+          schedule_date TEXT,
+          weekdays TEXT,
+          month_day INTEGER,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          next_run_at TEXT,
+          last_run_at TEXT,
+          last_status TEXT,
+          last_error TEXT,
+          last_conversation_id TEXT,
+          last_workflow_run_id TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO scheduled_tasks_next
+          (id, title, prompt, agent_id, time_local, schedule_type,
+           schedule_date, weekdays, month_day, enabled, next_run_at,
+           last_run_at, last_status, last_error, last_conversation_id,
+           last_workflow_run_id, created_at, updated_at)
+        SELECT id, title, prompt, agent_id, time_local, schedule_type,
+               schedule_date, weekdays, month_day, enabled, next_run_at,
+               last_run_at, last_status, last_error, last_conversation_id,
+               last_workflow_run_id, created_at, updated_at
+        FROM scheduled_tasks;
+        DROP TABLE scheduled_tasks;
+        ALTER TABLE scheduled_tasks_next RENAME TO scheduled_tasks;
+        CREATE INDEX idx_scheduled_tasks_due
+          ON scheduled_tasks(enabled, next_run_at);
+      `);
+    })();
   }
 }

@@ -10403,3 +10403,357 @@ button.ghost:focus-visible,
     grid-template-columns: 1fr;
   }
 }
+
+/* Scheduled reports */
+.scheduled-task-list,
+.scheduled-task-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.scheduled-task-list-header,
+.scheduled-task-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.scheduled-task-list-header h3,
+.scheduled-task-editor-header h3 {
+  margin: 0;
+  color: var(--fb-text-primary);
+  font-size: 17px;
+}
+
+.scheduled-task-list-header p,
+.scheduled-task-editor-header p {
+  margin: 5px 0 0;
+  color: var(--fb-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.scheduled-task-list button.primary,
+.scheduled-task-editor button.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--fb-brand-gradient);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scheduled-task-list button:disabled,
+.scheduled-task-editor button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.scheduled-task-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 9px;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.scheduled-task-empty {
+  display: flex;
+  min-height: 190px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px dashed var(--fb-border-strong);
+  border-radius: 12px;
+  color: var(--fb-text-muted);
+  text-align: center;
+}
+
+.scheduled-task-empty strong {
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+}
+
+.scheduled-task-empty span {
+  font-size: 11px;
+}
+
+.scheduled-task-items {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scheduled-task-card {
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--fb-border);
+  border-radius: 11px;
+  background: var(--fb-panel-bg);
+}
+
+.scheduled-task-card.disabled {
+  opacity: 0.62;
+}
+
+.scheduled-task-card-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scheduled-task-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduled-task-card-title strong {
+  overflow: hidden;
+  color: var(--fb-text-primary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduled-task-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--fb-text-muted);
+  background: var(--fb-panel-soft);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.scheduled-task-status.running { color: var(--fb-brand); background: var(--fb-brand-glow); }
+.scheduled-task-status.completed { color: var(--fb-success); background: rgba(16, 185, 129, 0.1); }
+.scheduled-task-status.failed { color: var(--fb-danger); background: rgba(225, 29, 72, 0.08); }
+
+.scheduled-task-prompt-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--fb-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.scheduled-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+}
+
+.scheduled-task-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scheduled-task-error {
+  margin: 2px 0 0;
+  color: var(--fb-danger);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.scheduled-task-card-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.scheduled-task-card-actions button,
+.scheduled-task-form-actions button,
+.scheduled-task-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 29px;
+  padding: 5px 9px;
+  border: 1px solid var(--fb-border);
+  border-radius: 7px;
+  color: var(--fb-text-secondary);
+  background: transparent;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.scheduled-task-card-actions button:hover,
+.scheduled-task-form-actions button:hover,
+.scheduled-task-back:hover {
+  border-color: var(--fb-border-strong);
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-soft);
+}
+
+.scheduled-task-card-actions button.danger { color: var(--fb-danger); }
+
+.scheduled-task-switch {
+  position: relative;
+  display: inline-flex !important;
+  width: 32px;
+  height: 18px;
+  margin: 5px 4px 0 0;
+  cursor: pointer;
+}
+
+.scheduled-task-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.scheduled-task-switch span {
+  width: 100%;
+  border-radius: 999px;
+  background: var(--fb-border-strong);
+  transition: background 0.15s;
+}
+
+.scheduled-task-switch span::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  content: "";
+  transition: transform 0.15s;
+}
+
+.scheduled-task-switch input:checked + span { background: var(--fb-brand); }
+.scheduled-task-switch input:checked + span::after { transform: translateX(14px); }
+
+.scheduled-task-editor-header {
+  justify-content: flex-start;
+}
+
+.scheduled-task-back {
+  width: 30px;
+  padding: 0;
+  flex: 0 0 30px;
+}
+
+.scheduled-task-errors {
+  margin: 0;
+  padding: 10px 14px 10px 30px;
+  border-radius: 8px;
+  color: var(--fb-danger);
+  background: rgba(225, 29, 72, 0.08);
+  font-size: 11px;
+}
+
+.scheduled-task-form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--fb-border);
+  border-radius: 11px;
+  background: var(--fb-panel-bg);
+}
+
+.scheduled-task-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(120px, 0.6fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.scheduled-task-condition-field {
+  max-width: 340px;
+}
+
+.scheduled-task-weekday-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.scheduled-task-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.scheduled-task-weekdays button {
+  min-width: 48px;
+  padding: 7px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.scheduled-task-weekdays button.active {
+  border-color: var(--fb-brand);
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+  font-weight: 650;
+}
+
+.scheduled-task-enabled {
+  display: flex !important;
+  align-items: center;
+  flex-direction: row !important;
+  gap: 8px !important;
+  cursor: pointer;
+}
+
+.scheduled-task-enabled input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--fb-brand);
+}
+
+.scheduled-task-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 3px;
+}
+
+@media (max-width: 1050px) {
+  .scheduled-task-card { flex-direction: column; }
+  .scheduled-task-form-grid { grid-template-columns: 1fr; }
+}

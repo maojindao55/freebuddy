@@ -56,6 +56,12 @@ import type {
   MarketSymbolSearchResult,
   UpdateInfoCardInput
 } from "@/services/infoCards/types";
+import type {
+  ScheduledTask,
+  ScheduledTaskAgent,
+  ScheduledTaskInput,
+  ScheduledTaskMutationResult
+} from "@/services/scheduledTasks/types";
 
 export {};
 
@@ -321,6 +327,19 @@ declare global {
     seedBuiltins(): Promise<WorkflowTeam[]>;
   }
 
+  interface FreebuddyScheduledTasks {
+    list(): Promise<ScheduledTask[]>;
+    listAgents(): Promise<ScheduledTaskAgent[]>;
+    create(input: ScheduledTaskInput): Promise<ScheduledTaskMutationResult>;
+    update(args: {
+      id: string;
+      input: ScheduledTaskInput;
+    }): Promise<ScheduledTaskMutationResult>;
+    delete(id: string): Promise<boolean>;
+    run(id: string): Promise<boolean>;
+    onChanged(cb: (task?: ScheduledTask) => void): () => void;
+  }
+
   type UpdaterEvent =
     | { type: "checking-for-update" }
     | {
@@ -363,6 +382,7 @@ declare global {
     cli: FreebuddyCli;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
+    scheduledTasks: FreebuddyScheduledTasks;
     settings: FreebuddySettings;
     feed: FreebuddyFeed;
     infoCards: FreebuddyInfoCards;

@@ -332,6 +332,7 @@
   "settings": {
     "backToApp": "返回应用",
     "tabs": {
+      "scheduledTasks": "\u5b9a\u65f6\u4efb\u52a1",
       "general": "通用",
       "cli": "CLI Agent",
       "workflowTeams": "工作流团队",
@@ -436,6 +437,60 @@
         "apps": "应用"
       },
       "defaultAlt": "默认"
+    }
+  },
+  "scheduledTasks": {
+    "title": "\u5b9a\u65f6\u4efb\u52a1",
+    "description": "\u8ba9\u6307\u5b9a Agent \u5728\u5355\u6b21\u6216\u5468\u671f\u8ba1\u5212\u4e2d\u81ea\u52a8\u6267\u884c\u4efb\u610f\u63d0\u793a\u8bcd\u3002",
+    "add": "\u65b0\u5efa\u4efb\u52a1",
+    "createTitle": "\u65b0\u5efa\u5b9a\u65f6\u4efb\u52a1",
+    "editTitle": "\u7f16\u8f91\u5b9a\u65f6\u4efb\u52a1",
+    "editorDescription": "\u9009\u62e9 Agent\uff0c\u586b\u5199\u5b8c\u6574\u4efb\u52a1\u63d0\u793a\u8bcd\uff0c\u5e76\u8bbe\u7f6e\u8fd0\u884c\u8ba1\u5212\u3002",
+    "name": "\u4efb\u52a1\u540d\u79f0",
+    "namePlaceholder": "\u65e9\u95f4\u7b80\u62a5",
+    "prompt": "\u4efb\u52a1\u63d0\u793a\u8bcd",
+    "promptPlaceholder": "\u63cf\u8ff0\u5b8c\u6574\u4efb\u52a1\u3002\u8fd0\u884c\u65f6 Agent \u53ef\u4ee5\u4f7f\u7528\u5b83\u5df2\u6709\u7684\u5de5\u5177\u548c\u8d44\u6e90\u3002",
+    "agent": "Agent",
+    "scheduleType": "\u8fd0\u884c\u8ba1\u5212",
+    "schedule": {
+      "once": "\u4ec5\u4e00\u6b21",
+      "daily": "\u6bcf\u5929",
+      "weekly": "\u6bcf\u5468",
+      "monthly": "\u6bcf\u6708"
+    },
+    "runTime": "\u8fd0\u884c\u65f6\u95f4",
+    "runDate": "\u8fd0\u884c\u65e5\u671f",
+    "runWeekdays": "\u8fd0\u884c\u65e5",
+    "monthDay": "\u6bcf\u6708\u51e0\u53f7",
+    "enabled": "\u542f\u7528\u4efb\u52a1",
+    "deleteConfirm": "\u5220\u9664\u5b9a\u65f6\u4efb\u52a1\u201c{{title}}\u201d\uff1f",
+    "runningNote": "\u81ea\u52a8\u4f7f\u7528\u7cfb\u7edf\u672c\u5730\u65f6\u95f4\u3002\u4efb\u52a1\u5728 FreeBuddy \u6253\u5f00\u65f6\u8fd0\u884c\uff1b\u5173\u95ed\u671f\u95f4\u9519\u8fc7\u7684\u4efb\u52a1\uff0c\u4e0b\u6b21\u6253\u5f00\u540e\u4f1a\u8865\u8dd1\u4e00\u6b21\u3002",
+    "emptyTitle": "\u8fd8\u6ca1\u6709\u5b9a\u65f6\u4efb\u52a1",
+    "emptyDescription": "\u521b\u5efa\u4e00\u4e2a\u4efb\u52a1\uff0c\u8ba9 Agent \u5728\u5408\u9002\u7684\u65f6\u95f4\u81ea\u52a8\u5904\u7406\u3002",
+    "agentValue": "Agent\uff1a{{agent}}",
+    "nextRun": "\u4e0b\u6b21\uff1a{{time}}",
+    "openResult": "\u67e5\u770b\u7ed3\u679c",
+    "runNow": "\u7acb\u5373\u8fd0\u884c",
+    "weekdays": {
+      "sun": "\u5468\u65e5",
+      "mon": "\u5468\u4e00",
+      "tue": "\u5468\u4e8c",
+      "wed": "\u5468\u4e09",
+      "thu": "\u5468\u56db",
+      "fri": "\u5468\u4e94",
+      "sat": "\u5468\u516d"
+    },
+    "summary": {
+      "once": "{{date}} {{time}}",
+      "daily": "\u6bcf\u5929 {{time}}",
+      "weekly": "{{days}} {{time}}",
+      "monthly": "\u6bcf\u6708 {{day}} \u53f7 {{time}}"
+    },
+    "status": {
+      "idle": "\u672a\u8fd0\u884c",
+      "running": "\u8fd0\u884c\u4e2d",
+      "completed": "\u5df2\u5b8c\u6210",
+      "failed": "\u5931\u8d25"
     }
   },
   "workflow": {

@@ -75,12 +75,22 @@ function App() {
 
   const loadExecutors = useCliExecutorStore((s) => s.load);
   const loadConversations = useConversationStore((s) => s.load);
+  const refreshConversationList = useConversationStore((s) => s.refreshList);
   useEffect(() => {
     void (async () => {
       await loadExecutors();
       await loadConversations();
     })();
   }, [loadExecutors, loadConversations]);
+
+  useEffect(() => {
+    const off = window.freebuddy?.scheduledTasks?.onChanged?.((task) => {
+      if (!task || task.lastStatus === "completed" || task.lastStatus === "failed") {
+        void refreshConversationList();
+      }
+    });
+    return () => off?.();
+  }, [refreshConversationList]);
 
   useEffect(() => {
     const off = window.freebuddy?.window?.onChromeVisible?.((visible) => {
@@ -352,6 +362,10 @@ function App() {
               activeTab={settingsInitialTab}
               onTabChange={setSettingsInitialTab}
               onClose={() => setSettingsOpen(false)}
+              onOpenConversation={(conversationId) => {
+                void loadConversations().then(() => setActive(conversationId));
+                setSettingsOpen(false);
+              }}
             />
           ) : (
             <ChatView />

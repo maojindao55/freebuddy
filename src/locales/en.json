@@ -345,6 +345,7 @@
   "settings": {
     "backToApp": "Back to app",
     "tabs": {
+      "scheduledTasks": "Scheduled Tasks",
       "general": "General",
       "cli": "CLI Agents",
       "workflowTeams": "Workflow Teams",
@@ -450,6 +451,60 @@
         "apps": "Apps"
       },
       "defaultAlt": "Default"
+    }
+  },
+  "scheduledTasks": {
+    "title": "Scheduled Tasks",
+    "description": "Run any prompt with a selected agent on a one-time or recurring schedule.",
+    "add": "New task",
+    "createTitle": "New scheduled task",
+    "editTitle": "Edit scheduled task",
+    "editorDescription": "Choose an agent, write the task prompt, and decide when it should run.",
+    "name": "Task name",
+    "namePlaceholder": "Morning briefing",
+    "prompt": "Task prompt",
+    "promptPlaceholder": "Describe the complete task. The agent can use its available tools and resources when it runs.",
+    "agent": "Agent",
+    "scheduleType": "Schedule",
+    "schedule": {
+      "once": "Once",
+      "daily": "Every day",
+      "weekly": "Every week",
+      "monthly": "Every month"
+    },
+    "runTime": "Run time",
+    "runDate": "Run date",
+    "runWeekdays": "Run on",
+    "monthDay": "Day of month",
+    "enabled": "Task enabled",
+    "deleteConfirm": "Delete the scheduled task “{{title}}”?",
+    "runningNote": "Times use your system time automatically. Tasks run while FreeBuddy is open; a missed run is performed once when the app opens again.",
+    "emptyTitle": "No scheduled tasks yet",
+    "emptyDescription": "Create one to let an agent handle a task automatically at the right time.",
+    "agentValue": "Agent: {{agent}}",
+    "nextRun": "Next: {{time}}",
+    "openResult": "Open result",
+    "runNow": "Run now",
+    "weekdays": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
+    "summary": {
+      "once": "{{date}} at {{time}}",
+      "daily": "Every day at {{time}}",
+      "weekly": "{{days}} at {{time}}",
+      "monthly": "Day {{day}} at {{time}}"
+    },
+    "status": {
+      "idle": "Not run",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed"
     }
   },
   "workflow": {

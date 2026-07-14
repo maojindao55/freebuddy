@@ -323,6 +323,21 @@ const workflowTeams = {
   seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
+const scheduledTasks = {
+  list: () => ipcRenderer.invoke("scheduledTasks:list"),
+  listAgents: () => ipcRenderer.invoke("scheduledTasks:listAgents"),
+  create: (input: unknown) => ipcRenderer.invoke("scheduledTasks:create", input),
+  update: (args: unknown) => ipcRenderer.invoke("scheduledTasks:update", args),
+  delete: (id: string) => ipcRenderer.invoke("scheduledTasks:delete", id),
+  run: (id: string) => ipcRenderer.invoke("scheduledTasks:run", id),
+  onChanged: (cb: (task: unknown) => void): (() => void) => {
+    const channel = "scheduledTasks://changed";
+    const handler = (_e: IpcRendererEvent, task: unknown) => cb(task);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  }
+};
+
 const updater = {
   getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
   check: () =>
@@ -356,6 +371,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   workflow,
   workflowTeams,
   settings,
+  scheduledTasks,
   feed,
   infoCards,
   window,

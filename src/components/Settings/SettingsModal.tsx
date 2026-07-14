@@ -6,12 +6,14 @@ import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
 import { InfoCardsTab } from "./InfoCardsTab";
+import { ScheduledTasksTab } from "./ScheduledTasksTab";
 
-export type SettingsTab = "general" | "cli" | "workflowTeams" | "feed" | "about";
+export type SettingsTab = "general" | "cli" | "workflowTeams" | "scheduledTasks" | "feed" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
+  { key: "scheduledTasks", labelKey: "settings.tabs.scheduledTasks" },
   { key: "feed", labelKey: "settings.tabs.feed" },
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "about", labelKey: "settings.tabs.about" }
@@ -20,6 +22,7 @@ export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
 interface SettingsSurfaceProps {
   onClose: () => void;
   initialTab?: SettingsTab;
+  onOpenConversation?: (conversationId: string) => void;
 }
 
 interface ControlledSettingsSurfaceProps extends SettingsSurfaceProps {
@@ -57,6 +60,7 @@ function SettingsContent({
   initialTab = "cli",
   activeTab: controlledActiveTab,
   onTabChange,
+  onOpenConversation,
   surface = "modal",
   showHeader = true,
   showNav = true
@@ -87,6 +91,9 @@ function SettingsContent({
         </SettingsTabErrorBoundary>
       )}
       {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
+      {activeTab === "scheduledTasks" && (
+        <ScheduledTasksTab onOpenConversation={onOpenConversation} />
+      )}
       {activeTab === "feed" && <InfoCardsTab />}
       {activeTab === "about" && <AboutTab />}
     </>

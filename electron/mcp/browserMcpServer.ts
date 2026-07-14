@@ -244,7 +244,7 @@ export function createBrowserMcpServer(): McpServer {
     {
       title: "Save Information Card Recipe",
       description:
-        "Reload the source, verify a deterministic extraction recipe returns rows, then save it to an existing market or sports information card.",
+        "Reload the source, verify a deterministic extraction recipe returns rows, then save it to an existing sports information card. Market cards use Alpha Vantage MCP instead.",
       inputSchema: {
         cardId: z.string().trim().min(1).max(100),
         ...recipeSchema

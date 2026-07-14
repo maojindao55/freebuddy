@@ -52,6 +52,8 @@ import type {
   CreateInfoCardInput,
   InfoCardConfig,
   InfoCardSnapshot,
+  MarketProviderConfig,
+  UpdateMarketProviderInput,
   UpdateInfoCardInput
 } from "@/services/infoCards/types";
 
@@ -212,6 +214,8 @@ declare global {
     reorder(ids: string[]): Promise<InfoCardConfig[]>;
     snapshot(id: string): Promise<InfoCardSnapshot>;
     refresh(id: string): Promise<InfoCardSnapshot>;
+    marketProvider(): Promise<MarketProviderConfig>;
+    updateMarketProvider(input: UpdateMarketProviderInput): Promise<MarketProviderConfig>;
     onChanged(cb: () => void): () => void;
   }
 

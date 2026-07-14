@@ -2,6 +2,8 @@ import type {
   CreateInfoCardInput,
   InfoCardConfig,
   InfoCardSnapshot,
+  MarketProviderConfig,
+  UpdateMarketProviderInput,
   UpdateInfoCardInput
 } from "./types";
 
@@ -35,5 +37,11 @@ export const infoCardClient = {
   },
   refresh(id: string): Promise<InfoCardSnapshot> {
     return api().refresh(id);
+  },
+  marketProvider(): Promise<MarketProviderConfig> {
+    return api().marketProvider();
+  },
+  updateMarketProvider(input: UpdateMarketProviderInput): Promise<MarketProviderConfig> {
+    return api().updateMarketProvider(input);
   }
 };

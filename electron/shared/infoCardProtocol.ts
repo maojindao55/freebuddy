@@ -15,9 +15,16 @@ export interface InfoCardConfig {
   enabled: boolean;
   order: number;
   refreshMinutes: number;
+  marketSymbols?: string[];
   recipe?: BrowserExtractionRecipe;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MarketProviderConfig {
+  endpoint: string;
+  configured: boolean;
+  apiKeyPreview?: string;
 }
 
 export interface InfoCardSnapshot {
@@ -40,5 +47,10 @@ export interface UpdateInfoCardInput {
   enabled?: boolean;
   order?: number;
   refreshMinutes?: number;
+  marketSymbols?: string[];
   recipe?: BrowserExtractionRecipe | null;
+}
+
+export interface UpdateMarketProviderInput {
+  apiKey: string;
 }

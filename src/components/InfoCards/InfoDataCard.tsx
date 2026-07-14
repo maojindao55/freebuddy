@@ -31,6 +31,7 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
   const snapshot = useInfoCardStore((state) => state.snapshots[card.id]);
   const refreshing = useInfoCardStore((state) => Boolean(state.refreshing[card.id]));
   const refreshCard = useInfoCardStore((state) => state.refreshCard);
+  const marketProvider = useInfoCardStore((state) => state.marketProvider);
   const activeId = useConversationStore((state) => state.activeId);
   const conversations = useConversationStore((state) => state.conversations);
   const messages = useConversationStore((state) => state.messages);
@@ -40,9 +41,12 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
   const [analyzing, setAnalyzing] = useState(false);
   const active = conversations.find((entry) => entry.id === activeId);
   const activeMessages = activeId ? messages[activeId] ?? [] : [];
-  const configured = Boolean(
-    card.recipe?.url && card.recipe.rowSelector && Object.keys(card.recipe.fields).length
-  );
+  const configured =
+    card.type === "market"
+      ? Boolean(marketProvider?.configured && card.marketSymbols?.length)
+      : Boolean(card.recipe?.url && card.recipe.rowSelector && Object.keys(card.recipe.fields).length);
+  const sourceUrl =
+    card.type === "market" ? marketProvider?.endpoint : card.recipe?.url;
 
   useEffect(() => {
     if (!configured || snapshot?.fetchedAt || snapshot?.lastError) return;
@@ -95,13 +99,13 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
       <div className="side-card-header info-card-header">
         <span>{card.title}</span>
         <div className="info-card-actions">
-          {card.recipe?.url && (
+          {sourceUrl && (
             <button
               type="button"
               className="feed-card-action"
               title={t("infoCards.openSource")}
               aria-label={t("infoCards.openSource")}
-              onClick={() => window.open(card.recipe?.url, "_blank", "noopener,noreferrer")}
+              onClick={() => window.open(sourceUrl, "_blank", "noopener,noreferrer")}
             >
               <ExternalLink size={13} strokeWidth={1.8} />
             </button>

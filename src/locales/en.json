@@ -747,7 +747,18 @@
   },
   "infoCards": {
     "settingsTitle": "Information cards",
-    "settingsDescription": "Configure RSS, market-index, and football or basketball score cards in the third column. Web data is collected by deterministic rules in an isolated browser.",
+    "settingsDescription": "Configure RSS, Alpha Vantage market-index, and football or basketball score cards in the third column.",
+    "alphaVantage": {
+      "title": "Alpha Vantage MCP",
+      "endpoint": "MCP endpoint",
+      "apiKey": "API key",
+      "apiKeyPlaceholder": "Paste an Alpha Vantage API key",
+      "connected": "Connected with {{preview}}",
+      "notConfigured": "API key not configured",
+      "securityHint": "The API key is encrypted by the operating system and never returned to the renderer after saving.",
+      "symbols": "Index proxy symbols",
+      "symbolHint": "Enter up to five symbols separated by commas. SPY, QQQ, and DIA represent the S&P 500, Nasdaq-100, and Dow Jones. Each symbol consumes one Alpha Vantage request per refresh."
+    },
     "addCard": "Add card",
     "types": {
       "rss": "RSS news",
@@ -778,8 +789,8 @@
     "saving": "Saving…",
     "openSource": "Open data source",
     "refresh": "Refresh card",
-    "refreshing": "Collecting web data…",
-    "needsRecipe": "No browser extraction recipe yet. Configure one in Settings or ask an Agent to create it with the browser tools.",
+    "refreshing": "Refreshing data…",
+    "needsRecipe": "This card is not configured yet. Complete its data-source settings first.",
     "noData": "No data to show yet.",
     "unknownItem": "Unknown index",
     "sports": "Scores",

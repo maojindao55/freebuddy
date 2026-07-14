@@ -733,7 +733,18 @@
   },
   "infoCards": {
     "settingsTitle": "信息卡片",
-    "settingsDescription": "配置第三列中的 RSS、指数行情和足球篮球赛况卡片。网页数据由隔离浏览器按确定性规则采集。",
+    "settingsDescription": "配置第三列中的 RSS、Alpha Vantage 指数行情和足球篮球赛况卡片。",
+    "alphaVantage": {
+      "title": "Alpha Vantage MCP",
+      "endpoint": "MCP 地址",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "粘贴 Alpha Vantage API Key",
+      "connected": "已连接（{{preview}}）",
+      "notConfigured": "尚未配置 API Key",
+      "securityHint": "API Key 由操作系统加密保存，保存后不会再返回渲染进程。",
+      "symbols": "指数代理代码",
+      "symbolHint": "输入最多 5 个代码，以逗号分隔。SPY、QQQ、DIA 分别代表标普 500、纳斯达克 100 和道琼斯；每次刷新每个代码会消耗一次 Alpha Vantage 请求。"
+    },
     "addCard": "添加卡片",
     "types": {
       "rss": "RSS 资讯",
@@ -764,8 +775,8 @@
     "saving": "保存中…",
     "openSource": "打开数据来源",
     "refresh": "刷新卡片",
-    "refreshing": "正在采集网页数据…",
-    "needsRecipe": "尚未配置网页采集规则。可到设置填写，或让 Agent 通过浏览器生成。",
+    "refreshing": "正在刷新数据…",
+    "needsRecipe": "尚未配置此卡片的数据源，请先到设置完成配置。",
     "noData": "暂无可展示的数据。",
     "unknownItem": "未知指数",
     "sports": "赛况",

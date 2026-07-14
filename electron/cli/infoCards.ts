@@ -1,22 +1,36 @@
 import { randomUUID } from "node:crypto";
-import { BrowserWindow } from "electron";
+import { BrowserWindow, safeStorage } from "electron";
 
 import { collectBrowserRecipe } from "../browserCollector.js";
 import { safeSendToWebContents } from "./ipcSend.js";
+import {
+  ALPHA_VANTAGE_MCP_ENDPOINT,
+  fetchAlphaVantageQuotes
+} from "./alphaVantage.js";
 import type {
   BrowserExtractionRecipe,
   CreateInfoCardInput,
   InfoCardConfig,
   InfoCardSnapshot,
   InfoCardType,
+  MarketProviderConfig,
+  UpdateMarketProviderInput,
   UpdateInfoCardInput
 } from "../shared/infoCardProtocol.js";
 import { getDb } from "./db.js";
 import { getSetting, setSetting } from "./settings.js";
+import { decryptSecret, encryptSecret, redactApiKey } from "./store.js";
 
 const INFO_CARDS_SETTING_KEY = "workspace.infoCards.v1";
+const ALPHA_VANTAGE_SETTING_KEY = "workspace.alphaVantage.v1";
 const DEFAULT_RSS_CARD_ID = "rss-default";
+const DEFAULT_MARKET_SYMBOLS = ["SPY", "QQQ", "DIA"];
 const refreshes = new Map<string, Promise<InfoCardSnapshot>>();
+
+interface StoredAlphaVantageConfig {
+  apiKeyEncrypted?: string;
+  apiKeyPreview?: string;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -71,6 +85,72 @@ function sanitizeRecipe(
   };
 }
 
+function sanitizeMarketSymbols(value: unknown): string[] {
+  if (!Array.isArray(value)) return [...DEFAULT_MARKET_SYMBOLS];
+  const symbols = Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim().toUpperCase())
+        .filter((entry) => /^[A-Z0-9.^_-]{1,20}$/.test(entry))
+    )
+  );
+  return symbols.slice(0, 5);
+}
+
+function storedAlphaVantageConfig(): StoredAlphaVantageConfig {
+  const stored = getSetting(ALPHA_VANTAGE_SETTING_KEY);
+  if (!stored) return {};
+  try {
+    const parsed = JSON.parse(stored) as StoredAlphaVantageConfig;
+    return {
+      apiKeyEncrypted:
+        typeof parsed.apiKeyEncrypted === "string" ? parsed.apiKeyEncrypted : undefined,
+      apiKeyPreview:
+        typeof parsed.apiKeyPreview === "string" ? parsed.apiKeyPreview : undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
+function alphaVantageApiKey(): string | undefined {
+  return (
+    decryptSecret(storedAlphaVantageConfig().apiKeyEncrypted)?.trim() ||
+    process.env.ALPHAVANTAGE_API_KEY?.trim() ||
+    undefined
+  );
+}
+
+export function getMarketProviderConfig(): MarketProviderConfig {
+  const stored = storedAlphaVantageConfig();
+  const environmentKey = process.env.ALPHAVANTAGE_API_KEY?.trim();
+  return {
+    endpoint: ALPHA_VANTAGE_MCP_ENDPOINT,
+    configured: Boolean(alphaVantageApiKey()),
+    apiKeyPreview: stored.apiKeyPreview || (environmentKey ? redactApiKey(environmentKey) : undefined)
+  };
+}
+
+export function updateMarketProvider(
+  input: UpdateMarketProviderInput
+): MarketProviderConfig {
+  const apiKey = input.apiKey?.trim();
+  if (!apiKey) throw new Error("Enter an Alpha Vantage API key.");
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Operating-system secret storage is unavailable.");
+  }
+  setSetting(
+    ALPHA_VANTAGE_SETTING_KEY,
+    JSON.stringify({
+      apiKeyEncrypted: encryptSecret(apiKey),
+      apiKeyPreview: redactApiKey(apiKey)
+    } satisfies StoredAlphaVantageConfig)
+  );
+  notifyInfoCardsChanged();
+  return getMarketProviderConfig();
+}
+
 function normalizeCard(value: unknown, index: number): InfoCardConfig | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const input = value as Partial<InfoCardConfig>;
@@ -78,6 +158,7 @@ function normalizeCard(value: unknown, index: number): InfoCardConfig | undefine
     return undefined;
   }
   const now = nowIso();
+  const isLegacyMarketCard = input.type === "market" && !Array.isArray(input.marketSymbols);
   return {
     id: typeof input.id === "string" && input.id.trim() ? input.id : randomUUID(),
     type: input.type,
@@ -87,11 +168,29 @@ function normalizeCard(value: unknown, index: number): InfoCardConfig | undefine
         : defaultTitle(input.type),
     enabled: input.enabled !== false,
     order: Number.isFinite(input.order) ? Number(input.order) : index,
-    refreshMinutes: Math.max(1, Math.min(Number(input.refreshMinutes) || 15, 120)),
-    recipe: input.type === "rss" ? undefined : sanitizeRecipe(input.recipe),
+    refreshMinutes: isLegacyMarketCard
+      ? 240
+      : Math.max(
+          1,
+          Math.min(
+            Number(input.refreshMinutes) || (input.type === "market" ? 240 : 15),
+            input.type === "market" ? 720 : 120
+          )
+        ),
+    marketSymbols:
+      input.type === "market" ? sanitizeMarketSymbols(input.marketSymbols) : undefined,
+    recipe: input.type === "sports" ? sanitizeRecipe(input.recipe) : undefined,
     createdAt: typeof input.createdAt === "string" ? input.createdAt : now,
     updatedAt: typeof input.updatedAt === "string" ? input.updatedAt : now
   };
+}
+
+function notifyInfoCardsChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    safeSendToWebContents(win.webContents, "infoCards://changed", {
+      updatedAt: nowIso()
+    });
+  }
 }
 
 function persistCards(cards: InfoCardConfig[]): void {
@@ -99,11 +198,7 @@ function persistCards(cards: InfoCardConfig[]): void {
     .sort((a, b) => a.order - b.order)
     .map((card, index) => ({ ...card, order: index }));
   setSetting(INFO_CARDS_SETTING_KEY, JSON.stringify(normalized));
-  for (const win of BrowserWindow.getAllWindows()) {
-    safeSendToWebContents(win.webContents, "infoCards://changed", {
-      updatedAt: nowIso()
-    });
-  }
+  notifyInfoCardsChanged();
 }
 
 export function listInfoCards(): InfoCardConfig[] {
@@ -137,7 +232,8 @@ export function createInfoCard(input: CreateInfoCardInput): InfoCardConfig {
     title: input.title?.trim().slice(0, 80) || defaultTitle(input.type),
     enabled: true,
     order: cards.length,
-    refreshMinutes: input.type === "sports" ? 5 : 15,
+    refreshMinutes: input.type === "market" ? 240 : 5,
+    marketSymbols: input.type === "market" ? [...DEFAULT_MARKET_SYMBOLS] : undefined,
     createdAt: now,
     updatedAt: now
   };
@@ -158,9 +254,17 @@ export function updateInfoCard(input: UpdateInfoCardInput): InfoCardConfig | und
     ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     ...(input.order !== undefined ? { order: Math.max(0, Math.floor(input.order)) } : {}),
     ...(input.refreshMinutes !== undefined
-      ? { refreshMinutes: Math.max(1, Math.min(input.refreshMinutes, 120)) }
+      ? {
+          refreshMinutes: Math.max(
+            1,
+            Math.min(input.refreshMinutes, current.type === "market" ? 720 : 120)
+          )
+        }
       : {}),
-    ...(input.recipe !== undefined && current.type !== "rss"
+    ...(input.marketSymbols !== undefined && current.type === "market"
+      ? { marketSymbols: sanitizeMarketSymbols(input.marketSymbols) }
+      : {}),
+    ...(input.recipe !== undefined && current.type === "sports"
       ? { recipe: sanitizeRecipe(input.recipe) }
       : {}),
     updatedAt: nowIso()
@@ -249,7 +353,9 @@ function saveSnapshot(
     )
     .run(
       card.id,
-      card.recipe?.url || previous.sourceUrl || null,
+      (card.type === "market" ? ALPHA_VANTAGE_MCP_ENDPOINT : card.recipe?.url) ||
+        previous.sourceUrl ||
+        null,
       JSON.stringify(nextItems),
       fetchedAt ?? null,
       error ?? null,
@@ -262,6 +368,17 @@ async function performRefresh(cardId: string): Promise<InfoCardSnapshot> {
   const card = listInfoCards().find((entry) => entry.id === cardId);
   if (!card) throw new Error("Info card not found.");
   if (card.type === "rss") return getInfoCardSnapshot(card.id);
+  if (card.type === "market") {
+    const apiKey = alphaVantageApiKey();
+    if (!apiKey) return saveSnapshot(card, [], "Alpha Vantage API key is not configured.");
+    const symbols = sanitizeMarketSymbols(card.marketSymbols);
+    if (!symbols.length) return saveSnapshot(card, [], "Add at least one market symbol.");
+    try {
+      return saveSnapshot(card, await fetchAlphaVantageQuotes(apiKey, symbols));
+    } catch (error) {
+      return saveSnapshot(card, [], (error as Error)?.message || String(error));
+    }
+  }
   if (!card.recipe?.url || !card.recipe.rowSelector || !Object.keys(card.recipe.fields).length) {
     return saveSnapshot(card, [], "Browser extraction recipe is incomplete.");
   }

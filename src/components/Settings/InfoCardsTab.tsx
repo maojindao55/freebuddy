@@ -134,6 +134,134 @@ function RecipeEditor({ card }: { card: InfoCardConfig }) {
   );
 }
 
+function MarketProviderEditor() {
+  const { t } = useTranslation();
+  const provider = useInfoCardStore((state) => state.marketProvider);
+  const updateMarketProvider = useInfoCardStore((state) => state.updateMarketProvider);
+  const [apiKey, setApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const save = async () => {
+    if (!apiKey.trim()) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateMarketProvider(apiKey.trim());
+      setApiKey("");
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1500);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="info-card-editor market-provider-editor">
+      <div className="info-card-editor-header">
+        <div>
+          <strong>{t("infoCards.alphaVantage.title")}</strong>
+          <small>
+            {provider?.configured
+              ? t("infoCards.alphaVantage.connected", { preview: provider.apiKeyPreview })
+              : t("infoCards.alphaVantage.notConfigured")}
+          </small>
+        </div>
+      </div>
+      <div className="info-card-selector-grid">
+        <label>
+          <span>{t("infoCards.alphaVantage.endpoint")}</span>
+          <input value={provider?.endpoint ?? "https://mcp.alphavantage.co/mcp"} readOnly />
+        </label>
+        <label>
+          <span>{t("infoCards.alphaVantage.apiKey")}</span>
+          <input
+            type="password"
+            value={apiKey}
+            autoComplete="off"
+            placeholder={
+              provider?.apiKeyPreview ?? t("infoCards.alphaVantage.apiKeyPlaceholder")
+            }
+            onChange={(event) => setApiKey(event.currentTarget.value)}
+          />
+        </label>
+      </div>
+      <p>{t("infoCards.alphaVantage.securityHint")}</p>
+      <button
+        type="button"
+        className="ghost"
+        disabled={saving || !apiKey.trim()}
+        onClick={() => void save()}
+      >
+        <Save size={14} />
+        {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
+      </button>
+    </section>
+  );
+}
+
+function MarketCardEditor({ card }: { card: InfoCardConfig }) {
+  const { t } = useTranslation();
+  const updateCard = useInfoCardStore((state) => state.updateCard);
+  const [symbols, setSymbols] = useState((card.marketSymbols ?? []).join(", "));
+  const [refreshMinutes, setRefreshMinutes] = useState(card.refreshMinutes);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setSymbols((card.marketSymbols ?? []).join(", "));
+    setRefreshMinutes(card.refreshMinutes);
+  }, [card]);
+
+  const save = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateCard({
+        id: card.id,
+        marketSymbols: symbols.split(/[\s,;]+/).filter(Boolean),
+        refreshMinutes
+      });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1500);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="info-card-recipe-editor">
+      <p>{t("infoCards.alphaVantage.symbolHint")}</p>
+      <div className="info-card-selector-grid">
+        <label>
+          <span>{t("infoCards.alphaVantage.symbols")}</span>
+          <input
+            value={symbols}
+            placeholder="SPY, QQQ, DIA"
+            onChange={(event) => setSymbols(event.currentTarget.value)}
+          />
+        </label>
+        <label>
+          <span>{t("infoCards.refreshMinutes")}</span>
+          <input
+            type="number"
+            min={1}
+            max={720}
+            value={refreshMinutes}
+            onChange={(event) =>
+              setRefreshMinutes(Math.max(1, Math.min(720, Number(event.currentTarget.value) || 1)))
+            }
+          />
+        </label>
+      </div>
+      <button type="button" className="ghost" disabled={saving} onClick={() => void save()}>
+        <Save size={14} />
+        {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
+      </button>
+    </div>
+  );
+}
+
 function CardEditor({ card, index, total }: { card: InfoCardConfig; index: number; total: number }) {
   const { t } = useTranslation();
   const cards = useInfoCardStore((state) => state.cards);
@@ -208,6 +336,8 @@ function CardEditor({ card, index, total }: { card: InfoCardConfig; index: numbe
           <summary>{t("infoCards.manageRssSources")}</summary>
           <FeedTab />
         </details>
+      ) : card.type === "market" ? (
+        <MarketCardEditor card={card} />
       ) : (
         <RecipeEditor card={card} />
       )}
@@ -239,6 +369,7 @@ export function InfoCardsTab() {
         <h3 className="settings-section-title">{t("infoCards.settingsTitle")}</h3>
         <span className="settings-section-desc">{t("infoCards.settingsDescription")}</span>
       </div>
+      <MarketProviderEditor />
       <section className="info-card-add-row">
         <select value={type} onChange={(event) => setType(event.currentTarget.value as "market" | "sports")}>
           <option value="market">{t("infoCards.types.market")}</option>

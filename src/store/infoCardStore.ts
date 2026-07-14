@@ -5,6 +5,7 @@ import type {
   CreateInfoCardInput,
   InfoCardConfig,
   InfoCardSnapshot,
+  MarketProviderConfig,
   UpdateInfoCardInput
 } from "@/services/infoCards/types";
 
@@ -12,6 +13,7 @@ interface InfoCardState {
   cards: InfoCardConfig[];
   snapshots: Record<string, InfoCardSnapshot>;
   refreshing: Record<string, boolean>;
+  marketProvider?: MarketProviderConfig;
   loaded: boolean;
   loading: boolean;
   error?: string;
@@ -21,6 +23,7 @@ interface InfoCardState {
   deleteCard(id: string): Promise<boolean>;
   reorderCards(ids: string[]): Promise<void>;
   refreshCard(id: string): Promise<InfoCardSnapshot>;
+  updateMarketProvider(apiKey: string): Promise<MarketProviderConfig>;
 }
 
 function sorted(cards: InfoCardConfig[]): InfoCardConfig[] {
@@ -31,6 +34,7 @@ export const useInfoCardStore = create<InfoCardState>((set, get) => ({
   cards: [],
   snapshots: {},
   refreshing: {},
+  marketProvider: undefined,
   loaded: false,
   loading: false,
   error: undefined,
@@ -39,13 +43,17 @@ export const useInfoCardStore = create<InfoCardState>((set, get) => ({
     if (!infoCardClient.isAvailable()) return;
     set({ loading: true, error: undefined });
     try {
-      const cards = sorted(await infoCardClient.list());
+      const [cardsResult, marketProvider] = await Promise.all([
+        infoCardClient.list(),
+        infoCardClient.marketProvider()
+      ]);
+      const cards = sorted(cardsResult);
       const pairs = await Promise.all(
         cards
           .filter((card) => card.type !== "rss")
           .map(async (card) => [card.id, await infoCardClient.snapshot(card.id)] as const)
       );
-      set({ cards, snapshots: Object.fromEntries(pairs), loaded: true });
+      set({ cards, marketProvider, snapshots: Object.fromEntries(pairs), loaded: true });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -104,5 +112,11 @@ export const useInfoCardStore = create<InfoCardState>((set, get) => ({
     } finally {
       set((state) => ({ refreshing: { ...state.refreshing, [id]: false } }));
     }
+  },
+
+  async updateMarketProvider(apiKey) {
+    const marketProvider = await infoCardClient.updateMarketProvider({ apiKey });
+    set({ marketProvider });
+    return marketProvider;
   }
 }));

@@ -119,8 +119,8 @@ async function dispatch(
   if (action === "saveRecipe") {
     const cardId = stringParam(params, "cardId");
     const card = listInfoCards().find((entry) => entry.id === cardId);
-    if (!card || card.type === "rss") {
-      throw new Error("A market or sports information card is required.");
+    if (!card || card.type !== "sports") {
+      throw new Error("A sports information card is required. Market cards use Alpha Vantage MCP.");
     }
     const recipe = recipeFromParams(params);
     await openBrowserSession(taskSessionId, recipe.url);

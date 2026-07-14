@@ -540,7 +540,9 @@ export function registerCliIpc() {
   ipcMain.handle("infoCards:snapshot", (_e, id: string) =>
     getInfoCardSnapshot(id)
   );
-  ipcMain.handle("infoCards:refresh", (_e, id: string) => refreshInfoCard(id));
+  ipcMain.handle("infoCards:refresh", (_e, id: string, timeZone?: string) =>
+    refreshInfoCard(id, timeZone)
+  );
   ipcMain.handle("infoCards:marketProvider", () => getMarketProviderConfig());
   ipcMain.handle("infoCards:searchMarketSymbols", (_e, query: string) =>
     searchMarketSymbols(query)

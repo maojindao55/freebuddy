@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowDown, ArrowUp, Plus, Save, Search, Trash2, X } from "lucide-react";
+import { 
+  ArrowDown, 
+  ArrowUp, 
+  Plus, 
+  Save, 
+  Search, 
+  Trash2, 
+  X, 
+  Rss, 
+  TrendingUp, 
+  Trophy, 
+  Check, 
+  Info, 
+  RefreshCw, 
+  Settings2,
+  ChevronRight
+} from "lucide-react";
 
 import { infoCardClient } from "@/services/infoCards/client";
 import type {
@@ -97,83 +113,97 @@ function MarketCardEditor({ card }: { card: InfoCardConfig }) {
 
   return (
     <div className="info-card-config-editor">
-      <p>{t("infoCards.ashare.symbolHint")}</p>
-      <div className="market-symbol-chips" aria-label={t("infoCards.ashare.selectedSymbols")}>
-        {symbols.map((symbol) => (
-          <span className="market-symbol-chip" key={symbol}>
-            <span>
-              <strong>{selectedNames[symbol] || symbol.toUpperCase()}</strong>
-              {selectedNames[symbol] && <small>{symbol.toUpperCase()}</small>}
-            </span>
-            <button
-              type="button"
-              title={t("infoCards.ashare.removeSymbol", {
-                name: selectedNames[symbol] || symbol.toUpperCase()
-              })}
-              aria-label={t("infoCards.ashare.removeSymbol", {
-                name: selectedNames[symbol] || symbol.toUpperCase()
-              })}
-              onClick={() => setSymbols(symbols.filter((entry) => entry !== symbol))}
-            >
-              <X size={13} />
-            </button>
+      <label className="market-symbol-search">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '11.5px' }}>
+          <span style={{ color: 'var(--fb-text-secondary)', fontWeight: 500 }}>{t("infoCards.ashare.searchLabel")}</span>
+          <span style={{ color: symbols.length >= 10 ? 'var(--fb-danger)' : 'var(--fb-brand)', fontWeight: 600 }}>
+            {t("infoCards.ashare.selectedCount", { count: symbols.length })}
           </span>
-        ))}
-        {!symbols.length && (
-          <span className="market-symbols-empty">{t("infoCards.ashare.noSelectedSymbols")}</span>
-        )}
-        <small className="market-symbol-count">
-          {t("infoCards.ashare.selectedCount", { count: symbols.length })}
-        </small>
-      </div>
-      <div className="info-card-selector-grid">
-        <label className="market-symbol-search">
-          <span>{t("infoCards.ashare.searchLabel")}</span>
-          <div className="market-symbol-search-input">
-            <Search size={15} aria-hidden="true" />
-            <input
-              value={query}
-              placeholder={t("infoCards.ashare.searchPlaceholder")}
-              autoComplete="off"
-              disabled={symbols.length >= 10}
-              onChange={(event) => setQuery(event.currentTarget.value)}
-            />
+        </div>
+        <div className="market-symbol-search-input">
+          <Search size={14} aria-hidden="true" />
+          <input
+            value={query}
+            placeholder={t("infoCards.ashare.searchPlaceholder")}
+            autoComplete="off"
+            disabled={symbols.length >= 10}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+          />
+        </div>
+        {query.trim().length >= 2 && (
+          <div className="market-symbol-results" role="listbox">
+            {searching ? (
+              <p>{t("infoCards.ashare.searching")}</p>
+            ) : searchError ? (
+              <p>{t("infoCards.ashare.searchError")}</p>
+            ) : results.length ? (
+              results.map((result) => {
+                const selected = symbols.includes(result.symbol);
+                return (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    key={result.symbol}
+                    disabled={selected || symbols.length >= 10}
+                    onClick={() => addSymbol(result)}
+                  >
+                    <span>
+                      <strong>{result.name}</strong>
+                      <small>
+                        {result.code} · {t(`infoCards.ashare.exchanges.${result.exchange}`)}
+                        {result.securityType ? ` · ${result.securityType}` : ""}
+                      </small>
+                    </span>
+                    <span className={`add-badge ${selected ? 'added' : 'add'}`}>
+                      {selected ? (
+                        <>
+                          <Check size={11} strokeWidth={2.5} style={{ marginRight: '2px', display: 'inline-flex', verticalAlign: 'middle' }} />
+                          {t("infoCards.ashare.selected")}
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={11} strokeWidth={2.5} style={{ marginRight: '2px', display: 'inline-flex', verticalAlign: 'middle' }} />
+                          {t("infoCards.ashare.add")}
+                        </>
+                      )}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <p>{t("infoCards.ashare.noSearchResults")}</p>
+            )}
           </div>
-          {query.trim().length >= 2 && (
-            <div className="market-symbol-results" role="listbox">
-              {searching ? (
-                <p>{t("infoCards.ashare.searching")}</p>
-              ) : searchError ? (
-                <p>{t("infoCards.ashare.searchError")}</p>
-              ) : results.length ? (
-                results.map((result) => {
-                  const selected = symbols.includes(result.symbol);
-                  return (
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      key={result.symbol}
-                      disabled={selected || symbols.length >= 10}
-                      onClick={() => addSymbol(result)}
-                    >
-                      <span>
-                        <strong>{result.name}</strong>
-                        <small>
-                          {result.code} · {t(`infoCards.ashare.exchanges.${result.exchange}`)}
-                          {result.securityType ? ` · ${result.securityType}` : ""}
-                        </small>
-                      </span>
-                      <span>{selected ? t("infoCards.ashare.selected") : t("infoCards.ashare.add")}</span>
-                    </button>
-                  );
-                })
-              ) : (
-                <p>{t("infoCards.ashare.noSearchResults")}</p>
-              )}
-            </div>
-          )}
-        </label>
+        )}
+      </label>
+
+      {symbols.length > 0 && (
+        <div className="market-symbol-chips" style={{ marginTop: '8px' }}>
+          {symbols.map((symbol) => (
+            <span className="market-symbol-chip" key={symbol}>
+              <span>
+                <strong>{selectedNames[symbol] || symbol.toUpperCase()}</strong>
+                {selectedNames[symbol] && <small>{symbol.toUpperCase()}</small>}
+              </span>
+              <button
+                type="button"
+                title={t("infoCards.ashare.removeSymbol", {
+                  name: selectedNames[symbol] || symbol.toUpperCase()
+                })}
+                aria-label={t("infoCards.ashare.removeSymbol", {
+                  name: selectedNames[symbol] || symbol.toUpperCase()
+                })}
+                onClick={() => setSymbols(symbols.filter((entry) => entry !== symbol))}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="info-card-config-compact-row">
         <label>
           <span>{t("infoCards.refreshMinutes")}</span>
           <input
@@ -186,11 +216,28 @@ function MarketCardEditor({ card }: { card: InfoCardConfig }) {
             }
           />
         </label>
+
+        <button 
+          type="button" 
+          className={`ghost ${saved ? 'saved' : ''}`} 
+          disabled={saving} 
+          onClick={() => void save()}
+        >
+          {saving ? (
+            <RefreshCw size={13} className="spin" />
+          ) : saved ? (
+            <Check size={13} />
+          ) : (
+            <Save size={13} />
+          )}
+          {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
+        </button>
       </div>
-      <button type="button" className="ghost" disabled={saving} onClick={() => void save()}>
-        <Save size={14} />
-        {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
-      </button>
+
+      <div className="info-card-footnote" style={{ marginTop: '10px' }}>
+        <Info size={11} />
+        <span>{t("infoCards.ashare.symbolHint")}</span>
+      </div>
     </div>
   );
 }
@@ -220,8 +267,7 @@ function SportsCardEditor({ card }: { card: InfoCardConfig }) {
 
   return (
     <div className="info-card-config-editor sports-card-editor">
-      <p>{t("infoCards.sportsProviderHint")}</p>
-      <div className="info-card-selector-grid">
+      <div className="info-card-config-compact-row" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
         <label>
           <span>{t("infoCards.refreshMinutes")}</span>
           <input
@@ -234,31 +280,76 @@ function SportsCardEditor({ card }: { card: InfoCardConfig }) {
             }
           />
         </label>
+
+        <button 
+          type="button" 
+          className={`ghost ${saved ? 'saved' : ''}`} 
+          disabled={saving} 
+          onClick={() => void save()}
+        >
+          {saving ? (
+            <RefreshCw size={13} className="spin" />
+          ) : saved ? (
+            <Check size={13} />
+          ) : (
+            <Save size={13} />
+          )}
+          {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
+        </button>
       </div>
-      <button
-        type="button"
-        className="ghost"
-        disabled={saving}
-        onClick={() => void save()}
-      >
-        <Save size={14} />
-        {saved ? t("infoCards.saved") : saving ? t("infoCards.saving") : t("common.save")}
-      </button>
+
+      <div className="info-card-footnote" style={{ marginTop: '10px' }}>
+        <Info size={11} />
+        <span>{t("infoCards.sportsProviderHint")}</span>
+      </div>
     </div>
   );
 }
 
-function CardEditor({ card, index, total }: { card: InfoCardConfig; index: number; total: number }) {
+function CardEditor({ 
+  card, 
+  index, 
+  total,
+  isExpanded,
+  onToggleExpand
+}: { 
+  card: InfoCardConfig; 
+  index: number; 
+  total: number;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}) {
   const { t } = useTranslation();
   const cards = useInfoCardStore((state) => state.cards);
   const updateCard = useInfoCardStore((state) => state.updateCard);
   const deleteCard = useInfoCardStore((state) => state.deleteCard);
   const reorderCards = useInfoCardStore((state) => state.reorderCards);
-  const [title, setTitle] = useState(card.title);
 
-  useEffect(() => setTitle(card.title), [card.title]);
+  // Helper to check if a title is default
+  const isDefaultTitle = (val: string | undefined) => {
+    const lowercase = (val || "").trim().toLowerCase();
+    return (
+      !lowercase ||
+      lowercase === "feed" ||
+      lowercase === "rss news" ||
+      lowercase === "rss 资讯" ||
+      lowercase === "builtin rss" ||
+      lowercase === "内置资讯队列" ||
+      lowercase === "market indices" ||
+      lowercase === "指数行情" ||
+      lowercase === "sports events" ||
+      lowercase === "体育赛事"
+    );
+  };
 
-  const move = async (direction: -1 | 1) => {
+  const [title, setTitle] = useState(isDefaultTitle(card.title) ? "" : card.title);
+
+  useEffect(() => {
+    setTitle(isDefaultTitle(card.title) ? "" : card.title);
+  }, [card.title, card.type]);
+
+  const move = async (direction: -1 | 1, event: React.MouseEvent) => {
+    event.stopPropagation();
     const ordered = [...cards].sort((a, b) => a.order - b.order);
     const currentIndex = ordered.findIndex((entry) => entry.id === card.id);
     const neighbor = ordered[currentIndex + direction];
@@ -267,25 +358,49 @@ function CardEditor({ card, index, total }: { card: InfoCardConfig; index: numbe
     await reorderCards(ordered.map((entry) => entry.id));
   };
 
+  const handleToggleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    void updateCard({ id: card.id, enabled: event.target.checked });
+  };
+
+  const displayTitle = isDefaultTitle(card.title)
+    ? t(`infoCards.types.${card.type}`)
+    : card.title;
+
+  const handleDelete = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (window.confirm(t("infoCards.deleteConfirm", { title: displayTitle }))) {
+      void deleteCard(card.id);
+    }
+  };
+
   return (
-    <section className="info-card-editor">
-      <div className="info-card-editor-header">
-        <div>
-          <strong>{t(`infoCards.types.${card.type}`)}</strong>
+    <section 
+      className={`info-card-editor ${isExpanded ? 'expanded' : 'collapsed'}`} 
+      id={`info-card-editor-${card.type}`}
+    >
+      <div className="info-card-editor-header" onClick={onToggleExpand}>
+        <div className="info-card-editor-header-left">
+          <ChevronRight size={15} className="info-card-editor-chevron" />
+          <span className={`info-card-type-badge ${card.type}`}>
+            {t(`infoCards.types.${card.type}`)}
+          </span>
+          <strong className="info-card-editor-display-title">
+            {displayTitle}
+          </strong>
           <small>{card.type === "rss" ? t("infoCards.builtinRss") : card.id.slice(0, 8)}</small>
         </div>
-        <div className="info-card-editor-actions">
-          <button type="button" className="icon-btn" disabled={index === 0} onClick={() => void move(-1)}>
+        <div className="info-card-editor-actions" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="icon-btn" disabled={index === 0} onClick={(e) => void move(-1, e)}>
             <ArrowUp size={14} />
           </button>
-          <button type="button" className="icon-btn" disabled={index === total - 1} onClick={() => void move(1)}>
+          <button type="button" className="icon-btn" disabled={index === total - 1} onClick={(e) => void move(1, e)}>
             <ArrowDown size={14} />
           </button>
           <label className="feed-switch" title={card.enabled ? t("feed.enabled") : t("feed.disabled")}>
             <input
               type="checkbox"
               checked={card.enabled}
-              onChange={(event) => void updateCard({ id: card.id, enabled: event.currentTarget.checked })}
+              onChange={handleToggleChange}
             />
             <span aria-hidden="true" />
           </label>
@@ -294,38 +409,40 @@ function CardEditor({ card, index, total }: { card: InfoCardConfig; index: numbe
               type="button"
               className="icon-btn danger"
               title={t("common.delete")}
-              onClick={() => {
-                if (window.confirm(t("infoCards.deleteConfirm", { title: card.title }))) {
-                  void deleteCard(card.id);
-                }
-              }}
+              onClick={handleDelete}
             >
               <Trash2 size={14} />
             </button>
           )}
         </div>
       </div>
-      <label className="info-card-title-field">
-        <span>{t("infoCards.cardTitle")}</span>
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.currentTarget.value)}
-          onBlur={() => {
-            if (title.trim() && title.trim() !== card.title) {
-              void updateCard({ id: card.id, title: title.trim() });
-            }
-          }}
-        />
-      </label>
-      {card.type === "rss" ? (
-        <details className="info-card-rss-settings">
-          <summary>{t("infoCards.manageRssSources")}</summary>
-          <FeedTab />
-        </details>
-      ) : card.type === "market" ? (
-        <MarketCardEditor card={card} />
-      ) : (
-        <SportsCardEditor card={card} />
+      {isExpanded && (
+        <div className="info-card-editor-body">
+          <label className="info-card-title-field" style={{ marginTop: 0 }}>
+            <span>{t("infoCards.cardTitle")}</span>
+            <input
+              value={title}
+              placeholder={t(`infoCards.types.${card.type}`)}
+              onChange={(event) => setTitle(event.currentTarget.value)}
+              onBlur={() => {
+                const trimmed = title.trim();
+                if (trimmed !== card.title && !(isDefaultTitle(card.title) && trimmed === "")) {
+                  void updateCard({ id: card.id, title: trimmed });
+                }
+              }}
+            />
+          </label>
+          {card.type === "rss" ? (
+            <details className="info-card-rss-settings">
+              <summary>{t("infoCards.manageRssSources")}</summary>
+              <FeedTab />
+            </details>
+          ) : card.type === "market" ? (
+            <MarketCardEditor card={card} />
+          ) : (
+            <SportsCardEditor card={card} />
+          )}
+        </div>
       )}
     </section>
   );
@@ -338,17 +455,56 @@ export function InfoCardsTab() {
   const loading = useInfoCardStore((state) => state.loading);
   const load = useInfoCardStore((state) => state.load);
   const createCard = useInfoCardStore((state) => state.createCard);
-  const [type, setType] = useState<"market" | "sports">("market");
+  const updateCard = useInfoCardStore((state) => state.updateCard);
+
   const ordered = useMemo(() => [...cards].sort((a, b) => a.order - b.order), [cards]);
-  const selectedTypeExists = cards.some((card) => card.type === type);
+
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+
+  // Find cards for templates status
+  const rssCard = useMemo(() => cards.find((c) => c.type === "rss"), [cards]);
+  const marketCard = useMemo(() => cards.find((c) => c.type === "market"), [cards]);
+  const sportsCard = useMemo(() => cards.find((c) => c.type === "sports"), [cards]);
 
   useEffect(() => {
     if (!loaded) void load();
   }, [load, loaded]);
 
   useEffect(() => {
+    if (ordered.length > 0 && expandedCardId === null) {
+      setExpandedCardId(ordered[0].id);
+    }
+  }, [ordered, expandedCardId]);
+
+  useEffect(() => {
     return window.freebuddy?.infoCards.onChanged(() => void load());
   }, [load]);
+
+  const scrollToEditor = (type: string) => {
+    const card = cards.find((c) => c.type === type);
+    if (card) {
+      setExpandedCardId(card.id);
+      setTimeout(() => {
+        const el = document.getElementById(`info-card-editor-${type}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.borderColor = "var(--fb-brand)";
+          setTimeout(() => {
+            el.style.borderColor = "";
+          }, 1000);
+        }
+      }, 120);
+    }
+  };
+
+  const handleCreate = (type: "market" | "sports") => {
+    void createCard({ type }).then((newCard) => {
+      if (newCard) {
+        setExpandedCardId(newCard.id);
+        setTimeout(() => scrollToEditor(type), 150);
+      }
+    });
+  };
 
   return (
     <div className="settings-tab info-cards-settings-tab">
@@ -356,25 +512,188 @@ export function InfoCardsTab() {
         <h3 className="settings-section-title">{t("infoCards.settingsTitle")}</h3>
         <span className="settings-section-desc">{t("infoCards.settingsDescription")}</span>
       </div>
-      <section className="info-card-add-row">
-        <select value={type} onChange={(event) => setType(event.currentTarget.value as "market" | "sports")}>
-          <option value="market">{t("infoCards.types.market")}</option>
-          <option value="sports">{t("infoCards.types.sports")}</option>
-        </select>
-        <button
-          type="button"
-          className="primary-btn"
-          disabled={!loaded || loading || selectedTypeExists}
-          title={selectedTypeExists ? t("infoCards.typeAlreadyAdded") : undefined}
-          onClick={() => void createCard({ type })}
-        >
-          <Plus size={15} />
-          {selectedTypeExists ? t("infoCards.typeAlreadyAdded") : t("infoCards.addCard")}
-        </button>
-      </section>
+
+      <div className="info-card-gallery">
+        <h4 className="info-card-gallery-title">{t("infoCards.galleryTitle", "卡片组件库")}</h4>
+        
+        <div className="info-card-gallery-grid">
+          {/* RSS News Feed Card */}
+          <div className="info-card-template-card rss-theme">
+            <div className="info-card-template-header">
+              <div className="info-card-template-icon-wrapper">
+                <Rss size={18} />
+              </div>
+              <span className="info-card-status-badge builtin">
+                {t("infoCards.builtinStatus", "内置")}
+              </span>
+            </div>
+            <div className="info-card-template-info">
+              <h4>{t("infoCards.types.rss")}</h4>
+              <p>{t("infoCards.rssDescription")}</p>
+            </div>
+            <div className="info-card-template-footer">
+              <label 
+                className="feed-switch" 
+                title={rssCard?.enabled ? t("feed.enabled") : t("feed.disabled")}
+              >
+                <input
+                  type="checkbox"
+                  checked={rssCard?.enabled ?? false}
+                  disabled={!rssCard}
+                  onChange={(event) => {
+                    if (rssCard) {
+                      void updateCard({ id: rssCard.id, enabled: event.currentTarget.checked });
+                    }
+                  }}
+                />
+                <span aria-hidden="true" />
+              </label>
+
+              <button
+                type="button"
+                className="action-btn"
+                onClick={() => scrollToEditor("rss")}
+              >
+                <Settings2 size={12} />
+                {t("infoCards.manageRssAction", "订阅源")}
+              </button>
+            </div>
+          </div>
+
+          {/* Market Indices Card */}
+          <div className="info-card-template-card market-theme">
+            <div className="info-card-template-header">
+              <div className="info-card-template-icon-wrapper">
+                <TrendingUp size={18} />
+              </div>
+              {marketCard ? (
+                <span className="info-card-status-badge added">
+                  {t("infoCards.typeAlreadyAdded")}
+                </span>
+              ) : (
+                <span className="info-card-status-badge not-added">
+                  {t("infoCards.statusNotAdded", "未添加")}
+                </span>
+              )}
+            </div>
+            <div className="info-card-template-info">
+              <h4>{t("infoCards.types.market")}</h4>
+              <p>{t("infoCards.marketDescription")}</p>
+            </div>
+            <div className="info-card-template-footer">
+              {marketCard ? (
+                <>
+                  <label 
+                    className="feed-switch" 
+                    title={marketCard.enabled ? t("feed.enabled") : t("feed.disabled")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marketCard.enabled}
+                      onChange={(event) => {
+                        void updateCard({ id: marketCard.id, enabled: event.currentTarget.checked });
+                      }}
+                    />
+                    <span aria-hidden="true" />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="action-btn"
+                    onClick={() => scrollToEditor("market")}
+                  >
+                    <Settings2 size={12} />
+                    {t("infoCards.configureAction", "配置")}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="action-btn primary"
+                  disabled={!loaded || loading}
+                  onClick={() => handleCreate("market")}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  <Plus size={12} />
+                  {t("infoCards.addCard")}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Sports Matches Card */}
+          <div className="info-card-template-card sports-theme">
+            <div className="info-card-template-header">
+              <div className="info-card-template-icon-wrapper">
+                <Trophy size={18} />
+              </div>
+              {sportsCard ? (
+                <span className="info-card-status-badge added">
+                  {t("infoCards.typeAlreadyAdded")}
+                </span>
+              ) : (
+                <span className="info-card-status-badge not-added">
+                  {t("infoCards.statusNotAdded", "未添加")}
+                </span>
+              )}
+            </div>
+            <div className="info-card-template-info">
+              <h4>{t("infoCards.types.sports")}</h4>
+              <p>{t("infoCards.sportsDescription")}</p>
+            </div>
+            <div className="info-card-template-footer">
+              {sportsCard ? (
+                <>
+                  <label 
+                    className="feed-switch" 
+                    title={sportsCard.enabled ? t("feed.enabled") : t("feed.disabled")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={sportsCard.enabled}
+                      onChange={(event) => {
+                        void updateCard({ id: sportsCard.id, enabled: event.currentTarget.checked });
+                      }}
+                    />
+                    <span aria-hidden="true" />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="action-btn"
+                    onClick={() => scrollToEditor("sports")}
+                  >
+                    <Settings2 size={12} />
+                    {t("infoCards.configureAction", "配置")}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="action-btn primary"
+                  disabled={!loaded || loading}
+                  onClick={() => handleCreate("sports")}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  <Plus size={12} />
+                  {t("infoCards.addCard")}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="info-card-editor-list">
         {ordered.map((card, index) => (
-          <CardEditor key={card.id} card={card} index={index} total={ordered.length} />
+          <CardEditor 
+            key={card.id} 
+            card={card} 
+            index={index} 
+            total={ordered.length} 
+            isExpanded={expandedCardId === card.id}
+            onToggleExpand={() => setExpandedCardId(expandedCardId === card.id ? null : card.id)}
+          />
         ))}
       </div>
     </div>

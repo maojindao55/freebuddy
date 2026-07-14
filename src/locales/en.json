@@ -748,6 +748,9 @@
   "infoCards": {
     "settingsTitle": "Information cards",
     "settingsDescription": "Configure RSS, Ashare-powered A-share quotes, and sports event cards in the third column.",
+    "rssDescription": "Manage RSS feeds and aggregate news articles that you follow in one place.",
+    "marketDescription": "Track A-share market indices and stock details, with custom stock pickers.",
+    "sportsDescription": "Track NBA and live sports scores, schedules, and select match dates.",
     "ashare": {
       "symbols": "Market securities",
       "symbolHint": "Search by security name or six-digit code; the exchange is resolved automatically. Add up to 10 indices, stocks, or ETFs.",

@@ -35,8 +35,8 @@ export const infoCardClient = {
   snapshot(id: string): Promise<InfoCardSnapshot> {
     return api().snapshot(id);
   },
-  refresh(id: string): Promise<InfoCardSnapshot> {
-    return api().refresh(id);
+  refresh(id: string, timeZone?: string): Promise<InfoCardSnapshot> {
+    return api().refresh(id, timeZone);
   },
   marketProvider(): Promise<MarketProviderConfig> {
     return api().marketProvider();

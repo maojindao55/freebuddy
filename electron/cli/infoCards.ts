@@ -327,7 +327,7 @@ function saveSnapshot(
   return getInfoCardSnapshot(card.id);
 }
 
-async function performRefresh(cardId: string): Promise<InfoCardSnapshot> {
+async function performRefresh(cardId: string, timeZone?: string): Promise<InfoCardSnapshot> {
   const card = listInfoCards().find((entry) => entry.id === cardId);
   if (!card) throw new Error("Info card not found.");
   if (card.type === "rss") return getInfoCardSnapshot(card.id);
@@ -344,7 +344,8 @@ async function performRefresh(cardId: string): Promise<InfoCardSnapshot> {
     return saveSnapshot(
       card,
       await fetchNbaScores({
-        dateOffset: sanitizeSportsDateOffset(card.sportsDateOffset)
+        dateOffset: sanitizeSportsDateOffset(card.sportsDateOffset),
+        timeZone
       })
     );
   } catch (error) {
@@ -352,10 +353,11 @@ async function performRefresh(cardId: string): Promise<InfoCardSnapshot> {
   }
 }
 
-export function refreshInfoCard(cardId: string): Promise<InfoCardSnapshot> {
-  const existing = refreshes.get(cardId);
+export function refreshInfoCard(cardId: string, timeZone?: string): Promise<InfoCardSnapshot> {
+  const refreshKey = `${cardId}\0${timeZone ?? ""}`;
+  const existing = refreshes.get(refreshKey);
   if (existing) return existing;
-  const pending = performRefresh(cardId).finally(() => refreshes.delete(cardId));
-  refreshes.set(cardId, pending);
+  const pending = performRefresh(cardId, timeZone).finally(() => refreshes.delete(refreshKey));
+  refreshes.set(refreshKey, pending);
   return pending;
 }

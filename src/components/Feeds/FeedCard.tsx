@@ -141,7 +141,11 @@ export function FeedCard({ title }: { title?: string } = {}) {
   return (
     <section className="side-card feed-card">
       <div className="side-card-header feed-card-header">
-        <span>{title || t("feed.cardTitle")}</span>
+        <span>
+          {(!title || 
+            /^(?:feed|rss news|rss 资讯|builtin rss|内置资讯队列)$/i.test(title.trim())
+          ) ? t("feed.cardTitle") : title}
+        </span>
         <div className="feed-card-actions">
           <select
             className="feed-source-select"

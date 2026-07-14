@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, RefreshCw, Sparkles } from "lucide-react";
 
@@ -46,6 +46,7 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
   const members = useConversationStore((state) => state.members);
   const newConversation = useConversationStore((state) => state.newConversation);
   const sendMessage = useConversationStore((state) => state.sendMessage);
+  const initializedCardId = useRef<string | undefined>(undefined);
   const [analyzing, setAnalyzing] = useState(false);
   const [switchingDate, setSwitchingDate] = useState(false);
   const active = conversations.find((entry) => entry.id === activeId);
@@ -59,9 +60,13 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
   const sportsDateOffset = card.sportsDateOffset ?? 0;
 
   useEffect(() => {
-    if (!configured || snapshot?.fetchedAt || snapshot?.lastError) return;
+    if (!configured) return;
+    const shouldRefreshSports =
+      card.type === "sports" && initializedCardId.current !== card.id;
+    if (!shouldRefreshSports && (snapshot?.fetchedAt || snapshot?.lastError)) return;
+    initializedCardId.current = card.id;
     void refreshCard(card.id);
-  }, [card.id, configured, refreshCard, snapshot?.fetchedAt, snapshot?.lastError]);
+  }, [card.id, card.type, configured, refreshCard, snapshot?.fetchedAt, snapshot?.lastError]);
 
   useEffect(() => {
     if (!configured) return;
@@ -126,7 +131,11 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
   return (
     <section className={`side-card info-data-card ${card.type}-card`}>
       <div className="side-card-header info-card-header">
-        <span>{card.title}</span>
+        <span>
+          {(!card.title || 
+            /^(?:feed|rss news|rss 资讯|builtin rss|内置资讯队列|market indices|指数行情|sports events|体育赛事)$/i.test(card.title.trim())
+          ) ? t(`infoCards.types.${card.type}`) : card.title}
+        </span>
         <div className="info-card-actions">
           {sourceUrl && (
             <button

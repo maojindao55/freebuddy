@@ -24,26 +24,61 @@ function stringValue(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
 }
 
-function chinaDateKey(date: Date): string {
+function systemTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function normalizeTimeZone(timeZone: unknown): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) return systemTimeZone();
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions().timeZone;
+  } catch {
+    return systemTimeZone();
+  }
+}
+
+function dateKeyForTimeZone(
+  date: Date,
+  timeZone: string = systemTimeZone(),
+  offset = 0
+): string {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
+    timeZone: normalizeTimeZone(timeZone),
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
   }).formatToParts(date);
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${value.year}${value.month}${value.day}`;
+  const shiftedDate = new Date(
+    Date.UTC(Number(value.year), Number(value.month) - 1, Number(value.day) + offset)
+  );
+  return [
+    shiftedDate.getUTCFullYear(),
+    String(shiftedDate.getUTCMonth() + 1).padStart(2, "0"),
+    String(shiftedDate.getUTCDate()).padStart(2, "0")
+  ].join("");
 }
 
-function dateWithOffset(date: Date, offset: SportsDateOffset): Date {
-  return new Date(date.getTime() + offset * 24 * 60 * 60 * 1000);
+function shiftDateKey(dateKey: string, offset: number): string {
+  const year = Number(dateKey.slice(0, 4));
+  const month = Number(dateKey.slice(4, 6));
+  const day = Number(dateKey.slice(6, 8));
+  const shiftedDate = new Date(Date.UTC(year, month - 1, day + offset));
+  return [
+    shiftedDate.getUTCFullYear(),
+    String(shiftedDate.getUTCMonth() + 1).padStart(2, "0"),
+    String(shiftedDate.getUTCDate()).padStart(2, "0")
+  ].join("");
 }
 
 function scoreboardUrl(
   date: Date,
-  league: (typeof NBA_LEAGUES)[number] = NBA_LEAGUES[0]
+  league: (typeof NBA_LEAGUES)[number] = NBA_LEAGUES[0],
+  timeZone: string = systemTimeZone(),
+  dateOffset: SportsDateOffset = 0
 ): string {
-  return `${SPORTS_SCOREBOARD_BASE}/${league}/scoreboard?dates=${chinaDateKey(date)}&limit=100`;
+  const dateKey = dateKeyForTimeZone(date, timeZone, dateOffset);
+  return `${SPORTS_SCOREBOARD_BASE}/${league}/scoreboard?dates=${dateKey}&limit=100`;
 }
 
 function teamName(competitor: JsonRecord | undefined): string {
@@ -168,37 +203,62 @@ export function sortNbaGames(games: ParsedNbaGame[]): ParsedNbaGame[] {
 }
 
 export async function fetchNbaScores(
-  options: { fetchImpl?: typeof fetch; now?: Date; dateOffset?: SportsDateOffset } = {}
+  options: {
+    fetchImpl?: typeof fetch;
+    now?: Date;
+    dateOffset?: SportsDateOffset;
+    timeZone?: string;
+  } = {}
 ): Promise<Array<Record<string, string>>> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const date = dateWithOffset(options.now ?? new Date(), options.dateOffset ?? 0);
+  const date = options.now ?? new Date();
+  const timeZone = normalizeTimeZone(options.timeZone);
+  const dateOffset = options.dateOffset ?? 0;
+  const targetDateKey = dateKeyForTimeZone(date, timeZone, dateOffset);
+  const queryDateKeys = [-1, 0, 1].map((offset) => shiftDateKey(targetDateKey, offset));
+  const requests = NBA_LEAGUES.flatMap((league) =>
+    queryDateKeys.map((dateKey) => ({ league, dateKey }))
+  );
   const results = await Promise.allSettled(
-    NBA_LEAGUES.map(async (league) => {
-      const response = await fetchImpl(scoreboardUrl(date, league), {
+    requests.map(async ({ league, dateKey }) => {
+      const response = await fetchImpl(
+        `${SPORTS_SCOREBOARD_BASE}/${league}/scoreboard?dates=${dateKey}&limit=100`,
+        {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(15_000)
-      });
+        }
+      );
       if (!response.ok) throw new Error(`${league} returned HTTP ${response.status}`);
       return parseNbaScoreboard(await response.json());
     })
   );
   if (results.every((result) => result.status === "rejected")) {
     throw new Error(
-      results
-        .map((result, index) =>
-          `${NBA_LEAGUES[index]}: ${
+      NBA_LEAGUES.map((league) => {
+        const reasons = results
+          .filter((_result, index) => requests[index].league === league)
+          .map((result) =>
             result.status === "rejected"
               ? (result.reason as Error)?.message || String(result.reason)
               : "unavailable"
-          }`
-        )
+          );
+        return `${league}: ${[...new Set(reasons)].join(" | ")}`;
+      })
         .join("; ")
     );
   }
   const unique = new Map<string, ParsedNbaGame>();
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
-    for (const game of result.value) if (!unique.has(game.id)) unique.set(game.id, game);
+    for (const game of result.value) {
+      if (
+        game.timestamp !== Number.MAX_SAFE_INTEGER &&
+        dateKeyForTimeZone(new Date(game.timestamp), timeZone) === targetDateKey &&
+        !unique.has(game.id)
+      ) {
+        unique.set(game.id, game);
+      }
+    }
   }
   return sortNbaGames([...unique.values()])
     .slice(0, MAX_NBA_GAMES)
@@ -206,8 +266,9 @@ export async function fetchNbaScores(
 }
 
 export const nbaScoreboardInternals = {
-  chinaDateKey,
-  dateWithOffset,
+  dateKeyForTimeZone,
+  shiftDateKey,
+  normalizeTimeZone,
   scoreboardUrl,
   teamLogo,
   statePriority,

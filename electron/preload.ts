@@ -263,7 +263,8 @@ const infoCards = {
   delete: (id: string) => ipcRenderer.invoke("infoCards:delete", id),
   reorder: (ids: string[]) => ipcRenderer.invoke("infoCards:reorder", ids),
   snapshot: (id: string) => ipcRenderer.invoke("infoCards:snapshot", id),
-  refresh: (id: string) => ipcRenderer.invoke("infoCards:refresh", id),
+  refresh: (id: string, timeZone?: string) =>
+    ipcRenderer.invoke("infoCards:refresh", id, timeZone),
   marketProvider: () => ipcRenderer.invoke("infoCards:marketProvider"),
   searchMarketSymbols: (query: string) =>
     ipcRenderer.invoke("infoCards:searchMarketSymbols", query),

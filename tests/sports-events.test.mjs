@@ -52,10 +52,18 @@ test("NBA provider uses regular and Summer League scoreboards only", () => {
   assert.equal(SPORTS_EVENTS_SOURCE_URL, "https://www.espn.com/nba/scoreboard/");
   assert.deepEqual(nbaScoreboardInternals.NBA_LEAGUES, ["nba", "nba-summer"]);
   const regular = new URL(
-    nbaScoreboardInternals.scoreboardUrl(new Date("2026-07-14T02:00:00Z"), "nba")
+    nbaScoreboardInternals.scoreboardUrl(
+      new Date("2026-07-14T02:00:00Z"),
+      "nba",
+      "Asia/Shanghai"
+    )
   );
   const summer = new URL(
-    nbaScoreboardInternals.scoreboardUrl(new Date("2026-07-14T02:00:00Z"), "nba-summer")
+    nbaScoreboardInternals.scoreboardUrl(
+      new Date("2026-07-14T02:00:00Z"),
+      "nba-summer",
+      "Asia/Shanghai"
+    )
   );
   assert.equal(regular.pathname, "/apis/site/v2/sports/basketball/nba/scoreboard");
   assert.equal(summer.pathname, "/apis/site/v2/sports/basketball/nba-summer/scoreboard");
@@ -158,7 +166,7 @@ test("one unavailable NBA route does not discard the other scoreboard", async ()
   assert.match(rows[0].league, /NBA Summer League/);
 });
 
-test("NBA scoreboards follow yesterday, today, and tomorrow in China time", async () => {
+test("NBA scoreboards follow yesterday, today, and tomorrow in the user's time zone", async () => {
   for (const [dateOffset, expectedDate] of [
     [-1, "20260713"],
     [0, "20260714"],
@@ -168,6 +176,7 @@ test("NBA scoreboards follow yesterday, today, and tomorrow in China time", asyn
     await fetchNbaScores({
       now: new Date("2026-07-14T02:00:00Z"),
       dateOffset,
+      timeZone: "Asia/Shanghai",
       fetchImpl: async (url) => {
         urls.push(new URL(String(url)));
         return new Response(JSON.stringify({ events: [] }), {
@@ -176,9 +185,78 @@ test("NBA scoreboards follow yesterday, today, and tomorrow in China time", asyn
         });
       }
     });
-    assert.equal(urls.length, 2);
-    assert.ok(urls.every((url) => url.searchParams.get("dates") === expectedDate));
+    assert.equal(urls.length, 6);
+    assert.deepEqual(
+      [...new Set(urls.map((url) => url.searchParams.get("dates")))],
+      [
+        nbaScoreboardInternals.shiftDateKey(expectedDate, -1),
+        expectedDate,
+        nbaScoreboardInternals.shiftDateKey(expectedDate, 1)
+      ]
+    );
   }
+});
+
+test("NBA scoreboard date follows the user's local calendar day", async () => {
+  const dateKeys = new Map();
+  for (const timeZone of ["America/Los_Angeles", "Asia/Shanghai"]) {
+    await fetchNbaScores({
+      now: new Date("2026-07-14T02:00:00Z"),
+      timeZone,
+      fetchImpl: async (url) => {
+        const keys = dateKeys.get(timeZone) ?? new Set();
+        keys.add(new URL(String(url)).searchParams.get("dates"));
+        dateKeys.set(timeZone, keys);
+        return new Response(JSON.stringify({ events: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    });
+  }
+  assert.deepEqual([...dateKeys.get("America/Los_Angeles")], [
+    "20260712",
+    "20260713",
+    "20260714"
+  ]);
+  assert.deepEqual([...dateKeys.get("Asia/Shanghai")], [
+    "20260713",
+    "20260714",
+    "20260715"
+  ]);
+});
+
+test("NBA rows are filtered by the user's local calendar day", async () => {
+  const rows = await fetchNbaScores({
+    now: new Date("2026-07-14T12:00:00Z"),
+    timeZone: "Asia/Shanghai",
+    fetchImpl: async (url) => {
+      const dateKey = new URL(String(url)).searchParams.get("dates");
+      const events =
+        dateKey === "20260713"
+          ? [event({ id: "local-today", date: "2026-07-14T01:00:00Z", home: "Today" })]
+          : dateKey === "20260714"
+            ? [event({ id: "local-tomorrow", date: "2026-07-14T20:00:00Z", home: "Tomorrow" })]
+            : [];
+      return new Response(JSON.stringify({ events }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+  });
+  assert.deepEqual(rows.map((row) => row.home), ["Today"]);
+  assert.equal(rows[0].startTime, "2026-07-14T01:00:00Z");
+});
+
+test("tomorrow stays on the next local date across daylight-saving transitions", () => {
+  assert.equal(
+    nbaScoreboardInternals.dateKeyForTimeZone(
+      new Date("2026-11-01T07:30:00Z"),
+      "America/Los_Angeles",
+      1
+    ),
+    "20261102"
+  );
 });
 
 test("all unavailable NBA routes surface useful errors", async () => {
@@ -217,4 +295,5 @@ test("sports card is fixed to NBA and supports a persisted three-day selector", 
   assert.match(dataCard, /sports-score-team/);
   assert.match(dataCard, /sports-date-filter/);
   assert.match(dataCard, /handleSportsDateChange/);
+  assert.doesNotMatch(provider, /timeZone:\s*["']Asia\/Shanghai["']/);
 });

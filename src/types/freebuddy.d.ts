@@ -213,7 +213,7 @@ declare global {
     delete(id: string): Promise<boolean>;
     reorder(ids: string[]): Promise<InfoCardConfig[]>;
     snapshot(id: string): Promise<InfoCardSnapshot>;
-    refresh(id: string): Promise<InfoCardSnapshot>;
+    refresh(id: string, timeZone?: string): Promise<InfoCardSnapshot>;
     marketProvider(): Promise<MarketProviderConfig>;
     searchMarketSymbols(query: string): Promise<MarketSymbolSearchResult[]>;
     onChanged(cb: () => void): () => void;

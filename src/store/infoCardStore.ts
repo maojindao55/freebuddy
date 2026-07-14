@@ -98,7 +98,8 @@ export const useInfoCardStore = create<InfoCardState>((set, get) => ({
   async refreshCard(id) {
     set((state) => ({ refreshing: { ...state.refreshing, [id]: true } }));
     try {
-      const snapshot = await infoCardClient.refresh(id);
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const snapshot = await infoCardClient.refresh(id, timeZone);
       set((state) => ({
         snapshots: { ...state.snapshots, [id]: snapshot },
         error: undefined

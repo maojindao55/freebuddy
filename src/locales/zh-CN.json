@@ -734,6 +734,9 @@
   "infoCards": {
     "settingsTitle": "信息卡片",
     "settingsDescription": "配置第三列中的 RSS、Ashare A 股行情和体育赛事卡片。",
+    "rssDescription": "管理 RSS 订阅源，聚合并随时查看你关注的新闻与资讯队列。",
+    "marketDescription": "监控 A 股指数与自选证券行情，支持实时搜索搜索与自选股配置。",
+    "sportsDescription": "实时掌握 NBA 等最新体育赛事比分与赛程，支持自由选择日期。",
     "ashare": {
       "symbols": "证券行情",
       "symbolHint": "输入证券名称或六位代码搜索，无需判断上交所或深交所；最多添加 10 个指数、股票或 ETF。",

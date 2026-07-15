@@ -567,6 +567,13 @@
       "summarizer": "Summarizer",
       "custom": "Custom"
     },
+    "roleDescriptions": {
+      "planner": "Analyzes goals, maps out implementation steps, and defines verification plans.",
+      "implementer": "Writes and updates code files to implement the specified requirements.",
+      "reviewer": "Conducts code reviews to evaluate design, quality, and logic correctness.",
+      "verifier": "Runs validation checks and tests to confirm changes behave as expected.",
+      "summarizer": "Aggregates the workflow outcomes, review comments, and remaining issues."
+    },
     "nodeModes": {
       "research": "Research",
       "review": "Review",
@@ -597,6 +604,7 @@
     "routeSummary": "Route summary",
     "role": "Role",
     "writeNodes": "Write steps",
+    "readNodes": "Read steps",
     "approvalNodes": "Approval gates",
     "loops": "Max loops",
     "allowed": "Allowed",

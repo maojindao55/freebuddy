@@ -8435,60 +8435,168 @@ button.ghost:focus-visible,
   opacity: 0.4;
   cursor: not-allowed;
 }
-.workflow-team-roles {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.workflow-team-role-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.workflow-team-role-card {
+  background: var(--fb-panel-soft);
+  border: 1px solid var(--fb-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.workflow-team-role-card:hover {
+  border-color: var(--fb-border-strong);
+  box-shadow: var(--fb-shadow-sm);
+  transform: translateY(-1px);
+}
+.workflow-team-role-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.workflow-team-role-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.workflow-team-role-icon-wrapper.planner {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+.workflow-team-role-icon-wrapper.implementer {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--fb-workflow);
+}
+.workflow-team-role-icon-wrapper.reviewer {
+  background: rgba(20, 184, 166, 0.1);
+  color: #14b8a6;
+}
+.workflow-team-role-icon-wrapper.verifier {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--fb-brand);
+}
+.workflow-team-role-icon-wrapper.summarizer {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--fb-warning);
+}
+[data-theme="dark"] .workflow-team-role-icon-wrapper.planner {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+}
+[data-theme="dark"] .workflow-team-role-icon-wrapper.implementer {
+  background: rgba(139, 92, 246, 0.18);
+  color: #c084fc;
+}
+[data-theme="dark"] .workflow-team-role-icon-wrapper.reviewer {
+  background: rgba(20, 184, 166, 0.18);
+  color: #2dd4bf;
+}
+[data-theme="dark"] .workflow-team-role-icon-wrapper.verifier {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+}
+[data-theme="dark"] .workflow-team-role-icon-wrapper.summarizer {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+}
+.workflow-team-role-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.workflow-team-role-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.workflow-team-role-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--fb-text-primary);
+}
+.workflow-team-role-description {
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+  line-height: 1.45;
+}
+.workflow-team-role-selectors {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .workflow-team-role-selectors {
+    grid-template-columns: 1fr;
+  }
+}
+.workflow-team-role-selector {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.workflow-team-roles li {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 8px 12px;
-  background: var(--fb-panel-soft);
-  border-radius: 8px;
-  flex-wrap: wrap;
-}
-.workflow-team-role-info {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex: 1 1 140px;
-  min-width: 0;
-}
-.workflow-team-role-info strong {
-  font-size: 13px;
-  color: var(--fb-text-primary);
-}
-.workflow-team-role-info small {
+.workflow-team-role-selector .selector-label {
   font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--fb-text-tertiary);
 }
-.workflow-team-role-agent,
-.workflow-team-role-model {
+.custom-select-wrapper {
+  position: relative;
   display: flex;
-  gap: 6px;
   align-items: center;
-  font-size: 12px;
-  color: var(--fb-text-secondary);
+  width: 100%;
 }
-.workflow-team-role-agent select,
-.workflow-team-role-model select {
-  padding: 5px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--fb-border);
+.custom-select-wrapper select {
+  width: 100%;
+  padding: 8px 12px;
+  padding-right: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--fb-border-strong);
   background: var(--fb-panel-bg);
   color: var(--fb-text-primary);
-  font-size: 12px;
+  font-size: 13px;
   outline: none;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.workflow-team-role-model select { max-width: 190px; }
-.workflow-team-role-agent select:focus,
-.workflow-team-role-model select:focus { border-color: var(--fb-brand); }
+.custom-select-wrapper select:hover {
+  border-color: rgba(148, 163, 184, 0.4);
+}
+.custom-select-wrapper select:focus {
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+.custom-select-arrow {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+  font-size: 8px;
+  color: var(--fb-text-tertiary);
+  transition: color 0.15s ease;
+}
+.custom-select-wrapper:hover .custom-select-arrow {
+  color: var(--fb-text-secondary);
+}
+.workflow-team-badge.read {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
 .workflow-team-nodes {
   list-style: none;
   margin: 0;

@@ -553,6 +553,13 @@
       "summarizer": "汇总者",
       "custom": "自定义"
     },
+    "roleDescriptions": {
+      "planner": "分析任务目标，设计具体实现步骤和风险评估方案。",
+      "implementer": "执行具体的代码编写与修改，实现预期的功能改动。",
+      "reviewer": "审查代码实现质量，评估是否符合要求并给出评审意见。",
+      "verifier": "运行测试和验证改动是否正确，统计未解决的问题。",
+      "summarizer": "汇总已完成的工作、评审与验证结果及遗留问题。"
+    },
     "nodeModes": {
       "research": "调研",
       "review": "审查",
@@ -583,6 +590,7 @@
     "routeSummary": "路线摘要",
     "role": "角色",
     "writeNodes": "写入步骤",
+    "readNodes": "只读步骤",
     "approvalNodes": "审批关卡",
     "loops": "最大循环",
     "allowed": "允许",

@@ -1807,6 +1807,48 @@ button {
   padding: 32px;
 }
 
+.skills-heading,
+.skill-card,
+.skill-card-title,
+.skill-card-actions,
+.skills-search,
+.skill-preview header {
+  display: flex;
+  align-items: center;
+}
+.skills-heading { justify-content: space-between; gap: 16px; }
+.skills-heading p { margin: 5px 0 0; max-width: 680px; }
+.skills-import { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.skills-search { gap: 8px; padding: 9px 12px; border: 1px solid var(--fb-border); border-radius: 10px; background: var(--fb-panel-bg); }
+.skills-search input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--fb-text-primary); }
+.skills-message { margin: 0; padding: 10px; border-radius: 8px; background: var(--fb-panel-soft); white-space: pre-wrap; font: 12px/1.5 var(--fb-font-mono); }
+.skill-list { display: flex; flex-direction: column; gap: 8px; }
+.skill-card { justify-content: space-between; gap: 16px; padding: 13px 14px; border: 1px solid var(--fb-border); border-radius: 12px; background: var(--fb-panel-bg); }
+.skill-card.disabled { opacity: .62; }
+.skill-card-main { min-width: 0; }
+.skill-card-title { gap: 8px; }
+.skill-card-title span { padding: 2px 6px; border-radius: 999px; background: var(--fb-brand-glow); color: var(--fb-brand); font-size: 10px; }
+.skill-card-title small, .skill-card code { color: var(--fb-text-tertiary); font-size: 10px; }
+.skill-card p { margin: 5px 0; color: var(--fb-text-secondary); font-size: 12px; }
+.skill-card-actions { gap: 8px; }
+.skill-toggle { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fb-text-secondary); }
+.skill-preview { width: min(760px, 86vw); max-height: 78vh; }
+.skill-preview header { justify-content: space-between; }
+.skill-preview pre { overflow: auto; padding: 12px; border-radius: 10px; background: var(--fb-panel-soft); white-space: pre-wrap; font: 12px/1.6 var(--fb-font-mono); }
+
+.skill-picker { position: relative; }
+.skill-picker > summary { list-style: none; }
+.skill-picker > summary::-webkit-details-marker { display: none; }
+.skill-picker-menu { position: absolute; z-index: 80; bottom: calc(100% + 8px); left: 0; width: 300px; max-height: 320px; overflow: auto; padding: 10px; border: 1px solid var(--fb-border); border-radius: 12px; background: var(--fb-panel-bg); box-shadow: var(--fb-shadow); }
+.skill-picker-menu > strong { display: block; padding: 3px 5px 8px; font-size: 12px; }
+.skill-picker-menu label { display: flex; gap: 8px; padding: 7px 5px; border-radius: 8px; cursor: pointer; }
+.skill-picker-menu label:hover { background: var(--fb-panel-soft); }
+.skill-picker-menu label span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.skill-picker-menu label b { font-size: 12px; }
+.skill-picker-menu label small, .skill-picker-menu p { margin: 0; color: var(--fb-text-secondary); font-size: 10px; line-height: 1.4; }
+.workflow-team-role-skills { display: flex; align-items: center; gap: 8px; }
+.workflow-team-role-skills > span { color: var(--fb-text-secondary); font-size: 11px; }
+
 .adapter-list {
   display: flex;
   flex-direction: column;

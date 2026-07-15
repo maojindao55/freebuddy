@@ -25,7 +25,14 @@ export interface CLIAdapterDefinition {
   checkProbe?: CliCheckProbe;
   streamMode: CLIStreamMode;
   commandGroup: string;
-  capabilities: { toolSession: boolean };
+  capabilities: {
+    toolSession: boolean;
+    skills?: {
+      mode: "native" | "mcp";
+      nativeDirs?: string[];
+      reloadPolicy: "process-start" | "new-session";
+    };
+  };
   /** Args that, when present in user extraArgs, indicate the user is already
    *  controlling tool-session resume manually. */
   toolSessionArgs: string[];
@@ -47,7 +54,7 @@ const legacyAdapterDefinitions: CLIAdapterDefinition[] = [
     defaultBinary: "codex",
     streamMode: "codex-json",
     commandGroup: "codex",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".agents/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: ["resume", "--last"],
     toolSessionArgPrefixes: [],
     installHint: "npm install -g @openai/codex",
@@ -60,7 +67,7 @@ const legacyAdapterDefinitions: CLIAdapterDefinition[] = [
     defaultBinary: "claude",
     streamMode: "claude-json",
     commandGroup: "claude",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".claude/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: ["--resume", "-r", "--continue", "-c", "--session-id"],
     toolSessionArgPrefixes: ["--resume=", "--session-id="],
     installHint: "npm install -g @anthropic-ai/claude-code",
@@ -73,7 +80,7 @@ const legacyAdapterDefinitions: CLIAdapterDefinition[] = [
     defaultBinary: "opencode",
     streamMode: "opencode-json",
     commandGroup: "opencode",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".opencode/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: ["--session", "-s", "--continue", "-c"],
     toolSessionArgPrefixes: ["--session="],
     installHint: "npm install -g opencode-ai",
@@ -90,7 +97,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     checkProbe: { args: ["--version"], versionOptional: false },
     streamMode: "raw",
     commandGroup: "codex",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".agents/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint: "npm install -g --force @agentclientprotocol/codex-acp",
@@ -104,7 +111,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     checkProbe: { args: ["--cli", "--version"], versionOptional: false },
     streamMode: "raw",
     commandGroup: "claude",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".claude/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
@@ -117,7 +124,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     defaultBinary: "opencode",
     streamMode: "raw",
     commandGroup: "opencode",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".opencode/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint: "npm install -g opencode-ai",
@@ -130,7 +137,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     defaultBinary: "cursor-agent",
     streamMode: "raw",
     commandGroup: "cursor",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "mcp", reloadPolicy: "new-session" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint:
@@ -146,7 +153,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     defaultBinary: "kimi",
     streamMode: "raw",
     commandGroup: "kimi",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".kimi/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint:
@@ -162,7 +169,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     defaultBinary: "qodercli",
     streamMode: "raw",
     commandGroup: "qoder",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "mcp", reloadPolicy: "new-session" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint:
@@ -179,7 +186,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     checkProbe: { args: ["--version"], versionOptional: false },
     streamMode: "raw",
     commandGroup: "codebuddy",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".codebuddy/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint: "npm install -g @tencent-ai/codebuddy-code",
@@ -193,7 +200,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     checkProbe: { args: ["version"], versionOptional: false },
     streamMode: "raw",
     commandGroup: "grok",
-    capabilities: { toolSession: true },
+    capabilities: { toolSession: true, skills: { mode: "mcp", reloadPolicy: "new-session" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
     installHint:

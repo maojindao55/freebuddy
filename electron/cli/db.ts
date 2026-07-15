@@ -46,8 +46,25 @@ function migrate(db: DB) {
       enabled INTEGER DEFAULT 1,
       codex_byok TEXT,
       claude_byok TEXT,
+      skill_ids TEXT,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS skills (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL,
+      version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      root_path TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      trusted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_skills_source_name
+      ON skills(source, name);
 
     CREATE TABLE IF NOT EXISTS cli_runtimes (
       adapter TEXT PRIMARY KEY,
@@ -106,6 +123,7 @@ function migrate(db: DB) {
       cwd TEXT,
       approval_mode TEXT,
       config_option_overrides TEXT,
+      skill_snapshot TEXT,
       title_source TEXT,
       archived INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -256,6 +274,9 @@ function migrate(db: DB) {
   if (!overrideCols.some((c) => c.name === "claude_byok")) {
     db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN claude_byok TEXT");
   }
+  if (!overrideCols.some((c) => c.name === "skill_ids")) {
+    db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN skill_ids TEXT");
+  }
 
   const runtimeCols = db
     .prepare("PRAGMA table_info(cli_runtimes)")
@@ -313,6 +334,9 @@ function migrate(db: DB) {
   }
   if (!conversationCols.some((c) => c.name === "title_source")) {
     db.exec("ALTER TABLE conversations ADD COLUMN title_source TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "skill_snapshot")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN skill_snapshot TEXT");
   }
 
   const workflowRunCols = db

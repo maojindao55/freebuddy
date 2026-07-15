@@ -14,6 +14,7 @@ import { initFileBridge } from "./fileBridge.js";
 import { getDb } from "./cli/db.js";
 import { cleanupOrphanManagedAttachments } from "./cli/attachments.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
+import { seedBuiltinSkills } from "./cli/skills.js";
 import { initApplicationMenu } from "./menu.js";
 import { APP_NAME, APP_VERSION } from "./app-meta.js";
 import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
@@ -273,6 +274,7 @@ app.whenReady().then(async () => {
   getDb();
   initializeTelemetry();
   cleanupOrphanManagedAttachments();
+  seedBuiltinSkills();
   seedBuiltinWorkflowTeams();
   registerCliIpc();
   registerUpdaterIpc();

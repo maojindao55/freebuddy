@@ -38,6 +38,26 @@
     "telemetryDescription": "发送匿名安装、启动、升级、应用版本、操作系统和 CPU 架构；不会发送对话、提示词、文件路径或工作区内容。"
   },
   "app": { "brand": "FreeBuddy", "chat": "聊天" },
+  "skills": {
+    "title": "Skills",
+    "description": "跨 Agent 复用的指令包；会话保存带版本与哈希的快照。",
+    "importFolder": "导入文件夹",
+    "imported": "已导入 {{count}} 个 Skill。",
+    "search": "搜索 Skills",
+    "loading": "正在加载 Skills…",
+    "builtin": "内置",
+    "importedSource": "已导入",
+    "view": "查看指令",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "deleteConfirm": "删除已导入的 Skill“{{name}}”？",
+    "picker": "Skills {{count}}",
+    "activeForTask": "本任务启用",
+    "agentDefaults": "默认 Skills",
+    "agentDefaultsHint": "使用这个 Agent 新建任务时自动选中。",
+    "roleOverride": "角色 Skills",
+    "none": "没有可用 Skill，请先在设置中导入或启用。"
+  },
   "sidebar": {
     "expand": "展开侧边栏",
     "collapse": "收起侧边栏",
@@ -335,6 +355,7 @@
     "tabs": {
       "general": "通用",
       "cli": "CLI Agent",
+      "skills": "Skills",
       "workflowTeams": "工作流团队",
       "feed": "信息卡片",
       "about": "关于"

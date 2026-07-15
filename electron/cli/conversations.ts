@@ -3,6 +3,8 @@ import {
   discardManagedAttachmentIfUnreferenced,
   isManagedAttachmentPath
 } from "./attachments.js";
+import { resolveSkillSnapshots } from "./skills.js";
+import type { SkillSnapshot } from "./skillTypes.js";
 
 export interface ChatAttachment {
   id: string;
@@ -26,6 +28,7 @@ export interface Conversation {
   cwd?: string;
   approvalMode?: "auto" | "ask";
   configOptionOverrides?: Record<string, string>;
+  skillSnapshot: SkillSnapshot[];
   titleSource?: ConversationTitleSource;
   archived: boolean;
   createdAt: string;
@@ -107,12 +110,32 @@ function rowToConversation(r: any): Conversation {
     configOptionOverrides: parseConfigOptionOverrides(
       r.config_option_overrides
     ),
+    skillSnapshot: parseSkillSnapshot(r.skill_snapshot),
     titleSource: parseTitleSource(r.title_source),
     archived: r.archived === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at ?? undefined
   };
+}
+
+function parseSkillSnapshot(raw: unknown): SkillSnapshot[] {
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is SkillSnapshot =>
+        Boolean(entry) &&
+        typeof entry === "object" &&
+        typeof entry.id === "string" &&
+        typeof entry.name === "string" &&
+        typeof entry.rootPath === "string" &&
+        typeof entry.contentHash === "string"
+    );
+  } catch {
+    return [];
+  }
 }
 
 function rowToMessage(r: any): ConversationMessage {
@@ -154,6 +177,7 @@ export interface CreateConversationInput {
   cwd?: string;
   approvalMode?: "auto" | "ask";
   configOptionOverrides?: Record<string, string>;
+  skillIds?: string[];
   titleSource?: ConversationTitleSource;
 }
 
@@ -163,8 +187,8 @@ export function createConversation(input: CreateConversationInput): Conversation
     .prepare(
       `INSERT INTO conversations
          (id, title, agent_id, agent_name, adapter, cwd, approval_mode,
-          config_option_overrides, title_source, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+          config_option_overrides, skill_snapshot, title_source, archived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     )
     .run(
       input.id,
@@ -178,11 +202,26 @@ export function createConversation(input: CreateConversationInput): Conversation
         Object.keys(input.configOptionOverrides).length > 0
         ? JSON.stringify(input.configOptionOverrides)
         : null,
+      JSON.stringify(resolveSkillSnapshots(input.skillIds ?? [])),
       input.titleSource ?? "default",
       now,
       now
     );
   return getConversation(input.id) as Conversation;
+}
+
+export function setConversationSkills(
+  id: string,
+  skillIds: string[]
+): Conversation | undefined {
+  getDb()
+    .prepare("UPDATE conversations SET skill_snapshot = ?, updated_at = ? WHERE id = ?")
+    .run(
+      JSON.stringify(resolveSkillSnapshots(skillIds)),
+      new Date().toISOString(),
+      id
+    );
+  return getConversation(id);
 }
 
 export function setConversationApprovalMode(

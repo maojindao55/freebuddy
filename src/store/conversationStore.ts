@@ -76,6 +76,7 @@ export interface ConversationState {
     title?: string;
     approvalMode?: "auto" | "ask";
     configOptionOverrides?: Record<string, string>;
+    skillIds?: string[];
   }): Promise<Conversation>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
@@ -88,6 +89,7 @@ export interface ConversationState {
     id: string,
     overrides: Record<string, string>
   ): Promise<void>;
+  setConversationSkills(id: string, skillIds: string[]): Promise<void>;
 
   sendMessage(input: {
     conversationId: string;
@@ -213,8 +215,15 @@ function workflowFollowupToolSessionScope(
 }
 
 function buildConversationMembers(): CLIMember[] {
-  const customMembers = useCliExecutorStore
-    .getState()
+  const executorStore = useCliExecutorStore.getState();
+  const builtinMembers = builtinCliMembers.map((member) => ({
+    ...member,
+    cli: {
+      ...member.cli,
+      skillIds: executorStore.resolve(member.cli.adapter)?.skillIds
+    }
+  }));
+  const customMembers = executorStore
     .listResolved()
     .filter((executor) => executor.isClone && executor.baseAdapter)
     .map((executor): CLIMember => ({
@@ -231,10 +240,11 @@ function buildConversationMembers(): CLIMember[] {
         extraArgs: executor.extraArgs,
         env: executor.env,
         approvalMode: "auto",
-        showStderr: true
+        showStderr: true,
+        skillIds: executor.skillIds
       }
     }));
-  return [...builtinCliMembers, ...customMembers];
+  return [...builtinMembers, ...customMembers];
 }
 
 function defaultTitleForAgentName(agentName: string, cwd?: string): string {
@@ -489,7 +499,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     cwd,
     title,
     approvalMode,
-    configOptionOverrides
+    configOptionOverrides,
+    skillIds
   }) {
     const id = nanoid();
     const conv = await cliClient.createConversation({
@@ -503,6 +514,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...(configOptionOverrides && Object.keys(configOptionOverrides).length > 0
         ? { configOptionOverrides }
         : {}),
+      skillIds: skillIds ?? member.cli.skillIds ?? [],
       titleSource: title ? "prompt" : "default"
     });
     set((s) => ({
@@ -597,6 +609,17 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           configOptionOverrides: next ?? undefined
         };
       })
+    }));
+  },
+
+  async setConversationSkills(id, skillIds) {
+    const updated = await cliClient.setConversationSkills(id, skillIds);
+    if (!updated) return;
+    set((state) => ({
+      conversations: state.conversations.map((conversation) =>
+        conversation.id === id ? updated : conversation
+      ),
+      pendingFreshContext: { ...state.pendingFreshContext, [id]: true }
     }));
   },
 
@@ -783,7 +806,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       userMessageId: userMsgId,
       knownStreamMessageIds: collectStreamMessageIds(
         get().messages[conversationId] ?? []
-      )
+      ),
+      skills: conv.skillSnapshot,
+      announceSkills: wantFresh || !resumedFromSessionId
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");

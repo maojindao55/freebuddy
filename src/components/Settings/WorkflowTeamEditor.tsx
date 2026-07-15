@@ -25,6 +25,8 @@ import {
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useSkillStore } from "@/store/skillStore";
+import { SkillPicker } from "@/components/CLI/SkillPicker";
 
 type DeliveryNodeContract = Exclude<
   WorkflowNodeContract,
@@ -201,6 +203,7 @@ function buildDeliveryRoles(
         fallbackAgentForRole(members, def.roleKind!),
       model: existing?.model,
       modelOptionId: existing?.modelOptionId,
+      skillIds: existing?.skillIds,
       required: true,
       canWrite: def.mode === "write",
       description: existing?.description
@@ -252,6 +255,9 @@ export function WorkflowTeamEditor({
 }) {
   const { t } = useTranslation();
   const members = useConversationStore((s) => s.members);
+  const skills = useSkillStore((s) => s.skills);
+  const skillsLoaded = useSkillStore((s) => s.loaded);
+  const loadSkills = useSkillStore((s) => s.load);
   const create = useWorkflowTeamStore((s) => s.create);
   const update = useWorkflowTeamStore((s) => s.update);
   const isNew = !team;
@@ -283,6 +289,10 @@ export function WorkflowTeamEditor({
         .join("\u0000"),
     [draft.roles]
   );
+
+  useEffect(() => {
+    if (!skillsLoaded) void loadSkills();
+  }, [loadSkills, skillsLoaded]);
 
   const sessionProbeInputForAgent = useCallback(
     (agentId: string): SessionConfigProbeInput | undefined => {
@@ -406,6 +416,15 @@ export function WorkflowTeamEditor({
               modelOptionId: model.trim() ? modelOptionId : undefined
             }
           : role
+      )
+    }));
+  };
+
+  const setRoleSkills = (roleId: string, skillIds: string[]) => {
+    setDraft((current) => ({
+      ...current,
+      roles: current.roles.map((role) =>
+        role.id === roleId ? { ...role, skillIds } : role
       )
     }));
   };
@@ -686,6 +705,14 @@ export function WorkflowTeamEditor({
                     })()}
                   </select>
                 </label>
+                <div className="workflow-team-role-skills">
+                  <span>{t("skills.roleOverride")}</span>
+                  <SkillPicker
+                    skills={skills}
+                    selectedIds={role.skillIds ?? []}
+                    onChange={(ids) => setRoleSkills(role.id, ids)}
+                  />
+                </div>
               </li>
             ))}
           </ul>

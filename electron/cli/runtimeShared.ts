@@ -5,6 +5,7 @@ import type { Readable, Writable } from "node:stream";
 import { getDb } from "./db.js";
 import type { CLIAdapterId } from "./adapters.js";
 import type { AcpStreamItem } from "./acp.js";
+import type { SkillSnapshot } from "./skillTypes.js";
 import { trackTelemetryEvent } from "../telemetry.js";
 import {
   categorizeTelemetryError,
@@ -45,6 +46,8 @@ export interface CliRunArgs {
   userMessageId?: string;
   /** Known stream messageIds from prior assistant turns (replay suppression). */
   knownStreamMessageIds?: string[];
+  skills?: SkillSnapshot[];
+  announceSkills?: boolean;
 }
 
 export type CliPermissionOptionKind =

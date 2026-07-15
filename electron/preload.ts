@@ -127,6 +127,8 @@ const cli = {
       id,
       overrides
     }),
+  setConversationSkills: (id: string, skillIds: string[]) =>
+    ipcRenderer.invoke("cli:setConversationSkills", { id, skillIds }),
   listMessages: (conversationId: string) =>
     ipcRenderer.invoke("cli:listMessages", conversationId),
   listMessage: (id: string) =>
@@ -355,6 +357,16 @@ const workflowTeams = {
   seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
+const skills = {
+  list: () => ipcRenderer.invoke("skills:list"),
+  import: (sourcePath: string) => ipcRenderer.invoke("skills:import", sourcePath),
+  setEnabled: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke("skills:setEnabled", id, enabled),
+  delete: (id: string) => ipcRenderer.invoke("skills:delete", id),
+  read: (id: string) => ipcRenderer.invoke("skills:read", id),
+  selectDirectory: () => ipcRenderer.invoke("skills:selectDirectory")
+};
+
 const updater = {
   getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
   check: () =>
@@ -387,6 +399,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   cli,
   workflow,
   workflowTeams,
+  skills,
   settings,
   feed,
   infoCards,

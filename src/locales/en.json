@@ -38,6 +38,26 @@
     "telemetryDescription": "Sends anonymous install, launch, update, app version, operating system, and CPU architecture data. Conversations, prompts, file paths, and workspace contents are never sent."
   },
   "app": { "brand": "FreeBuddy", "chat": "Chat" },
+  "skills": {
+    "title": "Skills",
+    "description": "Reusable instruction packages shared across supported agents. Conversations keep a versioned snapshot.",
+    "importFolder": "Import folder",
+    "imported": "Imported {{count}} skill(s).",
+    "search": "Search skills",
+    "loading": "Loading skills…",
+    "builtin": "Built in",
+    "importedSource": "Imported",
+    "view": "View instructions",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "deleteConfirm": "Delete imported skill “{{name}}”?",
+    "picker": "Skills {{count}}",
+    "activeForTask": "Active for this task",
+    "agentDefaults": "Default skills",
+    "agentDefaultsHint": "Automatically selected when a new task uses this agent.",
+    "roleOverride": "Role skills",
+    "none": "No enabled skills. Import or enable one in Settings."
+  },
   "sidebar": {
     "expand": "Expand sidebar",
     "collapse": "Collapse sidebar",
@@ -348,6 +368,7 @@
     "tabs": {
       "general": "General",
       "cli": "CLI Agents",
+      "skills": "Skills",
       "workflowTeams": "Workflow Teams",
       "feed": "Information Cards",
       "about": "About"

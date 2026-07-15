@@ -1,5 +1,6 @@
 import type { CLIAdapterId } from "@/config/cliAdapters";
 import type { CliStreamItem } from "./streamParser";
+import type { SkillSnapshot } from "@/services/skills/types";
 
 export interface CLIExecutorOverride {
   id: CLIAdapterId;
@@ -14,6 +15,7 @@ export interface CLIExecutorOverride {
   enabled?: boolean;
   codexByok?: CLICodexByokConfig;
   claudeByok?: CLIClaudeByokConfig;
+  skillIds?: string[];
 }
 
 export interface CLICodexByokConfig {
@@ -73,6 +75,8 @@ export interface CliRunArgs {
   timeoutMs?: number;
   userMessageId?: string;
   knownStreamMessageIds?: string[];
+  skills?: SkillSnapshot[];
+  announceSkills?: boolean;
 }
 
 export interface SessionConfigOption {
@@ -434,6 +438,7 @@ export interface Conversation {
   cwd?: string;
   approvalMode?: "auto" | "ask";
   configOptionOverrides?: Record<string, string>;
+  skillSnapshot: SkillSnapshot[];
   titleSource?: ConversationTitleSource;
   archived: boolean;
   createdAt: string;
@@ -478,6 +483,7 @@ export interface CreateConversationInput {
   cwd?: string;
   approvalMode?: "auto" | "ask";
   configOptionOverrides?: Record<string, string>;
+  skillIds?: string[];
   titleSource?: ConversationTitleSource;
 }
 

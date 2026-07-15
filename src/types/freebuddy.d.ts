@@ -59,6 +59,10 @@ import type {
   MarketSymbolSearchResult,
   UpdateInfoCardInput
 } from "@/services/infoCards/types";
+import type {
+  SkillImportResult,
+  SkillRecord
+} from "@/services/skills/types";
 
 export {};
 
@@ -163,6 +167,10 @@ declare global {
       id: string,
       overrides: Record<string, string> | null
     ): Promise<Conversation | undefined>;
+    setConversationSkills(
+      id: string,
+      skillIds: string[]
+    ): Promise<Conversation | undefined>;
 
     listMessages(conversationId: string): Promise<ConversationMessage[]>;
     listMessage(id: string): Promise<ConversationMessage | undefined>;
@@ -226,6 +234,15 @@ declare global {
     marketProvider(): Promise<MarketProviderConfig>;
     searchMarketSymbols(query: string): Promise<MarketSymbolSearchResult[]>;
     onChanged(cb: () => void): () => void;
+  }
+
+  interface FreebuddySkills {
+    list(): Promise<SkillRecord[]>;
+    import(sourcePath: string): Promise<SkillImportResult>;
+    setEnabled(id: string, enabled: boolean): Promise<SkillRecord | undefined>;
+    delete(id: string): Promise<boolean>;
+    read(id: string): Promise<string | undefined>;
+    selectDirectory(): Promise<string | null>;
   }
 
   interface FreebuddyWorkflow {
@@ -372,6 +389,7 @@ declare global {
     cli: FreebuddyCli;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
+    skills: FreebuddySkills;
     settings: FreebuddySettings;
     feed: FreebuddyFeed;
     infoCards: FreebuddyInfoCards;

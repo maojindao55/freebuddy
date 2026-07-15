@@ -49,6 +49,8 @@ import {
   upsertConversationMessage
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
+import { SkillPicker } from "./SkillPicker";
+import { useSkillStore } from "@/store/skillStore";
 import { useAttachmentImport } from "@/hooks/useAttachmentImport";
 import { resolveDeferredAttachmentImport } from "@/utils/attachmentImport";
 import {
@@ -311,6 +313,10 @@ export function ChatView() {
   const setConfigOptionOverrides = useConversationStore(
     (s) => s.setConversationConfigOptionOverrides
   );
+  const setConversationSkills = useConversationStore((s) => s.setConversationSkills);
+  const skills = useSkillStore((s) => s.skills);
+  const skillsLoaded = useSkillStore((s) => s.loaded);
+  const loadSkills = useSkillStore((s) => s.load);
 
   const [taskMode, setTaskMode] = useState<"normal" | "team">(
     "normal"
@@ -348,6 +354,7 @@ export function ChatView() {
   const sendInFlightRef = useRef(false);
   const newTaskSendInFlightRef = useRef(false);
   const [selectedMemberId, setSelectedMemberId] = useState(members[0]?.id ?? "");
+  const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskConfigOptions, setNewTaskConfigOptions] = useState<
     SessionConfigOption[]
@@ -559,6 +566,16 @@ export function ChatView() {
   useEffect(() => {
     if (!selectedMemberId && members[0]) setSelectedMemberId(members[0].id);
   }, [members, selectedMemberId]);
+
+  useEffect(() => {
+    if (!skillsLoaded) void loadSkills();
+  }, [loadSkills, skillsLoaded]);
+
+  useEffect(() => {
+    if (activeId || taskMode !== "normal") return;
+    const selectedMember = members.find((entry) => entry.id === selectedMemberId);
+    setNewTaskSkillIds(selectedMember?.cli.skillIds ?? []);
+  }, [activeId, members, selectedMemberId, taskMode]);
 
   useEffect(() => {
     const generation = ++newTaskConfigProbeGenerationRef.current;
@@ -966,7 +983,8 @@ export function ChatView() {
             attachmentName: attachmentsToSend[0]?.name,
             fallback: team.name
           }),
-          approvalMode: permissionMode
+          approvalMode: permissionMode,
+          skillIds: newTaskSkillIds
         });
         setNewTaskDraft("");
         setNewTaskPendingAttachments((prev) =>
@@ -1028,7 +1046,8 @@ export function ChatView() {
           fallback: t("chat.defaultAttachmentTitle")
         }),
         approvalMode: permissionMode,
-        configOptionOverrides: newTaskConfigOptionOverrides
+        configOptionOverrides: newTaskConfigOptionOverrides,
+        skillIds: newTaskSkillIds
       });
       setNewTaskDraft("");
       setNewTaskPendingAttachments((prev) =>
@@ -1270,10 +1289,13 @@ export function ChatView() {
         configOptions={newTaskConfigOptions}
         configOptionOverrides={newTaskConfigOptionOverrides}
         configOptionsLoading={newTaskConfigLoading}
+        skills={skills}
+        selectedSkillIds={newTaskSkillIds}
         preflightMsg={preflightMsg}
         onDraft={setNewTaskDraft}
         onMember={setSelectedMemberId}
         onConfigOptionOverrides={setNewTaskConfigOptionOverrides}
+        onSkills={setNewTaskSkillIds}
         onCwd={setNewTaskCwd}
         onPermissionMode={setPermissionMode}
         onSelectAttachments={() => void handleSelectAttachments("new")}
@@ -1466,6 +1488,14 @@ export function ChatView() {
               <PaperclipIcon />
               <span>{t("chat.attach")}</span>
             </button>
+            <SkillPicker
+              skills={skills}
+              selectedIds={conv?.skillSnapshot.map((skill) => skill.id) ?? []}
+              disabled={sending || replaying}
+              onChange={(ids) => {
+                if (conv?.id) void setConversationSkills(conv.id, ids);
+              }}
+            />
             <label
               className="composer-permission"
               title={t("chat.permissionHint")}
@@ -1546,10 +1576,13 @@ function NewTaskHome({
   configOptions,
   configOptionOverrides,
   configOptionsLoading,
+  skills,
+  selectedSkillIds,
   preflightMsg,
   onDraft,
   onMember,
   onConfigOptionOverrides,
+  onSkills,
   onCwd,
   onPermissionMode,
   onSelectAttachments,
@@ -1578,10 +1611,13 @@ function NewTaskHome({
   configOptions: SessionConfigOption[];
   configOptionOverrides: Record<string, string>;
   configOptionsLoading: boolean;
+  skills: ReturnType<typeof useSkillStore.getState>["skills"];
+  selectedSkillIds: string[];
   preflightMsg: string | null;
   onDraft: (value: string) => void;
   onMember: (value: string) => void;
   onConfigOptionOverrides: (value: Record<string, string>) => void;
+  onSkills: (ids: string[]) => void;
   onCwd: (value: string) => void;
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
@@ -1730,6 +1766,12 @@ function NewTaskHome({
             <PaperclipIcon />
             <span>{t("chat.attach")}</span>
           </button>
+          <SkillPicker
+            skills={skills}
+            selectedIds={selectedSkillIds}
+            disabled={sendLocked}
+            onChange={onSkills}
+          />
           <button
             className="composer-tool-chip"
             type="button"

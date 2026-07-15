@@ -45,6 +45,7 @@ import {
   renameConversation,
   setConversationApprovalMode,
   setConversationConfigOptionOverrides,
+  setConversationSkills,
   updateConversationAgentName,
   updateMessage,
   type AppendMessageInput,
@@ -98,6 +99,13 @@ import { tMain } from "./i18n.js";
 import { setApplicationMenuForLanguage } from "../menu.js";
 import { registerWorkflowIpc } from "./workflowIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
+import {
+  deleteSkill,
+  importSkills,
+  listSkills,
+  readSkillMarkdown,
+  setSkillEnabled
+} from "./skills.js";
 import { resolveDraftToolRequest } from "../draftToolService.js";
 import type { DraftToolResolution } from "../shared/draftToolProtocol.js";
 import {
@@ -182,6 +190,24 @@ function attachmentCandidate(filePath: string) {
 }
 
 export function registerCliIpc() {
+  ipcMain.handle("skills:list", () => listSkills());
+  ipcMain.handle("skills:import", (_event, sourcePath: string) =>
+    importSkills(sourcePath)
+  );
+  ipcMain.handle("skills:setEnabled", (_event, id: string, enabled: boolean) =>
+    setSkillEnabled(id, enabled)
+  );
+  ipcMain.handle("skills:delete", (_event, id: string) => deleteSkill(id));
+  ipcMain.handle("skills:read", (_event, id: string) => readSkillMarkdown(id));
+  ipcMain.handle("skills:selectDirectory", async (event) => {
+    const win = senderWindow(event);
+    if (!win) return null;
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      properties: ["openDirectory"]
+    });
+    return canceled ? null : filePaths[0] ?? null;
+  });
+
   ipcMain.handle("cli:selectDirectory", async (event) => {
     const win = senderWindow(event);
     if (!win) return null;
@@ -495,6 +521,11 @@ export function registerCliIpc() {
       setConversationConfigOptionOverrides(args.id, args.overrides);
       return getConversation(args.id);
     }
+  );
+  ipcMain.handle(
+    "cli:setConversationSkills",
+    (_e, args: { id: string; skillIds: string[] }) =>
+      setConversationSkills(args.id, Array.isArray(args.skillIds) ? args.skillIds : [])
   );
 
   ipcMain.handle("cli:listMessages", (_e, conversationId: string) =>

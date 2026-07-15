@@ -89,7 +89,7 @@ test("theme setting defaults to following the system", () => {
 });
 
 test("sidebar version area shows update capsule for available updates", () => {
-  assert.match(settingsModal, /export type SettingsTab = "general" \| "cli" \| "workflowTeams" \| "feed" \| "about"/);
+  assert.match(settingsModal, /export type SettingsTab = "general" \| "cli" \| "skills" \| "workflowTeams" \| "feed" \| "about"/);
   assert.match(settingsModal, /initialTab = "cli"/);
   assert.match(settingsModal, /useState<SettingsTab>\(initialTab\)/);
   assert.match(app, /const \[settingsInitialTab, setSettingsInitialTab\] = useState<SettingsTab>\("cli"\)/);

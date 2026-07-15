@@ -21,6 +21,7 @@ export interface ResolvedExecutor extends CLIAdapterDefinition {
   enabled: boolean;
   codexByok?: CLIExecutorOverride["codexByok"];
   claudeByok?: CLIExecutorOverride["claudeByok"];
+  skillIds?: string[];
   runtime?: CliRuntime;
   override?: CLIExecutorOverride;
 }
@@ -162,6 +163,7 @@ export const useCliExecutorStore = create<State>((set, get) => ({
       enabled: o?.enabled !== false,
       codexByok: o?.codexByok,
       claudeByok: o?.claudeByok,
+      skillIds: o?.skillIds,
       runtime: isClone ? runtimes[id] : runtimes[def.id],
       override: o
     };

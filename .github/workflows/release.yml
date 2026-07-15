@@ -28,6 +28,8 @@ jobs:
           | macOS Apple Silicon | \`FreeBuddy_macOS-Apple-Silicon-${{ github.ref_name }}.dmg\` | M 系列芯片 Mac |
           | macOS Intel | \`FreeBuddy_macOS-Intel-${{ github.ref_name }}.dmg\` | Intel 芯片 Mac |
           | Windows | \`FreeBuddy_Windows_x64-${{ github.ref_name }}.exe\` | Windows 10/11 64 位 |
+          | Ubuntu / Debian (x64) | \`FreeBuddy_Ubuntu_x64-${{ github.ref_name }}.deb\` | Ubuntu 22.04/24.04 及 Debian 系发行版 |
+          | Linux AppImage (x64) | \`FreeBuddy_Linux_x64-${{ github.ref_name }}.AppImage\` | 免安装的通用 Linux 包 |
 
           ## macOS 安装提示
           如果提示无法打开，请在终端执行：
@@ -36,7 +38,18 @@ jobs:
           \`\`\`
 
           ## Windows 安装提示
-          如果 SmartScreen 弹出警告，点击「更多信息」后选择「仍要运行」。"
+          如果 SmartScreen 弹出警告，点击「更多信息」后选择「仍要运行」。
+
+          ## Ubuntu / Linux 安装提示
+          Ubuntu / Debian 推荐安装 DEB：
+          \`\`\`bash
+          sudo apt install ./FreeBuddy_Ubuntu_x64-${{ github.ref_name }}.deb
+          \`\`\`
+          AppImage 下载后可直接授权运行：
+          \`\`\`bash
+          chmod +x FreeBuddy_Linux_x64-${{ github.ref_name }}.AppImage
+          ./FreeBuddy_Linux_x64-${{ github.ref_name }}.AppImage
+          \`\`\`"
           fi
 
   build:
@@ -59,6 +72,11 @@ jobs:
             builder_args: --win --x64
             assets: |
               FreeBuddy_Windows_x64-__VERSION__.exe|*.exe
+          - platform: ubuntu-latest
+            builder_args: --linux --x64
+            assets: |
+              FreeBuddy_Ubuntu_x64-__VERSION__.deb|*.deb
+              FreeBuddy_Linux_x64-__VERSION__.AppImage|*.AppImage
 
     runs-on: ${{ matrix.platform }}
 
@@ -178,6 +196,30 @@ jobs:
                 --repo "$repo" --clobber
             fi
           fi
+
+      - name: Upload Linux update metadata (latest-linux.yml)
+        if: matrix.platform == 'ubuntu-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          tag="${{ github.ref_name }}"
+          repo="${{ github.repository }}"
+          version_suffix="v$(node -p "require('./package.json').version")"
+          appimage_name="FreeBuddy_Linux_x64-${version_suffix}.AppImage"
+          yml=$(find release -name latest-linux.yml -type f | head -1)
+          if [ -z "$yml" ]; then
+            echo "No latest-linux.yml found; skipping"
+            exit 0
+          fi
+          # AppImage blockmap data is embedded in the AppImage itself. Rewrite
+          # the native artifact name to the friendly download name above.
+          sed -E -i.bak \
+            "s#FreeBuddy-[0-9]+\.[0-9]+\.[0-9]+-linux-(x64|x86_64)\.AppImage#${appimage_name}#g" \
+            "$yml"
+          cp "$yml" latest-linux.yml
+          gh release upload "$tag" latest-linux.yml \
+            --repo "$repo" --clobber
 
       - name: Upload renamed assets (Windows)
         if: matrix.platform == 'windows-latest'

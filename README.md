@@ -97,6 +97,10 @@ Open **Settings → Coding Agents** to:
 | **macOS (Apple Silicon)** | `.dmg` | `brew install --cask maojindao55/freebuddy/freebuddy` |
 | **macOS (Intel)** | `.dmg` | - |
 | **Windows** | `.exe` installer | - |
+| **Ubuntu / Debian (x64)** | `.deb` | `sudo apt install ./FreeBuddy_Ubuntu_x64-<version>.deb` |
+| **Linux (x64)** | `.AppImage` | `chmod +x FreeBuddy_Linux_x64-<version>.AppImage` |
+
+The AppImage uses a static runtime and runs on current Ubuntu releases without installing FUSE 2.
 
 ### Build from Source
 

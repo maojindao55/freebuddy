@@ -19,6 +19,11 @@ import {
   type CliRunArgs
 } from "./runtime.js";
 import {
+  getCachedSessionConfigOptions,
+  inspectSessionConfigOptions,
+  type SessionConfigProbeInput
+} from "./sessionConfigProbe.js";
+import {
   takeAuthenticationResolver,
   takePermissionResolver
 } from "./runtimeShared.js";
@@ -265,11 +270,16 @@ export function registerCliIpc() {
   ipcMain.handle("cli:install", async (_e, args: { adapter: string; command: string }) =>
     cliInstall(args.command, args.adapter)
   );
-  ipcMain.handle("cli:installStream", async (_e, args: { adapter: string; command: string }) =>
+  ipcMain.handle("cli:installStream", async (event, args: {
+    adapter: string;
+    command: string;
+    requestId: string;
+  }) =>
     cliInstallStream(
       args.command,
-      BrowserWindow.getFocusedWindow()?.webContents,
-      args.adapter
+      event.sender,
+      args.adapter,
+      args.requestId
     )
   );
 
@@ -280,6 +290,16 @@ export function registerCliIpc() {
     void cliRun(win.webContents, args);
     return { sessionId: args.sessionId };
   });
+  ipcMain.handle(
+    "cli:getCachedSessionConfigOptions",
+    (_event, args: SessionConfigProbeInput) =>
+      getCachedSessionConfigOptions(args)
+  );
+  ipcMain.handle(
+    "cli:inspectSessionConfigOptions",
+    (_event, args: SessionConfigProbeInput) =>
+      inspectSessionConfigOptions(args)
+  );
   ipcMain.handle("cli:kill", (_e, sessionId: string) => cliKill(sessionId));
   ipcMain.handle(
     "draft-tool:resolve",

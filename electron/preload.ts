@@ -6,6 +6,28 @@ import type {
   DraftToolResolution
 } from "./shared/draftToolProtocol.js";
 
+type CliInstallEvent =
+  | { type: "stdout" | "stderr"; content: string }
+  | {
+      type: "done";
+      exitCode: number | null;
+      failureCode?:
+        | "tool_missing"
+        | "node_arch_mismatch"
+        | "timeout"
+        | "spawn_error";
+      failureDetail?: string;
+    };
+
+type CliInstallWireEvent = CliInstallEvent & { requestId: string };
+
+let cliInstallRequestSequence = 0;
+
+function nextCliInstallRequestId(): string {
+  cliInstallRequestSequence += 1;
+  return `cli-install-${Date.now()}-${cliInstallRequestSequence}`;
+}
+
 const cli = {
   listAdapters: () => ipcRenderer.invoke("cli:listAdapters"),
   listOverrides: () => ipcRenderer.invoke("cli:listOverrides"),
@@ -34,12 +56,18 @@ const cli = {
   installStream: (
     adapter: string,
     command: string,
-    cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+    cb: (event: CliInstallEvent) => void
   ): (() => void) => {
     const channel = "cli://install";
-    const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload as any);
+    const requestId = nextCliInstallRequestId();
+    const handler = (_e: IpcRendererEvent, payload: unknown) => {
+      if (!payload || typeof payload !== "object") return;
+      const event = payload as CliInstallWireEvent;
+      if (event.requestId !== requestId) return;
+      cb(event);
+    };
     ipcRenderer.on(channel, handler);
-    ipcRenderer.invoke("cli:installStream", { adapter, command }).catch((err) => {
+    ipcRenderer.invoke("cli:installStream", { adapter, command, requestId }).catch((err) => {
       cb({ type: "stderr", content: String(err) });
       cb({ type: "done", exitCode: 1 });
     });
@@ -47,6 +75,10 @@ const cli = {
   },
 
   run: (args: unknown) => ipcRenderer.invoke("cli:run", args),
+  getCachedSessionConfigOptions: (args: unknown) =>
+    ipcRenderer.invoke("cli:getCachedSessionConfigOptions", args),
+  inspectSessionConfigOptions: (args: unknown) =>
+    ipcRenderer.invoke("cli:inspectSessionConfigOptions", args),
   kill: (sessionId: string) => ipcRenderer.invoke("cli:kill", sessionId),
   permissionDecision: (args: unknown) =>
     ipcRenderer.invoke("cli:permissionDecision", args),

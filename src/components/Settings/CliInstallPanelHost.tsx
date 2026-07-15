@@ -26,7 +26,44 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
   const dismissJob = useCliInstallStore((s) => s.dismissJob);
   const scrollRef = useRef<HTMLDivElement>(null);
   const minimized = job.panelState === "minimized";
-  const success = job.done && job.exitCode === 0;
+  const success = job.phase === "succeeded";
+  const verifying = job.phase === "verifying";
+
+  const runtimeFailureText = (error: string | undefined) => {
+    if (error === "claude runtime architecture mismatch") {
+      return t("settings.cli.claudeArchitectureMismatch");
+    }
+    if (error === "claude native binary not found") {
+      return t("settings.cli.claudeNativeMissing");
+    }
+    if (error === "version probe timed out") {
+      return t("settings.cli.checkTimedOut");
+    }
+    return error || t("settings.cli.checkProbeFailed");
+  };
+
+  const installFailureText = () => {
+    if (job.failureCode === "tool_missing") {
+      return t("settings.cli.installToolMissing", {
+        tool: job.failureDetail || "npm"
+      });
+    }
+    if (job.failureCode === "node_arch_mismatch") {
+      return t("settings.cli.nodeArchitectureMismatch");
+    }
+    if (job.failureCode === "timeout") {
+      return t("settings.cli.installTimedOut");
+    }
+    if (job.failureCode === "spawn_error") {
+      return t("settings.cli.installSpawnFailed", {
+        error: job.failureDetail || ""
+      });
+    }
+    return t("settings.cli.installFailed", {
+      code: job.exitCode ?? t("settings.cli.unknownExit"),
+      output: ""
+    });
+  };
 
   useEffect(() => {
     if (minimized) return;
@@ -47,7 +84,9 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
             ? success
               ? t("settings.cli.installSuccessShort", { label: job.label })
               : t("settings.cli.installFailedShort", { label: job.label })
-            : t("settings.cli.installRunning", { label: job.label })}
+            : verifying
+              ? t("settings.cli.installVerifyingShort", { label: job.label })
+              : t("settings.cli.installRunning", { label: job.label })}
         </span>
         {!job.done && <span className="install-panel-spinner" aria-hidden="true" />}
       </button>
@@ -82,22 +121,31 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
       </header>
 
       {!job.done && (
-        <p className="install-panel-hint muted">{t("settings.cli.installBackgroundHint")}</p>
+        <p className="install-panel-hint muted">
+          {verifying
+            ? t("settings.cli.installVerifying")
+            : t("settings.cli.installBackgroundHint")}
+        </p>
       )}
 
       <div className="install-output install-panel-output" ref={scrollRef}>
-        {job.output || (!job.done ? t("settings.cli.installStarting") : "")}
+        {job.output || (!job.done
+          ? verifying
+            ? t("settings.cli.installVerifying")
+            : t("settings.cli.installStarting")
+          : "")}
         {!job.done && <span className="install-cursor">▌</span>}
       </div>
 
       {job.done && (
         <div className={`install-result ${success ? "ok" : "warn"}`}>
           {success
-            ? t("settings.cli.installSuccess")
-            : t("settings.cli.installFailed", {
-                code: job.exitCode ?? t("settings.cli.unknownExit"),
-                output: ""
-              })}
+            ? t("settings.cli.installVerifiedSuccess")
+            : job.phase === "verification_failed"
+              ? t("settings.cli.installVerificationFailed", {
+                  reason: runtimeFailureText(job.verificationError)
+                })
+              : installFailureText()}
         </div>
       )}
 

@@ -97,6 +97,10 @@ Open **Settings → Coding Agents** to:
 | **macOS (Apple Silicon)** | `.dmg` | `brew install --cask maojindao55/freebuddy/freebuddy` |
 | **macOS (Intel)** | `.dmg` | - |
 | **Windows** | `.exe` installer | - |
+| **Ubuntu / Debian (x64)** | `.deb` | `sudo apt install ./FreeBuddy_Ubuntu_x64-<version>.deb` |
+| **Linux (x64)** | `.AppImage` | `chmod +x FreeBuddy_Linux_x64-<version>.AppImage` |
+
+The AppImage uses a static runtime and runs on current Ubuntu releases without installing FUSE 2.
 
 ### Build from Source
 
@@ -118,7 +122,25 @@ npm run build
 npm run start
 ```
 
+Before pushing a branch or creating a pull request, verify both the stored
+GitHub CLI login and real API access:
+
+```bash
+npm run github:preflight
+```
+
+The check never prints token values or creates a new OAuth token. If it fails,
+follow the displayed recovery instructions and run the check again. Inside a
+Codex sandbox, verify once with system permissions before starting a new login,
+because the sandbox may be unable to access the macOS keychain or network.
+
 > **Note:** `postinstall` runs `electron-rebuild` for `better-sqlite3` to ensure the native binding matches your Electron version.
+
+---
+
+## Star History
+
+[![FreeBuddy Star History](assets/star-history.svg)](https://www.star-history.com/?repos=maojindao55/freebuddy&type=Date)
 
 ---
 

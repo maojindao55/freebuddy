@@ -153,6 +153,7 @@ export interface CreateConversationInput {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   titleSource?: ConversationTitleSource;
 }
 
@@ -161,8 +162,9 @@ export function createConversation(input: CreateConversationInput): Conversation
   getDb()
     .prepare(
       `INSERT INTO conversations
-         (id, title, agent_id, agent_name, adapter, cwd, approval_mode, title_source, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+         (id, title, agent_id, agent_name, adapter, cwd, approval_mode,
+          config_option_overrides, title_source, archived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     )
     .run(
       input.id,
@@ -172,6 +174,10 @@ export function createConversation(input: CreateConversationInput): Conversation
       input.adapter,
       input.cwd ?? null,
       input.approvalMode ?? null,
+      input.configOptionOverrides &&
+        Object.keys(input.configOptionOverrides).length > 0
+        ? JSON.stringify(input.configOptionOverrides)
+        : null,
       input.titleSource ?? "default",
       now,
       now

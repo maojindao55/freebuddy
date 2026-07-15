@@ -16,6 +16,7 @@ import type {
 import type {
   WorkflowTeam,
   WorkflowNodeContract,
+  WorkflowTeamRole,
   WorkflowTeamPreview,
   WorkflowTemplateNode,
   WorkflowTemplateNodeMode
@@ -48,6 +49,32 @@ function renderPrompt(
     .replace(/\{\{goal\}\}/g, input.goal)
     .replace(/\{\{cwd\}\}/g, input.cwd ?? "")
     .replace(/\{\{targetPaths\}\}/g, target);
+}
+
+function applyRoleModelsToPlan(
+  plan: WorkflowPlan,
+  roleByPhaseId: Map<string, WorkflowTeamRole | undefined>
+): WorkflowPlan {
+  return {
+    ...plan,
+    phases: plan.phases.map((phase) => {
+      const role = roleByPhaseId.get(phase.id);
+      const model = role?.model?.trim();
+      if (!role || !model) return phase;
+      const optionId = role.modelOptionId?.trim() || "model";
+      return {
+        ...phase,
+        steps: phase.steps.map((step) => ({
+          ...step,
+          model,
+          configOptionOverrides: {
+            ...step.configOptionOverrides,
+            [optionId]: model
+          }
+        }))
+      };
+    })
+  };
 }
 
 /**
@@ -156,6 +183,14 @@ export function expandTeamToPlan(
       agentId: agentRef.id,
       mode: nodeModeToStepMode(node.mode),
       prompt: renderPrompt(node.promptTemplate, input),
+      ...(role?.model?.trim()
+        ? {
+            model: role.model.trim(),
+            configOptionOverrides: {
+              [role.modelOptionId?.trim() || "model"]: role.model.trim()
+            }
+          }
+        : {}),
       ...(priorStepIds.length ? { consumes: priorStepIds } : {})
     };
 
@@ -266,10 +301,14 @@ function expandConfigurableDeliveryTeamToPlan(
     errors.push("configurable delivery team requires an implement node");
   }
 
-  const roleAgentId = (contract: WorkflowNodeContract) => {
+  const roleForContract = (contract: WorkflowNodeContract) => {
     const node = nodeByContract.get(contract);
-    const role = node?.roleId ? team.roles.find((r) => r.id === node.roleId) : undefined;
-    return role?.agentId;
+    return node?.roleId
+      ? team.roles.find((role) => role.id === node.roleId)
+      : undefined;
+  };
+  const roleAgentId = (contract: WorkflowNodeContract) => {
+    return roleForContract(contract)?.agentId;
   };
   const resolveContractAgent = (contract: WorkflowNodeContract) => {
     const agentId = roleAgentId(contract);
@@ -294,7 +333,7 @@ function expandConfigurableDeliveryTeamToPlan(
   }
 
   const hasApproval = teamHasManualApprovalGate(team);
-  const plan = buildConfigurableDeliveryPlan({
+  const plan = applyRoleModelsToPlan(buildConfigurableDeliveryPlan({
     name: team.name,
     goal: input.goal,
     cwd: input.cwd,
@@ -306,7 +345,13 @@ function expandConfigurableDeliveryTeamToPlan(
     summarizer,
     maxLoops: team.policy.maxLoops,
     requireApprovalBeforeWrite: hasApproval || team.policy.requireApprovalBeforeWrite
-  });
+  }), new Map([
+    ["plan", roleForContract("plan")],
+    ["implement", roleForContract("implement")],
+    ["review", roleForContract("review")],
+    ["verify", roleForContract("verify")],
+    ["summarize", roleForContract("summarize")]
+  ]));
 
   const routeSummary: WorkflowTeamPreview["routeSummary"] = [];
   for (const node of team.template.nodes) {
@@ -390,7 +435,7 @@ function expandImplementReviewTeamToPlan(
     return { ok: false, errors };
   }
 
-  const plan = buildImplementReviewLoopPlan({
+  const plan = applyRoleModelsToPlan(buildImplementReviewLoopPlan({
     goal: input.goal,
     cwd: input.cwd,
     targetPaths: input.targetPaths,
@@ -399,7 +444,12 @@ function expandImplementReviewTeamToPlan(
     verifier,
     summarizer,
     maxLoops: team.policy.maxLoops
-  });
+  }), new Map([
+    ["implement", implementerRole],
+    ["review", reviewerRole],
+    ["verify", verifierRole],
+    ["summarize", summarizerRole]
+  ]));
 
   const roleSummary: WorkflowTeamPreview["roleSummary"] = team.roles.map((role) => {
     const m = builtinCliMembers.find((x) => x.id === role.agentId);

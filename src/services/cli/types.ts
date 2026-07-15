@@ -25,6 +25,7 @@ export interface CLICodexByokConfig {
   wireApi?: "responses" | "chat";
   apiKey?: string;
   apiKeyPreview?: string;
+  models?: CLIByokModel[];
 }
 
 export interface CLIClaudeByokConfig {
@@ -33,6 +34,12 @@ export interface CLIClaudeByokConfig {
   envKey?: string;
   apiKey?: string;
   apiKeyPreview?: string;
+  models?: CLIByokModel[];
+}
+
+export interface CLIByokModel {
+  id: string;
+  name?: string;
 }
 
 export interface CliPromptAttachment {
@@ -66,6 +73,26 @@ export interface CliRunArgs {
   timeoutMs?: number;
   userMessageId?: string;
   knownStreamMessageIds?: string[];
+}
+
+export interface SessionConfigOption {
+  id: string;
+  name?: string;
+  category?: string;
+  type?: string;
+  currentValue?: string;
+  currentLabel?: string;
+  description?: string;
+  values?: { id: string; name?: string }[];
+}
+
+export interface SessionConfigProbeInput {
+  agentId: string;
+  adapter: CLIAdapterId;
+  binary?: string;
+  extraArgs?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
 }
 
 export type DraftToolAction = "show" | "inspect" | "report";
@@ -230,6 +257,21 @@ export interface CliInstallResult {
   stdout: string;
   stderr: string;
 }
+
+export type CliInstallFailureCode =
+  | "tool_missing"
+  | "node_arch_mismatch"
+  | "timeout"
+  | "spawn_error";
+
+export type CliInstallEvent =
+  | { type: "stdout" | "stderr"; content: string }
+  | {
+      type: "done";
+      exitCode: number | null;
+      failureCode?: CliInstallFailureCode;
+      failureDetail?: string;
+    };
 
 export interface CliRuntime {
   adapter: string;
@@ -435,6 +477,7 @@ export interface CreateConversationInput {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   titleSource?: ConversationTitleSource;
 }
 

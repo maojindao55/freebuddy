@@ -26,11 +26,13 @@ test("electron-builder config packages FreeBuddy for desktop platforms", () => {
   assert.match(builderConfig, /mac:[\s\S]*target:[\s\S]*- target:\s+dmg[\s\S]*- target:\s+zip/m);
   assert.match(builderConfig, /win:[\s\S]*target:[\s\S]*- target:\s+nsis/m);
   assert.match(builderConfig, /linux:[\s\S]*target:[\s\S]*- target:\s+AppImage[\s\S]*- target:\s+deb/m);
+  assert.match(builderConfig, /linux:[\s\S]*category:\s+Development/m);
   assert.match(builderConfig, /linux:[\s\S]*maintainer:\s+FreeBuddy <noreply@freebuddy\.dev>/m);
+  assert.match(builderConfig, /toolsets:[\s\S]*appimage:\s+"1\.0\.3"/m);
   assert.match(builderConfig, /extraResources:[\s\S]*from:\s+assets\/app-icon\.png[\s\S]*to:\s+app-icon\.png/m);
 });
 
-test("release workflow uploads version-suffixed assets and Windows update metadata", () => {
+test("release workflow uploads version-suffixed assets and update metadata for every platform", () => {
   assert.match(workflow, /name:\s+Release/);
   assert.match(workflow, /tags:\s+\['v\*'\]/);
   assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-__VERSION__\.dmg/);
@@ -38,6 +40,9 @@ test("release workflow uploads version-suffixed assets and Windows update metada
   assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.dmg/);
   assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.zip/);
   assert.match(workflow, /FreeBuddy_Windows_x64-__VERSION__\.exe/);
+  assert.match(workflow, /platform:\s+ubuntu-latest[\s\S]*builder_args:\s+--linux --x64/m);
+  assert.match(workflow, /FreeBuddy_Ubuntu_x64-__VERSION__\.deb/);
+  assert.match(workflow, /FreeBuddy_Linux_x64-__VERSION__\.AppImage/);
   assert.match(workflow, /asset_name="\$\{asset_name\/\/__VERSION__\/\$version_suffix\}"/);
   assert.match(workflow, /\$assetName = \$assetName\.Replace\("__VERSION__", "v\$appVersion"\)/);
   assert.match(workflow, /npm ci/);
@@ -52,4 +57,8 @@ test("release workflow uploads version-suffixed assets and Windows update metada
   assert.match(workflow, /Upload Windows update metadata/);
   assert.match(workflow, /FreeBuddy_Windows_x64-v\$appVersion\.exe/);
   assert.match(workflow, /\$windowsAssetName\.blockmap/);
+  // AppImage supports auto-update through latest-linux.yml; its blockmap is embedded.
+  assert.match(workflow, /Upload Linux update metadata/);
+  assert.match(workflow, /find release -name latest-linux\.yml/);
+  assert.match(workflow, /FreeBuddy_Linux_x64-\$\{version_suffix\}\.AppImage/);
 });

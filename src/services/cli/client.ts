@@ -4,9 +4,12 @@ import type {
   CliCheckResult,
   CliEvent,
   CliInstallResult,
+  CliInstallEvent,
   CliAuthControlArgs,
   CliAuthProbeResult,
   CliRunArgs,
+  SessionConfigOption,
+  SessionConfigProbeInput,
   CliRuntime,
   CliTaskListArgs,
   CliTaskLogPage,
@@ -78,13 +81,23 @@ export const cliClient = {
   installStream(
     adapter: string,
     command: string,
-    cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+    cb: (event: CliInstallEvent) => void
   ): () => void {
     return api().installStream(adapter, command, cb);
   },
 
   run(args: CliRunArgs): Promise<{ sessionId: string }> {
     return api().run(args);
+  },
+  getCachedSessionConfigOptions(
+    args: SessionConfigProbeInput
+  ): Promise<SessionConfigOption[]> {
+    return api().getCachedSessionConfigOptions(args);
+  },
+  inspectSessionConfigOptions(
+    args: SessionConfigProbeInput
+  ): Promise<SessionConfigOption[]> {
+    return api().inspectSessionConfigOptions(args);
   },
   kill(sessionId: string): Promise<boolean> {
     return api().kill(sessionId);

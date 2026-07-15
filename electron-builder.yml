@@ -25,6 +25,10 @@ publish:
     owner: maojindao55
     repo: freebuddy
 
+# Use the static AppImage runtime so Ubuntu 24.04 users do not need FUSE 2.
+toolsets:
+  appimage: "1.0.3"
+
 mac:
   icon: desktop/macos/AppIcon.icns
   category: public.app-category.productivity
@@ -47,7 +51,7 @@ nsis:
 
 linux:
   icon: assets/app-icon.png
-  category: Utility
+  category: Development
   maintainer: FreeBuddy <noreply@freebuddy.dev>
   target:
     - target: AppImage

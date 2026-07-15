@@ -1,9 +1,16 @@
 import { create } from "zustand";
 
 import { cliClient } from "@/services/cli/client";
+import type { CliInstallFailureCode } from "@/services/cli/types";
 import type { CLIAdapterId } from "@/config/cliAdapters";
 
 export type CliInstallPanelState = "expanded" | "minimized";
+export type CliInstallPhase =
+  | "installing"
+  | "verifying"
+  | "succeeded"
+  | "failed"
+  | "verification_failed";
 
 export interface CliInstallJob {
   id: string;
@@ -11,8 +18,12 @@ export interface CliInstallJob {
   label: string;
   command: string;
   output: string;
+  phase: CliInstallPhase;
   done: boolean;
   exitCode: number | null;
+  failureCode?: CliInstallFailureCode;
+  failureDetail?: string;
+  verificationError?: string;
   panelState: CliInstallPanelState;
 }
 
@@ -56,28 +67,86 @@ function scheduleFlush(id: string, set: (fn: (s: State) => Partial<State>) => vo
   );
 }
 
-function finishJob(
+async function finishJob(
   id: string,
   exitCode: number | null,
+  failureCode: CliInstallFailureCode | undefined,
+  failureDetail: string | undefined,
   set: (fn: (s: State) => Partial<State>) => void
-) {
+): Promise<void> {
   const timer = flushTimers.get(id);
   if (timer) clearTimeout(timer);
   flushOutput(id, set);
   pendingOutput.delete(id);
 
+  if (exitCode !== 0) {
+    set((s) => ({
+      jobs: s.jobs.map((j) =>
+        j.id === id
+          ? {
+              ...j,
+              phase: "failed" as const,
+              done: true,
+              exitCode,
+              failureCode,
+              failureDetail,
+              panelState: "expanded" as const
+            }
+          : j
+      )
+    }));
+    return;
+  }
+
   set((s) => ({
     jobs: s.jobs.map((j) =>
       j.id === id
-        ? { ...j, done: true, exitCode, panelState: "expanded" as const }
+        ? {
+            ...j,
+            phase: "verifying" as const,
+            done: false,
+            exitCode,
+            panelState: "expanded" as const
+          }
         : j
     )
   }));
 
-  if (exitCode === 0) {
-    void import("@/store/cliExecutorStore").then(({ useCliExecutorStore }) => {
-      void useCliExecutorStore.getState().check(id as CLIAdapterId);
-    });
+  try {
+    const { useCliExecutorStore } = await import("@/store/cliExecutorStore");
+    await useCliExecutorStore.getState().check(id as CLIAdapterId);
+    const runtime = useCliExecutorStore
+      .getState()
+      .resolve(id as CLIAdapterId)?.runtime;
+    set((s) => ({
+      jobs: s.jobs.map((j) =>
+        j.id === id
+          ? {
+              ...j,
+              phase: runtime?.installed
+                ? "succeeded" as const
+                : "verification_failed" as const,
+              done: true,
+              verificationError: runtime?.installed
+                ? undefined
+                : runtime?.lastError || "verification failed"
+            }
+          : j
+      )
+    }));
+  } catch (error) {
+    set((s) => ({
+      jobs: s.jobs.map((j) =>
+        j.id === id
+          ? {
+              ...j,
+              phase: "verification_failed" as const,
+              done: true,
+              verificationError: (error as Error)?.message || String(error)
+            }
+          : j
+      )
+    }));
   }
 }
 
@@ -100,6 +169,7 @@ export const useCliInstallStore = create<State>((set, get) => ({
       label,
       command,
       output: "",
+      phase: "installing",
       done: false,
       exitCode: null,
       panelState: "expanded"
@@ -114,9 +184,15 @@ export const useCliInstallStore = create<State>((set, get) => ({
         pendingOutput.set(adapterId, (pendingOutput.get(adapterId) ?? "") + event.content);
         scheduleFlush(adapterId, set);
       } else if (event.type === "done") {
-        finishJob(adapterId, event.exitCode, set);
         off();
         unsubscribers.delete(adapterId);
+        void finishJob(
+          adapterId,
+          event.exitCode,
+          event.failureCode,
+          event.failureDetail,
+          set
+        );
       }
     });
 

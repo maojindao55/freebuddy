@@ -807,12 +807,13 @@ export function cliInstall(command: string, adapter = "custom"): Promise<CliInst
 export function cliInstallStream(
   command: string,
   webContents?: Electron.WebContents | null,
-  adapter = "custom"
+  adapter = "custom",
+  requestId = adapter
 ): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
     const channel = "cli://install";
-    const send = (payload: unknown) => {
-      safeSendToWebContents(webContents, channel, payload);
+    const send = (payload: Record<string, unknown>) => {
+      safeSendToWebContents(webContents, channel, { ...payload, requestId });
     };
     void (async () => {
       const trimmed = command.trim();

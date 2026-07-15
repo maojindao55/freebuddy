@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { cliClient } from "@/services/cli/client";
+import type {
+  SessionConfigOption,
+  SessionConfigProbeInput
+} from "@/services/cli/types";
 import type {
   WorkflowNodeContract,
   WorkflowTeam,
@@ -19,6 +24,7 @@ import {
 } from "@/services/workflowTeams/types";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useConversationStore } from "@/store/conversationStore";
+import { useCliExecutorStore } from "@/store/cliExecutorStore";
 
 type DeliveryNodeContract = Exclude<
   WorkflowNodeContract,
@@ -193,6 +199,8 @@ function buildDeliveryRoles(
       agentId:
         existing?.agentId ??
         fallbackAgentForRole(members, def.roleKind!),
+      model: existing?.model,
+      modelOptionId: existing?.modelOptionId,
       required: true,
       canWrite: def.mode === "write",
       description: existing?.description
@@ -252,6 +260,14 @@ export function WorkflowTeamEditor({
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [modelOptionsByAgent, setModelOptionsByAgent] = useState<
+    Record<string, SessionConfigOption[]>
+  >({});
+  const [modelLoadingByAgent, setModelLoadingByAgent] = useState<
+    Record<string, boolean>
+  >({});
+  const modelProbeInFlightRef = useRef(new Set<string>());
+  const modelRefreshedRef = useRef(new Set<string>());
   const isBuiltin = team?.source === "builtin";
   const displayName = team ? workflowTeamName(team, t) : draft.name;
   const displayDescription = team
@@ -260,6 +276,34 @@ export function WorkflowTeamEditor({
   const selectedDeliveryContracts = selectedContractsFromTemplate(draft.template);
   const planApprovalEnabled =
     hasPlanApprovalGate(draft.template) || draft.policy.requireApprovalBeforeWrite;
+  const roleAgentIdsKey = useMemo(
+    () =>
+      Array.from(new Set(draft.roles.map((role) => role.agentId).filter(Boolean)))
+        .sort()
+        .join("\u0000"),
+    [draft.roles]
+  );
+
+  const sessionProbeInputForAgent = useCallback(
+    (agentId: string): SessionConfigProbeInput | undefined => {
+      const member = members.find((entry) => entry.id === agentId);
+      if (!member) return undefined;
+      const resolved = useCliExecutorStore
+        .getState()
+        .resolve(member.cli.adapter);
+      return {
+        agentId: member.id,
+        adapter: member.cli.adapter,
+        binary: member.cli.binary || resolved?.binary,
+        extraArgs: [
+          ...(resolved?.extraArgs ?? []),
+          ...(member.cli.extraArgs ?? [])
+        ],
+        env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) }
+      };
+    },
+    [members]
+  );
 
   useEffect(() => {
     if (team) {
@@ -279,10 +323,90 @@ export function WorkflowTeamEditor({
     setErrors([]);
   }, [team, members, t]);
 
+  useEffect(() => {
+    if (!roleAgentIdsKey || !cliClient.isAvailable()) return;
+    let cancelled = false;
+    const agentIds = roleAgentIdsKey.split("\u0000");
+    void Promise.all(
+      agentIds.map(async (agentId) => {
+        const input = sessionProbeInputForAgent(agentId);
+        if (!input) return [agentId, [] as SessionConfigOption[]] as const;
+        try {
+          return [
+            agentId,
+            await cliClient.getCachedSessionConfigOptions(input)
+          ] as const;
+        } catch {
+          return [agentId, [] as SessionConfigOption[]] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setModelOptionsByAgent((current) => {
+        const next = { ...current };
+        for (const [agentId, options] of entries) {
+          if (options.length > 0) next[agentId] = options;
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [roleAgentIdsKey, sessionProbeInputForAgent]);
+
+  const refreshRoleModels = async (agentId: string) => {
+    if (
+      !cliClient.isAvailable() ||
+      modelRefreshedRef.current.has(agentId) ||
+      modelProbeInFlightRef.current.has(agentId)
+    ) {
+      return;
+    }
+    const input = sessionProbeInputForAgent(agentId);
+    if (!input) return;
+    modelProbeInFlightRef.current.add(agentId);
+    setModelLoadingByAgent((current) => ({ ...current, [agentId]: true }));
+    try {
+      const options = await cliClient.inspectSessionConfigOptions(input);
+      if (options.length > 0) {
+        modelRefreshedRef.current.add(agentId);
+        setModelOptionsByAgent((current) => ({
+          ...current,
+          [agentId]: options
+        }));
+      }
+    } catch {
+      // Keep any persisted options and allow another refresh attempt.
+    } finally {
+      modelProbeInFlightRef.current.delete(agentId);
+      setModelLoadingByAgent((current) => ({ ...current, [agentId]: false }));
+    }
+  };
+
   const setRoleAgent = (roleId: string, agentId: string) => {
     setDraft((d) => ({
       ...d,
-      roles: d.roles.map((r) => (r.id === roleId ? { ...r, agentId } : r))
+      roles: d.roles.map((r) =>
+        r.id === roleId
+          ? { ...r, agentId, model: undefined, modelOptionId: undefined }
+          : r
+      )
+    }));
+  };
+
+  const setRoleModel = (roleId: string, model: string, modelOptionId: string) => {
+    setDraft((d) => ({
+      ...d,
+      roles: d.roles.map((role) =>
+        role.id === roleId
+          ? {
+              ...role,
+              model: model.trim() || undefined,
+              modelOptionId: model.trim() ? modelOptionId : undefined
+            }
+          : role
+      )
     }));
   };
 
@@ -511,6 +635,55 @@ export function WorkflowTeamEditor({
                         {m.name}
                       </option>
                     ))}
+                  </select>
+                </label>
+                <label className="workflow-team-role-model">
+                  <span>{t("workflow.currentModel")}</span>
+                  <select
+                    value={role.model ?? ""}
+                    onFocus={() => void refreshRoleModels(role.agentId)}
+                    onChange={(e) =>
+                      setRoleModel(
+                        role.id,
+                        e.target.value,
+                        (modelOptionsByAgent[role.agentId] ?? []).find(
+                          (entry) => entry.category === "model"
+                        )?.id ??
+                          (modelOptionsByAgent[role.agentId] ?? []).find(
+                            (entry) => entry.id === "model"
+                          )?.id ??
+                          role.modelOptionId ??
+                          "model"
+                      )
+                    }
+                  >
+                    <option value="">{t("workflow.defaultModel")}</option>
+                    {modelLoadingByAgent[role.agentId] &&
+                    !(modelOptionsByAgent[role.agentId] ?? []).some(
+                      (option) =>
+                        option.category === "model" || option.id === "model"
+                    ) ? (
+                      <option disabled>{t("chat.modelLoading")}</option>
+                    ) : null}
+                    {(() => {
+                      const option = (modelOptionsByAgent[role.agentId] ?? []).find(
+                        (entry) => entry.category === "model"
+                      ) ?? (modelOptionsByAgent[role.agentId] ?? []).find(
+                        (entry) => entry.id === "model"
+                      );
+                      const values = [...(option?.values ?? [])];
+                      if (
+                        role.model &&
+                        !values.some((value) => value.id === role.model)
+                      ) {
+                        values.unshift({ id: role.model, name: role.model });
+                      }
+                      return values.map((value) => (
+                        <option key={value.id} value={value.id}>
+                          {value.name || value.id}
+                        </option>
+                      ));
+                    })()}
                   </select>
                 </label>
               </li>

@@ -8,7 +8,7 @@ import type {
   WorkflowPhase,
   WorkflowStepRow as WorkflowStepRowData
 } from "@/services/workflows/types";
-import { workflowPhaseTitle, workflowStepTitle } from "@/services/workflows/types";
+import { workflowStepTitle } from "@/services/workflows/types";
 import { WorkflowStepDetails } from "./WorkflowStepDetails";
 
 const STATUS_MAP: Record<string, StepsProps["status"]> = {
@@ -19,6 +19,11 @@ const STATUS_MAP: Record<string, StepsProps["status"]> = {
   blocked: "wait",
   skipped: "wait"
 };
+
+function compactModelLabel(model: string): string {
+  const bracketIndex = model.indexOf("[");
+  return bracketIndex > 0 ? model.slice(0, bracketIndex) : model;
+}
 
 export function WorkflowPhaseList({
   phases,
@@ -55,7 +60,15 @@ export function WorkflowPhaseList({
       : 0;
 
   const items: StepsProps["items"] = allSteps.map((step) => {
-    const phase = phases.find((entry) => entry.steps.some((ps) => ps.id === step.stepId));
+    const phase = phases.find((entry) =>
+      entry.steps.some((planStep) => planStep.id === step.stepId)
+    );
+    const planStep = phase?.steps.find((entry) => entry.id === step.stepId);
+    const modelLabel =
+      planStep?.model ??
+      (planStep?.configOptionOverrides
+        ? Object.values(planStep.configOptionOverrides)[0]
+        : undefined);
     const agentLabel = displayAgentName(step.agentName, step.adapter);
     const isSelected = selectedStepId === step.id;
     return {
@@ -65,28 +78,35 @@ export function WorkflowPhaseList({
           onClick={onSelect ? () => onSelect(step) : undefined}
           role={onSelect ? "button" : undefined}
         >
-          {workflowStepTitle(step, t)}
-        </span>
-      ),
-      description: (
-        <span className="workflow-step-meta">
-          {phase && (
-            <span className="workflow-step-phase">
-              {workflowPhaseTitle(phase, t)}
-            </span>
-          )}
-          <AgentAvatar
-            adapter={step.adapter}
-            agentId={step.agentId}
-            className="workflow-step-agent-avatar"
-            fallback={<span>{agentLabel.slice(0, 2).toUpperCase()}</span>}
-          />
-          <span className="workflow-step-agent-name">{agentLabel}</span>
+          <span className="workflow-step-title-label">
+            {workflowStepTitle(step, t)}
+          </span>
           {step.mode === "write" && (
             <span className="workflow-step-badge">
               {t("workflow.writeStep")}
             </span>
           )}
+        </span>
+      ),
+      description: (
+        <span className="workflow-step-description">
+          <span className="workflow-step-meta">
+            <AgentAvatar
+              adapter={step.adapter}
+              agentId={step.agentId}
+              className="workflow-step-agent-avatar"
+              fallback={<span>{agentLabel.slice(0, 2).toUpperCase()}</span>}
+            />
+            <span className="workflow-step-agent-name">{agentLabel}</span>
+            {modelLabel && (
+              <span
+                className="workflow-step-model"
+                title={`${t("workflow.currentModel")}: ${modelLabel}`}
+              >
+                {compactModelLabel(modelLabel)}
+              </span>
+            )}
+          </span>
           <span className={`workflow-step-status-text ${step.status}`}>
             {t(`workflow.stepStatus.${step.status}`)}
           </span>

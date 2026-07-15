@@ -8414,14 +8414,16 @@ button.ghost:focus-visible,
   font-size: 11px;
   color: var(--fb-text-tertiary);
 }
-.workflow-team-role-agent {
+.workflow-team-role-agent,
+.workflow-team-role-model {
   display: flex;
   gap: 6px;
   align-items: center;
   font-size: 12px;
   color: var(--fb-text-secondary);
 }
-.workflow-team-role-agent select {
+.workflow-team-role-agent select,
+.workflow-team-role-model select {
   padding: 5px 8px;
   border-radius: 6px;
   border: 1px solid var(--fb-border);
@@ -8431,7 +8433,9 @@ button.ghost:focus-visible,
   outline: none;
   cursor: pointer;
 }
-.workflow-team-role-agent select:focus { border-color: var(--fb-brand); }
+.workflow-team-role-model select { max-width: 190px; }
+.workflow-team-role-agent select:focus,
+.workflow-team-role-model select:focus { border-color: var(--fb-brand); }
 .workflow-team-nodes {
   list-style: none;
   margin: 0;
@@ -8802,17 +8806,35 @@ button.ghost:focus-visible,
   cursor: pointer;
   line-height: 16px !important;
 }
+.workflow-step-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.workflow-step-title-label {
+  min-width: 0;
+}
 .workflow-steps-antd .ant-steps-item-description {
   font-size: 11px !important;
   margin-top: 2px !important;
+  width: 100%;
+  max-width: none !important;
+}
+.workflow-step-description {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 .workflow-step-meta {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  min-width: 0;
   font-size: 11px;
   color: var(--muted, #6b7280);
-  flex-wrap: wrap;
+  white-space: nowrap;
 }
 .workflow-step-agent-avatar {
   display: grid;
@@ -8834,9 +8856,24 @@ button.ghost:focus-visible,
 }
 .workflow-step-agent-name {
   font-weight: 500;
+  flex: none;
+}
+.workflow-step-model {
+  min-width: 0;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border: 1px solid var(--fb-border);
+  border-radius: 999px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-secondary);
+  font-size: 10px;
+  line-height: 16px;
 }
 .workflow-step-status-text {
-  margin-left: auto;
+  white-space: nowrap;
   font-size: 10px;
   color: var(--muted, #6b7280);
 }
@@ -8850,8 +8887,9 @@ button.ghost:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 .workflow-step-badge {
+  flex: none;
   font-size: 10px;
-  padding: 1px 6px;
+  padding: 0 6px;
   border-radius: 999px;
   background: #fef3c7;
   color: #92400e;

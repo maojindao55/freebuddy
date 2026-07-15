@@ -47,6 +47,10 @@ const cli = {
   },
 
   run: (args: unknown) => ipcRenderer.invoke("cli:run", args),
+  getCachedSessionConfigOptions: (args: unknown) =>
+    ipcRenderer.invoke("cli:getCachedSessionConfigOptions", args),
+  inspectSessionConfigOptions: (args: unknown) =>
+    ipcRenderer.invoke("cli:inspectSessionConfigOptions", args),
   kill: (sessionId: string) => ipcRenderer.invoke("cli:kill", sessionId),
   permissionDecision: (args: unknown) =>
     ipcRenderer.invoke("cli:permissionDecision", args),

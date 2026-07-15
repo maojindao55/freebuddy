@@ -19,6 +19,11 @@ import {
   type CliRunArgs
 } from "./runtime.js";
 import {
+  getCachedSessionConfigOptions,
+  inspectSessionConfigOptions,
+  type SessionConfigProbeInput
+} from "./sessionConfigProbe.js";
+import {
   takeAuthenticationResolver,
   takePermissionResolver
 } from "./runtimeShared.js";
@@ -279,6 +284,16 @@ export function registerCliIpc() {
     void cliRun(win.webContents, args);
     return { sessionId: args.sessionId };
   });
+  ipcMain.handle(
+    "cli:getCachedSessionConfigOptions",
+    (_event, args: SessionConfigProbeInput) =>
+      getCachedSessionConfigOptions(args)
+  );
+  ipcMain.handle(
+    "cli:inspectSessionConfigOptions",
+    (_event, args: SessionConfigProbeInput) =>
+      inspectSessionConfigOptions(args)
+  );
   ipcMain.handle("cli:kill", (_e, sessionId: string) => cliKill(sessionId));
   ipcMain.handle(
     "draft-tool:resolve",

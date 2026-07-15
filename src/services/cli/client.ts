@@ -4,6 +4,7 @@ import type {
   CliCheckResult,
   CliEvent,
   CliInstallResult,
+  CliInstallEvent,
   CliAuthControlArgs,
   CliAuthProbeResult,
   CliRunArgs,
@@ -80,7 +81,7 @@ export const cliClient = {
   installStream(
     adapter: string,
     command: string,
-    cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+    cb: (event: CliInstallEvent) => void
   ): () => void {
     return api().installStream(adapter, command, cb);
   },

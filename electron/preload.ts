@@ -6,6 +6,19 @@ import type {
   DraftToolResolution
 } from "./shared/draftToolProtocol.js";
 
+type CliInstallEvent =
+  | { type: "stdout" | "stderr"; content: string }
+  | {
+      type: "done";
+      exitCode: number | null;
+      failureCode?:
+        | "tool_missing"
+        | "node_arch_mismatch"
+        | "timeout"
+        | "spawn_error";
+      failureDetail?: string;
+    };
+
 const cli = {
   listAdapters: () => ipcRenderer.invoke("cli:listAdapters"),
   listOverrides: () => ipcRenderer.invoke("cli:listOverrides"),
@@ -34,7 +47,7 @@ const cli = {
   installStream: (
     adapter: string,
     command: string,
-    cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+    cb: (event: CliInstallEvent) => void
   ): (() => void) => {
     const channel = "cli://install";
     const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload as any);

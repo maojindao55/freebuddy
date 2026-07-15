@@ -190,6 +190,33 @@ test("coding agent settings explain binary lookup failures separately", () => {
   assert.equal(enLocale.settings.cli.commandNotFound, "command not found");
   assert.equal(enLocale.settings.cli.codexAcpUpgradeRequired, "new Codex ACP required — install");
   assert.equal(enLocale.settings.cli.checkProbeFailed, "check failed — retry");
+  assert.equal(
+    zhLocale.settings.cli.claudeArchitectureMismatch,
+    "ClaudeCode 运行架构不匹配。Apple Silicon Mac 请使用 ARM64 Node.js 后重新安装。"
+  );
+  assert.equal(
+    zhLocale.settings.cli.checkTimedOut,
+    "版本检测超时，请重试或检查安全软件是否阻止程序启动。"
+  );
+});
+
+test("manual coding agent checks always surface a completion result", () => {
+  assert.equal(settingsSource.includes("useAgentBridgeStore"), true);
+  assert.equal(settingsSource.includes("settings.cli.checkInstalled"), true);
+  assert.equal(settingsSource.includes("settings.cli.checkUnavailable"), true);
+  assert.equal(settingsSource.includes("settings.cli.checkFailed"), true);
+  assert.equal(
+    zhLocale.settings.cli.checkInstalled,
+    "{{label}} 检查完成：已安装{{version}}"
+  );
+  assert.equal(
+    zhLocale.settings.cli.checkUnavailable,
+    "{{label}} 检查完成：未安装（{{reason}}）"
+  );
+  assert.equal(
+    enLocale.settings.cli.checkInstalled,
+    "{{label}} check completed: installed{{version}}"
+  );
 });
 
 test("coding agent settings force-install the new Codex ACP when the old package is detected", () => {

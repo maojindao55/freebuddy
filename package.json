@@ -14,7 +14,7 @@
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && node scripts/write-telemetry-config.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.preload.json --noEmit",
-    "test": "npm run build:electron && node --test tests/*.mjs",
+    "test": "npm run build:electron && node --test --test-force-exit tests/*.mjs",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac --x64 --arm64",
     "dist:linux": "npm run build && electron-builder --linux",

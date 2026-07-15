@@ -569,14 +569,18 @@ export function ScheduledTasksTab({
                 <div
                   className="scheduled-task-prompt-container"
                   onClick={() => togglePromptExpanded(task.id)}
-                  title={t("common.clickToToggle") || "点击展开/折叠"}
+                  title={t("scheduledTasks.promptToggle")}
                 >
                   <div className={`scheduled-task-prompt-text ${expandedPrompts[task.id] ? "expanded" : ""}`}>
                     {task.prompt}
                   </div>
                   {task.prompt.length > 90 && (
                     <div className="scheduled-task-prompt-expand-btn">
-                      <span>{expandedPrompts[task.id] ? "收起" : "展开提示词..."}</span>
+                      <span>
+                        {expandedPrompts[task.id]
+                          ? t("scheduledTasks.promptCollapse")
+                          : t("scheduledTasks.promptExpand")}
+                      </span>
                     </div>
                   )}
                 </div>

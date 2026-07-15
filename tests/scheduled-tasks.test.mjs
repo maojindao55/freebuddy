@@ -113,6 +113,7 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
   const preload = read("electron/preload.ts");
   const main = read("electron/main.ts");
   const settings = read("src/components/Settings/SettingsModal.tsx");
+  const app = read("src/App.tsx");
   const types = read("src/types/freebuddy.d.ts");
 
   assert.match(db, /CREATE TABLE IF NOT EXISTS scheduled_tasks/);
@@ -136,6 +137,8 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
   assert.match(component, /cliClient\.selectDirectory/);
   assert.match(preload, /scheduledTasks:\/\/changed/);
   assert.match(main, /initializeScheduledTaskScheduler/);
-  assert.match(settings, /ScheduledTasksTab/);
+  assert.match(app, /<ScheduledTasksTab/);
+  assert.match(app, /workspaceView === "scheduledTasks"/);
+  assert.doesNotMatch(settings, /ScheduledTasksTab/);
   assert.match(types, /scheduledTasks: FreebuddyScheduledTasks/);
 });

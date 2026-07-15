@@ -41,10 +41,15 @@
   "sidebar": {
     "expand": "展开侧边栏",
     "collapse": "收起侧边栏",
-    "toggleTheme": "切换主题"
+    "toggleTheme": "切换主题",
+    "primaryNavigation": "工作区导航",
+    "newConversation": "新会话",
+    "scheduledTasks": "定时任务",
+    "teams": "团队",
+    "allTeams": "全部团队"
   },
   "conversations": {
-    "title": "会话",
+    "title": "对话",
     "new": "+ 新建",
     "empty": "暂无会话。",
     "deleteConfirm": "删除“{{title}}”?",
@@ -463,6 +468,9 @@
   "scheduledTasks": {
     "title": "\u5b9a\u65f6\u4efb\u52a1",
     "description": "\u8ba9\u6307\u5b9a Agent \u5728\u5355\u6b21\u6216\u5468\u671f\u8ba1\u5212\u4e2d\u81ea\u52a8\u6267\u884c\u4efb\u610f\u63d0\u793a\u8bcd\u3002",
+    "promptToggle": "\u5c55\u5f00\u6216\u6536\u8d77\u4efb\u52a1\u63d0\u793a\u8bcd",
+    "promptExpand": "\u5c55\u5f00\u63d0\u793a\u8bcd\u2026",
+    "promptCollapse": "\u6536\u8d77",
     "add": "\u65b0\u5efa\u4efb\u52a1",
     "createTitle": "\u65b0\u5efa\u5b9a\u65f6\u4efb\u52a1",
     "editTitle": "\u7f16\u8f91\u5b9a\u65f6\u4efb\u52a1",

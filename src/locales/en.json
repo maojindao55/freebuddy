@@ -41,7 +41,12 @@
   "sidebar": {
     "expand": "Expand sidebar",
     "collapse": "Collapse sidebar",
-    "toggleTheme": "Toggle theme"
+    "toggleTheme": "Toggle theme",
+    "primaryNavigation": "Workspace navigation",
+    "newConversation": "New conversation",
+    "scheduledTasks": "Scheduled tasks",
+    "teams": "Teams",
+    "allTeams": "All teams"
   },
   "conversations": {
     "title": "Conversations",
@@ -477,6 +482,9 @@
   "scheduledTasks": {
     "title": "Scheduled Tasks",
     "description": "Run any prompt with a selected agent on a one-time or recurring schedule.",
+    "promptToggle": "Expand or collapse the task prompt",
+    "promptExpand": "Show prompt…",
+    "promptCollapse": "Collapse",
     "add": "New task",
     "createTitle": "New scheduled task",
     "editTitle": "Edit scheduled task",

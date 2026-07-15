@@ -6,17 +6,32 @@ import type { WorkflowTeam } from "@/services/workflowTeams/types";
 import { WorkflowTeamList } from "./WorkflowTeamList";
 import { WorkflowTeamEditor } from "./WorkflowTeamEditor";
 
-export function WorkflowTeamsTab() {
+export function WorkflowTeamsTab({
+  initialTeamId,
+  startCreating = false
+}: {
+  initialTeamId?: string;
+  startCreating?: boolean;
+}) {
   const { t } = useTranslation();
   const loaded = useWorkflowTeamStore((s) => s.loaded);
   const load = useWorkflowTeamStore((s) => s.load);
   const teams = useWorkflowTeamStore((s) => s.teams);
   const [editing, setEditing] = useState<WorkflowTeam | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(startCreating);
 
   useEffect(() => {
     if (!loaded) load();
   }, [loaded, load]);
+
+  useEffect(() => {
+    if (startCreating || !initialTeamId) return;
+    const team = teams.find((entry) => entry.id === initialTeamId);
+    if (team) {
+      setCreating(false);
+      setEditing(team);
+    }
+  }, [initialTeamId, startCreating, teams]);
 
   return (
     <div className="settings-tab">

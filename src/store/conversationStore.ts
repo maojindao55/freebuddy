@@ -75,6 +75,7 @@ export interface ConversationState {
     cwd?: string;
     title?: string;
     approvalMode?: "auto" | "ask";
+    configOptionOverrides?: Record<string, string>;
   }): Promise<Conversation>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
@@ -483,7 +484,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
   },
 
-  async newConversation({ member, cwd, title, approvalMode }) {
+  async newConversation({
+    member,
+    cwd,
+    title,
+    approvalMode,
+    configOptionOverrides
+  }) {
     const id = nanoid();
     const conv = await cliClient.createConversation({
       id,
@@ -493,6 +500,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       adapter: member.cli.adapter,
       cwd,
       approvalMode: approvalMode ?? member.cli.approvalMode,
+      ...(configOptionOverrides && Object.keys(configOptionOverrides).length > 0
+        ? { configOptionOverrides }
+        : {}),
       titleSource: title ? "prompt" : "default"
     });
     set((s) => ({

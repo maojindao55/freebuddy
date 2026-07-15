@@ -5,6 +5,8 @@ import type {
 import type {
   CLIExecutorOverride,
   CliRunArgs,
+  SessionConfigOption,
+  SessionConfigProbeInput,
   CliEvent,
   CliRuntime,
   CliCheckResult,
@@ -86,6 +88,12 @@ declare global {
     ): () => void;
 
     run(args: CliRunArgs): Promise<{ sessionId: string }>;
+    getCachedSessionConfigOptions(
+      args: SessionConfigProbeInput
+    ): Promise<SessionConfigOption[]>;
+    inspectSessionConfigOptions(
+      args: SessionConfigProbeInput
+    ): Promise<SessionConfigOption[]>;
     kill(sessionId: string): Promise<boolean>;
     permissionDecision(args: {
       sessionId: string;

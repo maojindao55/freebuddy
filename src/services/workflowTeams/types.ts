@@ -15,6 +15,8 @@ export interface WorkflowTeamRole {
   label: string;
   kind: WorkflowTeamRoleKind;
   agentId: string;
+  model?: string;
+  modelOptionId?: string;
   required: boolean;
   canWrite: boolean;
   description?: string;

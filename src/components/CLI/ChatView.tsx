@@ -10,7 +10,8 @@ import { cliClient } from "@/services/cli/client";
 import type {
   AttachmentPrepareRejection,
   ChatAttachment,
-  ConversationMessage
+  ConversationMessage,
+  SessionConfigOption
 } from "@/services/cli/types";
 import type {
   WorkflowTeam,
@@ -334,6 +335,8 @@ export function ChatView() {
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
   const refreshRuntimes = useCliExecutorStore((s) => s.refreshRuntimes);
+  const executorsLoaded = useCliExecutorStore((s) => s.loaded);
+  const executorOverrides = useCliExecutorStore((s) => s.overrides);
 
   const [draft, setDraft] = useState("");
   const [newTaskDraft, setNewTaskDraft] = useState("");
@@ -346,6 +349,13 @@ export function ChatView() {
   const newTaskSendInFlightRef = useRef(false);
   const [selectedMemberId, setSelectedMemberId] = useState(members[0]?.id ?? "");
   const [newTaskCwd, setNewTaskCwd] = useState("");
+  const [newTaskConfigOptions, setNewTaskConfigOptions] = useState<
+    SessionConfigOption[]
+  >([]);
+  const [newTaskConfigOptionOverrides, setNewTaskConfigOptionOverrides] =
+    useState<Record<string, string>>({});
+  const [newTaskConfigLoading, setNewTaskConfigLoading] = useState(false);
+  const newTaskConfigProbeGenerationRef = useRef(0);
   const [permissionMode, setPermissionMode] = useState<"auto" | "ask">("auto");
   const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
   const [submitPreview, setSubmitPreview] = useState<{
@@ -549,6 +559,71 @@ export function ChatView() {
   useEffect(() => {
     if (!selectedMemberId && members[0]) setSelectedMemberId(members[0].id);
   }, [members, selectedMemberId]);
+
+  useEffect(() => {
+    const generation = ++newTaskConfigProbeGenerationRef.current;
+    setNewTaskConfigOptions([]);
+    setNewTaskConfigOptionOverrides({});
+    setNewTaskConfigLoading(false);
+    if (activeId || taskMode !== "normal" || !executorsLoaded) return;
+
+    const selectedMember =
+      members.find((entry) => entry.id === selectedMemberId) ?? members[0];
+    if (!selectedMember || !cliClient.isAvailable()) return;
+
+    const timer = window.setTimeout(() => {
+      const resolved = useCliExecutorStore
+        .getState()
+        .resolve(selectedMember.cli.adapter);
+      const probeInput = {
+        agentId: selectedMember.id,
+        adapter: selectedMember.cli.adapter,
+        binary: selectedMember.cli.binary || resolved?.binary,
+        extraArgs: [
+          ...(resolved?.extraArgs ?? []),
+          ...(selectedMember.cli.extraArgs ?? [])
+        ],
+        env: { ...(resolved?.env ?? {}), ...(selectedMember.cli.env ?? {}) },
+        cwd: newTaskCwd.trim() || undefined
+      };
+      setNewTaskConfigLoading(true);
+      void (async () => {
+        let hasCachedOptions = false;
+        try {
+          const cached = await cliClient.getCachedSessionConfigOptions(probeInput);
+          if (newTaskConfigProbeGenerationRef.current !== generation) return;
+          if (cached.length > 0) {
+            hasCachedOptions = true;
+            setNewTaskConfigOptions(cached);
+            setNewTaskConfigLoading(false);
+          }
+
+          const fresh = await cliClient.inspectSessionConfigOptions(probeInput);
+          if (newTaskConfigProbeGenerationRef.current !== generation) return;
+          if (fresh.length > 0) setNewTaskConfigOptions(fresh);
+        } catch {
+          if (
+            newTaskConfigProbeGenerationRef.current === generation &&
+            !hasCachedOptions
+          ) {
+            setNewTaskConfigOptions([]);
+          }
+        } finally {
+          if (newTaskConfigProbeGenerationRef.current !== generation) return;
+          setNewTaskConfigLoading(false);
+        }
+      })();
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeId,
+    taskMode,
+    executorsLoaded,
+    executorOverrides,
+    members,
+    selectedMemberId
+  ]);
 
   useEffect(() => {
     isNearBottomRef.current = true;
@@ -952,7 +1027,8 @@ export function ChatView() {
           attachmentName: attachmentsToSend[0]?.name,
           fallback: t("chat.defaultAttachmentTitle")
         }),
-        approvalMode: permissionMode
+        approvalMode: permissionMode,
+        configOptionOverrides: newTaskConfigOptionOverrides
       });
       setNewTaskDraft("");
       setNewTaskPendingAttachments((prev) =>
@@ -1191,9 +1267,13 @@ export function ChatView() {
         taskMode={taskMode}
         teams={teams}
         selectedTeamId={selectedTeamId}
+        configOptions={newTaskConfigOptions}
+        configOptionOverrides={newTaskConfigOptionOverrides}
+        configOptionsLoading={newTaskConfigLoading}
         preflightMsg={preflightMsg}
         onDraft={setNewTaskDraft}
         onMember={setSelectedMemberId}
+        onConfigOptionOverrides={setNewTaskConfigOptionOverrides}
         onCwd={setNewTaskCwd}
         onPermissionMode={setPermissionMode}
         onSelectAttachments={() => void handleSelectAttachments("new")}
@@ -1463,9 +1543,13 @@ function NewTaskHome({
   taskMode,
   teams,
   selectedTeamId,
+  configOptions,
+  configOptionOverrides,
+  configOptionsLoading,
   preflightMsg,
   onDraft,
   onMember,
+  onConfigOptionOverrides,
   onCwd,
   onPermissionMode,
   onSelectAttachments,
@@ -1491,9 +1575,13 @@ function NewTaskHome({
   taskMode: "normal" | "team";
   teams: WorkflowTeam[];
   selectedTeamId: string;
+  configOptions: SessionConfigOption[];
+  configOptionOverrides: Record<string, string>;
+  configOptionsLoading: boolean;
   preflightMsg: string | null;
   onDraft: (value: string) => void;
   onMember: (value: string) => void;
+  onConfigOptionOverrides: (value: Record<string, string>) => void;
   onCwd: (value: string) => void;
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
@@ -1665,6 +1753,20 @@ function NewTaskHome({
           />
 
           <div className="new-task-toolbar-tail">
+            {!teamMode ? (
+              <SessionConfigPicker
+                className="composer-session-config new-task-session-config"
+                options={configOptions}
+                overrides={configOptionOverrides}
+                disabled={sendLocked || configOptionsLoading}
+                fallback={
+                  configOptionsLoading ? (
+                    <span className="composer-hint">{t("chat.modelLoading")}</span>
+                  ) : null
+                }
+                onChange={onConfigOptionOverrides}
+              />
+            ) : null}
             <button
               className="new-task-send send-icon-button"
               type="button"

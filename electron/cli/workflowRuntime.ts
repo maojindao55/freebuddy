@@ -74,6 +74,7 @@ export interface StepExecutor {
     binary?: string;
     extraArgs?: string[];
     env?: Record<string, string>;
+    configOptionOverrides?: Record<string, string>;
     prompt: string;
     promptAttachments?: CliPromptAttachment[];
     toolSessionScope?: string;
@@ -992,6 +993,7 @@ export class WorkflowRuntime {
         binary: resolved.binary,
         extraArgs: resolved.extraArgs,
         env: resolved.env,
+        configOptionOverrides: planStep?.configOptionOverrides,
         prompt: localizedPrompt,
         promptAttachments: promptAttachmentsFromConversation(run.conversationId),
         toolSessionScope,
@@ -1171,6 +1173,7 @@ export function createCliStepExecutor(
         binary: args.binary,
         extraArgs: args.extraArgs,
         env: args.env,
+        configOptionOverrides: args.configOptionOverrides,
         prompt: args.prompt,
         promptAttachments: args.promptAttachments,
         toolSessionScope: args.toolSessionScope,

@@ -7,6 +7,8 @@ import type {
   CliAuthControlArgs,
   CliAuthProbeResult,
   CliRunArgs,
+  SessionConfigOption,
+  SessionConfigProbeInput,
   CliRuntime,
   CliTaskListArgs,
   CliTaskLogPage,
@@ -85,6 +87,16 @@ export const cliClient = {
 
   run(args: CliRunArgs): Promise<{ sessionId: string }> {
     return api().run(args);
+  },
+  getCachedSessionConfigOptions(
+    args: SessionConfigProbeInput
+  ): Promise<SessionConfigOption[]> {
+    return api().getCachedSessionConfigOptions(args);
+  },
+  inspectSessionConfigOptions(
+    args: SessionConfigProbeInput
+  ): Promise<SessionConfigOption[]> {
+    return api().inspectSessionConfigOptions(args);
   },
   kill(sessionId: string): Promise<boolean> {
     return api().kill(sessionId);

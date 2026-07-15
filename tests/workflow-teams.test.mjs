@@ -83,6 +83,43 @@ test("expandTeamToPlan produces a configurable plan for the official delivery ex
   assert.equal(result.preview.approvalNodeCount, 1);
 });
 
+test("team role models become per-step ACP config overrides", async () => {
+  const { builtinWorkflowTeams } = await import(
+    "../dist-electron/cli/workflowTeamBuiltins.js"
+  );
+  const { expandTeamToPlan } = await import(
+    "../dist-electron/cli/workflowTeamAdapter.js"
+  );
+  const delivery = structuredClone(
+    builtinWorkflowTeams().find((team) => team.id === "team-delivery-example")
+  );
+  assert.ok(delivery);
+  delivery.roles.find((role) => role.id === "role-planner").model = "planner-model";
+  const implementerRole = delivery.roles.find(
+    (role) => role.id === "role-implementer"
+  );
+  implementerRole.model = "writer-model";
+  implementerRole.modelOptionId = "writer-model-option";
+  const agents = delivery.roles.map((role) => ({
+    id: role.agentId,
+    name: role.agentId,
+    adapter: "stub-acp",
+    enabled: true
+  }));
+
+  const result = expandTeamToPlan(delivery, { goal: "fix bug" }, agents);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.preview.plan.phases[0].steps[0].configOptionOverrides, {
+    model: "planner-model"
+  });
+  assert.equal(result.preview.plan.phases[0].steps[0].model, "planner-model");
+  assert.deepEqual(result.preview.plan.phases[1].steps[0].configOptionOverrides, {
+    "writer-model-option": "writer-model"
+  });
+  assert.equal(result.preview.plan.phases[1].steps[0].model, "writer-model");
+  assert.equal(result.preview.plan.phases[2].steps[0].configOptionOverrides, undefined);
+});
+
 test("builtin workflow teams include the default teams", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
@@ -108,6 +145,7 @@ test("root cause team expands to a read-only evidence workflow", async () => {
   const teams = builtinWorkflowTeams();
   const rootCause = teams.find((t) => t.id === "team-root-cause-analysis");
   assert.ok(rootCause);
+  rootCause.roles[0].model = "evidence-model";
   const agents = rootCause.roles.map((r) => ({
     id: r.agentId,
     name: r.agentId,
@@ -127,6 +165,9 @@ test("root cause team expands to a read-only evidence workflow", async () => {
     ["collect-evidence", "challenge-hypothesis", "verify-root-cause", "summarize-findings"]
   );
   const [collect, challenge, verify, summarize] = result.preview.plan.phases;
+  assert.deepEqual(collect.steps[0].configOptionOverrides, {
+    model: "evidence-model"
+  });
   assert.match(collect.steps[0].prompt, /Collect concrete evidence/);
   assert.match(challenge.steps[0].prompt, /challenge the proposed root cause/i);
   assert.match(verify.steps[0].prompt, /verify the root cause/i);
@@ -184,10 +225,12 @@ test("seeding removes retired builtin workflow teams", () => {
   assert.match(src, /DELETE FROM workflow_teams WHERE id = \? AND source = 'builtin'/);
 });
 
-test("seeding preserves customized builtin team role agents", () => {
+test("seeding preserves customized builtin team role agents and models", () => {
   const src = read("../electron/cli/workflowTeams.ts");
   assert.match(src, /function mergeBuiltinRoles/);
-  assert.match(src, /existingAgentByRoleId\.get\(role\.id\) \?\? role\.agentId/);
+  assert.match(src, /savedRole\?\.agentId \?\? role\.agentId/);
+  assert.match(src, /savedRole\?\.model \? \{ model: savedRole\.model \} : \{\}/);
+  assert.match(src, /modelOptionId: savedRole\.modelOptionId/);
   assert.match(src, /roles:\s*mergeBuiltinRoles\(saved, team\)/);
   assert.match(src, /enabled:\s*saved\.enabled/);
 });
@@ -218,7 +261,9 @@ test("team i18n keys exist in both locales", () => {
     "newTeam",
     "allowWrites",
     "requireApprovalBeforeWrite",
-    "newTeamComingSoon"
+    "newTeamComingSoon",
+    "currentModel",
+    "defaultModel"
   ]) {
     assert.ok(en.workflow?.[key], `missing en workflow.${key}`);
     assert.ok(zh.workflow?.[key], `missing zh-CN workflow.${key}`);
@@ -297,6 +342,21 @@ test("builtin team editor allows changing role agents", () => {
     src.indexOf("{t(\"common.save\")}", src.indexOf('className="primary"'))
   );
   assert.doesNotMatch(saveButtonBlock, /disabled=\{isBuiltin\}/);
+});
+
+test("workflow team editor loads cached models and saves a model per role", () => {
+  const src = read("../src/components/Settings/WorkflowTeamEditor.tsx");
+  assert.match(src, /getCachedSessionConfigOptions\(input\)/);
+  assert.match(src, /inspectSessionConfigOptions\(input\)/);
+  assert.match(src, /value=\{role\.model \?\? ""\}/);
+  assert.match(src, /setRoleModel\(\s*role\.id,\s*e\.target\.value,/);
+  assert.match(src, /model: undefined, modelOptionId: undefined/);
+});
+
+test("workflow runtime forwards step model overrides to cliRun", () => {
+  const src = read("../electron/cli/workflowRuntime.ts");
+  assert.match(src, /configOptionOverrides: planStep\?\.configOptionOverrides/);
+  assert.match(src, /configOptionOverrides: args\.configOptionOverrides/);
 });
 
 test("Settings modal mounts the WorkflowTeamsTab", () => {

@@ -58,12 +58,13 @@ test("WorkflowRunPanel shows a progress bar and inline step details", () => {
   assert.doesNotMatch(src, /workflow-step-details-card/);
 });
 
-test("WorkflowPhaseList renders inline step details for the selected step", () => {
+test("WorkflowPhaseList renders compact inline step details for the selected step", () => {
   const src = read("../src/components/Workflows/WorkflowPhaseList.tsx");
   assert.match(src, /WorkflowStepDetails/);
   assert.match(src, /selectedStepId/);
-  assert.match(src, /workflowPhaseTitle\(phase, t\)/);
   assert.match(src, /workflowStepTitle\(step, t\)/);
+  assert.match(src, /workflow-step-description/);
+  assert.doesNotMatch(src, /workflowPhaseTitle\(phase, t\)/);
 });
 
 test("WorkflowStepDetails renders retry when the selected step is retryable", () => {
@@ -108,6 +109,15 @@ test("WorkflowStepRow shows the agent avatar inline", () => {
   const src = read("../src/components/Workflows/WorkflowStepRow.tsx");
   assert.match(src, /AgentAvatar/);
   assert.match(src, /workflow-step-agent-avatar/);
+});
+
+test("WorkflowPhaseList shows the configured model beside each agent", () => {
+  const src = read("../src/components/Workflows/WorkflowPhaseList.tsx");
+  const css = read("../styles.css");
+  assert.match(src, /planStep\?\.model/);
+  assert.match(src, /compactModelLabel\(modelLabel\)/);
+  assert.match(src, /workflow-step-model/);
+  assert.match(css, /\.workflow-step-model/);
 });
 
 test("ChatView wires the team-mode trigger and plan preview", () => {

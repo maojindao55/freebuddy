@@ -16,6 +16,8 @@ export interface WorkflowStep {
   agentId: string;
   mode: WorkflowStepMode;
   prompt: string;
+  model?: string;
+  configOptionOverrides?: Record<string, string>;
   dependsOn?: string[];
   targetPaths?: string[];
   consumes?: string[];

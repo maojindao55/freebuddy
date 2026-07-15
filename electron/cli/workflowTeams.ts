@@ -150,13 +150,20 @@ function mergeBuiltinRoles(
   existing: WorkflowTeam,
   builtin: WorkflowTeam
 ): WorkflowTeamRole[] {
-  const existingAgentByRoleId = new Map(
-    existing.roles.map((role) => [role.id, role.agentId])
+  const existingRoleById = new Map(
+    existing.roles.map((role) => [role.id, role])
   );
-  return builtin.roles.map((role) => ({
-    ...role,
-    agentId: existingAgentByRoleId.get(role.id) ?? role.agentId
-  }));
+  return builtin.roles.map((role) => {
+    const savedRole = existingRoleById.get(role.id);
+    return {
+      ...role,
+      agentId: savedRole?.agentId ?? role.agentId,
+      ...(savedRole?.model ? { model: savedRole.model } : {}),
+      ...(savedRole?.modelOptionId
+        ? { modelOptionId: savedRole.modelOptionId }
+        : {})
+    };
+  });
 }
 
 function mergeBuiltinPolicy(

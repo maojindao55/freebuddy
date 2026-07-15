@@ -68,6 +68,26 @@ export interface CliRunArgs {
   knownStreamMessageIds?: string[];
 }
 
+export interface SessionConfigOption {
+  id: string;
+  name?: string;
+  category?: string;
+  type?: string;
+  currentValue?: string;
+  currentLabel?: string;
+  description?: string;
+  values?: { id: string; name?: string }[];
+}
+
+export interface SessionConfigProbeInput {
+  agentId: string;
+  adapter: CLIAdapterId;
+  binary?: string;
+  extraArgs?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+}
+
 export type DraftToolAction = "show" | "inspect" | "report";
 
 export type DraftLoadState = "idle" | "loading" | "ready" | "error";
@@ -435,6 +455,7 @@ export interface CreateConversationInput {
   adapter: string;
   cwd?: string;
   approvalMode?: "auto" | "ask";
+  configOptionOverrides?: Record<string, string>;
   titleSource?: ConversationTitleSource;
 }
 

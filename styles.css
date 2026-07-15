@@ -1379,6 +1379,59 @@ button {
   line-height: 1.45;
 }
 
+.byok-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.byok-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.byok-model-row input {
+  min-width: 0;
+}
+
+.byok-model-remove,
+.byok-model-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  border: 1px solid var(--fb-border);
+  border-radius: 7px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-secondary);
+}
+
+.byok-model-remove {
+  width: 32px;
+  padding: 0;
+}
+
+.byok-model-remove:hover {
+  border-color: rgba(244, 63, 94, 0.4);
+  color: var(--fb-danger);
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.byok-model-add {
+  align-self: flex-start;
+  padding: 0 11px;
+  border-style: dashed;
+}
+
+.byok-model-add:hover {
+  border-color: var(--fb-brand);
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
 .settings-advanced-panel {
   display: flex;
   flex-direction: column;

@@ -25,6 +25,7 @@ export interface CLICodexByokConfig {
   wireApi?: "responses" | "chat";
   apiKey?: string;
   apiKeyPreview?: string;
+  models?: CLIByokModel[];
 }
 
 export interface CLIClaudeByokConfig {
@@ -33,6 +34,12 @@ export interface CLIClaudeByokConfig {
   envKey?: string;
   apiKey?: string;
   apiKeyPreview?: string;
+  models?: CLIByokModel[];
+}
+
+export interface CLIByokModel {
+  id: string;
+  name?: string;
 }
 
 export interface CliPromptAttachment {

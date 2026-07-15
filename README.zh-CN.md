@@ -123,7 +123,22 @@ npm run build
 npm run start
 ```
 
+推送分支或创建 PR 前，请同时检查 GitHub CLI 的本地登录状态和实际 API 权限：
+
+```bash
+npm run github:preflight
+```
+
+该检查不会输出 Token 值，也不会创建新的 OAuth Token。检查失败时，请按提示修复后重新执行。在 Codex
+沙箱中应先用系统权限复查一次，因为沙箱可能无法访问 macOS 钥匙串或网络，不要因此直接重复登录。
+
 > **注意：** `postinstall` 会为 `better-sqlite3` 运行 `electron-rebuild`，确保原生绑定与当前 Electron 版本匹配。
+
+---
+
+## Star History
+
+[![Star History](https://img.shields.io/github/stars/maojindao55/freebuddy?style=for-the-badge&label=Star%20History)](https://www.star-history.com/?repos=maojindao55/freebuddy&type=Date)
 
 ---
 

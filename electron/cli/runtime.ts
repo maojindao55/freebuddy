@@ -207,9 +207,13 @@ export async function cliRun(
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
       { ...process.env, ...(args.env || {}) },
-      resolveCliByokEnv(args.agentId, args.adapter)
+      built.env
     ),
-    built.env
+    resolveCliByokEnv(
+      args.agentId,
+      args.adapter,
+      args.configOptionOverrides?.model ?? built.env?.ANTHROPIC_MODEL
+    )
   );
 
   const child = spawn(built.bin, built.args, {

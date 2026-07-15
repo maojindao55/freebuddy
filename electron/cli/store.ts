@@ -15,6 +15,7 @@ export interface CLICodexByokConfig {
   apiKey?: string;
   apiKeyPreview?: string;
   apiKeyEncrypted?: string;
+  models?: CLIByokModel[];
 }
 
 export interface CLIClaudeByokConfig {
@@ -24,6 +25,12 @@ export interface CLIClaudeByokConfig {
   apiKey?: string;
   apiKeyPreview?: string;
   apiKeyEncrypted?: string;
+  models?: CLIByokModel[];
+}
+
+export interface CLIByokModel {
+  id: string;
+  name?: string;
 }
 
 export interface CLIExecutorOverride {
@@ -196,26 +203,44 @@ function fallbackCodexModelTemplate(): Record<string, unknown> {
   };
 }
 
-function createCodexByokModelCatalog(model: string): string | undefined {
-  if (!shouldCreateCodexModelCatalog(model)) return undefined;
-  const trimmed = model.trim();
+function normalizeByokModels(
+  models: CLIByokModel[] | undefined
+): CLIByokModel[] {
+  const seen = new Set<string>();
+  const normalized: CLIByokModel[] = [];
+  for (const model of models ?? []) {
+    const id = model?.id?.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const name = model.name?.trim();
+    normalized.push({ id, ...(name ? { name } : {}) });
+  }
+  return normalized;
+}
+
+function createCodexByokModelCatalog(
+  models: CLIByokModel[]
+): string | undefined {
+  if (!models.length) return undefined;
   const template = readCodexModelTemplate() ?? fallbackCodexModelTemplate();
   const catalog = {
-    models: [
-      {
-        ...template,
-        slug: trimmed,
-        display_name: trimmed,
-        description: "Custom BYOK model",
-        supported_in_api: true,
-        visibility: "list",
-        supports_reasoning_summaries: true
-      }
-    ]
+    models: models.map((model, index) => ({
+      ...template,
+      slug: model.id,
+      display_name: model.name || model.id,
+      description: "Custom BYOK model",
+      priority: index,
+      supported_in_api: true,
+      visibility: "list",
+      supports_reasoning_summaries: true
+    }))
   };
   const dir = path.join(getDataDir(), "codex-model-catalogs");
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${safeCatalogFilePart(trimmed)}.json`);
+  const signature = models
+    .map((model) => `${model.id}\u0000${model.name ?? ""}`)
+    .join("\u0001");
+  const file = path.join(dir, `${safeCatalogFilePart(signature)}.json`);
   fs.writeFileSync(file, JSON.stringify(catalog, null, 2), "utf8");
   return file;
 }
@@ -300,6 +325,7 @@ function normalizeByokForStorage(
     baseUrl: input.baseUrl?.trim(),
     envKey: input.envKey?.trim() || "OPENAI_API_KEY",
     wireApi: input.wireApi || "responses",
+    models: normalizeByokModels(input.models),
     apiKeyPreview,
     apiKeyEncrypted
   };
@@ -322,6 +348,7 @@ function normalizeClaudeByokForStorage(
     enabled: true,
     baseUrl: input.baseUrl?.trim(),
     envKey: input.envKey?.trim() || "ANTHROPIC_API_KEY",
+    models: normalizeByokModels(input.models),
     apiKeyPreview,
     apiKeyEncrypted
   };
@@ -424,9 +451,16 @@ export function resolveCodexByokEnv(
   const providerId = byok.providerId?.trim() || "proxy";
   const envKey = byok.envKey?.trim() || "OPENAI_API_KEY";
   const model = extractModelArg(readOverrideExtraArgs(overrideId));
-  const modelCatalogPath = model
-    ? createCodexByokModelCatalog(model)
-    : undefined;
+  const configuredModels = normalizeByokModels(byok.models);
+  const catalogModels = configuredModels.length
+    ? normalizeByokModels([
+        ...configuredModels,
+        ...(model ? [{ id: model }] : [])
+      ])
+    : model && shouldCreateCodexModelCatalog(model)
+      ? [{ id: model }]
+      : [];
+  const modelCatalogPath = createCodexByokModelCatalog(catalogModels);
   const codexPath = modelCatalogPath
     ? createCodexAppServerWrapper(modelCatalogPath)
     : undefined;
@@ -454,7 +488,8 @@ export function resolveCodexByokEnv(
 
 export function resolveClaudeByokEnv(
   agentId: string,
-  adapter: string
+  adapter: string,
+  selectedModel?: string
 ): Record<string, string> | undefined {
   if (adapter !== "claude-agent-acp" && adapter !== "claude") return undefined;
   const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
@@ -466,16 +501,104 @@ export function resolveClaudeByokEnv(
   const baseUrl = byok.baseUrl?.trim();
   if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
   if (apiKey) env[envKey] = apiKey;
+  const models = normalizeByokModels(byok.models);
+  if (models.length) {
+    const requestedModel = selectedModel?.trim();
+    const activeModel =
+      models.find((model) => model.id === requestedModel)?.id ?? models[0].id;
+    env.CLAUDE_MODEL_CONFIG = JSON.stringify({
+      availableModels: models.map((model) => model.id)
+    });
+    env.ANTHROPIC_CUSTOM_MODEL_OPTION = activeModel;
+    env.ANTHROPIC_MODEL = activeModel;
+  }
   return Object.keys(env).length ? env : undefined;
 }
 
 export function resolveCliByokEnv(
   agentId: string,
-  adapter: string
+  adapter: string,
+  selectedModel?: string
 ): Record<string, string> | undefined {
   return (
     resolveCodexByokEnv(agentId, adapter) ??
-    resolveClaudeByokEnv(agentId, adapter)
+    resolveClaudeByokEnv(agentId, adapter, selectedModel)
+  );
+}
+
+export function cliByokModelSignature(
+  agentId: string,
+  adapter: string
+): string {
+  const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
+  const byok = adapter === "codex-acp"
+    ? readCodexByokPrivate(overrideId)
+    : adapter === "claude-agent-acp" || adapter === "claude"
+      ? readClaudeByokPrivate(overrideId)
+      : undefined;
+  return JSON.stringify(normalizeByokModels(byok?.models));
+}
+
+export function hasCliByokModels(agentId: string, adapter: string): boolean {
+  const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
+  const byok = adapter === "codex-acp"
+    ? readCodexByokPrivate(overrideId)
+    : adapter === "claude-agent-acp" || adapter === "claude"
+      ? readClaudeByokPrivate(overrideId)
+      : undefined;
+  return byok?.enabled === true && normalizeByokModels(byok.models).length > 0;
+}
+
+export function mergeCliByokModelOption<T extends {
+  id: string;
+  name?: string;
+  category?: string;
+  currentValue?: string;
+  currentLabel?: string;
+  values?: { id: string; name?: string }[];
+}>(
+  agentId: string,
+  adapter: string,
+  options: T[],
+  selectedModel?: string
+): T[] {
+  const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
+  const byok = adapter === "codex-acp"
+    ? readCodexByokPrivate(overrideId)
+    : adapter === "claude-agent-acp" || adapter === "claude"
+      ? readClaudeByokPrivate(overrideId)
+      : undefined;
+  if (!byok?.enabled) return options;
+  const models = normalizeByokModels(byok.models);
+  if (!models.length) return options;
+
+  const existingIndex = options.findIndex(
+    (option) => option.id === "model" || option.category === "model"
+  );
+  const existing = existingIndex >= 0 ? options[existingIndex] : undefined;
+  const requested = selectedModel?.trim();
+  const currentValue = models.some((model) => model.id === requested)
+    ? requested
+    : existing?.currentValue &&
+        models.some((model) => model.id === existing.currentValue)
+      ? existing.currentValue
+      : models[0].id;
+  const modelOption = {
+    ...(existing ?? {}),
+    id: existing?.id || "model",
+    name: existing?.name || "Model",
+    category: "model",
+    currentValue,
+    currentLabel:
+      models.find((model) => model.id === currentValue)?.name || currentValue,
+    values: models.map((model) => ({
+      id: model.id,
+      name: model.name || model.id
+    }))
+  } as T;
+  if (existingIndex < 0) return [modelOption, ...options];
+  return options.map((option, index) =>
+    index === existingIndex ? modelOption : option
   );
 }
 

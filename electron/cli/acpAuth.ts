@@ -55,9 +55,13 @@ async function withAcpAgent<T>(
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
       { ...process.env, ...(args.env ?? {}) },
-      resolveCliByokEnv(args.agentId, args.adapter)
+      built.env
     ),
-    built.env
+    resolveCliByokEnv(
+      args.agentId,
+      args.adapter,
+      built.env?.ANTHROPIC_MODEL
+    )
   );
   const child = spawn(built.bin, built.args, {
     cwd: args.cwd,

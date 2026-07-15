@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
+import { Plus, Trash2 } from "lucide-react";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -711,6 +712,13 @@ function EditOverridePanel({
     NonNullable<NonNullable<CLIExecutorOverride["codexByok"]>["wireApi"]>
   >(savedCodexByok?.wireApi ?? "responses");
   const [codexApiKey, setCodexApiKey] = useState("");
+  const [byokModels, setByokModels] = useState(
+    savedByok?.models?.length
+      ? savedByok.models
+      : parsedExtraArgs.model
+        ? [{ id: parsedExtraArgs.model, name: "" }]
+        : []
+  );
   const [saveStatus, setSaveStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
@@ -763,6 +771,7 @@ function EditOverridePanel({
             envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
             wireApi: codexWireApi,
             apiKey: codexApiKey.trim() || undefined,
+            models: byokModels,
             apiKeyPreview: savedByok?.apiKeyPreview
           }
         : undefined;
@@ -773,6 +782,7 @@ function EditOverridePanel({
             baseUrl: codexBaseUrl.trim(),
             envKey: codexEnvKey.trim() || "ANTHROPIC_API_KEY",
             apiKey: codexApiKey.trim() || undefined,
+            models: byokModels,
             apiKeyPreview: savedClaudeByok?.apiKeyPreview
           }
         : undefined;
@@ -971,6 +981,81 @@ function EditOverridePanel({
                       : t("settings.cli.byok.newKeyHint")}
                   </span>
                 </label>
+
+                <div className="adapter-editor-field">
+                  <span className="adapter-editor-field-label">
+                    {t("settings.cli.byok.models")}
+                  </span>
+                  <div className="byok-model-list">
+                    {byokModels.map((byokModel, index) => (
+                      <div className="byok-model-row" key={index}>
+                        <input
+                          value={byokModel.id}
+                          placeholder={t(
+                            "settings.cli.byok.modelIdPlaceholder"
+                          )}
+                          aria-label={t("settings.cli.byok.modelIdPlaceholder")}
+                          onChange={(event) =>
+                            setByokModels((models) =>
+                              models.map((entry, entryIndex) =>
+                                entryIndex === index
+                                  ? { ...entry, id: event.target.value }
+                                  : entry
+                              )
+                            )
+                          }
+                        />
+                        <input
+                          value={byokModel.name ?? ""}
+                          placeholder={t(
+                            "settings.cli.byok.modelNamePlaceholder"
+                          )}
+                          aria-label={t("settings.cli.byok.modelNamePlaceholder")}
+                          onChange={(event) =>
+                            setByokModels((models) =>
+                              models.map((entry, entryIndex) =>
+                                entryIndex === index
+                                  ? { ...entry, name: event.target.value }
+                                  : entry
+                              )
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="byok-model-remove"
+                          aria-label={t("settings.cli.byok.removeModel")}
+                          title={t("settings.cli.byok.removeModel")}
+                          onClick={() =>
+                            setByokModels((models) =>
+                              models.filter(
+                                (_, entryIndex) => entryIndex !== index
+                              )
+                            )
+                          }
+                        >
+                          <Trash2 size={15} aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="byok-model-add"
+                      onClick={() =>
+                        setByokModels((models) => [
+                          ...models,
+                          { id: "", name: "" }
+                        ])
+                      }
+                    >
+                      <Plus size={15} aria-hidden="true" />
+                      {t("settings.cli.byok.addModel")}
+                    </button>
+                  </div>
+                  <span className="settings-field-hint">
+                    {t("settings.cli.byok.modelsHint")}
+                  </span>
+                </div>
 
                 <details className="settings-advanced-panel">
                   <summary>{t("settings.cli.byok.advanced")}</summary>

@@ -58,9 +58,14 @@ test("coding agent settings expose Codex BYOK without echoing saved keys", () =>
   assert.equal(settingsSource.includes("apiKeyPreview"), true);
   assert.equal(settingsSource.includes("value={codexApiKey}"), true);
   assert.equal(settingsSource.includes("value={savedByok?.apiKey"), false);
+  assert.equal(settingsSource.includes("settings.cli.byok.models"), true);
+  assert.equal(settingsSource.includes("settings.cli.byok.addModel"), true);
+  assert.equal(settingsSource.includes("byokModels"), true);
   assert.equal(zhLocale.settings.cli.byok.title, "API Key");
+  assert.equal(zhLocale.settings.cli.byok.addModel, "添加模型");
   assert.equal(zhLocale.settings.cli.byok.modeCustom, "使用自己的 API Key");
   assert.equal(enLocale.settings.cli.byok.title, "API Key");
+  assert.equal(enLocale.settings.cli.byok.addModel, "Add model");
   assert.equal(enLocale.settings.cli.byok.modeCustom, "Use my own API key");
 });
 
@@ -118,6 +123,11 @@ test("coding agent runtime stores Claude BYOK separately from Codex BYOK", () =>
   assert.equal(electronStoreSource.includes("codex-wrappers"), true);
   assert.equal(electronStoreSource.includes("readCodexModelTemplate"), true);
   assert.equal(electronStoreSource.includes("readOverrideExtraArgs"), true);
+  assert.equal(electronStoreSource.includes("normalizeByokModels"), true);
+  assert.equal(electronStoreSource.includes("mergeCliByokModelOption"), true);
+  assert.equal(electronStoreSource.includes("hasCliByokModels"), true);
+  assert.equal(electronStoreSource.includes("CLAUDE_MODEL_CONFIG"), true);
+  assert.equal(electronStoreSource.includes("ANTHROPIC_CUSTOM_MODEL_OPTION"), true);
   assert.equal(electronStoreSource.includes("secretDecryptCache"), true);
   assert.match(electronStoreSource, /secretDecryptCache\.get\(value\)/);
   assert.match(electronStoreSource, /secretDecryptCache\.set\(value, decrypted\)/);

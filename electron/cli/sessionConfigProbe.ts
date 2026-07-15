@@ -17,7 +17,11 @@ import { buildCommand, getAdapterDefinition } from "./adapters.js";
 import { waitForCodexToolchainAutoUpdate } from "./check.js";
 import { killProcessTree } from "./process-kill.js";
 import { mergeBuiltEnv } from "./runtime.js";
-import { resolveCliByokEnv } from "./store.js";
+import {
+  cliByokModelSignature,
+  mergeCliByokModelOption,
+  resolveCliByokEnv
+} from "./store.js";
 import { getSetting, setSetting } from "./settings.js";
 
 export interface SessionConfigOption {
@@ -46,14 +50,15 @@ const CACHE_PREFIX = "session-config-options:";
 
 function sessionConfigCacheKey(input: SessionConfigProbeInput): string {
   // Deliberately exclude env values because they may contain API keys. Env
-  // names and launch configuration are enough to invalidate most stale agent
-  // catalogs, while a successful background probe always refreshes the cache.
+  // names, launch configuration, and the public BYOK model list are enough to
+  // invalidate most stale catalogs, while a successful probe refreshes them.
   const signature = JSON.stringify({
     agentId: input.agentId,
     adapter: input.adapter,
     binary: input.binary ?? "",
     extraArgs: input.extraArgs ?? [],
-    envKeys: Object.keys(input.env ?? {}).sort()
+    envKeys: Object.keys(input.env ?? {}).sort(),
+    byokModels: cliByokModelSignature(input.agentId, input.adapter)
   });
   return `${CACHE_PREFIX}${createHash("sha256").update(signature).digest("hex")}`;
 }
@@ -144,9 +149,13 @@ export async function inspectSessionConfigOptions(
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
       { ...process.env, ...(input.env ?? {}) },
-      resolveCliByokEnv(input.agentId, input.adapter)
+      built.env
     ),
-    built.env
+    resolveCliByokEnv(
+      input.agentId,
+      input.adapter,
+      built.env?.ANTHROPIC_MODEL
+    )
   );
   const child = spawn(built.bin, built.args, {
     cwd: input.cwd,
@@ -239,11 +248,16 @@ export async function inspectSessionConfigOptions(
       buildSessionNewRequest(++nextRequestId, input.cwd, [])
     );
     const sessionId = created?.sessionId ?? created?.session_id;
-    const options = sessionId
+    const discoveredOptions = sessionId
       ? acpSessionSetupToItems(sessionId, created).find(
           (item) => item.kind === "config-options"
         )?.options ?? []
       : [];
+    const options = mergeCliByokModelOption(
+      input.agentId,
+      input.adapter,
+      discoveredOptions
+    );
 
     if (
       sessionId &&

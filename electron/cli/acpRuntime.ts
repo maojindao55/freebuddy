@@ -30,7 +30,11 @@ import {
 } from "./acp.js";
 import { createAcpTerminalManager } from "./acpTerminal.js";
 import { updateRuntimeRun } from "./check.js";
-import { saveToolSession } from "./store.js";
+import {
+  hasCliByokModels,
+  mergeCliByokModelOption,
+  saveToolSession
+} from "./store.js";
 import {
   appendLog,
   clearAuthenticationResolversForSession,
@@ -620,7 +624,19 @@ export async function runAcpAgent({
   const establishSession = async () => {
     const emitSetupItems = (result: any) => {
       if (!activeAcpSessionId) return;
-      const items = acpSessionSetupToItems(activeAcpSessionId, result);
+      const items = acpSessionSetupToItems(activeAcpSessionId, result).map(
+        (item) => item.kind === "config-options"
+          ? {
+              ...item,
+              options: mergeCliByokModelOption(
+                args.agentId,
+                args.adapter,
+                item.options,
+                args.configOptionOverrides?.model
+              )
+            }
+          : item
+      );
       if (items.length) emit({ type: "items", items });
     };
 
@@ -842,6 +858,13 @@ export async function runAcpAgent({
       if (!overrides || !activeAcpSessionId) return;
       for (const [configId, value] of Object.entries(overrides)) {
         if (!configId || value == null || value === "") continue;
+        if (
+          configId === "model" &&
+          (args.adapter === "claude-agent-acp" || args.adapter === "claude") &&
+          hasCliByokModels(args.agentId, args.adapter)
+        ) {
+          continue;
+        }
         try {
           const result = await request(
             buildSessionSetConfigOptionRequest(
@@ -854,7 +877,20 @@ export async function runAcpAgent({
           const items = acpSessionSetupToItems(activeAcpSessionId, {
             sessionId: activeAcpSessionId,
             ...(result && typeof result === "object" ? result : {})
-          }).filter((item) => item.kind === "config-options");
+          })
+            .filter((item) => item.kind === "config-options")
+            .map((item) => item.kind === "config-options"
+              ? {
+                  ...item,
+                  options: mergeCliByokModelOption(
+                    args.agentId,
+                    args.adapter,
+                    item.options,
+                    args.configOptionOverrides?.model
+                  )
+                }
+              : item
+            );
           if (items.length) emit({ type: "items", items });
         } catch (err) {
           appendLog(

@@ -51,7 +51,7 @@ nsis:
 
 linux:
   icon: assets/app-icon.png
-  category: Utility
+  category: Development
   maintainer: FreeBuddy <noreply@freebuddy.dev>
   target:
     - target: AppImage

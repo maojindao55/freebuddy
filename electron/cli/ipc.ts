@@ -269,11 +269,16 @@ export function registerCliIpc() {
   ipcMain.handle("cli:install", async (_e, args: { adapter: string; command: string }) =>
     cliInstall(args.command, args.adapter)
   );
-  ipcMain.handle("cli:installStream", async (_e, args: { adapter: string; command: string }) =>
+  ipcMain.handle("cli:installStream", async (event, args: {
+    adapter: string;
+    command: string;
+    requestId: string;
+  }) =>
     cliInstallStream(
       args.command,
-      BrowserWindow.getFocusedWindow()?.webContents,
-      args.adapter
+      event.sender,
+      args.adapter,
+      args.requestId
     )
   );
 

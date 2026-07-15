@@ -19,6 +19,15 @@ type CliInstallEvent =
       failureDetail?: string;
     };
 
+type CliInstallWireEvent = CliInstallEvent & { requestId: string };
+
+let cliInstallRequestSequence = 0;
+
+function nextCliInstallRequestId(): string {
+  cliInstallRequestSequence += 1;
+  return `cli-install-${Date.now()}-${cliInstallRequestSequence}`;
+}
+
 const cli = {
   listAdapters: () => ipcRenderer.invoke("cli:listAdapters"),
   listOverrides: () => ipcRenderer.invoke("cli:listOverrides"),
@@ -50,9 +59,15 @@ const cli = {
     cb: (event: CliInstallEvent) => void
   ): (() => void) => {
     const channel = "cli://install";
-    const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload as any);
+    const requestId = nextCliInstallRequestId();
+    const handler = (_e: IpcRendererEvent, payload: unknown) => {
+      if (!payload || typeof payload !== "object") return;
+      const event = payload as CliInstallWireEvent;
+      if (event.requestId !== requestId) return;
+      cb(event);
+    };
     ipcRenderer.on(channel, handler);
-    ipcRenderer.invoke("cli:installStream", { adapter, command }).catch((err) => {
+    ipcRenderer.invoke("cli:installStream", { adapter, command, requestId }).catch((err) => {
       cb({ type: "stderr", content: String(err) });
       cb({ type: "done", exitCode: 1 });
     });

@@ -26,6 +26,14 @@ const checkSource = fs.readFileSync(
   new URL("../electron/cli/check.ts", import.meta.url),
   "utf8"
 );
+const preloadSource = fs.readFileSync(
+  new URL("../electron/preload.ts", import.meta.url),
+  "utf8"
+);
+const ipcSource = fs.readFileSync(
+  new URL("../electron/cli/ipc.ts", import.meta.url),
+  "utf8"
+);
 const zhLocale = JSON.parse(
   fs.readFileSync(new URL("../src/locales/zh-CN.json", import.meta.url), "utf8")
 );
@@ -72,6 +80,15 @@ test("successful package install is verified before the UI reports success", () 
   assert.match(hostSource, /settings\.cli\.installVerifying/);
   assert.match(hostSource, /settings\.cli\.installVerifiedSuccess/);
   assert.match(hostSource, /settings\.cli\.installVerificationFailed/);
+});
+
+test("concurrent agent installs keep stream events scoped to their request", () => {
+  assert.match(preloadSource, /nextCliInstallRequestId/);
+  assert.match(preloadSource, /event\.requestId !== requestId/);
+  assert.match(preloadSource, /\{ adapter, command, requestId \}/);
+  assert.match(checkSource, /\{ \.\.\.payload, requestId \}/);
+  assert.match(ipcSource, /event\.sender,[\s\S]*args\.adapter,[\s\S]*args\.requestId/);
+  assert.equal(ipcSource.includes("BrowserWindow.getFocusedWindow()?.webContents"), false);
 });
 
 test("agent version probes preserve actionable failure categories", () => {

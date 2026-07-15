@@ -138,7 +138,7 @@ npm run github:preflight
 
 ## Star History
 
-[![Star History](https://img.shields.io/github/stars/maojindao55/freebuddy?style=for-the-badge&label=Star%20History)](https://www.star-history.com/?repos=maojindao55/freebuddy&type=Date)
+[![FreeBuddy Star History](assets/star-history.svg)](https://www.star-history.com/?repos=maojindao55/freebuddy&type=Date)
 
 ---
 

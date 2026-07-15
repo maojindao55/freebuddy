@@ -24,6 +24,7 @@
     "release:minor": "node scripts/release.mjs minor",
     "release:major": "node scripts/release.mjs major",
     "github:preflight": "node scripts/github-preflight.mjs",
+    "star-history:generate": "node scripts/generate-star-history.mjs",
     "start": "npm run build && node scripts/start-electron.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },

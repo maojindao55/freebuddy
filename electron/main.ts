@@ -1,4 +1,5 @@
 import { app, BrowserWindow, nativeImage, protocol, shell } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
@@ -154,6 +155,30 @@ async function injectShellPath() {
       }
     }
     if (env.PATH) process.env.PATH = env.PATH;
+  } catch {
+    /* best-effort */
+  }
+
+  // Desktop launchers do not consistently inherit version-manager paths.
+  // Keep these deterministic user-level locations available even when Bash
+  // chooses .bash_profile over .profile or the desktop session has a stale PATH.
+  try {
+    const home = process.env.HOME || "";
+    if (!home) return;
+    const extraDirs = [
+      path.join(home, ".volta", "bin"),
+      path.join(home, ".local", "bin"),
+      path.join(home, ".npm-global", "bin"),
+      path.join(home, ".bun", "bin")
+    ].filter((dir) => fs.existsSync(dir));
+    const currentPath = process.env.PATH || "";
+    const entries = new Set(currentPath.split(path.delimiter).filter(Boolean));
+    const missing = extraDirs.filter((dir) => !entries.has(dir));
+    if (missing.length) {
+      process.env.PATH = [...missing, currentPath]
+        .filter(Boolean)
+        .join(path.delimiter);
+    }
   } catch {
     /* best-effort */
   }

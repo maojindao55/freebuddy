@@ -127,7 +127,14 @@ function which(
             ...(mergedEnv.PATH || "").split(path.delimiter),
             "/opt/homebrew/bin",
             "/usr/local/bin",
-            ...(home ? [path.join(home, ".local", "bin"), path.join(home, ".npm-global", "bin")] : [])
+            ...(home
+              ? [
+                  path.join(home, ".volta", "bin"),
+                  path.join(home, ".local", "bin"),
+                  path.join(home, ".npm-global", "bin"),
+                  path.join(home, ".bun", "bin")
+                ]
+              : [])
           ].filter(Boolean);
 
           for (const dir of searchDirs) {
@@ -147,6 +154,11 @@ function which(
 interface CliProbeResult {
   ok: boolean;
   output?: string;
+  stdout: string;
+  stderr: string;
+  exitCode?: number | null;
+  timedOut?: boolean;
+  spawnError?: string;
 }
 
 function firstNonEmptyLine(value: string): string | undefined {
@@ -156,29 +168,83 @@ function firstNonEmptyLine(value: string): string | undefined {
 function runCheckProbe(
   bin: string,
   args: string[],
-  env?: Record<string, string>
+  env?: Record<string, string>,
+  timeoutMs = 15_000
 ): Promise<CliProbeResult> {
   return new Promise((resolve) => {
     const mergedEnv = { ...process.env, ...(env || {}) };
     const child = spawn(bin, args, { env: mergedEnv });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const finish = (result: CliProbeResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
     const timer = setTimeout(() => {
       child.kill();
-      resolve({ ok: false });
-    }, 5000);
-    child.stdout!.on("data", (d) => (stdout += d.toString()));
-    child.stderr!.on("data", (d) => (stderr += d.toString()));
-    child.on("error", () => {
-      clearTimeout(timer);
-      resolve({ ok: false });
+      finish({ ok: false, stdout, stderr, timedOut: true });
+    }, timeoutMs);
+    child.stdout!.on("data", (d) => {
+      stdout = (stdout + d.toString()).slice(-64 * 1024);
+    });
+    child.stderr!.on("data", (d) => {
+      stderr = (stderr + d.toString()).slice(-64 * 1024);
+    });
+    child.on("error", (error) => {
+      finish({
+        ok: false,
+        stdout,
+        stderr,
+        spawnError: error instanceof Error ? error.message : String(error)
+      });
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) return resolve({ ok: false });
-      resolve({ ok: true, output: firstNonEmptyLine(stdout) ?? firstNonEmptyLine(stderr) });
+      if (code !== 0) {
+        finish({ ok: false, stdout, stderr, exitCode: code });
+        return;
+      }
+      const stderrOutput = stderr
+        .split(/\r?\n/)
+        .find((line) => {
+          const value = line.trim();
+          return (
+            value &&
+            !/^warn:\s/i.test(value) &&
+            !/^https?:\/\//i.test(value) &&
+            !/baseline build/i.test(value)
+          );
+        })
+        ?.trim();
+      finish({
+        ok: true,
+        output: firstNonEmptyLine(stdout) ?? stderrOutput,
+        stdout,
+        stderr,
+        exitCode: code
+      });
     });
   });
+}
+
+function probeFailureMessage(
+  adapter: string,
+  args: string[],
+  result: CliProbeResult
+): string {
+  const details = `${result.stderr}\n${result.stdout}\n${result.spawnError ?? ""}`;
+  if (/CPU lacks AVX support/i.test(details)) {
+    return "claude runtime architecture mismatch";
+  }
+  if (/Claude native binary not found/i.test(details)) {
+    return "claude native binary not found";
+  }
+  if (result.timedOut) return "version probe timed out";
+  return adapter === "codex-acp"
+    ? CODEX_ACP_UPGRADE_REQUIRED
+    : `binary found but ${args.join(" ")} failed; try reinstalling`;
 }
 
 function upsertRuntime(
@@ -244,10 +310,7 @@ export async function cliCheck(
   const probe = getCliCheckProbe(adapter);
   const probeResult = await runCheckProbe(resolved, probe.args, env);
   if (!probeResult.ok || (!probe.versionOptional && !probeResult.output)) {
-    const error =
-      adapter === "codex-acp"
-        ? CODEX_ACP_UPGRADE_REQUIRED
-        : `binary found but ${probe.args.join(" ")} failed; try reinstalling`;
+    const error = probeFailureMessage(adapter, probe.args, probeResult);
     upsertRuntime(
       runtimeKey,
       false,
@@ -580,6 +643,100 @@ export interface CliInstallResult {
   stderr: string;
 }
 
+type CliInstallFailureCode =
+  | "tool_missing"
+  | "node_arch_mismatch"
+  | "timeout"
+  | "spawn_error";
+
+interface InstallPreflightResult {
+  env: NodeJS.ProcessEnv;
+  command: string;
+  failureCode?: CliInstallFailureCode;
+  failureDetail?: string;
+  error?: string;
+}
+
+function absoluteInstallCommand(command: string, executable: string): string {
+  const quoted = process.platform === "win32"
+    ? `"${executable.replace(/"/g, '""')}"`
+    : `'${executable.replace(/'/g, `'"'"'`)}'`;
+  return command.replace(/^(\s*)[^\s|;&]+/, `$1${quoted}`);
+}
+
+function requiredInstallTool(command: string): string | undefined {
+  if (process.platform === "win32" && /^(irm|Invoke-)/i.test(command)) {
+    return undefined;
+  }
+  const tool = command.match(/^\s*([^\s|;&]+)/)?.[1];
+  if (!tool) return undefined;
+  const name = path.basename(tool).toLowerCase();
+  return name === "npm" || name === "curl" ? name : undefined;
+}
+
+async function isAppleSiliconHardware(): Promise<boolean> {
+  if (process.platform !== "darwin") return false;
+  if (process.arch === "arm64") return true;
+  const result = await runCheckProbe(
+    "/usr/sbin/sysctl",
+    ["-n", "hw.optional.arm64"],
+    undefined,
+    3000
+  );
+  return result.ok && result.output?.trim() === "1";
+}
+
+async function prepareInstallEnvironment(
+  command: string,
+  adapter: string
+): Promise<InstallPreflightResult> {
+  const tool = requiredInstallTool(command);
+  if (!tool) return { env: { ...process.env }, command };
+
+  const executable = await which(tool);
+  if (!executable) {
+    return {
+      env: { ...process.env },
+      command,
+      failureCode: "tool_missing",
+      failureDetail: tool,
+      error: `Required install tool not found: ${tool}`
+    };
+  }
+
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  env.PATH = [path.dirname(executable), env.PATH || ""]
+    .filter(Boolean)
+    .join(path.delimiter);
+
+  if (
+    tool === "npm" &&
+    (adapter === "claude-agent-acp" || adapter === "claude") &&
+    (await isAppleSiliconHardware())
+  ) {
+    const node = await which("node", env as Record<string, string>);
+    if (node) {
+      const arch = await runCheckProbe(
+        node,
+        ["-p", "process.arch"],
+        env as Record<string, string>,
+        5000
+      );
+      if (arch.ok && arch.output?.trim() === "x64") {
+        return {
+          env,
+          command: absoluteInstallCommand(command, executable),
+          failureCode: "node_arch_mismatch",
+          failureDetail: node,
+          error: "Apple Silicon Mac is using an x64 Node.js runtime"
+        };
+      }
+    }
+  }
+
+  return { env, command: absoluteInstallCommand(command, executable) };
+}
+
 export function cliInstall(command: string, adapter = "custom"): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
     const trimmed = command.trim();
@@ -653,87 +810,114 @@ export function cliInstallStream(
   adapter = "custom"
 ): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
-    const trimmed = command.trim();
-    if (!trimmed) return reject(new Error("install command required"));
-
-    const isWindows = process.platform === "win32";
-    const isPowerShellCommand =
-      /^irm\s/i.test(trimmed) ||
-      /\|\s*iex\b/i.test(trimmed) ||
-      /Invoke-(WebRequest|Expression)/i.test(trimmed);
-
-    let shell: string;
-    let args: string[];
-    if (isWindows && isPowerShellCommand) {
-      shell = "powershell";
-      args = [
-        "-ExecutionPolicy", "Bypass",
-        "-OutputFormat", "Text",
-        "-Command",
-        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; " +
-          trimmed
-      ];
-    } else if (isWindows) {
-      shell = "cmd";
-      args = ["/C", trimmed];
-    } else {
-      shell = process.env.SHELL || "/bin/sh";
-      args = ["-lc", trimmed];
-    }
-
     const channel = "cli://install";
-    const send = (payload: { type: "stdout" | "stderr"; content: string }) => {
+    const send = (payload: unknown) => {
       safeSendToWebContents(webContents, channel, payload);
     };
+    void (async () => {
+      const trimmed = command.trim();
+      if (!trimmed) throw new Error("install command required");
 
-    const child = spawn(shell, args, { env: process.env });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let setupTracked = false;
-    const reportSetup = (result: "installed" | "failed" | "timeout", error?: unknown) => {
-      if (setupTracked) return;
-      setupTracked = true;
-      trackAgentSetup(adapter, "install", result, error);
-    };
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-      reportSetup("timeout", "timeout");
-      send({ type: "stderr", content: "Install timed out after 10 minutes." });
-      safeSendToWebContents(webContents, channel, { type: "done", exitCode: 1 });
-    }, 10 * 60 * 1000);
+      const preflight = await prepareInstallEnvironment(trimmed, adapter);
+      if (preflight.failureCode) {
+        const error = preflight.error || "Install environment check failed";
+        const exitCode = preflight.failureCode === "tool_missing" ? 127 : 1;
+        trackAgentSetup(adapter, "install", "failed", preflight.failureCode);
+        send({ type: "stderr", content: `${error}\n` });
+        send({
+          type: "done",
+          exitCode,
+          failureCode: preflight.failureCode,
+          failureDetail: preflight.failureDetail
+        });
+        resolve({ success: false, exitCode, stdout: "", stderr: error });
+        return;
+      }
 
-    child.stdout!.on("data", (d) => {
-      const chunk = d.toString();
-      stdout += chunk;
-      send({ type: "stdout", content: chunk });
-    });
-    child.stderr!.on("data", (d) => {
-      const chunk = d.toString();
-      stderr += chunk;
-      send({ type: "stderr", content: chunk });
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reportSetup("failed", err);
-      send({ type: "stderr", content: String(err) });
-      safeSendToWebContents(webContents, channel, { type: "done", exitCode: 1 });
-      reject(err);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      reportSetup(
-        timedOut ? "timeout" : code === 0 ? "installed" : "failed",
-        timedOut ? "timeout" : code === 0 ? undefined : `process exited ${code ?? "unknown"}`
-      );
-      safeSendToWebContents(webContents, channel, { type: "done", exitCode: code });
-      resolve({
-        success: code === 0,
-        exitCode: code,
-        stdout,
-        stderr
+      const installCommand = preflight.command;
+      const isWindows = process.platform === "win32";
+      const isPowerShellCommand =
+        /^irm\s/i.test(installCommand) ||
+        /\|\s*iex\b/i.test(installCommand) ||
+        /Invoke-(WebRequest|Expression)/i.test(installCommand);
+
+      let shell: string;
+      let args: string[];
+      if (isWindows && isPowerShellCommand) {
+        shell = "powershell";
+        args = [
+          "-ExecutionPolicy", "Bypass",
+          "-OutputFormat", "Text",
+          "-Command",
+          "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; " +
+            installCommand
+        ];
+      } else if (isWindows) {
+        shell = "cmd";
+        args = ["/C", installCommand];
+      } else {
+        shell = process.env.SHELL || "/bin/sh";
+        args = ["-lc", installCommand];
+      }
+
+      const child = spawn(shell, args, { env: preflight.env });
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      let setupTracked = false;
+      const reportSetup = (
+        result: "installed" | "failed" | "timeout",
+        error?: unknown
+      ) => {
+        if (setupTracked) return;
+        setupTracked = true;
+        trackAgentSetup(adapter, "install", result, error);
+      };
+      const complete = (
+        exitCode: number | null,
+        failureCode?: CliInstallFailureCode,
+        failureDetail?: string
+      ) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        send({ type: "done", exitCode, failureCode, failureDetail });
+        resolve({ success: exitCode === 0, exitCode, stdout, stderr });
+      };
+      const timer = setTimeout(() => {
+        child.kill();
+        const message = "Install timed out after 10 minutes.";
+        stderr = `${stderr}\n${message}`.trim();
+        reportSetup("timeout", "timeout");
+        send({ type: "stderr", content: `${message}\n` });
+        complete(1, "timeout");
+      }, 10 * 60 * 1000);
+
+      child.stdout!.on("data", (d) => {
+        const chunk = d.toString();
+        stdout = (stdout + chunk).slice(-80_000);
+        send({ type: "stdout", content: chunk });
       });
-    });
+      child.stderr!.on("data", (d) => {
+        const chunk = d.toString();
+        stderr = (stderr + chunk).slice(-80_000);
+        send({ type: "stderr", content: chunk });
+      });
+      child.on("error", (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        stderr = `${stderr}\n${message}`.trim();
+        reportSetup("failed", err);
+        send({ type: "stderr", content: `${message}\n` });
+        complete(1, "spawn_error", message);
+      });
+      child.on("close", (code) => {
+        if (settled) return;
+        reportSetup(
+          code === 0 ? "installed" : "failed",
+          code === 0 ? undefined : `process exited ${code ?? "unknown"}`
+        );
+        complete(code);
+      });
+    })().catch(reject);
   });
 }

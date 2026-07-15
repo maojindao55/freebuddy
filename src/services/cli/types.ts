@@ -251,6 +251,21 @@ export interface CliInstallResult {
   stderr: string;
 }
 
+export type CliInstallFailureCode =
+  | "tool_missing"
+  | "node_arch_mismatch"
+  | "timeout"
+  | "spawn_error";
+
+export type CliInstallEvent =
+  | { type: "stdout" | "stderr"; content: string }
+  | {
+      type: "done";
+      exitCode: number | null;
+      failureCode?: CliInstallFailureCode;
+      failureDetail?: string;
+    };
+
 export interface CliRuntime {
   adapter: string;
   installed: boolean;

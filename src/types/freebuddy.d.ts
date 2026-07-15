@@ -11,6 +11,7 @@ import type {
   CliRuntime,
   CliCheckResult,
   CliInstallResult,
+  CliInstallEvent,
   CliTaskRow,
   CliTaskLogPage,
   CliTaskListArgs,
@@ -84,7 +85,7 @@ declare global {
     installStream(
       adapter: string,
       command: string,
-      cb: (event: { type: "stdout" | "stderr"; content: string } | { type: "done"; exitCode: number | null }) => void
+      cb: (event: CliInstallEvent) => void
     ): () => void;
 
     run(args: CliRunArgs): Promise<{ sessionId: string }>;

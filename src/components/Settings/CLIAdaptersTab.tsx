@@ -13,6 +13,7 @@ import type {
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
 import { useCliInstallStore } from "@/store/cliInstallStore";
+import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { getAgentIconId } from "@/config/agentIcon";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
@@ -76,6 +77,15 @@ function matchesQuery(ex: ResolvedExecutor, query: string): boolean {
 
 function cliRuntimeErrorKey(lastError: string | undefined): string {
   if (lastError === "binary not found") return "settings.cli.commandNotFound";
+  if (lastError === "claude runtime architecture mismatch") {
+    return "settings.cli.claudeArchitectureMismatch";
+  }
+  if (lastError === "claude native binary not found") {
+    return "settings.cli.claudeNativeMissing";
+  }
+  if (lastError === "version probe timed out") {
+    return "settings.cli.checkTimedOut";
+  }
   if (lastError === CODEX_ACP_UPGRADE_REQUIRED) {
     return "settings.cli.codexAcpUpgradeRequired";
   }
@@ -116,6 +126,7 @@ export function CLIAdaptersTab() {
   const refreshMembers = useConversationStore((s) => s.refreshMembers);
   const startInstall = useCliInstallStore((s) => s.startJob);
   const installJobs = useCliInstallStore((s) => s.jobs);
+  const notify = useAgentBridgeStore((s) => s.notify);
   const installingIdSet = useMemo(
     () => new Set(installJobs.filter((j) => !j.done).map((j) => j.adapterId)),
     [installJobs]
@@ -173,6 +184,27 @@ export function CLIAdaptersTab() {
       setCheckingIds((prev) => new Set(prev).add(id));
       try {
         await check(id);
+        const checked = useCliExecutorStore.getState().resolve(id);
+        const runtime = checked?.runtime;
+        if (runtime?.installed) {
+          notify(t("settings.cli.checkInstalled", {
+            label: checked?.label ?? id,
+            version: runtime.version ? ` (${runtime.version})` : ""
+          }));
+        } else {
+          notify(t("settings.cli.checkUnavailable", {
+            label: checked?.label ?? id,
+            reason: runtime?.lastError
+              ? t(cliRuntimeErrorKey(runtime.lastError))
+              : t("settings.cli.notInstalled")
+          }));
+        }
+      } catch (error) {
+        const checked = useCliExecutorStore.getState().resolve(id);
+        notify(t("settings.cli.checkFailed", {
+          label: checked?.label ?? id,
+          error: (error as Error)?.message || String(error)
+        }));
       } finally {
         setCheckingIds((prev) => {
           const next = new Set(prev);
@@ -181,7 +213,7 @@ export function CLIAdaptersTab() {
         });
       }
     },
-    [check]
+    [check, notify, t]
   );
 
   const handleCheckAll = useCallback(async () => {

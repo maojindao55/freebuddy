@@ -305,7 +305,7 @@ test("team i18n keys exist in both locales", () => {
 test("workflow team settings editor localizes builtin role and node labels", () => {
   const src = read("../src/components/Settings/WorkflowTeamEditor.tsx");
   assert.match(src, /workflowTeamRoleLabel\(draft, role, t\)/);
-  assert.match(src, /workflowTeamRoleKind\(role\.kind, t\)/);
+  assert.match(src, /workflow\.roleDescriptions\.\$\{role\.kind\}/);
   assert.match(src, /workflowTeamNodeTitle\(draft, n, t\)/);
   assert.match(src, /workflowTeamNodeMode\(n\.mode, t\)/);
   assert.doesNotMatch(src, /<strong>\{role\.label\}<\/strong>/);
@@ -359,10 +359,12 @@ test("workflow runtime forwards step model overrides to cliRun", () => {
   assert.match(src, /configOptionOverrides: args\.configOptionOverrides/);
 });
 
-test("Settings modal mounts the WorkflowTeamsTab", () => {
-  const src = read("../src/components/Settings/SettingsModal.tsx");
-  assert.match(src, /<WorkflowTeamsTab/);
-  assert.match(src, /import \{ WorkflowTeamsTab \}/);
+test("main workspace mounts WorkflowTeamsTab outside Settings", () => {
+  const app = read("../src/App.tsx");
+  const settings = read("../src/components/Settings/SettingsModal.tsx");
+  assert.match(app, /workspaceView === "workflowTeams"/);
+  assert.match(app, /<WorkflowTeamsTab/);
+  assert.doesNotMatch(settings, /<WorkflowTeamsTab/);
 });
 
 test("ChatView uses a non-writing summary role for team follow-up conversations", () => {

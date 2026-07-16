@@ -414,6 +414,12 @@ export interface AttachmentCandidate {
   created?: boolean;
 }
 
+export interface WorkspaceFileMatch {
+  path: string;
+  name: string;
+  directory: string;
+}
+
 export type AttachmentPrepareRejectionReason = "unsupported_type" | "file_too_large";
 
 export interface AttachmentPrepareRejection {

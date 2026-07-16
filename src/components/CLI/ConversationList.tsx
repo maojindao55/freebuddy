@@ -5,6 +5,8 @@ import type { Conversation } from "@/services/cli/types";
 import { displayAgentName } from "@/config/agentDisplay";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
+import { MessageSquare, Search, X } from "lucide-react";
+import { AgentAvatar } from "./AgentAvatar";
 
 function conversationTimeValue(conversation: Conversation) {
   return conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt;
@@ -52,12 +54,6 @@ function formatConversationTime(value: string) {
   if (date.getFullYear() === now.getFullYear())
     return dateTimeFormatter(lang, "md").format(date);
   return dateTimeFormatter(lang, "ymd").format(date);
-}
-
-function formatConversationTimeTitle(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return dateTimeFormatter(i18next.language || "en", "full").format(date);
 }
 
 function shortCwd(cwd: string) {
@@ -133,6 +129,11 @@ const ConversationRow = memo(function ConversationRow({
   const timeValue = conversationTimeValue(conversation);
   const timeLabel = formatConversationTime(timeValue);
   const agentName = displayAgentName(conversation.agentName, conversation.adapter);
+  const metadata = [
+    agentName,
+    conversation.cwd ? shortCwd(conversation.cwd) : "",
+    timeLabel
+  ].filter(Boolean).join(" · ");
 
   return (
     <li
@@ -140,6 +141,7 @@ const ConversationRow = memo(function ConversationRow({
       role="button"
       tabIndex={0}
       aria-current={isActive ? "true" : undefined}
+      title={metadata}
       onClick={() => onSelect(conversation.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -154,22 +156,15 @@ const ConversationRow = memo(function ConversationRow({
           title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
         />
       )}
+      <AgentAvatar
+        adapter={conversation.adapter}
+        className="conv-item-avatar"
+        fallback={<MessageSquare aria-hidden="true" />}
+      />
       <div className="conv-item-main">
         <div className="conv-item-title-row">
           <strong>{conversation.title}</strong>
         </div>
-        <small>
-          {agentName}
-          {conversation.cwd ? ` · ${shortCwd(conversation.cwd)}` : ""}
-          {timeLabel && (
-            <>
-              {" · "}
-              <time dateTime={timeValue} title={formatConversationTimeTitle(timeValue)}>
-                {timeLabel}
-              </time>
-            </>
-          )}
-        </small>
       </div>
       <div className="conv-item-side">
         <button
@@ -187,11 +182,7 @@ const ConversationRow = memo(function ConversationRow({
   );
 });
 
-export function ConversationList({
-  onNew
-}: {
-  onNew: () => void;
-}) {
+export function ConversationList() {
   const conversations = useConversationStore((s) => s.conversations);
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
@@ -211,6 +202,7 @@ export function ConversationList({
   const remove = useConversationStore((s) => s.deleteConversation);
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const runningSet = new Set(runningSignature ? runningSignature.split("\n") : []);
   const workflowRunningSet = new Set(
@@ -266,36 +258,40 @@ export function ConversationList({
     <div className="conv-list">
       <div className="conv-list-header">
         <h2>{t("conversations.title")}</h2>
-        <button className="ghost" onClick={onNew}>
-          {t("conversations.new")}
+        <button
+          type="button"
+          className={`conv-list-search-toggle${searchOpen || query ? " active" : ""}`}
+          title={t("conversations.searchPlaceholder")}
+          aria-label={t("conversations.searchPlaceholder")}
+          aria-expanded={searchOpen || Boolean(query)}
+          onClick={() => {
+            if (searchOpen && query) setQuery("");
+            setSearchOpen((open) => !open);
+          }}
+        >
+          {searchOpen || query ? <X aria-hidden="true" /> : <Search aria-hidden="true" />}
         </button>
       </div>
-      <div className="conv-search">
-        <input
-          type="text"
-          value={query}
-          enterKeyHint="search"
-          placeholder={t("conversations.searchPlaceholder")}
-          aria-label={t("conversations.searchPlaceholder")}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              setQuery("");
-            }
-          }}
-        />
-        {query && (
-          <button
-            type="button"
-            className="conv-search-clear"
-            aria-label={t("conversations.clearSearchAria")}
-            onClick={() => setQuery("")}
-          >
-            ×
-          </button>
-        )}
-      </div>
+      {(searchOpen || query) && (
+        <div className="conv-search">
+          <input
+            type="text"
+            autoFocus
+            value={query}
+            enterKeyHint="search"
+            placeholder={t("conversations.searchPlaceholder")}
+            aria-label={t("conversations.searchPlaceholder")}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setQuery("");
+                setSearchOpen(false);
+              }
+            }}
+          />
+        </div>
+      )}
       <ul>
         {sections.length === 0 ? (
           <li className="conv-empty muted">

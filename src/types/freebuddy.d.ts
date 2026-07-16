@@ -23,6 +23,7 @@ import type {
   ConversationMessage,
   ConversationTitleSource,
   AttachmentCandidate,
+  WorkspaceFileMatch,
   PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
@@ -63,6 +64,13 @@ import type {
   SkillImportResult,
   SkillRecord
 } from "@/services/skills/types";
+import type {
+  ScheduledTask,
+  ScheduledTaskAgent,
+  ScheduledTaskInput,
+  ScheduledTaskMutationResult,
+  ScheduledTaskRun
+} from "@/services/scheduledTasks/types";
 
 export {};
 
@@ -178,6 +186,11 @@ declare global {
     updateMessage(input: UpdateMessageInput): Promise<void>;
 
     selectDirectory(): Promise<string | null>;
+    searchWorkspaceFiles(
+      cwd: string,
+      query: string,
+      limit?: number
+    ): Promise<WorkspaceFileMatch[]>;
     selectAttachments(): Promise<AttachmentCandidate[]>;
   prepareAttachmentFiles(
     files: File[],
@@ -347,6 +360,20 @@ declare global {
     seedBuiltins(): Promise<WorkflowTeam[]>;
   }
 
+  interface FreebuddyScheduledTasks {
+    list(): Promise<ScheduledTask[]>;
+    listRuns(taskId: string): Promise<ScheduledTaskRun[]>;
+    listAgents(): Promise<ScheduledTaskAgent[]>;
+    create(input: ScheduledTaskInput): Promise<ScheduledTaskMutationResult>;
+    update(args: {
+      id: string;
+      input: ScheduledTaskInput;
+    }): Promise<ScheduledTaskMutationResult>;
+    delete(id: string): Promise<boolean>;
+    run(id: string): Promise<boolean>;
+    onChanged(cb: (task?: ScheduledTask) => void): () => void;
+  }
+
   type UpdaterEvent =
     | { type: "checking-for-update" }
     | {
@@ -390,6 +417,7 @@ declare global {
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
     skills: FreebuddySkills;
+    scheduledTasks: FreebuddyScheduledTasks;
     settings: FreebuddySettings;
     feed: FreebuddyFeed;
     infoCards: FreebuddyInfoCards;

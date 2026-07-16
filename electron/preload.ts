@@ -139,6 +139,8 @@ const cli = {
     ipcRenderer.invoke("cli:updateMessage", input),
 
   selectDirectory: () => ipcRenderer.invoke("cli:selectDirectory"),
+  searchWorkspaceFiles: (cwd: string, query: string, limit?: number) =>
+    ipcRenderer.invoke("cli:searchWorkspaceFiles", { cwd, query, limit }),
   selectAttachments: () => ipcRenderer.invoke("cli:selectAttachments"),
   prepareAttachmentFiles: async (files: File[], limit?: number, existingPaths?: string[]) => {
     const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
@@ -367,6 +369,22 @@ const skills = {
   selectDirectory: () => ipcRenderer.invoke("skills:selectDirectory")
 };
 
+const scheduledTasks = {
+  list: () => ipcRenderer.invoke("scheduledTasks:list"),
+  listRuns: (taskId: string) => ipcRenderer.invoke("scheduledTasks:listRuns", taskId),
+  listAgents: () => ipcRenderer.invoke("scheduledTasks:listAgents"),
+  create: (input: unknown) => ipcRenderer.invoke("scheduledTasks:create", input),
+  update: (args: unknown) => ipcRenderer.invoke("scheduledTasks:update", args),
+  delete: (id: string) => ipcRenderer.invoke("scheduledTasks:delete", id),
+  run: (id: string) => ipcRenderer.invoke("scheduledTasks:run", id),
+  onChanged: (cb: (task: unknown) => void): (() => void) => {
+    const channel = "scheduledTasks://changed";
+    const handler = (_e: IpcRendererEvent, task: unknown) => cb(task);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  }
+};
+
 const updater = {
   getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
   check: () =>
@@ -401,6 +419,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   workflowTeams,
   skills,
   settings,
+  scheduledTasks,
   feed,
   infoCards,
   window,

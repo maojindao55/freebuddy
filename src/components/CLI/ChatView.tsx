@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
 import { nanoid } from "nanoid";
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
+import { useNewTaskUiStore } from "@/store/newTaskUiStore";
 import { cliClient } from "@/services/cli/client";
 import type {
   AttachmentPrepareRejection,
@@ -52,12 +54,14 @@ import { SessionConfigPicker } from "./SessionConfigPicker";
 import { SkillPicker } from "./SkillPicker";
 import { useSkillStore } from "@/store/skillStore";
 import { useAttachmentImport } from "@/hooks/useAttachmentImport";
+import { useWorkspaceFileMentions } from "@/hooks/useWorkspaceFileMentions";
 import { resolveDeferredAttachmentImport } from "@/utils/attachmentImport";
 import {
   isManagedAttachmentPathProtected,
   protectManagedAttachments,
   unprotectManagedAttachments
 } from "@/utils/managedAttachmentProtection";
+import { WorkspaceFileMentionMenu } from "./WorkspaceFileMentionMenu";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -318,9 +322,10 @@ export function ChatView() {
   const skillsLoaded = useSkillStore((s) => s.loaded);
   const loadSkills = useSkillStore((s) => s.load);
 
-  const [taskMode, setTaskMode] = useState<"normal" | "team">(
-    "normal"
-  );
+  const taskMode = useNewTaskUiStore((s) => s.taskMode);
+  const setTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
+  const requestedTeamId = useNewTaskUiStore((s) => s.requestedTeamId);
+  const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
   const teamMode = taskMode === "team";
   const workflowMode = false;
   const createAndStartTeam = useWorkflowStore((s) => s.createAndStartTeam);
@@ -448,6 +453,12 @@ export function ChatView() {
   const sessionConfigOptions = sessionMeta.configOptions;
 
   const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
+  const chatFileMentions = useWorkspaceFileMentions({
+    value: draft,
+    cwd: conv?.cwd,
+    onChange: setDraft,
+    textareaRef: chatTextareaRef
+  });
 
   const workflowPlan = useMemo<WorkflowPlan | null>(() => {
     if (!activeRun || activeRun.conversationId !== conv?.id) return null;
@@ -668,6 +679,16 @@ export function ChatView() {
       if (firstEnabled) setSelectedTeamId(firstEnabled.id);
     }
   }, [teams, selectedTeamId]);
+
+  useEffect(() => {
+    if (
+      requestedTeamId &&
+      requestedTeamId !== selectedTeamId &&
+      teams.some((team) => team.id === requestedTeamId && team.enabled)
+    ) {
+      setSelectedTeamId(requestedTeamId);
+    }
+  }, [requestedTeamId, selectedTeamId, teams]);
 
   useEffect(() => {
     const resolved = conv?.approvalMode ?? member?.cli.approvalMode;
@@ -1311,7 +1332,10 @@ export function ChatView() {
           setTaskMode(m);
           clearTeamPreview();
         }}
-        onTeam={setSelectedTeamId}
+        onTeam={(teamId) => {
+          setSelectedTeamId(teamId);
+          setRequestedTeamId(teamId);
+        }}
         sendLocked={newTaskSendLock}
         onSubmit={() => void onCreateAndSend()}
       />
@@ -1417,7 +1441,14 @@ export function ChatView() {
           removeDisabled={attachmentBusy || sendLock}
         />
         <div className="composer-input-wrap">
-          {slashDraft && availableCommands.length > 0 ? (
+          {chatFileMentions.active ? (
+            <WorkspaceFileMentionMenu
+              matches={chatFileMentions.matches}
+              selectedIndex={chatFileMentions.selectedIndex}
+              loading={chatFileMentions.loading}
+              onSelect={chatFileMentions.selectMatch}
+            />
+          ) : slashDraft && availableCommands.length > 0 ? (
             <SlashCommandMenu
               commands={availableCommands}
               query={slashDraft.query}
@@ -1439,9 +1470,12 @@ export function ChatView() {
                   ? t("chat.inputPlaceholderWithSlash")
                   : t("chat.inputPlaceholder")
             }
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={chatFileMentions.handleChange}
+            onClick={chatFileMentions.handleCaretChange}
+            onKeyUp={chatFileMentions.handleCaretChange}
             onPaste={chatAttachmentImport.handlePaste}
             onKeyDown={(e) => {
+              if (chatFileMentions.handleKeyDown(e)) return;
               if (slashDraft && filteredSlashCommands.length > 0) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
@@ -1637,6 +1671,22 @@ function NewTaskHome({
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const teamMode = taskMode === "team";
+  const fileMentions = useWorkspaceFileMentions({
+    value: draft,
+    cwd,
+    onChange: onDraft,
+    textareaRef
+  });
+  const workspaceParts = cwd.trim().split(/[\\/]/).filter(Boolean);
+  const workspaceName = workspaceParts[workspaceParts.length - 1] || cwd.trim();
+  const selectWorkspace = async () => {
+    try {
+      const path = await cliClient.selectDirectory();
+      if (path) onCwd(path);
+    } catch (e) {
+      console.error("Error picking directory:", e);
+    }
+  };
 
   return (
     <div className="new-task-view">
@@ -1685,6 +1735,14 @@ function NewTaskHome({
           onRemove={onRemoveAttachment}
           removeDisabled={attachmentBusy || sendLocked}
         />
+        {fileMentions.active ? (
+          <WorkspaceFileMentionMenu
+            matches={fileMentions.matches}
+            selectedIndex={fileMentions.selectedIndex}
+            loading={fileMentions.loading}
+            onSelect={fileMentions.selectMatch}
+          />
+        ) : null}
         <textarea
           ref={textareaRef}
           autoFocus
@@ -1692,9 +1750,12 @@ function NewTaskHome({
           value={draft}
           disabled={attachmentBusy || sendLocked}
           placeholder={t("chat.inputPlaceholder")}
-          onChange={(event) => onDraft(event.target.value)}
+          onChange={fileMentions.handleChange}
+          onClick={fileMentions.handleCaretChange}
+          onKeyUp={fileMentions.handleCaretChange}
           onPaste={onAttachmentPaste}
           onKeyDown={(event) => {
+            if (fileMentions.handleKeyDown(event)) return;
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               if (!attachmentBusy && !sendLocked) onSubmit();
@@ -1772,27 +1833,37 @@ function NewTaskHome({
             disabled={sendLocked}
             onChange={onSkills}
           />
-          <button
-            className="composer-tool-chip"
-            type="button"
-            title={t("chat.selectCwd")}
-            onClick={async () => {
-              try {
-                const path = await cliClient.selectDirectory();
-                if (path) onCwd(path);
-              } catch (e) {
-                console.error("Error picking directory:", e);
-              }
-            }}
-          >
-            <FolderIcon />
-            <span>{t("chat.workspace")}</span>
-          </button>
-          <input
-            className="new-task-cwd-input"
-            value={cwd}
-            onChange={(event) => onCwd(event.target.value)}
-          />
+          {cwd ? (
+            <div className="new-task-workspace-chip" title={cwd}>
+              <button
+                className="new-task-workspace-remove"
+                type="button"
+                title={t("chat.removeWorkspace")}
+                aria-label={t("chat.removeWorkspace")}
+                onClick={() => onCwd("")}
+              >
+                <X aria-hidden="true" />
+              </button>
+              <button
+                className="new-task-workspace-name"
+                type="button"
+                title={t("chat.changeWorkspace")}
+                onClick={selectWorkspace}
+              >
+                {workspaceName}
+              </button>
+            </div>
+          ) : (
+            <button
+              className="composer-tool-chip"
+              type="button"
+              title={t("chat.selectCwd")}
+              onClick={selectWorkspace}
+            >
+              <FolderIcon />
+              <span>{t("chat.workspace")}</span>
+            </button>
+          )}
 
           <div className="new-task-toolbar-tail">
             {!teamMode ? (

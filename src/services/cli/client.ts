@@ -20,6 +20,7 @@ import type {
   ConversationMessage,
   ConversationTitleSource,
   AttachmentCandidate,
+  WorkspaceFileMatch,
   PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
@@ -223,6 +224,13 @@ export const cliClient = {
   },
   selectDirectory(): Promise<string | null> {
     return api().selectDirectory();
+  },
+  searchWorkspaceFiles(
+    cwd: string,
+    query: string,
+    limit?: number
+  ): Promise<WorkspaceFileMatch[]> {
+    return api().searchWorkspaceFiles(cwd, query, limit);
   },
   selectAttachments(): Promise<AttachmentCandidate[]> {
     return api().selectAttachments();

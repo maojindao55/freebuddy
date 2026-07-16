@@ -6,6 +6,10 @@ import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
 import { ReplayButton } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
+import {
+  SidebarNavigation,
+  type WorkspaceView
+} from "./components/CLI/SidebarNavigation";
 import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { AuthenticationDialog } from "./components/CLI/AuthenticationDialog";
@@ -18,11 +22,14 @@ import {
   type SettingsTab
 } from "./components/Settings/SettingsModal";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
+import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
+import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
+import { useNewTaskUiStore } from "./store/newTaskUiStore";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -68,6 +75,12 @@ function App() {
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("cli");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
+  const [teamPageRequest, setTeamPageRequest] = useState<{
+    key: number;
+    teamId?: string;
+    create?: boolean;
+  }>({ key: 0 });
 
   const isElectron =
     Boolean(window.freebuddy?.cli) || navigator.userAgent.includes("Electron");
@@ -75,12 +88,22 @@ function App() {
 
   const loadExecutors = useCliExecutorStore((s) => s.load);
   const loadConversations = useConversationStore((s) => s.load);
+  const refreshConversationList = useConversationStore((s) => s.refreshList);
   useEffect(() => {
     void (async () => {
       await loadExecutors();
       await loadConversations();
     })();
   }, [loadExecutors, loadConversations]);
+
+  useEffect(() => {
+    const off = window.freebuddy?.scheduledTasks?.onChanged?.((task) => {
+      if (!task || task.lastStatus === "completed" || task.lastStatus === "failed") {
+        void refreshConversationList();
+      }
+    });
+    return () => off?.();
+  }, [refreshConversationList]);
 
   useEffect(() => {
     const off = window.freebuddy?.window?.onChromeVisible?.((visible) => {
@@ -174,6 +197,42 @@ function App() {
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
   const isNewTask = !activeConversation;
+  const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
+  const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
+  const startNewTask = () => {
+    setRequestedTeamId(undefined);
+    setNewTaskMode("normal");
+    setSettingsOpen(false);
+    setWorkspaceView("chat");
+    void setActive(undefined);
+  };
+  const openScheduledTasks = () => {
+    setSettingsOpen(false);
+    setWorkspaceView("scheduledTasks");
+    void setActive(undefined);
+  };
+  const openWorkflowTeams = (request?: { teamId?: string; create?: boolean }) => {
+    setSettingsOpen(false);
+    setWorkspaceView("workflowTeams");
+    setTeamPageRequest((current) => ({
+      key: current.key + 1,
+      teamId: request?.teamId,
+      create: request?.create
+    }));
+    void setActive(undefined);
+  };
+
+  useEffect(() => {
+    if (activeId) setWorkspaceView("chat");
+  }, [activeId]);
+
+  const workspaceTitle = settingsOpen
+    ? t("common.settings")
+    : workspaceView === "scheduledTasks"
+      ? t("scheduledTasks.title")
+      : workspaceView === "workflowTeams"
+        ? t("workflow.teamList")
+        : activeConversation?.title ?? t("app.chat");
   // Select the running *count* rather than the whole live map: App (the root)
   // re-renders only when the number of running conversations changes, not on
   // every streaming chunk. Otherwise every background event would re-render
@@ -222,7 +281,7 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && isNewTask ? " new-task-mode" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
       style={{ "--fb-detail-width": `${effectiveDetailWidth}px` } as CSSProperties}
     >
@@ -257,12 +316,14 @@ function App() {
               {renderToggleButton()}
             </div>
 
-            <ConversationList
-              onNew={() => {
-                setSettingsOpen(false);
-                void setActive(undefined);
-              }}
+            <SidebarNavigation
+              workspaceView={workspaceView}
+              isNewTask={isNewTask}
+              onNewTask={startNewTask}
+              onOpenScheduledTasks={openScheduledTasks}
+              onOpenTeams={() => openWorkflowTeams()}
             />
+            <ConversationList />
 
             <div className="sidebar-footer">
               <button
@@ -313,17 +374,9 @@ function App() {
           {sidebarCollapsed && renderToggleButton("floating")}
           <div
             className="breadcrumb"
-            title={
-              settingsOpen
-                ? t("common.settings")
-                : activeConversation?.title ?? t("app.chat")
-            }
+            title={workspaceTitle}
           >
-            <strong>
-              {settingsOpen
-                ? t("common.settings")
-                : activeConversation?.title ?? t("app.chat")}
-            </strong>
+            <strong>{workspaceTitle}</strong>
           </div>
           {settingsOpen ? (
             <div className="titlebar-actions titlebar-actions-plain">
@@ -335,7 +388,7 @@ function App() {
                 {t("common.close")}
               </button>
             </div>
-          ) : activeConversation && (
+          ) : workspaceView === "chat" && activeConversation && (
             <div className="titlebar-actions titlebar-actions-plain">
               <ReplayButton />
             </div>
@@ -345,7 +398,7 @@ function App() {
 
         <section
           className={`chat-section${settingsOpen ? " settings-section-host" : ""}`}
-          aria-label={settingsOpen ? t("common.settings") : t("app.chat")}
+          aria-label={workspaceTitle}
         >
           {settingsOpen ? (
             <SettingsPage
@@ -353,13 +406,34 @@ function App() {
               onTabChange={setSettingsInitialTab}
               onClose={() => setSettingsOpen(false)}
             />
+          ) : workspaceView === "scheduledTasks" ? (
+            <section className="workspace-tool-page">
+              <div className="workspace-tool-page-inner">
+                <ScheduledTasksTab
+                  onOpenConversation={(conversationId) => {
+                    void loadConversations().then(() => setActive(conversationId));
+                    setWorkspaceView("chat");
+                  }}
+                />
+              </div>
+            </section>
+          ) : workspaceView === "workflowTeams" ? (
+            <section className="workspace-tool-page">
+              <div className="workspace-tool-page-inner">
+                <WorkflowTeamsTab
+                  key={teamPageRequest.key}
+                  initialTeamId={teamPageRequest.teamId}
+                  startCreating={teamPageRequest.create}
+                />
+              </div>
+            </section>
           ) : (
             <ChatView />
           )}
         </section>
       </main>
 
-      {activeConversation && !settingsOpen && (
+      {activeConversation && !settingsOpen && workspaceView === "chat" && (
         <DetailColumn runningCount={runningCount} />
       )}
 

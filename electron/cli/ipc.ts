@@ -117,6 +117,8 @@ import {
   cancelAuthenticationTerminal,
   writeAuthenticationTerminal
 } from "./acpAuthTerminal.js";
+import { registerScheduledTaskIpc } from "./scheduledTasks.js";
+import { searchWorkspaceFiles } from "./workspaceFiles.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -207,6 +209,19 @@ export function registerCliIpc() {
     });
     return canceled ? null : filePaths[0] ?? null;
   });
+
+  ipcMain.handle(
+    "cli:searchWorkspaceFiles",
+    (
+      _event,
+      args: { cwd?: unknown; query?: unknown; limit?: unknown } | undefined
+    ) => {
+      const cwd = typeof args?.cwd === "string" ? args.cwd : "";
+      const query = typeof args?.query === "string" ? args.query.slice(0, 256) : "";
+      const limit = typeof args?.limit === "number" ? args.limit : undefined;
+      return searchWorkspaceFiles(cwd, query, limit);
+    }
+  );
 
   ipcMain.handle("cli:selectDirectory", async (event) => {
     const win = senderWindow(event);
@@ -600,4 +615,5 @@ export function registerCliIpc() {
   );
 
   registerWorkflowIpc();
+  registerScheduledTaskIpc();
 }

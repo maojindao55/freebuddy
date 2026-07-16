@@ -494,6 +494,11 @@
     "prompt": "Task prompt",
     "promptPlaceholder": "Describe the complete task. The agent can use its available tools and resources when it runs.",
     "agent": "Agent",
+    "model": "Model",
+    "defaultModel": "Agent default",
+    "defaultModelNamed": "Agent default ({{model}})",
+    "modelLoading": "Loading models...",
+    "modelUnavailable": "This agent did not provide selectable models.",
     "scheduleType": "Schedule",
     "schedule": {
       "manual": "Manual only",
@@ -555,6 +560,23 @@
       "running": "Running",
       "completed": "Completed",
       "failed": "Failed"
+    },
+    "errors": {
+      "titleRequired": "Task name is required.",
+      "instructionsRequired": "Task instructions are required.",
+      "invalidScheduleType": "The schedule type is invalid.",
+      "invalidExecutionMode": "The execution mode is invalid.",
+      "absoluteWorkingDirectory": "The working directory must be an absolute path.",
+      "invalidRunTime": "Run time must use the HH:mm format.",
+      "validRunDateRequired": "A valid run date is required.",
+      "weekdayRequired": "Select at least one weekday.",
+      "invalidMonthDay": "The day of month must be between 1 and 31.",
+      "oneTimeMustBeFuture": "The one-time task must be scheduled in the future.",
+      "agentUnavailable": "The selected agent is unavailable.",
+      "taskNotFound": "The scheduled task was not found.",
+      "windowUnavailable": "The FreeBuddy window is unavailable.",
+      "appClosed": "FreeBuddy closed before the task completed.",
+      "workingDirectoryUnavailable": "The working directory is unavailable: {{path}}"
     }
   },
   "workflow": {

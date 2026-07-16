@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { cliClient } from "@/services/cli/client";
+import type { SessionConfigOption, SessionConfigProbeInput } from "@/services/cli/types";
 import { scheduledTasksClient } from "@/services/scheduledTasks/client";
 import type {
   ScheduledTask,
@@ -31,6 +32,8 @@ import type {
   ScheduledTaskRun,
   ScheduledTaskScheduleType
 } from "@/services/scheduledTasks/types";
+import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useConversationStore } from "@/store/conversationStore";
 
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0] as const;
 const WEEKDAY_KEYS: Record<number, string> = {
@@ -80,6 +83,7 @@ function inputFromTask(task: ScheduledTask): ScheduledTaskInput {
     weekdays: task.weekdays?.length ? task.weekdays : [1, 2, 3, 4, 5],
     monthDay: task.monthDay ?? new Date().getDate(),
     cwd: task.cwd,
+    configOptionOverrides: task.configOptionOverrides,
     executionMode: task.executionMode,
     enabled: task.enabled
   };
@@ -111,6 +115,12 @@ export function ScheduledTasksTab({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [runsByTask, setRunsByTask] = useState<Record<string, ScheduledTaskRun[]>>({});
   const [expandedPrompts, setExpandedPrompts] = useState<Record<string, boolean>>({});
+  const members = useConversationStore((state) => state.members);
+  const executorsLoaded = useCliExecutorStore((state) => state.loaded);
+  const executorOverrides = useCliExecutorStore((state) => state.overrides);
+  const [modelOptions, setModelOptions] = useState<SessionConfigOption[]>([]);
+  const [modelLoading, setModelLoading] = useState(false);
+  const modelProbeGenerationRef = useRef(0);
 
   const togglePromptExpanded = (taskId: string) => {
     setExpandedPrompts((current) => ({
@@ -123,6 +133,129 @@ export function ScheduledTasksTab({
     () => new Map(agents.map((agent) => [agent.id, agent.name])),
     [agents]
   );
+
+  const modelOption = useMemo(
+    () =>
+      modelOptions.find((option) => option.category === "model") ??
+      modelOptions.find((option) => option.id === "model"),
+    [modelOptions]
+  );
+  const persistedModelEntry = useMemo(
+    () =>
+      Object.entries(draft.configOptionOverrides ?? {}).find(
+        ([id]) => id === modelOption?.id || id === "model"
+      ),
+    [draft.configOptionOverrides, modelOption?.id]
+  );
+  const selectedModelValue = modelOption
+    ? draft.configOptionOverrides?.[modelOption.id] ?? ""
+    : persistedModelEntry?.[1] ?? "";
+  const selectableModels = useMemo(() => {
+    const values = [...(modelOption?.values ?? [])];
+    if (selectedModelValue && !values.some((value) => value.id === selectedModelValue)) {
+      values.unshift({ id: selectedModelValue, name: selectedModelValue });
+    }
+    return values;
+  }, [modelOption?.values, selectedModelValue]);
+
+  const translateTaskError = (error: string): string => {
+    const legacyKeys: Record<string, string> = {
+      "task title is required": "scheduledTasks.errors.titleRequired",
+      "task instructions are required": "scheduledTasks.errors.instructionsRequired",
+      "schedule type is invalid": "scheduledTasks.errors.invalidScheduleType",
+      "execution mode is invalid": "scheduledTasks.errors.invalidExecutionMode",
+      "working directory must be an absolute path": "scheduledTasks.errors.absoluteWorkingDirectory",
+      "run time must use HH:mm": "scheduledTasks.errors.invalidRunTime",
+      "a valid run date is required": "scheduledTasks.errors.validRunDateRequired",
+      "select at least one weekday": "scheduledTasks.errors.weekdayRequired",
+      "month day must be between 1 and 31": "scheduledTasks.errors.invalidMonthDay",
+      "one-time task must be scheduled in the future": "scheduledTasks.errors.oneTimeMustBeFuture",
+      "selected agent is unavailable": "scheduledTasks.errors.agentUnavailable",
+      "task not found": "scheduledTasks.errors.taskNotFound",
+      "FreeBuddy window is not available": "scheduledTasks.errors.windowUnavailable",
+      "FreeBuddy closed before the task completed": "scheduledTasks.errors.appClosed"
+    };
+    const workingDirectoryPrefix = "working directory is unavailable: ";
+    if (error.startsWith(workingDirectoryPrefix)) {
+      return t("scheduledTasks.errors.workingDirectoryUnavailable", {
+        path: error.slice(workingDirectoryPrefix.length)
+      });
+    }
+    const key = error.startsWith("scheduledTasks.errors.") ? error : legacyKeys[error];
+    return key ? t(key) : error;
+  };
+
+  useEffect(() => {
+    const generation = ++modelProbeGenerationRef.current;
+    setModelOptions([]);
+    setModelLoading(false);
+    if (!editingId || !draft.agentId || !executorsLoaded || !cliClient.isAvailable()) return;
+
+    const member = members.find((entry) => entry.id === draft.agentId);
+    const scheduledAgent = agents.find((entry) => entry.id === draft.agentId);
+    if (!member && !scheduledAgent) return;
+
+    const timer = window.setTimeout(() => {
+      const adapter = (member?.cli.adapter ??
+        scheduledAgent!.adapter) as SessionConfigProbeInput["adapter"];
+      const resolved = useCliExecutorStore.getState().resolve(adapter);
+      const probeInput: SessionConfigProbeInput = {
+        agentId: draft.agentId,
+        adapter,
+        binary: member?.cli.binary || resolved?.binary,
+        extraArgs: [...(resolved?.extraArgs ?? []), ...(member?.cli.extraArgs ?? [])],
+        env: { ...(resolved?.env ?? {}), ...(member?.cli.env ?? {}) },
+        cwd: draft.cwd?.trim() || undefined
+      };
+      setModelLoading(true);
+      void (async () => {
+        let hasCachedOptions = false;
+        try {
+          const cached = await cliClient.getCachedSessionConfigOptions(probeInput);
+          if (modelProbeGenerationRef.current !== generation) return;
+          if (cached.length > 0) {
+            hasCachedOptions = true;
+            setModelOptions(cached);
+            setModelLoading(false);
+          }
+
+          const fresh = await cliClient.inspectSessionConfigOptions(probeInput);
+          if (modelProbeGenerationRef.current !== generation) return;
+          if (fresh.length > 0) setModelOptions(fresh);
+        } catch {
+          if (modelProbeGenerationRef.current === generation && !hasCachedOptions) {
+            setModelOptions([]);
+          }
+        } finally {
+          if (modelProbeGenerationRef.current === generation) setModelLoading(false);
+        }
+      })();
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    agents,
+    draft.agentId,
+    draft.cwd,
+    editingId,
+    executorsLoaded,
+    executorOverrides,
+    members
+  ]);
+
+  const setSelectedModel = (value: string) => {
+    const optionId = modelOption?.id ?? persistedModelEntry?.[0] ?? "model";
+    setDraft((current) => {
+      const nextOverrides = { ...(current.configOptionOverrides ?? {}) };
+      if (value) nextOverrides[optionId] = value;
+      else delete nextOverrides[optionId];
+      return {
+        ...current,
+        configOptionOverrides:
+          Object.keys(nextOverrides).length > 0 ? nextOverrides : undefined
+      };
+    });
+  };
 
   const load = async () => {
     if (!scheduledTasksClient.isAvailable()) return;
@@ -306,7 +439,7 @@ export function ScheduledTasksTab({
 
         {errors.length > 0 && (
           <ul className="scheduled-task-errors">
-            {errors.map((error) => <li key={error}>{error}</li>)}
+            {errors.map((error) => <li key={error}>{translateTaskError(error)}</li>)}
           </ul>
         )}
 
@@ -339,12 +472,44 @@ export function ScheduledTasksTab({
                   <span>{t("scheduledTasks.agent")}</span>
                   <select
                     value={draft.agentId}
-                    onChange={(event) => setDraft({ ...draft, agentId: event.currentTarget.value })}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        agentId: event.currentTarget.value,
+                        configOptionOverrides: undefined
+                      })
+                    }
                   >
                     {agents.map((agent) => (
                       <option key={agent.id} value={agent.id}>{agent.name}</option>
                     ))}
                   </select>
+                </label>
+                <label>
+                  <span>{t("scheduledTasks.model")}</span>
+                  <select
+                    value={selectedModelValue}
+                    onChange={(event) => setSelectedModel(event.currentTarget.value)}
+                    disabled={!modelOption && !persistedModelEntry}
+                  >
+                    <option value="">
+                      {modelLoading && selectableModels.length === 0
+                        ? t("scheduledTasks.modelLoading")
+                        : modelOption?.currentLabel || modelOption?.currentValue
+                          ? t("scheduledTasks.defaultModelNamed", {
+                              model: modelOption.currentLabel ?? modelOption.currentValue
+                            })
+                          : t("scheduledTasks.defaultModel")}
+                    </option>
+                    {selectableModels.map((value) => (
+                      <option key={value.id} value={value.id}>
+                        {value.name ?? value.id}
+                      </option>
+                    ))}
+                  </select>
+                  {!modelLoading && !modelOption && !persistedModelEntry && (
+                    <small>{t("scheduledTasks.modelUnavailable")}</small>
+                  )}
                 </label>
                 <label>
                   <span>{t("scheduledTasks.scheduleType")}</span>
@@ -611,7 +776,9 @@ export function ScheduledTasksTab({
                     </span>
                   )}
                 </div>
-                {task.lastError && <p className="scheduled-task-error">{task.lastError}</p>}
+                {task.lastError && (
+                  <p className="scheduled-task-error">{translateTaskError(task.lastError)}</p>
+                )}
               </div>
 
               <div className="scheduled-task-card-actions">
@@ -702,8 +869,11 @@ export function ScheduledTasksTab({
                             </span>
                             <time>{formatDate(run.startedAt)}</time>
                             {run.error && (
-                              <span className="scheduled-task-history-error-text" title={run.error}>
-                                {run.error}
+                              <span
+                                className="scheduled-task-history-error-text"
+                                title={translateTaskError(run.error)}
+                              >
+                                {translateTaskError(run.error)}
                               </span>
                             )}
                           </div>

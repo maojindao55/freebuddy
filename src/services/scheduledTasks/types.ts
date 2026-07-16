@@ -20,6 +20,7 @@ export interface ScheduledTask {
   weekdays?: number[];
   monthDay?: number;
   cwd?: string;
+  configOptionOverrides?: Record<string, string>;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
   nextRunAt?: string;
@@ -42,6 +43,7 @@ export interface ScheduledTaskInput {
   weekdays?: number[];
   monthDay?: number;
   cwd?: string;
+  configOptionOverrides?: Record<string, string>;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
 }

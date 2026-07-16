@@ -32,6 +32,7 @@ export interface ScheduledTask {
   weekdays?: number[];
   monthDay?: number;
   cwd?: string;
+  configOptionOverrides?: Record<string, string>;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
   nextRunAt?: string;
@@ -54,6 +55,7 @@ export interface ScheduledTaskInput {
   weekdays?: number[];
   monthDay?: number;
   cwd?: string;
+  configOptionOverrides?: Record<string, string>;
   executionMode: ScheduledTaskExecutionMode;
   enabled: boolean;
 }
@@ -80,6 +82,7 @@ interface ScheduledTaskRow {
   weekdays: string | null;
   month_day: number | null;
   cwd: string | null;
+  config_option_overrides: string | null;
   execution_mode: string;
   enabled: number;
   next_run_at: string | null;
@@ -134,6 +137,38 @@ function parseWeekdays(value: string | null): number[] | undefined {
   }
 }
 
+function normalizeConfigOptionOverrides(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>).filter(
+    (entry): entry is [string, string] =>
+      Boolean(entry[0].trim()) && typeof entry[1] === "string" && Boolean(entry[1].trim())
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseConfigOptionOverrides(value: string | null): Record<string, string> | undefined {
+  if (!value) return undefined;
+  try {
+    return normalizeConfigOptionOverrides(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
+
+function serializedConfigOptionOverrides(value: unknown): string | null {
+  const normalized = normalizeConfigOptionOverrides(value);
+  return normalized ? JSON.stringify(normalized) : null;
+}
+
+function sameConfigOptionOverrides(
+  left: Record<string, string> | undefined,
+  right: Record<string, string> | undefined
+): boolean {
+  const entries = (value: Record<string, string> | undefined) =>
+    Object.entries(value ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries(left)) === JSON.stringify(entries(right));
+}
+
 function rowToTask(row: ScheduledTaskRow): ScheduledTask {
   const scheduleType = SCHEDULE_TYPES.has(row.schedule_type as ScheduledTaskScheduleType)
     ? (row.schedule_type as ScheduledTaskScheduleType)
@@ -149,6 +184,7 @@ function rowToTask(row: ScheduledTaskRow): ScheduledTask {
     weekdays: parseWeekdays(row.weekdays),
     monthDay: row.month_day ?? undefined,
     cwd: row.cwd ?? undefined,
+    configOptionOverrides: parseConfigOptionOverrides(row.config_option_overrides),
     executionMode: EXECUTION_MODES.has(row.execution_mode as ScheduledTaskExecutionMode)
       ? (row.execution_mode as ScheduledTaskExecutionMode)
       : "new_conversation",
@@ -213,37 +249,41 @@ function scheduleOf(input: ScheduledTaskInput | ScheduledTask) {
 
 function validateInput(input: ScheduledTaskInput): string[] {
   const errors: string[] = [];
-  if (!input.title?.trim()) errors.push("task title is required");
-  if (!input.prompt?.trim()) errors.push("task instructions are required");
-  if (!SCHEDULE_TYPES.has(input.scheduleType)) errors.push("schedule type is invalid");
-  if (!EXECUTION_MODES.has(input.executionMode)) errors.push("execution mode is invalid");
+  if (!input.title?.trim()) errors.push("scheduledTasks.errors.titleRequired");
+  if (!input.prompt?.trim()) errors.push("scheduledTasks.errors.instructionsRequired");
+  if (!SCHEDULE_TYPES.has(input.scheduleType)) {
+    errors.push("scheduledTasks.errors.invalidScheduleType");
+  }
+  if (!EXECUTION_MODES.has(input.executionMode)) {
+    errors.push("scheduledTasks.errors.invalidExecutionMode");
+  }
   if (input.cwd?.trim() && !path.isAbsolute(input.cwd.trim())) {
-    errors.push("working directory must be an absolute path");
+    errors.push("scheduledTasks.errors.absoluteWorkingDirectory");
   }
   if (
     input.scheduleType !== "manual" &&
     input.scheduleType !== "hourly" &&
     !isValidLocalTime(input.timeLocal)
   ) {
-    errors.push("run time must use HH:mm");
+    errors.push("scheduledTasks.errors.invalidRunTime");
   }
   if (
     input.scheduleType === "once" &&
     (!input.scheduleDate || !isValidLocalDate(input.scheduleDate))
   ) {
-    errors.push("a valid run date is required");
+    errors.push("scheduledTasks.errors.validRunDateRequired");
   }
   if (
     input.scheduleType === "weekly" &&
     !(input.weekdays ?? []).some((day) => Number.isInteger(day) && day >= 0 && day <= 6)
   ) {
-    errors.push("select at least one weekday");
+    errors.push("scheduledTasks.errors.weekdayRequired");
   }
   if (
     input.scheduleType === "monthly" &&
     (!Number.isInteger(input.monthDay) || input.monthDay! < 1 || input.monthDay! > 31)
   ) {
-    errors.push("month day must be between 1 and 31");
+    errors.push("scheduledTasks.errors.invalidMonthDay");
   }
   if (
     input.enabled &&
@@ -252,12 +292,12 @@ function validateInput(input: ScheduledTaskInput): string[] {
     Boolean(input.scheduleDate && isValidLocalDate(input.scheduleDate)) &&
     !nextScheduledOccurrence(scheduleOf(input), systemTimeZone())
   ) {
-    errors.push("one-time task must be scheduled in the future");
+    errors.push("scheduledTasks.errors.oneTimeMustBeFuture");
   }
   const member = listCliMembers().find(
     (candidate) => candidate.id === input.agentId && candidate.enabled !== false
   );
-  if (!member) errors.push("selected agent is unavailable");
+  if (!member) errors.push("scheduledTasks.errors.agentUnavailable");
   return errors;
 }
 
@@ -277,9 +317,10 @@ export function createScheduledTask(
     .prepare(
       `INSERT INTO scheduled_tasks
         (id, title, prompt, agent_id, time_local, schedule_type,
-         schedule_date, weekdays, month_day, cwd, execution_mode, enabled,
-         next_run_at, last_status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`
+          schedule_date, weekdays, month_day, cwd, execution_mode,
+          config_option_overrides, enabled,
+          next_run_at, last_status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`
     )
     .run(
       id,
@@ -293,6 +334,7 @@ export function createScheduledTask(
       input.scheduleType === "monthly" ? input.monthDay ?? null : null,
       input.cwd?.trim() || null,
       input.executionMode,
+      serializedConfigOptionOverrides(input.configOptionOverrides),
       input.enabled ? 1 : 0,
       nextRunAt(input),
       now,
@@ -307,7 +349,9 @@ export function updateScheduledTask(
   id: string,
   input: ScheduledTaskInput
 ): { ok: true; task: ScheduledTask } | { ok: false; errors: string[] } {
-  if (!getScheduledTask(id)) return { ok: false, errors: ["task not found"] };
+  if (!getScheduledTask(id)) {
+    return { ok: false, errors: ["scheduledTasks.errors.taskNotFound"] };
+  }
   const errors = validateInput(input);
   if (errors.length) return { ok: false, errors };
   const now = new Date().toISOString();
@@ -316,7 +360,8 @@ export function updateScheduledTask(
       `UPDATE scheduled_tasks
        SET title = ?, prompt = ?, agent_id = ?, time_local = ?,
            schedule_type = ?, schedule_date = ?, weekdays = ?,
-           month_day = ?, cwd = ?, execution_mode = ?, enabled = ?, next_run_at = ?, updated_at = ?
+            month_day = ?, cwd = ?, execution_mode = ?, config_option_overrides = ?,
+            enabled = ?, next_run_at = ?, updated_at = ?
        WHERE id = ?`
     )
     .run(
@@ -330,6 +375,7 @@ export function updateScheduledTask(
       input.scheduleType === "monthly" ? input.monthDay ?? null : null,
       input.cwd?.trim() || null,
       input.executionMode,
+      serializedConfigOptionOverrides(input.configOptionOverrides),
       input.enabled ? 1 : 0,
       nextRunAt(input),
       now,
@@ -475,15 +521,19 @@ export async function runScheduledTask(
       task.executionMode === "continuous" && task.lastConversationId
         ? getConversation(task.lastConversationId)
         : undefined;
-    const conversationId =
-      existingConversation?.agentId === member.id && existingConversation.cwd === task.cwd
-        ? existingConversation.id
-        : randomUUID();
-    if (
-      !existingConversation ||
-      existingConversation.agentId !== member.id ||
-      existingConversation.cwd !== task.cwd
-    ) {
+    const canContinueConversation = Boolean(
+      existingConversation &&
+        existingConversation.agentId === member.id &&
+        existingConversation.cwd === task.cwd &&
+        sameConfigOptionOverrides(
+          existingConversation.configOptionOverrides,
+          task.configOptionOverrides
+        )
+    );
+    const conversationId = canContinueConversation
+      ? existingConversation!.id
+      : randomUUID();
+    if (!canContinueConversation) {
       createConversation({
         id: conversationId,
         title: `${task.title} · ${new Intl.DateTimeFormat(undefined, {
@@ -495,7 +545,8 @@ export async function runScheduledTask(
         agentName: member.name,
         adapter: member.cli.adapter,
         cwd: task.cwd,
-        approvalMode: "auto"
+        approvalMode: "auto",
+        configOptionOverrides: task.configOptionOverrides
       });
     }
     appendMessage({
@@ -524,6 +575,7 @@ export async function runScheduledTask(
               id: "execute",
               title: "Scheduled task",
               agentId: task.agentId,
+              configOptionOverrides: task.configOptionOverrides,
               mode: "research",
               prompt: buildScheduledTaskPrompt({
                 title: task.title,

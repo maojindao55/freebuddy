@@ -15,7 +15,7 @@ import {
   getFreshWindowsEnvironment,
   parseWindowsWhereOutput,
   resolveWindowsShellCommand,
-  windowsCommandInvocation
+  windowsInstallInvocation
 } from "./windowsEnv.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
@@ -79,12 +79,12 @@ function which(
   };
   if (path.isAbsolute(bin)) {
     try {
-      if (isFile(bin)) return Promise.resolve(bin);
       if (isWindows) {
-        for (const ext of [".cmd", ".exe", ".bat", ".ps1"]) {
+        for (const ext of [".cmd", ".exe", ".com", ".bat", ".ps1"]) {
           if (isFile(bin + ext)) return Promise.resolve(bin + ext);
         }
       }
+      if (isFile(bin)) return Promise.resolve(bin);
     } catch {}
   }
 
@@ -692,14 +692,10 @@ function absoluteInstallCommand(
   executable: string
 ): Pick<InstallPreflightResult, "command" | "requiresPowerShell"> {
   if (process.platform === "win32") {
-    const invocation = windowsCommandInvocation(executable);
-    return {
-      command: command.replace(
-        /^(\s*)[^\s|;&]+/,
-        (_match, leading: string) => `${leading}${invocation.prefix}`
-      ),
-      requiresPowerShell: invocation.requiresPowerShell
-    };
+    // Keep the command name unquoted on Windows. Passing a quoted absolute
+    // path through `cmd /C` makes Node escape the quotes as literal \" bytes
+    // for some shim layouts. PATH/PATHEXT will select the resolved .cmd/.exe.
+    return windowsInstallInvocation(command, executable);
   }
   const quoted = `'${executable.replace(/'/g, `'"'"'`)}'`;
   return {

@@ -5,7 +5,7 @@ import {
   mergeWindowsPath,
   parseWindowsShellCommandOutput,
   parseWindowsWhereOutput,
-  windowsCommandInvocation
+  windowsInstallInvocation
 } from "../dist-electron/cli/windowsEnv.js";
 
 test("mergeWindowsPath prefers fresh entries and removes case-insensitive duplicates", () => {
@@ -29,27 +29,35 @@ test("mergeWindowsPath removes wrapping quotes from registry entries", () => {
   );
 });
 
-test("where result skips a matching directory before npm.cmd", () => {
+test("where result prefers npm.cmd over a directory and POSIX npm shim", () => {
   const directory = "D:\\software\\envs\\npm\\";
+  const posixShim = "D:\\software\\envs\\npm";
   const executable = "D:\\software\\envs\\npm.cmd";
   assert.equal(
     parseWindowsWhereOutput(
-      `${directory}\r\n${executable}\r\n`,
-      (candidate) => candidate === executable
+      `${directory}\r\n${posixShim}\r\n${executable}\r\n`,
+      (candidate) => candidate === posixShim || candidate === executable
     ),
     executable
   );
 });
 
-test("PowerShell npm shims use the call operator and PowerShell host", () => {
-  assert.deepEqual(windowsCommandInvocation("D:\\software\\envs\\npm.ps1"), {
-    prefix: '& "D:\\software\\envs\\npm.ps1"',
-    requiresPowerShell: true
-  });
-  assert.deepEqual(windowsCommandInvocation("D:\\software\\envs\\npm.cmd"), {
-    prefix: '"D:\\software\\envs\\npm.cmd"',
-    requiresPowerShell: false
-  });
+test("Windows npm installs avoid quoted absolute paths and select the right host", () => {
+  const command = "npm install -g @agentclientprotocol/claude-agent-acp";
+  assert.deepEqual(
+    windowsInstallInvocation(command, "D:\\software\\envs\\npm.ps1"),
+    {
+      command,
+      requiresPowerShell: true
+    }
+  );
+  assert.deepEqual(
+    windowsInstallInvocation(command, "D:\\software\\envs\\npm.cmd"),
+    {
+      command,
+      requiresPowerShell: false
+    }
+  );
 });
 
 test("PowerShell command resolution ignores profile output before its marker", () => {

@@ -94,30 +94,47 @@ export function parseWindowsWhereOutput(
   output: string | undefined,
   isFile: (candidate: string) => boolean = isExistingFile
 ): string | undefined {
+  const candidates: string[] = [];
   for (const line of output?.split(/\r?\n/) || []) {
     const trimmed = line.trim();
     const candidate =
       trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')
         ? trimmed.slice(1, -1)
         : trimmed;
-    if (path.win32.isAbsolute(candidate) && isFile(candidate)) return candidate;
+    if (path.win32.isAbsolute(candidate) && isFile(candidate)) {
+      candidates.push(candidate);
+    }
   }
-  return undefined;
+  const priority = (candidate: string): number => {
+    switch (path.win32.extname(candidate).toLowerCase()) {
+      case ".cmd":
+      case ".exe":
+      case ".com":
+        return 0;
+      case ".bat":
+        return 1;
+      case ".ps1":
+        return 2;
+      default:
+        return 3;
+    }
+  };
+  return candidates.sort((left, right) => priority(left) - priority(right))[0];
 }
 
-export interface WindowsCommandInvocation {
-  prefix: string;
+export interface WindowsInstallInvocation {
+  command: string;
   requiresPowerShell: boolean;
 }
 
-export function windowsCommandInvocation(
+export function windowsInstallInvocation(
+  command: string,
   executable: string
-): WindowsCommandInvocation {
-  const quoted = `"${executable.replace(/"/g, '""')}"`;
+): WindowsInstallInvocation {
   const requiresPowerShell =
     path.win32.extname(executable).toLowerCase() === ".ps1";
   return {
-    prefix: requiresPowerShell ? `& ${quoted}` : quoted,
+    command,
     requiresPowerShell
   };
 }

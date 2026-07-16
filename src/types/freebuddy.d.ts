@@ -256,6 +256,8 @@ declare global {
     delete(id: string): Promise<boolean>;
     read(id: string): Promise<string | undefined>;
     selectDirectory(): Promise<string | null>;
+    selectArchive(): Promise<string | null>;
+    reveal(id: string): Promise<boolean>;
   }
 
   interface FreebuddyWorkflow {

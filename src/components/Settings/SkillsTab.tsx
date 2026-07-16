@@ -1,44 +1,115 @@
-import { useEffect, useMemo, useState } from "react";
-import { BookOpen, FolderInput, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  FileArchive,
+  FolderInput,
+  FolderOpen,
+  MoreHorizontal,
+  Search,
+  Trash2,
+  X
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
+import remarkGfm from "remark-gfm";
 
 import { skillsClient } from "@/services/skills/client";
+import type { SkillImportResult } from "@/services/skills/types";
 import { useSkillStore } from "@/store/skillStore";
+
+type SkillFilter = "all" | "enabled" | "disabled";
+type DetailTab = "instructions" | "metadata";
+
+function withoutFrontmatter(markdown: string): string {
+  return markdown.replace(/^---\s*\r?\n[\s\S]*?\r?\n---(?:\s*\r?\n|$)/, "").trim();
+}
 
 export function SkillsTab() {
   const { t } = useTranslation();
-  const { skills, loading, error, load, importDirectory, setEnabled, deleteSkill } =
+  const { skills, loading, error, load, importSource, setEnabled, deleteSkill } =
     useSkillStore();
+  const importMenuRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState("");
-  const [importMessage, setImportMessage] = useState("");
-  const [preview, setPreview] = useState<{ name: string; markdown: string }>();
+  const [filter, setFilter] = useState<SkillFilter>("all");
+  const [selectedId, setSelectedId] = useState<string>();
+  const [detailTab, setDetailTab] = useState<DetailTab>("instructions");
+  const [markdown, setMarkdown] = useState("");
+  const [markdownLoading, setMarkdownLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<SkillImportResult>();
+  const [importFailure, setImportFailure] = useState("");
 
   useEffect(() => { void load(); }, [load]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return needle
-      ? skills.filter((skill) =>
-          `${skill.name} ${skill.description}`.toLowerCase().includes(needle)
-        )
-      : skills;
-  }, [query, skills]);
+    return skills.filter((skill) => {
+      if (filter === "enabled" && !skill.enabled) return false;
+      if (filter === "disabled" && skill.enabled) return false;
+      return !needle || `${skill.name} ${skill.description}`.toLowerCase().includes(needle);
+    });
+  }, [filter, query, skills]);
 
-  const importFolder = async () => {
+  useEffect(() => {
+    if (!filtered.length) {
+      setSelectedId(undefined);
+      return;
+    }
+    if (!selectedId || !filtered.some((skill) => skill.id === selectedId)) {
+      setSelectedId(filtered[0].id);
+    }
+  }, [filtered, selectedId]);
+
+  const selected = skills.find((skill) => skill.id === selectedId);
+
+  useEffect(() => {
+    let active = true;
+    setMarkdown("");
+    if (!selected) return () => { active = false; };
+    setMarkdownLoading(true);
+    void skillsClient.read(selected.id)
+      .then((value) => {
+        if (active) setMarkdown(value ?? "");
+      })
+      .finally(() => {
+        if (active) setMarkdownLoading(false);
+      });
+    return () => { active = false; };
+  }, [selected]);
+
+  const runImport = async (kind: "directory" | "archive") => {
     try {
-      const source = await skillsClient.selectDirectory();
+      const source = kind === "archive"
+        ? await skillsClient.selectArchive()
+        : await skillsClient.selectDirectory();
+      importMenuRef.current?.removeAttribute("open");
       if (!source) return;
-      setImportMessage("");
-      const result = await importDirectory(source);
-      setImportMessage(
-        result.errors.length
-          ? result.errors.map((entry) => `${entry.path}: ${entry.message}`).join("\n")
-          : t("skills.imported", { count: result.imported.length })
-      );
-    } catch (error) {
-      setImportMessage(error instanceof Error ? error.message : String(error));
+      setImporting(true);
+      setImportFailure("");
+      setImportResult(undefined);
+      const result = await importSource(source);
+      setImportResult(result);
+      if (result.imported[0]) setSelectedId(result.imported[0].id);
+    } catch (caught) {
+      setImportFailure(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setImporting(false);
     }
   };
+
+  const dismissImportStatus = () => {
+    setImportResult(undefined);
+    setImportFailure("");
+  };
+
+  const deleteSelected = async () => {
+    if (!selected || !window.confirm(t("skills.deleteConfirm", { name: selected.name }))) return;
+    await deleteSkill(selected.id);
+  };
+
+  const importHasErrors = Boolean(importFailure || importResult?.errors.length);
+  const importStatusVisible = Boolean(importFailure || importResult);
 
   return (
     <section className="settings-tab skills-tab">
@@ -47,55 +118,186 @@ export function SkillsTab() {
           <h3>{t("skills.title")}</h3>
           <p className="muted">{t("skills.description")}</p>
         </div>
-        <button className="primary skills-import" onClick={() => void importFolder()}>
-          <FolderInput size={15} /> {t("skills.importFolder")}
-        </button>
-      </div>
-      <label className="skills-search">
-        <Search size={15} />
-        <input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("skills.search")} />
-      </label>
-      {importMessage && <pre className="skills-message">{importMessage}</pre>}
-      {error && <p className="error-text">{error}</p>}
-      <div className="skill-list">
-        {loading && !skills.length ? <p className="muted">{t("skills.loading")}</p> : null}
-        {filtered.map((skill) => (
-          <article className={`skill-card${skill.enabled ? "" : " disabled"}`} key={skill.id}>
-            <div className="skill-card-main">
-              <div className="skill-card-title">
-                <strong>{skill.name}</strong>
-                <span>{skill.source === "builtin" ? t("skills.builtin") : t("skills.importedSource")}</span>
-                <small>v{skill.version}</small>
-              </div>
-              <p>{skill.description}</p>
-              <code>{skill.contentHash.slice(0, 12)}</code>
-            </div>
-            <div className="skill-card-actions">
-              <button className="icon-btn" title={t("skills.view")} onClick={async () => {
-                const markdown = await skillsClient.read(skill.id);
-                if (markdown) setPreview({ name: skill.name, markdown });
-              }}><BookOpen size={16} /></button>
-              <label className="skill-toggle">
-                <input type="checkbox" checked={skill.enabled} onChange={(event) => void setEnabled(skill.id, event.currentTarget.checked)} />
-                <span>{skill.enabled ? t("skills.enabled") : t("skills.disabled")}</span>
-              </label>
-              {skill.source === "imported" && (
-                <button className="icon-btn danger" title={t("common.delete")} onClick={() => {
-                  if (window.confirm(t("skills.deleteConfirm", { name: skill.name }))) void deleteSkill(skill.id);
-                }}><Trash2 size={16} /></button>
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
-      {preview && (
-        <div className="modal-backdrop" onClick={() => setPreview(undefined)}>
-          <div className="modal skill-preview" onClick={(event) => event.stopPropagation()}>
-            <header><h3>{preview.name}</h3><button className="icon-btn" onClick={() => setPreview(undefined)}>✕</button></header>
-            <pre>{preview.markdown}</pre>
+        <details className={`skills-import-menu${importing ? " busy" : ""}`} ref={importMenuRef}>
+          <summary className="primary skills-import" role="button" aria-haspopup="menu">
+            <span>{importing ? t("skills.importing") : t("skills.importSkill")}</span>
+            <ChevronDown size={14} />
+          </summary>
+          <div className="skills-import-popover">
+            <button disabled={importing} onClick={() => void runImport("directory")}>
+              <FolderInput size={17} />
+              <span><strong>{t("skills.importFolder")}</strong><small>{t("skills.importFolderHint")}</small></span>
+            </button>
+            <button disabled={importing} onClick={() => void runImport("archive")}>
+              <FileArchive size={17} />
+              <span><strong>{t("skills.importZip")}</strong><small>{t("skills.importZipHint")}</small></span>
+            </button>
           </div>
+        </details>
+      </div>
+
+      <div className="skills-toolbar">
+        <label className="skills-search">
+          <Search size={16} />
+          <input
+            aria-label={t("skills.search")}
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            placeholder={t("skills.search")}
+          />
+        </label>
+        <label className="skills-filter">
+          <span className="sr-only">{t("skills.filterLabel")}</span>
+          <select value={filter} onChange={(event) => setFilter(event.currentTarget.value as SkillFilter)}>
+            <option value="all">{t("skills.filterAll")}</option>
+            <option value="enabled">{t("skills.enabled")}</option>
+            <option value="disabled">{t("skills.disabled")}</option>
+          </select>
+          <ChevronDown size={14} aria-hidden="true" />
+        </label>
+      </div>
+
+      {importStatusVisible && (
+        <div className={`skills-import-status${importHasErrors ? " warning" : " success"}`} role="status">
+          <CheckCircle2 size={16} />
+          <div>
+            <strong>
+              {importFailure
+                ? t("skills.importFailed")
+                : t("skills.imported", { count: importResult?.imported.length ?? 0 })}
+            </strong>
+            {importFailure ? <span>{importFailure}</span> : null}
+            {importResult?.errors.map((entry) => (
+              <span key={`${entry.path}-${entry.message}`}>{entry.path}: {entry.message}</span>
+            ))}
+          </div>
+          <button className="icon-btn" aria-label={t("common.close")} onClick={dismissImportStatus}>
+            <X size={15} />
+          </button>
         </div>
       )}
+      {error && <p className="error-text">{error}</p>}
+
+      <div className="skills-manager">
+        <div className="skills-list-pane">
+          <div className="skills-list-head">
+            <span>{t("skills.nameColumn")}</span>
+            <span>{t("skills.statusColumn")}</span>
+          </div>
+          <div className="skill-list" role="listbox" aria-label={t("skills.listLabel")}>
+            {loading && !skills.length ? <p className="skills-list-note muted">{t("skills.loading")}</p> : null}
+            {!loading && !filtered.length ? <p className="skills-list-note muted">{t("skills.noResults")}</p> : null}
+            {filtered.map((skill) => (
+              <div
+                className={`skill-row${skill.id === selectedId ? " selected" : ""}${skill.enabled ? "" : " disabled"}`}
+                key={skill.id}
+                role="option"
+                aria-selected={skill.id === selectedId}
+              >
+                <button className="skill-row-select" onClick={() => setSelectedId(skill.id)}>
+                  <strong>{skill.name}</strong>
+                  <span>
+                    v{skill.version} · {skill.source === "builtin" ? t("skills.builtin") : t("skills.importedSource")}
+                  </span>
+                </button>
+                <label className="skills-switch" title={skill.enabled ? t("skills.enabled") : t("skills.disabled")}>
+                  <input
+                    type="checkbox"
+                    checked={skill.enabled}
+                    aria-label={t("skills.toggleAria", { name: skill.name })}
+                    onChange={(event) => void setEnabled(skill.id, event.currentTarget.checked)}
+                  />
+                  <span aria-hidden="true" />
+                </label>
+              </div>
+            ))}
+          </div>
+          <footer>{t("skills.count", { count: filtered.length })}</footer>
+        </div>
+
+        <div className="skill-detail-pane">
+          {selected ? (
+            <>
+              <header className="skill-detail-header">
+                <div className="skill-detail-title">
+                  <div>
+                    <h4>{selected.name}</h4>
+                    <span className="skill-source-badge">
+                      {selected.source === "builtin" ? t("skills.builtin") : t("skills.importedSource")}
+                    </span>
+                    <small>v{selected.version}</small>
+                  </div>
+                  <code>{selected.contentHash.slice(0, 12)} · {t("skills.localSource")}</code>
+                </div>
+                <div className="skill-detail-actions">
+                  <label className="skills-switch" title={selected.enabled ? t("skills.enabled") : t("skills.disabled")}>
+                    <input
+                      type="checkbox"
+                      checked={selected.enabled}
+                      aria-label={t("skills.toggleAria", { name: selected.name })}
+                      onChange={(event) => void setEnabled(selected.id, event.currentTarget.checked)}
+                    />
+                    <span aria-hidden="true" />
+                  </label>
+                  <details className="skill-actions-menu">
+                    <summary className="icon-btn" role="button" aria-haspopup="menu" aria-label={t("skills.moreActions")}><MoreHorizontal size={17} /></summary>
+                    <div>
+                      <button onClick={() => void skillsClient.reveal(selected.id)}>
+                        <FolderOpen size={16} /> {t("skills.reveal")}
+                      </button>
+                      {selected.source === "imported" ? (
+                        <button className="danger" onClick={() => void deleteSelected()}>
+                          <Trash2 size={16} /> {t("common.delete")}
+                        </button>
+                      ) : null}
+                    </div>
+                  </details>
+                </div>
+              </header>
+
+              <p className="skill-detail-description">{selected.description}</p>
+
+              <div className="skill-detail-tabs" role="tablist">
+                <button
+                  className={detailTab === "instructions" ? "active" : ""}
+                  role="tab"
+                  aria-selected={detailTab === "instructions"}
+                  onClick={() => setDetailTab("instructions")}
+                >{t("skills.instructionsTab")}</button>
+                <button
+                  className={detailTab === "metadata" ? "active" : ""}
+                  role="tab"
+                  aria-selected={detailTab === "metadata"}
+                  onClick={() => setDetailTab("metadata")}
+                >{t("skills.metadataTab")}</button>
+              </div>
+
+              {detailTab === "instructions" ? (
+                <div className="skill-markdown">
+                  {markdownLoading ? <p className="muted">{t("skills.loadingInstructions")}</p> : null}
+                  {!markdownLoading && markdown ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{withoutFrontmatter(markdown)}</ReactMarkdown>
+                  ) : null}
+                  {!markdownLoading && !markdown ? <p className="muted">{t("skills.instructionsUnavailable")}</p> : null}
+                </div>
+              ) : (
+                <dl className="skill-metadata">
+                  <div><dt>{t("skills.versionLabel")}</dt><dd>v{selected.version}</dd></div>
+                  <div><dt>{t("skills.sourceLabel")}</dt><dd>{selected.source === "builtin" ? t("skills.builtin") : t("skills.importedSource")}</dd></div>
+                  <div><dt>{t("skills.hashLabel")}</dt><dd><code>{selected.contentHash}</code></dd></div>
+                  <div><dt>{t("skills.pathLabel")}</dt><dd><code>{selected.rootPath}</code></dd></div>
+                  <div><dt>{t("skills.updatedLabel")}</dt><dd>{new Date(selected.updatedAt).toLocaleString()}</dd></div>
+                </dl>
+              )}
+            </>
+          ) : (
+            <div className="skill-detail-empty">
+              <Search size={20} />
+              <p>{t("skills.selectPrompt")}</p>
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

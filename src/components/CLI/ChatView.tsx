@@ -51,7 +51,7 @@ import {
   upsertConversationMessage
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
-import { SkillPicker } from "./SkillPicker";
+import { ComposerAddMenu } from "./ComposerAddMenu";
 import { useSkillStore } from "@/store/skillStore";
 import { useAttachmentImport } from "@/hooks/useAttachmentImport";
 import { useWorkspaceFileMentions } from "@/hooks/useWorkspaceFileMentions";
@@ -92,23 +92,6 @@ function attachmentSummary(attachment: ChatAttachment): string {
   ]
     .filter(Boolean)
     .join(" - ");
-}
-
-function PaperclipIcon() {
-  return (
-    <svg
-      className="tool-chip-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.57 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-    </svg>
-  );
 }
 
 function StopIcon() {
@@ -1512,21 +1495,18 @@ export function ChatView() {
         </div>
         <div className="chat-composer-actions">
           <div className="composer-tools">
-            <button
-              className="composer-tool-chip"
-              type="button"
-              title={t("chat.attachFile")}
-              disabled={sending || attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
-              onClick={() => void handleSelectAttachments("chat")}
-            >
-              <PaperclipIcon />
-              <span>{t("chat.attach")}</span>
-            </button>
-            <SkillPicker
+            <ComposerAddMenu
               skills={skills}
               selectedIds={conv?.skillSnapshot.map((skill) => skill.id) ?? []}
-              disabled={sending || replaying}
-              onChange={(ids) => {
+              attachmentDisabled={
+                sending ||
+                replaying ||
+                attachmentBusy ||
+                pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
+              }
+              skillsDisabled={sending || replaying}
+              onSelectAttachments={() => void handleSelectAttachments("chat")}
+              onSkillsChange={(ids) => {
                 if (conv?.id) void setConversationSkills(conv.id, ids);
               }}
             />
@@ -1764,15 +1744,25 @@ function NewTaskHome({
         />
 
         <div className="new-task-toolbar">
+          <ComposerAddMenu
+            skills={skills}
+            selectedIds={selectedSkillIds}
+            attachmentDisabled={
+              attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
+            }
+            skillsDisabled={sendLocked}
+            onSelectAttachments={onSelectAttachments}
+            onSkillsChange={onSkills}
+          />
           {teamMode ? (
-            <label>
-              <span>{t("workflow.selectTeam")}</span>
+            <label className="new-task-team-picker" title={t("workflow.selectTeam")}>
               {teams.filter((tt) => tt.enabled).length === 0 ? (
-                <select disabled value="">
+                <select aria-label={t("workflow.selectTeam")} disabled value="">
                   <option value="">{t("workflow.noTeams")}</option>
                 </select>
               ) : (
                 <select
+                  aria-label={t("workflow.selectTeam")}
                   value={selectedTeamId}
                   onChange={(event) => onTeam(event.target.value)}
                 >
@@ -1817,22 +1807,6 @@ function NewTaskHome({
               <option value="ask">{t("chat.approvalAsk")}</option>
             </select>
           </label>
-          <button
-            className="composer-tool-chip"
-            type="button"
-            title={t("chat.attachFile")}
-            disabled={attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
-            onClick={onSelectAttachments}
-          >
-            <PaperclipIcon />
-            <span>{t("chat.attach")}</span>
-          </button>
-          <SkillPicker
-            skills={skills}
-            selectedIds={selectedSkillIds}
-            disabled={sendLocked}
-            onChange={onSkills}
-          />
           {cwd ? (
             <div className="new-task-workspace-chip" title={cwd}>
               <button

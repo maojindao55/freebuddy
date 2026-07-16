@@ -209,6 +209,21 @@ export function registerCliIpc() {
     });
     return canceled ? null : filePaths[0] ?? null;
   });
+  ipcMain.handle("skills:selectArchive", async (event) => {
+    const win = senderWindow(event);
+    if (!win) return null;
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      properties: ["openFile"],
+      filters: [{ name: "Skill ZIP", extensions: ["zip"] }]
+    });
+    return canceled ? null : filePaths[0] ?? null;
+  });
+  ipcMain.handle("skills:reveal", (_event, id: string) => {
+    const skill = listSkills().find((entry) => entry.id === id);
+    if (!skill) return false;
+    shell.showItemInFolder(path.join(skill.rootPath, "SKILL.md"));
+    return true;
+  });
 
   ipcMain.handle(
     "cli:searchWorkspaceFiles",

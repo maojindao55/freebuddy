@@ -366,7 +366,9 @@ const skills = {
     ipcRenderer.invoke("skills:setEnabled", id, enabled),
   delete: (id: string) => ipcRenderer.invoke("skills:delete", id),
   read: (id: string) => ipcRenderer.invoke("skills:read", id),
-  selectDirectory: () => ipcRenderer.invoke("skills:selectDirectory")
+  selectDirectory: () => ipcRenderer.invoke("skills:selectDirectory"),
+  selectArchive: () => ipcRenderer.invoke("skills:selectArchive"),
+  reveal: (id: string) => ipcRenderer.invoke("skills:reveal", id)
 };
 
 const scheduledTasks = {

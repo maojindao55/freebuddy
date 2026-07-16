@@ -14,5 +14,7 @@ export const skillsClient = {
     api().setEnabled(id, enabled),
   delete: (id: string): Promise<boolean> => api().delete(id),
   read: (id: string): Promise<string | undefined> => api().read(id),
-  selectDirectory: (): Promise<string | null> => api().selectDirectory()
+  selectDirectory: (): Promise<string | null> => api().selectDirectory(),
+  selectArchive: (): Promise<string | null> => api().selectArchive(),
+  reveal: (id: string): Promise<boolean> => api().reveal(id)
 };

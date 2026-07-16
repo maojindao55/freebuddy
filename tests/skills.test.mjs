@@ -3,11 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import AdmZip from "adm-zip";
 
 import {
   buildSkillAnnouncement,
   reconcileNativeSkillLinks
 } from "../dist-electron/cli/skillRuntime.js";
+import { extractSkillArchive } from "../dist-electron/cli/skillArchive.js";
 
 const snapshot = (name, rootPath) => ({
   id: name,
@@ -66,4 +68,61 @@ test("skill persistence, IPC, MCP, and conversation snapshots stay wired", () =>
   assert.match(ipc, /skills:import/);
   assert.match(acp, /registerSkillToolSession/);
   assert.match(conversations, /resolveSkillSnapshots/);
+});
+
+test("skill ZIP extraction accepts a normal Skill package", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-skill-zip-"));
+  const archivePath = path.join(root, "demo.zip");
+  const destination = path.join(root, "expanded");
+  const archive = new AdmZip();
+  archive.addFile(
+    "demo/SKILL.md",
+    Buffer.from("---\nname: demo\ndescription: Demo skill\n---\n\n# Demo\n")
+  );
+  archive.addFile("demo/references/guide.md", Buffer.from("Safe reference"));
+  archive.writeZip(archivePath);
+
+  extractSkillArchive(archivePath, destination);
+
+  assert.match(
+    fs.readFileSync(path.join(destination, "demo", "SKILL.md"), "utf8"),
+    /name: demo/
+  );
+  assert.equal(
+    fs.readFileSync(path.join(destination, "demo", "references", "guide.md"), "utf8"),
+    "Safe reference"
+  );
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("skill ZIP extraction rejects path traversal", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-skill-zip-"));
+  const archivePath = path.join(root, "unsafe.zip");
+  const destination = path.join(root, "expanded");
+  const archive = new AdmZip();
+  const entry = archive.addFile("safe.txt", Buffer.from("unsafe"));
+  entry.entryName = "../escape.txt";
+  archive.writeZip(archivePath);
+
+  assert.throws(
+    () => extractSkillArchive(archivePath, destination),
+    /path outside the archive/
+  );
+  assert.equal(fs.existsSync(path.join(root, "escape.txt")), false);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("skills UI exposes split detail management and both import modes", () => {
+  const ui = fs.readFileSync(
+    new URL("../src/components/Settings/SkillsTab.tsx", import.meta.url),
+    "utf8"
+  );
+  const preload = fs.readFileSync(new URL("../electron/preload.ts", import.meta.url), "utf8");
+  const ipc = fs.readFileSync(new URL("../electron/cli/ipc.ts", import.meta.url), "utf8");
+  assert.match(ui, /skills-manager/);
+  assert.match(ui, /skill-detail-pane/);
+  assert.match(ui, /selectArchive/);
+  assert.match(ui, /ReactMarkdown/);
+  assert.match(preload, /skills:selectArchive/);
+  assert.match(ipc, /extensions: \["zip"\]/);
 });

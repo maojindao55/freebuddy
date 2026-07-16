@@ -4,6 +4,7 @@ import path from "node:path";
 import { app } from "electron";
 
 import { getDataDir, getDb } from "./db.js";
+import { extractSkillArchive } from "./skillArchive.js";
 import type {
   SkillImportResult,
   SkillRecord,
@@ -259,7 +260,7 @@ export function resolveSkillSnapshots(ids: readonly string[]): SkillSnapshot[] {
   });
 }
 
-export function importSkills(sourcePath: string): SkillImportResult {
+function importSkillsFromDirectory(sourcePath: string): SkillImportResult {
   const result: SkillImportResult = { imported: [], errors: [] };
   let candidates = [sourcePath];
   if (!fs.existsSync(path.join(sourcePath, "SKILL.md"))) {
@@ -294,6 +295,31 @@ export function importSkills(sourcePath: string): SkillImportResult {
     }
   }
   return result;
+}
+
+export function importSkills(sourcePath: string): SkillImportResult {
+  if (!sourcePath.toLowerCase().endsWith(".zip")) {
+    return importSkillsFromDirectory(sourcePath);
+  }
+
+  const extractionRoot = path.join(
+    getDataDir(),
+    "skill-imports",
+    `.zip-${crypto.randomUUID()}`
+  );
+  try {
+    extractSkillArchive(sourcePath, extractionRoot);
+    const result = importSkillsFromDirectory(extractionRoot);
+    return {
+      imported: result.imported,
+      errors: result.errors.map((entry) => ({
+        ...entry,
+        path: path.relative(extractionRoot, entry.path) || path.basename(sourcePath)
+      }))
+    };
+  } finally {
+    fs.rmSync(extractionRoot, { recursive: true, force: true });
+  }
 }
 
 export function setSkillEnabled(id: string, enabled: boolean): SkillRecord | undefined {

@@ -9,7 +9,7 @@ interface SkillState {
   loading: boolean;
   error?: string;
   load(): Promise<void>;
-  importDirectory(path: string): Promise<SkillImportResult>;
+  importSource(path: string): Promise<SkillImportResult>;
   setEnabled(id: string, enabled: boolean): Promise<void>;
   deleteSkill(id: string): Promise<boolean>;
 }
@@ -29,7 +29,7 @@ export const useSkillStore = create<SkillState>((set, get) => ({
       set({ loading: false });
     }
   },
-  async importDirectory(path) {
+  async importSource(path) {
     const result = await skillsClient.import(path);
     await get().load();
     return result;

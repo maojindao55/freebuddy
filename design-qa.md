@@ -95,6 +95,111 @@ final result: passed
 
 ---
 
+# Skills management split-view and ZIP import design QA
+
+- Source visual truth: `/Users/hongbin9/.codex/generated_images/019f659f-9780-73f0-ad93-8f4707ffdf1f/exec-0baa74a1-b75c-40e0-a6c0-75d8e6d004cf.png`
+- Implementation screenshot: `/private/tmp/freebuddy-skills-settings-final.png`
+- Full-view comparison evidence: `/private/tmp/freebuddy-design-qa/compare.html`
+- Focused comparison evidence: `/private/tmp/freebuddy-design-qa/focus.html`
+- Viewport: 1584 x 1128
+- State: light theme, Skills settings, import menu open; browser preview uses the Electron-unavailable empty state while the source shows populated Skills
+
+## Full-view comparison evidence
+
+The combined comparison confirms the selected option's defining composition in the rendered app: the existing Settings shell is preserved, search and status filtering form one compact toolbar, the import action opens a two-choice popover, and the management surface uses a stable list/detail split. The implementation intentionally shows the real browser-preview empty state because the local Skill catalog is exposed only by the Electron preload bridge.
+
+## Focused region comparison evidence
+
+The focused comparison checks the header, toolbar, import controls, table header, split-pane boundary, radii, borders, and vertical rhythm at the same viewport. It also exposed an initial toolbar defect: the generic Settings label rule forced the search field into a column and made it 55 px high. The search field now overrides that rule explicitly and renders as a 36 px horizontal control, matching the selected design's compact density.
+
+## Required fidelity surfaces
+
+- Fonts and typography: The existing FreeBuddy font stack and optical weights are retained. The page title, row names, metadata, tabs, and rendered SKILL.md use distinct 16/12/11/10 px hierarchy levels comparable to the source.
+- Spacing and layout rhythm: Header, 36 px toolbar controls, 64 px list rows, 34/66% split pane, 10 px surface radius, and compact popover spacing match the source's dense settings treatment without reintroducing oversized controls.
+- Colors and visual tokens: Brand green, soft selected-row tint, borders, panel surfaces, text hierarchy, warning, and danger states map exclusively to existing FreeBuddy tokens.
+- Image quality and asset fidelity: This screen needs no raster imagery. Folder, archive, search, chevron, toggle-adjacent, overflow, reveal, and delete affordances use the installed Lucide icon system.
+- Copy and content: Folder and `.zip` import are clearly distinguished, with concise format hints. Status, source, metadata, empty state, and action labels are localized in Chinese and English.
+
+## Findings
+
+No actionable P0, P1, or P2 visual, layout, accessibility, or interaction differences remain for the available browser-rendered state.
+
+## Comparison history
+
+1. Initial browser capture showed the search label inheriting `flex-direction: column`, producing a 55 px control with the icon above its text.
+2. The Skills-specific selector now forces a horizontal row and removes inherited input padding; the revised measurement is 320 x 36 px.
+3. The final full-view and focused comparisons confirm the compact toolbar, import popover, and split-pane proportions remain aligned after the fix.
+
+## Primary interactions tested
+
+- Opened Skills from Settings.
+- Opened the Import Skill menu and confirmed both folder and `.zip` choices are visible with distinct icons and hints.
+- Entered a search query and changed the status filter, then returned both controls to their default state.
+- Confirmed the empty list/detail state stays within the viewport without clipping persistent Settings controls.
+- Checked browser console warnings and errors: none.
+- ZIP extraction is covered by automated normal-package and path-traversal rejection tests; native folder/file dialogs remain Electron-only and cannot open in the browser preview.
+
+## Follow-up polish
+
+- P3: The populated detail state cannot be captured from the browser preview because it has no Electron Skill bridge. The desktop path, markdown preview, metadata, enable toggles, reveal action, and delete action are covered by the typed bridge and automated contracts.
+
+final result: passed
+
+---
+
+# Composer attachment and Skill menu design QA
+
+- Source visual truth: `/var/folders/_l/t1lk7m411953763qdprx0qn00000gp/T/codex-clipboard-e41c0bd9-ed42-490c-adf8-50bcbd768ae8.png`
+- User sizing feedback: `/var/folders/_l/t1lk7m411953763qdprx0qn00000gp/T/codex-clipboard-dc4710c0-5a28-43b5-982e-557ffc0c5bbf.png`
+- Implementation screenshot: `/tmp/freebuddy-composer-menu-qa.png`
+- Combined comparison: `/tmp/freebuddy-composer-menu-comparison.png`
+- Viewport: 1560 x 1065
+- State: light theme, new-task page, add menu and Skill submenu open, no enabled Skills in browser preview
+
+## Full-view comparison evidence
+
+The combined comparison shows that FreeBuddy now follows the reference interaction model without copying unrelated product chrome: one compact add trigger sits at the left edge of the composer toolbar, the first panel contains file and Skill actions, and the Skill choices open in an adjacent second panel. The surrounding FreeBuddy agent, permission, workspace, mode, and send controls remain in their established positions.
+
+## Focused region comparison evidence
+
+The composer region confirms the post-feedback trigger is 30 x 30 px with a 16 px icon, matching the visual height of the adjacent toolbar pills. The initial 34 px version was optically dominant; the revised trigger now reads as a peer control. The 224 px primary menu and 292 px Skill panel retain clear hierarchy and do not clip the composer or send action.
+
+## Required fidelity surfaces
+
+- Fonts and typography: Existing FreeBuddy font tokens are retained. Menu rows and Skill labels use 14 px medium text; the Skill panel heading uses the existing compact 12 px UI scale.
+- Spacing and layout rhythm: The trigger matches the 30 px toolbar controls. Menu rows are 44 px high, panels use 6 px internal padding and an 8 px inter-panel gap, and both panels share a 12 px radius.
+- Colors and visual tokens: Surfaces, borders, hover states, shadows, focus rings, and disabled states use existing FreeBuddy theme tokens. Light and dark themes were both checked.
+- Image quality and asset fidelity: No raster assets are required. Add, upload, Skill, and chevron affordances use the project's installed Lucide icon system.
+- Copy and content: The primary actions are localized as `添加文件` and `技能（已选/总数）`; English equivalents are present. The Skill panel preserves the existing localized empty state.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain for the requested attachment and Skill consolidation.
+
+## Comparison history
+
+1. The original composer exposed attachment and Skill as two separate toolbar chips.
+2. They were consolidated behind one add trigger with a two-panel interaction matching the reference structure.
+3. User feedback identified the initial 34 px trigger as visually oversized relative to adjacent controls.
+4. The trigger was reduced to 30 px and its icon to 16 px. The revised 1560 x 1065 capture confirms the toolbar hierarchy is balanced.
+
+## Primary interactions tested
+
+- Opened and closed the add menu.
+- Opened the Skill submenu from the primary menu.
+- Closed the complete menu stack with Escape and returned focus to the trigger.
+- Confirmed the menu remains readable and interactive in dark theme.
+- Checked browser console errors: none.
+- Native attachment selection remains wired to the existing Electron handler and is covered by the integration suite; the browser preview cannot open the Electron file dialog.
+
+## Follow-up polish
+
+- P3: The browser preview has no enabled Skills, so the populated-list visual state was not available for screenshot comparison. Checkbox selection, selected/total counts, and independent disabled states are covered by the component contract tests.
+
+final result: passed
+
+---
+
 # Scheduled-task list density design QA
 
 - Source visual truth: `/var/folders/_l/t1lk7m411953763qdprx0qn00000gp/T/codex-clipboard-9db1085d-57dc-4d9d-948c-ef933ca25176.png`

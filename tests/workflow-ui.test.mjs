@@ -229,7 +229,9 @@ test("Settings page opens with CLI agents before General", () => {
   assert.match(src, /initialTab = "cli"/);
   assert.match(src, /useState<SettingsTab>\(initialTab\)/);
   assert.match(src, /export function SettingsPage/);
-  assert.match(src, /export const SETTINGS_TABS[\s\S]*key: "cli"[\s\S]*key: "workflowTeams"[\s\S]*key: "general"/);
+  assert.match(src, /export const SETTINGS_TABS[\s\S]*key: "cli"[\s\S]*key: "feed"[\s\S]*key: "general"/);
+  assert.doesNotMatch(src, /key: "workflowTeams"/);
+  assert.doesNotMatch(src, /key: "scheduledTasks"/);
 });
 
 test("MessageBubble supports right-click and inline copy button", () => {

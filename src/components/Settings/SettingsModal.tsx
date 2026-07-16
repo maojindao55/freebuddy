@@ -4,14 +4,12 @@ import { AboutTab } from "./AboutTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
-import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
 import { InfoCardsTab } from "./InfoCardsTab";
 
-export type SettingsTab = "general" | "cli" | "workflowTeams" | "feed" | "about";
+export type SettingsTab = "general" | "cli" | "feed" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
-  { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
   { key: "feed", labelKey: "settings.tabs.feed" },
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "about", labelKey: "settings.tabs.about" }
@@ -86,7 +84,6 @@ function SettingsContent({
           <CLIAdaptersTab />
         </SettingsTabErrorBoundary>
       )}
-      {activeTab === "workflowTeams" && <WorkflowTeamsTab />}
       {activeTab === "feed" && <InfoCardsTab />}
       {activeTab === "about" && <AboutTab />}
     </>

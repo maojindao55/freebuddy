@@ -17,6 +17,7 @@ import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { initApplicationMenu } from "./menu.js";
 import { APP_NAME, APP_VERSION } from "./app-meta.js";
 import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
+import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -281,6 +282,9 @@ app.whenReady().then(async () => {
     app.dock.setIcon(appIcon);
   }
   createWindow();
+  initializeScheduledTaskScheduler(() =>
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined
+  );
   void startCodexToolchainAutoUpdate();
   initAutoUpdater();
 

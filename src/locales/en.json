@@ -41,7 +41,12 @@
   "sidebar": {
     "expand": "Expand sidebar",
     "collapse": "Collapse sidebar",
-    "toggleTheme": "Toggle theme"
+    "toggleTheme": "Toggle theme",
+    "primaryNavigation": "Workspace navigation",
+    "newConversation": "New conversation",
+    "scheduledTasks": "Scheduled tasks",
+    "teams": "Teams",
+    "allTeams": "All teams"
   },
   "conversations": {
     "title": "Conversations",
@@ -346,6 +351,7 @@
   "settings": {
     "backToApp": "Back to app",
     "tabs": {
+      "scheduledTasks": "Scheduled Tasks",
       "general": "General",
       "cli": "CLI Agents",
       "workflowTeams": "Workflow Teams",
@@ -471,6 +477,106 @@
         "apps": "Apps"
       },
       "defaultAlt": "Default"
+    }
+  },
+  "scheduledTasks": {
+    "title": "Scheduled Tasks",
+    "description": "Run any prompt with a selected agent on a one-time or recurring schedule.",
+    "promptToggle": "Expand or collapse the task prompt",
+    "promptExpand": "Show prompt…",
+    "promptCollapse": "Collapse",
+    "add": "New task",
+    "createTitle": "New scheduled task",
+    "editTitle": "Edit scheduled task",
+    "editorDescription": "Choose an agent, write the task prompt, and decide when it should run.",
+    "name": "Task name",
+    "namePlaceholder": "Morning briefing",
+    "prompt": "Task prompt",
+    "promptPlaceholder": "Describe the complete task. The agent can use its available tools and resources when it runs.",
+    "agent": "Agent",
+    "model": "Model",
+    "defaultModel": "Agent default",
+    "defaultModelNamed": "Agent default ({{model}})",
+    "modelLoading": "Loading models...",
+    "modelUnavailable": "This agent did not provide selectable models.",
+    "scheduleType": "Schedule",
+    "schedule": {
+      "manual": "Manual only",
+      "hourly": "Every hour",
+      "once": "Once",
+      "daily": "Every day",
+      "weekdays": "Weekdays",
+      "weekly": "Every week",
+      "monthly": "Every month"
+    },
+    "runTime": "Run time",
+    "runDate": "Run date",
+    "runWeekdays": "Run on",
+    "monthDay": "Day of month",
+    "executionMode": "Execution mode",
+    "workingDirectory": "Working directory (optional)",
+    "selectDirectory": "Choose folder",
+    "clearDirectory": "Clear working directory",
+    "workingDirectoryHint": "The agent reads and writes files in this folder. Leave it empty to use the default directory.",
+    "execution": {
+      "new": "New conversation each run",
+      "continuous": "Continue in one conversation"
+    },
+    "executionHint": {
+      "new_conversation": "Each run starts independently, which works well for reports, checks, and recurring summaries.",
+      "continuous": "Results stay in one conversation and the previous result is supplied as context for the next run."
+    },
+    "enabled": "Task enabled",
+    "deleteConfirm": "Delete the scheduled task “{{title}}”?",
+    "runningNote": "Times use your system time automatically. Tasks run while FreeBuddy is open; a missed run is performed once when the app opens again.",
+    "emptyTitle": "No scheduled tasks yet",
+    "emptyDescription": "Create one to let an agent handle a task automatically at the right time.",
+    "agentValue": "Agent: {{agent}}",
+    "nextRun": "Next: {{time}}",
+    "openResult": "Open result",
+    "runNow": "Run now",
+    "history": "History",
+    "noHistory": "No runs yet",
+    "weekdays": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
+    "summary": {
+      "manual": "Manual only",
+      "hourly": "Every hour",
+      "once": "{{date}} at {{time}}",
+      "daily": "Every day at {{time}}",
+      "weekdays": "Weekdays at {{time}}",
+      "weekly": "{{days}} at {{time}}",
+      "monthly": "Day {{day}} at {{time}}"
+    },
+    "status": {
+      "idle": "Not run",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "errors": {
+      "titleRequired": "Task name is required.",
+      "instructionsRequired": "Task instructions are required.",
+      "invalidScheduleType": "The schedule type is invalid.",
+      "invalidExecutionMode": "The execution mode is invalid.",
+      "absoluteWorkingDirectory": "The working directory must be an absolute path.",
+      "invalidRunTime": "Run time must use the HH:mm format.",
+      "validRunDateRequired": "A valid run date is required.",
+      "weekdayRequired": "Select at least one weekday.",
+      "invalidMonthDay": "The day of month must be between 1 and 31.",
+      "oneTimeMustBeFuture": "The one-time task must be scheduled in the future.",
+      "agentUnavailable": "The selected agent is unavailable.",
+      "taskNotFound": "The scheduled task was not found.",
+      "windowUnavailable": "The FreeBuddy window is unavailable.",
+      "appClosed": "FreeBuddy closed before the task completed.",
+      "workingDirectoryUnavailable": "The working directory is unavailable: {{path}}"
     }
   },
   "workflow": {

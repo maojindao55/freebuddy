@@ -6,6 +6,7 @@ import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
+import { useNewTaskUiStore } from "@/store/newTaskUiStore";
 import { cliClient } from "@/services/cli/client";
 import type {
   AttachmentPrepareRejection,
@@ -312,9 +313,10 @@ export function ChatView() {
     (s) => s.setConversationConfigOptionOverrides
   );
 
-  const [taskMode, setTaskMode] = useState<"normal" | "team">(
-    "normal"
-  );
+  const taskMode = useNewTaskUiStore((s) => s.taskMode);
+  const setTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
+  const requestedTeamId = useNewTaskUiStore((s) => s.requestedTeamId);
+  const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
   const teamMode = taskMode === "team";
   const workflowMode = false;
   const createAndStartTeam = useWorkflowStore((s) => s.createAndStartTeam);
@@ -651,6 +653,16 @@ export function ChatView() {
       if (firstEnabled) setSelectedTeamId(firstEnabled.id);
     }
   }, [teams, selectedTeamId]);
+
+  useEffect(() => {
+    if (
+      requestedTeamId &&
+      requestedTeamId !== selectedTeamId &&
+      teams.some((team) => team.id === requestedTeamId && team.enabled)
+    ) {
+      setSelectedTeamId(requestedTeamId);
+    }
+  }, [requestedTeamId, selectedTeamId, teams]);
 
   useEffect(() => {
     const resolved = conv?.approvalMode ?? member?.cli.approvalMode;
@@ -1289,7 +1301,10 @@ export function ChatView() {
           setTaskMode(m);
           clearTeamPreview();
         }}
-        onTeam={setSelectedTeamId}
+        onTeam={(teamId) => {
+          setSelectedTeamId(teamId);
+          setRequestedTeamId(teamId);
+        }}
         sendLocked={newTaskSendLock}
         onSubmit={() => void onCreateAndSend()}
       />

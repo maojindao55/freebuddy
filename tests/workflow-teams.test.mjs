@@ -359,10 +359,12 @@ test("workflow runtime forwards step model overrides to cliRun", () => {
   assert.match(src, /configOptionOverrides: args\.configOptionOverrides/);
 });
 
-test("Settings modal mounts the WorkflowTeamsTab", () => {
-  const src = read("../src/components/Settings/SettingsModal.tsx");
-  assert.match(src, /<WorkflowTeamsTab/);
-  assert.match(src, /import \{ WorkflowTeamsTab \}/);
+test("main workspace mounts WorkflowTeamsTab outside Settings", () => {
+  const app = read("../src/App.tsx");
+  const settings = read("../src/components/Settings/SettingsModal.tsx");
+  assert.match(app, /workspaceView === "workflowTeams"/);
+  assert.match(app, /<WorkflowTeamsTab/);
+  assert.doesNotMatch(settings, /<WorkflowTeamsTab/);
 });
 
 test("ChatView uses a non-writing summary role for team follow-up conversations", () => {

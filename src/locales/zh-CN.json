@@ -41,10 +41,15 @@
   "sidebar": {
     "expand": "展开侧边栏",
     "collapse": "收起侧边栏",
-    "toggleTheme": "切换主题"
+    "toggleTheme": "切换主题",
+    "primaryNavigation": "工作区导航",
+    "newConversation": "新会话",
+    "scheduledTasks": "定时任务",
+    "teams": "团队",
+    "allTeams": "全部团队"
   },
   "conversations": {
-    "title": "会话",
+    "title": "对话",
     "new": "+ 新建",
     "empty": "暂无会话。",
     "deleteConfirm": "删除“{{title}}”?",
@@ -333,6 +338,7 @@
   "settings": {
     "backToApp": "返回应用",
     "tabs": {
+      "scheduledTasks": "\u5b9a\u65f6\u4efb\u52a1",
       "general": "通用",
       "cli": "CLI Agent",
       "workflowTeams": "工作流团队",
@@ -457,6 +463,106 @@
         "apps": "应用"
       },
       "defaultAlt": "默认"
+    }
+  },
+  "scheduledTasks": {
+    "title": "\u5b9a\u65f6\u4efb\u52a1",
+    "description": "\u8ba9\u6307\u5b9a Agent \u5728\u5355\u6b21\u6216\u5468\u671f\u8ba1\u5212\u4e2d\u81ea\u52a8\u6267\u884c\u4efb\u610f\u63d0\u793a\u8bcd\u3002",
+    "promptToggle": "\u5c55\u5f00\u6216\u6536\u8d77\u4efb\u52a1\u63d0\u793a\u8bcd",
+    "promptExpand": "\u5c55\u5f00\u63d0\u793a\u8bcd\u2026",
+    "promptCollapse": "\u6536\u8d77",
+    "add": "\u65b0\u5efa\u4efb\u52a1",
+    "createTitle": "\u65b0\u5efa\u5b9a\u65f6\u4efb\u52a1",
+    "editTitle": "\u7f16\u8f91\u5b9a\u65f6\u4efb\u52a1",
+    "editorDescription": "\u9009\u62e9 Agent\uff0c\u586b\u5199\u5b8c\u6574\u4efb\u52a1\u63d0\u793a\u8bcd\uff0c\u5e76\u8bbe\u7f6e\u8fd0\u884c\u8ba1\u5212\u3002",
+    "name": "\u4efb\u52a1\u540d\u79f0",
+    "namePlaceholder": "\u65e9\u95f4\u7b80\u62a5",
+    "prompt": "\u4efb\u52a1\u63d0\u793a\u8bcd",
+    "promptPlaceholder": "\u63cf\u8ff0\u5b8c\u6574\u4efb\u52a1\u3002\u8fd0\u884c\u65f6 Agent \u53ef\u4ee5\u4f7f\u7528\u5b83\u5df2\u6709\u7684\u5de5\u5177\u548c\u8d44\u6e90\u3002",
+    "agent": "Agent",
+    "model": "\u6a21\u578b",
+    "defaultModel": "\u4f7f\u7528 Agent \u9ed8\u8ba4\u6a21\u578b",
+    "defaultModelNamed": "\u4f7f\u7528 Agent \u9ed8\u8ba4\u6a21\u578b\uff08{{model}}\uff09",
+    "modelLoading": "\u6b63\u5728\u52a0\u8f7d\u6a21\u578b\u2026",
+    "modelUnavailable": "\u8be5 Agent \u672a\u63d0\u4f9b\u53ef\u9009\u6a21\u578b\u3002",
+    "scheduleType": "\u8fd0\u884c\u8ba1\u5212",
+    "schedule": {
+      "manual": "\u624b\u52a8\u89e6\u53d1",
+      "hourly": "\u6bcf\u5c0f\u65f6",
+      "once": "\u4ec5\u4e00\u6b21",
+      "daily": "\u6bcf\u5929",
+      "weekdays": "\u5de5\u4f5c\u65e5",
+      "weekly": "\u6bcf\u5468",
+      "monthly": "\u6bcf\u6708"
+    },
+    "runTime": "\u8fd0\u884c\u65f6\u95f4",
+    "runDate": "\u8fd0\u884c\u65e5\u671f",
+    "runWeekdays": "\u8fd0\u884c\u65e5",
+    "monthDay": "\u6bcf\u6708\u51e0\u53f7",
+    "executionMode": "\u6267\u884c\u6a21\u5f0f",
+    "workingDirectory": "\u5de5\u4f5c\u76ee\u5f55\uff08\u53ef\u9009\uff09",
+    "selectDirectory": "\u9009\u62e9\u6587\u4ef6\u5939",
+    "clearDirectory": "\u6e05\u9664\u5de5\u4f5c\u76ee\u5f55",
+    "workingDirectoryHint": "Agent \u5c06\u5728\u6b64\u76ee\u5f55\u4e2d\u8bfb\u53d6\u548c\u5199\u5165\u6587\u4ef6\u3002\u7559\u7a7a\u5219\u4f7f\u7528\u9ed8\u8ba4\u76ee\u5f55\u3002",
+    "execution": {
+      "new": "\u6bcf\u6b21\u65b0\u5efa\u4f1a\u8bdd",
+      "continuous": "\u5728\u540c\u4e00\u4f1a\u8bdd\u4e2d\u6301\u7eed\u6267\u884c"
+    },
+    "executionHint": {
+      "new_conversation": "\u6bcf\u6b21\u72ec\u7acb\u8fd0\u884c\uff0c\u9002\u5408\u65e5\u62a5\u3001\u5de1\u68c0\u548c\u5b9a\u671f\u6c47\u603b\u3002",
+      "continuous": "\u8fd0\u884c\u7ed3\u679c\u4fdd\u7559\u5728\u540c\u4e00\u4f1a\u8bdd\u4e2d\uff0c\u5e76\u5c06\u4e0a\u6b21\u7ed3\u679c\u4f5c\u4e3a\u4e0b\u6b21\u4e0a\u4e0b\u6587\u3002"
+    },
+    "enabled": "\u542f\u7528\u4efb\u52a1",
+    "deleteConfirm": "\u5220\u9664\u5b9a\u65f6\u4efb\u52a1\u201c{{title}}\u201d\uff1f",
+    "runningNote": "\u81ea\u52a8\u4f7f\u7528\u7cfb\u7edf\u672c\u5730\u65f6\u95f4\u3002\u4efb\u52a1\u5728 FreeBuddy \u6253\u5f00\u65f6\u8fd0\u884c\uff1b\u5173\u95ed\u671f\u95f4\u9519\u8fc7\u7684\u4efb\u52a1\uff0c\u4e0b\u6b21\u6253\u5f00\u540e\u4f1a\u8865\u8dd1\u4e00\u6b21\u3002",
+    "emptyTitle": "\u8fd8\u6ca1\u6709\u5b9a\u65f6\u4efb\u52a1",
+    "emptyDescription": "\u521b\u5efa\u4e00\u4e2a\u4efb\u52a1\uff0c\u8ba9 Agent \u5728\u5408\u9002\u7684\u65f6\u95f4\u81ea\u52a8\u5904\u7406\u3002",
+    "agentValue": "Agent\uff1a{{agent}}",
+    "nextRun": "\u4e0b\u6b21\uff1a{{time}}",
+    "openResult": "\u67e5\u770b\u7ed3\u679c",
+    "runNow": "\u7acb\u5373\u8fd0\u884c",
+    "history": "\u6267\u884c\u5386\u53f2",
+    "noHistory": "\u6682\u65e0\u6267\u884c\u8bb0\u5f55",
+    "weekdays": {
+      "sun": "\u5468\u65e5",
+      "mon": "\u5468\u4e00",
+      "tue": "\u5468\u4e8c",
+      "wed": "\u5468\u4e09",
+      "thu": "\u5468\u56db",
+      "fri": "\u5468\u4e94",
+      "sat": "\u5468\u516d"
+    },
+    "summary": {
+      "manual": "\u4ec5\u624b\u52a8\u89e6\u53d1",
+      "hourly": "\u6bcf\u5c0f\u65f6",
+      "once": "{{date}} {{time}}",
+      "daily": "\u6bcf\u5929 {{time}}",
+      "weekdays": "\u5de5\u4f5c\u65e5 {{time}}",
+      "weekly": "{{days}} {{time}}",
+      "monthly": "\u6bcf\u6708 {{day}} \u53f7 {{time}}"
+    },
+    "status": {
+      "idle": "\u672a\u8fd0\u884c",
+      "running": "\u8fd0\u884c\u4e2d",
+      "completed": "\u5df2\u5b8c\u6210",
+      "failed": "\u5931\u8d25"
+    },
+    "errors": {
+      "titleRequired": "\u8bf7\u586b\u5199\u4efb\u52a1\u540d\u79f0\u3002",
+      "instructionsRequired": "\u8bf7\u586b\u5199\u4efb\u52a1\u63d0\u793a\u8bcd\u3002",
+      "invalidScheduleType": "\u8fd0\u884c\u8ba1\u5212\u7c7b\u578b\u65e0\u6548\u3002",
+      "invalidExecutionMode": "\u6267\u884c\u6a21\u5f0f\u65e0\u6548\u3002",
+      "absoluteWorkingDirectory": "\u5de5\u4f5c\u76ee\u5f55\u5fc5\u987b\u4f7f\u7528\u7edd\u5bf9\u8def\u5f84\u3002",
+      "invalidRunTime": "\u8fd0\u884c\u65f6\u95f4\u5fc5\u987b\u4f7f\u7528 HH:mm \u683c\u5f0f\u3002",
+      "validRunDateRequired": "\u8bf7\u9009\u62e9\u6709\u6548\u7684\u8fd0\u884c\u65e5\u671f\u3002",
+      "weekdayRequired": "\u8bf7\u81f3\u5c11\u9009\u62e9\u4e00\u4e2a\u8fd0\u884c\u65e5\u3002",
+      "invalidMonthDay": "\u6bcf\u6708\u8fd0\u884c\u65e5\u5fc5\u987b\u5728 1 \u5230 31 \u4e4b\u95f4\u3002",
+      "oneTimeMustBeFuture": "\u5355\u6b21\u4efb\u52a1\u5fc5\u987b\u8bbe\u7f6e\u4e3a\u672a\u6765\u65f6\u95f4\u3002",
+      "agentUnavailable": "\u6240\u9009 Agent \u5f53\u524d\u4e0d\u53ef\u7528\u3002",
+      "taskNotFound": "\u672a\u627e\u5230\u8be5\u5b9a\u65f6\u4efb\u52a1\u3002",
+      "windowUnavailable": "FreeBuddy \u7a97\u53e3\u5f53\u524d\u4e0d\u53ef\u7528\u3002",
+      "appClosed": "FreeBuddy \u5728\u4efb\u52a1\u5b8c\u6210\u524d\u5df2\u5173\u95ed\u3002",
+      "workingDirectoryUnavailable": "\u5de5\u4f5c\u76ee\u5f55\u4e0d\u53ef\u7528\uff1a{{path}}"
     }
   },
   "workflow": {

@@ -109,6 +109,7 @@ import {
   cancelAuthenticationTerminal,
   writeAuthenticationTerminal
 } from "./acpAuthTerminal.js";
+import { registerScheduledTaskIpc } from "./scheduledTasks.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -569,4 +570,5 @@ export function registerCliIpc() {
   );
 
   registerWorkflowIpc();
+  registerScheduledTaskIpc();
 }

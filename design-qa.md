@@ -1,40 +1,46 @@
 # Design QA
 
-Source visual truth path:
-- `/var/folders/_l/t1lk7m411953763qdprx0qn00000gp/T/codex-clipboard-6463c2c9-2167-40d2-91c7-147d0601d5ed.png`
-- `/var/folders/_l/t1lk7m411953763qdprx0qn00000gp/T/codex-clipboard-45fc3f39-57b1-400e-9a05-29713979783e.png`
+- Source visual truth: `C:\Users\Morefine\AppData\Local\Temp\codex-clipboard-464aa908-a44f-45ef-be9b-89f2e3f150d1.png`
+- Previous implementation screenshot: `C:\Users\Morefine\AppData\Local\Temp\codex-clipboard-5b3d381a-c03a-498f-a84e-1544bc938403.png`
+- Revised implementation screenshot: unavailable after the section-title fix
+- Viewport: expanded desktop sidebar; latest implementation crop 316 x 300 px
+- State: light theme, Teams and Conversations section headers visible
 
-Implementation screenshot path:
-- blocked: browser preview has no Electron CLI bridge, so it loads the empty new-task state rather than an existing conversation with assistant output.
+## Full-view comparison evidence
 
-Viewport:
-- intended desktop comparison, WorkBuddy-style chat thread.
+The supplied implementation screenshot shows the Teams header in primary black text while the Conversations header uses tertiary gray. They represent the same section-heading level but render as different hierarchy levels because Teams inherited an active state. The code now removes that active state and gives both headings the same typography tokens. A post-fix screenshot is unavailable, so final visual comparison remains blocked.
 
-State:
-- active conversation with user prompt, assistant process stream, markdown text, and markdown table.
+## Focused region comparison evidence
 
-Full-view comparison evidence:
-- Source screenshots show a continuous assistant response flow: avatar/name/status at top, lightweight tool/process rows, plain prose, ordered lists, inline code, and bordered markdown table. Assistant output is not wrapped in a large bordered card.
+The focused sidebar crop makes the mismatch explicit: Teams is darker and optically stronger than Conversations. Both now use 11 px font size, weight 600, 16 px line height, 0.02 em letter spacing, and the tertiary text token. Teams changes to primary text only while hovered.
 
-Focused region comparison evidence:
-- blocked: no rendered active conversation state could be captured in browser preview. A data-url fixture attempt was blocked by browser security policy, and no workaround was attempted.
+## Findings
 
-Findings:
-- [P2] Visual QA capture blocked for active chat output.
-  Location: browser preview verification.
-  Evidence: the preview opens the new-task state because `window.freebuddy.cli` is unavailable outside Electron.
-  Impact: code-level checks pass, but screenshot-level fidelity still needs one Electron run with existing conversation data.
-  Fix: verify in the Electron app, or add a first-class local demo fixture route/state for chat rendering QA.
+- [P1] Post-fix section-heading parity is not visually confirmed.
+  - Location: Teams and Conversations section headers.
+  - Evidence: the supplied screenshot shows different color and optical weight; the selectors are now normalized, but no revised screenshot is available.
+  - Impact: the requested hierarchy correction cannot be accepted from code inspection alone.
+  - Fix: capture the refreshed sidebar and compare the two headings in the same state.
 
-Patches made since previous QA pass:
-- Converted assistant messages from large bordered bubbles into a transparent flowing response layout.
-- Added lightweight WorkBuddy-like tool/process rows.
-- Added markdown-style rendering for paragraphs, lists, inline code, bold text, fenced code, and tables.
-- Added Codex `item.updated` handling for incremental text/thinking deltas.
-- Added final-message replacement/deduping so streamed deltas and completed full text do not duplicate.
+## Required fidelity surfaces
 
-Checks completed:
-- `npm run typecheck` passed.
-- `npm run build` passed.
+- Fonts and typography: both headings now share 11 px, weight 600, 16 px line height, and 0.02 em letter spacing; post-fix rendering is not visually verified.
+- Spacing and layout rhythm: existing section-header containers remain unchanged; only type styling and state behavior changed.
+- Colors and visual tokens: both headings now use the tertiary token at rest; Teams no longer stays primary-colored on the Teams page.
+- Image and icon fidelity: no image assets changed; existing Lucide add and search icons remain in their original slots.
+- Copy and content: Teams / 团队 and Conversations / 对话 remain unchanged.
+
+## Implementation checklist
+
+- Capture the refreshed expanded sidebar in light theme.
+- Confirm that Teams and Conversations have matching resting color, size, weight, and baseline treatment.
+- Correct any remaining P0/P1/P2 mismatch before marking the result passed.
+
+## Comparison history
+
+- Earlier refinement: team rows and All teams were aligned successfully.
+- Latest screenshot: exposed a remaining section-header mismatch caused by the Teams active state.
+- Fix applied: removed the persistent active class and matched the exact Conversations heading typography.
+- Post-fix visual evidence: blocked because the revised Electron screenshot is unavailable.
 
 final result: blocked

@@ -66,6 +66,7 @@ export interface ConversationState {
   pendingFreshContext: Record<string, boolean>;
 
   load(): Promise<void>;
+  refreshList(): Promise<void>;
   refreshMembers(): void;
   setActive(id: string | undefined): Promise<void>;
   loadMessages(id: string, messageIds?: string[]): Promise<void>;
@@ -388,6 +389,15 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     ensureWorkflowMessageSubscription(active, async (cid, messageIds) => {
       await get().loadMessages(cid, messageIds);
     });
+  },
+
+  async refreshList() {
+    if (!cliClient.isAvailable()) return;
+    const members = buildConversationMembers();
+    const list = await cliClient.listConversations({ archived: false });
+    const synced = syncConversationAgentNames(list, members);
+    persistSyncedConversationAgentNames(synced);
+    set({ members, conversations: synced.conversations });
   },
 
   refreshMembers() {

@@ -11,6 +11,10 @@ import {
   categorizeTelemetryError,
   normalizeTelemetryAdapter
 } from "../telemetryPrivacy.js";
+import {
+  getFreshWindowsEnvironment,
+  resolveWindowsShellCommand
+} from "./windowsEnv.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const CODEX_ACP_ADAPTER = "codex-acp";
@@ -146,6 +150,10 @@ function which(
         } catch {}
       }
 
+      if (isWindows) {
+        void resolveWindowsShellCommand(bin, mergedEnv).then(resolve);
+        return;
+      }
       resolve(undefined);
     });
   });
@@ -301,14 +309,22 @@ export async function cliCheck(
 ): Promise<CliCheckResult> {
   const runtimeKey = runtimeAdapter?.trim() || adapter;
   const bin = binary?.trim() || adapterBinary(adapter) || adapter;
-  const resolved = await which(bin, env);
+  const effectiveEnv = await getFreshWindowsEnvironment({
+    ...process.env,
+    ...(env || {})
+  });
+  const resolved = await which(bin, effectiveEnv as Record<string, string>);
   if (!resolved) {
     upsertRuntime(runtimeKey, false, undefined, undefined, "binary not found");
     trackAgentSetup(adapter, "check", "missing", "binary not found");
     return { installed: false };
   }
   const probe = getCliCheckProbe(adapter);
-  const probeResult = await runCheckProbe(resolved, probe.args, env);
+  const probeResult = await runCheckProbe(
+    resolved,
+    probe.args,
+    effectiveEnv as Record<string, string>
+  );
   if (!probeResult.ok || (!probe.versionOptional && !probeResult.output)) {
     const error = probeFailureMessage(adapter, probe.args, probeResult);
     upsertRuntime(
@@ -693,7 +709,8 @@ async function prepareInstallEnvironment(
   const tool = requiredInstallTool(command);
   if (!tool) return { env: { ...process.env }, command };
 
-  const executable = await which(tool);
+  const env = await getFreshWindowsEnvironment(process.env);
+  const executable = await which(tool, env as Record<string, string>);
   if (!executable) {
     return {
       env: { ...process.env },
@@ -704,7 +721,6 @@ async function prepareInstallEnvironment(
     };
   }
 
-  const env: NodeJS.ProcessEnv = { ...process.env };
   env.PATH = [path.dirname(executable), env.PATH || ""]
     .filter(Boolean)
     .join(path.delimiter);

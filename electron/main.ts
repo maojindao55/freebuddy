@@ -20,6 +20,7 @@ import { APP_NAME, APP_VERSION } from "./app-meta.js";
 import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
+import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -115,6 +116,8 @@ async function injectShellPath() {
     // user PATH. Ensure common npm/node binary directories are present so
     // `where` can find globally-installed CLI agents like codex-acp.
     try {
+      const freshEnv = await getFreshWindowsEnvironment(process.env);
+      if (freshEnv.PATH) process.env.PATH = freshEnv.PATH;
       const appData = process.env.APPDATA;
       const localAppData = process.env.LOCALAPPDATA;
       const userProfile = process.env.USERPROFILE || process.env.HOME || "";

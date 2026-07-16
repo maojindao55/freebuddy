@@ -19,18 +19,15 @@ test("sidebar exposes scheduled tasks, teams, and conversations as first-class n
   assert.match(app, /workspaceView === "workflowTeams"/);
 
   assert.match(sidebar, /sidebar-primary-nav/);
-  assert.match(sidebar, /sidebar-team-section/);
-  assert.match(sidebar, /className="sidebar-section-title"/);
-  assert.doesNotMatch(sidebar, /sidebar-section-title\$\{workspaceView/);
-  assert.match(sidebar, /workflowTeamName/);
-  assert.match(sidebar, /enabledTeams\.slice\(0, 2\)/);
-  assert.match(sidebar, /sidebar-team-more/);
-  assert.match(sidebar, /sidebar-team-more-icon/);
-  assert.match(sidebar, /sidebar-team-more-chevron/);
-  assert.match(sidebar, /sidebar\.allTeams/);
-  assert.doesNotMatch(sidebar, /sidebar-team-more-count/);
-  assert.match(sidebar, /onStartTeam\(team\.id\)/);
-  assert.match(sidebar, /onCreateTeam/);
+  assert.match(sidebar, /const workflowTeamsActive = workspaceView === "workflowTeams"/);
+  assert.match(sidebar, /aria-current=\{workflowTeamsActive \? "page" : undefined\}/);
+  assert.match(sidebar, /<UsersRound \/>/);
+  assert.match(sidebar, /onClick=\{onOpenTeams\}/);
+  assert.doesNotMatch(sidebar, /sidebar-team-section/);
+  assert.doesNotMatch(sidebar, /sidebar-team-list/);
+  assert.doesNotMatch(sidebar, /workflowTeamName/);
+  assert.doesNotMatch(sidebar, /onStartTeam/);
+  assert.doesNotMatch(sidebar, /onCreateTeam/);
 
   assert.doesNotMatch(settings, /key: "workflowTeams"/);
   assert.doesNotMatch(settings, /key: "scheduledTasks"/);
@@ -38,20 +35,15 @@ test("sidebar exposes scheduled tasks, teams, and conversations as first-class n
   assert.doesNotMatch(settings, /<ScheduledTasksTab/);
 });
 
-test("team sidebar rows open the existing team task mode", () => {
+test("team primary navigation opens the team workspace", () => {
   const app = read("../src/App.tsx");
-  const chat = read("../src/components/CLI/ChatView.tsx");
-  const store = read("../src/store/newTaskUiStore.ts");
-
-  assert.match(app, /onStartTeam=\{\(teamId\) => startNewTask\("team", teamId\)\}/);
-  assert.match(app, /setRequestedTeamId\(teamId\)/);
-  assert.match(chat, /requestedTeamId !== selectedTeamId/);
-  assert.match(chat, /setSelectedTeamId\(requestedTeamId\)/);
-  assert.match(store, /requestedTeamId\?: string/);
-  assert.match(store, /setRequestedTeamId/);
+  assert.match(app, /onOpenTeams=\{\(\) => openWorkflowTeams\(\)\}/);
+  assert.match(app, /setWorkspaceView\("workflowTeams"\)/);
+  assert.doesNotMatch(app, /onStartTeam=/);
+  assert.doesNotMatch(app, /activeTeamId=/);
 });
 
-test("sidebar navigation matches the compact grouped reference hierarchy", () => {
+test("sidebar navigation matches the flat primary reference hierarchy", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
   const css = read("../styles.css");
@@ -64,9 +56,11 @@ test("sidebar navigation matches the compact grouped reference hierarchy", () =>
   assert.equal(zh.conversations.title, "对话");
   assert.match(css, /\.sidebar-primary-nav\s*\{/);
   assert.match(css, /\.sidebar-primary-item\s*\{/);
-  assert.match(css, /\.sidebar-team-section\s*\{/);
-  assert.match(css, /\.sidebar-team-item\s*\{/);
-  assert.match(css, /\.sidebar-team-more\s*\{/);
+  assert.match(css, /\.sidebar-primary-item\s*\{[^}]*color:\s*var\(--fb-text-secondary\);/m);
+  assert.match(css, /\.sidebar-primary-item\s*\{[^}]*font-weight:\s*500;/m);
+  assert.match(css, /\.sidebar-primary-item\.active\s*\{[^}]*font-weight:\s*500;/m);
+  assert.doesNotMatch(css, /\.sidebar-team-section\s*\{/);
+  assert.doesNotMatch(css, /\.sidebar-team-item\s*\{/);
   assert.match(css, /\.workspace-tool-page\s*\{/);
   assert.match(css, /\.app-shell\.tool-page-mode\s*\{/);
 });

@@ -14,6 +14,10 @@ const stylesSource = fs.readFileSync(
   new URL("../styles.css", import.meta.url),
   "utf8"
 );
+const sidebarNavigationSource = fs.readFileSync(
+  new URL("../src/components/CLI/SidebarNavigation.tsx", import.meta.url),
+  "utf8"
+);
 
 test("chat scroll leaves enough bottom clearance for the composer", () => {
   assert.match(stylesSource, /--chat-composer-reserve:\s*(1[6-9]\d|2[0-4]\d|250)px/);
@@ -124,10 +128,50 @@ test("new-task page merges attach, workspace, agent, and send into one toolbar r
   const toolbarEnd = newTaskHome.indexOf("new-task-warn", toolbarStart);
   const toolbar = newTaskHome.slice(toolbarStart, toolbarEnd);
   assert.match(toolbar, /onSelectAttachments/);
-  assert.match(toolbar, /onCwd/);
+  assert.match(toolbar, /selectWorkspace/);
   assert.match(toolbar, /onMember/);
   assert.match(toolbar, /onPermissionMode/);
   assert.match(toolbar, /className="new-task-send/);
+});
+
+test("new-task workspace picker renders the selected project as a compact removable chip", () => {
+  const newTaskHome = chatViewSource.slice(
+    chatViewSource.indexOf("function NewTaskHome")
+  );
+  assert.match(newTaskHome, /className="new-task-workspace-chip"/);
+  assert.match(newTaskHome, /className="new-task-workspace-remove"/);
+  assert.match(newTaskHome, /className="new-task-workspace-name"/);
+  assert.match(newTaskHome, /title=\{t\("chat\.changeWorkspace"\)\}/);
+  assert.match(newTaskHome, /aria-label=\{t\("chat\.removeWorkspace"\)\}/);
+  assert.match(newTaskHome, /workspaceParts\[workspaceParts\.length - 1\]/);
+  assert.doesNotMatch(newTaskHome, /className="new-task-cwd-input"/);
+  assert.doesNotMatch(newTaskHome, /className="new-task-workspace-control"/);
+  assert.match(
+    stylesSource,
+    /\.new-task-workspace-name\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/m
+  );
+  assert.match(stylesSource, /\.new-task-workspace-remove\s*\{[^}]*width:\s*0;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/m);
+  assert.match(
+    stylesSource,
+    /\.new-task-workspace-chip:hover \.new-task-workspace-remove,\s*\.new-task-workspace-chip:focus-within \.new-task-workspace-remove\s*\{[^}]*width:\s*22px;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/m
+  );
+  assert.match(stylesSource, /\.new-task-workspace-remove svg\s*\{[^}]*stroke-width:\s*1\.5;/m);
+});
+
+test("sidebar primary navigation exposes a clear current page in team and normal task modes", () => {
+  assert.match(
+    sidebarNavigationSource,
+    /const newTaskActive = workspaceView === "chat" && isNewTask;/
+  );
+  assert.doesNotMatch(sidebarNavigationSource, /isNewTask && !activeTeamId/);
+  assert.match(sidebarNavigationSource, /aria-current=\{newTaskActive \? "page" : undefined\}/);
+  assert.match(sidebarNavigationSource, /aria-current=\{scheduledTasksActive \? "page" : undefined\}/);
+  assert.match(stylesSource, /\.sidebar-primary-nav\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/m);
+  assert.match(stylesSource, /\.sidebar-primary-item\.active\s*\{[^}]*background:\s*var\(--fb-panel-soft\);[^}]*box-shadow:\s*none;/m);
+  assert.match(stylesSource, /\.sidebar-primary-item\s*\{[^}]*font-weight:\s*500;/m);
+  assert.match(stylesSource, /\.sidebar-primary-item\.active\s*\{[^}]*font-weight:\s*500;/m);
+  assert.match(stylesSource, /\.sidebar-primary-icon\.new-task\s*\{[^}]*background:\s*transparent;/m);
+  assert.match(stylesSource, /\.sidebar-primary-item:focus-visible\s*\{/);
 });
 
 test("new-task toolbar keeps agent compact and reuses the chat permission pill", () => {

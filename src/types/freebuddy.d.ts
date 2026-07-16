@@ -23,6 +23,7 @@ import type {
   ConversationMessage,
   ConversationTitleSource,
   AttachmentCandidate,
+  WorkspaceFileMatch,
   PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
@@ -177,6 +178,11 @@ declare global {
     updateMessage(input: UpdateMessageInput): Promise<void>;
 
     selectDirectory(): Promise<string | null>;
+    searchWorkspaceFiles(
+      cwd: string,
+      query: string,
+      limit?: number
+    ): Promise<WorkspaceFileMatch[]>;
     selectAttachments(): Promise<AttachmentCandidate[]>;
   prepareAttachmentFiles(
     files: File[],

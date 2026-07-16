@@ -22,6 +22,7 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { appendItems } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { formatBytes, attachmentPreviewUrl } from "@/utils/chatAttachments";
+import { splitWorkspaceFileMentions } from "@/utils/workspaceFileMentions";
 import { sanitizeStreamItems } from "@/utils/streamMedia";
 import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
@@ -694,6 +695,27 @@ function MessageAttachments({
   );
 }
 
+function UserMessageText({ content }: { content: string }) {
+  const segments = splitWorkspaceFileMentions(content);
+  return (
+    <pre>
+      {segments.map((segment, index) =>
+        segment.kind === "mention" ? (
+          <span
+            className="workspace-file-mention"
+            title={segment.path}
+            key={`${segment.value}-${index}`}
+          >
+            {segment.value}
+          </span>
+        ) : (
+          <span key={`text-${index}`}>{segment.value}</span>
+        )
+      )}
+    </pre>
+  );
+}
+
 export const MessageBubble = memo(function MessageBubble({
   message,
   adapter,
@@ -966,7 +988,7 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
           {showBubble && (
             <div className="msg-bubble">
-              {hasText && <pre>{message.content}</pre>}
+              {hasText && <UserMessageText content={message.content} />}
               <MessageAttachments attachments={otherAttachments} />
             </div>
           )}

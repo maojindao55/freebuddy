@@ -148,6 +148,12 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
   assert.match(component, /inspectSessionConfigOptions\(probeInput\)/);
   assert.match(component, /scheduledTasks\.model/);
   assert.match(component, /configOptionOverrides/);
+  assert.match(component, /task\.prompt\.trim\(\) !== task\.title\.trim\(\)/);
+  assert.match(component, /scheduled-task-schedule-row/);
+  assert.match(component, /scheduled-task-meta-item/);
+  assert.match(component, /formatWorkspaceName\(task\.cwd\)/);
+  assert.match(component, /aria-expanded=\{Boolean\(expandedPrompts\[task\.id\]\)\}/);
+  assert.doesNotMatch(component, /className="scheduled-task-chip/);
   assert.match(preload, /scheduledTasks:\/\/changed/);
   assert.match(main, /initializeScheduledTaskScheduler/);
   assert.match(app, /<ScheduledTasksTab/);
@@ -158,4 +164,5 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
   assert.equal(en.scheduledTasks.errors.titleRequired, "Task name is required.");
   assert.equal(zh.scheduledTasks.errors.titleRequired, "\u8bf7\u586b\u5199\u4efb\u52a1\u540d\u79f0\u3002");
   assert.equal(zh.scheduledTasks.model, "\u6a21\u578b");
+  assert.equal(zh.scheduledTasks.detailsLabel, "\u4efb\u52a1\u6267\u884c\u8bbe\u7f6e");
 });

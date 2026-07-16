@@ -62,6 +62,8 @@ test("desktop agent installs discover common user-level runtime managers", () =>
   assert.match(checkSource, /path\.join\(home, "\.volta", "bin"\)/);
   assert.match(checkSource, /prepareInstallEnvironment/);
   assert.match(checkSource, /absoluteInstallCommand/);
+  assert.match(checkSource, /preflight\.requiresPowerShell/);
+  assert.match(windowsEnvSource, /windowsCommandInvocation/);
   assert.match(checkSource, /path\.dirname\(executable\)/);
   assert.match(checkSource, /failureCode:\s*"tool_missing"/);
   assert.match(checkSource, /getFreshWindowsEnvironment/);

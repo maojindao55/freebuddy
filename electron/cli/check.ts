@@ -13,7 +13,9 @@ import {
 } from "../telemetryPrivacy.js";
 import {
   getFreshWindowsEnvironment,
-  resolveWindowsShellCommand
+  parseWindowsWhereOutput,
+  resolveWindowsShellCommand,
+  windowsCommandInvocation
 } from "./windowsEnv.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
@@ -68,12 +70,19 @@ function which(
 ): Promise<string | undefined> {
   const mergedEnv = { ...process.env, ...(env || {}) };
   const isWindows = process.platform === "win32";
+  const isFile = (candidate: string): boolean => {
+    try {
+      return fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  };
   if (path.isAbsolute(bin)) {
     try {
-      if (fs.existsSync(bin)) return Promise.resolve(bin);
+      if (isFile(bin)) return Promise.resolve(bin);
       if (isWindows) {
         for (const ext of [".cmd", ".exe", ".bat", ".ps1"]) {
-          if (fs.existsSync(bin + ext)) return Promise.resolve(bin + ext);
+          if (isFile(bin + ext)) return Promise.resolve(bin + ext);
         }
       }
     } catch {}
@@ -87,7 +96,9 @@ function which(
     child.on("error", () => resolve(undefined));
     child.on("close", (code) => {
       if (code === 0) {
-        const found = out.split(/\r?\n/).find(Boolean);
+        const found = isWindows
+          ? parseWindowsWhereOutput(out, isFile)
+          : out.split(/\r?\n/).find(Boolean);
         if (found) return resolve(found);
       }
 
@@ -118,7 +129,7 @@ function which(
           for (const dir of searchDirs) {
             for (const ext of exts) {
               const fullPath = path.join(dir, bin + ext);
-              if (fs.existsSync(fullPath)) {
+              if (isFile(fullPath)) {
                 return resolve(fullPath);
               }
             }
@@ -143,7 +154,7 @@ function which(
 
           for (const dir of searchDirs) {
             const fullPath = path.join(dir, bin);
-            if (fs.existsSync(fullPath)) {
+            if (isFile(fullPath)) {
               return resolve(fullPath);
             }
           }
@@ -151,7 +162,9 @@ function which(
       }
 
       if (isWindows) {
-        void resolveWindowsShellCommand(bin, mergedEnv).then(resolve);
+        void resolveWindowsShellCommand(bin, mergedEnv).then((candidate) => {
+          resolve(candidate && isFile(candidate) ? candidate : undefined);
+        });
         return;
       }
       resolve(undefined);
@@ -668,16 +681,33 @@ type CliInstallFailureCode =
 interface InstallPreflightResult {
   env: NodeJS.ProcessEnv;
   command: string;
+  requiresPowerShell?: boolean;
   failureCode?: CliInstallFailureCode;
   failureDetail?: string;
   error?: string;
 }
 
-function absoluteInstallCommand(command: string, executable: string): string {
-  const quoted = process.platform === "win32"
-    ? `"${executable.replace(/"/g, '""')}"`
-    : `'${executable.replace(/'/g, `'"'"'`)}'`;
-  return command.replace(/^(\s*)[^\s|;&]+/, `$1${quoted}`);
+function absoluteInstallCommand(
+  command: string,
+  executable: string
+): Pick<InstallPreflightResult, "command" | "requiresPowerShell"> {
+  if (process.platform === "win32") {
+    const invocation = windowsCommandInvocation(executable);
+    return {
+      command: command.replace(
+        /^(\s*)[^\s|;&]+/,
+        (_match, leading: string) => `${leading}${invocation.prefix}`
+      ),
+      requiresPowerShell: invocation.requiresPowerShell
+    };
+  }
+  const quoted = `'${executable.replace(/'/g, `'"'"'`)}'`;
+  return {
+    command: command.replace(
+      /^(\s*)[^\s|;&]+/,
+      (_match, leading: string) => `${leading}${quoted}`
+    )
+  };
 }
 
 function requiredInstallTool(command: string): string | undefined {
@@ -741,7 +771,7 @@ async function prepareInstallEnvironment(
       if (arch.ok && arch.output?.trim() === "x64") {
         return {
           env,
-          command: absoluteInstallCommand(command, executable),
+          ...absoluteInstallCommand(command, executable),
           failureCode: "node_arch_mismatch",
           failureDetail: node,
           error: "Apple Silicon Mac is using an x64 Node.js runtime"
@@ -750,7 +780,7 @@ async function prepareInstallEnvironment(
     }
   }
 
-  return { env, command: absoluteInstallCommand(command, executable) };
+  return { env, ...absoluteInstallCommand(command, executable) };
 }
 
 export function cliInstall(command: string, adapter = "custom"): Promise<CliInstallResult> {
@@ -854,6 +884,7 @@ export function cliInstallStream(
       const installCommand = preflight.command;
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =
+        preflight.requiresPowerShell ||
         /^irm\s/i.test(installCommand) ||
         /\|\s*iex\b/i.test(installCommand) ||
         /Invoke-(WebRequest|Expression)/i.test(installCommand);

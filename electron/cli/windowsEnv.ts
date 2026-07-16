@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import spawn from "cross-spawn";
 
@@ -66,7 +67,11 @@ export function mergeWindowsPath(...values: Array<string | undefined>): string {
   const seen = new Set<string>();
   for (const value of values) {
     for (const rawEntry of (value || "").split(";")) {
-      const entry = rawEntry.trim();
+      const trimmed = rawEntry.trim();
+      const entry =
+        trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')
+          ? trimmed.slice(1, -1).trim()
+          : trimmed;
       if (!entry) continue;
       const key = entry.replace(/[\\/]+$/, "").toLowerCase();
       if (seen.has(key)) continue;
@@ -75,6 +80,46 @@ export function mergeWindowsPath(...values: Array<string | undefined>): string {
     }
   }
   return entries.join(";");
+}
+
+function isExistingFile(candidate: string): boolean {
+  try {
+    return fs.statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+}
+
+export function parseWindowsWhereOutput(
+  output: string | undefined,
+  isFile: (candidate: string) => boolean = isExistingFile
+): string | undefined {
+  for (const line of output?.split(/\r?\n/) || []) {
+    const trimmed = line.trim();
+    const candidate =
+      trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')
+        ? trimmed.slice(1, -1)
+        : trimmed;
+    if (path.win32.isAbsolute(candidate) && isFile(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+export interface WindowsCommandInvocation {
+  prefix: string;
+  requiresPowerShell: boolean;
+}
+
+export function windowsCommandInvocation(
+  executable: string
+): WindowsCommandInvocation {
+  const quoted = `"${executable.replace(/"/g, '""')}"`;
+  const requiresPowerShell =
+    path.win32.extname(executable).toLowerCase() === ".ps1";
+  return {
+    prefix: requiresPowerShell ? `& ${quoted}` : quoted,
+    requiresPowerShell
+  };
 }
 
 export function parseWindowsShellCommandOutput(

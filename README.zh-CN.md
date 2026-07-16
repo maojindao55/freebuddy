@@ -140,9 +140,9 @@ npm run github:preflight
 
 <a href="https://www.star-history.com/?repos=maojindao55%2Ffreebuddy&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=maojindao55/freebuddy&type=date&theme=dark&legend=top-left&sealed_token=6j7ShiBxxdf_yi8I8bKsFv8aoYrSqfInB4f8_ZVdoz5IdrRgBf9MHBjFMwEKPE_RlmbYOPOq7AL1M2M9lkWDOwXfav2mcumEbmoun_IXOGnIdMZ-dH95fg" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=maojindao55/freebuddy&type=date&legend=top-left&sealed_token=6j7ShiBxxdf_yi8I8bKsFv8aoYrSqfInB4f8_ZVdoz5IdrRgBf9MHBjFMwEKPE_RlmbYOPOq7AL1M2M9lkWDOwXfav2mcumEbmoun_IXOGnIdMZ-dH95fg" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=maojindao55/freebuddy&type=date&legend=top-left&sealed_token=6j7ShiBxxdf_yi8I8bKsFv8aoYrSqfInB4f8_ZVdoz5IdrRgBf9MHBjFMwEKPE_RlmbYOPOq7AL1M2M9lkWDOwXfav2mcumEbmoun_IXOGnIdMZ-dH95fg" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=maojindao55/freebuddy&type=date&theme=dark&legend=top-left&sealed_token=_vBp2Ba6BbtTnwG5RXtVyOwRKsvfS1B4qKjYHT1ZQBN7CXun63Yd81CGPV3LIDB3BafxDPgNcLDDdd-tinwwl6cAZp_S3ZYXHT91BJdw2jckP_G3Z0B1ig" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=maojindao55/freebuddy&type=date&legend=top-left&sealed_token=_vBp2Ba6BbtTnwG5RXtVyOwRKsvfS1B4qKjYHT1ZQBN7CXun63Yd81CGPV3LIDB3BafxDPgNcLDDdd-tinwwl6cAZp_S3ZYXHT91BJdw2jckP_G3Z0B1ig" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=maojindao55/freebuddy&type=date&legend=top-left&sealed_token=_vBp2Ba6BbtTnwG5RXtVyOwRKsvfS1B4qKjYHT1ZQBN7CXun63Yd81CGPV3LIDB3BafxDPgNcLDDdd-tinwwl6cAZp_S3ZYXHT91BJdw2jckP_G3Z0B1ig" />
  </picture>
  </a>
 

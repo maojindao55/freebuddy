@@ -156,6 +156,7 @@
     "modelLoading": "Loading models…",
     "modelConfig": "Model config",
     "thoughtLevel": "Thinking",
+    "thoughtLevelNone": "Off",
     "defaultAttachmentTitle": "Attachment",
     "pendingAttachmentsAria": "Pending attachments",
     "removeAttachmentAria": "Remove {{name}}",

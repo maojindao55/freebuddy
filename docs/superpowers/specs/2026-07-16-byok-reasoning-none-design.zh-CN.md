@@ -1,14 +1,16 @@
-# BYOK 思考强度支持 `none` / 按模型关闭设计
+# 思考强度补 `none`（方案 A）设计
 
 相关 Issue：[#59](https://github.com/maojindao55/freebuddy/issues/59)
 
+> **决策更新（2026-07-16）：** 原 BYOK catalog / Settings「支持思考」方案（B）因配置模型列表会触发 Codex BYOK wrapper（`CODEX_PATH`）且本机常找不到 `codex` 二进制，改为 **方案 A**：在主对话选择器对 `thought_level` 硬补 `none`。下文保留 B 的背景供对照；实现以本节「已确认决策」与「方案 A」为准。
+
 ## 目标
 
-让 Codex BYOK / 自定义模型可以按模型声明是否支持思考，并在支持时提供 `none`（关闭）档位，避免「不支持思考的模型仍被迫选择 low/medium/high」。
+在聊天模型选择器的「思考强度」中始终提供 `none`（关闭），让用户可以关掉思考，而不依赖 BYOK catalog 改造。
 
 用户心智：
 
-> 我在 Settings 里给每个自定义模型勾选「是否支持思考」。不支持的模型，聊天里不再出现思考强度；支持的模型可以选择关闭（none）或 low/medium/high。
+> 思考强度列表里永远有「关闭」。我选关闭后，下次发送会按 `none` 去 `set_config_option`。
 
 ## 非目标
 
@@ -36,17 +38,21 @@ supported_reasoning_levels: [
 
 Codex 配置侧 `model_reasoning_effort` 常见值为 `minimal|low|medium|high|xhigh`；本设计在 BYOK catalog 中显式声明 `none`，使支持思考的模型可关闭思考。实现时需验证当前 Codex 版本对 catalog 中 `effort: "none"` 的接受情况；若不接受，回退为「不支持思考时省略 levels」+「支持时用 `minimal` 作为最轻档」并在 spec 修订中记录。
 
-## 已确认决策
+## 已确认决策（方案 A）
 
 | 决策 | 选择 |
 |------|------|
-| 场景范围 | 仅 Codex BYOK / 自定义模型 |
-| 能力开关粒度 | 每个 `CLIByokModel` |
-| 旧配置默认 | `supportsReasoning = false`（修正当前错误默认） |
-| 支持思考时的默认档位 | `none, low, medium, high` |
-| 支持思考时的默认当前档 | `none` |
-| 聊天选择器 | 继续透传 ACP；不伪造选项 |
+| 实现路径 | UI 对 `category === "thought_level"` 硬补 `none`（若不存在） |
+| Settings / BYOK catalog | 不改；不增加「支持思考」开关 |
+| 生效方式 | 仍走既有 sticky override → `session/set_config_option` |
 | `none` 展示文案 | 中「关闭」/ 英 `Off` |
+| 已知风险 | Agent/Codex 若不认 `none`，设置可能失败或被忽略 |
+
+## 方案 A 实现要点
+
+- `ensureThoughtLevelNoneOption`：在 `filterSessionConfigPickerOptions` 之后注入 `{ id: "none" }` 到 `thought_level.values` 首位（已存在则不重复）。
+- `SessionConfigPicker` / `configOptionChoiceLabel`：无友好名时把 `none` 显示为「关闭」/ `Off`。
+- 不改 `electron/cli/store.ts` catalog 与 wrapper。
 
 ## 数据模型
 

@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 
 import type { ConfigOptionItem } from "@/store/sessionMetaUtils";
 import {
+  configOptionChoiceLabel,
   displayConfigOptionLabel,
   displayConfigOptionValue,
   filterSessionConfigPickerOptions
@@ -111,8 +112,9 @@ export function SessionConfigPicker({
     [filtered]
   );
 
+  const noneLabel = t("chat.thoughtLevelNone");
   const summaryLabel = modelOption
-    ? displayConfigOptionLabel(modelOption, overrides) ||
+    ? displayConfigOptionLabel(modelOption, overrides, { none: noneLabel }) ||
       t("chat.modelPicker")
     : t("chat.modelPicker");
 
@@ -240,7 +242,7 @@ export function SessionConfigPicker({
                             }`}
                             onClick={() => handleChange(option, value.id)}
                           >
-                            {value.name || value.id}
+                            {configOptionChoiceLabel(value, noneLabel)}
                           </button>
                         );
                       })}

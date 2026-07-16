@@ -140,7 +140,7 @@ because the sandbox may be unable to access the macOS keychain or network.
 
 ## Star History
 
-[![FreeBuddy Star History](assets/star-history.svg)](https://www.star-history.com/?repos=maojindao55/freebuddy&type=Date)
+[![Star History Chart](https://api.star-history.com/chart?repos=maojindao55/freebuddy&type=date&legend=top-left&sealed_token=6j7ShiBxxdf_yi8I8bKsFv8aoYrSqfInB4f8_ZVdoz5IdrRgBf9MHBjFMwEKPE_RlmbYOPOq7AL1M2M9lkWDOwXfav2mcumEbmoun_IXOGnIdMZ-dH95fg)](https://www.star-history.com/?repos=maojindao55%2Ffreebuddy&type=date&legend=top-left)
 
 ---
 

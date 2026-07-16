@@ -99,6 +99,11 @@ function formatDate(value: string | undefined): string {
   }).format(date);
 }
 
+function formatWorkspaceName(value: string): string {
+  const normalized = value.replace(/[\\/]+$/, "");
+  return normalized.split(/[\\/]/).pop() || value;
+}
+
 export function ScheduledTasksTab({
   onOpenConversation
 }: {
@@ -670,20 +675,15 @@ export function ScheduledTasksTab({
   return (
     <div className="scheduled-task-list">
       <header className="scheduled-task-list-header">
-        <div>
-          <h3>{t("scheduledTasks.title")}</h3>
-          <p>{t("scheduledTasks.description")}</p>
+        <div className="scheduled-task-note">
+          <CalendarClock size={14} />
+          <span>{t("scheduledTasks.runningNote")}</span>
         </div>
         <button type="button" className="primary" onClick={startCreate}>
           <Plus size={14} />
           {t("scheduledTasks.add")}
         </button>
       </header>
-
-      <div className="scheduled-task-note">
-        <CalendarClock size={15} />
-        <span>{t("scheduledTasks.runningNote")}</span>
-      </div>
 
       {loading ? (
         <div className="scheduled-task-empty"><Loader2 size={18} className="spin" /></div>
@@ -731,49 +731,58 @@ export function ScheduledTasksTab({
                   )}
                 </div>
 
-                <div
-                  className="scheduled-task-prompt-container"
-                  onClick={() => togglePromptExpanded(task.id)}
-                  title={t("scheduledTasks.promptToggle")}
-                >
-                  <div className={`scheduled-task-prompt-text ${expandedPrompts[task.id] ? "expanded" : ""}`}>
-                    {task.prompt}
-                  </div>
-                  {task.prompt.length > 90 && (
-                    <div className="scheduled-task-prompt-expand-btn">
-                      <span>
+                <div className="scheduled-task-schedule-row">
+                  <span className="scheduled-task-schedule">
+                    <Clock3 size={13} />
+                    {formatSchedule(task)}
+                  </span>
+                  {task.scheduleType !== "manual" && (
+                    <span className="scheduled-task-next-run">
+                      {t("scheduledTasks.nextRun", { time: formatDate(task.nextRunAt) })}
+                    </span>
+                  )}
+                </div>
+
+                {task.prompt.trim() !== task.title.trim() && (
+                  <button
+                    type="button"
+                    className="scheduled-task-prompt-container"
+                    onClick={() => togglePromptExpanded(task.id)}
+                    title={t("scheduledTasks.promptToggle")}
+                    aria-expanded={Boolean(expandedPrompts[task.id])}
+                  >
+                    <MessageSquare size={12} />
+                    <span className={`scheduled-task-prompt-text ${expandedPrompts[task.id] ? "expanded" : ""}`}>
+                      {task.prompt}
+                    </span>
+                    {task.prompt.length > 90 && (
+                      <span className="scheduled-task-prompt-expand-btn">
                         {expandedPrompts[task.id]
                           ? t("scheduledTasks.promptCollapse")
                           : t("scheduledTasks.promptExpand")}
                       </span>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </button>
+                )}
 
-                <div className="scheduled-task-meta">
-                  <span className="scheduled-task-chip schedule-chip">
-                    <Clock3 size={11} />
-                    {formatSchedule(task)}
-                  </span>
-                  <span className="scheduled-task-chip agent-chip">
+                <div className="scheduled-task-meta" aria-label={t("scheduledTasks.detailsLabel")}>
+                  <span className="scheduled-task-meta-item">
                     <Bot size={11} />
                     {t("scheduledTasks.agentValue", { agent: agentNames.get(task.agentId) ?? task.agentId })}
                   </span>
-                  <span className="scheduled-task-chip">
+                  <span className="scheduled-task-meta-separator" aria-hidden="true">·</span>
+                  <span className="scheduled-task-meta-item">
                     <MessageSquare size={11} />
                     {t(`scheduledTasks.execution.${task.executionMode === "continuous" ? "continuous" : "new"}`)}
                   </span>
                   {task.cwd && (
-                    <span className="scheduled-task-chip scheduled-task-workspace-meta" title={task.cwd}>
-                      <FolderOpen size={11} />
-                      {task.cwd}
-                    </span>
-                  )}
-                  {task.scheduleType !== "manual" && (
-                    <span className="scheduled-task-chip">
-                      <CalendarClock size={11} />
-                      {t("scheduledTasks.nextRun", { time: formatDate(task.nextRunAt) })}
-                    </span>
+                    <>
+                      <span className="scheduled-task-meta-separator" aria-hidden="true">·</span>
+                      <span className="scheduled-task-meta-item scheduled-task-workspace-meta" title={task.cwd}>
+                        <FolderOpen size={11} />
+                        {formatWorkspaceName(task.cwd)}
+                      </span>
+                    </>
                   )}
                 </div>
                 {task.lastError && (

@@ -137,6 +137,8 @@ const cli = {
     ipcRenderer.invoke("cli:updateMessage", input),
 
   selectDirectory: () => ipcRenderer.invoke("cli:selectDirectory"),
+  searchWorkspaceFiles: (cwd: string, query: string, limit?: number) =>
+    ipcRenderer.invoke("cli:searchWorkspaceFiles", { cwd, query, limit }),
   selectAttachments: () => ipcRenderer.invoke("cli:selectAttachments"),
   prepareAttachmentFiles: async (files: File[], limit?: number, existingPaths?: string[]) => {
     const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;

@@ -29,7 +29,7 @@ import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
-import { useNewTaskUiStore, type NewTaskMode } from "./store/newTaskUiStore";
+import { useNewTaskUiStore } from "./store/newTaskUiStore";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -198,11 +198,10 @@ function App() {
   const activeConversation = conversations.find((c) => c.id === activeId);
   const isNewTask = !activeConversation;
   const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
-  const requestedTeamId = useNewTaskUiStore((s) => s.requestedTeamId);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
-  const startNewTask = (mode: NewTaskMode, teamId?: string) => {
-    setRequestedTeamId(teamId);
-    setNewTaskMode(mode);
+  const startNewTask = () => {
+    setRequestedTeamId(undefined);
+    setNewTaskMode("normal");
     setSettingsOpen(false);
     setWorkspaceView("chat");
     void setActive(undefined);
@@ -320,12 +319,9 @@ function App() {
             <SidebarNavigation
               workspaceView={workspaceView}
               isNewTask={isNewTask}
-              activeTeamId={requestedTeamId}
-              onNewTask={() => startNewTask("normal")}
+              onNewTask={startNewTask}
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
-              onCreateTeam={() => openWorkflowTeams({ create: true })}
-              onStartTeam={(teamId) => startNewTask("team", teamId)}
             />
             <ConversationList />
 

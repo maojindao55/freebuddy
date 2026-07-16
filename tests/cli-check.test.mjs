@@ -24,6 +24,13 @@ test("Claude ACP checks the delegated CLI version instead of starting ACP", () =
   });
 });
 
+test("Claude ACP install includes its optional platform runtime", () => {
+  assert.equal(
+    getAdapterDefinition("claude-agent-acp")?.installHint,
+    "npm install -g --include=optional @agentclientprotocol/claude-agent-acp"
+  );
+});
+
 test("Grok ACP checks the local Grok CLI version command", () => {
   assert.deepEqual(getCliCheckProbe("grok-acp"), {
     args: ["version"],

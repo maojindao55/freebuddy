@@ -114,7 +114,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".claude/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "npm install -g @agentclientprotocol/claude-agent-acp",
+    installHint:
+      "npm install -g --include=optional @agentclientprotocol/claude-agent-acp",
     docsUrl: "https://github.com/agentclientprotocol/claude-agent-acp",
     protocol: "acp"
   },

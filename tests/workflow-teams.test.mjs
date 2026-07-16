@@ -305,7 +305,7 @@ test("team i18n keys exist in both locales", () => {
 test("workflow team settings editor localizes builtin role and node labels", () => {
   const src = read("../src/components/Settings/WorkflowTeamEditor.tsx");
   assert.match(src, /workflowTeamRoleLabel\(draft, role, t\)/);
-  assert.match(src, /workflowTeamRoleKind\(role\.kind, t\)/);
+  assert.match(src, /workflow\.roleDescriptions\.\$\{role\.kind\}/);
   assert.match(src, /workflowTeamNodeTitle\(draft, n, t\)/);
   assert.match(src, /workflowTeamNodeMode\(n\.mode, t\)/);
   assert.doesNotMatch(src, /<strong>\{role\.label\}<\/strong>/);

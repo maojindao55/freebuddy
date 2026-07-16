@@ -34,9 +34,13 @@ test("rendered chart includes an accessible title and curve", () => {
   assert.match(svg, /2 stars · Updated 2026-01-03/);
 });
 
-test("readmes embed the generated star history curve", () => {
+test("readmes embed the hosted star history chart", () => {
   const readme = fs.readFileSync(new URL("../README.md", import.meta.url), "utf8");
   const readmeZh = fs.readFileSync(new URL("../README.zh-CN.md", import.meta.url), "utf8");
-  assert.match(readme, /assets\/star-history\.svg/);
-  assert.match(readmeZh, /assets\/star-history\.svg/);
+  const chartUrl = /https:\/\/api\.star-history\.com\/chart\?repos=maojindao55\/freebuddy&/;
+  const detailsUrl = /https:\/\/www\.star-history\.com\/\?repos=maojindao55%2Ffreebuddy&/;
+  assert.match(readme, chartUrl);
+  assert.match(readmeZh, chartUrl);
+  assert.match(readme, detailsUrl);
+  assert.match(readmeZh, detailsUrl);
 });

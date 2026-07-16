@@ -204,6 +204,12 @@ export const cliClient = {
   ): Promise<Conversation | undefined> {
     return api().setConversationConfigOptionOverrides(id, overrides);
   },
+  setConversationSkills(
+    id: string,
+    skillIds: string[]
+  ): Promise<Conversation | undefined> {
+    return api().setConversationSkills(id, skillIds);
+  },
   listMessages(conversationId: string): Promise<ConversationMessage[]> {
     return api().listMessages(conversationId);
   },

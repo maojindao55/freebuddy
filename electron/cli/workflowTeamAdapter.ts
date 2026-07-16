@@ -191,6 +191,7 @@ export function expandTeamToPlan(
             }
           }
         : {}),
+      skillIds: role?.skillIds ?? agentRef.skillIds ?? [],
       ...(priorStepIds.length ? { consumes: priorStepIds } : {})
     };
 

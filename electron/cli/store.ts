@@ -46,6 +46,7 @@ export interface CLIExecutorOverride {
   enabled?: boolean;
   codexByok?: CLICodexByokConfig;
   claudeByok?: CLIClaudeByokConfig;
+  skillIds?: string[];
 }
 
 const SAFE_STORAGE_PREFIX = "safe:";
@@ -359,7 +360,7 @@ export function listOverrides(): CLIExecutorOverride[] {
   const rows = db
     .prepare(
       `SELECT id, base_adapter, label, binary, extra_args, env, install_hint, docs_url, icon, enabled, codex_byok
-              , claude_byok
+              , claude_byok, skill_ids
        FROM cli_executor_overrides ORDER BY id`
     )
     .all() as Array<{
@@ -375,6 +376,7 @@ export function listOverrides(): CLIExecutorOverride[] {
     enabled: number;
     codex_byok: string | null;
     claude_byok: string | null;
+    skill_ids: string | null;
   }>;
   return rows.map((r) => ({
     id: r.id,
@@ -388,7 +390,8 @@ export function listOverrides(): CLIExecutorOverride[] {
     icon: r.icon ?? undefined,
     enabled: r.enabled !== 0,
     codexByok: readByokPublic<CLICodexByokConfig>(r.codex_byok),
-    claudeByok: readByokPublic<CLIClaudeByokConfig>(r.claude_byok)
+    claudeByok: readByokPublic<CLIClaudeByokConfig>(r.claude_byok),
+    skillIds: r.skill_ids ? (JSON.parse(r.skill_ids) as string[]) : []
   }));
 }
 
@@ -397,8 +400,8 @@ export function upsertOverride(o: CLIExecutorOverride): void {
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO cli_executor_overrides
-       (id, base_adapter, label, binary, extra_args, env, install_hint, docs_url, icon, enabled, codex_byok, claude_byok, updated_at)
-     VALUES (@id, @base_adapter, @label, @binary, @extra_args, @env, @install_hint, @docs_url, @icon, @enabled, @codex_byok, @claude_byok, @updated_at)
+       (id, base_adapter, label, binary, extra_args, env, install_hint, docs_url, icon, enabled, codex_byok, claude_byok, skill_ids, updated_at)
+     VALUES (@id, @base_adapter, @label, @binary, @extra_args, @env, @install_hint, @docs_url, @icon, @enabled, @codex_byok, @claude_byok, @skill_ids, @updated_at)
      ON CONFLICT(id) DO UPDATE SET
        base_adapter=excluded.base_adapter,
        label=excluded.label,
@@ -411,6 +414,7 @@ export function upsertOverride(o: CLIExecutorOverride): void {
        enabled=excluded.enabled,
        codex_byok=excluded.codex_byok,
        claude_byok=excluded.claude_byok,
+       skill_ids=excluded.skill_ids,
        updated_at=excluded.updated_at`
   ).run({
     id: o.id,
@@ -431,6 +435,7 @@ export function upsertOverride(o: CLIExecutorOverride): void {
       const byok = normalizeClaudeByokForStorage(String(o.id), o.claudeByok);
       return byok ? JSON.stringify(byok) : null;
     })(),
+    skill_ids: JSON.stringify(o.skillIds ?? []),
     updated_at: now
   });
 }

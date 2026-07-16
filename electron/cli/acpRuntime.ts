@@ -58,6 +58,10 @@ import {
   registerBrowserToolSession,
   unregisterBrowserToolSession
 } from "../browserToolService.js";
+import {
+  registerSkillToolSession,
+  unregisterSkillToolSession
+} from "../skillToolService.js";
 import type { AcpStdioMcpServer } from "../shared/draftToolProtocol.js";
 import {
   clearAuthenticationTerminalsForSession,
@@ -165,6 +169,7 @@ export async function runAcpAgent({
     running.delete(args.sessionId);
     unregisterDraftToolSession(args.sessionId);
     unregisterBrowserToolSession(args.sessionId);
+    unregisterSkillToolSession(args.sessionId);
     clearAuthenticationTerminalsForSession(args.sessionId);
     clearAuthenticationResolversForSession(args.sessionId);
     clearPermissionResolversForSession(args.sessionId);
@@ -809,7 +814,7 @@ export async function runAcpAgent({
     authMethods = Array.isArray(init?.authMethods) ? init.authMethods : [];
 
     if (args.conversationId) {
-      mcpServers = [
+      mcpServers.push(
         await registerDraftToolSession({
           taskSessionId: args.sessionId,
           conversationId: args.conversationId,
@@ -820,7 +825,12 @@ export async function runAcpAgent({
           webContents
         }),
         await registerBrowserToolSession(args.sessionId)
-      ];
+      );
+    }
+    if (args.skills?.length) {
+      mcpServers.push(registerSkillToolSession(args.sessionId, args.skills));
+    }
+    if (mcpServers.length) {
       appendLog(
         logStream,
         "system",

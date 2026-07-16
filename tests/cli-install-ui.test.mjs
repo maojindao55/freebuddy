@@ -26,6 +26,10 @@ const checkSource = fs.readFileSync(
   new URL("../electron/cli/check.ts", import.meta.url),
   "utf8"
 );
+const windowsEnvSource = fs.readFileSync(
+  new URL("../electron/cli/windowsEnv.ts", import.meta.url),
+  "utf8"
+);
 const preloadSource = fs.readFileSync(
   new URL("../electron/preload.ts", import.meta.url),
   "utf8"
@@ -60,6 +64,10 @@ test("desktop agent installs discover common user-level runtime managers", () =>
   assert.match(checkSource, /absoluteInstallCommand/);
   assert.match(checkSource, /path\.dirname\(executable\)/);
   assert.match(checkSource, /failureCode:\s*"tool_missing"/);
+  assert.match(checkSource, /getFreshWindowsEnvironment/);
+  assert.match(windowsEnvSource, /GetEnvironmentVariable\('Path','Machine'\)/);
+  assert.match(windowsEnvSource, /GetEnvironmentVariable\('Path','User'\)/);
+  assert.match(windowsEnvSource, /Get-Command/);
 });
 
 test("Apple Silicon installs reject an x64 Node runtime before package install", () => {

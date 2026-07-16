@@ -127,6 +127,8 @@ const cli = {
       id,
       overrides
     }),
+  setConversationSkills: (id: string, skillIds: string[]) =>
+    ipcRenderer.invoke("cli:setConversationSkills", { id, skillIds }),
   listMessages: (conversationId: string) =>
     ipcRenderer.invoke("cli:listMessages", conversationId),
   listMessage: (id: string) =>
@@ -357,6 +359,18 @@ const workflowTeams = {
   seedBuiltins: () => ipcRenderer.invoke("workflowTeams:seedBuiltins")
 };
 
+const skills = {
+  list: () => ipcRenderer.invoke("skills:list"),
+  import: (sourcePath: string) => ipcRenderer.invoke("skills:import", sourcePath),
+  setEnabled: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke("skills:setEnabled", id, enabled),
+  delete: (id: string) => ipcRenderer.invoke("skills:delete", id),
+  read: (id: string) => ipcRenderer.invoke("skills:read", id),
+  selectDirectory: () => ipcRenderer.invoke("skills:selectDirectory"),
+  selectArchive: () => ipcRenderer.invoke("skills:selectArchive"),
+  reveal: (id: string) => ipcRenderer.invoke("skills:reveal", id)
+};
+
 const scheduledTasks = {
   list: () => ipcRenderer.invoke("scheduledTasks:list"),
   listRuns: (taskId: string) => ipcRenderer.invoke("scheduledTasks:listRuns", taskId),
@@ -405,6 +419,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   cli,
   workflow,
   workflowTeams,
+  skills,
   settings,
   scheduledTasks,
   feed,

@@ -49,7 +49,8 @@ function ensureRuntime(event: IpcMainInvokeEvent): WorkflowRuntime {
         agentName: member.name,
         binary: member.cli.binary,
         extraArgs: member.cli.extraArgs,
-        env: member.cli.env
+        env: member.cli.env,
+        skillIds: member.cli.skillIds
       };
     }
   });
@@ -283,6 +284,7 @@ function workflowAgents(): WorkflowAgentRef[] {
     id: m.id,
     name: m.name,
     adapter: m.cli.adapter,
-    enabled: m.enabled !== false
+    enabled: m.enabled !== false,
+    skillIds: m.cli.skillIds
   }));
 }

@@ -24,7 +24,14 @@ export interface CLIAdapterDefinition {
   defaultBinary: string;
   streamMode: CLIStreamMode;
   commandGroup: string;
-  capabilities: { toolSession: boolean };
+  capabilities: {
+    toolSession: boolean;
+    skills?: {
+      mode: "native" | "mcp";
+      nativeDirs?: string[];
+      reloadPolicy: "process-start" | "new-session";
+    };
+  };
   toolSessionArgs: string[];
   toolSessionArgPrefixes: string[];
   installHint?: string;

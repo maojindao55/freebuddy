@@ -13,6 +13,8 @@ files:
   - package.json
 
 extraResources:
+  - from: assets/skills
+    to: skills
   - from: assets/app-icon.png
     to: app-icon.png
 

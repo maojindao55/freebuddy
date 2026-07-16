@@ -67,6 +67,28 @@ test("filters picker categories and id===model fallback", async () => {
   );
 });
 
+test("injects none into thought_level when missing", async () => {
+  const { filterSessionConfigPickerOptions, ensureThoughtLevelNoneOption } =
+    await loadModule();
+  const filtered = filterSessionConfigPickerOptions(sample);
+  const think = filtered.find((o) => o.category === "thought_level");
+  assert.deepEqual(
+    think?.values?.map((v) => v.id),
+    ["none", "medium"]
+  );
+  const already = ensureThoughtLevelNoneOption([
+    {
+      id: "think",
+      category: "thought_level",
+      values: [{ id: "none", name: "Off" }, { id: "high" }]
+    }
+  ]);
+  assert.deepEqual(
+    already[0].values?.map((v) => v.id),
+    ["none", "high"]
+  );
+});
+
 test("display value prefers override", async () => {
   const { displayConfigOptionValue } = await loadModule();
   const model = sample[1];
@@ -88,5 +110,24 @@ test("clears overrides that match current agent values", async () => {
   assert.deepEqual(
     reconcileConfigOptionOverrides({ model: "m1", effort: "high" }, sample),
     { effort: "high" }
+  );
+});
+
+test("labels none as Off when no friendly name", async () => {
+  const { configOptionChoiceLabel, displayConfigOptionLabel } = await loadModule();
+  assert.equal(configOptionChoiceLabel({ id: "none" }, "关闭"), "关闭");
+  assert.equal(configOptionChoiceLabel({ id: "none", name: "None" }), "None");
+  assert.equal(
+    displayConfigOptionLabel(
+      {
+        id: "think",
+        category: "thought_level",
+        currentValue: "none",
+        values: [{ id: "none" }, { id: "high", name: "High" }]
+      },
+      {},
+      { none: "Off" }
+    ),
+    "Off"
   );
 });

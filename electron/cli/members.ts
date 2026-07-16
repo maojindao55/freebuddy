@@ -5,7 +5,16 @@ import { listOverrides } from "./store.js";
 export { builtinCliMembers, type CLIMember };
 
 export function listCliMembers(): CLIMember[] {
-  const customMembers = listOverrides()
+  const overrides = listOverrides();
+  const overrideById = new Map(overrides.map((override) => [override.id, override]));
+  const builtinMembers = builtinCliMembers.map((member) => ({
+    ...member,
+    cli: {
+      ...member.cli,
+      skillIds: overrideById.get(member.cli.adapter)?.skillIds
+    }
+  }));
+  const customMembers = overrides
     .filter((override) => override.baseAdapter)
     .map((override): CLIMember | undefined => {
       const baseAdapter = override.baseAdapter!;
@@ -21,10 +30,11 @@ export function listCliMembers(): CLIMember[] {
           extraArgs: override.extraArgs,
           env: override.env,
           approvalMode: "auto",
-          showStderr: true
+          showStderr: true,
+          skillIds: override.skillIds
         }
       };
     })
     .filter((member): member is CLIMember => Boolean(member));
-  return [...builtinCliMembers, ...customMembers];
+  return [...builtinMembers, ...customMembers];
 }

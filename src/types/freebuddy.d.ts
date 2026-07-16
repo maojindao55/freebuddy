@@ -61,6 +61,10 @@ import type {
   UpdateInfoCardInput
 } from "@/services/infoCards/types";
 import type {
+  SkillImportResult,
+  SkillRecord
+} from "@/services/skills/types";
+import type {
   ScheduledTask,
   ScheduledTaskAgent,
   ScheduledTaskInput,
@@ -171,6 +175,10 @@ declare global {
       id: string,
       overrides: Record<string, string> | null
     ): Promise<Conversation | undefined>;
+    setConversationSkills(
+      id: string,
+      skillIds: string[]
+    ): Promise<Conversation | undefined>;
 
     listMessages(conversationId: string): Promise<ConversationMessage[]>;
     listMessage(id: string): Promise<ConversationMessage | undefined>;
@@ -239,6 +247,17 @@ declare global {
     marketProvider(): Promise<MarketProviderConfig>;
     searchMarketSymbols(query: string): Promise<MarketSymbolSearchResult[]>;
     onChanged(cb: () => void): () => void;
+  }
+
+  interface FreebuddySkills {
+    list(): Promise<SkillRecord[]>;
+    import(sourcePath: string): Promise<SkillImportResult>;
+    setEnabled(id: string, enabled: boolean): Promise<SkillRecord | undefined>;
+    delete(id: string): Promise<boolean>;
+    read(id: string): Promise<string | undefined>;
+    selectDirectory(): Promise<string | null>;
+    selectArchive(): Promise<string | null>;
+    reveal(id: string): Promise<boolean>;
   }
 
   interface FreebuddyWorkflow {
@@ -399,6 +418,7 @@ declare global {
     cli: FreebuddyCli;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
+    skills: FreebuddySkills;
     scheduledTasks: FreebuddyScheduledTasks;
     settings: FreebuddySettings;
     feed: FreebuddyFeed;

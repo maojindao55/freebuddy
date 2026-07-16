@@ -18,6 +18,7 @@ export interface WorkflowStep {
   prompt: string;
   model?: string;
   configOptionOverrides?: Record<string, string>;
+  skillIds?: string[];
   dependsOn?: string[];
   targetPaths?: string[];
   consumes?: string[];
@@ -108,6 +109,7 @@ export interface WorkflowAgentRef {
   name: string;
   adapter: string;
   enabled: boolean;
+  skillIds?: string[];
 }
 
 export interface WorkflowValidationResult {

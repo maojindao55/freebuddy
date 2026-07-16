@@ -20,6 +20,7 @@ export interface WorkflowStep {
   prompt: string;
   model?: string;
   configOptionOverrides?: Record<string, string>;
+  skillIds?: string[];
   dependsOn?: string[];
   targetPaths?: string[];
   consumes?: string[];

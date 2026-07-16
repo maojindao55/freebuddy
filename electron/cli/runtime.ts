@@ -28,6 +28,11 @@ import {
 } from "./runtimeShared.js";
 import { killProcessTree } from "./process-kill.js";
 import { resolveCliByokEnv } from "./store.js";
+import { getSkillOwnershipRoots } from "./skills.js";
+import {
+  buildSkillAnnouncement,
+  reconcileNativeSkillLinks
+} from "./skillRuntime.js";
 
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
@@ -183,12 +188,26 @@ export async function cliRun(
   // A failed background update is non-fatal and resolves this wait normally.
   await waitForCodexToolchainAutoUpdate(args.adapter);
 
+  const skillSupport = definition?.capabilities.skills;
+  if (args.cwd && args.skills && skillSupport?.nativeDirs?.length) {
+    reconcileNativeSkillLinks(
+      args.cwd,
+      skillSupport.nativeDirs,
+      args.skills,
+      getSkillOwnershipRoots()
+    );
+  }
+  const effectiveArgs: CliRunArgs =
+    args.announceSkills && args.skills?.length
+      ? { ...args, prompt: buildSkillAnnouncement(args.prompt, args.skills) }
+      : args;
+
   let built;
   try {
     built = buildCommand({
       adapter: args.adapter,
       binary: args.binary,
-      prompt: args.prompt,
+      prompt: effectiveArgs.prompt,
       extraArgs: args.extraArgs,
       cwd: args.cwd,
       toolSessionId
@@ -206,7 +225,7 @@ export async function cliRun(
 
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
-      { ...process.env, ...(args.env || {}) },
+      { ...process.env, ...(effectiveArgs.env || {}) },
       built.env
     ),
     resolveCliByokEnv(
@@ -252,7 +271,7 @@ export async function cliRun(
     await runAcpAgent({
       child,
       webContents,
-      args,
+      args: effectiveArgs,
       pid,
       logStream,
       toolSessionId,
@@ -290,7 +309,7 @@ export async function cliRun(
 
   runLegacyCliAgent({
     child,
-    args,
+    args: effectiveArgs,
     built,
     pid,
     logStream,

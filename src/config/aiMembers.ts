@@ -15,6 +15,7 @@ export interface CLIMember {
     env?: Record<string, string>;
     approvalMode?: "auto" | "ask";
     showStderr?: boolean;
+    skillIds?: string[];
   };
 }
 

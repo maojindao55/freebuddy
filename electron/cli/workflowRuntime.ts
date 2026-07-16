@@ -54,6 +54,7 @@ import {
   verifierHasUnresolved
 } from "./workflowScheduler.js";
 import { trackTelemetryEvent } from "../telemetry.js";
+import { resolveSkillSnapshots } from "./skills.js";
 import { telemetryDurationMs } from "../telemetryPrivacy.js";
 
 export interface ResolvedAgent {
@@ -62,6 +63,7 @@ export interface ResolvedAgent {
   binary?: string;
   extraArgs?: string[];
   env?: Record<string, string>;
+  skillIds?: string[];
 }
 
 export interface StepExecutor {
@@ -75,6 +77,7 @@ export interface StepExecutor {
     extraArgs?: string[];
     env?: Record<string, string>;
     configOptionOverrides?: Record<string, string>;
+    skillIds?: string[];
     prompt: string;
     promptAttachments?: CliPromptAttachment[];
     toolSessionScope?: string;
@@ -994,6 +997,7 @@ export class WorkflowRuntime {
         extraArgs: resolved.extraArgs,
         env: resolved.env,
         configOptionOverrides: planStep?.configOptionOverrides,
+        skillIds: planStep?.skillIds ?? resolved.skillIds ?? [],
         prompt: localizedPrompt,
         promptAttachments: promptAttachmentsFromConversation(run.conversationId),
         toolSessionScope,
@@ -1180,7 +1184,9 @@ export function createCliStepExecutor(
         toolSessionId: args.toolSessionId,
         cwd: args.cwd,
         approvalMode: "auto",
-        resumeToolSession: args.resumeToolSession
+        resumeToolSession: args.resumeToolSession,
+        skills: resolveSkillSnapshots(args.skillIds ?? []),
+        announceSkills: !args.resumeToolSession || !args.toolSessionId
       };
       await cliRun(webContents, runArgs, args.onEvent);
     }

@@ -19,6 +19,7 @@ export interface WorkflowTeamRole {
   required: boolean;
   canWrite: boolean;
   description?: string;
+  skillIds?: string[];
 }
 
 export interface WorkflowTeamPolicy {

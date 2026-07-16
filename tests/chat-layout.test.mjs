@@ -190,6 +190,15 @@ test("new-task toolbar keeps agent compact and reuses the chat permission pill",
   assert.match(toolbar, /className="composer-permission-select"/);
 });
 
+test("team picker keeps its accessible label without a visible prefix", () => {
+  const newTaskHome = chatViewSource.slice(
+    chatViewSource.indexOf("function NewTaskHome")
+  );
+  assert.match(newTaskHome, /className="new-task-team-picker"/);
+  assert.match(newTaskHome, /aria-label=\{t\("workflow\.selectTeam"\)\}/);
+  assert.doesNotMatch(newTaskHome, /<span>\{t\("workflow\.selectTeam"\)\}<\/span>/);
+});
+
 test("new-task page separates normal and team modes into tabs above the composer", () => {
   const newTaskHome = chatViewSource.slice(
     chatViewSource.indexOf("function NewTaskHome")

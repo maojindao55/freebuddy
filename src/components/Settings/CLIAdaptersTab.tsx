@@ -16,6 +16,8 @@ import { AvatarPicker } from "./AvatarPicker";
 import { useCliInstallStore } from "@/store/cliInstallStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { getAgentIconId } from "@/config/agentIcon";
+import { SkillPicker } from "@/components/CLI/SkillPicker";
+import { useSkillStore } from "@/store/skillStore";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 
@@ -666,6 +668,9 @@ function EditOverridePanel({
   const upsert = useCliExecutorStore((s) => s.upsertOverride);
   const reset = useCliExecutorStore((s) => s.resetOverride);
   const refreshMembers = useConversationStore((s) => s.refreshMembers);
+  const skills = useSkillStore((s) => s.skills);
+  const skillsLoaded = useSkillStore((s) => s.loaded);
+  const loadSkills = useSkillStore((s) => s.load);
 
   const [label, setLabel] = useState(ex?.label ?? "");
   const [binary, setBinary] = useState(
@@ -684,6 +689,7 @@ function EditOverridePanel({
       .join("\n")
   );
   const [icon, setIcon] = useState(ex?.override?.icon ?? "");
+  const [skillIds, setSkillIds] = useState<string[]>(ex?.override?.skillIds ?? []);
   const adapterForConfig = ex?.baseAdapter ?? ex?.id;
   const isCodex = adapterForConfig === "codex-acp";
   const isClaude =
@@ -727,7 +733,12 @@ function EditOverridePanel({
   useEffect(() => {
     setSaveStatus("idle");
     setSaveError("");
+    setSkillIds(ex?.override?.skillIds ?? []);
   }, [executorId]);
+
+  useEffect(() => {
+    if (!skillsLoaded) void loadSkills();
+  }, [loadSkills, skillsLoaded]);
 
   useEffect(() => {
     if (saveStatus !== "saved") return;
@@ -800,6 +811,7 @@ function EditOverridePanel({
       icon: icon || undefined,
       codexByok: codexByokConfig,
       claudeByok: claudeByokConfig,
+      skillIds,
       enabled: true
     };
     try {
@@ -917,6 +929,11 @@ function EditOverridePanel({
               onChange={(e) => setModel(e.target.value)}
             />
           </label>
+          <div className="adapter-editor-field">
+            <span className="adapter-editor-field-label">{t("skills.agentDefaults")}</span>
+            <SkillPicker skills={skills} selectedIds={skillIds} onChange={setSkillIds} />
+            <span className="settings-field-hint">{t("skills.agentDefaultsHint")}</span>
+          </div>
         </div>
 
         {/* ── API Key (BYOK) section ── */}

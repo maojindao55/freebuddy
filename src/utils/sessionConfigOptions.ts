@@ -18,10 +18,27 @@ export function isSessionConfigPickerOption(
   return option.id === "model";
 }
 
+/** Ensure thought_level always offers `none` (Issue #59, approach A). */
+export function ensureThoughtLevelNoneOption(
+  options: SessionConfigOptionLike[]
+): SessionConfigOptionLike[] {
+  return options.map((option) => {
+    if (option.category !== "thought_level") return option;
+    const values = option.values ?? [];
+    if (values.some((value) => value.id === "none")) return option;
+    return {
+      ...option,
+      values: [{ id: "none" }, ...values]
+    };
+  });
+}
+
 export function filterSessionConfigPickerOptions(
   options: SessionConfigOptionLike[]
 ): SessionConfigOptionLike[] {
-  return options.filter(isSessionConfigPickerOption);
+  return ensureThoughtLevelNoneOption(
+    options.filter(isSessionConfigPickerOption)
+  );
 }
 
 export function displayConfigOptionValue(
@@ -33,14 +50,31 @@ export function displayConfigOptionValue(
   return option.currentValue;
 }
 
+export function configOptionChoiceLabel(
+  value: { id: string; name?: string },
+  noneLabel = "Off"
+): string {
+  if (value.name) return value.name;
+  if (value.id === "none") return noneLabel;
+  return value.id;
+}
+
 export function displayConfigOptionLabel(
   option: SessionConfigOptionLike,
-  overrides: Record<string, string> | undefined
+  overrides: Record<string, string> | undefined,
+  labels?: { none?: string }
 ): string | undefined {
   const value = displayConfigOptionValue(option, overrides);
   if (!value) return option.currentLabel ?? option.name;
   const match = option.values?.find((v) => v.id === value);
-  return match?.name ?? (value === option.currentValue ? option.currentLabel : undefined) ?? value;
+  const raw =
+    match?.name ??
+    (value === option.currentValue ? option.currentLabel : undefined) ??
+    value;
+  if ((!match?.name && value === "none") || raw === "none") {
+    return labels?.none ?? "Off";
+  }
+  return raw;
 }
 
 export function pruneConfigOptionOverrides(

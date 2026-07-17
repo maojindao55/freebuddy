@@ -187,7 +187,6 @@
     "modelLoading": "正在加载模型…",
     "modelConfig": "模型参数",
     "thoughtLevel": "思考强度",
-    "thoughtLevelNone": "关闭",
     "defaultAttachmentTitle": "附件",
     "pendingAttachmentsAria": "待发送附件",
     "removeAttachmentAria": "移除 {{name}}",

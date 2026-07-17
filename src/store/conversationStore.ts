@@ -25,7 +25,7 @@ import { workflowClient } from "@/services/workflows/client";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 import {
   filterSessionConfigPickerOptions,
-  pruneConfigOptionOverrides
+  resolveConfigOptionOverrides
 } from "@/utils/sessionConfigOptions";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
@@ -775,17 +775,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const fromLive = latestConfigOptionsFromItems(liveItems ?? []);
     const configOptions = fromLive.length > 0 ? fromLive : fromMessages;
     const pickerOptions = filterSessionConfigPickerOptions(configOptions);
-    const prunedOverrides = pruneConfigOptionOverrides(
+    const overridesToSend = resolveConfigOptionOverrides(
       conv.configOptionOverrides,
       pickerOptions.length ? pickerOptions : configOptions
     );
-    const overridesToSend =
-      Object.keys(prunedOverrides).length > 0
-        ? prunedOverrides
-        : conv.configOptionOverrides &&
-            Object.keys(conv.configOptionOverrides).length > 0
-          ? conv.configOptionOverrides
-          : undefined;
 
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,

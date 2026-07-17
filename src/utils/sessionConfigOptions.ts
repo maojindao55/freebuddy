@@ -18,26 +18,21 @@ export function isSessionConfigPickerOption(
   return option.id === "model";
 }
 
-/** Ensure thought_level always offers `none` (Issue #59, approach A). */
-export function ensureThoughtLevelNoneOption(
-  options: SessionConfigOptionLike[]
-): SessionConfigOptionLike[] {
-  return options.map((option) => {
-    if (option.category !== "thought_level") return option;
-    const values = option.values ?? [];
-    if (values.some((value) => value.id === "none")) return option;
-    return {
-      ...option,
-      values: [{ id: "none" }, ...values]
-    };
-  });
-}
-
 export function filterSessionConfigPickerOptions(
   options: SessionConfigOptionLike[]
 ): SessionConfigOptionLike[] {
-  return ensureThoughtLevelNoneOption(
-    options.filter(isSessionConfigPickerOption)
+  return options.filter(isSessionConfigPickerOption);
+}
+
+function isUnsupportedThoughtLevelNone(
+  option: SessionConfigOptionLike,
+  value: string
+): boolean {
+  return (
+    option.category === "thought_level" &&
+    value === "none" &&
+    (option.values?.length ?? 0) > 0 &&
+    !option.values?.some((candidate) => candidate.id === value)
   );
 }
 
@@ -46,35 +41,28 @@ export function displayConfigOptionValue(
   overrides: Record<string, string> | undefined
 ): string | undefined {
   const override = overrides?.[option.id];
-  if (override != null && override !== "") return override;
+  if (
+    override != null &&
+    override !== "" &&
+    !isUnsupportedThoughtLevelNone(option, override)
+  ) {
+    return override;
+  }
   return option.currentValue;
-}
-
-export function configOptionChoiceLabel(
-  value: { id: string; name?: string },
-  noneLabel = "Off"
-): string {
-  if (value.name) return value.name;
-  if (value.id === "none") return noneLabel;
-  return value.id;
 }
 
 export function displayConfigOptionLabel(
   option: SessionConfigOptionLike,
-  overrides: Record<string, string> | undefined,
-  labels?: { none?: string }
+  overrides: Record<string, string> | undefined
 ): string | undefined {
   const value = displayConfigOptionValue(option, overrides);
   if (!value) return option.currentLabel ?? option.name;
   const match = option.values?.find((v) => v.id === value);
-  const raw =
+  return (
     match?.name ??
     (value === option.currentValue ? option.currentLabel : undefined) ??
-    value;
-  if ((!match?.name && value === "none") || raw === "none") {
-    return labels?.none ?? "Off";
-  }
-  return raw;
+    value
+  );
 }
 
 export function pruneConfigOptionOverrides(
@@ -82,12 +70,30 @@ export function pruneConfigOptionOverrides(
   options: SessionConfigOptionLike[]
 ): Record<string, string> {
   if (!overrides) return {};
-  const allowed = new Set(options.map((o) => o.id));
+  const allowed = new Map(options.map((option) => [option.id, option]));
   const out: Record<string, string> = {};
   for (const [id, value] of Object.entries(overrides)) {
-    if (allowed.has(id) && value != null && value !== "") out[id] = value;
+    const option = allowed.get(id);
+    if (
+      option &&
+      value != null &&
+      value !== "" &&
+      !isUnsupportedThoughtLevelNone(option, value)
+    ) {
+      out[id] = value;
+    }
   }
   return out;
+}
+
+export function resolveConfigOptionOverrides(
+  overrides: Record<string, string> | undefined,
+  options: SessionConfigOptionLike[]
+): Record<string, string> | undefined {
+  if (!overrides || Object.keys(overrides).length === 0) return undefined;
+  if (options.length === 0) return overrides;
+  const pruned = pruneConfigOptionOverrides(overrides, options);
+  return Object.keys(pruned).length > 0 ? pruned : undefined;
 }
 
 export function reconcileConfigOptionOverrides(

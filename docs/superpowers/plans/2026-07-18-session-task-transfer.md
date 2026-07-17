@@ -419,12 +419,101 @@ test("getHandoffBriefsBySource returns briefs ordered DESC", async () => {
 Run: `npm run build:electron && node --test tests/handoff-brief-db.test.mjs`
 Expected: FAIL（`../dist-electron/cli/handoffBriefs.js` 不存在）
 
-- [ ] **Step 3: 实现 `electron/cli/handoffBriefs.ts`**
+- [ ] **Step 3: 创建 `electron/shared/handoffTypes.ts`**
+
+**架构说明**：`electron/` 端不能 import `src/services/cli/types.ts`（`tsconfig.electron.json` 的 `rootDir: electron` 限制 + `src/` 内 `@/` 别名只在 renderer 端解析）。Codebase 现有惯例是 electron 端自定义平行类型（如 `electron/cli/conversations.ts` 自己定义 `Conversation`）。本项目沿用此惯例：在 `electron/shared/handoffTypes.ts` 放一份与 `src/services/cli/types.ts` 中同名接口**结构一致**的定义。两份定义需手动保持同步（与 `Conversation` 的现状相同）。
+
+```typescript
+// electron/shared/handoffTypes.ts
+// Parallel type definitions for the electron/ side. These mirror the
+// handoff-related interfaces in src/services/cli/types.ts. The two copies
+// must be kept in sync manually (same convention as Conversation, which
+// is defined in both electron/cli/conversations.ts and src/services/cli/types.ts).
+
+export interface HandoffBriefFileChange {
+  path: string;
+  action: "edit" | "create" | "delete" | "read" | string;
+  toolName?: string;
+}
+
+export interface HandoffBriefMessageRef {
+  messageId: string;
+  role: "user" | "assistant";
+  createdAt: string;
+  excerpt: string;
+}
+
+export interface HandoffBriefSource {
+  conversationId: string;
+  agentId: string;
+  agentName: string;
+  adapter: string;
+  title: string;
+  cwd?: string;
+  messageCount: number;
+}
+
+export interface HandoffBrief {
+  version: 1;
+  generatedAt: string;
+  source: HandoffBriefSource;
+  originalGoal: string;
+  recentUserMessages: string[];
+  lastAssistantSummary: string;
+  fileChanges: HandoffBriefFileChange[];
+  transcriptExcerpts: HandoffBriefMessageRef[];
+}
+
+export interface HandoffBriefRow {
+  id: string;
+  sourceConversationId: string;
+  targetConversationId: string;
+  sourceAgentId: string;
+  sourceAgentName: string;
+  sourceAdapter: string;
+  brief: HandoffBrief | null;
+  sourceMessageCount: number;
+  sourceLastMessageId?: string;
+  createdAt: string;
+}
+
+// Subset of stream item shapes that the extractor inspects. Structurally
+// compatible with src/services/cli/streamParser.ts CliStreamItem so
+// JSON.parse of stored assistant content fits.
+export interface ParsedAssistantStreamItem {
+  kind: string;
+  content?: string;
+  path?: string;
+  action?: string;
+  tool?: string;
+  toolKind?: string;
+  locations?: { path: string; line?: number }[];
+}
+```
+
+- [ ] **Step 4: 扩展 `electron/cli/runtimeShared.ts` 的 `CliRunArgs`**
+
+`electron/` 端运行时实际使用的 `CliRunArgs` 在 `runtimeShared.ts`，与 `src/services/cli/types.ts` 的同名接口平行（codebase 既有惯例）。Task 8 的 acpRuntime 注入依赖此处的字段。
+
+定位 `electron/cli/runtimeShared.ts` 的 `export interface CliRunArgs {` 块，在 `announceSkills?: boolean;` 之后追加：
+
+```typescript
+  handoffBrief?: HandoffBrief;
+  handoffBriefId?: string;
+```
+
+并在文件顶部 import 处加：
+
+```typescript
+import type { HandoffBrief } from "../shared/handoffTypes.js";
+```
+
+- [ ] **Step 5: 实现 `electron/cli/handoffBriefs.ts`**
 
 ```typescript
 import type { Database as DB } from "better-sqlite3";
 import { getDb } from "./db.js";
-import type { HandoffBrief, HandoffBriefRow } from "../../src/services/cli/types.js";
+import type { HandoffBrief, HandoffBriefRow } from "../shared/handoffTypes.js";
 
 // 测试钩子：仅测试时可注入 in-memory DB
 let testDb: DB | null = null;
@@ -517,16 +606,16 @@ export function getHandoffBriefsBySource(sourceConversationId: string): HandoffB
 }
 ```
 
-- [ ] **Step 4: 运行测试，确认通过**
+- [ ] **Step 6: 运行测试，确认通过**
 
 Run: `npm run build:electron && node --test tests/handoff-brief-db.test.mjs`
 Expected: 3 tests PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add electron/cli/handoffBriefs.ts tests/handoff-brief-db.test.mjs
-git commit -m "feat(handoff): add handoffBriefs DB layer"
+git add electron/shared/handoffTypes.ts electron/cli/runtimeShared.ts electron/cli/handoffBriefs.ts tests/handoff-brief-db.test.mjs
+git commit -m "feat(handoff): add handoffBriefs DB layer with parallel electron types"
 ```
 
 ---
@@ -931,16 +1020,13 @@ Expected: FAIL（模块不存在）
 - [ ] **Step 3: 实现 `electron/cli/handoffBriefExtractor.ts`**
 
 ```typescript
+import type { Conversation, ConversationMessage } from "./conversations.js";
 import type {
-  CliStreamItem
-} from "../../src/services/cli/streamParser.js";
-import type {
-  Conversation,
-  ConversationMessage,
   HandoffBrief,
   HandoffBriefFileChange,
-  HandoffBriefMessageRef
-} from "../../src/services/cli/types.js";
+  HandoffBriefMessageRef,
+  ParsedAssistantStreamItem
+} from "../shared/handoffTypes.js";
 
 const MAX_ORIGINAL_GOAL = 2000;
 const MAX_RECENT_USER = 800;
@@ -960,20 +1046,20 @@ function clip(s: string, max: number): string {
   return t.length <= max ? t : t.slice(0, max);
 }
 
-function parseAssistantItems(msg: ConversationMessage): CliStreamItem[] | null {
+function parseAssistantItems(msg: ConversationMessage): ParsedAssistantStreamItem[] | null {
   try {
     const parsed = JSON.parse(msg.content);
     if (!Array.isArray(parsed)) return null;
-    return parsed as CliStreamItem[];
+    return parsed as ParsedAssistantStreamItem[];
   } catch {
     return null;
   }
 }
 
-function extractAssistantText(items: CliStreamItem[]): string {
+function extractAssistantText(items: ParsedAssistantStreamItem[]): string {
   return items
-    .filter((it): it is Extract<CliStreamItem, { kind: "text" }> => it.kind === "text")
-    .map((it) => it.content)
+    .filter((it) => it.kind === "text" && typeof it.content === "string")
+    .map((it) => it.content ?? "")
     .join("");
 }
 
@@ -1432,7 +1518,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import type { HandoffBrief } from "../../src/services/cli/types.js";
+import type { HandoffBrief } from "../shared/handoffTypes.js";
 
 interface ManifestSource {
   conversationId: string;
@@ -1683,7 +1769,7 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult
-} from "../../src/services/cli/types.js";
+} from "../shared/handoffTypes.js";
 ```
 
 若 `nanoid` 已在 ipc.ts 顶部 import，跳过那一行。

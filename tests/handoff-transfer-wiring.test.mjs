@@ -36,3 +36,10 @@ test("contextToolService exports register/unregister and writes manifest under d
   assert.match(src, /FREEBUDDY_HANDOFF_MANIFEST/);
   assert.match(src, /context-sessions/);
 });
+
+test("acpRuntime pushes context MCP server when args.handoffBrief present", () => {
+  const src = read("electron/cli/acpRuntime.ts");
+  assert.match(src, /import.*registerContextToolSession.*from.*contextToolService/);
+  assert.match(src, /args\.handoffBrief/);
+  assert.match(src, /registerContextToolSession\(/);
+});

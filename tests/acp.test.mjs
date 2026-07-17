@@ -1056,6 +1056,56 @@ test("shouldEmitAcpUpdate suppresses persisted messageId replay after prompt sta
   );
 });
 
+test("shouldEmitAcpUpdate suppresses replayed tool calls by toolCallId", () => {
+  const replayMessageIds = new Set(["tool-old-1"]);
+  assert.equal(
+    shouldEmitAcpUpdate(
+      { sessionUpdate: "tool_call", toolCallId: "tool-old-1", title: "Read" },
+      { promptStarted: true, replayMessageIds }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      { sessionUpdate: "tool_call_update", toolCallId: "tool-old-1", status: "completed" },
+      { promptStarted: true, replayMessageIds }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      { sessionUpdate: "tool_call", toolCallId: "tool-new-1", title: "Read" },
+      { promptStarted: true, replayMessageIds }
+    ),
+    true
+  );
+});
+
+test("shouldEmitAcpUpdate suppresses replayed chunks by content signature", () => {
+  const replayContentSignatures = new Set(["你好！我是 Qoder"]);
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "fresh-id-never-persisted",
+        content: { type: "text", text: "  你好！我是 Qoder  " }
+      },
+      { promptStarted: true, replayContentSignatures }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "抱歉，" }
+      },
+      { promptStarted: true, replayContentSignatures }
+    ),
+    true
+  );
+});
+
 test("shouldSkipUserMessageChunk deduplicates echoed user messages", () => {
   assert.equal(
     shouldSkipUserMessageChunk(

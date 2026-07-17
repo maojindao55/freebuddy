@@ -46,6 +46,8 @@ export interface CliRunArgs {
   userMessageId?: string;
   /** Known stream messageIds from prior assistant turns (replay suppression). */
   knownStreamMessageIds?: string[];
+  /** Normalized text signatures of prior turns (replay suppression when messageIds are absent). */
+  knownStreamContentSignatures?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
 }

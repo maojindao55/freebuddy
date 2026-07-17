@@ -437,6 +437,22 @@ export function updateMessage(input: UpdateMessageInput): void {
     .run(...params);
 }
 
+// A force-quit while an agent is streaming leaves the assistant message row at
+// 'running'/'starting' with no live process to finish it. On restart the UI
+// would otherwise show a permanent "thinking" state that can't be stopped, so
+// reconcile those orphaned rows to a terminal status.
+export function recoverInterruptedMessages(): number {
+  const now = new Date().toISOString();
+  const result = getDb()
+    .prepare(
+      `UPDATE conversation_messages
+       SET status = 'failed', updated_at = ?
+       WHERE status IN ('running', 'starting')`
+    )
+    .run(now);
+  return result.changes;
+}
+
 export function getMessage(id: string): ConversationMessage | undefined {
   const row = getDb()
     .prepare(`SELECT * FROM conversation_messages WHERE id = ?`)

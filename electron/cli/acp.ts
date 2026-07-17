@@ -1211,6 +1211,7 @@ export function shouldEmitAcpUpdate(
   state: {
     promptStarted: boolean;
     replayMessageIds?: ReadonlySet<string>;
+    replayContentSignatures?: ReadonlySet<string>;
   }
 ): boolean {
   const type = String(update?.sessionUpdate ?? "");
@@ -1220,12 +1221,29 @@ export function shouldEmitAcpUpdate(
   if (!state.promptStarted) {
     return false;
   }
+  const isMessageOrThought =
+    type === "agent_message_chunk" || type === "agent_thought_chunk";
   const messageId =
     typeof update?.messageId === "string" ? update.messageId : undefined;
   if (
     messageId &&
     state.replayMessageIds?.has(messageId) &&
-    (type === "agent_message_chunk" || type === "agent_thought_chunk")
+    isMessageOrThought
+  ) {
+    return false;
+  }
+  if (isMessageOrThought && state.replayContentSignatures?.size) {
+    const signature = textFromContent(update?.content).trim();
+    if (signature.length > 0 && state.replayContentSignatures.has(signature)) {
+      return false;
+    }
+  }
+  const toolCallId =
+    typeof update?.toolCallId === "string" ? update.toolCallId : undefined;
+  if (
+    toolCallId &&
+    state.replayMessageIds?.has(toolCallId) &&
+    (type === "tool_call" || type === "tool_call_update")
   ) {
     return false;
   }

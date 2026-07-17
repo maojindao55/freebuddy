@@ -137,6 +137,23 @@ test("appendItems replaces the current agent plan with the latest update", async
   ]);
 });
 
+test("appendItems keeps a single session item, replacing with the latest", async () => {
+  const { appendItems } = await loadConversationUtils();
+
+  const items = appendItems(
+    [{ kind: "session", sessionId: "sess-1" }],
+    [
+      { kind: "text", role: "assistant", content: "Hello" },
+      { kind: "session", sessionId: "sess-1", title: "Renamed" }
+    ]
+  );
+
+  assert.deepEqual(items, [
+    { kind: "session", sessionId: "sess-1", title: "Renamed" },
+    { kind: "text", role: "assistant", content: "Hello" }
+  ]);
+});
+
 test("appendItems converts legacy todo tool calls into the current agent plan", async () => {
   const { appendItems } = await loadConversationUtils();
 
@@ -688,12 +705,13 @@ test("collectStreamMessageIds gathers ids from stored assistant snapshots", asyn
             content: "Hi",
             messageId: "msg-a-1"
           },
-          { kind: "thinking", content: "hmm", messageId: "msg-t-1" }
+          { kind: "thinking", content: "hmm", messageId: "msg-t-1" },
+          { kind: "tool-call", id: "tool-1", tool: "Read" }
         ]),
         createdAt: "2026-06-23T10:00:00.000Z",
         updatedAt: "2026-06-23T10:00:00.000Z"
       }
     ]),
-    ["msg-a-1", "msg-t-1"]
+    ["msg-a-1", "msg-t-1", "tool-1"]
   );
 });

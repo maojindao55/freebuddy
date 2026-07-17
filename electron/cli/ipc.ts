@@ -46,6 +46,7 @@ import {
   setConversationApprovalMode,
   setConversationConfigOptionOverrides,
   setConversationSkills,
+  recoverInterruptedMessages,
   updateConversationAgentName,
   updateMessage,
   type AppendMessageInput,
@@ -203,6 +204,7 @@ function attachmentCandidate(filePath: string) {
 }
 
 export function registerCliIpc() {
+  recoverInterruptedMessages();
   ipcMain.handle("skills:list", () => listSkills());
   ipcMain.handle("skills:import", (_event, sourcePath: string) =>
     importSkills(sourcePath)

@@ -31,6 +31,7 @@ import {
 import { useCliExecutorStore } from "./cliExecutorStore";
 import {
   collectStreamMessageIds,
+  collectStreamContentSignatures,
   defaultTitleFor,
   feedArticleTitleFromMessages,
   mergeConversationMessages,
@@ -851,6 +852,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       resumeToolSession: !wantFresh,
       userMessageId: userMsgId,
       knownStreamMessageIds: collectStreamMessageIds(
+        get().messages[conversationId] ?? []
+      ),
+      knownStreamContentSignatures: collectStreamContentSignatures(
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,

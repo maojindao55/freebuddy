@@ -121,6 +121,9 @@ export async function runAcpAgent({
   let promptHadContent = false;
   let mcpServers: AcpStdioMcpServer[] = [];
   const replayMessageIds = new Set(args.knownStreamMessageIds ?? []);
+  const replayContentSignatures = new Set(
+    args.knownStreamContentSignatures ?? []
+  );
   const terminalManager = createAcpTerminalManager({
     defaultCwd: args.cwd,
     onOutput: (terminalId, snap) => {
@@ -256,7 +259,8 @@ export async function runAcpAgent({
       if (
         !shouldEmitAcpUpdate(msg.params?.update, {
           promptStarted,
-          replayMessageIds
+          replayMessageIds,
+          replayContentSignatures
         })
       ) {
         return;

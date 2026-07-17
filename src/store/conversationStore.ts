@@ -397,6 +397,23 @@ async function workflowFollowupContextForRun(
   return buildWorkflowFollowupContext(run, steps);
 }
 
+async function maybeHandoffArgs(
+  state: ConversationState,
+  conv: Conversation
+): Promise<Pick<CliRunArgs, "handoffBrief" | "handoffBriefId">> {
+  if (!conv.sourceBriefId) return {};
+  // Lazy recovery: only inject when B has no assistant messages yet (first send)
+  const msgs = state.messages[conv.id] ?? [];
+  const hasAssistant = msgs.some((m) => m.role === "assistant");
+  if (hasAssistant) return {};
+  const row = await cliClient.getHandoffBriefByTarget(conv.id);
+  if (!row?.brief) return {};
+  return {
+    handoffBrief: row.brief,
+    handoffBriefId: row.id
+  };
+}
+
 export const useConversationStore = create<ConversationState>((set, get) => ({
   members: buildConversationMembers(),
   conversations: [],
@@ -882,6 +899,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       pickerOptions.length ? pickerOptions : configOptions
     );
 
+    const handoffArgs = await maybeHandoffArgs(get(), conv);
+
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       conversationId,
@@ -919,7 +938,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId
+      announceSkills: wantFresh || !resumedFromSessionId,
+      ...handoffArgs
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");
@@ -970,6 +990,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
     try {
       await cliClient.run(runArgs);
+      set((s) => {
+        const nextSeeds = { ...s.pendingTransferSeed };
+        delete nextSeeds[conversationId];
+        return { pendingTransferSeed: nextSeeds };
+      });
     } catch (err) {
       const msg = (err as Error)?.message || String(err);
       set((s) => {

@@ -640,21 +640,14 @@ export function registerCliIpc() {
       }
 
       let briefId: string | null = null;
+      if (brief) {
+        briefId = nanoid();
+      }
       const txResult = getDb().transaction(() => {
-        if (brief) {
-          briefId = nanoid();
-          insertHandoffBrief({
-            id: briefId,
-            sourceConversationId: source.id,
-            targetConversationId: input.targetConversationId,
-            sourceAgentId: source.agentId,
-            sourceAgentName: source.agentName,
-            sourceAdapter: source.adapter,
-            brief,
-            sourceMessageCount: messages.length,
-            sourceLastMessageId: messages[messages.length - 1]?.id
-          });
-        }
+        // Order matters: handoff_briefs has FK target_conversation_id REFERENCES
+        // conversations(id), so B must exist before the brief row is inserted.
+        // conversations.source_brief_id is a plain TEXT column (no FK), so it
+        // can reference a brief that doesn't exist yet.
         const conversation = createConversation({
           id: input.targetConversationId,
           title: source.title,
@@ -670,6 +663,19 @@ export function registerCliIpc() {
           sourceAdapter: source.adapter,
           sourceBriefId: briefId ?? undefined
         });
+        if (brief && briefId) {
+          insertHandoffBrief({
+            id: briefId,
+            sourceConversationId: source.id,
+            targetConversationId: input.targetConversationId,
+            sourceAgentId: source.agentId,
+            sourceAgentName: source.agentName,
+            sourceAdapter: source.adapter,
+            brief,
+            sourceMessageCount: messages.length,
+            sourceLastMessageId: messages[messages.length - 1]?.id
+          });
+        }
         return { conversation };
       })();
 

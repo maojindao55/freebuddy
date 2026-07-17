@@ -298,7 +298,10 @@ git commit -m "feat(handoff): add handoff_briefs table and source_* columns"
 
 Create `tests/handoff-brief-db.test.mjs`:
 
+> **Test infrastructure note:** `electron/cli/db.ts` has `import { app } from "electron"` at module top level, which fails under Node test runner. The first import line `import "./fixtures/electron-stub.mjs"` registers an ESM hook that stubs the electron module for tests. This fixture was created in Task 3; extractor tests (Task 5) and any future DB-layer tests must include this import as their **first** line. The fixture lives at `tests/fixtures/electron-stub.mjs`.
+
 ```javascript
+import "./fixtures/electron-stub.mjs";  // must be first
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -763,6 +766,7 @@ git commit -m "feat(handoff): wire source_* fields through createConversation"
 Create `tests/handoff-brief-extractor.test.mjs`:
 
 ```javascript
+import "./fixtures/electron-stub.mjs";  // must be first — see Task 3
 import test from "node:test";
 import assert from "node:assert/strict";
 import { extractHandoffBrief } from "../dist-electron/cli/handoffBriefExtractor.js";

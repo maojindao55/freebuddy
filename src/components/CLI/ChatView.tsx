@@ -9,7 +9,7 @@ import {
   type DragEvent
 } from "react";
 import { nanoid } from "nanoid";
-import { X } from "lucide-react";
+import { ArrowLeftRight, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
@@ -47,6 +47,7 @@ import {
   shouldDiscardCreatedManagedCandidate
 } from "@/utils/mergeSelectedAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { TransferDialog } from "./TransferDialog";
 import { CodeWhipOverlay } from "./CodeWhipOverlay";
 import { useReplayStore } from "@/store/replayStore";
 import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
@@ -403,6 +404,8 @@ export function ChatView({
   const attachmentImportGenerationRef = useRef(0);
   const isNearBottomRef = useRef(true);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const pendingTransferSeed = useConversationStore((s) => s.pendingTransferSeed);
 
   const conv = conversations.find((c) => c.id === activeId);
   const activeRun = useWorkflowStore((s) => s.activeRun);
@@ -812,6 +815,14 @@ export function ChatView({
       setPendingWorkflowAction(null);
     }
   }, [activeRun?.id, gatingPhaseId, pendingWorkflowAction]);
+
+  useEffect(() => {
+    if (!conv) return;
+    const seed = pendingTransferSeed[conv.id];
+    if (seed && draft === "") {
+      setDraft(seed);
+    }
+  }, [conv, pendingTransferSeed, draft]);
 
   const formatMergeWarnings = (
     warnings: ReturnType<typeof mergePendingAttachments>["warnings"]
@@ -1533,6 +1544,24 @@ export function ChatView({
 
       {preflightMsg && <div className="preflight-warn">{preflightMsg}</div>}
 
+      {conv?.sourceBriefId && (
+        <div className="conversation-origin-badge">
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              if (conv.sourceConversationId) {
+                void useConversationStore
+                  .getState()
+                  .setActive(conv.sourceConversationId);
+              }
+            }}
+          >
+            ⇄ {t("handoff.inheritedFrom", { agentName: conv.sourceAgentName ?? "?" })}
+          </button>
+        </div>
+      )}
+
       <div
         className={`chat-composer${replaying ? " replay-disabled" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}`}
         onDragEnter={chatAttachmentImport.handleDragEnter}
@@ -1548,6 +1577,15 @@ export function ChatView({
         <div className="composer-context-row">
           <span>{agentDisplayName}</span>
           <span>{conv.cwd ? conv.cwd : t("chat.noWorkspace")}</span>
+          <button
+            type="button"
+            className="composer-context-transfer"
+            title={t("handoff.transferAction")}
+            onClick={() => setTransferOpen(true)}
+            aria-label={t("handoff.transferAction")}
+          >
+            <ArrowLeftRight size={14} />
+          </button>
         </div>
         <AttachmentTray
           attachments={pendingAttachments}
@@ -1704,6 +1742,13 @@ export function ChatView({
           </div>
         </div>
       </div>
+      {transferOpen && conv && (
+        <TransferDialog
+          source={conv}
+          members={members}
+          onClose={() => setTransferOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -76,7 +76,7 @@ FreeBuddy 是桌面端 CLI agent 工作台，并行托管 Codex / ClaudeCode / O
       ↓
 [renderer: 切到 B + composer 预填 seedPrompt（不发送）]
       ↓ 用户回车
-[sendMessage: 若发现 conv.originBriefId 且 B 首条未发 → 从 DB 重读 brief
+[sendMessage: 若发现 conv.sourceBriefId 且 B 首条未发 → 从 DB 重读 brief
        → registerContextToolSession 注入 freebuddy-context 到 mcpServers]
       ↓
 [B agent 启动, 调 read_handoff_brief → 拿到上下文]
@@ -114,14 +114,14 @@ CREATE INDEX IF NOT EXISTS idx_handoff_briefs_source
 用现有 PRAGMA-guarded ALTER 模式（见 `db.ts:migrate`）：
 
 ```sql
-ALTER TABLE conversations ADD COLUMN origin_conversation_id TEXT;
-ALTER TABLE conversations ADD COLUMN origin_agent_id        TEXT;
-ALTER TABLE conversations ADD COLUMN origin_agent_name      TEXT;
-ALTER TABLE conversations ADD COLUMN origin_adapter         TEXT;
-ALTER TABLE conversations ADD COLUMN origin_brief_id        TEXT;
+ALTER TABLE conversations ADD COLUMN source_conversation_id TEXT;
+ALTER TABLE conversations ADD COLUMN source_agent_id        TEXT;
+ALTER TABLE conversations ADD COLUMN source_agent_name      TEXT;
+ALTER TABLE conversations ADD COLUMN source_adapter         TEXT;
+ALTER TABLE conversations ADD COLUMN source_brief_id        TEXT;
 ```
 
-source/target 都用 CASCADE：A 删了 brief 也清，B 删了 brief 也清。`origin_*` 是冗余便利字段（避免每次 JOIN），值与 `handoff_briefs.source_*` 一致。
+source/target 都用 CASCADE：A 删了 brief 也清，B 删了 brief 也清。`source_*` 是冗余便利字段（避免每次 JOIN），值与 `handoff_briefs.source_*` 一致。
 
 ### `HandoffBrief` 结构（存进 `brief_json`）
 
@@ -166,11 +166,11 @@ export interface HandoffBrief {
 ```typescript
 export interface Conversation {
   // ...原字段 ...
-  originConversationId?: string;
-  originAgentId?: string;
-  originAgentName?: string;
-  originAdapter?: string;
-  originBriefId?: string;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 }
 ```
 
@@ -260,19 +260,20 @@ export function createContextMcpServer(): McpServer {
 export function registerContextToolSession(
   taskSessionId: string,
   brief: HandoffBrief,
-  briefId: string,
-  source: {
-    conversationId: string;
-    agentId: string;
-    agentName: string;
-    adapter: string;
-    title: string;
-  }
+  briefId: string
 ): AcpStdioMcpServer {
   unregisterContextToolSession(taskSessionId);
   const directory = path.join(getDataDir(), "context-sessions");
   fs.mkdirSync(directory, { recursive: true });
   const manifest = path.join(directory, `${taskSessionId}.json`);
+  // Manifest source 直接取自 brief.source（5 个必需字段；cwd/messageCount 不入 manifest）
+  const source = {
+    conversationId: brief.source.conversationId,
+    agentId: brief.source.agentId,
+    agentName: brief.source.agentName,
+    adapter: brief.source.adapter,
+    title: brief.source.title
+  };
   fs.writeFileSync(manifest, JSON.stringify({ version: 1, brief, briefId, source }), {
     encoding: "utf8",
     mode: 0o600
@@ -298,17 +299,16 @@ export function unregisterContextToolSession(taskSessionId: string): void {
 ### 注入点（`acpRuntime.ts`）
 
 ```typescript
-if (args.handoffBrief) {
+if (args.handoffBrief && args.handoffBriefId) {
   mcpServers.push(registerContextToolSession(
     args.sessionId,
     args.handoffBrief,
-    args.handoffBriefId,
-    args.handoffSource
+    args.handoffBriefId
   ));
 }
 ```
 
-`CliRunArgs` 新增可选字段：`handoffBrief?`, `handoffBriefId?`, `handoffSource?`。
+`CliRunArgs` 新增可选字段：`handoffBrief?`, `handoffBriefId?`（manifest source 从 `brief.source` 派生，无需单独字段）。
 
 ### Compact 格式
 
@@ -432,18 +432,18 @@ export function extractHandoffBrief(input: ExtractInput): HandoffBrief;
    b. brief = extractHandoffBrief({ conversation: A, messages: msgs })
    c. briefId = nanoid(); B.id 已由调用方生成
    d. insertHandoffBrief({ id: briefId, source: A, targetId: B.id, brief, ... })
-   e. createConversation({ id: B.id, ..., originConversationId: A.id, originBriefId: briefId, ... })
+   e. createConversation({ id: B.id, ..., sourceConversationId: A.id, sourceBriefId: briefId, ... })
    f. 返回 { conversation: B, briefId, seedPrompt }
 7. store:
    a. B 加入 conversations，设为 activeId
-   b. ChatView 监测到 activeId 变化 + 新 conv 有 originBriefId → 把 seedPrompt 灌进 composer textarea（不发送）
+   b. ChatView 监测到 activeId 变化 + 新 conv 有 sourceBriefId → 把 seedPrompt 灌进 composer textarea（不发送）
 8. 用户回车 → sendMessage 正常流程
-9. sendMessage 内部：若 conv.originBriefId 存在且 B 还没有 assistant 消息 → 从 DB 重读 brief
-   → CliRunArgs 附带 handoffBrief / handoffBriefId / handoffSource
+9. sendMessage 内部：若 conv.sourceBriefId 存在且 B 还没有 assistant 消息 → 从 DB 重读 brief
+   → CliRunArgs 附带 handoffBrief / handoffBriefId
    → registerContextToolSession 注入 MCP
 ```
 
-**id 生成约定**：`transferConversation` 的 input 必须包含 `targetConversationId`（renderer 用 `nanoid()` 生成）；main 用 `nanoid()` 生成 `briefId`。这样在事务内先插 brief（target_id 已知）再插 conversation（origin_brief_id 已知），双方 NOT NULL 约束都满足，无需 UPDATE 补数据。
+**id 生成约定**：`transferConversation` 的 input 必须包含 `targetConversationId`（renderer 用 `nanoid()` 生成）；main 用 `nanoid()` 生成 `briefId`。这样在事务内先插 brief（target_id 已知）再插 conversation（source_brief_id 已知），双方 NOT NULL 约束都满足，无需 UPDATE 补数据。
 
 ### Seed prompt 模板
 
@@ -467,8 +467,8 @@ what you'd like to focus on first.
 ```
 
 - 点击 `[→]`：`setActive(A.id)` 跳回 A
-- 数据源：`conv.originConversationId` / `originAgentName`
-- 仅当 `originBriefId` 存在时渲染
+- 数据源：`conv.sourceConversationId` / `sourceAgentName`
+- 仅当 `sourceBriefId` 存在时渲染
 
 ### A 端不做主动标记
 
@@ -482,7 +482,7 @@ what you'd like to focus on first.
 
 ### 转接原子性
 
-`transferConversation` IPC 在 main 进程内包一个 DB transaction。`targetConversationId` 由 renderer 传入，`briefId` 在事务内 `nanoid()` 生成；事务顺序保证两个 NOT NULL 外键（`handoff_briefs.target_conversation_id` 与 `conversations.origin_brief_id`）都能正确写入：
+`transferConversation` IPC 在 main 进程内包一个 DB transaction。`targetConversationId` 由 renderer 传入，`briefId` 在事务内 `nanoid()` 生成；事务顺序保证两个 NOT NULL 外键（`handoff_briefs.target_conversation_id` 与 `conversations.source_brief_id`）都能正确写入：
 
 ```ts
 db.transaction(() => {
@@ -499,11 +499,11 @@ db.transaction(() => {
   const conv = createConversation({
     id: input.targetConversationId,
     ..., 
-    originConversationId: A.id,
-    originAgentId: A.agentId,
-    originAgentName: A.agentName,
-    originAdapter: A.adapter,
-    originBriefId: briefId  // null 时不写入（列允许 NULL）
+    sourceConversationId: A.id,
+    sourceAgentId: A.agentId,
+    sourceAgentName: A.agentName,
+    sourceAdapter: A.adapter,
+    sourceBriefId: briefId  // null 时不写入（列允许 NULL）
   });
   return { conv, briefId, warning: brief ? null : "brief_extraction_failed" };
 })();
@@ -517,8 +517,8 @@ db.transaction(() => {
 
 **方案**：不另开持久化，改为**懒恢复**：
 
-- B 的 `originBriefId` 已在 conversations 表里（持久化）
-- `sendMessage` 时检查：若 conv 有 `originBriefId` **且 B 还没有 assistant 消息**（说明首条还没发）→ 从 DB 重读 brief → 注入 MCP
+- B 的 `sourceBriefId` 已在 conversations 表里（持久化）
+- `sendMessage` 时检查：若 conv 有 `sourceBriefId` **且 B 还没有 assistant 消息**（说明首条还没发）→ 从 DB 重读 brief → 注入 MCP
 
 无需新表/新字段，零额外持久化状态。
 
@@ -529,7 +529,7 @@ extractor 全防御：
 - 单条 message 的 `content` JSON.parse 失败 → 跳过该条，记 `console.warn`，继续
 - `fileChanges` 项 path 为空/非字符串 → 跳过
 - 任何 stream item 字段类型异常 → 跳过该项
-- 整体 try/catch 兜底：万一 extractor 整体抛 → 在 `transferConversation` 里捕获 → **brief 不入库、`originBriefId` 不写入 B**，事务返回 `warning: "brief_extraction_failed"` → renderer toast 提示"B 已创建但未携带上下文，请手动告知"。B 此时没有 originBriefId，行为等同于普通新会话（无 badge、无懒恢复、无 MCP 注入）
+- 整体 try/catch 兜底：万一 extractor 整体抛 → 在 `transferConversation` 里捕获 → **brief 不入库、`sourceBriefId` 不写入 B**，事务返回 `warning: "brief_extraction_failed"` → renderer toast 提示"B 已创建但未携带上下文，请手动告知"。B 此时没有 sourceBriefId，行为等同于普通新会话（无 badge、无懒恢复、无 MCP 注入）
 
 不会因为抽取失败阻塞转接。
 
@@ -548,7 +548,7 @@ extractor 全防御：
 ### A 在转接后被删除
 
 - `handoff_briefs.source_conversation_id` CASCADE → A 删时 brief 行一起删
-- B 的 `originConversationId` / `originBriefId` 冗余字段仍保留（用于 badge 显示和懒恢复判定）
+- B 的 `sourceConversationId` / `sourceBriefId` 冗余字段仍保留（用于 badge 显示和懒恢复判定）
 - B 已生成的 manifest 是 transfer 那刻的快照，独立于 DB——A 删除不影响 B 当次会话读 brief
 - B 端 origin badge 点击跳回 A → `getConversation(A.id)` 返回 undefined → store 把 activeId 设为 undefined（回到 new task 主屏），不报错
 
@@ -637,17 +637,17 @@ extractor 全防御：
 - `getHandoffBriefsBySource` 返回某 A 的所有 brief（按 created_at DESC）
 - CASCADE：删 target conversation → brief 一起删
 - CASCADE：删 source conversation → brief 一起删
-- `conversations.origin_*` 列读写正常
-- migration 幂等（老库无 origin_* 列 → ALTER 后存在）
+- `conversations.source_*` 列读写正常
+- migration 幂等（老库无 source_* 列 → ALTER 后存在）
 
 ### `handoff-transfer-wiring.test.mjs` 覆盖
 
 源码扫描保证各层串联：
 
 - `db.ts`: `CREATE TABLE IF NOT EXISTS handoff_briefs`
-- `db.ts`: `ALTER TABLE conversations ADD COLUMN origin_conversation_id`（受 PRAGMA 保护）
-- `conversations.ts`: `rowToConversation` 映射 origin_* 字段
-- `conversations.ts`: `createConversation` 接收并写入 origin_* 参数
+- `db.ts`: `ALTER TABLE conversations ADD COLUMN source_conversation_id`（受 PRAGMA 保护）
+- `conversations.ts`: `rowToConversation` 映射 source_* 字段
+- `conversations.ts`: `createConversation` 接收并写入 source_* 参数
 - `handoffBriefs.ts`: 导出 `insertHandoffBrief` / `getHandoffBriefByTarget`
 - `handoffBriefExtractor.ts`: 导出 `extractHandoffBrief`
 - `contextToolService.ts`: 导出 `registerContextToolSession` / `unregister`

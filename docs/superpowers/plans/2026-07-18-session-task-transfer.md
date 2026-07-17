@@ -32,7 +32,7 @@
 
 | 文件 | 改动 |
 |------|------|
-| `electron/cli/db.ts` | 新表 + ALTER `conversations` 加 5 个 `origin_*` 列 |
+| `electron/cli/db.ts` | 新表 + ALTER `conversations` 加 5 个 `source_*` 列 |
 | `electron/cli/conversations.ts` | `rowToConversation` + `createConversation` 支持 origin 字段 |
 | `electron/cli/ipc.ts` | `cli:previewHandoffBrief` + `cli:transferConversation` handler |
 | `electron/preload.ts` | 暴露两个新方法 |
@@ -155,16 +155,16 @@ export interface TransferConversationResult {
 }
 ```
 
-- [ ] **Step 2: 在 `Conversation` 接口里追加 origin 字段**
+- [ ] **Step 2: 在 `Conversation` 接口里追加 source 字段**
 
 定位 `src/services/cli/types.ts` 里 `export interface Conversation {` 块，在 `lastMessageAt?: string;` 之后追加：
 
 ```typescript
-  originConversationId?: string;
-  originAgentId?: string;
-  originAgentName?: string;
-  originAdapter?: string;
-  originBriefId?: string;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 ```
 
 - [ ] **Step 3: 在 `CliRunArgs` 接口里追加 handoff 字段**
@@ -174,8 +174,9 @@ export interface TransferConversationResult {
 ```typescript
   handoffBrief?: HandoffBrief;
   handoffBriefId?: string;
-  handoffSource?: HandoffBriefSource;
 ```
+
+（不单独定义 `handoffSource` —— 消费方从 `handoffBrief.source` 读取，避免冗余字段。）
 
 - [ ] **Step 4: 类型检查通过**
 
@@ -209,11 +210,11 @@ import fs from "node:fs";
 const read = (rel) =>
   fs.readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
-test("db.ts declares handoff_briefs table and origin_* columns", () => {
+test("db.ts declares handoff_briefs table and source_* columns", () => {
   const db = read("electron/cli/db.ts");
   assert.match(db, /CREATE TABLE IF NOT EXISTS handoff_briefs/);
-  assert.match(db, /ALTER TABLE conversations ADD COLUMN origin_conversation_id/);
-  assert.match(db, /ADD COLUMN origin_brief_id/);
+  assert.match(db, /ALTER TABLE conversations ADD COLUMN source_conversation_id/);
+  assert.match(db, /ADD COLUMN source_brief_id/);
   assert.match(db, /FOREIGN KEY\(source_conversation_id\) REFERENCES conversations/);
   assert.match(db, /FOREIGN KEY\(target_conversation_id\) REFERENCES conversations/);
 });
@@ -256,20 +257,20 @@ Expected: FAIL（`CREATE TABLE IF NOT EXISTS handoff_briefs` 未匹配）
   const handoffConvCols = db
     .prepare("PRAGMA table_info(conversations)")
     .all() as Array<{ name: string }>;
-  if (!handoffConvCols.some((c) => c.name === "origin_conversation_id")) {
-    db.exec("ALTER TABLE conversations ADD COLUMN origin_conversation_id TEXT");
+  if (!handoffConvCols.some((c) => c.name === "source_conversation_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_conversation_id TEXT");
   }
-  if (!handoffConvCols.some((c) => c.name === "origin_agent_id")) {
-    db.exec("ALTER TABLE conversations ADD COLUMN origin_agent_id TEXT");
+  if (!handoffConvCols.some((c) => c.name === "source_agent_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_agent_id TEXT");
   }
-  if (!handoffConvCols.some((c) => c.name === "origin_agent_name")) {
-    db.exec("ALTER TABLE conversations ADD COLUMN origin_agent_name TEXT");
+  if (!handoffConvCols.some((c) => c.name === "source_agent_name")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_agent_name TEXT");
   }
-  if (!handoffConvCols.some((c) => c.name === "origin_adapter")) {
-    db.exec("ALTER TABLE conversations ADD COLUMN origin_adapter TEXT");
+  if (!handoffConvCols.some((c) => c.name === "source_adapter")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_adapter TEXT");
   }
-  if (!handoffConvCols.some((c) => c.name === "origin_brief_id")) {
-    db.exec("ALTER TABLE conversations ADD COLUMN origin_brief_id TEXT");
+  if (!handoffConvCols.some((c) => c.name === "source_brief_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_brief_id TEXT");
   }
 ```
 
@@ -282,7 +283,7 @@ Expected: PASS
 
 ```bash
 git add electron/cli/db.ts tests/handoff-transfer-wiring.test.mjs
-git commit -m "feat(handoff): add handoff_briefs table and origin_* columns"
+git commit -m "feat(handoff): add handoff_briefs table and source_* columns"
 ```
 
 ---
@@ -322,11 +323,11 @@ function makeDb() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_message_at TEXT,
-      origin_conversation_id TEXT,
-      origin_agent_id TEXT,
-      origin_agent_name TEXT,
-      origin_adapter TEXT,
-      origin_brief_id TEXT
+      source_conversation_id TEXT,
+      source_agent_id TEXT,
+      source_agent_name TEXT,
+      source_adapter TEXT,
+      source_brief_id TEXT
     );
     CREATE TABLE handoff_briefs (
       id TEXT PRIMARY KEY,
@@ -541,31 +542,31 @@ git commit -m "feat(handoff): add handoffBriefs DB layer"
 在文件末尾追加：
 
 ```javascript
-test("conversations.ts wires origin_* through createConversation and rowToConversation", () => {
+test("conversations.ts wires source_* through createConversation and rowToConversation", () => {
   const src = read("electron/cli/conversations.ts");
-  assert.match(src, /origin_conversation_id/);
-  assert.match(src, /originConversationId:/);
-  assert.match(src, /originBriefId/);
+  assert.match(src, /source_conversation_id/);
+  assert.match(src, /sourceConversationId:/);
+  assert.match(src, /sourceBriefId/);
   // createConversation 的 input 接收 origin 字段
-  assert.match(src, /originConversationId\?: string;/);
+  assert.match(src, /sourceConversationId\?: string;/);
 });
 ```
 
 - [ ] **Step 2: 运行测试，确认失败**
 
 Run: `npm run build:electron && node --test tests/handoff-transfer-wiring.test.mjs`
-Expected: FAIL（origin_conversation_id 未匹配）
+Expected: FAIL（source_conversation_id 未匹配）
 
 - [ ] **Step 3: 修改 `electron/cli/conversations.ts` 的 `Conversation` 接口**
 
 在 `export interface Conversation {` 块末尾（`lastMessageAt?: string;` 之后）追加：
 
 ```typescript
-  originConversationId?: string;
-  originAgentId?: string;
-  originAgentName?: string;
-  originAdapter?: string;
-  originBriefId?: string;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 ```
 
 - [ ] **Step 4: 修改 `rowToConversation` 把 origin 字段读出**
@@ -574,11 +575,11 @@ Expected: FAIL（origin_conversation_id 未匹配）
 
 ```typescript
     ,
-    originConversationId: r.origin_conversation_id ?? undefined,
-    originAgentId: r.origin_agent_id ?? undefined,
-    originAgentName: r.origin_agent_name ?? undefined,
-    originAdapter: r.origin_adapter ?? undefined,
-    originBriefId: r.origin_brief_id ?? undefined
+    sourceConversationId: r.source_conversation_id ?? undefined,
+    sourceAgentId: r.source_agent_id ?? undefined,
+    sourceAgentName: r.source_agent_name ?? undefined,
+    sourceAdapter: r.source_adapter ?? undefined,
+    sourceBriefId: r.source_brief_id ?? undefined
 ```
 
 （实际改动是把 `lastMessageAt: r.last_message_at ?? undefined` 后的 `}` 替换为 `,` 然后加以上字段再 `}`。）
@@ -597,11 +598,11 @@ export interface CreateConversationInput {
   configOptionOverrides?: Record<string, string>;
   skillIds?: string[];
   titleSource?: ConversationTitleSource;
-  originConversationId?: string;
-  originAgentId?: string;
-  originAgentName?: string;
-  originAdapter?: string;
-  originBriefId?: string;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 }
 ```
 
@@ -617,8 +618,8 @@ export function createConversation(input: CreateConversationInput): Conversation
       `INSERT INTO conversations
          (id, title, agent_id, agent_name, adapter, cwd, approval_mode,
           config_option_overrides, skill_snapshot, title_source, archived,
-          origin_conversation_id, origin_agent_id, origin_agent_name,
-          origin_adapter, origin_brief_id,
+          source_conversation_id, source_agent_id, source_agent_name,
+          source_adapter, source_brief_id,
           created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
     )
@@ -636,11 +637,11 @@ export function createConversation(input: CreateConversationInput): Conversation
         : null,
       JSON.stringify(resolveSkillSnapshots(input.skillIds ?? [])),
       input.titleSource ?? "default",
-      input.originConversationId ?? null,
-      input.originAgentId ?? null,
-      input.originAgentName ?? null,
-      input.originAdapter ?? null,
-      input.originBriefId ?? null,
+      input.sourceConversationId ?? null,
+      input.sourceAgentId ?? null,
+      input.sourceAgentName ?? null,
+      input.sourceAdapter ?? null,
+      input.sourceBriefId ?? null,
       now,
       now
     );
@@ -657,7 +658,7 @@ Expected: 全部 PASS
 
 ```bash
 git add electron/cli/conversations.ts tests/handoff-transfer-wiring.test.mjs
-git commit -m "feat(handoff): wire origin_* fields through createConversation"
+git commit -m "feat(handoff): wire source_* fields through createConversation"
 ```
 
 ---
@@ -1191,24 +1192,23 @@ function serverPath(): string {
   return fileURLToPath(new URL("./mcp/contextMcpServer.js", import.meta.url));
 }
 
-export interface HandoffManifestSource {
-  conversationId: string;
-  agentId: string;
-  agentName: string;
-  adapter: string;
-  title: string;
-}
-
 export function registerContextToolSession(
   taskSessionId: string,
   brief: HandoffBrief,
-  briefId: string,
-  source: HandoffManifestSource
+  briefId: string
 ): AcpStdioMcpServer {
   unregisterContextToolSession(taskSessionId);
   const directory = path.join(getDataDir(), "context-sessions");
   fs.mkdirSync(directory, { recursive: true });
   const manifest = path.join(directory, `${taskSessionId}.json`);
+  // Manifest source 直接取自 brief.source（仅 5 个必需字段，cwd/messageCount 不入 manifest）
+  const source = {
+    conversationId: brief.source.conversationId,
+    agentId: brief.source.agentId,
+    agentName: brief.source.agentName,
+    adapter: brief.source.adapter,
+    title: brief.source.title
+  };
   fs.writeFileSync(
     manifest,
     JSON.stringify({ version: 1, brief, briefId, source }),
@@ -1237,9 +1237,6 @@ export function unregisterContextToolSession(taskSessionId: string): void {
     // best-effort cleanup
   }
 }
-
-// 导出类型供 acpRuntime 使用
-export type { HandoffBriefSource };
 ```
 
 - [ ] **Step 4: 运行测试，确认通过**
@@ -1595,19 +1592,12 @@ import { registerContextToolSession } from "../contextToolService.js";
 定位 `if (args.skills?.length) { mcpServers.push(registerSkillToolSession(args.sessionId, args.skills)); }` 块之后追加：
 
 ```typescript
-    if (args.handoffBrief && args.handoffBriefId && args.handoffSource) {
+    if (args.handoffBrief && args.handoffBriefId) {
       mcpServers.push(
         registerContextToolSession(
           args.sessionId,
           args.handoffBrief,
-          args.handoffBriefId,
-          {
-            conversationId: args.handoffSource.conversationId,
-            agentId: args.handoffSource.agentId,
-            agentName: args.handoffSource.agentName,
-            adapter: args.handoffSource.adapter,
-            title: args.handoffSource.title
-          }
+          args.handoffBriefId
         )
       );
     }
@@ -1766,11 +1756,11 @@ import type {
           cwd: input.cwd ?? source.cwd,
           skillIds: [],
           titleSource: "default",
-          originConversationId: source.id,
-          originAgentId: source.agentId,
-          originAgentName: source.agentName,
-          originAdapter: source.adapter,
-          originBriefId: briefId ?? undefined
+          sourceConversationId: source.id,
+          sourceAgentId: source.agentId,
+          sourceAgentName: source.agentName,
+          sourceAdapter: source.adapter,
+          sourceBriefId: briefId ?? undefined
         });
         return { conversation };
       })();
@@ -1979,9 +1969,9 @@ async function maybeHandoffArgs(
   state: ConversationState,
   conv: Conversation
 ): Promise<
-  Pick<CliRunArgs, "handoffBrief" | "handoffBriefId" | "handoffSource">
+  Pick<CliRunArgs, "handoffBrief" | "handoffBriefId">
 > {
-  if (!conv.originBriefId) return {};
+  if (!conv.sourceBriefId) return {};
   // 懒恢复：仅当 B 还没有任何 assistant 消息（首条未发）时注入
   const msgs = state.messages[conv.id] ?? [];
   const hasAssistant = msgs.some((m) => m.role === "assistant");
@@ -1990,16 +1980,7 @@ async function maybeHandoffArgs(
   if (!row?.brief) return {};
   return {
     handoffBrief: row.brief,
-    handoffBriefId: row.id,
-    handoffSource: {
-      conversationId: row.sourceConversationId,
-      agentId: row.sourceAgentId,
-      agentName: row.sourceAgentName,
-      adapter: row.sourceAdapter,
-      title: conv.title,
-      cwd: conv.cwd,
-      messageCount: row.sourceMessageCount
-    }
+    handoffBriefId: row.id
   };
 }
 ```
@@ -2311,19 +2292,19 @@ import { TransferDialog } from "./TransferDialog";
 在 composer-context-row 上方或内部加：
 
 ```tsx
-      {activeConversation?.originBriefId && (
+      {activeConversation?.sourceBriefId && (
         <div className="conversation-origin-badge">
           <button
             type="button"
             className="link-button"
             onClick={() => {
-              if (activeConversation.originConversationId) {
-                void useConversationStore.getState().setActive(activeConversation.originConversationId);
+              if (activeConversation.sourceConversationId) {
+                void useConversationStore.getState().setActive(activeConversation.sourceConversationId);
               }
             }}
           >
-            ⇄ {t("handoff.inheritedFrom", { agentName: activeConversation.originAgentName ?? "?" })}
-            {activeConversation.originConversationId ? " · →" : ""}
+            ⇄ {t("handoff.inheritedFrom", { agentName: activeConversation.sourceAgentName ?? "?" })}
+            {activeConversation.sourceConversationId ? " · →" : ""}
           </button>
         </div>
       )}
@@ -2488,7 +2469,7 @@ git commit -m "fix(handoff): smoke test fixes"
 完成所有 task 后回头核对 spec 覆盖：
 
 - ✅ §1 架构总览 → Tasks 1-15 全覆盖
-- ✅ §2 数据模型 → Task 2（schema）+ Task 3（DB 层）+ Task 4（origin_*）
+- ✅ §2 数据模型 → Task 2（schema）+ Task 3（DB 层）+ Task 4（source_*）
 - ✅ §3 MCP 服务 → Task 6（toolService）+ Task 7（MCP server）
 - ✅ §4 抽取算法 → Task 5（含全测试覆盖）
 - ✅ §5 UI 流程 → Tasks 9, 10, 12, 13（IPC + store + dialog + ChatView）

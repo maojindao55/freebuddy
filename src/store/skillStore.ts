@@ -11,6 +11,7 @@ interface SkillState {
   load(): Promise<void>;
   importSource(path: string): Promise<SkillImportResult>;
   setEnabled(id: string, enabled: boolean): Promise<void>;
+  setTrusted(id: string, trusted: boolean): Promise<void>;
   deleteSkill(id: string): Promise<boolean>;
 }
 
@@ -39,6 +40,13 @@ export const useSkillStore = create<SkillState>((set, get) => ({
     if (!skill) return;
     set((state) => ({
       skills: state.skills.map((entry) => entry.id === id ? skill : entry)
+    }));
+  },
+  async setTrusted(id, trusted) {
+    const skill = await skillsClient.setTrusted(id, trusted);
+    if (!skill) return;
+    set((state) => ({
+      skills: state.skills.map((entry) => (entry.id === id ? skill : entry))
     }));
   },
   async deleteSkill(id) {

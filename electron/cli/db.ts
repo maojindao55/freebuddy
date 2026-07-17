@@ -61,7 +61,13 @@ function migrate(db: DB) {
       enabled INTEGER NOT NULL DEFAULT 1,
       trusted INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      market_provider TEXT,
+      market_skill_id TEXT,
+      market_slug TEXT,
+      market_version TEXT,
+      market_url TEXT,
+      market_content_hash TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_skills_source_name
       ON skills(source, name);
@@ -300,6 +306,29 @@ function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_task
       ON scheduled_task_runs(task_id, started_at DESC);
+  `);
+
+  const skillCols = db
+    .prepare("PRAGMA table_info(skills)")
+    .all() as Array<{ name: string }>;
+  const skillColumnNames = new Set(skillCols.map((column) => column.name));
+  const skillMarketColumns: Array<[string, string]> = [
+    ["market_provider", "TEXT"],
+    ["market_skill_id", "TEXT"],
+    ["market_slug", "TEXT"],
+    ["market_version", "TEXT"],
+    ["market_url", "TEXT"],
+    ["market_content_hash", "TEXT"]
+  ];
+  for (const [name, type] of skillMarketColumns) {
+    if (!skillColumnNames.has(name)) {
+      db.exec(`ALTER TABLE skills ADD COLUMN ${name} ${type}`);
+    }
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_market_identity
+      ON skills(market_provider, market_skill_id)
+      WHERE market_provider IS NOT NULL AND market_skill_id IS NOT NULL
   `);
 
   const overrideCols = db

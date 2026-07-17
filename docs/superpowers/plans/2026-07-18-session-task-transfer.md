@@ -939,7 +939,7 @@ test("transcriptExcerpts: last 8 msgs, user→content capped 800, assistant→te
   }
   const brief = extractHandoffBrief({ conversation: conv(), messages: msgs });
   assert.equal(brief.transcriptExcerpts.length, 8);
-  assert.equal(brief.transcriptExcerpts[0].messageId, "a6");  // 末尾倒推 8 条
+  assert.equal(brief.transcriptExcerpts[0].messageId, "u6");  // 末尾倒推 8 条，首条是 u6
 });
 
 test("transcriptExcerpts: assistant with no text -> '(tool calls only)'", () => {

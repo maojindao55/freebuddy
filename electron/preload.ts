@@ -364,11 +364,23 @@ const skills = {
   import: (sourcePath: string) => ipcRenderer.invoke("skills:import", sourcePath),
   setEnabled: (id: string, enabled: boolean) =>
     ipcRenderer.invoke("skills:setEnabled", id, enabled),
+  setTrusted: (id: string, trusted: boolean) =>
+    ipcRenderer.invoke("skills:setTrusted", id, trusted),
   delete: (id: string) => ipcRenderer.invoke("skills:delete", id),
   read: (id: string) => ipcRenderer.invoke("skills:read", id),
   selectDirectory: () => ipcRenderer.invoke("skills:selectDirectory"),
   selectArchive: () => ipcRenderer.invoke("skills:selectArchive"),
-  reveal: (id: string) => ipcRenderer.invoke("skills:reveal", id)
+  reveal: (id: string) => ipcRenderer.invoke("skills:reveal", id),
+  marketProviders: () => ipcRenderer.invoke("skills:marketProviders"),
+  getMarketProvider: () => ipcRenderer.invoke("skills:getMarketProvider"),
+  setMarketProvider: (provider: string) =>
+    ipcRenderer.invoke("skills:setMarketProvider", provider),
+  searchMarket: (args: unknown) => ipcRenderer.invoke("skills:searchMarket", args),
+  installFromMarket: (request: unknown) =>
+    ipcRenderer.invoke("skills:installFromMarket", request),
+  openMarketUrl: (url: string) => ipcRenderer.invoke("skills:openMarketUrl", url),
+  resolveMarketHomepage: (args: unknown) =>
+    ipcRenderer.invoke("skills:resolveMarketHomepage", args)
 };
 
 const scheduledTasks = {

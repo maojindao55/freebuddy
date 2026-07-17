@@ -61,7 +61,12 @@ import type {
   UpdateInfoCardInput
 } from "@/services/infoCards/types";
 import type {
+  MarketInstallRequest,
+  MarketInstallResult,
+  MarketProviderInfo,
+  MarketSearchResult,
   SkillImportResult,
+  SkillMarketProviderId,
   SkillRecord
 } from "@/services/skills/types";
 import type {
@@ -253,11 +258,30 @@ declare global {
     list(): Promise<SkillRecord[]>;
     import(sourcePath: string): Promise<SkillImportResult>;
     setEnabled(id: string, enabled: boolean): Promise<SkillRecord | undefined>;
+    setTrusted(id: string, trusted: boolean): Promise<SkillRecord | undefined>;
     delete(id: string): Promise<boolean>;
     read(id: string): Promise<string | undefined>;
     selectDirectory(): Promise<string | null>;
     selectArchive(): Promise<string | null>;
     reveal(id: string): Promise<boolean>;
+    marketProviders(): Promise<MarketProviderInfo[]>;
+    getMarketProvider(): Promise<SkillMarketProviderId>;
+    setMarketProvider(provider: SkillMarketProviderId): Promise<SkillMarketProviderId>;
+    searchMarket(args: {
+      provider?: SkillMarketProviderId;
+      query?: string;
+      cursor?: string;
+      limit?: number;
+    }): Promise<MarketSearchResult>;
+    installFromMarket(request: MarketInstallRequest): Promise<MarketInstallResult>;
+    openMarketUrl(url: string): Promise<boolean>;
+    resolveMarketHomepage(args: {
+      provider: SkillMarketProviderId;
+      slug: string;
+      ownerHandle?: string;
+      version?: string;
+      downloadsHint?: number;
+    }): Promise<string | null>;
   }
 
   interface FreebuddyWorkflow {

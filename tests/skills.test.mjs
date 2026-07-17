@@ -64,8 +64,10 @@ test("skill persistence, IPC, MCP, and conversation snapshots stay wired", () =>
   const acp = fs.readFileSync(new URL("../electron/cli/acpRuntime.ts", import.meta.url), "utf8");
   const conversations = fs.readFileSync(new URL("../electron/cli/conversations.ts", import.meta.url), "utf8");
   assert.match(db, /CREATE TABLE IF NOT EXISTS skills/);
+  assert.match(db, /market_provider/);
   assert.match(db, /skill_snapshot TEXT/);
   assert.match(ipc, /skills:import/);
+  assert.match(ipc, /skills:installFromMarket/);
   assert.match(acp, /registerSkillToolSession/);
   assert.match(conversations, /resolveSkillSnapshots/);
 });
@@ -112,6 +114,63 @@ test("skill ZIP extraction rejects path traversal", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test("skill ZIP extraction rejects case-folded and file/directory path collisions", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-skill-zip-"));
+  const casePath = path.join(root, "case.zip");
+  const prefixPath = path.join(root, "prefix.zip");
+  const destination = path.join(root, "expanded");
+
+  const caseZip = new AdmZip();
+  caseZip.addFile(
+    "SKILL.md",
+    Buffer.from("---\nname: demo\ndescription: Demo\n---\n# Upper\n")
+  );
+  caseZip.addFile("skill.md", Buffer.from("# lower overwrite\n"));
+  caseZip.writeZip(casePath);
+  assert.throws(
+    () => extractSkillArchive(casePath, destination),
+    /colliding paths|duplicate path/
+  );
+
+  const prefixZip = new AdmZip();
+  prefixZip.addFile("nested", Buffer.from("file pretending to be a directory root"));
+  prefixZip.addFile("nested/SKILL.md", Buffer.from("---\nname: demo\ndescription: Demo\n---\n"));
+  prefixZip.writeZip(prefixPath);
+  assert.throws(
+    () => extractSkillArchive(prefixPath, path.join(root, "expanded-prefix")),
+    /colliding paths/
+  );
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("skill ZIP extraction accepts explicit directory entries with descendant files", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-skill-zip-"));
+  const archivePath = path.join(root, "dirs.zip");
+  const destination = path.join(root, "expanded");
+  const archive = new AdmZip();
+  // Market ZIPs and GitHub zipballs commonly include both directory entries and files.
+  archive.addFile("demo/", Buffer.alloc(0));
+  archive.addFile("demo/references/", Buffer.alloc(0));
+  archive.addFile(
+    "demo/SKILL.md",
+    Buffer.from("---\nname: demo\ndescription: Demo skill\n---\n\n# Demo\n")
+  );
+  archive.addFile("demo/references/guide.md", Buffer.from("Safe reference"));
+  archive.writeZip(archivePath);
+
+  extractSkillArchive(archivePath, destination);
+  assert.match(
+    fs.readFileSync(path.join(destination, "demo", "SKILL.md"), "utf8"),
+    /name: demo/
+  );
+  assert.equal(
+    fs.readFileSync(path.join(destination, "demo", "references", "guide.md"), "utf8"),
+    "Safe reference"
+  );
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test("skills UI exposes split detail management and both import modes", () => {
   const ui = fs.readFileSync(
     new URL("../src/components/Settings/SkillsTab.tsx", import.meta.url),
@@ -121,8 +180,10 @@ test("skills UI exposes split detail management and both import modes", () => {
   const ipc = fs.readFileSync(new URL("../electron/cli/ipc.ts", import.meta.url), "utf8");
   assert.match(ui, /skills-manager/);
   assert.match(ui, /skill-detail-pane/);
+  assert.match(ui, /SkillMarketPanel/);
   assert.match(ui, /selectArchive/);
   assert.match(ui, /ReactMarkdown/);
   assert.match(preload, /skills:selectArchive/);
+  assert.match(preload, /skills:installFromMarket/);
   assert.match(ipc, /extensions: \["zip"\]/);
 });

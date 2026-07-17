@@ -104,8 +104,19 @@ import {
   importSkills,
   listSkills,
   readSkillMarkdown,
-  setSkillEnabled
+  setSkillEnabled,
+  setSkillTrusted
 } from "./skills.js";
+import {
+  getSkillMarketProvider,
+  installSkillFromMarket,
+  isAllowedSkillMarketHomepage,
+  listSkillMarketProviders,
+  resolveSkillMarketHomepage,
+  searchSkillMarket,
+  setSkillMarketProvider
+} from "./skillMarket.js";
+import type { SkillMarketProviderId } from "./skillTypes.js";
 import { resolveDraftToolRequest } from "../draftToolService.js";
 import type { DraftToolResolution } from "../shared/draftToolProtocol.js";
 import {
@@ -199,6 +210,13 @@ export function registerCliIpc() {
   ipcMain.handle("skills:setEnabled", (_event, id: string, enabled: boolean) =>
     setSkillEnabled(id, enabled)
   );
+  ipcMain.handle("skills:setTrusted", (_event, id: string, trusted: unknown) => {
+    if (typeof id !== "string" || !id.trim()) return undefined;
+    if (trusted !== true && trusted !== false) {
+      throw new Error("skills:setTrusted requires a strict boolean");
+    }
+    return setSkillTrusted(id.trim(), trusted);
+  });
   ipcMain.handle("skills:delete", (_event, id: string) => deleteSkill(id));
   ipcMain.handle("skills:read", (_event, id: string) => readSkillMarkdown(id));
   ipcMain.handle("skills:selectDirectory", async (event) => {
@@ -224,6 +242,64 @@ export function registerCliIpc() {
     shell.showItemInFolder(path.join(skill.rootPath, "SKILL.md"));
     return true;
   });
+  ipcMain.handle("skills:marketProviders", () => listSkillMarketProviders());
+  ipcMain.handle("skills:getMarketProvider", () => getSkillMarketProvider());
+  ipcMain.handle(
+    "skills:setMarketProvider",
+    (_event, provider: SkillMarketProviderId) => setSkillMarketProvider(provider)
+  );
+  ipcMain.handle(
+    "skills:searchMarket",
+    (
+      _event,
+      args: {
+        provider?: SkillMarketProviderId;
+        query?: string;
+        cursor?: string;
+        limit?: number;
+      } = {}
+    ) =>
+      searchSkillMarket({
+        provider: args.provider,
+        query: typeof args.query === "string" ? args.query.slice(0, 200) : undefined,
+        cursor: typeof args.cursor === "string" ? args.cursor.slice(0, 2048) : undefined,
+        limit: typeof args.limit === "number" ? args.limit : undefined
+      })
+  );
+  ipcMain.handle("skills:installFromMarket", (_event, request: unknown) =>
+    installSkillFromMarket(request)
+  );
+  ipcMain.handle("skills:openMarketUrl", async (_event, url: string) => {
+    if (typeof url !== "string" || !isAllowedSkillMarketHomepage(url)) return false;
+    await shell.openExternal(url);
+    return true;
+  });
+  ipcMain.handle(
+    "skills:resolveMarketHomepage",
+    (
+      _event,
+      args: {
+        provider?: SkillMarketProviderId;
+        slug?: string;
+        ownerHandle?: string;
+        version?: string;
+        downloadsHint?: number;
+      } = {}
+    ) => {
+      if (!args.provider || typeof args.slug !== "string") return null;
+      return resolveSkillMarketHomepage({
+        provider: args.provider,
+        slug: args.slug.slice(0, 200),
+        ownerHandle:
+          typeof args.ownerHandle === "string" ? args.ownerHandle.slice(0, 200) : undefined,
+        version: typeof args.version === "string" ? args.version.slice(0, 64) : undefined,
+        downloadsHint:
+          typeof args.downloadsHint === "number" && Number.isFinite(args.downloadsHint)
+            ? args.downloadsHint
+            : undefined
+      });
+    }
+  );
 
   ipcMain.handle(
     "cli:searchWorkspaceFiles",

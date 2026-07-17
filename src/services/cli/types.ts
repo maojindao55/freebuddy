@@ -75,6 +75,8 @@ export interface CliRunArgs {
   timeoutMs?: number;
   userMessageId?: string;
   knownStreamMessageIds?: string[];
+  knownStreamContentSignatures?: string[];
+  knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
 }

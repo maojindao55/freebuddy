@@ -21,7 +21,8 @@ import {
   parseAcpLine,
   selectAcpAuthMethod,
   shouldEmitAcpUpdate,
-  shouldSkipUserMessageChunk
+  shouldSkipUserMessageChunk,
+  shouldDropReplayPhaseAgentChunk
 } from "../dist-electron/cli/acp.js";
 
 const acpRuntimeSource = fs.readFileSync(
@@ -1053,6 +1054,105 @@ test("shouldEmitAcpUpdate suppresses persisted messageId replay after prompt sta
       { promptStarted: true, replayMessageIds }
     ),
     true
+  );
+});
+
+test("shouldEmitAcpUpdate suppresses replayed tool calls by toolCallId", () => {
+  const replayMessageIds = new Set(["tool-old-1"]);
+  assert.equal(
+    shouldEmitAcpUpdate(
+      { sessionUpdate: "tool_call", toolCallId: "tool-old-1", title: "Read" },
+      { promptStarted: true, replayMessageIds }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      { sessionUpdate: "tool_call_update", toolCallId: "tool-old-1", status: "completed" },
+      { promptStarted: true, replayMessageIds }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      { sessionUpdate: "tool_call", toolCallId: "tool-new-1", title: "Read" },
+      { promptStarted: true, replayMessageIds }
+    ),
+    true
+  );
+});
+
+test("shouldEmitAcpUpdate suppresses replayed chunks by content signature", () => {
+  const replayContentSignatures = new Set(["你好！我是 Qoder"]);
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "fresh-id-never-persisted",
+        content: { type: "text", text: "  你好！我是 Qoder  " }
+      },
+      { promptStarted: true, replayContentSignatures }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "抱歉，" }
+      },
+      { promptStarted: true, replayContentSignatures }
+    ),
+    true
+  );
+});
+
+test("shouldDropReplayPhaseAgentChunk drops messageId chunks before any live chunk", () => {
+  const state = { suppressReplayByPhase: true, turnHadLiveAgentChunk: false };
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_thought_chunk", messageId: "replay-mid-1", content: { type: "text", text: "a" } },
+      state
+    ),
+    true
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", messageId: "replay-mid-2", content: { type: "text", text: "b" } },
+      state
+    ),
+    true
+  );
+});
+
+test("shouldDropReplayPhaseAgentChunk keeps live (messageId-less) chunks and post-live chunks", () => {
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "live" } },
+      { suppressReplayByPhase: true, turnHadLiveAgentChunk: false }
+    ),
+    false
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", messageId: "mid-late", content: { type: "text", text: "x" } },
+      { suppressReplayByPhase: true, turnHadLiveAgentChunk: true }
+    ),
+    false
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "tool_call", toolCallId: "call-1" },
+      { suppressReplayByPhase: true, turnHadLiveAgentChunk: false }
+    ),
+    false
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", messageId: "mid-1", content: { type: "text", text: "x" } },
+      { suppressReplayByPhase: false, turnHadLiveAgentChunk: false }
+    ),
+    false
   );
 });
 

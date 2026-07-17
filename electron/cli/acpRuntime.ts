@@ -22,6 +22,7 @@ import {
   buildTerminalOutputResponse,
   parseAcpLine,
   selectAcpAuthMethod,
+  shouldDropReplayPhaseAgentChunk,
   shouldEmitAcpUpdate,
   shouldSkipUserMessageChunk,
   type AcpAuthMethod,
@@ -119,8 +120,19 @@ export async function runAcpAgent({
   let finished = false;
   let promptStarted = false;
   let promptHadContent = false;
+  let turnHadLiveAgentChunk = false;
   let mcpServers: AcpStdioMcpServer[] = [];
   const replayMessageIds = new Set(args.knownStreamMessageIds ?? []);
+  const replayContentSignatures = new Set(
+    args.knownStreamContentSignatures ?? []
+  );
+  // Qoder-style adapters stream live agent chunks WITHOUT a messageId and only
+  // attach messageIds when replaying history on resume. When resuming such an
+  // adapter (prior turns persisted zero agent messageIds), drop messageId-
+  // carrying chunks until the first live chunk signals real generation.
+  const suppressReplayByPhase =
+    Boolean(toolSessionId) &&
+    (args.knownAgentStreamMessageIds ?? []).length === 0;
   const terminalManager = createAcpTerminalManager({
     defaultCwd: args.cwd,
     onOutput: (terminalId, snap) => {
@@ -253,10 +265,30 @@ export async function runAcpAgent({
       ) {
         return;
       }
+      const isAgentChunkForPhase =
+        updateType === "agent_message_chunk" ||
+        updateType === "agent_thought_chunk";
+      if (isAgentChunkForPhase && suppressReplayByPhase) {
+        if (
+          shouldDropReplayPhaseAgentChunk(msg.params?.update, {
+            suppressReplayByPhase,
+            turnHadLiveAgentChunk
+          })
+        ) {
+          return;
+        }
+        const hasMessageId =
+          typeof msg.params?.update?.messageId === "string" &&
+          msg.params.update.messageId.length > 0;
+        if (!hasMessageId) {
+          turnHadLiveAgentChunk = true;
+        }
+      }
       if (
         !shouldEmitAcpUpdate(msg.params?.update, {
           promptStarted,
-          replayMessageIds
+          replayMessageIds,
+          replayContentSignatures
         })
       ) {
         return;
@@ -614,6 +646,7 @@ export async function runAcpAgent({
     activeAcpSessionId = undefined;
     promptStarted = false;
     promptHadContent = false;
+    turnHadLiveAgentChunk = false;
     updateRunningProcess();
     attachConnection();
     const init = await request(buildInitializeRequest(nextId()));
@@ -684,6 +717,7 @@ export async function runAcpAgent({
     });
     promptStarted = true;
     promptHadContent = false;
+    turnHadLiveAgentChunk = false;
     await request(
       buildSessionPromptRequest(
         nextId(),

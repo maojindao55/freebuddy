@@ -59,12 +59,86 @@ export function collectStreamMessageIds(
         ) {
           ids.add(item.messageId);
         }
+        if (
+          item.kind === "tool-call" &&
+          typeof item.id === "string" &&
+          item.id.length > 0
+        ) {
+          ids.add(item.id);
+        }
       }
     } catch {
       /* ignore malformed snapshots */
     }
   }
   return [...ids];
+}
+
+/**
+ * Agent-chunk messageIds only (text/thinking), excluding tool-call ids.
+ *
+ * Used to detect adapters (e.g. Qoder) that stream live agent chunks WITHOUT a
+ * messageId and only attach messageIds when replaying history on resume. When a
+ * resumed session has zero persisted agent messageIds, FreeBuddy can safely
+ * treat messageId-carrying chunks that arrive before any live chunk as replay.
+ */
+export function collectStreamAgentMessageIds(
+  messages: ConversationMessage[]
+): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    try {
+      const parsed = JSON.parse(message.content);
+      if (!Array.isArray(parsed)) continue;
+      for (const item of parsed as CliStreamItem[]) {
+        if (
+          (item.kind === "text" || item.kind === "thinking") &&
+          typeof item.messageId === "string" &&
+          item.messageId.length > 0
+        ) {
+          ids.add(item.messageId);
+        }
+      }
+    } catch {
+      /* ignore malformed snapshots */
+    }
+  }
+  return [...ids];
+}
+
+export function normalizeReplaySignature(text: string): string {
+  return text.trim();
+}
+
+export function collectStreamContentSignatures(
+  messages: ConversationMessage[]
+): string[] {
+  const signatures = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const normalized = normalizeReplaySignature(value);
+    if (normalized.length > 0) signatures.add(normalized);
+  };
+  for (const message of messages) {
+    if (message.role === "user") {
+      add(message.content);
+      continue;
+    }
+    if (message.role !== "assistant") continue;
+    try {
+      const parsed = JSON.parse(message.content);
+      if (!Array.isArray(parsed)) continue;
+      for (const item of parsed as CliStreamItem[]) {
+        if (item.kind === "text" || item.kind === "thinking") {
+          add(item.content);
+        }
+      }
+    } catch {
+      /* ignore malformed snapshots */
+    }
+  }
+  return [...signatures];
 }
 
 export function mergeToolCalls(prev: ToolCallItem, next: ToolCallItem): ToolCallItem {
@@ -286,6 +360,13 @@ export function appendItems(
       const planIndex = out.findIndex((previous) => previous.kind === "plan");
       if (planIndex >= 0) {
         out[planIndex] = item;
+        continue;
+      }
+    }
+    if (item.kind === "session") {
+      const index = out.findIndex((previous) => previous.kind === "session");
+      if (index >= 0) {
+        out[index] = item;
         continue;
       }
     }

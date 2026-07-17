@@ -46,6 +46,14 @@ export interface CliRunArgs {
   userMessageId?: string;
   /** Known stream messageIds from prior assistant turns (replay suppression). */
   knownStreamMessageIds?: string[];
+  /** Normalized text signatures of prior turns (replay suppression when messageIds are absent). */
+  knownStreamContentSignatures?: string[];
+  /**
+   * Agent-chunk messageIds (text/thinking only) persisted from prior turns.
+   * Empty for adapters (e.g. Qoder) that stream live without messageIds, which
+   * enables replay-phase suppression on resumed sessions.
+   */
+  knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
 }

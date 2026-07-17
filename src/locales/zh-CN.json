@@ -136,6 +136,7 @@
     "searchPlaceholder": "搜索会话",
     "clearSearchAria": "清除搜索",
     "noResults": "没有匹配的会话。",
+    "unread": "未读会话",
     "group": {
       "today": "今天",
       "yesterday": "昨天",

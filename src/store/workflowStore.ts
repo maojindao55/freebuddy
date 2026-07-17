@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { workflowClient } from "@/services/workflows/client";
 import { workflowTeamsClient } from "@/services/workflowTeams/client";
+import { useConversationStore } from "@/store/conversationStore";
 import type {
   WorkflowPlan,
   WorkflowRunRow,
@@ -131,11 +132,21 @@ export const useWorkflowStore = create<State>((set, get) => ({
 
   async refresh(runId) {
     if (!workflowClient.isAvailable()) return;
+    const previousRun = get().activeRun?.id === runId ? get().activeRun : undefined;
     const [run, steps] = await Promise.all([
       workflowClient.getRun(runId),
       workflowClient.getSteps(runId)
     ]);
-    if (run) set({ activeRun: run, steps });
+    if (run) {
+      set({ activeRun: run, steps });
+      const wasLive =
+        previousRun &&
+        ["running", "paused", "blocked", "pending_approval"].includes(previousRun.status);
+      const isFinished = ["completed", "partial", "failed", "killed"].includes(run.status);
+      if (wasLive && isFinished && run.conversationId) {
+        useConversationStore.getState().markConversationUnread(run.conversationId);
+      }
+    }
     void get().loadActiveRuns();
   },
 

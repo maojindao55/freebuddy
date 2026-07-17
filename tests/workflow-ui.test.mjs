@@ -169,7 +169,7 @@ test("new-task page exposes mode tabs and team submit", () => {
   assert.match(src, /new-task-mode-tabs/);
 });
 
-test("ConversationList includes workflow runs in the running indicator set", () => {
+test("ConversationList renders workflow runs as protected loading states", () => {
   const src = read("../src/components/CLI/ConversationList.tsx");
   const css = read("../styles.css");
   assert.match(src, /useWorkflowStore/);
@@ -177,8 +177,18 @@ test("ConversationList includes workflow runs in the running indicator set", () 
   assert.match(src, /loadWorkflowActiveRuns/);
   assert.match(src, /workflowRunningSet\.has\(c\.id\)/);
   assert.match(src, /isWorkflowRunning=\{workflowRunningSet\.has\(c\.id\)\}/);
-  assert.match(src, /conv-running-dot\$\{isWorkflowRunning \? " workflow" : ""\}/);
-  assert.match(css, /\.conv-running-dot\.workflow/);
+  assert.match(src, /const isBusy = isRunning \|\| isWorkflowRunning/);
+  assert.match(src, /<LoaderCircle aria-hidden="true" size=\{14\} strokeWidth=\{1\.75\}/);
+  assert.match(src, /isBusy \? \(/);
+  assert.match(src, /isUnread=\{Boolean\(unreadConversations\[c\.id\]\)\}/);
+  assert.match(src, /!isBusy && isUnread \? " unread" : ""/);
+  assert.match(css, /\.conv-item-running svg/);
+  assert.match(css, /\.conv-item-running svg[\s\S]*?width: 14px;[\s\S]*?height: 14px;/);
+  assert.match(css, /\.conv-delete-button/);
+  assert.match(css, /\.conv-unread-dot/);
+  assert.match(css, /\.conv-unread-dot[\s\S]*?width: 7px;[\s\S]*?background: var\(--fb-brand\)/);
+  assert.match(css, /\.conv-item:hover \.conv-delete-button/);
+  assert.match(css, /\.conv-item:hover \.conv-unread-dot/);
   assert.match(css, /--fb-workflow/);
 });
 

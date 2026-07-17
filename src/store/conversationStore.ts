@@ -43,6 +43,11 @@ import {
   latestConfigOptionsFromMessages,
   latestSessionInfoFromMessages
 } from "./sessionMetaUtils";
+import {
+  loadUnreadConversations,
+  persistUnreadConversations,
+  type UnreadConversationMap
+} from "./conversationUnread";
 
 export interface LiveAssistant {
   messageId: string;
@@ -63,6 +68,7 @@ export interface ConversationState {
   activeId?: string;
   messages: Record<string, ConversationMessage[]>;
   live: Record<string, LiveAssistant>;
+  unreadConversations: UnreadConversationMap;
   pendingFreshContext: Record<string, boolean>;
 
   load(): Promise<void>;
@@ -70,6 +76,8 @@ export interface ConversationState {
   refreshMembers(): void;
   setActive(id: string | undefined): Promise<void>;
   loadMessages(id: string, messageIds?: string[]): Promise<void>;
+  markConversationUnread(id: string): void;
+  markConversationRead(id: string): void;
 
   newConversation(input: {
     member: CLIMember;
@@ -381,6 +389,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   activeId: undefined,
   messages: {},
   live: {},
+  unreadConversations: loadUnreadConversations(),
   pendingFreshContext: {},
 
   async load() {
@@ -397,6 +406,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       set({ activeId: list[0].id });
     }
     const active = get().activeId;
+    if (active) get().markConversationRead(active);
     if (active && !get().messages[active]) {
       await get().loadMessages(active);
     }
@@ -422,7 +432,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async setActive(id) {
-    set({ activeId: id });
+    if (id && get().unreadConversations[id]) {
+      const unreadConversations = { ...get().unreadConversations };
+      delete unreadConversations[id];
+      persistUnreadConversations(unreadConversations);
+      set({ activeId: id, unreadConversations });
+    } else {
+      set({ activeId: id });
+    }
     const cachedMessages = id ? get().messages[id] : undefined;
     if (id && (!cachedMessages || hasActiveWorkflowMessages(cachedMessages))) {
       await get().loadMessages(id);
@@ -444,6 +461,24 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         });
       }
     }
+  },
+
+  markConversationUnread(id) {
+    if (get().activeId === id || get().unreadConversations[id]) return;
+    const unreadConversations: UnreadConversationMap = {
+      ...get().unreadConversations,
+      [id]: true
+    };
+    persistUnreadConversations(unreadConversations);
+    set({ unreadConversations });
+  },
+
+  markConversationRead(id) {
+    if (!get().unreadConversations[id]) return;
+    const unreadConversations = { ...get().unreadConversations };
+    delete unreadConversations[id];
+    persistUnreadConversations(unreadConversations);
+    set({ unreadConversations });
   },
 
   async loadMessages(id, messageIds) {
@@ -578,10 +613,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => {
       const next = s.conversations.filter((c) => c.id !== id);
       const nextMessages = { ...s.messages };
+      const unreadConversations = { ...s.unreadConversations };
       delete nextMessages[id];
+      delete unreadConversations[id];
+      persistUnreadConversations(unreadConversations);
       return {
         conversations: next,
         messages: nextMessages,
+        unreadConversations,
         activeId: s.activeId === id ? next[0]?.id : s.activeId
       };
     });

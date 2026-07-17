@@ -5,7 +5,7 @@ import type { Conversation } from "@/services/cli/types";
 import { displayAgentName } from "@/config/agentDisplay";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Search, X } from "lucide-react";
+import { LoaderCircle, MessageSquare, Search, X } from "lucide-react";
 import { AgentAvatar } from "./AgentAvatar";
 
 function conversationTimeValue(conversation: Conversation) {
@@ -115,6 +115,7 @@ const ConversationRow = memo(function ConversationRow({
   isActive,
   isRunning,
   isWorkflowRunning,
+  isUnread,
   onSelect,
   onDelete
 }: {
@@ -122,6 +123,7 @@ const ConversationRow = memo(function ConversationRow({
   isActive: boolean;
   isRunning: boolean;
   isWorkflowRunning: boolean;
+  isUnread: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string, title: string) => void;
 }) {
@@ -134,10 +136,11 @@ const ConversationRow = memo(function ConversationRow({
     conversation.cwd ? shortCwd(conversation.cwd) : "",
     timeLabel
   ].filter(Boolean).join(" · ");
+  const isBusy = isRunning || isWorkflowRunning;
 
   return (
     <li
-      className={`conv-item${isActive ? " active" : ""}`}
+      className={`conv-item${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}`}
       role="button"
       tabIndex={0}
       aria-current={isActive ? "true" : undefined}
@@ -150,12 +153,6 @@ const ConversationRow = memo(function ConversationRow({
         }
       }}
     >
-      {(isRunning || isWorkflowRunning) && (
-        <span
-          className={`conv-running-dot${isWorkflowRunning ? " workflow" : ""}`}
-          title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
-        />
-      )}
       <AgentAvatar
         adapter={conversation.adapter}
         className="conv-item-avatar"
@@ -166,17 +163,39 @@ const ConversationRow = memo(function ConversationRow({
           <strong>{conversation.title}</strong>
         </div>
       </div>
-      <div className="conv-item-side">
-        <button
-          className="icon-btn danger"
-          title={t("common.delete")}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete(conversation.id, conversation.title);
-          }}
-        >
-          ✕
-        </button>
+      <div className={`conv-item-side${isBusy ? " running" : isUnread ? " unread" : ""}`}>
+        {isBusy ? (
+          <span
+            className="conv-item-running"
+            role="status"
+            aria-label={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+            title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+          >
+            <LoaderCircle aria-hidden="true" size={14} strokeWidth={1.75} />
+          </span>
+        ) : (
+          <>
+            {isUnread && (
+              <span
+                className="conv-unread-dot"
+                role="status"
+                aria-label={t("conversations.unread")}
+                title={t("conversations.unread")}
+              />
+            )}
+            <button
+              className="conv-delete-button icon-btn danger"
+              title={t("common.delete")}
+              aria-label={t("common.delete")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(conversation.id, conversation.title);
+              }}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </>
+        )}
       </div>
     </li>
   );
@@ -185,6 +204,7 @@ const ConversationRow = memo(function ConversationRow({
 export function ConversationList() {
   const conversations = useConversationStore((s) => s.conversations);
   const activeId = useConversationStore((s) => s.activeId);
+  const unreadConversations = useConversationStore((s) => s.unreadConversations);
   const setActive = useConversationStore((s) => s.setActive);
   // Subscribe to a stable signature of the running set instead of the whole
   // live map: this list re-renders only when a conversation starts or stops,
@@ -312,6 +332,7 @@ export function ConversationList() {
                   isActive={activeId === c.id}
                   isRunning={runningSet.has(c.id)}
                   isWorkflowRunning={workflowRunningSet.has(c.id)}
+                  isUnread={Boolean(unreadConversations[c.id])}
                   onSelect={handleSelect}
                   onDelete={handleDelete}
                 />

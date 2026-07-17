@@ -95,6 +95,57 @@ final result: passed
 
 ---
 
+# Conversation running, unread, and delete-state design QA
+
+- Source visual truth: `/var/folders/_l/t1lk7m411953763qdprx0qn00000gp/T/codex-clipboard-e164b6d7-02dd-479a-9dd4-155f397754f3.png`
+- Implementation screenshot: `/Users/hongbin9/.codex/visualizations/2026/07/17/019f6ec6-1c9d-7f43-9ee9-936f85421c19/conversation-running-row.png`
+- Combined comparison: `/Users/hongbin9/.codex/visualizations/2026/07/17/019f6ec6-1c9d-7f43-9ee9-936f85421c19/conversation-running-comparison.png`
+- Viewport: 1280 x 720 browser capture; focused implementation row 338 x 42 px
+- State: light theme, selected conversation running, adjacent unread conversation available in the same rendered preview
+
+## Full-view comparison evidence
+
+The rendered sidebar keeps the existing FreeBuddy list density, avatar identity, and neutral selected-row surface. The former leading green status dot is gone, so running and non-running titles retain one stable left baseline. Running state occupies the same fixed 24 px trailing slot previously used by delete.
+
+## Focused region comparison evidence
+
+The side-by-side crop shows the reference on the left and the rendered implementation on the right. Both use a quiet neutral selected surface and a gray open-circle loading glyph at the far-right edge. FreeBuddy intentionally retains its existing agent avatar and 38 px compact row height because the requested change concerns the trailing state slot rather than the list's established identity and density.
+
+## Required fidelity surfaces
+
+- Fonts and typography: The existing FreeBuddy 13 px conversation-title treatment is retained. The title remains vertically centered, truncates safely, and no longer changes to green when selected.
+- Spacing and layout rhythm: The tail slot is fixed at 24 x 24 px. Loading, unread, and delete states occupy exactly the same coordinates, preventing title movement between states.
+- Colors and visual tokens: Loading uses the existing tertiary text token, unread uses the existing brand-green token, and selection uses the existing neutral hover surface. The loading state no longer competes with the title.
+- Image quality and asset fidelity: The loading and delete controls use the installed Lucide icon system. No raster replacement, handcrafted SVG, CSS icon drawing, or placeholder asset is used.
+- Copy and content: Existing conversation titles and localization are unchanged. New accessible labels are localized as `未读会话` / `Unread conversation`; running labels reuse the established Agent and workflow strings.
+
+## Findings
+
+No actionable P0, P1, or P2 mismatch remains for the requested trailing-state behavior.
+
+## Comparison history
+
+1. The original implementation placed a glowing green indicator before the avatar, shifting every running title and leaving delete available in a separate trailing region.
+2. The leading indicator was removed and replaced by one stable trailing state slot.
+3. The first focused comparison showed the correct glyph placement but used an unselected white row. The QA preview was revised to the selected running state from the reference.
+4. The final combined comparison confirms the neutral selected surface, right-edge loading glyph, stable title alignment, and retained FreeBuddy avatar treatment.
+
+## Primary interactions tested
+
+- Running row rendered one loading status and zero delete buttons; browser console errors: none.
+- Unread row rendered one brand-green status dot.
+- Opening the unread row removed the green dot and made that conversation active.
+- Keyboard focus revealed the same delete control used by hover. Hover replacement selectors are covered by the automated UI contract test.
+- Reduced-motion users receive a static loading glyph instead of continuous rotation.
+
+## Follow-up polish
+
+- P3: The live spinner's visible gap naturally rotates, so a still screenshot may show a different gap angle than the reference while preserving the same open-circle form.
+
+final result: passed
+
+---
+
 # Skills management split-view and ZIP import design QA
 
 - Source visual truth: `/Users/hongbin9/.codex/generated_images/019f659f-9780-73f0-ad93-8f4707ffdf1f/exec-0baa74a1-b75c-40e0-a6c0-75d8e6d004cf.png`

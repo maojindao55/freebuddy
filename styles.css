@@ -6398,24 +6398,6 @@ button {
   object-fit: cover;
 }
 
-.conv-running-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--fb-brand);
-  box-shadow: 0 0 0 3px var(--fb-brand-glow);
-  animation: pulse-glow 2s infinite;
-}
-
-.conv-running-dot.workflow {
-  width: 8px;
-  height: 8px;
-  border-radius: 3px;
-  background: var(--fb-workflow);
-  box-shadow: 0 0 0 3px var(--fb-workflow-glow);
-}
-
 .conv-item:hover {
   background: var(--fb-hover);
 }
@@ -6428,7 +6410,11 @@ button {
 
 .conv-item.active .conv-item-main strong {
   font-weight: 600;
-  color: var(--fb-brand);
+  color: var(--fb-text-primary);
+}
+
+.conv-item.unread .conv-item-main strong {
+  font-weight: 600;
 }
 
 .conv-item-main {
@@ -6457,16 +6443,74 @@ button {
 
 
 .conv-item-side {
-  display: flex;
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  justify-items: center;
 }
 
-.conv-item:hover .conv-item-side,
-.conv-item.active .conv-item-side {
+.conv-item-running,
+.conv-unread-dot,
+.conv-delete-button {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.conv-item-running {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: var(--fb-text-tertiary);
+}
+
+.conv-item-running svg {
+  width: 14px;
+  height: 14px;
+  animation: spin 0.9s linear infinite;
+}
+
+.conv-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fb-brand);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.conv-delete-button {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.conv-delete-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.conv-item:hover .conv-delete-button,
+.conv-item:focus-within .conv-delete-button {
+  visibility: visible;
   opacity: 1;
+  pointer-events: auto;
+}
+
+.conv-item:hover .conv-unread-dot,
+.conv-item:focus-within .conv-unread-dot {
+  opacity: 0;
+  transform: scale(0.72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conv-item-running svg {
+    animation: none;
+  }
 }
 
 .icon-btn {

@@ -136,6 +136,7 @@
     "searchPlaceholder": "Search conversations",
     "clearSearchAria": "Clear search",
     "noResults": "No matching conversations.",
+    "unread": "Unread conversation",
     "group": {
       "today": "Today",
       "yesterday": "Yesterday",

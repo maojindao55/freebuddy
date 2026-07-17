@@ -325,6 +325,9 @@ export function handleStreamEvent(
     useAuthenticationStore.getState().removeForConversation(conversationId);
     const live = get().live[conversationId];
     const reason = live?.status === "killed" ? "killed" : "done";
+    if (reason === "done" && get().activeId !== conversationId) {
+      get().markConversationUnread(conversationId);
+    }
     void finalizeRun(set, get, conversationId, reason);
   }
 }

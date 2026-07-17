@@ -58,6 +58,7 @@ function normalizeFileEditAction(action: string | undefined): "edit" | "create" 
 function collectFileChanges(messages: ConversationMessage[]): HandoffBriefFileChange[] {
   const byPath = new Map<string, HandoffBriefFileChange>();
   const order: string[] = [];
+  const seenPaths = new Set<string>();
 
   for (const msg of messages) {
     if (msg.role !== "assistant") continue;
@@ -72,16 +73,19 @@ function collectFileChanges(messages: ConversationMessage[]): HandoffBriefFileCh
         const prev = byPath.get(p);
         if (!(prev && prev.action !== "read" && next.action === "read")) {
           byPath.set(p, next);
-          if (!order.includes(p)) order.push(p);
+          if (!seenPaths.has(p)) {
+            seenPaths.add(p);
+            order.push(p);
+          }
         }
       } else if (item.kind === "tool-call") {
-        const toolKind = (item as any).toolKind as string | undefined;
-        const toolName = (item as any).tool as string | undefined;
+        const toolKind = item.toolKind;
+        const toolName = item.tool;
         const isMatch =
           toolKind === "edit" || toolKind === "delete" || toolKind === "read" ||
           (typeof toolName === "string" && FILE_TOOL_NAMES.has(toolName));
         if (!isMatch) continue;
-        const locations = Array.isArray((item as any).locations) ? (item as any).locations : [];
+        const locations = Array.isArray(item.locations) ? item.locations : [];
         for (const loc of locations) {
           const p = typeof loc?.path === "string" ? loc.path : "";
           if (!p) continue;
@@ -93,7 +97,10 @@ function collectFileChanges(messages: ConversationMessage[]): HandoffBriefFileCh
           const prev = byPath.get(p);
           if (!(prev && prev.action !== "read" && next.action === "read")) {
             byPath.set(p, next);
-            if (!order.includes(p)) order.push(p);
+            if (!seenPaths.has(p)) {
+              seenPaths.add(p);
+              order.push(p);
+            }
           }
         }
       }
@@ -113,7 +120,7 @@ function collectFileChanges(messages: ConversationMessage[]): HandoffBriefFileCh
 
 function excerptForMessage(msg: ConversationMessage): string {
   if (msg.role === "user") return clip(msg.content, MAX_EXCERPT);
-  if (msg.status === "running" || msg.status === "starting") return "(streaming)";
+  if (msg.status !== "done" && msg.status !== "sent") return "(streaming)";
   const items = parseAssistantItems(msg);
   if (!items) return "(malformed)";
   const text = extractAssistantText(items);
@@ -122,7 +129,6 @@ function excerptForMessage(msg: ConversationMessage): string {
 
 function trimForSize(brief: HandoffBrief): HandoffBrief {
   let b = brief;
-  let stage: keyof HandoffBrief | null = null;
 
   const stages: Array<() => void> = [
     () => { b = { ...b, transcriptExcerpts: b.transcriptExcerpts.slice(0, 4) }; },
@@ -145,7 +151,6 @@ function trimForSize(brief: HandoffBrief): HandoffBrief {
   while (JSON.stringify(b).length > SIZE_LIMIT && i < stages.length) {
     stages[i]();
     i++;
-    stage = null;
   }
   return b;
 }

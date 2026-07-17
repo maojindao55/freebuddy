@@ -63,3 +63,41 @@ export interface ParsedAssistantStreamItem {
   toolKind?: string;
   locations?: { path: string; line?: number }[];
 }
+
+export interface PreviewHandoffBriefInput {
+  sourceConversationId: string;
+}
+
+export interface PreviewHandoffBriefResult {
+  brief: HandoffBrief | null;
+  warning?: "brief_extraction_failed";
+}
+
+export interface TransferConversationInput {
+  sourceConversationId: string;
+  targetConversationId: string;
+  targetAgentId: string;
+  targetAgentName: string;
+  targetAdapter: string;
+  cwd?: string;
+}
+
+export interface TransferConversationResult {
+  // Note: 'conversation' uses the electron-side Conversation type, which is
+  // defined in electron/cli/conversations.ts. To avoid a circular import
+  // (conversations.ts → handoffBriefs.ts → handoffTypes.ts → conversations.ts),
+  // we type it as the structural equivalent here. Conversation has additional
+  // fields beyond these (skillSnapshot, archived, etc.) but they are not
+  // required for the renderer to consume the transfer result.
+  conversation: {
+    id: string;
+    title: string;
+    agentId: string;
+    agentName: string;
+    adapter: string;
+    cwd?: string;
+  };
+  briefId: string | null;
+  seedPrompt: string;
+  warning?: "brief_extraction_failed";
+}

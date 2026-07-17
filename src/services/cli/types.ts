@@ -592,7 +592,9 @@ export interface PreviewHandoffBriefResult {
 export interface TransferConversationInput {
   sourceConversationId: string;
   targetConversationId: string;
-  targetMemberId: string;
+  targetAgentId: string;
+  targetAgentName: string;
+  targetAdapter: string;
   cwd?: string;
 }
 

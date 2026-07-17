@@ -30,7 +30,12 @@ import type {
   AppendMessageInput,
   UpdateMessageInput,
   DraftToolEvent,
-  DraftToolResolution
+  DraftToolResolution,
+  PreviewHandoffBriefInput,
+  PreviewHandoffBriefResult,
+  TransferConversationInput,
+  TransferConversationResult,
+  HandoffBriefRow
 } from "@/services/cli/types";
 import type {
   WorkflowPlan,
@@ -161,6 +166,15 @@ declare global {
     createConversation(
       input: CreateConversationInput
     ): Promise<Conversation>;
+    previewHandoffBrief(
+      input: PreviewHandoffBriefInput
+    ): Promise<PreviewHandoffBriefResult>;
+    getHandoffBriefByTarget(
+      targetConversationId: string
+    ): Promise<HandoffBriefRow | undefined>;
+    transferConversation(
+      input: TransferConversationInput
+    ): Promise<TransferConversationResult>;
     renameConversation(
       id: string,
       title: string,

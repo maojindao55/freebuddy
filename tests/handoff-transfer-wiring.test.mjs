@@ -43,3 +43,20 @@ test("acpRuntime pushes context MCP server when args.handoffBrief present", () =
   assert.match(src, /args\.handoffBrief/);
   assert.match(src, /registerContextToolSession\(/);
 });
+
+test("IPC exposes previewHandoffBrief, transferConversation, and getHandoffBriefByTarget", () => {
+  const ipc = read("electron/cli/ipc.ts");
+  const preload = read("electron/preload.ts");
+  const dts = read("src/types/freebuddy.d.ts");
+  assert.match(ipc, /cli:previewHandoffBrief/);
+  assert.match(ipc, /cli:transferConversation/);
+  assert.match(ipc, /cli:getHandoffBriefByTarget/);
+  assert.match(ipc, /extractHandoffBrief/);
+  assert.match(ipc, /insertHandoffBrief/);
+  assert.match(preload, /previewHandoffBrief:/);
+  assert.match(preload, /transferConversation:/);
+  assert.match(preload, /getHandoffBriefByTarget:/);
+  assert.match(dts, /previewHandoffBrief\(/);
+  assert.match(dts, /transferConversation\(/);
+  assert.match(dts, /getHandoffBriefByTarget\(/);
+});

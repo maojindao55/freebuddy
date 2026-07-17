@@ -131,6 +131,20 @@ import {
 } from "./acpAuthTerminal.js";
 import { registerScheduledTaskIpc } from "./scheduledTasks.js";
 import { searchWorkspaceFiles } from "./workspaceFiles.js";
+import { getDb } from "./db.js";
+import { nanoid } from "nanoid";
+import { extractHandoffBrief } from "./handoffBriefExtractor.js";
+import {
+  insertHandoffBrief,
+  getHandoffBriefByTarget
+} from "./handoffBriefs.js";
+import type {
+  HandoffBrief,
+  PreviewHandoffBriefInput,
+  PreviewHandoffBriefResult,
+  TransferConversationInput,
+  TransferConversationResult
+} from "../shared/handoffTypes.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -590,6 +604,84 @@ export function registerCliIpc() {
     }
   );
   ipcMain.handle(
+    "cli:previewHandoffBrief",
+    (_e, input: PreviewHandoffBriefInput): PreviewHandoffBriefResult => {
+      const conversation = getConversation(input.sourceConversationId);
+      if (!conversation) {
+        return { brief: null, warning: "brief_extraction_failed" };
+      }
+      const messages = listMessages(input.sourceConversationId);
+      try {
+        return { brief: extractHandoffBrief({ conversation, messages }) };
+      } catch {
+        return { brief: null, warning: "brief_extraction_failed" };
+      }
+    }
+  );
+  ipcMain.handle(
+    "cli:getHandoffBriefByTarget",
+    (_e, targetConversationId: string) =>
+      getHandoffBriefByTarget(targetConversationId)
+  );
+  ipcMain.handle(
+    "cli:transferConversation",
+    (_e, input: TransferConversationInput): TransferConversationResult => {
+      const source = getConversation(input.sourceConversationId);
+      if (!source) {
+        throw new Error("Source conversation not found");
+      }
+      const messages = listMessages(input.sourceConversationId);
+
+      let brief: HandoffBrief | null = null;
+      try {
+        brief = extractHandoffBrief({ conversation: source, messages });
+      } catch {
+        brief = null;
+      }
+
+      let briefId: string | null = null;
+      const txResult = getDb().transaction(() => {
+        if (brief) {
+          briefId = nanoid();
+          insertHandoffBrief({
+            id: briefId,
+            sourceConversationId: source.id,
+            targetConversationId: input.targetConversationId,
+            sourceAgentId: source.agentId,
+            sourceAgentName: source.agentName,
+            sourceAdapter: source.adapter,
+            brief,
+            sourceMessageCount: messages.length,
+            sourceLastMessageId: messages[messages.length - 1]?.id
+          });
+        }
+        const conversation = createConversation({
+          id: input.targetConversationId,
+          title: source.title,
+          agentId: input.targetAgentId,
+          agentName: input.targetAgentName,
+          adapter: input.targetAdapter,
+          cwd: input.cwd ?? source.cwd,
+          skillIds: [],
+          titleSource: "default",
+          sourceConversationId: source.id,
+          sourceAgentId: source.agentId,
+          sourceAgentName: source.agentName,
+          sourceAdapter: source.adapter,
+          sourceBriefId: briefId ?? undefined
+        });
+        return { conversation };
+      })();
+
+      return {
+        conversation: txResult.conversation,
+        briefId,
+        seedPrompt: buildSeedPrompt(source, brief),
+        warning: brief ? undefined : "brief_extraction_failed"
+      };
+    }
+  );
+  ipcMain.handle(
     "cli:renameConversation",
     (
       _e,
@@ -709,4 +801,18 @@ export function registerCliIpc() {
 
   registerWorkflowIpc();
   registerScheduledTaskIpc();
+}
+
+function buildSeedPrompt(
+  source: { agentName: string; adapter: string },
+  brief: HandoffBrief | null
+): string {
+  if (!brief) {
+    return `Continuing a task transferred from ${source.agentName} (${source.adapter}). ` +
+      `No prior context is available. Ask the user what they'd like to focus on.`;
+  }
+  return `Continuing a task transferred from ${source.agentName} (${source.adapter}).\n` +
+    `Call the \`freebuddy-context.read_handoff_brief\` tool now to load the ` +
+    `handoff (original goal, recent messages, file changes), then ask me ` +
+    `what you'd like to focus on first.`;
 }

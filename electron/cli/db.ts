@@ -306,6 +306,25 @@ function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_task
       ON scheduled_task_runs(task_id, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS handoff_briefs (
+      id                       TEXT PRIMARY KEY,
+      source_conversation_id   TEXT NOT NULL,
+      target_conversation_id   TEXT NOT NULL,
+      source_agent_id          TEXT NOT NULL,
+      source_agent_name        TEXT NOT NULL,
+      source_adapter           TEXT NOT NULL,
+      brief_json               TEXT NOT NULL,
+      source_message_count     INTEGER NOT NULL,
+      source_last_message_id   TEXT,
+      created_at               TEXT NOT NULL,
+      FOREIGN KEY(source_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY(target_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_handoff_briefs_target
+      ON handoff_briefs(target_conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_handoff_briefs_source
+      ON handoff_briefs(source_conversation_id, created_at DESC);
   `);
 
   const skillCols = db
@@ -515,5 +534,24 @@ function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!currentScheduledTaskCols.some((c) => c.name === "config_option_overrides")) {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN config_option_overrides TEXT");
+  }
+
+  const handoffConvCols = db
+    .prepare("PRAGMA table_info(conversations)")
+    .all() as Array<{ name: string }>;
+  if (!handoffConvCols.some((c) => c.name === "source_conversation_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_conversation_id TEXT");
+  }
+  if (!handoffConvCols.some((c) => c.name === "source_agent_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_agent_id TEXT");
+  }
+  if (!handoffConvCols.some((c) => c.name === "source_agent_name")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_agent_name TEXT");
+  }
+  if (!handoffConvCols.some((c) => c.name === "source_adapter")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_adapter TEXT");
+  }
+  if (!handoffConvCols.some((c) => c.name === "source_brief_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_brief_id TEXT");
   }
 }

@@ -42,3 +42,10 @@ test("composer add menu follows the compact two-panel reference layout", () => {
   assert.match(stylesSource, /\.composer-add-primary\s*\{[^}]*width:\s*224px;/m);
   assert.match(stylesSource, /\.composer-add-skills-panel\s*\{[^}]*width:\s*292px;/m);
 });
+
+test("composer add menu escapes the rounded composer clipping boundary", () => {
+  assert.match(
+    stylesSource,
+    /\.chat-composer:has\(\.composer-add-trigger\.active\),\s*\.new-task-composer:has\(\.composer-add-trigger\.active\)\s*\{[^}]*overflow:\s*visible;/m
+  );
+});

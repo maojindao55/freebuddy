@@ -25,7 +25,7 @@ import { workflowClient } from "@/services/workflows/client";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 import {
   filterSessionConfigPickerOptions,
-  pruneConfigOptionOverrides
+  resolveConfigOptionOverrides
 } from "@/utils/sessionConfigOptions";
 
 import { useCliExecutorStore } from "./cliExecutorStore";
@@ -217,13 +217,17 @@ function workflowFollowupToolSessionScope(
 
 function buildConversationMembers(): CLIMember[] {
   const executorStore = useCliExecutorStore.getState();
-  const builtinMembers = builtinCliMembers.map((member) => ({
-    ...member,
-    cli: {
-      ...member.cli,
-      skillIds: executorStore.resolve(member.cli.adapter)?.skillIds
-    }
-  }));
+  const builtinMembers = builtinCliMembers.map((member) => {
+    const executor = executorStore.resolve(member.cli.adapter);
+    return {
+      ...member,
+      enabled: executor?.enabled ?? member.enabled,
+      cli: {
+        ...member.cli,
+        skillIds: executor?.skillIds
+      }
+    };
+  });
   const customMembers = executorStore
     .listResolved()
     .filter((executor) => executor.isClone && executor.baseAdapter)
@@ -775,17 +779,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const fromLive = latestConfigOptionsFromItems(liveItems ?? []);
     const configOptions = fromLive.length > 0 ? fromLive : fromMessages;
     const pickerOptions = filterSessionConfigPickerOptions(configOptions);
-    const prunedOverrides = pruneConfigOptionOverrides(
+    const overridesToSend = resolveConfigOptionOverrides(
       conv.configOptionOverrides,
       pickerOptions.length ? pickerOptions : configOptions
     );
-    const overridesToSend =
-      Object.keys(prunedOverrides).length > 0
-        ? prunedOverrides
-        : conv.configOptionOverrides &&
-            Object.keys(conv.configOptionOverrides).length > 0
-          ? conv.configOptionOverrides
-          : undefined;
 
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,

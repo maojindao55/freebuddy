@@ -182,8 +182,8 @@ test("new-task toolbar keeps agent compact and reuses the chat permission pill",
   const toolbarEnd = newTaskHome.indexOf("new-task-warn", toolbarStart);
   const toolbar = newTaskHome.slice(toolbarStart, toolbarEnd);
 
-  assert.match(toolbar, /className="new-task-agent-picker"/);
-  assert.match(toolbar, /aria-label=\{t\("chat\.agent"\)\}/);
+  assert.match(toolbar, /<AgentPicker/);
+  assert.match(toolbar, /groups=\{agentAvailability\}/);
   assert.doesNotMatch(toolbar, /<span>\{t\("chat\.agent"\)\}<\/span>/);
   assert.match(toolbar, /className="composer-permission"/);
   assert.match(toolbar, /className="composer-permission-label"/);

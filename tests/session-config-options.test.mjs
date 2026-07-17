@@ -67,26 +67,11 @@ test("filters picker categories and id===model fallback", async () => {
   );
 });
 
-test("injects none into thought_level when missing", async () => {
-  const { filterSessionConfigPickerOptions, ensureThoughtLevelNoneOption } =
-    await loadModule();
+test("does not invent unsupported thought levels", async () => {
+  const { filterSessionConfigPickerOptions } = await loadModule();
   const filtered = filterSessionConfigPickerOptions(sample);
   const think = filtered.find((o) => o.category === "thought_level");
-  assert.deepEqual(
-    think?.values?.map((v) => v.id),
-    ["none", "medium"]
-  );
-  const already = ensureThoughtLevelNoneOption([
-    {
-      id: "think",
-      category: "thought_level",
-      values: [{ id: "none", name: "Off" }, { id: "high" }]
-    }
-  ]);
-  assert.deepEqual(
-    already[0].values?.map((v) => v.id),
-    ["none", "high"]
-  );
+  assert.deepEqual(think?.values?.map((v) => v.id), ["medium"]);
 });
 
 test("display value prefers override", async () => {
@@ -105,29 +90,45 @@ test("prunes overrides to available option ids", async () => {
   assert.deepEqual(pruned, { model: "m2", effort: "high" });
 });
 
+test("drops stale synthetic none but keeps agent-advertised none", async () => {
+  const {
+    displayConfigOptionValue,
+    pruneConfigOptionOverrides,
+    resolveConfigOptionOverrides
+  } = await loadModule();
+  const unsupported = sample.find((o) => o.category === "thought_level");
+  assert.equal(
+    displayConfigOptionValue(unsupported, { think: "none" }),
+    "medium"
+  );
+  assert.deepEqual(pruneConfigOptionOverrides({ think: "none" }, sample), {});
+  assert.equal(
+    resolveConfigOptionOverrides({ think: "none" }, sample),
+    undefined
+  );
+
+  const advertised = {
+    ...unsupported,
+    values: [{ id: "none", name: "Off" }, ...(unsupported.values ?? [])]
+  };
+  assert.equal(displayConfigOptionValue(advertised, { think: "none" }), "none");
+  assert.deepEqual(
+    pruneConfigOptionOverrides({ think: "none" }, [advertised]),
+    { think: "none" }
+  );
+});
+
+test("preserves overrides until config options are known", async () => {
+  const { resolveConfigOptionOverrides } = await loadModule();
+  assert.deepEqual(resolveConfigOptionOverrides({ think: "none" }, []), {
+    think: "none"
+  });
+});
+
 test("clears overrides that match current agent values", async () => {
   const { reconcileConfigOptionOverrides } = await loadModule();
   assert.deepEqual(
     reconcileConfigOptionOverrides({ model: "m1", effort: "high" }, sample),
     { effort: "high" }
-  );
-});
-
-test("labels none as Off when no friendly name", async () => {
-  const { configOptionChoiceLabel, displayConfigOptionLabel } = await loadModule();
-  assert.equal(configOptionChoiceLabel({ id: "none" }, "关闭"), "关闭");
-  assert.equal(configOptionChoiceLabel({ id: "none", name: "None" }), "None");
-  assert.equal(
-    displayConfigOptionLabel(
-      {
-        id: "think",
-        category: "thought_level",
-        currentValue: "none",
-        values: [{ id: "none" }, { id: "high", name: "High" }]
-      },
-      {},
-      { none: "Off" }
-    ),
-    "Off"
   );
 });

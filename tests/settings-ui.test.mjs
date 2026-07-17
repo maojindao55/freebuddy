@@ -64,11 +64,9 @@ test("coding agent settings expose Codex BYOK without echoing saved keys", () =>
   assert.equal(zhLocale.settings.cli.byok.title, "API Key");
   assert.equal(zhLocale.settings.cli.byok.addModel, "添加模型");
   assert.equal(zhLocale.settings.cli.byok.modeCustom, "使用自己的 API Key");
-  assert.equal(zhLocale.chat.thoughtLevelNone, "关闭");
   assert.equal(enLocale.settings.cli.byok.title, "API Key");
   assert.equal(enLocale.settings.cli.byok.addModel, "Add model");
   assert.equal(enLocale.settings.cli.byok.modeCustom, "Use my own API key");
-  assert.equal(enLocale.chat.thoughtLevelNone, "Off");
 });
 
 test("coding agent settings open editor from the list view", () => {

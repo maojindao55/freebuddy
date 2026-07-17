@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent
+} from "react";
 import { nanoid } from "nanoid";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -52,6 +61,7 @@ import {
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
 import { ComposerAddMenu } from "./ComposerAddMenu";
+import { AgentPicker } from "./AgentPicker";
 import { useSkillStore } from "@/store/skillStore";
 import { useAttachmentImport } from "@/hooks/useAttachmentImport";
 import { useWorkspaceFileMentions } from "@/hooks/useWorkspaceFileMentions";
@@ -62,6 +72,12 @@ import {
   unprotectManagedAttachments
 } from "@/utils/managedAttachmentProtection";
 import { WorkspaceFileMentionMenu } from "./WorkspaceFileMentionMenu";
+import {
+  agentEntriesNeedingRefresh,
+  buildAgentAvailabilityGroups,
+  type AgentAvailabilityEntry,
+  type AgentAvailabilityGroups
+} from "@/utils/agentAvailability";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -277,7 +293,11 @@ function WorkflowApprovalCard({
   );
 }
 
-export function ChatView() {
+export function ChatView({
+  onOpenAgentSettings
+}: {
+  onOpenAgentSettings?: () => void;
+}) {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
@@ -331,6 +351,7 @@ export function ChatView() {
   const refreshRuntimes = useCliExecutorStore((s) => s.refreshRuntimes);
   const executorsLoaded = useCliExecutorStore((s) => s.loaded);
   const executorOverrides = useCliExecutorStore((s) => s.overrides);
+  const executorRuntimes = useCliExecutorStore((s) => s.runtimes);
 
   const [draft, setDraft] = useState("");
   const [newTaskDraft, setNewTaskDraft] = useState("");
@@ -341,7 +362,12 @@ export function ChatView() {
   const [newTaskSendLock, setNewTaskSendLock] = useState(false);
   const sendInFlightRef = useRef(false);
   const newTaskSendInFlightRef = useRef(false);
-  const [selectedMemberId, setSelectedMemberId] = useState(members[0]?.id ?? "");
+  const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [checkingAgentIds, setCheckingAgentIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const checkingAgentIdsRef = useRef<Set<string>>(new Set());
+  const memberSelectionTouchedRef = useRef(false);
   const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskConfigOptions, setNewTaskConfigOptions] = useState<
@@ -394,6 +420,14 @@ export function ChatView() {
   const membersByName = useMemo(
     () => new Map(members.map((entry) => [entry.name, entry])),
     [members]
+  );
+  const agentAvailability = useMemo(
+    () => buildAgentAvailabilityGroups(members, executorRuntimes),
+    [executorRuntimes, members]
+  );
+  const availableAgentIds = useMemo(
+    () => new Set(agentAvailability.available.map((entry) => entry.member.id)),
+    [agentAvailability.available]
   );
   const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, member?.cli.adapter ?? conv?.adapter);
   const running =
@@ -557,9 +591,83 @@ export function ChatView() {
     isNearBottomRef.current = offset < 120;
   };
 
+  const checkAgentEntries = useCallback(
+    async (entries: AgentAvailabilityEntry[]) => {
+      if (!cliClient.isAvailable()) return;
+      const targets = entries.filter(
+        (entry) => !checkingAgentIdsRef.current.has(entry.member.id)
+      );
+      if (targets.length === 0) return;
+
+      const nextChecking = new Set(checkingAgentIdsRef.current);
+      targets.forEach((entry) => nextChecking.add(entry.member.id));
+      checkingAgentIdsRef.current = nextChecking;
+      setCheckingAgentIds(new Set(nextChecking));
+
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < targets.length) {
+          const entry = targets[cursor];
+          cursor += 1;
+          const member = entry.member;
+          const resolved = useCliExecutorStore
+            .getState()
+            .resolve(member.cli.adapter);
+          try {
+            await cliClient.check(
+              member.cli.adapter,
+              member.cli.binary || resolved?.binary,
+              { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
+              entry.runtimeKey
+            );
+          } catch {
+            // Background availability checks are reflected by runtime state.
+          }
+        }
+      };
+
+      try {
+        await Promise.all(
+          Array.from({ length: Math.min(2, targets.length) }, () => worker())
+        );
+        await refreshRuntimes();
+      } finally {
+        const remaining = new Set(checkingAgentIdsRef.current);
+        targets.forEach((entry) => remaining.delete(entry.member.id));
+        checkingAgentIdsRef.current = remaining;
+        setCheckingAgentIds(new Set(remaining));
+      }
+    },
+    [refreshRuntimes]
+  );
+
   useEffect(() => {
-    if (!selectedMemberId && members[0]) setSelectedMemberId(members[0].id);
-  }, [members, selectedMemberId]);
+    if (activeId || taskMode !== "normal" || !executorsLoaded) return;
+    void checkAgentEntries(agentEntriesNeedingRefresh(agentAvailability));
+  }, [
+    activeId,
+    agentAvailability,
+    checkAgentEntries,
+    executorsLoaded,
+    taskMode
+  ]);
+
+  useEffect(() => {
+    if (activeId || taskMode !== "normal" || memberSelectionTouchedRef.current) {
+      return;
+    }
+    const preferred = agentAvailability.available[0]?.member.id ?? "";
+    if (preferred !== selectedMemberId) setSelectedMemberId(preferred);
+  }, [
+    activeId,
+    agentAvailability.available,
+    selectedMemberId,
+    taskMode
+  ]);
+
+  useEffect(() => {
+    if (activeId) memberSelectionTouchedRef.current = false;
+  }, [activeId]);
 
   useEffect(() => {
     if (!skillsLoaded) void loadSkills();
@@ -578,9 +686,16 @@ export function ChatView() {
     setNewTaskConfigLoading(false);
     if (activeId || taskMode !== "normal" || !executorsLoaded) return;
 
-    const selectedMember =
-      members.find((entry) => entry.id === selectedMemberId) ?? members[0];
-    if (!selectedMember || !cliClient.isAvailable()) return;
+    const selectedMember = members.find(
+      (entry) => entry.id === selectedMemberId
+    );
+    if (
+      !selectedMember ||
+      !availableAgentIds.has(selectedMember.id) ||
+      !cliClient.isAvailable()
+    ) {
+      return;
+    }
 
     const timer = window.setTimeout(() => {
       const resolved = useCliExecutorStore
@@ -632,6 +747,7 @@ export function ChatView() {
     taskMode,
     executorsLoaded,
     executorOverrides,
+    availableAgentIds,
     members,
     selectedMemberId
   ]);
@@ -963,8 +1079,14 @@ export function ChatView() {
       const team = teams.find((tt) => tt.id === selectedTeamId);
       if (!team || !teamConversationMember(team, members)) return;
     } else {
-      const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0];
-      if ((!prompt && attachmentsToSend.length === 0) || !selectedMember) return;
+      const selectedMember = members.find((m) => m.id === selectedMemberId);
+      if (
+        (!prompt && attachmentsToSend.length === 0) ||
+        !selectedMember ||
+        !availableAgentIds.has(selectedMember.id)
+      ) {
+        return;
+      }
     }
 
     newTaskSendInFlightRef.current = true;
@@ -1038,7 +1160,8 @@ export function ChatView() {
         return;
       }
 
-      const selectedMember = members.find((m) => m.id === selectedMemberId) ?? members[0]!;
+      const selectedMember = members.find((m) => m.id === selectedMemberId);
+      if (!selectedMember || !availableAgentIds.has(selectedMember.id)) return;
       if (!(await preflightMember(selectedMember))) return;
 
       const newConv = await createConversation({
@@ -1282,7 +1405,8 @@ export function ChatView() {
     return (
       <NewTaskHome
         draft={newTaskDraft}
-        members={members}
+        agentAvailability={agentAvailability}
+        checkingAgentIds={checkingAgentIds}
         selectedMemberId={selectedMemberId}
         cwd={newTaskCwd}
         permissionMode={permissionMode}
@@ -1297,7 +1421,14 @@ export function ChatView() {
         selectedSkillIds={newTaskSkillIds}
         preflightMsg={preflightMsg}
         onDraft={setNewTaskDraft}
-        onMember={setSelectedMemberId}
+        onMember={(id) => {
+          memberSelectionTouchedRef.current = true;
+          setSelectedMemberId(id);
+        }}
+        onRefreshAgents={() =>
+          void checkAgentEntries(agentEntriesNeedingRefresh(agentAvailability))
+        }
+        onManageAgents={() => onOpenAgentSettings?.()}
         onConfigOptionOverrides={setNewTaskConfigOptionOverrides}
         onSkills={setNewTaskSkillIds}
         onCwd={setNewTaskCwd}
@@ -1579,7 +1710,8 @@ export function ChatView() {
 
 function NewTaskHome({
   draft,
-  members,
+  agentAvailability,
+  checkingAgentIds,
   selectedMemberId,
   cwd,
   permissionMode,
@@ -1595,6 +1727,8 @@ function NewTaskHome({
   preflightMsg,
   onDraft,
   onMember,
+  onRefreshAgents,
+  onManageAgents,
   onConfigOptionOverrides,
   onSkills,
   onCwd,
@@ -1614,7 +1748,8 @@ function NewTaskHome({
   onSubmit
 }: {
   draft: string;
-  members: ReturnType<typeof useConversationStore.getState>["members"];
+  agentAvailability: AgentAvailabilityGroups;
+  checkingAgentIds: Set<string>;
   selectedMemberId: string;
   cwd: string;
   permissionMode: "auto" | "ask";
@@ -1630,6 +1765,8 @@ function NewTaskHome({
   preflightMsg: string | null;
   onDraft: (value: string) => void;
   onMember: (value: string) => void;
+  onRefreshAgents: () => void;
+  onManageAgents: () => void;
   onConfigOptionOverrides: (value: Record<string, string>) => void;
   onSkills: (ids: string[]) => void;
   onCwd: (value: string) => void;
@@ -1777,19 +1914,15 @@ function NewTaskHome({
               )}
             </label>
           ) : (
-            <label className="new-task-agent-picker" title={t("chat.agent")}>
-              <select
-                aria-label={t("chat.agent")}
-                value={selectedMemberId}
-                onChange={(event) => onMember(event.target.value)}
-              >
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <AgentPicker
+              groups={agentAvailability}
+              selectedId={selectedMemberId}
+              checkingIds={checkingAgentIds}
+              disabled={sendLocked}
+              onChange={onMember}
+              onOpen={onRefreshAgents}
+              onManage={onManageAgents}
+            />
           )}
           <label
             className="composer-permission"
@@ -1861,7 +1994,11 @@ function NewTaskHome({
                 sendLocked ||
                 attachmentBusy ||
                 !(draft.trim() || pendingAttachments.length > 0) ||
-                (teamMode ? !selectedTeamId : members.length === 0)
+                (teamMode
+                  ? !selectedTeamId
+                  : !agentAvailability.available.some(
+                      (entry) => entry.member.id === selectedMemberId
+                    ))
               }
               title={
                 teamMode ? t("workflow.teamExecution") : t("chat.startTask")

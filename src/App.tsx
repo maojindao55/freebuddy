@@ -428,7 +428,7 @@ function App() {
               </div>
             </section>
           ) : (
-            <ChatView />
+            <ChatView onOpenAgentSettings={() => openSettings("cli")} />
           )}
         </section>
       </main>

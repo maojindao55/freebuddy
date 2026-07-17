@@ -27,3 +27,12 @@ test("conversations.ts wires source_* through createConversation and rowToConver
   assert.match(src, /sourceBriefId/);
   assert.match(src, /sourceConversationId\?: string;/);
 });
+
+test("contextToolService exports register/unregister and writes manifest under dataDir", () => {
+  const src = read("electron/contextToolService.ts");
+  assert.match(src, /export function registerContextToolSession/);
+  assert.match(src, /export function unregisterContextToolSession/);
+  assert.match(src, /name: "freebuddy-context"/);
+  assert.match(src, /FREEBUDDY_HANDOFF_MANIFEST/);
+  assert.match(src, /context-sessions/);
+});

@@ -81,7 +81,6 @@ export interface CliRunArgs {
   announceSkills?: boolean;
   handoffBrief?: HandoffBrief;
   handoffBriefId?: string;
-  handoffSource?: HandoffBriefSource;
 }
 
 export interface SessionConfigOption {
@@ -455,11 +454,11 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
-  originConversationId?: string;
-  originAgentId?: string;
-  originAgentName?: string;
-  originAdapter?: string;
-  originBriefId?: string;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 }
 
 export type MessageRole = "user" | "assistant" | "system";

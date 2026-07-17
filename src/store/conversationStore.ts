@@ -72,6 +72,7 @@ export interface ConversationState {
   live: Record<string, LiveAssistant>;
   unreadConversations: UnreadConversationMap;
   pendingFreshContext: Record<string, boolean>;
+  pendingTransferSeed: Record<string, string>;
 
   load(): Promise<void>;
   refreshList(): Promise<void>;
@@ -89,6 +90,15 @@ export interface ConversationState {
     configOptionOverrides?: Record<string, string>;
     skillIds?: string[];
   }): Promise<Conversation>;
+  transferConversation(input: {
+    sourceConversationId: string;
+    targetMember: CLIMember;
+    cwd?: string;
+  }): Promise<{
+    conversation: Conversation;
+    seedPrompt: string;
+    warning?: "brief_extraction_failed";
+  }>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
   archiveConversation(id: string, archived: boolean): Promise<void>;
@@ -124,6 +134,8 @@ export interface RunCtx {
 }
 
 export const runCtxMap = new Map<string, RunCtx>();
+
+let transferInFlight = false;
 
 let workflowMessageUnsubscribe: (() => void) | null = null;
 let workflowMessageConversationId: string | null = null;
@@ -393,6 +405,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   live: {},
   unreadConversations: loadUnreadConversations(),
   pendingFreshContext: {},
+  pendingTransferSeed: {},
 
   async load() {
     if (!cliClient.isAvailable()) return;
@@ -589,6 +602,50 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       });
     }
     return conv;
+  },
+
+  async transferConversation({ sourceConversationId, targetMember, cwd }) {
+    if (transferInFlight) {
+      throw new Error("Another transfer is in progress");
+    }
+    transferInFlight = true;
+    try {
+      const targetConversationId = nanoid();
+      const result = await cliClient.transferConversation({
+        sourceConversationId,
+        targetConversationId,
+        targetAgentId: targetMember.id,
+        targetAgentName: targetMember.name,
+        targetAdapter: targetMember.cli.adapter,
+        cwd
+      });
+      set((s) => ({
+        conversations: [
+          result.conversation,
+          ...s.conversations.filter((c) => c.id !== result.conversation.id)
+        ],
+        activeId: result.conversation.id,
+        messages: { ...s.messages, [result.conversation.id]: [] },
+        pendingFreshContext: {
+          ...s.pendingFreshContext,
+          [result.conversation.id]: true
+        },
+        pendingTransferSeed: {
+          ...s.pendingTransferSeed,
+          [result.conversation.id]: result.seedPrompt
+        }
+      }));
+      ensureWorkflowMessageSubscription(result.conversation.id, async (cid, messageIds) => {
+        await get().loadMessages(cid, messageIds);
+      });
+      return {
+        conversation: result.conversation,
+        seedPrompt: result.seedPrompt,
+        warning: result.warning
+      };
+    } finally {
+      transferInFlight = false;
+    }
   },
 
   async renameConversation(id, title) {

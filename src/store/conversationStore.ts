@@ -217,13 +217,17 @@ function workflowFollowupToolSessionScope(
 
 function buildConversationMembers(): CLIMember[] {
   const executorStore = useCliExecutorStore.getState();
-  const builtinMembers = builtinCliMembers.map((member) => ({
-    ...member,
-    cli: {
-      ...member.cli,
-      skillIds: executorStore.resolve(member.cli.adapter)?.skillIds
-    }
-  }));
+  const builtinMembers = builtinCliMembers.map((member) => {
+    const executor = executorStore.resolve(member.cli.adapter);
+    return {
+      ...member,
+      enabled: executor?.enabled ?? member.enabled,
+      cli: {
+        ...member.cli,
+        skillIds: executor?.skillIds
+      }
+    };
+  });
   const customMembers = executorStore
     .listResolved()
     .filter((executor) => executor.isClone && executor.baseAdapter)

@@ -239,7 +239,8 @@ export async function installSkillFromMarket(
       }
       assertClawhubContentHash(candidate, githubHandoff.contentHash);
       remoteContentHash = githubHandoff.contentHash;
-      contentBound = true;
+      // GitHub handoffs bind only the ClawHub text-file fingerprint, not every
+      // binary/dotfile, so they stay untrusted regardless of scan verdict.
     } else {
       extractSkillArchive(zipPath, extractionRoot);
       if (!fs.existsSync(path.join(candidate, "SKILL.md"))) {
@@ -257,6 +258,9 @@ export async function installSkillFromMarket(
             "ClawHub version is missing a file integrity manifest; refuse to install an unbound package"
           );
         }
+        // Drop the packaging-generated _meta.json so it can neither bypass the
+        // manifest check nor ship as an unverified file inside the installed skill.
+        fs.rmSync(path.join(candidate, "_meta.json"), { force: true });
         remoteContentHash = assertClawhubFileManifest(candidate, fileManifest);
         contentBound = true;
       }
@@ -269,6 +273,8 @@ export async function installSkillFromMarket(
         request.version && request.version !== "latest"
           ? request.version
           : parsed.version;
+      // Persist the concrete version we verified against, never the "latest" alias.
+      resolvedVersion = version || resolvedVersion;
       const verified = await verifySkillhubPackage({
         slug: request.slug,
         version,

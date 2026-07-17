@@ -56,6 +56,12 @@ test("skill market modules and IPC surface are wired", () => {
   assert.match(market, /assertClawhubContentHash/);
   assert.match(market, /assertClawhubFileManifest/);
   assert.match(market, /contentBound/);
+  // GitHub handoffs only bind the text fingerprint, so they never auto-trust.
+  assert.match(market, /stay untrusted regardless of scan verdict/);
+  // List/search cards must not claim a verified clean scan they never fetched.
+  assert.match(clawhub, /scanStatus: "unknown"/);
+  // Generated _meta.json is stripped before manifest verification.
+  assert.match(market, /Drop the packaging-generated _meta.json/);
   assert.match(market, /resolveSkillMarketHomepage/);
   assert.match(market, /allowLocalOverwrite/);
   assert.match(market, /parseMarketInstallRequest/);
@@ -755,7 +761,6 @@ test("ClawHub file manifest binds hosted ZIP contents", async () => {
   const helper = "print('ok')\n";
   fs.writeFileSync(path.join(root, "SKILL.md"), skillMd);
   fs.writeFileSync(path.join(root, "helper.py"), helper);
-  fs.writeFileSync(path.join(root, "_meta.json"), JSON.stringify({ slug: "demo" }));
 
   const files = [
     {
@@ -769,6 +774,11 @@ test("ClawHub file manifest binds hosted ZIP contents", async () => {
   ];
   const digest = assertClawhubFileManifest(root, files);
   assert.match(digest, /^[0-9a-f]{64}$/);
+
+  // _meta.json is no longer whitelisted: an unmanifested file is always rejected.
+  fs.writeFileSync(path.join(root, "_meta.json"), JSON.stringify({ slug: "demo" }));
+  assert.throws(() => assertClawhubFileManifest(root, files), /unexpected file/);
+  fs.rmSync(path.join(root, "_meta.json"), { force: true });
 
   fs.writeFileSync(path.join(root, "helper.py"), "print('tampered')\n");
   assert.throws(() => assertClawhubFileManifest(root, files), /hash mismatch/);

@@ -351,7 +351,7 @@ function mapListItem(item: ClawhubListItem): MarketSkill {
     downloads: number(item.stats?.downloads) || number(item.stats?.installs),
     stars: number(item.stats?.stars),
     homepageUrl: clawhubHomepageUrl(slug, ownerHandle),
-    scanStatus: "clean",
+    scanStatus: "unknown",
     ownerHandle
   };
 }
@@ -370,7 +370,7 @@ function mapSearchHit(item: ClawhubSearchHit): MarketSkill {
     downloads: number(item.downloads),
     stars: 0,
     homepageUrl: clawhubHomepageUrl(slug, ownerHandle),
-    scanStatus: "clean",
+    scanStatus: "unknown",
     ownerHandle
   };
 }
@@ -820,9 +820,6 @@ export function assertClawhubFileManifest(
 
   const actual = new Map<string, string>();
   for (const file of listSkillRootFiles(skillRoot)) {
-    if (file.path === CLAWHUB_GENERATED_ARCHIVE_METADATA_FILE) {
-      continue;
-    }
     actual.set(file.path, crypto.createHash("sha256").update(file.bytes).digest("hex"));
   }
 

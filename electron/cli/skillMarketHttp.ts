@@ -78,6 +78,25 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+/**
+ * Transient low-level fetch failures worth a single retry. Match on the error
+ * shape Node/undici produces (TypeError "fetch failed" + cause code) rather
+ * than substring-matching "network", which would also match server error bodies
+ * that merely mention the word.
+ */
+function isTransientNetworkError(error: Error): boolean {
+  if (error.name === "TypeError") return true;
+  if (/^fetch failed/i.test(error.message)) return true;
+  const code = (error as { cause?: { code?: string } })?.cause?.code;
+  return (
+    code === "ENOTFOUND" ||
+    code === "ECONNRESET" ||
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    code === "EAI_AGAIN"
+  );
+}
+
 function cancelResponseBody(response: Response): void {
   void response.body?.cancel?.().catch(() => undefined);
 }
@@ -239,9 +258,7 @@ export async function marketFetch(
         if (
           attempt < MAX_RETRIES &&
           error instanceof Error &&
-          (isAbortError(error) ||
-            error.name === "AbortError" ||
-            /fetch failed|network/i.test(error.message)) &&
+          (isAbortError(error) || isTransientNetworkError(error)) &&
           !activeSignal.aborted
         ) {
           await sleep(400, activeSignal);

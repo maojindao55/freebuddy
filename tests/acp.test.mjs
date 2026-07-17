@@ -21,7 +21,8 @@ import {
   parseAcpLine,
   selectAcpAuthMethod,
   shouldEmitAcpUpdate,
-  shouldSkipUserMessageChunk
+  shouldSkipUserMessageChunk,
+  shouldDropReplayPhaseAgentChunk
 } from "../dist-electron/cli/acp.js";
 
 const acpRuntimeSource = fs.readFileSync(
@@ -1103,6 +1104,55 @@ test("shouldEmitAcpUpdate suppresses replayed chunks by content signature", () =
       { promptStarted: true, replayContentSignatures }
     ),
     true
+  );
+});
+
+test("shouldDropReplayPhaseAgentChunk drops messageId chunks before any live chunk", () => {
+  const state = { suppressReplayByPhase: true, turnHadLiveAgentChunk: false };
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_thought_chunk", messageId: "replay-mid-1", content: { type: "text", text: "a" } },
+      state
+    ),
+    true
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", messageId: "replay-mid-2", content: { type: "text", text: "b" } },
+      state
+    ),
+    true
+  );
+});
+
+test("shouldDropReplayPhaseAgentChunk keeps live (messageId-less) chunks and post-live chunks", () => {
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "live" } },
+      { suppressReplayByPhase: true, turnHadLiveAgentChunk: false }
+    ),
+    false
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", messageId: "mid-late", content: { type: "text", text: "x" } },
+      { suppressReplayByPhase: true, turnHadLiveAgentChunk: true }
+    ),
+    false
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "tool_call", toolCallId: "call-1" },
+      { suppressReplayByPhase: true, turnHadLiveAgentChunk: false }
+    ),
+    false
+  );
+  assert.equal(
+    shouldDropReplayPhaseAgentChunk(
+      { sessionUpdate: "agent_message_chunk", messageId: "mid-1", content: { type: "text", text: "x" } },
+      { suppressReplayByPhase: false, turnHadLiveAgentChunk: false }
+    ),
+    false
   );
 });
 

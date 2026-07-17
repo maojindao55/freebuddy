@@ -1206,6 +1206,18 @@ export function shouldSkipUserMessageChunk(
   return false;
 }
 
+export function shouldDropReplayPhaseAgentChunk(
+  update: any,
+  state: { suppressReplayByPhase: boolean; turnHadLiveAgentChunk: boolean }
+): boolean {
+  if (!state.suppressReplayByPhase || state.turnHadLiveAgentChunk) return false;
+  const type = String(update?.sessionUpdate ?? "");
+  if (type !== "agent_message_chunk" && type !== "agent_thought_chunk") {
+    return false;
+  }
+  return typeof update?.messageId === "string" && update.messageId.length > 0;
+}
+
 export function shouldEmitAcpUpdate(
   update: any,
   state: {

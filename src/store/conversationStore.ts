@@ -31,6 +31,7 @@ import {
 import { useCliExecutorStore } from "./cliExecutorStore";
 import {
   collectStreamMessageIds,
+  collectStreamAgentMessageIds,
   collectStreamContentSignatures,
   defaultTitleFor,
   feedArticleTitleFromMessages,
@@ -855,6 +856,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         get().messages[conversationId] ?? []
       ),
       knownStreamContentSignatures: collectStreamContentSignatures(
+        get().messages[conversationId] ?? []
+      ),
+      knownAgentStreamMessageIds: collectStreamAgentMessageIds(
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,

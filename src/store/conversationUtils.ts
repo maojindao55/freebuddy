@@ -74,6 +74,39 @@ export function collectStreamMessageIds(
   return [...ids];
 }
 
+/**
+ * Agent-chunk messageIds only (text/thinking), excluding tool-call ids.
+ *
+ * Used to detect adapters (e.g. Qoder) that stream live agent chunks WITHOUT a
+ * messageId and only attach messageIds when replaying history on resume. When a
+ * resumed session has zero persisted agent messageIds, FreeBuddy can safely
+ * treat messageId-carrying chunks that arrive before any live chunk as replay.
+ */
+export function collectStreamAgentMessageIds(
+  messages: ConversationMessage[]
+): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    try {
+      const parsed = JSON.parse(message.content);
+      if (!Array.isArray(parsed)) continue;
+      for (const item of parsed as CliStreamItem[]) {
+        if (
+          (item.kind === "text" || item.kind === "thinking") &&
+          typeof item.messageId === "string" &&
+          item.messageId.length > 0
+        ) {
+          ids.add(item.messageId);
+        }
+      }
+    } catch {
+      /* ignore malformed snapshots */
+    }
+  }
+  return [...ids];
+}
+
 export function normalizeReplaySignature(text: string): string {
   return text.trim();
 }

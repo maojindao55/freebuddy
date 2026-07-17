@@ -715,3 +715,49 @@ test("collectStreamMessageIds gathers ids from stored assistant snapshots", asyn
     ["msg-a-1", "msg-t-1", "tool-1"]
   );
 });
+
+test("collectStreamAgentMessageIds gathers only text/thinking messageIds (excludes tool ids)", async () => {
+  const { collectStreamAgentMessageIds } = await loadConversationUtils();
+
+  assert.deepEqual(
+    collectStreamAgentMessageIds([
+      {
+        id: "assistant-1",
+        conversationId: "conv-1",
+        role: "assistant",
+        status: "done",
+        content: JSON.stringify([
+          { kind: "text", role: "assistant", content: "Hi", messageId: "msg-a-1" },
+          { kind: "thinking", content: "hmm", messageId: "msg-t-1" },
+          { kind: "tool-call", id: "tool-1", tool: "Read" }
+        ]),
+        createdAt: "2026-06-23T10:00:00.000Z",
+        updatedAt: "2026-06-23T10:00:00.000Z"
+      }
+    ]),
+    ["msg-a-1", "msg-t-1"]
+  );
+});
+
+test("collectStreamAgentMessageIds returns empty for Qoder-style turns without messageIds", async () => {
+  const { collectStreamAgentMessageIds } = await loadConversationUtils();
+
+  assert.deepEqual(
+    collectStreamAgentMessageIds([
+      {
+        id: "assistant-1",
+        conversationId: "conv-1",
+        role: "assistant",
+        status: "done",
+        content: JSON.stringify([
+          { kind: "thinking", content: "The user just said \"\"", append: true },
+          { kind: "tool-call", id: "call_72c22954", tool: "tool", status: "completed" },
+          { kind: "text", role: "assistant", content: "现在是…", append: true }
+        ]),
+        createdAt: "2026-06-23T10:00:00.000Z",
+        updatedAt: "2026-06-23T10:00:00.000Z"
+      }
+    ]),
+    []
+  );
+});

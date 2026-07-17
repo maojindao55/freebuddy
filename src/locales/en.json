@@ -145,6 +145,26 @@
       "earlier": "Earlier"
     }
   },
+  "handoff": {
+    "transferAction": "Transfer to another agent",
+    "dialogTitle": "Transfer conversation",
+    "dialogSubtitle": "Hand off \"{{title}}\" from {{agentName}} to another agent",
+    "targetAgent": "Target agent",
+    "selectAgent": "Select an agent…",
+    "current": "current",
+    "workspace": "Workspace",
+    "showPreview": "Show handoff brief preview",
+    "hidePreview": "Hide preview",
+    "previewUnavailable": "Brief preview unavailable. You can still transfer.",
+    "previewEmpty": "No prior context available from the source conversation.",
+    "cancel": "Cancel",
+    "transfer": "Transfer",
+    "transferring": "Transferring…",
+    "cwdMismatchConfirm": "Workspace differs from the source. The target agent won't see the same files. Continue?",
+    "inheritedFrom": "Inherited from {{agentName}}",
+    "transferFailed": "Transfer failed",
+    "briefExtractionFailed": "Transfer completed but no context was carried over. Tell the new agent manually."
+  },
   "chat": {
     "inputPlaceholder": "Type freely",
     "inputPlaceholderWithSlash": "Type freely, or / for commands",

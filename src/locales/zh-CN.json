@@ -145,6 +145,26 @@
       "earlier": "更早"
     }
   },
+  "handoff": {
+    "transferAction": "转接到其他 agent",
+    "dialogTitle": "转接会话",
+    "dialogSubtitle": "将「{{title}}」从 {{agentName}} 转接给其他 agent",
+    "targetAgent": "目标 agent",
+    "selectAgent": "选择 agent…",
+    "current": "当前",
+    "workspace": "工作区",
+    "showPreview": "展开交班 brief 预览",
+    "hidePreview": "收起预览",
+    "previewUnavailable": "Brief 预览不可用。仍可继续转接。",
+    "previewEmpty": "源会话无前置上下文。",
+    "cancel": "取消",
+    "transfer": "转接",
+    "transferring": "转接中…",
+    "cwdMismatchConfirm": "工作区与源会话不一致，目标 agent 看不到相同的文件。继续？",
+    "inheritedFrom": "继承自 {{agentName}}",
+    "transferFailed": "转接失败",
+    "briefExtractionFailed": "转接完成但未携带上下文，请手动告知新 agent。"
+  },
   "chat": {
     "inputPlaceholder": "随心输入",
     "inputPlaceholderWithSlash": "随心输入，或输入 / 使用命令",

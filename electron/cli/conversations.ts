@@ -34,6 +34,11 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 }
 
 export interface ConversationMessage {
@@ -115,7 +120,12 @@ function rowToConversation(r: any): Conversation {
     archived: r.archived === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-    lastMessageAt: r.last_message_at ?? undefined
+    lastMessageAt: r.last_message_at ?? undefined,
+    sourceConversationId: r.source_conversation_id ?? undefined,
+    sourceAgentId: r.source_agent_id ?? undefined,
+    sourceAgentName: r.source_agent_name ?? undefined,
+    sourceAdapter: r.source_adapter ?? undefined,
+    sourceBriefId: r.source_brief_id ?? undefined
   };
 }
 
@@ -179,6 +189,11 @@ export interface CreateConversationInput {
   configOptionOverrides?: Record<string, string>;
   skillIds?: string[];
   titleSource?: ConversationTitleSource;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 }
 
 export function createConversation(input: CreateConversationInput): Conversation {
@@ -187,8 +202,11 @@ export function createConversation(input: CreateConversationInput): Conversation
     .prepare(
       `INSERT INTO conversations
          (id, title, agent_id, agent_name, adapter, cwd, approval_mode,
-          config_option_overrides, skill_snapshot, title_source, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+          config_option_overrides, skill_snapshot, title_source, archived,
+          source_conversation_id, source_agent_id, source_agent_name,
+          source_adapter, source_brief_id,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.id,
@@ -204,6 +222,11 @@ export function createConversation(input: CreateConversationInput): Conversation
         : null,
       JSON.stringify(resolveSkillSnapshots(input.skillIds ?? [])),
       input.titleSource ?? "default",
+      input.sourceConversationId ?? null,
+      input.sourceAgentId ?? null,
+      input.sourceAgentName ?? null,
+      input.sourceAdapter ?? null,
+      input.sourceBriefId ?? null,
       now,
       now
     );

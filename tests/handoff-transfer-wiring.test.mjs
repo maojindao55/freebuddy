@@ -19,3 +19,11 @@ test("db.ts declares handoff_briefs table and source_* columns", () => {
   assert.match(db, /ALTER TABLE conversations ADD COLUMN source_adapter/);
   assert.match(db, /ALTER TABLE conversations ADD COLUMN source_brief_id/);
 });
+
+test("conversations.ts wires source_* through createConversation and rowToConversation", () => {
+  const src = read("electron/cli/conversations.ts");
+  assert.match(src, /source_conversation_id/);
+  assert.match(src, /sourceConversationId:/);
+  assert.match(src, /sourceBriefId/);
+  assert.match(src, /sourceConversationId\?: string;/);
+});

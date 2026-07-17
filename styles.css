@@ -2638,6 +2638,11 @@ button {
   flex: 0 0 auto;
 }
 
+.chat-composer:has(.composer-add-trigger.active),
+.new-task-composer:has(.composer-add-trigger.active) {
+  overflow: visible;
+}
+
 .composer-add-trigger {
   display: inline-grid;
   width: 30px;

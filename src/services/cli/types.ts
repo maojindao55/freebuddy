@@ -79,6 +79,7 @@ export interface CliRunArgs {
   knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
+  handoffBriefId?: string;
 }
 
 export interface SessionConfigOption {
@@ -452,6 +453,11 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
+  sourceConversationId?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAdapter?: string;
+  sourceBriefId?: string;
 }
 
 export type MessageRole = "user" | "assistant" | "system";
@@ -522,4 +528,64 @@ export interface UpdateMessageInput {
   status?: MessageStatus;
   content?: string;
   taskId?: string;
+}
+
+// ---- Handoff Brief -------------------------------------------------------
+
+export interface HandoffBriefFileChange {
+  path: string;
+  action: "edit" | "create" | "delete" | "read" | string;
+  toolName?: string;
+}
+
+export interface HandoffBriefMessageRef {
+  messageId: string;
+  role: "user" | "assistant";
+  createdAt: string;
+  excerpt: string;
+}
+
+export interface HandoffBriefSource {
+  conversationId: string;
+  agentId: string;
+  agentName: string;
+  adapter: string;
+  title: string;
+  cwd?: string;
+  messageCount: number;
+}
+
+export interface HandoffBrief {
+  version: 1;
+  generatedAt: string;
+  source: HandoffBriefSource;
+  originalGoal: string;
+  recentUserMessages: string[];
+  lastAssistantSummary: string;
+  fileChanges: HandoffBriefFileChange[];
+  transcriptExcerpts: HandoffBriefMessageRef[];
+}
+
+export interface PreviewHandoffBriefInput {
+  sourceConversationId: string;
+}
+
+export interface PreviewHandoffBriefResult {
+  brief: HandoffBrief | null;
+  warning?: "brief_extraction_failed";
+}
+
+export interface TransferConversationInput {
+  sourceConversationId: string;
+  targetConversationId: string;
+  targetAgentId: string;
+  targetAgentName: string;
+  targetAdapter: string;
+}
+
+export interface TransferConversationResult {
+  conversation: Conversation;
+  briefId: string | null;
+  seedPrompt: string;
+  warning?: "brief_extraction_failed";
 }

@@ -2,6 +2,7 @@ import Database, { type Database as DB } from "better-sqlite3";
 import { app } from "electron";
 import path from "node:path";
 import fs from "node:fs";
+import { cleanupOrphanHandoffTranscriptSnapshots } from "../shared/handoffTranscript.js";
 
 let dbInstance: DB | null = null;
 
@@ -16,6 +17,13 @@ export function getDb(): DB {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);
+  const transcriptRows = db
+    .prepare("SELECT transcript_path FROM handoff_briefs WHERE transcript_path IS NOT NULL")
+    .all() as Array<{ transcript_path: string }>;
+  cleanupOrphanHandoffTranscriptSnapshots(
+    dir,
+    transcriptRows.map((row) => row.transcript_path)
+  );
   dbInstance = db;
   return db;
 }
@@ -32,7 +40,7 @@ export function getLogDir(): string {
   return dir;
 }
 
-function migrate(db: DB) {
+export function migrate(db: DB) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS cli_executor_overrides (
       id TEXT PRIMARY KEY,
@@ -306,7 +314,97 @@ function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_task
       ON scheduled_task_runs(task_id, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS handoff_briefs (
+      id                       TEXT PRIMARY KEY,
+      source_conversation_id   TEXT NOT NULL,
+      target_conversation_id   TEXT NOT NULL,
+      source_agent_id          TEXT NOT NULL,
+      source_agent_name        TEXT NOT NULL,
+      source_adapter           TEXT NOT NULL,
+      brief_json               TEXT NOT NULL,
+      source_message_count     INTEGER NOT NULL,
+      source_last_message_id   TEXT,
+      transcript_path          TEXT,
+      transcript_message_count INTEGER,
+      transcript_byte_size     INTEGER,
+      transcript_truncated     INTEGER NOT NULL DEFAULT 0,
+      created_at               TEXT NOT NULL,
+      FOREIGN KEY(target_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_handoff_briefs_target
+      ON handoff_briefs(target_conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_handoff_briefs_source
+      ON handoff_briefs(source_conversation_id, created_at DESC);
   `);
+
+  const handoffColumns = db
+    .prepare("PRAGMA table_info(handoff_briefs)")
+    .all() as Array<{ name: string }>;
+  if (!handoffColumns.some((column) => column.name === "transcript_path")) {
+    db.exec("ALTER TABLE handoff_briefs ADD COLUMN transcript_path TEXT");
+  }
+  if (!handoffColumns.some((column) => column.name === "transcript_message_count")) {
+    db.exec("ALTER TABLE handoff_briefs ADD COLUMN transcript_message_count INTEGER");
+  }
+  if (!handoffColumns.some((column) => column.name === "transcript_byte_size")) {
+    db.exec("ALTER TABLE handoff_briefs ADD COLUMN transcript_byte_size INTEGER");
+  }
+  if (!handoffColumns.some((column) => column.name === "transcript_truncated")) {
+    db.exec(
+      "ALTER TABLE handoff_briefs ADD COLUMN transcript_truncated INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+
+  // Early handoff builds tied the snapshot to both conversations. That made
+  // deleting the source destroy context that the target had not consumed yet.
+  // Handoff briefs belong to the target; source_conversation_id is retained as
+  // immutable provenance rather than as a foreign key.
+  const handoffForeignKeys = db
+    .prepare("PRAGMA foreign_key_list(handoff_briefs)")
+    .all() as Array<{ from: string }>;
+  if (handoffForeignKeys.some((key) => key.from === "source_conversation_id")) {
+    db.transaction(() => {
+      db.exec(`
+        DROP TABLE IF EXISTS handoff_briefs_next;
+        CREATE TABLE handoff_briefs_next (
+          id                       TEXT PRIMARY KEY,
+          source_conversation_id   TEXT NOT NULL,
+          target_conversation_id   TEXT NOT NULL,
+          source_agent_id          TEXT NOT NULL,
+          source_agent_name        TEXT NOT NULL,
+          source_adapter           TEXT NOT NULL,
+          brief_json               TEXT NOT NULL,
+          source_message_count     INTEGER NOT NULL,
+          source_last_message_id   TEXT,
+          transcript_path          TEXT,
+          transcript_message_count INTEGER,
+          transcript_byte_size     INTEGER,
+          transcript_truncated     INTEGER NOT NULL DEFAULT 0,
+          created_at               TEXT NOT NULL,
+          FOREIGN KEY(target_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        );
+        INSERT INTO handoff_briefs_next
+          (id, source_conversation_id, target_conversation_id,
+           source_agent_id, source_agent_name, source_adapter,
+           brief_json, source_message_count, source_last_message_id,
+           transcript_path, transcript_message_count, transcript_byte_size,
+           transcript_truncated, created_at)
+        SELECT id, source_conversation_id, target_conversation_id,
+               source_agent_id, source_agent_name, source_adapter,
+               brief_json, source_message_count, source_last_message_id,
+               transcript_path, transcript_message_count, transcript_byte_size,
+               transcript_truncated, created_at
+        FROM handoff_briefs;
+        DROP TABLE handoff_briefs;
+        ALTER TABLE handoff_briefs_next RENAME TO handoff_briefs;
+        CREATE INDEX idx_handoff_briefs_target
+          ON handoff_briefs(target_conversation_id);
+        CREATE INDEX idx_handoff_briefs_source
+          ON handoff_briefs(source_conversation_id, created_at DESC);
+      `);
+    })();
+  }
 
   const skillCols = db
     .prepare("PRAGMA table_info(skills)")
@@ -406,6 +504,21 @@ function migrate(db: DB) {
   }
   if (!conversationCols.some((c) => c.name === "skill_snapshot")) {
     db.exec("ALTER TABLE conversations ADD COLUMN skill_snapshot TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "source_conversation_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_conversation_id TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "source_agent_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_agent_id TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "source_agent_name")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_agent_name TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "source_adapter")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_adapter TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "source_brief_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN source_brief_id TEXT");
   }
 
   const workflowRunCols = db

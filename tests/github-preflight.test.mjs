@@ -22,6 +22,7 @@ test("package exposes the GitHub preflight command", () => {
 test("parseGitHost supports SSH and HTTPS remotes", () => {
   assert.equal(parseGitHost("git@github.com:maojindao55/freebuddy.git"), "github.com");
   assert.equal(parseGitHost("ssh://git@github.example.com/team/repo.git"), "github.example.com");
+  assert.equal(parseGitHost("ssh://git@ssh.github.com:443/team/repo.git"), "github.com");
   assert.equal(parseGitHost("https://github.com/maojindao55/freebuddy.git"), "github.com");
   assert.equal(parseGitHost("not-a-remote"), "");
 });

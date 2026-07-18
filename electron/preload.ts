@@ -103,6 +103,10 @@ const cli = {
   getConversation: (id: string) => ipcRenderer.invoke("cli:getConversation", id),
   createConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversation", input),
+  previewHandoffBrief: (input: unknown) =>
+    ipcRenderer.invoke("cli:previewHandoffBrief", input),
+  transferConversation: (input: unknown) =>
+    ipcRenderer.invoke("cli:transferConversation", input),
   renameConversation: (
     id: string,
     title: string,

@@ -89,6 +89,14 @@ export interface ConversationState {
     configOptionOverrides?: Record<string, string>;
     skillIds?: string[];
   }): Promise<Conversation>;
+  transferConversation(input: {
+    sourceConversationId: string;
+    targetMember: CLIMember;
+  }): Promise<{
+    conversation: Conversation;
+    warning?: "brief_extraction_failed";
+    startError?: string;
+  }>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
   archiveConversation(id: string, archived: boolean): Promise<void>;
@@ -110,6 +118,7 @@ export interface ConversationState {
     assistantMessageId?: string;
     approvalModeOverride?: "auto" | "ask";
     preserveConversationTitle?: boolean;
+    internalPrompt?: boolean;
   }): Promise<void>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
@@ -124,6 +133,8 @@ export interface RunCtx {
 }
 
 export const runCtxMap = new Map<string, RunCtx>();
+
+let transferInFlight = false;
 
 let workflowMessageUnsubscribe: (() => void) | null = null;
 let workflowMessageConversationId: string | null = null;
@@ -385,6 +396,23 @@ async function workflowFollowupContextForRun(
   return buildWorkflowFollowupContext(run, steps);
 }
 
+function maybeHandoffArgs(
+  state: ConversationState,
+  conv: Conversation
+): Pick<CliRunArgs, "handoffBriefId"> {
+  const msgs = state.messages[conv.id] ?? [];
+  // Only count COMPLETED assistant turns. sendMessage appends a "running"
+  // assistant placeholder before dispatching, so a naive role==="assistant"
+  // check would always see one and skip injection on the first send.
+  const hasCompletedAssistant = msgs.some(
+    (m) =>
+      m.role === "assistant" && (m.status === "done" || m.status === "sent")
+  );
+  if (!conv.sourceBriefId) return {};
+  if (hasCompletedAssistant) return {};
+  return { handoffBriefId: conv.sourceBriefId };
+}
+
 export const useConversationStore = create<ConversationState>((set, get) => ({
   members: buildConversationMembers(),
   conversations: [],
@@ -591,6 +619,56 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     return conv;
   },
 
+  async transferConversation({ sourceConversationId, targetMember }) {
+    if (transferInFlight) {
+      throw new Error("Another transfer is in progress");
+    }
+    transferInFlight = true;
+    try {
+      const targetConversationId = nanoid();
+      const result = await cliClient.transferConversation({
+        sourceConversationId,
+        targetConversationId,
+        targetAgentId: targetMember.id,
+        targetAgentName: targetMember.name,
+        targetAdapter: targetMember.cli.adapter
+      });
+      set((s) => ({
+        conversations: [
+          result.conversation,
+          ...s.conversations.filter((c) => c.id !== result.conversation.id)
+        ],
+        activeId: result.conversation.id,
+        messages: { ...s.messages, [result.conversation.id]: [] },
+        pendingFreshContext: {
+          ...s.pendingFreshContext,
+          [result.conversation.id]: true
+        }
+      }));
+      ensureWorkflowMessageSubscription(result.conversation.id, async (cid, messageIds) => {
+        await get().loadMessages(cid, messageIds);
+      });
+      let startError: string | undefined;
+      try {
+        await get().sendMessage({
+          conversationId: result.conversation.id,
+          prompt: result.seedPrompt,
+          preserveConversationTitle: true,
+          internalPrompt: true
+        });
+      } catch (error) {
+        startError = error instanceof Error ? error.message : String(error);
+      }
+      return {
+        conversation: result.conversation,
+        warning: result.warning,
+        startError
+      };
+    } finally {
+      transferInFlight = false;
+    }
+  },
+
   async renameConversation(id, title) {
     await cliClient.renameConversation(id, title, "user");
     set((s) => ({
@@ -616,13 +694,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       const next = s.conversations.filter((c) => c.id !== id);
       const nextMessages = { ...s.messages };
       const unreadConversations = { ...s.unreadConversations };
+      const pendingFreshContext = { ...s.pendingFreshContext };
       delete nextMessages[id];
       delete unreadConversations[id];
+      delete pendingFreshContext[id];
       persistUnreadConversations(unreadConversations);
       return {
         conversations: next,
         messages: nextMessages,
         unreadConversations,
+        pendingFreshContext,
         activeId: s.activeId === id ? next[0]?.id : s.activeId
       };
     });
@@ -630,13 +711,20 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   async archiveConversation(id, archived) {
     await cliClient.archiveConversation(id, archived);
-    set((s) => ({
-      conversations: archived
-        ? s.conversations.filter((c) => c.id !== id)
-        : s.conversations.map((c) =>
-            c.id === id ? { ...c, archived } : c
-          )
-    }));
+    set((s) => {
+      const pendingFreshContext = { ...s.pendingFreshContext };
+      if (archived) {
+        delete pendingFreshContext[id];
+      }
+      return {
+        conversations: archived
+          ? s.conversations.filter((c) => c.id !== id)
+          : s.conversations.map((c) =>
+              c.id === id ? { ...c, archived } : c
+            ),
+        pendingFreshContext
+      };
+    });
   },
 
   async setConversationApprovalMode(id, approvalMode) {
@@ -690,7 +778,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     userMessageId,
     assistantMessageId,
     approvalModeOverride,
-    preserveConversationTitle
+    preserveConversationTitle,
+    internalPrompt = false
   }) {
     const trimmed = prompt.trim();
     if (!trimmed && attachments.length === 0) return;
@@ -706,45 +795,47 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
     const userMsgId = userMessageId ?? nanoid();
     const now = new Date().toISOString();
-    const userMsg: ConversationMessage = {
-      id: userMsgId,
-      conversationId,
-      role: "user",
-      status: "sent",
-      content: trimmed,
-      ...(attachments.length ? { attachments } : {}),
-      createdAt: now,
-      updatedAt: now
-    };
-    set((s) => ({
-      messages: {
-        ...s.messages,
-        [conversationId]: upsertConversationMessage(
-          s.messages[conversationId] ?? [],
-          userMsg
-        )
-      }
-    }));
-    const savedUser = await cliClient.appendMessage({
-      id: userMsgId,
-      conversationId,
-      role: "user",
-      status: "sent",
-      content: trimmed,
-      attachments
-    });
-    set((s) => ({
-      messages: {
-        ...s.messages,
-        [conversationId]: upsertConversationMessage(
-          s.messages[conversationId] ?? [],
-          {
-            ...userMsg,
-            attachments: savedUser.attachments ?? userMsg.attachments
-          }
-        )
-      }
-    }));
+    if (!internalPrompt) {
+      const userMsg: ConversationMessage = {
+        id: userMsgId,
+        conversationId,
+        role: "user",
+        status: "sent",
+        content: trimmed,
+        ...(attachments.length ? { attachments } : {}),
+        createdAt: now,
+        updatedAt: now
+      };
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [conversationId]: upsertConversationMessage(
+            s.messages[conversationId] ?? [],
+            userMsg
+          )
+        }
+      }));
+      const savedUser = await cliClient.appendMessage({
+        id: userMsgId,
+        conversationId,
+        role: "user",
+        status: "sent",
+        content: trimmed,
+        attachments
+      });
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [conversationId]: upsertConversationMessage(
+            s.messages[conversationId] ?? [],
+            {
+              ...userMsg,
+              attachments: savedUser.attachments ?? userMsg.attachments
+            }
+          )
+        }
+      }));
+    }
 
     const assistantMsgId = assistantMessageId ?? nanoid();
     const assistantMsg: ConversationMessage = {
@@ -825,6 +916,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       pickerOptions.length ? pickerOptions : configOptions
     );
 
+    const handoffArgs = maybeHandoffArgs(get(), conv);
+
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       conversationId,
@@ -862,7 +955,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId
+      announceSkills: wantFresh || !resumedFromSessionId,
+      ...handoffArgs
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");

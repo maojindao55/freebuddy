@@ -131,6 +131,26 @@ import {
 } from "./acpAuthTerminal.js";
 import { registerScheduledTaskIpc } from "./scheduledTasks.js";
 import { searchWorkspaceFiles } from "./workspaceFiles.js";
+import { getDataDir, getDb } from "./db.js";
+import { nanoid } from "nanoid";
+import { extractHandoffBrief } from "./handoffBriefExtractor.js";
+import {
+  insertHandoffBrief,
+  getHandoffBrief,
+  getHandoffBriefByTarget
+} from "./handoffBriefs.js";
+import type {
+  HandoffBrief,
+  HandoffTranscriptRef,
+  PreviewHandoffBriefInput,
+  PreviewHandoffBriefResult,
+  TransferConversationInput,
+  TransferConversationResult
+} from "../shared/handoffTypes.js";
+import {
+  createHandoffTranscriptSnapshot,
+  deleteHandoffTranscriptSnapshot
+} from "../shared/handoffTranscript.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -419,8 +439,27 @@ export function registerCliIpc() {
   ipcMain.handle("cli:run", async (event, args: CliRunArgs) => {
     const win = senderWindow(event);
     if (!win) throw new Error("no sender window");
+    const {
+      handoffBrief: _rendererBrief,
+      handoffTranscript: _rendererTranscript,
+      ...rendererArgs
+    } = args;
+    let runArgs: CliRunArgs = rendererArgs;
+    if (args.handoffBriefId && args.conversationId) {
+      const row = getHandoffBrief(args.handoffBriefId);
+      if (
+        row?.brief &&
+        row.targetConversationId === args.conversationId
+      ) {
+        runArgs = {
+          ...rendererArgs,
+          handoffBrief: row.brief,
+          handoffTranscript: row.transcript
+        };
+      }
+    }
     // Don't await: spawn returns immediately, streaming continues via events.
-    void cliRun(win.webContents, args);
+    void cliRun(win.webContents, runArgs);
     return { sessionId: args.sessionId };
   });
   ipcMain.handle(
@@ -590,6 +629,106 @@ export function registerCliIpc() {
     }
   );
   ipcMain.handle(
+    "cli:previewHandoffBrief",
+    (_e, input: PreviewHandoffBriefInput): PreviewHandoffBriefResult => {
+      const conversation = getConversation(input.sourceConversationId);
+      if (!conversation) {
+        return { brief: null, warning: "brief_extraction_failed" };
+      }
+      const messages = listMessages(input.sourceConversationId);
+      try {
+        return { brief: extractHandoffBrief({ conversation, messages }) };
+      } catch {
+        return { brief: null, warning: "brief_extraction_failed" };
+      }
+    }
+  );
+  ipcMain.handle(
+    "cli:transferConversation",
+    (_e, input: TransferConversationInput): TransferConversationResult => {
+      const source = getConversation(input.sourceConversationId);
+      if (!source) {
+        throw new Error("Source conversation not found");
+      }
+      const messages = listMessages(input.sourceConversationId);
+
+      let brief: HandoffBrief | null = null;
+      try {
+        brief = extractHandoffBrief({ conversation: source, messages });
+      } catch {
+        brief = null;
+      }
+
+      let briefId: string | null = null;
+      if (brief) {
+        briefId = nanoid();
+      }
+      let transcript: HandoffTranscriptRef | undefined;
+      if (briefId) {
+        try {
+          transcript = createHandoffTranscriptSnapshot(
+            getDataDir(),
+            briefId,
+            messages
+          );
+        } catch {
+          transcript = undefined;
+        }
+      }
+      let txResult: { conversation: ReturnType<typeof createConversation> };
+      try {
+        txResult = getDb().transaction(() => {
+          // Order matters: handoff_briefs has FK target_conversation_id REFERENCES
+          // conversations(id), so B must exist before the brief row is inserted.
+          // conversations.source_brief_id is a plain TEXT column (no FK), so it
+          // can reference a brief that doesn't exist yet.
+          const conversation = createConversation({
+            id: input.targetConversationId,
+            title: source.title,
+            agentId: input.targetAgentId,
+            agentName: input.targetAgentName,
+            adapter: input.targetAdapter,
+            // Transfers always inherit the source workspace so referenced
+            // files and the target agent's execution directory stay aligned.
+            cwd: source.cwd,
+            skillIds: [],
+            titleSource: "default",
+            sourceConversationId: source.id,
+            sourceAgentId: source.agentId,
+            sourceAgentName: source.agentName,
+            sourceAdapter: source.adapter,
+            sourceBriefId: briefId ?? undefined
+          });
+          if (brief && briefId) {
+            insertHandoffBrief({
+              id: briefId,
+              sourceConversationId: source.id,
+              targetConversationId: input.targetConversationId,
+              sourceAgentId: source.agentId,
+              sourceAgentName: source.agentName,
+              sourceAdapter: source.adapter,
+              brief,
+              sourceMessageCount: messages.length,
+              sourceLastMessageId: messages[messages.length - 1]?.id,
+              transcript
+            });
+          }
+          return { conversation };
+        })();
+      } catch (error) {
+        deleteHandoffTranscriptSnapshot(getDataDir(), transcript?.path);
+        throw error;
+      }
+
+      return {
+        conversation: txResult.conversation,
+        briefId,
+        seedPrompt: buildSeedPrompt(source, brief),
+        warning: brief ? undefined : "brief_extraction_failed"
+      };
+    }
+  );
+  ipcMain.handle(
     "cli:renameConversation",
     (
       _e,
@@ -610,9 +749,11 @@ export function registerCliIpc() {
     (_e, args: { id: string; archived: boolean }) =>
       archiveConversation(args.id, args.archived)
   );
-  ipcMain.handle("cli:deleteConversation", (_e, id: string) =>
-    deleteConversation(id)
-  );
+  ipcMain.handle("cli:deleteConversation", (_e, id: string) => {
+    const transcriptPath = getHandoffBriefByTarget(id)?.transcript?.path;
+    deleteConversation(id);
+    deleteHandoffTranscriptSnapshot(getDataDir(), transcriptPath);
+  });
 
   ipcMain.handle(
     "cli:setConversationApprovalMode",
@@ -709,4 +850,31 @@ export function registerCliIpc() {
 
   registerWorkflowIpc();
   registerScheduledTaskIpc();
+}
+
+function buildSeedPrompt(
+  source: { agentName: string; adapter: string },
+  brief: HandoffBrief | null
+): string {
+  if (!brief || !hasUsefulHandoffContext(brief)) {
+    return `Continuing a task transferred from ${source.agentName} (${source.adapter}). ` +
+      `No prior context is available. Ask the user what they'd like to focus on.`;
+  }
+  return `Continuing a task transferred from ${source.agentName} (${source.adapter}).\n` +
+    `Call the \`freebuddy-context.read_handoff_brief\` tool now to load the ` +
+    `handoff (original goal, recent messages, file changes). If the summary ` +
+    `is not enough, use \`freebuddy-context.search_handoff_history\` and ` +
+    `\`freebuddy-context.read_handoff_messages\` to inspect the sanitized ` +
+    `source history, then ask me ` +
+    `what you'd like to focus on first.`;
+}
+
+function hasUsefulHandoffContext(brief: HandoffBrief): boolean {
+  return Boolean(
+    brief.originalGoal ||
+    brief.recentUserMessages.length ||
+    brief.lastAssistantSummary ||
+    brief.fileChanges.length ||
+    brief.transcriptExcerpts.length
+  );
 }

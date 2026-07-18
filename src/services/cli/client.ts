@@ -25,7 +25,11 @@ import type {
   CreateConversationInput,
   ListConversationsArgs,
   AppendMessageInput,
-  UpdateMessageInput
+  UpdateMessageInput,
+  PreviewHandoffBriefInput,
+  PreviewHandoffBriefResult,
+  TransferConversationInput,
+  TransferConversationResult
 } from "./types";
 import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 
@@ -172,6 +176,13 @@ export const cliClient = {
   },
   createConversation(input: CreateConversationInput): Promise<Conversation> {
     return api().createConversation(input);
+  },
+  previewHandoffBrief(input: PreviewHandoffBriefInput): Promise<PreviewHandoffBriefResult> {
+    return api().previewHandoffBrief(input);
+  },
+
+  transferConversation(input: TransferConversationInput): Promise<TransferConversationResult> {
+    return api().transferConversation(input);
   },
   renameConversation(
     id: string,

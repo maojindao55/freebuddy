@@ -1,11 +1,12 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { Menu, Monitor, Moon, PanelLeft, Sun } from "lucide-react";
+import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
 import { ReplayButton } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
+import { TransferDialog } from "./components/CLI/TransferDialog";
 import {
   SidebarNavigation,
   type WorkspaceView
@@ -30,6 +31,7 @@ import { useSettingsStore } from "./store/settingsStore";
 import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
 import { useNewTaskUiStore } from "./store/newTaskUiStore";
+import { useWorkflowStore } from "./store/workflowStore";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -76,6 +78,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
+  const [transferSourceId, setTransferSourceId] = useState<string>();
   const [teamPageRequest, setTeamPageRequest] = useState<{
     key: number;
     teamId?: string;
@@ -193,9 +196,30 @@ function App() {
   }, []);
 
   const conversations = useConversationStore((s) => s.conversations);
+  const members = useConversationStore((s) => s.members);
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
+  const transferSource = conversations.find((c) => c.id === transferSourceId);
+  const activeConversationRunning = useConversationStore((s) => {
+    if (!activeId) return false;
+    const status = s.live[activeId]?.status;
+    return status === "running" || status === "starting";
+  });
+  const activeWorkflowRunning = useWorkflowStore((s) =>
+    Boolean(activeId && s.activeRuns.some((run) => run.conversationId === activeId))
+  );
+  const activeConversationHasContent = useConversationStore((s) =>
+    Boolean(
+      activeId &&
+      s.messages[activeId]?.some(
+        (message) =>
+          message.role === "user" ||
+          (message.role === "assistant" && message.status !== "running")
+      )
+    )
+  );
+  const transferDisabled = activeConversationRunning || activeWorkflowRunning;
   const isNewTask = !activeConversation;
   const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
@@ -390,6 +414,27 @@ function App() {
             </div>
           ) : workspaceView === "chat" && activeConversation && (
             <div className="titlebar-actions titlebar-actions-plain">
+              {activeConversationHasContent && (
+                <button
+                  type="button"
+                  className="titlebar-transfer-button"
+                  disabled={transferDisabled}
+                  title={t(
+                    transferDisabled
+                      ? "handoff.stopBeforeTransfer"
+                      : "handoff.transferAction"
+                  )}
+                  aria-label={t(
+                    transferDisabled
+                      ? "handoff.stopBeforeTransfer"
+                      : "handoff.transferAction"
+                  )}
+                  onClick={() => setTransferSourceId(activeConversation.id)}
+                >
+                  <ArrowLeftRight size={14} aria-hidden="true" />
+                  <span>{t("handoff.transfer")}</span>
+                </button>
+              )}
               <ReplayButton />
             </div>
           )}
@@ -440,6 +485,13 @@ function App() {
       <CliInstallPanelHost />
       <PermissionDialog />
       <AuthenticationDialog />
+      {transferSource && (
+        <TransferDialog
+          source={transferSource}
+          members={members}
+          onClose={() => setTransferSourceId(undefined)}
+        />
+      )}
       <AgentBridgeListener />
       <AgentBridgeToasts />
     </div>

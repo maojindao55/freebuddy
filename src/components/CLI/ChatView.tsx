@@ -9,7 +9,7 @@ import {
   type DragEvent
 } from "react";
 import { nanoid } from "nanoid";
-import { X } from "lucide-react";
+import { ArrowLeftRight, ExternalLink, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
@@ -17,10 +17,12 @@ import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useNewTaskUiStore } from "@/store/newTaskUiStore";
+import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { cliClient } from "@/services/cli/client";
 import type {
   AttachmentPrepareRejection,
   ChatAttachment,
+  Conversation,
   ConversationMessage,
   SessionConfigOption
 } from "@/services/cli/types";
@@ -293,6 +295,50 @@ function WorkflowApprovalCard({
   );
 }
 
+function HandoffConversationCard({
+  conversation,
+  contextAvailable,
+  sourceAvailable,
+  onOpenSource
+}: {
+  conversation: Conversation;
+  contextAvailable: boolean;
+  sourceAvailable: boolean;
+  onOpenSource(): void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="handoff-reference-card" aria-label={t("handoff.referenceLabel")}>
+      <div className="handoff-reference-icon" aria-hidden="true">
+        <ArrowLeftRight size={18} />
+      </div>
+      <div className="handoff-reference-copy">
+        <span className="handoff-reference-label">{t("handoff.referenceLabel")}</span>
+        <strong>{conversation.title}</strong>
+        <span className="handoff-reference-route">
+          {conversation.sourceAgentName ?? "?"} → {conversation.agentName}
+        </span>
+        <span className="handoff-reference-description">
+          {t(
+            contextAvailable
+              ? "handoff.referenceDescription"
+              : "handoff.referenceDescriptionUnavailable"
+          )}
+        </span>
+      </div>
+      <button
+        type="button"
+        className="handoff-reference-open"
+        onClick={onOpenSource}
+        disabled={!sourceAvailable}
+      >
+        {sourceAvailable ? t("handoff.openSource") : t("handoff.sourceDeleted")}
+        {sourceAvailable && <ExternalLink size={14} aria-hidden="true" />}
+      </button>
+    </section>
+  );
+}
+
 export function ChatView({
   onOpenAgentSettings
 }: {
@@ -314,6 +360,7 @@ export function ChatView({
   const createConversation = useConversationStore((s) => s.newConversation);
   const sendMessage = useConversationStore((s) => s.sendMessage);
   const stopActive = useConversationStore((s) => s.stopActive);
+  const notify = useAgentBridgeStore((s) => s.notify);
   const setApprovalMode = useConversationStore(
     (s) => s.setConversationApprovalMode
   );
@@ -399,11 +446,14 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingAttachmentsRef = useRef(pendingAttachments);
+  const draftRef = useRef(draft);
+  const conversationDraftsRef = useRef(new Map<string, string>());
+  const conversationAttachmentsRef = useRef(new Map<string, ChatAttachment[]>());
+  const previousConversationIdRef = useRef(activeId);
   const newTaskPendingAttachmentsRef = useRef(newTaskPendingAttachments);
   const attachmentImportGenerationRef = useRef(0);
   const isNearBottomRef = useRef(true);
   const [slashIndex, setSlashIndex] = useState(0);
-
   const conv = conversations.find((c) => c.id === activeId);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowFollowupAgent =
@@ -813,6 +863,27 @@ export function ChatView({
     }
   }, [activeRun?.id, gatingPhaseId, pendingWorkflowAction]);
 
+  useEffect(() => {
+    const previousId = previousConversationIdRef.current;
+    if (previousId === activeId) return;
+
+    if (previousId) {
+      conversationDraftsRef.current.set(previousId, draftRef.current);
+      conversationAttachmentsRef.current.set(
+        previousId,
+        pendingAttachmentsRef.current
+      );
+    }
+
+    setDraft(activeId ? conversationDraftsRef.current.get(activeId) ?? "" : "");
+    setPendingAttachments(
+      activeId
+        ? conversationAttachmentsRef.current.get(activeId) ?? []
+        : []
+    );
+    previousConversationIdRef.current = activeId;
+  }, [activeId]);
+
   const formatMergeWarnings = (
     warnings: ReturnType<typeof mergePendingAttachments>["warnings"]
   ) =>
@@ -875,9 +946,10 @@ export function ChatView({
 
   const cleanupPendingManagedIfUnreferenced = () => {
     if (!cliClient.isAvailable()) return;
-    const paths = [
+    const paths = Array.from(new Set([
       ...pendingAttachmentsRef.current,
-      ...newTaskPendingAttachmentsRef.current
+      ...newTaskPendingAttachmentsRef.current,
+      ...Array.from(conversationAttachmentsRef.current.values()).flat()
     ]
       .filter(
         (attachment) =>
@@ -885,7 +957,7 @@ export function ChatView({
           attachment.created &&
           !isManagedAttachmentPathProtected(attachment.path)
       )
-      .map((attachment) => attachment.path);
+      .map((attachment) => attachment.path)));
     if (paths.length > 0) {
       cliClient.discardManagedAttachments(paths);
     }
@@ -963,6 +1035,10 @@ export function ChatView({
       }
     }
   };
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   useEffect(() => {
     pendingAttachmentsRef.current = pendingAttachments;
@@ -1462,7 +1538,7 @@ export function ChatView({
     <div className="chat-view">
       <CodeWhipOverlay />
       <div className={`chat-scroll${replaying ? " replay-active" : ""}`} ref={scrollRef} onScroll={handleScroll}>
-        {messages.length === 0 && (
+        {messages.length === 0 && !conv?.sourceConversationId && (
           <div className="chat-empty chat-empty-hero">
             <p className="eyebrow">{t("chat.newAgentChat")}</p>
             <h2>{t("chat.emptyHeroHeading", { name: member?.name ?? "" })}</h2>
@@ -1480,6 +1556,26 @@ export function ChatView({
               ))}
             </div>
           </div>
+        )}
+        {conv?.sourceConversationId && (
+          <HandoffConversationCard
+            conversation={conv}
+            contextAvailable={Boolean(conv.sourceBriefId)}
+            sourceAvailable={Boolean(
+              conv.sourceConversationId &&
+              conversations.some((entry) => entry.id === conv.sourceConversationId)
+            )}
+            onOpenSource={() => {
+              if (
+                conv.sourceConversationId &&
+                conversations.some((entry) => entry.id === conv.sourceConversationId)
+              ) {
+                void useConversationStore.getState().setActive(conv.sourceConversationId);
+              } else {
+                notify(t("handoff.sourceUnavailable"));
+              }
+            }}
+          />
         )}
         {displayMessages.map((m) => {
           const partial =

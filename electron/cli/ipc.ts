@@ -151,6 +151,9 @@ import {
   createHandoffTranscriptSnapshot,
   deleteHandoffTranscriptSnapshot
 } from "../shared/handoffTranscript.js";
+import { reconcileAgentUsage } from "./usageReconciler.js";
+import { getAgentUsageSummary } from "./usageStore.js";
+import { normalizeAgentUsagePeriod } from "./usageCore.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -392,6 +395,15 @@ export function registerCliIpc() {
   });
 
   ipcMain.handle("cli:listAdapters", () => cliAdapterDefinitions);
+  ipcMain.handle("cli:usageSummary", (_event, rawPeriod: unknown) => {
+    const period = normalizeAgentUsagePeriod(rawPeriod);
+    return getAgentUsageSummary(period);
+  });
+  ipcMain.handle("cli:refreshUsage", async (_event, rawPeriod: unknown) => {
+    const period = normalizeAgentUsagePeriod(rawPeriod);
+    await reconcileAgentUsage(period);
+    return getAgentUsageSummary(period);
+  });
 
   ipcMain.handle("cli:listOverrides", () => listOverrides());
   ipcMain.handle(

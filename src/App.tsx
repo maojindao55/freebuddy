@@ -25,6 +25,7 @@ import {
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
+import { AgentUsagePage } from "./components/Usage/AgentUsagePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
@@ -245,6 +246,11 @@ function App() {
     }));
     void setActive(undefined);
   };
+  const openUsage = () => {
+    setSettingsOpen(false);
+    setWorkspaceView("usage");
+    void setActive(undefined);
+  };
 
   useEffect(() => {
     if (activeId) setWorkspaceView("chat");
@@ -256,6 +262,8 @@ function App() {
       ? t("scheduledTasks.title")
       : workspaceView === "workflowTeams"
         ? t("workflow.teamList")
+        : workspaceView === "usage"
+          ? t("usage.title")
         : activeConversation?.title ?? t("app.chat");
   // Select the running *count* rather than the whole live map: App (the root)
   // re-renders only when the number of running conversations changes, not on
@@ -346,6 +354,7 @@ function App() {
               onNewTask={startNewTask}
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
+              onOpenUsage={openUsage}
             />
             <ConversationList />
 
@@ -470,6 +479,12 @@ function App() {
                   initialTeamId={teamPageRequest.teamId}
                   startCreating={teamPageRequest.create}
                 />
+              </div>
+            </section>
+          ) : workspaceView === "usage" ? (
+            <section className="workspace-tool-page usage-workspace-page">
+              <div className="workspace-tool-page-inner">
+                <AgentUsagePage />
               </div>
             </section>
           ) : (

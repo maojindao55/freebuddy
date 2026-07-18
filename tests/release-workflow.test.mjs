@@ -15,9 +15,9 @@ const workflow = fs.existsSync(new URL("../.github/workflows/release.yml", impor
 test("package exposes electron-builder release scripts", () => {
   assert.equal(packageJson.devDependencies?.["electron-builder"], "^26.15.3");
   assert.equal(packageJson.scripts?.dist, "npm run build && electron-builder");
-  assert.equal(packageJson.scripts?.["dist:mac"], "npm run build && electron-builder --mac --x64 --arm64");
-  assert.equal(packageJson.scripts?.["dist:linux"], "npm run build && electron-builder --linux");
-  assert.equal(packageJson.scripts?.["dist:win"], "npm run build && electron-builder --win --x64");
+  assert.match(packageJson.scripts?.["dist:mac"], /ensure-tokscale-platform\.mjs[\s\S]*--arch arm64[\s\S]*--arch x64[\s\S]*electron-builder --mac --x64 --arm64/);
+  assert.match(packageJson.scripts?.["dist:linux"], /ensure-tokscale-platform\.mjs[\s\S]*--platform linux --arch x64[\s\S]*electron-builder --linux/);
+  assert.match(packageJson.scripts?.["dist:win"], /ensure-tokscale-platform\.mjs[\s\S]*--platform win32 --arch x64[\s\S]*electron-builder --win --x64/);
 });
 
 test("electron-builder config packages FreeBuddy for desktop platforms", () => {
@@ -30,6 +30,8 @@ test("electron-builder config packages FreeBuddy for desktop platforms", () => {
   assert.match(builderConfig, /linux:[\s\S]*maintainer:\s+FreeBuddy <noreply@freebuddy\.dev>/m);
   assert.match(builderConfig, /toolsets:[\s\S]*appimage:\s+"1\.0\.3"/m);
   assert.match(builderConfig, /extraResources:[\s\S]*from:\s+assets\/app-icon\.png[\s\S]*to:\s+app-icon\.png/m);
+  assert.match(builderConfig, /beforePack:\s+scripts\/prepare-tokscale-for-pack\.mjs/);
+  assert.match(builderConfig, /extraResources:[\s\S]*from:\s+\.build\/tokscale[\s\S]*to:\s+tokscale/m);
 });
 
 test("release workflow uploads version-suffixed assets and update metadata for every platform", () => {
@@ -47,6 +49,7 @@ test("release workflow uploads version-suffixed assets and update metadata for e
   assert.match(workflow, /\$assetName = \$assetName\.Replace\("__VERSION__", "v\$appVersion"\)/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
+  assert.match(workflow, /ensure-tokscale-platform\.mjs --platform \$\{\{ matrix\.tokscale_platform \}\} --arch \$\{\{ matrix\.tokscale_arch \}\}/);
   // Build only; assets are renamed and uploaded manually to keep friendly names.
   assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);
   assert.match(workflow, /gh release upload/);

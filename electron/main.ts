@@ -21,6 +21,7 @@ import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
 import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
+import { initializeAgentUsageReconciler } from "./cli/usageReconciler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -276,6 +277,7 @@ app.whenReady().then(async () => {
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
   getDb();
+  initializeAgentUsageReconciler();
   initializeTelemetry();
   cleanupOrphanManagedAttachments();
   seedBuiltinSkills();

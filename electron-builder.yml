@@ -2,6 +2,7 @@ appId: dev.freebuddy.app
 productName: FreeBuddy
 copyright: Copyright © 2026 FreeBuddy
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+beforePack: scripts/prepare-tokscale-for-pack.mjs
 
 directories:
   output: release
@@ -11,12 +12,16 @@ files:
   - dist-electron/**/*
   - assets/app-icon.png
   - package.json
+  # Native tokscale packages are staged per target by beforePack below.
+  - "!node_modules/@tokscale/cli-*/**/*"
 
 extraResources:
   - from: assets/skills
     to: skills
   - from: assets/app-icon.png
     to: app-icon.png
+  - from: .build/tokscale
+    to: tokscale
 
 asarUnpack:
   - node_modules/better-sqlite3/**/*

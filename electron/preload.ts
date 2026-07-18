@@ -42,6 +42,8 @@ const cli = {
     return () => ipcRenderer.off(channel, handler);
   },
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
+  usageSummary: (period?: unknown) => ipcRenderer.invoke("cli:usageSummary", period),
+  refreshUsage: (period?: unknown) => ipcRenderer.invoke("cli:refreshUsage", period),
   probeAuthentication: (args: unknown) =>
     ipcRenderer.invoke("cli:probeAuthentication", args),
   logout: (args: unknown) => ipcRenderer.invoke("cli:logout", args),

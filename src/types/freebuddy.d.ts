@@ -16,6 +16,8 @@ import type {
   CliTaskLogPage,
   CliTaskListArgs,
   CodexUsageResult,
+  AgentUsagePeriod,
+  AgentUsageSummary,
   CliAuthControlArgs,
   CliAuthProbeResult,
   ToolSessionRecord,
@@ -94,6 +96,8 @@ declare global {
     listRuntimes(): Promise<CliRuntime[]>;
     onRuntimeUpdated(cb: (runtime: CliRuntime) => void): () => void;
     codexUsage(): Promise<CodexUsageResult>;
+    usageSummary(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
+    refreshUsage(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     probeAuthentication(args: CliAuthControlArgs): Promise<CliAuthProbeResult>;
     logout(args: CliAuthControlArgs): Promise<void>;
     check(

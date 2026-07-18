@@ -15,6 +15,8 @@ import type {
   CliTaskLogPage,
   CliTaskRow,
   CodexUsageResult,
+  AgentUsagePeriod,
+  AgentUsageSummary,
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
@@ -65,6 +67,12 @@ export const cliClient = {
   },
   codexUsage(): Promise<CodexUsageResult> {
     return api().codexUsage();
+  },
+  usageSummary(period: AgentUsagePeriod = "all"): Promise<AgentUsageSummary> {
+    return api().usageSummary(period);
+  },
+  refreshUsage(period: AgentUsagePeriod = "all"): Promise<AgentUsageSummary> {
+    return api().refreshUsage(period);
   },
   probeAuthentication(args: CliAuthControlArgs): Promise<CliAuthProbeResult> {
     return api().probeAuthentication(args);

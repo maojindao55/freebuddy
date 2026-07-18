@@ -16,6 +16,8 @@ import {
   normalizeTelemetryAdapter,
   telemetryDurationMs
 } from "../telemetryPrivacy.js";
+import { scheduleAgentUsageReconciliation } from "./usageReconciler.js";
+import { linkAgentUsageSessionForTask } from "./usageStore.js";
 
 export interface CliPromptAttachment {
   path: string;
@@ -188,6 +190,7 @@ export function insertTask(
       now,
       now
     );
+  if (toolSessionId) linkAgentUsageSessionForTask(args.sessionId);
   trackTelemetryEvent("agent_run_started", {
     adapter: normalizeTelemetryAdapter(args.adapter),
     run_context: args.toolSessionScope?.startsWith("workflow:")
@@ -235,6 +238,7 @@ export function updateTaskStatus(
         ? { error_category: categorizeTelemetryError(errorMessage) }
         : {})
     });
+    scheduleAgentUsageReconciliation();
   }
 }
 
@@ -246,6 +250,7 @@ export function setTaskToolSessionId(id: string, toolSessionId: string) {
   getDb()
     .prepare(`UPDATE cli_tasks SET tool_session_id = ?, updated_at = ? WHERE id = ?`)
     .run(toolSessionId, new Date().toISOString(), id);
+  linkAgentUsageSessionForTask(id);
 }
 
 /** Cap a single log line so the main process never synchronously

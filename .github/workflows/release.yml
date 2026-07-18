@@ -60,20 +60,28 @@ jobs:
         include:
           - platform: macos-latest
             builder_args: --mac --arm64
+            tokscale_platform: darwin
+            tokscale_arch: arm64
             assets: |
               FreeBuddy_macOS-Apple-Silicon-__VERSION__.dmg|*.dmg
               FreeBuddy_macOS-Apple-Silicon-__VERSION__.zip|*.zip
           - platform: macos-latest
             builder_args: --mac --x64
+            tokscale_platform: darwin
+            tokscale_arch: x64
             assets: |
               FreeBuddy_macOS-Intel-__VERSION__.dmg|*.dmg
               FreeBuddy_macOS-Intel-__VERSION__.zip|*.zip
           - platform: windows-latest
             builder_args: --win --x64
+            tokscale_platform: win32
+            tokscale_arch: x64
             assets: |
               FreeBuddy_Windows_x64-__VERSION__.exe|*.exe
           - platform: ubuntu-latest
             builder_args: --linux --x64
+            tokscale_platform: linux
+            tokscale_arch: x64
             assets: |
               FreeBuddy_Ubuntu_x64-__VERSION__.deb|*.deb
               FreeBuddy_Linux_x64-__VERSION__.AppImage|*.AppImage
@@ -107,6 +115,7 @@ jobs:
           CSC_LINK: ${{ matrix.platform == 'macos-latest' && secrets.CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.CSC_KEY_PASSWORD || '' }}
         run: |
+          node scripts/ensure-tokscale-platform.mjs --platform ${{ matrix.tokscale_platform }} --arch ${{ matrix.tokscale_arch }}
           npm run build
           npx electron-builder ${{ matrix.builder_args }} --publish never
 

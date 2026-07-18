@@ -117,6 +117,89 @@ export function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_cli_tasks_agent ON cli_tasks(agent_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_cli_tasks_tool_session
+      ON cli_tasks(adapter, tool_session_id);
+
+    -- tokscale reports absolute usage by the native agent session. Keep the
+    -- FreeBuddy ownership link separate from usage snapshots so rescans never
+    -- double-count a session that is resumed by multiple cli_tasks.
+    CREATE TABLE IF NOT EXISTS agent_usage_sessions (
+      client TEXT NOT NULL,
+      session_key TEXT NOT NULL,
+      tool_session_id TEXT NOT NULL,
+      adapter TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      agent_name TEXT NOT NULL,
+      first_task_id TEXT NOT NULL,
+      last_task_id TEXT NOT NULL,
+      ambiguous INTEGER NOT NULL DEFAULT 0,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      PRIMARY KEY(client, session_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_usage_sessions_agent
+      ON agent_usage_sessions(agent_id, last_seen_at DESC);
+
+    CREATE TABLE IF NOT EXISTS agent_usage_snapshots (
+      client TEXT NOT NULL,
+      session_key TEXT NOT NULL,
+      source_session_id TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL DEFAULT '',
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      estimated_cost_usd REAL NOT NULL DEFAULT 0,
+      first_observed_at TEXT NOT NULL,
+      scanned_at TEXT NOT NULL,
+      PRIMARY KEY(client, session_key, model_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_usage_snapshots_scanned
+      ON agent_usage_snapshots(scanned_at DESC);
+
+    -- Filtered tokscale reports remain absolute within their requested range.
+    -- Keep one replaceable cache per range so switching dashboard periods does
+    -- not corrupt the all-time session snapshots above.
+    CREATE TABLE IF NOT EXISTS agent_usage_period_snapshots (
+      usage_period TEXT NOT NULL,
+      client TEXT NOT NULL,
+      session_key TEXT NOT NULL,
+      source_session_id TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL DEFAULT '',
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      estimated_cost_usd REAL NOT NULL DEFAULT 0,
+      scanned_at TEXT NOT NULL,
+      PRIMARY KEY(usage_period, client, session_key, model_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_usage_period_snapshots_scanned
+      ON agent_usage_period_snapshots(usage_period, scanned_at DESC);
+
+    CREATE TABLE IF NOT EXISTS agent_usage_scan_state (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      status TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      last_error TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_usage_period_scan_state (
+      usage_period TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      last_error TEXT,
+      updated_at TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS cli_tool_sessions (
       key TEXT PRIMARY KEY,

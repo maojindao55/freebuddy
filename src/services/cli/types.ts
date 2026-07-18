@@ -44,6 +44,43 @@ export interface CLIByokModel {
   name?: string;
 }
 
+export interface AgentModelUsage {
+  agentId: string;
+  agentName: string;
+  modelId: string;
+  providerId: string;
+  sessionCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  messageCount: number;
+  estimatedCostUsd: number;
+}
+
+export type AgentUsagePeriod = "today" | "week" | "month" | "year" | "all";
+
+export interface AgentUsageSummary {
+  period: AgentUsagePeriod;
+  byAgentModel: AgentModelUsage[];
+  usageSessionCount: number;
+  linkedSessionCount: number;
+  attributedSessionCount: number;
+  ambiguousSessionCount: number;
+  coverageGaps: Array<{
+    adapter: string;
+    sessionCount: number;
+    reason: "session_attribution_unavailable" | "tokscale_client_unsupported";
+  }>;
+  scan: {
+    status: "running" | "ok" | "error";
+    startedAt?: string;
+    completedAt?: string;
+    error?: string;
+  } | null;
+}
+
 export interface CliPromptAttachment {
   path: string;
   kind: "image" | "document" | "code";

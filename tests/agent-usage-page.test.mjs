@@ -68,7 +68,7 @@ test("usage page has localized copy and responsive product styles", () => {
   ];
 
   assert.equal(en.sidebar.usage, "Usage");
-  assert.equal(zh.sidebar.usage, "用量统计");
+  assert.equal(zh.sidebar.usage, "用量");
   assert.deepEqual(Object.keys(en.usage.period), ["label", "today", "week", "month", "year", "all"]);
   assert.deepEqual(Object.keys(zh.usage.period), ["label", "today", "week", "month", "year", "all"]);
   for (const key of required) {

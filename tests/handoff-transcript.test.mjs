@@ -47,7 +47,9 @@ test("snapshot sanitizes secrets, inline media, private reasoning, and attachmen
       })
     ]);
     assert.equal(path.basename(transcript.path), "brief_1.jsonl");
-    assert.equal(fs.statSync(transcript.path).mode & 0o777, 0o600);
+    if (process.platform !== "win32") {
+      assert.equal(fs.statSync(transcript.path).mode & 0o777, 0o600);
+    }
     const loaded = readHandoffTranscriptSnapshot(dir, transcript);
     const serialized = JSON.stringify(loaded);
     assert.equal(serialized.includes("QUJDRA"), false);

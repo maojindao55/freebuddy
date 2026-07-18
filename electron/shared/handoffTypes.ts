@@ -38,6 +38,36 @@ export interface HandoffBrief {
   transcriptExcerpts: HandoffBriefMessageRef[];
 }
 
+export interface HandoffTranscriptAttachment {
+  name: string;
+  kind: "image" | "document" | "code";
+  mimeType?: string;
+  size?: number;
+}
+
+export interface HandoffTranscriptMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  status: string;
+  content: unknown;
+  attachments?: HandoffTranscriptAttachment[];
+  taskId?: string;
+  agentId?: string;
+  agentName?: string;
+  adapter?: string;
+  roleLabel?: string;
+  createdAt: string;
+  truncated?: boolean;
+}
+
+export interface HandoffTranscriptRef {
+  format: "jsonl";
+  path: string;
+  messageCount: number;
+  byteSize: number;
+  truncated: boolean;
+}
+
 export interface HandoffBriefRow {
   id: string;
   sourceConversationId: string;
@@ -48,6 +78,7 @@ export interface HandoffBriefRow {
   brief: HandoffBrief | null;
   sourceMessageCount: number;
   sourceLastMessageId?: string;
+  transcript?: HandoffTranscriptRef;
   createdAt: string;
 }
 
@@ -79,7 +110,6 @@ export interface TransferConversationInput {
   targetAgentId: string;
   targetAgentName: string;
   targetAdapter: string;
-  cwd?: string;
 }
 
 export interface TransferConversationResult {

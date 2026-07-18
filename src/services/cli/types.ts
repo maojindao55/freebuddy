@@ -79,7 +79,6 @@ export interface CliRunArgs {
   knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
-  handoffBrief?: HandoffBrief;
   handoffBriefId?: string;
 }
 
@@ -567,19 +566,6 @@ export interface HandoffBrief {
   transcriptExcerpts: HandoffBriefMessageRef[];
 }
 
-export interface HandoffBriefRow {
-  id: string;
-  sourceConversationId: string;
-  targetConversationId: string;
-  sourceAgentId: string;
-  sourceAgentName: string;
-  sourceAdapter: string;
-  brief: HandoffBrief | null;
-  sourceMessageCount: number;
-  sourceLastMessageId?: string;
-  createdAt: string;
-}
-
 export interface PreviewHandoffBriefInput {
   sourceConversationId: string;
 }
@@ -595,7 +581,6 @@ export interface TransferConversationInput {
   targetAgentId: string;
   targetAgentName: string;
   targetAdapter: string;
-  cwd?: string;
 }
 
 export interface TransferConversationResult {

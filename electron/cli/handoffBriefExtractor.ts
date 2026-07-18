@@ -130,6 +130,8 @@ function excerptForMessage(msg: ConversationMessage): string {
 function trimForSize(brief: HandoffBrief): HandoffBrief {
   let b = brief;
 
+  const byteSize = () => Buffer.byteLength(JSON.stringify(b), "utf8");
+
   const stages: Array<() => void> = [
     () => { b = { ...b, transcriptExcerpts: b.transcriptExcerpts.slice(0, 4) }; },
     () => { b = { ...b, transcriptExcerpts: b.transcriptExcerpts.slice(0, 2) }; },
@@ -148,9 +150,32 @@ function trimForSize(brief: HandoffBrief): HandoffBrief {
   ];
 
   let i = 0;
-  while (JSON.stringify(b).length > SIZE_LIMIT && i < stages.length) {
+  while (byteSize() > SIZE_LIMIT && i < stages.length) {
     stages[i]();
     i++;
+  }
+
+  // Paths are supplied by tools and are not covered by the normal text caps.
+  // Remove the least-recent entries until the serialized UTF-8 payload fits.
+  while (byteSize() > SIZE_LIMIT && b.fileChanges.length > 0) {
+    b = { ...b, fileChanges: b.fileChanges.slice(0, -1) };
+  }
+
+  // Conversation metadata is normally small, but it can contain user-defined
+  // values such as titles and workspace paths. Bound it as a final safeguard.
+  if (byteSize() > SIZE_LIMIT) {
+    b = {
+      ...b,
+      source: {
+        ...b.source,
+        conversationId: clip(b.source.conversationId, 500),
+        agentId: clip(b.source.agentId, 500),
+        agentName: clip(b.source.agentName, 500),
+        adapter: clip(b.source.adapter, 500),
+        title: clip(b.source.title, 1000),
+        cwd: b.source.cwd ? clip(b.source.cwd, 2000) : undefined
+      }
+    };
   }
   return b;
 }

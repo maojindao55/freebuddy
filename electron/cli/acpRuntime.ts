@@ -63,7 +63,10 @@ import {
   registerSkillToolSession,
   unregisterSkillToolSession
 } from "../skillToolService.js";
-import { registerContextToolSession } from "../contextToolService.js";
+import {
+  registerContextToolSession,
+  unregisterContextToolSession
+} from "../contextToolService.js";
 import type { AcpStdioMcpServer } from "../shared/draftToolProtocol.js";
 import {
   clearAuthenticationTerminalsForSession,
@@ -183,6 +186,7 @@ export async function runAcpAgent({
     unregisterDraftToolSession(args.sessionId);
     unregisterBrowserToolSession(args.sessionId);
     unregisterSkillToolSession(args.sessionId);
+    unregisterContextToolSession(args.sessionId);
     clearAuthenticationTerminalsForSession(args.sessionId);
     clearAuthenticationResolversForSession(args.sessionId);
     clearPermissionResolversForSession(args.sessionId);
@@ -870,7 +874,8 @@ export async function runAcpAgent({
         registerContextToolSession(
           args.sessionId,
           args.handoffBrief,
-          args.handoffBriefId
+          args.handoffBriefId,
+          args.handoffTranscript
         )
       );
     }

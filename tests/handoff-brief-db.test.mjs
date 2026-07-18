@@ -16,7 +16,7 @@ try {
   bindingAvailable = false;
 }
 
-function makeDb() {
+function makeDb(legacySourceForeignKey = false) {
   const db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
   db.exec(`
@@ -51,8 +51,14 @@ function makeDb() {
       brief_json TEXT NOT NULL,
       source_message_count INTEGER NOT NULL,
       source_last_message_id TEXT,
+      ${legacySourceForeignKey ? "" : `transcript_path TEXT,
+      transcript_message_count INTEGER,
+      transcript_byte_size INTEGER,
+      transcript_truncated INTEGER NOT NULL DEFAULT 0,`}
       created_at TEXT NOT NULL,
-      FOREIGN KEY(source_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      ${legacySourceForeignKey
+        ? "FOREIGN KEY(source_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,"
+        : ""}
       FOREIGN KEY(target_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
   `);
@@ -90,13 +96,27 @@ test("insertHandoffBrief + getHandoffBriefByTarget roundtrip", async (t) => {
     sourceAdapter: "codex",
     brief: sampleBrief,
     sourceMessageCount: 1,
-    sourceLastMessageId: "m1"
+    sourceLastMessageId: "m1",
+    transcript: {
+      format: "jsonl",
+      path: "/tmp/handoff-snapshots/br1.jsonl",
+      messageCount: 1,
+      byteSize: 123,
+      truncated: true
+    }
   });
   assert.equal(row.id, "br1");
   assert.equal(row.targetConversationId, "B");
   const got = getHandoffBriefByTarget("B");
   assert.equal(got?.id, "br1");
   assert.equal(got?.brief.originalGoal, "g");
+  assert.deepEqual(got?.transcript, {
+    format: "jsonl",
+    path: "/tmp/handoff-snapshots/br1.jsonl",
+    messageCount: 1,
+    byteSize: 123,
+    truncated: true
+  });
 });
 
 test("CASCADE: delete target conversation removes brief", async (t) => {
@@ -117,6 +137,55 @@ test("CASCADE: delete target conversation removes brief", async (t) => {
   });
   db.prepare("DELETE FROM conversations WHERE id = ?").run("B");
   assert.equal(getHandoffBriefByTarget("B"), undefined);
+});
+
+test("snapshot survives deleting the source conversation", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable under this Node"); return; }
+  const db = makeDb();
+  db.prepare(
+    `INSERT INTO conversations (id, title, agent_id, agent_name, adapter, created_at, updated_at)
+     VALUES ('A', 'A', 'A', 'A', 'codex', '0', '0'),
+            ('B', 'B', 'B', 'B', 'claude', '0', '0')`
+  ).run();
+  const { setDbForTest, insertHandoffBrief, getHandoffBriefByTarget } =
+    await import("../dist-electron/cli/handoffBriefs.js");
+  setDbForTest(db);
+  insertHandoffBrief({
+    id: "br-source-delete", sourceConversationId: "A", targetConversationId: "B",
+    sourceAgentId: "A", sourceAgentName: "Codex", sourceAdapter: "codex",
+    brief: sampleBrief, sourceMessageCount: 1
+  });
+  db.prepare("DELETE FROM conversations WHERE id = ?").run("A");
+  assert.equal(getHandoffBriefByTarget("B")?.brief.originalGoal, "g");
+});
+
+test("migration removes the legacy source cascade without losing snapshots", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable under this Node"); return; }
+  const db = makeDb(true);
+  db.prepare(
+    `INSERT INTO conversations (id, title, agent_id, agent_name, adapter, created_at, updated_at)
+     VALUES ('A', 'A', 'A', 'A', 'codex', '0', '0'),
+            ('B', 'B', 'B', 'B', 'claude', '0', '0')`
+  ).run();
+  db.prepare(
+    `INSERT INTO handoff_briefs
+       (id, source_conversation_id, target_conversation_id, source_agent_id,
+        source_agent_name, source_adapter, brief_json, source_message_count, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run("legacy", "A", "B", "A", "Codex", "codex", JSON.stringify(sampleBrief), 1, "0");
+
+  const { migrate } = await import("../dist-electron/cli/db.js");
+  migrate(db);
+  const columnNames = db.prepare("PRAGMA table_info(handoff_briefs)").all().map((column) => column.name);
+  assert.ok(columnNames.includes("transcript_path"));
+  assert.ok(columnNames.includes("transcript_message_count"));
+  const foreignKeys = db.prepare("PRAGMA foreign_key_list(handoff_briefs)").all();
+  assert.equal(foreignKeys.some((key) => key.from === "source_conversation_id"), false);
+  db.prepare("DELETE FROM conversations WHERE id = ?").run("A");
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM handoff_briefs WHERE id = 'legacy'").get().count,
+    1
+  );
 });
 
 test("getHandoffBriefsBySource returns briefs ordered DESC", async (t) => {

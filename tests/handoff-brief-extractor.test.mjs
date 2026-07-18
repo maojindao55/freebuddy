@@ -243,6 +243,21 @@ test("64 KB trim order: transcriptExcerpts -> fileChanges -> recentUserMessages 
     ]));
   }
   const brief = extractHandoffBrief({ conversation: conv(), messages: msgs });
-  const size = JSON.stringify(brief).length;
+  const size = Buffer.byteLength(JSON.stringify(brief), "utf8");
   assert.ok(size <= 64 * 1024, `brief size ${size} exceeds 64KB`);
+});
+
+test("64 KB limit measures UTF-8 bytes and trims oversized multibyte paths", () => {
+  const items = Array.from({ length: 50 }, (_, i) => ({
+    kind: "file-edit",
+    path: `/${"汉".repeat(3000)}-${i}`,
+    action: "update"
+  }));
+  const brief = extractHandoffBrief({
+    conversation: conv(),
+    messages: [userMsg("u1", "go"), assistantMsg("a1", items)]
+  });
+  const size = Buffer.byteLength(JSON.stringify(brief), "utf8");
+  assert.ok(size <= 64 * 1024, `brief size ${size} exceeds 64KB`);
+  assert.ok(brief.fileChanges.length < 10);
 });

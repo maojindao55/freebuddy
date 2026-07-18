@@ -29,8 +29,7 @@ import type {
   PreviewHandoffBriefInput,
   PreviewHandoffBriefResult,
   TransferConversationInput,
-  TransferConversationResult,
-  HandoffBriefRow
+  TransferConversationResult
 } from "./types";
 import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 
@@ -180,10 +179,6 @@ export const cliClient = {
   },
   previewHandoffBrief(input: PreviewHandoffBriefInput): Promise<PreviewHandoffBriefResult> {
     return api().previewHandoffBrief(input);
-  },
-
-  getHandoffBriefByTarget(targetConversationId: string): Promise<HandoffBriefRow | undefined> {
-    return api().getHandoffBriefByTarget(targetConversationId);
   },
 
   transferConversation(input: TransferConversationInput): Promise<TransferConversationResult> {

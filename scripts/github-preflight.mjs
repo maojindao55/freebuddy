@@ -15,13 +15,20 @@ const tokenEnvNames = [
 export function parseGitHost(remoteUrl) {
   const value = remoteUrl.trim();
   const scpStyle = value.match(/^[^@\s]+@([^:\s]+):/);
-  if (scpStyle) return scpStyle[1];
+  if (scpStyle) return canonicalApiHost(scpStyle[1]);
 
   try {
-    return new URL(value).hostname;
+    return canonicalApiHost(new URL(value).hostname);
   } catch {
     return "";
   }
+}
+
+function canonicalApiHost(host) {
+  // GitHub documents ssh.github.com:443 as an alternate SSH transport for
+  // networks that block port 22. Its REST/GraphQL and gh auth host remains
+  // github.com, so API preflight must not query the SSH-only endpoint.
+  return host.toLowerCase() === "ssh.github.com" ? "github.com" : host;
 }
 
 export function isSshRemote(remoteUrl) {

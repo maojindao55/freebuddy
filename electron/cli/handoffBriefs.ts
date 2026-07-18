@@ -1,6 +1,10 @@
 import type { Database as DB } from "better-sqlite3";
 import { getDb } from "./db.js";
-import type { HandoffBrief, HandoffBriefRow } from "../shared/handoffTypes.js";
+import type {
+  HandoffBrief,
+  HandoffBriefRow,
+  HandoffTranscriptRef
+} from "../shared/handoffTypes.js";
 
 // Test hook: allows injecting an in-memory DB for unit tests
 let testDb: DB | null = null;
@@ -21,6 +25,7 @@ export interface InsertHandoffBriefInput {
   brief: HandoffBrief;
   sourceMessageCount: number;
   sourceLastMessageId?: string;
+  transcript?: HandoffTranscriptRef;
 }
 
 function rowToHandoffBrief(r: any): HandoffBriefRow {
@@ -40,6 +45,15 @@ function rowToHandoffBrief(r: any): HandoffBriefRow {
     brief,
     sourceMessageCount: r.source_message_count,
     sourceLastMessageId: r.source_last_message_id ?? undefined,
+    transcript: r.transcript_path
+      ? {
+          format: "jsonl",
+          path: r.transcript_path,
+          messageCount: r.transcript_message_count ?? 0,
+          byteSize: r.transcript_byte_size ?? 0,
+          truncated: r.transcript_truncated === 1
+        }
+      : undefined,
     createdAt: r.created_at
   };
 }
@@ -51,8 +65,10 @@ export function insertHandoffBrief(input: InsertHandoffBriefInput): HandoffBrief
       `INSERT INTO handoff_briefs
          (id, source_conversation_id, target_conversation_id,
           source_agent_id, source_agent_name, source_adapter,
-          brief_json, source_message_count, source_last_message_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          brief_json, source_message_count, source_last_message_id,
+          transcript_path, transcript_message_count, transcript_byte_size,
+          transcript_truncated, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.id,
@@ -64,6 +80,10 @@ export function insertHandoffBrief(input: InsertHandoffBriefInput): HandoffBrief
       JSON.stringify(input.brief),
       input.sourceMessageCount,
       input.sourceLastMessageId ?? null,
+      input.transcript?.path ?? null,
+      input.transcript?.messageCount ?? null,
+      input.transcript?.byteSize ?? null,
+      input.transcript?.truncated ? 1 : 0,
       now
     );
   return getHandoffBrief(input.id) as HandoffBriefRow;

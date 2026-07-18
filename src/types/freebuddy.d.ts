@@ -34,8 +34,7 @@ import type {
   PreviewHandoffBriefInput,
   PreviewHandoffBriefResult,
   TransferConversationInput,
-  TransferConversationResult,
-  HandoffBriefRow
+  TransferConversationResult
 } from "@/services/cli/types";
 import type {
   WorkflowPlan,
@@ -169,9 +168,6 @@ declare global {
     previewHandoffBrief(
       input: PreviewHandoffBriefInput
     ): Promise<PreviewHandoffBriefResult>;
-    getHandoffBriefByTarget(
-      targetConversationId: string
-    ): Promise<HandoffBriefRow | undefined>;
     transferConversation(
       input: TransferConversationInput
     ): Promise<TransferConversationResult>;

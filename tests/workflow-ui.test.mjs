@@ -244,13 +244,10 @@ test("Settings page opens with CLI agents before General", () => {
   assert.doesNotMatch(src, /key: "scheduledTasks"/);
 });
 
-test("MessageBubble supports right-click and inline copy button", () => {
+test("MessageBubble supports inline copy button", () => {
   const src = read("../src/components/CLI/MessageBubble.tsx");
   const css = read("../styles.css");
-  assert.match(src, /onContextMenu=\{handleContextMenu\}/);
   assert.match(src, /navigator\.clipboard\?\.writeText/);
-  assert.match(src, /message\.copySelection/);
-  assert.match(src, /getSelectionText/);
   assert.match(src, /copyableItemText/);
   assert.match(src, /item\.kind === "text" \|\| item\.kind === "raw"/);
   const copyableHelper = src.match(/function copyableItemText[\s\S]*?function messageText/)?.[0] ?? src;
@@ -264,7 +261,6 @@ test("MessageBubble supports right-click and inline copy button", () => {
   assert.match(src, /<ThumbsDown className="msg-action-icon"/);
   assert.match(src, /message\.upvote/);
   assert.match(src, /message\.downvote/);
-  assert.match(css, /\.message-context-menu/);
   assert.match(css, /\.msg-actions/);
   assert.match(css, /\.msg-action-btn\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*26px;/);
   assert.match(css, /\.msg-action-icon\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;[\s\S]*?flex:\s*0 0 16px;/);

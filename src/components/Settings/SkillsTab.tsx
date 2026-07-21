@@ -46,6 +46,7 @@ export function SkillsTab() {
     deleteSkill
   } = useSkillStore();
   const importMenuRef = useRef<HTMLDetailsElement>(null);
+  const actionMenuRef = useRef<HTMLDetailsElement>(null);
   const [view, setView] = useState<SkillsView>("installed");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<SkillFilter>("all");
@@ -60,6 +61,20 @@ export function SkillsTab() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (importMenuRef.current && !importMenuRef.current.contains(target)) {
+        importMenuRef.current.removeAttribute("open");
+      }
+      if (actionMenuRef.current && !actionMenuRef.current.contains(target)) {
+        actionMenuRef.current.removeAttribute("open");
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -353,7 +368,7 @@ export function SkillsTab() {
                         />
                         <span aria-hidden="true" />
                       </label>
-                      <details className="skill-actions-menu">
+                      <details className="skill-actions-menu" ref={actionMenuRef}>
                         <summary
                           className="icon-btn"
                           role="button"
@@ -363,11 +378,22 @@ export function SkillsTab() {
                           <MoreHorizontal size={17} />
                         </summary>
                         <div>
-                          <button onClick={() => void skillsClient.reveal(selected.id)}>
+                          <button
+                            onClick={() => {
+                              actionMenuRef.current?.removeAttribute("open");
+                              void skillsClient.reveal(selected.id);
+                            }}
+                          >
                             <FolderOpen size={16} /> {t("skills.reveal")}
                           </button>
                           {canDelete ? (
-                            <button className="danger" onClick={() => void deleteSelected()}>
+                            <button
+                              className="danger"
+                              onClick={() => {
+                                actionMenuRef.current?.removeAttribute("open");
+                                void deleteSelected();
+                              }}
+                            >
                               <Trash2 size={16} /> {t("common.delete")}
                             </button>
                           ) : null}

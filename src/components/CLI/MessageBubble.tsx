@@ -906,6 +906,7 @@ export const MessageBubble = memo(function MessageBubble({
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };
+
   const actionBarNode = showActionBar ? (
     <div className="msg-actions">
       <button

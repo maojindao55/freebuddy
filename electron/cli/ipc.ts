@@ -151,7 +151,12 @@ import {
   createHandoffTranscriptSnapshot,
   deleteHandoffTranscriptSnapshot
 } from "../shared/handoffTranscript.js";
-import { reconcileAgentUsage } from "./usageReconciler.js";
+import {
+  connectCursorUsage,
+  disconnectCursorUsage,
+  getCursorUsageStatus,
+  reconcileAgentUsage
+} from "./usageReconciler.js";
 import { getAgentUsageSummary } from "./usageStore.js";
 import { normalizeAgentUsagePeriod } from "./usageCore.js";
 
@@ -404,6 +409,20 @@ export function registerCliIpc() {
     await reconcileAgentUsage(period);
     return getAgentUsageSummary(period);
   });
+  ipcMain.handle("cli:cursorUsageStatus", () => getCursorUsageStatus());
+  ipcMain.handle("cli:connectCursorUsage", (_event, rawInput: unknown) => {
+    const input = rawInput && typeof rawInput === "object"
+      ? rawInput as Record<string, unknown>
+      : {};
+    return connectCursorUsage({
+      token: typeof input.token === "string" ? input.token : "",
+      accountName: typeof input.accountName === "string" ? input.accountName : undefined
+    });
+  });
+  ipcMain.handle("cli:disconnectCursorUsage", () => disconnectCursorUsage());
+  ipcMain.handle("cli:openCursorUsageSettings", () =>
+    shell.openExternal("https://www.cursor.com/settings")
+  );
 
   ipcMain.handle("cli:listOverrides", () => listOverrides());
   ipcMain.handle(

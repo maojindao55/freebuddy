@@ -24,10 +24,24 @@ test("usage sessions backfill, reject ambiguous ownership and aggregate by agent
     getAgentUsageSummary,
     setUsageScanState,
     setUsageDbForTest,
+    storeTokscaleDailyUsageReport,
+    storeTokscaleHourlyUsageReport,
     storeTokscaleUsagePeriodReport,
     storeTokscaleUsageReport
   } = await import("../dist-electron/cli/usageStore.js");
+  const { connectCursorUsage } = await import(
+    "../dist-electron/cli/usageReconciler.js"
+  );
   setUsageDbForTest(db);
+
+  await assert.rejects(
+    connectCursorUsage({ token: "" }),
+    /cursor_usage_invalid_token/
+  );
+  await assert.rejects(
+    connectCursorUsage({ token: "valid-looking-token", accountName: "bad name" }),
+    /cursor_usage_invalid_account_name/
+  );
 
   const insertTask = db.prepare(
     `INSERT INTO cli_tasks
@@ -85,13 +99,27 @@ test("usage sessions backfill, reject ambiguous ownership and aggregate by agent
           reasoningTokens: 0,
           messageCount: 1,
           estimatedCostUsd: 99
+        },
+        {
+          client: "cursor",
+          sessionId: "cursor-account-day",
+          sessionKey: "cursor-account-day",
+          modelId: "auto",
+          providerId: "cursor",
+          inputTokens: 40,
+          outputTokens: 8,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          messageCount: 3,
+          estimatedCostUsd: 0.3
         }
       ]
     },
     "scan-1"
   );
   assert.deepEqual(first, {
-    reportEntries: 3,
+    reportEntries: 4,
     attributedEntries: 2,
     attributedSessions: 2
   });
@@ -110,9 +138,60 @@ test("usage sessions backfill, reject ambiguous ownership and aggregate by agent
     summary.byAgentModel.map((row) => [row.modelId, row.inputTokens]),
     [
       ["claude-sonnet-4", 30],
-      ["gpt-5.5", 10]
+      ["gpt-5.5", 10],
+      ["auto", 40]
     ]
   );
+  assert.equal(summary.byAgentModel.at(-1)?.attribution, "unattributed");
+  assert.equal(summary.usageSessionCount, 3);
+
+  storeTokscaleDailyUsageReport("all", {
+    entries: [
+      {
+        date: "2026-07-20",
+        client: "codex",
+        inputTokens: 10,
+        outputTokens: 2,
+        cacheReadTokens: 20,
+        cacheWriteTokens: 0,
+        reasoningTokens: 1,
+        messageCount: 1
+      },
+      {
+        date: "2026-07-20",
+        client: "cursor",
+        inputTokens: 40,
+        outputTokens: 8,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        messageCount: 3
+      }
+    ]
+  }, "daily-scan");
+  summary = getAgentUsageSummary();
+  assert.deepEqual(summary.dailyTrend, [{
+    date: "2026-07-20",
+    inputTokens: 50,
+    outputTokens: 10,
+    cacheReadTokens: 20,
+    cacheWriteTokens: 0,
+    reasoningTokens: 1,
+    messageCount: 4,
+    totalTokens: 80
+  }]);
+  assert.deepEqual(summary.hourlyTrend, []);
+
+  storeTokscaleHourlyUsageReport({
+    entries: [{
+      hour: "2026-07-20 14:00",
+      inputTokens: 5,
+      outputTokens: 2,
+      cacheReadTokens: 8,
+      cacheWriteTokens: 1,
+      messageCount: 2
+    }]
+  }, "hourly-scan");
 
   const todayReport = {
     entries: [
@@ -144,6 +223,15 @@ test("usage sessions backfill, reject ambiguous ownership and aggregate by agent
   assert.equal(today.byAgentModel.length, 1);
   assert.equal(today.byAgentModel[0].inputTokens, 7);
   assert.equal(today.scan?.completedAt, "today-end");
+  assert.deepEqual(today.hourlyTrend, [{
+    hour: "2026-07-20 14:00",
+    inputTokens: 5,
+    outputTokens: 2,
+    cacheReadTokens: 8,
+    cacheWriteTokens: 1,
+    messageCount: 2,
+    totalTokens: 16
+  }]);
   const week = getAgentUsageSummary("week");
   assert.equal(week.usageSessionCount, 0);
   assert.deepEqual(week.byAgentModel, []);
@@ -155,7 +243,10 @@ test("usage sessions backfill, reject ambiguous ownership and aggregate by agent
   summary = getAgentUsageSummary();
   assert.equal(summary.ambiguousSessionCount, 1);
   assert.equal(summary.attributedSessionCount, 1);
-  assert.deepEqual(summary.byAgentModel.map((row) => row.modelId), ["claude-sonnet-4"]);
+  assert.deepEqual(
+    summary.byAgentModel.map((row) => row.modelId),
+    ["claude-sonnet-4", "auto"]
+  );
 
   setUsageDbForTest(null);
   db.close();

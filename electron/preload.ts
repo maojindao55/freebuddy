@@ -44,6 +44,10 @@ const cli = {
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
   usageSummary: (period?: unknown) => ipcRenderer.invoke("cli:usageSummary", period),
   refreshUsage: (period?: unknown) => ipcRenderer.invoke("cli:refreshUsage", period),
+  cursorUsageStatus: () => ipcRenderer.invoke("cli:cursorUsageStatus"),
+  connectCursorUsage: (input: unknown) => ipcRenderer.invoke("cli:connectCursorUsage", input),
+  disconnectCursorUsage: () => ipcRenderer.invoke("cli:disconnectCursorUsage"),
+  openCursorUsageSettings: () => ipcRenderer.invoke("cli:openCursorUsageSettings"),
   probeAuthentication: (args: unknown) =>
     ipcRenderer.invoke("cli:probeAuthentication", args),
   logout: (args: unknown) => ipcRenderer.invoke("cli:logout", args),

@@ -29,6 +29,14 @@ test("usage page reads cached totals, refreshes, and supports agent filtering", 
   assert.match(page, /USAGE_PERIODS\.map/);
   assert.match(page, /setPeriod\(value\)/);
   assert.match(page, /summary\.usageSessionCount/);
+  assert.match(page, /completeHourlyTrend\(summary\.hourlyTrend\)/);
+  assert.match(page, /aggregateMonthlyTrend\(summary\.dailyTrend, period\)/);
+  assert.match(page, /granularity: "day"/);
+  assert.match(page, /points\.length <= 7 \? 1 : 3/);
+  assert.match(page, /points\.length <= 12 \? 1/);
+  assert.match(page, /points\.length <= 7 \? "min\(56%, 72px\)"/);
+  assert.match(page, /gridTemplateColumns: `repeat\(\$\{points\.length\}, minmax\(0, 1fr\)\)`/);
+  assert.match(page, /"--usage-trend-bar-width": barWidth/);
   assert.match(page, /summary\?\.scan\?\.status !== "running"/);
   assert.match(page, /setSelectedAgentId/);
   assert.match(page, /aria-pressed=\{selectedAgentId === agent\.agentId\}/);
@@ -53,6 +61,38 @@ test("usage period crosses the renderer and Electron bridge", () => {
   assert.match(types, /usageSummary\(period\?: AgentUsagePeriod\)/);
 });
 
+test("Cursor usage can be configured end-to-end without exposing the token", () => {
+  const page = read("../src/components/Usage/AgentUsagePage.tsx");
+  const client = read("../src/services/cli/client.ts");
+  const preload = read("../electron/preload.ts");
+  const ipc = read("../electron/cli/ipc.ts");
+  const reconciler = read("../electron/cli/usageReconciler.ts");
+  const types = read("../src/types/freebuddy.d.ts");
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+
+  assert.match(page, /type="password"/);
+  assert.match(page, /autoComplete="off"/);
+  assert.match(page, /<CircleHelp aria-hidden="true"/);
+  assert.match(page, /aria-expanded=\{cursorTokenHelpOpen\}/);
+  assert.match(page, /event\.key === "Escape"/);
+  assert.match(page, /cliClient\.connectCursorUsage/);
+  assert.match(page, /cliClient\.disconnectCursorUsage/);
+  assert.match(page, /cliClient\.openCursorUsageSettings/);
+  assert.match(client, /connectCursorUsage\(input: CursorUsageConnectInput\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("cli:connectCursorUsage", input\)/);
+  assert.match(ipc, /ipcMain\.handle\("cli:connectCursorUsage"/);
+  assert.match(ipc, /https:\/\/www\.cursor\.com\/settings/);
+  assert.match(reconciler, /pty\.spawn/);
+  assert.match(reconciler, /terminal\.write/);
+  assert.doesNotMatch(reconciler, /\["login",\s*token/);
+  assert.match(types, /connectCursorUsage\(input: CursorUsageConnectInput\)/);
+  assert.ok(en.usage.cursorUsageTitle);
+  assert.ok(zh.usage.cursorUsageTitle);
+  assert.ok(en.usage.cursorTokenHelpTitle);
+  assert.ok(zh.usage.cursorTokenHelpTitle);
+});
+
 test("usage page has localized copy and responsive product styles", () => {
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
@@ -61,6 +101,7 @@ test("usage page has localized copy and responsive product styles", () => {
     "title",
     "description",
     "totalTokens",
+    "tokenTrend",
     "byAgent",
     "byModel",
     "coverage",
@@ -78,6 +119,9 @@ test("usage page has localized copy and responsive product styles", () => {
   assert.match(styles, /\.usage-metric-grid\s*\{/);
   assert.match(styles, /\.usage-period-picker\s*\{/);
   assert.match(styles, /\.usage-overview-grid\s*\{/);
+  assert.match(styles, /\.usage-trend-chart\s*\{/);
+  assert.match(styles, /\.usage-trend-bar\s*\{/);
+  assert.match(styles, /\.usage-trend-title-row\s*\{/);
   assert.match(styles, /\.usage-table-wrap\s*\{/);
   assert.match(styles, /@media \(max-width: 720px\)/);
   assert.match(styles, /\.usage-agent-row:focus-visible/);

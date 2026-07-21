@@ -183,6 +183,34 @@ export function migrate(db: DB) {
     CREATE INDEX IF NOT EXISTS idx_agent_usage_period_snapshots_scanned
       ON agent_usage_period_snapshots(usage_period, scanned_at DESC);
 
+    -- Daily totals power the overall trend independently of Agent attribution.
+    -- Keep the client dimension so disconnecting Cursor can remove its share.
+    CREATE TABLE IF NOT EXISTS agent_usage_daily_snapshots (
+      usage_period TEXT NOT NULL,
+      usage_date TEXT NOT NULL,
+      client TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      scanned_at TEXT NOT NULL,
+      PRIMARY KEY(usage_period, usage_date, client)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_usage_daily_snapshots_date
+      ON agent_usage_daily_snapshots(usage_period, usage_date);
+
+    CREATE TABLE IF NOT EXISTS agent_usage_hourly_snapshots (
+      usage_hour TEXT PRIMARY KEY,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      scanned_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS agent_usage_scan_state (
       id INTEGER PRIMARY KEY CHECK(id = 1),
       status TEXT NOT NULL,

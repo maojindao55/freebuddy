@@ -5,6 +5,8 @@ import {
   normalizeUsageSessionKey,
   tokscaleClientForAdapter,
   type AgentUsagePeriod,
+  type TokscaleDailyUsageReport,
+  type TokscaleHourlyUsageReport,
   type TokscaleUsageReport
 } from "./usageCore.js";
 
@@ -120,6 +122,68 @@ export interface StoredUsageScanResult {
   attributedSessions: number;
 }
 
+export function storeTokscaleDailyUsageReport(
+  period: AgentUsagePeriod,
+  report: TokscaleDailyUsageReport,
+  scannedAt = new Date().toISOString()
+): void {
+  const db = usageDb();
+  const insert = db.prepare(
+    `INSERT INTO agent_usage_daily_snapshots
+       (usage_period, usage_date, client, input_tokens, output_tokens,
+        cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count, scanned_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  db.transaction(() => {
+    db.prepare(
+      "DELETE FROM agent_usage_daily_snapshots WHERE usage_period = ?"
+    ).run(period);
+    for (const entry of report.entries) {
+      insert.run(
+        period,
+        entry.date,
+        entry.client,
+        entry.inputTokens,
+        entry.outputTokens,
+        entry.cacheReadTokens,
+        entry.cacheWriteTokens,
+        entry.reasoningTokens,
+        entry.messageCount,
+        scannedAt
+      );
+    }
+  })();
+}
+
+export function storeTokscaleHourlyUsageReport(
+  report: TokscaleHourlyUsageReport,
+  scannedAt = new Date().toISOString()
+): void {
+  const db = usageDb();
+  const insert = db.prepare(
+    `INSERT INTO agent_usage_hourly_snapshots
+       (usage_hour, input_tokens, output_tokens, cache_read_tokens,
+        cache_write_tokens, message_count, scanned_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  db.transaction(() => {
+    db.prepare("DELETE FROM agent_usage_hourly_snapshots").run();
+    for (const entry of report.entries) {
+      insert.run(
+        entry.hour,
+        entry.inputTokens,
+        entry.outputTokens,
+        entry.cacheReadTokens,
+        entry.cacheWriteTokens,
+        entry.messageCount,
+        scannedAt
+      );
+    }
+  })();
+}
+
+const CURSOR_UNATTRIBUTED_AGENT_ID = "usage:cursor:unattributed";
+
 export function storeTokscaleUsageReport(
   report: TokscaleUsageReport,
   scannedAt = new Date().toISOString()
@@ -161,7 +225,8 @@ export function storeTokscaleUsageReport(
   db.transaction(() => {
     for (const entry of report.entries) {
       const linkKey = `${entry.client}\u0000${entry.sessionKey}`;
-      if (!linked.has(linkKey)) continue;
+      const isAttributed = linked.has(linkKey);
+      if (!isAttributed && entry.client !== "cursor") continue;
       upsert.run(
         entry.client,
         entry.sessionKey,
@@ -178,8 +243,10 @@ export function storeTokscaleUsageReport(
         scannedAt,
         scannedAt
       );
-      attributedEntries += 1;
-      attributedSessions.add(linkKey);
+      if (isAttributed) {
+        attributedEntries += 1;
+        attributedSessions.add(linkKey);
+      }
     }
   })();
 
@@ -223,7 +290,8 @@ export function storeTokscaleUsagePeriodReport(
     ).run(period);
     for (const entry of report.entries) {
       const linkKey = `${entry.client}\u0000${entry.sessionKey}`;
-      if (!linked.has(linkKey)) continue;
+      const isAttributed = linked.has(linkKey);
+      if (!isAttributed && entry.client !== "cursor") continue;
       insert.run(
         period,
         entry.client,
@@ -240,8 +308,10 @@ export function storeTokscaleUsagePeriodReport(
         entry.estimatedCostUsd,
         scannedAt
       );
-      attributedEntries += 1;
-      attributedSessions.add(linkKey);
+      if (isAttributed) {
+        attributedEntries += 1;
+        attributedSessions.add(linkKey);
+      }
     }
   })();
 
@@ -317,11 +387,31 @@ export interface AgentModelUsage {
   reasoningTokens: number;
   messageCount: number;
   estimatedCostUsd: number;
+  attribution: "agent" | "unattributed";
 }
 
 export interface AgentUsageSummary {
   period: AgentUsagePeriod;
   byAgentModel: AgentModelUsage[];
+  dailyTrend: Array<{
+    date: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+    messageCount: number;
+    totalTokens: number;
+  }>;
+  hourlyTrend: Array<{
+    hour: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    messageCount: number;
+    totalTokens: number;
+  }>;
   usageSessionCount: number;
   linkedSessionCount: number;
   attributedSessionCount: number;
@@ -348,7 +438,7 @@ export function getAgentUsageSummary(
     : "agent_usage_period_snapshots";
   const periodClause = period === "all" ? "" : "AND s.usage_period = ?";
   const periodParams = period === "all" ? [] : [period];
-  const rows = db
+  const attributedRows = db
     .prepare(
       `SELECT l.agent_id, l.agent_name, s.model_id, s.provider_id,
               COUNT(DISTINCT s.client || char(0) || s.session_key) AS session_count,
@@ -365,6 +455,23 @@ export function getAgentUsageSummary(
        WHERE l.ambiguous = 0 ${periodClause}
        GROUP BY l.agent_id, l.agent_name, s.model_id, s.provider_id
        ORDER BY l.agent_name COLLATE NOCASE, s.model_id COLLATE NOCASE`
+    )
+    .all(...periodParams) as Array<Record<string, string | number>>;
+  const cursorRows = db
+    .prepare(
+      `SELECT s.model_id, s.provider_id,
+              COUNT(DISTINCT s.client || char(0) || s.session_key) AS session_count,
+              SUM(s.input_tokens) AS input_tokens,
+              SUM(s.output_tokens) AS output_tokens,
+              SUM(s.cache_read_tokens) AS cache_read_tokens,
+              SUM(s.cache_write_tokens) AS cache_write_tokens,
+              SUM(s.reasoning_tokens) AS reasoning_tokens,
+              SUM(s.message_count) AS message_count,
+              SUM(s.estimated_cost_usd) AS estimated_cost_usd
+       FROM ${usageTable} s
+       WHERE s.client = 'cursor' ${periodClause}
+       GROUP BY s.model_id, s.provider_id
+       ORDER BY s.model_id COLLATE NOCASE`
     )
     .all(...periodParams) as Array<Record<string, string | number>>;
   const counts = db
@@ -403,11 +510,36 @@ export function getAgentUsageSummary(
     .prepare(
       `SELECT COUNT(DISTINCT s.client || char(0) || s.session_key) AS session_count
        FROM ${usageTable} s
-       JOIN agent_usage_sessions l
+       LEFT JOIN agent_usage_sessions l
          ON l.client = s.client AND l.session_key = s.session_key
-       WHERE l.ambiguous = 0 ${periodClause}`
+       WHERE (s.client = 'cursor' OR l.ambiguous = 0) ${periodClause}`
     )
     .get(...periodParams) as { session_count: number };
+  const dailyRows = db
+    .prepare(
+      `SELECT usage_date,
+              SUM(input_tokens) AS input_tokens,
+              SUM(output_tokens) AS output_tokens,
+              SUM(cache_read_tokens) AS cache_read_tokens,
+              SUM(cache_write_tokens) AS cache_write_tokens,
+              SUM(reasoning_tokens) AS reasoning_tokens,
+              SUM(message_count) AS message_count
+       FROM agent_usage_daily_snapshots
+       WHERE usage_period = ?
+       GROUP BY usage_date
+       ORDER BY usage_date`
+    )
+    .all(period) as Array<Record<string, string | number>>;
+  const hourlyRows = period === "today"
+    ? db
+        .prepare(
+          `SELECT usage_hour, input_tokens, output_tokens, cache_read_tokens,
+                  cache_write_tokens, message_count
+           FROM agent_usage_hourly_snapshots
+           ORDER BY usage_hour`
+        )
+        .all() as Array<Record<string, string | number>>
+    : [];
   const adapterRows = db
     .prepare(
       `SELECT t.adapter, o.base_adapter,
@@ -426,20 +558,69 @@ export function getAgentUsageSummary(
 
   return {
     period,
-    byAgentModel: rows.map((row) => ({
-      agentId: String(row.agent_id),
-      agentName: String(row.agent_name),
-      modelId: String(row.model_id),
-      providerId: String(row.provider_id),
-      sessionCount: Number(row.session_count),
-      inputTokens: Number(row.input_tokens),
-      outputTokens: Number(row.output_tokens),
-      cacheReadTokens: Number(row.cache_read_tokens),
-      cacheWriteTokens: Number(row.cache_write_tokens),
-      reasoningTokens: Number(row.reasoning_tokens),
-      messageCount: Number(row.message_count),
-      estimatedCostUsd: Number(row.estimated_cost_usd)
-    })),
+    byAgentModel: [
+      ...attributedRows.map((row) => ({
+        agentId: String(row.agent_id),
+        agentName: String(row.agent_name),
+        modelId: String(row.model_id),
+        providerId: String(row.provider_id),
+        sessionCount: Number(row.session_count),
+        inputTokens: Number(row.input_tokens),
+        outputTokens: Number(row.output_tokens),
+        cacheReadTokens: Number(row.cache_read_tokens),
+        cacheWriteTokens: Number(row.cache_write_tokens),
+        reasoningTokens: Number(row.reasoning_tokens),
+        messageCount: Number(row.message_count),
+        estimatedCostUsd: Number(row.estimated_cost_usd),
+        attribution: "agent" as const
+      })),
+      ...cursorRows.map((row) => ({
+        agentId: CURSOR_UNATTRIBUTED_AGENT_ID,
+        agentName: "Cursor",
+        modelId: String(row.model_id),
+        providerId: String(row.provider_id),
+        sessionCount: Number(row.session_count),
+        inputTokens: Number(row.input_tokens),
+        outputTokens: Number(row.output_tokens),
+        cacheReadTokens: Number(row.cache_read_tokens),
+        cacheWriteTokens: Number(row.cache_write_tokens),
+        reasoningTokens: Number(row.reasoning_tokens),
+        messageCount: Number(row.message_count),
+        estimatedCostUsd: Number(row.estimated_cost_usd),
+        attribution: "unattributed" as const
+      }))
+    ],
+    dailyTrend: dailyRows.map((row) => {
+      const inputTokens = Number(row.input_tokens);
+      const outputTokens = Number(row.output_tokens);
+      const cacheReadTokens = Number(row.cache_read_tokens);
+      const cacheWriteTokens = Number(row.cache_write_tokens);
+      return {
+        date: String(row.usage_date),
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        reasoningTokens: Number(row.reasoning_tokens),
+        messageCount: Number(row.message_count),
+        totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+      };
+    }),
+    hourlyTrend: hourlyRows.map((row) => {
+      const inputTokens = Number(row.input_tokens);
+      const outputTokens = Number(row.output_tokens);
+      const cacheReadTokens = Number(row.cache_read_tokens);
+      const cacheWriteTokens = Number(row.cache_write_tokens);
+      return {
+        hour: String(row.usage_hour),
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        messageCount: Number(row.message_count),
+        totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+      };
+    }),
     usageSessionCount: usageSessionCount.session_count,
     linkedSessionCount: counts.linked_count,
     attributedSessionCount: counts.attributed_count ?? 0,
@@ -469,14 +650,25 @@ export function getAgentUsageSummary(
   };
 }
 
-export function listLinkedTokscaleClients() {
+export function listUsageScanClients() {
   const rows = usageDb()
     .prepare(
       `SELECT DISTINCT client FROM agent_usage_sessions
        WHERE ambiguous = 0 ORDER BY client`
     )
     .all() as Array<{ client: string }>;
-  return rows
+  const clients = rows
     .map((row) => tokscaleClientForAdapter(row.client))
     .filter((client): client is NonNullable<typeof client> => Boolean(client));
+  return [...new Set([...clients, "cursor" as const])].sort();
+}
+
+export function clearCursorUsageSnapshots(): void {
+  const db = usageDb();
+  db.transaction(() => {
+    db.prepare("DELETE FROM agent_usage_snapshots WHERE client = 'cursor'").run();
+    db.prepare("DELETE FROM agent_usage_period_snapshots WHERE client = 'cursor'").run();
+    db.prepare("DELETE FROM agent_usage_daily_snapshots WHERE client = 'cursor'").run();
+    db.prepare("DELETE FROM agent_usage_hourly_snapshots").run();
+  })();
 }

@@ -1,6 +1,8 @@
 import type { TFunction } from "i18next";
 import {
   Brain,
+  Check,
+  Copy,
   Download,
   FileText,
   MoveRight,
@@ -12,7 +14,7 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
@@ -65,7 +67,7 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
   const nodes: ReactNode[] = [];
   // Strip markdown image syntax: image previews are rendered as separate figure blocks.
   const cleaned = text.replace(MARKDOWN_IMAGE_REGEX, "").replace(/[ \t]{2,}/g, " ");
-  const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
+  const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g);
 
   parts.forEach((part, index) => {
     if (!part) return;
@@ -76,6 +78,14 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
     }
     if (part.startsWith("**") && part.endsWith("**")) {
       nodes.push(<strong key={key}>{part.slice(2, -2)}</strong>);
+      return;
+    }
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+      nodes.push(<em key={key}>{part.slice(1, -1)}</em>);
+      return;
+    }
+    if (part.startsWith("~~") && part.endsWith("~~") && part.length > 4) {
+      nodes.push(<del key={key}>{part.slice(2, -2)}</del>);
       return;
     }
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -197,6 +207,45 @@ function tableCells(line: string) {
     .map((cell) => cell.trim());
 }
 
+function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [code]);
+
+  return (
+    <div className="markdown-code-card">
+      <div className="markdown-code-header">
+        <span className="markdown-code-lang">{lang || "code"}</span>
+        <button
+          type="button"
+          className="markdown-code-copy-btn"
+          onClick={handleCopy}
+          title="Copy code"
+        >
+          {copied ? (
+            <>
+              <Check className="code-copy-icon" />
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="code-copy-icon" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="markdown-code">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
 export function MarkdownText({ content }: { content: string }) {
   const blocks: ReactNode[] = [];
   const lines = content.replace(/\r\n/g, "\n").split("\n");
@@ -239,6 +288,7 @@ export function MarkdownText({ content }: { content: string }) {
     }
 
     if (line.trim().startsWith("```")) {
+      const lang = line.trim().slice(3).trim();
       const code: string[] = [];
       i += 1;
       while (i < lines.length && !lines[i].trim().startsWith("```")) {
@@ -247,9 +297,7 @@ export function MarkdownText({ content }: { content: string }) {
       }
       if (i < lines.length) i += 1;
       blocks.push(
-        <pre className="markdown-code" key={`code-${i}`}>
-          <code>{code.join("\n")}</code>
-        </pre>
+        <CodeBlockCard key={`code-${i}`} lang={lang} code={code.join("\n")} />
       );
       continue;
     }

@@ -17,6 +17,8 @@ import type {
   CodexUsageResult,
   AgentUsagePeriod,
   AgentUsageSummary,
+  CursorUsageConnectInput,
+  CursorUsageStatus,
   ToolSessionRecord,
   Conversation,
   ConversationMessage,
@@ -73,6 +75,18 @@ export const cliClient = {
   },
   refreshUsage(period: AgentUsagePeriod = "all"): Promise<AgentUsageSummary> {
     return api().refreshUsage(period);
+  },
+  cursorUsageStatus(): Promise<CursorUsageStatus> {
+    return api().cursorUsageStatus();
+  },
+  connectCursorUsage(input: CursorUsageConnectInput): Promise<CursorUsageStatus> {
+    return api().connectCursorUsage(input);
+  },
+  disconnectCursorUsage(): Promise<CursorUsageStatus> {
+    return api().disconnectCursorUsage();
+  },
+  openCursorUsageSettings(): Promise<void> {
+    return api().openCursorUsageSettings();
   },
   probeAuthentication(args: CliAuthControlArgs): Promise<CliAuthProbeResult> {
     return api().probeAuthentication(args);

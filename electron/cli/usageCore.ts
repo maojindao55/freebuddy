@@ -1,13 +1,14 @@
-export const TOKSCALE_ATTRIBUTABLE_CLIENTS = [
+export const TOKSCALE_USAGE_CLIENTS = [
   "codex",
   "claude",
   "opencode",
+  "cursor",
   "kimi",
   "codebuddy",
   "grok"
 ] as const;
 
-export type TokscaleClient = (typeof TOKSCALE_ATTRIBUTABLE_CLIENTS)[number];
+export type TokscaleClient = (typeof TOKSCALE_USAGE_CLIENTS)[number];
 
 export const AGENT_USAGE_PERIODS = [
   "today",
@@ -27,7 +28,7 @@ export function normalizeAgentUsagePeriod(value: unknown): AgentUsagePeriod {
     : "all";
 }
 
-const ATTRIBUTABLE_CLIENT_SET = new Set<string>(TOKSCALE_ATTRIBUTABLE_CLIENTS);
+const USAGE_CLIENT_SET = new Set<string>(TOKSCALE_USAGE_CLIENTS);
 
 const ADAPTER_CLIENTS: Record<string, TokscaleClient> = {
   codex: "codex",
@@ -46,8 +47,9 @@ const ADAPTER_CLIENTS: Record<string, TokscaleClient> = {
 
 /**
  * Cursor's tokscale source is account/day based and cannot currently be joined
- * to Cursor ACP session ids. Qoder has no tokscale parser. Both intentionally
- * return undefined instead of producing usage attributed to the wrong agent.
+ * to Cursor ACP session ids. It intentionally has no adapter mapping here;
+ * Cursor reports are stored as an explicit unattributed bucket instead.
+ * Qoder has no tokscale parser and remains unsupported.
  */
 export function tokscaleClientForAdapter(
   adapter: string,
@@ -93,6 +95,34 @@ export interface TokscaleUsageReport {
   processingTimeMs?: number;
 }
 
+export interface TokscaleDailyUsageEntry {
+  date: string;
+  client: TokscaleClient;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  messageCount: number;
+}
+
+export interface TokscaleDailyUsageReport {
+  entries: TokscaleDailyUsageEntry[];
+}
+
+export interface TokscaleHourlyUsageEntry {
+  hour: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  messageCount: number;
+}
+
+export interface TokscaleHourlyUsageReport {
+  entries: TokscaleHourlyUsageEntry[];
+}
+
 function nonNegativeInteger(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.trunc(value))
@@ -132,7 +162,7 @@ export function parseTokscaleUsageReport(stdout: string): TokscaleUsageReport {
     const sessionId =
       typeof entry.sessionId === "string" ? entry.sessionId.trim() : "";
     const modelId = typeof entry.model === "string" ? entry.model.trim() : "";
-    if (!ATTRIBUTABLE_CLIENT_SET.has(client) || !sessionId || !modelId) continue;
+    if (!USAGE_CLIENT_SET.has(client) || !sessionId || !modelId) continue;
 
     entries.push({
       client: client as TokscaleClient,
@@ -158,6 +188,87 @@ export function parseTokscaleUsageReport(stdout: string): TokscaleUsageReport {
       ? { processingTimeMs: Math.max(0, payload.processingTimeMs) }
       : {})
   };
+}
+
+export function parseTokscaleDailyUsageReport(
+  stdout: string
+): TokscaleDailyUsageReport {
+  const payload = parseJsonObject(stdout);
+  if (!Array.isArray(payload.contributions)) {
+    throw new Error("tokscale graph JSON did not contain a contributions array");
+  }
+
+  const totals = new Map<string, TokscaleDailyUsageEntry>();
+  for (const rawContribution of payload.contributions) {
+    if (!rawContribution || typeof rawContribution !== "object") continue;
+    const contribution = rawContribution as Record<string, unknown>;
+    const date = typeof contribution.date === "string"
+      ? contribution.date.trim()
+      : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(contribution.clients)) {
+      continue;
+    }
+    for (const rawClient of contribution.clients) {
+      if (!rawClient || typeof rawClient !== "object") continue;
+      const clientEntry = rawClient as Record<string, unknown>;
+      const client = typeof clientEntry.client === "string"
+        ? clientEntry.client.trim()
+        : "";
+      if (!USAGE_CLIENT_SET.has(client)) continue;
+      const tokens = clientEntry.tokens && typeof clientEntry.tokens === "object"
+        ? clientEntry.tokens as Record<string, unknown>
+        : {};
+      const key = `${date}\u0000${client}`;
+      const current = totals.get(key) ?? {
+        date,
+        client: client as TokscaleClient,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        messageCount: 0
+      };
+      current.inputTokens += nonNegativeInteger(tokens.input);
+      current.outputTokens += nonNegativeInteger(tokens.output);
+      current.cacheReadTokens += nonNegativeInteger(tokens.cacheRead);
+      current.cacheWriteTokens += nonNegativeInteger(tokens.cacheWrite);
+      current.reasoningTokens += nonNegativeInteger(tokens.reasoning);
+      current.messageCount += nonNegativeInteger(clientEntry.messages);
+      totals.set(key, current);
+    }
+  }
+
+  return {
+    entries: [...totals.values()].sort((left, right) => (
+      left.date.localeCompare(right.date) || left.client.localeCompare(right.client)
+    ))
+  };
+}
+
+export function parseTokscaleHourlyUsageReport(
+  stdout: string
+): TokscaleHourlyUsageReport {
+  const payload = parseJsonObject(stdout);
+  if (!Array.isArray(payload.entries)) {
+    throw new Error("tokscale hourly JSON did not contain an entries array");
+  }
+  const entries: TokscaleHourlyUsageEntry[] = [];
+  for (const raw of payload.entries) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    const hour = typeof entry.hour === "string" ? entry.hour.trim() : "";
+    if (!/^\d{4}-\d{2}-\d{2} \d{2}:00$/.test(hour)) continue;
+    entries.push({
+      hour,
+      inputTokens: nonNegativeInteger(entry.input),
+      outputTokens: nonNegativeInteger(entry.output),
+      cacheReadTokens: nonNegativeInteger(entry.cacheRead),
+      cacheWriteTokens: nonNegativeInteger(entry.cacheWrite),
+      messageCount: nonNegativeInteger(entry.messageCount)
+    });
+  }
+  return { entries: entries.sort((left, right) => left.hour.localeCompare(right.hour)) };
 }
 
 function localDateString(date: Date): string {
@@ -195,5 +306,36 @@ export function buildTokscaleUsageArgs(
     ...tokscalePeriodArgs(period, now),
     "--group-by",
     "client,session,model"
+  ];
+}
+
+export function buildTokscaleDailyUsageArgs(
+  clients: readonly TokscaleClient[],
+  period: AgentUsagePeriod = "all",
+  now = new Date()
+): string[] {
+  const selected = [...new Set(clients)].sort();
+  if (!selected.length) throw new Error("At least one tokscale client is required");
+  return [
+    "graph",
+    "--client",
+    selected.join(","),
+    ...tokscalePeriodArgs(period, now),
+    "--no-spinner"
+  ];
+}
+
+export function buildTokscaleHourlyUsageArgs(
+  clients: readonly TokscaleClient[]
+): string[] {
+  const selected = [...new Set(clients)].sort();
+  if (!selected.length) throw new Error("At least one tokscale client is required");
+  return [
+    "hourly",
+    "--json",
+    "--client",
+    selected.join(","),
+    "--today",
+    "--no-spinner"
   ];
 }

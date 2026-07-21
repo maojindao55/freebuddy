@@ -57,6 +57,7 @@ export interface AgentModelUsage {
   reasoningTokens: number;
   messageCount: number;
   estimatedCostUsd: number;
+  attribution: "agent" | "unattributed";
 }
 
 export type AgentUsagePeriod = "today" | "week" | "month" | "year" | "all";
@@ -64,6 +65,8 @@ export type AgentUsagePeriod = "today" | "week" | "month" | "year" | "all";
 export interface AgentUsageSummary {
   period: AgentUsagePeriod;
   byAgentModel: AgentModelUsage[];
+  dailyTrend: DailyTokenUsage[];
+  hourlyTrend: HourlyTokenUsage[];
   usageSessionCount: number;
   linkedSessionCount: number;
   attributedSessionCount: number;
@@ -79,6 +82,37 @@ export interface AgentUsageSummary {
     completedAt?: string;
     error?: string;
   } | null;
+}
+
+export interface DailyTokenUsage {
+  date: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  messageCount: number;
+  totalTokens: number;
+}
+
+export interface HourlyTokenUsage {
+  hour: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  messageCount: number;
+  totalTokens: number;
+}
+
+export interface CursorUsageStatus {
+  connected: boolean;
+  accounts: Array<{ name: string; active: boolean }>;
+}
+
+export interface CursorUsageConnectInput {
+  token: string;
+  accountName?: string;
 }
 
 export interface CliPromptAttachment {

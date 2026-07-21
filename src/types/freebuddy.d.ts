@@ -18,6 +18,8 @@ import type {
   CodexUsageResult,
   AgentUsagePeriod,
   AgentUsageSummary,
+  CursorUsageConnectInput,
+  CursorUsageStatus,
   CliAuthControlArgs,
   CliAuthProbeResult,
   ToolSessionRecord,
@@ -98,6 +100,10 @@ declare global {
     codexUsage(): Promise<CodexUsageResult>;
     usageSummary(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     refreshUsage(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
+    cursorUsageStatus(): Promise<CursorUsageStatus>;
+    connectCursorUsage(input: CursorUsageConnectInput): Promise<CursorUsageStatus>;
+    disconnectCursorUsage(): Promise<CursorUsageStatus>;
+    openCursorUsageSettings(): Promise<void>;
     probeAuthentication(args: CliAuthControlArgs): Promise<CliAuthProbeResult>;
     logout(args: CliAuthControlArgs): Promise<void>;
     check(

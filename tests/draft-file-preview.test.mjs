@@ -92,6 +92,45 @@ test("Draft preview converts absolute local image paths to freebuddy-file URLs",
   assert.equal(parsed.searchParams.get("freebuddyDraft"), "3");
 });
 
+test("Draft preview converts absolute HTML paths to freebuddy-draft URLs without a workspace", async () => {
+  const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
+  const filePath = "/Users/me/docs/v2ex_discussion.html";
+  const url = composeDraftPreviewUrl("", filePath, 5);
+  const parsed = new URL(url);
+
+  assert.equal(parsed.protocol, "freebuddy-draft:");
+  assert.equal(parsed.hostname, "render");
+  assert.equal(parsed.pathname, "/%2FUsers%2Fme%2Fdocs/v2ex_discussion.html");
+  assert.equal(parsed.searchParams.get("v"), "5");
+});
+
+test("Draft preview converts absolute markdown paths to freebuddy-draft URLs without a workspace", async () => {
+  const { composeDraftPreviewUrl, splitAbsoluteLocalFile } =
+    await loadDraftPreviewStoreModule();
+  const filePath = "/Users/me/docs/notes.md";
+  const url = composeDraftPreviewUrl("", filePath, 2);
+  const parsed = new URL(url);
+
+  assert.equal(parsed.protocol, "freebuddy-draft:");
+  assert.equal(parsed.hostname, "render");
+  assert.equal(parsed.pathname, "/%2FUsers%2Fme%2Fdocs/notes.md");
+  assert.equal(parsed.searchParams.get("v"), "2");
+  assert.deepEqual(splitAbsoluteLocalFile(filePath), {
+    root: "/Users/me/docs",
+    rel: "notes.md"
+  });
+});
+
+test("Draft preview prefers absolute HTML draft roots over conversation cwd", async () => {
+  const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
+  const filePath = "/tmp/outside/page.html";
+  const url = composeDraftPreviewUrl("/Users/me/workspace", filePath, 9);
+  const parsed = new URL(url);
+
+  assert.equal(parsed.hostname, "render");
+  assert.equal(parsed.pathname, "/%2Ftmp%2Foutside/page.html");
+});
+
 test("Draft preview keeps remote article URLs inside the preview target", async () => {
   const { composeDraftPreviewUrl } = await loadDraftPreviewStoreModule();
   const source = "https://example.com/article?from=rss";
@@ -111,6 +150,20 @@ test("Draft preview supports remote URLs but not relative files without a worksp
 
   assert.equal(new URL(remote).hostname, "example.com");
   assert.equal(composeDraftPreviewUrl("", "index.html", 4), "");
+});
+
+test("Draft canvas loads absolute markdown via readDraftMarkdown without a workspace", () => {
+  assert.match(draftCanvasSource, /splitAbsoluteLocalFile/);
+  assert.match(
+    draftCanvasSource,
+    /const root = absolute\?\.root \?\? cwd/
+  );
+  assert.match(
+    draftCanvasSource,
+    /const fileRel = absolute\?\.rel \?\? rel/
+  );
+  assert.match(draftCanvasSource, /readDraftMarkdown\(root, fileRel\)/);
+  assert.doesNotMatch(draftCanvasSource, /fetch\(entry\.url\)/);
 });
 
 test("Draft preview keeps WeChat article URLs exact because they are signed", async () => {

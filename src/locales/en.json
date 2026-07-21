@@ -129,6 +129,10 @@
     "usage": "Usage",
     "allTeams": "All teams"
   },
+  "detail": {
+    "expand": "Expand right panel",
+    "collapse": "Collapse right panel"
+  },
   "usage": {
     "title": "Usage",
     "description": "Review token usage from FreeBuddy sessions and supported accounts by agent and model.",

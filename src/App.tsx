@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, Sun } from "lucide-react";
+import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, PanelRight, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
@@ -144,6 +144,9 @@ function App() {
   const loadDetailLayout = useDetailLayoutStore((s) => s.load);
   const activeDetailTab = useDetailLayoutStore((s) => s.activeTab);
   const detailWidth = useDetailLayoutStore(selectDetailWidth);
+  const detailCollapsed = useDetailLayoutStore((s) => s.detailCollapsed);
+  const setDetailCollapsed = useDetailLayoutStore((s) => s.setDetailCollapsed);
+  const toggleDetailCollapsed = useDetailLayoutStore((s) => s.toggleDetailCollapsed);
   useEffect(() => {
     void loadDetailLayout();
   }, [loadDetailLayout]);
@@ -161,11 +164,34 @@ function App() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  const [wasNarrow, setWasNarrow] = useState<boolean | null>(null);
+  useEffect(() => {
+    const isNarrow = winWidth < 1080;
+    if (wasNarrow === null) {
+      setWasNarrow(isNarrow);
+      if (isNarrow && !detailCollapsed) {
+        setDetailCollapsed(true);
+      }
+      return;
+    }
+
+    if (isNarrow && !wasNarrow) {
+      setDetailCollapsed(true);
+      setWasNarrow(true);
+    } else if (!isNarrow && wasNarrow) {
+      setDetailCollapsed(false);
+      setWasNarrow(false);
+    }
+  }, [winWidth, wasNarrow, detailCollapsed, setDetailCollapsed]);
+
   const sidebarWidth = sidebarCollapsed ? 0 : 272;
-  const effectiveDetailWidth = Math.min(
-    detailWidth,
-    Math.max(DETAIL_MIN_WIDTH, winWidth - sidebarWidth - 420 - 8)
-  );
+  const effectiveDetailWidth = detailCollapsed
+    ? 0
+    : Math.min(
+        detailWidth,
+        Math.max(DETAIL_MIN_WIDTH, winWidth - sidebarWidth - 420 - 8)
+      );
   const updateStatus = useUpdaterStore((s) => s.status);
   const appVersion = useUpdaterStore((s) => s.appVersion);
   const latestVersion = useUpdaterStore((s) => s.latestVersion);
@@ -313,7 +339,7 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
       style={{ "--fb-detail-width": `${effectiveDetailWidth}px` } as CSSProperties}
     >
@@ -445,6 +471,18 @@ function App() {
                 </button>
               )}
               <ReplayButton />
+              {detailCollapsed && (
+                <button
+                  type="button"
+                  className="titlebar-detail-toggle collapsed"
+                  title={t("detail.expand")}
+                  aria-label={t("detail.expand")}
+                  aria-expanded={false}
+                  onClick={toggleDetailCollapsed}
+                >
+                  <PanelRight size={16} aria-hidden="true" />
+                </button>
+              )}
             </div>
           )}
 
@@ -493,7 +531,7 @@ function App() {
         </section>
       </main>
 
-      {activeConversation && !settingsOpen && workspaceView === "chat" && (
+      {activeConversation && !settingsOpen && workspaceView === "chat" && !detailCollapsed && (
         <DetailColumn runningCount={runningCount} />
       )}
 

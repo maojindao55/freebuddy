@@ -30,7 +30,8 @@ interface DraftPreviewState {
   setLoadState(convId: string, state: DraftLoadState, error?: string): void;
 }
 
-const LOCAL_PREVIEW_EXTENSIONS = new Set([
+/** Absolute local files previewed via freebuddy-file (images, PDF). */
+const LOCAL_FILE_PREVIEW_EXTENSIONS = new Set([
   "png",
   "jpg",
   "jpeg",
@@ -41,6 +42,9 @@ const LOCAL_PREVIEW_EXTENSIONS = new Set([
   "bmp",
   "pdf"
 ]);
+
+/** Absolute HTML/Markdown previewed via freebuddy-draft with the file's directory as root. */
+const LOCAL_DRAFT_DOCUMENT_EXTENSIONS = new Set(["html", "htm", "md"]);
 
 function withDraftNonce(target: string, nonce: number): string {
   const url = new URL(target);
@@ -69,9 +73,20 @@ function localFileExtension(target: string): string {
   return target.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
 }
 
-function isAbsoluteLocalPreviewTarget(target: string): boolean {
-  if (!/^([A-Za-z]:[\\/]|\/)/.test(target)) return false;
-  return LOCAL_PREVIEW_EXTENSIONS.has(localFileExtension(target));
+export function isAbsoluteLocalPath(target: string): boolean {
+  return /^([A-Za-z]:[\\/]|\/)/.test(target);
+}
+
+/** Split an absolute file path into parent directory + basename for draft reads. */
+export function splitAbsoluteLocalFile(target: string): { root: string; rel: string } | null {
+  const normalized = target.trim().replace(/\\/g, "/").split("?")[0];
+  if (!isAbsoluteLocalPath(normalized)) return null;
+  const lastSlash = normalized.lastIndexOf("/");
+  if (lastSlash < 0) return null;
+  const root = normalized.slice(0, lastSlash) || "/";
+  const rel = normalized.slice(lastSlash + 1);
+  if (!rel) return null;
+  return { root, rel };
 }
 
 function filePreviewUrl(target: string, nonce: number): string {
@@ -80,6 +95,13 @@ function filePreviewUrl(target: string, nonce: number): string {
   url.searchParams.set("path", normalized);
   url.searchParams.set("freebuddyDraft", String(nonce));
   return url.toString();
+}
+
+/** Serve an absolute HTML/Markdown file under freebuddy-draft using its parent directory as root. */
+function absoluteLocalDraftUrl(target: string, nonce: number): string {
+  const parts = splitAbsoluteLocalFile(target);
+  if (!parts) return "";
+  return `freebuddy-draft://render/${encodeURIComponent(parts.root)}/${encodeURIComponent(parts.rel)}?v=${nonce}`;
 }
 
 export function composeDraftPreviewUrl(
@@ -95,8 +117,14 @@ export function composeDraftPreviewUrl(
   if (/^freebuddy-file:\/\//i.test(target)) {
     return withDraftNonce(target, nonce);
   }
-  if (isAbsoluteLocalPreviewTarget(target)) {
-    return filePreviewUrl(target, nonce);
+  if (isAbsoluteLocalPath(target)) {
+    const ext = localFileExtension(target);
+    if (LOCAL_DRAFT_DOCUMENT_EXTENSIONS.has(ext)) {
+      return absoluteLocalDraftUrl(target, nonce);
+    }
+    if (LOCAL_FILE_PREVIEW_EXTENSIONS.has(ext)) {
+      return filePreviewUrl(target, nonce);
+    }
   }
   if (!cwd) return "";
   const rel = target.split("/").map(encodeURIComponent).join("/");

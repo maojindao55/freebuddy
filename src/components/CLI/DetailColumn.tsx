@@ -1,6 +1,7 @@
 import { useEffect, type MouseEvent } from "react";
 
 import { useTranslation } from "react-i18next";
+import { PanelRight } from "lucide-react";
 
 import { useConversationStore } from "@/store/conversationStore";
 import { useDetailLayoutStore, selectDetailWidth } from "@/store/detailLayoutStore";
@@ -16,6 +17,7 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
   );
   const activeTab = useDetailLayoutStore((s) => s.activeTab);
   const setActiveTab = useDetailLayoutStore((s) => s.setActiveTab);
+  const toggleDetailCollapsed = useDetailLayoutStore((s) => s.toggleDetailCollapsed);
 
   useEffect(() => {
     if (!activeId) return;
@@ -61,33 +63,44 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
       <div className="detail-tab-body">
         {activeTab === "overview" ? (
           <>
-            <button
-              type="button"
-              className={`detail-entry${previewAvailable ? " available" : ""}`}
-              onClick={() => setActiveTab("preview")}
-              title={t("draft.tabPreview")}
-            >
-              <svg
-                className="detail-entry-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+            <div className="detail-entry-row">
+              <button
+                type="button"
+                className={`detail-entry${previewAvailable ? " available" : ""}`}
+                onClick={() => setActiveTab("preview")}
+                title={t("draft.tabPreview")}
               >
-                <rect x="3" y="4" width="18" height="13" rx="2" />
-                <path d="M9 21h6M12 17v4" />
-              </svg>
-              <span>{t("draft.tabPreview")}</span>
-              {previewAvailable && (
-                <span
-                  className="detail-entry-badge"
-                  aria-label={t("draft.previewBadge")}
-                />
-              )}
-            </button>
+                <svg
+                  className="detail-entry-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="4" width="18" height="13" rx="2" />
+                  <path d="M9 21h6M12 17v4" />
+                </svg>
+                <span>{t("draft.tabPreview")}</span>
+                {previewAvailable && (
+                  <span
+                    className="detail-entry-badge"
+                    aria-label={t("draft.previewBadge")}
+                  />
+                )}
+              </button>
+              <button
+                type="button"
+                className="detail-panel-collapse-btn"
+                onClick={toggleDetailCollapsed}
+                title={t("detail.collapse")}
+                aria-label={t("detail.collapse")}
+              >
+                <PanelRight size={16} aria-hidden="true" />
+              </button>
+            </div>
             <WorkspacePanel runningCount={runningCount} />
           </>
         ) : (

@@ -129,6 +129,10 @@
     "usage": "用量",
     "allTeams": "全部团队"
   },
+  "detail": {
+    "expand": "展开右侧栏",
+    "collapse": "收起右侧栏"
+  },
   "usage": {
     "title": "用量统计",
     "description": "按 Agent 和模型查看 FreeBuddy 会话及受支持账号的 Token 用量。",

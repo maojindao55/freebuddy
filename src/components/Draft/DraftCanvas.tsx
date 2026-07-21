@@ -7,7 +7,10 @@ import type { ConversationMessage } from "@/services/cli/types";
 import type { FeedItem } from "@/services/feed/types";
 import { cliClient } from "@/services/cli/client";
 import { useConversationStore } from "@/store/conversationStore";
-import { useDraftPreviewStore } from "@/store/draftPreviewStore";
+import {
+  splitAbsoluteLocalFile,
+  useDraftPreviewStore
+} from "@/store/draftPreviewStore";
 import { useFeedStore } from "@/store/feedStore";
 import {
   buildFeedInterpretPrompt,
@@ -232,13 +235,17 @@ export function DraftCanvas({ onClose }: { onClose?: () => void }) {
   }, [activeId, entry?.url, isExternalOnly]);
 
   useEffect(() => {
+    if (!activeId || !entry?.url || (!isMarkdown && !isDocument)) return;
+    const absolute = splitAbsoluteLocalFile(entry.manualEntry ?? "");
     const rel = documentRel(entry?.manualEntry);
-    if (!activeId || !entry?.url || (!isMarkdown && !isDocument) || !cwd || !rel) return;
+    const root = absolute?.root ?? cwd;
+    const fileRel = absolute?.rel ?? rel;
+    if (!root || !fileRel) return;
     let cancelled = false;
     setIsLoading(true);
     setError(null);
     void cliClient
-      .readDraftMarkdown(cwd, rel)
+      .readDraftMarkdown(root, fileRel)
       .then((text) => {
         if (cancelled) return;
         if (text == null) throw new Error("Document not found");

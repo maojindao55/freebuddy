@@ -4,6 +4,7 @@ import { cliClient } from "@/services/cli/client";
 
 const OVERVIEW_KEY = "detailOverviewWidth";
 const PREVIEW_KEY = "detailPreviewWidth";
+const COLLAPSED_KEY = "detailCollapsed";
 
 export const DEFAULT_OVERVIEW_WIDTH = 360;
 export const DEFAULT_PREVIEW_WIDTH = 680;
@@ -23,22 +24,27 @@ interface DetailLayoutState {
   overviewWidth: number;
   previewWidth: number;
   activeTab: DetailTab;
+  detailCollapsed: boolean;
   loaded: boolean;
   load(): Promise<void>;
   setActiveTab(tab: DetailTab): void;
   setWidth(width: number): void;
+  setDetailCollapsed(collapsed: boolean): void;
+  toggleDetailCollapsed(): void;
 }
 
 export const useDetailLayoutStore = create<DetailLayoutState>((set, get) => ({
   overviewWidth: DEFAULT_OVERVIEW_WIDTH,
   previewWidth: DEFAULT_PREVIEW_WIDTH,
   activeTab: "overview",
+  detailCollapsed: false,
   loaded: false,
 
   async load() {
     if (get().loaded) return;
     let overviewWidth = DEFAULT_OVERVIEW_WIDTH;
     let previewWidth = DEFAULT_PREVIEW_WIDTH;
+    let detailCollapsed = false;
     try {
       const o = await cliClient.getSetting(OVERVIEW_KEY);
       if (o) {
@@ -50,10 +56,12 @@ export const useDetailLayoutStore = create<DetailLayoutState>((set, get) => ({
         const n = Number(p);
         if (Number.isFinite(n)) previewWidth = clampWidth(n);
       }
+      const c = await cliClient.getSetting(COLLAPSED_KEY);
+      if (c === "true") detailCollapsed = true;
     } catch {
       // ignore — fall back to defaults
     }
-    set({ overviewWidth, previewWidth, loaded: true });
+    set({ overviewWidth, previewWidth, detailCollapsed, loaded: true });
   },
 
   setActiveTab(tab) {
@@ -73,6 +81,17 @@ export const useDetailLayoutStore = create<DetailLayoutState>((set, get) => ({
         // ignore persistence failures
       });
     }
+  },
+
+  setDetailCollapsed(collapsed) {
+    set({ detailCollapsed: collapsed });
+    void cliClient.setSetting(COLLAPSED_KEY, String(collapsed)).catch(() => {
+      // ignore persistence failures
+    });
+  },
+
+  toggleDetailCollapsed() {
+    get().setDetailCollapsed(!get().detailCollapsed);
   }
 }));
 

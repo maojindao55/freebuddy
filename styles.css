@@ -2495,7 +2495,8 @@ button {
 
 .skills-manager {
   display: grid;
-  min-height: min(620px, calc(100vh - 330px));
+  height: min(620px, calc(100vh - 330px));
+  min-height: 420px;
   flex: 1;
   grid-template-columns: minmax(270px, 34%) minmax(0, 1fr);
   overflow: hidden;
@@ -2875,13 +2876,18 @@ button {
 .skill-picker { position: relative; }
 .skill-picker > summary { list-style: none; }
 .skill-picker > summary::-webkit-details-marker { display: none; }
-.skill-picker-menu { position: absolute; z-index: 80; bottom: calc(100% + 8px); left: 0; width: 300px; max-height: 320px; overflow: auto; padding: 10px; border: 1px solid var(--fb-border); border-radius: 12px; background: var(--fb-panel-bg); box-shadow: var(--fb-shadow); }
+.skill-picker-menu { position: absolute; z-index: 80; bottom: calc(100% + 8px); left: 0; display: grid; width: 300px; max-height: 320px; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; padding: 10px; border: 1px solid var(--fb-border); border-radius: 12px; background: var(--fb-panel-bg); box-shadow: var(--fb-shadow); }
 .skill-picker-menu > strong { display: block; padding: 3px 5px 8px; font-size: 12px; }
-.skill-picker-menu label { display: flex; gap: 8px; padding: 7px 5px; border-radius: 8px; cursor: pointer; }
-.skill-picker-menu label:hover { background: var(--fb-panel-soft); }
-.skill-picker-menu label span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.skill-picker-menu label b { font-size: 12px; }
-.skill-picker-menu label small, .skill-picker-menu p { margin: 0; color: var(--fb-text-secondary); font-size: 10px; line-height: 1.4; }
+.skill-picker-search { display: flex; min-height: 32px; align-items: center; gap: 7px; margin-bottom: 5px; padding: 0 8px; border: 1px solid var(--fb-border-strong); border-radius: 8px; color: var(--fb-text-tertiary); }
+.skill-picker-search:focus-within { border-color: color-mix(in srgb, var(--fb-brand) 45%, var(--fb-border-strong)); box-shadow: 0 0 0 3px var(--fb-brand-glow); }
+.skill-picker-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--fb-text-primary); font: inherit; font-size: 11px; }
+.skill-picker-search input::-webkit-search-cancel-button { cursor: pointer; }
+.skill-picker-list { min-height: 0; overflow-y: auto; }
+.skill-picker-list label { display: flex; gap: 8px; padding: 7px 5px; border-radius: 8px; cursor: pointer; }
+.skill-picker-list label:hover { background: var(--fb-panel-soft); }
+.skill-picker-list label span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.skill-picker-list label b { font-size: 12px; }
+.skill-picker-list label small, .skill-picker-list p { margin: 0; color: var(--fb-text-secondary); font-size: 10px; line-height: 1.4; }
 
 .composer-add-menu-root {
   position: relative;
@@ -3004,8 +3010,10 @@ button {
 }
 
 .composer-add-skills-panel {
+  display: flex;
   width: 292px;
   max-height: min(420px, 52vh);
+  flex-direction: column;
 }
 
 .composer-add-skills-heading {
@@ -3024,7 +3032,42 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.composer-add-skills-search {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 8px 2px;
+  padding: 0 9px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 8px;
+  color: var(--fb-text-tertiary);
+}
+
+.composer-add-skills-search:focus-within {
+  border-color: color-mix(in srgb, var(--fb-brand) 45%, var(--fb-border-strong));
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+
+.composer-add-skills-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 11px;
+}
+
+.composer-add-skills-search input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
 .composer-add-skills-list {
+  min-height: 0;
+  flex: 1;
   max-height: min(360px, 44vh);
   overflow-y: auto;
   padding: 6px;

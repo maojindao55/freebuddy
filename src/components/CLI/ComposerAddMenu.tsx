@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, Sparkles, UploadCloud } from "lucide-react";
+import { ChevronRight, Plus, Search, Sparkles, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -23,10 +23,17 @@ export function ComposerAddMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [skillQuery, setSkillQuery] = useState("");
   const available = useMemo(
     () => skills.filter((skill) => skill.enabled && skill.trusted),
     [skills]
   );
+  const filteredAvailable = useMemo(() => {
+    const needle = skillQuery.trim().toLocaleLowerCase();
+    return available.filter((skill) =>
+      !needle || `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(needle)
+    );
+  }, [available, skillQuery]);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedAvailableCount = available.reduce(
     (count, skill) => count + (selected.has(skill.id) ? 1 : 0),
@@ -63,6 +70,10 @@ export function ComposerAddMenu({
     setOpen(false);
     setSkillsOpen(false);
   }, [disabled]);
+
+  useEffect(() => {
+    if (!skillsOpen) setSkillQuery("");
+  }, [skillsOpen]);
 
   const toggleSkill = (skillId: string, checked: boolean) => {
     const next = new Set(selectedIds);
@@ -140,21 +151,31 @@ export function ComposerAddMenu({
                 <strong>{t("skills.activeForTask")}</strong>
                 <span>{selectedAvailableCount}/{available.length}</span>
               </div>
+              <label className="composer-add-skills-search">
+                <Search size={14} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={skillQuery}
+                  onChange={(event) => setSkillQuery(event.currentTarget.value)}
+                  placeholder={t("skills.search")}
+                  aria-label={t("skills.search")}
+                />
+              </label>
               <div className="composer-add-skills-list">
-                {available.length ? (
-                  available.map((skill) => (
-                    <label key={skill.id} title={skill.description}>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(skill.id)}
-                        onChange={(event) => toggleSkill(skill.id, event.currentTarget.checked)}
-                      />
-                      <span>{skill.name}</span>
-                    </label>
-                  ))
-                ) : (
-                  <p>{t("skills.none")}</p>
-                )}
+                {!available.length ? <p>{t("skills.none")}</p> : null}
+                {available.length && !filteredAvailable.length ? (
+                  <p>{t("skills.noResults")}</p>
+                ) : null}
+                {filteredAvailable.map((skill) => (
+                  <label key={skill.id} title={skill.description}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(skill.id)}
+                      onChange={(event) => toggleSkill(skill.id, event.currentTarget.checked)}
+                    />
+                    <span>{skill.name}</span>
+                  </label>
+                ))}
               </div>
             </div>
           ) : null}

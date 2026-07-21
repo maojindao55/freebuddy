@@ -1240,7 +1240,7 @@
     "updatedAt": "Updated {{time}}",
     "notUpdated": "Not updated yet",
     "sourceError": "Source error; showing the last cached result",
-    "analyze": "Ask Agent to analyze",
+    "analyze": "Interpret",
     "analyzing": "Sending…",
     "prompts": {
       "market": "Analyze this market-index snapshot. State the data time and staleness first, then summarize direction, notable moves, and signals worth monitoring. Do not present this as financial advice.",

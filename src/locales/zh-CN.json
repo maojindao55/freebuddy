@@ -1225,7 +1225,7 @@
     "updatedAt": "更新于 {{time}}",
     "notUpdated": "尚未成功更新",
     "sourceError": "数据源异常，当前展示上次缓存",
-    "analyze": "让 Agent 解读",
+    "analyze": "解读",
     "analyzing": "发送中…",
     "prompts": {
       "market": "请分析下面的指数行情快照。先说明数据时间和是否过期，再总结整体涨跌、显著变化、可能值得继续关注的信号。不要把它当作投资建议。",

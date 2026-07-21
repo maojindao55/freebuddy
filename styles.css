@@ -14280,13 +14280,23 @@ button.ghost:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
-.info-card-status {
+.info-card-footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 14px 8px;
+  padding: 6px 14px 10px;
+  margin-top: 4px;
+}
+
+.info-card-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--fb-text-tertiary);
-  font-size: 10px;
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .info-card-status.stale,
@@ -14295,24 +14305,33 @@ button.ghost:focus-visible,
 }
 
 .info-card-analyze {
-  display: flex;
-  width: calc(100% - 28px);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  margin: 0 14px 12px;
-  padding: 6px 10px;
-  border: 0;
-  border-radius: var(--fb-rounded-sm);
+  gap: 5px;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-md, 6px);
+  color: var(--fb-text-tertiary);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.info-card-analyze:hover:not(:disabled) {
   color: var(--fb-brand);
   background: var(--fb-brand-glow);
-  font-size: 11px;
-  font-weight: 700;
+  border-color: color-mix(in srgb, var(--fb-brand) 30%, var(--fb-border));
 }
 
 .info-card-analyze:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .feed-card-action .spin,
@@ -14475,13 +14494,23 @@ button.ghost:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
-.info-card-status {
+.info-card-footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 14px 8px;
+  padding: 6px 14px 10px;
+  margin-top: 4px;
+}
+
+.info-card-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--fb-text-tertiary);
-  font-size: 10px;
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .info-card-status.stale,
@@ -14490,24 +14519,33 @@ button.ghost:focus-visible,
 }
 
 .info-card-analyze {
-  display: flex;
-  width: calc(100% - 28px);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  margin: 0 14px 12px;
-  padding: 6px 10px;
-  border: 0;
-  border-radius: var(--fb-rounded-sm);
+  gap: 5px;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-md, 6px);
+  color: var(--fb-text-tertiary);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.info-card-analyze:hover:not(:disabled) {
   color: var(--fb-brand);
   background: var(--fb-brand-glow);
-  font-size: 11px;
-  font-weight: 700;
+  border-color: color-mix(in srgb, var(--fb-brand) 30%, var(--fb-border));
 }
 
 .info-card-analyze:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .feed-card-action .spin,

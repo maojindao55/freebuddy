@@ -803,7 +803,6 @@ export const MessageBubble = memo(function MessageBubble({
       return "";
     }
   }, [message.createdAt]);
-  const [copyMenu, setCopyMenu] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [vote, setVote] = useState<"up" | "down" | null>(null);
   const avatarRef = useRef<HTMLButtonElement | null>(null);
@@ -902,40 +901,11 @@ export const MessageBubble = memo(function MessageBubble({
   );
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
-  const getSelectionText = () => {
-    const sel = window.getSelection();
-    return sel && sel.toString().trim().length > 0 ? sel.toString().trim() : "";
-  };
-  const handleContextMenu = (event: MouseEvent) => {
-    if (!copyText) return;
-    event.preventDefault();
-    setCopyMenu({ x: event.clientX, y: event.clientY });
-  };
   const doCopy = (text: string) => {
     if (text) void navigator.clipboard?.writeText(text);
-    setCopyMenu(null);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };
-  const copyMenuNode = copyMenu ? (() => {
-    const sel = getSelectionText();
-    return (
-      <div
-        className="message-context-menu"
-        style={{ left: copyMenu.x, top: copyMenu.y }}
-        onMouseLeave={() => setCopyMenu(null)}
-      >
-        {sel && (
-          <button type="button" onClick={() => doCopy(sel)}>
-            {t("message.copySelection")}
-          </button>
-        )}
-        <button type="button" onClick={() => doCopy(copyText)}>
-          {t("message.copy")}
-        </button>
-      </div>
-    );
-  })() : null;
   const actionBarNode = showActionBar ? (
     <div className="msg-actions">
       <button
@@ -982,7 +952,7 @@ export const MessageBubble = memo(function MessageBubble({
 
     return (
       <div className="msg msg-user">
-        <div className="msg-content-wrapper" onContextMenu={handleContextMenu}>
+        <div className="msg-content-wrapper">
           <div className="msg-header">
             <span className="msg-author">{t("message.you")}</span>
           </div>
@@ -995,7 +965,6 @@ export const MessageBubble = memo(function MessageBubble({
           {imageAttachments.length > 0 && (
             <MessageImageAttachments attachments={imageAttachments} />
           )}
-          {copyMenuNode}
         </div>
         <div className="msg-avatar user-avatar">
           <span>👤</span>
@@ -1007,7 +976,7 @@ export const MessageBubble = memo(function MessageBubble({
   if (message.role === "system") {
     const label = message.roleLabel ?? t("message.system");
     return (
-      <div className="msg msg-system msg-system-divider" onContextMenu={handleContextMenu}>
+      <div className="msg msg-system msg-system-divider">
         <span className="msg-system-divider-line" aria-hidden="true" />
         <span className="msg-system-divider-label">
           <span className="msg-system-role">{label}</span>
@@ -1016,7 +985,6 @@ export const MessageBubble = memo(function MessageBubble({
           )}
         </span>
         <span className="msg-system-divider-line" aria-hidden="true" />
-        {copyMenuNode}
       </div>
     );
   }
@@ -1049,7 +1017,7 @@ export const MessageBubble = memo(function MessageBubble({
           fallback={<span>✦</span>}
         />
       </button>
-      <div className="msg-content-wrapper" onContextMenu={handleContextMenu}>
+      <div className="msg-content-wrapper">
         <div className="msg-header">
           <span className="msg-author">{agentLabel}</span>
           {(roleLabel || statusText) && (
@@ -1084,7 +1052,6 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
         {actionBarNode}
-        {copyMenuNode}
       </div>
     </div>
   );

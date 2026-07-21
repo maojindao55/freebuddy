@@ -277,26 +277,28 @@ export function InfoDataCard({ card }: { card: InfoCardConfig }) {
         </ol>
       )}
 
-      {(snapshot?.fetchedAt || snapshot?.lastError) && (
-        <div className={`info-card-status${snapshot.stale ? " stale" : ""}`}>
-          <span>
-            {snapshot.fetchedAt
-              ? t("infoCards.updatedAt", { time: formatTime(snapshot.fetchedAt) })
-              : t("infoCards.notUpdated")}
-          </span>
-          {snapshot.lastError && <span title={snapshot.lastError}>{t("infoCards.sourceError")}</span>}
-        </div>
-      )}
+      <div className="info-card-footer">
+        {(snapshot?.fetchedAt || snapshot?.lastError) ? (
+          <div className={`info-card-status${snapshot.stale ? " stale" : ""}`}>
+            <span>
+              {snapshot.fetchedAt
+                ? t("infoCards.updatedAt", { time: formatTime(snapshot.fetchedAt) })
+                : t("infoCards.notUpdated")}
+            </span>
+            {snapshot.lastError && <span title={snapshot.lastError}>{t("infoCards.sourceError")}</span>}
+          </div>
+        ) : <div />}
 
-      <button
-        type="button"
-        className="info-card-analyze"
-        disabled={!visibleRows.length || analyzing || switchingDate}
-        onClick={() => void handleAnalyze()}
-      >
-        <Sparkles size={13} strokeWidth={1.8} />
-        {analyzing ? t("infoCards.analyzing") : t("infoCards.analyze")}
-      </button>
+        <button
+          type="button"
+          className="info-card-analyze"
+          disabled={!visibleRows.length || analyzing || switchingDate}
+          onClick={() => void handleAnalyze()}
+        >
+          <Sparkles size={12} strokeWidth={1.8} />
+          <span>{analyzing ? t("infoCards.analyzing") : t("infoCards.analyze")}</span>
+        </button>
+      </div>
     </section>
   );
 }

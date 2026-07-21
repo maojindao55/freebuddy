@@ -15,7 +15,7 @@ import { getDb } from "./cli/db.js";
 import { cleanupOrphanManagedAttachments } from "./cli/attachments.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { seedBuiltinSkills } from "./cli/skills.js";
-import { initApplicationMenu } from "./menu.js";
+import { initApplicationMenu, setupContextMenu } from "./menu.js";
 import { APP_NAME, APP_VERSION } from "./app-meta.js";
 import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
@@ -222,6 +222,7 @@ function createWindow() {
   });
 
   initApplicationMenu();
+  setupContextMenu(mainWindow, isDev);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);

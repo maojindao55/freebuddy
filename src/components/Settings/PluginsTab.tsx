@@ -372,17 +372,19 @@ export function PluginsTab() {
                     </button>
                     {isConfiguredMarketplace ? (
                       <div className="plugins-marketplace-actions">
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          disabled={Boolean(busyKey)}
-                          onClick={() => void runAction(`marketplace:update:${marketplace.name}`, () =>
-                            pluginsClient.updateMarketplace({ agent, marketplace: marketplace.name })
-                          )}
-                          aria-label={t("plugins.updateMarketplace", { name: marketplace.name })}
-                        >
-                          <RefreshCw size={14} />
-                        </button>
+                        {agent !== "codex" || marketplace.sourceType === "git" ? (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            disabled={Boolean(busyKey)}
+                            onClick={() => void runAction(`marketplace:update:${marketplace.name}`, () =>
+                              pluginsClient.updateMarketplace({ agent, marketplace: marketplace.name })
+                            )}
+                            aria-label={t("plugins.updateMarketplace", { name: marketplace.name })}
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="icon-btn danger"
@@ -443,6 +445,10 @@ export function PluginsTab() {
                 const installing = busyKey === `install:${plugin.id}`;
                 const updating = busyKey === `update:${plugin.id}`;
                 const uninstalling = busyKey === `uninstall:${plugin.id}`;
+                const pluginMarketplace = snapshot.marketplaces.find(
+                  (marketplace) => marketplace.name === plugin.marketplace
+                );
+                const canUpdate = agent !== "codex" || pluginMarketplace?.sourceType === "git";
                 return (
                   <article className="plugin-card" key={plugin.id}>
                     <PluginIcon plugin={plugin} />
@@ -468,15 +474,17 @@ export function PluginsTab() {
                         </span>
                       ) : plugin.installed ? (
                         <>
-                          <button
-                            type="button"
-                            className="secondary"
-                            disabled={Boolean(busyKey)}
-                            onClick={() => void update(plugin)}
-                          >
-                            <RefreshCw size={14} className={updating ? "spin" : ""} />
-                            {updating ? t("plugins.updating") : t("plugins.update")}
-                          </button>
+                          {canUpdate ? (
+                            <button
+                              type="button"
+                              className="secondary"
+                              disabled={Boolean(busyKey)}
+                              onClick={() => void update(plugin)}
+                            >
+                              <RefreshCw size={14} className={updating ? "spin" : ""} />
+                              {updating ? t("plugins.updating") : t("plugins.update")}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="icon-btn danger"

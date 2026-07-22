@@ -252,15 +252,30 @@ test("plugin list normalization accepts Codex and Claude JSON shapes", () => {
 test("marketplace normalization accepts arrays and keyed objects", () => {
   assert.deepEqual(
     normalizeMarketplacePayload({
-      marketplaces: [{ name: "openai", root: "/market/openai" }]
+      marketplaces: [{
+        name: "openai",
+        root: "/market/openai",
+        marketplaceSource: {
+          sourceType: "local",
+          source: "/market/openai"
+        }
+      }]
     }),
-    [{ name: "openai", root: "/market/openai" }]
+    [{
+      name: "openai",
+      source: "/market/openai",
+      root: "/market/openai",
+      sourceType: "local"
+    }]
   );
   assert.deepEqual(
     normalizeMarketplacePayload({
-      team: { source: { source: "github", repo: "owner/repo" } }
+      team: {
+        source: { source: "github", repo: "owner/repo" },
+        sourceType: "git"
+      }
     }),
-    [{ name: "team", source: "owner/repo" }]
+    [{ name: "team", source: "owner/repo", sourceType: "git" }]
   );
 });
 
@@ -279,6 +294,8 @@ test("plugin management is wired through settings, preload, and IPC", () => {
   assert.match(ui, /attachmentPreviewUrl\(plugin\.iconPath\)/);
   assert.match(ui, /loading="lazy"/);
   assert.match(ui, /plugin\.managedBy === "desktop"/);
+  assert.match(ui, /marketplace\.sourceType === "git"/);
+  assert.match(ui, /pluginMarketplace\?\.sourceType === "git"/);
   assert.match(ui, /selectedMarketplace/);
   assert.match(ui, /plugin\.marketplace === selectedMarketplace/);
   assert.match(ui, /plugins\.allMarketplaces/);

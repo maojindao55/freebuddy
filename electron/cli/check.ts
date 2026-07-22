@@ -17,6 +17,7 @@ import {
   resolveWindowsShellCommand,
   windowsInstallInvocation
 } from "./windowsEnv.js";
+import { findMacAppCliBinary } from "./macAppCli.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const CODEX_ACP_ADAPTER = "codex-acp";
@@ -158,6 +159,13 @@ function which(
               return resolve(fullPath);
             }
           }
+
+          const macAppBinary = findMacAppCliBinary(bin, {
+            platform: process.platform,
+            home,
+            isFile
+          });
+          if (macAppBinary) return resolve(macAppBinary);
         } catch {}
       }
 

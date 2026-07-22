@@ -4,6 +4,7 @@ import path from "node:path";
 import spawn from "cross-spawn";
 
 import { getFreshWindowsEnvironment } from "./windowsEnv.js";
+import { findMacAppCliBinary } from "./macAppCli.js";
 
 export type NativePluginAgent = "codex" | "claude";
 export type NativePluginScope = "user" | "project" | "local" | "managed";
@@ -31,6 +32,7 @@ export interface NativePluginMarketplace {
   name: string;
   source?: string;
   root?: string;
+  sourceType?: string;
 }
 
 export interface NativePluginSnapshot {
@@ -424,12 +426,25 @@ function normalizeMarketplace(value: unknown, fallbackName?: string): NativePlug
   }
   const name = stringValue(marketplace.name, marketplace.marketplaceName, fallbackName);
   if (!name) return undefined;
-  const source = sourceValue(marketplace.source);
+  const marketplaceSource = asRecord(marketplace.marketplaceSource);
+  const legacySource = asRecord(marketplace.source);
+  const source = sourceValue(marketplace.marketplaceSource) ?? sourceValue(marketplace.source);
   const root = stringValue(marketplace.root, marketplace.path);
+  const sourceType = stringValue(
+    marketplaceSource?.sourceType,
+    marketplaceSource?.source_type,
+    marketplaceSource?.type,
+    marketplace.sourceType,
+    marketplace.source_type,
+    legacySource?.sourceType,
+    legacySource?.source_type,
+    legacySource?.type
+  )?.toLowerCase();
   return {
     name,
     ...(source ? { source } : {}),
-    ...(root ? { root } : {})
+    ...(root ? { root } : {}),
+    ...(sourceType ? { sourceType } : {})
   };
 }
 
@@ -696,6 +711,13 @@ interface AgentProbe {
 async function probeAgent(agent: NativePluginAgent): Promise<AgentProbe> {
   let binary: string = agent;
   let result = await runCommand({ binary, args: ["--version"] }, 15_000);
+  if (agent === "codex" && (result.exitCode !== 0 || result.spawnError || result.timedOut)) {
+    const bundled = findMacAppCliBinary(agent);
+    if (bundled) {
+      binary = bundled;
+      result = await runCommand({ binary, args: ["--version"] }, 15_000);
+    }
+  }
   if (agent === "claude" && (result.exitCode !== 0 || result.spawnError || result.timedOut)) {
     const embedded = await findEmbeddedClaudeBinary();
     if (embedded) {

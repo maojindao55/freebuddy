@@ -1,5 +1,6 @@
 :root {
   --fb-font: 'Plus Jakarta Sans', 'Outfit', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", "Noto Sans SC", "Source Han Sans SC", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --fb-chat-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --fb-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Sarasa Mono SC", monospace;
   
   /* Spec dimensions */
@@ -30,6 +31,7 @@
   --fb-active: #0f172a;
   --fb-active-fg: #ffffff;
   --fb-brand: #10b981;
+  --fb-link: #047857;
   --fb-brand-glow: rgba(16, 185, 129, 0.12);
   --fb-workflow: #8b5cf6;
   --fb-workflow-glow: rgba(139, 92, 246, 0.16);
@@ -67,6 +69,7 @@
   --fb-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
   --fb-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
   --fb-danger: #fb7185;
+  --fb-link: #34d399;
   --surface: var(--fb-panel-bg);
   --surface-alt: var(--fb-panel-soft);
   --border: var(--fb-border);
@@ -10717,7 +10720,7 @@ button.ghost:focus-visible,
 }
 
 .msg-assistant .msg-content-wrapper {
-  max-width: min(760px, calc(100% - 44px));
+  max-width: min(768px, calc(100% - 44px));
   gap: 8px;
 }
 
@@ -10851,15 +10854,19 @@ button.ghost:focus-visible,
 }
 
 .msg-assistant .msg-items {
-  gap: 10px;
+  gap: 16px;
   padding: 0;
 }
 
 .stream-process {
-  margin: 8px 0 12px;
+  margin: 0;
   color: #969ba3;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 22px;
+}
+
+.stream-process + .stream-process {
+  margin-top: -12px;
 }
 
 .stream-process > summary {
@@ -10905,7 +10912,7 @@ button.ghost:focus-visible,
   height: 16px;
   flex: 0 0 16px;
   color: currentColor;
-  stroke-width: 1.85;
+  stroke-width: 2;
 }
 
 .stream-process-icon.spinning {
@@ -10957,8 +10964,8 @@ button.ghost:focus-visible,
 
 .stream-process-detail-list {
   display: grid;
-  gap: 8px;
-  margin: 10px 0 0 24px;
+  gap: 4px;
+  margin: 4px 0 0 24px;
   padding: 0;
 }
 
@@ -11112,44 +11119,47 @@ button.ghost:focus-visible,
 .stream-text {
   padding: 0;
   color: var(--fb-text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  font-size: 14.5px;
-  line-height: 1.68;
-  letter-spacing: -0.003em;
+  font-family: var(--fb-chat-font);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  letter-spacing: 0;
 }
 
 .markdown-body {
   display: block;
   min-width: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  font-size: 14.5px;
-  line-height: 1.68;
-  letter-spacing: -0.003em;
+  font-family: var(--fb-chat-font);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  letter-spacing: 0;
   color: var(--fb-text-primary);
+  overflow-wrap: anywhere;
 }
 
 .markdown-body p {
-  margin: 0 0 14px;
-  line-height: 1.68;
-  white-space: pre-wrap;
+  margin: 0 0 11px;
+  line-height: inherit;
+  white-space: normal;
 }
 
 .markdown-body .markdown-heading {
-  margin: 22px 0 8px;
-  font-weight: 650;
-  line-height: 1.35;
+  margin: 20px 0 10px;
+  font-weight: 600;
+  line-height: 1.25;
   color: var(--fb-text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .markdown-body .markdown-heading:first-child {
   margin-top: 0;
 }
-.markdown-body h1.markdown-heading { font-size: 19px; font-weight: 650; }
-.markdown-body h2.markdown-heading { font-size: 17px; font-weight: 650; }
-.markdown-body h3.markdown-heading { font-size: 15.5px; font-weight: 600; }
-.markdown-body h4.markdown-heading { font-size: 14.5px; font-weight: 600; color: var(--fb-text-primary); }
-.markdown-body h5.markdown-heading { font-size: 14px; font-weight: 600; color: var(--fb-text-secondary); }
-.markdown-body h6.markdown-heading { font-size: 13.5px; font-weight: 500; color: var(--fb-text-tertiary); }
+.markdown-body h1.markdown-heading { font-size: 24px; }
+.markdown-body h2.markdown-heading { font-size: 20px; }
+.markdown-body h3.markdown-heading,
+.markdown-body h4.markdown-heading { font-size: 17px; line-height: 22px; }
+.markdown-body h5.markdown-heading,
+.markdown-body h6.markdown-heading { font-size: 15px; line-height: 20px; }
 
 .markdown-body p:last-child,
 .markdown-body ul:last-child,
@@ -11161,14 +11171,19 @@ button.ghost:focus-visible,
 
 .markdown-body ul,
 .markdown-body ol {
-  margin: 0 0 14px 20px;
-  padding: 0;
+  margin: 0 0 11px;
+  padding-inline-start: 21px;
+  list-style-position: outside;
 }
 
 .markdown-body li {
-  margin: 4px 0;
-  padding-left: 2px;
-  line-height: 1.65;
+  margin: 0;
+  padding-inline-start: 2px;
+  line-height: inherit;
+}
+
+.markdown-body li + li {
+  margin-top: 8px;
 }
 
 .markdown-body strong {
@@ -11178,12 +11193,12 @@ button.ghost:focus-visible,
 .markdown-body code,
 .stream-command code,
 .stream-meta code {
-  padding: 2px 5.5px;
-  border-radius: 5px;
+  padding: 1px 6px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--fb-text-primary) 7%, transparent);
   color: var(--fb-text-primary);
   font-family: var(--fb-mono);
-  font-size: 0.875em;
+  font-size: 0.92em;
   border: none;
 }
 
@@ -11194,7 +11209,7 @@ button.ghost:focus-visible,
 }
 
 .markdown-code-card {
-  margin: 16px 0;
+  margin: 14px 0;
   border: 1px solid var(--fb-border-strong);
   border-radius: 10px;
   overflow: hidden;
@@ -11327,7 +11342,7 @@ button.ghost:focus-visible,
 }
 
 .markdown-body a {
-  color: var(--fb-brand, #10b981);
+  color: var(--fb-link, #047857);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -11337,12 +11352,14 @@ button.ghost:focus-visible,
 }
 
 .markdown-blockquote {
-  margin: 14px 0 16px;
-  padding: 8px 16px;
-  border-left: 3px solid var(--fb-brand, #10b981);
-  color: var(--fb-text-secondary);
-  background: var(--fb-brand-glow, rgba(16, 185, 129, 0.06));
-  border-radius: 0 8px 8px 0;
+  margin: 0 0 8px;
+  padding: 8px 0 8px 20px;
+  border-left: 4px solid var(--fb-border-strong);
+  color: var(--fb-text-primary);
+  background: transparent;
+  border-radius: 0;
+  font-style: normal;
+  line-height: 24px;
 }
 
 .stream-content-block {

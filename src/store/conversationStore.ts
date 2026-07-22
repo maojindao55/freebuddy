@@ -30,11 +30,13 @@ import {
 
 import { useCliExecutorStore } from "./cliExecutorStore";
 import {
+  buildConversationTitle,
   collectStreamMessageIds,
   collectStreamAgentMessageIds,
   collectStreamContentSignatures,
   defaultTitleFor,
   feedArticleTitleFromMessages,
+  inferConversationTitleSource,
   mergeConversationMessages,
   shouldApplyAgentSessionTitle,
   upsertConversationMessage
@@ -787,6 +789,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
     const conv = get().conversations.find((c) => c.id === conversationId);
     if (!conv) return;
+    const priorUserCount = (get().messages[conversationId] ?? []).filter(
+      (message) => message.role === "user"
+    ).length;
     const workflowRun = await workflowRunForConversation(conversationId);
     const member =
       memberForWorkflowFollowup(workflowRun, get().members) ??
@@ -869,6 +874,26 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       agentName: member.name,
       adapter: member.cli.adapter
     });
+
+    if (
+      !preserveConversationTitle &&
+      priorUserCount === 0 &&
+      inferConversationTitleSource(conv) === "default"
+    ) {
+      const nextTitle = buildConversationTitle({
+        prompt: trimmed,
+        attachmentName: attachments[0]?.name,
+        fallback: conv.title
+      });
+      await cliClient.renameConversation(conversationId, nextTitle, "prompt");
+      set((s) => ({
+        conversations: s.conversations.map((c) =>
+          c.id === conversationId
+            ? { ...c, title: nextTitle, titleSource: "prompt" as const }
+            : c
+        )
+      }));
+    }
 
     const taskSessionId = nanoid();
     const wantFresh = get().pendingFreshContext[conversationId] === true;

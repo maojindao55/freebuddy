@@ -14,10 +14,10 @@ interface MacAppCliLookupOptions {
 
 export function macAppCliCandidates(binary: string, home = os.homedir()): string[] {
   const appNames = MAC_APP_BUNDLED_CLIS[binary] || [];
-  const applicationRoots = ["/Applications", path.join(home, "Applications")];
+  const applicationRoots = ["/Applications", path.posix.join(home, "Applications")];
   return applicationRoots.flatMap((root) =>
     appNames.map((appName) =>
-      path.join(root, appName, "Contents", "Resources", binary)
+      path.posix.join(root, appName, "Contents", "Resources", binary)
     )
   );
 }

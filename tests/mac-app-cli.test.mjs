@@ -12,8 +12,8 @@ test("macOS Codex lookup includes official desktop app bundles", () => {
   assert.deepEqual(macAppCliCandidates("codex", home), [
     "/Applications/Codex.app/Contents/Resources/codex",
     "/Applications/ChatGPT.app/Contents/Resources/codex",
-    path.join(home, "Applications", "Codex.app", "Contents", "Resources", "codex"),
-    path.join(home, "Applications", "ChatGPT.app", "Contents", "Resources", "codex")
+    path.posix.join(home, "Applications", "Codex.app", "Contents", "Resources", "codex"),
+    path.posix.join(home, "Applications", "ChatGPT.app", "Contents", "Resources", "codex")
   ]);
 });
 

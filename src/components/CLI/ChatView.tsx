@@ -30,6 +30,10 @@ import type {
   WorkflowTeam,
   WorkflowTeamPreview
 } from "@/services/workflowTeams/types";
+import type {
+  NativePluginAgent,
+  NativePluginRecord
+} from "@/services/plugins/types";
 import { workflowTeamName } from "@/services/workflowTeams/types";
 import {
   workflowFollowupAgentId,
@@ -82,6 +86,41 @@ import {
 } from "@/utils/agentAvailability";
 
 const EMPTY_MESSAGES: never[] = [];
+
+function pluginAgentForAdapter(adapter?: string): NativePluginAgent | undefined {
+  const normalized = adapter?.trim().toLowerCase();
+  if (normalized?.startsWith("codex")) return "codex";
+  if (normalized?.startsWith("claude")) return "claude";
+  return undefined;
+}
+
+function pluginMention(plugin: NativePluginRecord): string {
+  const label = `@${plugin.name}`;
+  const uri = plugin.mentionUri
+    ?? (plugin.marketplace ? `plugin://${plugin.name}@${plugin.marketplace}` : undefined);
+  return uri ? `[${label}](${uri})` : label;
+}
+
+function insertPluginMention(
+  value: string,
+  plugin: NativePluginRecord,
+  textarea: HTMLTextAreaElement | null,
+  onChange: (value: string) => void
+) {
+  const start = textarea?.selectionStart ?? value.length;
+  const end = textarea?.selectionEnd ?? start;
+  const before = value.slice(0, start);
+  const after = value.slice(end);
+  const leadingSpace = before && !/\s$/.test(before) ? " " : "";
+  const trailingSpace = after && /^\s/.test(after) ? "" : " ";
+  const insertion = `${leadingSpace}${pluginMention(plugin)}${trailingSpace}`;
+  onChange(`${before}${insertion}${after}`);
+  const caret = before.length + insertion.length;
+  requestAnimationFrame(() => {
+    textarea?.focus();
+    textarea?.setSelectionRange(caret, caret);
+  });
+}
 
 function detachAttachmentsForSend(
   snapshot: ChatAttachment[],
@@ -1495,6 +1534,9 @@ export function ChatView({
         configOptionsLoading={newTaskConfigLoading}
         skills={skills}
         selectedSkillIds={newTaskSkillIds}
+        pluginAgent={pluginAgentForAdapter(
+          members.find((entry) => entry.id === selectedMemberId)?.cli.adapter
+        )}
         preflightMsg={preflightMsg}
         onDraft={setNewTaskDraft}
         onMember={(id) => {
@@ -1725,6 +1767,7 @@ export function ChatView({
             <ComposerAddMenu
               skills={skills}
               selectedIds={conv?.skillSnapshot.map((skill) => skill.id) ?? []}
+              pluginAgent={pluginAgentForAdapter(member?.cli.adapter ?? conv?.adapter)}
               attachmentDisabled={
                 sending ||
                 replaying ||
@@ -1732,7 +1775,11 @@ export function ChatView({
                 pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
               }
               skillsDisabled={sending || replaying}
+              pluginsDisabled={sending || replaying}
               onSelectAttachments={() => void handleSelectAttachments("chat")}
+              onSelectPlugin={(plugin) =>
+                insertPluginMention(draft, plugin, chatTextareaRef.current, setDraft)
+              }
               onSkillsChange={(ids) => {
                 if (conv?.id) void setConversationSkills(conv.id, ids);
               }}
@@ -1820,6 +1867,7 @@ function NewTaskHome({
   configOptionsLoading,
   skills,
   selectedSkillIds,
+  pluginAgent,
   preflightMsg,
   onDraft,
   onMember,
@@ -1858,6 +1906,7 @@ function NewTaskHome({
   configOptionsLoading: boolean;
   skills: ReturnType<typeof useSkillStore.getState>["skills"];
   selectedSkillIds: string[];
+  pluginAgent?: NativePluginAgent;
   preflightMsg: string | null;
   onDraft: (value: string) => void;
   onMember: (value: string) => void;
@@ -1980,11 +2029,16 @@ function NewTaskHome({
           <ComposerAddMenu
             skills={skills}
             selectedIds={selectedSkillIds}
+            pluginAgent={pluginAgent}
             attachmentDisabled={
               attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
             }
             skillsDisabled={sendLocked}
+            pluginsDisabled={sendLocked}
             onSelectAttachments={onSelectAttachments}
+            onSelectPlugin={(plugin) =>
+              insertPluginMention(draft, plugin, textareaRef.current, onDraft)
+            }
             onSkillsChange={onSkills}
           />
           {teamMode ? (

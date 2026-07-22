@@ -393,6 +393,18 @@ const skills = {
     ipcRenderer.invoke("skills:resolveMarketHomepage", args)
 };
 
+const plugins = {
+  list: (agent: string) => ipcRenderer.invoke("plugins:list", agent),
+  install: (input: unknown) => ipcRenderer.invoke("plugins:install", input),
+  update: (input: unknown) => ipcRenderer.invoke("plugins:update", input),
+  uninstall: (input: unknown) => ipcRenderer.invoke("plugins:uninstall", input),
+  addMarketplace: (input: unknown) => ipcRenderer.invoke("plugins:addMarketplace", input),
+  updateMarketplace: (input: unknown) =>
+    ipcRenderer.invoke("plugins:updateMarketplace", input),
+  removeMarketplace: (input: unknown) =>
+    ipcRenderer.invoke("plugins:removeMarketplace", input)
+};
+
 const scheduledTasks = {
   list: () => ipcRenderer.invoke("scheduledTasks:list"),
   listRuns: (taskId: string) => ipcRenderer.invoke("scheduledTasks:listRuns", taskId),
@@ -443,6 +455,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   workflowTeams,
   skills,
   settings,
+  plugins,
   scheduledTasks,
   feed,
   infoCards,

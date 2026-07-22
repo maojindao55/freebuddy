@@ -78,6 +78,13 @@ import type {
   SkillRecord
 } from "@/services/skills/types";
 import type {
+  NativePluginAgent,
+  NativePluginCommandResult,
+  NativePluginMarketplaceInput,
+  NativePluginMutationInput,
+  NativePluginSnapshot
+} from "@/services/plugins/types";
+import type {
   ScheduledTask,
   ScheduledTaskAgent,
   ScheduledTaskInput,
@@ -304,6 +311,16 @@ declare global {
     }): Promise<string | null>;
   }
 
+  interface FreebuddyPlugins {
+    list(agent: NativePluginAgent): Promise<NativePluginSnapshot>;
+    install(input: NativePluginMutationInput): Promise<NativePluginCommandResult>;
+    update(input: NativePluginMutationInput): Promise<NativePluginCommandResult>;
+    uninstall(input: NativePluginMutationInput): Promise<NativePluginCommandResult>;
+    addMarketplace(input: NativePluginMarketplaceInput): Promise<NativePluginCommandResult>;
+    updateMarketplace(input: NativePluginMarketplaceInput): Promise<NativePluginCommandResult>;
+    removeMarketplace(input: NativePluginMarketplaceInput): Promise<NativePluginCommandResult>;
+  }
+
   interface FreebuddyWorkflow {
     validate(plan: WorkflowPlan): Promise<WorkflowValidationResult>;
     previewReviewLoop(input: {
@@ -463,6 +480,7 @@ declare global {
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
     skills: FreebuddySkills;
+    plugins: FreebuddyPlugins;
     scheduledTasks: FreebuddyScheduledTasks;
     settings: FreebuddySettings;
     feed: FreebuddyFeed;

@@ -15,25 +15,33 @@ const stylesSource = fs.readFileSync(
   "utf8"
 );
 
-test("composer consolidates attachments and skills behind one add menu", () => {
+test("composer consolidates attachments, skills, and plugins behind one add menu", () => {
   assert.equal((chatViewSource.match(/<ComposerAddMenu/g) ?? []).length, 2);
   assert.doesNotMatch(chatViewSource, /<SkillPicker/);
   assert.doesNotMatch(chatViewSource, /<PaperclipIcon/);
   assert.match(menuSource, /onSelectAttachments/);
   assert.match(menuSource, /onSkillsChange/);
+  assert.match(menuSource, /onSelectPlugin/);
+  assert.match(menuSource, /pluginsClient\.list\(pluginAgent\)/);
   assert.match(menuSource, /skills\.menuSummary/);
+  assert.match(menuSource, /plugins\.menuSummary/);
   assert.match(menuSource, /selectedAvailableCount/);
+  assert.match(menuSource, /attachmentPreviewUrl\(plugin\.iconPath\)/);
+  assert.match(chatViewSource, /plugin:\/\/\$\{plugin\.name\}@\$\{plugin\.marketplace\}/);
 });
 
 test("composer add menu supports dismiss and independent disabled states", () => {
   assert.match(menuSource, /document\.addEventListener\("mousedown", closeOnOutsidePointer\)/);
   assert.match(menuSource, /event\.key !== "Escape"/);
-  assert.match(menuSource, /attachmentDisabled && skillsDisabled/);
+  assert.match(menuSource, /attachmentDisabled && skillsDisabled && \(!pluginAgent \|\| pluginsDisabled\)/);
   assert.match(menuSource, /disabled=\{attachmentDisabled\}/);
   assert.match(menuSource, /disabled=\{skillsDisabled\}/);
-  assert.match(menuSource, /onClick=\{\(\) => setSkillsOpen\(true\)\}/);
+  assert.match(menuSource, /disabled=\{pluginsDisabled\}/);
+  assert.match(menuSource, /onClick=\{\(\) => setActivePanel\("skills"\)\}/);
+  assert.match(menuSource, /onClick=\{\(\) => setActivePanel\("plugins"\)\}/);
   assert.match(menuSource, /aria-expanded=\{open\}/);
-  assert.match(menuSource, /aria-expanded=\{skillsOpen\}/);
+  assert.match(menuSource, /aria-expanded=\{activePanel === "skills"\}/);
+  assert.match(menuSource, /aria-expanded=\{activePanel === "plugins"\}/);
 });
 
 test("composer add menu follows the compact two-panel reference layout", () => {
@@ -41,6 +49,7 @@ test("composer add menu follows the compact two-panel reference layout", () => {
   assert.match(stylesSource, /\.composer-add-popover\s*\{[^}]*display:\s*flex;[^}]*gap:\s*8px;/m);
   assert.match(stylesSource, /\.composer-add-primary\s*\{[^}]*width:\s*224px;/m);
   assert.match(stylesSource, /\.composer-add-skills-panel\s*\{[^}]*width:\s*292px;/m);
+  assert.match(stylesSource, /\.composer-add-plugin-option\s*\{[^}]*grid-template-columns:\s*36px minmax\(0, 1fr\);/m);
 });
 
 test("composer add menu escapes the rounded composer clipping boundary", () => {

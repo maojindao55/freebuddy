@@ -91,8 +91,10 @@ test("theme setting defaults to following the system", () => {
 test("sidebar version area shows update capsule for available updates", () => {
   assert.match(
     settingsModal,
-    /export type SettingsTab = "general" \| "cli" \| "skills" \| "feed" \| "about"/
+    /export type SettingsTab = "general" \| "cli" \| "skills" \| "plugins" \| "feed" \| "about"/
   );
+  assert.equal(enJson.settings.tabs.plugins, "Plugins");
+  assert.equal(zhJson.settings.tabs.plugins, "插件");
   assert.match(settingsModal, /initialTab = "cli"/);
   assert.match(settingsModal, /useState<SettingsTab>\(initialTab\)/);
   assert.match(app, /const \[settingsInitialTab, setSettingsInitialTab\] = useState<SettingsTab>\("cli"\)/);

@@ -4,6 +4,7 @@ import {
   Copy,
   FileText,
   LoaderCircle,
+  Package,
   Search,
   SquarePen,
   SquareTerminal,
@@ -23,6 +24,7 @@ import { appendItems } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { formatBytes, attachmentPreviewUrl } from "@/utils/chatAttachments";
 import { splitWorkspaceFileMentions } from "@/utils/workspaceFileMentions";
+import { pluginDisplayName, splitPluginMentions } from "@/utils/pluginMentions";
 import { sanitizeStreamItems } from "@/utils/streamMedia";
 import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
@@ -696,22 +698,37 @@ function MessageAttachments({
 }
 
 function UserMessageText({ content }: { content: string }) {
-  const segments = splitWorkspaceFileMentions(content);
+  const segments = splitPluginMentions(content);
   return (
     <pre>
-      {segments.map((segment, index) =>
-        segment.kind === "mention" ? (
+      {segments.map((segment, index) => {
+        if (segment.kind === "plugin") {
+          return (
+            <span
+              className="message-plugin-mention"
+              title={segment.uri}
+              aria-label={`Plugin ${pluginDisplayName(segment.name)}`}
+              key={`${segment.uri}-${index}`}
+            >
+              <Package aria-hidden="true" />
+              <span>{pluginDisplayName(segment.name)}</span>
+            </span>
+          );
+        }
+        return splitWorkspaceFileMentions(segment.value).map((fileSegment, fileIndex) =>
+          fileSegment.kind === "mention" ? (
           <span
             className="workspace-file-mention"
-            title={segment.path}
-            key={`${segment.value}-${index}`}
+            title={fileSegment.path}
+            key={`${fileSegment.value}-${index}-${fileIndex}`}
           >
-            {segment.value}
+            {fileSegment.value}
           </span>
         ) : (
-          <span key={`text-${index}`}>{segment.value}</span>
-        )
-      )}
+            <span key={`text-${index}-${fileIndex}`}>{fileSegment.value}</span>
+          )
+        );
+      })}
     </pre>
   );
 }

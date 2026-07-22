@@ -311,7 +311,10 @@ test("MessageBubble compacts execution process while preserving final text", () 
   assert.doesNotMatch(src, /stream-process-head/);
   assert.doesNotMatch(src, /stream-process-recent/);
   assert.match(css, /\.stream-process\s*\{/);
+  assert.match(css, /\.stream-process\s*\{[^}]*color:\s*#969ba3;[^}]*font-size:\s*14px;/);
+  assert.match(css, /\.stream-process \+ \.stream-process\s*\{[\s\S]*?margin-top:\s*-12px;/);
   assert.match(css, /\.stream-process > summary\s*\{/);
+  assert.match(css, /\.stream-process > summary\s*\{[\s\S]*?font-weight:\s*650;/);
   assert.match(css, /\.stream-process > summary::after\s*\{/);
   assert.match(css, /\.stream-process\[open\] > summary::after\s*\{/);
   assert.doesNotMatch(css, /\.stream-process summary::after\s*\{/);
@@ -325,7 +328,7 @@ test("MessageBubble compacts execution process while preserving final text", () 
   assert.doesNotMatch(css, /\.stream-process\.failed/);
   assert.match(css, /stream-process-title-shimmer/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(css, /\.stream-process-icon\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;[\s\S]*?flex:\s*0 0 16px;/);
+  assert.match(css, /\.stream-process-icon\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;[\s\S]*?flex:\s*0 0 16px;[\s\S]*?stroke-width:\s*2;/);
   assert.equal(en.stream.activityEditedFiles_one, "Edited {{count}} file");
   assert.equal(en.stream.activitySucceeded_one, "{{count}} succeeded");
   assert.equal(en.stream.activityFailed_one, "{{count}} failed");

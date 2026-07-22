@@ -63,11 +63,14 @@ function formatCost(amount: number, currency?: string): string {
   return currency === "USD" ? `$${value}` : `${value} ${currency ?? ""}`.trim();
 }
 
-function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
+function renderInline(text: string, keyPrefix = "i", depth = 0): ReactNode[] {
   const nodes: ReactNode[] = [];
   // Strip markdown image syntax: image previews are rendered as separate figure blocks.
   const cleaned = text.replace(MARKDOWN_IMAGE_REGEX, "").replace(/[ \t]{2,}/g, " ");
   const parts = cleaned.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g);
+
+  const renderNested = (value: string, key: string) =>
+    depth < 8 ? renderInline(value, key, depth + 1) : value;
 
   parts.forEach((part, index) => {
     if (!part) return;
@@ -77,15 +80,17 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
       return;
     }
     if (part.startsWith("**") && part.endsWith("**")) {
-      nodes.push(<strong key={key}>{part.slice(2, -2)}</strong>);
+      nodes.push(
+        <strong key={key}>{renderNested(part.slice(2, -2), `${key}-strong`)}</strong>
+      );
       return;
     }
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
-      nodes.push(<em key={key}>{part.slice(1, -1)}</em>);
+      nodes.push(<em key={key}>{renderNested(part.slice(1, -1), `${key}-em`)}</em>);
       return;
     }
     if (part.startsWith("~~") && part.endsWith("~~") && part.length > 4) {
-      nodes.push(<del key={key}>{part.slice(2, -2)}</del>);
+      nodes.push(<del key={key}>{renderNested(part.slice(2, -2), `${key}-del`)}</del>);
       return;
     }
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -95,7 +100,7 @@ function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
       if (href) {
         nodes.push(
           <a key={key} href={href} target="_blank" rel="noreferrer noopener">
-            {label}
+            {renderNested(label, `${key}-link`)}
           </a>
         );
         return;

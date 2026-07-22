@@ -279,6 +279,10 @@ test("plugin management is wired through settings, preload, and IPC", () => {
   assert.match(ui, /attachmentPreviewUrl\(plugin\.iconPath\)/);
   assert.match(ui, /loading="lazy"/);
   assert.match(ui, /plugin\.managedBy === "desktop"/);
+  assert.match(ui, /selectedMarketplace/);
+  assert.match(ui, /plugin\.marketplace === selectedMarketplace/);
+  assert.match(ui, /plugins\.allMarketplaces/);
+  assert.match(ui, /aria-pressed=\{selectedMarketplace === marketplace\.name\}/);
   assert.doesNotMatch(ui, /className="plugins-marketplace-add"/);
   assert.match(preload, /plugins:addMarketplace/);
   assert.match(ipc, /plugins:updateMarketplace/);

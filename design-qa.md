@@ -339,3 +339,51 @@ No actionable P0, P1, or P2 differences remain for the selected-workspace contro
 - P3: FreeBuddy's existing slate-neutral token is slightly cooler than the reference gray; this is an intentional design-system mapping.
 
 final result: passed
+
+---
+
+# Plugin marketplace filter design QA
+
+- Source visual truth: `/var/folders/_l/t1lk7m411953763qdprx0qn00000gp/T/codex-clipboard-6cd7d4ef-867d-4147-a779-287774fe96dd.png`
+- Implementation screenshot: `/Users/hongbin9/.codex/visualizations/2026/07/22/019f8929-c5ad-73d3-9f20-fc5474e699e8/plugin-marketplace-filter-all.png`
+- Initial selected-market screenshot: `/Users/hongbin9/.codex/visualizations/2026/07/22/019f8929-c5ad-73d3-9f20-fc5474e699e8/plugin-marketplace-filter-selected-before-polish.png`
+- Responsive screenshot: `/Users/hongbin9/.codex/visualizations/2026/07/22/019f8929-c5ad-73d3-9f20-fc5474e699e8/plugin-marketplace-filter-narrow.png`
+- Source pixels: 2048 × 1343 (Retina-density desktop capture, normalized to approximately 1024 × 672 CSS px)
+- Implementation pixels and viewport: 1024 × 672 at device scale factor 1
+- Responsive viewport: 820 × 700 at device scale factor 1
+- State: light theme, Codex, installed plugins, all marketplaces selected; focused checks also covered `openai-curated` and `chatgpt-global` selected states
+
+## Full-view comparison evidence
+
+The source and implementation were inspected together after normalizing the source's Retina density. The page frame, two-column workspace, toolbar, cards, typography scale, border radii, and neutral/green token usage remain consistent with the existing screen. The intentional differences are the new “All marketplaces” row, per-source counts, selected-state treatment, and the system-managed `chatgpt-global` source.
+
+## Focused region comparison evidence
+
+The marketplace rail and catalog toolbar were checked at the normalized desktop viewport. Selecting `openai-curated` changed the view counts to 3 installed and 0 available and showed only its three plugins. Selecting `chatgpt-global` changed the counts to 1 installed and 0 available and isolated Product Design v0.1.47. Search and installed/available remain downstream filters over the selected marketplace.
+
+## Required fidelity surfaces
+
+- Fonts and typography: inherited existing FreeBuddy type tokens, weights, sizes, truncation, and two-line marketplace hierarchy.
+- Spacing and layout rhythm: retained the existing workspace proportions and card spacing; the market rows gained a compact 42px target and responsive stacked layout.
+- Colors and visual tokens: selected, hover, focus, border, surface, and count states use existing `--fb-*` tokens.
+- Image quality and assets: production plugin artwork still uses the existing manifest icons and fallback icon path; the QA fixture intentionally exercised the existing fallback.
+- Copy and content: added localized labels for all marketplaces, managed sources, and the marketplace filter group in English and Simplified Chinese.
+
+## Interaction and accessibility checks
+
+- Marketplace filters are native buttons with `aria-pressed` state and a labelled group.
+- Focus-visible treatment is present and selection is communicated by border, inset marker, surface, and pressed state rather than color alone.
+- Configured-market update/remove controls remain separate from the filter button; managed-only sources do not expose invalid destructive actions.
+- Browser console warnings/errors checked: none.
+
+## Comparison history
+
+1. Initial selected-market capture showed the destructive marketplace action persistently beside the selected filter (P2 distraction and misclick risk).
+2. Fixed by hiding marketplace actions until hover or keyboard focus while keeping the filter count visible.
+3. Post-fix all-market and responsive captures show the destructive controls removed from the resting state with no layout regression.
+
+## Remaining polish
+
+- P3: long marketplace names can truncate at the 1024px desktop viewport; the leading unique text and full source tooltip remain available, while the stacked responsive layout exposes more width.
+
+final result: passed

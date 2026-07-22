@@ -2311,15 +2311,48 @@ button {
 .plugins-marketplace-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 2px;
   align-items: center;
-  padding: 8px;
+  padding: 3px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: var(--fb-panel-bg);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
 
-.plugins-marketplace-row > div:first-child {
+.plugins-marketplace-row:hover {
+  border-color: var(--fb-border-strong);
+}
+
+.plugins-marketplace-row.active {
+  border-color: color-mix(in srgb, var(--fb-brand) 32%, var(--fb-border));
+  background: color-mix(in srgb, var(--fb-brand) 7%, var(--fb-panel-bg));
+  box-shadow: inset 3px 0 0 var(--fb-brand);
+}
+
+.plugins-marketplace-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 42px;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 6px 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugins-marketplace-filter:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fb-brand) 72%, white);
+  outline-offset: 1px;
+}
+
+.plugins-marketplace-copy {
   min-width: 0;
   display: grid;
   gap: 2px;
@@ -2342,8 +2375,36 @@ button {
   font-size: 10px;
 }
 
+.plugins-marketplace-row .plugins-marketplace-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.plugins-marketplace-row.active .plugins-marketplace-count {
+  background: color-mix(in srgb, var(--fb-brand) 13%, var(--fb-panel-bg));
+  color: color-mix(in srgb, var(--fb-brand) 74%, var(--fb-text-primary));
+}
+
 .plugins-marketplace-actions {
   gap: 2px;
+}
+
+.plugins-marketplace-row:not(:hover):not(:focus-within) .plugins-marketplace-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.plugins-marketplace-actions {
+  transition: opacity 120ms ease;
 }
 
 .plugins-tab .icon-btn.danger {

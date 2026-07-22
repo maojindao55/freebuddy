@@ -73,6 +73,7 @@ export function PluginsTab() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<PluginView>("installed");
+  const [selectedMarketplace, setSelectedMarketplace] = useState<string | null>(null);
   const [marketplaceSource, setMarketplaceSource] = useState("");
   const [marketplaceDialogOpen, setMarketplaceDialogOpen] = useState(false);
   const [busyKey, setBusyKey] = useState("");
@@ -95,14 +96,52 @@ export function PluginsTab() {
     setSnapshot(undefined);
     setQuery("");
     setView("installed");
+    setSelectedMarketplace(null);
     setMarketplaceDialogOpen(false);
     setMarketplaceSource("");
     void load(agent);
   }, [agent, load]);
 
+  const marketplaceFilters = useMemo(() => {
+    const marketplaces = [...(snapshot?.marketplaces ?? [])];
+    const names = new Set(marketplaces.map((marketplace) => marketplace.name));
+    for (const plugin of snapshot?.plugins ?? []) {
+      if (!plugin.marketplace || names.has(plugin.marketplace)) continue;
+      names.add(plugin.marketplace);
+      marketplaces.push({ name: plugin.marketplace });
+    }
+    return marketplaces;
+  }, [snapshot?.marketplaces, snapshot?.plugins]);
+
+  useEffect(() => {
+    if (
+      selectedMarketplace
+      && snapshot
+      && !marketplaceFilters.some((marketplace) => marketplace.name === selectedMarketplace)
+    ) {
+      setSelectedMarketplace(null);
+    }
+  }, [marketplaceFilters, selectedMarketplace, snapshot]);
+
+  const marketplacePlugins = useMemo(
+    () => (snapshot?.plugins ?? []).filter(
+      (plugin) => !selectedMarketplace || plugin.marketplace === selectedMarketplace
+    ),
+    [selectedMarketplace, snapshot?.plugins]
+  );
+
+  const marketplacePluginCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const plugin of snapshot?.plugins ?? []) {
+      if (!plugin.marketplace) continue;
+      counts.set(plugin.marketplace, (counts.get(plugin.marketplace) ?? 0) + 1);
+    }
+    return counts;
+  }, [snapshot?.plugins]);
+
   const plugins = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return (snapshot?.plugins ?? []).filter((plugin) => {
+    return marketplacePlugins.filter((plugin) => {
       if (view === "installed" && !plugin.installed) return false;
       if (view === "available" && plugin.installed) return false;
       if (!needle) return true;
@@ -110,7 +149,7 @@ export function PluginsTab() {
         .toLowerCase()
         .includes(needle);
     });
-  }, [query, snapshot?.plugins, view]);
+  }, [marketplacePlugins, query, view]);
 
   const runAction = async (key: string, action: () => Promise<unknown>): Promise<boolean> => {
     setBusyKey(key);
@@ -273,42 +312,92 @@ export function PluginsTab() {
             <div className="plugins-section-title">
               <Store size={16} />
               <strong>{t("plugins.marketplaces")}</strong>
-              <span>{snapshot.marketplaces.length}</span>
+              <span>{marketplaceFilters.length}</span>
             </div>
-            <div className="plugins-marketplace-list">
-              {snapshot.marketplaces.map((marketplace) => (
-                <div className="plugins-marketplace-row" key={marketplace.name}>
-                  <div>
-                    <strong>{marketplace.name}</strong>
-                    <span title={marketplace.source || marketplace.root}>
-                      {marketplace.source || marketplace.root || t("plugins.localMarketplace")}
-                    </span>
-                  </div>
-                  <div className="plugins-marketplace-actions">
+            <div
+              className="plugins-marketplace-list"
+              role="group"
+              aria-label={t("plugins.marketplaceFilterLabel")}
+            >
+              <div
+                className={`plugins-marketplace-row plugins-marketplace-row-all${
+                  selectedMarketplace === null ? " active" : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  className="plugins-marketplace-filter"
+                  aria-pressed={selectedMarketplace === null}
+                  onClick={() => setSelectedMarketplace(null)}
+                >
+                  <span className="plugins-marketplace-copy">
+                    <strong>{t("plugins.allMarketplaces")}</strong>
+                    <span>{t("plugins.allMarketplacesHint")}</span>
+                  </span>
+                  <span className="plugins-marketplace-count">
+                    {snapshot.plugins.length}
+                  </span>
+                </button>
+              </div>
+              {marketplaceFilters.map((marketplace) => {
+                const isConfiguredMarketplace = snapshot.marketplaces.some(
+                  (entry) => entry.name === marketplace.name
+                );
+                return (
+                  <div
+                    className={`plugins-marketplace-row${
+                      selectedMarketplace === marketplace.name ? " active" : ""
+                    }`}
+                    key={marketplace.name}
+                  >
                     <button
                       type="button"
-                      className="icon-btn"
-                      disabled={Boolean(busyKey)}
-                      onClick={() => void runAction(`marketplace:update:${marketplace.name}`, () =>
-                        pluginsClient.updateMarketplace({ agent, marketplace: marketplace.name })
-                      )}
-                      aria-label={t("plugins.updateMarketplace", { name: marketplace.name })}
+                      className="plugins-marketplace-filter"
+                      aria-pressed={selectedMarketplace === marketplace.name}
+                      onClick={() => setSelectedMarketplace(marketplace.name)}
                     >
-                      <RefreshCw size={14} />
+                      <span className="plugins-marketplace-copy">
+                        <strong title={marketplace.name}>{marketplace.name}</strong>
+                        <span title={marketplace.source || marketplace.root}>
+                          {marketplace.source
+                            || marketplace.root
+                            || t(isConfiguredMarketplace
+                              ? "plugins.localMarketplace"
+                              : "plugins.managedMarketplace")}
+                        </span>
+                      </span>
+                      <span className="plugins-marketplace-count">
+                        {marketplacePluginCounts.get(marketplace.name) ?? 0}
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      className="icon-btn danger"
-                      disabled={Boolean(busyKey)}
-                      onClick={() => removeMarketplace(marketplace.name)}
-                      aria-label={t("plugins.removeMarketplace", { name: marketplace.name })}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {isConfiguredMarketplace ? (
+                      <div className="plugins-marketplace-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          disabled={Boolean(busyKey)}
+                          onClick={() => void runAction(`marketplace:update:${marketplace.name}`, () =>
+                            pluginsClient.updateMarketplace({ agent, marketplace: marketplace.name })
+                          )}
+                          aria-label={t("plugins.updateMarketplace", { name: marketplace.name })}
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          disabled={Boolean(busyKey)}
+                          onClick={() => removeMarketplace(marketplace.name)}
+                          aria-label={t("plugins.removeMarketplace", { name: marketplace.name })}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              ))}
-              {!snapshot.marketplaces.length ? (
+                );
+              })}
+              {!marketplaceFilters.length ? (
                 <span className="muted">{t("plugins.noMarketplaces")}</span>
               ) : null}
             </div>
@@ -324,7 +413,7 @@ export function PluginsTab() {
                   onClick={() => setView("installed")}
                 >
                   {t("plugins.installed", {
-                    count: snapshot.plugins.filter((plugin) => plugin.installed).length
+                    count: marketplacePlugins.filter((plugin) => plugin.installed).length
                   })}
                 </button>
                 <button
@@ -334,7 +423,7 @@ export function PluginsTab() {
                   onClick={() => setView("available")}
                 >
                   {t("plugins.available", {
-                    count: snapshot.plugins.filter((plugin) => !plugin.installed).length
+                    count: marketplacePlugins.filter((plugin) => !plugin.installed).length
                   })}
                 </button>
               </div>

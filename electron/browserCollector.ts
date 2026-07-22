@@ -89,7 +89,8 @@ async function waitForSelector(
 
 export async function openBrowserSession(
   sessionId: string,
-  rawUrl: string
+  rawUrl: string,
+  visible = false
 ): Promise<{ url: string; title: string }> {
   closeBrowserSession(sessionId);
   const requestedUrl = validateRemoteUrl(rawUrl);
@@ -132,6 +133,10 @@ export async function openBrowserSession(
 
   try {
     await win.loadURL(requestedUrl.toString());
+    if (visible && !win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
     return {
       url: win.webContents.getURL(),
       title: win.webContents.getTitle()

@@ -39,7 +39,11 @@ test("native skill mounting reconciles only FreeBuddy-owned symlinks", () => {
   fs.mkdirSync(staleRoot, { recursive: true });
   const nativeDir = path.join(cwd, ".agents", "skills");
   fs.mkdirSync(nativeDir, { recursive: true });
-  fs.symlinkSync(staleRoot, path.join(nativeDir, "stale"), "dir");
+  fs.symlinkSync(
+    staleRoot,
+    path.join(nativeDir, "stale"),
+    process.platform === "win32" ? "junction" : "dir"
+  );
   fs.mkdirSync(path.join(nativeDir, "user-owned"));
 
   reconcileNativeSkillLinks(

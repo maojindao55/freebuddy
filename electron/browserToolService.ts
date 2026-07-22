@@ -76,7 +76,14 @@ async function dispatch(
   params: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   if (action === "open") {
-    return { ok: true, ...(await openBrowserSession(taskSessionId, stringParam(params, "url"))) };
+    return {
+      ok: true,
+      ...(await openBrowserSession(
+        taskSessionId,
+        stringParam(params, "url"),
+        params.visible === true
+      ))
+    };
   }
   if (action === "inspect") {
     return {

@@ -116,7 +116,8 @@ test("renderer and Electron bridge wire mentions without changing attachment pro
     styles: fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8")
   };
   assert.equal((files.chatView.match(/useWorkspaceFileMentions\(\{/g) ?? []).length, 2);
-  assert.match(files.messageBubble, /splitWorkspaceFileMentions\(content\)/);
+  assert.match(files.messageBubble, /splitPluginMentions\(content\)/);
+  assert.match(files.messageBubble, /splitWorkspaceFileMentions\(segment\.value\)/);
   assert.match(files.mentionMenu, /workspace-file-mention-path">\{match\.path\}/);
   assert.match(files.ipc, /cli:searchWorkspaceFiles/);
   assert.match(files.preload, /cli:searchWorkspaceFiles/);

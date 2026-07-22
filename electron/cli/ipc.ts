@@ -159,9 +159,38 @@ import {
 } from "./usageReconciler.js";
 import { getAgentUsageSummary } from "./usageStore.js";
 import { normalizeAgentUsagePeriod } from "./usageCore.js";
+import {
+  addNativePluginMarketplace,
+  installNativePlugin,
+  listNativePlugins,
+  removeNativePluginMarketplace,
+  uninstallNativePlugin,
+  updateNativePlugin,
+  updateNativePluginMarketplace,
+  type NativePluginAgent,
+  type NativePluginScope
+} from "./nativePlugins.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
+}
+
+function nativePluginAgent(value: unknown): NativePluginAgent {
+  if (value === "codex" || value === "claude") return value;
+  throw new Error("Unsupported plugin agent");
+}
+
+function nativePluginScope(value: unknown): NativePluginScope | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value === "user" || value === "project" || value === "local" || value === "managed") {
+    return value;
+  }
+  throw new Error("Unsupported plugin scope");
+}
+
+function requiredPluginString(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is required`);
+  return value.trim();
 }
 
 const ATTACHMENT_EXTENSIONS = [
@@ -233,6 +262,51 @@ function attachmentCandidate(filePath: string) {
 
 export function registerCliIpc() {
   recoverInterruptedMessages();
+  ipcMain.handle("plugins:list", (_event, agent: unknown) =>
+    listNativePlugins(nativePluginAgent(agent))
+  );
+  ipcMain.handle("plugins:install", (_event, args: Record<string, unknown> = {}) =>
+    installNativePlugin(
+      nativePluginAgent(args.agent),
+      requiredPluginString(args.pluginId, "Plugin id"),
+      nativePluginScope(args.scope)
+    )
+  );
+  ipcMain.handle("plugins:update", (_event, args: Record<string, unknown> = {}) =>
+    updateNativePlugin(
+      nativePluginAgent(args.agent),
+      requiredPluginString(args.pluginId, "Plugin id"),
+      typeof args.marketplace === "string" ? args.marketplace : undefined,
+      nativePluginScope(args.scope)
+    )
+  );
+  ipcMain.handle("plugins:uninstall", (_event, args: Record<string, unknown> = {}) =>
+    uninstallNativePlugin(
+      nativePluginAgent(args.agent),
+      requiredPluginString(args.pluginId, "Plugin id"),
+      nativePluginScope(args.scope)
+    )
+  );
+  ipcMain.handle("plugins:addMarketplace", (_event, args: Record<string, unknown> = {}) =>
+    addNativePluginMarketplace(
+      nativePluginAgent(args.agent),
+      requiredPluginString(args.source, "Marketplace source"),
+      typeof args.ref === "string" ? args.ref : undefined,
+      nativePluginScope(args.scope)
+    )
+  );
+  ipcMain.handle("plugins:updateMarketplace", (_event, args: Record<string, unknown> = {}) =>
+    updateNativePluginMarketplace(
+      nativePluginAgent(args.agent),
+      typeof args.marketplace === "string" ? args.marketplace : undefined
+    )
+  );
+  ipcMain.handle("plugins:removeMarketplace", (_event, args: Record<string, unknown> = {}) =>
+    removeNativePluginMarketplace(
+      nativePluginAgent(args.agent),
+      requiredPluginString(args.marketplace, "Marketplace")
+    )
+  );
   ipcMain.handle("skills:list", () => listSkills());
   ipcMain.handle("skills:import", (_event, sourcePath: string) =>
     importSkills(sourcePath)

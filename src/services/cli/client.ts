@@ -36,6 +36,7 @@ import type {
   TransferConversationResult
 } from "./types";
 import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
+import { addPluginHostCompatibility } from "@/utils/pluginMentions";
 
 function api() {
   const cli = window.freebuddy?.cli;
@@ -114,7 +115,10 @@ export const cliClient = {
   },
 
   run(args: CliRunArgs): Promise<{ sessionId: string }> {
-    return api().run(args);
+    return api().run({
+      ...args,
+      prompt: addPluginHostCompatibility(args.prompt, args.adapter)
+    });
   },
   getCachedSessionConfigOptions(
     args: SessionConfigProbeInput

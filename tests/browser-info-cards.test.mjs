@@ -132,7 +132,7 @@ test("Browser MCP exposes bounded general collection tools", async (t) => {
 
   await client.callTool({
     name: "browser_open",
-    arguments: { url: "https://example.com/scores" }
+    arguments: { url: "https://example.com/scores", visible: true }
   });
   const inspected = await client.callTool({
     name: "browser_inspect",
@@ -154,5 +154,6 @@ test("Browser MCP exposes bounded general collection tools", async (t) => {
     }
   });
   assert.deepEqual(calls.map((call) => call.action), ["open", "inspect", "extract"]);
+  assert.equal(calls[0].params.visible, true);
   assert.equal(calls.every((call) => call.authorization === "Bearer browser-test-token"), true);
 });

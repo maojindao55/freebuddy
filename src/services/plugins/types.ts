@@ -24,6 +24,7 @@ export interface NativePluginMarketplace {
   name: string;
   source?: string;
   root?: string;
+  sourceType?: string;
 }
 
 export interface NativePluginSnapshot {

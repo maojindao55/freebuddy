@@ -467,6 +467,10 @@ declare global {
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }
 
+  interface FreebuddyShell {
+    showItemInFolder(targetPath: string): Promise<boolean>;
+  }
+
   interface FreebuddyApi {
     platform: string;
     arch: string;
@@ -487,6 +491,7 @@ declare global {
     infoCards: FreebuddyInfoCards;
     window: FreebuddyWindow;
     updater: FreebuddyUpdater;
+    shell: FreebuddyShell;
   }
 
   interface Window {

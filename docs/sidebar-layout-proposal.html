@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreeBuddy 侧栏改版草案</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --fb-font: "Plus Jakarta Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --fb-display: "Outfit", var(--fb-font);
+      --fb-sidebar-bg: #f8fafc;
+      --fb-panel-soft: #f1f5f9;
+      --fb-border: rgba(148, 163, 184, 0.16);
+      --fb-text-primary: #0f172a;
+      --fb-text-secondary: #475569;
+      --fb-text-tertiary: #94a3b8;
+      --fb-hover: rgba(148, 163, 184, 0.1);
+      --fb-brand: #10b981;
+      --fb-brand-soft: rgba(16, 185, 129, 0.12);
+      --rail: 268px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: var(--fb-font);
+      color: var(--fb-text-primary);
+      background:
+        radial-gradient(900px 420px at 12% -10%, rgba(16, 185, 129, 0.12), transparent 55%),
+        radial-gradient(700px 380px at 88% 0%, rgba(6, 182, 212, 0.1), transparent 50%),
+        #eef2f7;
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 36px 28px 56px;
+    }
+
+    .hero {
+      max-width: 760px;
+      margin-bottom: 28px;
+    }
+    .hero .eyebrow {
+      margin: 0 0 8px;
+      color: var(--fb-brand);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-family: var(--fb-display);
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--fb-text-secondary);
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--fb-border);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+      overflow: hidden;
+    }
+    .panel-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--fb-border);
+      background: rgba(255, 255, 255, 0.85);
+    }
+    .panel-label strong { font-size: 13px; font-weight: 700; }
+    .panel-label span { color: var(--fb-text-tertiary); font-size: 12px; }
+    .panel.proposed .panel-label strong { color: #047857; }
+
+    .shell {
+      display: grid;
+      grid-template-columns: var(--rail) 1fr;
+      min-height: 640px;
+      background: #fff;
+      position: relative;
+    }
+
+    .main-fake {
+      padding: 28px 24px;
+      background: linear-gradient(180deg, #fff, #f8fafc 70%);
+      border-left: 1px solid var(--fb-border);
+    }
+    .main-fake h2 {
+      margin: 0 0 8px;
+      font-family: var(--fb-display);
+      font-size: 22px;
+      letter-spacing: -0.02em;
+    }
+    .main-fake p {
+      margin: 0;
+      color: var(--fb-text-secondary);
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 34ch;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 640px;
+      background: var(--fb-sidebar-bg);
+    }
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 16px 12px 12px 14px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #10b981, #06b6d4);
+      flex: 0 0 auto;
+    }
+    .brand h3 {
+      margin: 0;
+      font-family: var(--fb-display);
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 0 0 auto;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--fb-text-tertiary);
+      cursor: pointer;
+    }
+    .icon-btn:hover { background: var(--fb-hover); color: var(--fb-text-primary); }
+    .icon-btn svg { width: 16px; height: 16px; }
+
+    .primary-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin: 2px 10px 10px;
+    }
+    .primary-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      height: 40px;
+      padding: 0 10px;
+      border-radius: 10px;
+      color: var(--fb-text-secondary);
+      font-size: 13.5px;
+      font-weight: 500;
+    }
+    .primary-item.active { background: var(--fb-panel-soft); }
+    .primary-item .ico {
+      width: 18px;
+      height: 18px;
+      opacity: 0.85;
+      flex: 0 0 auto;
+    }
+
+    .scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 0 8px 12px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 8px 6px;
+      color: var(--fb-text-tertiary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .date-header {
+      padding: 10px 8px 4px;
+      color: var(--fb-text-tertiary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .conv {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 7px 8px;
+      border-radius: 8px;
+    }
+    .conv.active { background: var(--fb-hover); }
+    .avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: #e2e8f0;
+      flex: 0 0 auto;
+    }
+    .conv strong {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .conv em {
+      display: block;
+      margin-top: 1px;
+      color: var(--fb-text-tertiary);
+      font-size: 11px;
+      font-style: normal;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px 12px;
+      border-top: 1px solid var(--fb-border);
+      background: var(--fb-sidebar-bg);
+    }
+    .footer .settings {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 7px;
+      color: var(--fb-text-secondary);
+      font-size: 12.5px;
+      font-weight: 500;
+    }
+    .footer .ver {
+      margin-left: auto;
+      color: var(--fb-text-tertiary);
+      font-size: 11px;
+    }
+
+    .project { margin-bottom: 4px; }
+    .project-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      color: var(--fb-text-primary);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .project-row.selected { background: rgba(15, 23, 42, 0.05); }
+    .project-row .folder {
+      width: 15px;
+      height: 15px;
+      color: var(--fb-text-tertiary);
+      flex: 0 0 auto;
+    }
+    .project-row .count {
+      margin-left: auto;
+      color: var(--fb-text-tertiary);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .project-tasks {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 0 0 4px 10px;
+    }
+    .task {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+      padding: 3px 8px 3px 18px;
+      border-radius: 7px;
+      color: var(--fb-text-secondary);
+      font-size: 12.5px;
+      font-weight: 500;
+      position: relative;
+    }
+    .task::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 50%;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      transform: translateY(-50%);
+    }
+    .task.active {
+      background: var(--fb-brand-soft);
+      color: #065f46;
+      font-weight: 600;
+    }
+    .task.active::before { background: var(--fb-brand); }
+    .task .dot-run {
+      margin-left: auto;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--fb-brand);
+      box-shadow: 0 0 0 3px var(--fb-brand-soft);
+    }
+    .expand {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      margin-left: 18px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--fb-text-tertiary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .empty-note {
+      padding: 2px 8px 8px 34px;
+      color: var(--fb-text-tertiary);
+      font-size: 12px;
+    }
+    .recent-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      color: var(--fb-text-secondary);
+      font-size: 12.5px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Command palette — Codex pattern */
+    .palette-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      place-items: start center;
+      padding: 72px 18px 24px;
+      background: rgba(15, 23, 42, 0.18);
+      backdrop-filter: blur(2px);
+    }
+    .palette {
+      width: min(520px, 100%);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+      overflow: hidden;
+    }
+    .palette-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--fb-border);
+    }
+    .palette-head strong {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .palette-tag {
+      margin-left: auto;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--fb-panel-soft);
+      color: var(--fb-text-secondary);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .palette-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 12px 6px;
+      padding: 10px 12px;
+      border: 1px solid var(--fb-border);
+      border-radius: 10px;
+      background: #f8fafc;
+      color: var(--fb-text-tertiary);
+      font-size: 13px;
+    }
+    .palette-input svg { width: 15px; height: 15px; flex: 0 0 auto; }
+    .palette-section {
+      padding: 6px 8px 10px;
+    }
+    .palette-section h5 {
+      margin: 0;
+      padding: 6px 8px;
+      color: var(--fb-text-tertiary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .palette-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--fb-text-primary);
+    }
+    .palette-row.active { background: var(--fb-panel-soft); }
+    .palette-row .proj {
+      color: var(--fb-text-tertiary);
+      font-size: 12px;
+    }
+    .palette-row kbd {
+      color: var(--fb-text-tertiary);
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .palette-action {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 34px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      color: var(--fb-text-secondary);
+      font-size: 13px;
+    }
+    .palette-action:hover { background: var(--fb-hover); }
+    .palette-action kbd {
+      color: var(--fb-text-tertiary);
+      font-size: 12px;
+      font-family: inherit;
+    }
+
+    .notes {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .note {
+      padding: 14px 14px 16px;
+      border: 1px solid var(--fb-border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.78);
+    }
+    .note h4 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .note p {
+      margin: 0;
+      color: var(--fb-text-secondary);
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 980px) {
+      .compare, .notes { grid-template-columns: 1fr; }
+      .main-fake { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <p class="eyebrow">Sidebar IA Draft · v2</p>
+      <h1>搜索跟 Codex：图标触发，居中命令面板</h1>
+      <p>
+        侧栏<strong>不放搜索输入框</strong>。顶栏右侧只留放大镜图标（与折叠并列）；
+        点击或 ⌘K 打开居中「搜索对话」命令面板。侧栏主体仍是「项目 + 最近」。
+      </p>
+    </header>
+
+    <div class="compare">
+      <!-- CURRENT -->
+      <section class="panel">
+        <div class="panel-label">
+          <strong>现状</strong>
+          <span>列表内嵌搜索开关</span>
+        </div>
+        <div class="shell">
+          <aside class="sidebar">
+            <div class="sidebar-header">
+              <div class="brand">
+                <div class="brand-mark" aria-hidden="true"></div>
+                <h3>FreeBuddy</h3>
+              </div>
+              <div class="header-actions">
+                <button class="icon-btn" aria-label="折叠">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+                </button>
+              </div>
+            </div>
+            <nav class="primary-nav">
+              <div class="primary-item active"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/><rect x="3" y="4" width="18" height="16" rx="3"/></svg>新建对话</div>
+              <div class="primary-item"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 1.5"/></svg>已安排</div>
+              <div class="primary-item"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3"/><path d="M22 21v-2a3.5 3.5 0 0 0-2.5-3.35M16.5 4.2a3 3 0 0 1 0 5.6"/></svg>团队</div>
+              <div class="primary-item"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5M8 19V9M12 19v-6M16 19V8M20 19V3"/></svg>用量</div>
+            </nav>
+            <div class="scroll">
+              <div class="section-title">
+                <span>对话</span>
+                <button class="icon-btn" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+              </div>
+              <div class="date-header">今天</div>
+              <div class="conv active"><div class="avatar"></div><div><strong>解释插件市场概念</strong><em>Claude · freebuddy · 17:20</em></div></div>
+              <div class="conv"><div class="avatar"></div><div><strong>优化运行中状态UI</strong><em>Codex · freebuddy · 15:02</em></div></div>
+              <div class="date-header">昨天</div>
+              <div class="conv"><div class="avatar"></div><div><strong>对比推荐三匹方柜空调</strong><em>Claude · Documents · 昨天</em></div></div>
+              <div class="conv"><div class="avatar"></div><div><strong>执行中心设计方案</strong><em>Claude · freebuddy · 昨天</em></div></div>
+            </div>
+            <div class="footer"><div class="settings">设置</div><span class="ver">v0.x.x</span></div>
+          </aside>
+          <div class="main-fake">
+            <h2>搜索挤在列表头</h2>
+            <p>放大镜开合输入框，占侧栏纵向空间；也不是全局命令入口。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PROPOSED -->
+      <section class="panel proposed">
+        <div class="panel-label">
+          <strong>提案 v2</strong>
+          <span>顶栏图标 → 命令面板</span>
+        </div>
+        <div class="shell">
+          <aside class="sidebar">
+            <div class="sidebar-header">
+              <div class="brand">
+                <div class="brand-mark" aria-hidden="true"></div>
+                <h3>FreeBuddy</h3>
+              </div>
+              <div class="header-actions">
+                <button class="icon-btn" aria-label="搜索对话" title="搜索对话 ⌘K">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                </button>
+                <button class="icon-btn" aria-label="折叠">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <nav class="primary-nav">
+              <div class="primary-item active"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/><rect x="3" y="4" width="18" height="16" rx="3"/></svg>新建对话</div>
+              <div class="primary-item"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 1.5"/></svg>已安排</div>
+              <div class="primary-item"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3"/><path d="M22 21v-2a3.5 3.5 0 0 0-2.5-3.35M16.5 4.2a3 3 0 0 1 0 5.6"/></svg>团队</div>
+              <div class="primary-item"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5M8 19V9M12 19v-6M16 19V8M20 19V3"/></svg>用量</div>
+            </nav>
+
+            <div class="scroll">
+              <div class="section-title"><span>项目</span></div>
+              <div class="project">
+                <div class="project-row selected">
+                  <svg class="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"/></svg>
+                  freebuddy
+                  <span class="count">8</span>
+                </div>
+                <div class="project-tasks">
+                  <div class="task active">解释插件市场概念</div>
+                  <div class="task">配置 Mac 电脑 <span class="dot-run" title="运行中"></span></div>
+                  <div class="task">优化运行中状态UI</div>
+                  <div class="task">撤销关闭改动</div>
+                  <div class="task">检查导入 skill zip</div>
+                  <button class="expand" type="button">展开显示 · 3</button>
+                </div>
+              </div>
+              <div class="project">
+                <div class="project-row">
+                  <svg class="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"/></svg>
+                  themes
+                  <span class="count">1</span>
+                </div>
+                <div class="project-tasks">
+                  <div class="task">AI应用场景优化建议</div>
+                </div>
+              </div>
+              <div class="project">
+                <div class="project-row">
+                  <svg class="folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z"/></svg>
+                  badcase
+                </div>
+                <div class="empty-note">无任务</div>
+              </div>
+              <div class="section-title" style="margin-top:10px"><span>最近</span></div>
+              <div class="recent-item">对比推荐三匹方柜空调</div>
+              <div class="recent-item">执行中心设计方案</div>
+              <div class="recent-item">AI辅助开发场景建议</div>
+            </div>
+            <div class="footer"><div class="settings">设置</div><span class="ver">v0.x.x</span></div>
+          </aside>
+
+          <div class="main-fake">
+            <h2>侧栏保持干净</h2>
+            <p>搜索不占侧栏行高；真正交互在中间命令面板完成。</p>
+          </div>
+
+          <div class="palette-layer" aria-label="搜索对话命令面板示意">
+            <div class="palette" role="dialog" aria-modal="true" aria-labelledby="palette-title">
+              <div class="palette-head">
+                <strong id="palette-title">搜索对话</strong>
+                <span class="palette-tag">命令菜单</span>
+              </div>
+              <div class="palette-input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                输入标题、项目或 Agent…
+              </div>
+              <div class="palette-section">
+                <h5>对话</h5>
+                <div class="palette-row active">
+                  <span>对比推荐三匹方柜空调</span>
+                  <span class="proj"></span>
+                  <kbd>⌘1</kbd>
+                </div>
+                <div class="palette-row">
+                  <span>解释插件市场概念</span>
+                  <span class="proj">freebuddy</span>
+                  <kbd>⌘2</kbd>
+                </div>
+                <div class="palette-row">
+                  <span>优化运行中状态UI</span>
+                  <span class="proj">freebuddy</span>
+                  <kbd>⌘3</kbd>
+                </div>
+                <div class="palette-row">
+                  <span>执行中心设计方案</span>
+                  <span class="proj">freebuddy</span>
+                  <kbd>⌘4</kbd>
+                </div>
+              </div>
+              <div class="palette-section" style="border-top:1px solid var(--fb-border)">
+                <h5>推荐</h5>
+                <div class="palette-action"><span>新建对话</span><kbd>⌘N</kbd></div>
+                <div class="palette-action"><span>已安排</span><kbd>⌘S</kbd></div>
+                <div class="palette-action"><span>打开设置</span><kbd>⌘,</kbd></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="notes">
+      <article class="note">
+        <h4>搜索入口</h4>
+        <p>侧栏顶栏右侧：放大镜图标（对齐 Codex）。不铺输入条。快捷键 ⌘K / Ctrl+K 同开面板。</p>
+      </article>
+      <article class="note">
+        <h4>命令面板</h4>
+        <p>居中浮层：搜对话（带项目名）+ 底部推荐动作（新建 / 已安排 / 设置）。替代现有列表内嵌搜索。</p>
+      </article>
+      <article class="note">
+        <h4>侧栏列表</h4>
+        <p>仍按项目分组 + 最近；去掉「对话」标题旁的搜索按钮，列表区只负责浏览切换。</p>
+      </article>
+    </section>
+  </div>
+</body>
+</html>

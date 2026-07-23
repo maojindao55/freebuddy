@@ -441,6 +441,11 @@ const updater = {
   }
 };
 
+const shellApi = {
+  showItemInFolder: (targetPath: string) =>
+    ipcRenderer.invoke("shell:showItemInFolder", targetPath) as Promise<boolean>
+};
+
 contextBridge.exposeInMainWorld("freebuddy", {
   platform: process.platform,
   arch: process.arch,
@@ -460,5 +465,6 @@ contextBridge.exposeInMainWorld("freebuddy", {
   feed,
   infoCards,
   window,
-  updater
+  updater,
+  shell: shellApi
 });

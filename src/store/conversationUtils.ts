@@ -222,7 +222,9 @@ function planPriority(value: unknown): PlanEntry["priority"] {
 }
 
 function planStatus(value: unknown): PlanEntry["status"] {
-  return value === "in_progress" || value === "completed"
+  return value === "in_progress" ||
+    value === "completed" ||
+    value === "cancelled"
     ? value
     : "pending";
 }

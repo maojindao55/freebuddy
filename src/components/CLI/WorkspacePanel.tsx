@@ -383,13 +383,17 @@ export function WorkspacePanel({
         </dl>
       </section>
 
-      {latestPlan && (
+      {latestPlan &&
+        latestPlan.entries.some((entry) => entry.status !== "cancelled") && (
         <section className="side-card plan-card">
           <div className="side-card-header">
             <span>{t("workspace.plan")}</span>
             <strong>
               {t("workspace.planProgress", {
-                done: latestPlan.entries.filter((entry) => entry.status === "completed").length,
+                done: latestPlan.entries.filter(
+                  (entry) =>
+                    entry.status === "completed" || entry.status === "cancelled"
+                ).length,
                 total: latestPlan.entries.length
               })}
             </strong>
@@ -646,7 +650,8 @@ function isPlanEntry(entry: unknown): entry is PlanEntry {
       candidate.priority === "low") &&
     (candidate.status === "pending" ||
       candidate.status === "in_progress" ||
-      candidate.status === "completed")
+      candidate.status === "completed" ||
+      candidate.status === "cancelled")
   );
 }
 

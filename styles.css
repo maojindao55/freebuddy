@@ -10248,6 +10248,11 @@ button.ghost:disabled {
   box-shadow: 0 0 0 3px rgba(47, 158, 68, 0.12);
 }
 
+.plan-entry.cancelled .plan-status-dot {
+  background: var(--fb-text-tertiary);
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+}
+
 .plan-entry p {
   margin: 0;
   color: var(--fb-text-primary);
@@ -10258,6 +10263,11 @@ button.ghost:disabled {
 
 .plan-entry.completed p {
   color: var(--fb-text-secondary);
+}
+
+.plan-entry.cancelled p {
+  color: var(--fb-text-tertiary);
+  text-decoration: line-through;
 }
 
 .plan-entry small {

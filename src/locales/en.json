@@ -505,7 +505,8 @@
     "planStatus": {
       "pending": "Pending",
       "in_progress": "In progress",
-      "completed": "Completed"
+      "completed": "Completed",
+      "cancelled": "Cancelled"
     },
     "planPriority": {
       "high": "High priority",

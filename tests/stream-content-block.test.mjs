@@ -24,6 +24,8 @@ test("MarkdownText supports links and blockquotes", () => {
   assert.match(streamItemSource, /\[[^\]]+\]\([^)]+\)/);
   assert.match(streamItemSource, /markdown-blockquote/);
   assert.match(streamItemSource, /resolveLinkHref/);
+  assert.match(streamItemSource, /splitAutolinkSegments/);
+  assert.match(streamItemSource, /message-autolink/);
 });
 
 test("MarkdownText recursively renders inline markup inside emphasis and links", () => {
@@ -37,10 +39,11 @@ test("styles include content-block and markdown quote rules", () => {
   assert.match(stylesSource, /\.stream-content-block\b/);
   assert.match(stylesSource, /\.stream-audio\b/);
   assert.match(stylesSource, /\.markdown-body a\b/);
+  assert.match(stylesSource, /\.message-autolink\b/);
   assert.match(stylesSource, /--fb-chat-font:\s*-apple-system,/);
   assert.match(stylesSource, /\.markdown-body\s*\{[\s\S]*?font-family:\s*var\(--fb-chat-font\);[\s\S]*?font-size:\s*14px;[\s\S]*?line-height:\s*22px;/);
   assert.match(stylesSource, /\.markdown-body p\s*\{[\s\S]*?white-space:\s*normal;/);
-  assert.match(stylesSource, /\.markdown-body a\s*\{[\s\S]*?color:\s*var\(--fb-link,/);
+  assert.match(stylesSource, /\.markdown-body a\s*,\s*\.message-autolink\s*\{[\s\S]*?color:\s*var\(--fb-link,/);
   assert.match(stylesSource, /\.markdown-body p\s*\{[\s\S]*?margin:\s*0 0 11px;/);
   assert.match(stylesSource, /\.markdown-body \.markdown-heading\s*\{[\s\S]*?margin:\s*20px 0 10px;/);
   assert.match(stylesSource, /\.markdown-blockquote\s*\{[\s\S]*?border-left:\s*4px solid var\(--fb-border-strong\);/);

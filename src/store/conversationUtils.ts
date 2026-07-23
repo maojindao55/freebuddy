@@ -222,7 +222,9 @@ function planPriority(value: unknown): PlanEntry["priority"] {
 }
 
 function planStatus(value: unknown): PlanEntry["status"] {
-  return value === "in_progress" || value === "completed"
+  return value === "in_progress" ||
+    value === "completed" ||
+    value === "cancelled"
     ? value
     : "pending";
 }
@@ -458,6 +460,108 @@ export function plainAssistantText(items: CliStreamItem[]): string {
     .map((i) => (i as Extract<CliStreamItem, { kind: "text" }>).content)
     .join("\n")
     .trim();
+}
+
+function assistantErrorSummary(items: CliStreamItem[]): string | undefined {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (item.kind === "error" && item.message.trim()) {
+      return item.message.trim();
+    }
+  }
+  return undefined;
+}
+
+function truncateFollowupBlock(text: string, max: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max).trimEnd()}\n[truncated]`;
+}
+
+/**
+ * When FreeBuddy cannot resume an agent tool session (e.g. the previous turn
+ * failed before a session id existed), inject recent conversation history so
+ * a short follow-up like "继续" still has the unanswered user question.
+ */
+export function buildOrphanFollowupContext(
+  messages: ConversationMessage[],
+  options: {
+    excludeMessageIds?: Iterable<string>;
+    maxChars?: number;
+    maxTurns?: number;
+  } = {}
+): string | undefined {
+  const exclude = new Set(options.excludeMessageIds ?? []);
+  const maxChars = options.maxChars ?? 6000;
+  const maxTurns = options.maxTurns ?? 12;
+
+  const prior = messages.filter((message) => {
+    if (exclude.has(message.id)) return false;
+    if (message.role === "assistant" && message.status === "running") {
+      return false;
+    }
+    return message.role === "user" || message.role === "assistant";
+  });
+  if (prior.length === 0) return undefined;
+
+  const recent = prior.slice(-maxTurns);
+  const blocks: string[] = [];
+  let hadUnansweredUser = false;
+
+  for (const message of recent) {
+    if (message.role === "user") {
+      const text = message.content.trim();
+      if (!text) continue;
+      blocks.push(`User:\n${truncateFollowupBlock(text, 1500)}`);
+      hadUnansweredUser = true;
+      continue;
+    }
+
+    let items: CliStreamItem[] = [];
+    try {
+      const parsed = JSON.parse(message.content);
+      if (Array.isArray(parsed)) items = parsed as CliStreamItem[];
+    } catch {
+      items = [];
+    }
+    const text = plainAssistantText(items);
+    const error = assistantErrorSummary(items);
+    if (text) {
+      blocks.push(`Assistant:\n${truncateFollowupBlock(text, 2000)}`);
+      hadUnansweredUser = false;
+    } else if (error || message.status === "failed" || message.status === "killed") {
+      blocks.push(
+        `Assistant:\n[previous turn ${message.status === "killed" ? "interrupted" : "failed"}${
+          error ? `: ${truncateFollowupBlock(error, 400)}` : ""
+        }]`
+      );
+    } else if (message.content.trim() && !message.content.trim().startsWith("[")) {
+      blocks.push(`Assistant:\n${truncateFollowupBlock(message.content, 2000)}`);
+      hadUnansweredUser = false;
+    }
+  }
+
+  if (blocks.length === 0) return undefined;
+
+  const lines = [
+    "You are continuing a FreeBuddy conversation, but there is no resumable agent session (the previous turn may have failed before a session was created).",
+    "Use the prior messages below as the source of truth for what the user already asked.",
+    hadUnansweredUser
+      ? "The latest user question below was not successfully answered. If the current follow-up is a short continue/retry request, answer that unanswered question."
+      : "Answer the current follow-up in light of this history.",
+    "",
+    "Prior conversation:",
+    ...blocks
+  ];
+  return truncateFollowupBlock(lines.join("\n"), maxChars);
+}
+
+export function composeOrphanFollowupPrompt(
+  followup: string,
+  context: string | undefined
+): string {
+  if (!context) return followup;
+  return `${context}\n\nUser follow-up:\n${followup}`;
 }
 
 export function defaultTitleFor(member: CLIMember, cwd?: string): string {

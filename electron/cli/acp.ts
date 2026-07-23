@@ -162,7 +162,7 @@ export type AcpStreamItem =
       entries: {
         content: string;
         priority: "high" | "medium" | "low";
-        status: "pending" | "in_progress" | "completed";
+        status: "pending" | "in_progress" | "completed" | "cancelled";
       }[];
     }
   | {
@@ -760,8 +760,10 @@ function planPriority(value: unknown): "high" | "medium" | "low" {
 
 function planStatus(
   value: unknown
-): "pending" | "in_progress" | "completed" {
-  return value === "in_progress" || value === "completed"
+): "pending" | "in_progress" | "completed" | "cancelled" {
+  return value === "in_progress" ||
+    value === "completed" ||
+    value === "cancelled"
     ? value
     : "pending";
 }

@@ -103,7 +103,7 @@ export type CliStreamItem =
       entries: {
         content: string;
         priority: "high" | "medium" | "low";
-        status: "pending" | "in_progress" | "completed";
+        status: "pending" | "in_progress" | "completed" | "cancelled";
       }[];
     }
   | {

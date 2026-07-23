@@ -21,6 +21,7 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { useTerminalStore } from "@/store/terminalStore";
+import { splitAutolinkSegments } from "@/utils/autolink";
 import { prepareToolResultText } from "@/utils/streamMedia";
 import { attachmentPreviewUrl, formatBytes } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
@@ -99,17 +100,43 @@ function renderInline(text: string, keyPrefix = "i", depth = 0): ReactNode[] {
       const href = resolveLinkHref(linkMatch[2]);
       if (href) {
         nodes.push(
-          <a key={key} href={href} target="_blank" rel="noreferrer noopener">
+          <a
+            key={key}
+            className="message-autolink"
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
             {renderNested(label, `${key}-link`)}
           </a>
         );
         return;
       }
     }
-    nodes.push(part);
+    nodes.push(...renderAutolinkedText(part, key));
   });
 
   return nodes;
+}
+
+function renderAutolinkedText(text: string, keyPrefix: string): ReactNode[] {
+  return splitAutolinkSegments(text).map((segment, index) => {
+    const key = `${keyPrefix}-auto-${index}`;
+    if (segment.kind === "link") {
+      return (
+        <a
+          key={key}
+          className="message-autolink"
+          href={segment.href}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          {segment.value}
+        </a>
+      );
+    }
+    return <span key={key}>{segment.value}</span>;
+  });
 }
 
 function resolveLinkHref(raw: string): string {

@@ -216,15 +216,19 @@ jobs:
           repo="${{ github.repository }}"
           version_suffix="v$(node -p "require('./package.json').version")"
           appimage_name="FreeBuddy_Linux_x64-${version_suffix}.AppImage"
+          deb_name="FreeBuddy_Ubuntu_x64-${version_suffix}.deb"
           yml=$(find release -name latest-linux.yml -type f | head -1)
           if [ -z "$yml" ]; then
             echo "No latest-linux.yml found; skipping"
             exit 0
           fi
           # AppImage blockmap data is embedded in the AppImage itself. Rewrite
-          # the native artifact name to the friendly download name above.
+          # native artifact names to the friendly download names uploaded above.
+          # Deb installs (Ubuntu/Debian) also auto-update from this file, so the
+          # .deb URL must match the renamed release asset or downloads 404.
           sed -E -i.bak \
-            "s#FreeBuddy-[0-9]+\.[0-9]+\.[0-9]+-linux-(x64|x86_64)\.AppImage#${appimage_name}#g" \
+            -e "s#FreeBuddy-[0-9]+\.[0-9]+\.[0-9]+-linux-(x64|x86_64)\.AppImage#${appimage_name}#g" \
+            -e "s#FreeBuddy-[0-9]+\.[0-9]+\.[0-9]+-linux-(amd64|x64|x86_64)\.deb#${deb_name}#g" \
             "$yml"
           cp "$yml" latest-linux.yml
           gh release upload "$tag" latest-linux.yml \

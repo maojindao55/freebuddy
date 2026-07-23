@@ -1,11 +1,12 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, PanelRight, Sun } from "lucide-react";
+import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
 import { ReplayButton } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
+import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
 import { TransferDialog } from "./components/CLI/TransferDialog";
 import {
   SidebarNavigation,
@@ -79,6 +80,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [transferSourceId, setTransferSourceId] = useState<string>();
   const [teamPageRequest, setTeamPageRequest] = useState<{
     key: number;
@@ -116,6 +118,17 @@ function App() {
     return () => {
       off?.();
     };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      setCommandPaletteOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const { t } = useTranslation();
@@ -250,9 +263,11 @@ function App() {
   const isNewTask = !activeConversation;
   const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
-  const startNewTask = () => {
+  const requestNewTaskCwd = useNewTaskUiStore((s) => s.requestNewTaskCwd);
+  const startNewTask = (options?: { cwd?: string }) => {
     setRequestedTeamId(undefined);
     setNewTaskMode("normal");
+    requestNewTaskCwd(options?.cwd);
     setSettingsOpen(false);
     setWorkspaceView("chat");
     void setActive(undefined);
@@ -371,6 +386,15 @@ function App() {
                   <h1>{t("app.brand")}</h1>
                 </div>
               </div>
+              <button
+                type="button"
+                className="sidebar-search-button"
+                title={t("commandPalette.openShortcut")}
+                aria-label={t("commandPalette.open")}
+                onClick={() => setCommandPaletteOpen(true)}
+              >
+                <Search aria-hidden="true" size={16} strokeWidth={1.8} />
+              </button>
               {renderToggleButton()}
             </div>
 
@@ -382,7 +406,7 @@ function App() {
               onOpenTeams={() => openWorkflowTeams()}
               onOpenUsage={openUsage}
             />
-            <ConversationList />
+            <ConversationList onNewTaskInProject={(cwd) => startNewTask({ cwd })} />
 
             <div className="sidebar-footer">
               <button
@@ -538,6 +562,17 @@ function App() {
       <CliInstallPanelHost />
       <PermissionDialog />
       <AuthenticationDialog />
+      <ConversationCommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNewTask={startNewTask}
+        onOpenScheduledTasks={openScheduledTasks}
+        onOpenSettings={() => openSettings("cli")}
+        onSelectConversation={() => {
+          setSettingsOpen(false);
+          setWorkspaceView("chat");
+        }}
+      />
       {transferSource && (
         <TransferDialog
           source={transferSource}

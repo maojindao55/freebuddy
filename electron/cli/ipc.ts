@@ -346,6 +346,14 @@ export function registerCliIpc() {
     shell.showItemInFolder(path.join(skill.rootPath, "SKILL.md"));
     return true;
   });
+  ipcMain.handle("shell:showItemInFolder", (_event, targetPath: unknown) => {
+    if (typeof targetPath !== "string" || !targetPath.trim()) return false;
+    const resolved = path.resolve(targetPath.trim());
+    if (!path.isAbsolute(resolved)) return false;
+    if (!fs.existsSync(resolved)) return false;
+    shell.showItemInFolder(resolved);
+    return true;
+  });
   ipcMain.handle("skills:marketProviders", () => listSkillMarketProviders());
   ipcMain.handle("skills:getMarketProvider", () => getSkillMarketProvider());
   ipcMain.handle(

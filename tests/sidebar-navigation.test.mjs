@@ -65,10 +65,29 @@ test("sidebar navigation matches the flat primary reference hierarchy", () => {
   assert.match(css, /\.app-shell\.tool-page-mode\s*\{/);
 });
 
-test("conversation list keeps search available behind a compact section action", () => {
+test("sidebar search opens a command palette instead of an inline list filter", () => {
+  const app = read("../src/App.tsx");
   const conversations = read("../src/components/CLI/ConversationList.tsx");
-  assert.match(conversations, /conv-list-search-toggle/);
-  assert.match(conversations, /setSearchOpen/);
-  assert.match(conversations, /<AgentAvatar/);
-  assert.match(conversations, /className="conv-item-avatar"/);
+  const palette = read("../src/components/CLI/ConversationCommandPalette.tsx");
+  const css = read("../styles.css");
+  const en = JSON.parse(read("../src/locales/en.json"));
+  const zh = JSON.parse(read("../src/locales/zh-CN.json"));
+
+  assert.match(app, /sidebar-search-button/);
+  assert.match(app, /<ConversationCommandPalette/);
+  assert.match(app, /setCommandPaletteOpen/);
+  assert.match(app, /onNewTaskInProject=/);
+  assert.match(conversations, /conv-project-trailing/);
+  assert.match(conversations, /conv-project-action-btn/);
+  assert.match(conversations, /newInProject/);
+  assert.match(conversations, /conv-project-menu/);
+  assert.doesNotMatch(conversations, /conv-list-search-toggle/);
+  assert.match(css, /\.command-palette\s*\{/);
+  assert.match(css, /\.conv-project-toggle\s*\{/);
+  assert.match(css, /\.conv-project-trailing\s*\{/);
+  assert.ok(en.commandPalette?.title);
+  assert.ok(zh.commandPalette?.title);
+  assert.equal(zh.conversations.projects, "项目");
+  assert.equal(zh.conversations.recent, "最近");
+  assert.equal(zh.conversations.newInProject, "新建任务");
 });

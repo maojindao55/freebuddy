@@ -30,9 +30,11 @@ import {
 
 import { useCliExecutorStore } from "./cliExecutorStore";
 import {
+  buildOrphanFollowupContext,
   collectStreamMessageIds,
   collectStreamAgentMessageIds,
   collectStreamContentSignatures,
+  composeOrphanFollowupPrompt,
   defaultTitleFor,
   feedArticleTitleFromMessages,
   mergeConversationMessages,
@@ -901,9 +903,17 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       workflowRun && (wantFresh || !resumedFromSessionId)
         ? await workflowFollowupContextForRun(workflowRun)
         : undefined;
+    // No resumable agent session (common after a failed first turn): inject
+    // FreeBuddy chat history so short follow-ups like "继续" keep prior asks.
+    const orphanFollowupContext =
+      !workflowRun && !wantFresh && !resumedFromSessionId
+        ? buildOrphanFollowupContext(get().messages[conversationId] ?? [], {
+            excludeMessageIds: [userMsgId, assistantMsgId]
+          })
+        : undefined;
     const promptWithWorkflowContext = workflowFollowupContext
       ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPrompt}`
-      : userPrompt;
+      : composeOrphanFollowupPrompt(userPrompt, orphanFollowupContext);
 
     const msgs = get().messages[conversationId] ?? [];
     const liveItems = get().live[conversationId]?.items;

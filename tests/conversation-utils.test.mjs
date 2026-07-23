@@ -761,3 +761,97 @@ test("collectStreamAgentMessageIds returns empty for Qoder-style turns without m
     []
   );
 });
+
+test("buildOrphanFollowupContext keeps unanswered user ask after a failed turn", async () => {
+  const {
+    buildOrphanFollowupContext,
+    composeOrphanFollowupPrompt
+  } = await loadConversationUtils();
+
+  const context = buildOrphanFollowupContext(
+    [
+      {
+        id: "user-1",
+        conversationId: "conv-1",
+        role: "user",
+        status: "sent",
+        content: "我现在手动测试可以听了,我需要关注哪些日志?",
+        createdAt: "2026-07-22T11:43:00.000Z",
+        updatedAt: "2026-07-22T11:43:00.000Z"
+      },
+      {
+        id: "assistant-1",
+        conversationId: "conv-1",
+        role: "assistant",
+        status: "failed",
+        content: JSON.stringify([
+          {
+            kind: "error",
+            message:
+              "Codex process has exited with code 1: You are not logged in. Please run 'wecode codex login' first."
+          }
+        ]),
+        createdAt: "2026-07-22T11:43:01.000Z",
+        updatedAt: "2026-07-22T11:43:02.000Z"
+      },
+      {
+        id: "user-2",
+        conversationId: "conv-1",
+        role: "user",
+        status: "sent",
+        content: "继续",
+        createdAt: "2026-07-22T11:44:00.000Z",
+        updatedAt: "2026-07-22T11:44:00.000Z"
+      },
+      {
+        id: "assistant-2",
+        conversationId: "conv-1",
+        role: "assistant",
+        status: "running",
+        content: "[]",
+        createdAt: "2026-07-22T11:44:00.000Z",
+        updatedAt: "2026-07-22T11:44:00.000Z"
+      }
+    ],
+    { excludeMessageIds: ["user-2", "assistant-2"] }
+  );
+
+  assert.match(context ?? "", /我现在手动测试可以听了/);
+  assert.match(context ?? "", /not logged in/i);
+  assert.match(context ?? "", /not successfully answered/i);
+  assert.equal(
+    composeOrphanFollowupPrompt("继续", context),
+    `${context}\n\nUser follow-up:\n继续`
+  );
+});
+
+test("buildOrphanFollowupContext returns undefined when there is no prior history", async () => {
+  const { buildOrphanFollowupContext } = await loadConversationUtils();
+
+  assert.equal(
+    buildOrphanFollowupContext(
+      [
+        {
+          id: "user-1",
+          conversationId: "conv-1",
+          role: "user",
+          status: "sent",
+          content: "hello",
+          createdAt: "2026-07-22T11:43:00.000Z",
+          updatedAt: "2026-07-22T11:43:00.000Z"
+        },
+        {
+          id: "assistant-1",
+          conversationId: "conv-1",
+          role: "assistant",
+          status: "running",
+          content: "[]",
+          createdAt: "2026-07-22T11:43:00.000Z",
+          updatedAt: "2026-07-22T11:43:00.000Z"
+        }
+      ],
+      { excludeMessageIds: ["user-1", "assistant-1"] }
+    ),
+    undefined
+  );
+});

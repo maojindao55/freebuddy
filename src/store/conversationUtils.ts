@@ -481,7 +481,7 @@ function truncateFollowupBlock(text: string, max: number): string {
 /**
  * When FreeBuddy cannot resume an agent tool session (e.g. the previous turn
  * failed before a session id existed), inject recent conversation history so
- * a short follow-up like "继续" still has the unanswered user question.
+ * a short follow-up like "continue" still has the unanswered user question.
  */
 export function buildOrphanFollowupContext(
   messages: ConversationMessage[],

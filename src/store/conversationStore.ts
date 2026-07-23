@@ -904,7 +904,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         ? await workflowFollowupContextForRun(workflowRun)
         : undefined;
     // No resumable agent session (common after a failed first turn): inject
-    // FreeBuddy chat history so short follow-ups like "继续" keep prior asks.
+    // FreeBuddy chat history so short follow-ups like "continue" keep prior asks.
     const orphanFollowupContext =
       !workflowRun && !wantFresh && !resumedFromSessionId
         ? buildOrphanFollowupContext(get().messages[conversationId] ?? [], {

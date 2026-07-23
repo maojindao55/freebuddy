@@ -22,6 +22,7 @@ import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { appendItems } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
+import { splitAutolinkSegments } from "@/utils/autolink";
 import { formatBytes, attachmentPreviewUrl } from "@/utils/chatAttachments";
 import { splitWorkspaceFileMentions } from "@/utils/workspaceFileMentions";
 import { pluginDisplayName, splitPluginMentions } from "@/utils/pluginMentions";
@@ -725,7 +726,23 @@ function UserMessageText({ content }: { content: string }) {
             {fileSegment.value}
           </span>
         ) : (
-            <span key={`text-${index}-${fileIndex}`}>{fileSegment.value}</span>
+            splitAutolinkSegments(fileSegment.value).map((linkSegment, linkIndex) =>
+              linkSegment.kind === "link" ? (
+                <a
+                  className="message-autolink"
+                  href={linkSegment.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  key={`link-${index}-${fileIndex}-${linkIndex}`}
+                >
+                  {linkSegment.value}
+                </a>
+              ) : (
+                <span key={`text-${index}-${fileIndex}-${linkIndex}`}>
+                  {linkSegment.value}
+                </span>
+              )
+            )
           )
         );
       })}

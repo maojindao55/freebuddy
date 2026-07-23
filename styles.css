@@ -11341,14 +11341,21 @@ button.ghost:focus-visible,
   background: rgba(0, 0, 0, 0.02);
 }
 
-.markdown-body a {
+.markdown-body a,
+.message-autolink {
   color: var(--fb-link, #047857);
   text-decoration: underline;
   text-underline-offset: 3px;
+  word-break: break-all;
 }
 
-.markdown-body a:hover {
+.markdown-body a:hover,
+.message-autolink:hover {
   opacity: 0.85;
+}
+
+.msg-user .msg-bubble .message-autolink {
+  color: var(--fb-link, #047857);
 }
 
 .markdown-blockquote {

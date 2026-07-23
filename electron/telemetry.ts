@@ -131,7 +131,7 @@ function capture(
   client?.capture({
     distinctId: installationId,
     event,
-    disableGeoip: true,
+    disableGeoip: false,
     properties: {
       $process_person_profile: false,
       installation_id: installationId,
@@ -164,7 +164,7 @@ export function initializeTelemetry(): void {
     host: config.host,
     flushAt: 20,
     flushInterval: 1000,
-    disableGeoip: true,
+    disableGeoip: false,
     enableExceptionAutocapture: false
   });
 

@@ -356,14 +356,14 @@ export function ConversationList({
     setMenuProjectKey(null);
   };
 
-  const renderRow = (conversation: Conversation, compact?: boolean) => (
+  const renderRow = (c: Conversation, compact?: boolean) => (
     <ConversationRow
-      key={conversation.id}
-      conversation={conversation}
-      isActive={activeId === conversation.id}
-      isRunning={runningSet.has(conversation.id)}
-      isWorkflowRunning={workflowRunningSet.has(conversation.id)}
-      isUnread={Boolean(unreadConversations[conversation.id])}
+      key={c.id}
+      conversation={c}
+      isActive={activeId === c.id}
+      isRunning={runningSet.has(c.id)}
+      isWorkflowRunning={workflowRunningSet.has(c.id)}
+      isUnread={Boolean(unreadConversations[c.id])}
       compact={compact}
       onSelect={handleSelect}
       onDelete={handleDelete}
@@ -483,7 +483,7 @@ export function ConversationList({
                         {visibleItems.length === 0 ? (
                           <li className="conv-project-empty">{t("conversations.noTasks")}</li>
                         ) : (
-                          visibleItems.map((conversation) => renderRow(conversation, true))
+                          visibleItems.map((c) => renderRow(c, true))
                         )}
                         {hiddenCount > 0 && (
                           <li>
@@ -508,7 +508,7 @@ export function ConversationList({
                 <li className="conv-group-header recent" aria-hidden="true">
                   <span>{t("conversations.recent")}</span>
                 </li>
-                {recent.map((conversation) => renderRow(conversation))}
+                {recent.map((c) => renderRow(c))}
               </>
             )}
           </>

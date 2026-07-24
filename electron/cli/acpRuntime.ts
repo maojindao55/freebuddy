@@ -869,14 +869,9 @@ export async function runAcpAgent({
     if (args.skills?.length) {
       mcpServers.push(registerSkillToolSession(args.sessionId, args.skills));
     }
-    if (args.handoffBrief && args.handoffBriefId) {
+    if (args.contextReferences?.length) {
       mcpServers.push(
-        registerContextToolSession(
-          args.sessionId,
-          args.handoffBrief,
-          args.handoffBriefId,
-          args.handoffTranscript
-        )
+        registerContextToolSession(args.sessionId, args.contextReferences)
       );
     }
     if (mcpServers.length) {

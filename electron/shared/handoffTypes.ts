@@ -82,6 +82,50 @@ export interface HandoffBriefRow {
   createdAt: string;
 }
 
+export type ConversationContextReferenceType = "transfer" | "share";
+
+export interface ConversationContextPayload {
+  id: string;
+  referenceType: ConversationContextReferenceType;
+  brief: HandoffBrief;
+  source: HandoffBriefSource;
+  transcript?: HandoffTranscriptRef;
+  createdAt: string;
+}
+
+export interface ConversationContextReference {
+  id: string;
+  snapshotId: string;
+  targetConversationId: string;
+  referenceType: ConversationContextReferenceType;
+  source: HandoffBriefSource;
+  transcriptAvailable: boolean;
+  transcriptTruncated: boolean;
+  createdAt: string;
+}
+
+export interface CreateConversationShareInput {
+  sourceConversationId: string;
+}
+
+export interface CreateConversationShareResult {
+  link: string;
+  snapshotId: string;
+  source: HandoffBriefSource;
+  transcriptAvailable: boolean;
+  transcriptTruncated: boolean;
+}
+
+export interface AttachConversationSharesInput {
+  targetConversationId: string;
+  text: string;
+}
+
+export interface AttachConversationSharesResult {
+  references: ConversationContextReference[];
+  attachedCount: number;
+}
+
 // Subset of stream item shapes that the extractor inspects. Structurally
 // compatible with src/services/cli/streamParser.ts CliStreamItem so
 // JSON.parse of stored assistant content fits.

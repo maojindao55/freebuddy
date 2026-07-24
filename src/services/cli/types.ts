@@ -150,7 +150,6 @@ export interface CliRunArgs {
   knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
-  handoffBriefId?: string;
 }
 
 export interface SessionConfigOption {
@@ -659,4 +658,39 @@ export interface TransferConversationResult {
   briefId: string | null;
   seedPrompt: string;
   warning?: "brief_extraction_failed";
+}
+
+export type ConversationContextReferenceType = "transfer" | "share";
+
+export interface ConversationContextReference {
+  id: string;
+  snapshotId: string;
+  targetConversationId: string;
+  referenceType: ConversationContextReferenceType;
+  source: HandoffBriefSource;
+  transcriptAvailable: boolean;
+  transcriptTruncated: boolean;
+  createdAt: string;
+}
+
+export interface CreateConversationShareInput {
+  sourceConversationId: string;
+}
+
+export interface CreateConversationShareResult {
+  link: string;
+  snapshotId: string;
+  source: HandoffBriefSource;
+  transcriptAvailable: boolean;
+  transcriptTruncated: boolean;
+}
+
+export interface AttachConversationSharesInput {
+  targetConversationId: string;
+  text: string;
+}
+
+export interface AttachConversationSharesResult {
+  references: ConversationContextReference[];
+  attachedCount: number;
 }

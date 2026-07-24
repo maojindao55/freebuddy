@@ -13,6 +13,9 @@ test("db.ts declares handoff_briefs table and source_* columns", () => {
   assert.match(db, /cleanupOrphanHandoffTranscriptSnapshots/);
   assert.match(db, /CREATE INDEX IF NOT EXISTS idx_handoff_briefs_target/);
   assert.match(db, /CREATE INDEX IF NOT EXISTS idx_handoff_briefs_source/);
+  assert.match(db, /CREATE TABLE IF NOT EXISTS conversation_context_snapshots/);
+  assert.match(db, /CREATE TABLE IF NOT EXISTS conversation_context_refs/);
+  assert.match(db, /CREATE TABLE IF NOT EXISTS conversation_share_tokens/);
   assert.match(db, /FOREIGN KEY\(target_conversation_id\) REFERENCES conversations/);
   assert.doesNotMatch(db, /FOREIGN KEY\(source_conversation_id\) REFERENCES conversations/);
   assert.match(db, /PRAGMA foreign_key_list\(handoff_briefs\)/);
@@ -37,17 +40,20 @@ test("contextToolService exports register/unregister and writes manifest under d
   assert.match(src, /export function registerContextToolSession/);
   assert.match(src, /export function unregisterContextToolSession/);
   assert.match(src, /name: "freebuddy-context"/);
-  assert.match(src, /FREEBUDDY_HANDOFF_MANIFEST/);
+  assert.match(src, /FREEBUDDY_CONTEXT_MANIFEST/);
+  assert.doesNotMatch(src, /FREEBUDDY_HANDOFF_MANIFEST/);
   assert.match(src, /context-sessions/);
-  assert.match(src, /version: 2/);
-  assert.match(src, /transcript/);
+  assert.match(src, /version: 4/);
+  assert.match(src, /references/);
+  assert.match(src, /JSON.stringify\(\{ version: 4, references \}\)/);
 });
 
-test("acpRuntime pushes context MCP server when args.handoffBrief present", () => {
+test("acpRuntime exposes conversation context through one generic MCP path", () => {
   const src = read("electron/cli/acpRuntime.ts");
   assert.match(src, /registerContextToolSession/);
   assert.match(src, /unregisterContextToolSession/);
-  assert.match(src, /args\.handoffBrief/);
+  assert.match(src, /args\.contextReferences/);
+  assert.doesNotMatch(src, /args\.handoffBrief/);
   assert.match(src, /registerContextToolSession\(/);
   assert.match(src, /unregisterContextToolSession\(args\.sessionId\)/);
 });
@@ -56,22 +62,33 @@ test("IPC exposes preview/transfer and resolves handoff briefs inside the main p
   const ipc = read("electron/cli/ipc.ts");
   const preload = read("electron/preload.ts");
   const dts = read("src/types/freebuddy.d.ts");
+  const workflow = read("electron/cli/workflowRuntime.ts");
   assert.match(ipc, /cli:previewHandoffBrief/);
   assert.match(ipc, /cli:transferConversation/);
   assert.match(ipc, /extractHandoffBrief/);
-  assert.match(ipc, /insertHandoffBrief/);
+  assert.match(ipc, /insertConversationContextSnapshot/);
+  assert.match(ipc, /insertConversationContextReference/);
+  assert.match(ipc, /conversationContextPromptPrefix/);
+  assert.match(ipc, /cli:createConversationShare/);
+  assert.match(ipc, /cli:attachConversationShares/);
   assert.match(ipc, /createHandoffTranscriptSnapshot/);
   assert.match(ipc, /deleteHandoffTranscriptSnapshot/);
   assert.match(ipc, /cwd: source\.cwd/);
   assert.doesNotMatch(ipc, /input\.cwd \?\? source\.cwd/);
-  assert.match(ipc, /getHandoffBrief\(args\.handoffBriefId\)/);
-  assert.match(ipc, /row\.targetConversationId === args\.conversationId/);
+  assert.doesNotMatch(ipc, /handoffBriefId/);
+  assert.doesNotMatch(ipc, /read_handoff_|search_handoff_|get_handoff_origin/);
   assert.match(preload, /previewHandoffBrief:/);
   assert.match(preload, /transferConversation:/);
+  assert.match(preload, /createConversationShare:/);
+  assert.match(preload, /attachConversationShares:/);
   assert.doesNotMatch(preload, /getHandoffBriefByTarget:/);
   assert.match(dts, /previewHandoffBrief\(/);
   assert.match(dts, /transferConversation\(/);
+  assert.match(dts, /createConversationShare\(/);
+  assert.match(dts, /attachConversationShares\(/);
   assert.doesNotMatch(dts, /getHandoffBriefByTarget\(/);
+  assert.match(workflow, /listResolvedConversationContextPayloads/);
+  assert.match(workflow, /conversationContextPromptPrefix/);
 });
 
 test("handoff UI auto-starts with a reference card and keeps per-conversation drafts isolated", () => {
@@ -79,6 +96,7 @@ test("handoff UI auto-starts with a reference card and keeps per-conversation dr
   const chat = read("src/components/CLI/ChatView.tsx");
   const app = read("src/App.tsx");
   const store = read("src/store/conversationStore.ts");
+  const shareDialog = read("src/components/CLI/ShareConversationDialog.tsx");
   const css = read("styles.css");
   assert.match(dialog, /const loadPreview = async/);
   assert.match(dialog, /onKeyDown=\{handleDialogKeyDown\}/);
@@ -92,15 +110,20 @@ test("handoff UI auto-starts with a reference card and keeps per-conversation dr
   assert.match(chat, /conversationDraftsRef/);
   assert.match(chat, /conversationAttachmentsRef/);
   assert.match(chat, /HandoffConversationCard/);
+  assert.match(chat, /SharedConversationReferences/);
+  assert.match(chat, /attachConversationShares/);
   assert.match(chat, /contextAvailable=\{Boolean\(conv\.sourceBriefId\)\}/);
   assert.match(store, /internalPrompt: true/);
   assert.match(store, /if \(!internalPrompt\)/);
   assert.doesNotMatch(store, /pendingTransferSeed/);
+  assert.doesNotMatch(store, /handoffBriefId|maybeHandoffArgs/);
   assert.doesNotMatch(chat, /composer-context-transfer/);
   assert.match(app, /titlebar-transfer-button/);
   assert.match(app, /activeConversationHasContent/);
   assert.match(app, /stopBeforeTransfer/);
   assert.match(app, /transferSourceId/);
+  assert.match(app, /shareSourceId/);
+  assert.match(shareDialog, /createConversationShare/);
   assert.match(css, /\.transfer-dialog\s*\{/);
   assert.match(css, /\.titlebar-transfer-button\s*\{/);
   assert.match(css, /\.handoff-reference-card\s*\{/);

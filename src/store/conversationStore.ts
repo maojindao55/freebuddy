@@ -398,23 +398,6 @@ async function workflowFollowupContextForRun(
   return buildWorkflowFollowupContext(run, steps);
 }
 
-function maybeHandoffArgs(
-  state: ConversationState,
-  conv: Conversation
-): Pick<CliRunArgs, "handoffBriefId"> {
-  const msgs = state.messages[conv.id] ?? [];
-  // Only count COMPLETED assistant turns. sendMessage appends a "running"
-  // assistant placeholder before dispatching, so a naive role==="assistant"
-  // check would always see one and skip injection on the first send.
-  const hasCompletedAssistant = msgs.some(
-    (m) =>
-      m.role === "assistant" && (m.status === "done" || m.status === "sent")
-  );
-  if (!conv.sourceBriefId) return {};
-  if (hasCompletedAssistant) return {};
-  return { handoffBriefId: conv.sourceBriefId };
-}
-
 export const useConversationStore = create<ConversationState>((set, get) => ({
   members: buildConversationMembers(),
   conversations: [],
@@ -926,8 +909,6 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       pickerOptions.length ? pickerOptions : configOptions
     );
 
-    const handoffArgs = maybeHandoffArgs(get(), conv);
-
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       conversationId,
@@ -965,8 +946,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId,
-      ...handoffArgs
+      announceSkills: wantFresh || !resumedFromSessionId
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");

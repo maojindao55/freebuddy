@@ -1529,6 +1529,109 @@ button {
   cursor: not-allowed;
   opacity: 0.55;
 }
+
+.share-conversation-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.share-conversation-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.share-conversation-heading h3,
+.share-conversation-heading p {
+  margin: 0;
+}
+
+.share-conversation-heading h3 {
+  color: var(--fb-text-primary);
+  font-family: 'Outfit', var(--fb-font);
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.share-conversation-heading p {
+  margin-top: 5px;
+  color: var(--fb-text-secondary);
+  line-height: 1.5;
+}
+
+.share-conversation-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--fb-brand);
+  background: color-mix(in srgb, var(--fb-brand) 11%, transparent);
+}
+
+.share-conversation-security {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 18px;
+  padding: 11px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.share-conversation-security svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--fb-success, #16a34a);
+}
+
+.share-conversation-explainer,
+.share-conversation-meta {
+  color: var(--fb-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.share-conversation-link-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.share-conversation-link-field > span {
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.share-conversation-link-field > div {
+  display: flex;
+  gap: 8px;
+}
+
+.share-conversation-link-field input {
+  min-width: 0;
+  flex: 1;
+  padding: 9px 11px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-soft);
+  font-family: var(--fb-font-mono);
+  font-size: 12px;
+}
+
+.share-conversation-link-field button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -5782,11 +5885,43 @@ button {
 
 .chat-scroll > .msg,
 .chat-scroll > .handoff-reference-card,
+.chat-scroll > .context-reference-list,
 .chat-empty-hero {
   width: min(820px, 100%);
   max-width: calc(100% - 32px);
   margin-right: auto;
   margin-left: auto;
+}
+
+.context-reference-list {
+  display: grid;
+  gap: 10px;
+}
+
+.context-reference-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.context-reference-remove {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--fb-text-tertiary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.context-reference-remove:hover,
+.context-reference-remove:focus-visible {
+  border-color: var(--fb-border);
+  color: var(--fb-danger);
+  background: var(--fb-panel-soft);
 }
 
 .chat-empty-hero {
@@ -6890,6 +7025,11 @@ button {
   }
 
   .handoff-reference-open {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .context-reference-actions {
     grid-column: 2;
     justify-self: start;
   }

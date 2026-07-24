@@ -38,7 +38,12 @@ import type {
   PreviewHandoffBriefInput,
   PreviewHandoffBriefResult,
   TransferConversationInput,
-  TransferConversationResult
+  TransferConversationResult,
+  CreateConversationShareInput,
+  CreateConversationShareResult,
+  AttachConversationSharesInput,
+  AttachConversationSharesResult,
+  ConversationContextReference
 } from "@/services/cli/types";
 import type {
   WorkflowPlan,
@@ -188,6 +193,19 @@ declare global {
     transferConversation(
       input: TransferConversationInput
     ): Promise<TransferConversationResult>;
+    createConversationShare(
+      input: CreateConversationShareInput
+    ): Promise<CreateConversationShareResult>;
+    attachConversationShares(
+      input: AttachConversationSharesInput
+    ): Promise<AttachConversationSharesResult>;
+    listConversationContextReferences(
+      conversationId: string
+    ): Promise<ConversationContextReference[]>;
+    removeConversationContextReference(input: {
+      targetConversationId: string;
+      referenceId: string;
+    }): Promise<ConversationContextReference[]>;
     renameConversation(
       id: string,
       title: string,

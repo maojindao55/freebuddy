@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Sun } from "lucide-react";
+import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
@@ -8,6 +8,7 @@ import { ReplayButton } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
 import { TransferDialog } from "./components/CLI/TransferDialog";
+import { ShareConversationDialog } from "./components/CLI/ShareConversationDialog";
 import {
   SidebarNavigation,
   type WorkspaceView
@@ -82,6 +83,7 @@ function App() {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [transferSourceId, setTransferSourceId] = useState<string>();
+  const [shareSourceId, setShareSourceId] = useState<string>();
   const [teamPageRequest, setTeamPageRequest] = useState<{
     key: number;
     teamId?: string;
@@ -241,6 +243,7 @@ function App() {
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
   const transferSource = conversations.find((c) => c.id === transferSourceId);
+  const shareSource = conversations.find((c) => c.id === shareSourceId);
   const activeConversationRunning = useConversationStore((s) => {
     if (!activeId) return false;
     const status = s.live[activeId]?.status;
@@ -480,6 +483,27 @@ function App() {
                   disabled={transferDisabled}
                   title={t(
                     transferDisabled
+                      ? "contextShare.stopBeforeShare"
+                      : "contextShare.shareAction"
+                  )}
+                  aria-label={t(
+                    transferDisabled
+                      ? "contextShare.stopBeforeShare"
+                      : "contextShare.shareAction"
+                  )}
+                  onClick={() => setShareSourceId(activeConversation.id)}
+                >
+                  <Share2 size={14} aria-hidden="true" />
+                  <span>{t("contextShare.share")}</span>
+                </button>
+              )}
+              {activeConversationHasContent && (
+                <button
+                  type="button"
+                  className="titlebar-transfer-button"
+                  disabled={transferDisabled}
+                  title={t(
+                    transferDisabled
                       ? "handoff.stopBeforeTransfer"
                       : "handoff.transferAction"
                   )}
@@ -578,6 +602,12 @@ function App() {
           source={transferSource}
           members={members}
           onClose={() => setTransferSourceId(undefined)}
+        />
+      )}
+      {shareSource && (
+        <ShareConversationDialog
+          source={shareSource}
+          onClose={() => setShareSourceId(undefined)}
         />
       )}
       <AgentBridgeListener />

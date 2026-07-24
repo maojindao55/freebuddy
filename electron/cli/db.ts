@@ -18,7 +18,12 @@ export function getDb(): DB {
   db.pragma("foreign_keys = ON");
   migrate(db);
   const transcriptRows = db
-    .prepare("SELECT transcript_path FROM handoff_briefs WHERE transcript_path IS NOT NULL")
+    .prepare(
+      `SELECT transcript_path FROM handoff_briefs WHERE transcript_path IS NOT NULL
+       UNION
+       SELECT transcript_path FROM conversation_context_snapshots
+       WHERE transcript_path IS NOT NULL`
+    )
     .all() as Array<{ transcript_path: string }>;
   cleanupOrphanHandoffTranscriptSnapshots(
     dir,
@@ -447,6 +452,50 @@ export function migrate(db: DB) {
       ON handoff_briefs(target_conversation_id);
     CREATE INDEX IF NOT EXISTS idx_handoff_briefs_source
       ON handoff_briefs(source_conversation_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS conversation_context_snapshots (
+      id                       TEXT PRIMARY KEY,
+      source_conversation_id   TEXT NOT NULL,
+      source_agent_id          TEXT NOT NULL,
+      source_agent_name        TEXT NOT NULL,
+      source_adapter           TEXT NOT NULL,
+      source_title             TEXT NOT NULL,
+      source_cwd               TEXT,
+      brief_json               TEXT NOT NULL,
+      source_message_count     INTEGER NOT NULL,
+      source_last_message_id   TEXT,
+      transcript_path          TEXT,
+      transcript_message_count INTEGER,
+      transcript_byte_size     INTEGER,
+      transcript_truncated     INTEGER NOT NULL DEFAULT 0,
+      created_at               TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_context_snapshots_source
+      ON conversation_context_snapshots(source_conversation_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS conversation_context_refs (
+      id                     TEXT PRIMARY KEY,
+      target_conversation_id TEXT NOT NULL,
+      snapshot_id            TEXT NOT NULL,
+      reference_type         TEXT NOT NULL CHECK(reference_type IN ('transfer', 'share')),
+      created_at             TEXT NOT NULL,
+      FOREIGN KEY(target_conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY(snapshot_id) REFERENCES conversation_context_snapshots(id) ON DELETE CASCADE,
+      UNIQUE(target_conversation_id, snapshot_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_context_refs_target
+      ON conversation_context_refs(target_conversation_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS conversation_share_tokens (
+      token_hash  TEXT PRIMARY KEY,
+      snapshot_id TEXT NOT NULL,
+      expires_at  TEXT,
+      revoked_at  TEXT,
+      created_at  TEXT NOT NULL,
+      FOREIGN KEY(snapshot_id) REFERENCES conversation_context_snapshots(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_context_share_snapshot
+      ON conversation_share_tokens(snapshot_id);
   `);
 
   const handoffColumns = db

@@ -3,10 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getDataDir } from "./cli/db.js";
-import type {
-  HandoffBrief,
-  HandoffTranscriptRef
-} from "./shared/handoffTypes.js";
+import type { ConversationContextPayload } from "./shared/handoffTypes.js";
 import type { AcpStdioMcpServer } from "./shared/draftToolProtocol.js";
 
 const manifests = new Map<string, string>();
@@ -40,36 +37,34 @@ function cleanupStaleContextManifests(): void {
 
 export function registerContextToolSession(
   taskSessionId: string,
-  brief: HandoffBrief,
-  briefId: string,
-  transcript?: HandoffTranscriptRef
+  references: ConversationContextPayload[]
 ): AcpStdioMcpServer {
+  if (references.length === 0) {
+    throw new Error("At least one conversation context reference is required");
+  }
   cleanupStaleContextManifests();
   unregisterContextToolSession(taskSessionId);
   const directory = contextSessionDirectory();
   fs.mkdirSync(directory, { recursive: true });
   const manifest = path.join(directory, `${taskSessionId}.json`);
-  // Manifest source directly from brief.source (5 required fields; cwd/messageCount not in manifest)
-  const source = {
-    conversationId: brief.source.conversationId,
-    agentId: brief.source.agentId,
-    agentName: brief.source.agentName,
-    adapter: brief.source.adapter,
-    title: brief.source.title
-  };
   fs.writeFileSync(
     manifest,
-    JSON.stringify({ version: 2, brief, briefId, source, transcript }),
+    JSON.stringify({ version: 4, references }),
     { encoding: "utf8", mode: 0o600 }
   );
   manifests.set(taskSessionId, manifest);
+  // TODO(codebuddy): Retest conversation-context reads after CodeBuddy fixes its
+  // MCP argument parser. As of @tencent-ai/codebuddy-code 2.126.0 it validates
+  // JSON string arguments but still passes the original string to Zod. Keep
+  // this transport standards-compliant instead of adding agent-specific
+  // argument coercion here.
   return {
     name: "freebuddy-context",
     command: process.execPath,
     args: [serverPath()],
     env: [
       { name: "ELECTRON_RUN_AS_NODE", value: "1" },
-      { name: "FREEBUDDY_HANDOFF_MANIFEST", value: manifest },
+      { name: "FREEBUDDY_CONTEXT_MANIFEST", value: manifest },
       { name: "FB_APP_VERSION", value: process.env.FB_APP_VERSION || "0.1.0" }
     ]
   };

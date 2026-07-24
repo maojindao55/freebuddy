@@ -9490,7 +9490,7 @@ button {
   overflow: hidden;
   color: var(--fb-text-primary);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -414,14 +414,14 @@ export function ConversationList({
                             className="conv-project-folder"
                             aria-hidden="true"
                             size={18}
-                            strokeWidth={1.9}
+                            strokeWidth={1.6}
                           />
                         ) : (
                           <Folder
                             className="conv-project-folder"
                             aria-hidden="true"
                             size={18}
-                            strokeWidth={1.9}
+                            strokeWidth={1.6}
                           />
                         )}
                         <span className="conv-project-name">{project.label}</span>

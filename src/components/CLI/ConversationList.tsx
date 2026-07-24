@@ -396,11 +396,17 @@ export function ConversationList({
               const selected = activeProjectKey === project.key;
               const pinned = pinnedKeys.includes(project.key);
               const menuOpen = menuProjectKey === project.key;
+              const hasRunning = project.items.some(
+                (c) => runningSet.has(c.id) || workflowRunningSet.has(c.id)
+              );
+              const hasUnread = project.items.some((c) => Boolean(unreadConversations[c.id]));
+              const showRunningIndicator = !expanded && hasRunning;
+              const showUnreadIndicator = !expanded && !hasRunning && hasUnread;
 
               return (
                 <Fragment key={project.key}>
                   <li
-                    className={`conv-project-row${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}${pinned ? " pinned" : ""}`}
+                    className={`conv-project-row${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}${pinned ? " pinned" : ""}${showRunningIndicator ? " running" : ""}${showUnreadIndicator ? " unread" : ""}`}
                   >
                     <div className="conv-project-row-inner">
                       <button
@@ -413,28 +419,53 @@ export function ConversationList({
                           <FolderOpen
                             className="conv-project-folder"
                             aria-hidden="true"
-                            size={15}
-                            strokeWidth={1.8}
+                            size={18}
+                            strokeWidth={1.6}
                           />
                         ) : (
                           <Folder
                             className="conv-project-folder"
                             aria-hidden="true"
-                            size={15}
-                            strokeWidth={1.8}
+                            size={18}
+                            strokeWidth={1.6}
                           />
                         )}
                         <span className="conv-project-name">{project.label}</span>
                       </button>
                       <div className="conv-project-trailing">
-                        {pinned && (
-                          <span className="conv-project-pin-slot" aria-hidden="true">
-                            <Pin
-                              className="conv-project-pin"
-                              size={12}
-                              strokeWidth={2}
+                        {showRunningIndicator ? (
+                          <span
+                            className="conv-project-running-slot"
+                            role="status"
+                            aria-label={t("conversations.projectRunning")}
+                            title={t("conversations.projectRunning")}
+                          >
+                            <LoaderCircle
+                              className="conv-project-running"
+                              aria-hidden="true"
+                              size={14}
+                              strokeWidth={1.75}
                             />
                           </span>
+                        ) : showUnreadIndicator ? (
+                          <span
+                            className="conv-project-unread-slot"
+                            role="status"
+                            aria-label={t("conversations.unread")}
+                            title={t("conversations.unread")}
+                          >
+                            <span className="conv-unread-dot" aria-hidden="true" />
+                          </span>
+                        ) : (
+                          pinned && (
+                            <span className="conv-project-pin-slot" aria-hidden="true">
+                              <Pin
+                                className="conv-project-pin"
+                                size={12}
+                                strokeWidth={2}
+                              />
+                            </span>
+                          )
                         )}
                         <div className="conv-project-actions">
                           <button

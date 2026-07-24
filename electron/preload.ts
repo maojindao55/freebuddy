@@ -113,6 +113,14 @@ const cli = {
     ipcRenderer.invoke("cli:previewHandoffBrief", input),
   transferConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:transferConversation", input),
+  createConversationShare: (input: unknown) =>
+    ipcRenderer.invoke("cli:createConversationShare", input),
+  attachConversationShares: (input: unknown) =>
+    ipcRenderer.invoke("cli:attachConversationShares", input),
+  listConversationContextReferences: (conversationId: string) =>
+    ipcRenderer.invoke("cli:listConversationContextReferences", conversationId),
+  removeConversationContextReference: (input: unknown) =>
+    ipcRenderer.invoke("cli:removeConversationContextReference", input),
   renameConversation: (
     id: string,
     title: string,

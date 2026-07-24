@@ -6,10 +6,7 @@ import { getDb } from "./db.js";
 import type { CLIAdapterId } from "./adapters.js";
 import type { AcpStreamItem } from "./acp.js";
 import type { SkillSnapshot } from "./skillTypes.js";
-import type {
-  HandoffBrief,
-  HandoffTranscriptRef
-} from "../shared/handoffTypes.js";
+import type { ConversationContextPayload } from "../shared/handoffTypes.js";
 import { trackTelemetryEvent } from "../telemetry.js";
 import {
   categorizeTelemetryError,
@@ -62,9 +59,7 @@ export interface CliRunArgs {
   knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
-  handoffBrief?: HandoffBrief;
-  handoffBriefId?: string;
-  handoffTranscript?: HandoffTranscriptRef;
+  contextReferences?: ConversationContextPayload[];
 }
 
 export type CliPermissionOptionKind =

@@ -53,10 +53,11 @@ test("messageBlocks exports block helpers including computeMessageBlocks", () =>
   assert.match(src, /export type VisibleBlock/);
 });
 
-test("ReplayButton drives titlebar playback with typing-scaled intervals", () => {
+test("TitlebarOverflowMenu hosts replay with typing-scaled intervals", () => {
   const src = read("../src/components/CLI/ReplayBar.tsx");
-  assert.match(src, /export function ReplayButton/);
-  assert.match(src, /import \{ RotateCcw, Square \} from "lucide-react"/);
+  const app = read("../src/App.tsx");
+  assert.match(src, /export function TitlebarOverflowMenu/);
+  assert.match(src, /import \{ MoreHorizontal, RotateCcw, Square \} from "lucide-react"/);
   assert.match(src, /REPLAY_FIXED_SPEED = 1\.5/);
   assert.match(src, /REPLAY_TYPING_INTERVAL_MS/);
   assert.match(src, /const isTyping = current\?\.typingChars != null/);
@@ -71,11 +72,20 @@ test("ReplayButton drives titlebar playback with typing-scaled intervals", () =>
   assert.match(src, /WORKFLOW_REPLAY_BLOCKED_STATUSES = new Set<WorkflowRunStatus>\(\[[\s\S]*?"running"[\s\S]*?"paused"[\s\S]*?"blocked"[\s\S]*?\]\)/);
   assert.match(src, /const workflowBlocksReplay =[\s\S]*?activeRun != null[\s\S]*?activeRun\.conversationId === activeId[\s\S]*?WORKFLOW_REPLAY_BLOCKED_STATUSES\.has\(activeRun\.status\)/);
   assert.match(src, /const canReplay =[\s\S]*?!running[\s\S]*?!workflowBlocksReplay/);
-  assert.match(src, /buttonTitle = t\("chat\.replay\.disabledWorkflowActive"\)/);
+  assert.match(src, /replayTitle = t\("chat\.replay\.disabledWorkflowActive"\)/);
   assert.match(src, /start\(activeId, nextFrames\)/);
   assert.match(src, /aria-pressed=\{replaying\}/);
-  assert.match(src, /const Icon = replaying \? Square : RotateCcw/);
-  assert.match(src, /title-replay-label/);
+  assert.match(src, /const ReplayIcon = replaying \? Square : RotateCcw/);
+  assert.match(src, /titlebar-overflow-menu/);
+  assert.match(src, /titlebar-overflow-item/);
+  assert.doesNotMatch(src, /conversationContext\.actionShort/);
+  assert.doesNotMatch(src, /Share2/);
+  assert.match(app, /TitlebarOverflowMenu/);
+  assert.match(app, /titlebar-icon-button/);
+  assert.match(app, /Share2/);
+  assert.doesNotMatch(app, /canShare=\{activeConversationHasContent\}/);
+  assert.doesNotMatch(app, /onShare=/);
+  assert.doesNotMatch(app, /<ReplayButton\s*\/>/);
 });
 
 test("MessageBubble supports blockLimit and typingChars for incremental replay", () => {
@@ -111,6 +121,10 @@ test("ChatView plays back at block granularity with typing text and locks the co
 test("replay styles exist in the stylesheet", () => {
   const css = read("../styles.css");
   assert.match(css, /\.titlebar-actions-plain\s*\{/);
+  assert.match(css, /\.titlebar-overflow-trigger\s*,|\.titlebar-icon-button,\s*\n\.titlebar-overflow-trigger/);
+  assert.match(css, /\.titlebar-overflow-menu\s*\{/);
+  assert.match(css, /\.titlebar-overflow-item\s*\{/);
+  assert.match(css, /\.titlebar-overflow\.replaying\s+\.titlebar-overflow-trigger\s*\{[\s\S]*?background: var\(--fb-brand-glow\)/);
   assert.match(css, /\.title-replay-btn\s*\{/);
   assert.match(css, /\.title-replay-btn\.replaying\s*\{/);
   assert.match(css, /\.title-replay-btn\.replaying\s*\{[\s\S]*?background: var\(--fb-brand-glow\)/);
@@ -132,6 +146,8 @@ test("replay i18n keys exist in both locales", () => {
     assert.ok(en.chat.replay?.[key], `missing en chat.replay.${key}`);
     assert.ok(zh.chat.replay?.[key], `missing zh-CN chat.replay.${key}`);
   }
+  assert.equal(en.chat.titlebarMore, "More actions");
+  assert.equal(zh.chat.titlebarMore, "更多操作");
   assert.equal(en.chat.replay.exitShort, "Exit");
   assert.equal(en.chat.replay.progress, "{{n}}/{{total}}");
   assert.equal(zh.chat.replay.entry, "回放");

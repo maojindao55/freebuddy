@@ -134,12 +134,12 @@ import { searchWorkspaceFiles } from "./workspaceFiles.js";
 import { getDataDir, getDb } from "./db.js";
 import { nanoid } from "nanoid";
 import { extractHandoffBrief } from "./handoffBriefExtractor.js";
-import {
-  insertHandoffBrief,
-  getHandoffBrief,
-  getHandoffBriefByTarget
-} from "./handoffBriefs.js";
+import { getHandoffBriefByTarget } from "./handoffBriefs.js";
 import type {
+  AttachConversationSharesInput,
+  AttachConversationSharesResult,
+  CreateConversationShareInput,
+  CreateConversationShareResult,
   HandoffBrief,
   HandoffTranscriptRef,
   PreviewHandoffBriefInput,
@@ -151,6 +151,19 @@ import {
   createHandoffTranscriptSnapshot,
   deleteHandoffTranscriptSnapshot
 } from "../shared/handoffTranscript.js";
+import {
+  attachConversationSharesFromText,
+  buildTransferSeedPrompt,
+  createConversationShareToken,
+  deleteUnreferencedConversationContextSnapshots,
+  insertConversationContextReference,
+  insertConversationContextSnapshot,
+  listResolvedConversationContextPayloads,
+  listConversationContextReferences,
+  conversationContextPromptPrefix,
+  removeConversationContextReference
+} from "./conversationContext.js";
+import { applyAgentLanguagePreference } from "./agentLanguage.js";
 import {
   connectCursorUsage,
   disconnectCursorUsage,
@@ -553,23 +566,23 @@ export function registerCliIpc() {
     const win = senderWindow(event);
     if (!win) throw new Error("no sender window");
     const {
-      handoffBrief: _rendererBrief,
-      handoffTranscript: _rendererTranscript,
+      contextReferences: _rendererContextReferences,
       ...rendererArgs
     } = args;
     let runArgs: CliRunArgs = rendererArgs;
-    if (args.handoffBriefId && args.conversationId) {
-      const row = getHandoffBrief(args.handoffBriefId);
-      if (
-        row?.brief &&
-        row.targetConversationId === args.conversationId
-      ) {
-        runArgs = {
-          ...rendererArgs,
-          handoffBrief: row.brief,
-          handoffTranscript: row.transcript
-        };
-      }
+    const contextReferences = args.conversationId
+      ? listResolvedConversationContextPayloads(args.conversationId)
+      : [];
+    if (contextReferences.length > 0) {
+      runArgs = {
+        ...rendererArgs,
+        prompt: applyAgentLanguagePreference(
+          `${conversationContextPromptPrefix(contextReferences)}` +
+            rendererArgs.prompt,
+          getLanguage()
+        ),
+        contextReferences
+      };
     }
     // Don't await: spawn returns immediately, streaming continues via events.
     void cliRun(win.webContents, runArgs);
@@ -813,17 +826,16 @@ export function registerCliIpc() {
             sourceBriefId: briefId ?? undefined
           });
           if (brief && briefId) {
-            insertHandoffBrief({
+            insertConversationContextSnapshot({
               id: briefId,
-              sourceConversationId: source.id,
-              targetConversationId: input.targetConversationId,
-              sourceAgentId: source.agentId,
-              sourceAgentName: source.agentName,
-              sourceAdapter: source.adapter,
               brief,
-              sourceMessageCount: messages.length,
               sourceLastMessageId: messages[messages.length - 1]?.id,
               transcript
+            });
+            insertConversationContextReference({
+              targetConversationId: input.targetConversationId,
+              snapshotId: briefId,
+              referenceType: "transfer"
             });
           }
           return { conversation };
@@ -836,10 +848,85 @@ export function registerCliIpc() {
       return {
         conversation: txResult.conversation,
         briefId,
-        seedPrompt: buildSeedPrompt(source, brief),
+        seedPrompt: buildTransferSeedPrompt(source, brief),
         warning: brief ? undefined : "brief_extraction_failed"
       };
     }
+  );
+  ipcMain.handle(
+    "cli:createConversationShare",
+    (
+      _e,
+      input: CreateConversationShareInput
+    ): CreateConversationShareResult => {
+      const source = getConversation(input.sourceConversationId);
+      if (!source) throw new Error("Source conversation not found");
+      const messages = listMessages(source.id);
+      const brief = extractHandoffBrief({ conversation: source, messages });
+      const snapshotId = nanoid();
+      let transcript: HandoffTranscriptRef | undefined;
+      try {
+        transcript = createHandoffTranscriptSnapshot(
+          getDataDir(),
+          snapshotId,
+          messages
+        );
+      } catch {
+        transcript = undefined;
+      }
+      try {
+        const link = getDb().transaction(() => {
+          insertConversationContextSnapshot({
+            id: snapshotId,
+            brief,
+            sourceLastMessageId: messages[messages.length - 1]?.id,
+            transcript
+          });
+          return createConversationShareToken(snapshotId);
+        })();
+        return {
+          link,
+          snapshotId,
+          source: brief.source,
+          transcriptAvailable: Boolean(transcript),
+          transcriptTruncated: transcript?.truncated ?? false
+        };
+      } catch (error) {
+        deleteHandoffTranscriptSnapshot(getDataDir(), transcript?.path);
+        throw error;
+      }
+    }
+  );
+  ipcMain.handle(
+    "cli:attachConversationShares",
+    (
+      _e,
+      input: AttachConversationSharesInput
+    ): AttachConversationSharesResult => {
+      if (!getConversation(input.targetConversationId)) {
+        throw new Error("Target conversation not found");
+      }
+      return attachConversationSharesFromText(
+        input.targetConversationId,
+        input.text
+      );
+    }
+  );
+  ipcMain.handle(
+    "cli:listConversationContextReferences",
+    (_e, conversationId: string) =>
+      listConversationContextReferences(conversationId)
+  );
+  ipcMain.handle(
+    "cli:removeConversationContextReference",
+    (
+      _e,
+      input: { targetConversationId: string; referenceId: string }
+    ) =>
+      removeConversationContextReference(
+        input.targetConversationId,
+        input.referenceId
+      )
   );
   ipcMain.handle(
     "cli:renameConversation",
@@ -866,6 +953,9 @@ export function registerCliIpc() {
     const transcriptPath = getHandoffBriefByTarget(id)?.transcript?.path;
     deleteConversation(id);
     deleteHandoffTranscriptSnapshot(getDataDir(), transcriptPath);
+    for (const orphanPath of deleteUnreferencedConversationContextSnapshots()) {
+      deleteHandoffTranscriptSnapshot(getDataDir(), orphanPath);
+    }
   });
 
   ipcMain.handle(
@@ -963,31 +1053,4 @@ export function registerCliIpc() {
 
   registerWorkflowIpc();
   registerScheduledTaskIpc();
-}
-
-function buildSeedPrompt(
-  source: { agentName: string; adapter: string },
-  brief: HandoffBrief | null
-): string {
-  if (!brief || !hasUsefulHandoffContext(brief)) {
-    return `Continuing a task transferred from ${source.agentName} (${source.adapter}). ` +
-      `No prior context is available. Ask the user what they'd like to focus on.`;
-  }
-  return `Continuing a task transferred from ${source.agentName} (${source.adapter}).\n` +
-    `Call the \`freebuddy-context.read_handoff_brief\` tool now to load the ` +
-    `handoff (original goal, recent messages, file changes). If the summary ` +
-    `is not enough, use \`freebuddy-context.search_handoff_history\` and ` +
-    `\`freebuddy-context.read_handoff_messages\` to inspect the sanitized ` +
-    `source history, then ask me ` +
-    `what you'd like to focus on first.`;
-}
-
-function hasUsefulHandoffContext(brief: HandoffBrief): boolean {
-  return Boolean(
-    brief.originalGoal ||
-    brief.recentUserMessages.length ||
-    brief.lastAssistantSummary ||
-    brief.fileChanges.length ||
-    brief.transcriptExcerpts.length
-  );
 }

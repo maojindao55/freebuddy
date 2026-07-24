@@ -357,6 +357,7 @@
     "clearSearchAria": "清除搜索",
     "noResults": "没有匹配的会话。",
     "unread": "未读会话",
+    "projectRunning": "项目内有任务正在运行",
     "group": {
       "today": "今天",
       "yesterday": "昨天",
@@ -364,6 +365,18 @@
       "last30Days": "近 30 天",
       "earlier": "更早"
     }
+  },
+  "conversationContext": {
+    "action": "分享或转接当前会话",
+    "actionShort": "分享",
+    "stopBeforeAction": "请先停止当前运行，再分享或转接会话",
+    "dialogTitle": "分享或转接",
+    "dialogSubtitle": "将「{{title}}」从 {{agentName}} 继续：复制链接或交给其他 agent",
+    "shareOptionTitle": "复制分享链接",
+    "shareOptionDescription": "生成可复用引用，可贴到任意会话",
+    "transferOptionTitle": "交给其他 Agent 接管",
+    "transferOptionDescription": "新建会话并立即由选定 agent 继续",
+    "back": "返回"
   },
   "handoff": {
     "transferAction": "转接到其他 agent",
@@ -396,6 +409,32 @@
     "transferFailed": "转接失败",
     "briefExtractionFailed": "转接完成但未携带上下文，请手动告知新 agent。",
     "autoStartFailed": "新会话已创建，但自动启动失败：{{error}}"
+  },
+  "contextShare": {
+    "shareAction": "分享当前会话",
+    "stopBeforeShare": "请先停止当前运行，再分享会话",
+    "share": "分享",
+    "dialogTitle": "分享会话",
+    "dialogSubtitle": "为「{{title}}」创建一个可重复使用的会话引用",
+    "localOnlyDescription": "链接仅在当前 FreeBuddy 安装中有效。链接只包含随机令牌，不包含会话正文。",
+    "createDescription": "FreeBuddy 将生成一份不可变的安全快照，包含 Brief 和可搜索的消息历史。",
+    "createLink": "生成链接",
+    "creating": "生成中…",
+    "linkLabel": "会话分享链接",
+    "copy": "复制",
+    "copied": "已复制",
+    "snapshotMeta": "源会话 {{count}} 条消息 · 历史{{state}}",
+    "complete": "已完整收录",
+    "truncated": "已部分截断",
+    "referencesLabel": "引用的会话",
+    "referenceTypeShare": "分享引用",
+    "referenceTypeTransfer": "转接上下文",
+    "chipMeta": "{{agent}} · {{count}} 条",
+    "historyAvailable": "当前 agent 可读取 Brief 和可搜索历史",
+    "historyTruncated": "已提供 Brief；可搜索历史为部分截断",
+    "historyUnavailable": "当前仅提供会话 Brief",
+    "linkAttached": "已挂载会话引用",
+    "removeReference": "移除引用"
   },
   "chat": {
     "inputPlaceholder": "随心输入",
@@ -461,6 +500,7 @@
     "dropAttachmentsHint": "释放以添加附件",
     "newTaskAria": "新建任务",
     "commonTasksAria": "常用任务",
+    "titlebarMore": "更多操作",
     "replay": {
       "title": "对话回放",
       "entry": "回放",

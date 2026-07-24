@@ -20,22 +20,28 @@ import type {
   PreviewHandoffBriefResult
 } from "@/services/cli/types";
 
-interface TransferDialogProps {
+interface TransferConversationPanelProps {
   source: Conversation;
   members: CLIMember[];
+  titleId: string;
+  descriptionId: string;
   onClose(): void;
+  onBusyChange?(busy: boolean): void;
 }
 
-export function TransferDialog({ source, members, onClose }: TransferDialogProps) {
+export function TransferConversationPanel({
+  source,
+  members,
+  titleId,
+  descriptionId,
+  onClose,
+  onBusyChange
+}: TransferConversationPanelProps) {
   const { t } = useTranslation();
   const transferConversation = useConversationStore((s) => s.transferConversation);
   const notify = useAgentBridgeStore((s) => s.notify);
-  const titleId = useId();
-  const descriptionId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
   const targetSelectRef = useRef<HTMLSelectElement>(null);
   const mountedRef = useRef(true);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const previewLoadingRef = useRef(false);
   const [targetMemberId, setTargetMemberId] = useState<string>("");
   const [preview, setPreview] = useState<PreviewHandoffBriefResult | null>(null);
@@ -47,13 +53,15 @@ export function TransferDialog({ source, members, onClose }: TransferDialogProps
 
   useEffect(() => {
     mountedRef.current = true;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
     targetSelectRef.current?.focus();
     return () => {
       mountedRef.current = false;
-      previousFocusRef.current?.focus();
     };
   }, []);
+
+  useEffect(() => {
+    onBusyChange?.(submitting);
+  }, [submitting, onBusyChange]);
 
   const loadPreview = async () => {
     if (preview || previewLoadingRef.current || previewError) return;
@@ -76,30 +84,6 @@ export function TransferDialog({ source, members, onClose }: TransferDialogProps
     const next = !showPreview;
     setShowPreview(next);
     if (next) void loadPreview();
-  };
-
-  const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape" && !submitting) {
-      event.preventDefault();
-      onClose();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
   };
 
   const targetMember = useMemo(
@@ -130,10 +114,153 @@ export function TransferDialog({ source, members, onClose }: TransferDialogProps
   };
 
   return (
+    <>
+      <h3 id={titleId}>{t("handoff.dialogTitle")}</h3>
+      <p id={descriptionId} className="transfer-dialog-subtitle">
+        {t("handoff.dialogSubtitle", {
+          title: source.title,
+          agentName: source.agentName
+        })}
+      </p>
+
+      <label className="transfer-dialog-field">
+        <span>{t("handoff.targetAgent")}</span>
+        <div className="transfer-dialog-select-wrap">
+          <select
+            ref={targetSelectRef}
+            value={targetMemberId}
+            onChange={(e) => setTargetMemberId(e.target.value)}
+            disabled={submitting}
+          >
+            <option value="" disabled>
+              {t("handoff.selectAgent")}
+            </option>
+            {members.map((m) => (
+              <option
+                key={m.id}
+                value={m.id}
+                disabled={m.id === source.agentId}
+              >
+                {m.name}
+                {m.id === source.agentId ? ` (${t("handoff.current")})` : ""}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            className="transfer-dialog-select-chevron"
+            size={16}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
+        </div>
+      </label>
+
+      <label className="transfer-dialog-field">
+        <span>{t("handoff.workspace")}</span>
+        <div className="transfer-dialog-readonly-wrap">
+          <FolderLock size={16} strokeWidth={1.7} aria-hidden="true" />
+          <input
+            type="text"
+            value={source.cwd ?? t("chat.noWorkspace")}
+            readOnly
+            aria-readonly="true"
+            title={source.cwd}
+          />
+        </div>
+      </label>
+
+      <div className="transfer-dialog-preview-toggle">
+        <button
+          type="button"
+          className="link-button"
+          onClick={togglePreview}
+          aria-expanded={showPreview}
+        >
+          <ChevronDown
+            className={`transfer-dialog-preview-chevron${showPreview ? " expanded" : ""}`}
+            size={15}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
+          {showPreview ? t("handoff.hidePreview") : t("handoff.showPreview")}
+        </button>
+      </div>
+      {showPreview && (
+        <BriefPreview
+          preview={preview}
+          error={previewError}
+          loading={previewLoading}
+        />
+      )}
+
+      {error && <div className="transfer-dialog-error">{error}</div>}
+
+      <div className="transfer-dialog-actions">
+        <button type="button" onClick={onClose} disabled={submitting}>
+          {t("handoff.cancel")}
+        </button>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => void onConfirm()}
+          disabled={!targetMember || submitting}
+        >
+          {submitting ? t("handoff.transferring") : t("handoff.transfer")}
+        </button>
+      </div>
+    </>
+  );
+}
+
+interface TransferDialogProps {
+  source: Conversation;
+  members: CLIMember[];
+  onClose(): void;
+}
+
+/** @deprecated Prefer ConversationContextDialog; kept for isolated transfer flows. */
+export function TransferDialog({ source, members, onClose }: TransferDialogProps) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => previousFocusRef.current?.focus();
+  }, []);
+
+  const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && !busy) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
     <div
       className="modal-backdrop transfer-dialog-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !submitting) onClose();
+        if (event.target === event.currentTarget && !busy) onClose();
       }}
     >
       <div
@@ -145,101 +272,14 @@ export function TransferDialog({ source, members, onClose }: TransferDialogProps
         aria-describedby={descriptionId}
         onKeyDown={handleDialogKeyDown}
       >
-        <h3 id={titleId}>{t("handoff.dialogTitle")}</h3>
-        <p id={descriptionId} className="transfer-dialog-subtitle">
-          {t("handoff.dialogSubtitle", {
-            title: source.title,
-            agentName: source.agentName
-          })}
-        </p>
-
-        <label className="transfer-dialog-field">
-          <span>{t("handoff.targetAgent")}</span>
-          <div className="transfer-dialog-select-wrap">
-            <select
-              ref={targetSelectRef}
-              value={targetMemberId}
-              onChange={(e) => setTargetMemberId(e.target.value)}
-              disabled={submitting}
-            >
-              <option value="" disabled>{t("handoff.selectAgent")}</option>
-              {members.map((m) => (
-                <option
-                  key={m.id}
-                  value={m.id}
-                  disabled={m.id === source.agentId}
-                >
-                  {m.name}
-                  {m.id === source.agentId ? ` (${t("handoff.current")})` : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              className="transfer-dialog-select-chevron"
-              size={16}
-              strokeWidth={1.8}
-              aria-hidden="true"
-            />
-          </div>
-        </label>
-
-        <label className="transfer-dialog-field">
-          <span>{t("handoff.workspace")}</span>
-          <div className="transfer-dialog-readonly-wrap">
-            <FolderLock size={16} strokeWidth={1.7} aria-hidden="true" />
-            <input
-              type="text"
-              value={source.cwd ?? t("chat.noWorkspace")}
-              readOnly
-              aria-readonly="true"
-              title={source.cwd}
-            />
-          </div>
-        </label>
-
-        <div className="transfer-dialog-preview-toggle">
-          <button
-            type="button"
-            className="link-button"
-            onClick={togglePreview}
-            aria-expanded={showPreview}
-          >
-            <ChevronDown
-              className={`transfer-dialog-preview-chevron${showPreview ? " expanded" : ""}`}
-              size={15}
-              strokeWidth={1.8}
-              aria-hidden="true"
-            />
-            {showPreview ? t("handoff.hidePreview") : t("handoff.showPreview")}
-          </button>
-        </div>
-        {showPreview && (
-          <BriefPreview
-            preview={preview}
-            error={previewError}
-            loading={previewLoading}
-          />
-        )}
-
-        {error && <div className="transfer-dialog-error">{error}</div>}
-
-        <div className="transfer-dialog-actions">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-          >
-            {t("handoff.cancel")}
-          </button>
-          <button
-            type="button"
-            className="primary"
-            onClick={onConfirm}
-            disabled={!targetMember || submitting}
-          >
-            {submitting ? t("handoff.transferring") : t("handoff.transfer")}
-          </button>
-        </div>
+        <TransferConversationPanel
+          source={source}
+          members={members}
+          titleId={titleId}
+          descriptionId={descriptionId}
+          onClose={onClose}
+          onBusyChange={setBusy}
+        />
       </div>
     </div>
   );
@@ -273,10 +313,10 @@ function BriefPreview({
   const brief: HandoffBrief | null = preview.brief;
   const hasContent = Boolean(
     brief &&
-    (brief.originalGoal ||
-      brief.recentUserMessages.length ||
-      brief.lastAssistantSummary ||
-      brief.fileChanges.length)
+      (brief.originalGoal ||
+        brief.recentUserMessages.length ||
+        brief.lastAssistantSummary ||
+        brief.fileChanges.length)
   );
   if (!brief || !hasContent) {
     return (
@@ -294,7 +334,11 @@ function BriefPreview({
       )}
       {brief.recentUserMessages.length > 0 && (
         <PreviewSection title={t("handoff.recentMessages")}>
-          <ul>{brief.recentUserMessages.map((message, index) => <li key={index}>{message}</li>)}</ul>
+          <ul>
+            {brief.recentUserMessages.map((message, index) => (
+              <li key={index}>{message}</li>
+            ))}
+          </ul>
         </PreviewSection>
       )}
       {brief.lastAssistantSummary && (
@@ -303,7 +347,9 @@ function BriefPreview({
         </PreviewSection>
       )}
       {brief.fileChanges.length > 0 && (
-        <PreviewSection title={t("handoff.filesChanged", { count: brief.fileChanges.length })}>
+        <PreviewSection
+          title={t("handoff.filesChanged", { count: brief.fileChanges.length })}
+        >
           <ul className="transfer-dialog-file-list">
             {brief.fileChanges.map((change) => (
               <li key={`${change.action}:${change.path}`}>

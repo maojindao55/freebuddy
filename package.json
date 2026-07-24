@@ -15,7 +15,7 @@
     "build:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && node scripts/write-telemetry-config.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.preload.json --noEmit",
     "test": "npm run build:electron && node --test --test-force-exit tests/*.mjs && npm run test:handoff-db",
-    "test:handoff-db": "node scripts/run-electron-node-test.mjs tests/handoff-brief-db.test.mjs tests/agent-usage-db.test.mjs",
+    "test:handoff-db": "node scripts/run-electron-node-test.mjs tests/handoff-brief-db.test.mjs tests/conversation-context-db.test.mjs tests/agent-usage-db.test.mjs",
     "predist": "node scripts/ensure-tokscale-platform.mjs",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && node scripts/ensure-tokscale-platform.mjs --platform darwin --arch arm64 && node scripts/ensure-tokscale-platform.mjs --platform darwin --arch x64 && electron-builder --mac --x64 --arm64",

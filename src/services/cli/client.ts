@@ -33,7 +33,12 @@ import type {
   PreviewHandoffBriefInput,
   PreviewHandoffBriefResult,
   TransferConversationInput,
-  TransferConversationResult
+  TransferConversationResult,
+  CreateConversationShareInput,
+  CreateConversationShareResult,
+  AttachConversationSharesInput,
+  AttachConversationSharesResult,
+  ConversationContextReference
 } from "./types";
 import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 import { addPluginHostCompatibility } from "@/utils/pluginMentions";
@@ -209,6 +214,27 @@ export const cliClient = {
 
   transferConversation(input: TransferConversationInput): Promise<TransferConversationResult> {
     return api().transferConversation(input);
+  },
+  createConversationShare(
+    input: CreateConversationShareInput
+  ): Promise<CreateConversationShareResult> {
+    return api().createConversationShare(input);
+  },
+  attachConversationShares(
+    input: AttachConversationSharesInput
+  ): Promise<AttachConversationSharesResult> {
+    return api().attachConversationShares(input);
+  },
+  listConversationContextReferences(
+    conversationId: string
+  ): Promise<ConversationContextReference[]> {
+    return api().listConversationContextReferences(conversationId);
+  },
+  removeConversationContextReference(input: {
+    targetConversationId: string;
+    referenceId: string;
+  }): Promise<ConversationContextReference[]> {
+    return api().removeConversationContextReference(input);
   },
   renameConversation(
     id: string,

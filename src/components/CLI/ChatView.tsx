@@ -9,7 +9,7 @@ import {
   type DragEvent
 } from "react";
 import { nanoid } from "nanoid";
-import { ArrowLeftRight, ExternalLink, X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
@@ -23,6 +23,7 @@ import type {
   AttachmentPrepareRejection,
   ChatAttachment,
   Conversation,
+  ConversationContextReference,
   ConversationMessage,
   SessionConfigOption
 } from "@/services/cli/types";
@@ -48,11 +49,13 @@ import {
   formatBytes,
   MAX_ATTACHMENTS_PER_MESSAGE
 } from "@/utils/chatAttachments";
+import { assignShareReferencesToMessages } from "@/utils/conversationShareLinks";
 import {
   mergeSelectedAttachments as mergePendingAttachments,
   shouldDiscardCreatedManagedCandidate
 } from "@/utils/mergeSelectedAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { AgentAvatar } from "./AgentAvatar";
 import { CodeWhipOverlay } from "./CodeWhipOverlay";
 import { useReplayStore } from "@/store/replayStore";
 import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
@@ -334,6 +337,68 @@ function WorkflowApprovalCard({
   );
 }
 
+function ContextReferenceCard({
+  label,
+  title,
+  meta,
+  description,
+  sourceAdapter,
+  sourceAgentId,
+  sourceAgentName,
+  sourceAvailable,
+  onOpenSource
+}: {
+  label: string;
+  title: string;
+  meta?: string;
+  description: string;
+  sourceAdapter?: string;
+  sourceAgentId?: string;
+  sourceAgentName?: string;
+  sourceAvailable: boolean;
+  onOpenSource(): void;
+}) {
+  const { t } = useTranslation();
+  const initial =
+    (sourceAgentName?.trim().charAt(0) || sourceAdapter?.trim().charAt(0) || "?").toUpperCase();
+  const openLabel = sourceAvailable
+    ? t("handoff.openSource")
+    : t("handoff.sourceDeleted");
+  return (
+    <article
+      className={`context-reference-card${sourceAvailable ? "" : " is-unavailable"}`}
+      aria-label={label}
+    >
+      <AgentAvatar
+        adapter={sourceAdapter}
+        agentId={sourceAgentId}
+        className="context-reference-card-avatar"
+        fallback={<span aria-hidden="true">{initial}</span>}
+      />
+      <div className="context-reference-card-body">
+        <div className="context-reference-card-head">
+          <span className="context-reference-card-label">{label}</span>
+          <button
+            type="button"
+            className="context-reference-card-open"
+            disabled={!sourceAvailable}
+            title={openLabel}
+            aria-label={openLabel}
+            onClick={onOpenSource}
+          >
+            <ExternalLink size={14} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        </div>
+        <strong className="context-reference-card-title">{title}</strong>
+        {meta ? (
+          <span className="context-reference-card-meta">{meta}</span>
+        ) : null}
+        <span className="context-reference-card-description">{description}</span>
+      </div>
+    </article>
+  );
+}
+
 function HandoffConversationCard({
   conversation,
   contextAvailable,
@@ -346,35 +411,76 @@ function HandoffConversationCard({
   onOpenSource(): void;
 }) {
   const { t } = useTranslation();
+  const metaParts = [
+    `${conversation.sourceAgentName ?? "?"} → ${conversation.agentName}`
+  ];
   return (
-    <section className="handoff-reference-card" aria-label={t("handoff.referenceLabel")}>
-      <div className="handoff-reference-icon" aria-hidden="true">
-        <ArrowLeftRight size={18} />
-      </div>
-      <div className="handoff-reference-copy">
-        <span className="handoff-reference-label">{t("handoff.referenceLabel")}</span>
-        <strong>{conversation.title}</strong>
-        <span className="handoff-reference-route">
-          {conversation.sourceAgentName ?? "?"} → {conversation.agentName}
-        </span>
-        <span className="handoff-reference-description">
-          {t(
-            contextAvailable
-              ? "handoff.referenceDescription"
-              : "handoff.referenceDescriptionUnavailable"
-          )}
-        </span>
-      </div>
-      <button
-        type="button"
-        className="handoff-reference-open"
-        onClick={onOpenSource}
-        disabled={!sourceAvailable}
-      >
-        {sourceAvailable ? t("handoff.openSource") : t("handoff.sourceDeleted")}
-        {sourceAvailable && <ExternalLink size={14} aria-hidden="true" />}
-      </button>
-    </section>
+    <ContextReferenceCard
+      label={t("handoff.referenceLabel")}
+      title={conversation.title}
+      meta={metaParts.join(" · ")}
+      description={t(
+        contextAvailable
+          ? "handoff.referenceDescription"
+          : "handoff.referenceDescriptionUnavailable"
+      )}
+      sourceAdapter={conversation.sourceAdapter}
+      sourceAgentId={conversation.sourceAgentId}
+      sourceAgentName={conversation.sourceAgentName}
+      sourceAvailable={sourceAvailable}
+      onOpenSource={onOpenSource}
+    />
+  );
+}
+
+function SharedConversationReferences({
+  references,
+  conversations
+}: {
+  references: ConversationContextReference[];
+  conversations: Conversation[];
+}) {
+  const { t } = useTranslation();
+  if (references.length === 0) return null;
+  return (
+    <div
+      className="context-reference-tray"
+      aria-label={t("contextShare.referencesLabel")}
+    >
+      {references.map((reference) => {
+        const sourceAvailable = conversations.some(
+          (conversation) => conversation.id === reference.source.conversationId
+        );
+        return (
+          <ContextReferenceCard
+            key={reference.id}
+            label={t("contextShare.referenceTypeShare")}
+            title={reference.source.title}
+            meta={t("contextShare.chipMeta", {
+              agent: reference.source.agentName,
+              count: reference.source.messageCount
+            })}
+            description={t(
+              reference.transcriptAvailable
+                ? reference.transcriptTruncated
+                  ? "contextShare.historyTruncated"
+                  : "contextShare.historyAvailable"
+                : "contextShare.historyUnavailable"
+            )}
+            sourceAdapter={reference.source.adapter}
+            sourceAgentId={reference.source.agentId}
+            sourceAgentName={reference.source.agentName}
+            sourceAvailable={sourceAvailable}
+            onOpenSource={() => {
+              if (!sourceAvailable) return;
+              void useConversationStore
+                .getState()
+                .setActive(reference.source.conversationId);
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -467,6 +573,9 @@ export function ChatView({
   const newTaskConfigProbeGenerationRef = useRef(0);
   const [permissionMode, setPermissionMode] = useState<"auto" | "ask">("auto");
   const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
+  const [contextReferences, setContextReferences] = useState<
+    ConversationContextReference[]
+  >([]);
   const [submitPreview, setSubmitPreview] = useState<{
     conversationId: string;
     prompt: string;
@@ -496,6 +605,26 @@ export function ChatView({
   const isNearBottomRef = useRef(true);
   const [slashIndex, setSlashIndex] = useState(0);
   const conv = conversations.find((c) => c.id === activeId);
+  useEffect(() => {
+    let active = true;
+    if (!activeId) {
+      setContextReferences([]);
+      return () => {
+        active = false;
+      };
+    }
+    void cliClient
+      .listConversationContextReferences(activeId)
+      .then((references) => {
+        if (active) setContextReferences(references);
+      })
+      .catch(() => {
+        if (active) setContextReferences([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeId]);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowFollowupAgent =
     activeRun && activeRun.conversationId === conv?.id
@@ -659,6 +788,10 @@ export function ChatView({
     if (!replayFrame) return [];
     return messages.slice(0, replayFrame.messageIndex + 1);
   }, [replaying, replayFrame, messages, previewMessages]);
+  const shareReferencesByMessageId = useMemo(
+    () => assignShareReferencesToMessages(displayMessages, contextReferences),
+    [displayMessages, contextReferences]
+  );
   const replayPartial = useMemo<{
     messageId: string;
     blockLimit?: number;
@@ -1235,6 +1368,11 @@ export function ChatView({
           approvalMode: permissionMode,
           skillIds: newTaskSkillIds
         });
+        const attached = await cliClient.attachConversationShares({
+          targetConversationId: newConv.id,
+          text: prompt
+        });
+        setContextReferences(attached.references);
         setNewTaskDraft("");
         setNewTaskPendingAttachments((prev) =>
           detachAttachmentsForSend(attachmentsToSend, prev)
@@ -1299,6 +1437,11 @@ export function ChatView({
         configOptionOverrides: newTaskConfigOptionOverrides,
         skillIds: newTaskSkillIds
       });
+      const attached = await cliClient.attachConversationShares({
+        targetConversationId: newConv.id,
+        text: prompt
+      });
+      setContextReferences(attached.references);
       setNewTaskDraft("");
       setNewTaskPendingAttachments((prev) =>
         detachAttachmentsForSend(attachmentsToSend, prev)
@@ -1444,6 +1587,15 @@ export function ChatView({
           restoreAttachmentsForSend(attachmentsToSend, prev)
         );
         return;
+      }
+
+      const attached = await cliClient.attachConversationShares({
+        targetConversationId: conv.id,
+        text: prompt
+      });
+      setContextReferences(attached.references);
+      if (attached.attachedCount > 0) {
+        notify(t("contextShare.linkAttached"));
       }
 
       await sendMessage({
@@ -1635,6 +1787,7 @@ export function ChatView({
           const messageMember =
             (m.agentId ? membersById.get(m.agentId) : undefined) ??
             (m.agentName ? membersByName.get(m.agentName) : undefined);
+          const shareReferences = shareReferencesByMessageId.get(m.id);
           return (
             <MessageBubble
               key={m.id}
@@ -1644,6 +1797,14 @@ export function ChatView({
               agentIconKey={messageMember?.avatar}
               blockLimit={partial?.blockLimit}
               typingChars={partial?.typingChars}
+              afterContent={
+                shareReferences && shareReferences.length > 0 ? (
+                  <SharedConversationReferences
+                    references={shareReferences}
+                    conversations={conversations}
+                  />
+                ) : undefined
+              }
             />
           );
         })}

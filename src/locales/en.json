@@ -357,6 +357,7 @@
     "clearSearchAria": "Clear search",
     "noResults": "No matching conversations.",
     "unread": "Unread conversation",
+    "projectRunning": "A task is running in this project",
     "group": {
       "today": "Today",
       "yesterday": "Yesterday",
@@ -364,6 +365,18 @@
       "last30Days": "Last 30 days",
       "earlier": "Earlier"
     }
+  },
+  "conversationContext": {
+    "action": "Share or hand off this conversation",
+    "actionShort": "Share",
+    "stopBeforeAction": "Stop the current run before sharing or handing off this conversation",
+    "dialogTitle": "Share or hand off",
+    "dialogSubtitle": "Continue “{{title}}” from {{agentName}} with a reusable link or another agent",
+    "shareOptionTitle": "Copy a share link",
+    "shareOptionDescription": "Create a reusable reference you can paste into any conversation",
+    "transferOptionTitle": "Hand off to an agent",
+    "transferOptionDescription": "Start a new conversation and let another agent continue immediately",
+    "back": "Back"
   },
   "handoff": {
     "transferAction": "Transfer to another agent",
@@ -397,6 +410,32 @@
     "transferFailed": "Transfer failed",
     "briefExtractionFailed": "Transfer completed but no context was carried over. Tell the new agent manually.",
     "autoStartFailed": "The new conversation was created, but automatic startup failed: {{error}}"
+  },
+  "contextShare": {
+    "shareAction": "Share this conversation",
+    "stopBeforeShare": "Stop the current run before sharing this conversation",
+    "share": "Share",
+    "dialogTitle": "Share conversation",
+    "dialogSubtitle": "Create a reusable reference to “{{title}}”",
+    "localOnlyDescription": "This link works only in this FreeBuddy installation. It contains an opaque token, not the conversation content.",
+    "createDescription": "FreeBuddy will create an immutable, sanitized snapshot with a brief and searchable message history.",
+    "createLink": "Create link",
+    "creating": "Creating…",
+    "linkLabel": "Conversation share link",
+    "copy": "Copy",
+    "copied": "Copied",
+    "snapshotMeta": "{{count}} source messages · history {{state}}",
+    "complete": "captured",
+    "truncated": "partially captured",
+    "referencesLabel": "Referenced conversations",
+    "referenceTypeShare": "Shared reference",
+    "referenceTypeTransfer": "Transferred context",
+    "chipMeta": "{{agent}} · {{count}} messages",
+    "historyAvailable": "Brief and searchable history are available to this agent",
+    "historyTruncated": "Brief is available; searchable history was partially captured",
+    "historyUnavailable": "Only the conversation brief is available",
+    "linkAttached": "Conversation reference attached",
+    "removeReference": "Remove reference"
   },
   "chat": {
     "inputPlaceholder": "Type freely",
@@ -462,6 +501,7 @@
     "dropAttachmentsHint": "Drop to add attachments",
     "newTaskAria": "New task",
     "commonTasksAria": "Common tasks",
+    "titlebarMore": "More actions",
     "replay": {
       "title": "Conversation replay",
       "entry": "Replay",

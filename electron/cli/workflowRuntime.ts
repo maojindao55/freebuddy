@@ -3,6 +3,11 @@ import type { WebContents } from "electron";
 
 import type { CliEvent, CliPromptAttachment, CliRunArgs } from "./runtimeShared.js";
 import { cliRun, cliKill } from "./runtime.js";
+import {
+  conversationContextPromptPrefix,
+  listResolvedConversationContextPayloads
+} from "./conversationContext.js";
+import { applyAgentLanguagePreference } from "./agentLanguage.js";
 import { getToolSession } from "./store.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { getLanguage } from "./settings.js";
@@ -1188,6 +1193,17 @@ export function createCliStepExecutor(
         skills: resolveSkillSnapshots(args.skillIds ?? []),
         announceSkills: !args.resumeToolSession || !args.toolSessionId
       };
+      const contextReferences = args.conversationId
+        ? listResolvedConversationContextPayloads(args.conversationId)
+        : [];
+      if (contextReferences.length > 0) {
+        runArgs.prompt = applyAgentLanguagePreference(
+          `${conversationContextPromptPrefix(contextReferences)}` +
+            runArgs.prompt,
+          getLanguage()
+        );
+        runArgs.contextReferences = contextReferences;
+      }
       await cliRun(webContents, runArgs, args.onEvent);
     }
   };

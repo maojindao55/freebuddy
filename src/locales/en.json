@@ -357,6 +357,7 @@
     "clearSearchAria": "Clear search",
     "noResults": "No matching conversations.",
     "unread": "Unread conversation",
+    "projectRunning": "A task is running in this project",
     "group": {
       "today": "Today",
       "yesterday": "Yesterday",

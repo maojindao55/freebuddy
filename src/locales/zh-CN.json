@@ -357,6 +357,7 @@
     "clearSearchAria": "清除搜索",
     "noResults": "没有匹配的会话。",
     "unread": "未读会话",
+    "projectRunning": "项目内有任务正在运行",
     "group": {
       "today": "今天",
       "yesterday": "昨天",

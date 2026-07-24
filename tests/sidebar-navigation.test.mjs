@@ -81,13 +81,18 @@ test("sidebar search opens a command palette instead of an inline list filter", 
   assert.match(conversations, /conv-project-action-btn/);
   assert.match(conversations, /newInProject/);
   assert.match(conversations, /conv-project-menu/);
+  assert.match(conversations, /showRunningIndicator/);
+  assert.match(conversations, /conv-project-running-slot/);
   assert.doesNotMatch(conversations, /conv-list-search-toggle/);
   assert.match(css, /\.command-palette\s*\{/);
   assert.match(css, /\.conv-project-toggle\s*\{/);
   assert.match(css, /\.conv-project-trailing\s*\{/);
+  assert.match(css, /\.conv-project-running\s*\{/);
   assert.ok(en.commandPalette?.title);
   assert.ok(zh.commandPalette?.title);
   assert.equal(zh.conversations.projects, "项目");
   assert.equal(zh.conversations.recent, "最近");
   assert.equal(zh.conversations.newInProject, "新建任务");
+  assert.equal(zh.conversations.projectRunning, "项目内有任务正在运行");
+  assert.equal(en.conversations.projectRunning, "A task is running in this project");
 });

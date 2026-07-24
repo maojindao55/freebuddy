@@ -9510,7 +9510,8 @@ button {
   transition: width 0.12s ease;
 }
 
-.conv-project-row.pinned:not(:hover):not(.menu-open) .conv-project-trailing {
+.conv-project-row.pinned:not(:hover):not(.menu-open) .conv-project-trailing,
+.conv-project-row.running:not(:hover):not(.menu-open) .conv-project-trailing {
   width: 22px;
   overflow: visible;
 }
@@ -9521,7 +9522,8 @@ button {
   overflow: visible;
 }
 
-.conv-project-pin-slot {
+.conv-project-pin-slot,
+.conv-project-running-slot {
   position: absolute;
   inset: 0;
   display: flex;
@@ -9537,6 +9539,11 @@ button {
   flex: 0 0 auto;
 }
 
+.conv-project-running {
+  flex: 0 0 auto;
+  animation: spin 0.9s linear infinite;
+}
+
 .conv-project-actions {
   position: relative;
   z-index: 1;
@@ -9550,7 +9557,9 @@ button {
 }
 
 .conv-project-row:hover .conv-project-pin-slot,
-.conv-project-row.menu-open .conv-project-pin-slot {
+.conv-project-row.menu-open .conv-project-pin-slot,
+.conv-project-row:hover .conv-project-running-slot,
+.conv-project-row.menu-open .conv-project-running-slot {
   opacity: 0;
 }
 
@@ -9860,7 +9869,8 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .conv-item-running svg {
+  .conv-item-running svg,
+  .conv-project-running {
     animation: none;
   }
 }

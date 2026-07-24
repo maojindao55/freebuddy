@@ -399,12 +399,14 @@ export function ConversationList({
               const hasRunning = project.items.some(
                 (c) => runningSet.has(c.id) || workflowRunningSet.has(c.id)
               );
+              const hasUnread = project.items.some((c) => Boolean(unreadConversations[c.id]));
               const showRunningIndicator = !expanded && hasRunning;
+              const showUnreadIndicator = !expanded && !hasRunning && hasUnread;
 
               return (
                 <Fragment key={project.key}>
                   <li
-                    className={`conv-project-row${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}${pinned ? " pinned" : ""}${showRunningIndicator ? " running" : ""}`}
+                    className={`conv-project-row${selected ? " selected" : ""}${menuOpen ? " menu-open" : ""}${pinned ? " pinned" : ""}${showRunningIndicator ? " running" : ""}${showUnreadIndicator ? " unread" : ""}`}
                   >
                     <div className="conv-project-row-inner">
                       <button
@@ -444,6 +446,15 @@ export function ConversationList({
                               size={14}
                               strokeWidth={1.75}
                             />
+                          </span>
+                        ) : showUnreadIndicator ? (
+                          <span
+                            className="conv-project-unread-slot"
+                            role="status"
+                            aria-label={t("conversations.unread")}
+                            title={t("conversations.unread")}
+                          >
+                            <span className="conv-unread-dot" aria-hidden="true" />
                           </span>
                         ) : (
                           pinned && (

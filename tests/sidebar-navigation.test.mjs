@@ -82,12 +82,15 @@ test("sidebar search opens a command palette instead of an inline list filter", 
   assert.match(conversations, /newInProject/);
   assert.match(conversations, /conv-project-menu/);
   assert.match(conversations, /showRunningIndicator/);
+  assert.match(conversations, /showUnreadIndicator/);
   assert.match(conversations, /conv-project-running-slot/);
+  assert.match(conversations, /conv-project-unread-slot/);
   assert.doesNotMatch(conversations, /conv-list-search-toggle/);
   assert.match(css, /\.command-palette\s*\{/);
   assert.match(css, /\.conv-project-toggle\s*\{/);
   assert.match(css, /\.conv-project-trailing\s*\{/);
   assert.match(css, /\.conv-project-running\s*\{/);
+  assert.match(css, /\.conv-project-unread-slot\s*\{/);
   assert.ok(en.commandPalette?.title);
   assert.ok(zh.commandPalette?.title);
   assert.equal(zh.conversations.projects, "项目");

@@ -9511,7 +9511,8 @@ button {
 }
 
 .conv-project-row.pinned:not(:hover):not(.menu-open) .conv-project-trailing,
-.conv-project-row.running:not(:hover):not(.menu-open) .conv-project-trailing {
+.conv-project-row.running:not(:hover):not(.menu-open) .conv-project-trailing,
+.conv-project-row.unread:not(:hover):not(.menu-open) .conv-project-trailing {
   width: 22px;
   overflow: visible;
 }
@@ -9523,7 +9524,8 @@ button {
 }
 
 .conv-project-pin-slot,
-.conv-project-running-slot {
+.conv-project-running-slot,
+.conv-project-unread-slot {
   position: absolute;
   inset: 0;
   display: flex;
@@ -9544,6 +9546,12 @@ button {
   animation: spin 0.9s linear infinite;
 }
 
+.conv-project-unread-slot .conv-unread-dot {
+  position: static;
+  inset: auto;
+  margin: 0 4px 0 0;
+}
+
 .conv-project-actions {
   position: relative;
   z-index: 1;
@@ -9559,7 +9567,9 @@ button {
 .conv-project-row:hover .conv-project-pin-slot,
 .conv-project-row.menu-open .conv-project-pin-slot,
 .conv-project-row:hover .conv-project-running-slot,
-.conv-project-row.menu-open .conv-project-running-slot {
+.conv-project-row.menu-open .conv-project-running-slot,
+.conv-project-row:hover .conv-project-unread-slot,
+.conv-project-row.menu-open .conv-project-unread-slot {
   opacity: 0;
 }
 

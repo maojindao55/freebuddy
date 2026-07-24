@@ -3,8 +3,10 @@ import crypto from "node:crypto";
 import type { Database as DB } from "better-sqlite3";
 import { nanoid } from "nanoid";
 
+import { applyAgentLanguagePreference } from "./agentLanguage.js";
 import { getDb } from "./db.js";
 import { getHandoffBriefByTarget } from "./handoffBriefs.js";
+import { getLanguage } from "./settings.js";
 import type {
   AttachConversationSharesResult,
   ConversationContextPayload,
@@ -272,16 +274,73 @@ export function listResolvedConversationContextPayloads(
 }
 
 export function conversationContextPromptPrefix(
-  references: ConversationContextPayload[]
+  references: ConversationContextPayload[],
+  language?: string | null
 ): string {
   if (references.length === 0) return "";
-  return (
-    "One or more FreeBuddy conversation references are attached. " +
-    "Use `freebuddy-context.read_context_brief` and the context read/search tools " +
-    "to load relevant details before answering. Use " +
-    "`freebuddy-context.list_context_sources` when you need to select among " +
-    "multiple references.\n\n"
+  const resolved = language ?? getLanguage();
+  const body =
+    resolved === "zh-CN"
+      ? "当前会话附带了一个或多个 FreeBuddy 对话引用。" +
+        "请先使用 `freebuddy-context.read_context_brief` 以及上下文读取/搜索工具" +
+        "加载相关细节后再回答。需要在多个引用中选择时，使用 " +
+        "`freebuddy-context.list_context_sources`。\n\n"
+      : "One or more FreeBuddy conversation references are attached. " +
+        "Use `freebuddy-context.read_context_brief` and the context read/search tools " +
+        "to load relevant details before answering. Use " +
+        "`freebuddy-context.list_context_sources` when you need to select among " +
+        "multiple references.\n\n";
+  return body;
+}
+
+function hasUsefulHandoffContext(brief: HandoffBrief): boolean {
+  return Boolean(
+    brief.originalGoal ||
+      brief.recentUserMessages.length ||
+      brief.lastAssistantSummary ||
+      brief.fileChanges.length ||
+      brief.transcriptExcerpts.length
   );
+}
+
+/** Seed prompt for a transferred conversation, localized to the app language. */
+export function buildTransferSeedPrompt(
+  source: { agentName: string; adapter: string },
+  brief: HandoffBrief | null,
+  language?: string | null
+): string {
+  const resolved = language ?? getLanguage();
+  const hasContext = Boolean(brief && hasUsefulHandoffContext(brief));
+  let body: string;
+  if (!hasContext) {
+    body =
+      resolved === "zh-CN"
+        ? `正在继续从 ${source.agentName}（${source.adapter}）转接过来的任务。` +
+          `暂无可用的先前上下文。请询问用户希望优先处理什么。`
+        : `Continuing a task transferred from ${source.agentName} (${source.adapter}). ` +
+          `No prior context is available. Ask the user what they'd like to focus on.`;
+  } else if (resolved === "zh-CN") {
+    body =
+      `正在继续从 ${source.agentName}（${source.adapter}）转接过来的任务。\n` +
+      `请立即调用 \`freebuddy-context.read_context_brief\` 加载交接内容（原始目标、近期消息、文件变更）。` +
+      `若摘要不够，再用 \`freebuddy-context.search_context_history\` 和 ` +
+      `\`freebuddy-context.read_context_messages\` 查看脱敏后的源历史，然后询问我希望优先关注什么。`;
+  } else {
+    body =
+      `Continuing a task transferred from ${source.agentName} (${source.adapter}).\n` +
+      `Call the \`freebuddy-context.read_context_brief\` tool now to load the ` +
+      `handoff (original goal, recent messages, file changes). If the summary ` +
+      `is not enough, use \`freebuddy-context.search_context_history\` and ` +
+      `\`freebuddy-context.read_context_messages\` to inspect the sanitized ` +
+      `source history, then ask me ` +
+      `what you'd like to focus on first.`;
+  }
+  // When a useful brief exists, cli:run also prepends context + language.
+  // Apply language here only for the no-context path so the agent still matches locale.
+  if (!hasContext) {
+    return applyAgentLanguagePreference(body, resolved);
+  }
+  return body;
 }
 
 export function listConversationContextReferences(

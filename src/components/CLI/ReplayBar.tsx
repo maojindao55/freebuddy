@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RotateCcw, Square } from "lucide-react";
+import { MoreHorizontal, RotateCcw, Square } from "lucide-react";
 
 import type { ConversationMessage } from "@/services/cli/types";
 import { pendingManualGatePhaseId } from "@/services/workflows/planning";
@@ -237,11 +237,18 @@ function buildReplayFrames(
   return frames;
 }
 
-export function ReplayButton() {
+export function TitlebarOverflowMenu() {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
-  const messages = useConversationStore((s) => activeId ? s.messages[activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES);
-  const running = useConversationStore((s) => activeId ? s.live[activeId]?.status === "running" || s.live[activeId]?.status === "starting" : false);
+  const messages = useConversationStore((s) =>
+    activeId ? s.messages[activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+  );
+  const running = useConversationStore((s) =>
+    activeId
+      ? s.live[activeId]?.status === "running" ||
+        s.live[activeId]?.status === "starting"
+      : false
+  );
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowSteps = useWorkflowStore((s) => s.steps);
   const replayConvId = useReplayStore((s) => s.conversationId);
@@ -251,6 +258,8 @@ export function ReplayButton() {
   const start = useReplayStore((s) => s.start);
   const stop = useReplayStore((s) => s.stop);
   const next = useReplayStore((s) => s.next);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const replaying = replayConvId === activeId && replayConvId !== null;
   const workflowBlocksReplay =
@@ -273,11 +282,28 @@ export function ReplayButton() {
     return () => window.clearInterval(id);
   }, [replaying, playing, next, frames, index]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   if (!activeId) return null;
 
-  const handleClick = () => {
+  const handleReplay = () => {
     if (replaying) {
       stop();
+      setOpen(false);
       return;
     }
     if (!canReplay || !activeId) return;
@@ -288,33 +314,60 @@ export function ReplayButton() {
     });
     start(activeId, nextFrames);
     next();
+    setOpen(false);
   };
 
-  const label = replaying ? t("chat.replay.exitShort") : t("chat.replay.entry");
-  const Icon = replaying ? Square : RotateCcw;
-  let buttonTitle = t("chat.replay.entry");
+  const replayLabel = replaying ? t("chat.replay.exitShort") : t("chat.replay.entry");
+  const ReplayIcon = replaying ? Square : RotateCcw;
+  let replayTitle = t("chat.replay.entry");
   if (replaying) {
-    buttonTitle = t("chat.replay.exit");
+    replayTitle = t("chat.replay.exit");
   } else if (running) {
-    buttonTitle = t("chat.replay.disabledRunning");
+    replayTitle = t("chat.replay.disabledRunning");
   } else if (workflowBlocksReplay) {
-    buttonTitle = t("chat.replay.disabledWorkflowActive");
+    replayTitle = t("chat.replay.disabledWorkflowActive");
   } else if (messages.length < 2) {
-    buttonTitle = t("chat.replay.disabledEmpty");
+    replayTitle = t("chat.replay.disabledEmpty");
   }
 
   return (
-    <button
-      type="button"
-      className={`title-replay-btn${replaying ? " replaying" : ""}`}
-      onClick={handleClick}
-      disabled={!replaying && !canReplay}
-      aria-pressed={replaying}
-      aria-label={replaying ? t("chat.replay.exit") : t("chat.replay.entry")}
-      title={buttonTitle}
+    <div
+      className={`titlebar-overflow${open ? " open" : ""}${replaying ? " replaying" : ""}`}
+      ref={rootRef}
     >
-      <Icon aria-hidden="true" strokeWidth={1.8} />
-      <span className="title-replay-label">{label}</span>
-    </button>
+      <button
+        type="button"
+        className="titlebar-overflow-trigger"
+        aria-label={t("chat.titlebarMore")}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={t("chat.titlebarMore")}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <MoreHorizontal aria-hidden="true" size={16} strokeWidth={1.8} />
+      </button>
+      {open && (
+        <div className="titlebar-overflow-menu" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            className={`titlebar-overflow-item${replaying ? " replaying" : ""}`}
+            disabled={!replaying && !canReplay}
+            aria-pressed={replaying}
+            aria-label={replaying ? t("chat.replay.exit") : t("chat.replay.entry")}
+            title={replayTitle}
+            onClick={handleReplay}
+          >
+            <ReplayIcon aria-hidden="true" size={14} strokeWidth={1.8} />
+            <span>{replayLabel}</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
+}
+
+/** @deprecated Prefer TitlebarOverflowMenu. */
+export function ReplayButton() {
+  return <TitlebarOverflowMenu />;
 }

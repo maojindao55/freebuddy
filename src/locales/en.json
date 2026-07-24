@@ -365,6 +365,18 @@
       "earlier": "Earlier"
     }
   },
+  "conversationContext": {
+    "action": "Share or hand off this conversation",
+    "actionShort": "Share",
+    "stopBeforeAction": "Stop the current run before sharing or handing off this conversation",
+    "dialogTitle": "Share or hand off",
+    "dialogSubtitle": "Continue “{{title}}” from {{agentName}} with a reusable link or another agent",
+    "shareOptionTitle": "Copy a share link",
+    "shareOptionDescription": "Create a reusable reference you can paste into any conversation",
+    "transferOptionTitle": "Hand off to an agent",
+    "transferOptionDescription": "Start a new conversation and let another agent continue immediately",
+    "back": "Back"
+  },
   "handoff": {
     "transferAction": "Transfer to another agent",
     "stopBeforeTransfer": "Stop the current run before transferring this conversation",
@@ -417,7 +429,9 @@
     "referencesLabel": "Referenced conversations",
     "referenceTypeShare": "Shared reference",
     "referenceTypeTransfer": "Transferred context",
+    "chipMeta": "{{agent}} · {{count}} messages",
     "historyAvailable": "Brief and searchable history are available to this agent",
+    "historyTruncated": "Brief is available; searchable history was partially captured",
     "historyUnavailable": "Only the conversation brief is available",
     "linkAttached": "Conversation reference attached",
     "removeReference": "Remove reference"
@@ -486,6 +500,7 @@
     "dropAttachmentsHint": "Drop to add attachments",
     "newTaskAria": "New task",
     "commonTasksAria": "Common tasks",
+    "titlebarMore": "More actions",
     "replay": {
       "title": "Conversation replay",
       "entry": "Replay",

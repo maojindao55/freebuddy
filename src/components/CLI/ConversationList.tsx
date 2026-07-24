@@ -413,15 +413,15 @@ export function ConversationList({
                           <FolderOpen
                             className="conv-project-folder"
                             aria-hidden="true"
-                            size={15}
-                            strokeWidth={1.8}
+                            size={18}
+                            strokeWidth={1.9}
                           />
                         ) : (
                           <Folder
                             className="conv-project-folder"
                             aria-hidden="true"
-                            size={15}
-                            strokeWidth={1.8}
+                            size={18}
+                            strokeWidth={1.9}
                           />
                         )}
                         <span className="conv-project-name">{project.label}</span>

@@ -13,7 +13,7 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { useTranslation } from "react-i18next";
 
@@ -24,6 +24,7 @@ import { appendItems } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { splitAutolinkSegments } from "@/utils/autolink";
 import { formatBytes, attachmentPreviewUrl } from "@/utils/chatAttachments";
+import { stripConversationShareLinks } from "@/utils/conversationShareLinks";
 import { splitWorkspaceFileMentions } from "@/utils/workspaceFileMentions";
 import { pluginDisplayName, splitPluginMentions } from "@/utils/pluginMentions";
 import { sanitizeStreamItems } from "@/utils/streamMedia";
@@ -756,7 +757,8 @@ export const MessageBubble = memo(function MessageBubble({
   agentName,
   agentIconKey,
   blockLimit,
-  typingChars
+  typingChars,
+  afterContent
 }: {
   message: ConversationMessage;
   adapter?: string;
@@ -764,6 +766,7 @@ export const MessageBubble = memo(function MessageBubble({
   agentIconKey?: string;
   blockLimit?: number;
   typingChars?: number;
+  afterContent?: ReactNode;
 }) {
   const { t } = useTranslation();
   const items = useMemo<CliStreamItem[]>(() => {
@@ -981,7 +984,8 @@ export const MessageBubble = memo(function MessageBubble({
   if (message.role === "user") {
     const { images: imageAttachments, others: otherAttachments } =
       partitionAttachments(message.attachments);
-    const hasText = message.content.trim().length > 0;
+    const displayContent = stripConversationShareLinks(message.content);
+    const hasText = displayContent.length > 0;
     const hasOthers = otherAttachments.length > 0;
     const showBubble = hasText || hasOthers;
 
@@ -993,10 +997,11 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
           {showBubble && (
             <div className="msg-bubble">
-              {hasText && <UserMessageText content={message.content} />}
+              {hasText && <UserMessageText content={displayContent} />}
               <MessageAttachments attachments={otherAttachments} />
             </div>
           )}
+          {afterContent}
           {imageAttachments.length > 0 && (
             <MessageImageAttachments attachments={imageAttachments} />
           )}

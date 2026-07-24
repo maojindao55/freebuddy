@@ -18,7 +18,10 @@ import { register } from "node:module";
 const electronStubUrl =
   "data:text/javascript," +
   encodeURIComponent(
-    `export const app = { getPath: () => "/tmp/freebuddy-test" };`
+    `export const app = {
+       getPath: () => "/tmp/freebuddy-test",
+       getLocale: () => "en-US"
+     };`
   );
 
 const hookModuleUrl =

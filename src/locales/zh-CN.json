@@ -365,6 +365,18 @@
       "earlier": "更早"
     }
   },
+  "conversationContext": {
+    "action": "分享或转接当前会话",
+    "actionShort": "分享",
+    "stopBeforeAction": "请先停止当前运行，再分享或转接会话",
+    "dialogTitle": "分享或转接",
+    "dialogSubtitle": "将「{{title}}」从 {{agentName}} 继续：复制链接或交给其他 agent",
+    "shareOptionTitle": "复制分享链接",
+    "shareOptionDescription": "生成可复用引用，可贴到任意会话",
+    "transferOptionTitle": "交给其他 Agent 接管",
+    "transferOptionDescription": "新建会话并立即由选定 agent 继续",
+    "back": "返回"
+  },
   "handoff": {
     "transferAction": "转接到其他 agent",
     "stopBeforeTransfer": "请先停止当前运行，再转接会话",
@@ -416,7 +428,9 @@
     "referencesLabel": "引用的会话",
     "referenceTypeShare": "分享引用",
     "referenceTypeTransfer": "转接上下文",
+    "chipMeta": "{{agent}} · {{count}} 条",
     "historyAvailable": "当前 agent 可读取 Brief 和可搜索历史",
+    "historyTruncated": "已提供 Brief；可搜索历史为部分截断",
     "historyUnavailable": "当前仅提供会话 Brief",
     "linkAttached": "已挂载会话引用",
     "removeReference": "移除引用"
@@ -485,6 +499,7 @@
     "dropAttachmentsHint": "释放以添加附件",
     "newTaskAria": "新建任务",
     "commonTasksAria": "常用任务",
+    "titlebarMore": "更多操作",
     "replay": {
       "title": "对话回放",
       "entry": "回放",

@@ -1,14 +1,13 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { ArrowLeftRight, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Sun } from "lucide-react";
+import { Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
-import { ReplayButton } from "./components/CLI/ReplayBar";
+import { TitlebarOverflowMenu } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
-import { TransferDialog } from "./components/CLI/TransferDialog";
-import { ShareConversationDialog } from "./components/CLI/ShareConversationDialog";
+import { ConversationContextDialog } from "./components/CLI/ConversationContextDialog";
 import {
   SidebarNavigation,
   type WorkspaceView
@@ -82,8 +81,7 @@ function App() {
   const [chromeVisible, setChromeVisible] = useState(true);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [transferSourceId, setTransferSourceId] = useState<string>();
-  const [shareSourceId, setShareSourceId] = useState<string>();
+  const [contextSourceId, setContextSourceId] = useState<string>();
   const [teamPageRequest, setTeamPageRequest] = useState<{
     key: number;
     teamId?: string;
@@ -242,8 +240,7 @@ function App() {
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
-  const transferSource = conversations.find((c) => c.id === transferSourceId);
-  const shareSource = conversations.find((c) => c.id === shareSourceId);
+  const contextSource = conversations.find((c) => c.id === contextSourceId);
   const activeConversationRunning = useConversationStore((s) => {
     if (!activeId) return false;
     const status = s.live[activeId]?.status;
@@ -479,46 +476,24 @@ function App() {
               {activeConversationHasContent && (
                 <button
                   type="button"
-                  className="titlebar-transfer-button"
+                  className="titlebar-icon-button"
                   disabled={transferDisabled}
                   title={t(
                     transferDisabled
-                      ? "contextShare.stopBeforeShare"
-                      : "contextShare.shareAction"
+                      ? "conversationContext.stopBeforeAction"
+                      : "conversationContext.action"
                   )}
                   aria-label={t(
                     transferDisabled
-                      ? "contextShare.stopBeforeShare"
-                      : "contextShare.shareAction"
+                      ? "conversationContext.stopBeforeAction"
+                      : "conversationContext.action"
                   )}
-                  onClick={() => setShareSourceId(activeConversation.id)}
+                  onClick={() => setContextSourceId(activeConversation.id)}
                 >
                   <Share2 size={14} aria-hidden="true" />
-                  <span>{t("contextShare.share")}</span>
                 </button>
               )}
-              {activeConversationHasContent && (
-                <button
-                  type="button"
-                  className="titlebar-transfer-button"
-                  disabled={transferDisabled}
-                  title={t(
-                    transferDisabled
-                      ? "handoff.stopBeforeTransfer"
-                      : "handoff.transferAction"
-                  )}
-                  aria-label={t(
-                    transferDisabled
-                      ? "handoff.stopBeforeTransfer"
-                      : "handoff.transferAction"
-                  )}
-                  onClick={() => setTransferSourceId(activeConversation.id)}
-                >
-                  <ArrowLeftRight size={14} aria-hidden="true" />
-                  <span>{t("handoff.transfer")}</span>
-                </button>
-              )}
-              <ReplayButton />
+              <TitlebarOverflowMenu />
               {detailCollapsed && (
                 <button
                   type="button"
@@ -597,17 +572,11 @@ function App() {
           setWorkspaceView("chat");
         }}
       />
-      {transferSource && (
-        <TransferDialog
-          source={transferSource}
+      {contextSource && (
+        <ConversationContextDialog
+          source={contextSource}
           members={members}
-          onClose={() => setTransferSourceId(undefined)}
-        />
-      )}
-      {shareSource && (
-        <ShareConversationDialog
-          source={shareSource}
-          onClose={() => setShareSourceId(undefined)}
+          onClose={() => setContextSourceId(undefined)}
         />
       )}
       <AgentBridgeListener />

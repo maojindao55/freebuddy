@@ -153,6 +153,7 @@ import {
 } from "../shared/handoffTranscript.js";
 import {
   attachConversationSharesFromText,
+  buildTransferSeedPrompt,
   createConversationShareToken,
   deleteUnreferencedConversationContextSnapshots,
   insertConversationContextReference,
@@ -162,6 +163,7 @@ import {
   conversationContextPromptPrefix,
   removeConversationContextReference
 } from "./conversationContext.js";
+import { applyAgentLanguagePreference } from "./agentLanguage.js";
 import {
   connectCursorUsage,
   disconnectCursorUsage,
@@ -574,9 +576,11 @@ export function registerCliIpc() {
     if (contextReferences.length > 0) {
       runArgs = {
         ...rendererArgs,
-        prompt:
+        prompt: applyAgentLanguagePreference(
           `${conversationContextPromptPrefix(contextReferences)}` +
-          rendererArgs.prompt,
+            rendererArgs.prompt,
+          getLanguage()
+        ),
         contextReferences
       };
     }
@@ -844,7 +848,7 @@ export function registerCliIpc() {
       return {
         conversation: txResult.conversation,
         briefId,
-        seedPrompt: buildSeedPrompt(source, brief),
+        seedPrompt: buildTransferSeedPrompt(source, brief),
         warning: brief ? undefined : "brief_extraction_failed"
       };
     }
@@ -1049,31 +1053,4 @@ export function registerCliIpc() {
 
   registerWorkflowIpc();
   registerScheduledTaskIpc();
-}
-
-function buildSeedPrompt(
-  source: { agentName: string; adapter: string },
-  brief: HandoffBrief | null
-): string {
-  if (!brief || !hasUsefulHandoffContext(brief)) {
-    return `Continuing a task transferred from ${source.agentName} (${source.adapter}). ` +
-      `No prior context is available. Ask the user what they'd like to focus on.`;
-  }
-  return `Continuing a task transferred from ${source.agentName} (${source.adapter}).\n` +
-    `Call the \`freebuddy-context.read_context_brief\` tool now to load the ` +
-    `handoff (original goal, recent messages, file changes). If the summary ` +
-    `is not enough, use \`freebuddy-context.search_context_history\` and ` +
-    `\`freebuddy-context.read_context_messages\` to inspect the sanitized ` +
-    `source history, then ask me ` +
-    `what you'd like to focus on first.`;
-}
-
-function hasUsefulHandoffContext(brief: HandoffBrief): boolean {
-  return Boolean(
-    brief.originalGoal ||
-    brief.recentUserMessages.length ||
-    brief.lastAssistantSummary ||
-    brief.fileChanges.length ||
-    brief.transcriptExcerpts.length
-  );
 }

@@ -7,6 +7,7 @@ import {
   conversationContextPromptPrefix,
   listResolvedConversationContextPayloads
 } from "./conversationContext.js";
+import { applyAgentLanguagePreference } from "./agentLanguage.js";
 import { getToolSession } from "./store.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { getLanguage } from "./settings.js";
@@ -1196,9 +1197,11 @@ export function createCliStepExecutor(
         ? listResolvedConversationContextPayloads(args.conversationId)
         : [];
       if (contextReferences.length > 0) {
-        runArgs.prompt =
+        runArgs.prompt = applyAgentLanguagePreference(
           `${conversationContextPromptPrefix(contextReferences)}` +
-          runArgs.prompt;
+            runArgs.prompt,
+          getLanguage()
+        );
         runArgs.contextReferences = contextReferences;
       }
       await cliRun(webContents, runArgs, args.onEvent);

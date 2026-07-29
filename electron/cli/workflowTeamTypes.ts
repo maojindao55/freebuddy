@@ -120,6 +120,7 @@ export interface WorkflowTeamPreview {
   teamName: string;
   goal: string;
   cwd?: string;
+  skillIds?: string[];
   roleSummary: Array<{
     roleId: string;
     roleLabel: string;

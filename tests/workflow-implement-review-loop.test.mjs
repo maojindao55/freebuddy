@@ -7,7 +7,8 @@ const {
   applyWorkflowLanguagePreference,
   decideImplementReviewLoop,
   reviewerHasFail,
-  augmentPromptWithConsumedSummaries
+  augmentPromptWithConsumedSummaries,
+  WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS
 } = scheduler;
 
 const { buildImplementReviewLoopPlan } = await import(
@@ -263,6 +264,62 @@ test("augmentPromptWithConsumedSummaries prefers visible output over compact sum
   assert.match(out, /confirmed fact/);
   assert.match(out, /final evidence/);
   assert.doesNotMatch(out, /I need to search first/);
+});
+
+test("augmentPromptWithConsumedSummaries bounds large upstream outputs", () => {
+  const basePrompt = "Synthesize the prior work.";
+  const largeOutput = (label) =>
+    `${label}-HEAD\n${"implementation detail ".repeat(8_000)}\n${label}-TAIL`;
+  const out = augmentPromptWithConsumedSummaries(
+    basePrompt,
+    ["research", "implement", "review"],
+    new Map(
+      ["research", "implement", "review"].map((id) => [
+        id,
+        {
+          stepId: id,
+          title: id,
+          summary: `${id} compact summary`,
+          output: largeOutput(id)
+        }
+      ])
+    )
+  );
+
+  assert.ok(
+    out.length <= basePrompt.length + WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS,
+    `expected bounded prompt, received ${out.length} characters`
+  );
+  for (const id of ["research", "implement", "review"]) {
+    assert.match(out, new RegExp(`${id}-HEAD`));
+    assert.match(out, new RegExp(`${id}-TAIL`));
+  }
+  assert.match(out, /truncated for workflow context/);
+});
+
+test("augmentPromptWithConsumedSummaries deduplicates and caps context blocks", () => {
+  const basePrompt = "Use only the bounded context.";
+  const ids = Array.from({ length: 40 }, (_, index) => `step-${index}`);
+  const out = augmentPromptWithConsumedSummaries(
+    basePrompt,
+    ["step-0", "step-0", ...ids.slice(1)],
+    new Map(
+      ids.map((id) => [
+        id,
+        {
+          stepId: id,
+          title: `${id}-${"long-title".repeat(30)}`,
+          output: `${id}-output`
+        }
+      ])
+    )
+  );
+
+  assert.ok(out.length <= basePrompt.length + WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS);
+  assert.equal((out.match(/--- step-/g) ?? []).length, 32);
+  assert.equal((out.match(/--- step-0-/g) ?? []).length, 1);
+  assert.match(out, /step-31-output/);
+  assert.doesNotMatch(out, /step-32-output/);
 });
 
 test("workflow step prompts carry the configured response language", () => {

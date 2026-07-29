@@ -571,6 +571,9 @@ export function ChatView({
   const checkingAgentIdsRef = useRef<Set<string>>(new Set());
   const memberSelectionTouchedRef = useRef(false);
   const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
+  const [teamTaskSkillIds, setTeamTaskSkillIds] = useState<
+    string[] | undefined
+  >(undefined);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState<string | undefined>();
   const [newTaskConfigOptions, setNewTaskConfigOptions] = useState<
@@ -1480,7 +1483,7 @@ export function ChatView({
             fallback: team.name
           }),
           approvalMode: permissionMode,
-          skillIds: newTaskSkillIds
+          skillIds: teamTaskSkillIds
         });
         const attached = await cliClient.attachConversationShares({
           targetConversationId: newConv.id,
@@ -1525,7 +1528,8 @@ export function ChatView({
           teamId: team.id,
           conversationId: newConv.id,
           goal: composeMessageWithAttachments(prompt, attachmentsToSend),
-          cwd
+          cwd,
+          skillIds: teamTaskSkillIds
         });
         if (!started) {
           const errors = useWorkflowStore.getState().pendingErrors;
@@ -1744,7 +1748,8 @@ export function ChatView({
         await previewTeam({
           teamId: selectedTeamId,
           goal: prompt,
-          cwd: newTaskCwd || undefined
+          cwd: newTaskCwd || undefined,
+          skillIds: teamTaskSkillIds
         });
       }
     } catch (e) {
@@ -1771,7 +1776,8 @@ export function ChatView({
           prompt: pendingTeamPreview.goal,
           fallback: pendingTeamPreview.teamName
         }),
-        approvalMode: permissionMode
+        approvalMode: permissionMode,
+        skillIds: pendingTeamPreview.skillIds
       });
       setNewTaskDraft("");
       setNewTaskPendingAttachments([]);
@@ -1779,7 +1785,8 @@ export function ChatView({
         teamId: pendingTeamPreview.teamId,
         conversationId: newConv.id,
         goal: pendingTeamPreview.goal,
-        cwd: pendingTeamPreview.cwd ?? cwd
+        cwd: pendingTeamPreview.cwd ?? cwd,
+        skillIds: pendingTeamPreview.skillIds
       });
       if (!started) {
         const errors = useWorkflowStore.getState().pendingErrors;
@@ -1810,7 +1817,9 @@ export function ChatView({
         configOptionOverrides={newTaskConfigOptionOverrides}
         configOptionsLoading={newTaskConfigLoading}
         skills={skills}
-        selectedSkillIds={newTaskSkillIds}
+        selectedSkillIds={
+          teamMode ? teamTaskSkillIds ?? [] : newTaskSkillIds
+        }
         pluginAgent={pluginAgentForAdapter(
           members.find((entry) => entry.id === selectedMemberId)?.cli.adapter
         )}
@@ -1825,7 +1834,10 @@ export function ChatView({
         }
         onManageAgents={() => onOpenAgentSettings?.()}
         onConfigOptionOverrides={setNewTaskConfigOptionOverrides}
-        onSkills={setNewTaskSkillIds}
+        onSkills={(ids) => {
+          if (teamMode) setTeamTaskSkillIds(ids);
+          else setNewTaskSkillIds(ids);
+        }}
         onCwd={(cwd) => {
           setNewTaskCwd(cwd);
           setNewTaskProjectId(undefined);
@@ -1842,6 +1854,7 @@ export function ChatView({
         onAttachmentPaste={newTaskAttachmentImport.handlePaste}
         onTaskMode={(m) => {
           setTaskMode(m);
+          if (m === "team") setTeamTaskSkillIds(undefined);
           clearTeamPreview();
         }}
         onTeam={(teamId) => {

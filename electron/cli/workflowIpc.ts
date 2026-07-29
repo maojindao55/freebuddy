@@ -219,6 +219,7 @@ export function registerWorkflowIpc() {
         goal: string;
         cwd?: string;
         targetPaths?: string[];
+        skillIds?: string[];
       }
     ) => {
       const team = getWorkflowTeam(input.teamId);
@@ -230,7 +231,12 @@ export function registerWorkflowIpc() {
       }
       const result = expandTeamToPlan(
         team,
-        { goal: input.goal, cwd: input.cwd, targetPaths: input.targetPaths },
+        {
+          goal: input.goal,
+          cwd: input.cwd,
+          targetPaths: input.targetPaths,
+          skillIds: input.skillIds
+        },
         agents
       );
       if (!result.ok || !result.preview) {
@@ -254,6 +260,7 @@ export function registerWorkflowIpc() {
         goal: string;
         cwd?: string;
         targetPaths?: string[];
+        skillIds?: string[];
       }
     ) => {
       const team = getWorkflowTeam(input.teamId);
@@ -261,7 +268,12 @@ export function registerWorkflowIpc() {
       const agents = workflowAgents();
       const result = expandTeamToPlan(
         team,
-        { goal: input.goal, cwd: input.cwd, targetPaths: input.targetPaths },
+        {
+          goal: input.goal,
+          cwd: input.cwd,
+          targetPaths: input.targetPaths,
+          skillIds: input.skillIds
+        },
         agents
       );
       if (!result.ok || !result.preview) {

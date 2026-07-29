@@ -397,6 +397,7 @@ declare global {
       goal: string;
       cwd?: string;
       targetPaths?: string[];
+      skillIds?: string[];
     }): Promise<
       | { ok: true; preview: WorkflowTeamPreview }
       | { ok: false; errors: string[] }
@@ -407,6 +408,7 @@ declare global {
       goal: string;
       cwd?: string;
       targetPaths?: string[];
+      skillIds?: string[];
     }): Promise<
       | { ok: true; run: WorkflowRunRow }
       | { ok: false; errors: string[] }

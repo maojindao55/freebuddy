@@ -37,6 +37,7 @@ interface State {
     goal: string;
     cwd?: string;
     targetPaths?: string[];
+    skillIds?: string[];
   }): Promise<boolean>;
   refresh(runId: string): Promise<void>;
   pause(runId: string): Promise<void>;

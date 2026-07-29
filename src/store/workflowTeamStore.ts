@@ -50,6 +50,7 @@ interface State {
     goal: string;
     cwd?: string;
     targetPaths?: string[];
+    skillIds?: string[];
   }): Promise<void>;
 
   clearPreview(): void;

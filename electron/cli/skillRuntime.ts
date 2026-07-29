@@ -27,12 +27,21 @@ function canonicalPath(value: string): string {
   }
 }
 
+function isRegisteredSkillPath(
+  value: string,
+  registeredRoots: readonly string[]
+): boolean {
+  const canonical = canonicalPath(value);
+  return registeredRoots.some((root) => isInside(root, canonical));
+}
+
 export function reconcileNativeSkillLinks(
   cwd: string,
   nativeDirs: readonly string[],
   selected: readonly SkillSnapshot[],
   registeredRoots: readonly string[]
 ): void {
+  const canonicalRegisteredRoots = registeredRoots.map(canonicalPath);
   for (const relativeDir of nativeDirs) {
     const directory = path.resolve(cwd, relativeDir);
     if (!isInside(cwd, directory)) continue;
@@ -43,11 +52,7 @@ export function reconcileNativeSkillLinks(
       const link = path.join(directory, entry.name);
       try {
         const target = fs.realpathSync(link);
-        if (
-          registeredRoots.some((root) =>
-            isInside(canonicalPath(root), canonicalPath(target))
-          )
-        ) {
+        if (isRegisteredSkillPath(target, canonicalRegisteredRoots)) {
           fs.unlinkSync(link);
         }
       } catch {
@@ -56,7 +61,31 @@ export function reconcileNativeSkillLinks(
     }
     for (const skill of selected) {
       const target = path.join(directory, skill.name);
-      if (fs.existsSync(target)) continue;
+      let shouldCreate = true;
+      try {
+        const existing = fs.lstatSync(target);
+        if (!existing.isSymbolicLink()) {
+          shouldCreate = false;
+        } else {
+          const currentRoot = fs.realpathSync(target);
+          const desiredRoot = canonicalPath(skill.rootPath);
+          if (canonicalPath(currentRoot) === desiredRoot) {
+            shouldCreate = false;
+          } else if (
+            isRegisteredSkillPath(currentRoot, canonicalRegisteredRoots) &&
+            isRegisteredSkillPath(desiredRoot, canonicalRegisteredRoots)
+          ) {
+            fs.unlinkSync(target);
+          } else {
+            shouldCreate = false;
+          }
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          shouldCreate = false;
+        }
+      }
+      if (!shouldCreate) continue;
       try {
         fs.symlinkSync(
           skill.rootPath,

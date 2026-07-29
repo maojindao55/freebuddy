@@ -62,6 +62,36 @@ test("native skill mounting reconciles only FreeBuddy-owned symlinks", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test("native skill mounting retargets a selected skill to its refreshed snapshot", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-skills-refresh-"));
+  const cwd = path.join(root, "workspace");
+  const cacheRoot = path.join(root, "skill-cache");
+  const firstRoot = path.join(cacheRoot, "first");
+  const refreshedRoot = path.join(cacheRoot, "refreshed");
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.mkdirSync(firstRoot, { recursive: true });
+  fs.mkdirSync(refreshedRoot, { recursive: true });
+
+  reconcileNativeSkillLinks(
+    cwd,
+    [".agents/skills"],
+    [snapshot("selected", firstRoot)],
+    [cacheRoot]
+  );
+  reconcileNativeSkillLinks(
+    cwd,
+    [".agents/skills"],
+    [snapshot("selected", refreshedRoot)],
+    [cacheRoot]
+  );
+
+  assert.equal(
+    fs.realpathSync(path.join(cwd, ".agents", "skills", "selected")),
+    fs.realpathSync(refreshedRoot)
+  );
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test("skill persistence, IPC, MCP, and conversation snapshots stay wired", () => {
   const db = fs.readFileSync(new URL("../electron/cli/db.ts", import.meta.url), "utf8");
   const ipc = fs.readFileSync(new URL("../electron/cli/ipc.ts", import.meta.url), "utf8");

@@ -3,6 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { CLIAdapterId } from "./adapters.js";
+import {
+  createCodexAppServerWrapper,
+  safeCodexFilePart
+} from "./codexByokWrapper.js";
 import { getDataDir, getDb } from "./db.js";
 
 export interface CLICodexByokConfig {
@@ -149,10 +153,6 @@ function shouldCreateCodexModelCatalog(model: string): boolean {
   return !/^(gpt-|o[1345](?:-|$)|openai[/:])/.test(normalized);
 }
 
-function safeCatalogFilePart(value: string): string {
-  return Buffer.from(value, "utf8").toString("base64url").slice(0, 80);
-}
-
 function readCodexModelTemplate(): Record<string, unknown> | undefined {
   const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
   const cacheFile = path.join(codexHome, "models_cache.json");
@@ -241,35 +241,28 @@ function createCodexByokModelCatalog(
   const signature = models
     .map((model) => `${model.id}\u0000${model.name ?? ""}`)
     .join("\u0001");
-  const file = path.join(dir, `${safeCatalogFilePart(signature)}.json`);
+  const file = path.join(dir, `${safeCodexFilePart(signature)}.json`);
   fs.writeFileSync(file, JSON.stringify(catalog, null, 2), "utf8");
   return file;
 }
 
-function shellSingleQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function createCodexAppServerWrapper(
-  modelCatalogPath: string
-): string | undefined {
-  const dir = path.join(getDataDir(), "codex-wrappers");
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${safeCatalogFilePart(modelCatalogPath)}.sh`);
-  const catalogArg = `model_catalog_json=${JSON.stringify(modelCatalogPath)}`;
-  const script = `#!/bin/sh
-catalog_arg=${shellSingleQuote(catalogArg)}
-for candidate in "$FREEBUDDY_CODEX_BIN" "$(command -v codex 2>/dev/null)" "/opt/homebrew/bin/codex" "/usr/local/bin/codex"; do
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-    exec "$candidate" "$@" -c "$catalog_arg"
-  fi
-done
-echo "FreeBuddy Codex BYOK wrapper could not find the codex binary." >&2
-exit 127
-`;
-  fs.writeFileSync(file, script, { encoding: "utf8", mode: 0o755 });
-  fs.chmodSync(file, 0o755);
-  return file;
+function readCodexAcpBinaryPath(overrideId: string): string | undefined {
+  const row = getDb()
+    .prepare(
+      `SELECT binary_path
+       FROM cli_runtimes
+       WHERE adapter IN (?, 'codex-acp') AND installed = 1
+       ORDER BY CASE WHEN adapter = ? THEN 0 ELSE 1 END
+       LIMIT 1`
+    )
+    .get(overrideId, overrideId) as { binary_path: string | null } | undefined;
+  const binaryPath = row?.binary_path?.trim();
+  if (!binaryPath) return undefined;
+  try {
+    return fs.realpathSync(binaryPath);
+  } catch {
+    return binaryPath;
+  }
 }
 
 function readByokPublic<T extends { apiKey?: string; apiKeyEncrypted?: string }>(
@@ -467,7 +460,11 @@ export function resolveCodexByokEnv(
       : [];
   const modelCatalogPath = createCodexByokModelCatalog(catalogModels);
   const codexPath = modelCatalogPath
-    ? createCodexAppServerWrapper(modelCatalogPath)
+    ? createCodexAppServerWrapper({
+        dataDir: getDataDir(),
+        modelCatalogPath,
+        codexAcpPath: readCodexAcpBinaryPath(overrideId)
+      })
     : undefined;
   const config: Record<string, unknown> = {
     model_provider: providerId,

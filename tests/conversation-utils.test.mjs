@@ -545,6 +545,64 @@ test("mergeConversationMessages preserves in-memory attachments", async () => {
   assert.deepEqual(upserted[0].attachments, [attachment]);
 });
 
+test("mergeConversationMessages keeps DB createdAt authoritative (no user/assistant flip)", async () => {
+  const { mergeConversationMessages } = await loadConversationUtils();
+
+  // Optimistic in-memory state: user + assistant share a placeholder createdAt
+  // (`now`) captured before the DB append, so it predates the DB created_at.
+  const now = "2026-07-31T11:17:27.000Z";
+  const existing = [
+    {
+      id: "user-1",
+      conversationId: "conv-1",
+      role: "user",
+      status: "sent",
+      content: "你好",
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: "assistant-1",
+      conversationId: "conv-1",
+      role: "assistant",
+      status: "done",
+      content: '[{"kind":"text","content":"你好！"}]',
+      createdAt: now,
+      updatedAt: "2026-07-31T11:17:27.700Z"
+    }
+  ];
+
+  // DB rows: distinct created_at, both later than the in-memory placeholder.
+  // The assistant's updated_at equals the in-memory mirror time, so without
+  // reconciling createdAt it would short-circuit and keep the stale `now`.
+  const loaded = [
+    {
+      id: "user-1",
+      conversationId: "conv-1",
+      role: "user",
+      status: "sent",
+      content: "你好",
+      createdAt: "2026-07-31T11:17:27.605Z",
+      updatedAt: "2026-07-31T11:17:27.605Z"
+    },
+    {
+      id: "assistant-1",
+      conversationId: "conv-1",
+      role: "assistant",
+      status: "done",
+      content: '[{"kind":"text","content":"你好！"}]',
+      createdAt: "2026-07-31T11:17:27.623Z",
+      updatedAt: "2026-07-31T11:17:27.700Z"
+    }
+  ];
+
+  const merged = mergeConversationMessages(existing, loaded);
+  assert.equal(merged[0].id, "user-1");
+  assert.equal(merged[1].id, "assistant-1");
+  assert.equal(merged[0].createdAt, "2026-07-31T11:17:27.605Z");
+  assert.equal(merged[1].createdAt, "2026-07-31T11:17:27.623Z");
+});
+
 test("appendItems upserts available-commands and config-options metadata", async () => {
   const { appendItems } = await loadConversationUtils();
 
@@ -713,6 +771,67 @@ test("collectStreamMessageIds gathers ids from stored assistant snapshots", asyn
       }
     ]),
     ["msg-a-1", "msg-t-1", "tool-1"]
+  );
+});
+
+test("collectStreamContentSignatures gathers assistant content only", async () => {
+  const { collectStreamContentSignatures } = await loadConversationUtils();
+  const timestamp = "2026-06-23T10:00:00.000Z";
+
+  assert.deepEqual(
+    collectStreamContentSignatures([
+      {
+        id: "user-1",
+        conversationId: "conv-1",
+        role: "user",
+        status: "sent",
+        content: "你好",
+        createdAt: timestamp,
+        updatedAt: timestamp
+      },
+      {
+        id: "assistant-1",
+        conversationId: "conv-1",
+        role: "assistant",
+        status: "done",
+        content: JSON.stringify([
+          { kind: "text", role: "assistant", content: "你好" },
+          { kind: "thinking", content: "准备回复" }
+        ]),
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }
+    ]),
+    ["你好", "准备回复"]
+  );
+});
+
+test("fresh ACP turns do not derive replay signatures from the current user prompt", async () => {
+  const { collectStreamContentSignatures } = await loadConversationUtils();
+  const timestamp = "2026-07-29T10:00:00.000Z";
+
+  assert.deepEqual(
+    collectStreamContentSignatures([
+      {
+        id: "user-1",
+        conversationId: "conv-1",
+        role: "user",
+        status: "sent",
+        content: "你好",
+        createdAt: timestamp,
+        updatedAt: timestamp
+      },
+      {
+        id: "assistant-1",
+        conversationId: "conv-1",
+        role: "assistant",
+        status: "running",
+        content: "[]",
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }
+    ]),
+    []
   );
 });
 

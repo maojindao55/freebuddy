@@ -36,6 +36,7 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult,
+  ImportCodexSessionResult,
   CreateConversationShareInput,
   CreateConversationShareResult,
   AttachConversationSharesInput,
@@ -232,6 +233,9 @@ export const cliClient = {
 
   transferConversation(input: TransferConversationInput): Promise<TransferConversationResult> {
     return api().transferConversation(input);
+  },
+  importCodexSession(sessionId: string): Promise<ImportCodexSessionResult> {
+    return api().importCodexSession(sessionId);
   },
   createConversationShare(
     input: CreateConversationShareInput

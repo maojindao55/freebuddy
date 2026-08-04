@@ -22,6 +22,7 @@ import type {
 } from "@/services/workflows/types";
 import { workflowFollowupAgentId } from "@/services/workflows/types";
 import { workflowClient } from "@/services/workflows/client";
+import { debugLogClient } from "@/services/debugLog";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
 import {
   filterSessionConfigPickerOptions,
@@ -42,7 +43,11 @@ import {
   shouldApplyAgentSessionTitle,
   upsertConversationMessage
 } from "./conversationUtils";
-import { handleStreamEvent, killConversation } from "./conversationHandlers";
+import {
+  handleStreamControlEvent,
+  handleStreamEvent,
+  killConversation
+} from "./conversationHandlers";
 import {
   latestConfigOptionsFromItems,
   latestConfigOptionsFromMessages,
@@ -114,6 +119,13 @@ export interface ConversationState {
     warning?: "brief_extraction_failed";
     startError?: string;
   }>;
+  importCodexSession(sessionId: string): Promise<{
+    conversation: Conversation;
+    created: boolean;
+    turns: number;
+    messages: number;
+    warning?: "resume_session_not_linked";
+  }>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
   archiveConversation(id: string, archived: boolean): Promise<void>;
@@ -154,9 +166,29 @@ export const runCtxMap = new Map<string, RunCtx>();
 let transferInFlight = false;
 
 let workflowMessageUnsubscribe: (() => void) | null = null;
+const workflowEventUnsubscribes = new Map<string, () => void>();
+let workflowFinishedUnsubscribe: (() => void) | null = null;
 let workflowMessageConversationId: string | null = null;
 let workflowRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 const workflowPendingMessageIds = new Set<string>();
+
+const terminalWorkflowStatuses = new Set([
+  "completed",
+  "failed",
+  "killed",
+  "partial"
+]);
+
+function removeWorkflowEventSubscription(conversationId: string): void {
+  const unsubscribe = workflowEventUnsubscribes.get(conversationId);
+  if (!unsubscribe) return;
+  try {
+    unsubscribe();
+  } catch {
+    /* noop */
+  }
+  workflowEventUnsubscribes.delete(conversationId);
+}
 
 function hasActiveWorkflowMessages(messages: ConversationMessage[] | undefined): boolean {
   return (
@@ -175,6 +207,38 @@ function ensureWorkflowMessageSubscription(
   const fb = (globalThis as any).freebuddy;
   const api = fb?.workflow;
   if (!api?.onStepMessage) return;
+  if (!workflowFinishedUnsubscribe && api.onRunFinished) {
+    workflowFinishedUnsubscribe = api.onRunFinished((event: {
+      runId: string;
+      conversationId?: string;
+      status: string;
+      name: string;
+    }) => {
+      if (
+        event.conversationId &&
+        terminalWorkflowStatuses.has(event.status)
+      ) {
+        removeWorkflowEventSubscription(event.conversationId);
+      }
+    });
+  }
+  if (
+    conversationId &&
+    api.onStepEvent &&
+    !workflowEventUnsubscribes.has(conversationId)
+  ) {
+    workflowEventUnsubscribes.set(
+      conversationId,
+      api.onStepEvent(
+        conversationId,
+        (event: { sessionId?: string; event?: CliEvent }) => {
+          if (event?.event) {
+            handleStreamControlEvent(conversationId, event.event);
+          }
+        }
+      )
+    );
+  }
   if (workflowMessageConversationId === conversationId) return;
   if (workflowMessageUnsubscribe) {
     try {
@@ -616,8 +680,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     ensureWorkflowMessageSubscription(conv.id, async (cid, messageIds) => {
       await get().loadMessages(cid, messageIds);
     });
-    if (cwd) {
-      void cliClient.ensureAgentGuides(cwd, {
+    if (conv.cwd) {
+      void cliClient.ensureAgentGuides(conv.cwd, {
         nativeDraftTools:
           useCliExecutorStore.getState().resolve(conv.adapter)?.protocol === "acp"
       }).catch((err) => {
@@ -678,6 +742,27 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     } finally {
       transferInFlight = false;
     }
+  },
+
+  async importCodexSession(sessionId) {
+    const result = await cliClient.importCodexSession(sessionId);
+    set((s) => ({
+      conversations: [
+        result.conversation,
+        ...s.conversations.filter((c) => c.id !== result.conversation.id)
+      ],
+      activeId: result.conversation.id,
+      messages: { ...s.messages, [result.conversation.id]: [] },
+      pendingFreshContext: {
+        ...s.pendingFreshContext,
+        [result.conversation.id]: true
+      }
+    }));
+    ensureWorkflowMessageSubscription(result.conversation.id, async (cid, messageIds) => {
+      await get().loadMessages(cid, messageIds);
+    });
+    await get().loadMessages(result.conversation.id);
+    return result;
   },
 
   async renameConversation(id, title) {
@@ -805,7 +890,38 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     if (!member) throw new Error(`Member ${conv.agentId} not found`);
 
     const userMsgId = userMessageId ?? nanoid();
+    const assistantMsgId = assistantMessageId ?? nanoid();
     const now = new Date().toISOString();
+    const taskSessionId = nanoid();
+
+    // Claim the live stream before any appendMessage broadcasts. WebUI
+    // onMessagesChanged otherwise reloads the transcript while live is still
+    // empty, remounting avatar bubbles (flash/jump) on every send.
+    set((s) => ({
+      live: {
+        ...s.live,
+        [conversationId]: {
+          messageId: assistantMsgId,
+          taskSessionId,
+          items: [],
+          status: "starting",
+          preserveConversationTitle
+        }
+      }
+    }));
+
+    const releaseClaimedLive = () => {
+      set((s) => {
+        const live = s.live[conversationId];
+        if (!live || live.taskSessionId !== taskSessionId) return s;
+        if (live.status !== "starting") return s;
+        const next = { ...s.live };
+        delete next[conversationId];
+        return { live: next };
+      });
+    };
+
+    try {
     if (!internalPrompt) {
       const userMsg: ConversationMessage = {
         id: userMsgId,
@@ -850,7 +966,6 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       }));
     }
 
-    const assistantMsgId = assistantMessageId ?? nanoid();
     const assistantMsg: ConversationMessage = {
       id: assistantMsgId,
       conversationId,
@@ -883,7 +998,6 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       adapter: member.cli.adapter
     });
 
-    const taskSessionId = nanoid();
     const wantFresh = get().pendingFreshContext[conversationId] === true;
     const resolved = useCliExecutorStore
       .getState()
@@ -968,9 +1082,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       knownStreamMessageIds: collectStreamMessageIds(
         get().messages[conversationId] ?? []
       ),
-      knownStreamContentSignatures: collectStreamContentSignatures(
-        get().messages[conversationId] ?? []
-      ),
+      // Content signatures suppress history replay from resumed ACP sessions.
+      // A fresh session cannot replay history, so every live chunk must pass.
+      ...(resumedFromSessionId
+        ? {
+            knownStreamContentSignatures: collectStreamContentSignatures(msgs)
+          }
+        : {}),
       knownAgentStreamMessageIds: collectStreamAgentMessageIds(
         get().messages[conversationId] ?? []
       ),
@@ -1028,6 +1146,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       await cliClient.run(runArgs);
     } catch (err) {
       const msg = (err as Error)?.message || String(err);
+      debugLogClient.error("chat", "agent run failed", { errorMessage: msg });
       set((s) => {
         const live = s.live[conversationId];
         if (!live) return s;
@@ -1049,6 +1168,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       });
       runCtxMap.get(taskSessionId)?.unsubscribe();
       runCtxMap.delete(taskSessionId);
+    }
+    } catch (err) {
+      releaseClaimedLive();
+      throw err;
     }
   },
 

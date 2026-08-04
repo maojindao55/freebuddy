@@ -16,6 +16,7 @@ import {
   type Running
 } from "./runtimeShared.js";
 import { killProcessTree } from "./process-kill.js";
+import { clearSessionOwner } from "./sessionOwners.js";
 
 export interface LegacyRuntimeInput {
   child: ChildProcessByStdio<Writable, Readable, Readable>;
@@ -77,6 +78,8 @@ export function runLegacyCliAgent({
     running.delete(args.sessionId);
     appendLog(logStream, "system", `exit code=${exitCode}`);
     emit({ type: "done", exitCode });
+    // The WebUI broadcaster needs the owner mapping while delivering done.
+    clearSessionOwner(args.sessionId);
     const status = exitCode === 0 ? "done" : "failed";
     updateTaskStatus(args.sessionId, status, exitCode);
     updateRuntimeRun(

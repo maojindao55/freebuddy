@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import readline from "node:readline";
 import { getDb } from "./db.js";
+import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 
 export interface CliTaskRow {
   id: string;
@@ -21,6 +22,7 @@ export interface CliTaskRow {
   endedAt?: string;
   createdAt: string;
   updatedAt: string;
+  ownerId?: string | null;
 }
 
 function rowToTask(r: any): CliTaskRow {
@@ -42,7 +44,8 @@ function rowToTask(r: any): CliTaskRow {
     startedAt: r.started_at ?? undefined,
     endedAt: r.ended_at ?? undefined,
     createdAt: r.created_at,
-    updatedAt: r.updated_at
+    updatedAt: r.updated_at,
+    ownerId: r.owner_id ?? null
   };
 }
 
@@ -64,6 +67,11 @@ export function listTasks(args: CliTaskListArgs = {}): CliTaskRow[] {
     where.push("status = ?");
     params.push(args.status);
   }
+  const caller = getCallerUserId();
+  if (caller && !isCallerAdmin()) {
+    where.push("owner_id = ?");
+    params.push(caller);
+  }
   const sql = `
     SELECT * FROM cli_tasks
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
@@ -77,7 +85,10 @@ export function getTask(id: string): CliTaskRow | undefined {
   const row = getDb()
     .prepare(`SELECT * FROM cli_tasks WHERE id = ?`)
     .get(id) as any;
-  return row ? rowToTask(row) : undefined;
+  if (!row) return undefined;
+  const caller = getCallerUserId();
+  if (caller && !isCallerAdmin() && row.owner_id !== caller) return undefined;
+  return rowToTask(row);
 }
 
 export interface CliTaskLogEntry {

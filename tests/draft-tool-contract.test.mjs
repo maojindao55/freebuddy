@@ -41,7 +41,7 @@ test("Draft tool contract stays bound across ACP, preload, and renderer", () => 
 
   assert.match(runtime, /registerDraftToolSession/);
   assert.match(runtime, /conversationId: args\.conversationId/);
-  assert.match(runtime, /if \(args\.conversationId\) \{/);
+  assert.match(runtime, /if \(args\.conversationId && !remoteIsolated\) \{/);
   assert.doesNotMatch(runtime, /args\.conversationId && args\.cwd/);
   assert.match(runtime, /cwd: args\.cwd \?\? ""/);
   assert.match(runtime, /mcp servers=/);

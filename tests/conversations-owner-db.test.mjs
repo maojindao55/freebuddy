@@ -1,6 +1,7 @@
 import "./fixtures/electron-stub.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 
 let Database;
 let bindingAvailable = true;
@@ -57,6 +58,42 @@ test("createConversation records ownerId on the row", async (t) => {
 
   runAsCaller("alice", () => createConversation(baseInput("a1")));
   assert.equal(getConversation("a1")?.ownerId, "alice");
+});
+
+test("remote conversations expose the assigned source path separately from cwd", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  migrate(db);
+  setDbForTest(db);
+  const { createConversation, getConversation } =
+    await import("../dist-electron/cli/conversations.js");
+  const { runAsCaller } =
+    await import("../dist-electron/cli/callerContext.js");
+
+  const managedRoot = path.resolve("managed", "project");
+  const sourceRoot = path.resolve("assigned", "project");
+  db.prepare(
+    `INSERT INTO remote_users
+       (id, username, password_hash, is_owner, created_at, disabled)
+     VALUES ('alice', 'alice', 'test-only', 0, 0, 0)`
+  ).run();
+  db.prepare(
+    `INSERT INTO remote_workspaces
+       (id, owner_id, source_path, workspace_path, created_at, updated_at)
+     VALUES ('workspace-1', 'alice', ?, ?, '0', '0')`
+  ).run(sourceRoot, managedRoot);
+
+  const conversation = runAsCaller("alice", () =>
+    createConversation({
+      ...baseInput("a1"),
+      cwd: path.join(managedRoot, "src")
+    })
+  );
+
+  assert.equal(conversation.cwd, path.join(managedRoot, "src"));
+  assert.equal(conversation.sourceCwd, path.join(sourceRoot, "src"));
+  assert.equal(getConversation("a1")?.sourceCwd, path.join(sourceRoot, "src"));
 });
 
 test("requireOwnedConversation hides other users' conversations", async (t) => {

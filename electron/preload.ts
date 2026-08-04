@@ -131,6 +131,8 @@ const cli = {
   getConversation: (id: string) => ipcRenderer.invoke("cli:getConversation", id),
   createConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversation", input),
+  importCodexSession: (sessionId: string) =>
+    ipcRenderer.invoke("cli:importCodexSession", sessionId),
   previewHandoffBrief: (input: unknown) =>
     ipcRenderer.invoke("cli:previewHandoffBrief", input),
   transferConversation: (input: unknown) =>
@@ -309,6 +311,19 @@ const window = {
   },
   resolveDraftTool(resolution: DraftToolResolution): Promise<boolean> {
     return ipcRenderer.invoke("draft-tool:resolve", resolution);
+  },
+  onOpenConversation(cb: (conversationId: string) => void): () => void {
+    const handler = (_e: IpcRendererEvent, conversationId: string) => cb(conversationId);
+    ipcRenderer.on("window:open-conversation", handler);
+    return () => ipcRenderer.off("window:open-conversation", handler);
+  },
+  notifyTask(payload: {
+    kind: "success" | "failure";
+    title: string;
+    body?: string;
+    conversationId?: string;
+  }): Promise<void> {
+    return ipcRenderer.invoke("window:notify", payload);
   }
 };
 
@@ -383,6 +398,30 @@ const workflow = {
     cb: (event: { type: "appended" | "updated"; messageId: string }) => void
   ): () => void {
     const channel = `workflow://message/${conversationId}`;
+    const handler = (_e: IpcRendererEvent, payload: unknown) =>
+      cb(payload as any);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
+  onStepEvent(
+    conversationId: string,
+    cb: (event: { sessionId: string; event: unknown }) => void
+  ): () => void {
+    const channel = `workflow://event/${conversationId}`;
+    const handler = (_e: IpcRendererEvent, payload: unknown) =>
+      cb(payload as any);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
+  onRunFinished(
+    cb: (event: {
+      runId: string;
+      conversationId?: string;
+      status: string;
+      name: string;
+    }) => void
+  ): () => void {
+    const channel = "workflow://finished";
     const handler = (_e: IpcRendererEvent, payload: unknown) =>
       cb(payload as any);
     ipcRenderer.on(channel, handler);
@@ -476,6 +515,17 @@ const shellApi = {
     ipcRenderer.invoke("shell:showItemInFolder", targetPath) as Promise<boolean>
 };
 
+const debugLogs = {
+  write: (entries: unknown[]) => ipcRenderer.invoke("debugLog:write", entries),
+  preview: (mode: "standard" | "full", opts?: { conversationId?: string }) =>
+    ipcRenderer.invoke("debugLogs:preview", mode, opts?.conversationId),
+  export: (mode: "standard" | "full", opts?: { conversationId?: string }) =>
+    ipcRenderer.invoke("debugLogs:export", mode, opts?.conversationId) as Promise<{
+      path?: string;
+      canceled?: boolean;
+    }>
+};
+
 const remote = {
   whoami: () => ipcRenderer.invoke("remote:whoami"),
   getStatus: () => ipcRenderer.invoke("remote:getStatus"),
@@ -484,12 +534,17 @@ const remote = {
     ipcRenderer.invoke("remote:setServerConfig", input),
   setEnabled: (enabled: boolean) => ipcRenderer.invoke("remote:setEnabled", enabled),
   listUsers: () => ipcRenderer.invoke("remote:listUsers"),
-  createUser: (input: { username: string; password?: string }) =>
-    ipcRenderer.invoke("remote:createUser", input),
+  createUser: (input: {
+    username: string;
+    password?: string;
+    strictIsolation?: boolean;
+  }) => ipcRenderer.invoke("remote:createUser", input),
   renameUser: (input: { id: string; username: string }) =>
     ipcRenderer.invoke("remote:renameUser", input),
   setUserDisabled: (input: { id: string; disabled: boolean }) =>
     ipcRenderer.invoke("remote:setUserDisabled", input),
+  setUserStrictIsolation: (input: { id: string; strictIsolation: boolean }) =>
+    ipcRenderer.invoke("remote:setUserStrictIsolation", input),
   resetUserPassword: (id: string) => ipcRenderer.invoke("remote:resetUserPassword", id),
   setUserPassword: (input: { id: string; password: string }) =>
     ipcRenderer.invoke("remote:setUserPassword", input),
@@ -530,6 +585,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   infoCards,
   window,
   updater,
+  debugLogs,
   shell: shellApi,
   remote
 });

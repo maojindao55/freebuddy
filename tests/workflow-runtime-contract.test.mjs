@@ -6,6 +6,14 @@ const runtimeSource = fs.readFileSync(
   new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
   "utf8"
 );
+const preloadSource = fs.readFileSync(
+  new URL("../electron/preload.ts", import.meta.url),
+  "utf8"
+);
+const conversationStoreSource = fs.readFileSync(
+  new URL("../src/store/conversationStore.ts", import.meta.url),
+  "utf8"
+);
 
 test("runtime passes reviewer step status into review_required gate evaluation", () => {
   assert.match(runtimeSource, /reviewerStepStatus/);
@@ -21,6 +29,17 @@ test("runtime blocks write steps before write approval at execute boundary", () 
   assert.match(runtimeSource, /hasWriteApproval/);
   assert.match(runtimeSource, /step\.mode === "write"/);
   assert.match(runtimeSource, /status: "blocked"/);
+});
+
+test("workflow forwards ACP control events to the owning conversation", () => {
+  assert.match(runtimeSource, /broadcastWorkflowEvent/);
+  assert.match(runtimeSource, /e\.type === "permission"/);
+  assert.match(runtimeSource, /e\.type === "authentication"/);
+  assert.match(runtimeSource, /workflow:\/\/event\//);
+  assert.match(preloadSource, /onStepEvent\(/);
+  assert.match(conversationStoreSource, /workflowEventUnsubscribes = new Map/);
+  assert.match(conversationStoreSource, /onRunFinished/);
+  assert.match(conversationStoreSource, /removeWorkflowEventSubscription/);
 });
 
 test("runtime pauses before entering a manual-gated write phase", () => {

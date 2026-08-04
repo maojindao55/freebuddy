@@ -3,6 +3,7 @@ import { registerHandler } from "./invokeRegistry.js";
 import electronUpdater from "electron-updater";
 import { APP_VERSION } from "./app-meta.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
+import { logMain } from "./debugLog.js";
 
 const { autoUpdater } = electronUpdater;
 
@@ -44,9 +45,11 @@ function bindAutoUpdater() {
   });
 
   autoUpdater.on("checking-for-update", () => {
+    logMain().info("updater", "checking for update");
     broadcast({ type: "checking-for-update" });
   });
   autoUpdater.on("update-available", (info) => {
+    logMain().info("updater", "update available", { version: info.version ?? "" });
     broadcast({
       type: "update-available",
       version: info.version ?? "",
@@ -55,6 +58,7 @@ function bindAutoUpdater() {
     });
   });
   autoUpdater.on("update-not-available", (info) => {
+    logMain().info("updater", "update not available", { version: info.version ?? APP_VERSION });
     broadcast({ type: "update-not-available", version: info.version ?? APP_VERSION });
   });
   autoUpdater.on("download-progress", (progress) => {
@@ -67,9 +71,13 @@ function bindAutoUpdater() {
     });
   });
   autoUpdater.on("update-downloaded", (info) => {
+    logMain().info("updater", "update downloaded", { version: info.version ?? "" });
     broadcast({ type: "update-downloaded", version: info.version ?? "" });
   });
   autoUpdater.on("error", (_err, message) => {
+    logMain().error("updater", "update error", {
+      message: message || _err?.message || String(_err)
+    });
     broadcast({ type: "error", message: message || _err?.message || String(_err) });
   });
 }

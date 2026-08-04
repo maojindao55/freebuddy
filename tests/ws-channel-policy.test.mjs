@@ -54,7 +54,12 @@ test("conversation-scoped channels are classified for per-owner delivery", async
     kind: "conversation",
     conversationId: "conv-1"
   });
+  assert.deepEqual(classifyWsChannel("workflow://event/conv-1"), {
+    kind: "conversation",
+    conversationId: "conv-1"
+  });
   assert.deepEqual(classifyWsChannel("workflow://message/"), { kind: "drop" });
+  assert.deepEqual(classifyWsChannel("workflow://event/"), { kind: "drop" });
 
   assert.equal(conversationIdFromPayload({ conversationId: "conv-1" }), "conv-1");
   assert.equal(conversationIdFromPayload({ conversationId: "" }), null);

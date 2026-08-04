@@ -175,6 +175,20 @@ function extractStepOutputFromResultJson(resultJson: string | undefined): string
   }
 }
 
+const MAX_LOOP_FEEDBACK_CHARS = 12_000;
+const LOOP_FEEDBACK_TRUNCATION_MARKER =
+  "\n\n...[truncated for next workflow round]...\n\n";
+
+function boundedLoopFeedback(text: string): string {
+  if (text.length <= MAX_LOOP_FEEDBACK_CHARS) return text;
+  const available = MAX_LOOP_FEEDBACK_CHARS - LOOP_FEEDBACK_TRUNCATION_MARKER.length;
+  const headChars = Math.ceil(available * 0.65);
+  const tailChars = available - headChars;
+  return `${text.slice(0, headChars)}${LOOP_FEEDBACK_TRUNCATION_MARKER}${text.slice(
+    -tailChars
+  )}`;
+}
+
 function workflowStepToolSessionScope(
   runId: string,
   step: WorkflowStepRow
@@ -186,11 +200,19 @@ function shouldResumeWorkflowStep(
   plan: WorkflowPlan,
   step: WorkflowStepRow
 ): boolean {
+  // Each implement-review round may contain a large tool transcript. Start
+  // that step in a fresh ACP session and carry only the bounded review/
+  // verification feedback through the workflow prompt. Reusing the prior
+  // session makes context grow across rounds until the model rejects it.
+  if (
+    isImplementReviewLoopPlan(plan) &&
+    step.stepId === IMPLEMENT_REVIEW_STEP_ID
+  ) {
+    return false;
+  }
   return (
-    (Boolean(step.toolSessionId) &&
-      step.prompt.includes("User requested changes before approval:")) ||
-    (isImplementReviewLoopPlan(plan) &&
-      step.stepId === IMPLEMENT_REVIEW_STEP_ID)
+    Boolean(step.toolSessionId) &&
+    step.prompt.includes("User requested changes before approval:")
   );
 }
 
@@ -850,7 +872,7 @@ export class WorkflowRuntime {
         : "review feedback from the previous round";
     const augmented =
       `${base}\n\nAddress the following ${label}:\n` +
-      `${feedback.trim()}`;
+      `${boundedLoopFeedback(feedback.trim())}`;
     updateWorkflowStep(implRow.id, { prompt: augmented });
   }
 
@@ -1031,6 +1053,22 @@ export class WorkflowRuntime {
         resumeToolSession,
         cwd: run.cwd,
         onEvent: (e: CliEvent) => {
+          if (
+            run.conversationId &&
+            (e.type === "permission" ||
+              e.type === "permission-resolved" ||
+              e.type === "authentication" ||
+              e.type === "authentication-resolved" ||
+              e.type === "authentication-terminal-started" ||
+              e.type === "authentication-terminal-update" ||
+              e.type === "authentication-terminal-resolved")
+          ) {
+            this.broadcastWorkflowEvent({
+              conversationId: run.conversationId,
+              sessionId,
+              event: e
+            });
+          }
           if (e.type === "items" && e.items?.length) {
             collected.push(...e.items);
             scheduleMessageUpdate();
@@ -1099,6 +1137,18 @@ export class WorkflowRuntime {
     );
   }
 
+  private broadcastWorkflowEvent(payload: {
+    conversationId: string;
+    sessionId: string;
+    event: CliEvent;
+  }): void {
+    safeSendToWebContents(
+      this.deps.webContents,
+      `workflow://event/${payload.conversationId}`,
+      payload
+    );
+  }
+
   private finalize(
     runId: string,
     plan: WorkflowPlan,
@@ -1150,6 +1200,16 @@ export class WorkflowRuntime {
       max_loops: run.maxLoops,
       has_workspace: Boolean(run.cwd)
     });
+    // Surface a task notification when a workflow run finishes, mirroring the
+    // single-agent path. "killed" is a user-initiated stop, so skip it.
+    if (status !== "killed") {
+      safeSendToWebContents(this.deps.webContents, "workflow://finished", {
+        runId,
+        conversationId: run.conversationId,
+        status,
+        name: run.name
+      });
+    }
   }
 
   private composeSummary(

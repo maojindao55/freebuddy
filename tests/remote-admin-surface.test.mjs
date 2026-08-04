@@ -27,6 +27,7 @@ test("session, user, audit and server IPC are registered and bridged", () => {
     "remote:revokeAllSessions",
     "remote:renameUser",
     "remote:setUserDisabled",
+    "remote:setUserStrictIsolation",
     "remote:setUserPassword",
     "remote:getUserDataFootprint",
     "remote:listAuditLog",

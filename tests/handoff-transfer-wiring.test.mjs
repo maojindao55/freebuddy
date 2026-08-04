@@ -105,7 +105,10 @@ test("handoff UI auto-starts with a reference card and keeps per-conversation dr
   assert.match(dialog, /const loadPreview = async/);
   assert.match(dialog, /TransferConversationPanel/);
   assert.match(dialog, /aria-labelledby=\{titleId\}/);
-  assert.match(dialog, /value=\{source\.cwd \?\? t\("chat\.noWorkspace"\)\}/);
+  assert.match(
+    dialog,
+    /value=\{conversationDisplayCwd\(source\) \|\| t\("chat\.noWorkspace"\)\}/
+  );
   assert.match(dialog, /readOnly/);
   assert.doesNotMatch(dialog, /setCwd|cwdMismatch/);
   assert.match(dialog, /transfer-dialog-select-wrap/);

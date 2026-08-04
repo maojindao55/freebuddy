@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useUpdaterStore, type UpdateStatus } from "@/store/updaterStore";
+import { useDebugLogsDialogStore } from "@/store/debugLogsDialogStore";
 import appIconUrl from "../../../assets/app-icon.png";
 
 const RELEASES_URL = "https://github.com/maojindao55/freebuddy/releases";
@@ -30,6 +31,7 @@ export function AboutTab() {
   const checkForUpdates = useUpdaterStore((s) => s.checkForUpdates);
   const downloadUpdate = useUpdaterStore((s) => s.downloadUpdate);
   const quitAndInstall = useUpdaterStore((s) => s.quitAndInstall);
+  const setDebugLogsOpen = useDebugLogsDialogStore((s) => s.setOpen);
 
   useEffect(() => {
     void load();
@@ -158,6 +160,18 @@ export function AboutTab() {
           onClick={() => window.open(RELEASES_URL, "_blank", "noopener")}
         >
           {t("updater.releasesLink")} ↗
+        </button>
+      </section>
+
+      <section className="settings-section">
+        <h3>{t("debugLogs.aboutSectionTitle")}</h3>
+        <p className="about-hint">{t("debugLogs.aboutSectionHint")}</p>
+        <button
+          type="button"
+          className="primary-btn"
+          onClick={() => setDebugLogsOpen(true)}
+        >
+          {t("debugLogs.openButton")}
         </button>
       </section>
     </div>

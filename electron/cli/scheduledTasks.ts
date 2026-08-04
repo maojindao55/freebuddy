@@ -12,6 +12,7 @@ import { getCallerUserId, isCallerAdmin, runAsCaller } from "./callerContext.js"
 import { createCliStepExecutor, WorkflowRuntime } from "./workflowRuntime.js";
 import { extractVisibleStepOutput } from "./workflowScheduler.js";
 import type { WorkflowAgentRef, WorkflowPlan } from "./workflowTypes.js";
+import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
 import {
   buildScheduledTaskPrompt,
   isValidLocalDate,
@@ -752,14 +753,22 @@ export function registerScheduledTaskIpc(): void {
       .filter((member) => member.enabled !== false)
       .map((member) => ({ id: member.id, name: member.name, adapter: member.cli.adapter }))
   );
-  registerHandler("scheduledTasks:create", (_event, input: ScheduledTaskInput) =>
-    createScheduledTask(input)
+  registerHandler(
+    "scheduledTasks:create",
+    async (_event, input: ScheduledTaskInput) =>
+      createScheduledTask({
+        ...input,
+        cwd: await isolateRemoteCwdForCaller(input.cwd)
+      })
   );
   registerHandler(
     "scheduledTasks:update",
-    (_event, args: { id: string; input: ScheduledTaskInput }) =>
+    async (_event, args: { id: string; input: ScheduledTaskInput }) =>
       requireOwnedScheduledTask(args.id)
-        ? updateScheduledTask(args.id, args.input)
+        ? updateScheduledTask(args.id, {
+            ...args.input,
+            cwd: await isolateRemoteCwdForCaller(args.input.cwd)
+          })
         : { ok: false as const, errors: ["scheduledTasks.errors.taskNotFound"] }
   );
   registerHandler("scheduledTasks:delete", (_event, id: string) =>

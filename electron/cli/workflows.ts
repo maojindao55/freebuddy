@@ -360,7 +360,8 @@ export function resetWorkflowStepsForLoop(
     .prepare(
       `UPDATE workflow_steps
          SET status = 'pending', summary = NULL, result_json = NULL,
-             cli_task_id = NULL, started_at = NULL, ended_at = NULL,
+             cli_task_id = NULL, tool_session_id = NULL,
+             started_at = NULL, ended_at = NULL,
              updated_at = ?
        WHERE workflow_run_id = ? AND phase_id IN (${placeholders})`
     )

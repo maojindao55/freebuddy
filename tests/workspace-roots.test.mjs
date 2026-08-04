@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import ts from "typescript";
 
@@ -73,6 +74,34 @@ test("parentWithinRoots clamps at the root boundary", async () => {
   assert.equal(parentWithinRoots(path.join(ROOT_X, "y"), [ROOT_AB]), null, "outside roots");
 });
 
+test("isPathWithinRoots resolves symlinks before checking containment", async (t) => {
+  const { isPathWithinRoots } = await loadWorkspaceRoots();
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-roots-"));
+  const root = path.join(temp, "root");
+  const outside = path.join(temp, "outside");
+  fs.mkdirSync(root);
+  fs.mkdirSync(outside);
+  try {
+    fs.symlinkSync(outside, path.join(root, "escape"));
+  } catch (error) {
+    if (error.code === "EPERM") {
+      fs.rmSync(temp, { recursive: true, force: true });
+      t.skip("symlinks require admin/Developer Mode on Windows");
+      return;
+    }
+    throw error;
+  }
+  try {
+    assert.equal(
+      isPathWithinRoots(path.join(root, "escape", "secret.txt"), [root]),
+      false,
+      "a symlink inside an allowed root must not expose an outside target"
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("webUIServer exposes an authed, sandboxed /api/listDirs endpoint", () => {
   const server = fs.readFileSync(
     new URL("../electron/webUIServer.ts", import.meta.url),
@@ -85,7 +114,7 @@ test("webUIServer exposes an authed, sandboxed /api/listDirs endpoint", () => {
   assert.match(block, /isPathWithinRoots/, "must enforce allowlist containment");
   assert.match(
     block,
-    /remoteRootsForUser\(callerUserId\)/,
+    /remoteSourceRootsForUser\(callerUserId\)/,
     "must resolve roots for the calling user, not globally"
   );
   assert.match(

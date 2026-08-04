@@ -90,6 +90,7 @@ export function RemoteTab() {
   const [showAddUserForm, setShowAddUserForm] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newStrictIsolation, setNewStrictIsolation] = useState(false);
   const [revealed, setRevealed] = useState<{ username: string; password: string } | null>(null);
   const [showRevealedPassword, setShowRevealedPassword] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: ToastKind } | null>(null);
@@ -274,10 +275,12 @@ export function RemoteTab() {
       }
       const res = await window.freebuddy!.remote!.createUser({
         username,
-        password: password || undefined
+        password: password || undefined,
+        strictIsolation: newStrictIsolation
       });
       setNewUsername("");
       setNewPassword("");
+      setNewStrictIsolation(false);
       setShowAddUserForm(false);
       setRevealed({ username: res.user.username, password: res.password });
       setShowRevealedPassword(true);
@@ -329,6 +332,21 @@ export function RemoteTab() {
         disabled: !user.disabled
       });
       showToast(user.disabled ? t("remote.userEnabled") : t("remote.userDisabled"), "success");
+      await refresh();
+    });
+
+  const handleToggleStrictIsolation = (user: RemoteUser) =>
+    runAction(async () => {
+      await window.freebuddy!.remote!.setUserStrictIsolation({
+        id: user.id,
+        strictIsolation: !user.strictIsolation
+      });
+      showToast(
+        user.strictIsolation
+          ? t("remote.strictIsolationDisabled")
+          : t("remote.strictIsolationEnabled"),
+        "success"
+      );
       await refresh();
     });
 
@@ -697,6 +715,18 @@ export function RemoteTab() {
                   {t("common.cancel")}
                 </button>
               </div>
+              <label className="remote-form-row remote-strict-isolation">
+                <input
+                  type="checkbox"
+                  checked={newStrictIsolation}
+                  disabled={busy}
+                  onChange={(e) => setNewStrictIsolation(e.target.checked)}
+                />
+                <span>
+                  <strong>{t("remote.strictIsolation")}</strong>
+                  <span className="settings-hint">{t("remote.strictIsolationHint")}</span>
+                </span>
+              </label>
               <p className="settings-hint remote-form-hint">
                 <AlertCircle size={12} />
                 <span>
@@ -794,6 +824,11 @@ export function RemoteTab() {
                         {u.disabled && (
                           <span className="remote-badge disabled">{t("remote.disabledBadge")}</span>
                         )}
+                        {!u.isOwner && u.strictIsolation && (
+                          <span className="remote-badge member">
+                            {t("remote.strictIsolationBadge")}
+                          </span>
+                        )}
                         {userSessions.length > 0 && (
                           <span className="remote-session-count">
                             <Monitor size={11} />
@@ -814,6 +849,26 @@ export function RemoteTab() {
 
                     {expanded && (
                       <div className="remote-user-details">
+                        {!u.isOwner ? (
+                          <label className="remote-form-row remote-strict-isolation">
+                            <input
+                              type="checkbox"
+                              checked={u.strictIsolation}
+                              disabled={busy}
+                              onChange={() => void handleToggleStrictIsolation(u)}
+                            />
+                            <span>
+                              <strong>{t("remote.strictIsolation")}</strong>
+                              <span className="settings-hint">
+                                {t("remote.strictIsolationHint")}
+                              </span>
+                            </span>
+                          </label>
+                        ) : (
+                          <p className="settings-hint remote-form-hint">
+                            {t("remote.strictIsolationOwnerHint")}
+                          </p>
+                        )}
                         <div className="remote-user-actions">
                           <button
                             type="button"

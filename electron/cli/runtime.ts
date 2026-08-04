@@ -27,12 +27,26 @@ import {
   type Running
 } from "./runtimeShared.js";
 import { killProcessTree } from "./process-kill.js";
-import { resolveCliByokEnv } from "./store.js";
+import {
+  resolveClaudeByokSessionOptions,
+  resolveCliByokEnv
+} from "./store.js";
 import { getSkillOwnershipRoots } from "./skills.js";
 import {
   buildSkillAnnouncement,
   reconcileNativeSkillLinks
 } from "./skillRuntime.js";
+import { logMain } from "../debugLog.js";
+import {
+  cleanupSandboxCommand,
+  isRemoteIsolatedCaller,
+  prepareSandboxedSpawn,
+  sandboxWorkingDirectory,
+  shouldSandboxCurrentCaller,
+  type SandboxedSpawn
+} from "./sandboxRuntime.js";
+import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
+import { clearSessionOwner } from "./sessionOwners.js";
 
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
@@ -159,6 +173,8 @@ export async function cliRun(
     /* best-effort */
   }
 
+  const remoteIsolated = isRemoteIsolatedCaller();
+  const processSandboxed = shouldSandboxCurrentCaller();
   let toolSessionId: string | undefined;
   const toolSessionScope = args.toolSessionScope || args.cwd;
   const definition = getAdapterDefinition(args.adapter);
@@ -168,20 +184,34 @@ export async function cliRun(
     !userControlsResume &&
     definition?.capabilities.toolSession
   ) {
-    toolSessionId = args.toolSessionId;
-    if (!toolSessionId && toolSessionScope) {
-      const prev = getToolSession(args.agentId, toolSessionScope);
-      if (prev && prev.adapter === args.adapter) {
+    const prev = toolSessionScope
+      ? getToolSession(args.agentId, toolSessionScope)
+      : undefined;
+    if (remoteIsolated) {
+      // Renderer history can contain a desktop-owned ACP session id. Remote
+      // callers may resume only the owner-scoped session stored server-side;
+      // trusting a renderer-supplied id can load another user's cwd/config.
+      if (prev?.adapter === args.adapter) {
+        toolSessionId = prev.sessionId;
+      }
+    } else {
+      toolSessionId = args.toolSessionId;
+      if (!toolSessionId && prev?.adapter === args.adapter) {
         toolSessionId = prev.sessionId;
       }
     }
   }
 
   insertTask(args, logFile, toolSessionId);
+  logMain().info("runtime", "agent run start", {
+    adapter: args.adapter,
+    sessionId: args.sessionId,
+    approvalMode: args.approvalMode ?? "default"
+  });
   appendLog(
     logStream,
     "system",
-    `start adapter=${args.adapter} cwd=${args.cwd ?? "."} resume=${toolSessionId ?? "-"}`
+    `start adapter=${args.adapter} approvalMode=${args.approvalMode ?? "default"} cwd=${args.cwd ?? "."} resume=${toolSessionId ?? "-"}`
   );
 
   // Avoid spawning codex-acp while npm is replacing its global package files.
@@ -201,15 +231,21 @@ export async function cliRun(
     args.announceSkills && args.skills?.length
       ? { ...args, prompt: buildSkillAnnouncement(args.prompt, args.skills) }
       : args;
+  const isolatedCwd = remoteIsolated
+    ? await isolateRemoteCwdForCaller(effectiveArgs.cwd)
+    : effectiveArgs.cwd;
+  const executionArgs: CliRunArgs = remoteIsolated
+    ? { ...effectiveArgs, cwd: sandboxWorkingDirectory(isolatedCwd) }
+    : effectiveArgs;
 
   let built;
   try {
     built = buildCommand({
-      adapter: args.adapter,
-      binary: args.binary,
-      prompt: effectiveArgs.prompt,
-      extraArgs: args.extraArgs,
-      cwd: args.cwd,
+      adapter: executionArgs.adapter,
+      binary: executionArgs.binary,
+      prompt: executionArgs.prompt,
+      extraArgs: executionArgs.extraArgs,
+      cwd: executionArgs.cwd,
       toolSessionId,
       workspaceRoots: args.workspaceRoots
     });
@@ -218,6 +254,7 @@ export async function cliRun(
     appendLog(logStream, "system", msg);
     emit({ type: "error", message: msg });
     emit({ type: "done", exitCode: -1 });
+    clearSessionOwner(args.sessionId);
     updateTaskStatus(args.sessionId, "failed", -1, msg);
     updateRuntimeRun(args.adapter, msg);
     logStream?.end();
@@ -236,11 +273,59 @@ export async function cliRun(
     )
   );
 
-  const child = spawn(built.bin, built.args, {
-    cwd: args.cwd,
-    env,
+  let spawnCommand: SandboxedSpawn = {
+    bin: built.bin,
+    args: built.args,
+    env
+  };
+  if (processSandboxed) {
+    try {
+      spawnCommand = await prepareSandboxedSpawn({
+        adapter: executionArgs.adapter,
+        bin: built.bin,
+        args: built.args,
+        cwd: executionArgs.cwd!,
+        env,
+        extraReadPaths: [
+          ...(executionArgs.promptAttachments ?? []).map(
+            (attachment) => attachment.path
+          ),
+          ...(executionArgs.skills ?? []).map((skill) => skill.rootPath)
+        ]
+      });
+    } catch (error) {
+      const msg = `sandbox setup failed: ${
+        (error as Error)?.message || String(error)
+      }`;
+      appendLog(logStream, "system", msg);
+      emit({ type: "error", message: msg });
+      emit({ type: "done", exitCode: -1 });
+      clearSessionOwner(args.sessionId);
+      updateTaskStatus(args.sessionId, "failed", -1, msg);
+      updateRuntimeRun(args.adapter, msg);
+      logStream?.end();
+      return;
+    }
+  }
+
+  const child = spawn(spawnCommand.bin, spawnCommand.args, {
+    cwd: executionArgs.cwd,
+    env: spawnCommand.env,
     stdio: ["pipe", "pipe", "pipe"]
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
+  const attachSandboxStdin = (
+    target: ChildProcessByStdio<Writable, Readable, Readable>,
+    reset = false
+  ) => {
+    if (!spawnCommand.stdinPath) return;
+    if (reset) fs.writeFileSync(spawnCommand.stdinPath, "");
+    const stdin = fs.createWriteStream(spawnCommand.stdinPath, { flags: "a" });
+    Object.defineProperty(target, "stdin", { value: stdin });
+    target.once("close", () => stdin.end());
+  };
+
+  attachSandboxStdin(child);
+
 
   let resolved = false;
   await new Promise<void>((resolve) => {
@@ -256,6 +341,7 @@ export async function cliRun(
       appendLog(logStream, "system", msg);
       emit({ type: "error", message: msg });
       emit({ type: "done", exitCode: -1 });
+      clearSessionOwner(args.sessionId);
       updateTaskStatus(args.sessionId, "failed", -1, msg);
       updateRuntimeRun(args.adapter, msg);
       logStream?.end();
@@ -264,53 +350,66 @@ export async function cliRun(
   });
 
   const pid = child.pid ?? 0;
-  if (!pid) return;
+  if (!pid) {
+    if (processSandboxed) cleanupSandboxCommand();
+    return;
+  }
   setTaskPid(args.sessionId, pid);
   emit({ type: "started", pid });
 
   if (built.protocol === "acp") {
-    await runAcpAgent({
-      child,
-      webContents,
-      args: effectiveArgs,
-      pid,
-      logStream,
-      toolSessionId,
-      toolSessionScope,
-      running,
-      capturedSessions,
-      emit,
-      agentCommand: {
-        bin: built.bin,
-        args: built.args,
-        cwd: args.cwd,
-        env
-      },
-      restartAgent: async () => {
-        const restarted = spawn(built.bin, built.args, {
-          cwd: args.cwd,
-          env,
-          stdio: ["pipe", "pipe", "pipe"]
-        }) as ChildProcessByStdio<Writable, Readable, Readable>;
-        await new Promise<void>((resolve, reject) => {
-          restarted.once("spawn", resolve);
-          restarted.once("error", reject);
-        });
-        const restartedPid = restarted.pid ?? 0;
-        if (!restartedPid) {
-          throw new Error("Restarted ACP agent did not report a process id.");
+    try {
+      await runAcpAgent({
+        child,
+        webContents,
+        args: executionArgs,
+        pid,
+        logStream,
+        toolSessionId,
+        toolSessionScope,
+        running,
+        capturedSessions,
+        emit,
+        agentCommand: {
+          bin: spawnCommand.bin,
+          args: spawnCommand.args,
+          cwd: executionArgs.cwd,
+          env: spawnCommand.env
+        },
+        claudeAcpSessionOptions: resolveClaudeByokSessionOptions(
+          args.agentId,
+          args.adapter
+        ),
+        restartAgent: async () => {
+          const restarted = spawn(spawnCommand.bin, spawnCommand.args, {
+            cwd: executionArgs.cwd,
+            env: spawnCommand.env,
+            stdio: ["pipe", "pipe", "pipe"]
+          }) as ChildProcessByStdio<Writable, Readable, Readable>;
+          attachSandboxStdin(restarted, true);
+          await new Promise<void>((resolve, reject) => {
+            restarted.once("spawn", resolve);
+            restarted.once("error", reject);
+          });
+          const restartedPid = restarted.pid ?? 0;
+          if (!restartedPid) {
+            throw new Error("Restarted ACP agent did not report a process id.");
+          }
+          setTaskPid(args.sessionId, restartedPid);
+          emit({ type: "started", pid: restartedPid });
+          return { child: restarted, pid: restartedPid };
         }
-        setTaskPid(args.sessionId, restartedPid);
-        emit({ type: "started", pid: restartedPid });
-        return { child: restarted, pid: restartedPid };
-      }
-    });
+      });
+    } finally {
+      if (processSandboxed) cleanupSandboxCommand();
+    }
     return;
   }
 
+  if (processSandboxed) child.once("close", cleanupSandboxCommand);
   runLegacyCliAgent({
     child,
-    args: effectiveArgs,
+    args: executionArgs,
     built,
     pid,
     logStream,

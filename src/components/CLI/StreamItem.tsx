@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
+import { useDebugLogsDialogStore } from "@/store/debugLogsDialogStore";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { useTerminalStore } from "@/store/terminalStore";
@@ -987,6 +988,17 @@ export function StreamItem({ item }: { item: CliStreamItem }) {
               <pre>{item.details.join("\n")}</pre>
             </details>
           ) : null}
+          <button
+            type="button"
+            className="link-btn stream-error-export-logs"
+            onClick={() =>
+              useDebugLogsDialogStore
+                .getState()
+                .setOpen(true, useConversationStore.getState().activeId ?? undefined)
+            }
+          >
+            {t("debugLogs.exportLink")}
+          </button>
         </div>
       );
     case "done":

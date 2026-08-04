@@ -68,12 +68,16 @@ test("scheduled task changes reach remote clients", () => {
   );
 });
 
-test("run records the session owner and kill clears it", () => {
+test("run records the session owner and live kill preserves it until done", () => {
   const ipc = read("../electron/cli/ipc.ts");
 
   const run = ipc.slice(ipc.indexOf('"cli:run"'));
   assert.match(run, /recordSessionOwner\(/, "run records the session owner");
 
   const kill = ipc.slice(ipc.indexOf('"cli:kill"'));
-  assert.match(kill, /clearSessionOwner\(/, "kill clears the session owner");
+  assert.match(
+    kill,
+    /if \(!killed\) clearSessionOwner\(sessionId\)/,
+    "only a missing run is cleared immediately; a live run must broadcast done first"
+  );
 });

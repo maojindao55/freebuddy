@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { ChildProcess } from "node:child_process";
 import spawn from "cross-spawn";
 
+/** Keep repeated terminal results from exhausting an agent's context window. */
+export const MAX_TERMINAL_OUTPUT_BYTES = 128 * 1024;
+
 export interface TerminalSnapshot {
   output: string;
   truncated: boolean;
@@ -18,7 +21,7 @@ export interface AcpTerminalManager {
     cwd?: string;
     env?: { name: string; value: string }[];
     outputByteLimit?: number;
-  }): { terminalId: string };
+  }): Promise<{ terminalId: string }>;
   output(terminalId: string): TerminalSnapshot;
   waitForExit(
     terminalId: string
@@ -56,7 +59,19 @@ function snapshot(record: TerminalRecord): TerminalSnapshot {
 
 export function createAcpTerminalManager(options: {
   defaultCwd?: string;
+  commandIsShellLine?: boolean;
   onOutput?: (terminalId: string, snap: TerminalSnapshot) => void;
+  prepareSpawn?: (input: {
+    command: string;
+    args: string[];
+    cwd: string;
+    env: Record<string, string>;
+  }) => Promise<{
+    command: string;
+    args: string[];
+    env: Record<string, string | undefined>;
+  }>;
+  onPreparedSpawnExit?: () => void;
 }): AcpTerminalManager {
   const terminals = new Map<string, TerminalRecord>();
 
@@ -102,17 +117,47 @@ export function createAcpTerminalManager(options: {
   }
 
   return {
-    create(params) {
+    async create(params) {
       const terminalId = `term_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-      const byteLimit = params.outputByteLimit ?? 1024 * 1024;
+      const requestedByteLimit =
+        typeof params.outputByteLimit === "number" &&
+        Number.isFinite(params.outputByteLimit)
+          ? Math.max(1, Math.floor(params.outputByteLimit))
+          : MAX_TERMINAL_OUTPUT_BYTES;
+      const byteLimit = Math.min(
+        requestedByteLimit,
+        MAX_TERMINAL_OUTPUT_BYTES
+      );
       const env = { ...process.env } as Record<string, string>;
       for (const entry of params.env ?? []) {
         env[entry.name] = entry.value;
       }
 
-      const child = spawn(params.command, params.args ?? [], {
-        cwd: params.cwd || options.defaultCwd,
-        env,
+      const cwd = params.cwd || options.defaultCwd || process.cwd();
+      const rawArgs = params.args ?? [];
+      const shouldRunShellLine =
+        options.commandIsShellLine && rawArgs.length === 0;
+      const command = shouldRunShellLine
+        ? process.platform === "win32"
+          ? process.env.ComSpec || "cmd.exe"
+          : "/bin/sh"
+        : params.command;
+      const commandArgs = shouldRunShellLine
+        ? process.platform === "win32"
+          ? ["/d", "/s", "/c", params.command]
+          : ["-c", params.command]
+        : rawArgs;
+      const prepared = options.prepareSpawn
+        ? await options.prepareSpawn({
+            command,
+            args: commandArgs,
+            cwd,
+            env
+          })
+        : { command, args: commandArgs, env };
+      const child = spawn(prepared.command, prepared.args, {
+        cwd,
+        env: prepared.env,
         stdio: ["ignore", "pipe", "pipe"]
       });
 
@@ -132,6 +177,7 @@ export function createAcpTerminalManager(options: {
       child.stdout?.on("data", (chunk) => appendOutput(record, chunk));
       child.stderr?.on("data", (chunk) => appendOutput(record, chunk));
       child.on("close", (code, signal) => {
+        if (options.prepareSpawn) options.onPreparedSpawnExit?.();
         markExited(record, code, signal);
       });
       child.on("error", () => {

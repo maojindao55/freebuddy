@@ -15,13 +15,15 @@ const store = read("../src/store/authenticationStore.ts");
 const dialog = read("../src/components/CLI/AuthenticationDialog.tsx");
 
 test("ACP runtime asks the renderer to select among multiple agent auth methods", () => {
-  assert.match(runtime, /const automatic = selectAcpAuthMethod\(methods\)/);
+  assert.match(
+    runtime,
+    /const automatic = selectAcpAuthMethod\(\s*methods\s*,\s*agentCommand\.env\s*\)/
+  );
   assert.match(runtime, /supported\.length < 2/);
   assert.match(runtime, /type: "authentication"/);
   assert.match(runtime, /registerAuthenticationResolver/);
   assert.match(runtime, /buildAuthenticateRequest\(nextId\(\), method\.id\)/);
 });
-
 test("authentication decisions cross the preload and IPC boundary", () => {
   assert.match(runtimeShared, /registerAuthenticationResolver/);
   assert.match(runtimeShared, /takeAuthenticationResolver/);

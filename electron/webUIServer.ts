@@ -26,7 +26,10 @@ import {
 } from "./remoteAuth.js";
 import { verifyUserLogin, getOwnerUser, getUserById, listUsers } from "./cli/users.js";
 import { getLanguage } from "./cli/settings.js";
-import { remoteRootsForUser } from "./cli/remoteRoots.js";
+import {
+  remoteRootsForUser,
+  remoteSourceRootsForUser
+} from "./cli/remoteRoots.js";
 import { recordAudit } from "./cli/remoteAudit.js";
 import {
   checkLoginAllowed,
@@ -51,18 +54,17 @@ import {
   type PrepareAttachmentPayload
 } from "./cli/attachments.js";
 import { handleDraftRequest, parseDraftUrl } from "./draftProtocol.js";
+import {
+  WEBUI_DEFAULT_PORT,
+  normalizeWebUIPort
+} from "./webUIConstants.js";
 
-export const WEBUI_DEFAULT_PORT = 18080;
-export const WEBUI_MIN_PORT = 1024;
-export const WEBUI_MAX_PORT = 65535;
-
-export function normalizeWebUIPort(value: unknown): number {
-  const port = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
-  if (!Number.isInteger(port) || port < WEBUI_MIN_PORT || port > WEBUI_MAX_PORT) {
-    return WEBUI_DEFAULT_PORT;
-  }
-  return port;
-}
+export {
+  WEBUI_DEFAULT_PORT,
+  WEBUI_MIN_PORT,
+  WEBUI_MAX_PORT,
+  normalizeWebUIPort
+} from "./webUIConstants.js";
 
 let webuiServer: http.Server | null = null;
 let wss: WebSocketServer | null = null;
@@ -528,7 +530,7 @@ function handleListDirs(req: IncomingMessage, res: ServerResponse): boolean {
   const callerUserId =
     sessionUserId(extractBearerToken(req.headers.authorization)) ||
     sessionUserId(readSessionCookie(req.headers.cookie));
-  const roots = remoteRootsForUser(callerUserId);
+  const roots = remoteSourceRootsForUser(callerUserId);
   if (roots.length === 0) {
     sendJson(res, 200, {
       ok: true,

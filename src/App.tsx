@@ -8,6 +8,7 @@ import { TitlebarOverflowMenu } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
 import { ConversationContextDialog } from "./components/CLI/ConversationContextDialog";
+import { ImportCodexSessionDialog } from "./components/CLI/ImportCodexSessionDialog";
 import {
   SidebarNavigation,
   type WorkspaceView
@@ -15,6 +16,7 @@ import {
 import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { AuthenticationDialog } from "./components/CLI/AuthenticationDialog";
+import { ExportDebugLogsDialog } from "./components/Settings/ExportDebugLogsDialog";
 import { DetailColumn } from "./components/CLI/DetailColumn";
 import { AgentBridgeListener } from "./components/AgentBridge/AgentBridgeListener";
 import { AgentBridgeToasts } from "./components/AgentBridge/AgentBridgeToasts";
@@ -35,6 +37,11 @@ import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
 import { useNewTaskUiStore } from "./store/newTaskUiStore";
 import { useWorkflowStore } from "./store/workflowStore";
+import {
+  notifyTaskFinished,
+  playTaskFailure,
+  playTaskSuccess
+} from "./utils/soundEffects";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -65,6 +72,7 @@ function App() {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [contextSourceId, setContextSourceId] = useState<string>();
+  const [codexImportOpen, setCodexImportOpen] = useState(false);
   const [teamPageRequest, setTeamPageRequest] = useState<{
     key: number;
     teamId?: string;
@@ -86,9 +94,36 @@ function App() {
   }, [loadExecutors, loadConversations]);
 
   useEffect(() => {
+    const lastStatusMap = new Map<string, string | undefined>();
     const off = window.freebuddy?.scheduledTasks?.onChanged?.((task) => {
       if (!task || task.lastStatus === "completed" || task.lastStatus === "failed") {
         void refreshConversationList();
+      }
+      if (task?.id) {
+        const prev = lastStatusMap.get(task.id);
+        const next = task.lastStatus;
+        lastStatusMap.set(task.id, next);
+        if (prev !== next) {
+          if (next === "completed") {
+            playTaskSuccess(true);
+            notifyTaskFinished(
+              "success",
+              i18next.t("notifications.taskSucceededTitle"),
+              i18next.t("notifications.taskSucceededBody", {
+                title: task?.title ?? i18next.t("conversations.untitled")
+              })
+            );
+          } else if (next === "failed") {
+            playTaskFailure(true);
+            notifyTaskFinished(
+              "failure",
+              i18next.t("notifications.taskFailedTitle"),
+              i18next.t("notifications.taskFailedBody", {
+                title: task?.title ?? i18next.t("conversations.untitled")
+              })
+            );
+          }
+        }
       }
     });
     return () => off?.();
@@ -104,10 +139,15 @@ function App() {
   useEffect(() => {
     const off = window.freebuddy?.cli?.onMessagesChanged?.((conversationId) => {
       const state = useConversationStore.getState();
-      if (state.currentUser?.isOwner !== true) return;
-      if (conversationId !== state.activeId) return;
+      if (conversationId !== state.activeId) {
+        state.markConversationUnread(conversationId);
+        void state.refreshList();
+        return;
+      }
       // Skip conversations this client is already live-streaming (e.g. the
-      // admin's own active run) — live streaming owns their real-time updates.
+      // current user's own active run) — live streaming owns those updates.
+      // Other clients, including the conversation owner while an admin is
+      // contributing, must reload the shared message snapshot.
       const live = state.live[conversationId];
       const isStreaming = !!live && (live.status === "starting" || live.status === "running");
       if (isStreaming) return;
@@ -119,6 +159,38 @@ function App() {
   useEffect(() => {
     const off = window.freebuddy?.window?.onChromeVisible?.((visible) => {
       setChromeVisible(visible);
+    });
+    return () => {
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId) => {
+      void useConversationStore.getState().setActive(conversationId);
+    });
+    return () => {
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const off = window.freebuddy?.workflow?.onRunFinished?.((event) => {
+      const success = event.status === "completed" || event.status === "partial";
+      if (success) playTaskSuccess(true);
+      else playTaskFailure(true);
+      if (event.conversationId) {
+        notifyTaskFinished(
+          success ? "success" : "failure",
+          success
+            ? i18next.t("notifications.taskSucceededTitle")
+            : i18next.t("notifications.taskFailedTitle"),
+          success
+            ? i18next.t("notifications.taskSucceededBody", { title: event.name })
+            : i18next.t("notifications.taskFailedBody", { title: event.name }),
+          event.conversationId
+        );
+      }
     });
     return () => {
       off?.();
@@ -566,6 +638,7 @@ function App() {
 
       <CliInstallPanelHost />
       <PermissionDialog />
+      <ExportDebugLogsDialog />
       <AuthenticationDialog />
       <ConversationCommandPalette
         open={commandPaletteOpen}
@@ -573,6 +646,10 @@ function App() {
         onNewTask={startNewTask}
         onOpenScheduledTasks={openScheduledTasks}
         onOpenSettings={() => openSettings("cli")}
+        onImportCodexSession={() => {
+          setCommandPaletteOpen(false);
+          setCodexImportOpen(true);
+        }}
         onSelectConversation={() => {
           setSettingsOpen(false);
           setWorkspaceView("chat");
@@ -584,6 +661,9 @@ function App() {
           members={members}
           onClose={() => setContextSourceId(undefined)}
         />
+      )}
+      {codexImportOpen && (
+        <ImportCodexSessionDialog onClose={() => setCodexImportOpen(false)} />
       )}
       <AgentBridgeListener />
       <AgentBridgeToasts />

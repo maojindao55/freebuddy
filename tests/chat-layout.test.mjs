@@ -158,6 +158,22 @@ test("new-task workspace picker renders the selected project as a compact remova
   assert.match(stylesSource, /\.new-task-workspace-remove svg\s*\{[^}]*stroke-width:\s*1\.5;/m);
 });
 
+test("active composer presents the assigned source as an isolated workspace", () => {
+  assert.match(chatViewSource, /conversationDisplayCwd\(conv\)/);
+  assert.match(chatViewSource, /className="composer-workspace-name"/);
+  assert.match(chatViewSource, /className="composer-workspace-badge"/);
+  assert.match(chatViewSource, /t\("chat\.isolatedWorkspace"\)/);
+  assert.match(chatViewSource, /t\("chat\.isolatedWorkspaceTooltip"/);
+  assert.match(
+    stylesSource,
+    /\.composer-workspace-name\s*\{[^}]*text-overflow:\s*ellipsis;/m
+  );
+  assert.match(
+    stylesSource,
+    /\.composer-workspace-badge\s*\{[^}]*border-radius:\s*999px;/m
+  );
+});
+
 test("sidebar primary navigation exposes a clear current page in team and normal task modes", () => {
   assert.match(
     sidebarNavigationSource,

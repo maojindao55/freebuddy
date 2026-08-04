@@ -19,10 +19,15 @@ test("agent plan card scrolls internally when it has many entries", () => {
   assert.match(styles, /\.workspace-panel\s*\{[^}]*display:\s*flex/s);
   assert.match(styles, /\.workspace-panel\s*\{[^}]*min-height:\s*0/s);
   assert.match(styles, /\.plan-card\s*\{[^}]*flex:\s*1/s);
-  assert.match(styles, /\.plan-card\s*\{[^}]*min-height:\s*0/s);
   assert.match(styles, /\.plan-list\s*\{[^}]*overflow-y:\s*auto/s);
   assert.match(styles, /\.plan-list\s*\{[^}]*flex:\s*1/s);
   assert.equal(/\.plan-list\s*\{[^}]*max-height:/s.test(styles), false);
+});
+
+test("agent plan card keeps a usable min-height ahead of secondary info cards", () => {
+  assert.match(styles, /\.plan-card\s*\{[^}]*min-height:\s*240px/s);
+  assert.match(styles, /\.plan-card\s*\{[^}]*flex:\s*1 1 240px/s);
+  assert.match(styles, /\.workspace-cards > \.info-data-card,\s*\.workspace-cards > \.feed-card\s*\{[^}]*flex:\s*0 0 auto/s);
 });
 
 test("third column card stack scrolls within the visible overview space", () => {

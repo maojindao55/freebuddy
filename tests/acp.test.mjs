@@ -20,6 +20,7 @@ import {
   contentBlockToItems,
   parseAcpLine,
   selectAcpAuthMethod,
+  selectAcpSessionStartMode,
   shouldEmitAcpUpdate,
   shouldSkipUserMessageChunk,
   shouldDropReplayPhaseAgentChunk
@@ -499,6 +500,37 @@ test("ACP session lifecycle injects FreeBuddy stdio MCP servers", () => {
   );
 });
 
+test("ACP session setup can forward Claude SDK settings through _meta", () => {
+  const sessionMeta = {
+    claudeCode: {
+      options: {
+        settings: {
+          autoCompactEnabled: true,
+          autoCompactWindow: 150000
+        }
+      }
+    }
+  };
+  assert.deepEqual(
+    buildSessionNewRequest(4, "/tmp/project", [], sessionMeta),
+    {
+      jsonrpc: "2.0",
+      id: 4,
+      method: "session/new",
+      params: {
+        cwd: "/tmp/project",
+        mcpServers: [],
+        _meta: sessionMeta
+      }
+    }
+  );
+  assert.deepEqual(
+    buildSessionResumeRequest(5, "sess-1", "/tmp/project", [], sessionMeta)
+      .params._meta,
+    sessionMeta
+  );
+});
+
 test("ACP runtime authenticates standard auth-required errors and separates missing sessions", () => {
   assert.match(acpRuntimeSource, /Saved agent session is no longer available/);
   assert.match(acpRuntimeSource, /isAuthenticationRequiredError/);
@@ -509,9 +541,51 @@ test("ACP runtime authenticates standard auth-required errors and separates miss
   );
   assert.match(
     acpRuntimeSource,
-    /toolSessionId\s*&&\s*isMissingSavedSessionError\(sessionErr\)/
+    /requestedToolSessionId\s*&&\s*isMissingSavedSessionError\(sessionErr\)/
   );
   assert.match(acpRuntimeSource, /Unsupported ACP protocol version/);
+});
+
+test("ACP runtime starts a fresh session once when a prompt exceeds context", () => {
+  assert.match(acpRuntimeSource, /isContextWindowError/);
+  assert.match(acpRuntimeSource, /contextResetAttempted/);
+  assert.match(acpRuntimeSource, /requestedToolSessionId = undefined/);
+  assert.match(
+    acpRuntimeSource,
+    /buildSessionNewRequest\(nextId\(\), args\.cwd, mcpServers, sessionMeta\)/
+  );
+});
+
+test("ACP runtime reset instruction is fixed English for reliable model compliance", () => {
+  assert.match(
+    acpRuntimeSource,
+    /activePrompt = \[\s*args\.prompt\.trimEnd\(\),\s*"",\s*contextResetInstruction\(\)\s*\]/,
+    "reset instruction must be applied via the helper"
+  );
+  assert.match(
+    acpRuntimeSource,
+    /The previous agent session reached its context limit/,
+    "reset instruction must be the fixed English agent-facing string"
+  );
+  assert.equal(
+    /之前的智能体会话已达到上下文上限/.test(acpRuntimeSource),
+    false,
+    "reset instruction must not be localized; it is sent to the model"
+  );
+});
+
+test("ACP runtime surfaces a friendly error when a fresh session still exceeds context", () => {
+  assert.match(acpRuntimeSource, /contextWindowExceededAfterResetError/);
+  assert.match(
+    acpRuntimeSource,
+    /重置会话后，请求仍超出模型的上下文窗口/,
+    "friendly after-reset error must have a Simplified Chinese translation"
+  );
+  assert.match(
+    acpRuntimeSource,
+    /The request still exceeds the model's context window even after starting a fresh agent session/,
+    "friendly after-reset error must explain the reset path is exhausted"
+  );
 });
 
 test("parseAcpLine parses JSON-RPC messages and ignores blank lines", () => {
@@ -1040,7 +1114,7 @@ test("shouldEmitAcpUpdate suppresses replay updates before the current prompt st
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "previous answer" }
       },
-      { promptStarted: false }
+      { promptStarted: false, replaySuppressionEnabled: false }
     ),
     false
   );
@@ -1050,7 +1124,7 @@ test("shouldEmitAcpUpdate suppresses replay updates before the current prompt st
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "current answer" }
       },
-      { promptStarted: true }
+      { promptStarted: true, replaySuppressionEnabled: false }
     ),
     true
   );
@@ -1063,7 +1137,7 @@ test("shouldEmitAcpUpdate always emits session metadata updates", () => {
         sessionUpdate: "session_info_update",
         title: "Renamed session"
       },
-      { promptStarted: false }
+      { promptStarted: false, replaySuppressionEnabled: false }
     ),
     true
   );
@@ -1073,7 +1147,30 @@ test("shouldEmitAcpUpdate always emits session metadata updates", () => {
         sessionUpdate: "config_option_update",
         configOptions: [{ id: "model", name: "Model", type: "select" }]
       },
-      { promptStarted: false }
+      { promptStarted: false, replaySuppressionEnabled: false }
+    ),
+    true
+  );
+});
+
+test("saved ACP sessions that fall back to session/new keep matching live chunks", () => {
+  const sessionStartMode = selectAcpSessionStartMode("saved-session", {
+    sessionCapabilities: {}
+  });
+  const replayContentSignatures = new Set(["same as a previous answer"]);
+
+  assert.equal(sessionStartMode, "new");
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "same as a previous answer" }
+      },
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: sessionStartMode !== "new",
+        replayContentSignatures
+      }
     ),
     true
   );
@@ -1088,7 +1185,11 @@ test("shouldEmitAcpUpdate suppresses persisted messageId replay after prompt sta
         messageId: "msg-old-1",
         content: { type: "text", text: "previous answer" }
       },
-      { promptStarted: true, replayMessageIds }
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true,
+        replayMessageIds
+      }
     ),
     false
   );
@@ -1099,7 +1200,11 @@ test("shouldEmitAcpUpdate suppresses persisted messageId replay after prompt sta
         messageId: "msg-new-1",
         content: { type: "text", text: "fresh answer" }
       },
-      { promptStarted: true, replayMessageIds }
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true,
+        replayMessageIds
+      }
     ),
     true
   );
@@ -1110,21 +1215,33 @@ test("shouldEmitAcpUpdate suppresses replayed tool calls by toolCallId", () => {
   assert.equal(
     shouldEmitAcpUpdate(
       { sessionUpdate: "tool_call", toolCallId: "tool-old-1", title: "Read" },
-      { promptStarted: true, replayMessageIds }
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true,
+        replayMessageIds
+      }
     ),
     false
   );
   assert.equal(
     shouldEmitAcpUpdate(
       { sessionUpdate: "tool_call_update", toolCallId: "tool-old-1", status: "completed" },
-      { promptStarted: true, replayMessageIds }
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true,
+        replayMessageIds
+      }
     ),
     false
   );
   assert.equal(
     shouldEmitAcpUpdate(
       { sessionUpdate: "tool_call", toolCallId: "tool-new-1", title: "Read" },
-      { promptStarted: true, replayMessageIds }
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true,
+        replayMessageIds
+      }
     ),
     true
   );
@@ -1139,7 +1256,11 @@ test("shouldEmitAcpUpdate suppresses replayed chunks by content signature", () =
         messageId: "fresh-id-never-persisted",
         content: { type: "text", text: "  你好！我是 Qoder  " }
       },
-      { promptStarted: true, replayContentSignatures }
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true,
+        replayContentSignatures
+      }
     ),
     false
   );
@@ -1149,7 +1270,11 @@ test("shouldEmitAcpUpdate suppresses replayed chunks by content signature", () =
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "抱歉，" }
       },
-      { promptStarted: true, replayContentSignatures }
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true,
+        replayContentSignatures
+      }
     ),
     true
   );

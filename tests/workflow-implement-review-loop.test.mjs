@@ -315,7 +315,9 @@ test("augmentPromptWithConsumedSummaries deduplicates and caps context blocks", 
     )
   );
 
-  assert.ok(out.length <= basePrompt.length + WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS);
+  assert.ok(
+    out.length <= basePrompt.length + WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS
+  );
   assert.equal((out.match(/--- step-/g) ?? []).length, 32);
   assert.equal((out.match(/--- step-0-/g) ?? []).length, 1);
   assert.match(out, /step-31-output/);
@@ -391,7 +393,7 @@ test("runtime loops build review when verification has unresolved issues", () =>
   assert.match(src, /verification feedback from the previous round/);
 });
 
-test("runtime resumes gated plan revisions and implementer review-loop sessions", () => {
+test("runtime resumes gated plan revisions but starts each implement loop round fresh", () => {
   const src = fs.readFileSync(
     new URL("../electron/cli/workflowRuntime.ts", import.meta.url),
     "utf8"
@@ -400,6 +402,7 @@ test("runtime resumes gated plan revisions and implementer review-loop sessions"
   assert.match(src, /Boolean\(step\.toolSessionId\)/);
   assert.match(src, /step\.prompt\.includes\("User requested changes before approval:"\)/);
   assert.match(src, /step\.stepId === IMPLEMENT_REVIEW_STEP_ID/);
+  assert.match(src, /step\.stepId === IMPLEMENT_REVIEW_STEP_ID[\s\S]*return false/);
   assert.match(src, /const resumeToolSession = shouldResumeWorkflowStep\(plan, step\)/);
   assert.match(src, /toolSessionScope: args\.toolSessionScope/);
   assert.match(src, /toolSessionId: args\.toolSessionId/);
@@ -427,6 +430,7 @@ test("workflow steps persist reusable tool session ids separately from task ids"
   assert.match(db, /ALTER TABLE workflow_steps ADD COLUMN tool_session_id TEXT/);
   assert.match(workflows, /toolSessionId: r\.tool_session_id/);
   assert.match(workflows, /tool_session_id = \?/);
+  assert.match(workflows, /tool_session_id = NULL/);
   assert.match(electronTypes, /toolSessionId\?: string/);
   assert.match(rendererTypes, /toolSessionId\?: string/);
 });

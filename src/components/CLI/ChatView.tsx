@@ -9,7 +9,7 @@ import {
   type DragEvent
 } from "react";
 import { nanoid } from "nanoid";
-import { ExternalLink, Folder, X } from "lucide-react";
+import { ExternalLink, Folder, FolderLock, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
@@ -25,6 +25,7 @@ import {
   pathsEqual
 } from "@/utils/projectPaths";
 import { cliClient } from "@/services/cli/client";
+import { pruneConfigOptionOverrides } from "@/utils/sessionConfigOptions";
 import type {
   AttachmentPrepareRejection,
   ChatAttachment,
@@ -88,6 +89,10 @@ import {
   unprotectManagedAttachments
 } from "@/utils/managedAttachmentProtection";
 import { WorkspaceFileMentionMenu } from "./WorkspaceFileMentionMenu";
+import {
+  conversationDisplayCwd,
+  projectLabelFromCwd
+} from "./conversationProjectGrouping";
 import {
   agentEntriesNeedingRefresh,
   buildAgentAvailabilityGroups,
@@ -662,6 +667,17 @@ export function ChatView({
     [agentAvailability.available]
   );
   const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, member?.cli.adapter ?? conv?.adapter);
+  const conversationWorkspacePath = conv ? conversationDisplayCwd(conv) : "";
+  const conversationWorkspaceName = conversationWorkspacePath
+    ? projectLabelFromCwd(conversationWorkspacePath)
+    : t("chat.noWorkspace");
+  const conversationWorkspaceTitle =
+    conv?.sourceCwd && conv.cwd
+      ? t("chat.isolatedWorkspaceTooltip", {
+          source: conv.sourceCwd,
+          workspace: conv.cwd
+        })
+      : conv?.cwd;
   const running =
     live?.status === "running" || live?.status === "starting";
   const sending =
@@ -700,6 +716,32 @@ export function ChatView({
   }, [conv, live?.items, messages]);
   const availableCommands = sessionMeta.commands;
   const sessionConfigOptions = sessionMeta.configOptions;
+
+  // Persist the thought_level candidates an agent reports for each model while
+  // a real conversation runs. The new-task picker probes with the agent's
+  // default model, so model-dependent candidates (e.g. [high, max] on glm-5.2
+  // vs [none, high] on the default) are missing there until this backfills
+  // them — without spawning an extra probe per model.
+  useEffect(() => {
+    const agentId = conv?.agentId;
+    if (!agentId) return;
+    const modelOption = sessionConfigOptions.find(
+      (option) => option.id === "model" || option.category === "model"
+    );
+    const thoughtOption = sessionConfigOptions.find(
+      (option) =>
+        option.category === "thought_level" || option.id === "thought_level"
+    );
+    const modelId = modelOption?.currentValue;
+    const values = thoughtOption?.values;
+    if (!modelId || !values || values.length === 0) return;
+    void cliClient
+      .setSetting(
+        `seen-thought-level:${agentId}:${modelId}`,
+        JSON.stringify(values)
+      )
+      .catch(() => {});
+  }, [conv?.agentId, sessionConfigOptions]);
 
   const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
   const projects = useProjectStore((s) => s.projects);
@@ -802,10 +844,11 @@ export function ChatView({
         folderBaseName(conversationProject.primaryPath || conv?.cwd || folders[0]);
       return `${name} · ${t("chat.folderCount", { count: folders.length })}`;
     }
-    return conv?.cwd ? conv.cwd : t("chat.noWorkspace");
+    return conversationWorkspaceName;
   }, [
     conversationMentionRoots,
     conversationProject,
+    conversationWorkspaceName,
     conv?.cwd,
     t
   ]);
@@ -864,9 +907,11 @@ export function ChatView({
     }
   }, [activeRun?.id, approvedWorkflowGate, gatingPhaseId]);
 
+  const currentUser = useConversationStore((s) => s.currentUser);
   const previewMessages = useMemo<ConversationMessage[]>(() => {
     if (!conv || submitPreview?.conversationId !== conv.id) return [];
     const existing = new Set(messages.map((m) => m.id));
+    const previewMember = member;
     const preview: ConversationMessage[] = [
       {
         id: submitPreview.userMessageId,
@@ -875,6 +920,7 @@ export function ChatView({
         status: "sent",
         content: submitPreview.prompt,
         attachments: submitPreview.attachments,
+        authorUsername: currentUser?.username ?? null,
         createdAt: submitPreview.createdAt,
         updatedAt: submitPreview.createdAt
       },
@@ -882,8 +928,11 @@ export function ChatView({
         id: submitPreview.assistantMessageId,
         conversationId: conv.id,
         role: "assistant",
-        status: "starting",
+        status: "running",
         content: "[]",
+        agentId: previewMember?.id ?? conv.agentId,
+        agentName: previewMember?.name ?? conv.agentName,
+        adapter: previewMember?.cli.adapter ?? conv.adapter,
         createdAt: submitPreview.createdAt,
         updatedAt: submitPreview.createdAt
       }
@@ -891,7 +940,7 @@ export function ChatView({
     // Once the real (same-id) message is in the store, drop the preview copy so
     // the same React element (stable key) takes over without a remount/flash.
     return preview.filter((m) => !existing.has(m.id));
-  }, [conv, submitPreview, messages]);
+  }, [conv, submitPreview, messages, member, currentUser?.username]);
 
   const storeFrames = useReplayStore((s) => s.frames);
   const replayFrame =
@@ -1053,6 +1102,53 @@ export function ChatView({
       };
       setNewTaskConfigLoading(true);
       void (async () => {
+        const restoreLastOverrides = async (opts: SessionConfigOption[]) => {
+          if (opts.length === 0) return;
+          try {
+            const raw = await cliClient.getSetting(
+              `last-session-config:${selectedMember.id}`
+            );
+            if (newTaskConfigProbeGenerationRef.current !== generation) return;
+            if (!raw) return;
+            const stored = JSON.parse(raw) as Record<string, string>;
+            // The probe ran with the agent's default model, so model-dependent
+            // candidates (e.g. thought_level [high, max] on glm-5.2 vs
+            // [none, high] on the default) are wrong until we substitute the
+            // values seen for the remembered model in a real conversation.
+            let effective = opts;
+            if (stored.model) {
+              try {
+                const seenRaw = await cliClient.getSetting(
+                  `seen-thought-level:${selectedMember.id}:${stored.model}`
+                );
+                if (newTaskConfigProbeGenerationRef.current !== generation) return;
+                if (seenRaw) {
+                  const seen = JSON.parse(seenRaw) as {
+                    id: string;
+                    name?: string;
+                  }[];
+                  if (Array.isArray(seen) && seen.length > 0) {
+                    effective = opts.map((option) =>
+                      option.category === "thought_level" ||
+                      option.id === "thought_level"
+                        ? { ...option, values: seen }
+                        : option
+                    );
+                    setNewTaskConfigOptions(effective);
+                  }
+                }
+              } catch {
+                /* ignore: seen-values lookup is best-effort */
+              }
+            }
+            const restored = pruneConfigOptionOverrides(stored, effective);
+            if (Object.keys(restored).length > 0) {
+              setNewTaskConfigOptionOverrides(restored);
+            }
+          } catch {
+            /* ignore: best-effort restore */
+          }
+        };
         let hasCachedOptions = false;
         try {
           const cached = await cliClient.getCachedSessionConfigOptions(probeInput);
@@ -1061,11 +1157,15 @@ export function ChatView({
             hasCachedOptions = true;
             setNewTaskConfigOptions(cached);
             setNewTaskConfigLoading(false);
+            void restoreLastOverrides(cached);
           }
 
           const fresh = await cliClient.inspectSessionConfigOptions(probeInput);
           if (newTaskConfigProbeGenerationRef.current !== generation) return;
-          if (fresh.length > 0) setNewTaskConfigOptions(fresh);
+          if (fresh.length > 0) {
+            setNewTaskConfigOptions(fresh);
+            void restoreLastOverrides(fresh);
+          }
         } catch {
           if (
             newTaskConfigProbeGenerationRef.current === generation &&
@@ -1833,7 +1933,50 @@ export function ChatView({
           void checkAgentEntries(agentEntriesNeedingRefresh(agentAvailability))
         }
         onManageAgents={() => onOpenAgentSettings?.()}
-        onConfigOptionOverrides={setNewTaskConfigOptionOverrides}
+        onConfigOptionOverrides={(next) => {
+          const prevModel = newTaskConfigOptionOverrides.model;
+          setNewTaskConfigOptionOverrides(next);
+          const member = members.find((entry) => entry.id === selectedMemberId);
+          if (member) {
+            void cliClient
+              .setSetting(
+                `last-session-config:${member.id}`,
+                JSON.stringify(next)
+              )
+              .catch(() => {});
+          }
+          // Picking a model changes which thought_level candidates are valid.
+          // The probe ran with the default model, so substitute the values seen
+          // for the chosen model in a real conversation (best-effort, no probe).
+          if (
+            next.model &&
+            next.model !== prevModel &&
+            newTaskConfigOptions.length > 0
+          ) {
+            void cliClient
+              .getSetting(`seen-thought-level:${selectedMemberId}:${next.model}`)
+              .then((raw) => {
+                if (!raw) return;
+                let seen: { id: string; name?: string }[] = [];
+                try {
+                  const parsed = JSON.parse(raw);
+                  if (Array.isArray(parsed)) seen = parsed;
+                } catch {
+                  return;
+                }
+                if (seen.length === 0) return;
+                setNewTaskConfigOptions((prev) =>
+                  prev.map((option) =>
+                    option.category === "thought_level" ||
+                    option.id === "thought_level"
+                      ? { ...option, values: seen }
+                      : option
+                  )
+                );
+              })
+              .catch(() => {});
+          }
+        }}
         onSkills={(ids) => {
           if (teamMode) setTeamTaskSkillIds(ids);
           else setNewTaskSkillIds(ids);
@@ -1987,7 +2130,11 @@ export function ChatView({
         ) : null}
         <div className="composer-context-row">
           <span>{agentDisplayName}</span>
-          <div className="composer-workspace-meta" ref={workspaceDetailsRef}>
+          <div
+            className="composer-workspace-meta"
+            ref={workspaceDetailsRef}
+            title={conversationWorkspaceTitle}
+          >
             {composerHasProjectWorkspace ? (
               <button
                 ref={workspaceSummaryRef}
@@ -1998,12 +2145,28 @@ export function ChatView({
                 title={composerWorkspaceLabel}
                 onClick={toggleWorkspaceDetails}
               >
-                <Folder aria-hidden="true" size={12} strokeWidth={1.8} />
+                {conv.sourceCwd ? (
+                  <FolderLock aria-hidden="true" size={12} strokeWidth={1.8} />
+                ) : (
+                  <Folder aria-hidden="true" size={12} strokeWidth={1.8} />
+                )}
                 <span>{composerWorkspaceLabel}</span>
               </button>
             ) : (
-              <span title={conv.cwd || undefined}>{composerWorkspaceLabel}</span>
+              <span className="composer-workspace-context">
+                {conv.sourceCwd ? (
+                  <FolderLock size={13} strokeWidth={1.8} aria-hidden="true" />
+                ) : null}
+                <span className="composer-workspace-name">
+                  {composerWorkspaceLabel}
+                </span>
+              </span>
             )}
+            {conv.sourceCwd ? (
+              <span className="composer-workspace-badge">
+                {t("chat.isolatedWorkspace")}
+              </span>
+            ) : null}
             {workspaceDetailsOpen &&
             composerHasProjectWorkspace &&
             conversationProject &&

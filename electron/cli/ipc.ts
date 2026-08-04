@@ -1,5 +1,7 @@
 import { ipcMain, BrowserWindow, dialog, shell, type IpcMainInvokeEvent } from "electron";
 import { registerHandler } from "../invokeRegistry.js";
+import { appendRendererLogEntries } from "../debugLog.js";
+import { buildDebugLogPreview, exportDebugLogs } from "../debugLogExport.js";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -25,6 +27,7 @@ import {
   type SessionConfigProbeInput
 } from "./sessionConfigProbe.js";
 import {
+  channelName,
   takeAuthenticationResolver,
   takePermissionResolver
 } from "./runtimeShared.js";
@@ -69,7 +72,13 @@ import {
 } from "./projects.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
 import { getCallerUserId } from "./callerContext.js";
-import { recordSessionOwner, clearSessionOwner } from "./sessionOwners.js";
+import {
+  callerCanControlSession,
+  recordSessionOwner,
+  clearSessionOwner
+} from "./sessionOwners.js";
+import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
+import { importCodexSession } from "./codexRolloutImport.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { setTelemetryEnabled, trackTelemetryEvent } from "../telemetry.js";
 import { normalizeTelemetryAdapter } from "../telemetryPrivacy.js";
@@ -574,6 +583,24 @@ export function registerCliIpc() {
   });
 
   registerHandler("cli:listAdapters", () => cliAdapterDefinitions);
+  registerHandler("debugLog:write", (_event, entries: unknown) => {
+    appendRendererLogEntries(entries);
+  });
+  registerHandler("debugLogs:preview", (_event, mode: unknown, conversationId: unknown) =>
+    buildDebugLogPreview(
+      mode === "full" ? "full" : "standard",
+      typeof conversationId === "string" ? conversationId : undefined
+    )
+  );
+  registerHandler("debugLogs:export", (event, mode: unknown, conversationId: unknown) => {
+    const win = event.sender ? BrowserWindow.fromWebContents(event.sender) : null;
+    if (!win) throw new Error("no window");
+    return exportDebugLogs(
+      win,
+      mode === "full" ? "full" : "standard",
+      typeof conversationId === "string" ? conversationId : undefined
+    );
+  });
   registerHandler("cli:usageSummary", (_event, rawPeriod: unknown) => {
     const period = normalizeAgentUsagePeriod(rawPeriod);
     return getAgentUsageSummary(period);
@@ -655,13 +682,23 @@ export function registerCliIpc() {
       contextReferences: _rendererContextReferences,
       ...rendererArgs
     } = args;
-    let runArgs: CliRunArgs = rendererArgs;
-    const workspaceRoots = conversation
+    // A network caller cannot swap the cwd after a conversation was created.
+    // The persisted conversation points at that user's managed clone.
+    let runArgs: CliRunArgs = {
+      ...rendererArgs,
+      cwd: conversation?.cwd ?? rendererArgs.cwd
+    };
+    const resolvedWorkspaceRoots = conversation
       ? resolveWorkspaceRootsForConversation(conversation)
       : resolveWorkspaceRootsForConversation({
-          cwd: rendererArgs.cwd,
+          cwd: runArgs.cwd,
           projectId: undefined
         });
+    const workspaceRoots = (
+      await Promise.all(
+        resolvedWorkspaceRoots.map((root) => isolateRemoteCwdForCaller(root))
+      )
+    ).filter((root): root is string => Boolean(root));
     // Authoritative roots always overwrite renderer workspaceRoots (empty clears untrusted roots).
     runArgs = { ...runArgs, workspaceRoots };
     const contextReferences = args.conversationId
@@ -679,7 +716,21 @@ export function registerCliIpc() {
       };
     }
     // Don't await: spawn returns immediately, streaming continues via events.
-    void cliRun(win.webContents, runArgs);
+    void cliRun(win.webContents, runArgs).catch((error) => {
+      const message = (error as Error)?.message || String(error);
+      console.error(`[cli] run failed for ${args.sessionId}:`, error);
+      safeSendToWebContents(
+        win.webContents,
+        channelName(args.sessionId),
+        { type: "error", message }
+      );
+      safeSendToWebContents(
+        win.webContents,
+        channelName(args.sessionId),
+        { type: "done", exitCode: -1 }
+      );
+      clearSessionOwner(args.sessionId);
+    });
     return { sessionId: args.sessionId };
   });
   registerHandler(
@@ -693,8 +744,12 @@ export function registerCliIpc() {
       inspectSessionConfigOptions(args)
   );
   registerHandler("cli:kill", (_e, sessionId: string) => {
-    clearSessionOwner(sessionId);
-    return cliKill(sessionId);
+    if (!callerCanControlSession(sessionId)) return false;
+    const killed = cliKill(sessionId);
+    // A live run clears its owner after broadcasting its terminal event.
+    // Clean up here only when there is no process that can do so.
+    if (!killed) clearSessionOwner(sessionId);
+    return killed;
   });
   registerHandler(
     "draft-tool:resolve",
@@ -713,6 +768,7 @@ export function registerCliIpc() {
         optionId?: string;
       }
     ) => {
+      if (!callerCanControlSession(args.sessionId)) return false;
       const resolver = takePermissionResolver(args.sessionId, args.requestId);
       if (!resolver) return false;
       if (args.outcome === "selected" && args.optionId) {
@@ -735,6 +791,7 @@ export function registerCliIpc() {
         methodId?: string;
       }
     ) => {
+      if (!callerCanControlSession(args.sessionId)) return false;
       const resolver = takeAuthenticationResolver(args.sessionId, args.requestId);
       if (!resolver) return false;
       if (args.outcome === "selected" && args.methodId) {
@@ -749,12 +806,16 @@ export function registerCliIpc() {
   registerHandler(
     "cli:authenticationTerminalInput",
     (_e, args: { sessionId: string; requestId: string; data: string }) =>
-      writeAuthenticationTerminal(args.sessionId, args.requestId, args.data)
+      callerCanControlSession(args.sessionId)
+        ? writeAuthenticationTerminal(args.sessionId, args.requestId, args.data)
+        : false
   );
   registerHandler(
     "cli:authenticationTerminalCancel",
     (_e, args: { sessionId: string; requestId: string }) =>
-      cancelAuthenticationTerminal(args.sessionId, args.requestId)
+      callerCanControlSession(args.sessionId)
+        ? cancelAuthenticationTerminal(args.sessionId, args.requestId)
+        : false
   );
 
   registerHandler("cli:listTasks", (_e, args: CliTaskListArgs = {}) =>
@@ -865,15 +926,29 @@ export function registerCliIpc() {
   );
   registerHandler(
     "cli:createConversation",
-    (_e, input: CreateConversationInput) => {
-      const conversation = createConversation(input);
+    async (_e, input: CreateConversationInput) => {
+      const isolatedCwd = await isolateRemoteCwdForCaller(input.cwd);
+      const conversation = createConversation({ ...input, cwd: isolatedCwd });
       trackTelemetryEvent("conversation_created", {
         adapter: normalizeTelemetryAdapter(input.adapter),
-        has_workspace: Boolean(input.cwd),
+        has_workspace: Boolean(isolatedCwd),
         approval_mode: input.approvalMode ?? "default"
       });
       notifyConversationsChanged();
       return conversation;
+    }
+  );
+  registerHandler(
+    "cli:importCodexSession",
+    async (_e, sessionId: string) => {
+      const result = importCodexSession(sessionId);
+      trackTelemetryEvent("codex_session_imported", {
+        created: result.created,
+        turns: result.turns,
+        messages: result.messages
+      });
+      if (result.created) notifyConversationsChanged();
+      return result;
     }
   );
   registerHandler(

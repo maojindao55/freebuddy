@@ -7,6 +7,12 @@ import { resolveSkillSnapshots } from "./skills.js";
 import type { SkillSnapshot } from "./skillTypes.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import { getUserById } from "./users.js";
+import { findProjectByCwd } from "./projects.js";
+import {
+  listRemoteWorkspaces,
+  sourcePathForManagedWorkspace,
+  type RemoteWorkspace
+} from "./remoteWorkspaces.js";
 
 let notifyMessagesChangedHandler: ((conversationId: string) => void) | null = null;
 
@@ -36,6 +42,8 @@ export interface Conversation {
   agentName: string;
   adapter: string;
   cwd?: string;
+  /** Assigned source path shown to remote users; cwd remains the execution path. */
+  sourceCwd?: string;
   projectId?: string;
   approvalMode?: "auto" | "ask";
   configOptionOverrides?: Record<string, string>;
@@ -114,14 +122,29 @@ function parseTitleSource(raw: unknown): ConversationTitleSource | undefined {
     : undefined;
 }
 
-function rowToConversation(r: any): Conversation {
+function rowToConversation(
+  r: any,
+  workspaceCache = new Map<string, RemoteWorkspace[]>()
+): Conversation {
+  const ownerId = r.owner_id ?? null;
+  const cwd = r.cwd ?? undefined;
+  let sourceCwd: string | undefined;
+  if (ownerId && cwd) {
+    let workspaces = workspaceCache.get(ownerId);
+    if (!workspaces) {
+      workspaces = listRemoteWorkspaces(ownerId);
+      workspaceCache.set(ownerId, workspaces);
+    }
+    sourceCwd = sourcePathForManagedWorkspace(cwd, workspaces);
+  }
   return {
     id: r.id,
     title: r.title,
     agentId: r.agent_id,
     agentName: r.agent_name,
     adapter: r.adapter,
-    cwd: r.cwd ?? undefined,
+    cwd,
+    sourceCwd,
     projectId: r.project_id ?? undefined,
     approvalMode:
       r.approval_mode === "ask" || r.approval_mode === "auto"
@@ -141,7 +164,7 @@ function rowToConversation(r: any): Conversation {
     sourceAgentName: r.source_agent_name ?? undefined,
     sourceAdapter: r.source_adapter ?? undefined,
     sourceBriefId: r.source_brief_id ?? undefined,
-    ownerId: r.owner_id ?? null,
+    ownerId,
     ownerUsername: r.owner_username ?? null
   };
 }
@@ -219,6 +242,11 @@ export interface CreateConversationInput {
 export function createConversation(input: CreateConversationInput): Conversation {
   const now = new Date().toISOString();
   const ownerId = input.ownerId ?? getCallerUserId() ?? null;
+  let projectId = input.projectId;
+  if (!projectId && input.cwd) {
+    const matched = findProjectByCwd(input.cwd);
+    if (matched) projectId = matched.id;
+  }
   getDb()
     .prepare(
       `INSERT INTO conversations
@@ -236,7 +264,7 @@ export function createConversation(input: CreateConversationInput): Conversation
       input.agentName,
       input.adapter,
       input.cwd ?? null,
-      input.projectId ?? null,
+      projectId ?? null,
       input.approvalMode ?? null,
       input.configOptionOverrides &&
         Object.keys(input.configOptionOverrides).length > 0
@@ -358,7 +386,10 @@ export function listConversations(args: ListConversationsArgs = {}): Conversatio
     ORDER BY COALESCE(c.last_message_at, c.updated_at) DESC
     LIMIT ?`;
   params.push(args.limit ?? 200);
-  return (getDb().prepare(sql).all(...params) as any[]).map(rowToConversation);
+  const workspaceCache = new Map<string, RemoteWorkspace[]>();
+  return (getDb().prepare(sql).all(...params) as any[]).map((row) =>
+    rowToConversation(row, workspaceCache)
+  );
 }
 
 export function requireOwnedConversation(id: string): Conversation | undefined {

@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createAcpTerminalManager } from "../dist-electron/cli/acpTerminal.js";
+import {
+  createAcpTerminalManager,
+  MAX_TERMINAL_OUTPUT_BYTES
+} from "../dist-electron/cli/acpTerminal.js";
 
 test("terminal manager streams output and reports exit status", async () => {
   const events = [];
@@ -11,7 +14,7 @@ test("terminal manager streams output and reports exit status", async () => {
     }
   });
 
-  const { terminalId } = manager.create({
+  const { terminalId } = await manager.create({
     sessionId: "sess-1",
     command: process.platform === "win32" ? "cmd" : "sh",
     args:
@@ -33,7 +36,7 @@ test("terminal manager streams output and reports exit status", async () => {
 
 test("terminal manager enforces output byte limits", async () => {
   const manager = createAcpTerminalManager({});
-  const { terminalId } = manager.create({
+  const { terminalId } = await manager.create({
     sessionId: "sess-2",
     command: process.execPath,
     args: ["-e", "process.stdout.write('prefix-' + 'x'.repeat(200) + '-tail')"],
@@ -51,9 +54,33 @@ test("terminal manager enforces output byte limits", async () => {
   manager.release(terminalId);
 });
 
+test("terminal manager caps agent-requested output limits", async () => {
+  const manager = createAcpTerminalManager({});
+  const { terminalId } = await manager.create({
+    sessionId: "sess-hard-cap",
+    command: process.execPath,
+    args: [
+      "-e",
+      `process.stdout.write('head-' + 'x'.repeat(${MAX_TERMINAL_OUTPUT_BYTES + 1024}) + '-tail')`
+    ],
+    outputByteLimit: MAX_TERMINAL_OUTPUT_BYTES * 8
+  });
+
+  await manager.waitForExit(terminalId);
+  const snap = manager.output(terminalId);
+
+  assert.equal(snap.truncated, true);
+  assert.ok(
+    Buffer.byteLength(snap.output, "utf8") <= MAX_TERMINAL_OUTPUT_BYTES
+  );
+  assert.match(snap.output, /-tail$/);
+
+  manager.release(terminalId);
+});
+
 test("terminal manager truncates UTF-8 output at character boundaries", async () => {
   const manager = createAcpTerminalManager({});
-  const { terminalId } = manager.create({
+  const { terminalId } = await manager.create({
     sessionId: "sess-3",
     command: process.execPath,
     args: ["-e", "process.stdout.write('前缀内容🙂最终')"],
@@ -70,3 +97,35 @@ test("terminal manager truncates UTF-8 output at character boundaries", async ()
 
   manager.release(terminalId);
 });
+
+test(
+  "terminal manager executes adapter-provided shell command lines",
+  { skip: process.platform === "win32" },
+  async () => {
+    let preparedInput;
+    const manager = createAcpTerminalManager({
+      commandIsShellLine: true,
+      prepareSpawn: async (input) => {
+        preparedInput = input;
+        return input;
+      }
+    });
+    const { terminalId } = await manager.create({
+      sessionId: "sess-shell-line",
+      command: `/bin/bash -lc 'printf "%s" "$PWD"; printf ":%s" "quoted value"'`
+    });
+
+    const exit = await manager.waitForExit(terminalId);
+    const snap = manager.output(terminalId);
+
+    assert.equal(exit.exitCode, 0);
+    assert.equal(preparedInput.command, "/bin/sh");
+    assert.deepEqual(preparedInput.args, [
+      "-c",
+      `/bin/bash -lc 'printf "%s" "$PWD"; printf ":%s" "quoted value"'`
+    ]);
+    assert.match(snap.output, /:quoted value$/);
+
+    manager.release(terminalId);
+  }
+);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { MoreHorizontal, RotateCcw, Square } from "lucide-react";
+import { FileDown, MoreHorizontal, RotateCcw, Square } from "lucide-react";
 
 import type { ConversationMessage } from "@/services/cli/types";
 import { pendingManualGatePhaseId } from "@/services/workflows/planning";
@@ -12,6 +12,7 @@ import type {
   WorkflowStepStatus
 } from "@/services/workflows/types";
 import { useConversationStore } from "@/store/conversationStore";
+import { useDebugLogsDialogStore } from "@/store/debugLogsDialogStore";
 import {
   REPLAY_BASE_INTERVAL_MS,
   REPLAY_TYPING_INTERVAL_MS,
@@ -360,6 +361,20 @@ export function TitlebarOverflowMenu() {
           >
             <ReplayIcon aria-hidden="true" size={14} strokeWidth={1.8} />
             <span>{replayLabel}</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="titlebar-overflow-item"
+            aria-label={t("debugLogs.title")}
+            title={t("debugLogs.title")}
+            onClick={() => {
+              useDebugLogsDialogStore.getState().setOpen(true, activeId ?? undefined);
+              setOpen(false);
+            }}
+          >
+            <FileDown aria-hidden="true" size={14} strokeWidth={1.8} />
+            <span>{t("debugLogs.title")}</span>
           </button>
         </div>
       )}

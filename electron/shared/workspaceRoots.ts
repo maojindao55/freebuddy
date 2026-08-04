@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
@@ -49,9 +50,25 @@ export function resolveWorkspaceRoots(
 }
 
 export function isPathWithinRoots(target: string, roots: string[]): boolean {
-  const resolved = path.resolve(target);
+  const canonical = (input: string): string => {
+    const resolved = path.resolve(input);
+    let cursor = resolved;
+    const missing: string[] = [];
+    while (!fs.existsSync(cursor)) {
+      const parent = path.dirname(cursor);
+      if (parent === cursor) return resolved;
+      missing.unshift(path.basename(cursor));
+      cursor = parent;
+    }
+    try {
+      return path.resolve(fs.realpathSync.native(cursor), ...missing);
+    } catch {
+      return resolved;
+    }
+  };
+  const resolved = canonical(target);
   for (const root of roots) {
-    const r = path.resolve(root);
+    const r = canonical(root);
     if (resolved === r) return true;
     if (resolved.startsWith(r + path.sep)) return true;
   }

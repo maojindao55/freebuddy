@@ -26,6 +26,7 @@ extraResources:
 asarUnpack:
   - node_modules/better-sqlite3/**/*
   - node_modules/node-pty/**/*
+  - node_modules/@anthropic-ai/sandbox-runtime/vendor/**/*
 
 publish:
   - provider: github

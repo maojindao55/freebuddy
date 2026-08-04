@@ -177,6 +177,17 @@ export function guardRemoteInvokeArgs(
     return args;
   }
 
+  if (channel === "scheduledTasks:create" && payload) {
+    assertPathAllowed(payload.cwd, roots, "cwd");
+    return args;
+  }
+
+  if (channel === "scheduledTasks:update" && payload) {
+    const input = asRecord(payload.input);
+    if (input) assertPathAllowed(input.cwd, roots, "cwd");
+    return args;
+  }
+
   return args;
 }
 

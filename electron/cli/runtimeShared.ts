@@ -3,6 +3,7 @@ import { type ChildProcessByStdio } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 
 import { getDb } from "./db.js";
+import { getCallerUserId } from "./callerContext.js";
 import type { CLIAdapterId } from "./adapters.js";
 import type { AcpStreamItem } from "./acp.js";
 import type { SkillSnapshot } from "./skillTypes.js";
@@ -15,6 +16,8 @@ import {
 } from "../telemetryPrivacy.js";
 import { scheduleAgentUsageReconciliation } from "./usageReconciler.js";
 import { linkAgentUsageSessionForTask } from "./usageStore.js";
+import { redactsecrets } from "../shared/logSanitize.js";
+import { formatLocalTimestamp } from "../shared/debugLogCore.js";
 
 export interface CliPromptAttachment {
   path: string;
@@ -169,8 +172,9 @@ export function insertTask(
     .prepare(
       `INSERT INTO cli_tasks
          (id, agent_id, agent_name, adapter, status, cwd, prompt, prompt_summary,
-          session_id, tool_session_id, log_path, started_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          session_id, tool_session_id, log_path, started_at, owner_id,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       args.sessionId,
@@ -184,6 +188,7 @@ export function insertTask(
       toolSessionId ?? null,
       logPath,
       now,
+      getCallerUserId(),
       now,
       now
     );
@@ -261,12 +266,17 @@ export function appendLog(
   content: string
 ) {
   if (!file || file.writableEnded || file.destroyed) return;
-  const safeContent =
+  const REDACT_OVERLAP_CHARS = 256; // > max realistic key length
+  const slice =
     content.length > MAX_LOG_LINE_CHARS
-      ? `${content.slice(0, MAX_LOG_LINE_CHARS)}\n… [log truncated]`
+      ? content.slice(0, MAX_LOG_LINE_CHARS + REDACT_OVERLAP_CHARS)
       : content;
+  let safeContent = redactsecrets(slice);
+  if (safeContent.length > MAX_LOG_LINE_CHARS) {
+    safeContent = `${safeContent.slice(0, MAX_LOG_LINE_CHARS)}\n… [log truncated]`;
+  }
   const entry = JSON.stringify({
-    ts: new Date().toISOString(),
+    ts: formatLocalTimestamp(new Date()),
     type: kind,
     content: safeContent
   });

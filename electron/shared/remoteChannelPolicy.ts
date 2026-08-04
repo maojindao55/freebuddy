@@ -183,12 +183,19 @@ const ADMIN_ONLY = [
 ] as const;
 
 const DENY = [
+  // Debug log export is desktop-only (privacy).
+  "debugLog:write",
+  "debugLogs:preview",
+  "debugLogs:export",
+
   // Native dialogs and shell integration have no meaning off-device.
   "cli:selectAttachments",
   "cli:selectDirectory",
   "cli:openDraftExternal",
   "cli:openCursorUsageSettings",
   "cli:prepareAttachmentFiles",
+  // Importing a Codex rollout reads the host's ~/.codex filesystem.
+  "cli:importCodexSession",
   "shell:showItemInFolder",
   "skills:selectArchive",
   "skills:selectDirectory",
@@ -216,6 +223,7 @@ const DENY = [
   "remote:deleteUser",
   "remote:renameUser",
   "remote:setUserDisabled",
+  "remote:setUserStrictIsolation",
   "remote:listUsers",
   "remote:listUserRoots",
   "remote:setUserRoots",

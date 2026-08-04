@@ -261,19 +261,61 @@ export function buildTerminalOutputResponse(snapshot: {
   };
 }
 
+export type AcpSessionStartMode = "new" | "load" | "resume";
+
+/** Adapter-specific metadata forwarded through ACP session setup. */
+export interface AcpSessionMeta {
+  claudeCode?: {
+    options?: {
+      settings?: {
+        autoCompactEnabled?: boolean;
+        autoCompactWindow?: number;
+      };
+    };
+  };
+  [key: string]: unknown;
+}
+
+function withSessionMeta(
+  params: Record<string, unknown>,
+  sessionMeta?: AcpSessionMeta
+): Record<string, unknown> {
+  return sessionMeta ? { ...params, _meta: sessionMeta } : params;
+}
+
+export function selectAcpSessionStartMode(
+  toolSessionId: string | undefined,
+  agentCapabilities:
+    | {
+        loadSession?: unknown;
+        sessionCapabilities?: { resume?: unknown };
+      }
+    | undefined
+): AcpSessionStartMode {
+  if (toolSessionId && agentCapabilities?.loadSession) return "load";
+  if (toolSessionId && agentCapabilities?.sessionCapabilities?.resume) {
+    return "resume";
+  }
+  return "new";
+}
+
 export function buildSessionNewRequest(
   id: AcpRequestId,
   cwd?: string,
-  mcpServers: AcpStdioMcpServer[] = []
+  mcpServers: AcpStdioMcpServer[] = [],
+  sessionMeta?: AcpSessionMeta
 ): AcpMessage {
   return {
     jsonrpc: "2.0",
     id,
     method: "session/new",
-    params: {
-      cwd: cwd || process.cwd(),
-      mcpServers
-    }
+    params: withSessionMeta(
+      {
+        cwd: cwd || process.cwd(),
+        mcpServers
+      },
+      sessionMeta
+    )
   };
 }
 
@@ -281,17 +323,21 @@ export function buildSessionResumeRequest(
   id: AcpRequestId,
   sessionId: string,
   cwd?: string,
-  mcpServers: AcpStdioMcpServer[] = []
+  mcpServers: AcpStdioMcpServer[] = [],
+  sessionMeta?: AcpSessionMeta
 ): AcpMessage {
   return {
     jsonrpc: "2.0",
     id,
     method: "session/resume",
-    params: {
-      sessionId,
-      cwd: cwd || process.cwd(),
-      mcpServers
-    }
+    params: withSessionMeta(
+      {
+        sessionId,
+        cwd: cwd || process.cwd(),
+        mcpServers
+      },
+      sessionMeta
+    )
   };
 }
 
@@ -299,17 +345,21 @@ export function buildSessionLoadRequest(
   id: AcpRequestId,
   sessionId: string,
   cwd?: string,
-  mcpServers: AcpStdioMcpServer[] = []
+  mcpServers: AcpStdioMcpServer[] = [],
+  sessionMeta?: AcpSessionMeta
 ): AcpMessage {
   return {
     jsonrpc: "2.0",
     id,
     method: "session/load",
-    params: {
-      sessionId,
-      cwd: cwd || process.cwd(),
-      mcpServers
-    }
+    params: withSessionMeta(
+      {
+        sessionId,
+        cwd: cwd || process.cwd(),
+        mcpServers
+      },
+      sessionMeta
+    )
   };
 }
 
@@ -332,6 +382,10 @@ function readImageBase64(filePath: string): string | undefined {
   }
 }
 
+function normalizeResourceLinkMime(mimeType: string): string {
+  return mimeType === "application/json" ? "text/plain" : mimeType;
+}
+
 function resourceLinkBlock(attachment: AcpPromptAttachment) {
   const uri = attachment.path.startsWith("file:")
     ? attachment.path
@@ -340,7 +394,9 @@ function resourceLinkBlock(attachment: AcpPromptAttachment) {
     type: "resource_link",
     uri,
     ...(attachment.name ? { name: attachment.name } : {}),
-    ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {})
+    ...(attachment.mimeType
+      ? { mimeType: normalizeResourceLinkMime(attachment.mimeType) }
+      : {})
   };
 }
 
@@ -472,7 +528,7 @@ function toolOutputText(value: unknown): string {
   return stringifyValue(value);
 }
 
-function textFromContent(content: any): string {
+export function textFromContent(content: any): string {
   if (typeof content === "string") return content;
   if (content?.type === "text" && typeof content.text === "string") {
     return content.text;
@@ -1224,6 +1280,7 @@ export function shouldEmitAcpUpdate(
   update: any,
   state: {
     promptStarted: boolean;
+    replaySuppressionEnabled: boolean;
     replayMessageIds?: ReadonlySet<string>;
     replayContentSignatures?: ReadonlySet<string>;
   }
@@ -1234,6 +1291,9 @@ export function shouldEmitAcpUpdate(
   }
   if (!state.promptStarted) {
     return false;
+  }
+  if (!state.replaySuppressionEnabled) {
+    return true;
   }
   const isMessageOrThought =
     type === "agent_message_chunk" || type === "agent_thought_chunk";

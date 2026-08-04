@@ -28,7 +28,8 @@ export type TelemetryEvent =
   | "agent_run_finished"
   | "workflow_run_started"
   | "workflow_run_finished"
-  | "agent_setup_completed";
+  | "agent_setup_completed"
+  | "codex_session_imported";
 
 export type TelemetryProperties = Record<string, string | number | boolean>;
 
@@ -80,6 +81,11 @@ interface ProductTelemetryEventProperties {
     setup_action: "check" | "install";
     result: string;
     error_category?: string;
+  };
+  codex_session_imported: {
+    created: boolean;
+    turns: number;
+    messages: number;
   };
 }
 

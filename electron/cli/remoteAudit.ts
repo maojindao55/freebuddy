@@ -12,6 +12,8 @@ export type RemoteAuditEvent =
   | "user.renamed"
   | "user.disabled"
   | "user.enabled"
+  | "user.strict_isolation_enabled"
+  | "user.strict_isolation_disabled"
   | "user.password_reset"
   | "user.password_set"
   | "user.roots_changed"

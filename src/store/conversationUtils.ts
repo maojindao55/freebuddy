@@ -121,10 +121,8 @@ export function collectStreamContentSignatures(
     if (normalized.length > 0) signatures.add(normalized);
   };
   for (const message of messages) {
-    if (message.role === "user") {
-      add(message.content);
-      continue;
-    }
+    // Replay suppression is applied only to agent message/thought chunks.
+    // User text must not cross-match and hide a live assistant chunk.
     if (message.role !== "assistant") continue;
     try {
       const parsed = JSON.parse(message.content);
@@ -702,6 +700,7 @@ export function mergeConversationMessages(
     }
     const attachments = mergeMessageAttachments(message, previous);
     if (
+      previous.createdAt === message.createdAt &&
       previous.status === message.status &&
       previous.content === message.content &&
       previous.updatedAt === message.updatedAt &&

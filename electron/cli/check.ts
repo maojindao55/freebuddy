@@ -18,6 +18,7 @@ import {
   windowsInstallInvocation
 } from "./windowsEnv.js";
 import { findMacAppCliBinary } from "./macAppCli.js";
+import { logMain } from "../debugLog.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const CODEX_ACP_ADAPTER = "codex-acp";
@@ -306,6 +307,27 @@ function upsertRuntime(
       lastError ?? null,
       now
     );
+  logRuntimeRow({ adapter, installed, version, binaryPath, lastError });
+}
+
+function logRuntimeRow(rt: {
+  adapter: string;
+  installed: boolean;
+  version?: string;
+  binaryPath?: string;
+  lastError?: string;
+}): void {
+  logMain().info("runtime", "cli runtime", {
+    adapter: rt.adapter,
+    installed: rt.installed,
+    ...(rt.version ? { version: rt.version } : {}),
+    ...(rt.binaryPath ? { binaryPath: rt.binaryPath } : {}),
+    ...(rt.lastError ? { lastError: rt.lastError } : {})
+  });
+}
+
+export function logAllCliRuntimes(): void {
+  for (const rt of listRuntimes()) logRuntimeRow(rt);
 }
 
 export function updateRuntimeRun(adapter: string, error?: string): void {

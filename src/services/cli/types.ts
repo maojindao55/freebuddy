@@ -28,6 +28,8 @@ export interface CLICodexByokConfig {
   apiKey?: string;
   apiKeyPreview?: string;
   models?: CLIByokModel[];
+  /** Provider model context window in tokens, when it is not discoverable. */
+  contextWindow?: number;
 }
 
 export interface CLIClaudeByokConfig {
@@ -37,11 +39,23 @@ export interface CLIClaudeByokConfig {
   apiKey?: string;
   apiKeyPreview?: string;
   models?: CLIByokModel[];
+  /** Provider model context window used as Claude's auto-compact window. */
+  contextWindow?: number;
+  compaction?: CLIClaudeCompactionConfig;
+}
+
+export interface CLIClaudeCompactionConfig {
+  /** Automatically compact the Claude conversation as it approaches its limit. */
+  enabled?: boolean;
+  /** Legacy location for contextWindow; read for backward compatibility. */
+  window?: number;
 }
 
 export interface CLIByokModel {
   id: string;
   name?: string;
+  /** Per-model context window (tokens) written into the Codex model catalog. */
+  contextWindow?: number;
 }
 
 export interface AgentModelUsage {
@@ -537,6 +551,8 @@ export interface Conversation {
   agentName: string;
   adapter: string;
   cwd?: string;
+  /** Assigned source path for display; cwd remains the real execution path. */
+  sourceCwd?: string;
   projectId?: string;
   approvalMode?: "auto" | "ask";
   configOptionOverrides?: Record<string, string>;
@@ -685,6 +701,15 @@ export interface TransferConversationResult {
   briefId: string | null;
   seedPrompt: string;
   warning?: "brief_extraction_failed";
+}
+
+export interface ImportCodexSessionResult {
+  conversation: Conversation;
+  created: boolean;
+  rolloutPath: string;
+  turns: number;
+  messages: number;
+  warning?: "resume_session_not_linked";
 }
 
 export type ConversationContextReferenceType = "transfer" | "share";

@@ -550,10 +550,7 @@ export function augmentPromptWithConsumedSummaries(
   refs.forEach((ref, index) => {
     const remainingBlocks = refs.length - index;
     const fairShare = Math.floor(remainingChars / remainingBlocks);
-    const blockLimit = Math.min(
-      WORKFLOW_CONSUMED_STEP_MAX_CHARS,
-      fairShare
-    );
+    const blockLimit = Math.min(WORKFLOW_CONSUMED_STEP_MAX_CHARS, fairShare);
     const context = boundedWorkflowContext(ref.context, blockLimit);
     blocks.push(`${ref.header}${context}`);
     remainingChars -= context.length;

@@ -36,6 +36,12 @@ export function projectKeyFromCwd(cwd: string): string {
   return cwd.replace(/[\\/]+$/, "").toLowerCase();
 }
 
+export function conversationDisplayCwd(
+  conversation: Pick<Conversation, "cwd" | "sourceCwd">
+): string {
+  return conversation.sourceCwd?.trim() || conversation.cwd?.trim() || "";
+}
+
 /**
  * Group conversations that have a cwd into project folders, newest activity first.
  * Conversations without cwd are omitted (they belong in Recent).
@@ -45,7 +51,7 @@ export function groupConversationsByProject(
 ): ConversationProjectGroup[] {
   const map = new Map<string, ConversationProjectGroup>();
   for (const conversation of items) {
-    const cwd = conversation.cwd?.trim();
+    const cwd = conversationDisplayCwd(conversation);
     if (!cwd) continue;
     const key = projectKeyFromCwd(cwd);
     const existing = map.get(key);

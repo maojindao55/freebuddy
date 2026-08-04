@@ -1,11 +1,11 @@
-import { app, BrowserWindow, nativeImage, protocol, shell } from "electron";
+import { app, BrowserWindow, ipcMain, nativeImage, Notification, protocol, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
 
 import { registerCliIpc } from "./cli/ipc.js";
-import { startCodexToolchainAutoUpdate } from "./cli/check.js";
+import { logAllCliRuntimes, startCodexToolchainAutoUpdate } from "./cli/check.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
 import { handleDraftRequest } from "./draftProtocol.js";
@@ -33,11 +33,13 @@ import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
 import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
 import { initializeAgentUsageReconciler } from "./cli/usageReconciler.js";
+import { initDebugLog, logMain } from "./debugLog.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
 app.setName(APP_NAME);
+app.setAppUserModelId("dev.freebuddy.app");
 process.env.FB_APP_VERSION = APP_VERSION;
 app.setAboutPanelOptions({
   applicationName: APP_NAME,
@@ -232,6 +234,14 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    logMain().error("crash", "render process gone", {
+      reason: details.reason,
+      exitCode: details.exitCode
+    });
+  });
+  logMain().info("window", "main window created");
+
   initApplicationMenu();
   setupContextMenu(mainWindow, isDev);
 
@@ -252,6 +262,15 @@ function createWindow() {
   mainWindow.on("leave-full-screen", sendChromeVisible);
   mainWindow.on("maximize", sendChromeVisible);
   mainWindow.on("unmaximize", sendChromeVisible);
+
+  mainWindow.on("focus", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.flashFrame(false);
+    }
+    if (process.platform === "darwin" && app.dock) {
+      app.dock.setBadge("");
+    }
+  });
 
   // The app menu is hidden (Menu.setApplicationMenu(null)) and we use
   // titleBarStyle: "hiddenInset", so macOS' default Esc-to-leave-fullscreen
@@ -278,7 +297,80 @@ function createWindow() {
   }
 }
 
+type TaskNotificationPayload = {
+  kind: "success" | "failure";
+  title: string;
+  body?: string;
+  conversationId?: string;
+};
+
+function registerTaskNotificationIpc(): void {
+  ipcMain.handle("window:notify", (_event, payload: TaskNotificationPayload) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return;
+
+    if (process.platform === "win32") {
+      win.flashFrame(true);
+    }
+    if (process.platform === "darwin" && app.dock) {
+      app.dock.bounce("informational");
+    }
+
+    try {
+      const notification = new Notification({
+        title: payload.title,
+        body: payload.body ?? "",
+        silent: true,
+        icon: loadAppIcon()
+      });
+      notification.on("click", () => {
+        if (!win || win.isDestroyed()) return;
+        try {
+          // Restore from minimized/occluded state and raise to the foreground.
+          // On Windows the notification click grants a brief SetForegroundWindow
+          // permission to the app; claim it synchronously before focus() loses it.
+          if (win.isMinimized()) win.restore();
+          win.show();
+          win.moveTop();
+          win.focus();
+          if (process.platform === "win32") win.flashFrame(false);
+          logMain().info("window", "notification clicked", {
+            visible: win.isVisible(),
+            minimized: win.isMinimized(),
+            focused: win.isFocused(),
+            conversationId: payload.conversationId
+          });
+          if (payload.conversationId) {
+            safeSendToWebContents(
+              win.webContents,
+              "window:open-conversation",
+              payload.conversationId
+            );
+          }
+        } catch (err) {
+          logMain().error("window", "notification click handler failed", {
+            message: (err as Error)?.message
+          });
+        }
+      });
+      notification.on("failed", (_e, error) => {
+        logMain().error("window", "notification failed", { message: error });
+      });
+      notification.show();
+    } catch {
+      // Notifications are best-effort; ignore failures.
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  initDebugLog();
+  logMain().info("main", "app ready", {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    platform: process.platform,
+    arch: process.arch
+  });
   await injectShellPath();
   registerLocalFileProtocol();
   registerDraftProtocol();
@@ -289,6 +381,7 @@ app.whenReady().then(async () => {
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
   getDb();
+  logAllCliRuntimes();
   const existingOwner = getOwnerUser();
   if (existingOwner) {
     applyOwnerBackfill(existingOwner.id);
@@ -328,6 +421,7 @@ app.whenReady().then(async () => {
   seedBuiltinSkills();
   seedBuiltinWorkflowTeams();
   registerCliIpc();
+  registerTaskNotificationIpc();
   bindConversationNotifier((conversationId) => {
     for (const win of BrowserWindow.getAllWindows()) {
       safeSendToWebContents(win.webContents, "messages://changed", { conversationId });

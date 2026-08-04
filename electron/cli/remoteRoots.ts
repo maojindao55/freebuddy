@@ -1,6 +1,7 @@
 import os from "node:os";
 
 import { getUserById, getUserRoots } from "./users.js";
+import { listRemoteWorkspacePaths } from "./remoteWorkspaces.js";
 import { resolveWorkspaceRoots } from "../shared/workspaceRoots.js";
 
 /**
@@ -16,7 +17,9 @@ import { resolveWorkspaceRoots } from "../shared/workspaceRoots.js";
  * absolute paths under the account home (e.g. generated images) remain
  * previewable on WebUI the same way desktop `freebuddy-file://` allows them.
  */
-export function remoteRootsForUser(userId: string | null | undefined): string[] {
+export function remoteSourceRootsForUser(
+  userId: string | null | undefined
+): string[] {
   if (!userId) return resolveWorkspaceRoots([]);
   const roots = getUserRoots(userId);
   const isOwner = getUserById(userId)?.isOwner === true;
@@ -27,6 +30,19 @@ export function remoteRootsForUser(userId: string | null | undefined): string[] 
       : resolved;
   }
   return isOwner ? resolveWorkspaceRoots([]) : [];
+}
+
+/**
+ * All paths a remote caller may use after the source repository has been
+ * materialized. Managed per-user clones are deliberately not shown by the
+ * directory picker, but must remain reachable for runs, attachments and
+ * previews belonging to existing conversations.
+ */
+export function remoteRootsForUser(userId: string | null | undefined): string[] {
+  const sources = remoteSourceRootsForUser(userId);
+  if (!userId) return sources;
+  const combined = [...sources, ...listRemoteWorkspacePaths(userId)];
+  return combined.length > 0 ? resolveWorkspaceRoots(combined) : [];
 }
 
 /** True when the user browses the host home directory by default. */

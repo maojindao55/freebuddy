@@ -10,6 +10,7 @@ import {
   resetUserPassword,
   setUserPassword,
   setUserDisabled,
+  setUserStrictIsolation,
   ensureOwnerUser,
   getUserRoots,
   setUserRoots,
@@ -29,12 +30,14 @@ import {
   restartWebUIServer,
   getWebUIStatus,
   getConnectedSessionHashes,
-  normalizeWebUIPort,
-  WEBUI_DEFAULT_PORT,
   type WebUIBindMode,
   type WebUIServerOptions,
   type WebUIStatus
 } from "../webUIServer.js";
+import {
+  normalizeWebUIPort,
+  WEBUI_DEFAULT_PORT
+} from "../webUIConstants.js";
 import {
   invalidateAllSessions,
   invalidateUserSessions,
@@ -186,12 +189,19 @@ function registerRemoteIpc(): void {
 
   registerHandler(
     "remote:createUser",
-    async (_event, input: { username: string; password?: string }) => {
+    async (
+      _event,
+      input: { username: string; password?: string; strictIsolation?: boolean }
+    ) => {
       const password = input.password?.trim() || undefined;
       if (password && password.length < MIN_PASSWORD_LENGTH) {
         throw new Error("password_too_short");
       }
-      const created = createUser({ username: input.username, password });
+      const created = createUser({
+        username: input.username,
+        password,
+        strictIsolation: input.strictIsolation === true
+      });
       const who = actor();
       recordAudit({
         event: "user.created",
@@ -232,6 +242,24 @@ function registerRemoteIpc(): void {
       if (user) {
         recordAudit({
           event: input.disabled ? "user.disabled" : "user.enabled",
+          actorId: who.id,
+          actorName: who.name,
+          targetId: user.id,
+          targetName: user.username
+        });
+      }
+      return user;
+    }
+  );
+
+  registerHandler(
+    "remote:setUserStrictIsolation",
+    async (_event, input: { id: string; strictIsolation: boolean }) => {
+      const user = setUserStrictIsolation(input.id, input.strictIsolation);
+      const who = actor();
+      if (user) {
+        recordAudit({
+          event: input.strictIsolation ? "user.strict_isolation_enabled" : "user.strict_isolation_disabled",
           actorId: who.id,
           actorName: who.name,
           targetId: user.id,

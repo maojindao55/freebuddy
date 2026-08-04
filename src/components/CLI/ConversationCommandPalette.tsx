@@ -13,6 +13,7 @@ import { displayAgentName } from "@/config/agentDisplay";
 import { useConversationStore } from "@/store/conversationStore";
 import type { Conversation } from "@/services/cli/types";
 import {
+  conversationDisplayCwd,
   projectLabelFromCwd,
   conversationActivityTime
 } from "./conversationProjectGrouping";
@@ -33,6 +34,7 @@ export function ConversationCommandPalette({
   onNewTask,
   onOpenScheduledTasks,
   onOpenSettings,
+  onImportCodexSession,
   onSelectConversation
 }: {
   open: boolean;
@@ -40,6 +42,7 @@ export function ConversationCommandPalette({
   onNewTask: (options?: { cwd?: string }) => void;
   onOpenScheduledTasks: () => void;
   onOpenSettings: () => void;
+  onImportCodexSession: () => void;
   onSelectConversation?: () => void;
 }) {
   const { t } = useTranslation();
@@ -92,6 +95,14 @@ export function ConversationCommandPalette({
         }
       },
       {
+        id: "import-codex-session",
+        label: t("sidebar.importCodexSession"),
+        run: () => {
+          onImportCodexSession();
+          onClose();
+        }
+      },
+      {
         id: "settings",
         label: t("common.settings"),
         shortcut: "⌘,",
@@ -108,6 +119,7 @@ export function ConversationCommandPalette({
     onNewTask,
     onOpenScheduledTasks,
     onOpenSettings,
+    onImportCodexSession,
     t
   ]);
 
@@ -117,6 +129,7 @@ export function ConversationCommandPalette({
       ? conversations.filter((conversation) => {
           if (conversation.title.toLowerCase().includes(normalized)) return true;
           if (conversation.cwd?.toLowerCase().includes(normalized)) return true;
+          if (conversation.sourceCwd?.toLowerCase().includes(normalized)) return true;
           return displayAgentName(conversation.agentName, conversation.adapter)
             .toLowerCase()
             .includes(normalized);
@@ -267,8 +280,9 @@ export function ConversationCommandPalette({
             ) : (
               <ul role="listbox" aria-label={t("conversations.title")}>
                 {results.map((conversation, index) => {
-                  const project = conversation.cwd
-                    ? projectLabelFromCwd(conversation.cwd)
+                  const displayCwd = conversationDisplayCwd(conversation);
+                  const project = displayCwd
+                    ? projectLabelFromCwd(displayCwd)
                     : "";
                   const shortcut =
                     index < 9 ? `⌘${index + 1}` : undefined;

@@ -1,129 +1,77 @@
-import fs from "node:fs";
-import path from "node:path";
+/**
+ * Platform-specific Codex BYOK wrappers that inject model_catalog_json via `-c`
+ * when codex-acp spawns the real Codex binary through CODEX_PATH.
+ */
 
-interface CodexAppServerWrapperInput {
-  modelCatalogPath: string;
-  codexAcpPath?: string;
-  platform?: NodeJS.Platform;
-}
-
-interface CreateCodexAppServerWrapperInput
-  extends CodexAppServerWrapperInput {
-  dataDir: string;
-}
-
-export interface CodexAppServerWrapper {
-  extension: ".cmd" | ".sh";
-  contents: string;
-}
-
-function shellSingleQuote(value: string): string {
+export function shellSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function batchLiteral(value: string): string {
-  return value.replace(/%/g, "%%");
-}
-
-function unique(values: Array<string | undefined>): string[] {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))];
-}
-
-export function safeCodexFilePart(value: string): string {
-  return Buffer.from(value, "utf8").toString("base64url").slice(0, 80);
-}
-
-function bundledCodexCandidates(
-  codexAcpPath: string | undefined,
-  platform: NodeJS.Platform
-): string[] {
-  if (!codexAcpPath) return [];
-  const pathApi = platform === "win32" ? path.win32 : path.posix;
-  const normalized = pathApi.normalize(codexAcpPath);
-  const packageMarker = pathApi.join(
-    "node_modules",
-    "@agentclientprotocol",
-    "codex-acp"
-  );
-  const markerIndex = normalized.toLowerCase().indexOf(packageMarker.toLowerCase());
-  const packageRoot =
-    markerIndex >= 0
-      ? normalized.slice(0, markerIndex + packageMarker.length)
-      : undefined;
-  const shimRoot = pathApi.dirname(normalized);
-  const extension = platform === "win32" ? ".cmd" : "";
-
-  return unique([
-    packageRoot
-      ? pathApi.join(packageRoot, "node_modules", ".bin", `codex${extension}`)
-      : undefined,
-    pathApi.join(
-      shimRoot,
-      "node_modules",
-      "@agentclientprotocol",
-      "codex-acp",
-      "node_modules",
-      ".bin",
-      `codex${extension}`
-    ),
-    pathApi.join(
-      shimRoot,
-      "node_modules",
-      ".bin",
-      `codex${extension}`
-    )
-  ]);
-}
-
-function buildWindowsWrapper(
+export function buildCodexAppServerWrapperContent(
   modelCatalogPath: string,
-  codexAcpPath?: string
-): string {
-  const catalogArg = batchLiteral(
-    `model_catalog_json=${modelCatalogPath}`
-  );
-  const bundledCandidates = bundledCodexCandidates(
-    codexAcpPath,
-    "win32"
-  ).map(batchLiteral);
-  const candidateBlocks = bundledCandidates
-    .map(
-      (candidate) => `if exist "${candidate}" (
-  call "${candidate}" %* -c "${catalogArg}"
-  exit /b
-)`
-    )
-    .join("\r\n");
-
-  return `@echo off\r
-setlocal DisableDelayedExpansion\r
-if defined FREEBUDDY_CODEX_BIN (\r
-  call "%FREEBUDDY_CODEX_BIN%" %* -c "${catalogArg}"\r
-  exit /b\r
-)\r
-${candidateBlocks}\r
-where codex >nul 2>nul\r
-if not errorlevel 1 (\r
-  call codex %* -c "${catalogArg}"\r
-  exit /b\r
-)\r
-echo FreeBuddy Codex BYOK wrapper could not find the codex binary. 1>&2\r
-exit /b 127\r
-`;
-}
-
-function buildPosixWrapper(
-  modelCatalogPath: string,
-  codexAcpPath?: string,
   platform: NodeJS.Platform = process.platform
-): string {
+): { extension: ".cmd" | ".sh"; script: string } {
+  if (platform === "win32") {
+    // codex-acp on Windows spawns: `"${CODEX_PATH}" app-server` with shell:true,
+    // so a .cmd launcher is required (.sh is not executable under cmd.exe).
+    // Keep the catalog path in its own variable so nested quotes from
+    // JSON.stringify do not break `set "VAR=..."`.
+    // FREEBUDDY_CODEX_BIN may point at the bundled `@openai/codex/bin/codex.js`
+    // (same entry codex-acp uses when CODEX_PATH is unset); invoke that via node.
+    const catalogPathCmd = modelCatalogPath
+      .replace(/\//g, "\\")
+      .replace(/%/g, "%%");
+    const script = `@echo off
+setlocal EnableExtensions
+set "FREEBUDDY_CATALOG_PATH=${catalogPathCmd}"
+set "NODE_BIN=node"
+if defined FREEBUDDY_NODE_BIN if exist "%FREEBUDDY_NODE_BIN%" set "NODE_BIN=%FREEBUDDY_NODE_BIN%"
+if defined FREEBUDDY_CODEX_BIN if exist "%FREEBUDDY_CODEX_BIN%" (
+  if /i "%FREEBUDDY_CODEX_BIN:~-3%"==".js" (
+    "%NODE_BIN%" "%FREEBUDDY_CODEX_BIN%" %* -c "model_catalog_json=%FREEBUDDY_CATALOG_PATH%"
+  ) else if /i "%FREEBUDDY_CODEX_BIN:~-4%"==".cmd" (
+    call "%FREEBUDDY_CODEX_BIN%" %* -c "model_catalog_json=%FREEBUDDY_CATALOG_PATH%"
+  ) else (
+    "%FREEBUDDY_CODEX_BIN%" %* -c "model_catalog_json=%FREEBUDDY_CATALOG_PATH%"
+  )
+  exit /b %ERRORLEVEL%
+)
+where codex >nul 2>nul
+if not errorlevel 1 (
+  for /f "delims=" %%I in ('where codex 2^>nul') do (
+    "%%I" %* -c "model_catalog_json=%FREEBUDDY_CATALOG_PATH%"
+    exit /b %ERRORLEVEL%
+  )
+)
+if defined APPDATA if exist "%APPDATA%\\npm\\codex.cmd" (
+  call "%APPDATA%\\npm\\codex.cmd" %* -c "model_catalog_json=%FREEBUDDY_CATALOG_PATH%"
+  exit /b %ERRORLEVEL%
+)
+if defined LOCALAPPDATA if exist "%LOCALAPPDATA%\\Yarn\\bin\\codex.cmd" (
+  call "%LOCALAPPDATA%\\Yarn\\bin\\codex.cmd" %* -c "model_catalog_json=%FREEBUDDY_CATALOG_PATH%"
+  exit /b %ERRORLEVEL%
+)
+echo FreeBuddy Codex BYOK wrapper could not find the codex binary. 1>&2
+exit /b 127
+`;
+    return { extension: ".cmd", script };
+  }
+
   const catalogArg = `model_catalog_json=${JSON.stringify(modelCatalogPath)}`;
-  const candidates = bundledCodexCandidates(codexAcpPath, platform)
-    .map(shellSingleQuote)
-    .join(" ");
-  return `#!/bin/sh
+  const script = `#!/bin/sh
 catalog_arg=${shellSingleQuote(catalogArg)}
-for candidate in "$FREEBUDDY_CODEX_BIN" ${candidates} "$(command -v codex 2>/dev/null)" "/opt/homebrew/bin/codex" "/usr/local/bin/codex"; do
+node_bin=\${FREEBUDDY_NODE_BIN:-node}
+if [ -n "$FREEBUDDY_CODEX_BIN" ] && [ -f "$FREEBUDDY_CODEX_BIN" ]; then
+  case "$FREEBUDDY_CODEX_BIN" in
+    *.js) exec "$node_bin" "$FREEBUDDY_CODEX_BIN" "$@" -c "$catalog_arg" ;;
+    *)
+      if [ -x "$FREEBUDDY_CODEX_BIN" ]; then
+        exec "$FREEBUDDY_CODEX_BIN" "$@" -c "$catalog_arg"
+      fi
+      ;;
+  esac
+fi
+for candidate in "$(command -v codex 2>/dev/null)" "/opt/homebrew/bin/codex" "/usr/local/bin/codex"; do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     exec "$candidate" "$@" -c "$catalog_arg"
   fi
@@ -131,55 +79,5 @@ done
 echo "FreeBuddy Codex BYOK wrapper could not find the codex binary." >&2
 exit 127
 `;
-}
-
-export function buildCodexAppServerWrapper(
-  input: CodexAppServerWrapperInput
-): CodexAppServerWrapper {
-  const platform = input.platform ?? process.platform;
-  return platform === "win32"
-    ? {
-        extension: ".cmd",
-        contents: buildWindowsWrapper(
-          input.modelCatalogPath,
-          input.codexAcpPath
-        )
-      }
-    : {
-        extension: ".sh",
-        contents: buildPosixWrapper(
-          input.modelCatalogPath,
-          input.codexAcpPath,
-          platform
-        )
-      };
-}
-
-export function createCodexAppServerWrapper(
-  input: CreateCodexAppServerWrapperInput
-): string {
-  const wrapper = buildCodexAppServerWrapper(input);
-  const dir = path.join(input.dataDir, "codex-wrappers");
-  fs.mkdirSync(dir, { recursive: true });
-  const signature = safeCodexFilePart(input.modelCatalogPath);
-  const file = path.join(dir, `${signature}${wrapper.extension}`);
-  let currentContents: string | undefined;
-  try {
-    currentContents = fs.readFileSync(file, "utf8");
-  } catch {
-    // Create or repair the wrapper below.
-  }
-  if (currentContents !== wrapper.contents) {
-    fs.writeFileSync(file, wrapper.contents, {
-      encoding: "utf8",
-      ...(wrapper.extension === ".sh" ? { mode: 0o755 } : {})
-    });
-  }
-  if (
-    wrapper.extension === ".sh" &&
-    (fs.statSync(file).mode & 0o111) === 0
-  ) {
-    fs.chmodSync(file, 0o755);
-  }
-  return file;
+  return { extension: ".sh", script };
 }

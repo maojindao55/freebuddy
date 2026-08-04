@@ -110,7 +110,10 @@ test("channels that spawn or reconfigure the host are not remotely callable", as
     "remote:deleteUser",
     "remote:setUserRoots",
     "remote:listSessions",
-    "remote:revokeSession"
+    "remote:revokeSession",
+    "debugLog:write",
+    "debugLogs:preview",
+    "debugLogs:export"
   ]) {
     assert.equal(classifyRemoteChannel(channel), "deny", `${channel} 必须禁止远程调用`);
     assert.equal(isRemoteChannelCallable(channel, true), false);

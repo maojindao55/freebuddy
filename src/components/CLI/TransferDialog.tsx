@@ -19,6 +19,7 @@ import type {
   HandoffBrief,
   PreviewHandoffBriefResult
 } from "@/services/cli/types";
+import { conversationDisplayCwd } from "./conversationProjectGrouping";
 
 interface TransferConversationPanelProps {
   source: Conversation;
@@ -161,10 +162,10 @@ export function TransferConversationPanel({
           <FolderLock size={16} strokeWidth={1.7} aria-hidden="true" />
           <input
             type="text"
-            value={source.cwd ?? t("chat.noWorkspace")}
+            value={conversationDisplayCwd(source) || t("chat.noWorkspace")}
             readOnly
             aria-readonly="true"
-            title={source.cwd}
+            title={conversationDisplayCwd(source)}
           />
         </div>
       </label>

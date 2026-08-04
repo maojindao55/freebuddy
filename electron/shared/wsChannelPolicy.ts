@@ -21,6 +21,7 @@ const CONVERSATION_PAYLOAD_CHANNELS = new Set([
 const OWNER_PAYLOAD_CHANNELS = new Set(["scheduledTasks://changed"]);
 const CLI_SESSION_PREFIX = "cli://";
 const WORKFLOW_MESSAGE_PREFIX = "workflow://message/";
+const WORKFLOW_EVENT_PREFIX = "workflow://event/";
 const NON_SESSION_CLI_CHANNELS = new Set(["cli://runtime", "cli://install"]);
 
 export function classifyWsChannel(channel: string): WsChannelClass {
@@ -31,6 +32,10 @@ export function classifyWsChannel(channel: string): WsChannelClass {
   if (OWNER_PAYLOAD_CHANNELS.has(channel)) return { kind: "ownerPayload" };
   if (channel.startsWith(WORKFLOW_MESSAGE_PREFIX)) {
     const conversationId = channel.slice(WORKFLOW_MESSAGE_PREFIX.length);
+    if (conversationId) return { kind: "conversation", conversationId };
+  }
+  if (channel.startsWith(WORKFLOW_EVENT_PREFIX)) {
+    const conversationId = channel.slice(WORKFLOW_EVENT_PREFIX.length);
     if (conversationId) return { kind: "conversation", conversationId };
   }
   if (channel.startsWith(CLI_SESSION_PREFIX) && !NON_SESSION_CLI_CHANNELS.has(channel)) {

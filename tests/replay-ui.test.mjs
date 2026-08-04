@@ -57,7 +57,7 @@ test("TitlebarOverflowMenu hosts replay with typing-scaled intervals", () => {
   const src = read("../src/components/CLI/ReplayBar.tsx");
   const app = read("../src/App.tsx");
   assert.match(src, /export function TitlebarOverflowMenu/);
-  assert.match(src, /import \{ MoreHorizontal, RotateCcw, Square \} from "lucide-react"/);
+  assert.match(src, /import \{ FileDown, MoreHorizontal, RotateCcw, Square \} from "lucide-react"/);
   assert.match(src, /REPLAY_FIXED_SPEED = 1\.5/);
   assert.match(src, /REPLAY_TYPING_INTERVAL_MS/);
   assert.match(src, /const isTyping = current\?\.typingChars != null/);

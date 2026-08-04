@@ -23,6 +23,8 @@ export interface RemoteUser {
   isOwner: boolean;
   createdAt: number;
   disabled: boolean;
+  /** When true, remote agent runs use OS process sandbox (srt-win/Seatbelt/bwrap). */
+  strictIsolation: boolean;
 }
 
 export const USERNAME_RE = /^[a-zA-Z0-9_-]{3,32}$/;
@@ -37,6 +39,7 @@ interface UserRow {
   is_owner: number;
   created_at: number;
   disabled: number | null;
+  strict_isolation: number | null;
 }
 
 function rowToUser(row: UserRow): RemoteUser {
@@ -45,11 +48,13 @@ function rowToUser(row: UserRow): RemoteUser {
     username: row.username,
     isOwner: row.is_owner === 1,
     createdAt: row.created_at,
-    disabled: row.disabled === 1
+    disabled: row.disabled === 1,
+    strictIsolation: row.strict_isolation === 1
   };
 }
 
-const USER_COLUMNS = "id, username, password_hash, is_owner, created_at, disabled";
+const USER_COLUMNS =
+  "id, username, password_hash, is_owner, created_at, disabled, strict_isolation";
 
 /**
  * Session revocation lives in remoteAuth, which reads the users table. Taking
@@ -92,6 +97,7 @@ export function createUser(input: {
   username: string;
   password?: string;
   isOwner?: boolean;
+  strictIsolation?: boolean;
 }): { user: RemoteUser; password: string } {
   const username = input.username.trim();
   if (!USERNAME_RE.test(username)) throw new Error("invalid_username");
@@ -108,15 +114,23 @@ export function createUser(input: {
     ).n === 0
       ? 1
       : 0;
+  const strictIsolation = input.strictIsolation === true ? 1 : 0;
   const id = randomUUID();
   const createdAt = Date.now();
   getDb()
     .prepare(
-      "INSERT INTO remote_users (id, username, password_hash, is_owner, created_at) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO remote_users (id, username, password_hash, is_owner, created_at, strict_isolation) VALUES (?, ?, ?, ?, ?, ?)"
     )
-    .run(id, username, hashPassword(password), isOwner, createdAt);
+    .run(id, username, hashPassword(password), isOwner, createdAt, strictIsolation);
   return {
-    user: { id, username, isOwner: isOwner === 1, createdAt, disabled: false },
+    user: {
+      id,
+      username,
+      isOwner: isOwner === 1,
+      createdAt,
+      disabled: false,
+      strictIsolation: strictIsolation === 1
+    },
     password
   };
 }
@@ -175,6 +189,19 @@ export function setUserDisabled(id: string, disabled: boolean): RemoteUser | nul
     .prepare("UPDATE remote_users SET disabled = ? WHERE id = ?")
     .run(disabled ? 1 : 0, id);
   if (disabled) invalidateSessionsForUser(id);
+  return getUserById(id);
+}
+
+export function setUserStrictIsolation(
+  id: string,
+  strictIsolation: boolean
+): RemoteUser | null {
+  const user = getUserById(id);
+  if (!user) return null;
+  if (user.isOwner) throw new Error("cannot_set_owner_strict_isolation");
+  getDb()
+    .prepare("UPDATE remote_users SET strict_isolation = ? WHERE id = ?")
+    .run(strictIsolation ? 1 : 0, id);
   return getUserById(id);
 }
 

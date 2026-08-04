@@ -41,6 +41,7 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult,
+  ImportCodexSessionResult,
   CreateConversationShareInput,
   CreateConversationShareResult,
   AttachConversationSharesInput,
@@ -203,6 +204,9 @@ declare global {
     transferConversation(
       input: TransferConversationInput
     ): Promise<TransferConversationResult>;
+    importCodexSession(
+      sessionId: string
+    ): Promise<ImportCodexSessionResult>;
     createConversationShare(
       input: CreateConversationShareInput
     ): Promise<CreateConversationShareResult>;
@@ -279,6 +283,13 @@ declare global {
     ): () => void;
     onDraftTool(cb: (event: DraftToolEvent) => void): () => void;
     resolveDraftTool(resolution: DraftToolResolution): Promise<boolean>;
+    onOpenConversation(cb: (conversationId: string) => void): () => void;
+    notifyTask(payload: {
+      kind: "success" | "failure";
+      title: string;
+      body?: string;
+      conversationId?: string;
+    }): Promise<void>;
   }
 
   interface FreebuddySession {
@@ -420,6 +431,18 @@ declare global {
         messageId: string;
       }) => void
     ): () => void;
+    onStepEvent(
+      conversationId: string,
+      cb: (event: { sessionId: string; event: CliEvent }) => void
+    ): () => void;
+    onRunFinished(
+      cb: (event: {
+        runId: string;
+        conversationId?: string;
+        status: string;
+        name: string;
+      }) => void
+    ): () => void;
   }
 
   interface FreebuddyWorkflowTeams {
@@ -506,6 +529,26 @@ declare global {
     showItemInFolder(targetPath: string): Promise<boolean>;
   }
 
+  interface FreebuddyDebugLogs {
+    write: (entries: unknown[]) => Promise<unknown>;
+    preview: (
+      mode: "standard" | "full",
+      opts?: { conversationId?: string }
+    ) => Promise<{
+      environment: Record<string, unknown>;
+      files: Array<{
+        name: string;
+        totalLines: number;
+        lines: string[];
+        truncated: boolean;
+      }>;
+    }>;
+    export: (
+      mode: "standard" | "full",
+      opts?: { conversationId?: string }
+    ) => Promise<{ path?: string; canceled?: boolean }>;
+  }
+
   type RemoteBindMode = "local" | "lan";
 
   interface RemoteStatus {
@@ -527,6 +570,7 @@ declare global {
     isOwner: boolean;
     createdAt: number;
     disabled: boolean;
+    strictIsolation: boolean;
   }
 
   interface RemoteServerConfig {
@@ -577,7 +621,11 @@ declare global {
       enabled: boolean
     ): Promise<{ status: RemoteStatus | null; initialPassword: string | null }>;
     listUsers(): Promise<RemoteUser[]>;
-    createUser(input: { username: string; password?: string }): Promise<{
+    createUser(input: {
+      username: string;
+      password?: string;
+      strictIsolation?: boolean;
+    }): Promise<{
       user: RemoteUser;
       password: string;
     }>;
@@ -585,6 +633,10 @@ declare global {
     setUserDisabled(input: {
       id: string;
       disabled: boolean;
+    }): Promise<RemoteUser | null>;
+    setUserStrictIsolation(input: {
+      id: string;
+      strictIsolation: boolean;
     }): Promise<RemoteUser | null>;
     resetUserPassword(id: string): Promise<{ user: RemoteUser; password: string } | null>;
     setUserPassword(input: { id: string; password: string }): Promise<boolean>;
@@ -623,6 +675,7 @@ declare global {
     window: FreebuddyWindow;
     session?: FreebuddySession;
     updater: FreebuddyUpdater;
+    debugLogs: FreebuddyDebugLogs;
     shell: FreebuddyShell;
     remote: FreebuddyRemote;
   }

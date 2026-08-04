@@ -23,6 +23,35 @@ test("conversation data handlers enforce ownership at the boundary", () => {
   assert.match(run, /requireOwnedConversation/, "run checks conversation ownership");
 });
 
+test("every conversation participant refreshes messages changed by another client", () => {
+  const app = read("../src/App.tsx");
+  const listener = app.slice(
+    app.indexOf("onMessagesChanged?."),
+    app.indexOf("onChromeVisible", app.indexOf("onMessagesChanged?."))
+  );
+
+  assert.doesNotMatch(
+    listener,
+    /currentUser\?\.isOwner|isOwner\s*!==\s*true/,
+    "ordinary users must not discard updates to conversations they own"
+  );
+  assert.match(
+    listener,
+    /state\.loadMessages\(conversationId\)/,
+    "the active shared conversation reloads persisted messages"
+  );
+  assert.match(
+    listener,
+    /state\.markConversationUnread\(conversationId\)/,
+    "inactive shared conversations are marked unread"
+  );
+  assert.match(
+    listener,
+    /isStreaming/,
+    "the initiating client still avoids duplicate reloads during its own stream"
+  );
+});
+
 test("conversation mutations and handoff exports enforce ownership", () => {
   const ipc = read("../electron/cli/ipc.ts");
 

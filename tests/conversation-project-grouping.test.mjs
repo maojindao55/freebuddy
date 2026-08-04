@@ -30,6 +30,7 @@ function conversation(partial) {
     updatedAt: partial.updatedAt ?? partial.lastMessageAt ?? "2026-07-01T00:00:00.000Z",
     lastMessageAt: partial.lastMessageAt,
     cwd: partial.cwd,
+    sourceCwd: partial.sourceCwd,
     projectId: partial.projectId
   };
 }
@@ -60,7 +61,8 @@ test("groupConversationsByProject buckets by cwd basename and sorts by activity"
     conversation({
       id: "c",
       title: "themes task",
-      cwd: "/Users/me/work/themes",
+      cwd: "/app/remote-workspaces/user/themes-a1b2c3",
+      sourceCwd: "/Users/me/work/themes",
       lastMessageAt: "2026-07-21T10:00:00.000Z"
     }),
     conversation({
@@ -77,6 +79,7 @@ test("groupConversationsByProject buckets by cwd basename and sorts by activity"
     ["b", "a"]
   );
   assert.equal(groups[1].label, "themes");
+  assert.equal(groups[1].cwd, "/Users/me/work/themes");
 
   const recent = recentConversations(
     [

@@ -102,6 +102,49 @@ test("bootstrapOwnerFromLegacyPassword migrates the old single password", async 
   assert.equal(getOwnerUser()?.id, owner.id);
 });
 
+test("createUser defaults strictIsolation off; setUserStrictIsolation toggles members only", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate } = await import("../dist-electron/cli/db.js");
+  migrate(db);
+  const {
+    setDbForTest,
+    createUser,
+    setUserStrictIsolation,
+    getUserById,
+    listUsers
+  } = await import("../dist-electron/cli/users.js");
+  setDbForTest(db);
+
+  const { user: owner } = createUser({ username: "buddy" });
+  const { user: alice } = createUser({ username: "alice" });
+  assert.equal(owner.strictIsolation, false);
+  assert.equal(alice.strictIsolation, false);
+
+  const enabled = createUser({ username: "carol", strictIsolation: true });
+  assert.equal(enabled.user.strictIsolation, true);
+
+  const toggled = setUserStrictIsolation(alice.id, true);
+  assert.equal(toggled?.strictIsolation, true);
+  assert.equal(getUserById(alice.id)?.strictIsolation, true);
+  assert.equal(setUserStrictIsolation(alice.id, false)?.strictIsolation, false);
+
+  assert.throws(
+    () => setUserStrictIsolation(owner.id, true),
+    /cannot_set_owner_strict_isolation/
+  );
+  assert.equal(
+    listUsers().find((u) => u.id === owner.id)?.strictIsolation,
+    false
+  );
+
+  const cols = db
+    .prepare("PRAGMA table_info(remote_users)")
+    .all()
+    .map((row) => row.name);
+  assert.ok(cols.includes("strict_isolation"));
+});
+
 test("getUserRoots/setUserRoots store per-user workspace roots", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
   const db = makeDb();

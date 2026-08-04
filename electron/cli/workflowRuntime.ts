@@ -60,6 +60,15 @@ import {
   selectRunnableSteps,
   verifierHasUnresolved
 } from "./workflowScheduler.js";
+import {
+  normalizeWorkflowStepContextSummary,
+  fallbackWorkflowStepContextSummary,
+  selectWorkflowStepConsumedContext,
+  shouldCompressWorkflowStepOutput,
+  storedWorkflowStepContextSummary,
+  WORKFLOW_STEP_CONTEXT_SUMMARY_MAX_CHARS,
+  WORKFLOW_STEP_CONTEXT_SUMMARY_PROMPT
+} from "./workflowContextCompression.js";
 import { trackTelemetryEvent } from "../telemetry.js";
 import { resolveSkillSnapshots } from "./skills.js";
 import { telemetryDurationMs } from "../telemetryPrivacy.js";
@@ -83,6 +92,8 @@ export interface StepExecutor {
     binary?: string;
     extraArgs?: string[];
     env?: Record<string, string>;
+    /** Normal workflow calls auto-approve; compression calls deny all tools. */
+    approvalMode?: "auto" | "deny";
     configOptionOverrides?: Record<string, string>;
     skillIds?: string[];
     prompt: string;
@@ -93,6 +104,8 @@ export interface StepExecutor {
     cwd?: string;
     onEvent: (e: CliEvent) => void;
   }): Promise<void>;
+  /** Best-effort cancellation for bounded internal calls such as compression. */
+  cancel?(sessionId: string): boolean | void;
 }
 
 export interface RuntimeDeps {
@@ -100,7 +113,11 @@ export interface RuntimeDeps {
   resolveAgent: (agentId: string) => ResolvedAgent | undefined;
   /** Best-effort live-progress sink (may be undefined when headless). */
   webContents?: WebContents;
+  /** Injection point for fast timeout coverage; production uses 30 seconds. */
+  contextSummaryTimeoutMs?: number;
 }
+
+const WORKFLOW_CONTEXT_SUMMARY_TIMEOUT_MS = 30_000;
 
 interface ActiveRun {
   paused: boolean;
@@ -110,6 +127,17 @@ interface ActiveRun {
   /** Write steps may run without a prior manual gate (implement-first loops). */
   allowImmediateWrite: boolean;
   telemetryStartedAt: number;
+}
+
+interface WorkflowStepContextSummaryRequest {
+  run: WorkflowRunRow;
+  step: WorkflowStepRow;
+  resolved: ResolvedAgent;
+  planStep: WorkflowStep | undefined;
+  state: ActiveRun;
+  toolSessionScope: string;
+  capturedToolSessionId: string;
+  decisionText: string;
 }
 
 function workflowTemplate(value?: string): string {
@@ -164,31 +192,6 @@ function hasRunnablePhaseAfter(
     .some((phase) => !ignoredPhaseIds.has(phase.id) && phase.steps.length > 0);
 }
 
-function extractStepOutputFromResultJson(resultJson: string | undefined): string | undefined {
-  if (!resultJson) return undefined;
-  try {
-    const parsed = JSON.parse(resultJson) as { items?: unknown[] };
-    const output = extractVisibleStepOutput(parsed.items ?? []).trim();
-    return output || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const MAX_LOOP_FEEDBACK_CHARS = 12_000;
-const LOOP_FEEDBACK_TRUNCATION_MARKER =
-  "\n\n...[truncated for next workflow round]...\n\n";
-
-function boundedLoopFeedback(text: string): string {
-  if (text.length <= MAX_LOOP_FEEDBACK_CHARS) return text;
-  const available = MAX_LOOP_FEEDBACK_CHARS - LOOP_FEEDBACK_TRUNCATION_MARKER.length;
-  const headChars = Math.ceil(available * 0.65);
-  const tailChars = available - headChars;
-  return `${text.slice(0, headChars)}${LOOP_FEEDBACK_TRUNCATION_MARKER}${text.slice(
-    -tailChars
-  )}`;
-}
-
 function workflowStepToolSessionScope(
   runId: string,
   step: WorkflowStepRow
@@ -200,19 +203,12 @@ function shouldResumeWorkflowStep(
   plan: WorkflowPlan,
   step: WorkflowStepRow
 ): boolean {
-  // Each implement-review round may contain a large tool transcript. Start
-  // that step in a fresh ACP session and carry only the bounded review/
-  // verification feedback through the workflow prompt. Reusing the prior
-  // session makes context grow across rounds until the model rejects it.
-  if (
-    isImplementReviewLoopPlan(plan) &&
-    step.stepId === IMPLEMENT_REVIEW_STEP_ID
-  ) {
-    return false;
-  }
   return (
-    Boolean(step.toolSessionId) &&
-    step.prompt.includes("User requested changes before approval:")
+    (Boolean(step.toolSessionId) &&
+      step.prompt.includes("User requested changes before approval:")) ||
+    (Boolean(step.toolSessionId) &&
+      isImplementReviewLoopPlan(plan) &&
+      step.stepId === IMPLEMENT_REVIEW_STEP_ID)
   );
 }
 
@@ -594,6 +590,14 @@ export class WorkflowRuntime {
       reviewer?.summary,
       reviewer?.resultJson
     );
+    const reviewerContext = selectWorkflowStepConsumedContext(
+      reviewer?.resultJson,
+      reviewer?.summary
+    );
+    const verifierContext = selectWorkflowStepConsumedContext(
+      verifier?.resultJson,
+      verifier?.summary
+    );
     const verifierNeedsRetry = verifierHasUnresolved(verifier?.summary);
     if (
       extractReviewStatus(reviewDecisionText) !== "FAIL" &&
@@ -610,7 +614,7 @@ export class WorkflowRuntime {
     this.prepareImplementReviewLoopReplay(
       runId,
       nextPlan,
-      verifierNeedsRetry ? verifier?.summary : reviewDecisionText,
+      verifierNeedsRetry ? verifierContext : reviewerContext,
       verifierNeedsRetry ? "verification" : "review"
     );
     resetWorkflowStepsForLoop(runId, IMPLEMENT_REVIEW_LOOP_PHASES);
@@ -814,9 +818,13 @@ export class WorkflowRuntime {
         run.maxLoops
       );
       if (decision === "loop") {
+        const reviewerContext = selectWorkflowStepConsumedContext(
+          reviewer?.resultJson,
+          reviewer?.summary
+        );
         return {
           action: "loop",
-          feedback: reviewDecisionText ?? reviewer?.summary ?? "",
+          feedback: reviewerContext ?? "",
           feedbackKind: "review",
           reviewStatus
         };
@@ -841,9 +849,13 @@ export class WorkflowRuntime {
       }
       if (!foundUnresolved) return { action: "continue" };
       if (run.loopIndex + 1 < run.maxLoops) {
+        const verifierContext = selectWorkflowStepConsumedContext(
+          verifier.resultJson,
+          verifier.summary
+        );
         return {
           action: "loop",
-          feedback: verifier.summary ?? "",
+          feedback: verifierContext ?? "",
           feedbackKind: "verification"
         };
       }
@@ -866,14 +878,142 @@ export class WorkflowRuntime {
     const planStep = findPlanStep(plan, IMPLEMENT_REVIEW_STEP_ID);
     if (!implRow || !planStep) return;
     const base = planStep.prompt;
+    const contextSummary = storedWorkflowStepContextSummary(implRow.resultJson);
     const label =
       feedbackKind === "verification"
         ? "verification feedback from the previous round"
         : "review feedback from the previous round";
-    const augmented =
-      `${base}\n\nAddress the following ${label}:\n` +
-      `${boundedLoopFeedback(feedback.trim())}`;
-    updateWorkflowStep(implRow.id, { prompt: augmented });
+    const sections = [base];
+    if (contextSummary) {
+      sections.push(`Previous implementation handoff:\n${contextSummary}`);
+    }
+    sections.push(`Address the following ${label}:\n${feedback.trim()}`);
+    updateWorkflowStep(implRow.id, {
+      prompt: sections.join("\n\n"),
+      ...(contextSummary ? { toolSessionId: null } : {})
+    });
+  }
+
+  private async requestWorkflowStepContextSummary(
+    request: WorkflowStepContextSummaryRequest
+  ): Promise<string | undefined> {
+    const {
+      run,
+      step,
+      resolved,
+      planStep,
+      state,
+      toolSessionScope,
+      capturedToolSessionId,
+      decisionText
+    } = request;
+    const compressionSessionId = randomUUID();
+    const compressedItems: unknown[] = [];
+    let compressionOverflow = false;
+    let exitCode: number | null = null;
+    let errored = false;
+    let timedOut = false;
+    state.activeSessions.add(compressionSessionId);
+    try {
+      const execution = this.deps.executor.run({
+        sessionId: compressionSessionId,
+        agentId: step.agentId,
+        agentName: resolved.agentName,
+        adapter: resolved.adapter,
+        binary: resolved.binary,
+        extraArgs: resolved.extraArgs,
+        env: resolved.env,
+        configOptionOverrides: planStep?.configOptionOverrides,
+        approvalMode: "deny",
+        skillIds: planStep?.skillIds ?? resolved.skillIds ?? [],
+        prompt: applyWorkflowLanguagePreference(
+          WORKFLOW_STEP_CONTEXT_SUMMARY_PROMPT,
+          getLanguage()
+        ),
+        toolSessionScope,
+        toolSessionId: capturedToolSessionId,
+        resumeToolSession: true,
+        cwd: run.cwd,
+        onEvent: (event: CliEvent) => {
+          if (
+            event.type === "items" &&
+            event.items?.length &&
+            !compressionOverflow
+          ) {
+            for (const raw of event.items) {
+              const item = raw as {
+                kind?: unknown;
+                content?: unknown;
+                text?: unknown;
+                messageId?: unknown;
+                role?: unknown;
+                append?: unknown;
+              };
+              if (!item || item.kind !== "text") continue;
+              const content = String(item.content ?? item.text ?? "");
+              if (!content) continue;
+              compressedItems.push({
+                kind: "text",
+                content,
+                ...(typeof item.messageId === "string"
+                  ? { messageId: item.messageId }
+                  : {}),
+                ...(typeof item.role === "string" ? { role: item.role } : {}),
+                ...(item.append === true ? { append: true } : {})
+              });
+            }
+            if (
+              extractVisibleStepOutput(compressedItems).length >
+              WORKFLOW_STEP_CONTEXT_SUMMARY_MAX_CHARS
+            ) {
+              compressionOverflow = true;
+              compressedItems.length = 0;
+            }
+          }
+          if (event.type === "done") exitCode = event.exitCode;
+          if (event.type === "error") errored = true;
+        }
+      });
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const outcome = await Promise.race([
+        execution.then(
+          () => "completed" as const,
+          () => {
+            errored = true;
+            return "completed" as const;
+          }
+        ),
+        new Promise<"timed_out">((resolve) => {
+          timeout = setTimeout(
+            () => resolve("timed_out"),
+            this.deps.contextSummaryTimeoutMs ??
+              WORKFLOW_CONTEXT_SUMMARY_TIMEOUT_MS
+          );
+        })
+      ]);
+      if (timeout) clearTimeout(timeout);
+      if (outcome === "timed_out") {
+        timedOut = true;
+        this.deps.executor.cancel?.(compressionSessionId);
+      }
+    } catch {
+      errored = true;
+    } finally {
+      state.activeSessions.delete(compressionSessionId);
+    }
+    if (
+      state.stopped ||
+      errored ||
+      timedOut ||
+      compressionOverflow ||
+      (exitCode !== null && exitCode !== 0)
+    ) {
+      return undefined;
+    }
+    return normalizeWorkflowStepContextSummary(
+      extractVisibleStepOutput(compressedItems),
+      decisionText
+    );
   }
 
   private async runPhase(
@@ -951,7 +1091,7 @@ export class WorkflowRuntime {
           stepId: s.stepId,
           title: s.title,
           summary: s.summary,
-          output: extractStepOutputFromResultJson(s.resultJson)
+          output: selectWorkflowStepConsumedContext(s.resultJson, s.summary)
         }
       ])
     );
@@ -1090,6 +1230,7 @@ export class WorkflowRuntime {
       getToolSession(step.agentId, toolSessionScope)?.sessionId ??
       step.toolSessionId;
     const decisionText = reviewDecisionTextFromItems(collected);
+    const visibleOutput = extractVisibleStepOutput(collected);
     const failed = errored !== null || (exitCode !== null && exitCode !== 0);
     let summary = ensureReviewStatusInSummary(
       deriveStepSummary(collected),
@@ -1103,11 +1244,53 @@ export class WorkflowRuntime {
     ) {
       stepStatus = "done";
     }
+    const compressionRequired =
+      !failed &&
+      Boolean(capturedToolSessionId) &&
+      shouldCompressWorkflowStepOutput(visibleOutput);
+    const requestedContextSummary =
+      compressionRequired && capturedToolSessionId
+        ? await this.requestWorkflowStepContextSummary(
+            {
+              run,
+              step,
+              resolved,
+              planStep,
+              state,
+              toolSessionScope,
+              capturedToolSessionId,
+              decisionText
+            }
+          )
+        : undefined;
+    const contextSummary =
+      requestedContextSummary ??
+      (compressionRequired &&
+      isImplementReviewLoopPlan(plan) &&
+      stepId === IMPLEMENT_REVIEW_STEP_ID
+        ? fallbackWorkflowStepContextSummary(summary, decisionText)
+        : undefined);
+    if (state.stopped) return;
+    const rollOverImplementSession =
+      compressionRequired &&
+      isImplementReviewLoopPlan(plan) &&
+      stepId === IMPLEMENT_REVIEW_STEP_ID;
+    let toolSessionPatch: { toolSessionId?: string | null } = {};
+    if (rollOverImplementSession) {
+      toolSessionPatch = { toolSessionId: null };
+    } else if (capturedToolSessionId) {
+      toolSessionPatch = { toolSessionId: capturedToolSessionId };
+    }
     updateWorkflowStep(step.id, {
       status: stepStatus,
       summary,
-      resultJson: JSON.stringify({ items: collected, exitCode, error: errored }),
-      ...(capturedToolSessionId ? { toolSessionId: capturedToolSessionId } : {}),
+      resultJson: JSON.stringify({
+        items: collected,
+        exitCode,
+        error: errored,
+        ...(contextSummary ? { contextSummary } : {})
+      }),
+      ...toolSessionPatch,
       endedAt: new Date().toISOString()
     });
 
@@ -1250,6 +1433,9 @@ export function createCliStepExecutor(
   webContents: WebContents | undefined
 ): StepExecutor {
   return {
+    cancel(sessionId) {
+      return cliKill(sessionId);
+    },
     async run(args) {
       if (!webContents) {
         throw new Error("workflow step execution requires an active window");
@@ -1276,7 +1462,7 @@ export function createCliStepExecutor(
               }
             )
           : resolveWorkspaceRootsForConversation({ cwd: args.cwd }),
-        approvalMode: "auto",
+        approvalMode: args.approvalMode ?? "auto",
         resumeToolSession: args.resumeToolSession,
         skills: resolveSkillSnapshots(args.skillIds ?? []),
         announceSkills: !args.resumeToolSession || !args.toolSessionId

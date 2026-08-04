@@ -36,6 +36,11 @@ test("edited imported skills refresh their record and immutable snapshot", async
     path.join(sourceRoot, "SKILL.md"),
     `---\nname: ${name}\ndescription: Initial instructions\nversion: 1.0.0\n---\n\n# Initial\n`
   );
+  fs.mkdirSync(path.join(sourceRoot, "references"));
+  fs.writeFileSync(
+    path.join(sourceRoot, "references", "guide.md"),
+    "Initial guide\n"
+  );
 
   const imported = skills.importSkills(sourceRoot).imported[0];
   assert.ok(imported);
@@ -82,6 +87,50 @@ test("edited imported skills refresh their record and immutable snapshot", async
     skills.listSkills().find((skill) => skill.id === name)?.contentHash,
     refreshed.contentHash
   );
+  const refreshedSourceFingerprint = db
+    .prepare("SELECT source_fingerprint FROM skills WHERE id = ?")
+    .get(name).source_fingerprint;
+
+  fs.writeFileSync(
+    path.join(imported.rootPath, "references", "guide.md"),
+    "Updated guide\n"
+  );
+
+  const assetRefreshedRecord = skills.listSkills().find((skill) => skill.id === name);
+  assert.ok(assetRefreshedRecord);
+  assert.notEqual(assetRefreshedRecord.contentHash, refreshed.contentHash);
+  const assetRefreshedSourceFingerprint = db
+    .prepare("SELECT source_fingerprint FROM skills WHERE id = ?")
+    .get(name).source_fingerprint;
+  assert.notEqual(assetRefreshedSourceFingerprint, refreshedSourceFingerprint);
+  const assetRefreshed = skills.resolveSkillSnapshots([name])[0];
+  assert.ok(assetRefreshed);
+  assert.notEqual(assetRefreshed.contentHash, refreshed.contentHash);
+  assert.notEqual(assetRefreshed.rootPath, refreshed.rootPath);
+  assert.equal(
+    fs.readFileSync(
+      path.join(assetRefreshed.rootPath, "references", "guide.md"),
+      "utf8"
+    ),
+    "Updated guide\n"
+  );
+
+  fs.unlinkSync(path.join(imported.rootPath, "references", "guide.md"));
+  const deletedAssetRecord = skills.listSkills().find((skill) => skill.id === name);
+  assert.ok(deletedAssetRecord);
+  assert.notEqual(deletedAssetRecord.contentHash, assetRefreshed.contentHash);
+  const deletedAssetSourceFingerprint = db
+    .prepare("SELECT source_fingerprint FROM skills WHERE id = ?")
+    .get(name).source_fingerprint;
+  assert.notEqual(deletedAssetSourceFingerprint, assetRefreshedSourceFingerprint);
+  const deletedAsset = skills.resolveSkillSnapshots([name])[0];
+  assert.ok(deletedAsset);
+  assert.notEqual(deletedAsset.contentHash, assetRefreshed.contentHash);
+  assert.notEqual(deletedAsset.rootPath, assetRefreshed.rootPath);
+  assert.equal(
+    fs.existsSync(path.join(deletedAsset.rootPath, "references", "guide.md")),
+    false
+  );
 
   setDbForTest(null);
   db.close();
@@ -89,4 +138,6 @@ test("edited imported skills refresh their record and immutable snapshot", async
   fs.rmSync(imported.rootPath, { recursive: true, force: true });
   fs.rmSync(first.rootPath, { recursive: true, force: true });
   fs.rmSync(refreshed.rootPath, { recursive: true, force: true });
+  fs.rmSync(assetRefreshed.rootPath, { recursive: true, force: true });
+  fs.rmSync(deletedAsset.rootPath, { recursive: true, force: true });
 });

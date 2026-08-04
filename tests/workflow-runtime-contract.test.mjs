@@ -142,3 +142,60 @@ test("implement-review replay preserves approved plan gates across review failur
   assert.doesNotMatch(implementReviewLoopBranch, /approvedPhases\.clear\(\)/);
   assert.match(implementReviewLoopBranch, /resetWorkflowStepsForLoop\(runId, IMPLEMENT_REVIEW_LOOP_PHASES\)/);
 });
+
+test("runtime asks the upstream agent for a same-session context summary", () => {
+  assert.match(runtimeSource, /requestWorkflowStepContextSummary/);
+  assert.match(runtimeSource, /WORKFLOW_STEP_CONTEXT_SUMMARY_PROMPT/);
+  assert.match(runtimeSource, /toolSessionId:\s*capturedToolSessionId/);
+  assert.match(runtimeSource, /resumeToolSession:\s*true/);
+  assert.match(runtimeSource, /contextSummary/);
+  assert.match(runtimeSource, /compressionOverflow/);
+  assert.match(
+    runtimeSource,
+    /WORKFLOW_STEP_CONTEXT_SUMMARY_MAX_CHARS/
+  );
+});
+
+test("implement-review replay carries the self-summary into a fresh session", () => {
+  assert.match(runtimeSource, /Previous implementation handoff:/);
+  assert.match(runtimeSource, /contextSummary/);
+  assert.match(runtimeSource, /toolSessionId:\s*null/);
+});
+
+test("implement-review loop feeds compressed reviewer and verifier context into replay", () => {
+  assert.match(
+    runtimeSource,
+    /selectWorkflowStepConsumedContext\(\s*reviewer\?\.resultJson,\s*reviewer\?\.summary\s*\)/
+  );
+  assert.match(
+    runtimeSource,
+    /selectWorkflowStepConsumedContext\(\s*verifier\.resultJson,\s*verifier\.summary\s*\)/
+  );
+});
+
+test("manual implement-review continuation also replays compressed feedback", () => {
+  const continuationStart = runtimeSource.indexOf(
+    "  continueImplementReview(runId: string): boolean"
+  );
+  const continuationEnd = runtimeSource.indexOf(
+    "\n  private resolveWorkflowPlan(",
+    continuationStart
+  );
+  const continuationSource = runtimeSource.slice(
+    continuationStart,
+    continuationEnd
+  );
+
+  assert.match(
+    continuationSource,
+    /selectWorkflowStepConsumedContext\(\s*reviewer\?\.resultJson,\s*reviewer\?\.summary\s*\)/
+  );
+  assert.match(
+    continuationSource,
+    /selectWorkflowStepConsumedContext\(\s*verifier\?\.resultJson,\s*verifier\?\.summary\s*\)/
+  );
+  assert.doesNotMatch(
+    continuationSource,
+    /verifierNeedsRetry \? verifier\?\.summary : reviewDecisionText/
+  );
+});

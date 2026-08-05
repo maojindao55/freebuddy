@@ -14,6 +14,10 @@ const cliCheckSource = fs.readFileSync(
   new URL("../electron/cli/check.ts", import.meta.url),
   "utf8"
 );
+const codexByokWrapperSource = fs.readFileSync(
+  new URL("../electron/cli/codexByokWrapper.ts", import.meta.url),
+  "utf8"
+);
 const preloadSource = fs.readFileSync(
   new URL("../electron/preload.ts", import.meta.url),
   "utf8"
@@ -161,6 +165,7 @@ test("coding agent runtime stores Claude BYOK separately from Codex BYOK", () =>
   assert.equal(electronStoreSource.includes("codex-model-catalogs"), true);
   assert.equal(electronStoreSource.includes("CODEX_PATH"), true);
   assert.equal(electronStoreSource.includes("codex-wrappers"), true);
+  assert.equal(codexByokWrapperSource.includes('extension: ".cmd"'), true);
   assert.equal(electronStoreSource.includes("readCodexModelTemplate"), true);
   assert.equal(electronStoreSource.includes("readOverrideExtraArgs"), true);
   assert.equal(electronStoreSource.includes("normalizeByokModels"), true);

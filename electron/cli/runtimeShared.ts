@@ -45,7 +45,7 @@ export interface CliRunArgs {
   /** Concrete CLI session/thread id to resume when available. */
   toolSessionId?: string;
   env?: Record<string, string>;
-  approvalMode?: "auto" | "ask";
+  approvalMode?: "auto" | "ask" | "deny";
   configOptionOverrides?: Record<string, string>;
   showStderr?: boolean;
   resumeToolSession?: boolean;

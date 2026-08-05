@@ -479,10 +479,8 @@ export interface ConsumedStepRef {
 
 const WORKFLOW_LANGUAGE_HEADER = "FreeBuddy workflow response language:";
 export const WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS = 24_000;
-const WORKFLOW_CONSUMED_STEP_MAX_CHARS = 12_000;
+export const WORKFLOW_CONSUMED_STEP_MAX_CHARS = 12_000;
 const WORKFLOW_CONSUMED_MAX_BLOCKS = 32;
-const WORKFLOW_CONTEXT_TRUNCATION_MARKER =
-  "\n\n...[truncated for workflow context]...\n\n";
 
 export function applyWorkflowLanguagePreference(
   prompt: string,
@@ -499,19 +497,6 @@ export function applyWorkflowLanguagePreference(
   ].join("\n");
 }
 
-function boundedWorkflowContext(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  if (maxChars <= WORKFLOW_CONTEXT_TRUNCATION_MARKER.length) {
-    return text.slice(0, Math.max(0, maxChars));
-  }
-  const available = maxChars - WORKFLOW_CONTEXT_TRUNCATION_MARKER.length;
-  const headChars = Math.ceil(available * 0.6);
-  const tailChars = available - headChars;
-  return `${text.slice(0, headChars)}${WORKFLOW_CONTEXT_TRUNCATION_MARKER}${text.slice(
-    -tailChars
-  )}`;
-}
-
 /** Append bounded upstream step output referenced by consumes ids. */
 export function augmentPromptWithConsumedSummaries(
   basePrompt: string,
@@ -520,41 +505,51 @@ export function augmentPromptWithConsumedSummaries(
 ): string {
   if (!consumes?.length) return basePrompt;
   const seen = new Set<string>();
-  const refs: Array<{ header: string; context: string }> = [];
+  const refs: Array<{ header: string; context: string; summary?: string }> = [];
   for (const id of consumes) {
     if (refs.length >= WORKFLOW_CONSUMED_MAX_BLOCKS) break;
     if (seen.has(id)) continue;
     seen.add(id);
     const ref = stepsById.get(id);
     if (!ref) continue;
-    const context = ref?.output?.trim() || ref?.summary?.trim();
+    const output = ref?.output?.trim();
+    const summary = ref?.summary?.trim();
+    const context =
+      output && output.length <= WORKFLOW_CONSUMED_STEP_MAX_CHARS
+        ? output
+        : summary;
     if (context) {
       const title =
         ref.title.length > 160 ? `${ref.title.slice(0, 159)}…` : ref.title;
-      refs.push({ header: `--- ${title} ---\n`, context });
+      refs.push({ header: `--- ${title} ---\n`, context, summary });
     }
   }
   if (refs.length === 0) return basePrompt;
 
   const prefix = "\n\nContext from prior steps:\n";
-  const separators = Math.max(0, refs.length - 1) * 2;
-  const fixedChars =
-    prefix.length +
-    separators +
-    refs.reduce((total, ref) => total + ref.header.length, 0);
-  let remainingChars = Math.max(
-    0,
-    WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS - fixedChars
-  );
   const blocks: string[] = [];
-  refs.forEach((ref, index) => {
-    const remainingBlocks = refs.length - index;
-    const fairShare = Math.floor(remainingChars / remainingBlocks);
-    const blockLimit = Math.min(WORKFLOW_CONSUMED_STEP_MAX_CHARS, fairShare);
-    const context = boundedWorkflowContext(ref.context, blockLimit);
-    blocks.push(`${ref.header}${context}`);
-    remainingChars -= context.length;
-  });
+  let usedChars = prefix.length;
+  for (const ref of refs) {
+    const separatorChars = blocks.length > 0 ? 2 : 0;
+    let block = `${ref.header}${ref.context}`;
+    if (
+      usedChars + separatorChars + block.length >
+        WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS &&
+      ref.summary &&
+      ref.summary !== ref.context
+    ) {
+      block = `${ref.header}${ref.summary}`;
+    }
+    if (
+      usedChars + separatorChars + block.length >
+      WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS
+    ) {
+      continue;
+    }
+    blocks.push(block);
+    usedChars += separatorChars + block.length;
+  }
+  if (blocks.length === 0) return basePrompt;
 
   return `${basePrompt}${prefix}${blocks.join("\n\n")}`;
 }

@@ -47,6 +47,18 @@ interface ParsedSkill {
   version: string;
 }
 
+type StoredSkillRecord = SkillRecord & {
+  sourceFingerprint: string | null;
+};
+
+interface SkillFile {
+  absolute: string;
+  relative: string;
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+}
+
 export interface PreparedSkillMarketMeta {
   provider: SkillMarketProviderId;
   marketSkillId: string;
@@ -119,8 +131,8 @@ export function parseSkillMarkdown(markdown: string): ParsedSkill {
   return { name, description, version };
 }
 
-function listFiles(root: string): Array<{ absolute: string; relative: string }> {
-  const result: Array<{ absolute: string; relative: string }> = [];
+function listFiles(root: string): SkillFile[] {
+  const result: SkillFile[] = [];
   let totalBytes = 0;
   const visit = (directory: string) => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -133,15 +145,21 @@ function listFiles(root: string): Array<{ absolute: string; relative: string }> 
         continue;
       }
       if (!entry.isFile()) continue;
-      const size = fs.statSync(absolute).size;
-      if (size > MAX_SKILL_FILE_BYTES) {
+      const stat = fs.statSync(absolute);
+      if (stat.size > MAX_SKILL_FILE_BYTES) {
         throw new Error(`Skill file is too large: ${entry.name}`);
       }
-      totalBytes += size;
+      totalBytes += stat.size;
       if (totalBytes > MAX_SKILL_TOTAL_BYTES) {
         throw new Error("Skill exceeds the 20 MB import limit");
       }
-      result.push({ absolute, relative: path.relative(root, absolute) });
+      result.push({
+        absolute,
+        relative: path.relative(root, absolute),
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        ctimeMs: stat.ctimeMs
+      });
       if (result.length > MAX_SKILL_FILES) {
         throw new Error("Skill exceeds the 500 file import limit");
       }
@@ -151,9 +169,20 @@ function listFiles(root: string): Array<{ absolute: string; relative: string }> 
   return result.sort((a, b) => a.relative.localeCompare(b.relative));
 }
 
-function hashSkill(root: string): string {
+function sourceFingerprint(files: readonly SkillFile[]): string {
   const hash = crypto.createHash("sha256");
-  for (const file of listFiles(root)) {
+  for (const file of files) {
+    hash.update(file.relative.replaceAll(path.sep, "/"));
+    hash.update("\0");
+    hash.update(`${file.size}:${file.mtimeMs}:${file.ctimeMs}`);
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function hashSkill(files: readonly SkillFile[]): string {
+  const hash = crypto.createHash("sha256");
+  for (const file of files) {
     hash.update(file.relative.replaceAll(path.sep, "/"));
     hash.update("\0");
     hash.update(fs.readFileSync(file.absolute));
@@ -162,16 +191,29 @@ function hashSkill(root: string): string {
   return hash.digest("hex");
 }
 
-function inspectSkill(root: string): ParsedSkill & { contentHash: string } {
+function inspectSkill(
+  root: string
+): ParsedSkill & { contentHash: string; sourceFingerprint: string } {
   const stat = fs.statSync(root);
   if (!stat.isDirectory()) throw new Error("Skill path must be a directory");
   const entry = path.join(root, "SKILL.md");
   if (!fs.statSync(entry).isFile()) throw new Error("SKILL.md was not found");
   const markdown = fs.readFileSync(entry, "utf8");
-  return { ...parseSkillMarkdown(markdown), contentHash: hashSkill(root) };
+  const files = listFiles(root);
+  return {
+    ...parseSkillMarkdown(markdown),
+    contentHash: hashSkill(files),
+    sourceFingerprint: sourceFingerprint(files)
+  };
 }
 
-function rowToSkill(row: any): SkillRecord {
+function inspectSkillSourceFingerprint(root: string): string {
+  const stat = fs.statSync(root);
+  if (!stat.isDirectory()) throw new Error("Skill path must be a directory");
+  return sourceFingerprint(listFiles(root));
+}
+
+function rowToSkill(row: any): StoredSkillRecord {
   return {
     id: row.id,
     name: row.name,
@@ -180,6 +222,7 @@ function rowToSkill(row: any): SkillRecord {
     source: row.source,
     rootPath: row.root_path,
     contentHash: row.content_hash,
+    sourceFingerprint: row.source_fingerprint ?? null,
     enabled: row.enabled === 1,
     trusted: row.trusted === 1,
     createdAt: row.created_at,
@@ -302,16 +345,18 @@ function upsertSkillRecord(
     db.prepare(
       `INSERT INTO skills
         (id, name, description, version, source, root_path, content_hash,
+         source_fingerprint,
          enabled, trusted, created_at, updated_at,
          market_provider, market_skill_id, market_slug, market_version,
          market_url, market_content_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          description = excluded.description,
          version = excluded.version,
          source = excluded.source,
          root_path = excluded.root_path,
          content_hash = excluded.content_hash,
+         source_fingerprint = excluded.source_fingerprint,
          enabled = excluded.enabled,
          trusted = excluded.trusted,
          updated_at = excluded.updated_at,
@@ -329,6 +374,7 @@ function upsertSkillRecord(
       source,
       root,
       metadata.contentHash,
+      metadata.sourceFingerprint,
       enabled,
       trusted ? 1 : 0,
       previous?.createdAt ?? now,
@@ -412,13 +458,70 @@ export function seedBuiltinSkills(): void {
   }
 }
 
+function refreshImportedSkill(skill: StoredSkillRecord): StoredSkillRecord {
+  if (skill.source !== "imported") return skill;
+  let currentSourceFingerprint: string;
+  try {
+    currentSourceFingerprint = inspectSkillSourceFingerprint(skill.rootPath);
+  } catch (error) {
+    console.warn(`[skills] could not refresh imported skill ${skill.id}:`, error);
+    return skill;
+  }
+  if (
+    skill.sourceFingerprint &&
+    currentSourceFingerprint === skill.sourceFingerprint
+  ) {
+    return skill;
+  }
+
+  let metadata: ReturnType<typeof inspectSkill>;
+  try {
+    metadata = inspectSkill(skill.rootPath);
+  } catch (error) {
+    console.warn(`[skills] could not refresh imported skill ${skill.id}:`, error);
+    return skill;
+  }
+  if (metadata.name !== skill.id) {
+    console.warn(
+      `[skills] imported skill ${skill.id} changed its name to ${metadata.name}; re-import it to rename the skill`
+    );
+    return skill;
+  }
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE skills
+       SET description = ?, version = ?, content_hash = ?,
+           source_fingerprint = ?, updated_at = ?
+       WHERE id = ? AND source = 'imported'`
+    )
+    .run(
+      metadata.description,
+      metadata.version,
+      metadata.contentHash,
+      metadata.sourceFingerprint,
+      now,
+      skill.id
+    );
+  return {
+    ...skill,
+    description: metadata.description,
+    version: metadata.version,
+    contentHash: metadata.contentHash,
+    sourceFingerprint: metadata.sourceFingerprint,
+    updatedAt: now
+  };
+}
+
 export function listSkills(): SkillRecord[] {
   return (getDb()
     .prepare("SELECT * FROM skills ORDER BY source, name")
-    .all() as any[]).map(rowToSkill);
+    .all() as any[])
+    .map(rowToSkill)
+    .map(refreshImportedSkill);
 }
 
-export function getSkill(id: string): SkillRecord | undefined {
+export function getSkill(id: string): StoredSkillRecord | undefined {
   const row = getDb().prepare("SELECT * FROM skills WHERE id = ?").get(id) as any;
   return row ? rowToSkill(row) : undefined;
 }
@@ -426,7 +529,8 @@ export function getSkill(id: string): SkillRecord | undefined {
 export function resolveSkillSnapshots(ids: readonly string[]): SkillSnapshot[] {
   const unique = [...new Set(ids.filter(Boolean))];
   return unique.flatMap((id) => {
-    const skill = getSkill(id);
+    const storedSkill = getSkill(id);
+    const skill = storedSkill ? refreshImportedSkill(storedSkill) : undefined;
     if (!skill?.enabled || !skill.trusted) return [];
     return [{
       id: skill.id,

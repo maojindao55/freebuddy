@@ -73,6 +73,7 @@ export const workflowTeamsClient = {
     goal: string;
     cwd?: string;
     targetPaths?: string[];
+    skillIds?: string[];
   }): Promise<
     | { ok: true; preview: WorkflowTeamPreview }
     | { ok: false; errors: string[] }
@@ -86,6 +87,7 @@ export const workflowTeamsClient = {
     goal: string;
     cwd?: string;
     targetPaths?: string[];
+    skillIds?: string[];
   }): Promise<
     | { ok: true; run: WorkflowRunRow }
     | { ok: false; errors: string[] }

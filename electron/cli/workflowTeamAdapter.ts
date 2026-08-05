@@ -26,6 +26,7 @@ export interface TeamRunInput {
   goal: string;
   cwd?: string;
   targetPaths?: string[];
+  skillIds?: string[];
 }
 
 export interface TeamPreviewResult {
@@ -51,27 +52,46 @@ function renderPrompt(
     .replace(/\{\{targetPaths\}\}/g, target);
 }
 
-function applyRoleModelsToPlan(
+function effectiveStepSkillIds(
+  role: WorkflowTeamRole | undefined,
+  input: TeamRunInput,
+  agentSkillIds?: string[]
+): string[] {
+  return role?.skillIds ?? input.skillIds ?? agentSkillIds ?? [];
+}
+
+function applyRoleOverridesToPlan(
   plan: WorkflowPlan,
-  roleByPhaseId: Map<string, WorkflowTeamRole | undefined>
+  roleByPhaseId: Map<string, WorkflowTeamRole | undefined>,
+  input: TeamRunInput,
+  agents: WorkflowAgentRef[]
 ): WorkflowPlan {
   return {
     ...plan,
     phases: plan.phases.map((phase) => {
       const role = roleByPhaseId.get(phase.id);
       const model = role?.model?.trim();
-      if (!role || !model) return phase;
-      const optionId = role.modelOptionId?.trim() || "model";
+      const optionId = role?.modelOptionId?.trim() || "model";
       return {
         ...phase,
-        steps: phase.steps.map((step) => ({
-          ...step,
-          model,
-          configOptionOverrides: {
-            ...step.configOptionOverrides,
-            [optionId]: model
-          }
-        }))
+        steps: phase.steps.map((step) => {
+          const agentSkillIds = agents.find(
+            (agent) => agent.id === step.agentId
+          )?.skillIds;
+          return {
+            ...step,
+            skillIds: effectiveStepSkillIds(role, input, agentSkillIds),
+            ...(model
+              ? {
+                  model,
+                  configOptionOverrides: {
+                    ...step.configOptionOverrides,
+                    [optionId]: model
+                  }
+                }
+              : {})
+          };
+        })
       };
     })
   };
@@ -191,7 +211,7 @@ export function expandTeamToPlan(
             }
           }
         : {}),
-      skillIds: role?.skillIds ?? agentRef.skillIds ?? [],
+      skillIds: effectiveStepSkillIds(role, input, agentRef.skillIds),
       ...(priorStepIds.length ? { consumes: priorStepIds } : {})
     };
 
@@ -231,6 +251,7 @@ export function expandTeamToPlan(
     teamName: team.name,
     goal: input.goal,
     cwd: input.cwd,
+    skillIds: input.skillIds,
     roleSummary,
     routeSummary,
     writeNodeCount,
@@ -334,7 +355,7 @@ function expandConfigurableDeliveryTeamToPlan(
   }
 
   const hasApproval = teamHasManualApprovalGate(team);
-  const plan = applyRoleModelsToPlan(buildConfigurableDeliveryPlan({
+  const plan = applyRoleOverridesToPlan(buildConfigurableDeliveryPlan({
     name: team.name,
     goal: input.goal,
     cwd: input.cwd,
@@ -352,7 +373,7 @@ function expandConfigurableDeliveryTeamToPlan(
     ["review", roleForContract("review")],
     ["verify", roleForContract("verify")],
     ["summarize", roleForContract("summarize")]
-  ]));
+  ]), input, agents);
 
   const routeSummary: WorkflowTeamPreview["routeSummary"] = [];
   for (const node of team.template.nodes) {
@@ -376,6 +397,7 @@ function expandConfigurableDeliveryTeamToPlan(
     teamName: team.name,
     goal: input.goal,
     cwd: input.cwd,
+    skillIds: input.skillIds,
     roleSummary: roleSummaryForTeam(team, agents),
     routeSummary,
     writeNodeCount: team.template.nodes.filter((node) => node.mode === "write").length,
@@ -436,7 +458,7 @@ function expandImplementReviewTeamToPlan(
     return { ok: false, errors };
   }
 
-  const plan = applyRoleModelsToPlan(buildImplementReviewLoopPlan({
+  const plan = applyRoleOverridesToPlan(buildImplementReviewLoopPlan({
     goal: input.goal,
     cwd: input.cwd,
     targetPaths: input.targetPaths,
@@ -450,7 +472,7 @@ function expandImplementReviewTeamToPlan(
     ["review", reviewerRole],
     ["verify", verifierRole],
     ["summarize", summarizerRole]
-  ]));
+  ]), input, agents);
 
   const roleSummary: WorkflowTeamPreview["roleSummary"] = team.roles.map((role) => {
     const m = builtinCliMembers.find((x) => x.id === role.agentId);
@@ -503,6 +525,7 @@ function expandImplementReviewTeamToPlan(
     teamName: team.name,
     goal: input.goal,
     cwd: input.cwd,
+    skillIds: input.skillIds,
     roleSummary,
     routeSummary,
     writeNodeCount: 1,

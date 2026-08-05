@@ -120,6 +120,98 @@ test("team role models become per-step ACP config overrides", async () => {
   assert.equal(result.preview.plan.phases[2].steps[0].configOptionOverrides, undefined);
 });
 
+test("task-selected skills propagate to team steps with role overrides", async () => {
+  const { builtinWorkflowTeams } = await import(
+    "../dist-electron/cli/workflowTeamBuiltins.js"
+  );
+  const { expandTeamToPlan } = await import(
+    "../dist-electron/cli/workflowTeamAdapter.js"
+  );
+  const delivery = structuredClone(
+    builtinWorkflowTeams().find((team) => team.id === "team-delivery-example")
+  );
+  assert.ok(delivery);
+  delivery.roles.find((role) => role.id === "role-implementer").skillIds = [
+    "role-writer"
+  ];
+  delivery.roles.find((role) => role.id === "role-reviewer").skillIds = [];
+  const agents = delivery.roles.map((role) => ({
+    id: role.agentId,
+    name: role.agentId,
+    adapter: "stub-acp",
+    enabled: true,
+    skillIds: ["agent-default"]
+  }));
+
+  const result = expandTeamToPlan(
+    delivery,
+    { goal: "fix bug", skillIds: ["task-selected"] },
+    agents
+  );
+  assert.equal(result.ok, true);
+  const stepsByPhase = new Map(
+    result.preview.plan.phases.map((phase) => [phase.id, phase.steps[0]])
+  );
+  assert.deepEqual(stepsByPhase.get("plan").skillIds, ["task-selected"]);
+  assert.deepEqual(stepsByPhase.get("implement").skillIds, ["role-writer"]);
+  assert.deepEqual(stepsByPhase.get("review").skillIds, []);
+  assert.deepEqual(stepsByPhase.get("verify").skillIds, ["task-selected"]);
+  assert.deepEqual(result.preview.skillIds, ["task-selected"]);
+
+  const defaults = expandTeamToPlan(delivery, { goal: "fix bug" }, agents);
+  assert.equal(defaults.ok, true);
+  assert.deepEqual(defaults.preview.plan.phases[0].steps[0].skillIds, [
+    "agent-default"
+  ]);
+});
+
+test("new team tasks preserve absent overrides and forward selected skills", () => {
+  const chat = read("../src/components/CLI/ChatView.tsx");
+  const ipc = read("../electron/cli/workflowIpc.ts");
+  const client = read("../src/services/workflowTeams/client.ts");
+  const rendererTypes = read("../src/types/freebuddy.d.ts");
+
+  assert.match(
+    chat,
+    /createAndStartTeam\(\{[\s\S]*?skillIds:\s*teamTaskSkillIds[\s\S]*?\}\)/
+  );
+  assert.match(
+    chat,
+    /const \[teamTaskSkillIds,\s*setTeamTaskSkillIds\]\s*=\s*useState<[\s\S]*?string\[\]\s*\|\s*undefined[\s\S]*?>\(undefined\)/
+  );
+  assert.match(chat, /if \(teamMode\) setTeamTaskSkillIds\(ids\)/);
+  assert.match(ipc, /skillIds\?:\s*string\[\]/);
+  assert.match(
+    ipc,
+    /\{\s*goal:\s*input\.goal,[\s\S]*?skillIds:\s*input\.skillIds[\s\S]*?\}/
+  );
+  assert.match(client, /createTeamRun\(input:[\s\S]*?skillIds\?:\s*string\[\]/);
+  assert.match(rendererTypes, /createTeamRun\(input:[\s\S]*?skillIds\?:\s*string\[\]/);
+});
+
+test("team plan preview preserves selected skills through confirmation", () => {
+  const chat = read("../src/components/CLI/ChatView.tsx");
+  const previewBlock = chat.slice(
+    chat.indexOf("const handleGeneratePlan"),
+    chat.indexOf("const onCreateTeamConversation")
+  );
+  const confirmationStart = chat.indexOf("const onCreateTeamConversation");
+  const confirmationBlock = chat.slice(
+    confirmationStart,
+    chat.indexOf("if (!conv)", confirmationStart)
+  );
+
+  assert.match(previewBlock, /skillIds:\s*teamTaskSkillIds/);
+  assert.match(
+    confirmationBlock,
+    /createConversation\(\{[\s\S]*?skillIds:\s*pendingTeamPreview\.skillIds/
+  );
+  assert.match(
+    confirmationBlock,
+    /createAndStartTeam\(\{[\s\S]*?skillIds:\s*pendingTeamPreview\.skillIds/
+  );
+});
+
 test("builtin workflow teams include the default teams", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
@@ -225,12 +317,13 @@ test("seeding removes retired builtin workflow teams", () => {
   assert.match(src, /DELETE FROM workflow_teams WHERE id = \? AND source = 'builtin'/);
 });
 
-test("seeding preserves customized builtin team role agents and models", () => {
+test("seeding preserves customized builtin team role agents, models, and skills", () => {
   const src = read("../electron/cli/workflowTeams.ts");
   assert.match(src, /function mergeBuiltinRoles/);
   assert.match(src, /savedRole\?\.agentId \?\? role\.agentId/);
   assert.match(src, /savedRole\?\.model \? \{ model: savedRole\.model \} : \{\}/);
   assert.match(src, /modelOptionId: savedRole\.modelOptionId/);
+  assert.match(src, /skillIds:\s*savedRole\.skillIds/);
   assert.match(src, /roles:\s*mergeBuiltinRoles\(saved, team\)/);
   assert.match(src, /enabled:\s*saved\.enabled/);
 });

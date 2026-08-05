@@ -81,6 +81,7 @@ export function migrate(db: DB) {
       source TEXT NOT NULL,
       root_path TEXT NOT NULL,
       content_hash TEXT NOT NULL,
+      source_fingerprint TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
       trusted INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -679,7 +680,8 @@ export function migrate(db: DB) {
     .prepare("PRAGMA table_info(skills)")
     .all() as Array<{ name: string }>;
   const skillColumnNames = new Set(skillCols.map((column) => column.name));
-  const skillMarketColumns: Array<[string, string]> = [
+  const skillOptionalColumns: Array<[string, string]> = [
+    ["source_fingerprint", "TEXT"],
     ["market_provider", "TEXT"],
     ["market_skill_id", "TEXT"],
     ["market_slug", "TEXT"],
@@ -687,7 +689,7 @@ export function migrate(db: DB) {
     ["market_url", "TEXT"],
     ["market_content_hash", "TEXT"]
   ];
-  for (const [name, type] of skillMarketColumns) {
+  for (const [name, type] of skillOptionalColumns) {
     if (!skillColumnNames.has(name)) {
       db.exec(`ALTER TABLE skills ADD COLUMN ${name} ${type}`);
     }

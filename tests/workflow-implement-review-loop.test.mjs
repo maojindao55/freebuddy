@@ -10,6 +10,14 @@ const {
   augmentPromptWithConsumedSummaries,
   WORKFLOW_CONSUMED_CONTEXT_MAX_CHARS
 } = scheduler;
+const {
+  WORKFLOW_STEP_CONTEXT_SUMMARY_MAX_CHARS,
+  WORKFLOW_STEP_CONTEXT_SUMMARY_UNAVAILABLE,
+  normalizeWorkflowStepContextSummary,
+  selectWorkflowStepConsumedContext,
+  shouldCompressWorkflowStepOutput,
+  storedWorkflowStepContextSummary
+} = await import("../dist-electron/cli/workflowContextCompression.js");
 
 const { buildImplementReviewLoopPlan } = await import(
   "../dist-electron/cli/workflowTemplates.js"
@@ -266,7 +274,7 @@ test("augmentPromptWithConsumedSummaries prefers visible output over compact sum
   assert.doesNotMatch(out, /I need to search first/);
 });
 
-test("augmentPromptWithConsumedSummaries bounds large upstream outputs", () => {
+test("augmentPromptWithConsumedSummaries falls back to compact summaries instead of truncating output", () => {
   const basePrompt = "Synthesize the prior work.";
   const largeOutput = (label) =>
     `${label}-HEAD\n${"implementation detail ".repeat(8_000)}\n${label}-TAIL`;
@@ -291,10 +299,98 @@ test("augmentPromptWithConsumedSummaries bounds large upstream outputs", () => {
     `expected bounded prompt, received ${out.length} characters`
   );
   for (const id of ["research", "implement", "review"]) {
-    assert.match(out, new RegExp(`${id}-HEAD`));
-    assert.match(out, new RegExp(`${id}-TAIL`));
+    assert.match(out, new RegExp(`${id} compact summary`));
+    assert.doesNotMatch(out, new RegExp(`${id}-HEAD`));
+    assert.doesNotMatch(out, new RegExp(`${id}-TAIL`));
   }
-  assert.match(out, /truncated for workflow context/);
+  assert.doesNotMatch(out, /truncated for workflow context/);
+});
+
+test("workflow step context compression triggers only above the raw-output threshold", () => {
+  assert.equal(shouldCompressWorkflowStepOutput("x".repeat(12_000)), false);
+  assert.equal(shouldCompressWorkflowStepOutput("x".repeat(12_001)), true);
+});
+
+test("workflow step context compression preserves control markers", () => {
+  const compressed = normalizeWorkflowStepContextSummary(
+    [
+      "WORKFLOW_CONTEXT_SUMMARY",
+      "STEP_OUTCOME",
+      "Implemented the requested change.",
+      "UNRESOLVED",
+      "One verifier issue remains."
+    ].join("\n"),
+    "REVIEW_STATUS: FAIL\nUNRESOLVED: 1"
+  );
+
+  assert.match(compressed ?? "", /WORKFLOW_CONTEXT_SUMMARY/);
+  assert.match(compressed ?? "", /REVIEW_STATUS: FAIL/);
+  assert.match(compressed ?? "", /UNRESOLVED: 1/);
+});
+
+test("workflow step context compression rejects unavailable or oversized summaries", () => {
+  assert.equal(
+    normalizeWorkflowStepContextSummary(
+      WORKFLOW_STEP_CONTEXT_SUMMARY_UNAVAILABLE,
+      ""
+    ),
+    undefined
+  );
+  assert.equal(
+    normalizeWorkflowStepContextSummary(
+      `WORKFLOW_CONTEXT_SUMMARY\nSTEP_OUTCOME\n${"x".repeat(
+        WORKFLOW_STEP_CONTEXT_SUMMARY_MAX_CHARS
+      )}`,
+      ""
+    ),
+    undefined
+  );
+});
+
+test("downstream context prefers self-summary and never injects oversized raw output", () => {
+  const original = `${"large raw output ".repeat(2_000)}REVIEW_STATUS: FAIL`;
+  const contextSummary =
+    "WORKFLOW_CONTEXT_SUMMARY\nSTEP_OUTCOME\nFound two issues.\nREVIEW_STATUS: FAIL";
+  const compressedResult = JSON.stringify({
+    items: [{ kind: "text", content: original }],
+    contextSummary
+  });
+  assert.equal(
+    selectWorkflowStepConsumedContext(compressedResult, "compact fallback"),
+    contextSummary
+  );
+
+  const legacyResult = JSON.stringify({
+    items: [{ kind: "text", content: original }]
+  });
+  assert.equal(
+    selectWorkflowStepConsumedContext(legacyResult, "compact fallback"),
+    "compact fallback"
+  );
+
+  const shortResult = JSON.stringify({
+    items: [{ kind: "text", content: "short exact result" }]
+  });
+  assert.equal(
+    selectWorkflowStepConsumedContext(shortResult, "compact fallback"),
+    "short exact result"
+  );
+});
+
+test("stored self-summary preserves markers already normalized from non-visible output", () => {
+  const contextSummary = [
+    "WORKFLOW_CONTEXT_SUMMARY",
+    "STEP_OUTCOME",
+    "Reviewer found a blocking issue.",
+    "REVIEW_STATUS: FAIL",
+    "UNRESOLVED: 1"
+  ].join("\n");
+  const resultJson = JSON.stringify({
+    items: [{ kind: "text", content: "See tool result for the review decision." }],
+    contextSummary
+  });
+
+  assert.equal(storedWorkflowStepContextSummary(resultJson), contextSummary);
 });
 
 test("augmentPromptWithConsumedSummaries deduplicates and caps context blocks", () => {

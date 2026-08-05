@@ -592,6 +592,21 @@ export async function runAcpAgent({
     const options = normalizePermissionOptions(params.options);
     const requestRpcId = msg.id!;
 
+    if (args.approvalMode === "deny") {
+      appendLog(
+        logStream,
+        "system",
+        "permission denied for read-only workflow context summary"
+      );
+      respondToPermission(requestRpcId, { outcome: "cancelled" });
+      emit({
+        type: "error",
+        message:
+          "Workflow context summary requested a tool permission; the read-only summary was cancelled."
+      });
+      return;
+    }
+
     if (args.approvalMode === "auto") {
       const auto = pickAutoApprovedOption(options);
       if (auto) {

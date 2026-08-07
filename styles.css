@@ -4348,6 +4348,18 @@ html[data-surface="butler-chat"] #root {
 .skill-picker-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--fb-text-primary); font: inherit; font-size: 11px; }
 .skill-picker-search input::-webkit-search-cancel-button { cursor: pointer; }
 .skill-picker-list { min-height: 0; overflow-y: auto; }
+.skill-picker-group + .skill-picker-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--fb-border); }
+.skill-picker-group-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 5px 4px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
 .skill-picker-list label { display: flex; gap: 8px; padding: 7px 5px; border-radius: 8px; cursor: pointer; }
 .skill-picker-list label:hover { background: var(--fb-panel-soft); }
 .skill-picker-list label span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }

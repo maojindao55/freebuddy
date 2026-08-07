@@ -226,6 +226,8 @@
     "deleteConfirm": "Delete imported skill “{{name}}”?",
     "picker": "Skills {{count}}",
     "activeForTask": "Active for this task",
+    "selectedGroup": "Selected {{count}}",
+    "availableGroup": "Available {{count}}",
     "required": "Required",
     "agentDefaults": "Default skills",
     "agentDefaultsHint": "Automatically selected when a new task uses this agent.",

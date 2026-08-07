@@ -226,6 +226,8 @@
     "deleteConfirm": "删除已导入的 Skill“{{name}}”？",
     "picker": "Skills {{count}}",
     "activeForTask": "本任务启用",
+    "selectedGroup": "已选择 {{count}}",
+    "availableGroup": "可添加 {{count}}",
     "required": "必选",
     "agentDefaults": "默认 Skills",
     "agentDefaultsHint": "使用这个 Agent 新建任务时自动选中。",

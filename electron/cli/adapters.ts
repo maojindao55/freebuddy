@@ -242,7 +242,9 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "npm install -g @deepseek-ai/dsh-acp-demo",
+    // `latest` is still 0.0.1-rc.1; that release's peer packages 404 on the
+    // public registry. The working public line is currently tagged `next`.
+    installHint: "npm install -g @deepseek-ai/dsh-acp-demo@next",
     docsUrl: "https://github.com/deepseek-ai/deepseek-harness",
     protocol: "acp"
   }

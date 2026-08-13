@@ -52,14 +52,14 @@ test("agy-acp checks agy-acp binary probe", () => {
   });
 });
 
-test("dsh-acp checks dsh-acp-demo binary probe", () => {
+test("dsh-acp install uses the next dist-tag because latest peers 404", () => {
   assert.deepEqual(getCliCheckProbe("dsh-acp"), {
     args: ["--version"],
     versionOptional: true
   });
   assert.equal(
     getAdapterDefinition("dsh-acp")?.installHint,
-    "npm install -g @deepseek-ai/dsh-acp-demo"
+    "npm install -g @deepseek-ai/dsh-acp-demo@next"
   );
   assert.equal(getAdapterDefinition("dsh-acp")?.defaultBinary, "dsh-acp-demo");
 });

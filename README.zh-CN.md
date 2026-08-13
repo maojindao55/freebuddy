@@ -76,7 +76,7 @@ FreeBuddy 兼容**所有基于 CLI 的 AI 编码工具** —— 只要它能在�
 | **Kimi** | `kimi` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` | ✅ |
 | **Qoder** | `qodercli` | `curl -fsSL https://qoder.com/install \| bash` | ✅ |
 | **CodeBuddy** | `codebuddy` | `npm install -g @tencent-ai/codebuddy-code` | 🆕 |
-| **DeepSeek** | `dsh-acp-demo` | `npm install -g @deepseek-ai/dsh-acp-demo` | 🆕 |
+| **DeepSeek** | `dsh-acp-demo` | `npm install -g @deepseek-ai/dsh-acp-demo@next` | 🆕 |
 
 </details>
 

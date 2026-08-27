@@ -1,8 +1,4 @@
-name: Runtime Pack
-
-# Secrets on maojindao55/freebuddy:
-#   RUNTIME_SIGNING_PRIVATE_KEY
-#   FREEBUDDY_RUNTIME_RELEASE_TOKEN (contents:write on maojindao55/freebuddy-runtime)
+name: Runtime Source Validation
 
 on:
   push:
@@ -15,10 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      RUNTIME_PACK_VERSION: ${{ github.ref_name }}
-      RUNTIME_SIGNING_KEY_ID: runtime-prod
-      RUNTIME_REQUIRE_PRODUCTION_VERSION: "1"
     steps:
       - name: Require production runtime tag
         run: |
@@ -32,27 +24,16 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck:packages
       - run: node --test tests/package-boundaries.test.mjs tests/protocol-fixtures.test.mjs tests/runtime-state-store.test.mjs tests/runtime-cli-host-conformance.test.mjs tests/runtime-release.test.mjs tests/runtime-updater.test.mjs tests/runtime-signature.test.mjs tests/delegation-runtime-process-wiring.test.mjs
       - run: echo "RUNTIME_PACK_PUBLISHED_AT=$(git log -1 --format=%cI)" >> "$GITHUB_ENV"
       - run: npm run runtime:build
         env:
-          RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.RUNTIME_SIGNING_PRIVATE_KEY }}
-      - run: npm run runtime:sign
-        env:
-          RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.RUNTIME_SIGNING_PRIVATE_KEY }}
-      - run: npm run runtime:verify
-      - run: npm run runtime:package
-        env:
-          RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.RUNTIME_SIGNING_PRIVATE_KEY }}
+          RUNTIME_PACK_VERSION: ${{ github.ref_name }}
+          RUNTIME_REQUIRE_PRODUCTION_VERSION: "1"
+      - run: npm run runtime:probe
       - uses: actions/upload-artifact@v4
         with:
-          name: runtime-pack
-          path: .build/runtime-release/
-      - name: Publish to maojindao55/freebuddy-runtime
-        env:
-          FREEBUDDY_RUNTIME_RELEASE_TOKEN: ${{ secrets.FREEBUDDY_RUNTIME_RELEASE_TOKEN }}
-          RUNTIME_RELEASE_REPO: maojindao55/freebuddy-runtime
-          RUNTIME_SIGNING_PRIVATE_KEY: ${{ secrets.RUNTIME_SIGNING_PRIVATE_KEY }}
-        run: npm run runtime:publish
+          name: unsigned-runtime-pack-${{ github.ref_name }}
+          path: .build/runtime-pack/

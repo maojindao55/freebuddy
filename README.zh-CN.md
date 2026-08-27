@@ -109,7 +109,7 @@ AppImage 使用静态运行时，当前 Ubuntu 版本无需安装 FUSE 2 即可�
 
 ### 从源码构建
 
-前置要求：Node.js 18+, npm 9+
+前置要求：Node.js 20.20+ 或 22.22+, npm 9+
 
 ```bash
 # 克隆仓库

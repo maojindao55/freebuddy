@@ -108,7 +108,7 @@ The AppImage uses a static runtime and runs on current Ubuntu releases without i
 
 ### Build from Source
 
-Prerequisites: Node.js 18+, npm 9+
+Prerequisites: Node.js 20.20+ or 22.22+, npm 9+
 
 ```bash
 # Clone the repository

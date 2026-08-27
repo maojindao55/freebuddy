@@ -6,6 +6,6 @@ Place the production Ed25519 public key at `runtime-release.pub` in this directo
 - `process.resourcesPath/runtime-keys/runtime-release.pub` in packaged apps
 - `electron/runtime/keys/runtime-release.pub` during development
 
-Leave the file absent until the matching private key is stored in the
-`maojindao55/freebuddy` Actions secret `RUNTIME_SIGNING_PRIVATE_KEY`. Runtime
-auto-update stays disabled until that public key ships with a desktop release.
+The matching private key is stored only in the `maojindao55/freebuddy-runtime`
+Actions secret `RUNTIME_SIGNING_PRIVATE_KEY`. Never commit or print the private key.
+Runtime auto-update stays disabled until this public key ships with a desktop release.

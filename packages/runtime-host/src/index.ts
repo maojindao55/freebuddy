@@ -13,7 +13,12 @@ export type {
   RuntimeVersionRoute
 } from "./ports.js";
 export { readRuntimeState, writeRuntimeState, withInstallLock } from "./runtimeStateStore.js";
-export { verifyRuntimeArtifact, verifyRuntimePackFiles, sha256 } from "./runtimeVerifier.js";
+export {
+  verifyRuntimeArtifact,
+  verifyRuntimePackFiles,
+  runtimePackSignaturePayload,
+  sha256
+} from "./runtimeVerifier.js";
 export { installRuntimeArchive } from "./runtimeInstaller.js";
 export { createNodeRuntimeProcessLauncher } from "./node/nodeRuntimeProcessLauncher.js";
 export { RuntimeRpcSession, createLoopbackPair } from "./rpc/session.js";

@@ -277,7 +277,9 @@ test("installer verifies inner manifest signature, checksums, and compatibility"
   const dir = dataDir();
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const { default: AdmZip } = await import("adm-zip");
-  const { sha256 } = await import("../packages/runtime-host/dist/runtimeVerifier.js");
+  const { runtimePackSignaturePayload, sha256 } = await import(
+    "../packages/runtime-host/dist/runtimeVerifier.js"
+  );
   const entry = Buffer.from("export {}\n");
   const manifest = Buffer.from(
     `${JSON.stringify({
@@ -304,7 +306,10 @@ test("installer verifies inner manifest signature, checksums, and compatibility"
   );
   const zip = new AdmZip();
   zip.addFile("manifest.json", manifest);
-  zip.addFile("manifest.sig", sign(null, manifest, privateKey));
+  zip.addFile(
+    "manifest.sig",
+    sign(null, runtimePackSignaturePayload(manifest, checksums), privateKey)
+  );
   zip.addFile("checksums.json", checksums);
   zip.addFile("runtime/index.mjs", entry);
   const installed = installRuntimeArchive(dir, "1.2.3", zip.toBuffer(), {
@@ -316,7 +321,10 @@ test("installer verifies inner manifest signature, checksums, and compatibility"
 
   const tampered = new AdmZip();
   tampered.addFile("manifest.json", manifest);
-  tampered.addFile("manifest.sig", sign(null, manifest, privateKey));
+  tampered.addFile(
+    "manifest.sig",
+    sign(null, runtimePackSignaturePayload(manifest, checksums), privateKey)
+  );
   tampered.addFile("checksums.json", checksums);
   tampered.addFile("runtime/index.mjs", Buffer.from("export const x = 1\n"));
   const bad = installRuntimeArchive(dir, "1.2.4", tampered.toBuffer(), {
@@ -326,6 +334,27 @@ test("installer verifies inner manifest signature, checksums, and compatibility"
   });
   assert.equal(bad.ok, false);
   assert.match(bad.error, /checksum mismatch/);
+
+  const rewrittenChecksums = Buffer.from(
+    `${JSON.stringify({
+      files: {
+        "manifest.json": sha256(manifest),
+        "runtime/index.mjs": sha256(Buffer.from("export const x = 1\n"))
+      }
+    })}\n`
+  );
+  const rewritten = new AdmZip();
+  rewritten.addFile("manifest.json", manifest);
+  rewritten.addFile("manifest.sig", sign(null, runtimePackSignaturePayload(manifest, checksums), privateKey));
+  rewritten.addFile("checksums.json", rewrittenChecksums);
+  rewritten.addFile("runtime/index.mjs", Buffer.from("export const x = 1\n"));
+  const rewrittenBad = installRuntimeArchive(dir, "1.2.5", rewritten.toBuffer(), {
+    publicKey: publicKey.export({ type: "spki", format: "pem" }).toString(),
+    hostApiVersion: "1.0.0",
+    hostCapabilities: ["agent.execute.v1"]
+  });
+  assert.equal(rewrittenBad.ok, false);
+  assert.match(rewrittenBad.error, /invalid signature/);
 });
 
 test("installer rejects path escape", async () => {

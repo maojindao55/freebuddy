@@ -2,13 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 
-const { verifyRuntimeArtifact, sha256 } = await import(
+const {
+  runtimePackSignaturePayload,
+  verifyRuntimeArtifact,
+  verifyRuntimePackFiles,
+  sha256
+} = await import(
   "../packages/runtime-host/dist/runtimeVerifier.js"
 );
 
-test("valid signature verifies", () => {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const manifestBytes = Buffer.from(
+function runtimeManifest() {
+  return Buffer.from(
     JSON.stringify({
       schemaVersion: 1,
       bundleId: "dev.freebuddy.runtime",
@@ -23,10 +27,32 @@ test("valid signature verifies", () => {
       requiresHostCapabilities: []
     })
   );
+}
+
+function runtimeChecksums(manifestBytes, entryBytes) {
+  return Buffer.from(
+    JSON.stringify({
+      files: {
+        "manifest.json": sha256(manifestBytes),
+        "runtime/index.mjs": sha256(entryBytes)
+      }
+    })
+  );
+}
+
+test("valid signature verifies", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const manifestBytes = runtimeManifest();
+  const checksumBytes = runtimeChecksums(manifestBytes, Buffer.from("entry"));
   const archiveBytes = Buffer.from("archive");
-  const signature = sign(null, manifestBytes, privateKey);
+  const signature = sign(
+    null,
+    runtimePackSignaturePayload(manifestBytes, checksumBytes),
+    privateKey
+  );
   const result = verifyRuntimeArtifact({
     manifestBytes,
+    checksumBytes,
     signature,
     publicKey,
     archiveSha256: sha256(archiveBytes),
@@ -39,18 +65,17 @@ test("valid signature verifies", () => {
 
 test("modified archive is rejected", () => {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const manifestBytes = Buffer.from(
-    JSON.stringify({
-      schemaVersion: 1,
-      bundleId: "dev.freebuddy.runtime",
-      version: "1.0.0",
-      hostApi: ">=1.0.0 <2.0.0"
-    })
-  );
+  const manifestBytes = runtimeManifest();
+  const checksumBytes = runtimeChecksums(manifestBytes, Buffer.from("entry"));
   const archiveBytes = Buffer.from("archive");
-  const signature = sign(null, manifestBytes, privateKey);
+  const signature = sign(
+    null,
+    runtimePackSignaturePayload(manifestBytes, checksumBytes),
+    privateKey
+  );
   const result = verifyRuntimeArtifact({
     manifestBytes,
+    checksumBytes,
     signature,
     publicKey,
     archiveSha256: sha256(archiveBytes),
@@ -59,6 +84,33 @@ test("modified archive is rejected", () => {
     hostApiVersion: "1.0.0"
   });
   assert.equal(result.ok, false);
+});
+
+test("rewriting runtime bytes and checksums cannot preserve a valid pack signature", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const manifestBytes = runtimeManifest();
+  const originalEntry = Buffer.from("export const trusted = true;\n");
+  const originalChecksums = runtimeChecksums(manifestBytes, originalEntry);
+  const signature = sign(
+    null,
+    runtimePackSignaturePayload(manifestBytes, originalChecksums),
+    privateKey
+  );
+  const tamperedEntry = Buffer.from("export const trusted = false;\n");
+  const rewrittenChecksums = runtimeChecksums(manifestBytes, tamperedEntry);
+  const result = verifyRuntimePackFiles({
+    files: {
+      "manifest.json": manifestBytes,
+      "manifest.sig": signature,
+      "checksums.json": rewrittenChecksums,
+      "runtime/index.mjs": tamperedEntry
+    },
+    publicKey,
+    expectedBundleId: "dev.freebuddy.runtime",
+    hostApiVersion: "1.0.0"
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /invalid signature/);
 });
 
 test("sanitized runtime env drops secrets and debug flags", async () => {

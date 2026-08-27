@@ -55,18 +55,26 @@ const descriptorText = `${JSON.stringify(descriptor, null, 2)}\n`;
 fs.writeFileSync(path.join(outDir, `${channel}.json`), descriptorText);
 
 const fromEnv = process.env.RUNTIME_SIGNING_PRIVATE_KEY?.replace(/\\n/g, "\n")?.trim();
+const fromFile = process.env.RUNTIME_SIGNING_PRIVATE_KEY_FILE?.trim();
 if (
   !fromEnv &&
+  !fromFile &&
   process.env.CI &&
   /^runtime-v\d+\.\d+\.\d+$/.test(process.env.GITHUB_REF_NAME ?? "")
 ) {
-  throw new Error("RUNTIME_SIGNING_PRIVATE_KEY is required to package tagged runtime releases");
+  throw new Error(
+    "RUNTIME_SIGNING_PRIVATE_KEY or RUNTIME_SIGNING_PRIVATE_KEY_FILE is required to package tagged runtime releases"
+  );
 }
 const localPem = path.join(root, ".build", "runtime-keys", "runtime-dev.pem");
-if (!fromEnv && !fs.existsSync(localPem)) {
-  throw new Error("missing RUNTIME_SIGNING_PRIVATE_KEY and local development key");
+if (!fromEnv && !fromFile && !fs.existsSync(localPem)) {
+  throw new Error("missing Runtime signing key and local development key");
 }
-const keyPem = fromEnv || fs.readFileSync(localPem, "utf8");
+const keyPem =
+  fromEnv ||
+  (fromFile
+    ? fs.readFileSync(path.resolve(fromFile), "utf8")
+    : fs.readFileSync(localPem, "utf8"));
 const signature = sign(null, Buffer.from(descriptorText), createPrivateKey(keyPem));
 fs.writeFileSync(path.join(outDir, `${channel}.json.sig`), signature);
 

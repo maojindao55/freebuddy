@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { verify } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -8,14 +7,21 @@ const packDir = path.join(root, ".build", "runtime-pack");
 const currentPub = path.join(root, ".build", "runtime-keys", "current.pub");
 const legacyPub = path.join(root, ".build", "runtime-keys", "runtime-dev.pub");
 const pubPath = fs.existsSync(currentPub) ? currentPub : legacyPub;
-const manifest = fs.readFileSync(path.join(packDir, "manifest.json"));
-const signature = fs.readFileSync(path.join(packDir, "manifest.sig"));
 const publicKey = fs.readFileSync(pubPath);
-if (!verify(null, manifest, publicKey, signature)) {
-  throw new Error("runtime pack signature invalid");
-}
-const parsed = JSON.parse(manifest.toString("utf8"));
-if (parsed.bundleId !== "dev.freebuddy.runtime") {
-  throw new Error("unexpected bundle id");
-}
-console.log("verified runtime pack", parsed.version);
+const { readRuntimePackDirectory, verifyRuntimePackFiles } = await import(
+  "../packages/runtime-host/dist/runtimeVerifier.js"
+);
+const verified = verifyRuntimePackFiles({
+  files: readRuntimePackDirectory(packDir),
+  publicKey,
+  expectedBundleId: "dev.freebuddy.runtime",
+  hostApiVersion: "1.0.0",
+  hostCapabilities: [
+    "agent.execute.v1",
+    "workflow.repository.v1",
+    "delegation.repository.v1",
+    "events.publish.v1"
+  ]
+});
+if (!verified.ok) throw new Error(`runtime pack verification failed: ${verified.error}`);
+console.log("verified runtime pack", verified.manifest.version);

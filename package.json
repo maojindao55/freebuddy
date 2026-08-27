@@ -37,7 +37,7 @@
     "runtime:verify": "node scripts/verify-runtime-pack.mjs",
     "runtime:package": "node scripts/package-runtime-release.mjs",
     "runtime:publish": "node scripts/publish-runtime-release.mjs",
-    "runtime:probe": "node scripts/verify-runtime-pack.mjs",
+    "runtime:probe": "node scripts/probe-runtime-pack.mjs",
     "star-history:generate": "node scripts/generate-star-history.mjs",
     "start": "npm run build && node scripts/start-electron.mjs",
     "preview": "vite preview --host 127.0.0.1"

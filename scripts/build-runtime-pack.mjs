@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { builtinModules } from "node:module";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 import { resolveRuntimePackVersion } from "./runtime-release-lib.mjs";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -14,23 +15,36 @@ const publishedAt = process.env.RUNTIME_PACK_PUBLISHED_AT || new Date().toISOStr
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(outDir, "runtime"), { recursive: true });
 
-const packTsconfig = {
-  files: [],
-  references: [{ path: path.join(root, "tsconfig.packages.json") }]
-};
-void packTsconfig;
-
-const build = spawnSync("npx", ["esbuild", "packages/runtime-entry/src/bootstrap.ts", "--bundle", "--platform=node", "--format=esm", "--outfile=.build/runtime-pack/runtime/index.mjs"], {
-  cwd: root,
-  stdio: "inherit"
+const buildResult = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/runtime-entry/src/bootstrap.ts"],
+  bundle: true,
+  platform: "node",
+  target: "node22",
+  format: "esm",
+  outfile: ".build/runtime-pack/runtime/index.mjs",
+  metafile: true,
+  logLevel: "info"
 });
-if (build.status !== 0) {
-  // Fallback: copy compiled runtime-entry bootstrap when esbuild cannot resolve workspace graph yet.
-  const entry = path.join(root, "packages/runtime-entry/dist/bootstrap.js");
-  if (!fs.existsSync(entry)) {
-    process.exit(build.status ?? 1);
-  }
-  fs.copyFileSync(entry, path.join(outDir, "runtime/index.mjs"));
+
+const builtins = new Set(
+  builtinModules.flatMap((name) => [name, name.startsWith("node:") ? name : `node:${name}`])
+);
+const externalImports = Object.values(buildResult.metafile.outputs)
+  .flatMap((output) => output.imports)
+  .filter((item) => item.external && !builtins.has(item.path));
+if (externalImports.length > 0) {
+  throw new Error(
+    `runtime pack contains external package imports: ${externalImports
+      .map((item) => item.path)
+      .join(", ")}`
+  );
+}
+const forbiddenInputs = Object.keys(buildResult.metafile.inputs).filter(
+  (name) => /(^|\/)electron\//.test(name) || /(^|\/)better-sqlite3(\/|$)/.test(name)
+);
+if (forbiddenInputs.length > 0) {
+  throw new Error(`runtime pack contains forbidden host inputs: ${forbiddenInputs.join(", ")}`);
 }
 
 const bundle = fs.readFileSync(path.join(outDir, "runtime/index.mjs"), "utf8");
@@ -59,8 +73,11 @@ const manifest = {
 
 const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
 fs.writeFileSync(path.join(outDir, "manifest.json"), manifestText);
+const licensesText = "FreeBuddy runtime pack. See repository LICENSE.\n";
+fs.writeFileSync(path.join(outDir, "LICENSES.txt"), licensesText);
 const checksums = {
   files: {
+    "LICENSES.txt": createHash("sha256").update(licensesText).digest("hex"),
     "manifest.json": createHash("sha256").update(manifestText).digest("hex"),
     "runtime/index.mjs": createHash("sha256")
       .update(fs.readFileSync(path.join(outDir, "runtime/index.mjs")))
@@ -68,5 +85,4 @@ const checksums = {
   }
 };
 fs.writeFileSync(path.join(outDir, "checksums.json"), `${JSON.stringify(checksums, null, 2)}\n`);
-fs.writeFileSync(path.join(outDir, "LICENSES.txt"), "FreeBuddy runtime pack. See repository LICENSE.\n");
 console.log(`runtime pack written to ${outDir}`);

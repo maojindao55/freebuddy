@@ -6,6 +6,7 @@ import {
   decideImmutableAsset,
   decideReleaseMutation,
   normalizeSha256,
+  runtimeAssetDownloadUrl,
   resolveRuntimePackVersion,
   runtimeReleaseRepo,
   runtimeReleaseTag
@@ -240,11 +241,11 @@ if (zipDecision.action === "upload") {
     throw new Error(`upload ${zipName} failed: ${uploaded.status} ${await uploaded.text()}`);
   }
   const asset = await uploaded.json();
-  await assertRemoteZipMatches(asset.browser_download_url || asset.url);
+  await assertRemoteZipMatches(runtimeAssetDownloadUrl(asset));
 } else if (zipDecision.action === "compare-bytes") {
   await assertRemoteZipMatches(zipDecision.url);
 } else if (zipDecision.action === "reuse") {
-  const url = zipAsset.browser_download_url || zipAsset.url;
+  const url = runtimeAssetDownloadUrl(zipAsset);
   await assertRemoteZipMatches(url);
 }
 

@@ -87,6 +87,14 @@ export function assetSha256(asset) {
   return normalizeSha256(asset.digest) || normalizeSha256(asset.sha256) || null;
 }
 
+export function runtimeAssetDownloadUrl(asset) {
+  if (!asset) return null;
+  // The browser URL of an asset attached to a draft release returns 404 even
+  // with authentication. The API asset URL supports authenticated downloads
+  // for both draft and published releases.
+  return asset.url || asset.browser_download_url || null;
+}
+
 /**
  * Immutable release assets: reuse when the digest matches, fail when it differs,
  * upload only when the named asset is absent.
@@ -108,7 +116,7 @@ export function decideImmutableAsset({ existingAsset, localSha256 }) {
       action: "compare-bytes",
       localSha256: local,
       assetId: existingAsset.id,
-      url: existingAsset.browser_download_url || existingAsset.url
+      url: runtimeAssetDownloadUrl(existingAsset)
     };
   }
   return {

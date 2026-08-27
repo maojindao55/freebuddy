@@ -7,6 +7,7 @@ import {
   isRuntimeTag,
   resolveRuntimePackVersion,
   runtimeChannelBaseUrl,
+  runtimeAssetDownloadUrl,
   runtimeReleaseRepo,
   runtimeReleaseTag,
   versionFromRuntimeTag,
@@ -96,6 +97,25 @@ test("published runtime assets are immutable", () => {
       localSha256
     }).action,
     "fail"
+  );
+  assert.equal(
+    runtimeAssetDownloadUrl({
+      url: "https://api.github.com/repos/acme/runtime/releases/assets/1",
+      browser_download_url: "https://github.com/acme/runtime/releases/download/untagged/pack.zip"
+    }),
+    "https://api.github.com/repos/acme/runtime/releases/assets/1"
+  );
+  assert.equal(
+    decideImmutableAsset({
+      existingAsset: {
+        id: 1,
+        name: "pack.zip",
+        url: "https://api.github.com/repos/acme/runtime/releases/assets/1",
+        browser_download_url: "https://github.com/acme/runtime/releases/download/untagged/pack.zip"
+      },
+      localSha256
+    }).url,
+    "https://api.github.com/repos/acme/runtime/releases/assets/1"
   );
   assert.equal(
     decideReleaseMutation({ release: null, zipName: "pack.zip", localSha256 }).action,

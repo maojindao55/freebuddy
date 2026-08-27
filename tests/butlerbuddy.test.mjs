@@ -141,7 +141,16 @@ test("ButlerBuddy exposes an always-on-top pet and lightweight chat surface", ()
     "utf8"
   );
 
-  assert.match(main, /function createButlerBuddyWindows\(\)/);
+  assert.match(main, /function createButlerPetWindow\(\): BrowserWindow/);
+  assert.match(main, /function ensureButlerChatWindow\(\): BrowserWindow/);
+  assert.match(
+    main,
+    /if \(readButlerBuddyPreferences\(\)\.visible\) \{\s*createButlerPetWindow\(\)/
+  );
+  assert.match(main, /const chat = ensureButlerChatWindow\(\)/);
+  assert.match(main, /if \(!butlerChatReady\) \{\s*chat\.once\("ready-to-show", reveal\)/);
+  assert.match(main, /if \(chat && !chat\.isDestroyed\(\)\) chat\.destroy\(\)/);
+  assert.match(main, /if \(pet && !pet\.isDestroyed\(\)\) pet\.destroy\(\)/);
   assert.match(main, /surface: "butler-pet" \| "butler-chat" \| "butler-screen-ball"/);
   assert.match(main, /alwaysOnTop: true/);
   assert.match(main, /transparent: true/);
@@ -166,6 +175,17 @@ test("ButlerBuddy exposes an always-on-top pet and lightweight chat surface", ()
   assert.match(renderer, /surface === "butler-pet"/);
   assert.match(renderer, /surface === "butler-chat"/);
   assert.match(renderer, /surface === "butler-screen-ball"/);
+  assert.match(renderer, /await import\("\.\/App"\)/);
+  assert.match(
+    renderer,
+    /await import\(\s*"\.\/components\/ButlerBuddy\/ButlerBuddyPet"/
+  );
+  assert.match(
+    renderer,
+    /await import\(\s*"\.\/components\/ButlerBuddy\/ButlerBuddyChat"/
+  );
+  assert.doesNotMatch(renderer, /^import App from "\.\/App";/m);
+  assert.doesNotMatch(renderer, /^import \{ ButlerBuddy(?:Pet|Chat) \}/m);
   assert.match(pet, /butlerbuddy\/states/);
 });
 

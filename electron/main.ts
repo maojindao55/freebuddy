@@ -278,6 +278,7 @@ let isQuittingApp = false;
 let trayController: TrayController | null = null;
 let butlerPetWindow: BrowserWindow | null = null;
 let butlerChatWindow: BrowserWindow | null = null;
+let butlerChatReady = false;
 let butlerScreenBallWindow: BrowserWindow | null = null;
 let butlerScreenBallSession: ScreenBallSession | null = null;
 let butlerScreenBallHitRegions: ScreenBallHitRegion[] = [];
@@ -691,6 +692,24 @@ function hideButlerChat() {
   }
 }
 
+function revealButlerChat(
+  chat: BrowserWindow,
+  afterReveal?: () => void
+): void {
+  const reveal = () => {
+    if (chat.isDestroyed() || butlerChatWindow !== chat) return;
+    syncButlerChatPosition();
+    chat.show();
+    chat.focus();
+    afterReveal?.();
+  };
+  if (!butlerChatReady) {
+    chat.once("ready-to-show", reveal);
+    return;
+  }
+  reveal();
+}
+
 // The pet and chat move as a rigid group: dragging either translates both by
 // the same delta, preserving whatever offset the user chose.
 //
@@ -752,15 +771,13 @@ function stopButlerPetDrag() {
 }
 
 function toggleButlerChat() {
-  const chat = butlerChatWindow;
-  if (!chat || chat.isDestroyed()) return;
-  if (chat.isVisible()) {
-    chat.hide();
+  const existing = butlerChatWindow;
+  if (existing && !existing.isDestroyed() && existing.isVisible()) {
+    existing.hide();
     return;
   }
-  syncButlerChatPosition();
-  chat.show();
-  chat.focus();
+  const chat = ensureButlerChatWindow();
+  revealButlerChat(chat);
 }
 
 function updateButlerShortcutRegistration(
@@ -843,15 +860,13 @@ function updateButlerMainWindowShortcutRegistration(
 }
 
 function applyButlerBuddyVisibility(visible: boolean) {
-  const pet = butlerPetWindow;
-  if (!pet || pet.isDestroyed()) return;
   if (visible) {
-    pet.showInactive();
+    const pet = butlerPetWindow;
+    if (pet && !pet.isDestroyed()) pet.showInactive();
+    else createButlerPetWindow();
     return;
   }
-  closeButlerScreenBallWindow();
-  hideButlerChat();
-  pet.hide();
+  closeButlerBuddyWindows();
 }
 
 function updateButlerBuddyPreferences(
@@ -926,20 +941,20 @@ function updateButlerBuddyPreferences(
 
 function closeButlerBuddyWindows() {
   closeButlerScreenBallWindow();
-  if (butlerChatWindow && !butlerChatWindow.isDestroyed()) {
-    butlerChatWindow.close();
-  }
-  if (butlerPetWindow && !butlerPetWindow.isDestroyed()) {
-    butlerPetWindow.close();
-  }
+  const chat = butlerChatWindow;
+  const pet = butlerPetWindow;
   butlerChatWindow = null;
+  butlerChatReady = false;
   butlerPetWindow = null;
+  if (chat && !chat.isDestroyed()) chat.destroy();
+  if (pet && !pet.isDestroyed()) pet.destroy();
 }
 
-function createButlerBuddyWindows() {
-  if (butlerPetWindow && !butlerPetWindow.isDestroyed()) return;
-
-  butlerChatWindow = new BrowserWindow({
+function ensureButlerChatWindow(): BrowserWindow {
+  if (butlerChatWindow && !butlerChatWindow.isDestroyed()) {
+    return butlerChatWindow;
+  }
+  const chat = new BrowserWindow({
     width: BUTLER_CHAT_WIDTH,
     height: BUTLER_CHAT_HEIGHT,
     type: process.platform === "darwin" ? "panel" : undefined,
@@ -956,22 +971,34 @@ function createButlerBuddyWindows() {
     backgroundColor: "#00000000",
     webPreferences: companionWebPreferences()
   });
-  butlerChatWindow.setAlwaysOnTop(true, "floating");
-  butlerChatWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  butlerChatWindow.on("close", () => {
-    butlerChatWindow = null;
+  butlerChatWindow = chat;
+  butlerChatReady = false;
+  chat.setAlwaysOnTop(true, "floating");
+  chat.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  chat.once("ready-to-show", () => {
+    if (butlerChatWindow === chat) butlerChatReady = true;
   });
-  loadCompanionSurface(butlerChatWindow, "butler-chat");
+  chat.on("closed", () => {
+    if (butlerChatWindow !== chat) return;
+    butlerChatWindow = null;
+    butlerChatReady = false;
+  });
+  loadCompanionSurface(chat, "butler-chat");
   if (isDev) {
     // Detached DevTools so the companion renderer can be inspected when
     // debugging the floating chat (stream/done delivery, store state, etc.).
-    butlerChatWindow.webContents.once("dom-ready", () => {
-      butlerChatWindow?.webContents.openDevTools({ mode: "detach" });
+    chat.webContents.once("dom-ready", () => {
+      if (!chat.isDestroyed()) chat.webContents.openDevTools({ mode: "detach" });
     });
   }
+  return chat;
+}
 
-  const butlerPreferences = readButlerBuddyPreferences();
-  butlerPetWindow = new BrowserWindow({
+function createButlerPetWindow(): BrowserWindow {
+  if (butlerPetWindow && !butlerPetWindow.isDestroyed()) {
+    return butlerPetWindow;
+  }
+  const pet = new BrowserWindow({
     ...initialButlerPetBounds(),
     type: process.platform === "darwin" ? "panel" : undefined,
     show: false,
@@ -988,19 +1015,22 @@ function createButlerBuddyWindows() {
     backgroundColor: "#00000000",
     webPreferences: companionWebPreferences()
   });
-  butlerPetWindow.setAlwaysOnTop(true, "floating");
-  butlerPetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  butlerPetWindow.on("closed", () => {
+  butlerPetWindow = pet;
+  pet.setAlwaysOnTop(true, "floating");
+  pet.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  pet.on("closed", () => {
+    if (butlerPetWindow !== pet) return;
     closeButlerScreenBallWindow();
     hideButlerChat();
     butlerPetWindow = null;
   });
-  butlerPetWindow.once("ready-to-show", () => {
-    if (readButlerBuddyPreferences().visible) {
-      butlerPetWindow?.showInactive();
+  pet.once("ready-to-show", () => {
+    if (!pet.isDestroyed() && readButlerBuddyPreferences().visible) {
+      pet.showInactive();
     }
   });
-  loadCompanionSurface(butlerPetWindow, "butler-pet");
+  loadCompanionSurface(pet, "butler-pet");
+  return pet;
 }
 
 function showButlerContextMenu() {
@@ -1021,12 +1051,16 @@ function showButlerContextMenu() {
     {
       label: "新会话",
       click: () => {
-        const chat = butlerChatWindow;
-        if (!chat || chat.isDestroyed()) return;
+        const chat = ensureButlerChatWindow();
         if (!chat.isVisible()) {
-          syncButlerChatPosition();
-          chat.show();
-          chat.focus();
+          revealButlerChat(chat, () => {
+            safeSendToWebContents(
+              chat.webContents,
+              "butlerBuddy:newConversation",
+              undefined
+            );
+          });
+          return;
         }
         safeSendToWebContents(
           chat.webContents,
@@ -1491,7 +1525,9 @@ function createWindow() {
     void mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 
-  createButlerBuddyWindows();
+  if (readButlerBuddyPreferences().visible) {
+    createButlerPetWindow();
+  }
 }
 
 type TaskNotificationPayload = {

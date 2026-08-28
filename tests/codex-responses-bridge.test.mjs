@@ -526,6 +526,158 @@ test("bridge retries optional-field rejections and relays other errors", async (
   }
 });
 
+test("bridge auto-upgrades bare gateways from /chat/completions to /v1", async (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+
+  const hits = [];
+  const upstream = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      hits.push(req.url);
+      if (req.url === "/chat/completions") {
+        // gateway serves its web UI at the bare path, with status 200
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end("<!doctype html><html>gateway ui</html>");
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({
+          choices: [{ delta: { content: "via /v1" } }]
+        })}\n\n`
+      );
+      res.write(
+        `data: ${JSON.stringify({
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+        })}\n\n`
+      );
+      res.write("data: [DONE]\n\n");
+      res.end();
+    });
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const upstreamPort = upstream.address().port;
+
+  try {
+    const port = await bridge.startResponsesBridge();
+    const route = bridge.registerCodexChatBridgeRoute(
+      `http://127.0.0.1:${upstreamPort}`
+    );
+
+    const first = await postJson(
+      `http://127.0.0.1:${port}/v1/${route.routeId}/responses`,
+      { model: "gpt-5.6-luna", input: "hi", stream: true }
+    );
+    assert.equal(first.status, 200);
+    const events = sseEvents(first.raw);
+    assert.equal(
+      events.find((event) => event.type === "response.output_item.done").item
+        .content[0].text,
+      "via /v1"
+    );
+
+    const second = await postJson(
+      `http://127.0.0.1:${port}/v1/${route.routeId}/responses`,
+      { model: "gpt-5.6-luna", input: "again", stream: true }
+    );
+    assert.equal(second.status, 200);
+    // fallback happened once, then the working path was remembered
+    assert.deepEqual(hits, [
+      "/chat/completions",
+      "/v1/chat/completions",
+      "/v1/chat/completions"
+    ]);
+  } finally {
+    await bridge.closeResponsesBridge();
+    await closeServer(upstream);
+  }
+});
+
+test("bridge reports a diagnostic snippet when the upstream body is unusable", async (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+
+  const upstream = http.createServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("this is not json at all");
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const upstreamPort = upstream.address().port;
+
+  try {
+    const port = await bridge.startResponsesBridge();
+    // base without /v1 so the fallback also runs and fails, ending at the
+    // original unusable response
+    const route = bridge.registerCodexChatBridgeRoute(
+      `http://127.0.0.1:${upstreamPort}`
+    );
+    const response = await postJson(
+      `http://127.0.0.1:${port}/v1/${route.routeId}/responses`,
+      { model: "m", input: "hi", stream: false }
+    );
+    assert.equal(response.status, 502);
+    const message = response.json().error.message;
+    assert.match(message, /could not parse upstream chat response/);
+    assert.match(message, /this is not json at all/);
+  } finally {
+    await bridge.closeResponsesBridge();
+    await closeServer(upstream);
+  }
+});
+
+test("bridge sniffs SSE bodies mislabeled as application/json", async (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+
+  const upstream = http.createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.write(
+      `data: ${JSON.stringify({
+        choices: [{ delta: { content: "sniffed" } }]
+      })}\n\n`
+    );
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const upstreamPort = upstream.address().port;
+
+  try {
+    const port = await bridge.startResponsesBridge();
+    const route = bridge.registerCodexChatBridgeRoute(
+      `http://127.0.0.1:${upstreamPort}/v1`
+    );
+    const response = await postJson(
+      `http://127.0.0.1:${port}/v1/${route.routeId}/responses`,
+      { model: "m", input: "hi", stream: true }
+    );
+    assert.equal(response.status, 200);
+    const events = sseEvents(response.raw);
+    assert.equal(
+      events.find((event) => event.type === "response.output_item.done").item
+        .content[0].text,
+      "sniffed"
+    );
+    assert.equal(
+      events.at(-1).type,
+      "response.completed",
+      "sniffed stream still terminates with completed"
+    );
+  } finally {
+    await bridge.closeResponsesBridge();
+    await closeServer(upstream);
+  }
+});
+
 test("bridge rejects unknown routes and serves healthz", async (t) => {
   if (!bridge) {
     t.skip("dist-electron bridge not built yet");

@@ -364,6 +364,7 @@ export class ChatToResponsesStream {
 
   private reasoning: { id: string; text: string } | null = null;
   private message: { id: string; text: string } | null = null;
+  private upstreamError: string | undefined;
   private readonly toolCalls = new Map<
     number,
     { id?: string; name?: string; arguments: string }
@@ -372,6 +373,15 @@ export class ChatToResponsesStream {
   constructor(model: string, customToolNames: string[] = []) {
     this.model = model;
     this.customToolNames = new Set(customToolNames);
+  }
+
+  hasUpstreamError(): boolean {
+    return this.upstreamError !== undefined;
+  }
+
+  /** Stream-level provider error (`data: {"error": …}` before/instead of chunks). */
+  getUpstreamError(): string | undefined {
+    return this.upstreamError;
   }
 
   begin(): string[] {
@@ -397,6 +407,13 @@ export class ChatToResponsesStream {
     const obj = asObject(chunk);
     if (asObject(obj?.usage)) {
       this.usage = normalizeResponsesUsage(obj?.usage);
+    }
+    if (obj && !asArray(obj.choices).length) {
+      const message = extractUpstreamErrorMessage(obj);
+      if (message !== undefined && this.upstreamError === undefined) {
+        this.upstreamError = message;
+      }
+      return events;
     }
     const choice = asObject(asArray(obj?.choices)[0]);
     const delta = asObject(choice?.delta);
@@ -782,7 +799,7 @@ export class SseParser {
 interface BridgeState {
   server: http.Server;
   port: number;
-  routes: Map<string, string>;
+  routes: Map<string, BridgeRoute>;
 }
 
 let bridgeState: BridgeState | undefined;
@@ -794,6 +811,13 @@ export function isResponsesBridgeRunning(): boolean {
 
 export function getResponsesBridgePort(): number | undefined {
   return bridgeState?.port;
+}
+
+export interface BridgeRoute {
+  /** Normalized provider base URL, e.g. https://cli.example.com */
+  base: string;
+  /** Chat endpoint path under base; auto-upgraded to /v1/… for gateways. */
+  chatPath: string;
 }
 
 export function registerCodexChatBridgeRoute(
@@ -810,7 +834,8 @@ export function registerCodexChatBridgeRoute(
     const oldest = bridgeState.routes.keys().next().value;
     if (oldest !== undefined) bridgeState.routes.delete(oldest);
   }
-  bridgeState.routes.set(routeId, base);
+  const existing = bridgeState.routes.get(routeId);
+  bridgeState.routes.set(routeId, existing ?? { base, chatPath: "/chat/completions" });
   return { port: bridgeState.port, routeId };
 }
 
@@ -825,7 +850,7 @@ export function startResponsesBridge(): Promise<number | undefined> {
       if (bridgeStarting === starting) bridgeStarting = undefined;
       resolve(value);
     };
-    const routes = new Map<string, string>();
+    const routes = new Map<string, BridgeRoute>();
     const server = http.createServer((req, res) => {
       void handleBridgeRequest(req, res, routes).catch(() => {
         try {
@@ -910,7 +935,7 @@ function sendJson(
 async function handleBridgeRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  routes: Map<string, string>
+  routes: Map<string, BridgeRoute>
 ): Promise<void> {
   res.on("error", () => {});
   req.on("error", () => {});
@@ -929,8 +954,8 @@ async function handleBridgeRequest(
     sendJson(res, 404, { error: { message: "unknown bridge endpoint" } });
     return;
   }
-  const upstreamBase = routes.get(match[1]);
-  if (!upstreamBase) {
+  const route = routes.get(match[1]);
+  if (!route) {
     sendJson(res, 404, {
       error: { message: "unknown bridge route (BYOK provider not registered)" }
     });
@@ -977,7 +1002,7 @@ async function handleBridgeRequest(
   let upstream: IncomingMessage;
   try {
     upstream = await requestChatCompletions(
-      upstreamBase,
+      route,
       translated.chat,
       authorization,
       controller.signal
@@ -989,7 +1014,43 @@ async function handleBridgeRequest(
     return;
   }
 
+  // Some relay gateways host their API under /v1 while serving the web UI
+  // (200 text/html) or a 404 at the bare /chat/completions path. Retry once
+  // under /v1 and remember the working path on the route.
   let status = upstream.statusCode ?? 0;
+  let contentType = String(upstream.headers["content-type"] ?? "");
+  if (
+    route.chatPath === "/chat/completions" &&
+    !basePathHasVersionSegment(route.base) &&
+    (status === 404 || (status < 400 && contentType.includes("text/html")))
+  ) {
+    upstream.resume();
+    try {
+      const fallback: BridgeRoute = {
+        base: route.base,
+        chatPath: "/v1/chat/completions"
+      };
+      const retried = await requestChatCompletions(
+        fallback,
+        translated.chat,
+        authorization,
+        controller.signal
+      );
+      const retriedStatus = retried.statusCode ?? 0;
+      const retriedType = String(retried.headers["content-type"] ?? "");
+      if (retriedStatus !== 404 && !(retriedStatus < 400 && retriedType.includes("text/html"))) {
+        route.chatPath = "/v1/chat/completions";
+        upstream = retried;
+        status = retriedStatus;
+        contentType = retriedType;
+      } else {
+        retried.resume();
+      }
+    } catch {
+      /* keep the original response for error handling below */
+    }
+  }
+
   if (status >= 400) {
     const text = await readUpstreamBody(upstream);
     const stripped = stripOptionalChatFields(translated.chat);
@@ -999,7 +1060,7 @@ async function handleBridgeRequest(
     ) {
       try {
         upstream = await requestChatCompletions(
-          upstreamBase,
+          route,
           stripped,
           authorization,
           controller.signal
@@ -1022,22 +1083,46 @@ async function handleBridgeRequest(
       return;
     }
   }
+  contentType = String(upstream.headers["content-type"] ?? "");
 
-  const contentType = String(upstream.headers["content-type"] ?? "");
   if (translated.stream && contentType.includes("text/event-stream")) {
     await pipeUpstreamSse(upstream, res, translated, requestModel);
     return;
   }
 
-  const chatJson = parseJsonObject(await readUpstreamBody(upstream));
-  if (chatJson && asObject(chatJson.error)) {
-    sendJson(res, 502, { error: asObject(chatJson.error) });
+  const bodyText = await readUpstreamBody(upstream);
+
+  // A few gateways stream SSE but label it application/json; sniff it.
+  if (translated.stream && bodyText.trimStart().startsWith("data:")) {
+    writeSseHead(res);
+    for (const event of synthesizeSseFromChatText(
+      bodyText,
+      requestModel ?? translated.chat.model as string,
+      translated.customToolNames
+    )) {
+      res.write(event);
+    }
+    res.end();
+    return;
+  }
+
+  const chatJson = parseJsonObject(bodyText);
+  const upstreamError = chatJson
+    ? extractUpstreamErrorMessage(chatJson)
+    : undefined;
+  if (!chatJson || upstreamError !== undefined || !asArray(chatJson.choices).length) {
+    const message =
+      upstreamError ??
+      `bridge could not parse upstream chat response (status ${status}, content-type ${contentType || "unknown"}, body: ${bodySnippet(bodyText)})`;
+    sendJson(res, 502, { error: { message } });
     return;
   }
   const responseObj = translateChatResponseToResponses(chatJson, requestModel);
   if (!responseObj) {
     sendJson(res, 502, {
-      error: { message: "bridge could not parse upstream chat response" }
+      error: {
+        message: `bridge could not parse upstream chat response (status ${status}, content-type ${contentType || "unknown"}, body: ${bodySnippet(bodyText)})`
+      }
     });
     return;
   }
@@ -1052,8 +1137,41 @@ async function handleBridgeRequest(
   sendJson(res, 200, responseObj);
 }
 
+function basePathHasVersionSegment(base: string): boolean {
+  try {
+    const pathname = new URL(base).pathname.replace(/\/+$/, "");
+    return /\/v\d+$/.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Replay a full chat SSE payload (possibly mislabeled) as Responses SSE events. */
+function synthesizeSseFromChatText(
+  text: string,
+  model: string,
+  customToolNames: string[]
+): string[] {
+  const stream = new ChatToResponsesStream(model, customToolNames);
+  const parser = new SseParser();
+  const events = [...stream.begin()];
+  const feed = (frames: SseFrame[]) => {
+    for (const frame of frames) {
+      if (frame.data === "[DONE]") return;
+      const chunk = parseJsonObject(frame.data);
+      if (chunk) events.push(...stream.handleChatChunk(chunk));
+    }
+  };
+  feed(parser.push(text));
+  feed(parser.flush());
+  if (stream.hasUpstreamError()) {
+    return [...events, ...stream.fail(stream.getUpstreamError() ?? "upstream error")];
+  }
+  return [...events, ...stream.finish()];
+}
+
 function requestChatCompletions(
-  upstreamBase: string,
+  route: BridgeRoute,
   chatBody: JsonObject,
   authorization: string | undefined,
   signal: AbortSignal
@@ -1061,7 +1179,7 @@ function requestChatCompletions(
   return new Promise((resolve, reject) => {
     let url: URL;
     try {
-      url = new URL(`${upstreamBase}/chat/completions`);
+      url = new URL(`${route.base}${route.chatPath}`);
     } catch (error) {
       reject(error as Error);
       return;
@@ -1141,7 +1259,12 @@ async function pipeUpstreamSse(
       settled = true;
       clearInterval(keepalive);
       if (!res.writableEnded) {
-        for (const event of stream.finish()) res.write(event);
+        const failure = stream.getUpstreamError();
+        const closing =
+          failure !== undefined
+            ? stream.fail(failure)
+            : stream.finish();
+        for (const event of closing) res.write(event);
         res.end();
       }
       resolve();
@@ -1180,6 +1303,28 @@ function looksLikeUnknownFieldError(status: number, body: string): boolean {
   return /unknown|unrecognized|unexpected|unsupported|extra_forbidden|invalid_request/i.test(
     body
   );
+}
+
+/**
+ * Pull a human-readable message out of standard and gateway-specific error
+ * bodies: {"error":{"message":…}}, {"message":…}, {"msg":…}, {"detail":…}.
+ */
+function extractUpstreamErrorMessage(obj: JsonObject | undefined): string | undefined {
+  if (!obj) return undefined;
+  const err = asObject(obj.error);
+  if (err) {
+    if (typeof err.message === "string" && err.message) return err.message;
+    return JSON.stringify(err).slice(0, 500);
+  }
+  for (const key of ["message", "msg", "detail"]) {
+    const value = obj[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return undefined;
+}
+
+function bodySnippet(text: string, max = 300): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 function safeErrorBody(text: string): unknown {

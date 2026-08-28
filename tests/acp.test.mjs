@@ -1362,7 +1362,8 @@ test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors
     },
     {
       kind: "error",
-      message: "Upstream gateway error (HTTP 422) — codex is retrying the request…",
+      message:
+        "Upstream gateway error (HTTP 422): content input null — codex is retrying the request…",
       details: [
         "Retry attempt 1.",
         "Reconnecting... 1/5",
@@ -1400,6 +1401,47 @@ test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors
       ]
     }
   ]);
+
+  // Provider reasons surface in the headline instead of the collapsed log,
+  // including gateway-specific bodies relayed by the local bridge (url suffix
+  // stripped, reason stable across retries so dedupe still collapses them).
+  const balance = acpUpdateToItems({
+    sessionUpdate: "session_info_update",
+    _meta: {
+      codex: {
+        error: {
+          message: "Reconnecting... 1/5",
+          additionalDetails:
+            "unexpected status 403 Forbidden: Insufficient account balance, url: http://127.0.0.1:61874/v1/chat81e2eadc6030/responses",
+          codexErrorInfo: {
+            responseStreamDisconnected: { httpStatusCode: 403 }
+          },
+          willRetry: true
+        }
+      }
+    }
+  });
+  assert.equal(
+    balance[0].message,
+    "Upstream gateway error (HTTP 403): Insufficient account balance — codex is retrying the request…"
+  );
+  const balanceRetry = acpUpdateToItems({
+    sessionUpdate: "session_info_update",
+    _meta: {
+      codex: {
+        error: {
+          message: "Reconnecting... 2/5",
+          additionalDetails:
+            "unexpected status 403 Forbidden: Insufficient account balance, url: http://127.0.0.1:61874/v1/chat81e2eadc6030/responses",
+          codexErrorInfo: {
+            responseStreamDisconnected: { httpStatusCode: 403 }
+          },
+          willRetry: true
+        }
+      }
+    }
+  });
+  assert.equal(balance[0].message, balanceRetry[0].message);
 
   // Stable headline across retry attempts: attempt 1 and 2 produce the same
   // message so downstream adjacent-error dedupe collapses them into one entry.

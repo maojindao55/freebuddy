@@ -1231,8 +1231,17 @@ function codexMetaErrorToItems(meta: unknown): AcpStreamItem[] {
   const attemptMatch = message.match(/(\d+)\s*\/\s*\d+/);
   const attempt = attemptMatch ? attemptMatch[1] : undefined;
 
+  // Pull the provider's own reason ("Insufficient account balance", "content
+  // input null", …) out of `unexpected status <code> <phrase>: <reason>` so it
+  // lands in the headline instead of being buried in the collapsed log.
+  const reasonMatch = additionalDetails.match(
+    /^unexpected status \d+[^:]*: (.+?)(?:, url: .*)?$/
+  );
+  const reason = reasonMatch ? reasonMatch[1].trim().slice(0, 200) : "";
+
   const statusText = typeof httpStatus === "number" ? ` (HTTP ${httpStatus})` : "";
-  const headline = `Upstream gateway error${statusText}`;
+  const reasonText = reason ? `: ${reason}` : "";
+  const headline = `Upstream gateway error${statusText}${reasonText}`;
   const subline =
     e.willRetry === false
       ? "codex gave up after retries; the turn did not complete."

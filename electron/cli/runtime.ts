@@ -37,6 +37,7 @@ import {
 } from "./runtimeShared.js";
 import { killProcessTree } from "./process-kill.js";
 import {
+  ensureCodexChatBridge,
   resolveClaudeByokSessionOptions,
   resolveCliByokEnv
 } from "./store.js";
@@ -329,6 +330,7 @@ export async function cliRun(
     return;
   }
 
+  await ensureCodexChatBridge();
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
       { ...process.env, ...(effectiveArgs.env || {}) },

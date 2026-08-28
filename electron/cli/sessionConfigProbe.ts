@@ -20,6 +20,7 @@ import { killProcessTree } from "./process-kill.js";
 import { mergeBuiltEnv } from "./runtime.js";
 import {
   cliByokModelSignature,
+  ensureCodexChatBridge,
   mergeCliByokModelOption,
   resolveCliByokEnv
 } from "./store.js";
@@ -155,6 +156,7 @@ export async function inspectSessionConfigOptions(
   if (input.adapter === "dsh-acp") patchDshAcpRuntimeFromCommand(built);
   if (built.protocol !== "acp") return [];
 
+  await ensureCodexChatBridge();
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
       { ...process.env, ...(input.env ?? {}) },

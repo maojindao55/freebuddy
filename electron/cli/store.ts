@@ -8,6 +8,10 @@ import {
   resolveNodeBinaryHint
 } from "./codexBinaryHint.js";
 import { buildCodexAppServerWrapperContent } from "./codexByokWrapper.js";
+import {
+  registerCodexChatBridgeRoute,
+  startResponsesBridge
+} from "./responsesBridge.js";
 import { getDataDir, getDb } from "./db.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 
@@ -381,11 +385,38 @@ function readDeepSeekByokPrivate(id: string): CLIDeepSeekByokConfig | undefined 
   return readPrivateByok<CLIDeepSeekByokConfig>(id, "deepseek_byok");
 }
 
-// codex >= 0.146 removed `wire_api = "chat"` support, so "responses" is the only
-// valid wire protocol. Coerce legacy/stale values (e.g. old DeepSeek BYOK configs
-// persisted as "chat") so they keep working instead of crashing codex at startup.
-function normalizeWireApi(value: CLICodexByokConfig["wireApi"]): "responses" {
-  return value === "chat" || !value ? "responses" : value;
+// codex >= 0.146 removed `wire_api = "chat"` support: the codex binary only
+// speaks the Responses API. Keep the user's "chat" selection in storage —
+// resolveCodexByokEnv serves it through the local Responses↔chat bridge — and
+// coerce anything else (legacy/stale values) to "responses".
+function normalizeWireApi(
+  value: CLICodexByokConfig["wireApi"]
+): "responses" | "chat" {
+  return value === "chat" ? "chat" : "responses";
+}
+
+function hasCodexChatWireByok(): boolean {
+  try {
+    const row = getDb()
+      .prepare(
+        `SELECT 1 FROM cli_executor_overrides
+         WHERE codex_byok LIKE '%"wireApi":"chat"%' LIMIT 1`
+      )
+      .get();
+    return row !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pre-start the local Responses↔chat bridge so resolveCodexByokEnv can point
+ * codex at a bridge route. Session runners await this before resolving BYOK
+ * env; it is a no-op unless some codex BYOK config selects wireApi "chat".
+ */
+export async function ensureCodexChatBridge(): Promise<void> {
+  if (!hasCodexChatWireByok()) return;
+  await startResponsesBridge();
 }
 
 function normalizeByokForStorage(
@@ -667,15 +698,25 @@ export function resolveCodexByokEnv(
   const codexPath = modelCatalogPath
     ? createCodexAppServerWrapper(modelCatalogPath)
     : undefined;
+  const wireApi = normalizeWireApi(byok.wireApi);
+  let baseUrl = byok.baseUrl?.trim();
+  if (wireApi === "chat" && baseUrl) {
+    // codex itself no longer speaks chat/completions; hand codex a local
+    // bridge route that translates Responses ↔ chat/completions instead.
+    // Without a running bridge fall back to direct "responses" (previous
+    // behavior) so codex still starts.
+    const route = registerCodexChatBridgeRoute(baseUrl);
+    if (route) baseUrl = `http://127.0.0.1:${route.port}/v1/${route.routeId}`;
+  }
   const config: Record<string, unknown> = {
     model_provider: providerId,
     model_supports_reasoning_summaries: true,
     model_providers: {
       [providerId]: {
         name: byok.providerName?.trim() || "BYOK provider",
-        base_url: byok.baseUrl?.trim(),
+        base_url: baseUrl,
         env_key: envKey,
-        wire_api: normalizeWireApi(byok.wireApi)
+        wire_api: wireApi === "chat" ? "responses" : wireApi
       }
     },
     ...(modelCatalogPath ? { model_catalog_json: modelCatalogPath } : {})

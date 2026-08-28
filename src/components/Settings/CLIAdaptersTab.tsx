@@ -981,11 +981,9 @@ function EditOverridePanel({
   const [codexWireApi, setCodexWireApi] = useState<
     NonNullable<NonNullable<CLIExecutorOverride["codexByok"]>["wireApi"]>
   >(
-    // codex >= 0.146 dropped `wire_api = "chat"`; coerce stale saved values so the
-    // <select> (which only offers "responses") never sits in an invalid state.
-    savedCodexByok?.wireApi === "chat"
-      ? "responses"
-      : savedCodexByok?.wireApi ?? "responses"
+    // "chat" is served through the local Responses↔chat bridge (see
+    // responsesBridge.ts) because codex >= 0.146 dropped the chat wire API.
+    savedCodexByok?.wireApi ?? "responses"
   );
   const [deepseekWireApi, setDeepseekWireApi] = useState<"chat" | "responses">(
     savedDeepSeekByok?.wireApi ?? "chat"
@@ -1654,7 +1652,8 @@ function EditOverridePanel({
                           setCodexWireApi(e.target.value as typeof codexWireApi)
                         }
                       >
-                        <option value="responses">responses</option>
+                        <option value="responses">responses (/v1/responses)</option>
+                        <option value="chat">chat (/v1/chat/completions · local bridge)</option>
                       </select>
                     </label>
                   )}

@@ -21,6 +21,7 @@ import { killProcessTree } from "./process-kill.js";
 import { mergeBuiltEnv } from "./runtime.js";
 import {
   clearToolSessionsForAgent,
+  ensureCodexChatBridge,
   resolveCliByokEnv
 } from "./store.js";
 
@@ -65,6 +66,7 @@ async function withAcpAgent<T>(
   if (built.protocol !== "acp") {
     throw new Error("Authentication control requires an ACP agent.");
   }
+  await ensureCodexChatBridge();
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
       { ...process.env, ...(args.env ?? {}) },

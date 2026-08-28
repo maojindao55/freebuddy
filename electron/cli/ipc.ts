@@ -183,6 +183,13 @@ import { registerScheduledTaskIpc } from "./scheduledTasks.js";
 import { registerRuntimeIpc } from "../runtime/runtimeIpc.js";
 import { searchWorkspaceFiles } from "./workspaceFiles.js";
 import { getDataDir, getDb } from "./db.js";
+import {
+  createTaskBranch,
+  inspectTaskWorkspace,
+  prepareTaskWorkspace,
+  type CreateTaskBranchInput,
+  type PrepareTaskWorkspaceInput
+} from "./taskWorkspace.js";
 import { nanoid } from "nanoid";
 import { extractHandoffBrief } from "./handoffBriefExtractor.js";
 import { getHandoffBriefByTarget } from "./handoffBriefs.js";
@@ -706,6 +713,63 @@ export function registerCliIpc() {
         }
       }
       return selected;
+    }
+  );
+
+  registerHandler("cli:inspectTaskWorkspace", async (_event, rawCwd: unknown) => {
+    if (typeof rawCwd !== "string" || !rawCwd.trim()) {
+      return { isGitRepository: false, branches: [] };
+    }
+    return inspectTaskWorkspace(rawCwd);
+  });
+
+  registerHandler("cli:createTaskBranch", async (_event, rawInput: unknown) => {
+    if (!rawInput || typeof rawInput !== "object") {
+      throw new Error("Git branch input is required");
+    }
+    const input = rawInput as Record<string, unknown>;
+    if (typeof input.cwd !== "string" || !input.cwd.trim()) {
+      throw new Error("Task workspace directory is required");
+    }
+    if (typeof input.name !== "string" || !input.name.trim()) {
+      throw new Error("Git branch name is required");
+    }
+    const parsed: CreateTaskBranchInput = {
+      cwd: input.cwd,
+      name: input.name,
+      ...(typeof input.startPoint === "string"
+        ? { startPoint: input.startPoint }
+        : {})
+    };
+    return createTaskBranch(parsed);
+  });
+
+  registerHandler(
+    "cli:prepareTaskWorkspace",
+    async (_event, rawInput: unknown) => {
+      if (!rawInput || typeof rawInput !== "object") {
+        throw new Error("Task workspace input is required");
+      }
+      const input = rawInput as Record<string, unknown>;
+      if (typeof input.cwd !== "string" || !input.cwd.trim()) {
+        throw new Error("Task workspace directory is required");
+      }
+      if (input.mode !== "local" && input.mode !== "worktree") {
+        throw new Error("Task workspace mode is invalid");
+      }
+      if (typeof input.taskKey !== "string") {
+        throw new Error("Task workspace key is required");
+      }
+      const parsed: PrepareTaskWorkspaceInput = {
+        cwd: input.cwd,
+        mode: input.mode,
+        taskKey: input.taskKey,
+        ...(typeof input.branch === "string" ? { branch: input.branch } : {})
+      };
+      return prepareTaskWorkspace(
+        parsed,
+        path.join(getDataDir(), "task-worktrees")
+      );
     }
   );
 

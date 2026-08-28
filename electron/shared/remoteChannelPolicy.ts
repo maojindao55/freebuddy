@@ -225,6 +225,9 @@ const DENY = [
   // Native dialogs and shell integration have no meaning off-device.
   "cli:selectAttachments",
   "cli:selectDirectory",
+  "cli:inspectTaskWorkspace",
+  "cli:createTaskBranch",
+  "cli:prepareTaskWorkspace",
   "cli:openBrowserExternal",
   "cli:showNativeBrowser",
   "cli:setNativeBrowserBounds",

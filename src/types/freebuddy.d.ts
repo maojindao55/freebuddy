@@ -28,6 +28,10 @@ import type {
   ConversationTitleSource,
   AttachmentCandidate,
   WorkspaceFileMatch,
+  CreateTaskBranchInput,
+  GitWorkspaceInfo,
+  PrepareTaskWorkspaceInput,
+  PreparedTaskWorkspace,
   PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
@@ -258,6 +262,11 @@ declare global {
     updateMessage(input: UpdateMessageInput): Promise<void>;
 
     selectDirectory(defaultPath?: string): Promise<string | null>;
+    inspectTaskWorkspace(cwd: string): Promise<GitWorkspaceInfo>;
+    createTaskBranch(input: CreateTaskBranchInput): Promise<GitWorkspaceInfo>;
+    prepareTaskWorkspace(
+      input: PrepareTaskWorkspaceInput
+    ): Promise<PreparedTaskWorkspace>;
     searchWorkspaceFiles(
       cwd: string,
       query: string,

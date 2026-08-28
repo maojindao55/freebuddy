@@ -52,6 +52,97 @@ final result: passed
 
 ---
 
+# New-task composer workspace context design QA
+
+- Source visual truth: `C:\Users\Morefine\AppData\Local\Temp\codex-clipboard-c0fb57e4-e27a-4a7b-9d11-d91d2b81577b.png`
+- Placement reference: `C:\Users\Morefine\AppData\Local\Temp\codex-clipboard-829f3fe9-7c01-4cb5-81e0-73d6210848e7.png`
+- Browser-rendered implementation screenshot: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-full.jpg`
+- Focused implementation crop: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-context-crop.png`
+- Combined comparison: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\comparison.png`
+- Viewport: 1280 x 720 CSS px and screenshot pixels at 1x; composer stack 760 x 343 CSS px
+- Source and implementation pixels: source 1124 x 474 px; implementation 1280 x 720 px; focused source crop 1000 x 314 px; focused implementation crop 760 x 235 px
+- Density normalization: the focused implementation crop was proportionally normalized to 314 px high beside the 314 px-high source crop; no browser or device chrome is included in the focused comparison
+- State: light theme, new-task page, normal mode, `freebuddy` selected, Local mode selected, `codex/performance-p0` selected
+
+## Full-view comparison evidence
+
+The implementation preserves FreeBuddy's existing title, mode tabs, composer proportions, toolbar, and send action. The workspace context is removed from the crowded inner toolbar and attached below the composer as a narrower soft panel, following the reference control order while applying the user's requested bottom placement.
+
+## Focused region comparison evidence
+
+`comparison.png` places the supplied top-context reference on the left and the final bottom-context implementation on the right at the same visual height. Project, execution mode, and Git branch retain the reference's left-to-right scan order, compact icon scale, quiet neutral surface, and single-line labels. The deliberate difference is vertical placement: the implementation bar is attached below the composer rather than above it.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing FreeBuddy interface fonts and 12 px compact-control scale are retained; project and branch names stay on one line with ellipsis protection.
+- Spacing and layout rhythm: the bar is inset 20 px from both composer edges, 44 px tall, and uses 16 px group spacing. It shares the composer's centerline and reads as one attached control surface without adding toolbar crowding.
+- Colors and visual tokens: the bar uses the existing soft-panel, border, hover, text, and focus tokens; no unrelated accent palette was introduced.
+- Image quality and asset fidelity: no raster assets are required. Folder, computer, branch, and remove affordances use the project's installed Lucide icon system.
+- Copy and content: directory basename, Local/Worktree choice, and the selected Git branch are localized and match the requested context fields.
+
+## Findings
+
+No actionable P0, P1, or P2 visual, responsive, or interaction mismatch remains for the requested bottom workspace context treatment.
+
+## Primary interactions tested
+
+- Selected Worktree and switched the branch from `codex/performance-p0` to `main` in the browser-rendered composer, then restored Local and the original branch.
+- Confirmed the selected workspace exposes a remove action and the no-workspace state collapses to one working-directory button.
+- Confirmed a clean Git workspace can switch local branches and a dirty workspace is protected from an implicit switch.
+- Confirmed Worktree creates a detached isolated checkout from the selected branch and returns that checkout as the task execution directory.
+- Checked a fresh browser-rendered selected-workspace state for console warnings and errors: none.
+
+## Comparison history
+
+1. The original composer kept its workspace control inside the main toolbar and had no branch or Worktree selection.
+2. The workspace context moved into a dedicated attached lower bar; Local/Worktree and branch selectors were wired to the task creation path.
+3. The first focused comparison found the bar proportions, control order, typography, and neutral hierarchy aligned with the reference, with bottom placement intentionally matching the user's direction. No P0/P1/P2 visual fix was required.
+
+## Follow-up polish
+
+- P3: extremely long branch names are capped at 230 px and truncated by the native select text field to protect the composer width.
+
+## Follow-up iteration — adaptive dropdown spacing
+
+- User-reported source state: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-context-crop.png`
+- Revised browser-rendered implementation: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-spacing-refined.png`
+- Focused revised crop: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-spacing-focused.png`
+- Before/after comparison input: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\spacing-comparison.png`
+- State and viewport: light theme, 1280 x 720 CSS px at 1x, Local and `codex/performance-p0` selected; the same controls were also tested with Worktree and `main` selected.
+- Finding: P2 spacing drift — the native select arrow stayed at the far edge of a flexed field, leaving a visibly excessive gap after short labels.
+- Fix: removed the native arrow, added the existing Lucide chevron as a separate trailing icon, and sized the select to its selected content with a 230 px cap.
+- Post-fix evidence: the measured text-field-to-chevron gap remains 4 px for Local, Worktree, `main`, and `codex/performance-p0`; control widths shrink from 193 px for the long branch state to 80 px for `main` without disturbing the lower bar layout.
+- Fidelity surfaces: typography, neutral color tokens, icon scale, copy, 44 px bar height, and responsive wrapping remain unchanged. No image asset changes were required.
+- Result: no actionable P0, P1, or P2 mismatch remains after the second comparison.
+
+## Follow-up iteration — custom dropdown and control order
+
+- Closed-state implementation: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-custom-dropdown-closed.png`
+- Open-state implementation: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-custom-dropdown-open.png`
+- User finding: the native dropdown treatment still felt visually rough, and branch needed to precede execution location.
+- Fix: replaced both native selects with compact accessible popovers using the existing FreeBuddy panel, hover, border, focus, shadow, and brand tokens. The selected item receives a checkmark and the trigger chevron rotates while open.
+- Ordering evidence: the final lower bar reads working directory → Git branch → Local/Worktree.
+- Interaction evidence: opened both menus, changed branch to `main`, changed execution location to Worktree, restored the original values, verified outside-click/Escape handling in code, and confirmed branch menu scrolling plus Arrow/Home/End focus support.
+- Result: the open menu remains clear of clipping and retains the existing 44 px collapsed bar height; no actionable P0, P1, or P2 visual issue remains.
+
+## Follow-up iteration — branch search and create/checkout
+
+- Source visual truth: `C:\Users\Morefine\AppData\Local\Temp\codex-clipboard-d6f928de-4888-4312-a661-b662c3210f7c.png`
+- Open-state implementation: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-branch-menu-open.png`
+- Search-state implementation: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-branch-search.png`
+- Create-state implementation: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\implementation-branch-create.png`
+- Side-by-side comparison: `C:\Users\Morefine\www\freebuddy\artifacts\product-design\new-task-composer\branch-search-create-comparison.png`
+- Viewport and pixels: implementation 1280 x 720 CSS px and screenshot pixels at 1x; source 725 x 493 px; light theme, branch popover open above the bottom context bar.
+- Full-view comparison evidence: the reference and implementation were inspected together. Both use a fixed search/header/footer shell, a vertically scrollable branch list, branch icons, a selected-state checkmark, and a visually separated bottom create action. FreeBuddy keeps the user-requested lower context-bar order of directory → branch → Local/Worktree.
+- Focused interaction evidence: typing `runtime` reduced ten branches to the three matching names without closing the popover. Activating the footer replaced it with an inline branch-name field plus cancel and confirm controls; `feature/branch-search-flow` remained fully visible.
+- Functional evidence: the Electron path validates names with Git, rejects duplicates, creates from the selected start branch, checks out the new branch, refreshes the branch list, and preserves untracked workspace changes. The real Git integration test covered successful creation plus duplicate and invalid-name failures.
+- Fidelity surfaces: existing FreeBuddy typography, neutral surface/border/shadow tokens, Lucide search/branch/plus/check icons, compact row rhythm, focus treatment, localized copy, and upward popover placement are retained. No raster asset substitution is required.
+- Findings: no actionable P0, P1, or P2 visual, overflow, search, creation, or checkout mismatch remains.
+
+final result: passed
+
+---
+
 # ButlerBuddy 狂热突袭 design QA
 
 - Source visual truth: `/Users/hongbin9/.codex/generated_images/019fe968-4981-7e03-9bbd-1200b3295f6f/exec-74e103b8-e3de-4471-ad42-9ba759b51b65.png`

@@ -185,6 +185,12 @@ const cli = {
 
   selectDirectory: (defaultPath?: string) =>
     ipcRenderer.invoke("cli:selectDirectory", defaultPath),
+  inspectTaskWorkspace: (cwd: string) =>
+    ipcRenderer.invoke("cli:inspectTaskWorkspace", cwd),
+  createTaskBranch: (input: unknown) =>
+    ipcRenderer.invoke("cli:createTaskBranch", input),
+  prepareTaskWorkspace: (input: unknown) =>
+    ipcRenderer.invoke("cli:prepareTaskWorkspace", input),
   searchWorkspaceFiles: (cwd: string, query: string, limit?: number, roots?: string[]) =>
     ipcRenderer.invoke("cli:searchWorkspaceFiles", { cwd, query, limit, roots }),
   selectAttachments: () => ipcRenderer.invoke("cli:selectAttachments"),

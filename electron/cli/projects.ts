@@ -175,7 +175,22 @@ export function findProjectByCwd(cwd: string): Project | null {
 export function resolveWorkspaceRootsForConversation(conv: {
   projectId?: string;
   cwd?: string;
+  metadata?: Record<string, unknown>;
 }): string[] {
+  const taskWorkspace = conv.metadata?.taskWorkspace;
+  if (
+    taskWorkspace &&
+    typeof taskWorkspace === "object" &&
+    (taskWorkspace as Record<string, unknown>).mode === "worktree"
+  ) {
+    const cwd = conv.cwd?.trim();
+    if (!cwd) return [];
+    try {
+      return [path.resolve(cwd)];
+    } catch {
+      return [];
+    }
+  }
   if (conv.projectId) {
     const project = getProject(conv.projectId);
     if (project?.folders?.length) {

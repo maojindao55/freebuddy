@@ -562,6 +562,37 @@ export interface WorkspaceFileMatch {
   label?: string;
 }
 
+export type TaskWorkspaceMode = "local" | "worktree";
+
+export interface GitWorkspaceInfo {
+  isGitRepository: boolean;
+  root?: string;
+  currentBranch?: string;
+  branches: string[];
+}
+
+export interface CreateTaskBranchInput {
+  cwd: string;
+  name: string;
+  startPoint?: string;
+}
+
+export interface PrepareTaskWorkspaceInput {
+  cwd: string;
+  mode: TaskWorkspaceMode;
+  branch?: string;
+  taskKey: string;
+}
+
+export interface PreparedTaskWorkspace {
+  cwd: string;
+  sourceCwd: string;
+  mode: TaskWorkspaceMode;
+  branch?: string;
+  gitRoot?: string;
+  worktreeRoot?: string;
+}
+
 export type AttachmentPrepareRejectionReason = "unsupported_type" | "file_too_large";
 
 export interface AttachmentPrepareRejection {

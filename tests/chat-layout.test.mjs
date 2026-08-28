@@ -114,48 +114,69 @@ test("new-task page drops the hero heading, subtitle, and quick-prompt chips", (
   assert.doesNotMatch(chatViewSource, /newTaskPrompts/);
 });
 
-test("new-task page merges attach, workspace, agent, and send into one toolbar row", () => {
-  // There is exactly one .new-task-toolbar row and no separate workspace-picker.
+test("new-task page keeps task controls in one toolbar and workspace context below it", () => {
+  // There is exactly one .new-task-toolbar row and no legacy workspace-picker.
   const toolbarOpenings = chatViewSource.match(/className="new-task-toolbar"/g) ?? [];
   assert.equal(toolbarOpenings.length, 1);
   assert.doesNotMatch(chatViewSource, /className="workspace-picker"/);
 
-  // The single toolbar must carry every control: attach, cwd, agent, permission, send.
+  // The single toolbar carries task controls; workspace context begins afterward.
   const newTaskHome = chatViewSource.slice(
     chatViewSource.indexOf("function NewTaskHome")
   );
   const toolbarStart = newTaskHome.indexOf('className="new-task-toolbar"');
-  const toolbarEnd = newTaskHome.indexOf("new-task-warn", toolbarStart);
-  const toolbar = newTaskHome.slice(toolbarStart, toolbarEnd);
+  const contextStart = newTaskHome.indexOf(
+    'data-testid="new-task-context-bar"',
+    toolbarStart
+  );
+  const toolbar = newTaskHome.slice(toolbarStart, contextStart);
   assert.match(toolbar, /onSelectAttachments/);
-  assert.match(toolbar, /selectWorkspace/);
   assert.match(toolbar, /onMember/);
   assert.match(toolbar, /onPermissionMode/);
   assert.match(toolbar, /className="new-task-send/);
+  assert.doesNotMatch(toolbar, /selectWorkspace/);
+  assert.ok(contextStart > toolbarStart);
 });
 
-test("new-task workspace picker renders the selected project as a compact removable chip", () => {
+test("new-task workspace context renders project, mode, and branch below the composer", () => {
   const newTaskHome = chatViewSource.slice(
     chatViewSource.indexOf("function NewTaskHome")
   );
-  assert.match(newTaskHome, /className="new-task-workspace-chip"/);
-  assert.match(newTaskHome, /className="new-task-workspace-remove"/);
-  assert.match(newTaskHome, /className="new-task-workspace-name"/);
-  assert.match(newTaskHome, /title=\{t\("chat\.changeWorkspace"\)\}/);
+  assert.match(newTaskHome, /data-testid="new-task-context-bar"/);
+  assert.match(newTaskHome, /className="new-task-context-remove"/);
+  assert.match(newTaskHome, /new-task-context-control new-task-context-project/);
+  assert.match(newTaskHome, /workspaceModeWorktree/);
+  assert.match(newTaskHome, /branchAria/);
+  assert.match(newTaskHome, /t\("chat\.changeWorkspace"\)/);
   assert.match(newTaskHome, /aria-label=\{t\("chat\.removeWorkspace"\)\}/);
   assert.match(newTaskHome, /workspaceParts\[workspaceParts\.length - 1\]/);
   assert.doesNotMatch(newTaskHome, /className="new-task-cwd-input"/);
   assert.doesNotMatch(newTaskHome, /className="new-task-workspace-control"/);
   assert.match(
     stylesSource,
-    /\.new-task-workspace-name\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/m
+    /\.new-task-context-project span\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/m
   );
-  assert.match(stylesSource, /\.new-task-workspace-remove\s*\{[^}]*width:\s*0;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/m);
+  assert.match(stylesSource, /\.new-task-context-remove\s*\{[^}]*width:\s*24px;[^}]*opacity:\s*0;/m);
   assert.match(
     stylesSource,
-    /\.new-task-workspace-chip:hover \.new-task-workspace-remove,\s*\.new-task-workspace-chip:focus-within \.new-task-workspace-remove\s*\{[^}]*width:\s*22px;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/m
+    /\.new-task-context-workspace:hover \.new-task-context-remove,\s*\.new-task-context-workspace:focus-within \.new-task-context-remove\s*\{[^}]*opacity:\s*1;/m
   );
-  assert.match(stylesSource, /\.new-task-workspace-remove svg\s*\{[^}]*stroke-width:\s*1\.5;/m);
+  assert.match(stylesSource, /\.new-task-context-remove svg\s*\{[^}]*stroke-width:\s*1\.7;/m);
+  assert.match(
+    stylesSource,
+    /\.task-context-dropdown-trigger\s*\{[^}]*border-radius:\s*9px;[^}]*transition:/m
+  );
+  assert.match(stylesSource, /\.task-context-dropdown-menu\s*\{[^}]*border-radius:\s*12px;[^}]*box-shadow:/m);
+  assert.match(newTaskHome, /<TaskContextDropdown/);
+  assert.match(chatViewSource, /aria-haspopup="dialog"/);
+  assert.match(chatViewSource, /className="task-context-dropdown-search"/);
+  assert.match(chatViewSource, /className="task-context-dropdown-create-trigger"/);
+  assert.match(stylesSource, /\.task-context-dropdown-options\s*\{[^}]*overflow-y:\s*auto;/m);
+
+  const context = newTaskHome.slice(
+    newTaskHome.indexOf('data-testid="new-task-context-bar"')
+  );
+  assert.ok(context.indexOf('t("chat.branchAria")') < context.indexOf('t("chat.workspaceModeAria")'));
 });
 
 test("active composer presents the assigned source as an isolated workspace", () => {

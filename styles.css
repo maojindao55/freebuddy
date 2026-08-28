@@ -7441,6 +7441,452 @@ html[data-surface="butler-screen-ball"] #root {
   margin-left: auto;
 }
 
+.new-task-context-bar {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  width: calc(100% - 40px);
+  min-height: 44px;
+  align-items: center;
+  gap: 16px;
+  margin: -1px auto 0;
+  padding: 8px 14px 7px;
+  border: 1px solid var(--fb-border);
+  border-top: 0;
+  border-radius: 0 0 16px 16px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.new-task-context-workspace {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.new-task-context-control {
+  display: inline-flex;
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--fb-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+button.new-task-context-control {
+  cursor: pointer;
+}
+
+.new-task-context-control:hover:not(:disabled),
+.new-task-context-control:focus-within {
+  color: var(--fb-text-primary);
+  background: var(--fb-hover);
+}
+
+.new-task-context-control:focus-visible,
+.new-task-context-remove:focus-visible,
+.task-context-dropdown-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fb-brand) 46%, transparent);
+  outline-offset: 1px;
+}
+
+.new-task-context-control > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  stroke-width: 1.7;
+}
+
+.new-task-context-project {
+  max-width: 260px;
+}
+
+.new-task-context-project span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-task-context-remove {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--fb-text-tertiary);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.new-task-context-workspace:hover .new-task-context-remove,
+.new-task-context-workspace:focus-within .new-task-context-remove {
+  opacity: 1;
+}
+
+.new-task-context-remove:hover {
+  color: var(--fb-text-primary);
+  background: var(--fb-hover);
+}
+
+.new-task-context-remove svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.7;
+}
+
+.new-task-context-bar:has(.task-context-dropdown-trigger[aria-expanded="true"]) {
+  z-index: 40;
+}
+
+.task-context-dropdown {
+  position: relative;
+  min-width: 0;
+  max-width: min(100%, 310px);
+  flex: 0 1 auto;
+}
+
+.task-context-dropdown-trigger {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--fb-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.task-context-dropdown-trigger:hover:not(:disabled),
+.task-context-dropdown-trigger[aria-expanded="true"] {
+  border-color: var(--fb-border);
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-bg);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.task-context-dropdown-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.task-context-dropdown-icon,
+.task-context-dropdown-chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--fb-text-tertiary);
+}
+
+.task-context-dropdown-icon svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.75;
+}
+
+.task-context-dropdown-value {
+  min-width: 0;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-context-dropdown-chevron {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.15s ease;
+}
+
+.task-context-dropdown-trigger[aria-expanded="true"]
+  .task-context-dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.task-context-dropdown-menu {
+  position: absolute;
+  z-index: 160;
+  top: calc(100% + 7px);
+  left: 0;
+  display: flex;
+  width: max-content;
+  min-width: max(100%, 180px);
+  max-width: min(320px, calc(100vw - 40px));
+  max-height: min(390px, 58vh);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 5px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 12px;
+  background: var(--fb-panel-bg);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+}
+
+.task-context-dropdown-branch .task-context-dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 7px);
+  width: min(320px, calc(100vw - 40px));
+  border-radius: 14px;
+}
+
+.task-context-dropdown-search {
+  display: flex;
+  min-height: 39px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0 2px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--fb-border);
+  color: var(--fb-text-tertiary);
+}
+
+.task-context-dropdown-search svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  stroke-width: 1.8;
+}
+
+.task-context-dropdown-search input,
+.task-context-dropdown-create input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--fb-text-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.task-context-dropdown-search input {
+  width: 100%;
+  height: 37px;
+  appearance: none;
+}
+
+.task-context-dropdown-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.task-context-dropdown-search input::placeholder,
+.task-context-dropdown-create input::placeholder {
+  color: var(--fb-text-tertiary);
+}
+
+.task-context-dropdown-section-label {
+  flex: 0 0 auto;
+  padding: 9px 9px 4px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.task-context-dropdown-options {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--fb-border-strong) transparent;
+}
+
+.task-context-dropdown-option {
+  display: grid;
+  width: 100%;
+  min-width: 168px;
+  min-height: 34px;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--fb-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-context-dropdown-option.with-icon {
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  gap: 8px;
+}
+
+.task-context-dropdown-option:hover,
+.task-context-dropdown-option:focus-visible {
+  outline: none;
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-soft);
+}
+
+.task-context-dropdown-option.active {
+  color: var(--fb-text-primary);
+}
+
+.task-context-dropdown-option:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fb-brand) 34%, transparent);
+}
+
+.task-context-dropdown-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-context-dropdown-option > svg {
+  width: 15px;
+  height: 15px;
+  color: var(--fb-brand);
+  stroke-width: 2;
+}
+
+.task-context-dropdown-option-leading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fb-text-tertiary);
+}
+
+.task-context-dropdown-option-leading svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.7;
+}
+
+.task-context-dropdown-empty {
+  padding: 18px 10px;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.task-context-dropdown-footer {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  padding: 5px 0 0;
+  border-top: 1px solid var(--fb-border);
+}
+
+.task-context-dropdown-create-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-context-dropdown-create-trigger:hover,
+.task-context-dropdown-create-trigger:focus-visible {
+  outline: none;
+  background: var(--fb-hover);
+}
+
+.task-context-dropdown-create-trigger:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fb-brand) 34%, transparent);
+}
+
+.task-context-dropdown-create-trigger svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+.task-context-dropdown-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
+  gap: 4px;
+}
+
+.task-context-dropdown-create input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+}
+
+.task-context-dropdown-create input:focus {
+  border-color: color-mix(in srgb, var(--fb-brand) 48%, var(--fb-border));
+  box-shadow: 0 0 0 2px var(--fb-brand-glow);
+}
+
+.task-context-dropdown-create > button {
+  display: grid;
+  width: 28px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-soft);
+  cursor: pointer;
+}
+
+.task-context-dropdown-create > button[type="submit"] {
+  color: var(--fb-panel-bg);
+  background: var(--fb-brand);
+}
+
+.task-context-dropdown-create > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.task-context-dropdown-create > button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.task-context-dropdown-create-error {
+  grid-column: 1 / -1;
+  padding: 3px 4px 1px;
+  color: var(--fb-danger);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.task-context-dropdown-branch {
+  max-width: min(48%, 310px);
+}
+
 .new-task-workspace-chip {
   display: inline-flex;
   min-width: 0;
@@ -14274,6 +14720,34 @@ button.ghost:disabled {
     flex: 1 0 100%;
     margin-left: 0;
     justify-content: flex-end;
+  }
+
+  .new-task-context-bar {
+    width: calc(100% - 20px);
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 7px 9px;
+  }
+
+  .new-task-context-workspace {
+    max-width: 100%;
+  }
+
+  .new-task-context-project {
+    max-width: min(46vw, 220px);
+  }
+
+  .task-context-dropdown-branch {
+    max-width: min(100%, 240px);
+  }
+
+  .task-context-dropdown-menu {
+    top: calc(100% + 5px);
+  }
+
+  .task-context-dropdown-branch .task-context-dropdown-menu {
+    top: auto;
+    bottom: calc(100% + 5px);
   }
 
   .new-task-workspace-chip {

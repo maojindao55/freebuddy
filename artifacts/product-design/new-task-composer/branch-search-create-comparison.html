@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>分支选择器视觉对照</title>
+    <style>
+      :root {
+        color: #18212b;
+        font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+        background: #eef2f5;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 22px; }
+      h1 { margin: 0 0 18px; font-size: 20px; font-weight: 650; }
+      main { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      figure {
+        margin: 0;
+        overflow: hidden;
+        border: 1px solid #dce2e8;
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 12px 30px rgba(26, 37, 48, 0.08);
+      }
+      figcaption {
+        padding: 12px 14px;
+        border-bottom: 1px solid #e8edf1;
+        font-size: 13px;
+        font-weight: 650;
+      }
+      img { display: block; width: 100%; height: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>分支搜索与“创建并检出”视觉对照</h1>
+    <main>
+      <figure>
+        <figcaption>参考图</figcaption>
+        <img src="reference-branch-search-create.png" alt="参考图" />
+      </figure>
+      <figure>
+        <figcaption>FreeBuddy 实现</figcaption>
+        <img src="implementation-branch-menu-open.png" alt="FreeBuddy 实现" />
+      </figure>
+    </main>
+  </body>
+</html>

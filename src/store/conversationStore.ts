@@ -63,6 +63,14 @@ import {
 import { isAppInBackground } from "@/utils/appFocus";
 
 function resolveWorkspaceRootsForConversation(conv: Conversation): string[] {
+  const taskWorkspace = conv.metadata?.taskWorkspace;
+  if (
+    taskWorkspace &&
+    typeof taskWorkspace === "object" &&
+    (taskWorkspace as Record<string, unknown>).mode === "worktree"
+  ) {
+    return conv.cwd ? [conv.cwd] : [];
+  }
   if (conv.projectId) {
     const project = useProjectStore
       .getState()

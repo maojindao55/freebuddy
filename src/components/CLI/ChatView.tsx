@@ -2,15 +2,29 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ClipboardEvent,
-  type DragEvent
+  type DragEvent,
+  type FormEvent,
+  type ReactNode
 } from "react";
 import { nanoid } from "nanoid";
-import { ExternalLink, Folder, FolderLock, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ExternalLink,
+  Folder,
+  FolderLock,
+  GitBranch,
+  Laptop,
+  Plus,
+  Search,
+  X
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useConversationStore } from "@/store/conversationStore";
@@ -35,7 +49,10 @@ import type {
   Conversation,
   ConversationContextReference,
   ConversationMessage,
-  SessionConfigOption
+  GitWorkspaceInfo,
+  PreparedTaskWorkspace,
+  SessionConfigOption,
+  TaskWorkspaceMode
 } from "@/services/cli/types";
 import type {
   AnyTeam,
@@ -110,6 +127,343 @@ import {
 } from "@/utils/agentAvailability";
 
 const EMPTY_MESSAGES: never[] = [];
+
+type TaskContextDropdownOption = {
+  value: string;
+  label: string;
+};
+
+function TaskContextDropdown({
+  ariaLabel,
+  className,
+  createCancelLabel,
+  createConfirmLabel,
+  createLabel,
+  createNameLabel,
+  disabled,
+  emptyLabel,
+  icon,
+  options,
+  optionIcon,
+  searchableAfter = Number.POSITIVE_INFINITY,
+  searchPlaceholder,
+  sectionLabel,
+  value,
+  onChange,
+  onCreate
+}: {
+  ariaLabel: string;
+  className?: string;
+  createCancelLabel?: string;
+  createConfirmLabel?: string;
+  createLabel?: string;
+  createNameLabel?: string;
+  disabled?: boolean;
+  emptyLabel?: string;
+  icon: ReactNode;
+  options: TaskContextDropdownOption[];
+  optionIcon?: ReactNode;
+  searchableAfter?: number;
+  searchPlaceholder?: string;
+  sectionLabel?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onCreate?: (name: string) => Promise<void>;
+}) {
+  const menuId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [createMode, setCreateMode] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const showSearch = options.length > searchableAfter;
+  const filteredOptions = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) return options;
+    return options.filter((option) =>
+      option.label.toLocaleLowerCase().includes(normalized)
+    );
+  }, [options, query]);
+  const selectedIndex = Math.max(
+    0,
+    filteredOptions.findIndex((option) => option.value === value)
+  );
+  const selected = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("mousedown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setCreateMode(false);
+      setCreateName("");
+      setCreateError("");
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      if (createMode) createInputRef.current?.focus();
+      else if (showSearch) searchRef.current?.focus();
+      else optionRefs.current[selectedIndex]?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [createMode, open, selectedIndex, showSearch]);
+
+  useEffect(() => {
+    optionRefs.current = optionRefs.current.slice(0, filteredOptions.length);
+  }, [filteredOptions.length]);
+
+  const moveFocus = (direction: 1 | -1) => {
+    const available = optionRefs.current.filter(
+      (option): option is HTMLButtonElement => Boolean(option)
+    );
+    if (available.length === 0) return;
+    const currentIndex = available.indexOf(
+      document.activeElement as HTMLButtonElement
+    );
+    const nextIndex =
+      currentIndex < 0
+        ? selectedIndex
+        : (currentIndex + direction + available.length) % available.length;
+    available[Math.min(nextIndex, available.length - 1)]?.focus();
+  };
+
+  const submitCreate = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = createName.trim();
+    if (!onCreate || !name || createBusy) return;
+    setCreateBusy(true);
+    setCreateError("");
+    try {
+      await onCreate(name);
+      setOpen(false);
+      triggerRef.current?.focus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCreateError(
+        message.replace(
+          /^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/,
+          ""
+        )
+      );
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className={["task-context-dropdown", className].filter(Boolean).join(" ")}
+      ref={rootRef}
+    >
+      <button
+        ref={triggerRef}
+        className="task-context-dropdown-trigger"
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={menuId}
+        disabled={disabled || options.length === 0}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="task-context-dropdown-icon" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="task-context-dropdown-value">
+          {selected?.label || value}
+        </span>
+        <ChevronDown className="task-context-dropdown-chevron" aria-hidden="true" />
+      </button>
+
+      {open ? (
+        <div
+          className="task-context-dropdown-menu"
+          id={menuId}
+          role="dialog"
+          aria-label={ariaLabel}
+        >
+          {showSearch && searchPlaceholder ? (
+            <label className="task-context-dropdown-search">
+              <Search aria-hidden="true" />
+              <input
+                ref={searchRef}
+                type="search"
+                value={query}
+                aria-label={searchPlaceholder}
+                placeholder={searchPlaceholder}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" && filteredOptions.length > 0) {
+                    event.preventDefault();
+                    optionRefs.current[0]?.focus();
+                  }
+                }}
+              />
+            </label>
+          ) : null}
+
+          {sectionLabel ? (
+            <div className="task-context-dropdown-section-label">
+              {sectionLabel}
+            </div>
+          ) : null}
+
+          <div
+            className="task-context-dropdown-options"
+            role="listbox"
+            aria-label={ariaLabel}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                moveFocus(1);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                moveFocus(-1);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                optionRefs.current[0]?.focus();
+              } else if (event.key === "End") {
+                event.preventDefault();
+                optionRefs.current[filteredOptions.length - 1]?.focus();
+              }
+            }}
+          >
+            {filteredOptions.map((option, index) => {
+              const active = option.value === value;
+              return (
+                <button
+                  ref={(node) => {
+                    optionRefs.current[index] = node;
+                  }}
+                  key={option.value}
+                  className={`task-context-dropdown-option${
+                    optionIcon ? " with-icon" : ""
+                  }${active ? " active" : ""}`}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                  }}
+                >
+                  {optionIcon ? (
+                    <span
+                      className="task-context-dropdown-option-leading"
+                      aria-hidden="true"
+                    >
+                      {optionIcon}
+                    </span>
+                  ) : null}
+                  <span className="task-context-dropdown-option-label">
+                    {option.label}
+                  </span>
+                  {active ? <Check aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+            {filteredOptions.length === 0 ? (
+              <div className="task-context-dropdown-empty">{emptyLabel}</div>
+            ) : null}
+          </div>
+
+          {onCreate && createLabel ? (
+            <div className="task-context-dropdown-footer">
+              {createMode ? (
+                <form className="task-context-dropdown-create" onSubmit={submitCreate}>
+                  <input
+                    ref={createInputRef}
+                    value={createName}
+                    aria-label={createNameLabel || createLabel}
+                    placeholder={createNameLabel}
+                    disabled={createBusy}
+                    onChange={(event) => setCreateName(event.currentTarget.value)}
+                  />
+                  <button
+                    type="button"
+                    aria-label={createCancelLabel || createLabel}
+                    disabled={createBusy}
+                    onClick={() => {
+                      setCreateMode(false);
+                      setCreateError("");
+                    }}
+                  >
+                    <X aria-hidden="true" />
+                  </button>
+                  <button
+                    type="submit"
+                    aria-label={createConfirmLabel || createLabel}
+                    disabled={createBusy || !createName.trim()}
+                  >
+                    <Check aria-hidden="true" />
+                  </button>
+                  {createError ? (
+                    <div className="task-context-dropdown-create-error" role="alert">
+                      {createError}
+                    </div>
+                  ) : null}
+                </form>
+              ) : (
+                <button
+                  className="task-context-dropdown-create-trigger"
+                  type="button"
+                  onClick={() => {
+                    setCreateName(query.trim());
+                    setCreateMode(true);
+                  }}
+                >
+                  <Plus aria-hidden="true" />
+                  <span>{createLabel}</span>
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function preparedTaskWorkspaceMetadata(
+  workspace: PreparedTaskWorkspace
+): Record<string, unknown> {
+  return {
+    taskWorkspace: {
+      mode: workspace.mode,
+      sourceCwd: workspace.sourceCwd,
+      branch: workspace.branch,
+      gitRoot: workspace.gitRoot,
+      worktreeRoot: workspace.worktreeRoot
+    }
+  };
+}
 
 function pluginAgentForAdapter(adapter?: string): NativePluginAgent | undefined {
   const normalized = adapter?.trim().toLowerCase();
@@ -220,23 +574,6 @@ function ResumeIcon() {
       aria-hidden="true"
     >
       <polygon points="7 4 19 12 7 20 7 4" fill="currentColor" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg
-      className="tool-chip-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
     </svg>
   );
 }
@@ -596,6 +933,12 @@ export function ChatView({
   const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState<string | undefined>();
+  const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] =
+    useState<TaskWorkspaceMode>("local");
+  const [newTaskBranch, setNewTaskBranch] = useState("");
+  const [newTaskGitInfo, setNewTaskGitInfo] =
+    useState<GitWorkspaceInfo | null>(null);
+  const [newTaskGitInfoLoading, setNewTaskGitInfoLoading] = useState(false);
   const [newTaskConfigOptions, setNewTaskConfigOptions] = useState<
     SessionConfigOption[]
   >([]);
@@ -1280,6 +1623,46 @@ export function ChatView({
   }, [activeId, cwdRequestToken, requestedCwd, requestedDraft, requestedProjectId]);
 
   useEffect(() => {
+    let cancelled = false;
+    const cwd = newTaskCwd.trim();
+    setNewTaskWorkspaceMode("local");
+    setNewTaskBranch("");
+    setNewTaskGitInfo(null);
+    setNewTaskGitInfoLoading(false);
+    if (
+      activeId ||
+      !cwd ||
+      typeof window === "undefined" ||
+      window.freebuddy?.platform === "web"
+    ) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setNewTaskGitInfoLoading(true);
+    void cliClient
+      .inspectTaskWorkspace(cwd)
+      .then((info) => {
+        if (cancelled) return;
+        setNewTaskGitInfo(info);
+        setNewTaskBranch(info.currentBranch || info.branches[0] || "");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNewTaskGitInfo({ isGitRepository: false, branches: [] });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setNewTaskGitInfoLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, newTaskCwd]);
+
+  useEffect(() => {
     const resolved = conv?.approvalMode ?? member?.cli.approvalMode;
     if (resolved) {
       setPermissionMode(resolved);
@@ -1583,6 +1966,37 @@ export function ChatView({
     }
   };
 
+  const prepareWorkspaceForNewTask = async (): Promise<
+    PreparedTaskWorkspace | null
+  > => {
+    const cwd = newTaskCwd.trim();
+    if (!cwd) return null;
+    if (
+      typeof window === "undefined" ||
+      window.freebuddy?.platform === "web"
+    ) {
+      return { cwd, sourceCwd: cwd, mode: "local" };
+    }
+    return cliClient.prepareTaskWorkspace({
+      cwd,
+      mode: newTaskWorkspaceMode,
+      branch: newTaskBranch || undefined,
+      taskKey: nanoid()
+    });
+  };
+
+  const createBranchForNewTask = async (name: string) => {
+    const cwd = newTaskCwd.trim();
+    if (!cwd) throw new Error(t("chat.selectCwd"));
+    const info = await cliClient.createTaskBranch({
+      cwd,
+      name,
+      startPoint: newTaskBranch || undefined
+    });
+    setNewTaskGitInfo(info);
+    setNewTaskBranch(info.currentBranch || name);
+  };
+
   const onCreateAndSend = async () => {
     if (attachmentBusy || newTaskSendInFlightRef.current || newTaskSendLock) return;
     const prompt = newTaskDraft.trim();
@@ -1614,7 +2028,8 @@ export function ChatView({
       if (teamMode) {
         const team = allTeams.find((tt) => tt.id === selectedTeamId)!;
         if (isDelegationTeam(team)) {
-          const cwd = newTaskCwd.trim() || undefined;
+          const preparedWorkspace = await prepareWorkspaceForNewTask();
+          const cwd = preparedWorkspace?.cwd;
           const goal = composeMessageWithAttachments(prompt, attachmentsToSend);
           const res = await delegationClient.createRun({
             teamId: team.id,
@@ -1634,11 +2049,15 @@ export function ChatView({
         }
         const teamMember = teamConversationMember(team, members)!;
         if (!(await preflightMember(teamMember))) return;
-        const cwd = newTaskCwd.trim() || undefined;
+        const preparedWorkspace = await prepareWorkspaceForNewTask();
+        const cwd = preparedWorkspace?.cwd;
         const newConv = await createConversation({
           member: teamMember,
           cwd,
           projectId: newTaskProjectId,
+          metadata: preparedWorkspace
+            ? preparedTaskWorkspaceMetadata(preparedWorkspace)
+            : undefined,
           title: buildConversationTitle({
             prompt,
             attachmentName: attachmentsToSend[0]?.name,
@@ -1704,10 +2123,15 @@ export function ChatView({
       if (!selectedMember || !availableAgentIds.has(selectedMember.id)) return;
       if (!(await preflightMember(selectedMember))) return;
 
+      const preparedWorkspace = await prepareWorkspaceForNewTask();
+
       const newConv = await createConversation({
         member: selectedMember,
-        cwd: newTaskCwd.trim() || undefined,
+        cwd: preparedWorkspace?.cwd,
         projectId: newTaskProjectId,
+        metadata: preparedWorkspace
+          ? preparedTaskWorkspaceMetadata(preparedWorkspace)
+          : undefined,
         title: buildConversationTitle({
           prompt,
           attachmentName: attachmentsToSend[0]?.name,
@@ -1940,14 +2364,15 @@ export function ChatView({
     if (!pendingTeamPreview) return;
     const team = allTeams.find((tt) => tt.id === pendingTeamPreview.teamId);
     if (!team) return;
-    const cwd = newTaskCwd.trim() || pendingTeamPreview?.cwd;
     if (isDelegationTeam(team)) {
       setPreflightMsg(null);
       try {
+        const preparedWorkspace = await prepareWorkspaceForNewTask();
+        const cwd = preparedWorkspace?.cwd ?? pendingTeamPreview.cwd;
         const res = await delegationClient.createRun({
           teamId: team.id,
           goal: pendingTeamPreview.goal,
-          cwd: pendingTeamPreview.cwd ?? cwd
+          cwd
         });
         if (!res.ok) {
           throw new Error(res.error);
@@ -1967,10 +2392,15 @@ export function ChatView({
     setPreflightMsg(null);
     try {
       if (!(await preflightMember(teamMember))) return;
+      const preparedWorkspace = await prepareWorkspaceForNewTask();
+      const cwd = preparedWorkspace?.cwd ?? pendingTeamPreview.cwd;
       const newConv = await createConversation({
         member: teamMember,
         cwd,
         projectId: newTaskProjectId,
+        metadata: preparedWorkspace
+          ? preparedTaskWorkspaceMetadata(preparedWorkspace)
+          : undefined,
         title: buildConversationTitle({
           prompt: pendingTeamPreview.goal,
           fallback: pendingTeamPreview.teamName
@@ -1983,7 +2413,7 @@ export function ChatView({
         teamId: pendingTeamPreview.teamId,
         conversationId: newConv.id,
         goal: pendingTeamPreview.goal,
-        cwd: pendingTeamPreview.cwd ?? cwd
+        cwd
       });
       if (!started) {
         const errors = useWorkflowStore.getState().pendingErrors;
@@ -2004,6 +2434,10 @@ export function ChatView({
         checkingAgentIds={checkingAgentIds}
         selectedMemberId={selectedMemberId}
         cwd={newTaskCwd}
+        workspaceMode={newTaskWorkspaceMode}
+        branch={newTaskBranch}
+        gitInfo={newTaskGitInfo}
+        gitInfoLoading={newTaskGitInfoLoading}
         workspaceRoots={newTaskMentionRoots}
         permissionMode={permissionMode}
         pendingAttachments={newTaskPendingAttachments}
@@ -2081,6 +2515,9 @@ export function ChatView({
           setNewTaskCwd(cwd);
           setNewTaskProjectId(undefined);
         }}
+        onWorkspaceMode={setNewTaskWorkspaceMode}
+        onBranch={setNewTaskBranch}
+        onCreateBranch={createBranchForNewTask}
         onPermissionMode={setPermissionMode}
         onSelectAttachments={() => void handleSelectAttachments("new")}
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
@@ -2490,6 +2927,10 @@ function NewTaskHome({
   checkingAgentIds,
   selectedMemberId,
   cwd,
+  workspaceMode,
+  branch,
+  gitInfo,
+  gitInfoLoading,
   workspaceRoots,
   permissionMode,
   pendingAttachments,
@@ -2510,6 +2951,9 @@ function NewTaskHome({
   onConfigOptionOverrides,
   onSkills,
   onCwd,
+  onWorkspaceMode,
+  onBranch,
+  onCreateBranch,
   onPermissionMode,
   onSelectAttachments,
   onRemoveAttachment,
@@ -2530,6 +2974,10 @@ function NewTaskHome({
   checkingAgentIds: Set<string>;
   selectedMemberId: string;
   cwd: string;
+  workspaceMode: TaskWorkspaceMode;
+  branch: string;
+  gitInfo: GitWorkspaceInfo | null;
+  gitInfoLoading: boolean;
   workspaceRoots?: string[];
   permissionMode: "auto" | "ask";
   pendingAttachments: ChatAttachment[];
@@ -2550,6 +2998,9 @@ function NewTaskHome({
   onConfigOptionOverrides: (value: Record<string, string>) => void;
   onSkills: (ids: string[]) => void;
   onCwd: (value: string) => void;
+  onWorkspaceMode: (value: TaskWorkspaceMode) => void;
+  onBranch: (value: string) => void;
+  onCreateBranch: (name: string) => Promise<void>;
   onPermissionMode: (value: "auto" | "ask") => void;
   onSelectAttachments: () => void;
   onRemoveAttachment: (id: string) => void;
@@ -2748,38 +3199,6 @@ function NewTaskHome({
               <option value="ask">{t("chat.approvalAsk")}</option>
             </select>
           </label>
-          {cwd ? (
-            <div className="new-task-workspace-chip" title={cwd}>
-              <button
-                className="new-task-workspace-remove"
-                type="button"
-                title={t("chat.removeWorkspace")}
-                aria-label={t("chat.removeWorkspace")}
-                onClick={() => onCwd("")}
-              >
-                <X aria-hidden="true" />
-              </button>
-              <button
-                className="new-task-workspace-name"
-                type="button"
-                title={t("chat.changeWorkspace")}
-                onClick={selectWorkspace}
-              >
-                {workspaceName}
-              </button>
-            </div>
-          ) : (
-            <button
-              className="composer-tool-chip"
-              type="button"
-              title={t("chat.selectCwd")}
-              onClick={selectWorkspace}
-            >
-              <FolderIcon />
-              <span>{t("chat.workspace")}</span>
-            </button>
-          )}
-
           <div className="new-task-toolbar-tail">
             {!teamMode ? (
               <SessionConfigPicker
@@ -2821,8 +3240,103 @@ function NewTaskHome({
           </div>
         </div>
 
-        {preflightMsg && <div className="preflight-warn new-task-warn">{preflightMsg}</div>}
       </section>
+
+      <div
+        className={`new-task-context-bar${cwd ? " has-workspace" : ""}`}
+        data-testid="new-task-context-bar"
+        aria-label={t("chat.taskContextAria")}
+      >
+        <div className="new-task-context-workspace" title={cwd || t("chat.selectCwd")}>
+          <button
+            className="new-task-context-control new-task-context-project"
+            type="button"
+            title={cwd ? t("chat.changeWorkspace") : t("chat.selectCwd")}
+            onClick={selectWorkspace}
+          >
+            <Folder aria-hidden="true" />
+            <span>{cwd ? workspaceName : t("chat.workspace")}</span>
+          </button>
+          {cwd ? (
+            <button
+              className="new-task-context-remove"
+              type="button"
+              title={t("chat.removeWorkspace")}
+              aria-label={t("chat.removeWorkspace")}
+              onClick={() => onCwd("")}
+            >
+              <X aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+
+        {cwd ? (
+          <>
+            <TaskContextDropdown
+              ariaLabel={t("chat.branchAria")}
+              className="task-context-dropdown-branch"
+              createCancelLabel={t("chat.createBranchCancel")}
+              createConfirmLabel={t("chat.createBranchConfirm")}
+              createLabel={t("chat.createBranch")}
+              createNameLabel={t("chat.createBranchName")}
+              disabled={
+                sendLocked ||
+                gitInfoLoading ||
+                !gitInfo?.isGitRepository ||
+                gitInfo.branches.length === 0
+              }
+              icon={<GitBranch />}
+              emptyLabel={t("chat.branchNoMatches")}
+              options={
+                gitInfo?.isGitRepository
+                  ? gitInfo.branches.map((entry) => ({
+                      value: entry,
+                      label: entry
+                    }))
+                  : []
+              }
+              value={
+                gitInfoLoading
+                  ? t("chat.branchLoading")
+                  : gitInfo?.isGitRepository
+                    ? branch
+                    : t("chat.notGitRepository")
+              }
+              optionIcon={<GitBranch />}
+              searchableAfter={7}
+              searchPlaceholder={t("chat.branchSearch", {
+                workspace: workspaceName
+              })}
+              sectionLabel={t("chat.branches")}
+              onChange={onBranch}
+              onCreate={onCreateBranch}
+            />
+
+            <TaskContextDropdown
+              ariaLabel={t("chat.workspaceModeAria")}
+              disabled={
+                sendLocked ||
+                gitInfoLoading ||
+                !gitInfo?.isGitRepository
+              }
+              icon={<Laptop />}
+              options={[
+                { value: "local", label: t("chat.workspaceModeLocal") },
+                {
+                  value: "worktree",
+                  label: t("chat.workspaceModeWorktree")
+                }
+              ]}
+              value={workspaceMode}
+              onChange={(value) =>
+                onWorkspaceMode(value as TaskWorkspaceMode)
+              }
+            />
+          </>
+        ) : null}
+      </div>
+
+      {preflightMsg && <div className="preflight-warn new-task-warn">{preflightMsg}</div>}
 
       <NewTaskUnreadConversations />
       </div>

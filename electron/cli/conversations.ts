@@ -160,6 +160,16 @@ function rowToConversation(
       /* ignore invalid json */
     }
   }
+  const taskWorkspace = metadata?.taskWorkspace;
+  if (
+    !sourceCwd &&
+    taskWorkspace &&
+    typeof taskWorkspace === "object" &&
+    (taskWorkspace as Record<string, unknown>).mode === "worktree" &&
+    typeof (taskWorkspace as Record<string, unknown>).sourceCwd === "string"
+  ) {
+    sourceCwd = (taskWorkspace as Record<string, unknown>).sourceCwd as string;
+  }
   return {
     id: r.id,
     title: r.title,

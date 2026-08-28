@@ -25,6 +25,10 @@ import type {
   ConversationTitleSource,
   AttachmentCandidate,
   WorkspaceFileMatch,
+  CreateTaskBranchInput,
+  GitWorkspaceInfo,
+  PrepareTaskWorkspaceInput,
+  PreparedTaskWorkspace,
   PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
@@ -321,6 +325,17 @@ export const cliClient = {
   },
   selectDirectory(defaultPath?: string): Promise<string | null> {
     return api().selectDirectory(defaultPath);
+  },
+  inspectTaskWorkspace(cwd: string): Promise<GitWorkspaceInfo> {
+    return api().inspectTaskWorkspace(cwd);
+  },
+  createTaskBranch(input: CreateTaskBranchInput): Promise<GitWorkspaceInfo> {
+    return api().createTaskBranch(input);
+  },
+  prepareTaskWorkspace(
+    input: PrepareTaskWorkspaceInput
+  ): Promise<PreparedTaskWorkspace> {
+    return api().prepareTaskWorkspace(input);
   },
   searchWorkspaceFiles(
     cwd: string,

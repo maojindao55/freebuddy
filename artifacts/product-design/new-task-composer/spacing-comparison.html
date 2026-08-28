@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dropdown spacing comparison</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px;
+        color: #172033;
+        background: #f4f7fb;
+        font: 14px/1.4 system-ui, sans-serif;
+      }
+      main {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 22px;
+      }
+      figure {
+        margin: 0;
+        overflow: hidden;
+        border: 1px solid #dfe5ed;
+        border-radius: 14px;
+        background: white;
+        box-shadow: 0 10px 30px rgba(30, 41, 59, 0.08);
+      }
+      figcaption {
+        padding: 11px 14px;
+        font-weight: 650;
+      }
+      img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-top: 1px solid #edf0f4;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <figure>
+        <figcaption>调整前：箭头由原生下拉框宽度决定</figcaption>
+        <img src="implementation-context-crop.png" alt="调整前" />
+      </figure>
+      <figure>
+        <figcaption>调整后：文字自适应，箭头固定间距 4px</figcaption>
+        <img src="implementation-spacing-focused.png" alt="调整后" />
+      </figure>
+    </main>
+  </body>
+</html>

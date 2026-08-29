@@ -18936,6 +18936,9 @@ button.ghost:focus-visible,
   display: block;
   white-space: pre-wrap;
 }
+.delegation-event-failure {
+  margin-top: 7px;
+}
 .delegation-activity-details {
   display: flex;
   flex-direction: column;
@@ -19047,6 +19050,45 @@ button.ghost:focus-visible,
   align-items: center;
   gap: 10px;
   width: 100%;
+}
+.workflow-step-failure,
+.delegation-event-failure {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--fb-danger);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--fb-danger) 8%, var(--fb-panel-bg));
+  color: var(--fb-danger);
+  font-size: 11px;
+  line-height: 16px;
+  word-break: break-word;
+}
+.workflow-step-failure {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+.workflow-step-failure strong,
+.delegation-event-failure strong {
+  flex: none;
+  font-weight: 700;
+}
+.workflow-step-failure > span,
+.delegation-event-failure > span {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.workflow-step-failure.full {
+  margin-top: 0;
+}
+.workflow-step-failure.full > span {
+  display: block;
+  overflow: visible;
+  white-space: pre-wrap;
 }
 .workflow-step-meta {
   display: flex;
@@ -22800,7 +22842,6 @@ button.ghost:focus-visible,
     grid-template-columns: 1fr;
   }
 }
-
 
 
 

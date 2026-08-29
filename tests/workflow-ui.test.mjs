@@ -72,10 +72,15 @@ test("WorkflowRunPanel shows a progress bar and inline step details", () => {
 
 test("WorkflowPhaseList renders compact inline step details for the selected step", () => {
   const src = read("../src/components/Workflows/WorkflowPhaseList.tsx");
+  const styles = read("../styles.css");
   assert.match(src, /WorkflowStepDetails/);
   assert.match(src, /selectedStepId/);
   assert.match(src, /workflowStepTitle\(step, t\)/);
   assert.match(src, /workflow-step-description/);
+  assert.match(src, /workflowStepFailureReason\(step\)/);
+  assert.match(src, /workflow-step-failure/);
+  assert.match(src, /workflow\.failureReason/);
+  assert.match(styles, /\.workflow-step-failure/);
   assert.doesNotMatch(src, /workflowPhaseTitle\(phase, t\)/);
 });
 
@@ -84,6 +89,8 @@ test("WorkflowStepDetails renders retry when the selected step is retryable", ()
   assert.match(src, /canRetry \? canRetry\(step\) : step\.status === "failed"/);
   assert.match(src, /workflow-retry-button/);
   assert.match(src, /workflowStepTitle\(step, t\)/);
+  assert.match(src, /workflowStepFailureReason\(step\)/);
+  assert.match(src, /workflow-step-failure full/);
 });
 
 test("WorkflowRunPanel allows retry for stopped stale running steps", () => {

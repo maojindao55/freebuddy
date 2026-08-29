@@ -75,6 +75,59 @@ const executionModeSchema = z
     "new_conversation = each run starts a fresh task; continuous = resume the previous run's context."
   );
 
+const delegationRoleSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .describe("Stable role id, unique within this team."),
+  label: z.string().trim().min(1).max(80).describe("User-facing role name."),
+  agentId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Enabled Agent id from freebuddy_status_get. Use cli-butlerbuddy when ButlerBuddy should execute this role."
+    ),
+  model: z.string().trim().optional().describe("Optional model override."),
+  modelOptionId: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Optional configured model-option id."),
+  capability: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Routing description: what work should be delegated to this role. This is not an execution instruction."
+    ),
+  instructions: z
+    .string()
+    .trim()
+    .optional()
+    .describe(
+      "Role execution instructions: rules this role must follow on every turn."
+    ),
+  canWrite: z
+    .boolean()
+    .describe("Whether this role may perform write operations when team policy permits."),
+  skillIds: z
+    .array(z.string().trim().min(1))
+    .optional()
+    .describe("Optional installed skill ids assigned to this role.")
+});
+
+const delegationPolicySchema = z.object({
+  allowWrites: z.boolean().optional(),
+  requireApprovalBeforeDelegateWrite: z.boolean().optional(),
+  maxDepth: z.number().int().min(1).max(6).optional(),
+  delegateTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+  maxConcurrentDelegates: z.number().int().min(1).max(8).optional(),
+  stopOnDelegateFailure: z.boolean().optional()
+});
+
 export function createButlerMcpServer(): McpServer {
   const server = new McpServer({
     name: "freebuddy-butler",
@@ -676,6 +729,102 @@ export function createButlerMcpServer(): McpServer {
     async (args) => {
       try {
         return toolResult(await invokeButlerBridge("set_appearance", args));
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_delegation_team_list",
+    {
+      title: "List Self-Organizing Teams",
+      description:
+        "List self-organizing delegation teams with their entry role, roster, shared instructions, role instructions, and policy. Read-only. These teams dynamically delegate work and are distinct from fixed workflow teams.",
+      inputSchema: {},
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    async () => {
+      try {
+        return toolResult(await invokeButlerBridge("delegation_team_list"));
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_delegation_team_get",
+    {
+      title: "Get Self-Organizing Team",
+      description:
+        "Get one self-organizing delegation team's complete configuration. Read-only. Use this before recommending changes or creating a similar team.",
+      inputSchema: {
+        id: z.string().trim().min(1).describe("Self-organizing team id.")
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    async (args) => {
+      try {
+        return toolResult(await invokeButlerBridge("delegation_team_get", args));
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_delegation_team_create",
+    {
+      title: "Create a Self-Organizing Team",
+      description:
+        "Create a complete self-organizing delegation team. First use freebuddy_status_get for enabled Agent ids, then restate the name, entry role, full roster, shared instructions, per-role execution instructions, write permissions, and policy and get explicit user confirmation. Capability is used for routing only; put mandatory behavior in instructions.",
+      inputSchema: {
+        name: z.string().trim().min(1).max(80).describe("Team name."),
+        description: z.string().trim().optional().describe("Optional summary."),
+        sharedInstructions: z
+          .string()
+          .trim()
+          .optional()
+          .describe("Instructions applied to every role on every turn."),
+        enabled: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("Whether the team is enabled immediately."),
+        entryRoleId: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Role id that receives the user's initial task."),
+        roster: z
+          .array(delegationRoleSchema)
+          .min(1)
+          .max(16)
+          .describe("Complete team roster."),
+        policy: delegationPolicySchema
+          .optional()
+          .describe("Optional overrides for the default delegation policy.")
+      },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      }
+    },
+    async (args) => {
+      try {
+        return toolResult(await invokeButlerBridge("delegation_team_create", args));
       } catch (error) {
         return toolError(error);
       }

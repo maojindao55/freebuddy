@@ -28,6 +28,13 @@ import {
 } from "./cli/workflowTeams.js";
 import { builtinWorkflowTeams } from "./cli/workflowTeamBuiltins.js";
 import {
+  getDelegationTeam,
+  insertDelegationTeam,
+  listDelegationTeams,
+  type UpsertDelegationTeamInput
+} from "./cli/delegationTeams.js";
+import { normalizeButlerDelegationTeamInput } from "./cli/butlerDelegationTeams.js";
+import {
   listConversations,
   archiveConversation,
   deleteConversation,
@@ -112,6 +119,9 @@ type ButlerToolAction =
   | "set_appearance"
   | "conversation_open"
   | "view_open"
+  | "delegation_team_list"
+  | "delegation_team_get"
+  | "delegation_team_create"
   | "team_list"
   | "team_get"
   | "team_create"
@@ -152,6 +162,9 @@ function isButlerToolAction(value: unknown): value is ButlerToolAction {
     value === "set_appearance" ||
     value === "conversation_open" ||
     value === "view_open" ||
+    value === "delegation_team_list" ||
+    value === "delegation_team_get" ||
+    value === "delegation_team_create" ||
     value === "team_list" ||
     value === "team_get" ||
     value === "team_create" ||
@@ -277,6 +290,34 @@ function publicTeam(team: ReturnType<typeof listWorkflowTeams>[number]) {
   };
 }
 
+function publicDelegationTeam(
+  team: ReturnType<typeof listDelegationTeams>[number]
+) {
+  return {
+    id: team.id,
+    name: team.name,
+    description: team.description,
+    sharedInstructions: team.sharedInstructions,
+    icon: team.icon,
+    enabled: team.enabled,
+    source: team.source,
+    kind: team.kind,
+    entryRoleId: team.entryRoleId,
+    roster: team.roster.map((role) => ({
+      id: role.id,
+      label: role.label,
+      agentId: role.agentId,
+      model: role.model,
+      modelOptionId: role.modelOptionId,
+      capability: role.capability,
+      instructions: role.instructions,
+      canWrite: role.canWrite,
+      skillIds: role.skillIds ?? []
+    })),
+    policy: team.policy
+  };
+}
+
 export async function registerButlerToolSession(input: {
   taskSessionId: string;
   agentId: string;
@@ -322,13 +363,17 @@ async function dispatchButlerAction(
   action: ButlerToolAction,
   params: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  if (action.startsWith("team_")) {
-    logMain().info("workflowTeams", "caller", {
-      caller: "butler",
-      op: action,
-      teamId: params.id ?? params.teamId,
-      pid: process.pid
-    });
+  if (action.startsWith("team_") || action.startsWith("delegation_team_")) {
+    logMain().info(
+      action.startsWith("delegation_team_") ? "delegationTeams" : "workflowTeams",
+      "caller",
+      {
+        caller: "butler",
+        op: action,
+        teamId: params.id ?? params.teamId,
+        pid: process.pid
+      }
+    );
   }
   switch (action) {
     case "status_get": {
@@ -336,7 +381,8 @@ async function dispatchButlerAction(
       const skills = withCaller(binding, () => listSkills());
       const runtimes = listRuntimes();
       const taskCount = withCaller(binding, () => listScheduledTasks()).length;
-      const teamCount = listWorkflowTeams().length;
+      const workflowTeamCount = listWorkflowTeams().length;
+      const delegationTeamCount = listDelegationTeams().length;
       return {
         agents: members.map((member) => ({
           id: member.id,
@@ -359,7 +405,9 @@ async function dispatchButlerAction(
           lastCheckAt: rt.lastCheckAt
         })),
         scheduledTaskCount: taskCount,
-        teamCount,
+        teamCount: workflowTeamCount + delegationTeamCount,
+        workflowTeamCount,
+        delegationTeamCount,
         mainWindow: getMainWindowPresence()
       };
     }
@@ -728,6 +776,30 @@ async function dispatchButlerAction(
       focusButlerAppWindow();
       safeSendToWebContents(target, "freebuddy://open-view", payload);
       return { ok: true, ...payload };
+    }
+    case "delegation_team_list": {
+      return { teams: listDelegationTeams().map(publicDelegationTeam) };
+    }
+    case "delegation_team_get": {
+      const id = String(params.id ?? "").trim();
+      const team = getDelegationTeam(id);
+      if (!team) {
+        return { ok: false, error: "Self-organizing team not found." };
+      }
+      return { team: publicDelegationTeam(team) };
+    }
+    case "delegation_team_create": {
+      const agents = withCaller(binding, () => listCliMembers());
+      const normalized = normalizeButlerDelegationTeamInput(params, agents);
+      if (!normalized.ok) return normalized;
+
+      const input: UpsertDelegationTeamInput = {
+        id: `team-delegation-user-${randomBytes(4).toString("hex")}`,
+        source: "user",
+        ...normalized.input
+      };
+      const team = insertDelegationTeam(input);
+      return { team: publicDelegationTeam(team) };
     }
     case "team_list": {
       const teams = listWorkflowTeams();

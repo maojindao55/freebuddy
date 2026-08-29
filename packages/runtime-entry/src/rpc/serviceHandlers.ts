@@ -149,6 +149,7 @@ function cacheTeamSnapshot(
     enabled: true,
     source: "user",
     kind: "delegation",
+    sharedInstructions: snapshot.sharedInstructions,
     entryRoleId: snapshot.entryRoleId,
     roster: snapshot.roster,
     policy: snapshot.policy,

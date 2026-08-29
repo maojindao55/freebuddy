@@ -110,11 +110,11 @@ test("delegation team CRUD round-trips roster, policy, entryRoleId", async (t) =
       await import("../dist-electron/cli/delegationTeams.js");
 
     const roster = [
-      { id: "r-impl", label: "实现", agentId: "cli-codex-acp", capability: "写代码", canWrite: true },
+      { id: "r-impl", label: "实现", agentId: "cli-codex-acp", capability: "写代码", instructions: "直接实现并验证", canWrite: true },
       { id: "r-rev", label: "评审", agentId: "cli-claude-agent-acp", capability: "审代码", canWrite: false }
     ];
     const created = insertDelegationTeam({
-      id: "team-del-1", name: "Impl+Review", enabled: true, source: "user",
+      id: "team-del-1", name: "Impl+Review", sharedInstructions: "完成前必须验证", enabled: true, source: "user",
       entryRoleId: "r-impl", roster,
       policy: {
         allowWrites: true, requireApprovalBeforeDelegateWrite: true,
@@ -124,6 +124,7 @@ test("delegation team CRUD round-trips roster, policy, entryRoleId", async (t) =
     });
     assert.equal(created.kind, "delegation");
     assert.equal(created.entryRoleId, "r-impl");
+    assert.equal(created.sharedInstructions, "完成前必须验证");
     assert.equal(created.roster.length, 2);
 
     const fetched = getDelegationTeam("team-del-1");
@@ -134,6 +135,11 @@ test("delegation team CRUD round-trips roster, policy, entryRoleId", async (t) =
     updateDelegationTeam("team-del-1", { entryRoleId: "r-rev", name: "Renamed" });
     assert.equal(getDelegationTeam("team-del-1")?.entryRoleId, "r-rev");
     assert.equal(getDelegationTeam("team-del-1")?.name, "Renamed");
+    assert.equal(getDelegationTeam("team-del-1")?.sharedInstructions, "完成前必须验证");
+
+    updateDelegationTeam("team-del-1", { sharedInstructions: "更新后的共享规则" });
+    assert.equal(getDelegationTeam("team-del-1")?.entryRoleId, "r-rev");
+    assert.equal(getDelegationTeam("team-del-1")?.sharedInstructions, "更新后的共享规则");
 
     assert.equal(deleteDelegationTeam("team-del-1"), true);
     assert.equal(getDelegationTeam("team-del-1"), undefined);
@@ -175,7 +181,14 @@ test("seedBuiltinDelegationTeams is idempotent and appears in list", async (t) =
 
     // user customization preserved across re-seed
     const customized = team?.roster.map((r) =>
-      r.id === "r-impl" ? { ...r, agentId: "cli-claude-agent-acp", skillIds: ["skill-debug"] } : r
+      r.id === "r-impl"
+        ? {
+            ...r,
+            agentId: "cli-claude-agent-acp",
+            instructions: "始终先实现再验证",
+            skillIds: ["skill-debug"]
+          }
+        : r
     );
     updateDelegationTeam("team-delegation-impl-review", { roster: customized });
 
@@ -184,6 +197,7 @@ test("seedBuiltinDelegationTeams is idempotent and appears in list", async (t) =
     const impl = reseated?.roster.find((r) => r.id === "r-impl");
     assert.equal(impl?.agentId, "cli-claude-agent-acp", "user agent binding not preserved on re-seed");
     assert.deepEqual(impl?.skillIds, ["skill-debug"], "user skillIds not preserved on re-seed");
+    assert.equal(impl?.instructions, "始终先实现再验证", "role instructions not preserved on re-seed");
   });
 });
 

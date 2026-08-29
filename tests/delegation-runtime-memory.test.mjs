@@ -15,9 +15,14 @@ const policy = {
   stopOnDelegateFailure: false
 };
 
-function fakeExecutor() {
+function fakeExecutor(onRequest) {
   return {
-    async run(_request, onEvent) {
+    async run(request, onEvent) {
+      onRequest?.(request);
+      onEvent({
+        type: "items",
+        items: [{ kind: "text", role: "assistant", content: "finished" }]
+      });
       onEvent({ type: "done", exitCode: 0 });
     },
     kill() {}
@@ -26,9 +31,13 @@ function fakeExecutor() {
 
 test("in-memory delegation runtime completes a nested-capable entry turn", async () => {
   const repository = createMemoryDelegationRepository();
+  let request;
+  const instructedRoster = roster.map((role) =>
+    role.id === "r-impl" ? { ...role, instructions: "Implement and verify directly." } : role
+  );
   const runtime = new DelegationRuntime({
     repository,
-    executor: fakeExecutor(),
+    executor: fakeExecutor((value) => { request = value; }),
     events: { publish() {} },
     approval: { async request() { return true; } },
     clock: { now: () => new Date(), nowIso: () => new Date().toISOString() },
@@ -41,8 +50,9 @@ test("in-memory delegation runtime completes a nested-capable entry turn", async
       enabled: true,
       source: "user",
       kind: "delegation",
+      sharedInstructions: "Every role must produce verifiable output.",
       entryRoleId: "r-impl",
-      roster,
+      roster: instructedRoster,
       policy,
       createdAt: "",
       updatedAt: ""
@@ -51,14 +61,55 @@ test("in-memory delegation runtime completes a nested-capable entry turn", async
   const runId = await runtime.start({
     goal: "ship it",
     teamId: "t",
-    teamSnapshot: { roster, policy, entryRoleId: "r-impl" },
+    teamSnapshot: {
+      roster: instructedRoster,
+      sharedInstructions: "Every role must produce verifiable output.",
+      policy,
+      entryRoleId: "r-impl"
+    },
     runtimeVersion: "1.0.0",
     runtimeApiVersion: "1.0.0"
   });
   const run = repository.getRun(runId);
   assert.ok(run);
   assert.equal(run.runtimeVersion, "1.0.0");
-  assert.ok(["completed", "failed", "running"].includes(run.status));
+  assert.equal(run.status, "completed");
+  assert.match(request.prompt, /Every role must produce verifiable output/);
+  assert.match(request.prompt, /Implement and verify directly/);
+});
+
+test("in-memory runtime rejects a clean exit with no assistant output or artifact", async () => {
+  const repository = createMemoryDelegationRepository();
+  const runtime = new DelegationRuntime({
+    repository,
+    executor: {
+      async run(_request, onEvent) {
+        onEvent({
+          type: "items",
+          items: [{ kind: "tool-call", tool: "list_teammates", status: "completed" }]
+        });
+        onEvent({ type: "done", exitCode: 0 });
+      },
+      kill() {}
+    },
+    events: { publish() {} },
+    approval: { async request() { return true; } },
+    clock: { now: () => new Date(), nowIso: () => new Date().toISOString() },
+    ids: { id: () => "id" },
+    skills: { resolve: () => [] },
+    resolveAgent: (id) => ({ adapter: "claude", agentName: id }),
+    getTeam: () => undefined
+  });
+  const runId = await runtime.start({
+    goal: "ship it",
+    teamId: "t",
+    teamSnapshot: { roster, policy, entryRoleId: "r-impl" }
+  });
+  assert.equal(repository.getRun(runId)?.status, "failed");
+  assert.match(
+    repository.listEvents(runId).find((event) => event.depth === 0)?.resultSummary ?? "",
+    /without assistant text/i
+  );
 });
 
 test("crash recovery marks active events failed via repository transitions", () => {

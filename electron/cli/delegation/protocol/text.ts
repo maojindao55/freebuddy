@@ -12,4 +12,7 @@ export {
   protocolCanonicalPhrases,
   PROTOCOL_RULES
 } from "@freebuddy/delegation-core";
-export type { DelegateWakeInfo } from "@freebuddy/delegation-core";
+export type {
+  DelegateWakeInfo,
+  DelegationInstructionContext
+} from "@freebuddy/delegation-core";

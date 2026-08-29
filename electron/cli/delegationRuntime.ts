@@ -34,7 +34,10 @@ import {
 } from "./delegationDispatch.js";
 import { buildDelegateTaskPrompt } from "./delegation/protocol/text.js";
 import type { DelegateAgentRunner } from "./delegationRunner.js";
-import { DelegationOrchestrator } from "./delegation/bus/orchestrator.js";
+import {
+  DelegationOrchestrator,
+  resolveTurnCompletionError
+} from "./delegation/bus/orchestrator.js";
 import { electronDelegationRepository } from "../runtime/adapters/delegationRepository.js";
 import { currentRuntimePin } from "../runtime/runtimePin.js";
 import { app } from "electron";
@@ -91,6 +94,7 @@ interface RunContext {
   runId: string;
   teamId: string;
   roster: DelegationRosterEntry[];
+  sharedInstructions?: string;
   policy: DelegationPolicy;
   entryRoleId: string;
   cwd?: string;
@@ -187,6 +191,7 @@ export class DelegationRuntime {
       runId,
       teamId: run.teamId,
       roster: team.roster,
+      sharedInstructions: team.sharedInstructions,
       policy: team.policy,
       entryRoleId: team.entryRoleId,
       cwd: run.cwd ?? undefined,
@@ -202,10 +207,12 @@ export class DelegationRuntime {
     const team = getDelegationTeam(ctx.teamId);
     if (!team) return;
     ctx.roster = team.roster;
+    ctx.sharedInstructions = team.sharedInstructions;
     ctx.policy = team.policy;
     ctx.entryRoleId = team.entryRoleId;
     ctx.orchestrator?.syncTeamSnapshot({
       roster: team.roster,
+      sharedInstructions: team.sharedInstructions,
       policy: team.policy,
       entryRoleId: team.entryRoleId
     });
@@ -216,6 +223,7 @@ export class DelegationRuntime {
     const orch = new DelegationOrchestrator({
       runId: ctx.runId,
       roster: ctx.roster,
+      sharedInstructions: ctx.sharedInstructions,
       policy: ctx.policy,
       entryRoleId: ctx.entryRoleId,
       repository: electronDelegationRepository(),
@@ -250,7 +258,12 @@ export class DelegationRuntime {
           depth: args.depth,
           prompt: args.prompt
         });
-        return { summary: turn.summary, error: turn.error };
+        return {
+          summary: turn.summary,
+          error: turn.error,
+          hasOutput: turn.hasOutput,
+          diagnostic: turn.diagnostic
+        };
       }
     });
     ctx.orchestrator = orch;
@@ -262,6 +275,7 @@ export class DelegationRuntime {
     teamId: string;
     teamSnapshot: {
       roster: DelegationRosterEntry[];
+      sharedInstructions?: string;
       policy: DelegationPolicy;
       entryRoleId: string;
     };
@@ -281,6 +295,7 @@ export class DelegationRuntime {
       runId,
       teamId: input.teamId,
       roster: input.teamSnapshot.roster,
+      sharedInstructions: input.teamSnapshot.sharedInstructions,
       policy: input.teamSnapshot.policy,
       entryRoleId: input.teamSnapshot.entryRoleId,
       cwd: input.cwd,
@@ -324,7 +339,12 @@ export class DelegationRuntime {
       ctx.roster,
       entry.id,
       0,
-      ctx.policy.maxDepth
+      ctx.policy.maxDepth,
+      {
+        sharedInstructions: ctx.sharedInstructions,
+        roleInstructions: entry.instructions,
+        selfLabel: entry.label
+      }
     );
 
     try {
@@ -413,7 +433,12 @@ export class DelegationRuntime {
       ctx.roster,
       entry.id,
       0,
-      ctx.policy.maxDepth
+      ctx.policy.maxDepth,
+      {
+        sharedInstructions: ctx.sharedInstructions,
+        roleInstructions: entry.instructions,
+        selfLabel: entry.label
+      }
     );
 
     const result = await orch.followUp({
@@ -538,7 +563,13 @@ export class DelegationRuntime {
           error: this.pausedRunIds.has(opts.ctx.runId) ? "paused by user" : "killed"
         };
       }
-      return { summary: result.summary, exitCode: result.exitCode, error: result.error };
+      return {
+        summary: result.summary,
+        exitCode: result.exitCode,
+        error: result.error,
+        hasOutput: result.hasOutput,
+        diagnostic: result.diagnostic
+      };
     } catch (err) {
       const message = (err as Error).message;
       if (this.pausedRunIds.has(opts.ctx.runId) || /paused by user/i.test(message)) {
@@ -561,6 +592,7 @@ export class DelegationRuntime {
     teamId: string;
     teamSnapshot: {
       roster: DelegationRosterEntry[];
+      sharedInstructions?: string;
       policy: DelegationPolicy;
       entryRoleId: string;
     };
@@ -610,7 +642,12 @@ export class DelegationRuntime {
       ctx.roster,
       teammate.id,
       args.depth,
-      ctx.policy.maxDepth
+      ctx.policy.maxDepth,
+      {
+        sharedInstructions: ctx.sharedInstructions,
+        roleInstructions: teammate.instructions,
+        selfLabel: teammate.label
+      }
     );
     let lastError: string | null = null;
     let lastSummary = "";
@@ -620,6 +657,11 @@ export class DelegationRuntime {
       !this.killedRunIds.has(args.runId) &&
       !this.pausedRunIds.has(args.runId)
     ) {
+      const childIdsBeforeTurn = new Set(
+        listDelegationEvents(args.runId)
+          .filter((event) => event.parentEventId === args.childEventId)
+          .map((event) => event.id)
+      );
       const turn = await this.runAgentTurn({
         ctx,
         agent: teammate,
@@ -631,7 +673,6 @@ export class DelegationRuntime {
         prompt,
         signal: args.signal
       });
-      lastError = turn.error;
       lastSummary = turn.summary ?? "";
       if (
         args.signal?.aborted ||
@@ -641,7 +682,16 @@ export class DelegationRuntime {
         lastError = lastError ?? (this.pausedRunIds.has(args.runId) ? "paused by user" : "killed");
         break;
       }
-      const pending = listPendingChildEvents(args.runId, args.childEventId);
+      const childrenAfterTurn = listDelegationEvents(args.runId).filter(
+        (event) => event.parentEventId === args.childEventId
+      );
+      const acceptedDelegation = childrenAfterTurn.some(
+        (event) => !childIdsBeforeTurn.has(event.id)
+      );
+      lastError = resolveTurnCompletionError(turn, acceptedDelegation);
+      const pending = childrenAfterTurn.filter(
+        (event) => event.status === "pending" || event.status === "running"
+      );
       if (pending.length === 0) break;
       const settled = await orch.raceAnySettle(pending.map((e) => e.id));
       if (this.killedRunIds.has(args.runId) || this.pausedRunIds.has(args.runId)) {
@@ -664,7 +714,12 @@ export class DelegationRuntime {
         ctx.roster,
         teammate.id,
         args.depth,
-        ctx.policy.maxDepth
+        ctx.policy.maxDepth,
+        {
+          sharedInstructions: ctx.sharedInstructions,
+          roleInstructions: teammate.instructions,
+          selfLabel: teammate.label
+        }
       );
     }
     return { summary: lastSummary, exitCode: null, error: lastError };
@@ -841,7 +896,12 @@ export class DelegationRuntime {
         ctx.roster,
         role.id,
         0,
-        ctx.policy.maxDepth
+        ctx.policy.maxDepth,
+        {
+          sharedInstructions: ctx.sharedInstructions,
+          roleInstructions: role.instructions,
+          selfLabel: role.label
+        }
       );
       const result = await orch.runNodeLoop({
         nodeId: rootId,

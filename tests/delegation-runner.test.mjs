@@ -14,12 +14,43 @@ test("summarizeDelegateOutput joins assistant text items", async () => {
   assert.equal(summarizeDelegateOutput(items), "hello world");
 });
 
-test("summarizeDelegateOutput falls back to tool-count when no assistant text", async () => {
+test("summarizeDelegateOutput does not treat tool activity as completed output", async () => {
   const { summarizeDelegateOutput } = await import("../dist-electron/cli/delegationRunner.js");
-  assert.match(summarizeDelegateOutput([{ kind: "tool-call", tool: "x" }, { kind: "tool-call", tool: "y" }]), /2 tool actions/i);
+  assert.match(summarizeDelegateOutput([{ kind: "tool-call", tool: "x" }, { kind: "tool-call", tool: "y" }]), /no assistant response or artifact/i);
   assert.ok(summarizeDelegateOutput([]).length > 0);
   // user-only text is NOT treated as output
-  assert.match(summarizeDelegateOutput([{ kind: "text", role: "user", content: "task" }]), /no output/i);
+  assert.match(summarizeDelegateOutput([{ kind: "text", role: "user", content: "task" }]), /no assistant response or artifact/i);
+});
+
+test("delegation output evidence preserves a nested tool failure diagnostic", async () => {
+  const { analyzeDelegationOutput } = await import("@freebuddy/delegation-core");
+  const evidence = analyzeDelegationOutput([
+    {
+      kind: "tool-call",
+      tool: "skill_load",
+      status: "completed",
+      toolOutputs: [
+        {
+          kind: "tool-result",
+          tool: "skill_load",
+          isError: true,
+          content: "Skill is not active: hyperframes"
+        }
+      ]
+    }
+  ]);
+  assert.equal(evidence.hasOutput, false);
+  assert.match(evidence.toolError, /Skill is not active: hyperframes/);
+  assert.doesNotMatch(evidence.summary, /Completed/);
+});
+
+test("file edits count as artifact output even without assistant text", async () => {
+  const { analyzeDelegationOutput } = await import("@freebuddy/delegation-core");
+  const evidence = analyzeDelegationOutput([
+    { kind: "file-edit", path: "src/a.ts", action: "update" }
+  ]);
+  assert.equal(evidence.hasOutput, true);
+  assert.equal(evidence.hasArtifactOutput, true);
 });
 
 test("summarizeDelegateOutput truncates very long assistant text", async () => {

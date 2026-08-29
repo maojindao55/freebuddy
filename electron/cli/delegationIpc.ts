@@ -103,6 +103,7 @@ export function registerDelegationIpc(): void {
         teamId: input.teamId,
         teamSnapshot: {
           roster: team.roster,
+          sharedInstructions: team.sharedInstructions,
           policy: team.policy,
           entryRoleId: team.entryRoleId
         },

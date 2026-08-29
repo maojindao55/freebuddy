@@ -22,3 +22,50 @@ test("task prompt wraps the task with the roster header", async () => {
   assert.match(p, /审 auth/);
   assert.match(p, /协作团队/);
 });
+
+test("task and wake prompts separate routing capability from execution instructions", async () => {
+  const { buildDelegateTaskPrompt, buildDelegateWakePrompt } = await import(
+    "../dist-electron/cli/delegationPrompt.js"
+  );
+  const roster = [
+    {
+      id: "r-lead",
+      label: "总编导",
+      agentId: "a",
+      capability: "用于别人判断是否委派的视频统筹能力",
+      instructions: "收到任务后直接执行；不得只复述计划或等待用户说开始。",
+      canWrite: true
+    },
+    {
+      id: "r-review",
+      label: "审核员",
+      agentId: "b",
+      capability: "审核视频和图像",
+      instructions: "必须给出逐项审核结论。",
+      canWrite: false
+    }
+  ];
+  const context = {
+    sharedInstructions: "交付前必须产生可验证产物并汇总结果。",
+    roleInstructions: roster[0].instructions,
+    selfLabel: roster[0].label
+  };
+  const task = buildDelegateTaskPrompt("制作宣传片", roster, "r-lead", 0, 3, context);
+  assert.match(task, /团队共享指令/);
+  assert.match(task, /可验证产物/);
+  assert.match(task, /角色自身执行指令/);
+  assert.match(task, /不得只复述计划/);
+  assert.doesNotMatch(task, /用于别人判断是否委派的视频统筹能力/);
+  assert.match(task, /审核视频和图像/);
+
+  const wake = buildDelegateWakePrompt(
+    { taskText: "审核", roleLabel: "审核员", status: "done", resultSummary: "通过", verdict: "pass" },
+    roster,
+    "r-lead",
+    0,
+    3,
+    context
+  );
+  assert.match(wake, /可验证产物/);
+  assert.match(wake, /不得只复述计划/);
+});

@@ -22,6 +22,10 @@ export type {
 } from "./bus/types.js";
 export { createInitialBusState, ensureChildNode, markChildTurning, reduce } from "./bus/stateMachine.js";
 export {
+  analyzeDelegationOutput,
+  type DelegationOutputEvidence
+} from "./output/evidence.js";
+export {
   ancestorRosterIds,
   isWholeTaskRedelegate,
   normalizeTaskText,
@@ -43,7 +47,7 @@ export {
   protocolCanonicalPhrases,
   PROTOCOL_RULES
 } from "./protocol/text.js";
-export type { DelegateWakeInfo } from "./protocol/text.js";
+export type { DelegateWakeInfo, DelegationInstructionContext } from "./protocol/text.js";
 export {
   resolveEffectiveWakeVerdict,
   type EffectiveWakeVerdict

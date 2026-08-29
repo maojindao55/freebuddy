@@ -1,5 +1,7 @@
 export {
-  DelegationOrchestrator
+  DelegationOrchestrator,
+  EMPTY_DELEGATION_TURN_ERROR,
+  resolveTurnCompletionError
 } from "@freebuddy/delegation-runtime";
 export type {
   OrchestratorSpawnArgs,

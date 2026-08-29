@@ -49,6 +49,8 @@ export interface DelegateExecResult {
   summary: string;
   exitCode: number | null;
   error: string | null;
+  hasOutput?: boolean;
+  diagnostic?: string | null;
   artifacts?: DelegationArtifact[];
 }
 

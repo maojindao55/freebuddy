@@ -21,6 +21,7 @@ export interface UpsertDelegationTeamInput {
   id: string;
   name: string;
   description?: string;
+  sharedInstructions?: string;
   icon?: string;
   enabled: boolean;
   source: "builtin" | "user";
@@ -32,6 +33,7 @@ export interface UpsertDelegationTeamInput {
 export interface UpdateDelegationTeamPatch {
   name?: string;
   description?: string | null;
+  sharedInstructions?: string | null;
   icon?: string | null;
   enabled?: boolean;
   entryRoleId?: string;

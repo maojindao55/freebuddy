@@ -102,6 +102,78 @@ test("run start creates run row + root event and spawns entry via runAgent", asy
   });
 });
 
+test("entry prompt receives shared instructions and its own role instructions", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    let prompt = "";
+    const instructedRoster = roster.map((role) =>
+      role.id === "r-impl"
+        ? { ...role, instructions: "直接执行任务，不要等待用户再次确认开始。" }
+        : role
+    );
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: () => ({ adapter: "codex-acp", agentName: "Codex", skillIds: [] }),
+      runAgent: async (args) => {
+        prompt = args.prompt;
+        return { summary: "完成", exitCode: 0, error: null, hasOutput: true, diagnostic: null };
+      }
+    });
+    await rt.start({
+      goal: "实现X",
+      teamId: "t",
+      teamSnapshot: {
+        roster: instructedRoster,
+        sharedInstructions: "必须交付可验证结果。",
+        policy,
+        entryRoleId: "r-impl"
+      },
+      cwd: "/r"
+    });
+    assert.match(prompt, /必须交付可验证结果/);
+    assert.match(prompt, /不要等待用户再次确认开始/);
+  });
+});
+
+test("an observed empty turn fails instead of completing the delegation run", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const { getDelegationRun, listDelegationEvents } = await import(
+      "../dist-electron/cli/delegationRuns.js"
+    );
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: () => ({ adapter: "codex-acp", agentName: "Codex", skillIds: [] }),
+      runAgent: async () => ({
+        summary: "(no assistant response or artifact)",
+        exitCode: 0,
+        error: null,
+        hasOutput: false,
+        diagnostic: "Agent ended after a failed tool call without a final response or artifact: Skill is not active: hyperframes"
+      })
+    });
+    const runId = await rt.start({ goal: "实现X", teamId: "t", teamSnapshot: snap, cwd: "/r" });
+    assert.equal(getDelegationRun(runId)?.status, "failed");
+    const root = listDelegationEvents(runId).find((event) => event.depth === 0);
+    assert.equal(root?.status, "failed");
+    assert.match(root?.resultSummary ?? "", /Skill is not active: hyperframes/);
+  });
+});
+
+test("an accepted delegation is valid evidence for an otherwise empty turn", async () => {
+  const { resolveTurnCompletionError } = await import("@freebuddy/delegation-runtime");
+  const emptyTurn = {
+    summary: "(no assistant response or artifact)",
+    error: null,
+    hasOutput: false,
+    diagnostic: null
+  };
+  assert.equal(resolveTurnCompletionError(emptyTurn, true), null);
+  assert.match(resolveTurnCompletionError(emptyTurn, false), /without assistant text/i);
+});
+
 test("prepareRun returns runId immediately; runEntry spawns the entry agent", async (t) => {
   if (!bindingAvailable) { t.skip(); return; }
   await withDb(async () => {

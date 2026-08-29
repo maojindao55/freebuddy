@@ -88,17 +88,44 @@ function writeFlag(canWrite: boolean): string {
   return canWrite ? "可写" : "只读";
 }
 
+export interface DelegationInstructionContext {
+  /** Rules that every role in the team must follow on every turn. */
+  sharedInstructions?: string;
+  /** Rules that the currently executing role must follow on every turn. */
+  roleInstructions?: string;
+  selfLabel?: string;
+}
+
+function buildInstructionPrompt(context?: DelegationInstructionContext): string {
+  const shared = context?.sharedInstructions?.trim();
+  const role = context?.roleInstructions?.trim();
+  const sections: string[] = [];
+  if (shared) {
+    sections.push("## 团队共享指令", shared);
+  }
+  if (context?.selfLabel || role) {
+    sections.push("## 当前角色", `你是「${context?.selfLabel?.trim() || "未命名角色"}」。`);
+  }
+  if (role) {
+    sections.push("## 角色自身执行指令", role);
+  }
+  return sections.join("\n");
+}
+
 export function buildDelegationRosterPrompt(
   roster: DelegationRosterEntry[],
   selfId: string,
   depth: number,
-  maxDepth: number
+  maxDepth: number,
+  instructionContext?: DelegationInstructionContext
 ): string {
   const lines = roster
     .filter((r) => r.id !== selfId)
     .map((r) => `- [${r.id}] ${r.label} (${writeFlag(r.canWrite)})："${r.capability}"`)
     .join("\n");
+  const instructions = buildInstructionPrompt(instructionContext);
   return [
+    ...(instructions ? [instructions, ""] : []),
     "## 协作团队（可委派）",
     "某子任务更适合某队友时：",
     '1. 单个子任务调 delegate(teammate_id, task)；多个独立子任务优先调 delegate_many(delegations)。',
@@ -118,11 +145,15 @@ export function buildDelegateTaskPrompt(
   roster: DelegationRosterEntry[],
   selfId: string,
   depth: number,
-  maxDepth: number
+  maxDepth: number,
+  instructionContext?: DelegationInstructionContext
 ): string {
-  return [buildDelegationRosterPrompt(roster, selfId, depth, maxDepth), "", "## 本次任务", task].join(
-    "\n"
-  );
+  return [
+    buildDelegationRosterPrompt(roster, selfId, depth, maxDepth, instructionContext),
+    "",
+    "## 本次任务",
+    task
+  ].join("\n");
 }
 
 export interface DelegateWakeInfo {
@@ -139,7 +170,8 @@ export function buildDelegateWakePrompt(
   roster: DelegationRosterEntry[],
   selfId: string,
   depth: number,
-  maxDepth: number
+  maxDepth: number,
+  instructionContext?: DelegationInstructionContext
 ): string {
   const summary = info.resultSummary?.trim() || "(无输出)";
   const verdict = info.verdict ?? null;
@@ -163,7 +195,7 @@ export function buildDelegateWakePrompt(
   }
 
   return [
-    buildDelegationRosterPrompt(roster, selfId, depth, maxDepth),
+    buildDelegationRosterPrompt(roster, selfId, depth, maxDepth, instructionContext),
     "",
     "## 委派结果返回（你被唤醒）",
     `你之前委派给「${info.roleLabel}」的子任务已结束（status: ${info.status}）。`,

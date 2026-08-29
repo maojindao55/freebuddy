@@ -4,37 +4,20 @@ import { cliRun } from "./runtime.js";
 import type { CliRunArgs } from "./runtimeShared.js";
 import { appendMessage, updateMessage } from "./conversations.js";
 import { safeSendToWebContents } from "./ipcSend.js";
+import { analyzeDelegationOutput } from "@freebuddy/delegation-core";
 
 export interface DelegateRunResult {
   summary: string;
   exitCode: number | null;
   error: string | null;
+  hasOutput: boolean;
+  diagnostic: string | null;
 }
 
 export type DelegateAgentRunner = (args: CliRunArgs) => Promise<DelegateRunResult>;
 
-const MAX_SUMMARY_CHARS = 12_000;
-
 export function summarizeDelegateOutput(items: unknown[]): string {
-  const texts: string[] = [];
-  let toolCount = 0;
-  for (const raw of items) {
-    const item = raw as { kind?: string; role?: string; content?: string };
-    if (!item || typeof item.kind !== "string") continue;
-    if (item.kind === "text" && item.role === "assistant" && typeof item.content === "string") {
-      texts.push(item.content);
-    } else if (item.kind === "tool-call") {
-      toolCount += 1;
-    }
-  }
-  const joined = texts.join("").trim();
-  if (joined) {
-    if (joined.length <= MAX_SUMMARY_CHARS) return joined;
-    const head = joined.slice(0, Math.floor(MAX_SUMMARY_CHARS / 2));
-    const tail = joined.slice(joined.length - Math.floor(MAX_SUMMARY_CHARS / 2));
-    return `${head}\n…[truncated]…\n${tail}`;
-  }
-  return toolCount > 0 ? `Completed ${toolCount} tool action${toolCount > 1 ? "s" : ""}.` : "(no output)";
+  return analyzeDelegationOutput(items).summary;
 }
 
 export function createDelegateAgentRunner(webContents: WebContents | undefined): DelegateAgentRunner {
@@ -98,29 +81,48 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
             if (messageId) scheduleFlush();
           }
         } else if (e.type === "done") {
-          exitCode = (e as { exitCode: number }).exitCode;
+          exitCode = (e as { exitCode?: number }).exitCode ?? 0;
         } else if (e.type === "error") {
           errored = (e as { message: string }).message;
         }
       });
+    } catch (error) {
+      errored = error instanceof Error ? error.message : String(error);
     } finally {
       if (flushTimer) {
         clearTimeout(flushTimer);
         flushTimer = undefined;
       }
+      const evidence = analyzeDelegationOutput(collected);
+      const processError =
+        exitCode !== null && exitCode !== 0
+          ? `Agent process exited with code ${exitCode}.`
+          : null;
       if (messageId) {
         updateMessage({
           id: messageId,
           content: JSON.stringify(collected),
-          status: errored ? "failed" : "done"
+          status:
+            errored || processError || (!evidence.hasOutput && evidence.toolError)
+              ? "failed"
+              : "done"
         });
         broadcastMsg("updated");
       }
     }
+    const evidence = analyzeDelegationOutput(collected);
+    const processError =
+      exitCode !== null && exitCode !== 0
+        ? `Agent process exited with code ${exitCode}.`
+        : null;
     return {
-      summary: summarizeDelegateOutput(collected),
+      summary: evidence.summary,
       exitCode,
-      error: errored
+      error: errored ?? processError,
+      hasOutput: evidence.hasOutput,
+      diagnostic: evidence.toolError
+        ? `Agent ended after a failed tool call without a final response or artifact: ${evidence.toolError}`
+        : null
     };
   };
 }

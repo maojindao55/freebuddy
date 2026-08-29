@@ -5,6 +5,8 @@ export interface DelegationRosterEntry {
   model?: string;
   modelOptionId?: string;
   capability: string;
+  /** Instructions this role must follow whenever it executes a turn. */
+  instructions?: string;
   canWrite: boolean;
   skillIds?: string[];
 }
@@ -22,6 +24,8 @@ export interface DelegationTeam {
   id: string;
   name: string;
   description?: string;
+  /** Instructions applied to every role on every turn in this team. */
+  sharedInstructions?: string;
   icon?: string;
   enabled: boolean;
   source: "builtin" | "user";

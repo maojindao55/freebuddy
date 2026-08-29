@@ -22,6 +22,7 @@ function rowToDelegationTeam(r: Record<string, unknown>): DelegationTeam {
     id: String(r.id),
     name: String(r.name),
     description: (r.description as string | null) ?? undefined,
+    sharedInstructions: meta.sharedInstructions ?? undefined,
     icon: (r.icon as string | null) ?? undefined,
     enabled: r.enabled === 1 || r.enabled === true,
     source: ((r.source as "builtin" | "user") ?? "user") as DelegationTeam["source"],
@@ -57,6 +58,7 @@ export interface UpsertDelegationTeamInput {
   id: string;
   name: string;
   description?: string;
+  sharedInstructions?: string;
   icon?: string;
   enabled: boolean;
   source: "builtin" | "user";
@@ -85,7 +87,12 @@ export function insertDelegationTeam(
     input.source,
     JSON.stringify(input.roster),
     JSON.stringify(input.policy),
-    JSON.stringify({ entryRoleId: input.entryRoleId }),
+    JSON.stringify({
+      entryRoleId: input.entryRoleId,
+      ...(input.sharedInstructions?.trim()
+        ? { sharedInstructions: input.sharedInstructions.trim() }
+        : {})
+    }),
     now,
     now
   );
@@ -95,6 +102,7 @@ export function insertDelegationTeam(
 export interface UpdateDelegationTeamPatch {
   name?: string;
   description?: string | null;
+  sharedInstructions?: string | null;
   icon?: string | null;
   enabled?: boolean;
   entryRoleId?: string;
@@ -135,9 +143,18 @@ export function updateDelegationTeam(
     fields.push("policy_json = ?");
     params.push(JSON.stringify(patch.policy));
   }
-  if (patch.entryRoleId !== undefined) {
+  if (patch.entryRoleId !== undefined || patch.sharedInstructions !== undefined) {
     fields.push("delegation_meta_json = ?");
-    params.push(JSON.stringify({ entryRoleId: patch.entryRoleId }));
+    const sharedInstructions =
+      patch.sharedInstructions === undefined
+        ? existing.sharedInstructions
+        : patch.sharedInstructions?.trim() || undefined;
+    params.push(
+      JSON.stringify({
+        entryRoleId: patch.entryRoleId ?? existing.entryRoleId,
+        ...(sharedInstructions ? { sharedInstructions } : {})
+      })
+    );
   }
   params.push(id);
   db.prepare(

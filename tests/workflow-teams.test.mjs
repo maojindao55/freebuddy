@@ -367,6 +367,29 @@ test("main workspace mounts WorkflowTeamsTab outside Settings", () => {
   assert.doesNotMatch(settings, /<WorkflowTeamsTab/);
 });
 
+test("team page refreshes workflow and self-organizing teams when opened", () => {
+  const tab = fs.readFileSync(
+    new URL("../src/components/Settings/WorkflowTeamsTab.tsx", import.meta.url),
+    "utf8"
+  );
+  const workflowStore = fs.readFileSync(
+    new URL("../src/store/workflowTeamStore.ts", import.meta.url),
+    "utf8"
+  );
+  const delegationStore = fs.readFileSync(
+    new URL("../src/store/delegationStore.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(tab, /useEffect\(\(\) => \{\s*void refresh\(\);\s*\}, \[refresh\]\)/);
+  assert.match(
+    tab,
+    /useEffect\(\(\) => \{\s*void delRefresh\(\);\s*\}, \[delRefresh\]\)/
+  );
+  assert.match(workflowStore, /set\(\{ teams, loaded: true \}\)/);
+  assert.match(delegationStore, /set\(\{ teams, loaded: true \}\)/);
+});
+
 test("ChatView uses a non-writing summary role for team follow-up conversations", () => {
   const src = read("../src/components/CLI/ChatView.tsx");
   assert.match(src, /function teamConversationMember/);

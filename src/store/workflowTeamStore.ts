@@ -72,9 +72,12 @@ export const useWorkflowTeamStore = create<State>((set, get) => ({
   },
 
   async refresh() {
-    if (!workflowTeamsClient.isAvailable()) return;
+    if (!workflowTeamsClient.isAvailable()) {
+      set({ loaded: true, teams: [] });
+      return;
+    }
     const teams = await workflowTeamsClient.list();
-    set({ teams });
+    set({ teams, loaded: true });
   },
 
   getById(id) {

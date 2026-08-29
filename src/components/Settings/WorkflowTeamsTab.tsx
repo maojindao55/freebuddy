@@ -28,13 +28,9 @@ export function WorkflowTeamsTab({
   startCreating?: boolean;
 }) {
   const { t } = useTranslation();
-  const loaded = useWorkflowTeamStore((s) => s.loaded);
-  const load = useWorkflowTeamStore((s) => s.load);
   const refresh = useWorkflowTeamStore((s) => s.refresh);
   const teams = useWorkflowTeamStore((s) => s.teams);
 
-  const delLoaded = useDelegationTeamStore((s) => s.loaded);
-  const delLoad = useDelegationTeamStore((s) => s.load);
   const delRefresh = useDelegationTeamStore((s) => s.refresh);
   const delegationTeams = useDelegationTeamStore((s) => s.teams);
 
@@ -44,12 +40,12 @@ export function WorkflowTeamsTab({
   );
 
   useEffect(() => {
-    if (!loaded) load();
-  }, [loaded, load]);
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
-    if (!delLoaded) delLoad();
-  }, [delLoaded, delLoad]);
+    void delRefresh();
+  }, [delRefresh]);
 
   useEffect(() => {
     const off = workflowTeamsClient.onChanged(() => {

@@ -37,9 +37,12 @@ export const useDelegationTeamStore = create<State>((set, get) => ({
   },
 
   async refresh() {
-    if (!delegationClient.isAvailable()) return;
+    if (!delegationClient.isAvailable()) {
+      set({ loaded: true, teams: [] });
+      return;
+    }
     const teams = await delegationClient.list();
-    set({ teams });
+    set({ teams, loaded: true });
   },
 
   getById(id) {

@@ -112,6 +112,48 @@ test("in-memory runtime rejects a clean exit with no assistant output or artifac
   );
 });
 
+test("in-memory delegation runtime marks a silent successful turn failed", async () => {
+  const repository = createMemoryDelegationRepository();
+  const runtime = new DelegationRuntime({
+    repository,
+    executor: {
+      async run(_request, onEvent) {
+        onEvent({ type: "done", exitCode: 0 });
+      },
+      kill() {}
+    },
+    events: { publish() {} },
+    approval: { async request() { return true; } },
+    clock: { now: () => new Date(), nowIso: () => new Date().toISOString() },
+    ids: { id: () => "id" },
+    skills: { resolve: () => [] },
+    resolveAgent: (id) => ({ adapter: "dsh-acp", agentName: id }),
+    getTeam: () => ({
+      id: "t",
+      name: "t",
+      enabled: true,
+      source: "user",
+      kind: "delegation",
+      entryRoleId: "r-impl",
+      roster,
+      policy,
+      createdAt: "",
+      updatedAt: ""
+    })
+  });
+
+  const runId = await runtime.start({
+    goal: "ship it",
+    teamId: "t",
+    teamSnapshot: { roster, policy, entryRoleId: "r-impl" }
+  });
+
+  assert.equal(repository.getRun(runId)?.status, "failed");
+  const root = repository.listEvents(runId).find((event) => event.depth === 0);
+  assert.equal(root?.status, "failed");
+  assert.match(root?.resultSummary ?? "", /returned no output/i);
+});
+
 test("crash recovery marks active events failed via repository transitions", () => {
   const repository = createMemoryDelegationRepository();
   const run = repository.createRun({

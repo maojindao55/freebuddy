@@ -71,3 +71,48 @@ test("in-memory workflow runtime creates and completes a single-step plan", asyn
   assert.ok(run);
   assert.notEqual(run.status, "pending_approval");
 });
+
+test("in-memory workflow runtime marks a silent successful step failed", async () => {
+  const repository = createMemoryWorkflowRepository();
+  const ports = fakePorts(repository);
+  ports.executor = {
+    async run(args) {
+      args.onEvent({ type: "done", exitCode: 0 });
+    }
+  };
+  const runtime = new WorkflowRuntime(ports);
+  const created = runtime.createPendingRun({
+    plan: {
+      name: "Silent",
+      goal: "Ship",
+      phases: [
+        {
+          id: "p1",
+          title: "Do",
+          parallelism: 1,
+          steps: [
+            {
+              id: "s1",
+              title: "Work",
+              agentId: "cli-dsh-acp",
+              mode: "research",
+              prompt: "Do the work"
+            }
+          ]
+        }
+      ]
+    },
+    agents: [
+      { id: "cli-dsh-acp", name: "DSH", adapter: "dsh-acp", enabled: true }
+    ]
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  await runtime.start(created.run.id);
+
+  const step = repository.getSteps(created.run.id)[0];
+  assert.equal(step.status, "failed");
+  assert.match(JSON.parse(step.resultJson).error, /returned no output/i);
+  assert.equal(repository.getRun(created.run.id)?.status, "failed");
+});

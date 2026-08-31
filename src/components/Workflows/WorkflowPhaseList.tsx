@@ -8,7 +8,10 @@ import type {
   WorkflowPhase,
   WorkflowStepRow as WorkflowStepRowData
 } from "@/services/workflows/types";
-import { workflowStepTitle } from "@/services/workflows/types";
+import {
+  workflowStepFailureReason,
+  workflowStepTitle
+} from "@/services/workflows/types";
 import { WorkflowStepDetails } from "./WorkflowStepDetails";
 
 const STATUS_MAP: Record<string, StepsProps["status"]> = {
@@ -71,6 +74,7 @@ export function WorkflowPhaseList({
         : undefined);
     const agentLabel = displayAgentName(step.agentName, step.adapter);
     const isSelected = selectedStepId === step.id;
+    const failureReason = workflowStepFailureReason(step);
     return {
       title: (
         <span
@@ -110,6 +114,16 @@ export function WorkflowPhaseList({
           <span className={`workflow-step-status-text ${step.status}`}>
             {t(`workflow.stepStatus.${step.status}`)}
           </span>
+          {failureReason && (
+            <span
+              className="workflow-step-failure"
+              role="alert"
+              title={failureReason}
+            >
+              <strong>{t("workflow.failureReason")}</strong>
+              <span>{failureReason}</span>
+            </span>
+          )}
         </span>
       ),
       status: STATUS_MAP[step.status] ?? "wait"

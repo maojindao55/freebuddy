@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveAgentRunError } from "@freebuddy/agent-runtime";
 import type {
   WorkflowAgentRef,
   WorkflowPhase,
@@ -635,7 +636,14 @@ export class WorkflowRuntime {
         const completed = await this.runPhase(runId, run, plan, phase, state);
         if (state.stopped) return;
         if (!completed) {
-          this.deps.repository.updateRun(runId, { status: "blocked" });
+          const failed = this.deps.repository
+            .getSteps(runId)
+            .some((step) => step.status === "failed");
+          if (failed) {
+            this.finalize(runId, plan, "failed");
+          } else {
+            this.deps.repository.updateRun(runId, { status: "blocked" });
+          }
           return;
         }
 
@@ -1048,6 +1056,7 @@ export class WorkflowRuntime {
     const capturedToolSessionId =
       this.deps.toolSessions?.get(step.agentId, toolSessionScope)?.sessionId ??
       step.toolSessionId;
+    errored = resolveAgentRunError(collected, errored, exitCode);
     const decisionText = reviewDecisionTextFromItems(collected);
     const failed = errored !== null || (exitCode !== null && exitCode !== 0);
     let summary = ensureReviewStatusInSummary(

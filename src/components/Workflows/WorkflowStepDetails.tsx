@@ -1,7 +1,10 @@
 import { useTranslation } from "react-i18next";
 
 import type { WorkflowStepRow } from "@/services/workflows/types";
-import { workflowStepTitle } from "@/services/workflows/types";
+import {
+  workflowStepFailureReason,
+  workflowStepTitle
+} from "@/services/workflows/types";
 
 export function WorkflowStepDetails({
   step,
@@ -19,6 +22,7 @@ export function WorkflowStepDetails({
   const retryable =
     Boolean(onRetry) &&
     (canRetry ? canRetry(step) : step.status === "failed");
+  const failureReason = workflowStepFailureReason(step);
   return (
     <div className="workflow-step-details">
       <header>
@@ -27,6 +31,12 @@ export function WorkflowStepDetails({
           {t(`workflow.stepStatus.${step.status}`)}
         </span>
       </header>
+      {failureReason && (
+        <div className="workflow-step-failure full" role="alert">
+          <strong>{t("workflow.failureReason")}</strong>
+          <span>{failureReason}</span>
+        </div>
+      )}
       <pre className="workflow-step-prompt">{step.prompt}</pre>
       {step.summary && (
         <details className="workflow-step-summary">

@@ -53,6 +53,35 @@ test("file edits count as artifact output even without assistant text", async ()
   assert.equal(evidence.hasArtifactOutput, true);
 });
 
+test("silent team turns fail while upstream errors remain unchanged", async () => {
+  const { EMPTY_AGENT_OUTPUT_ERROR, resolveAgentRunError } = await import(
+    "../packages/agent-runtime/dist/index.js"
+  );
+  assert.equal(resolveAgentRunError([], null, 0), EMPTY_AGENT_OUTPUT_ERROR);
+  assert.equal(
+    resolveAgentRunError(
+      [{ kind: "text", role: "user", content: "echoed prompt" }],
+      null,
+      0
+    ),
+    EMPTY_AGENT_OUTPUT_ERROR
+  );
+  assert.equal(
+    resolveAgentRunError([], "Internal error: turn failed: rpm exhausted", -1),
+    "Internal error: turn failed: rpm exhausted"
+  );
+  assert.equal(resolveAgentRunError([], null, 9), "Agent exited with code 9.");
+  assert.equal(
+    resolveAgentRunError(
+      [{ kind: "text", role: "assistant", content: "done" }],
+      null,
+      0
+    ),
+    null
+  );
+  assert.equal(resolveAgentRunError([{ kind: "tool-call", tool: "read" }], null, 0), null);
+});
+
 test("summarizeDelegateOutput truncates very long assistant text", async () => {
   const { summarizeDelegateOutput } = await import("../dist-electron/cli/delegationRunner.js");
   const out = summarizeDelegateOutput([{ kind: "text", role: "assistant", content: "x".repeat(50_000) }]);

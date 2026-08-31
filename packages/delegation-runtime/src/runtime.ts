@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import {
+  EMPTY_AGENT_OUTPUT_ERROR,
+  resolveAgentRunError
+} from "@freebuddy/agent-runtime";
 import type {
   DelegationEventStatus,
   DelegationPolicy,
@@ -99,8 +103,10 @@ export class DelegationRuntime {
               signal: this.ports.abort
             },
             (event) => {
-              if (event.type === "items") collected.push(...event.items);
-              if (event.type === "done") exitCode = event.exitCode ?? 0;
+              if (event.type === "items" && event.items.length) {
+                collected.push(...event.items);
+              }
+              if (event.type === "done") exitCode = event.exitCode ?? null;
               if (event.type === "error") error = event.message;
             }
           );
@@ -108,9 +114,11 @@ export class DelegationRuntime {
           error = (err as Error).message;
         }
         const evidence = analyzeDelegationOutput(collected);
-        if (!error && exitCode !== null && exitCode !== 0) {
-          error = `Agent process exited with code ${exitCode}.`;
-        }
+        const resolvedError = resolveAgentRunError(collected, error, exitCode);
+        error =
+          resolvedError === EMPTY_AGENT_OUTPUT_ERROR && evidence.hasOutput
+            ? null
+            : resolvedError;
         return {
           summary: evidence.summary,
           error,

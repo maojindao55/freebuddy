@@ -1273,6 +1273,7 @@
     "continueIteration": "Continue iteration",
     "stop": "Stop",
     "retry": "Retry step",
+    "failureReason": "Failure reason",
     "progress": "Progress",
     "loop": "Loop",
     "writeStep": "Write",

@@ -1,5 +1,9 @@
 import type { WebContents } from "electron";
 import { randomUUID } from "node:crypto";
+import {
+  EMPTY_AGENT_OUTPUT_ERROR,
+  resolveAgentRunError
+} from "@freebuddy/agent-runtime";
 import { cliRun } from "./runtime.js";
 import type { CliRunArgs } from "./runtimeShared.js";
 import { appendMessage, updateMessage } from "./conversations.js";
@@ -89,21 +93,25 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
     } catch (error) {
       errored = error instanceof Error ? error.message : String(error);
     } finally {
+      const evidence = analyzeDelegationOutput(collected);
+      const resolvedError = resolveAgentRunError(collected, errored, exitCode);
+      // The shared resolver predates delegation artifacts such as images and
+      // resource links. Keep its upstream/non-zero diagnostics, but let the
+      // delegation evidence contract recognize those artifacts as output.
+      errored =
+        resolvedError === EMPTY_AGENT_OUTPUT_ERROR && evidence.hasOutput
+          ? null
+          : resolvedError;
       if (flushTimer) {
         clearTimeout(flushTimer);
         flushTimer = undefined;
       }
-      const evidence = analyzeDelegationOutput(collected);
-      const processError =
-        exitCode !== null && exitCode !== 0
-          ? `Agent process exited with code ${exitCode}.`
-          : null;
       if (messageId) {
         updateMessage({
           id: messageId,
           content: JSON.stringify(collected),
           status:
-            errored || processError || (!evidence.hasOutput && evidence.toolError)
+            errored || (!evidence.hasOutput && evidence.toolError)
               ? "failed"
               : "done"
         });
@@ -111,14 +119,10 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
       }
     }
     const evidence = analyzeDelegationOutput(collected);
-    const processError =
-      exitCode !== null && exitCode !== 0
-        ? `Agent process exited with code ${exitCode}.`
-        : null;
     return {
       summary: evidence.summary,
       exitCode,
-      error: errored ?? processError,
+      error: errored,
       hasOutput: evidence.hasOutput,
       diagnostic: evidence.toolError
         ? `Agent ended after a failed tool call without a final response or artifact: ${evidence.toolError}`

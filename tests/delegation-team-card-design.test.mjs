@@ -50,3 +50,11 @@ test("status remains readable without relying on timeline colors", () => {
   assert.match(source, /delegation-event-status \$\{event\.status\}/);
   assert.match(styles, /\.delegation-event-status\s*\{/);
 });
+
+test("failed delegation events show their upstream error without expanding details", () => {
+  assert.match(source, /event\.status === "failed" \|\| event\.status === "timeout"/);
+  assert.match(source, /className="delegation-event-failure"/);
+  assert.match(source, /workflow\.failureReason/);
+  assert.match(source, /event\.resultSummary && !failureReason/);
+  assert.match(styles, /\.delegation-event-failure/);
+});

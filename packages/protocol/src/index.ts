@@ -27,6 +27,8 @@ export type {
   WorkflowValidationResult
 } from "./workflow.js";
 
+export { workflowStepFailureReason } from "./workflow.js";
+
 export type {
   DelegationArtifact,
   DelegationEvent,

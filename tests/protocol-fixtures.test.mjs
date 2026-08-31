@@ -4,6 +4,9 @@ import assert from "node:assert/strict";
 const { HOST_API_VERSION, RUNTIME_BUNDLE_ID, RUNTIME_RPC_VERSION } = await import(
   "../packages/protocol/dist/runtime.js"
 );
+const { workflowStepFailureReason } = await import(
+  "../packages/protocol/dist/workflow.js"
+);
 
 test("workflow plan fixture keeps serialized field names", async () => {
   const plan = {
@@ -50,6 +53,37 @@ test("delegation result fixture keeps versioned contract fields", () => {
   assert.equal(json.schemaVersion, 1);
   assert.equal(json.verdict, "pass");
   assert.equal(json.error, null);
+});
+
+test("workflow step failure reason preserves upstream agent errors", () => {
+  assert.equal(
+    workflowStepFailureReason({
+      status: "failed",
+      resultJson: JSON.stringify({
+        items: [],
+        exitCode: -1,
+        error: "Internal error: turn failed: rate limit exceeded"
+      })
+    }),
+    "Internal error: turn failed: rate limit exceeded"
+  );
+  assert.equal(
+    workflowStepFailureReason({
+      status: "failed",
+      resultJson: JSON.stringify({
+        items: [{ kind: "error", message: "Allocated quota exceeded" }],
+        error: null
+      })
+    }),
+    "Allocated quota exceeded"
+  );
+  assert.equal(
+    workflowStepFailureReason({
+      status: "done",
+      resultJson: JSON.stringify({ error: "stale error" })
+    }),
+    undefined
+  );
 });
 
 test("runtime manifest primitives are stable", () => {

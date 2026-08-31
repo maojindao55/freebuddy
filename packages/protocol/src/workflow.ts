@@ -106,6 +106,45 @@ export interface WorkflowStepRow {
   updatedAt: string;
 }
 
+function failureMessage(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const message = value.trim();
+    return message || undefined;
+  }
+  if (!value || typeof value !== "object") return undefined;
+  const message = (value as { message?: unknown }).message;
+  return typeof message === "string" && message.trim()
+    ? message.trim()
+    : undefined;
+}
+
+/** Extract the original agent/provider failure from a persisted workflow step. */
+export function workflowStepFailureReason(
+  step: Pick<WorkflowStepRow, "status" | "resultJson">
+): string | undefined {
+  if (step.status !== "failed" || !step.resultJson) return undefined;
+  try {
+    const result = JSON.parse(step.resultJson) as {
+      error?: unknown;
+      items?: unknown[];
+    };
+    const direct = failureMessage(result.error);
+    if (direct) return direct;
+    if (!Array.isArray(result.items)) return undefined;
+    for (let index = result.items.length - 1; index >= 0; index -= 1) {
+      const item = result.items[index];
+      if (!item || typeof item !== "object") continue;
+      const candidate = item as { kind?: unknown; message?: unknown };
+      if (candidate.kind !== "error") continue;
+      const message = failureMessage(candidate.message);
+      if (message) return message;
+    }
+  } catch {
+    // Older or interrupted rows may not contain valid result JSON.
+  }
+  return undefined;
+}
+
 export interface WorkflowAgentRef {
   id: string;
   name: string;

@@ -20,6 +20,8 @@ export type {
   WorkflowValidationResult
 } from "@freebuddy/protocol/workflow";
 
+export { workflowStepFailureReason } from "@freebuddy/protocol/workflow";
+
 export function workflowPhaseTitle(phase: Pick<WorkflowPhase, "id" | "title">, t: TFunction): string {
   return t(`workflow.phaseTitles.${phase.id}`, { defaultValue: phase.title });
 }

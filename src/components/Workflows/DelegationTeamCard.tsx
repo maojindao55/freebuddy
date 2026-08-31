@@ -395,6 +395,11 @@ export function DelegationTeamCard({
                 visibleEvents.map((event) => {
                   const duration = formatDuration(event);
                   const eventExpanded = expandedEventIds.has(event.id);
+                  const failureReason =
+                    (event.status === "failed" || event.status === "timeout") &&
+                    event.resultSummary?.trim()
+                      ? event.resultSummary.trim()
+                      : undefined;
                   return (
                     <article
                       key={event.id}
@@ -430,6 +435,16 @@ export function DelegationTeamCard({
                       >
                         {event.taskText}
                       </p>
+                      {failureReason ? (
+                        <div
+                          className="delegation-event-failure"
+                          role="alert"
+                          title={failureReason}
+                        >
+                          <strong>{t("workflow.failureReason")}</strong>
+                          <span>{failureReason}</span>
+                        </div>
+                      ) : null}
                       {eventExpanded ? (
                         <div
                           id={`delegation-event-${event.id}`}
@@ -450,7 +465,7 @@ export function DelegationTeamCard({
                               {event.verdictSummary ? ` · ${event.verdictSummary}` : ""}
                             </div>
                           ) : null}
-                          {event.resultSummary ? (
+                          {event.resultSummary && !failureReason ? (
                             <div className="delegation-event-result">
                               <strong>
                                 {t("workflow.delegation.result", { defaultValue: "Result" })}

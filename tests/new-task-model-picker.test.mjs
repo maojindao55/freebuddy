@@ -10,6 +10,8 @@ const probe = read("../electron/cli/sessionConfigProbe.ts");
 const ipc = read("../electron/cli/ipc.ts");
 const preload = read("../electron/preload.ts");
 const conversations = read("../electron/cli/conversations.ts");
+const conversationStore = read("../src/store/conversationStore.ts");
+const electronStore = read("../electron/cli/store.ts");
 
 test("new-task model picker discovers ACP options before creating a conversation", () => {
   assert.match(chatView, /inspectSessionConfigOptions\(probeInput\)/);
@@ -18,6 +20,19 @@ test("new-task model picker discovers ACP options before creating a conversation
   assert.match(newTaskHome, /options=\{configOptions\}/);
   assert.match(newTaskHome, /onChange=\{onConfigOptionOverrides\}/);
   assert.match(newTaskHome, /!teamMode/);
+});
+
+test("Codex BYOK materializes its configured default model end to end", () => {
+  assert.match(
+    electronStore,
+    /resolveCodexByokEnv\(agentId, adapter, selectedModel\)/
+  );
+  assert.match(electronStore, /\.\.\.\(model \? \{ model \} : \{\}\)/);
+  assert.match(conversationStore, /defaultCodexByokModel/);
+  assert.match(
+    conversationStore,
+    /configOptionOverrides: persistedConfigOptionOverrides/
+  );
 });
 
 test("new-task model overrides are persisted before the first prompt", () => {

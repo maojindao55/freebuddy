@@ -1044,6 +1044,11 @@ function EditOverridePanel({
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
+    // Keep accepting --model in Advanced arguments, but normalize it into the
+    // first-class Model field. Previously the parser silently removed it when
+    // the dedicated field was blank, so the saved override lost the model.
+    const modelFromExtraArgs = extractModelArg(cleanedExtraArgs).model.trim();
+    const effectiveModel = model.trim() || modelFromExtraArgs;
     const env: Record<string, string> = {};
     envText
       .split(/\r?\n/)
@@ -1126,7 +1131,7 @@ function EditOverridePanel({
         binary.trim() && binary.trim() !== ex.defaultBinary
           ? binary.trim()
           : undefined,
-      extraArgs: withModelArg(cleanedExtraArgs, model),
+      extraArgs: withModelArg(cleanedExtraArgs, effectiveModel),
       env: Object.keys(env).length ? env : undefined,
       icon: icon || undefined,
       codexByok: codexByokConfig,
@@ -1138,6 +1143,8 @@ function EditOverridePanel({
     try {
       await upsert(override);
       refreshMembers();
+      setModel(effectiveModel);
+      setExtraArgs(extractModelArg(cleanedExtraArgs).args.join("\n"));
       setCodexApiKey("");
       setDeepseekOfficialApiKey("");
       setSaveStatus("saved");

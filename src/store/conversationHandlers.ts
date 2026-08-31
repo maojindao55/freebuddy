@@ -79,6 +79,10 @@ function hasUserFacingError(items: CliStreamItem[]) {
   return items.some((item) => item.kind === "error");
 }
 
+function hasTerminalUserFacingError(items: CliStreamItem[]) {
+  return items.some((item) => item.kind === "error" && item.terminal === true);
+}
+
 function failureSummaryFor(exitCode: number, parseCtx: ParseContext): CliStreamItem {
   const details = parseCtx.diagnosticLogs?.slice(-30);
   return {
@@ -92,7 +96,8 @@ function failureSummaryFor(exitCode: number, parseCtx: ParseContext): CliStreamI
               ? i18next.t("errors.rawLogCollapsed")
               : i18next.t("errors.cliNoStructured")
           }),
-    details
+    details,
+    terminal: true
   };
 }
 
@@ -247,7 +252,7 @@ export function handleStreamEvent(
       ]);
     } else if (e.type === "error") {
       nextItems = appendItems(nextItems, [
-        { kind: "error", message: e.message }
+        { kind: "error", message: e.message, terminal: true }
       ] as CliStreamItem[]);
       errorMessage = e.message;
     } else if (e.type === "done") {
@@ -255,7 +260,10 @@ export function handleStreamEvent(
       if (status === "killed") {
         // keep status
       } else {
-        status = e.exitCode === 0 ? "done" : "failed";
+        status =
+          e.exitCode === 0 && !hasTerminalUserFacingError(nextItems)
+            ? "done"
+            : "failed";
       }
       exitCode = e.exitCode;
       // Some adapters (e.g. codebuddy/Hy3) abandon an in-progress tool call and
@@ -316,7 +324,7 @@ export function handleStreamEvent(
     const live = get().live[conversationId];
     const reason = live?.status === "killed" ? "killed" : "done";
     if (reason !== "killed") {
-      const success = (e.exitCode ?? 0) === 0;
+      const success = live?.status === "done" && (e.exitCode ?? 0) === 0;
       get().markConversationCompletedUnread(
         conversationId,
         success ? "success" : "failure"
@@ -409,7 +417,7 @@ async function finalizeRun(
   const finalStatus =
     reason === "killed"
       ? "killed"
-      : live.exitCode === 0
+      : live.status === "done" && live.exitCode === 0
         ? "done"
         : "failed";
   const finalContent = JSON.stringify(live.items);

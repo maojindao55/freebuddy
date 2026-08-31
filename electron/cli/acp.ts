@@ -206,7 +206,7 @@ export type AcpStreamItem =
       size?: number;
       text?: string;
     }
-  | { kind: "error"; message: string; details?: string[] }
+  | { kind: "error"; message: string; details?: string[]; terminal?: boolean }
   | { kind: "done"; exitCode?: number }
   | { kind: "raw"; content: string };
 
@@ -1237,20 +1237,63 @@ function codexMetaErrorToItems(meta: unknown): AcpStreamItem[] {
   const reasonMatch = additionalDetails.match(
     /^unexpected status \d+[^:]*: (.+?)(?:, url: .*)?$/
   );
-  const reason = reasonMatch ? reasonMatch[1].trim().slice(0, 200) : "";
+  const reason = reasonMatch
+    ? reasonMatch[1]
+        .replace(
+          /\s*(?:\(|\[|,\s*)request(?:[_ -]?id)?\s*[:=]\s*[^\])\],;]+(?:\)|\])?/gi,
+          ""
+        )
+        .trim()
+        .slice(0, 200)
+    : "";
 
   const statusText = typeof httpStatus === "number" ? ` (HTTP ${httpStatus})` : "";
   const reasonText = reason ? `: ${reason}` : "";
   const headline = `Upstream gateway error${statusText}${reasonText}`;
+  const nonRetryableHttpError =
+    typeof httpStatus === "number" &&
+    httpStatus >= 400 &&
+    httpStatus < 500 &&
+    ![408, 409, 425, 429].includes(httpStatus);
+  const terminal = nonRetryableHttpError || e.willRetry === false;
   const subline =
-    e.willRetry === false
+    nonRetryableHttpError
+      ? "the request was rejected; the turn did not complete."
+      : e.willRetry === false
       ? "codex gave up after retries; the turn did not complete."
       : "codex is retrying the request…";
   const details: string[] = [];
   if (attempt) details.push(`Retry attempt ${attempt}.`);
   if (message) details.push(message);
   if (additionalDetails) details.push(additionalDetails);
-  return [{ kind: "error", message: `${headline} — ${subline}`, details }];
+  return [
+    {
+      kind: "error",
+      message: `${headline} — ${subline}`,
+      details,
+      ...(terminal ? { terminal: true } : {})
+    }
+  ];
+}
+
+/** Return a stable failure message when retrying cannot make a 4xx succeed. */
+export function acpNonRetryableUpstreamError(update: any): string | undefined {
+  const status =
+    update?._meta?.codex?.error?.codexErrorInfo?.responseStreamDisconnected
+      ?.httpStatusCode;
+  if (
+    typeof status !== "number" ||
+    status < 400 ||
+    status >= 500 ||
+    [408, 409, 425, 429].includes(status)
+  ) {
+    return undefined;
+  }
+  const error = codexMetaErrorToItems(update?._meta).find(
+    (item): item is Extract<AcpStreamItem, { kind: "error" }> =>
+      item.kind === "error"
+  );
+  return error?.message;
 }
 
 export function acpUpdateToItems(
@@ -1262,6 +1305,19 @@ export function acpUpdateToItems(
     case "user_message_chunk":
       return [];
     case "agent_message_chunk":
+      {
+        const text = textFromContent(update.content).trim();
+        if (/^(?:unexpected status \d{3}\b|exceeded retry limit\b)/i.test(text)) {
+          return [
+            {
+              kind: "error",
+              message: "The upstream model request failed; the turn did not complete.",
+              details: [text],
+              terminal: true
+            }
+          ];
+        }
+      }
       return contentBlockToItems(update.content, {
         role: "assistant",
         append: true,
@@ -1351,7 +1407,18 @@ export function acpUpdateToItems(
         if (updatedAt) item.updatedAt = updatedAt;
         items.push(item);
       }
-      items.push(...codexMetaErrorToItems(update?._meta));
+      const codexErrors = codexMetaErrorToItems(update?._meta);
+      items.push(...codexErrors);
+      if (
+        codexErrors.length === 0 &&
+        update?._meta?.codex?.threadStatus?.type === "systemError"
+      ) {
+        items.push({
+          kind: "error",
+          message: "Codex reported a system error; the turn did not complete.",
+          terminal: true
+        });
+      }
       return items;
     }
     case "usage_update":

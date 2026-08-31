@@ -19,6 +19,14 @@ export function redactedLengthMarker(length: number): string {
 }
 
 const secret_RULES: Array<[RegExp, (...args: string[]) => string]> = [
+  [
+    /(\\"name\\"\s*:\s*\\"[^"\\]*(?:token|key|secret|password)[^"\\]*\\"\s*,\s*\\"value\\"\s*:\s*\\")((?:\\.|[^"\\])*)(\\")/gi,
+    (_m, prefix, _value, suffix) => `${prefix}<redacted>${suffix}`
+  ],
+  [
+    /("name"\s*:\s*"[^"]*(?:token|key|secret|password)[^"]*"\s*,\s*"value"\s*:\s*")([^"]*)(")/gi,
+    (_m, prefix, _value, suffix) => `${prefix}<redacted>${suffix}`
+  ],
   [/Authorization(["'\s:=]+)[^\s"',\]}]{8,}/gi, (_m, sep) => `Authorization${sep}<redacted>`],
   [/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/g, () => "Bearer <redacted>"],
   [/sk-[A-Za-z0-9_-]{8,}/g, (m) => `${m.slice(0, 6)}…<redacted>`],

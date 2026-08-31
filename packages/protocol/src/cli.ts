@@ -142,7 +142,7 @@ export type CliStreamItem =
       size?: number;
       text?: string;
     }
-  | { kind: "error"; message: string; details?: string[] }
+  | { kind: "error"; message: string; details?: string[]; terminal?: boolean }
   | { kind: "done"; exitCode?: number }
   | { kind: "raw"; content: string };
 

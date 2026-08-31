@@ -717,7 +717,8 @@ export function resetOverride(id: string): void {
 
 export function resolveCodexByokEnv(
   agentId: string,
-  adapter: string
+  adapter: string,
+  selectedModel?: string
 ): Record<string, string> | undefined {
   if (adapter !== "codex-acp") return undefined;
   const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
@@ -726,8 +727,11 @@ export function resolveCodexByokEnv(
   const apiKey = decryptSecret(byok.apiKeyEncrypted);
   const providerId = byok.providerId?.trim() || "proxy";
   const envKey = byok.envKey?.trim() || "OPENAI_API_KEY";
-  const model = extractModelArg(readOverrideExtraArgs(overrideId));
   const configuredModels = normalizeByokModels(byok.models);
+  const model =
+    selectedModel?.trim() ||
+    extractModelArg(readOverrideExtraArgs(overrideId)) ||
+    configuredModels[0]?.id;
   // The catalog must cover configured models, any explicitly selected model,
   // and — because the in-session picker selects models via ACP after env
   // resolution — every cached codex model slug. Without a matching catalog
@@ -757,6 +761,7 @@ export function resolveCodexByokEnv(
   }
   const config: Record<string, unknown> = {
     model_provider: providerId,
+    ...(model ? { model } : {}),
     model_supports_reasoning_summaries: true,
     model_providers: {
       [providerId]: {
@@ -907,7 +912,7 @@ export function resolveCliByokEnv(
   selectedModel?: string
 ): Record<string, string> | undefined {
   return (
-    resolveCodexByokEnv(agentId, adapter) ??
+    resolveCodexByokEnv(agentId, adapter, selectedModel) ??
     resolveClaudeByokEnv(agentId, adapter, selectedModel) ??
     resolveDeepSeekByokEnv(agentId, adapter, selectedModel)
   );
@@ -973,12 +978,16 @@ export function mergeCliByokModelOption<T extends {
   );
   const existing = existingIndex >= 0 ? options[existingIndex] : undefined;
   const requested = selectedModel?.trim();
-  const currentValue = models.some((model) => model.id === requested)
-    ? requested
-    : existing?.currentValue &&
-        models.some((model) => model.id === existing.currentValue)
-      ? existing.currentValue
-      : models[0].id;
+  const existingCurrent = existing?.currentValue?.trim();
+  const currentValue =
+    adapter === "codex-acp" && existingCurrent
+      ? existingCurrent
+      : models.some((model) => model.id === requested)
+        ? requested
+        : existingCurrent &&
+            models.some((model) => model.id === existingCurrent)
+          ? existingCurrent
+          : models[0].id;
   const modelOption = {
     ...(existing ?? {}),
     id: existing?.id || "model",

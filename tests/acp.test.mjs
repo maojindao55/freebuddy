@@ -32,6 +32,7 @@ import {
   acpSessionListToItems,
   acpSessionSetupToItems,
   acpUpdateToItems,
+  acpNonRetryableUpstreamError,
   buildAuthenticateRequest,
   buildInitializeRequest,
   buildLogoutRequest,
@@ -1335,7 +1336,7 @@ test("acpUpdateToItems maps session metadata, commands and config options", () =
   );
 });
 
-test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors", () => {
+test("acpUpdateToItems surfaces codex gateway errors and marks permanent 4xx terminal", () => {
   // Real shape from codex-acp 1.1.7 when an upstream gateway returns HTTP 422
   // and codex begins its Reconnecting 1..5 retry loop (issues #340 / #355).
   const retrying = acpUpdateToItems({
@@ -1363,12 +1364,13 @@ test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors
     {
       kind: "error",
       message:
-        "Upstream gateway error (HTTP 422): content input null — codex is retrying the request…",
+        "Upstream gateway error (HTTP 422): content input null — the request was rejected; the turn did not complete.",
       details: [
         "Retry attempt 1.",
         "Reconnecting... 1/5",
         "unexpected status 422 Unprocessable Entity: content input null"
-      ]
+      ],
+      terminal: true
     }
   ]);
 
@@ -1393,12 +1395,13 @@ test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors
     {
       kind: "error",
       message:
-        "Upstream gateway error (HTTP 422) — codex gave up after retries; the turn did not complete.",
+        "Upstream gateway error (HTTP 422) — the request was rejected; the turn did not complete.",
       details: [
         "Retry attempt 5.",
         "Reconnecting... 5/5",
         "unexpected status 422 Unprocessable Entity"
-      ]
+      ],
+      terminal: true
     }
   ]);
 
@@ -1423,8 +1426,9 @@ test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors
   });
   assert.equal(
     balance[0].message,
-    "Upstream gateway error (HTTP 403): Insufficient account balance — codex is retrying the request…"
+    "Upstream gateway error (HTTP 403): Insufficient account balance — the request was rejected; the turn did not complete."
   );
+  assert.equal(balance[0].terminal, true);
   const balanceRetry = acpUpdateToItems({
     sessionUpdate: "session_info_update",
     _meta: {
@@ -1442,6 +1446,26 @@ test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors
     }
   });
   assert.equal(balance[0].message, balanceRetry[0].message);
+
+  assert.equal(
+    acpNonRetryableUpstreamError({
+      ...balanceRetry[0],
+      _meta: {
+        codex: {
+          error: {
+            message: "Reconnecting... 2/5",
+            additionalDetails:
+              "unexpected status 403 Forbidden: Insufficient account balance (request id: req-secret)",
+            codexErrorInfo: {
+              responseStreamDisconnected: { httpStatusCode: 403 }
+            },
+            willRetry: true
+          }
+        }
+      }
+    }),
+    "Upstream gateway error (HTTP 403): Insufficient account balance — the request was rejected; the turn did not complete."
+  );
 
   // Stable headline across retry attempts: attempt 1 and 2 produce the same
   // message so downstream adjacent-error dedupe collapses them into one entry.
@@ -1486,6 +1510,39 @@ test("acpUpdateToItems surfaces codex _meta.codex.error retryable gateway errors
       sessionId: "s1"
     }),
     [{ kind: "session", sessionId: "s1" }]
+  );
+});
+
+test("acpUpdateToItems never renders terminal Codex failures as assistant text", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "text",
+        text: "unexpected status 403 Forbidden: deposit required"
+      }
+    }),
+    [
+      {
+        kind: "error",
+        message: "The upstream model request failed; the turn did not complete.",
+        details: ["unexpected status 403 Forbidden: deposit required"],
+        terminal: true
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "session_info_update",
+      _meta: { codex: { threadStatus: { type: "systemError" } } }
+    }),
+    [
+      {
+        kind: "error",
+        message: "Codex reported a system error; the turn did not complete.",
+        terminal: true
+      }
+    ]
   );
 });
 

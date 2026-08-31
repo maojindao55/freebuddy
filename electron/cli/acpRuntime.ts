@@ -7,6 +7,7 @@ import type { WebContents } from "electron";
 
 import {
   acpPromptResultToItems,
+  acpNonRetryableUpstreamError,
   acpSessionListToItems,
   acpSessionSetupToItems,
   acpUpdateToItems,
@@ -212,6 +213,7 @@ export async function runAcpAgent({
   let sessionWasResumed = false;
   let mcpServers: AcpStdioMcpServer[] = [];
   let contextResetAttempted = false;
+  let nonRetryableUpstreamError: string | undefined;
   let activePrompt = args.prompt;
   const sessionMeta: AcpSessionMeta | undefined = claudeAcpSessionOptions
     ? { claudeCode: { options: claudeAcpSessionOptions } }
@@ -499,6 +501,18 @@ export async function runAcpAgent({
         capturedSessions.set(args.sessionId, sessionId);
       }
       const updateType = String(msg.params?.update?.sessionUpdate ?? "");
+      const upstreamFailure = acpNonRetryableUpstreamError(msg.params?.update);
+      if (!nonRetryableUpstreamError && upstreamFailure) {
+        nonRetryableUpstreamError = upstreamFailure;
+        appendLog(
+          logStream,
+          "system",
+          `non-retryable upstream error; cancelling ACP turn: ${upstreamFailure}`
+        );
+        if (activeAcpSessionId) {
+          notify(buildSessionCancelNotification(activeAcpSessionId));
+        }
+      }
       if (updateType === "agent_message_chunk" || updateType === "agent_thought_chunk") {
         const chunkText = textFromContent(msg.params?.update?.content);
         if (chunkText) {
@@ -1397,10 +1411,30 @@ export async function runAcpAgent({
               value
             )
           );
-          const items = acpSessionSetupToItems(activeAcpSessionId, {
+          const setupItems = acpSessionSetupToItems(activeAcpSessionId, {
             sessionId: activeAcpSessionId,
             ...(result && typeof result === "object" ? result : {})
-          })
+          });
+          if (configId === "model") {
+            const actualModel = setupItems
+              .find((item) => item.kind === "config-options")
+              ?.options.find(
+                (option) => option.id === "model" || option.category === "model"
+              )?.currentValue;
+            const normalizeModel = (model: string) =>
+              model
+                .trim()
+                .replace(/\[(?:none|low|medium|high|xhigh|max)\]$/i, "");
+            if (
+              actualModel &&
+              normalizeModel(actualModel) !== normalizeModel(value)
+            ) {
+              throw new Error(
+                `agent kept ${actualModel} after selecting ${value}`
+              );
+            }
+          }
+          const items = setupItems
             .filter((item) => item.kind === "config-options")
             .map((item) => item.kind === "config-options"
               ? {
@@ -1416,16 +1450,21 @@ export async function runAcpAgent({
             );
           if (items.length) emit({ type: "items", items });
         } catch (err) {
+          const message = (err as Error)?.message || String(err);
           appendLog(
             logStream,
             "system",
-            `set_config_option failed id=${configId}: ${(err as Error)?.message || String(err)}`
+            `set_config_option failed id=${configId}: ${message}`
           );
           emit({
             type: "stderr",
-            content: `Failed to set config option ${configId}: ${(err as Error)?.message || String(err)}`
+            content: `Failed to set config option ${configId}: ${message}`
           });
-          // do not block prompt
+          // A failed model switch would send the prompt to the wrong provider
+          // model. Other optional config controls remain best-effort.
+          if (configId === "model") {
+            throw new Error(`Failed to select model ${value}: ${message}`);
+          }
         }
       }
     };
@@ -1437,6 +1476,8 @@ export async function runAcpAgent({
       if (yieldRequested) {
         // session/cancel rejects the outstanding prompt request. This is an
         // intentional park, not an agent failure or a context/auth retry.
+      } else if (nonRetryableUpstreamError) {
+        throw new Error(nonRetryableUpstreamError);
       } else if (!finished && !contextResetAttempted && isContextWindowError(promptErr)) {
         contextResetAttempted = true;
         const exhaustedSessionId = activeAcpSessionId;
@@ -1486,6 +1527,9 @@ export async function runAcpAgent({
       } else {
         throw promptErr;
       }
+    }
+    if (nonRetryableUpstreamError) {
+      throw new Error(nonRetryableUpstreamError);
     }
     await syncSessionMetadataFromList();
 

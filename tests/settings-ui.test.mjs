@@ -43,6 +43,14 @@ test("coding agent settings expose model as a first-class field", () => {
   assert.equal(settingsSource.includes("Model"), true);
   assert.equal(settingsSource.includes("extractModelArg"), true);
   assert.equal(settingsSource.includes("withModelArg"), true);
+  assert.match(
+    settingsSource,
+    /const effectiveModel = model\.trim\(\) \|\| modelFromExtraArgs/
+  );
+  assert.match(
+    settingsSource,
+    /extraArgs: withModelArg\(cleanedExtraArgs, effectiveModel\)/
+  );
 });
 
 test("coding agent settings expose Codex BYOK without echoing saved keys", () => {
@@ -381,4 +389,3 @@ test("coding agent settings allow manual typing of model context window without 
     /parseByokContextWindow\(entry\.contextWindow\)/
   );
 });
-

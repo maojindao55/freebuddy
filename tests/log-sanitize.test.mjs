@@ -64,6 +64,33 @@ test("filterSessionLogLine full mode only redacts secrets", async () => {
   assert.equal(out.type, "stdin");
 });
 
+test("full logs redact ACP environment tokens in plain and escaped JSON", async () => {
+  const { redactsecrets, filterSessionLogLine } = await load();
+  const token = "browser-token-value-123456";
+  const envEntry = JSON.stringify({
+    name: "FREEBUDDY_BROWSER_TOKEN",
+    value: token
+  });
+  const plain = redactsecrets(envEntry);
+  assert.ok(!plain.includes(token));
+  assert.match(plain, /"value":"<redacted>"/);
+
+  const line = JSON.stringify({
+    ts: "t",
+    type: "stdin",
+    content: JSON.stringify({
+      method: "session/new",
+      params: { env: [{ name: "FREEBUDDY_BROWSER_TOKEN", value: token }] }
+    })
+  });
+  const filtered = filterSessionLogLine(line, "full", []);
+  assert.ok(!filtered.includes(token));
+  assert.equal(
+    JSON.parse(JSON.parse(filtered).content).params.env[0].value,
+    "<redacted>"
+  );
+});
+
 test("filterSessionLogLine standard keeps system/stderr with path masks", async () => {
   const { filterSessionLogLine, buildPathMasks } = await load();
   const masks = buildPathMasks({ home: "/h", userData: "/h/app", workspaces: ["/h/w"] });

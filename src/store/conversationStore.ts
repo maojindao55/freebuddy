@@ -877,6 +877,17 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     skillIds
   }) {
     const id = nanoid();
+    const resolvedExecutor = useCliExecutorStore
+      .getState()
+      .resolve(member.cli.adapter);
+    const defaultCodexByokModel =
+      member.cli.adapter === "codex-acp" && resolvedExecutor?.codexByok?.enabled
+        ? resolvedExecutor.codexByok.models?.[0]?.id?.trim()
+        : undefined;
+    const persistedConfigOptionOverrides = {
+      ...(defaultCodexByokModel ? { model: defaultCodexByokModel } : {}),
+      ...(configOptionOverrides ?? {})
+    };
     const conv = await cliClient.createConversation({
       id,
       title: title ?? defaultTitleFor(member, cwd),
@@ -888,8 +899,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       cwd,
       projectId,
       approvalMode: approvalMode ?? member.cli.approvalMode,
-      ...(configOptionOverrides && Object.keys(configOptionOverrides).length > 0
-        ? { configOptionOverrides }
+      ...(Object.keys(persistedConfigOptionOverrides).length > 0
+        ? { configOptionOverrides: persistedConfigOptionOverrides }
         : {}),
       skillIds: mergeMemberSkillIds(
         skillIds ?? member.cli.skillIds,
@@ -1286,6 +1297,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       configOptions
     );
     const combinedOverrides = {
+      ...(member.cli.adapter === "codex-acp" && resolved?.codexByok?.enabled
+        ? { model: resolved.codexByok.models?.[0]?.id?.trim() }
+        : {}),
       ...(overridesToSend ?? {}),
       ...(configOptionOverrides ?? {})
     };

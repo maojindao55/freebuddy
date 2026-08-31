@@ -3,6 +3,7 @@ import type {
   DelegationRosterEntry,
   DelegationTeam
 } from "@freebuddy/protocol/delegation";
+import { validateDelegationTeam } from "@freebuddy/protocol/delegation";
 import type { SqliteDatabase } from "./types.js";
 
 function defaultDelegationPolicy(): DelegationPolicy {
@@ -67,11 +68,21 @@ export interface UpsertDelegationTeamInput {
   policy: DelegationPolicy;
 }
 
+function assertValidDelegationTeam(
+  team: Pick<DelegationTeam, "name" | "entryRoleId" | "roster" | "policy">
+): void {
+  const validation = validateDelegationTeam(team);
+  if (!validation.ok) {
+    throw new Error(`Invalid delegation team: ${validation.errors.join(" ")}`);
+  }
+}
+
 export function insertDelegationTeam(
   db: SqliteDatabase,
   input: UpsertDelegationTeamInput,
   now = new Date().toISOString()
 ): DelegationTeam {
+  assertValidDelegationTeam(input);
   db.prepare(
     `INSERT INTO workflow_teams
        (id, name, description, icon, enabled, source, kind,
@@ -117,6 +128,12 @@ export function updateDelegationTeam(
 ): DelegationTeam | undefined {
   const existing = getDelegationTeam(db, id);
   if (!existing) return undefined;
+  assertValidDelegationTeam({
+    name: patch.name ?? existing.name,
+    entryRoleId: patch.entryRoleId ?? existing.entryRoleId,
+    roster: patch.roster ?? existing.roster,
+    policy: patch.policy ?? existing.policy
+  });
   const fields: string[] = ["updated_at = ?"];
   const params: unknown[] = [new Date().toISOString()];
   if (patch.name !== undefined) {

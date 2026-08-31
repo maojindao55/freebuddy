@@ -11,6 +11,7 @@ import {
   Typography
 } from "antd";
 import { useTranslation } from "react-i18next";
+import { validateDelegationTeam } from "@freebuddy/protocol/delegation";
 
 import { cliClient } from "@/services/cli/client";
 import type {
@@ -246,7 +247,7 @@ export function DelegationTeamEditor({
     }
     const invalidRoster =
       roster.length === 0 ||
-      roster.some((r) => !r.label.trim() || !r.agentId.trim());
+      roster.some((r) => !r.label.trim() || !r.agentId.trim() || !r.capability.trim());
     if (invalidRoster) {
       setErrors([t("workflow.delegation.errors.invalidRoster")]);
       return;
@@ -262,6 +263,16 @@ export function DelegationTeamEditor({
     const finalEntryRoleId = roster.some((r) => r.id === entryRoleId)
       ? entryRoleId
       : (roster[0]?.id ?? entryRoleId);
+    const validation = validateDelegationTeam({
+      name: trimmedName,
+      entryRoleId: finalEntryRoleId,
+      roster: finalRoster,
+      policy
+    });
+    if (!validation.ok) {
+      setErrors(validation.errors);
+      return;
+    }
     setErrors([]);
     try {
       if (existing) {

@@ -8,7 +8,7 @@ import {
   resolveEffectiveWakeVerdict
 } from "@freebuddy/delegation-core";
 import type { DelegationRosterEntry, DelegationPolicy } from "@freebuddy/protocol/delegation";
-import type { BusEffect, BusState } from "@freebuddy/delegation-core";
+import type { BusEffect, BusState, DelegateWakeInfo } from "@freebuddy/delegation-core";
 import type { DelegationRunRepository } from "./ports.js";
 import { isTerminalDelegationStatus } from "./status.js";
 
@@ -26,13 +26,63 @@ export const EMPTY_DELEGATION_TURN_ERROR =
 
 export function resolveTurnCompletionError(
   turn: OrchestratorTurnResult,
-  acceptedDelegation: boolean
+  acceptedActiveDelegation: boolean
 ): string | null {
   if (turn.error) return turn.error;
-  if (turn.hasOutput === false && !acceptedDelegation) {
+  if (turn.hasOutput === false && !acceptedActiveDelegation) {
     return turn.diagnostic?.trim() || EMPTY_DELEGATION_TURN_ERROR;
   }
   return null;
+}
+
+export function classifyNewDelegationChildren(
+  children: DelegationEvent[],
+  childIdsBeforeTurn: ReadonlySet<string>
+): { active: DelegationEvent[]; settled: DelegationEvent[] } {
+  const active: DelegationEvent[] = [];
+  const settled: DelegationEvent[] = [];
+  for (const child of children) {
+    if (childIdsBeforeTurn.has(child.id)) continue;
+    if (child.status === "pending" || child.status === "running") active.push(child);
+    else settled.push(child);
+  }
+  return { active, settled };
+}
+
+/** Build one wake payload even when several children settle within one parent turn. */
+export function delegationWakeInfoForSettled(
+  settled: DelegationEvent[]
+): DelegateWakeInfo {
+  const first = settled[0];
+  if (!first) {
+    throw new Error("delegationWakeInfoForSettled requires at least one event");
+  }
+  if (settled.length === 1) {
+    return {
+      taskText: first.taskText,
+      roleLabel: first.roleLabel,
+      status: first.status,
+      resultSummary: first.resultSummary ?? "",
+      verdict: first.verdict,
+      verdictSummary: first.verdictSummary
+    };
+  }
+  const failed = settled.find((event) => event.status !== "done");
+  return {
+    taskText: settled
+      .map((event) => `[${event.status}] ${event.roleLabel}: ${event.taskText}`)
+      .join("\n"),
+    roleLabel: `${settled.length} delegates`,
+    status: failed?.status ?? "done",
+    resultSummary: settled
+      .map(
+        (event) =>
+          `[${event.status}] ${event.roleLabel}: ${event.resultSummary?.trim() || "(no result summary)"}`
+      )
+      .join("\n"),
+    verdict: null,
+    verdictSummary: null
+  };
 }
 
 export interface OrchestratorSpawnArgs {
@@ -234,10 +284,36 @@ export class DelegationOrchestrator {
       const childrenAfterTurn = this.opts.repository
         .listEvents(this.opts.runId)
         .filter((event) => event.parentEventId === opts.nodeId);
-      const acceptedDelegation = childrenAfterTurn.some(
-        (event) => !childIdsBeforeTurn.has(event.id)
+      const newlyAccepted = classifyNewDelegationChildren(
+        childrenAfterTurn,
+        childIdsBeforeTurn
       );
-      lastError = resolveTurnCompletionError(turn, acceptedDelegation);
+      if (!turn.error && newlyAccepted.settled.length > 0) {
+        const immediateWake = delegationWakeInfoForSettled(newlyAccepted.settled);
+        const effectiveVerdict =
+          newlyAccepted.settled.length === 1
+            ? resolveEffectiveWakeVerdict(
+                newlyAccepted.settled[0]!,
+                this.opts.repository.listEvents(this.opts.runId)
+              )
+            : { verdict: null, verdictSummary: null };
+        prompt = buildDelegateWakePrompt(
+          { ...immediateWake, ...effectiveVerdict },
+          this.opts.roster,
+          opts.selfAgentId,
+          opts.depth,
+          this.opts.policy.maxDepth,
+          {
+            sharedInstructions: this.opts.sharedInstructions,
+            roleInstructions: this.opts.roster.find((role) => role.id === opts.selfAgentId)
+              ?.instructions,
+            selfLabel: opts.selfLabel
+          }
+        );
+        kind = "wake";
+        continue;
+      }
+      lastError = resolveTurnCompletionError(turn, newlyAccepted.active.length > 0);
       const pending = childrenAfterTurn.filter(
         (event) => event.status === "pending" || event.status === "running"
       );

@@ -12,7 +12,9 @@ export type {
   TelemetryPort
 } from "./ports.js";
 export {
+  analyzeAgentOutput,
   EMPTY_AGENT_OUTPUT_ERROR,
   hasMeaningfulAgentOutput,
   resolveAgentRunError
 } from "./output.js";
+export type { AgentOutputEvidence } from "./output.js";

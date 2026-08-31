@@ -3,6 +3,7 @@ import type {
   DelegationRosterEntry
 } from "./delegationTeamTypes.js";
 import { defaultDelegationPolicy } from "./delegationTeamTypes.js";
+import { validateDelegationTeam } from "./delegationTeamTypes.js";
 
 export interface ButlerDelegationAgent {
   id: string;
@@ -174,36 +175,31 @@ export function normalizeButlerDelegationTeamInput(
     typeof rawPolicy.allowWrites === "boolean"
       ? rawPolicy.allowWrites
       : defaults.allowWrites;
-  if (!allowWrites && roster.some((role) => role.canWrite)) {
-    return {
-      ok: false,
-      error: "Writable roles require policy.allowWrites to be true."
-    };
-  }
-
-  return {
-    ok: true,
-    input: {
-      name,
-      description: optionalText(params.description),
-      sharedInstructions: optionalText(params.sharedInstructions),
-      enabled: params.enabled !== false,
-      entryRoleId,
-      roster,
-      policy: {
-        allowWrites,
-        requireApprovalBeforeDelegateWrite:
-          typeof rawPolicy.requireApprovalBeforeDelegateWrite === "boolean"
-            ? rawPolicy.requireApprovalBeforeDelegateWrite
-            : defaults.requireApprovalBeforeDelegateWrite,
-        maxDepth,
-        delegateTimeoutMs: timeoutMinutes * 60_000,
-        maxConcurrentDelegates,
-        stopOnDelegateFailure:
-          typeof rawPolicy.stopOnDelegateFailure === "boolean"
-            ? rawPolicy.stopOnDelegateFailure
-            : defaults.stopOnDelegateFailure
-      }
+  const input: ButlerDelegationTeamInput = {
+    name,
+    description: optionalText(params.description),
+    sharedInstructions: optionalText(params.sharedInstructions),
+    enabled: params.enabled !== false,
+    entryRoleId,
+    roster,
+    policy: {
+      allowWrites,
+      requireApprovalBeforeDelegateWrite:
+        typeof rawPolicy.requireApprovalBeforeDelegateWrite === "boolean"
+          ? rawPolicy.requireApprovalBeforeDelegateWrite
+          : defaults.requireApprovalBeforeDelegateWrite,
+      maxDepth,
+      delegateTimeoutMs: timeoutMinutes * 60_000,
+      maxConcurrentDelegates,
+      stopOnDelegateFailure:
+        typeof rawPolicy.stopOnDelegateFailure === "boolean"
+          ? rawPolicy.stopOnDelegateFailure
+          : defaults.stopOnDelegateFailure
     }
   };
+  const validation = validateDelegationTeam(input);
+  if (!validation.ok) {
+    return { ok: false, error: validation.errors[0] ?? "Invalid delegation team." };
+  }
+  return { ok: true, input };
 }

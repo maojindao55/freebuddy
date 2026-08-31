@@ -10,3 +10,7 @@ export type {
 } from "@freebuddy/protocol/delegation";
 
 export { defaultDelegationPolicy } from "@freebuddy/delegation-core";
+export {
+  effectiveDelegationRoleCanWrite,
+  validateDelegationTeam
+} from "@freebuddy/protocol/delegation";

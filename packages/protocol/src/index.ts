@@ -40,7 +40,13 @@ export type {
   DelegationRunFinishedEvent,
   DelegationRunRow,
   DelegationTeam,
+  DelegationTeamValidationResult,
   DelegationVerdict
+} from "./delegation.js";
+
+export {
+  effectiveDelegationRoleCanWrite,
+  validateDelegationTeam
 } from "./delegation.js";
 
 export type {

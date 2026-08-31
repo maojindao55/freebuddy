@@ -162,7 +162,7 @@ test("an observed empty turn fails instead of completing the delegation run", as
   });
 });
 
-test("an accepted delegation is valid evidence for an otherwise empty turn", async () => {
+test("an accepted active delegation is valid evidence for an otherwise empty turn", async () => {
   const { resolveTurnCompletionError } = await import("@freebuddy/delegation-runtime");
   const emptyTurn = {
     summary: "(no assistant response or artifact)",
@@ -172,6 +172,41 @@ test("an accepted delegation is valid evidence for an otherwise empty turn", asy
   };
   assert.equal(resolveTurnCompletionError(emptyTurn, true), null);
   assert.match(resolveTurnCompletionError(emptyTurn, false), /without assistant text/i);
+});
+
+test("allowWrites=false forces a writable entry role into read-only execution", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const { listDelegationEvents } = await import(
+      "../dist-electron/cli/delegationRuns.js"
+    );
+    let spawned = null;
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: () => ({ adapter: "codex-acp", agentName: "Codex", skillIds: [] }),
+      runAgent: async (args) => {
+        spawned = args;
+        return { summary: "inspected", exitCode: 0, error: null };
+      }
+    });
+    const readOnlySnapshot = {
+      ...snap,
+      policy: { ...snap.policy, allowWrites: false }
+    };
+    const runId = await rt.start({
+      goal: "只读检查",
+      teamId: "t",
+      teamSnapshot: readOnlySnapshot,
+      cwd: "/r"
+    });
+
+    assert.equal(spawned.workspaceAccess, "read-only");
+    assert.equal(
+      listDelegationEvents(runId).find((event) => event.depth === 0)?.canWrite,
+      false
+    );
+  });
 });
 
 test("prepareRun returns runId immediately; runEntry spawns the entry agent", async (t) => {

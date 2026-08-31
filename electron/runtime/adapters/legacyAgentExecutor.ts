@@ -33,6 +33,7 @@ export function createCliStepExecutor(webContents: WebContents | undefined): Ste
         toolSessionScope: args.toolSessionScope,
         toolSessionId: args.toolSessionId,
         cwd: args.cwd,
+        workspaceAccess: args.workspaceAccess,
         workspaceRoots: args.conversationId
           ? resolveWorkspaceRootsForConversation(
               requireOwnedConversation(args.conversationId) ?? {

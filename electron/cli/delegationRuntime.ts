@@ -22,6 +22,7 @@ import type {
   DelegationPolicy,
   DelegationEventStatus
 } from "./delegationTeamTypes.js";
+import { effectiveDelegationRoleCanWrite } from "./delegationTeamTypes.js";
 import { getDelegationTeam } from "./delegationTeams.js";
 import type { CLIAdapterId } from "./adapters.js";
 import { resolveSkillSnapshots } from "./skills.js";
@@ -35,6 +36,8 @@ import {
 import { buildDelegateTaskPrompt } from "./delegation/protocol/text.js";
 import type { DelegateAgentRunner } from "./delegationRunner.js";
 import {
+  classifyNewDelegationChildren,
+  delegationWakeInfoForSettled,
   DelegationOrchestrator,
   resolveTurnCompletionError
 } from "./delegation/bus/orchestrator.js";
@@ -317,7 +320,7 @@ export class DelegationRuntime {
       roleLabel: entry.label,
       taskText: goal,
       depth: 0,
-      canWrite: entry.canWrite,
+      canWrite: effectiveDelegationRoleCanWrite(ctx.policy, entry),
       status: "running"
     });
     ctx.rootEventId = rootEventId;
@@ -415,7 +418,7 @@ export class DelegationRuntime {
         roleLabel: entry.label,
         taskText: userPrompt,
         depth: 0,
-        canWrite: entry.canWrite,
+        canWrite: effectiveDelegationRoleCanWrite(ctx.policy, entry),
         status: "running"
       });
       root = listDelegationEvents(runId).find((e) => e.id === rootEventId)!;
@@ -514,7 +517,9 @@ export class DelegationRuntime {
           prompt: opts.prompt,
           cwd: opts.ctx.cwd,
           approvalMode: "auto",
-          workspaceAccess: agent.canWrite ? "read-write" : "read-only",
+          workspaceAccess: effectiveDelegationRoleCanWrite(opts.ctx.policy, agent)
+            ? "read-write"
+            : "read-only",
           ...(modelOverride ? { configOptionOverrides: modelOverride } : {}),
           skills: resolveSkillSnapshots([
             ...(agent.skillIds ?? []),
@@ -685,10 +690,34 @@ export class DelegationRuntime {
       const childrenAfterTurn = listDelegationEvents(args.runId).filter(
         (event) => event.parentEventId === args.childEventId
       );
-      const acceptedDelegation = childrenAfterTurn.some(
-        (event) => !childIdsBeforeTurn.has(event.id)
+      const newlyAccepted = classifyNewDelegationChildren(
+        childrenAfterTurn,
+        childIdsBeforeTurn
       );
-      lastError = resolveTurnCompletionError(turn, acceptedDelegation);
+      if (!turn.error && newlyAccepted.settled.length > 0) {
+        const immediateWake = delegationWakeInfoForSettled(newlyAccepted.settled);
+        const effectiveVerdict =
+          newlyAccepted.settled.length === 1
+            ? resolveEffectiveWakeVerdict(
+                newlyAccepted.settled[0]!,
+                listDelegationEvents(args.runId)
+              )
+            : { verdict: null, verdictSummary: null };
+        prompt = buildDelegateWakePrompt(
+          { ...immediateWake, ...effectiveVerdict },
+          ctx.roster,
+          teammate.id,
+          args.depth,
+          ctx.policy.maxDepth,
+          {
+            sharedInstructions: ctx.sharedInstructions,
+            roleInstructions: teammate.instructions,
+            selfLabel: teammate.label
+          }
+        );
+        continue;
+      }
+      lastError = resolveTurnCompletionError(turn, newlyAccepted.active.length > 0);
       const pending = childrenAfterTurn.filter(
         (event) => event.status === "pending" || event.status === "running"
       );
@@ -884,7 +913,7 @@ export class DelegationRuntime {
         roleLabel: role.label,
         taskText: resumeTask,
         depth: 0,
-        canWrite: role.canWrite,
+        canWrite: effectiveDelegationRoleCanWrite(ctx.policy, role),
         status: "running"
       });
       ctx.rootEventId = rootId;
@@ -932,7 +961,7 @@ export class DelegationRuntime {
       roleLabel: role.label,
       taskText: resumeTask,
       depth: anchor.depth,
-      canWrite: role.canWrite,
+      canWrite: effectiveDelegationRoleCanWrite(ctx.policy, role),
       status: "pending"
     });
     const result = await this.executor({

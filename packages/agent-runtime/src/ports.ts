@@ -25,6 +25,7 @@ export interface AgentRunRequest {
   resumeToolSession?: boolean;
   cwd?: string;
   workspaceRoots?: string[];
+  workspaceAccess?: "read-only" | "read-write";
   signal?: AbortSignal;
 }
 

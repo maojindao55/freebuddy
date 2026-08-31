@@ -191,6 +191,7 @@ async function dispatchHostInvoke(
             toolSessionId?: string;
             resumeToolSession?: boolean;
             cwd?: string;
+            workspaceAccess?: "read-only" | "read-write";
           };
           const member = listCliMembers().find((item) => item.id === payload.agentId);
           const webContents = activeWebContents();

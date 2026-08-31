@@ -146,6 +146,62 @@ test("delegation team CRUD round-trips roster, policy, entryRoleId", async (t) =
   });
 });
 
+test("delegation team storage rejects invalid create and update policies", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  await withDb(async () => {
+    const { insertDelegationTeam, updateDelegationTeam } = await import(
+      "../dist-electron/cli/delegationTeams.js"
+    );
+    const roster = [
+      {
+        id: "writer",
+        label: "Writer",
+        agentId: "cli-codex-acp",
+        capability: "Write code",
+        canWrite: true
+      }
+    ];
+    const policy = {
+      allowWrites: true,
+      requireApprovalBeforeDelegateWrite: true,
+      maxDepth: 3,
+      delegateTimeoutMs: 600000,
+      maxConcurrentDelegates: 1,
+      stopOnDelegateFailure: false
+    };
+
+    assert.throws(
+      () =>
+        insertDelegationTeam({
+          id: "team-invalid-create",
+          name: "Invalid",
+          enabled: true,
+          source: "user",
+          entryRoleId: "writer",
+          roster,
+          policy: { ...policy, allowWrites: false }
+        }),
+      /Writable roles require policy\.allowWrites/
+    );
+
+    insertDelegationTeam({
+      id: "team-valid-update",
+      name: "Valid",
+      enabled: true,
+      source: "user",
+      entryRoleId: "writer",
+      roster,
+      policy
+    });
+    assert.throws(
+      () => updateDelegationTeam("team-valid-update", {
+        policy: { ...policy, allowWrites: false }
+      }),
+      /Writable roles require policy\.allowWrites/
+    );
+  });
+});
+
 test("listWorkflowTeams excludes delegation teams", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
   await withDb(async () => {

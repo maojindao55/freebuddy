@@ -148,6 +148,7 @@ export interface StepExecutor {
     toolSessionId?: string;
     resumeToolSession?: boolean;
     cwd?: string;
+    workspaceAccess?: "read-only" | "read-write";
     onEvent: (e: {
       type: string;
       items?: unknown[];

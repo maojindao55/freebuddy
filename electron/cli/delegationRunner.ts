@@ -1,6 +1,7 @@
 import type { WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import {
+  analyzeAgentOutput,
   EMPTY_AGENT_OUTPUT_ERROR,
   resolveAgentRunError
 } from "@freebuddy/agent-runtime";
@@ -8,7 +9,6 @@ import { cliRun } from "./runtime.js";
 import type { CliRunArgs } from "./runtimeShared.js";
 import { appendMessage, updateMessage } from "./conversations.js";
 import { safeSendToWebContents } from "./ipcSend.js";
-import { analyzeDelegationOutput } from "@freebuddy/delegation-core";
 
 export interface DelegateRunResult {
   summary: string;
@@ -21,7 +21,7 @@ export interface DelegateRunResult {
 export type DelegateAgentRunner = (args: CliRunArgs) => Promise<DelegateRunResult>;
 
 export function summarizeDelegateOutput(items: unknown[]): string {
-  return analyzeDelegationOutput(items).summary;
+  return analyzeAgentOutput(items).summary;
 }
 
 export function createDelegateAgentRunner(webContents: WebContents | undefined): DelegateAgentRunner {
@@ -93,7 +93,7 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
     } catch (error) {
       errored = error instanceof Error ? error.message : String(error);
     } finally {
-      const evidence = analyzeDelegationOutput(collected);
+      const evidence = analyzeAgentOutput(collected);
       const resolvedError = resolveAgentRunError(collected, errored, exitCode);
       // The shared resolver predates delegation artifacts such as images and
       // resource links. Keep its upstream/non-zero diagnostics, but let the
@@ -118,7 +118,7 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
         broadcastMsg("updated");
       }
     }
-    const evidence = analyzeDelegationOutput(collected);
+    const evidence = analyzeAgentOutput(collected);
     return {
       summary: evidence.summary,
       exitCode,

@@ -22,10 +22,6 @@ export type {
 } from "./bus/types.js";
 export { createInitialBusState, ensureChildNode, markChildTurning, reduce } from "./bus/stateMachine.js";
 export {
-  analyzeDelegationOutput,
-  type DelegationOutputEvidence
-} from "./output/evidence.js";
-export {
   ancestorRosterIds,
   isWholeTaskRedelegate,
   normalizeTaskText,

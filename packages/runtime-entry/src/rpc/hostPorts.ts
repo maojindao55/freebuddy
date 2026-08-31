@@ -254,7 +254,8 @@ export function createHostBackedPorts(peer: RuntimeRpcPeer): {
                 toolSessionScope: args.toolSessionScope,
                 toolSessionId: args.toolSessionId,
                 resumeToolSession: args.resumeToolSession,
-                cwd: args.cwd
+                cwd: args.cwd,
+                workspaceAccess: args.workspaceAccess
               }
             ],
             { timeoutMs: 0, idempotencyKey: `agent.execute:${requestId}` }
@@ -378,7 +379,8 @@ export function createHostBackedPorts(peer: RuntimeRpcPeer): {
                 adapter: request.adapter,
                 skillIds: request.skillIds,
                 prompt: request.prompt,
-                cwd: request.cwd
+                cwd: request.cwd,
+                workspaceAccess: request.workspaceAccess
               }
             ],
             { timeoutMs: 0, idempotencyKey: `agent.execute:${requestId}` }

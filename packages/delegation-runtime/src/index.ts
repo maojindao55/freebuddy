@@ -6,6 +6,8 @@ export type {
 } from "./ports.js";
 export { DelegationRuntime, DELEGATION_SKILL_ID } from "./runtime.js";
 export {
+  classifyNewDelegationChildren,
+  delegationWakeInfoForSettled,
   DelegationOrchestrator,
   EMPTY_DELEGATION_TURN_ERROR,
   resolveTurnCompletionError

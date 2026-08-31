@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  analyzeAgentOutput,
   EMPTY_AGENT_OUTPUT_ERROR,
   resolveAgentRunError
 } from "@freebuddy/agent-runtime";
@@ -8,10 +9,8 @@ import type {
   DelegationPolicy,
   DelegationRosterEntry
 } from "@freebuddy/protocol/delegation";
-import {
-  analyzeDelegationOutput,
-  buildDelegateTaskPrompt
-} from "@freebuddy/delegation-core";
+import { effectiveDelegationRoleCanWrite } from "@freebuddy/protocol/delegation";
+import { buildDelegateTaskPrompt } from "@freebuddy/delegation-core";
 import type { DelegationRuntimePorts } from "./ports.js";
 import { DelegationOrchestrator } from "./orchestrator.js";
 
@@ -100,6 +99,9 @@ export class DelegationRuntime {
               skillIds: [...(agent.skillIds ?? []), DELEGATION_SKILL_ID],
               prompt: args.prompt,
               cwd: ctx.cwd,
+              workspaceAccess: effectiveDelegationRoleCanWrite(ctx.policy, agent)
+                ? "read-write"
+                : "read-only",
               signal: this.ports.abort
             },
             (event) => {
@@ -113,7 +115,7 @@ export class DelegationRuntime {
         } catch (err) {
           error = (err as Error).message;
         }
-        const evidence = analyzeDelegationOutput(collected);
+        const evidence = analyzeAgentOutput(collected);
         const resolvedError = resolveAgentRunError(collected, error, exitCode);
         error =
           resolvedError === EMPTY_AGENT_OUTPUT_ERROR && evidence.hasOutput
@@ -185,7 +187,7 @@ export class DelegationRuntime {
       roleLabel: entry.label,
       taskText: goal,
       depth: 0,
-      canWrite: entry.canWrite,
+      canWrite: effectiveDelegationRoleCanWrite(ctx.policy, entry),
       status: "running"
     });
     ctx.rootEventId = rootEventId;
@@ -288,7 +290,7 @@ export class DelegationRuntime {
         roleLabel: entry.label,
         taskText: userPrompt,
         depth: 0,
-        canWrite: entry.canWrite,
+        canWrite: effectiveDelegationRoleCanWrite(ctx.policy, entry),
         status: "running"
       });
       root = this.ports.repository.getEvent(rootEventId);

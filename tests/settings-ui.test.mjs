@@ -76,6 +76,8 @@ test("coding agent settings expose Codex BYOK without echoing saved keys", () =>
   assert.equal(settingsSource.includes("contextWindow"), true);
   assert.equal(settingsSource.includes("byok-model-row--with-context"), true);
   assert.equal(settingsSource.includes("byok-model-header"), true);
+  assert.equal(settingsSource.includes("modelVisionEnabled"), true);
+  assert.equal(settingsSource.includes("supportsVision"), true);
   assert.equal(
     settingsSource.includes("settings.cli.byok.modelContextWindowPlaceholder"),
     true
@@ -84,10 +86,12 @@ test("coding agent settings expose Codex BYOK without echoing saved keys", () =>
     enLocale.settings.cli.byok.modelContextWindowHeader,
     "Context window"
   );
+  assert.equal(enLocale.settings.cli.byok.modelVisionHeader, "Vision");
   assert.equal(
     zhLocale.settings.cli.byok.modelContextWindowHeader,
     "上下文窗口"
   );
+  assert.equal(zhLocale.settings.cli.byok.modelVisionHeader, "视觉");
   assert.equal(zhLocale.settings.cli.byok.title, "API Key");
   assert.equal(zhLocale.settings.cli.byok.addModel, "添加模型");
   assert.equal(zhLocale.settings.cli.byok.modeCustom, "使用自己的 API Key");

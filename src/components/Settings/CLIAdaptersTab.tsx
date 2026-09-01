@@ -30,6 +30,7 @@ interface ByokModelDraft {
   id: string;
   name?: string;
   contextWindow?: number | string;
+  supportsVision?: boolean;
 }
 
 function parseByokContextWindow(
@@ -994,7 +995,7 @@ function EditOverridePanel({
     savedByok?.models?.length
       ? savedByok.models
       : parsedExtraArgs.model
-        ? [{ id: parsedExtraArgs.model, name: "" }]
+        ? [{ id: parsedExtraArgs.model, name: "", supportsVision: isCodex }]
         : []
   );
   const [byokContextWindow, setByokContextWindow] = useState(
@@ -1071,7 +1072,10 @@ function EditOverridePanel({
         const model: CLIByokModel = {
           id,
           ...(name ? { name } : {}),
-          ...(contextWindow !== undefined ? { contextWindow } : {})
+          ...(contextWindow !== undefined ? { contextWindow } : {}),
+          ...(isCodex
+            ? { supportsVision: entry.supportsVision !== false }
+            : {})
         };
         return model;
       })
@@ -1417,6 +1421,9 @@ function EditOverridePanel({
                           {t("settings.cli.byok.modelContextWindowHeader")}
                         </span>
                       )}
+                      {isCodex && (
+                        <span>{t("settings.cli.byok.modelVisionHeader")}</span>
+                      )}
                     </div>
                     {byokModels.map((byokModel, index) => (
                       <div
@@ -1484,6 +1491,35 @@ function EditOverridePanel({
                             }
                           />
                         )}
+                        {isCodex && (
+                          <label
+                            className="byok-model-vision"
+                            title={t("settings.cli.byok.modelVisionHint")}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={byokModel.supportsVision !== false}
+                              aria-label={t(
+                                "settings.cli.byok.modelVisionEnabled"
+                              )}
+                              onChange={(event) =>
+                                setByokModels((models) =>
+                                  models.map((entry, entryIndex) =>
+                                    entryIndex === index
+                                      ? {
+                                          ...entry,
+                                          supportsVision: event.target.checked
+                                        }
+                                      : entry
+                                  )
+                                )
+                              }
+                            />
+                            <span>
+                              {t("settings.cli.byok.modelVisionEnabled")}
+                            </span>
+                          </label>
+                        )}
                         <button
                           type="button"
                           className="byok-model-remove"
@@ -1507,7 +1543,7 @@ function EditOverridePanel({
                       onClick={() =>
                         setByokModels((models) => [
                           ...models,
-                          { id: "", name: "" }
+                          { id: "", name: "", supportsVision: isCodex }
                         ])
                       }
                     >
@@ -1516,7 +1552,11 @@ function EditOverridePanel({
                     </button>
                   </div>
                   <span className="settings-field-hint">
-                    {t("settings.cli.byok.modelsHint")}
+                    {t(
+                      isCodex
+                        ? "settings.cli.byok.modelsHintCodex"
+                        : "settings.cli.byok.modelsHint"
+                    )}
                   </span>
                 </div>
 

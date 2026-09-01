@@ -450,6 +450,7 @@ export class DelegationRuntime {
       prompt
     });
 
+    if (result.parked) return;
     if (this.killedRunIds.has(runId)) return;
     const status: DelegationEventStatus = result.error ? "failed" : "done";
     updateDelegationEvent(root.id, {

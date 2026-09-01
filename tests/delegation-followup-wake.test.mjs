@@ -235,3 +235,74 @@ test("followUp after completed entry reopens without reusing entry sessionId", a
     assert.equal(scopes[1], scopes[0], "tool session scope stays stable for resume");
   });
 });
+
+test("followUp during an initial park is queued without prematurely completing the run", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const { dispatchDelegateAction } = await import("../dist-electron/cli/delegationDispatch.js");
+    const { getDelegationRun, listDelegationEvents } = await import(
+      "../dist-electron/cli/delegationRuns.js"
+    );
+
+    const entryPrompts = [];
+    let releaseChild;
+    const childGate = new Promise((resolve) => { releaseChild = resolve; });
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: (id) => ({
+        adapter: id.includes("claude") ? "claude-agent-acp" : "codex-acp",
+        agentName: id,
+        skillIds: []
+      }),
+      runAgent: async (args) => {
+        if (args.delegation.depth === 0) {
+          entryPrompts.push(args.prompt);
+          if (entryPrompts.length === 1) {
+            await dispatchDelegateAction(
+              {
+                token: "t",
+                taskSessionId: "s",
+                runId: args.delegation.runId,
+                parentEventId: args.delegation.parentEventId,
+                depth: 0,
+                selfAgentId: "r-impl",
+                selfLabel: "实现"
+              },
+              "delegate",
+              { teammate_id: "r-rev", task: "review the initial change" }
+            );
+          }
+          return { summary: "entry", exitCode: 0, error: null };
+        }
+        await childGate;
+        return { summary: "review complete", exitCode: 0, error: null };
+      }
+    });
+
+    const runId = rt.prepareRun({
+      goal: "implement",
+      teamId: "t",
+      teamSnapshot: snap,
+      cwd: "/r"
+    });
+    const entryDrive = rt.runEntry(runId, "implement");
+    await tick(30);
+
+    await rt.followUp(runId, "also verify the release notes");
+    assert.equal(entryPrompts.length, 1, "parked follow-up must not re-enter the entry agent");
+    assert.equal(getDelegationRun(runId).status, "running");
+    assert.equal(
+      listDelegationEvents(runId).find((event) => event.depth === 0)?.status,
+      "running"
+    );
+
+    releaseChild();
+    await entryDrive;
+
+    assert.equal(entryPrompts.length, 2);
+    assert.match(entryPrompts[1], /review complete/);
+    assert.match(entryPrompts[1], /also verify the release notes/);
+    assert.equal(getDelegationRun(runId).status, "completed");
+  });
+});

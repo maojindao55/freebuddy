@@ -273,6 +273,221 @@ test("a child that fails before the parent turn ends triggers a wake instead of 
   assert.equal(repository.getEvent(rootId)?.status, "failed");
 });
 
+test("a settled child schedules a recovery wake when the parked waiter's memory is lost", async () => {
+  const repository = createMemoryDelegationRepository();
+  const run = repository.createRun({
+    goal: "g",
+    status: "running",
+    teamId: "t",
+    teamSnapshotJson: "{}"
+  });
+  const rootId = repository.insertEvent({
+    runId: run.id,
+    parentEventId: null,
+    agentId: "agent-a",
+    agentName: "A",
+    roleLabel: "实现",
+    taskText: "g",
+    depth: 0,
+    canWrite: false,
+    status: "running"
+  });
+  let childId;
+  let calls = 0;
+  let orchestrator;
+  orchestrator = new DelegationOrchestrator({
+    runId: run.id,
+    roster,
+    policy,
+    entryRoleId: "r-impl",
+    repository,
+    async spawnTurn({ prompt }) {
+      calls += 1;
+      if (calls === 1) {
+        childId = repository.insertEvent({
+          runId: run.id,
+          parentEventId: rootId,
+          agentId: "agent-b",
+          agentName: "B",
+          roleLabel: "评审",
+          taskText: "review",
+          depth: 1,
+          canWrite: false,
+          status: "running"
+        });
+        orchestrator.noteChildEnqueued({
+          childEventId: childId,
+          parentEventId: rootId,
+          depth: 1
+        });
+        orchestrator.noteChildStarted(childId);
+        return { summary: "delegated", error: null, hasOutput: true };
+      }
+      assert.match(prompt, /review complete/);
+      return { summary: "integrated", error: null, hasOutput: true };
+    }
+  });
+  orchestrator.bindEntry(rootId);
+
+  void orchestrator.runNodeLoop({
+    nodeId: rootId,
+    depth: 0,
+    selfAgentId: "r-impl",
+    selfLabel: "实现",
+    initialPrompt: "go"
+  });
+
+  const deadline = Date.now() + 500;
+  while (!orchestrator.eventWaiters?.get(childId)?.size && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(orchestrator.state.nodes[rootId].status, "parked");
+  assert.ok(orchestrator.eventWaiters?.get(childId)?.size, "park waiter must exist first");
+
+  // Simulate the volatile waiter being lost while the persisted parent remains parked.
+  orchestrator.eventWaiters.clear();
+  repository.updateEvent(childId, {
+    status: "done",
+    resultSummary: "review complete"
+  });
+  orchestrator.onEventSettled(childId);
+
+  const wakeDeadline = Date.now() + 500;
+  while (calls < 2 && Date.now() < wakeDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(calls, 2, "settlement must start a recovery wake without a live waiter");
+  assert.equal(repository.getEvent(rootId)?.status, "done");
+  assert.equal(repository.getRun(run.id)?.status, "completed");
+});
+
+test("follow-up while parked is folded into the next wake instead of starting a concurrent turn", async () => {
+  const repository = createMemoryDelegationRepository();
+  const run = repository.createRun({
+    goal: "g",
+    status: "running",
+    teamId: "t",
+    teamSnapshotJson: "{}"
+  });
+  const rootId = repository.insertEvent({
+    runId: run.id,
+    parentEventId: null,
+    agentId: "agent-a",
+    agentName: "A",
+    roleLabel: "实现",
+    taskText: "g",
+    depth: 0,
+    canWrite: false,
+    status: "running"
+  });
+  let childId;
+  const prompts = [];
+  let orchestrator;
+  orchestrator = new DelegationOrchestrator({
+    runId: run.id,
+    roster,
+    policy,
+    entryRoleId: "r-impl",
+    repository,
+    async spawnTurn({ prompt }) {
+      prompts.push(prompt);
+      if (prompts.length === 1) {
+        childId = repository.insertEvent({
+          runId: run.id,
+          parentEventId: rootId,
+          agentId: "agent-b",
+          agentName: "B",
+          roleLabel: "评审",
+          taskText: "review",
+          depth: 1,
+          canWrite: false,
+          status: "running"
+        });
+        orchestrator.noteChildEnqueued({
+          childEventId: childId,
+          parentEventId: rootId,
+          depth: 1
+        });
+        orchestrator.noteChildStarted(childId);
+      }
+      return { summary: "ok", error: null, hasOutput: true };
+    }
+  });
+  orchestrator.bindEntry(rootId);
+
+  const drive = orchestrator.runNodeLoop({
+    nodeId: rootId,
+    depth: 0,
+    selfAgentId: "r-impl",
+    selfLabel: "实现",
+    initialPrompt: "go"
+  });
+  const deadline = Date.now() + 500;
+  while (orchestrator.state.nodes[rootId].status !== "parked" && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  const followUp = await orchestrator.followUp({
+    entryNodeId: rootId,
+    entry: roster[0],
+    prompt: "also verify the release notes"
+  });
+  assert.equal(followUp.parked, true);
+  assert.equal(prompts.length, 1, "parked follow-up must not start a second root turn");
+
+  repository.updateEvent(childId, {
+    status: "done",
+    resultSummary: "review complete"
+  });
+  orchestrator.onEventSettled(childId);
+  await drive;
+
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /review complete/);
+  assert.match(prompts[1], /also verify the release notes/);
+});
+
+test("raceAnySettle removes losing waiters so stale registrations cannot swallow a later wake", async () => {
+  const repository = createMemoryDelegationRepository();
+  const run = repository.createRun({
+    goal: "g",
+    status: "running",
+    teamId: "t",
+    teamSnapshotJson: "{}"
+  });
+  const eventIds = ["a", "b"].map((taskText) =>
+    repository.insertEvent({
+      runId: run.id,
+      parentEventId: null,
+      agentId: "agent-b",
+      agentName: "B",
+      roleLabel: "评审",
+      taskText,
+      depth: 1,
+      canWrite: false,
+      status: "running"
+    })
+  );
+  const orchestrator = new DelegationOrchestrator({
+    runId: run.id,
+    roster,
+    policy,
+    entryRoleId: "r-impl",
+    repository,
+    async spawnTurn() {
+      return { summary: "unused", error: null };
+    }
+  });
+
+  const race = orchestrator.raceAnySettle(eventIds);
+  assert.equal(orchestrator.eventWaiters.get(eventIds[1])?.size, 1);
+  repository.updateEvent(eventIds[0], { status: "done", resultSummary: "first" });
+  orchestrator.onEventSettled(eventIds[0]);
+
+  assert.equal((await race)?.id, eventIds[0]);
+  assert.equal(orchestrator.eventWaiters.has(eventIds[1]), false);
+});
+
 test("crash recovery marks active events failed via repository transitions", () => {
   const repository = createMemoryDelegationRepository();
   const run = repository.createRun({

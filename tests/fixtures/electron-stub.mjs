@@ -36,6 +36,9 @@ const electronStubUrl =
      export const protocol = any;
      export const safeStorage = any;
      export const shell = any;
+     export const utilityProcess = {
+       fork: (...args) => globalThis.__freebuddyElectronUtilityProcessFork?.(...args)
+     };
      export const webUtils = any;
     `
   );

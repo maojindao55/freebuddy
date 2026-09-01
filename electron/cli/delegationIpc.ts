@@ -19,12 +19,14 @@ import {
   conversationHasDelegationRun,
   handleDelegationFollowUp
 } from "./delegation/adapter/ipcFollowUp.js";
-import { createDelegationRuntimeHandle } from "../runtime/delegationRuntimeClient.js";
+import {
+  createDelegationRuntimeHandle,
+  shouldUseDelegationRuntimeProcess
+} from "../runtime/delegationRuntimeClient.js";
 import {
   listHostPendingApprovals,
   resolveHostWriteApproval
 } from "../runtime/runtimeHostApi.js";
-import { shouldUseRuntimeProcess } from "../runtime/workflowRuntimeClient.js";
 
 let runtime: DelegationRuntime | null = null;
 
@@ -119,7 +121,7 @@ export function registerDelegationIpc(): void {
     "workflow:approveDelegateWrite",
     (event, args: { runId: string; approvalId: string; approved: boolean }) => {
       if (!callerCanAccessDelegationRun(args.runId)) return false;
-      if (shouldUseRuntimeProcess()) {
+      if (shouldUseDelegationRuntimeProcess()) {
         return resolveHostWriteApproval(args.approvalId, args.approved);
       }
       const rt = ensureDelegationRuntime(event);
@@ -141,7 +143,7 @@ export function registerDelegationIpc(): void {
     "delegation:listPendingApprovals",
     (event, runId: string) => {
       if (!callerCanAccessDelegationRun(runId)) return [];
-      if (shouldUseRuntimeProcess()) {
+      if (shouldUseDelegationRuntimeProcess()) {
         return listHostPendingApprovals(runId);
       }
       return ensureDelegationRuntime(event)

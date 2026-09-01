@@ -67,6 +67,7 @@ export interface CLIByokModel {
   id: string;
   name?: string;
   contextWindow?: number;
+  supportsVision?: boolean;
 }
 
 export interface CLIExecutorOverride {
@@ -287,7 +288,8 @@ function normalizeByokContextWindow(value: unknown): number | undefined {
 }
 
 function normalizeByokModels(
-  models: CLIByokModel[] | undefined
+  models: CLIByokModel[] | undefined,
+  options: { defaultSupportsVision?: boolean } = {}
 ): CLIByokModel[] {
   const seen = new Set<string>();
   const normalized: CLIByokModel[] = [];
@@ -297,13 +299,28 @@ function normalizeByokModels(
     seen.add(id);
     const name = model.name?.trim();
     const contextWindow = normalizeByokContextWindow(model.contextWindow);
+    const supportsVision =
+      typeof model.supportsVision === "boolean"
+        ? model.supportsVision
+        : options.defaultSupportsVision;
     normalized.push({
       id,
       ...(name ? { name } : {}),
-      ...(contextWindow ? { contextWindow } : {})
+      ...(contextWindow ? { contextWindow } : {}),
+      ...(supportsVision !== undefined ? { supportsVision } : {})
     });
   }
   return normalized;
+}
+
+function normalizeCodexByokModels(
+  models: CLIByokModel[] | undefined
+): CLIByokModel[] {
+  // Direct ACP image attachments have always been forwarded for custom Codex
+  // providers. Default legacy model entries to the same capability so path-
+  // based view_image calls are not incorrectly blocked as text-only. Providers
+  // that are genuinely text-only can opt out per model in Settings.
+  return normalizeByokModels(models, { defaultSupportsVision: true });
 }
 
 function createCodexByokModelCatalog(
@@ -332,7 +349,10 @@ function createCodexByokModelCatalog(
         priority: index,
         supported_in_api: true,
         visibility: "list",
-        supports_reasoning_summaries: true
+        supports_reasoning_summaries: true,
+        input_modalities:
+          model.supportsVision === false ? ["text"] : ["text", "image"],
+        supports_image_detail_original: model.supportsVision !== false
       };
     })
   };
@@ -341,7 +361,9 @@ function createCodexByokModelCatalog(
   const signature = models
     .map(
       (model) =>
-        `${model.id}\u0000${model.name ?? ""}\u0000${model.contextWindow ?? ""}`
+        `${model.id}\u0000${model.name ?? ""}\u0000${model.contextWindow ?? ""}\u0000${
+          model.supportsVision === false ? "text" : "vision"
+        }`
     )
     .join("\u0001");
   const file = path.join(dir, `${safeCatalogFilePart(signature)}.json`);
@@ -491,7 +513,7 @@ function normalizeByokForStorage(
     baseUrl: input.baseUrl?.trim(),
     envKey: input.envKey?.trim() || "OPENAI_API_KEY",
     wireApi: normalizeWireApi(input.wireApi),
-    models: normalizeByokModels(input.models),
+    models: normalizeCodexByokModels(input.models),
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     apiKeyPreview,
     apiKeyEncrypted
@@ -727,7 +749,7 @@ export function resolveCodexByokEnv(
   const apiKey = decryptSecret(byok.apiKeyEncrypted);
   const providerId = byok.providerId?.trim() || "proxy";
   const envKey = byok.envKey?.trim() || "OPENAI_API_KEY";
-  const configuredModels = normalizeByokModels(byok.models);
+  const configuredModels = normalizeCodexByokModels(byok.models);
   const model =
     selectedModel?.trim() ||
     extractModelArg(readOverrideExtraArgs(overrideId)) ||
@@ -737,7 +759,7 @@ export function resolveCodexByokEnv(
   // resolution — every cached codex model slug. Without a matching catalog
   // entry codex falls back to its bundled gpt-5.6* metadata, which hides all
   // tools behind Responses-Lite for custom providers (openai/codex#34758).
-  const catalogModels = normalizeByokModels([
+  const catalogModels = normalizeCodexByokModels([
     ...configuredModels,
     ...(model ? [{ id: model }] : []),
     ...readCachedCodexModelSlugs().map((slug) => ({ id: slug }))
@@ -931,7 +953,11 @@ export function cliByokModelSignature(
         : adapter === "dsh-acp"
           ? readDeepSeekByokPrivate(overrideId)
           : undefined;
-  return JSON.stringify(normalizeByokModels(byok?.models));
+  return JSON.stringify(
+    adapter === "codex-acp"
+      ? normalizeCodexByokModels(byok?.models)
+      : normalizeByokModels(byok?.models)
+  );
 }
 
 export function hasCliByokModels(agentId: string, adapter: string): boolean {

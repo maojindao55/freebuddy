@@ -154,6 +154,24 @@ test("Codex BYOK model catalog template merges fallback to keep required fields"
   );
 });
 
+test("Codex BYOK model catalog advertises per-model image input capability", () => {
+  assert.match(
+    storeSource,
+    /input_modalities:\s*\n?\s*model\.supportsVision === false\s*\? \["text"\]\s*:\s*\["text", "image"\]/,
+    "vision-capable BYOK models must enable view_image as well as direct attachments"
+  );
+  assert.match(
+    storeSource,
+    /defaultSupportsVision: true/,
+    "legacy Codex BYOK models should match the existing direct-image behavior"
+  );
+  assert.match(
+    storeSource,
+    /model\.supportsVision === false \? "text" : "vision"/,
+    "the catalog cache key must change when image capability changes"
+  );
+});
+
 test("Codex BYOK model catalog is written even for gpt-* model ids", () => {
   // The old guard skipped catalog creation for gpt-*/o-series ids, so BYOK
   // sessions on those models never got a catalog, fell back to codex's

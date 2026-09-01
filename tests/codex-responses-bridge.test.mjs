@@ -143,7 +143,17 @@ test("translateResponsesRequestToChat maps instructions, input and tools", (t) =
     tool_choice: { type: "function", name: "shell" },
     input: [
       { type: "message", role: "developer", content: [{ type: "input_text", text: "be nice" }] },
-      { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "hello" },
+          {
+            type: "input_image",
+            image_url: "data:image/jpeg;base64,aGVsbG8="
+          }
+        ]
+      },
       { type: "reasoning", summary: [] },
       { type: "function_call", call_id: "call_a", name: "shell", arguments: "{\"cmd\":\"ls\"}" },
       { type: "function_call", call_id: "call_b", name: "shell", arguments: "{\"cmd\":\"pwd\"}" },
@@ -186,7 +196,13 @@ test("translateResponsesRequestToChat maps instructions, input and tools", (t) =
   assert.equal(messages[1].role, "system");
   assert.equal(messages[1].content, "be nice");
   assert.equal(messages[2].role, "user");
-  assert.equal(messages[2].content, "hello");
+  assert.deepEqual(messages[2].content, [
+    { type: "text", text: "hello" },
+    {
+      type: "image_url",
+      image_url: { url: "data:image/jpeg;base64,aGVsbG8=" }
+    }
+  ]);
   // consecutive function_calls merge into one assistant tool_calls message
   assert.deepEqual(
     messages[3].tool_calls.map((call) => call.id),

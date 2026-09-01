@@ -3746,7 +3746,7 @@ html[data-surface="butler-screen-ball"] #root {
 }
 
 .byok-model-row--with-context {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(120px, 0.7fr) 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(120px, 0.7fr) minmax(92px, 0.45fr) 32px;
 }
 
 .byok-model-header,
@@ -3763,7 +3763,7 @@ html[data-surface="butler-screen-ball"] #root {
 }
 
 .byok-model-header--with-context {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(120px, 0.7fr) 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(120px, 0.7fr) minmax(92px, 0.45fr) 32px;
 }
 
 .byok-model-header span {
@@ -3775,6 +3775,22 @@ html[data-surface="butler-screen-ball"] #root {
 
 .byok-model-row input {
   min-width: 0;
+}
+
+.byok-model-vision {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.byok-model-vision input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .byok-model-remove,
@@ -22842,6 +22858,5 @@ button.ghost:focus-visible,
     grid-template-columns: 1fr;
   }
 }
-
 
 

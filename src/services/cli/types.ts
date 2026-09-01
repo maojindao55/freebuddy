@@ -71,6 +71,8 @@ export interface CLIByokModel {
   name?: string;
   /** Per-model context window (tokens) written into the Codex model catalog. */
   contextWindow?: number;
+  /** Whether Codex may send image inputs and use image-reading tools. */
+  supportsVision?: boolean;
 }
 
 export interface AgentModelUsage {

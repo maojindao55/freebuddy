@@ -1,6 +1,7 @@
 import type {
   DelegationPolicy,
-  DelegationRosterEntry
+  DelegationRosterEntry,
+  DelegationTeam
 } from "./delegationTeamTypes.js";
 import { defaultDelegationPolicy } from "./delegationTeamTypes.js";
 import { validateDelegationTeam } from "./delegationTeamTypes.js";
@@ -24,7 +25,51 @@ export type ButlerDelegationTeamValidation =
   | { ok: true; input: ButlerDelegationTeamInput }
   | { ok: false; error: string };
 
+export type ButlerDelegationTeamMutationValidation =
+  | { ok: true }
+  | { ok: false; error: string };
+
 const ROLE_LIMIT = 16;
+
+export function validateButlerDelegationTeamUpdateTarget(
+  team: Pick<DelegationTeam, "source" | "updatedAt">,
+  expectedUpdatedAt: string
+): ButlerDelegationTeamMutationValidation {
+  if (team.source === "builtin") {
+    return {
+      ok: false,
+      error:
+        "Built-in self-organizing teams cannot be fully updated by Butler. Create a user team instead."
+    };
+  }
+  if (!expectedUpdatedAt || expectedUpdatedAt !== team.updatedAt) {
+    return {
+      ok: false,
+      error:
+        "The self-organizing team changed after it was read. Call freebuddy_delegation_team_get and confirm the latest complete configuration before retrying."
+    };
+  }
+  return { ok: true };
+}
+
+export function validateButlerDelegationTeamDeleteTarget(
+  team: Pick<DelegationTeam, "name" | "source">,
+  confirmName: string
+): ButlerDelegationTeamMutationValidation {
+  if (team.source === "builtin") {
+    return {
+      ok: false,
+      error: "Built-in self-organizing teams cannot be deleted."
+    };
+  }
+  if (!confirmName || confirmName !== team.name) {
+    return {
+      ok: false,
+      error: "confirmName must exactly match the current self-organizing team name."
+    };
+  }
+  return { ok: true };
+}
 
 function optionalText(value: unknown): string | undefined {
   const text = typeof value === "string" ? value.trim() : "";

@@ -128,6 +128,15 @@ const delegationPolicySchema = z.object({
   stopOnDelegateFailure: z.boolean().optional()
 });
 
+const completeDelegationPolicySchema = z.object({
+  allowWrites: z.boolean(),
+  requireApprovalBeforeDelegateWrite: z.boolean(),
+  maxDepth: z.number().int().min(1).max(6),
+  delegateTimeoutMinutes: z.number().int().min(1).max(1440),
+  maxConcurrentDelegates: z.number().int().min(1).max(8),
+  stopOnDelegateFailure: z.boolean()
+});
+
 export function createButlerMcpServer(): McpServer {
   const server = new McpServer({
     name: "freebuddy-butler",
@@ -825,6 +834,116 @@ export function createButlerMcpServer(): McpServer {
     async (args) => {
       try {
         return toolResult(await invokeButlerBridge("delegation_team_create", args));
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_delegation_team_update",
+    {
+      title: "Update a Self-Organizing Team",
+      description:
+        "Replace a user-created self-organizing team's complete configuration. First call freebuddy_delegation_team_get, preserve its updatedAt value, show the user the complete proposed configuration and changes, and get explicit confirmation. Then send the entire roster and policy; omitted description or sharedInstructions are cleared. Built-in teams cannot be fully updated by this tool.",
+      inputSchema: {
+        id: z.string().trim().min(1).describe("Self-organizing team id."),
+        expectedUpdatedAt: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Exact updatedAt value returned by the preceding get call."),
+        name: z.string().trim().min(1).max(80).describe("Complete team name."),
+        description: z
+          .string()
+          .trim()
+          .optional()
+          .describe("Complete description. Omit to clear it."),
+        sharedInstructions: z
+          .string()
+          .trim()
+          .optional()
+          .describe("Complete shared instructions. Omit to clear them."),
+        enabled: z.boolean().describe("Whether the team is enabled."),
+        entryRoleId: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Role id that receives the user's initial task."),
+        roster: z
+          .array(delegationRoleSchema)
+          .min(1)
+          .max(16)
+          .describe("Complete replacement team roster."),
+        policy: completeDelegationPolicySchema.describe(
+          "Complete replacement delegation policy."
+        )
+      },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      }
+    },
+    async (args) => {
+      try {
+        return toolResult(await invokeButlerBridge("delegation_team_update", args));
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_delegation_team_set_enabled",
+    {
+      title: "Enable or Disable a Self-Organizing Team",
+      description:
+        "Enable or disable a self-organizing team by id. This works for built-in and user-created teams. Confirm the change with the user before calling.",
+      inputSchema: {
+        id: z.string().trim().min(1).describe("Self-organizing team id."),
+        enabled: z.boolean().describe("true to enable, false to disable.")
+      },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    async (args) => {
+      try {
+        return toolResult(
+          await invokeButlerBridge("delegation_team_set_enabled", args)
+        );
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_delegation_team_delete",
+    {
+      title: "Delete a Self-Organizing Team",
+      description:
+        "Permanently delete a user-created self-organizing team. Destructive. First get the current team, restate its name, obtain explicit user confirmation, and pass that exact name as confirmName. Built-in teams cannot be deleted.",
+      inputSchema: {
+        id: z.string().trim().min(1).describe("Self-organizing team id."),
+        confirmName: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Exact current team name confirmed by the user.")
+      },
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false
+      }
+    },
+    async (args) => {
+      try {
+        return toolResult(await invokeButlerBridge("delegation_team_delete", args));
       } catch (error) {
         return toolError(error);
       }

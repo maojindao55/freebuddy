@@ -28,12 +28,18 @@ import {
 } from "./cli/workflowTeams.js";
 import { builtinWorkflowTeams } from "./cli/workflowTeamBuiltins.js";
 import {
+  deleteDelegationTeam,
   getDelegationTeam,
   insertDelegationTeam,
   listDelegationTeams,
+  updateDelegationTeam,
   type UpsertDelegationTeamInput
 } from "./cli/delegationTeams.js";
-import { normalizeButlerDelegationTeamInput } from "./cli/butlerDelegationTeams.js";
+import {
+  normalizeButlerDelegationTeamInput,
+  validateButlerDelegationTeamDeleteTarget,
+  validateButlerDelegationTeamUpdateTarget
+} from "./cli/butlerDelegationTeams.js";
 import {
   listConversations,
   archiveConversation,
@@ -122,6 +128,9 @@ type ButlerToolAction =
   | "delegation_team_list"
   | "delegation_team_get"
   | "delegation_team_create"
+  | "delegation_team_update"
+  | "delegation_team_set_enabled"
+  | "delegation_team_delete"
   | "team_list"
   | "team_get"
   | "team_create"
@@ -165,6 +174,9 @@ function isButlerToolAction(value: unknown): value is ButlerToolAction {
     value === "delegation_team_list" ||
     value === "delegation_team_get" ||
     value === "delegation_team_create" ||
+    value === "delegation_team_update" ||
+    value === "delegation_team_set_enabled" ||
+    value === "delegation_team_delete" ||
     value === "team_list" ||
     value === "team_get" ||
     value === "team_create" ||
@@ -314,7 +326,9 @@ function publicDelegationTeam(
       canWrite: role.canWrite,
       skillIds: role.skillIds ?? []
     })),
-    policy: team.policy
+    policy: team.policy,
+    createdAt: team.createdAt,
+    updatedAt: team.updatedAt
   };
 }
 
@@ -800,6 +814,57 @@ async function dispatchButlerAction(
       };
       const team = insertDelegationTeam(input);
       return { team: publicDelegationTeam(team) };
+    }
+    case "delegation_team_update": {
+      const id = String(params.id ?? "").trim();
+      const existing = getDelegationTeam(id);
+      if (!existing) {
+        return { ok: false, error: "Self-organizing team not found." };
+      }
+      const targetValidation = validateButlerDelegationTeamUpdateTarget(
+        existing,
+        String(params.expectedUpdatedAt ?? "").trim()
+      );
+      if (!targetValidation.ok) return targetValidation;
+
+      const agents = withCaller(binding, () => listCliMembers());
+      const normalized = normalizeButlerDelegationTeamInput(params, agents);
+      if (!normalized.ok) return normalized;
+      const team = updateDelegationTeam(id, {
+        name: normalized.input.name,
+        description: normalized.input.description ?? null,
+        sharedInstructions: normalized.input.sharedInstructions ?? null,
+        enabled: normalized.input.enabled,
+        entryRoleId: normalized.input.entryRoleId,
+        roster: normalized.input.roster,
+        policy: normalized.input.policy
+      });
+      if (!team) {
+        return { ok: false, error: "Self-organizing team not found." };
+      }
+      return { team: publicDelegationTeam(team) };
+    }
+    case "delegation_team_set_enabled": {
+      const id = String(params.id ?? "").trim();
+      const team = updateDelegationTeam(id, { enabled: params.enabled === true });
+      if (!team) {
+        return { ok: false, error: "Self-organizing team not found." };
+      }
+      return { team: publicDelegationTeam(team) };
+    }
+    case "delegation_team_delete": {
+      const id = String(params.id ?? "").trim();
+      const existing = getDelegationTeam(id);
+      if (!existing) {
+        return { ok: false, error: "Self-organizing team not found." };
+      }
+      const targetValidation = validateButlerDelegationTeamDeleteTarget(
+        existing,
+        String(params.confirmName ?? "").trim()
+      );
+      if (!targetValidation.ok) return targetValidation;
+      const ok = deleteDelegationTeam(id);
+      return { ok, id, name: existing.name };
     }
     case "team_list": {
       const teams = listWorkflowTeams();

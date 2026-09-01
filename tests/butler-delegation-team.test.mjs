@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-import { normalizeButlerDelegationTeamInput } from "../dist-electron/cli/butlerDelegationTeams.js";
+import {
+  normalizeButlerDelegationTeamInput,
+  validateButlerDelegationTeamDeleteTarget,
+  validateButlerDelegationTeamUpdateTarget
+} from "../dist-electron/cli/butlerDelegationTeams.js";
 
 const agents = [
   { id: "cli-butlerbuddy", enabled: true },
@@ -92,6 +96,53 @@ test("Butler rejects invalid self-organizing team references and permissions", (
   });
 });
 
+test("Butler requires a current user-team version before a full update", () => {
+  const userTeam = {
+    source: "user",
+    updatedAt: "2026-09-01T10:00:00.000Z"
+  };
+  assert.deepEqual(
+    validateButlerDelegationTeamUpdateTarget(
+      userTeam,
+      "2026-09-01T10:00:00.000Z"
+    ),
+    { ok: true }
+  );
+  assert.equal(
+    validateButlerDelegationTeamUpdateTarget(
+      userTeam,
+      "2026-09-01T09:59:00.000Z"
+    ).ok,
+    false
+  );
+  assert.equal(
+    validateButlerDelegationTeamUpdateTarget(
+      { ...userTeam, source: "builtin" },
+      userTeam.updatedAt
+    ).ok,
+    false
+  );
+});
+
+test("Butler deletes only a confirmed user-created self-organizing team", () => {
+  const userTeam = { source: "user", name: "Delivery crew" };
+  assert.deepEqual(
+    validateButlerDelegationTeamDeleteTarget(userTeam, "Delivery crew"),
+    { ok: true }
+  );
+  assert.equal(
+    validateButlerDelegationTeamDeleteTarget(userTeam, "Another team").ok,
+    false
+  );
+  assert.equal(
+    validateButlerDelegationTeamDeleteTarget(
+      { ...userTeam, source: "builtin" },
+      "Delivery crew"
+    ).ok,
+    false
+  );
+});
+
 test("Butler MCP and core skill expose the self-organizing team tools", () => {
   const mcp = fs.readFileSync(
     new URL("../electron/mcp/butlerMcpServer.ts", import.meta.url),
@@ -109,13 +160,21 @@ test("Butler MCP and core skill expose the self-organizing team tools", () => {
   for (const tool of [
     "freebuddy_delegation_team_list",
     "freebuddy_delegation_team_get",
-    "freebuddy_delegation_team_create"
+    "freebuddy_delegation_team_create",
+    "freebuddy_delegation_team_update",
+    "freebuddy_delegation_team_set_enabled",
+    "freebuddy_delegation_team_delete"
   ]) {
     assert.match(mcp, new RegExp(tool));
     assert.match(skill, new RegExp(tool));
   }
   assert.match(service, /normalizeButlerDelegationTeamInput\(params, agents\)/);
   assert.match(service, /insertDelegationTeam\(input\)/);
+  assert.match(service, /updateDelegationTeam\(id,/);
+  assert.match(service, /deleteDelegationTeam\(id\)/);
+  assert.match(mcp, /expectedUpdatedAt/);
+  assert.match(mcp, /confirmName/);
   assert.match(skill, /Role capability.*routing metadata/);
   assert.match(skill, /Role execution instructions.*mandatory behavior/);
+  assert.match(skill, /full replacement/);
 });

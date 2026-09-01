@@ -43,9 +43,11 @@ export function isWholeTaskRedelegate(
   return taskSimilarity(childTask, parentOrRootTask) >= threshold;
 }
 
+export type DelegationEventRoleRef = Pick<DelegationEvent, "agentId" | "roleLabel">;
+
 /** Map a persisted event to a roster role id (best-effort). */
 export function rosterIdForEvent(
-  event: DelegationEventRow,
+  event: DelegationEventRoleRef,
   roster: DelegationRosterEntry[]
 ): string | undefined {
   const exact = roster.find(
@@ -55,6 +57,42 @@ export function rosterIdForEvent(
   const byAgent = roster.filter((r) => r.agentId === event.agentId);
   if (byAgent.length === 1) return byAgent[0]!.id;
   return undefined;
+}
+
+/** Events that belong to one roster role, even when several roles share an agentId. */
+export function eventsForRosterRole<T extends DelegationEventRoleRef>(
+  events: T[],
+  role: Pick<DelegationRosterEntry, "id">,
+  roster: DelegationRosterEntry[]
+): T[] {
+  return events.filter((event) => rosterIdForEvent(event, roster) === role.id);
+}
+
+/**
+ * Which roster role currently owns the live slot.
+ * Keyed by role id so two roles sharing a CLI adapter (e.g. Codex) do not
+ * inherit each other's running state.
+ */
+export function resolveActiveDelegationRoleId(opts: {
+  roster: DelegationRosterEntry[];
+  entryRoleId: string;
+  events: Array<Pick<DelegationEvent, "agentId" | "roleLabel" | "status" | "depth">>;
+  runStatus?: string;
+  liveStatus?: string;
+}): string | undefined {
+  const runningChild = opts.events.find(
+    (event) => event.status === "running" && event.depth > 0
+  );
+  if (runningChild) {
+    return rosterIdForEvent(runningChild, opts.roster);
+  }
+  const runLive = opts.runStatus === "running" || opts.runStatus === "blocked";
+  const isLive =
+    runLive || opts.liveStatus === "running" || opts.liveStatus === "starting";
+  if (!isLive) return undefined;
+  const entry =
+    opts.roster.find((role) => role.id === opts.entryRoleId) ?? opts.roster[0];
+  return entry?.id;
 }
 
 /**

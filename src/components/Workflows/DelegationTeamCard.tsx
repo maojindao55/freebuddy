@@ -9,6 +9,10 @@ import {
 } from "lucide-react";
 
 import {
+  eventsForRosterRole,
+  resolveActiveDelegationRoleId
+} from "@freebuddy/delegation-core";
+import {
   delegationClient,
   type DelegationEventRow,
   type DelegationEventStatus
@@ -46,7 +50,7 @@ export function DelegationTeamCard({
   const members = useConversationStore((s) => s.members);
   const liveStatus = useConversationStore((s) => s.live[conversationId]?.status);
   const [team, setTeam] = useState<DelegationTeam | undefined>(undefined);
-  const [activeAgentId, setActiveAgentId] = useState<string | undefined>(undefined);
+  const [activeRoleId, setActiveRoleId] = useState<string | undefined>(undefined);
   const [runStatus, setRunStatus] = useState<string | undefined>(undefined);
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [events, setEvents] = useState<DelegationEventRow[]>([]);
@@ -110,7 +114,7 @@ export function DelegationTeamCard({
         if (!run || !run.teamId) {
           if (!cancelled) {
             setTeam(undefined);
-            setActiveAgentId(undefined);
+            setActiveRoleId(undefined);
             setRunStatus(undefined);
             setRunId(undefined);
             setEvents([]);
@@ -121,32 +125,36 @@ export function DelegationTeamCard({
           setRunStatus(run.status);
           setRunId(run.id);
         }
-        if (!team) {
+        let currentTeam = team;
+        if (!currentTeam) {
           const loaded = await delegationClient.get(run.teamId);
           if (!cancelled) setTeam(loaded ?? undefined);
+          currentTeam = loaded ?? undefined;
         }
 
-        // Determine the active agent from run + events (bus is source of truth):
-        // 1. Child event (depth>0) "running" → that child
-        // 2. Else if run is running/blocked → entry is active (turning or parked)
+        // Determine the active role from run + events (bus is source of truth):
+        // 1. Child event (depth>0) "running" → that child's roster role
+        // 2. Else if run is running/blocked → entry role is active (turning or parked)
+        // Roles that share a CLI adapter must not inherit each other's live slot.
         const events = await delegationClient.listEvents(run.id);
         if (cancelled) return;
         setEvents(events);
-        const runningChild = events.find(
-          (e) => e.status === "running" && e.depth > 0
-        );
-        if (runningChild?.agentId) {
-          setActiveAgentId(runningChild.agentId);
-        } else {
-          const runLive = run.status === "running" || run.status === "blocked";
-          const isLive =
-            runLive || liveStatus === "running" || liveStatus === "starting";
-          const entry = team?.roster.find((r) => r.id === team.entryRoleId) ?? team?.roster[0];
-          setActiveAgentId(isLive && entry ? entry.agentId : undefined);
+        if (!currentTeam) {
+          setActiveRoleId(undefined);
+          return;
         }
+        setActiveRoleId(
+          resolveActiveDelegationRoleId({
+            roster: currentTeam.roster,
+            entryRoleId: currentTeam.entryRoleId,
+            events,
+            runStatus: run.status,
+            liveStatus
+          })
+        );
       } catch {
         if (!cancelled) {
-          setActiveAgentId(undefined);
+          setActiveRoleId(undefined);
           setRunStatus(undefined);
         }
       }
@@ -304,15 +312,8 @@ export function DelegationTeamCard({
       <div className="delegation-member-list" aria-live="polite">
       {team.roster.map((r) => {
         const isEntry = r.id === team.entryRoleId;
-        const isActive = activeAgentId === r.agentId;
-        const duplicateAgentRoles = team.roster.filter(
-          (candidate) => candidate.agentId === r.agentId
-        ).length;
-        const memberEvents = events.filter(
-          (event) =>
-            event.agentId === r.agentId &&
-            (duplicateAgentRoles === 1 || event.roleLabel === r.label)
-        );
+        const isActive = activeRoleId === r.id;
+        const memberEvents = eventsForRosterRole(events, r, team.roster);
         const newestFirst = [...memberEvents].reverse();
         const activeEvent = newestFirst.find(
           (event) => event.status === "running" || event.status === "pending"
@@ -326,7 +327,7 @@ export function DelegationTeamCard({
             : [];
         // Entry is parked when the run is live but a child agent owns the active slot.
         const parkedEntry =
-          isEntry && runStatus === "running" && Boolean(activeAgentId) && !isActive;
+          isEntry && runStatus === "running" && Boolean(activeRoleId) && !isActive;
         const badge = isActive
           ? t("status.running")
           : parkedEntry

@@ -10,7 +10,7 @@ const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8"
 
 test("delegation activity is grouped into member cards instead of a separate timeline", () => {
   assert.match(source, /team\.roster\.map/);
-  assert.match(source, /const memberEvents = events\.filter/);
+  assert.match(source, /const memberEvents = eventsForRosterRole\(events, r, team\.roster\)/);
   assert.match(source, /className=\{`side-card delegation-member-card/);
   assert.match(source, /className="delegation-member-activity"/);
   assert.doesNotMatch(source, /delegation-timeline-card/);
@@ -49,6 +49,14 @@ test("status remains readable without relying on timeline colors", () => {
   assert.match(source, /delegation-member-state \$\{memberState\}/);
   assert.match(source, /delegation-event-status \$\{event\.status\}/);
   assert.match(styles, /\.delegation-event-status\s*\{/);
+});
+
+test("member running state is keyed by roster role id, not shared CLI adapter", () => {
+  assert.match(source, /resolveActiveDelegationRoleId/);
+  assert.match(source, /eventsForRosterRole\(events, r, team\.roster\)/);
+  assert.match(source, /const isActive = activeRoleId === r\.id/);
+  assert.doesNotMatch(source, /activeAgentId === r\.agentId/);
+  assert.doesNotMatch(source, /setActiveAgentId/);
 });
 
 test("failed delegation events show their upstream error without expanding details", () => {

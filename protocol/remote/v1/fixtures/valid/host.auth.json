@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "type": "host.auth",
+  "id": "msg_host_auth_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "hostId": "host_fixture_001",
+    "keyId": "key_fixture_001",
+    "publicKey": "lOhSPcVH0HCbHmoHOAIYvjzEOt2BRSwiZcnwdrE8w3o",
+    "signature": "5_OhpsFZfwbAxDcHiFO4XOKIr_RzD9woSiFDj3oslkIjeTY6uajaAEozx2pIC3Vec5xdJscuWfuv0-O8btYOBg",
+    "clientVersion": "0.9.10",
+    "protocolVersion": 1
+  }
+}

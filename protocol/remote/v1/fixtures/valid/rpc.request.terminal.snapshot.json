@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "type": "rpc.request",
+  "id": "msg_rpc_term_snapshot_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "expiresAt": "2026-09-01T10:00:30.000Z",
+  "idempotencyKey": "idem_fixture_dddddddddddddddd",
+  "payload": {
+    "method": "terminal.snapshot",
+    "params": {
+      "terminalId": "term_fixture_001"
+    }
+  }
+}

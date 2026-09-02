@@ -1,0 +1,8 @@
+node_modules/
+.tmp-test/
+
+# Generated from packages/protocol/src/remote.ts by `npm run sync:protocol`.
+miniprogram/protocol/remote.generated.ts
+
+# WeChat devtools per-developer settings (device ids, local compile options).
+project.private.config.json

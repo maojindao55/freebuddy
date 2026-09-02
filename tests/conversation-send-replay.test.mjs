@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
 import {
@@ -11,6 +13,9 @@ import {
 function toDataUrl(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 }
+
+const testDirectory = fileURLToPath(new URL(".", import.meta.url));
+let conversationUtilsModuleCounter = 0;
 
 async function loadConversationStoreHarness() {
   const mockSource = `
@@ -132,39 +137,52 @@ async function loadConversationStoreHarness() {
     new URL("../src/store/conversationUtils.ts", import.meta.url),
     "utf8"
   );
-  const conversationUtilsUrl = toDataUrl(
-    ts.transpileModule(conversationUtilsSource, {
+  const conversationUtilsOutput = ts.transpileModule(conversationUtilsSource, {
       compilerOptions: {
         module: ts.ModuleKind.ES2022,
         target: ts.ScriptTarget.ES2022
       }
-    }).outputText
+    }).outputText;
+  const conversationUtilsDirectory = fs.mkdtempSync(
+    path.join(testDirectory, ".conversation-utils-")
   );
-  const source = fs.readFileSync(
-    new URL("../src/store/conversationStore.ts", import.meta.url),
-    "utf8"
+  const conversationUtilsPath = path.join(
+    conversationUtilsDirectory,
+    "conversationUtils.mjs"
   );
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022
-    }
-  }).outputText;
-  const mockedStoreSource = transpiled.replace(
-    /from\s+["']([^"']+)["']/g,
-    (_, specifier) =>
-      `from "${
-        specifier === "./conversationUtils"
-          ? conversationUtilsUrl
-          : mockUrl
-      }"`
-  );
+  fs.writeFileSync(conversationUtilsPath, conversationUtilsOutput);
+  conversationUtilsModuleCounter += 1;
+  const conversationUtilsUrl = `${pathToFileURL(conversationUtilsPath).href}?${conversationUtilsModuleCounter}`;
 
-  const [storeModule, mocks] = await Promise.all([
-    import(toDataUrl(mockedStoreSource)),
-    import(mockUrl)
-  ]);
-  return { ...storeModule, mocks };
+  try {
+    const source = fs.readFileSync(
+      new URL("../src/store/conversationStore.ts", import.meta.url),
+      "utf8"
+    );
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022
+      }
+    }).outputText;
+    const mockedStoreSource = transpiled.replace(
+      /from\s+["']([^"']+)["']/g,
+      (_, specifier) =>
+        `from "${
+          specifier === "./conversationUtils"
+            ? conversationUtilsUrl
+            : mockUrl
+        }"`
+    );
+
+    const [storeModule, mocks] = await Promise.all([
+      import(toDataUrl(mockedStoreSource)),
+      import(mockUrl)
+    ]);
+    return { ...storeModule, mocks };
+  } finally {
+    fs.rmSync(conversationUtilsDirectory, { recursive: true, force: true });
+  }
 }
 
 test("sendMessage keeps matching live chunks when a saved ACP session falls back to session/new", async () => {

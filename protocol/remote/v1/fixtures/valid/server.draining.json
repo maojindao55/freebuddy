@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "server.draining",
+  "id": "msg_drain_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "reason": "shutdown",
+    "reconnectAfterMs": 5000
+  }
+}

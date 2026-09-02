@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "type": "rpc.response",
+  "id": "msg_rpc_resp_err_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "requestId": "msg_rpc_send_001",
+    "ok": false,
+    "error": {
+      "code": "host_offline",
+      "message": "Host is not connected",
+      "retryable": true
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "pong",
+  "id": "msg_pong_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "nonce": "n1",
+    "serverTime": "2026-09-01T10:00:00.000Z"
+  }
+}

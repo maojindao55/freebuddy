@@ -1,0 +1,62 @@
+{
+  "v": 1,
+  "type": "snapshot",
+  "id": "msg_snapshot_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "seq": 41,
+  "payload": {
+    "baseSeq": 41,
+    "host": {
+      "hostId": "host_fixture_001",
+      "displayName": "Studio Mac",
+      "online": true,
+      "appVersion": "0.9.10",
+      "protocolVersion": 1,
+      "remoteEnabled": true,
+      "activeRunCount": 1,
+      "pendingDecisionCount": 0,
+      "activeTerminalCount": 0,
+      "serverTime": "2026-09-01T10:00:00.000Z"
+    },
+    "projects": [
+      {
+        "projectId": "proj_fixture_001",
+        "name": "freebuddy",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "agents": [
+      {
+        "agentId": "agent_codex",
+        "name": "Codex",
+        "kind": "cli",
+        "available": true
+      }
+    ],
+    "conversations": [
+      {
+        "conversationId": "conv_fixture_001",
+        "projectId": "proj_fixture_001",
+        "title": "协议冻结",
+        "archived": false,
+        "updatedAt": "2026-09-01T10:00:00.000Z",
+        "lastMessageAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "activeRuns": [
+      {
+        "runId": "run_fixture_001",
+        "conversationId": "conv_fixture_001",
+        "agentId": "agent_codex",
+        "status": "running",
+        "startedAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "pendingDecisions": [],
+    "activeWorkflows": [],
+    "activeDelegations": [],
+    "activeTasks": [],
+    "activeTerminals": []
+  }
+}

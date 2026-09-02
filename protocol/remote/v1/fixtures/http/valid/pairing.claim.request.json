@@ -1,0 +1,7 @@
+{
+  "def": "PairingClaimRequest",
+  "body": {
+    "pairingId": "pair_fixture_001",
+    "secret": "cGFpcmluZy1zZWNyZXQtZml4dHVyZS1ieXRlcy0zMiE"
+  }
+}

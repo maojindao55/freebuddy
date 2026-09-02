@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/stream-items.schema.json",
+  "title": "Constrained remote stream items",
+  "description": "Public subset of CliStreamItem for run.stream. No binary, no cwd/env, no unconstrained internals.",
+  "$defs": {
+    "RemoteStreamItem": {
+      "oneOf": [
+        { "$ref": "#/$defs/TextItem" },
+        { "$ref": "#/$defs/ThinkingItem" },
+        { "$ref": "#/$defs/ToolCallItem" },
+        { "$ref": "#/$defs/ToolResultItem" },
+        { "$ref": "#/$defs/CommandItem" },
+        { "$ref": "#/$defs/CommandOutputItem" },
+        { "$ref": "#/$defs/FileEditItem" },
+        { "$ref": "#/$defs/UsageItem" },
+        { "$ref": "#/$defs/ErrorItem" },
+        { "$ref": "#/$defs/DoneItem" }
+      ]
+    },
+    "TextItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "role", "content"],
+      "properties": {
+        "kind": { "const": "text" },
+        "role": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Role" },
+        "content": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" },
+        "append": { "type": "boolean" },
+        "messageId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "ThinkingItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "content"],
+      "properties": {
+        "kind": { "const": "thinking" },
+        "content": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" },
+        "append": { "type": "boolean" },
+        "messageId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "ToolCallItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "tool"],
+      "properties": {
+        "kind": { "const": "tool-call" },
+        "tool": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "running", "completed", "failed"]
+        },
+        "toolKind": {
+          "type": "string",
+          "enum": [
+            "read",
+            "edit",
+            "delete",
+            "move",
+            "search",
+            "execute",
+            "think",
+            "fetch",
+            "mode",
+            "other"
+          ]
+        },
+        "inputPreview": {
+          "type": "string",
+          "maxLength": 4096,
+          "description": "Truncated textual preview. Raw unconstrained tool input is not on the wire."
+        }
+      }
+    },
+    "ToolResultItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "tool", "content"],
+      "properties": {
+        "kind": { "const": "tool-result" },
+        "tool": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "content": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" },
+        "isError": { "type": "boolean" }
+      }
+    },
+    "CommandItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "command"],
+      "properties": {
+        "kind": { "const": "command" },
+        "command": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      },
+      "description": "Display-only command announcement. cwd, env, and binary are forbidden."
+    },
+    "CommandOutputItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "content"],
+      "properties": {
+        "kind": { "const": "command-output" },
+        "content": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" },
+        "stream": { "type": "string", "enum": ["stdout", "stderr"] }
+      }
+    },
+    "FileEditItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "action"],
+      "properties": {
+        "kind": { "const": "file-edit" },
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "action": { "type": "string", "enum": ["create", "update", "delete"] },
+        "patch": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" }
+      }
+    },
+    "UsageItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "usage" },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "totalCost": { "type": "number", "minimum": 0 }
+      }
+    },
+    "ErrorItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": { "const": "error" },
+        "message": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ErrorMessage" },
+        "terminal": { "type": "boolean" }
+      }
+    },
+    "DoneItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "done" },
+        "exitCode": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      }
+    }
+  }
+}

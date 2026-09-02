@@ -1,0 +1,14 @@
+{
+  "warning": "Fixture-only pairing secret and Ed25519 proof. Never use in production or CVM.",
+  "hostId": "host_fixture_001",
+  "keyId": "key_fixture_001",
+  "publicKey": "lOhSPcVH0HCbHmoHOAIYvjzEOt2BRSwiZcnwdrE8w3o",
+  "secret": "cGFpcmluZy1zZWNyZXQtZml4dHVyZS1ieXRlcy0zMiE",
+  "secretHash": "qgeEI70okEszmn4i2gOEyYGCheOGTlxBG1o4eOmOC8g",
+  "hashAlgorithm": "SHA-256",
+  "hashInput": "utf8-wire-secret",
+  "canonicalUtf8": "freebuddy-remote-pairing-start-v1\nhostId:host_fixture_001\nkeyId:key_fixture_001\npublicKey:lOhSPcVH0HCbHmoHOAIYvjzEOt2BRSwiZcnwdrE8w3o\nsecretHash:qgeEI70okEszmn4i2gOEyYGCheOGTlxBG1o4eOmOC8g\n",
+  "canonicalHex": "6672656562756464792d72656d6f74652d70616972696e672d73746172742d76310a686f737449643a686f73745f666978747572655f3030310a6b657949643a6b65795f666978747572655f3030310a7075626c69634b65793a6c4f68535063564830484362486d6f484f414959766a7a454f743242525377695a636e776472453877336f0a736563726574486173683a716765454937306f6b45737a6d6e346932674f457959474368654f47546c784247316f34654f6d4f4338670a",
+  "utf8ByteLength": 189,
+  "proof": "AykLrT_xph4I3hbpTAaLc_whrQS75oPkNThtfJ_fEEt27nx2v6B2tIsHz2nhWiuhg7RsY6Tm88_VTnam_593Ag"
+}

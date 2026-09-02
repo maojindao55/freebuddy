@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+
+const testDirectory = fileURLToPath(new URL(".", import.meta.url));
+let moduleCounter = 0;
 
 async function loadConversationUtils() {
   const source = fs.readFileSync(
@@ -14,9 +19,17 @@ async function loadConversationUtils() {
       target: ts.ScriptTarget.ES2022
     }
   }).outputText;
-  return import(
-    `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`
+  const temporaryDirectory = fs.mkdtempSync(
+    path.join(testDirectory, ".conversation-utils-")
   );
+  const modulePath = path.join(temporaryDirectory, "conversationUtils.mjs");
+  fs.writeFileSync(modulePath, output);
+  try {
+    moduleCounter += 1;
+    return await import(`${pathToFileURL(modulePath).href}?${moduleCounter}`);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 }
 
 test("appendItems keeps cancelled todo plan status instead of pending", async () => {

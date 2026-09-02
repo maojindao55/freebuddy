@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "type": "auth.ok",
+  "id": "msg_auth_ok_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "connectionId": "conn_fixture_001",
+    "role": "admin",
+    "hostId": "host_fixture_001",
+    "serverTime": "2026-09-01T10:00:00.000Z",
+    "limits": {
+      "maxFrameBytes": 262144,
+      "maxChunkBytes": 32768,
+      "maxConcurrentRpcs": 8,
+      "rpcReadTimeoutMs": 15000,
+      "rpcWriteTimeoutMs": 30000,
+      "heartbeatIntervalMs": 20000,
+      "challengeTtlMs": 60000
+    }
+  }
+}

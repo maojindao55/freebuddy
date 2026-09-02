@@ -1,0 +1,81 @@
+{
+  "valid": [
+    "admin.auth.json",
+    "auth.ok.json",
+    "challenge.json",
+    "error.json",
+    "event.host.status.changed.json",
+    "event.permission.requested.json",
+    "event.run.stream.json",
+    "event.terminal.output.json",
+    "host.auth.json",
+    "ping.json",
+    "pong.json",
+    "resume.json",
+    "rpc.request.conversation.send.json",
+    "rpc.request.host.status.json",
+    "rpc.request.permission.respond.json",
+    "rpc.request.terminal.create.json",
+    "rpc.request.terminal.snapshot.json",
+    "rpc.response.error.json",
+    "rpc.response.ok.json",
+    "server.draining.json",
+    "snapshot.json"
+  ],
+  "invalid": [
+    "expired-write.json",
+    "method-ipc-invoke.json",
+    "method-shell-exec.json",
+    "oversized-chunk.json",
+    "rpc-request-seq.json",
+    "terminal-create-cwd.json",
+    "terminal-create-env.json",
+    "terminal-snapshot-missing-expires.json",
+    "terminal-snapshot-missing-idempotency.json",
+    "unknown-envelope-field.json",
+    "unsupported-version.json",
+    "write-missing-idempotency.json"
+  ],
+  "signing": [
+    "canonical.json",
+    "extra-whitespace.json",
+    "keys.json",
+    "pairing-start-canonical.json",
+    "tampered-hostId.json",
+    "valid-signature.json"
+  ],
+  "runtime": [
+    "write-idempotency-replay.json"
+  ],
+  "httpValid": [
+    "pairing.start.request.json",
+    "pairing.start.response.json",
+    "pairing.claim.request.json",
+    "pairing.claim.response.json"
+  ],
+  "httpInvalid": [
+    "pairing-claim-code-only.json",
+    "pairing-claim-missing-pairing-id.json",
+    "pairing-claim-missing-secret.json",
+    "pairing-claim-short-secret.json",
+    "pairing-claim-unknown-field.json",
+    "pairing-start-missing-proof.json",
+    "pairing-start-missing-secret-hash.json",
+    "pairing-start-plaintext-secret.json"
+  ],
+  "requiredFrameTypes": [
+    "challenge",
+    "host.auth",
+    "admin.auth",
+    "auth.ok",
+    "error",
+    "rpc.request",
+    "rpc.response",
+    "event",
+    "resume",
+    "snapshot",
+    "ping",
+    "pong",
+    "server.draining"
+  ]
+}

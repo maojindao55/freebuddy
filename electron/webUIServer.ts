@@ -47,7 +47,7 @@ import {
   type WsChannelClass
 } from "./shared/wsChannelPolicy.js";
 import { localInvoke } from "./invokeRegistry.js";
-import { setEventBroadcaster } from "./eventBus.js";
+import { subscribeEventBroadcaster } from "./eventBus.js";
 import {
   canServeAttachmentPath,
   prepareAttachmentFiles,
@@ -75,6 +75,7 @@ let currentPort = WEBUI_DEFAULT_PORT;
 let requestedPort = WEBUI_DEFAULT_PORT;
 let currentHost = "127.0.0.1";
 let currentAllowRemote = false;
+let unsubscribeWebUIEventBus: (() => void) | null = null;
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -794,7 +795,8 @@ function setupWebSocket(server: http.Server, devServerUrl = ""): void {
 
   setSessionRevocationListener(dropRevokedSockets);
 
-  setEventBroadcaster((channel: string, payload: unknown) => {
+  unsubscribeWebUIEventBus?.();
+  unsubscribeWebUIEventBus = subscribeEventBroadcaster((channel: string, payload: unknown) => {
     if (authedClients.size === 0) return;
     const classified = classifyWsChannel(channel);
     if (classified.kind === "drop") return;
@@ -812,6 +814,7 @@ function setupWebSocket(server: http.Server, devServerUrl = ""): void {
       } catch {
         authedClients.delete(client);
         clientUsers.delete(client);
+        clientTokenHashes.delete(client);
       }
     }
   });
@@ -969,6 +972,8 @@ export function startWebUIServer(options: WebUIServerOptions = {}): Promise<void
 
 export function stopWebUIServer(): Promise<void> {
   return new Promise((resolve) => {
+    unsubscribeWebUIEventBus?.();
+    unsubscribeWebUIEventBus = null;
     if (wss) {
       try {
         wss.close();

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/methods/delegation.schema.json",
+  "title": "delegation method params and results",
+  "$defs": {
+    "delegation.list.params": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/PageParams"
+    },
+    "delegation.list.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "nextCursor"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DelegationSummary" }
+        },
+        "nextCursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "delegation.get.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delegationId"],
+      "properties": {
+        "delegationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "delegation.get.result": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DelegationSummary"
+    },
+    "delegation.start.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["teamId", "conversationId", "prompt"],
+      "properties": {
+        "teamId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        }
+      }
+    },
+    "delegation.start.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delegationId", "status"],
+      "properties": {
+        "delegationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "status": { "type": "string", "const": "running" }
+      }
+    },
+    "delegation.stop.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delegationId"],
+      "properties": {
+        "delegationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "delegation.stop.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delegationId", "status"],
+      "properties": {
+        "delegationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "status": { "type": "string", "const": "stopped" }
+      }
+    }
+  }
+}

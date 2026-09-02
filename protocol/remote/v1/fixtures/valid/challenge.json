@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "challenge",
+  "id": "msg_challenge_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "connectionId": "conn_fixture_001",
+    "challenge": "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAO4",
+    "issuedAt": "2026-09-01T10:00:00.000Z",
+    "expiresAt": "2026-09-01T10:01:00.000Z"
+  }
+}

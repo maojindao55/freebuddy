@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "type": "event",
+  "id": "msg_event_perm_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "seq": 43,
+  "payload": {
+    "name": "permission.requested",
+    "data": {
+      "decisionId": "dec_fixture_001",
+      "kind": "permission",
+      "runId": "run_fixture_001",
+      "conversationId": "conv_fixture_001",
+      "summary": "Agent wants to edit src/remote.ts",
+      "tool": "edit"
+    }
+  }
+}

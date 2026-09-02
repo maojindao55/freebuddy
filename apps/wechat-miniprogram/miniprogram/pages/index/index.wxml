@@ -1,0 +1,12 @@
+<view class="page">
+  <view class="card">
+    <text class="title">{{title}}</text>
+    <text class="message">{{message}}</text>
+    <button class="primary" disabled="{{!actionEnabled}}" bindtap="onPlaceholderAction">
+      {{actionLabel}}
+    </button>
+    <view class="meta">
+      <text class="chip">环境 {{environment}}</text>
+    </view>
+  </view>
+</view>

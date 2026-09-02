@@ -1,0 +1,7 @@
+{
+  "expect": "verify_fail",
+  "reason": "hostId changed after signing",
+  "publicKeyRawBase64url": "lOhSPcVH0HCbHmoHOAIYvjzEOt2BRSwiZcnwdrE8w3o",
+  "signatureBase64url": "5_OhpsFZfwbAxDcHiFO4XOKIr_RzD9woSiFDj3oslkIjeTY6uajaAEozx2pIC3Vec5xdJscuWfuv0-O8btYOBg",
+  "canonicalUtf8": "freebuddy-remote-host-auth-v1\nhostId:host_tampered\nchallenge:EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAO4\nconnectionId:conn_fixture_001\nissuedAt:2026-09-01T10:00:00.000Z\n"
+}

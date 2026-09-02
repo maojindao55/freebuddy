@@ -1,0 +1,126 @@
+{
+  "scenario": "write_idempotency_replay",
+  "description": "A second write with the same hostId, method, params, and idempotencyKey must not execute again. The host returns the original result or duplicate_request.",
+  "mustNotExecuteAgain": true,
+  "executeCount": 1,
+  "scope": {
+    "hostId": "host_fixture_001",
+    "method": "conversation.send",
+    "idempotencyKey": "idem_fixture_aaaaaaaaaaaaaaaa"
+  },
+  "notes": "Hosts additionally scope this cache by the authenticated admin identity from the connection. Admin identity is not a wire field on rpc.request.",
+  "first": {
+    "request": {
+      "v": 1,
+      "type": "rpc.request",
+      "id": "msg_rpc_send_001",
+      "hostId": "host_fixture_001",
+      "sentAt": "2026-09-01T10:00:00.000Z",
+      "expiresAt": "2026-09-01T10:00:30.000Z",
+      "idempotencyKey": "idem_fixture_aaaaaaaaaaaaaaaa",
+      "payload": {
+        "method": "conversation.send",
+        "params": {
+          "conversationId": "conv_fixture_001",
+          "content": "继续实现"
+        }
+      }
+    },
+    "response": {
+      "v": 1,
+      "type": "rpc.response",
+      "id": "msg_rpc_send_result_001",
+      "hostId": "host_fixture_001",
+      "sentAt": "2026-09-01T10:00:00.050Z",
+      "payload": {
+        "requestId": "msg_rpc_send_001",
+        "ok": true,
+        "result": {
+          "conversationId": "conv_fixture_001",
+          "messageId": "msg_user_fixture_001",
+          "runId": "run_fixture_001"
+        }
+      }
+    }
+  },
+  "replay": {
+    "request": {
+      "v": 1,
+      "type": "rpc.request",
+      "id": "msg_rpc_send_001_replay",
+      "hostId": "host_fixture_001",
+      "sentAt": "2026-09-01T10:00:08.000Z",
+      "expiresAt": "2026-09-01T10:00:38.000Z",
+      "idempotencyKey": "idem_fixture_aaaaaaaaaaaaaaaa",
+      "payload": {
+        "method": "conversation.send",
+        "params": {
+          "conversationId": "conv_fixture_001",
+          "content": "继续实现"
+        }
+      }
+    },
+    "allowedOutcomes": [
+      {
+        "kind": "original_result",
+        "response": {
+          "v": 1,
+          "type": "rpc.response",
+          "id": "msg_rpc_send_replay_result_001",
+          "hostId": "host_fixture_001",
+          "sentAt": "2026-09-01T10:00:08.010Z",
+          "payload": {
+            "requestId": "msg_rpc_send_001_replay",
+            "ok": true,
+            "result": {
+              "conversationId": "conv_fixture_001",
+              "messageId": "msg_user_fixture_001",
+              "runId": "run_fixture_001"
+            }
+          }
+        }
+      },
+      {
+        "kind": "duplicate_request",
+        "response": {
+          "v": 1,
+          "type": "rpc.response",
+          "id": "msg_rpc_send_replay_dup_001",
+          "hostId": "host_fixture_001",
+          "sentAt": "2026-09-01T10:00:08.010Z",
+          "payload": {
+            "requestId": "msg_rpc_send_001_replay",
+            "ok": false,
+            "error": {
+              "code": "duplicate_request",
+              "message": "Write already completed for this idempotencyKey",
+              "retryable": false
+            }
+          }
+        }
+      }
+    ],
+    "forbiddenOutcomes": [
+      {
+        "kind": "re_execute",
+        "reason": "A new messageId or runId means the write ran a second time.",
+        "response": {
+          "v": 1,
+          "type": "rpc.response",
+          "id": "msg_rpc_send_replay_reexec_001",
+          "hostId": "host_fixture_001",
+          "sentAt": "2026-09-01T10:00:08.010Z",
+          "payload": {
+            "requestId": "msg_rpc_send_001_replay",
+            "ok": true,
+            "result": {
+              "conversationId": "conv_fixture_001",
+              "messageId": "msg_user_fixture_002",
+              "runId": "run_fixture_002"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

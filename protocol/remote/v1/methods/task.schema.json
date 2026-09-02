@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/methods/task.schema.json",
+  "title": "task method params and results",
+  "$defs": {
+    "task.list.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cursor": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Cursor" },
+        "limit": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Limit" }
+      }
+    },
+    "task.list.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "nextCursor"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/TaskSummary" }
+        },
+        "nextCursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "task.readLog.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId"],
+      "properties": {
+        "taskId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cursor": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Cursor" },
+        "limit": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Limit" }
+      }
+    },
+    "task.readLog.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "nextCursor"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/TaskLogItem" }
+        },
+        "nextCursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

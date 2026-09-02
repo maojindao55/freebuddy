@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/envelope.schema.json",
+  "title": "Remote protocol v1 wire envelope",
+  "description": "One WebSocket text frame is one envelope. Unknown major versions must close.",
+  "oneOf": [
+    { "$ref": "#/$defs/ChallengeFrame" },
+    { "$ref": "#/$defs/HostAuthFrame" },
+    { "$ref": "#/$defs/AdminAuthFrame" },
+    { "$ref": "#/$defs/AuthOkFrame" },
+    { "$ref": "#/$defs/ErrorFrame" },
+    { "$ref": "#/$defs/RpcRequestFrame" },
+    { "$ref": "#/$defs/RpcResponseFrame" },
+    { "$ref": "#/$defs/EventFrame" },
+    { "$ref": "#/$defs/ResumeFrame" },
+    { "$ref": "#/$defs/SnapshotFrame" },
+    { "$ref": "#/$defs/PingFrame" },
+    { "$ref": "#/$defs/PongFrame" },
+    { "$ref": "#/$defs/ServerDrainingFrame" }
+  ],
+  "$defs": {
+    "ChallengeFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "challenge" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/auth.schema.json#/$defs/ChallengePayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "HostAuthFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "hostId", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "host.auth" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/auth.schema.json#/$defs/HostAuthPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "AdminAuthFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "admin.auth" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/auth.schema.json#/$defs/AdminAuthPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "AuthOkFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "auth.ok" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/auth.schema.json#/$defs/AuthOkPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "ErrorFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "error" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/auth.schema.json#/$defs/ErrorPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "RpcRequestFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "hostId", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "rpc.request" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "expiresAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "idempotencyKey": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/IdempotencyKey" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/rpc.schema.json#/$defs/RpcRequestPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "payload": {
+                "properties": {
+                  "method": {
+                    "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/WriteMethodName"
+                  }
+                },
+                "required": ["method"]
+              }
+            }
+          },
+          "then": {
+            "required": ["expiresAt", "idempotencyKey"]
+          }
+        }
+      ]
+    },
+    "RpcResponseFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "hostId", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "rpc.response" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/rpc.schema.json#/$defs/RpcResponsePayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "EventFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "hostId", "sentAt", "seq", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "event" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "seq": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Seq" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/events.schema.json#/$defs/EventPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "ResumeFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "hostId", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "resume" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/events.schema.json#/$defs/ResumePayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "SnapshotFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "hostId", "sentAt", "seq", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "snapshot" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "seq": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Seq" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/events.schema.json#/$defs/SnapshotPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "PingFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "ping" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/events.schema.json#/$defs/PingPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "PongFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "pong" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/events.schema.json#/$defs/PongPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    },
+    "ServerDrainingFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "type", "id", "sentAt", "payload"],
+      "properties": {
+        "v": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" },
+        "type": { "const": "server.draining" },
+        "id": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "sentAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "payload": { "$ref": "https://freebuddy.dev/protocol/remote/v1/events.schema.json#/$defs/ServerDrainingPayload" },
+        "meta": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Meta" }
+      }
+    }
+  }
+}

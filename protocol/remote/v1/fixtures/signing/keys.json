@@ -1,0 +1,8 @@
+{
+  "warning": "Fixture-only Ed25519 key. Never use in production or CVM.",
+  "algorithm": "Ed25519",
+  "publicKeyRawBase64url": "lOhSPcVH0HCbHmoHOAIYvjzEOt2BRSwiZcnwdrE8w3o",
+  "privateSeedBase64url": "nOUHd6rn3P981OxrGkQpXkxD6YQHg8Y1MLtTV8dgN7Q",
+  "publicKeySpkiDerBase64": "MCowBQYDK2VwAyEAlOhSPcVH0HCbHmoHOAIYvjzEOt2BRSwiZcnwdrE8w3o=",
+  "privateKeyPkcs8DerBase64": "MC4CAQAwBQYDK2VwBCIEIJzlB3eq59z/fNTsaxpEKV5MQ+mEB4PGNTC7U1fHYDe0"
+}

@@ -1,0 +1,11 @@
+{
+  "reason": "unsupported_version",
+  "reject": "schema",
+  "frame": {
+    "v": 2,
+    "type": "ping",
+    "id": "msg_bad_version",
+    "sentAt": "2026-09-01T10:00:00.000Z",
+    "payload": {}
+  }
+}

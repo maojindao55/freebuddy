@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "type": "rpc.response",
+  "id": "msg_rpc_resp_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "requestId": "msg_rpc_host_status_001",
+    "ok": true,
+    "result": {
+      "hostId": "host_fixture_001",
+      "displayName": "Studio Mac",
+      "online": true,
+      "appVersion": "0.9.10",
+      "protocolVersion": 1,
+      "remoteEnabled": true,
+      "activeRunCount": 1,
+      "pendingDecisionCount": 0,
+      "activeTerminalCount": 0,
+      "serverTime": "2026-09-01T10:00:00.000Z"
+    }
+  }
+}

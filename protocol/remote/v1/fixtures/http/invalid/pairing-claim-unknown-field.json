@@ -1,0 +1,10 @@
+{
+  "reason": "claim must reject unknown fields including displayCode as a credential substitute",
+  "reject": "schema",
+  "def": "PairingClaimRequest",
+  "body": {
+    "pairingId": "pair_fixture_001",
+    "secret": "cGFpcmluZy1zZWNyZXQtZml4dHVyZS1ieXRlcy0zMiE",
+    "displayCode": "AB12CD34"
+  }
+}

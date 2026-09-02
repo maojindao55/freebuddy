@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "type": "event",
+  "id": "msg_event_host_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "seq": 7,
+  "payload": {
+    "name": "host.status.changed",
+    "data": {
+      "hostId": "host_fixture_001",
+      "displayName": "Studio Mac",
+      "online": true,
+      "appVersion": "0.9.10",
+      "protocolVersion": 1,
+      "remoteEnabled": true,
+      "activeRunCount": 1,
+      "pendingDecisionCount": 0,
+      "activeTerminalCount": 0,
+      "serverTime": "2026-09-01T10:00:00.000Z"
+    }
+  }
+}

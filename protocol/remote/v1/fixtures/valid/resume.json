@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "resume",
+  "id": "msg_resume_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "resumeFrom": 41
+  }
+}

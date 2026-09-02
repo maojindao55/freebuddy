@@ -1,0 +1,19 @@
+{
+  "name": "@freebuddy/wechat-miniprogram",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FreeBuddy remote admin WeChat mini program (native TypeScript).",
+  "scripts": {
+    "sync:protocol": "node scripts/sync-protocol.mjs",
+    "prepare": "node scripts/sync-protocol.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "build": "npm run sync:protocol && npm run typecheck && npm run test",
+    "check": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "miniprogram-api-typings": "^5.2.3",
+    "typescript": "^5.9.3"
+  }
+}

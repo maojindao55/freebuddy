@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/methods/workflow.schema.json",
+  "title": "workflow method params and results",
+  "$defs": {
+    "workflow.list.params": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/PageParams"
+    },
+    "workflow.list.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "nextCursor"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/WorkflowSummary" }
+        },
+        "nextCursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "workflow.get.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId"],
+      "properties": {
+        "workflowId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "workflow.get.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId", "name", "status", "updatedAt"],
+      "properties": {
+        "workflowId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "name": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DisplayName" },
+        "status": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/WorkflowStatus" },
+        "stepCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "updatedAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "workflow.start.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId"],
+      "properties": {
+        "workflowId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "workflow.start.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId", "status"],
+      "properties": {
+        "workflowId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "status": { "type": "string", "const": "running" }
+      }
+    },
+    "workflow.stop.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId"],
+      "properties": {
+        "workflowId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "workflow.stop.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId", "status"],
+      "properties": {
+        "workflowId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "status": { "type": "string", "const": "stopped" }
+      }
+    }
+  }
+}

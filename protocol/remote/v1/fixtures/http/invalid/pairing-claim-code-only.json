@@ -1,0 +1,8 @@
+{
+  "reason": "claim must require pairingId + high-entropy secret; a guessable short code is not a credential",
+  "reject": "schema",
+  "def": "PairingClaimRequest",
+  "body": {
+    "code": "AB12-CD"
+  }
+}

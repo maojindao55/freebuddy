@@ -1,0 +1,314 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/events.schema.json",
+  "title": "Remote protocol v1 domain events",
+  "$defs": {
+    "EventPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "data"],
+      "properties": {
+        "name": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/EventName" },
+        "data": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "name": { "const": "host.status.changed" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/HostStatus" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "conversation.created" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ConversationSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "conversation.updated" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ConversationSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "conversation.deleted" } } },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["conversationId"],
+                "properties": {
+                  "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "message.created" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/MessageSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "message.updated" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/MessageSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "run.started" } } },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["runId", "conversationId"],
+                "properties": {
+                  "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+                  "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+                  "agentId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "run.stream" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "#/$defs/RunStreamData" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "run.finished" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "#/$defs/RunTerminalData" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "run.failed" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "#/$defs/RunFailedData" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "run.stopped" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "#/$defs/RunTerminalData" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "permission.requested" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DecisionSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "permission.resolved" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "#/$defs/DecisionResolvedData" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "authentication.requested" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DecisionSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "authentication.resolved" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "#/$defs/DecisionResolvedData" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "task.updated" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/TaskSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "task.log.appended" } } },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["taskId", "item"],
+                "properties": {
+                  "taskId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+                  "item": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/TaskLogItem" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "workflow.updated" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/WorkflowSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "delegation.updated" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DelegationSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "terminal.opened" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/TerminalSummary" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "terminal.output" } } },
+          "then": {
+            "properties": {
+              "data": { "$ref": "#/$defs/TerminalOutputData" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "const": "terminal.closed" } } },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["terminalId"],
+                "properties": {
+                  "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RunStreamData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "item"],
+      "properties": {
+        "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "item": { "$ref": "https://freebuddy.dev/protocol/remote/v1/stream-items.schema.json#/$defs/RemoteStreamItem" },
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "RunTerminalData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "conversationId"],
+      "properties": {
+        "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "RunFailedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "conversationId", "error"],
+      "properties": {
+        "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "error": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/StructuredError" }
+      }
+    },
+    "DecisionResolvedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "allow"],
+      "properties": {
+        "decisionId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "allow": { "type": "boolean" }
+      }
+    },
+    "TerminalOutputData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "data", "seq"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" },
+        "seq": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Seq" },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "ResumePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resumeFrom"],
+      "properties": {
+        "resumeFrom": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Seq",
+          "description": "Last fully processed event seq. Host replays seq > resumeFrom."
+        }
+      }
+    },
+    "SnapshotPayload": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/SnapshotPayload"
+    },
+    "PingPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nonce": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "PongPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serverTime"],
+      "properties": {
+        "nonce": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "serverTime": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "ServerDrainingPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "reconnectAfterMs"],
+      "properties": {
+        "reason": { "type": "string", "enum": ["shutdown", "restart", "version"] },
+        "reconnectAfterMs": { "type": "integer", "minimum": 0, "maximum": 600000 }
+      }
+    }
+  }
+}

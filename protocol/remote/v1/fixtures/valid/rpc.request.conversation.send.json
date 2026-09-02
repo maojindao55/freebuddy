@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "type": "rpc.request",
+  "id": "msg_rpc_send_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "expiresAt": "2026-09-01T10:00:30.000Z",
+  "idempotencyKey": "idem_fixture_aaaaaaaaaaaaaaaa",
+  "payload": {
+    "method": "conversation.send",
+    "params": {
+      "conversationId": "conv_fixture_001",
+      "content": "继续实现"
+    }
+  }
+}

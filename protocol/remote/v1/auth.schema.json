@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/auth.schema.json",
+  "title": "Remote protocol v1 authentication payloads",
+  "$defs": {
+    "ChallengePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectionId", "challenge", "issuedAt", "expiresAt"],
+      "properties": {
+        "connectionId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "challenge": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Challenge" },
+        "issuedAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "expiresAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "HostAuthPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostId", "keyId", "publicKey", "signature", "clientVersion", "protocolVersion"],
+      "properties": {
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "keyId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "publicKey": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Ed25519PublicKey" },
+        "signature": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Ed25519Signature" },
+        "clientVersion": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ClientVersion" },
+        "protocolVersion": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" }
+      }
+    },
+    "AdminAuthPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accessToken", "clientVersion", "protocolVersion"],
+      "properties": {
+        "accessToken": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/OpaqueToken" },
+        "clientVersion": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ClientVersion" },
+        "protocolVersion": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ProtocolVersion" }
+      }
+    },
+    "AuthOkPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectionId", "role", "serverTime", "limits"],
+      "properties": {
+        "connectionId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "role": { "type": "string", "enum": ["host", "admin"] },
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "serverTime": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" },
+        "limits": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ConnectionLimits" }
+      }
+    },
+    "ErrorPayload": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/StructuredError"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "type": "event",
+  "id": "msg_event_stream_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "seq": 42,
+  "payload": {
+    "name": "run.stream",
+    "data": {
+      "runId": "run_fixture_001",
+      "conversationId": "conv_fixture_001",
+      "item": {
+        "kind": "text",
+        "role": "assistant",
+        "content": "正在修改协议绑定。",
+        "append": true
+      },
+      "index": 3
+    }
+  }
+}

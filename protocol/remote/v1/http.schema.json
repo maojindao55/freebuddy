@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/http.schema.json",
+  "title": "Remote protocol v1 companion HTTP JSON bodies",
+  "description": "HTTP endpoints used before the WebSocket session. These bodies are part of the same v1 contract. Unknown fields are rejected. Tokens, pairing secrets, and AppSecret must never be logged. Relay stores pairing secretHash (and may keep the verified proof as non-secret metadata) and must never persist the pairing secret plaintext.",
+  "$defs": {
+    "WeChatAuthRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "clientVersion"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "clientVersion": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ClientVersion" },
+        "deviceLabel": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "WeChatAuthResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accessToken", "refreshToken", "expiresIn", "refreshExpiresIn"],
+      "properties": {
+        "accessToken": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/OpaqueToken" },
+        "refreshToken": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/OpaqueToken" },
+        "expiresIn": { "type": "integer", "minimum": 60, "maximum": 86400 },
+        "refreshExpiresIn": { "type": "integer", "minimum": 60, "maximum": 7776000 }
+      }
+    },
+    "RefreshRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["refreshToken"],
+      "properties": {
+        "refreshToken": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/OpaqueToken" }
+      }
+    },
+    "RefreshResponse": {
+      "$ref": "#/$defs/WeChatAuthResponse"
+    },
+    "LogoutRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "PairingStartRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostId", "keyId", "publicKey", "displayName", "secretHash", "proof"],
+      "properties": {
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "keyId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "publicKey": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Ed25519PublicKey" },
+        "displayName": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DisplayName" },
+        "secretHash": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/PairingSecretHash",
+          "description": "Commitment to the host-local pairing secret. Relay stores this hash. The secret plaintext must not appear in this body."
+        },
+        "proof": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Ed25519Signature",
+          "description": "Ed25519 signature over the pairing-start canonical payload, binding publicKey to secretHash. Verified at start; not re-sent on claim."
+        }
+      }
+    },
+    "PairingStartResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pairingId", "displayCode", "expiresAt"],
+      "properties": {
+        "pairingId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "displayCode": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/PairingDisplayCode",
+          "description": "Caption-only locator. Not accepted on claim and not a substitute for PairingSecret."
+        },
+        "expiresAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "PairingClaimRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pairingId", "secret"],
+      "properties": {
+        "pairingId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "secret": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/PairingSecret" }
+      }
+    },
+    "PairingClaimResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostId", "displayName"],
+      "properties": {
+        "hostId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "keyId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "displayName": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/DisplayName" }
+      }
+    },
+    "HttpError": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/StructuredError"
+    }
+  }
+}

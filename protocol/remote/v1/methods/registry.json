@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "methods": [
+    {
+      "method": "host.status",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/host.schema.json",
+      "events": []
+    },
+    {
+      "method": "sync.snapshot",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/host.schema.json",
+      "events": []
+    },
+    {
+      "method": "project.list",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/host.schema.json",
+      "events": []
+    },
+    {
+      "method": "agent.list",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/host.schema.json",
+      "events": []
+    },
+    {
+      "method": "conversation.list",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/conversation.schema.json",
+      "events": []
+    },
+    {
+      "method": "conversation.get",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/conversation.schema.json",
+      "events": []
+    },
+    {
+      "method": "message.list",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/conversation.schema.json",
+      "events": []
+    },
+    {
+      "method": "task.list",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/task.schema.json",
+      "events": []
+    },
+    {
+      "method": "task.readLog",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/task.schema.json",
+      "events": []
+    },
+    {
+      "method": "workflow.list",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/workflow.schema.json",
+      "events": []
+    },
+    {
+      "method": "workflow.get",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/workflow.schema.json",
+      "events": []
+    },
+    {
+      "method": "delegation.list",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/delegation.schema.json",
+      "events": []
+    },
+    {
+      "method": "delegation.get",
+      "kind": "read",
+      "timeoutMs": 15000,
+      "autoRetry": true,
+      "idempotencyRequired": false,
+      "expiresAtRequired": false,
+      "schema": "methods/delegation.schema.json",
+      "events": []
+    },
+    {
+      "method": "conversation.create",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/conversation.schema.json",
+      "events": ["conversation.created"]
+    },
+    {
+      "method": "conversation.rename",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/conversation.schema.json",
+      "events": ["conversation.updated"]
+    },
+    {
+      "method": "conversation.archive",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/conversation.schema.json",
+      "events": ["conversation.updated"]
+    },
+    {
+      "method": "conversation.delete",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/conversation.schema.json",
+      "events": ["conversation.deleted"]
+    },
+    {
+      "method": "conversation.send",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/conversation.schema.json",
+      "events": ["message.created", "run.started", "run.stream", "run.finished", "run.failed"]
+    },
+    {
+      "method": "run.stop",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/run.schema.json",
+      "events": ["run.stopped"]
+    },
+    {
+      "method": "permission.respond",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/decision.schema.json",
+      "events": ["permission.resolved"]
+    },
+    {
+      "method": "authentication.respond",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/decision.schema.json",
+      "events": ["authentication.resolved"]
+    },
+    {
+      "method": "workflow.start",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/workflow.schema.json",
+      "events": ["workflow.updated"]
+    },
+    {
+      "method": "workflow.stop",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/workflow.schema.json",
+      "events": ["workflow.updated"]
+    },
+    {
+      "method": "delegation.start",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/delegation.schema.json",
+      "events": ["delegation.updated"]
+    },
+    {
+      "method": "delegation.stop",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/delegation.schema.json",
+      "events": ["delegation.updated"]
+    },
+    {
+      "method": "terminal.create",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/terminal.schema.json",
+      "events": ["terminal.opened"]
+    },
+    {
+      "method": "terminal.input",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/terminal.schema.json",
+      "events": ["terminal.output"]
+    },
+    {
+      "method": "terminal.resize",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/terminal.schema.json",
+      "events": []
+    },
+    {
+      "method": "terminal.snapshot",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/terminal.schema.json",
+      "events": []
+    },
+    {
+      "method": "terminal.close",
+      "kind": "write",
+      "timeoutMs": 30000,
+      "autoRetry": false,
+      "idempotencyRequired": true,
+      "expiresAtRequired": true,
+      "schema": "methods/terminal.schema.json",
+      "events": ["terminal.closed"]
+    }
+  ]
+}

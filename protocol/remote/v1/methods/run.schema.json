@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/methods/run.schema.json",
+  "title": "run method params and results",
+  "$defs": {
+    "run.stop.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId"],
+      "properties": {
+        "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "run.stop.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "status"],
+      "properties": {
+        "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "status": { "type": "string", "const": "stopped" }
+      }
+    }
+  }
+}

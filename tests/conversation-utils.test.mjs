@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+
+const testDirectory = fileURLToPath(new URL(".", import.meta.url));
+let moduleCounter = 0;
 
 async function loadConversationUtils() {
   const source = fs.readFileSync(
@@ -14,8 +19,50 @@ async function loadConversationUtils() {
       target: ts.ScriptTarget.ES2022
     }
   }).outputText;
-  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+  const temporaryDirectory = fs.mkdtempSync(
+    path.join(testDirectory, ".conversation-utils-")
+  );
+  const modulePath = path.join(temporaryDirectory, "conversationUtils.mjs");
+  fs.writeFileSync(modulePath, output);
+  try {
+    moduleCounter += 1;
+    return await import(`${pathToFileURL(modulePath).href}?${moduleCounter}`);
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 }
+
+test("renderer stream utilities re-export the sole shared accumulator", async () => {
+  const renderer = await loadConversationUtils();
+  const shared = await import("../packages/cli-stream/dist/index.js");
+  const rendererSource = fs.readFileSync(
+    new URL("../src/store/conversationUtils.ts", import.meta.url),
+    "utf8"
+  );
+  const accumulatorSource = fs.readFileSync(
+    new URL("../packages/cli-stream/src/accumulator.ts", import.meta.url),
+    "utf8"
+  );
+  const chunks = [
+    [{ kind: "text", role: "assistant", content: "Hello", messageId: "m-1" }],
+    [{ kind: "text", role: "assistant", content: " world", append: true, messageId: "m-1" }]
+  ];
+  const rendererItems = chunks.reduce(renderer.appendItems, []);
+  const sharedItems = chunks.reduce(shared.appendItems, []);
+
+  assert.match(rendererSource, /\} from "@freebuddy\/cli-stream";/);
+  assert.doesNotMatch(rendererSource, /function\s+appendItems\b/);
+  assert.equal(
+    (accumulatorSource.match(/function\s+appendItems\b/g) ?? []).length,
+    1
+  );
+  assert.equal(renderer.appendItems, shared.appendItems);
+  assert.deepEqual(rendererItems, sharedItems);
+  assert.equal(
+    renderer.plainAssistantText(rendererItems),
+    shared.plainAssistantText(sharedItems)
+  );
+});
 
 test("appendItems coalesces repeated updates for the same tool result", async () => {
   const { appendItems } = await loadConversationUtils();

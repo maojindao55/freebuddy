@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/methods/terminal.schema.json",
+  "title": "constrained terminal method params and results",
+  "description": "Terminal methods bind to a projectId resolved on the host. Clients must not send cwd, env, or a launch binary.",
+  "$defs": {
+    "terminal.create.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId"],
+      "properties": {
+        "projectId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cols": { "type": "integer", "minimum": 20, "maximum": 300 },
+        "rows": { "type": "integer", "minimum": 5, "maximum": 100 }
+      }
+    },
+    "terminal.create.result": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/TerminalSummary"
+    },
+    "terminal.input.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "data"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "data": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" }
+      }
+    },
+    "terminal.input.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "accepted"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "accepted": { "type": "boolean", "const": true }
+      }
+    },
+    "terminal.resize.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "cols", "rows"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cols": { "type": "integer", "minimum": 20, "maximum": 300 },
+        "rows": { "type": "integer", "minimum": 5, "maximum": 100 }
+      }
+    },
+    "terminal.resize.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "cols", "rows"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cols": { "type": "integer", "minimum": 20, "maximum": 300 },
+        "rows": { "type": "integer", "minimum": 5, "maximum": 100 }
+      }
+    },
+    "terminal.snapshot.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "terminal.snapshot.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "cols", "rows", "output", "truncated", "seq"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cols": { "type": "integer", "minimum": 20, "maximum": 300 },
+        "rows": { "type": "integer", "minimum": 5, "maximum": 100 },
+        "output": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ChunkText" },
+        "truncated": { "type": "boolean" },
+        "seq": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Seq" }
+      }
+    },
+    "terminal.close.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "terminal.close.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "closed"],
+      "properties": {
+        "terminalId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "closed": { "type": "boolean", "const": true }
+      }
+    }
+  }
+}

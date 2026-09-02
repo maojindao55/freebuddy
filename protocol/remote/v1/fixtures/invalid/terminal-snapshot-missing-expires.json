@@ -1,0 +1,18 @@
+{
+  "reason": "invalid_request",
+  "reject": "schema",
+  "frame": {
+    "v": 1,
+    "type": "rpc.request",
+    "id": "msg_term_snapshot_missing_exp",
+    "hostId": "host_fixture_001",
+    "sentAt": "2026-09-01T10:00:00.000Z",
+    "idempotencyKey": "idem_fixture_dddddddddddddddd",
+    "payload": {
+      "method": "terminal.snapshot",
+      "params": {
+        "terminalId": "term_fixture_001"
+      }
+    }
+  }
+}

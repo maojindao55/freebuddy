@@ -1,0 +1,27 @@
+{
+  "schemas": [
+    "common.schema.json",
+    "stream-items.schema.json",
+    "auth.schema.json",
+    "rpc.schema.json",
+    "events.schema.json",
+    "envelope.schema.json",
+    "http.schema.json",
+    "methods/host.schema.json",
+    "methods/conversation.schema.json",
+    "methods/run.schema.json",
+    "methods/decision.schema.json",
+    "methods/task.schema.json",
+    "methods/workflow.schema.json",
+    "methods/delegation.schema.json",
+    "methods/terminal.schema.json"
+  ],
+  "envelopeId": "https://freebuddy.dev/protocol/remote/v1/envelope.schema.json",
+  "forbiddenMethods": [
+    "ipc.invoke",
+    "shell.exec",
+    "fs.read",
+    "fs.write",
+    "process.spawn"
+  ]
+}

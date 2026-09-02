@@ -1,0 +1,41 @@
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 48rpx 32rpx;
+}
+
+.card {
+  background: #1c1f24;
+  border-radius: 16rpx;
+  padding: 40rpx 32rpx;
+}
+
+.title {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 600;
+}
+
+.message {
+  display: block;
+  margin-top: 24rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: #a8adb5;
+}
+
+.primary {
+  margin-top: 48rpx;
+  background: #2f6fed;
+  color: #fff;
+  font-size: 30rpx;
+}
+
+.meta {
+  margin-top: 32rpx;
+}
+
+.chip {
+  font-size: 24rpx;
+  color: #6f7580;
+}

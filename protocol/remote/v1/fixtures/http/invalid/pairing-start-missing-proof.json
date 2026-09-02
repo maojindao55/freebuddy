@@ -1,0 +1,12 @@
+{
+  "reason": "pairing start must include proof binding publicKey to secretHash",
+  "reject": "schema",
+  "def": "PairingStartRequest",
+  "body": {
+    "hostId": "host_fixture_001",
+    "keyId": "key_fixture_001",
+    "publicKey": "lOhSPcVH0HCbHmoHOAIYvjzEOt2BRSwiZcnwdrE8w3o",
+    "displayName": "Fixture Mac",
+    "secretHash": "qgeEI70okEszmn4i2gOEyYGCheOGTlxBG1o4eOmOC8g"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "reason": "claim must include pairingId",
+  "reject": "schema",
+  "def": "PairingClaimRequest",
+  "body": {
+    "secret": "cGFpcmluZy1zZWNyZXQtZml4dHVyZS1ieXRlcy0zMiE"
+  }
+}

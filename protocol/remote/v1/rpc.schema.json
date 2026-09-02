@@ -1,0 +1,647 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/rpc.schema.json",
+  "title": "Remote protocol v1 RPC payloads",
+  "$defs": {
+    "RpcRequestPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "params"
+      ],
+      "properties": {
+        "method": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/MethodName"
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "host.status"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/host.schema.json#/$defs/host.status.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sync.snapshot"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/host.schema.json#/$defs/sync.snapshot.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "project.list"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/host.schema.json#/$defs/project.list.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "agent.list"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/host.schema.json#/$defs/agent.list.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "conversation.list"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/conversation.list.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "conversation.get"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/conversation.get.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "message.list"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/message.list.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "task.list"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/task.schema.json#/$defs/task.list.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "task.readLog"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/task.schema.json#/$defs/task.readLog.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "workflow.list"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/workflow.schema.json#/$defs/workflow.list.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "workflow.get"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/workflow.schema.json#/$defs/workflow.get.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "delegation.list"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/delegation.schema.json#/$defs/delegation.list.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "delegation.get"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/delegation.schema.json#/$defs/delegation.get.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "conversation.create"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/conversation.create.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "conversation.rename"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/conversation.rename.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "conversation.archive"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/conversation.archive.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "conversation.delete"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/conversation.delete.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "conversation.send"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json#/$defs/conversation.send.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "run.stop"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/run.schema.json#/$defs/run.stop.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "permission.respond"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/decision.schema.json#/$defs/permission.respond.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "authentication.respond"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/decision.schema.json#/$defs/authentication.respond.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "workflow.start"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/workflow.schema.json#/$defs/workflow.start.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "workflow.stop"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/workflow.schema.json#/$defs/workflow.stop.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "delegation.start"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/delegation.schema.json#/$defs/delegation.start.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "delegation.stop"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/delegation.schema.json#/$defs/delegation.stop.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "terminal.create"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/terminal.schema.json#/$defs/terminal.create.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "terminal.input"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/terminal.schema.json#/$defs/terminal.input.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "terminal.resize"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/terminal.schema.json#/$defs/terminal.resize.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "terminal.snapshot"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/terminal.schema.json#/$defs/terminal.snapshot.params"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "terminal.close"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "$ref": "https://freebuddy.dev/protocol/remote/v1/methods/terminal.schema.json#/$defs/terminal.close.params"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RpcSuccessPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "ok",
+        "result"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId"
+        },
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "result": {
+          "type": "object"
+        }
+      }
+    },
+    "RpcFailurePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId"
+        },
+        "ok": {
+          "type": "boolean",
+          "const": false
+        },
+        "error": {
+          "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/StructuredError"
+        }
+      }
+    },
+    "RpcResponsePayload": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RpcSuccessPayload"
+        },
+        {
+          "$ref": "#/$defs/RpcFailurePayload"
+        }
+      ]
+    }
+  }
+}

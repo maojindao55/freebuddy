@@ -1,0 +1,11 @@
+{
+  "pages": ["pages/index/index"],
+  "window": {
+    "navigationBarBackgroundColor": "#14161a",
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "FreeBuddy 远程管理",
+    "backgroundColor": "#14161a",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2"
+}

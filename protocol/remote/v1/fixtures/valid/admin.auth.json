@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "admin.auth",
+  "id": "msg_admin_auth_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "payload": {
+    "accessToken": "atok_fixture_aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "clientVersion": "0.1.0",
+    "protocolVersion": 1
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/methods/decision.schema.json",
+  "title": "permission and authentication decision method params and results",
+  "$defs": {
+    "permission.respond.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "allow"],
+      "properties": {
+        "decisionId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "allow": { "type": "boolean" }
+      }
+    },
+    "permission.respond.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "resolved"],
+      "properties": {
+        "decisionId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "resolved": { "type": "boolean", "const": true }
+      }
+    },
+    "authentication.respond.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "allow"],
+      "properties": {
+        "decisionId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "allow": { "type": "boolean" }
+      }
+    },
+    "authentication.respond.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "resolved"],
+      "properties": {
+        "decisionId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "resolved": { "type": "boolean", "const": true }
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/errors.json",
+  "title": "Remote protocol v1 error catalog",
+  "description": "Stable error codes. Internal exceptions must be mapped here; stacks never go on the wire.",
+  "errors": [
+    {
+      "code": "invalid_request",
+      "retryable": false,
+      "http": [400],
+      "ws": true,
+      "clientAction": "Fix the frame or params. Do not retry unchanged."
+    },
+    {
+      "code": "unsupported_version",
+      "retryable": false,
+      "http": [426],
+      "ws": true,
+      "clientAction": "Close the connection and stop. Upgrade the client."
+    },
+    {
+      "code": "unauthorized",
+      "retryable": false,
+      "http": [401],
+      "ws": true,
+      "clientAction": "Re-authenticate. If tokens are revoked, return to login."
+    },
+    {
+      "code": "forbidden",
+      "retryable": false,
+      "http": [403],
+      "ws": true,
+      "clientAction": "Stop. The caller is not the unique admin or the host rejected the action."
+    },
+    {
+      "code": "host_offline",
+      "retryable": true,
+      "http": [503],
+      "ws": true,
+      "clientAction": "Show offline state. Do not queue writes. Retry only after the host is online."
+    },
+    {
+      "code": "method_not_allowed",
+      "retryable": false,
+      "http": [405],
+      "ws": true,
+      "clientAction": "The method is not in the v1 registry. Do not retry."
+    },
+    {
+      "code": "request_expired",
+      "retryable": false,
+      "http": [408],
+      "ws": true,
+      "clientAction": "Do not reuse the expired frame. Query state, then send a new write with a new expiresAt and the same idempotencyKey only if the original never executed."
+    },
+    {
+      "code": "duplicate_request",
+      "retryable": false,
+      "http": [409],
+      "ws": true,
+      "clientAction": "Treat as the original result if provided, otherwise refresh state. Do not execute again."
+    },
+    {
+      "code": "rpc_timeout",
+      "retryable": true,
+      "http": [504],
+      "ws": true,
+      "clientAction": "Read-only calls may retry. Writes must resume or query; do not mint a new idempotencyKey."
+    },
+    {
+      "code": "backpressure",
+      "retryable": true,
+      "http": [429],
+      "ws": true,
+      "clientAction": "Backoff and slow consumption. Do not increase send rate."
+    },
+    {
+      "code": "conflict",
+      "retryable": false,
+      "http": [409],
+      "ws": true,
+      "clientAction": "Refresh the resource and present the current state."
+    },
+    {
+      "code": "not_found",
+      "retryable": false,
+      "http": [404],
+      "ws": true,
+      "clientAction": "Remove stale UI state and resync."
+    },
+    {
+      "code": "internal_error",
+      "retryable": true,
+      "http": [500],
+      "ws": true,
+      "clientAction": "Retry reads with backoff. Writes stay unknown until resume or resource query."
+    }
+  ]
+}

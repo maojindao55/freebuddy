@@ -1,0 +1,12 @@
+{
+  "reason": "invalid_request",
+  "reject": "schema",
+  "frame": {
+    "v": 1,
+    "type": "ping",
+    "id": "msg_unknown_field",
+    "sentAt": "2026-09-01T10:00:00.000Z",
+    "extra": true,
+    "payload": {}
+  }
+}

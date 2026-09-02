@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "type": "rpc.request",
+  "id": "msg_rpc_perm_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "expiresAt": "2026-09-01T10:00:30.000Z",
+  "idempotencyKey": "idem_fixture_cccccccccccccccc",
+  "payload": {
+    "method": "permission.respond",
+    "params": {
+      "decisionId": "dec_fixture_001",
+      "allow": true
+    }
+  }
+}

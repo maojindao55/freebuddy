@@ -1,0 +1,8 @@
+{
+  "def": "PairingClaimResponse",
+  "body": {
+    "hostId": "host_fixture_001",
+    "keyId": "key_fixture_001",
+    "displayName": "Fixture Mac"
+  }
+}

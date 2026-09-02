@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/methods/conversation.schema.json",
+  "title": "conversation and message method params and results",
+  "$defs": {
+    "conversation.list.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cursor": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Cursor" },
+        "limit": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Limit" }
+      }
+    },
+    "conversation.list.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "nextCursor"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ConversationSummary" }
+        },
+        "nextCursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "conversation.get.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "conversation.get.result": {
+      "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/ConversationSummary"
+    },
+    "message.list.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "cursor": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Cursor" },
+        "limit": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Limit" }
+      }
+    },
+    "message.list.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "nextCursor"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/MessageSummary" }
+        },
+        "nextCursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "conversation.create.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId"],
+      "properties": {
+        "projectId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "title": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Title" },
+        "agentId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "conversation.create.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "projectId", "title", "createdAt"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "projectId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "title": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Title" },
+        "createdAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "conversation.rename.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "title"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "title": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Title" }
+      }
+    },
+    "conversation.rename.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "title", "updatedAt"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "title": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Title" },
+        "updatedAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "conversation.archive.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "conversation.archive.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "archived", "updatedAt"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "archived": { "type": "boolean", "const": true },
+        "updatedAt": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "conversation.delete.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    },
+    "conversation.delete.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "deleted"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "deleted": { "type": "boolean", "const": true }
+      }
+    },
+    "conversation.send.params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "content"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        }
+      }
+    },
+    "conversation.send.result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "messageId", "runId"],
+      "properties": {
+        "conversationId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "messageId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" },
+        "runId": { "$ref": "https://freebuddy.dev/protocol/remote/v1/common.schema.json#/$defs/RemoteId" }
+      }
+    }
+  }
+}

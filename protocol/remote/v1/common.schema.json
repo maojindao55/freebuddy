@@ -1,0 +1,530 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freebuddy.dev/protocol/remote/v1/common.schema.json",
+  "title": "FreeBuddy remote admin protocol v1 shared definitions",
+  "$defs": {
+    "ProtocolVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Wire protocol major version. Unknown majors must close with unsupported_version."
+    },
+    "RemoteId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 40,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$",
+      "description": "UTC RFC3339. Millisecond precision is recommended."
+    },
+    "IdempotencyKey": {
+      "type": "string",
+      "minLength": 22,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]{22,128}$",
+      "description": "At least 128 bits of entropy. Required on every write RPC."
+    },
+    "Seq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Host-assigned strictly increasing event cursor. Not used to order RPC responses."
+    },
+    "Cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "Limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "PageParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "limit": { "$ref": "#/$defs/Limit" }
+      }
+    },
+    "ClientVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "DisplayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "Title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "ChunkText": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 32768,
+      "description": "Single text or terminal chunk. Wire limit is UTF-8 byte length <= 32768 (MAX_CHUNK_BYTES). JSON Schema maxLength is Unicode code points and is a coarse Ajv bound; implementations must still enforce UTF-8 bytes on the transport. Larger stream/terminal content must be split. Does not apply to every string on RemoteStreamItem (inputPreview, command, path, and error.message have their own shorter caps)."
+    },
+    "ErrorMessage": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Developer or UI hint. Must not contain secrets, stacks, or raw internals."
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "invalid_request",
+        "unsupported_version",
+        "unauthorized",
+        "forbidden",
+        "host_offline",
+        "method_not_allowed",
+        "request_expired",
+        "duplicate_request",
+        "rpc_timeout",
+        "backpressure",
+        "conflict",
+        "not_found",
+        "internal_error"
+      ]
+    },
+    "ErrorDetails": {
+      "type": "object",
+      "description": "Extensible diagnostic object. Never include secrets, stacks, or workspace contents.",
+      "propertyNames": { "type": "string", "minLength": 1, "maxLength": 64 },
+      "maxProperties": 16,
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"]
+      }
+    },
+    "StructuredError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": { "$ref": "#/$defs/ErrorCode" },
+        "message": { "$ref": "#/$defs/ErrorMessage" },
+        "retryable": { "type": "boolean" },
+        "details": { "$ref": "#/$defs/ErrorDetails" }
+      }
+    },
+    "Meta": {
+      "type": "object",
+      "description": "Optional extensible metadata on envelopes.",
+      "propertyNames": { "type": "string", "minLength": 1, "maxLength": 64 },
+      "maxProperties": 16,
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"]
+      }
+    },
+    "FrameType": {
+      "type": "string",
+      "enum": [
+        "challenge",
+        "host.auth",
+        "admin.auth",
+        "auth.ok",
+        "error",
+        "rpc.request",
+        "rpc.response",
+        "event",
+        "resume",
+        "snapshot",
+        "ping",
+        "pong",
+        "server.draining"
+      ]
+    },
+    "ReadMethodName": {
+      "type": "string",
+      "enum": [
+        "host.status",
+        "sync.snapshot",
+        "project.list",
+        "agent.list",
+        "conversation.list",
+        "conversation.get",
+        "message.list",
+        "task.list",
+        "task.readLog",
+        "workflow.list",
+        "workflow.get",
+        "delegation.list",
+        "delegation.get"
+      ]
+    },
+    "WriteMethodName": {
+      "type": "string",
+      "enum": [
+        "conversation.create",
+        "conversation.rename",
+        "conversation.archive",
+        "conversation.delete",
+        "conversation.send",
+        "run.stop",
+        "permission.respond",
+        "authentication.respond",
+        "workflow.start",
+        "workflow.stop",
+        "delegation.start",
+        "delegation.stop",
+        "terminal.create",
+        "terminal.input",
+        "terminal.resize",
+        "terminal.snapshot",
+        "terminal.close"
+      ]
+    },
+    "MethodName": {
+      "anyOf": [
+        { "$ref": "#/$defs/ReadMethodName" },
+        { "$ref": "#/$defs/WriteMethodName" }
+      ]
+    },
+    "EventName": {
+      "type": "string",
+      "enum": [
+        "host.status.changed",
+        "conversation.created",
+        "conversation.updated",
+        "conversation.deleted",
+        "message.created",
+        "message.updated",
+        "run.started",
+        "run.stream",
+        "run.finished",
+        "run.failed",
+        "run.stopped",
+        "permission.requested",
+        "permission.resolved",
+        "authentication.requested",
+        "authentication.resolved",
+        "task.updated",
+        "task.log.appended",
+        "workflow.updated",
+        "delegation.updated",
+        "terminal.opened",
+        "terminal.output",
+        "terminal.closed"
+      ]
+    },
+    "Role": {
+      "type": "string",
+      "enum": ["user", "assistant", "system"]
+    },
+    "TaskStatus": {
+      "type": "string",
+      "enum": ["pending", "running", "blocked", "completed", "failed", "cancelled"]
+    },
+    "RunStatus": {
+      "type": "string",
+      "enum": ["running", "finished", "failed", "stopped"]
+    },
+    "WorkflowStatus": {
+      "type": "string",
+      "enum": ["idle", "running", "paused", "blocked", "completed", "failed", "stopped"]
+    },
+    "DelegationStatus": {
+      "type": "string",
+      "enum": ["idle", "running", "blocked", "completed", "failed", "stopped"]
+    },
+    "Base64Url": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "Challenge": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 86,
+      "pattern": "^[A-Za-z0-9_-]{43,86}$",
+      "description": "base64url without padding of at least 32 random bytes."
+    },
+    "Ed25519PublicKey": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{43}$",
+      "description": "32-byte Ed25519 public key, base64url without padding."
+    },
+    "Ed25519Signature": {
+      "type": "string",
+      "minLength": 86,
+      "maxLength": 86,
+      "pattern": "^[A-Za-z0-9_-]{86}$",
+      "description": "64-byte Ed25519 signature, base64url without padding."
+    },
+    "OpaqueToken": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._~-]+$",
+      "description": "High-entropy opaque token. Never log or persist the raw value on Relay."
+    },
+    "PairingSecret": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 86,
+      "pattern": "^[A-Za-z0-9_-]{43,86}$",
+      "description": "base64url without padding of at least 32 cryptographically random bytes (256 bits). One-time pairing credential sent only on claim and in the host-local QR payload. Never a guessable short code. Relay must not log or persist the raw value."
+    },
+    "PairingSecretHash": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{43}$",
+      "description": "SHA-256 over the UTF-8 bytes of the PairingSecret wire string, encoded as base64url without padding (32-byte digest). This is the only pairing secret material Relay may persist. Relay verifies claim by hashing the presented secret and comparing."
+    },
+    "PairingDisplayCode": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 12,
+      "pattern": "^[A-Z0-9]{8,12}$",
+      "description": "Human-facing locator for host UI captions. Not a claim credential. Guessing it must not bind a host; claim requires pairingId plus PairingSecret."
+    },
+    "ProjectSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "name", "updatedAt"],
+      "properties": {
+        "projectId": { "$ref": "#/$defs/RemoteId" },
+        "name": { "$ref": "#/$defs/DisplayName" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "AgentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentId", "name", "available"],
+      "properties": {
+        "agentId": { "$ref": "#/$defs/RemoteId" },
+        "name": { "$ref": "#/$defs/DisplayName" },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "available": { "type": "boolean" }
+      }
+    },
+    "ConversationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversationId", "title", "archived", "updatedAt"],
+      "properties": {
+        "conversationId": { "$ref": "#/$defs/RemoteId" },
+        "projectId": { "$ref": "#/$defs/RemoteId" },
+        "title": { "$ref": "#/$defs/Title" },
+        "archived": { "type": "boolean" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "lastMessageAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "MessageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageId", "conversationId", "role", "content", "createdAt"],
+      "properties": {
+        "messageId": { "$ref": "#/$defs/RemoteId" },
+        "conversationId": { "$ref": "#/$defs/RemoteId" },
+        "role": { "$ref": "#/$defs/Role" },
+        "content": { "$ref": "#/$defs/ChunkText" },
+        "truncated": { "type": "boolean" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "runId": { "$ref": "#/$defs/RemoteId" }
+      }
+    },
+    "TaskSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskId", "title", "status", "updatedAt"],
+      "properties": {
+        "taskId": { "$ref": "#/$defs/RemoteId" },
+        "title": { "$ref": "#/$defs/Title" },
+        "status": { "$ref": "#/$defs/TaskStatus" },
+        "projectId": { "$ref": "#/$defs/RemoteId" },
+        "conversationId": { "$ref": "#/$defs/RemoteId" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "TaskLogItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "text", "createdAt"],
+      "properties": {
+        "seq": { "$ref": "#/$defs/Seq" },
+        "text": { "$ref": "#/$defs/ChunkText" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "RunSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "conversationId", "status"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/RemoteId" },
+        "conversationId": { "$ref": "#/$defs/RemoteId" },
+        "agentId": { "$ref": "#/$defs/RemoteId" },
+        "status": { "$ref": "#/$defs/RunStatus" },
+        "startedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "DecisionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "kind", "runId", "conversationId", "summary"],
+      "properties": {
+        "decisionId": { "$ref": "#/$defs/RemoteId" },
+        "kind": { "type": "string", "enum": ["permission", "authentication"] },
+        "runId": { "$ref": "#/$defs/RemoteId" },
+        "conversationId": { "$ref": "#/$defs/RemoteId" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "tool": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "WorkflowSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId", "name", "status", "updatedAt"],
+      "properties": {
+        "workflowId": { "$ref": "#/$defs/RemoteId" },
+        "name": { "$ref": "#/$defs/DisplayName" },
+        "status": { "$ref": "#/$defs/WorkflowStatus" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "DelegationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delegationId", "name", "status", "updatedAt"],
+      "properties": {
+        "delegationId": { "$ref": "#/$defs/RemoteId" },
+        "teamId": { "$ref": "#/$defs/RemoteId" },
+        "name": { "$ref": "#/$defs/DisplayName" },
+        "status": { "$ref": "#/$defs/DelegationStatus" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "TerminalSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminalId", "projectId", "cols", "rows"],
+      "properties": {
+        "terminalId": { "$ref": "#/$defs/RemoteId" },
+        "projectId": { "$ref": "#/$defs/RemoteId" },
+        "cols": { "type": "integer", "minimum": 20, "maximum": 300 },
+        "rows": { "type": "integer", "minimum": 5, "maximum": 100 },
+        "createdAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "HostStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostId",
+        "online",
+        "appVersion",
+        "protocolVersion",
+        "remoteEnabled",
+        "activeRunCount",
+        "pendingDecisionCount",
+        "activeTerminalCount",
+        "serverTime"
+      ],
+      "properties": {
+        "hostId": { "$ref": "#/$defs/RemoteId" },
+        "displayName": { "$ref": "#/$defs/DisplayName" },
+        "online": { "type": "boolean" },
+        "appVersion": { "$ref": "#/$defs/ClientVersion" },
+        "protocolVersion": { "$ref": "#/$defs/ProtocolVersion" },
+        "remoteEnabled": { "type": "boolean" },
+        "activeRunCount": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "pendingDecisionCount": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "activeTerminalCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "serverTime": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+    "ConnectionLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxFrameBytes",
+        "maxChunkBytes",
+        "maxConcurrentRpcs",
+        "rpcReadTimeoutMs",
+        "rpcWriteTimeoutMs",
+        "heartbeatIntervalMs",
+        "challengeTtlMs"
+      ],
+      "properties": {
+        "maxFrameBytes": { "type": "integer", "const": 262144 },
+        "maxChunkBytes": { "type": "integer", "const": 32768 },
+        "maxConcurrentRpcs": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "rpcReadTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 60000 },
+        "rpcWriteTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 120000 },
+        "heartbeatIntervalMs": { "type": "integer", "minimum": 5000, "maximum": 120000 },
+        "challengeTtlMs": { "type": "integer", "minimum": 1000, "maximum": 300000 }
+      }
+    },
+    "SnapshotPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseSeq", "host"],
+      "properties": {
+        "baseSeq": { "$ref": "#/$defs/Seq" },
+        "host": { "$ref": "#/$defs/HostStatus" },
+        "projects": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/ProjectSummary" }
+        },
+        "agents": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/AgentSummary" }
+        },
+        "conversations": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/ConversationSummary" }
+        },
+        "activeRuns": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/RunSummary" }
+        },
+        "pendingDecisions": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/DecisionSummary" }
+        },
+        "activeWorkflows": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/WorkflowSummary" }
+        },
+        "activeDelegations": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/DelegationSummary" }
+        },
+        "activeTasks": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/TaskSummary" }
+        },
+        "activeTerminals": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/TerminalSummary" }
+        }
+      }
+    }
+  }
+}

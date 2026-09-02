@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "type": "rpc.request",
+  "id": "msg_rpc_term_create_001",
+  "hostId": "host_fixture_001",
+  "sentAt": "2026-09-01T10:00:00.000Z",
+  "expiresAt": "2026-09-01T10:00:30.000Z",
+  "idempotencyKey": "idem_fixture_bbbbbbbbbbbbbbbb",
+  "payload": {
+    "method": "terminal.create",
+    "params": {
+      "projectId": "proj_fixture_001",
+      "cols": 80,
+      "rows": 24
+    }
+  }
+}

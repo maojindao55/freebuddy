@@ -10,7 +10,10 @@ import type {
   DelegationRosterEntry
 } from "@freebuddy/protocol/delegation";
 import { effectiveDelegationRoleCanWrite } from "@freebuddy/protocol/delegation";
-import { buildDelegateTaskPrompt } from "@freebuddy/delegation-core";
+import {
+  buildDelegateFollowUpTask,
+  buildDelegateTaskPrompt
+} from "@freebuddy/delegation-core";
 import type { DelegationRuntimePorts } from "./ports.js";
 import { DelegationOrchestrator } from "./orchestrator.js";
 
@@ -298,9 +301,14 @@ export class DelegationRuntime {
     if (!root) throw new Error("delegation root event missing");
     ctx.rootEventId = root.id;
     const orch = this.ensureOrchestrator(ctx);
+    const followUpTask = buildDelegateFollowUpTask(
+      root.taskText,
+      userPrompt,
+      root.status
+    );
     this.ports.repository.transitionEvent(root.id, "running", null, { allowReopen: true });
     const prompt = buildDelegateTaskPrompt(
-      userPrompt,
+      followUpTask,
       ctx.roster,
       entry.id,
       0,

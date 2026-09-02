@@ -236,6 +236,38 @@ test("followUp after completed entry reopens without reusing entry sessionId", a
   });
 });
 
+test("followUp after a failed entry restores the original task for a fresh session", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const prompts = [];
+    let turn = 0;
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: () => ({ adapter: "dsh-acp", agentName: "DeepSeek", skillIds: [] }),
+      runAgent: async (args) => {
+        prompts.push(args.prompt);
+        turn += 1;
+        return turn === 1
+          ? { summary: "", exitCode: 0, error: "Agent returned no output.", hasOutput: false }
+          : { summary: "done", exitCode: 0, error: null, hasOutput: true };
+      }
+    });
+
+    const runId = await rt.start({
+      goal: "制作五张短视频封面并完成验收",
+      teamId: "t",
+      teamSnapshot: snap,
+      cwd: "/r"
+    });
+    await rt.followUp(runId, "继续");
+
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[1], /Original task:\n制作五张短视频封面并完成验收/);
+    assert.match(prompts[1], /Latest user instruction:\n继续/);
+  });
+});
+
 test("followUp during an initial park is queued without prematurely completing the run", async (t) => {
   if (!bindingAvailable) { t.skip(); return; }
   await withDb(async () => {

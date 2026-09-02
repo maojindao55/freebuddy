@@ -33,7 +33,10 @@ import {
   type DelegateExecArgs,
   type DelegateExecResult
 } from "./delegationDispatch.js";
-import { buildDelegateTaskPrompt } from "./delegation/protocol/text.js";
+import {
+  buildDelegateFollowUpTask,
+  buildDelegateTaskPrompt
+} from "./delegation/protocol/text.js";
 import type { DelegateAgentRunner } from "./delegationRunner.js";
 import {
   classifyNewDelegationChildren,
@@ -428,11 +431,17 @@ export class DelegationRuntime {
     const orch = this.ensureOrchestrator(ctx);
     if (!orch.state) orch.bindEntry(root.id);
 
+    const followUpTask = buildDelegateFollowUpTask(
+      root.taskText,
+      userPrompt,
+      root.status
+    );
+
     // Reset root to running for the follow-up turn.
     transitionDelegationEvent(root.id, "running", null, { allowReopen: true });
 
     const prompt = buildDelegateTaskPrompt(
-      userPrompt,
+      followUpTask,
       ctx.roster,
       entry.id,
       0,

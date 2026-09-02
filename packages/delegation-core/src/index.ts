@@ -33,6 +33,7 @@ export {
 } from "./protocol/guards.js";
 export type { DelegationEventRoleRef } from "./protocol/guards.js";
 export {
+  buildDelegateFollowUpTask,
   buildDelegateTaskPrompt,
   buildDelegateWakePrompt,
   buildDelegationRosterPrompt,

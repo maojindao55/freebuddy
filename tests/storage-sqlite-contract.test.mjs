@@ -220,3 +220,79 @@ test("sqlite insertDelegationEvent rethrows foreign key failures", async (t) => 
   assert.equal(getDelegationEvent(ctx, "dup-event")?.runId, runId);
   db.close();
 });
+
+test("sqlite delegation reopen resets attempt start time and clears end time", async (t) => {
+  let Database;
+  try {
+    Database = (await import("better-sqlite3")).default;
+    new Database(":memory:").close();
+  } catch {
+    t.skip("better-sqlite3 native binding unavailable");
+    return;
+  }
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE workflow_runs (
+      id TEXT PRIMARY KEY, conversation_id TEXT, name TEXT, goal TEXT, status TEXT,
+      cwd TEXT, template TEXT, loop_index INTEGER, max_loops INTEGER, plan_json TEXT,
+      team_id TEXT, team_snapshot_json TEXT, plan_version INTEGER, kind TEXT,
+      runtime_version TEXT, runtime_api_version TEXT, summary TEXT,
+      created_at TEXT, updated_at TEXT, ended_at TEXT
+    );
+    CREATE TABLE delegation_events (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL, parent_event_id TEXT, agent_id TEXT,
+      agent_name TEXT, role_label TEXT, task_text TEXT, depth INTEGER, status TEXT,
+      result_summary TEXT, result_json TEXT, can_write INTEGER, accepted_at TEXT,
+      started_at TEXT, ended_at TEXT, verdict TEXT, verdict_summary TEXT
+    );
+  `);
+  const {
+    createDelegationRun,
+    getDelegationEvent,
+    insertDelegationEvent,
+    transitionDelegationEvent
+  } = await import("../packages/storage-sqlite/dist/index.js");
+  let now = "2026-09-02T10:00:00.000Z";
+  const ctx = {
+    db,
+    owner: { ownerUserId: null, isAdmin: true },
+    nowIso: () => now
+  };
+  const runId = createDelegationRun(ctx, {
+    goal: "g",
+    teamId: "t",
+    teamSnapshotJson: "{}"
+  });
+  const eventId = insertDelegationEvent(ctx, {
+    runId,
+    parentEventId: null,
+    agentId: "a",
+    agentName: "a",
+    roleLabel: "a",
+    taskText: "g",
+    depth: 0,
+    canWrite: true,
+    status: "running"
+  });
+  now = "2026-09-02T10:10:00.000Z";
+  assert.equal(transitionDelegationEvent(ctx, eventId, "failed", "empty"), true);
+  now = "2026-09-02T15:00:00.000Z";
+  assert.equal(
+    transitionDelegationEvent(ctx, eventId, "running", null, { allowReopen: true }),
+    true
+  );
+  const reopened = getDelegationEvent(ctx, eventId);
+  assert.equal(reopened?.startedAt, "2026-09-02T15:00:00.000Z");
+  assert.equal(reopened?.endedAt, null);
+  now = "2026-09-02T16:00:00.000Z";
+  assert.equal(
+    transitionDelegationEvent(ctx, eventId, "running", null, { allowReopen: true }),
+    true
+  );
+  assert.equal(
+    getDelegationEvent(ctx, eventId)?.startedAt,
+    "2026-09-02T15:00:00.000Z",
+    "a queued follow-up must not reset an already-running attempt"
+  );
+  db.close();
+});

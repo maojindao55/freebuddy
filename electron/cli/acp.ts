@@ -21,6 +21,53 @@ export interface AcpMessage {
   error?: { code: number; message: string; data?: any };
 }
 
+/** Keep the inactivity watchdog aware of a silent, in-flight ACP tool call. */
+export function updateActiveAcpToolCalls(
+  activeToolCallIds: Set<string>,
+  update: any
+): void {
+  const type = String(update?.sessionUpdate ?? "");
+  if (type !== "tool_call" && type !== "tool_call_update") return;
+  if (update?.toolCallId == null) return;
+  const toolCallId = String(update.toolCallId);
+  if (!toolCallId) return;
+  const status = String(update?.status ?? "").toLowerCase();
+  if (["completed", "failed", "cancelled", "done", "error"].includes(status)) {
+    activeToolCallIds.delete(toolCallId);
+    return;
+  }
+  activeToolCallIds.add(toolCallId);
+}
+
+export function shouldRetryEmptyResumedDshTurn(input: {
+  adapter: string;
+  resumed: boolean;
+  promptHadContent: boolean;
+  resetAttempted: boolean;
+}): boolean {
+  return (
+    input.adapter === "dsh-acp" &&
+    input.resumed &&
+    !input.promptHadContent &&
+    !input.resetAttempted
+  );
+}
+
+export function shouldDiscardAcpToolSession(input: {
+  adapter: string;
+  status: "done" | "failed" | "killed";
+  promptStarted: boolean;
+  promptHadContent: boolean;
+  turnHadTerminalError: boolean;
+}): boolean {
+  return (
+    input.adapter === "dsh-acp" &&
+    (input.status !== "done" ||
+      input.turnHadTerminalError ||
+      (input.promptStarted && !input.promptHadContent))
+  );
+}
+
 /** An ACP authentication method advertised by an agent in `initialize`.
  *  Stable ACP v1 supports agent-driven authentication. Draft agents may also
  *  advertise richer method types, which are kept here so we can reject them

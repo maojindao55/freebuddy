@@ -156,6 +156,39 @@ export function buildDelegateTaskPrompt(
   ].join("\n");
 }
 
+/**
+ * Restore enough task context when a failed entry turn is retried in a fresh
+ * tool session. Terse continuation prompts need the same protection even when
+ * the prior event was marked done, because its persisted ACP session may have
+ * disappeared between app launches.
+ */
+export function buildDelegateFollowUpTask(
+  originalTask: string,
+  userPrompt: string,
+  previousStatus?: string
+): string {
+  const original = originalTask.trim();
+  const followUp = userPrompt.trim();
+  const failedTurn = ["failed", "timeout", "cancelled"].includes(
+    String(previousStatus ?? "").toLowerCase()
+  );
+  const terseContinuation = /^(?:继续(?:执行|处理|完成|推进)?(?:吧|下去)?|接着(?:做|执行|处理|完成|推进)?(?:吧)?|continue|resume|go on)[\s.!。！]*$/iu.test(
+    followUp
+  );
+  if (!original || original === followUp || (!failedTurn && !terseContinuation)) {
+    return followUp;
+  }
+  return [
+    "Continue the existing delegation task from the current workspace state.",
+    "",
+    "Original task:",
+    original,
+    "",
+    "Latest user instruction:",
+    followUp
+  ].join("\n");
+}
+
 export interface DelegateWakeInfo {
   taskText: string;
   roleLabel: string;

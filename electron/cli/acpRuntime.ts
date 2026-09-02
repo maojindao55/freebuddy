@@ -28,7 +28,10 @@ import {
   shouldDropReplayPhaseAgentChunk,
   shouldEmitAcpUpdate,
   shouldSkipUserMessageChunk,
+  shouldDiscardAcpToolSession,
+  shouldRetryEmptyResumedDshTurn,
   textFromContent,
+  updateActiveAcpToolCalls,
   isMissingSavedSessionError,
   type AcpAuthMethod,
   type AcpMessage,
@@ -142,6 +145,12 @@ function contextResetInstruction(): string {
   return "The previous agent session reached its context limit. Continue from the current workspace state; do not repeat completed work. Re-check the current files and finish the request.";
 }
 
+function emptySessionResetInstruction(): string {
+  // Agent-facing recovery instruction. The original prompt is retained before
+  // this suffix so a newly created session can safely resume the same task.
+  return "The previous agent session ended without producing output. Continue from the current workspace state; do not repeat completed work. Re-check the current files and finish the request.";
+}
+
 function contextWindowExceededAfterResetError(err: unknown): Error {
   const detail = (err as Error)?.message || String(err);
   return getLanguage() === "zh-CN"
@@ -209,11 +218,14 @@ export async function runAcpAgent({
   let inactivityFired = false;
   let inactivityReprieves = 0;
   let promptHadContent = false;
+  let turnHadTerminalError = false;
   let turnHadLiveAgentChunk = false;
   let sessionWasResumed = false;
   let mcpServers: AcpStdioMcpServer[] = [];
   let contextResetAttempted = false;
+  let emptySessionResetAttempted = false;
   let nonRetryableUpstreamError: string | undefined;
+  const activeToolCallIds = new Set<string>();
   let activePrompt = args.prompt;
   const sessionMeta: AcpSessionMeta | undefined = claudeAcpSessionOptions
     ? { claudeCode: { options: claudeAcpSessionOptions } }
@@ -351,12 +363,20 @@ export async function runAcpAgent({
     const alive = await probeAgentLiveness();
     if (finished) return;
     const minutes = Math.round(INACTIVITY_TIMEOUT_MS / 60000);
-    if (alive && inactivityReprieves < MAX_INACTIVITY_REPRIEVES) {
+    const hasActiveToolCall = activeToolCallIds.size > 0;
+    if (
+      (alive || hasActiveToolCall) &&
+      inactivityReprieves < MAX_INACTIVITY_REPRIEVES
+    ) {
       inactivityReprieves += 1;
       appendLog(
         logStream,
         "system",
-        `inactivity after ${INACTIVITY_TIMEOUT_MS}ms; agent responded to liveness probe; continuing (reprieve ${inactivityReprieves}/${MAX_INACTIVITY_REPRIEVES})`
+        `inactivity after ${INACTIVITY_TIMEOUT_MS}ms; ${
+          alive
+            ? "agent responded to liveness probe"
+            : `ACP tool call still active (${activeToolCallIds.size})`
+        }; continuing (reprieve ${inactivityReprieves}/${MAX_INACTIVITY_REPRIEVES})`
       );
       inactivityFired = false;
       disarmInactivityTimer();
@@ -372,7 +392,9 @@ export async function runAcpAgent({
     finish(
       "failed",
       -1,
-      alive
+      hasActiveToolCall
+        ? `Agent's active tool call produced no output for ${minutes} minutes and remained silent after ${MAX_INACTIVITY_REPRIEVES} watchdog reprieves.`
+        : alive
         ? `Agent produced no output for ${minutes} minutes and was still silent after ${MAX_INACTIVITY_REPRIEVES} liveness probes. This usually means a tool spawned a long-running process (for example a dev server or sub-agent) that held the agent's output stream open.`
         : `Agent produced no output for ${minutes} minutes and did not respond to a liveness probe. This usually means a tool spawned a long-running process (for example a dev server) that held the agent's output stream open.`
     );
@@ -435,7 +457,20 @@ export async function runAcpAgent({
     clearSessionOwner(args.sessionId);
     updateTaskStatus(args.sessionId, status, exitCode, errorMessage);
     updateRuntimeRun(args.adapter, status === "failed" ? errorMessage : undefined);
-    if (activeAcpSessionId && toolSessionScope) {
+    const discardToolSession = shouldDiscardAcpToolSession({
+      adapter: args.adapter,
+      status,
+      promptStarted,
+      promptHadContent,
+      turnHadTerminalError
+    });
+    if (discardToolSession && toolSessionScope) {
+      try {
+        clearToolSession(args.agentId, toolSessionScope);
+      } catch {
+        /* best-effort */
+      }
+    } else if (activeAcpSessionId && toolSessionScope) {
       saveToolSession(args.agentId, toolSessionScope, args.adapter, activeAcpSessionId);
       setTaskToolSessionId(args.sessionId, activeAcpSessionId);
     }
@@ -501,6 +536,9 @@ export async function runAcpAgent({
         capturedSessions.set(args.sessionId, sessionId);
       }
       const updateType = String(msg.params?.update?.sessionUpdate ?? "");
+      if (promptStarted) {
+        updateActiveAcpToolCalls(activeToolCallIds, msg.params?.update);
+      }
       const upstreamFailure = acpNonRetryableUpstreamError(msg.params?.update);
       if (!nonRetryableUpstreamError && upstreamFailure) {
         nonRetryableUpstreamError = upstreamFailure;
@@ -576,6 +614,13 @@ export async function runAcpAgent({
         return;
       }
       const items = acpUpdateToItems(msg.params?.update, sessionId);
+      if (
+        items.some(
+          (item) => item.kind === "error" && item.terminal === true
+        )
+      ) {
+        turnHadTerminalError = true;
+      }
       if (items.length) emit({ type: "items", items });
       return;
     }
@@ -1104,8 +1149,10 @@ export async function runAcpAgent({
     });
     promptStarted = true;
     promptHadContent = false;
+    turnHadTerminalError = false;
     turnHadLiveAgentChunk = false;
     inactivityReprieves = 0;
+    activeToolCallIds.clear();
     // Live generation begins here. Replay suppression (sessionWasResumed) must
     // be confined to the pre-prompt replay phase; keeping it enabled would drop
     // live agent chunks whose text matches a persisted history signature.
@@ -1470,6 +1517,7 @@ export async function runAcpAgent({
     };
 
     await applyConfigOptionOverrides();
+    const initialPromptResumedSession = sessionWasResumed;
     try {
       await runPromptOnSession();
     } catch (promptErr) {
@@ -1530,6 +1578,52 @@ export async function runAcpAgent({
     }
     if (nonRetryableUpstreamError) {
       throw new Error(nonRetryableUpstreamError);
+    }
+
+    if (
+      !finished &&
+      shouldRetryEmptyResumedDshTurn({
+        adapter: args.adapter,
+        resumed: initialPromptResumedSession,
+        promptHadContent,
+        resetAttempted: emptySessionResetAttempted
+      })
+    ) {
+      emptySessionResetAttempted = true;
+      const emptySessionId = activeAcpSessionId;
+      appendLog(
+        logStream,
+        "system",
+        `saved DeepSeek ACP session returned an empty turn; starting a fresh session${
+          emptySessionId ? ` from ${emptySessionId}` : ""
+        }`
+      );
+      emit({
+        type: "stderr",
+        content:
+          "Previous DeepSeek session returned no output; retrying once in a fresh session."
+      });
+      if (toolSessionScope) {
+        try {
+          clearToolSession(args.agentId, toolSessionScope);
+        } catch {
+          /* best-effort */
+        }
+      }
+      requestedToolSessionId = undefined;
+      activeAcpSessionId = undefined;
+      sessionWasResumed = false;
+      activePrompt = [
+        args.prompt.trimEnd(),
+        "",
+        emptySessionResetInstruction()
+      ].join("\n");
+      await establishSession();
+      await applyConfigOptionOverrides();
+      await runPromptOnSession();
+      if (nonRetryableUpstreamError) {
+        throw new Error(nonRetryableUpstreamError);
+      }
     }
     await syncSessionMetadataFromList();
 

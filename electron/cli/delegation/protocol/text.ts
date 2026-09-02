@@ -1,4 +1,5 @@
 export {
+  buildDelegateFollowUpTask,
   buildDelegateTaskPrompt,
   buildDelegateWakePrompt,
   buildDelegationRosterPrompt,

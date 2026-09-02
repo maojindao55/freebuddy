@@ -512,6 +512,53 @@ test("crash recovery marks active events failed via repository transitions", () 
   assert.equal(repository.setStatus(run.id, "failed"), true);
 });
 
+test("reopening a terminal delegation event starts a new visible attempt", () => {
+  const repository = createMemoryDelegationRepository();
+  const run = repository.createRun({
+    goal: "g",
+    status: "running",
+    teamId: "t",
+    teamSnapshotJson: "{}"
+  });
+  repository.hydrateEvent({
+    id: "root",
+    runId: run.id,
+    parentEventId: null,
+    agentId: "a",
+    agentName: "a",
+    roleLabel: "a",
+    taskText: "g",
+    depth: 0,
+    status: "failed",
+    resultSummary: "failed",
+    result: null,
+    canWrite: true,
+    acceptedAt: "2026-01-01T00:00:00.000Z",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    endedAt: "2026-01-01T00:10:00.000Z",
+    verdict: null,
+    verdictSummary: null
+  });
+
+  assert.equal(
+    repository.transitionEvent("root", "running", null, { allowReopen: true }),
+    true
+  );
+  const reopened = repository.getEvent("root");
+  assert.notEqual(reopened?.startedAt, "2026-01-01T00:00:00.000Z");
+  assert.equal(reopened?.endedAt, null);
+  const attemptStartedAt = reopened?.startedAt;
+  assert.equal(
+    repository.transitionEvent("root", "running", null, { allowReopen: true }),
+    true
+  );
+  assert.equal(
+    repository.getEvent("root")?.startedAt,
+    attemptStartedAt,
+    "a follow-up queued while the event is already running must not reset its timer"
+  );
+});
+
 test("memory delegation ids are UUIDs and unique across fresh repositories", () => {
   const first = createMemoryDelegationRepository();
   const second = createMemoryDelegationRepository();

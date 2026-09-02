@@ -48,9 +48,12 @@ import {
   parseAcpLine,
   selectAcpAuthMethod,
   selectAcpSessionStartMode,
+  shouldDiscardAcpToolSession,
   shouldEmitAcpUpdate,
+  shouldRetryEmptyResumedDshTurn,
   shouldSkipUserMessageChunk,
-  shouldDropReplayPhaseAgentChunk
+  shouldDropReplayPhaseAgentChunk,
+  updateActiveAcpToolCalls
 } from "../dist-electron/cli/acp.js";
 
 const acpRuntimeSource = fs.readFileSync(
@@ -1174,6 +1177,85 @@ test("ACP runtime starts a fresh session once when a prompt exceeds context", ()
   assert.match(
     acpRuntimeSource,
     /buildSessionNewRequest\(nextId\(\), args\.cwd, mcpServers, sessionMeta\)/
+  );
+});
+
+test("ACP tool-call activity tracks silent in-flight tools until terminal updates", () => {
+  const active = new Set();
+  updateActiveAcpToolCalls(active, {
+    sessionUpdate: "tool_call",
+    toolCallId: "job-1",
+    status: "in_progress"
+  });
+  assert.deepEqual([...active], ["job-1"]);
+  updateActiveAcpToolCalls(active, {
+    sessionUpdate: "tool_call_update",
+    toolCallId: "job-1",
+    status: "completed"
+  });
+  assert.equal(active.size, 0);
+});
+
+test("DeepSeek session health policy retries one empty resume and discards unhealthy sessions", () => {
+  assert.equal(
+    shouldRetryEmptyResumedDshTurn({
+      adapter: "dsh-acp",
+      resumed: true,
+      promptHadContent: false,
+      resetAttempted: false
+    }),
+    true
+  );
+  assert.equal(
+    shouldRetryEmptyResumedDshTurn({
+      adapter: "dsh-acp",
+      resumed: true,
+      promptHadContent: false,
+      resetAttempted: true
+    }),
+    false,
+    "a second empty fresh turn must not start an infinite retry loop"
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "dsh-acp",
+      status: "failed",
+      promptStarted: true,
+      promptHadContent: true,
+      turnHadTerminalError: false
+    }),
+    true
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "dsh-acp",
+      status: "done",
+      promptStarted: true,
+      promptHadContent: false,
+      turnHadTerminalError: false
+    }),
+    true
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "dsh-acp",
+      status: "done",
+      promptStarted: true,
+      promptHadContent: true,
+      turnHadTerminalError: false
+    }),
+    false
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "codex-acp",
+      status: "failed",
+      promptStarted: true,
+      promptHadContent: false,
+      turnHadTerminalError: false
+    }),
+    false,
+    "the compatibility policy is intentionally limited to DeepSeek Harness"
   );
 });
 

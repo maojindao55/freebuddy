@@ -144,6 +144,26 @@ test("ACP inactivity watchdog probes liveness before cancelling and caps repriev
   );
 });
 
+test("ACP watchdog grants bounded time to an explicitly active tool call", () => {
+  assert.match(acpRuntimeSource, /updateActiveAcpToolCalls/);
+  assert.match(acpRuntimeSource, /const activeToolCallIds = new Set<string>\(\)/);
+  assert.match(acpRuntimeSource, /alive \|\| hasActiveToolCall/);
+  assert.match(acpRuntimeSource, /MAX_INACTIVITY_REPRIEVES/);
+});
+
+test("DeepSeek empty resumed turns retry fresh once and unhealthy sessions are evicted", () => {
+  assert.match(acpRuntimeSource, /shouldRetryEmptyResumedDshTurn/);
+  assert.match(acpRuntimeSource, /emptySessionResetAttempted = true/);
+  assert.match(acpRuntimeSource, /Previous DeepSeek session returned no output/);
+  assert.match(acpRuntimeSource, /emptySessionResetInstruction\(\)/);
+  assert.match(acpRuntimeSource, /shouldDiscardAcpToolSession/);
+  const finishBody = acpRuntimeSource.slice(
+    acpRuntimeSource.indexOf("const finish ="),
+    acpRuntimeSource.indexOf("const cancelRun")
+  );
+  assert.match(finishBody, /clearToolSession\(args\.agentId, toolSessionScope\)/);
+});
+
 test("CLI runtime records the approval mode with each task start", () => {
   assert.match(runtimeSource, /approvalMode: args\.approvalMode \?\? "default"/);
 });

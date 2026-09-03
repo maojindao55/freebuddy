@@ -419,7 +419,7 @@ export function BrowserCanvas({ onClose }: { onClose?: () => void }) {
     nativeBrowserAvailable && isNativeRemoteBrowserTarget(entry?.manualEntry);
   const isExternalOnly =
     (!isNativeRemote && isExternalOnlyBrowserTarget(entry?.manualEntry)) ||
-    isInsecureRemoteBrowserTarget(entry?.manualEntry);
+    (!nativeBrowserAvailable && isInsecureRemoteBrowserTarget(entry?.manualEntry));
   const pdfUrl = isPdf && entry?.url ? `${entry.url}#view=FitH&navpanes=0` : "";
   const documentExtension = browserTargetExtension(entry?.manualEntry, entry?.url);
   const frameWidth = FRAME_WIDTH[viewport];

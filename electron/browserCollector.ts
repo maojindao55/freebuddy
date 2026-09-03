@@ -48,8 +48,8 @@ function isBlockedHostname(rawHostname: string): boolean {
 
 function validateRemoteUrl(value: string): URL {
   const url = new URL(value.trim());
-  if (url.protocol !== "https:") {
-    throw new Error("Browser collection only supports HTTPS sources.");
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Browser collection only supports HTTP and HTTPS sources.");
   }
   if (url.username || url.password) {
     throw new Error("Browser collection URLs cannot contain credentials.");

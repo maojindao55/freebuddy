@@ -44,8 +44,8 @@ let pendingNavigationUrl: string | null = null;
 
 function parseAllowedUrl(rawUrl: string): URL {
   const url = new URL(rawUrl.trim());
-  if (url.protocol !== "https:") {
-    throw new Error("The isolated browser only supports HTTPS pages.");
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("The isolated browser only supports HTTP and HTTPS pages.");
   }
   if (url.username || url.password) {
     throw new Error("Browser URLs cannot contain credentials.");
@@ -220,7 +220,7 @@ function ensureBrowserView(win: BrowserWindow): WebContentsView {
       const target = parseAllowedUrl(url);
       void contents.loadURL(target.toString());
     } catch {
-      // Block non-HTTPS popups and unsupported schemes.
+      // Block non-HTTP/HTTPS popups and unsupported schemes.
     }
     return { action: "deny" };
   });

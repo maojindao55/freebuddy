@@ -314,6 +314,15 @@ test("Browser preview keeps remote article URLs inside the preview target", asyn
   assert.equal(parsed.searchParams.get("from"), "rss");
 });
 
+test("Browser preview keeps remote HTTP URLs exact inside the preview target", async () => {
+  const { composeBrowserUrl, remoteBrowserOrigin } = await loadBrowserStoreModule();
+  const source = "http://w.gangpeitong.cloud:2011/dashboard";
+  assert.equal(remoteBrowserOrigin(source), "http://w.gangpeitong.cloud:2011");
+
+  const url = composeBrowserUrl("/Users/me/workspace", source, 11);
+  assert.equal(url, "http://w.gangpeitong.cloud:2011/dashboard");
+});
+
 test("Browser preview supports remote URLs but not relative files without a workspace", async () => {
   const { composeBrowserUrl } = await loadBrowserStoreModule();
   const remote = composeBrowserUrl("", "https://example.com/article", 4);

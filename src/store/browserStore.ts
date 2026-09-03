@@ -97,7 +97,7 @@ export function isAbsoluteLocalPath(target: string): boolean {
 }
 
 export function remoteBrowserOrigin(value: string | undefined): string | null {
-  if (!value || !/^https:\/\//i.test(value)) return null;
+  if (!value || !/^https?:\/\//i.test(value)) return null;
   try {
     const url = new URL(value);
     const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");

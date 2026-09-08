@@ -2,6 +2,12 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.9.17] - 2026-09-08
+
+### 问题修复
+
+- resolve macOS cert import helper path on Windows (#153)
+
 ## [0.9.16] - 2026-09-08
 
 ### 问题修复

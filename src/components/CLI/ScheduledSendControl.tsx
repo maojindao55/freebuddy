@@ -33,7 +33,7 @@ type PanelPosition = {
 };
 
 function computePanelPosition(trigger: HTMLElement): PanelPosition {
-  const width = 280;
+  const width = 300;
   const gap = 8;
   const rect = trigger.getBoundingClientRect();
   const left = Math.min(
@@ -206,17 +206,11 @@ export function ScheduledSendControl({
               <div className="scheduled-send-panel-title">
                 {t("scheduledSend.panelTitle")}
               </div>
-              <div className="scheduled-send-panel-hint">
-                {t("scheduledSend.panelHint")}
-              </div>
               {!canSchedule ? (
                 <div className="scheduled-send-needs-draft">
                   {t("scheduledSend.triggerNeedsDraft")}
                 </div>
               ) : null}
-              <div className="scheduled-send-section-label">
-                {t("scheduledSend.presetsLabel")}
-              </div>
               <div className="scheduled-send-presets">
                 {SCHEDULED_SEND_PRESET_MINUTES.map((minutes) => (
                   <button
@@ -232,38 +226,26 @@ export function ScheduledSendControl({
                   </button>
                 ))}
               </div>
-              {showCodexReset ? (
-                <>
-                  <div className="scheduled-send-section-label">
-                    {t("scheduledSend.quotaResetLabel")}
-                  </div>
-                  {codexReset.kind === "ready" ? (
-                    <button
-                      type="button"
-                      className="scheduled-send-preset scheduled-send-preset-reset"
-                      disabled={!canSchedule}
-                      onClick={() => commit(codexReset.fireAt)}
-                    >
-                      {t("scheduledSend.quotaResetAt", {
+              {showCodexReset && codexReset.kind !== "unavailable" ? (
+                <button
+                  type="button"
+                  className="scheduled-send-preset scheduled-send-preset-reset"
+                  disabled={!canSchedule || codexReset.kind !== "ready"}
+                  onClick={() => {
+                    if (codexReset.kind === "ready") commit(codexReset.fireAt);
+                  }}
+                >
+                  {codexReset.kind === "ready"
+                    ? t("scheduledSend.quotaResetAt", {
                         time: formatScheduledFireTime(
                           codexReset.fireAt,
                           Date.now(),
                           i18n.language
                         )
-                      })}
-                    </button>
-                  ) : (
-                    <div className="scheduled-send-muted">
-                      {codexReset.kind === "loading"
-                        ? t("scheduledSend.quotaResetLoading")
-                        : t("scheduledSend.quotaResetUnavailable")}
-                    </div>
-                  )}
-                </>
+                      })
+                    : t("scheduledSend.quotaResetLoading")}
+                </button>
               ) : null}
-              <div className="scheduled-send-section-label">
-                {t("scheduledSend.customLabel")}
-              </div>
               <div className="scheduled-send-custom">
                 <input
                   type="datetime-local"

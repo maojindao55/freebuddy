@@ -124,7 +124,10 @@ test("scheduled send trigger stays clickable with an empty draft; the message st
   assert.doesNotMatch(controlSource, /<textarea/);
   assert.match(controlSource, /className="scheduled-send-needs-draft"/);
   assert.match(controlSource, /if \(!canSchedule\) return;\s+onSchedule\(fireAt\)/);
-  assert.equal((controlSource.match(/disabled=\{!canSchedule\}/g) ?? []).length, 3);
+  assert.equal((controlSource.match(/disabled=\{!canSchedule\}/g) ?? []).length, 2);
+  assert.match(controlSource, /disabled=\{!canSchedule \|\| codexReset\.kind !== "ready"\}/);
+  // Compact panel: no explanatory paragraph or section labels.
+  assert.doesNotMatch(controlSource, /scheduledSend\.panelHint|scheduled-send-section-label/);
 });
 
 test("scheduled send control offers presets, quota reset, and a custom time", () => {

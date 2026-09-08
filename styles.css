@@ -10362,39 +10362,28 @@ button.new-task-context-control {
 }
 
 .scheduled-send-panel-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.scheduled-send-panel-hint {
   font-size: 12px;
-  line-height: 1.45;
+  font-weight: 600;
   color: var(--fb-text-secondary);
 }
 
-.scheduled-send-section-label {
-  margin-top: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--fb-text-tertiary);
-}
-
 .scheduled-send-presets {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
 }
 
 .scheduled-send-preset {
-  padding: 6px 10px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
   border: 1px solid var(--fb-border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   color: var(--fb-text-primary);
   font: inherit;
   font-size: 12.5px;
+  white-space: nowrap;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
@@ -10412,7 +10401,7 @@ button.new-task-context-control {
 }
 
 .scheduled-send-needs-draft {
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 8px;
   background: rgba(209, 134, 22, 0.1);
   color: var(--fb-warning);

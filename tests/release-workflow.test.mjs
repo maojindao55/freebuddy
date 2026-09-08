@@ -107,17 +107,54 @@ test("macOS cert import uses the keychain password for set-key-partition-list", 
   assert.match(script, /-P "\$\{CSC_KEY_PASSWORD:-\}"/);
 });
 
+test("macOS cert import replaces a leftover keychain before create-keychain", () => {
+  const script = fs.readFileSync(
+    new URL("../scripts/import-macos-csc-cert.sh", import.meta.url),
+    "utf8"
+  );
+  const deleteAt = script.search(/security delete-keychain/);
+  const createAt = script.search(/security create-keychain/);
+  assert.ok(deleteAt >= 0, "must delete any leftover keychain (npm test on Darwin leaves one)");
+  assert.ok(createAt >= 0);
+  assert.ok(
+    deleteAt < createAt,
+    "delete-keychain must run before create-keychain to avoid SecKeychainCreate exit 48"
+  );
+  assert.match(script, /security list-keychains -d user/);
+  assert.doesNotMatch(script, /security list-keychain /);
+  assert.doesNotMatch(
+    script,
+    /-t cert/,
+    "PKCS12 import must include the private key; -t cert drops the identity"
+  );
+});
+
+test("macOS cert import test does not create a keychain during npm test on Darwin", () => {
+  const source = fs.readFileSync(new URL(import.meta.url), "utf8");
+  const marker = 'test("macOS cert import is a no-op off Darwin", async () => {';
+  const start = source.lastIndexOf(marker);
+  assert.ok(start >= 0, "expected the Darwin no-op test");
+  const darwinTest = source.slice(start);
+  const platformCheck = darwinTest.indexOf('process.platform === "darwin"');
+  const spawn = darwinTest.indexOf("spawnSync(");
+  assert.ok(platformCheck >= 0, "expected a Darwin platform guard");
+  assert.ok(spawn >= 0, "expected spawnSync of the import script");
+  assert.ok(
+    platformCheck < spawn,
+    "spawnSync must be skipped on Darwin so npm test does not leave freebuddy-signing.keychain-db"
+  );
+});
+
 test("macOS cert import is a no-op off Darwin", async () => {
+  if (process.platform === "darwin") {
+    return;
+  }
   const { spawnSync } = await import("node:child_process");
   const result = spawnSync(
     "bash",
     [new URL("../scripts/import-macos-csc-cert.sh", import.meta.url).pathname],
     { encoding: "utf8", env: { ...process.env, CSC_LINK: "dGVzdA==" } }
   );
-  if (process.platform === "darwin") {
-    assert.ok(true);
-    return;
-  }
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Skipping macOS certificate import/);
 });

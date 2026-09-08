@@ -39,14 +39,22 @@ else:
     dest.write_bytes(base64.b64decode(raw))
 PY
 
+# npm test on macOS previously invoked this script with a dummy CSC_LINK and
+# left this keychain behind. create-keychain then fails with exit 48
+# (SecKeychainCreate: A keychain with the same name already exists).
+security delete-keychain "${keychain_path}" >/dev/null 2>&1 || true
+rm -f "${keychain_path}"
+
 security create-keychain -p "${keychain_password}" "${keychain_path}"
 security set-keychain-settings -lut 21600 "${keychain_path}"
 security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+# Import the PKCS12 identity (cert + private key). Do not set the import
+# type to certificate-only: that drops the private key and find-identity
+# reports 0 identities.
 security import "${certificate_path}" \
   -k "${keychain_path}" \
   -P "${CSC_KEY_PASSWORD:-}" \
   -A \
-  -t cert \
   -f pkcs12 \
   -T /usr/bin/codesign \
   -T /usr/bin/security \
@@ -62,11 +70,12 @@ while IFS= read -r line; do
   trimmed="${line#"${line%%[![:space:]]*}"}"
   trimmed="${trimmed%\"}"
   trimmed="${trimmed#\"}"
-  if [[ -n "${trimmed}" ]]; then
+  if [[ -n "${trimmed}" && "${trimmed}" != "${keychain_path}" ]]; then
     existing_keychains+=("${trimmed}")
   fi
-done < <(security list-keychain -d user)
-security list-keychain -d user -s "${keychain_path}" "${existing_keychains[@]+"${existing_keychains[@]}"}"
+done < <(security list-keychains -d user)
+security list-keychains -d user -s "${keychain_path}" "${existing_keychains[@]+"${existing_keychains[@]}"}"
+security default-keychain -s "${keychain_path}"
 
 identities="$(security find-identity -v -p codesigning "${keychain_path}")"
 printf '%s\n' "${identities}"

@@ -143,6 +143,12 @@ test("macOS cert import test does not create a keychain during npm test on Darwi
     platformCheck < spawn,
     "spawnSync must be skipped on Darwin so npm test does not leave freebuddy-signing.keychain-db"
   );
+  assert.match(
+    darwinTest,
+    /fileURLToPath\(/,
+    "URL.pathname is /D:/... on Windows; bash cannot open that path (exit 127)"
+  );
+  assert.doesNotMatch(darwinTest, /\.pathname/);
 });
 
 test("macOS cert import is a no-op off Darwin", async () => {
@@ -150,11 +156,16 @@ test("macOS cert import is a no-op off Darwin", async () => {
     return;
   }
   const { spawnSync } = await import("node:child_process");
-  const result = spawnSync(
-    "bash",
-    [new URL("../scripts/import-macos-csc-cert.sh", import.meta.url).pathname],
-    { encoding: "utf8", env: { ...process.env, CSC_LINK: "dGVzdA==" } }
+  const { fileURLToPath } = await import("node:url");
+  const scriptPath = fileURLToPath(
+    new URL("../scripts/import-macos-csc-cert.sh", import.meta.url)
   );
-  assert.equal(result.status, 0, result.stderr);
+  const bashPath =
+    process.platform === "win32" ? scriptPath.replaceAll("\\", "/") : scriptPath;
+  const result = spawnSync("bash", [bashPath], {
+    encoding: "utf8",
+    env: { ...process.env, CSC_LINK: "dGVzdA==" },
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
   assert.match(result.stdout, /Skipping macOS certificate import/);
 });

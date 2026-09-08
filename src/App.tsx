@@ -47,6 +47,7 @@ import {
   playTaskSuccess
 } from "./utils/soundEffects";
 import { isAppInBackground } from "./utils/appFocus";
+import { startScheduledSendRunner } from "./services/scheduledSend/runner";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -98,6 +99,8 @@ function App() {
       await Promise.all([loadConversations(), refreshProjects()]);
     })();
   }, [loadExecutors, loadConversations, refreshProjects]);
+
+  useEffect(() => startScheduledSendRunner(), []);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;

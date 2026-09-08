@@ -93,9 +93,10 @@ test("presets cover the common 5h rate-limit window", () => {
   assert.equal(utils.SCHEDULED_SEND_RESET_BUFFER_MS, 60_000);
 });
 
-test("composer wires the scheduled send control, banner, and store", () => {
+test("composer wires the scheduled send control, bubble, and store", () => {
   assert.match(chatViewSource, /<ScheduledSendControl/);
-  assert.match(chatViewSource, /<ScheduledSendBanner/);
+  assert.match(chatViewSource, /<ScheduledSendMeta/);
+  assert.doesNotMatch(chatViewSource, /ScheduledSendBanner/);
   assert.match(chatViewSource, /useScheduledSendStore/);
   assert.match(chatViewSource, /const onScheduleSend = \(fireAt: number\)/);
   assert.match(chatViewSource, /protectManagedAttachments\(attachmentsToSend\);\s+if \(previous\) unprotectManagedAttachments/);
@@ -104,14 +105,24 @@ test("composer wires the scheduled send control, banner, and store", () => {
   assert.match(chatViewSource, /onSendNow=\{\(\) => fireScheduledSendNow\(conv\.id\)\}/);
 });
 
-test("scheduled send trigger stays clickable with an empty draft; the panel hosts the message field", () => {
+test("scheduled message renders as a user bubble in the thread with a countdown row", () => {
+  assert.match(chatViewSource, /className=\{`scheduled-send-bubble scheduled-send-bubble-\$\{scheduledSend\.status\}`\}/);
+  assert.match(chatViewSource, /id: `scheduled-send:\$\{conv\.id\}`,\s+conversationId: conv\.id,\s+role: "user"/);
+  assert.match(chatViewSource, /content: scheduledSend\.prompt,\s+attachments: scheduledSend\.attachments/);
+  assert.match(chatViewSource, /afterContent=\{\s*<ScheduledSendMeta/);
+  assert.match(controlSource, /className=\{`scheduled-send-meta scheduled-send-meta-\$\{entry\.status\}`\}/);
+  assert.match(controlSource, /countdown: formatCountdown\(entry\.fireAt - now\)/);
+  assert.doesNotMatch(controlSource, /scheduled-send-banner/);
+  assert.doesNotMatch(stylesSource, /scheduled-send-banner/);
+});
+
+test("scheduled send trigger stays clickable with an empty draft; the message stays in the composer", () => {
   assert.match(controlSource, /className=\{`scheduled-send-trigger\$\{open \? " open" : ""\}`\}\s+title=\{t\("scheduledSend\.trigger"\)\}\s+aria-label=\{t\("scheduledSend\.trigger"\)\}\s+disabled=\{disabled\}/);
   assert.doesNotMatch(controlSource, /disabled=\{disabled \|\| !canSchedule\}/);
-  assert.match(controlSource, /className="scheduled-send-message"/);
-  assert.match(controlSource, /onChange=\{\(event\) => onDraftChange\(event\.target\.value\)\}/);
+  assert.doesNotMatch(controlSource, /<textarea/);
+  assert.match(controlSource, /className="scheduled-send-needs-draft"/);
   assert.match(controlSource, /if \(!canSchedule\) return;\s+onSchedule\(fireAt\)/);
   assert.equal((controlSource.match(/disabled=\{!canSchedule\}/g) ?? []).length, 3);
-  assert.match(chatViewSource, /draft=\{draft\}\s+onDraftChange=\{setDraft\}/);
 });
 
 test("scheduled send control offers presets, quota reset, and a custom time", () => {
@@ -141,8 +152,8 @@ test("scheduled send styles and translations exist in both locales", () => {
     ".scheduled-send-trigger",
     ".scheduled-send-panel",
     ".scheduled-send-preset",
-    ".scheduled-send-banner",
-    ".scheduled-send-banner-failed"
+    ".scheduled-send-meta",
+    ".scheduled-send-needs-draft"
   ]) {
     assert.ok(stylesSource.includes(`${cls} {`), `missing style ${cls}`);
   }

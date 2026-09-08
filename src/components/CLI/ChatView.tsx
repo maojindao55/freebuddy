@@ -100,8 +100,8 @@ import {
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
 import {
-  ScheduledSendBanner,
-  ScheduledSendControl
+  ScheduledSendControl,
+  ScheduledSendMeta
 } from "./ScheduledSendControl";
 import { useScheduledSendStore } from "@/store/scheduledSendStore";
 import { ComposerAddMenu } from "./ComposerAddMenu";
@@ -1714,7 +1714,15 @@ export function ChatView({
     if (el && (replaying || isNearBottomRef.current)) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, live, submitPreview, gatingPhaseId, replaying, replayIndex]);
+  }, [
+    messages,
+    live,
+    submitPreview,
+    scheduledSend?.createdAt,
+    gatingPhaseId,
+    replaying,
+    replayIndex
+  ]);
 
   useEffect(() => {
     if (!pendingWorkflowAction) return;
@@ -2712,6 +2720,36 @@ export function ChatView({
             </Fragment>
           );
         })}
+        {scheduledSend && scheduledSend.conversationId === conv.id && !replaying ? (
+          <div
+            className={`scheduled-send-bubble scheduled-send-bubble-${scheduledSend.status}`}
+          >
+            <MessageBubble
+              message={{
+                id: `scheduled-send:${conv.id}`,
+                conversationId: conv.id,
+                role: "user",
+                status: "sent",
+                content: scheduledSend.prompt,
+                attachments: scheduledSend.attachments,
+                authorUsername: currentUser?.username ?? null,
+                createdAt: new Date(scheduledSend.createdAt).toISOString(),
+                updatedAt: new Date(scheduledSend.createdAt).toISOString()
+              }}
+              cwd={conv.cwd || conv.sourceCwd}
+              afterContent={
+                <ScheduledSendMeta
+                  entry={scheduledSend}
+                  now={scheduledSendNow}
+                  onSendNow={() => fireScheduledSendNow(conv.id)}
+                  onRetry={() => retryScheduledSend(conv.id)}
+                  onEdit={onEditScheduledSend}
+                  onCancel={onCancelScheduledSend}
+                />
+              }
+            />
+          </div>
+        ) : null}
         {activeRun?.conversationId === conv.id &&
           workflowGateIsActionable &&
           gatingPhaseId &&
@@ -2743,17 +2781,6 @@ export function ChatView({
       </div>
 
       {preflightMsg && <div className="preflight-warn">{preflightMsg}</div>}
-
-      {scheduledSend && scheduledSend.conversationId === conv.id ? (
-        <ScheduledSendBanner
-          entry={scheduledSend}
-          now={scheduledSendNow}
-          onSendNow={() => fireScheduledSendNow(conv.id)}
-          onRetry={() => retryScheduledSend(conv.id)}
-          onEdit={onEditScheduledSend}
-          onCancel={onCancelScheduledSend}
-        />
-      ) : null}
 
       {conv && <DelegationApprovalCard conversationId={conv.id} />}
 
@@ -2979,8 +3006,6 @@ export function ChatView({
               <ScheduledSendControl
                 adapter={member?.cli.adapter ?? conv.adapter}
                 disabled={replaying || attachmentBusy || sendLock}
-                draft={draft}
-                onDraftChange={setDraft}
                 canSchedule={!!(draft.trim() || pendingAttachments.length > 0)}
                 onSchedule={onScheduleSend}
               />

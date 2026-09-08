@@ -630,8 +630,6 @@
   "scheduledSend": {
     "trigger": "Schedule send",
     "triggerNeedsDraft": "Type the message to send before picking a time.",
-    "messageLabel": "Message",
-    "messagePlaceholder": "e.g. Continue from where you left off",
     "panelTitle": "Send later",
     "panelHint": "Useful when the agent hit its usage limit: pick when the quota comes back and the message goes out automatically.",
     "presetsLabel": "Send in",
@@ -649,7 +647,6 @@
     "statusWaiting": "Time reached · waiting for the current run to finish",
     "statusSending": "Sending scheduled message…",
     "statusFailed": "Scheduled send failed: {{err}}",
-    "attachmentsOnly": "{{count}} attachment(s)",
     "keepAppOpen": "Keep FreeBuddy open; scheduled sends are dropped when the app closes.",
     "sendNow": "Send now",
     "retry": "Retry",

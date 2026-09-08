@@ -22,8 +22,7 @@ import {
   pickCodexUsageResetAt,
   presetFireAt,
   supportsCodexUsageReset,
-  toDateTimeLocalInputValue,
-  truncatePromptPreview
+  toDateTimeLocalInputValue
 } from "@/utils/scheduledSend";
 
 type PanelPosition = {
@@ -58,10 +57,7 @@ type CodexResetState =
 type ControlProps = {
   adapter?: string;
   disabled?: boolean;
-  /** Composer draft, editable from inside the panel so the clock is always clickable. */
-  draft: string;
-  onDraftChange: (value: string) => void;
-  /** False when there is nothing (text or attachments) to schedule yet. */
+  /** False when the composer has nothing (text or attachments) to schedule yet. */
   canSchedule: boolean;
   onSchedule: (fireAt: number) => void;
 };
@@ -69,8 +65,6 @@ type ControlProps = {
 export function ScheduledSendControl({
   adapter,
   disabled,
-  draft,
-  onDraftChange,
   canSchedule,
   onSchedule
 }: ControlProps) {
@@ -215,19 +209,8 @@ export function ScheduledSendControl({
               <div className="scheduled-send-panel-hint">
                 {t("scheduledSend.panelHint")}
               </div>
-              <div className="scheduled-send-section-label">
-                {t("scheduledSend.messageLabel")}
-              </div>
-              <textarea
-                className="scheduled-send-message"
-                rows={3}
-                value={draft}
-                placeholder={t("scheduledSend.messagePlaceholder")}
-                aria-label={t("scheduledSend.messageLabel")}
-                onChange={(event) => onDraftChange(event.target.value)}
-              />
               {!canSchedule ? (
-                <div className="scheduled-send-muted">
+                <div className="scheduled-send-needs-draft">
                   {t("scheduledSend.triggerNeedsDraft")}
                 </div>
               ) : null}
@@ -319,7 +302,7 @@ export function ScheduledSendControl({
   );
 }
 
-type BannerProps = {
+type MetaProps = {
   entry: ScheduledSend;
   now: number;
   onSendNow: () => void;
@@ -328,17 +311,17 @@ type BannerProps = {
   onCancel: () => void;
 };
 
-export function ScheduledSendBanner({
+/** Compact countdown row rendered under the scheduled message bubble. */
+export function ScheduledSendMeta({
   entry,
   now,
   onSendNow,
   onRetry,
   onEdit,
   onCancel
-}: BannerProps) {
+}: MetaProps) {
   const { t, i18n } = useTranslation();
   const fireTime = formatScheduledFireTime(entry.fireAt, now, i18n.language);
-  const remaining = entry.fireAt - now;
 
   let statusText: string;
   switch (entry.status) {
@@ -354,58 +337,45 @@ export function ScheduledSendBanner({
     default:
       statusText = t("scheduledSend.statusPending", {
         time: fireTime,
-        countdown: formatCountdown(remaining)
+        countdown: formatCountdown(entry.fireAt - now)
       });
   }
 
-  const preview =
-    truncatePromptPreview(entry.prompt) ||
-    t("scheduledSend.attachmentsOnly", { count: entry.attachments.length });
+  const busy = entry.status === "sending";
 
   return (
     <div
-      className={`scheduled-send-banner scheduled-send-banner-${entry.status}`}
+      className={`scheduled-send-meta scheduled-send-meta-${entry.status}`}
       role="status"
+      title={entry.status === "pending" ? t("scheduledSend.keepAppOpen") : undefined}
     >
-      <AlarmClock aria-hidden="true" size={15} strokeWidth={1.8} />
-      <div className="scheduled-send-banner-body">
-        <div className="scheduled-send-banner-status">{statusText}</div>
-        <div className="scheduled-send-banner-preview" title={entry.prompt}>
-          {preview}
-        </div>
-        {entry.status === "pending" ? (
-          <div className="scheduled-send-banner-note">
-            {t("scheduledSend.keepAppOpen")}
-          </div>
-        ) : null}
-      </div>
-      <div className="scheduled-send-banner-actions">
-        {entry.status === "failed" ? (
-          <button type="button" className="text-button" onClick={onRetry}>
-            {t("scheduledSend.retry")}
-          </button>
-        ) : entry.status !== "sending" ? (
-          <button type="button" className="text-button" onClick={onSendNow}>
-            {t("scheduledSend.sendNow")}
-          </button>
-        ) : null}
-        {entry.status !== "sending" ? (
-          <button type="button" className="text-button" onClick={onEdit}>
+      <AlarmClock aria-hidden="true" size={13} strokeWidth={1.9} />
+      <span className="scheduled-send-meta-status">{statusText}</span>
+      {busy ? null : (
+        <span className="scheduled-send-meta-actions">
+          {entry.status === "failed" ? (
+            <button type="button" onClick={onRetry}>
+              {t("scheduledSend.retry")}
+            </button>
+          ) : (
+            <button type="button" onClick={onSendNow}>
+              {t("scheduledSend.sendNow")}
+            </button>
+          )}
+          <button type="button" onClick={onEdit}>
             {t("scheduledSend.edit")}
           </button>
-        ) : null}
-        {entry.status !== "sending" ? (
           <button
             type="button"
-            className="scheduled-send-banner-close"
+            className="scheduled-send-meta-cancel"
             aria-label={t("scheduledSend.cancel")}
             title={t("scheduledSend.cancel")}
             onClick={onCancel}
           >
-            <X aria-hidden="true" size={14} strokeWidth={2} />
+            <X aria-hidden="true" size={12} strokeWidth={2.2} />
           </button>
-        ) : null}
-      </div>
+        </span>
+      )}
     </div>
   );
 }

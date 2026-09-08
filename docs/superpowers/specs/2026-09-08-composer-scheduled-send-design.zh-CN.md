@@ -21,8 +21,9 @@ Agent（如 Codex / Claude）常有 5 小时滚动额度，对话中途会因为
 composer 尾部（模型选择器与发送按钮之间）新增时钟按钮。按钮**始终可点**（仅在回放 / 附件处理中 / 发送锁定时禁用，
 agent 运行中则隐藏）。点击弹出面板：
 
-0. **消息内容**：与 composer 草稿双向绑定的文本框，可以直接在面板里输入要定时发送的内容；
-   草稿和附件都为空时，下面的时间选项禁用并提示先输入消息
+消息内容始终在 composer 输入框里编辑，面板只负责选时间；草稿和附件都为空时，
+时间选项禁用并提示先输入消息。
+
 1. **快捷延时**：15 分钟 / 30 分钟 / 1 小时 / 2 小时 / 5 小时
 2. **额度重置时**：仅 Codex 系 adapter（`codex`、`codex-acp`）显示。面板打开时调用
    `cliClient.codexUsage()`，从各窗口里挑选目标重置时间（见「Codex 重置时间选择」），
@@ -33,11 +34,11 @@ agent 运行中则隐藏）。点击弹出面板：
 
 - 快照当前 `draft` + `pendingAttachments`，写入 `scheduledSendStore`（每个对话最多一条，重复设置覆盖）
 - 清空 composer 输入框和附件托盘（附件用 `protectManagedAttachments` 保护托管临时文件，避免被清理）
-- composer 上方显示定时横幅
+- 消息以**用户气泡**形式出现在对话末尾（虚线边框，与已发送消息区分），气泡下方一行小字显示倒计时
 
-### 横幅
+### 气泡倒计时行
 
-显示「将于 HH:mm 自动发送（倒计时）」+ 消息预览（截断）+ 操作：
+「将于 HH:mm 自动发送 · 倒计时」+ 操作：
 
 - **立即发送**：把 `fireAt` 置为现在，由 runner 在下一拍发出
 - **改回草稿**：取消定时，把 prompt / 附件恢复到 composer
@@ -82,13 +83,13 @@ runner 与 `ChatView` 解耦：用户切到设置页 / 其他对话时 `ChatView
 | `src/utils/scheduledSend.ts` | 纯函数：预设、Codex 重置时间选择、时间/倒计时格式化、`datetime-local` 转换 |
 | `src/store/scheduledSendStore.ts` | Zustand：每对话一条记录、状态迁移、`now` |
 | `src/services/scheduledSend/runner.ts` | 1s 心跳 + 到点发送逻辑 |
-| `src/components/CLI/ScheduledSendControl.tsx` | 时钟按钮 + 面板；横幅组件 |
-| `src/components/CLI/ChatView.tsx` | 接入：快照草稿、恢复草稿、渲染横幅/按钮 |
+| `src/components/CLI/ScheduledSendControl.tsx` | 时钟按钮 + 面板；气泡下方的倒计时行（`ScheduledSendMeta`） |
+| `src/components/CLI/ChatView.tsx` | 接入：快照草稿、恢复草稿、在消息列表末尾渲染定时气泡 |
 | `src/App.tsx` | 挂载 runner |
 | `tests/scheduled-send.test.mjs` | 纯函数单测 + 源码结构断言 |
 
 ## 边界
 
-- 应用重启后定时丢失（横幅有提示文案）
-- 定时发送不走 `preflightMember`（CLI 安装检查）；若 CLI 不可用，`sendMessage` 会在对话里落一条错误项，横幅进入 `failed`
+- 应用重启后定时丢失（倒计时行 hover 有提示文案）
+- 定时发送不走 `preflightMember`（CLI 安装检查）；若 CLI 不可用，`sendMessage` 会在对话里落一条错误项，气泡进入 `failed`
 - 若到点时用户正在同一对话里手动发送，runner 会因 `isRunning` 进入 `waiting`，等待完成后再发，不会并发

@@ -42,6 +42,20 @@ export function conversationDisplayCwd(
   return conversation.sourceCwd?.trim() || conversation.cwd?.trim() || "";
 }
 
+/** Real Git worktree directory when the conversation is running in worktree mode. */
+export function conversationWorktreePath(
+  conversation?: Pick<Conversation, "cwd" | "metadata">
+): string | undefined {
+  const taskWorkspace = conversation?.metadata?.taskWorkspace;
+  if (!taskWorkspace || typeof taskWorkspace !== "object") return undefined;
+  const rec = taskWorkspace as Record<string, unknown>;
+  if (rec.mode !== "worktree") return undefined;
+  if (typeof rec.worktreeRoot === "string" && rec.worktreeRoot.trim()) {
+    return rec.worktreeRoot.trim();
+  }
+  return conversation?.cwd?.trim() || undefined;
+}
+
 /**
  * Group conversations that have a cwd into project folders, newest activity first.
  * Conversations without cwd are omitted (they belong in Recent).

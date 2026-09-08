@@ -30,7 +30,7 @@ import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 import { DelegationTeamCard } from "../Workflows/DelegationTeamCard";
 import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
-import { conversationDisplayCwd } from "./conversationProjectGrouping";
+import { conversationDisplayCwd, conversationWorktreePath } from "./conversationProjectGrouping";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
@@ -61,6 +61,7 @@ export function WorkspacePanel({
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
   const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
   const [copiedSession, setCopiedSession] = useState(false);
+  const [copiedWorktree, setCopiedWorktree] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const clearActiveWorkflowConversation = useWorkflowStore(
     (s) => s.clearActiveConversation
@@ -95,6 +96,10 @@ export function WorkspacePanel({
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
   const activeDisplayCwd = active ? conversationDisplayCwd(active) : "";
+  const worktreePath = useMemo(
+    () => (active ? conversationWorktreePath(active) : undefined),
+    [active]
+  );
   const activeProject = useMemo(() => {
     const projectId = active?.projectId?.trim();
     if (!projectId) return undefined;
@@ -433,6 +438,28 @@ export function WorkspacePanel({
               </dd>
             </div>
           )}
+          {worktreePath ? (
+            <div className="workspace-worktree-row">
+              <dt>{t("workspace.worktree")}</dt>
+              <dd>
+                <button
+                  className="session-id-copy workspace-worktree-copy"
+                  type="button"
+                  title={t("workspace.copyWorktree", { path: worktreePath })}
+                  onClick={() => {
+                    void copyToClipboard(worktreePath).then(() => {
+                      setCopiedWorktree(true);
+                      window.setTimeout(() => setCopiedWorktree(false), 1200);
+                    });
+                  }}
+                >
+                  {copiedWorktree
+                    ? t("workspace.copied")
+                    : shortPath(worktreePath)}
+                </button>
+              </dd>
+            </div>
+          ) : null}
           {!isTeamRun && (
             <div>
               <dt>{t("workspace.sessionId")}</dt>

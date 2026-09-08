@@ -14329,6 +14329,10 @@ button.ghost:disabled {
   white-space: normal;
 }
 
+.compact-dl .workspace-worktree-row {
+  align-items: center;
+}
+
 .workspace-mounted-list {
   display: flex;
   margin: 0;
@@ -14392,6 +14396,10 @@ button.ghost:disabled {
 .session-id-copy:disabled {
   cursor: default;
   color: var(--fb-text-tertiary);
+}
+
+.session-id-copy.workspace-worktree-copy {
+  max-width: 100%;
 }
 
 .codex-usage-card {

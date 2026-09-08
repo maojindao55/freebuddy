@@ -760,6 +760,8 @@
     "project": "Project",
     "primaryFolder": "Primary",
     "mountedFolders": "Mounted folders",
+    "worktree": "Worktree",
+    "copyWorktree": "Copy {{path}}",
     "notSet": "Not set",
     "sessionId": "Session ID",
     "copySession": "Copy {{id}}",

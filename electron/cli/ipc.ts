@@ -69,7 +69,9 @@ import {
 } from "./conversations.js";
 import {
   createProject,
+  cwdForProjectLookup,
   deleteProject,
+  ensureProjectForCwd,
   findProjectByCwd,
   getProject,
   listProjects,
@@ -78,7 +80,7 @@ import {
   type ProjectInput
 } from "./projects.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
-import { getCallerUserId } from "./callerContext.js";
+import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import {
   callerCanControlSession,
   recordSessionOwner,
@@ -1233,6 +1235,12 @@ export function registerCliIpc() {
   registerHandler("cli:createProject", (_e, input: unknown) =>
     createProject(parseProjectInput(input))
   );
+  registerHandler("cli:ensureProjectForCwd", (_e, cwd: unknown) => {
+    if (typeof cwd !== "string" || !cwd.trim()) {
+      throw new Error("Folder path is required");
+    }
+    return ensureProjectForCwd(cwd);
+  });
   registerHandler("cli:updateProject", (_e, args: unknown) => {
     if (!args || typeof args !== "object") {
       throw new Error("Project update args are required");
@@ -1257,9 +1265,15 @@ export function registerCliIpc() {
   registerHandler(
     "cli:createConversation",
     async (_e, input: CreateConversationInput) => {
+      const lookupCwd = cwdForProjectLookup(input);
+      const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
       const matchedProjectId =
         input.projectId ||
-        (input.cwd ? findProjectByCwd(input.cwd)?.id : undefined);
+        (lookupCwd
+          ? remoteMember
+            ? findProjectByCwd(lookupCwd)?.id
+            : ensureProjectForCwd(lookupCwd).id
+          : undefined);
       const isolatedCwd = await isolateRemoteCwdForCaller(input.cwd);
       const conversation = createConversation({
         ...input,

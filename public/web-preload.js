@@ -196,6 +196,7 @@
       listProjects: function () { return invoke("cli:listProjects"); },
       getProject: function (id) { return invoke("cli:getProject", id); },
       createProject: function (input) { return invoke("cli:createProject", input); },
+      ensureProjectForCwd: function (cwd) { return invoke("cli:ensureProjectForCwd", cwd); },
       updateProject: function (input) { return invoke("cli:updateProject", input); },
       deleteProject: function (id) { return invoke("cli:deleteProject", id); },
       importCodexSession: function () { return Promise.resolve({ created: false, turns: 0, messages: 0 }); },

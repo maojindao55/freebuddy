@@ -227,6 +227,9 @@ export const cliClient = {
   async createProject(input: ProjectInput): Promise<Project> {
     return api().createProject(input);
   },
+  async ensureProjectForCwd(cwd: string): Promise<Project> {
+    return api().ensureProjectForCwd(cwd);
+  },
   async updateProject(input: ProjectInput & { id: string }): Promise<Project> {
     return api().updateProject(input);
   },

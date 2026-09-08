@@ -206,6 +206,38 @@ test("recentConversations excludes projectId conversations but keeps cwd-only", 
   );
 });
 
+test("conversationWorktreePath reads the real worktree directory", async () => {
+  const { conversationWorktreePath } = await loadGrouping();
+  assert.equal(
+    conversationWorktreePath({
+      cwd: "/data/task-worktrees/app-abc/task-1/src",
+      metadata: {
+        taskWorkspace: {
+          mode: "worktree",
+          sourceCwd: "/Users/me/app",
+          worktreeRoot: "/data/task-worktrees/app-abc/task-1"
+        }
+      }
+    }),
+    "/data/task-worktrees/app-abc/task-1"
+  );
+  assert.equal(
+    conversationWorktreePath({
+      cwd: "/data/task-worktrees/app-abc/task-2",
+      metadata: { taskWorkspace: { mode: "worktree" } }
+    }),
+    "/data/task-worktrees/app-abc/task-2"
+  );
+  assert.equal(
+    conversationWorktreePath({
+      cwd: "/Users/me/app",
+      metadata: { taskWorkspace: { mode: "local" } }
+    }),
+    undefined
+  );
+  assert.equal(conversationWorktreePath({ cwd: "/Users/me/app" }), undefined);
+});
+
 test("empty projects before load does not drop projectId conversations", async () => {
   const { groupConversationsByProjects, recentConversations } = await loadGrouping();
   const items = [

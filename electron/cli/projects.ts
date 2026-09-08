@@ -141,6 +141,43 @@ export function getProject(id: string): Project | null {
   return row ? rowToProject(row) : null;
 }
 
+/** Prefer the source folder when a conversation is running in a Git worktree. */
+export function cwdForProjectLookup(input: {
+  cwd?: string;
+  metadata?: Record<string, unknown>;
+}): string {
+  const taskWorkspace = input.metadata?.taskWorkspace;
+  if (taskWorkspace && typeof taskWorkspace === "object") {
+    const rec = taskWorkspace as Record<string, unknown>;
+    if (
+      rec.mode === "worktree" &&
+      typeof rec.sourceCwd === "string" &&
+      rec.sourceCwd.trim()
+    ) {
+      return rec.sourceCwd.trim();
+    }
+  }
+  return (input.cwd || "").trim();
+}
+
+export function ensureProjectForCwd(cwd: string): Project {
+  const trimmed = (cwd || "").trim();
+  if (!trimmed) {
+    throw new Error("Folder path is required");
+  }
+
+  return getDb().transaction(() => {
+    const existing = findProjectByCwd(trimmed);
+    if (existing) return existing;
+    const normalized = normalizeAbsoluteFolder(trimmed);
+    return createProject({
+      name: projectLabelFromCwd(normalized),
+      folders: [normalized],
+      primaryPath: normalized
+    });
+  })();
+}
+
 export function findProjectByCwd(cwd: string): Project | null {
   const trimmed = (cwd || "").trim();
   if (!trimmed) return null;

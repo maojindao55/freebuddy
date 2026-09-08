@@ -58,7 +58,10 @@ type CodexResetState =
 type ControlProps = {
   adapter?: string;
   disabled?: boolean;
-  /** False when there is nothing in the composer to schedule. */
+  /** Composer draft, editable from inside the panel so the clock is always clickable. */
+  draft: string;
+  onDraftChange: (value: string) => void;
+  /** False when there is nothing (text or attachments) to schedule yet. */
   canSchedule: boolean;
   onSchedule: (fireAt: number) => void;
 };
@@ -66,6 +69,8 @@ type ControlProps = {
 export function ScheduledSendControl({
   adapter,
   disabled,
+  draft,
+  onDraftChange,
   canSchedule,
   onSchedule
 }: ControlProps) {
@@ -155,6 +160,7 @@ export function ScheduledSendControl({
   }, [open, showCodexReset]);
 
   const commit = (fireAt: number) => {
+    if (!canSchedule) return;
     onSchedule(fireAt);
     setOpen(false);
   };
@@ -177,20 +183,15 @@ export function ScheduledSendControl({
       }
     : undefined;
 
-  const triggerDisabled = disabled || !canSchedule;
-  const triggerTitle = canSchedule
-    ? t("scheduledSend.trigger")
-    : t("scheduledSend.triggerNeedsDraft");
-
   return (
     <div className="scheduled-send" ref={rootRef}>
       <button
         ref={triggerRef}
         type="button"
         className={`scheduled-send-trigger${open ? " open" : ""}`}
-        title={triggerTitle}
+        title={t("scheduledSend.trigger")}
         aria-label={t("scheduledSend.trigger")}
-        disabled={triggerDisabled}
+        disabled={disabled}
         aria-expanded={open}
         aria-controls={panelId}
         aria-haspopup="dialog"
@@ -215,6 +216,22 @@ export function ScheduledSendControl({
                 {t("scheduledSend.panelHint")}
               </div>
               <div className="scheduled-send-section-label">
+                {t("scheduledSend.messageLabel")}
+              </div>
+              <textarea
+                className="scheduled-send-message"
+                rows={3}
+                value={draft}
+                placeholder={t("scheduledSend.messagePlaceholder")}
+                aria-label={t("scheduledSend.messageLabel")}
+                onChange={(event) => onDraftChange(event.target.value)}
+              />
+              {!canSchedule ? (
+                <div className="scheduled-send-muted">
+                  {t("scheduledSend.triggerNeedsDraft")}
+                </div>
+              ) : null}
+              <div className="scheduled-send-section-label">
                 {t("scheduledSend.presetsLabel")}
               </div>
               <div className="scheduled-send-presets">
@@ -223,6 +240,7 @@ export function ScheduledSendControl({
                     key={minutes}
                     type="button"
                     className="scheduled-send-preset"
+                    disabled={!canSchedule}
                     onClick={() => commit(presetFireAt(minutes))}
                   >
                     {minutes >= 60
@@ -240,6 +258,7 @@ export function ScheduledSendControl({
                     <button
                       type="button"
                       className="scheduled-send-preset scheduled-send-preset-reset"
+                      disabled={!canSchedule}
                       onClick={() => commit(codexReset.fireAt)}
                     >
                       {t("scheduledSend.quotaResetAt", {
@@ -283,6 +302,7 @@ export function ScheduledSendControl({
                 <button
                   type="button"
                   className="scheduled-send-custom-confirm"
+                  disabled={!canSchedule}
                   onClick={commitCustom}
                 >
                   {t("scheduledSend.customConfirm")}

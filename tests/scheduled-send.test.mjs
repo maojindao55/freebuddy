@@ -104,6 +104,16 @@ test("composer wires the scheduled send control, banner, and store", () => {
   assert.match(chatViewSource, /onSendNow=\{\(\) => fireScheduledSendNow\(conv\.id\)\}/);
 });
 
+test("scheduled send trigger stays clickable with an empty draft; the panel hosts the message field", () => {
+  assert.match(controlSource, /className=\{`scheduled-send-trigger\$\{open \? " open" : ""\}`\}\s+title=\{t\("scheduledSend\.trigger"\)\}\s+aria-label=\{t\("scheduledSend\.trigger"\)\}\s+disabled=\{disabled\}/);
+  assert.doesNotMatch(controlSource, /disabled=\{disabled \|\| !canSchedule\}/);
+  assert.match(controlSource, /className="scheduled-send-message"/);
+  assert.match(controlSource, /onChange=\{\(event\) => onDraftChange\(event\.target\.value\)\}/);
+  assert.match(controlSource, /if \(!canSchedule\) return;\s+onSchedule\(fireAt\)/);
+  assert.equal((controlSource.match(/disabled=\{!canSchedule\}/g) ?? []).length, 3);
+  assert.match(chatViewSource, /draft=\{draft\}\s+onDraftChange=\{setDraft\}/);
+});
+
 test("scheduled send control offers presets, quota reset, and a custom time", () => {
   assert.match(controlSource, /SCHEDULED_SEND_PRESET_MINUTES\.map/);
   assert.match(controlSource, /cliClient\s*\.codexUsage\(\)/);

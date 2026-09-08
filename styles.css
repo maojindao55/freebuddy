@@ -10398,10 +10398,35 @@ button.new-task-context-control {
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
-.scheduled-send-preset:hover {
+.scheduled-send-preset:hover:not(:disabled) {
   color: var(--fb-brand);
   border-color: var(--fb-brand);
   background: var(--fb-brand-glow);
+}
+
+.scheduled-send-preset:disabled,
+.scheduled-send-custom-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.scheduled-send-message {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.scheduled-send-message:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 1px;
 }
 
 .scheduled-send-preset-reset {

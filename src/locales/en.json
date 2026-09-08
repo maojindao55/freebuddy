@@ -629,7 +629,9 @@
   },
   "scheduledSend": {
     "trigger": "Schedule send",
-    "triggerNeedsDraft": "Type a message first, then schedule when to send it",
+    "triggerNeedsDraft": "Type the message to send before picking a time.",
+    "messageLabel": "Message",
+    "messagePlaceholder": "e.g. Continue from where you left off",
     "panelTitle": "Send later",
     "panelHint": "Useful when the agent hit its usage limit: pick when the quota comes back and the message goes out automatically.",
     "presetsLabel": "Send in",

@@ -628,7 +628,9 @@
   },
   "scheduledSend": {
     "trigger": "定时发送",
-    "triggerNeedsDraft": "先输入消息，再设置定时发送",
+    "triggerNeedsDraft": "请先输入要发送的消息，再选择时间。",
+    "messageLabel": "消息内容",
+    "messagePlaceholder": "例如：请从刚才中断的地方继续",
     "panelTitle": "定时发送",
     "panelHint": "Agent 额度用完时很有用：选好额度恢复的时间，到点自动发送这条消息，让对话自动继续。",
     "presetsLabel": "多久后发送",

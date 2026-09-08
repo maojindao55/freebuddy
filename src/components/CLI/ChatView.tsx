@@ -2979,6 +2979,8 @@ export function ChatView({
               <ScheduledSendControl
                 adapter={member?.cli.adapter ?? conv.adapter}
                 disabled={replaying || attachmentBusy || sendLock}
+                draft={draft}
+                onDraftChange={setDraft}
                 canSchedule={!!(draft.trim() || pendingAttachments.length > 0)}
                 onSchedule={onScheduleSend}
               />

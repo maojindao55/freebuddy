@@ -908,6 +908,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ),
       titleSource: title ? "prompt" : "default"
     });
+    await useProjectStore.getState().refresh();
     setStoredActiveId(conv.id);
     set((s) => ({
       conversations: [conv, ...s.conversations.filter((c) => c.id !== conv.id)],

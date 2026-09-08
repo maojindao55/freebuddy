@@ -125,6 +125,8 @@ const cli = {
   getProject: (id: string) => ipcRenderer.invoke("cli:getProject", id),
   createProject: (input: unknown) =>
     ipcRenderer.invoke("cli:createProject", input),
+  ensureProjectForCwd: (cwd: string) =>
+    ipcRenderer.invoke("cli:ensureProjectForCwd", cwd),
   updateProject: (input: unknown) =>
     ipcRenderer.invoke("cli:updateProject", input),
   deleteProject: (id: string) => ipcRenderer.invoke("cli:deleteProject", id),

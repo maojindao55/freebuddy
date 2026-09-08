@@ -85,6 +85,7 @@ test("channels that spawn or reconfigure the host are not remotely callable", as
     "cli:connectCursorUsage",
     "cli:disconnectCursorUsage",
     "cli:createProject",
+    "cli:ensureProjectForCwd",
     "cli:updateProject",
     "cli:deleteProject",
     "skills:setTrusted",

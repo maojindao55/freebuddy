@@ -11,6 +11,7 @@ interface ProjectState {
   error?: string;
   refresh(): Promise<void>;
   create(input: ProjectInput): Promise<Project>;
+  ensureForCwd(cwd: string): Promise<Project>;
   update(input: ProjectInput & { id: string }): Promise<Project>;
   remove(id: string): Promise<void>;
 }
@@ -45,6 +46,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   async create(input) {
     const project = await cliClient.createProject(input);
+    await get().refresh();
+    return get().projects.find((entry) => entry.id === project.id) ?? project;
+  },
+
+  async ensureForCwd(cwd) {
+    const project = await cliClient.ensureProjectForCwd(cwd);
     await get().refresh();
     return get().projects.find((entry) => entry.id === project.id) ?? project;
   },

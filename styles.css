@@ -14329,6 +14329,17 @@ button.ghost:disabled {
   white-space: normal;
 }
 
+.compact-dl .workspace-worktree-row {
+  align-items: flex-start;
+}
+
+.compact-dl .workspace-worktree-row dd {
+  white-space: normal;
+  word-break: break-all;
+  text-align: right;
+  font-weight: 500;
+}
+
 .workspace-mounted-list {
   display: flex;
   margin: 0;

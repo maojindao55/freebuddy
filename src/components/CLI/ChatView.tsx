@@ -933,6 +933,20 @@ export function ChatView({
   const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState<string | undefined>();
+  const applyNewTaskWorkspace = useCallback(async (cwd: string) => {
+    setNewTaskCwd(cwd);
+    const trimmed = cwd.trim();
+    if (!trimmed) {
+      setNewTaskProjectId(undefined);
+      return;
+    }
+    try {
+      const project = await useProjectStore.getState().ensureForCwd(trimmed);
+      setNewTaskProjectId(project.id);
+    } catch {
+      setNewTaskProjectId(undefined);
+    }
+  }, []);
   const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] =
     useState<TaskWorkspaceMode>("local");
   const [newTaskBranch, setNewTaskBranch] = useState("");
@@ -1617,10 +1631,21 @@ export function ChatView({
   useEffect(() => {
     if (activeId) return;
     if (cwdRequestToken === 0) return;
-    setNewTaskCwd(requestedCwd ?? "");
-    setNewTaskProjectId(requestedProjectId);
     setNewTaskDraft(requestedDraft ?? "");
-  }, [activeId, cwdRequestToken, requestedCwd, requestedDraft, requestedProjectId]);
+    if (requestedProjectId) {
+      setNewTaskCwd(requestedCwd ?? "");
+      setNewTaskProjectId(requestedProjectId);
+      return;
+    }
+    void applyNewTaskWorkspace(requestedCwd ?? "");
+  }, [
+    activeId,
+    applyNewTaskWorkspace,
+    cwdRequestToken,
+    requestedCwd,
+    requestedDraft,
+    requestedProjectId
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2512,8 +2537,7 @@ export function ChatView({
         }}
         onSkills={setNewTaskSkillIds}
         onCwd={(cwd) => {
-          setNewTaskCwd(cwd);
-          setNewTaskProjectId(undefined);
+          void applyNewTaskWorkspace(cwd);
         }}
         onWorkspaceMode={setNewTaskWorkspaceMode}
         onBranch={setNewTaskBranch}

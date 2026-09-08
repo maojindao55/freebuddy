@@ -194,6 +194,7 @@ const ADMIN_ONLY = [
 
   // Host workspace project mounts affect agent cwd/roots; no remote path guard yet.
   "cli:createProject",
+  "cli:ensureProjectForCwd",
   "cli:updateProject",
   "cli:deleteProject",
 

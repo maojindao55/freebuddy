@@ -759,6 +759,7 @@
     "project": "项目",
     "primaryFolder": "Primary",
     "mountedFolders": "挂载目录",
+    "worktree": "Worktree 目录",
     "notSet": "未设置",
     "sessionId": "会话 ID",
     "copySession": "复制 {{id}}",

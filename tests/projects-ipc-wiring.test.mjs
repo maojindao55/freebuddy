@@ -8,6 +8,7 @@ const read = (rel) =>
 const CHANNELS = [
   "cli:listProjects",
   "cli:createProject",
+  "cli:ensureProjectForCwd",
   "cli:updateProject",
   "cli:deleteProject",
   "cli:getProject"
@@ -22,11 +23,13 @@ test("project IPC channels are registered end-to-end", () => {
   }
   assert.match(preload, /listProjects/);
   assert.match(preload, /createProject/);
+  assert.match(preload, /ensureProjectForCwd/);
   assert.match(preload, /updateProject/);
   assert.match(preload, /deleteProject/);
   assert.match(preload, /getProject/);
   assert.match(client, /listProjects/);
   assert.match(client, /createProject/);
+  assert.match(client, /ensureProjectForCwd/);
   assert.match(client, /updateProject/);
   assert.match(client, /deleteProject/);
   assert.match(client, /getProject/);
@@ -43,6 +46,7 @@ test("renderer types expose Project and workspaceRoots", () => {
   assert.match(runtimeShared, /workspaceRoots\?: string\[\]/);
   assert.match(freebuddy, /listProjects\(/);
   assert.match(freebuddy, /createProject\(/);
+  assert.match(freebuddy, /ensureProjectForCwd\(/);
   assert.match(freebuddy, /updateProject\(/);
   assert.match(freebuddy, /deleteProject\(/);
   assert.match(freebuddy, /getProject\(/);

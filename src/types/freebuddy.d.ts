@@ -202,6 +202,7 @@ declare global {
     listProjects(): Promise<Project[]>;
     getProject(id: string): Promise<Project | null>;
     createProject(input: ProjectInput): Promise<Project>;
+    ensureProjectForCwd(cwd: string): Promise<Project>;
     updateProject(input: ProjectInput & { id: string }): Promise<Project>;
     deleteProject(id: string): Promise<{ ok: true }>;
 

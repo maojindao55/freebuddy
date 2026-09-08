@@ -59,3 +59,22 @@ test("composer and workspace panel surface multi-root project mounts", () => {
   assert.ok(zh.workspace.mountedFolders);
   assert.equal(zh.chat.folderCount.includes("目录"), true);
 });
+
+test("workspace panel shows the real worktree directory under run state", () => {
+  const panel = read("src/components/CLI/WorkspacePanel.tsx");
+  const chat = read("src/components/CLI/ChatView.tsx");
+  const grouping = read("src/components/CLI/conversationProjectGrouping.ts");
+  const en = JSON.parse(read("src/locales/en.json"));
+  const zh = JSON.parse(read("src/locales/zh-CN.json"));
+
+  assert.match(grouping, /export function conversationWorktreePath/);
+  assert.match(panel, /conversationWorktreePath/);
+  assert.match(panel, /workspace\.worktree/);
+  assert.match(panel, /workspace-worktree-row/);
+  assert.match(chat, /applyNewTaskWorkspace/);
+  assert.match(chat, /ensureForCwd/);
+  assert.match(chat, /onCwd=\{\(cwd\) => \{\s*void applyNewTaskWorkspace\(cwd\);/);
+
+  assert.ok(en.workspace.worktree);
+  assert.ok(zh.workspace.worktree);
+});

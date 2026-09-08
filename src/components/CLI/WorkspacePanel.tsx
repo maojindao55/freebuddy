@@ -30,7 +30,7 @@ import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 import { DelegationTeamCard } from "../Workflows/DelegationTeamCard";
 import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
-import { conversationDisplayCwd } from "./conversationProjectGrouping";
+import { conversationDisplayCwd, conversationWorktreePath } from "./conversationProjectGrouping";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
@@ -95,6 +95,10 @@ export function WorkspacePanel({
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
   const activeDisplayCwd = active ? conversationDisplayCwd(active) : "";
+  const worktreePath = useMemo(
+    () => (active ? conversationWorktreePath(active) : undefined),
+    [active]
+  );
   const activeProject = useMemo(() => {
     const projectId = active?.projectId?.trim();
     if (!projectId) return undefined;
@@ -433,6 +437,12 @@ export function WorkspacePanel({
               </dd>
             </div>
           )}
+          {worktreePath ? (
+            <div className="workspace-worktree-row">
+              <dt>{t("workspace.worktree")}</dt>
+              <dd title={worktreePath}>{formatDisplayPath(worktreePath)}</dd>
+            </div>
+          ) : null}
           {!isTeamRun && (
             <div>
               <dt>{t("workspace.sessionId")}</dt>

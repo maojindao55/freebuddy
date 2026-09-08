@@ -9,7 +9,7 @@ import type { SkillSnapshot } from "./skillTypes.js";
 import { mergeRequiredSkillIds } from "./agentProfiles.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import { getUserById } from "./users.js";
-import { findProjectByCwd } from "./projects.js";
+import { cwdForProjectLookup, ensureProjectForCwd, findProjectByCwd } from "./projects.js";
 import {
   listRemoteWorkspaces,
   sourcePathForManagedWorkspace,
@@ -280,9 +280,14 @@ export function createConversation(input: CreateConversationInput): Conversation
   const now = new Date().toISOString();
   const ownerId = input.ownerId ?? getCallerUserId() ?? null;
   let projectId = input.projectId;
-  if (!projectId && input.cwd) {
-    const matched = findProjectByCwd(input.cwd);
-    if (matched) projectId = matched.id;
+  if (!projectId) {
+    const lookupCwd = cwdForProjectLookup(input);
+    if (lookupCwd) {
+      const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
+      projectId = remoteMember
+        ? findProjectByCwd(lookupCwd)?.id
+        : ensureProjectForCwd(lookupCwd).id;
+    }
   }
   getDb()
     .prepare(

@@ -59,9 +59,21 @@ test("release workflow uploads version-suffixed assets and update metadata for e
   assert.match(workflow, /\$assetName = \$assetName\.Replace\("__VERSION__", "v\$appVersion"\)/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
+  assert.match(workflow, /Import macOS signing certificate/);
+  assert.match(workflow, /scripts\/import-macos-csc-cert\.sh/);
+  assert.match(workflow, /Checkout signing helper/);
+  assert.match(workflow, /path:\s+\.ci-helpers/);
   assert.match(workflow, /ensure-tokscale-platform\.mjs --platform \$\{\{ matrix\.tokscale_platform \}\} --arch \$\{\{ matrix\.tokscale_arch \}\}/);
   // Build only; assets are renamed and uploaded manually to keep friendly names.
   assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);
+  const buildStep = workflow.split("- name: Build Electron app")[1]?.split("- name:")[0] ?? "";
+  assert.match(buildStep, /CSC_IDENTITY_AUTO_DISCOVERY/);
+  assert.doesNotMatch(
+    buildStep,
+    /CSC_LINK:/,
+    "electron-builder must not receive CSC_LINK; it would rebuild a temp keychain and fail on macOS 26.6"
+  );
+  assert.doesNotMatch(buildStep, /CSC_KEY_PASSWORD:/);
   assert.match(workflow, /gh release upload/);
   assert.match(workflow, /Upload macOS update metadata/);
   assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-\$\{version_suffix\}\.zip/);
@@ -80,4 +92,32 @@ test("release workflow uploads version-suffixed assets and update metadata for e
     workflow,
     /FreeBuddy-\[0-9\]\+\\.\[0-9\]\+\\.\[0-9\]\+-linux-\(amd64\|x64\|x86_64\)\\.deb/
   );
+});
+
+test("macOS cert import uses the keychain password for set-key-partition-list", () => {
+  const script = fs.readFileSync(
+    new URL("../scripts/import-macos-csc-cert.sh", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /security create-keychain -p "\$\{keychain_password\}"/);
+  assert.match(
+    script,
+    /security set-key-partition-list[\s\S]*?-k "\$\{keychain_password\}"/
+  );
+  assert.match(script, /-P "\$\{CSC_KEY_PASSWORD:-\}"/);
+});
+
+test("macOS cert import is a no-op off Darwin", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const result = spawnSync(
+    "bash",
+    [new URL("../scripts/import-macos-csc-cert.sh", import.meta.url).pathname],
+    { encoding: "utf8", env: { ...process.env, CSC_LINK: "dGVzdA==" } }
+  );
+  if (process.platform === "darwin") {
+    assert.ok(true);
+    return;
+  }
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Skipping macOS certificate import/);
 });

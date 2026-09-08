@@ -10313,6 +10313,248 @@ button.new-task-context-control {
   white-space: nowrap;
 }
 
+/* ===== Scheduled send (composer) ===== */
+.scheduled-send {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.scheduled-send-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--fb-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.scheduled-send-trigger:hover:not(:disabled),
+.scheduled-send-trigger.open {
+  color: var(--fb-brand);
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
+.scheduled-send-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.scheduled-send-panel {
+  position: fixed;
+  z-index: 1200;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 12px;
+  background: var(--fb-panel-bg);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  color: var(--fb-text-primary);
+}
+
+.scheduled-send-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.scheduled-send-panel-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fb-text-secondary);
+}
+
+.scheduled-send-section-label {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fb-text-tertiary);
+}
+
+.scheduled-send-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scheduled-send-preset {
+  padding: 6px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.scheduled-send-preset:hover {
+  color: var(--fb-brand);
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
+.scheduled-send-preset-reset {
+  width: 100%;
+  border-radius: 8px;
+  text-align: left;
+  border-color: var(--fb-brand);
+  color: var(--fb-brand);
+  font-weight: 600;
+}
+
+.scheduled-send-muted {
+  font-size: 12px;
+  color: var(--fb-text-tertiary);
+}
+
+.scheduled-send-custom {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.scheduled-send-custom-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.scheduled-send-custom-input:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 1px;
+}
+
+.scheduled-send-custom-confirm {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--fb-brand);
+  color: #ffffff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scheduled-send-error {
+  font-size: 12px;
+  color: var(--fb-danger);
+}
+
+.scheduled-send-banner {
+  display: flex;
+  width: min(820px, calc(100% - 44px));
+  margin: 0 auto 10px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-brand);
+  border-radius: 10px;
+  background: var(--fb-brand-glow);
+  color: var(--fb-text-primary);
+  font-size: 12.5px;
+}
+
+.scheduled-send-banner > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--fb-brand);
+}
+
+.scheduled-send-banner-waiting {
+  border-color: rgba(209, 134, 22, 0.5);
+  background: rgba(209, 134, 22, 0.1);
+}
+
+.scheduled-send-banner-waiting > svg {
+  color: var(--fb-warning);
+}
+
+.scheduled-send-banner-failed {
+  border-color: var(--fb-danger);
+  background: rgba(225, 29, 72, 0.08);
+}
+
+.scheduled-send-banner-failed > svg {
+  color: var(--fb-danger);
+}
+
+.scheduled-send-banner-body {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 2px;
+}
+
+.scheduled-send-banner-status {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.scheduled-send-banner-preview {
+  overflow: hidden;
+  color: var(--fb-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduled-send-banner-note {
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+}
+
+.scheduled-send-banner-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.scheduled-send-banner-actions .text-button {
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.scheduled-send-banner-close {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+}
+
+.scheduled-send-banner-close:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+
 .chat-composer-actions .primary,
 .chat-composer-actions .danger {
   height: 32px;

@@ -61,6 +61,7 @@ export function WorkspacePanel({
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
   const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
   const [copiedSession, setCopiedSession] = useState(false);
+  const [copiedWorktree, setCopiedWorktree] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const clearActiveWorkflowConversation = useWorkflowStore(
     (s) => s.clearActiveConversation
@@ -440,7 +441,23 @@ export function WorkspacePanel({
           {worktreePath ? (
             <div className="workspace-worktree-row">
               <dt>{t("workspace.worktree")}</dt>
-              <dd title={worktreePath}>{formatDisplayPath(worktreePath)}</dd>
+              <dd>
+                <button
+                  className="session-id-copy workspace-worktree-copy"
+                  type="button"
+                  title={t("workspace.copyWorktree", { path: worktreePath })}
+                  onClick={() => {
+                    void copyToClipboard(worktreePath).then(() => {
+                      setCopiedWorktree(true);
+                      window.setTimeout(() => setCopiedWorktree(false), 1200);
+                    });
+                  }}
+                >
+                  {copiedWorktree
+                    ? t("workspace.copied")
+                    : shortPath(worktreePath)}
+                </button>
+              </dd>
             </div>
           ) : null}
           {!isTeamRun && (

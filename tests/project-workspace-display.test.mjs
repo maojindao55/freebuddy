@@ -64,6 +64,7 @@ test("workspace panel shows the real worktree directory under run state", () => 
   const panel = read("src/components/CLI/WorkspacePanel.tsx");
   const chat = read("src/components/CLI/ChatView.tsx");
   const grouping = read("src/components/CLI/conversationProjectGrouping.ts");
+  const styles = read("styles.css");
   const en = JSON.parse(read("src/locales/en.json"));
   const zh = JSON.parse(read("src/locales/zh-CN.json"));
 
@@ -71,10 +72,16 @@ test("workspace panel shows the real worktree directory under run state", () => 
   assert.match(panel, /conversationWorktreePath/);
   assert.match(panel, /workspace\.worktree/);
   assert.match(panel, /workspace-worktree-row/);
+  assert.match(panel, /workspace-worktree-copy/);
+  assert.match(panel, /shortPath\(worktreePath\)/);
   assert.match(chat, /applyNewTaskWorkspace/);
   assert.match(chat, /ensureForCwd/);
   assert.match(chat, /onCwd=\{\(cwd\) => \{\s*void applyNewTaskWorkspace\(cwd\);/);
+  assert.match(styles, /\.workspace-worktree-copy\s*\{/);
+  assert.doesNotMatch(styles, /\.workspace-worktree-row dd[\s\S]{0,80}word-break:\s*break-all/);
 
   assert.ok(en.workspace.worktree);
   assert.ok(zh.workspace.worktree);
+  assert.ok(en.workspace.copyWorktree);
+  assert.ok(zh.workspace.copyWorktree);
 });

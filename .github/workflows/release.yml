@@ -87,6 +87,17 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      # workflow_dispatch can rebuild an older tag with this workflow file.
+      # Fetch the helper from the workflow commit, not from the tag checkout.
+      - name: Checkout signing helper
+        if: matrix.platform == 'macos-latest'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .ci-helpers
+          sparse-checkout: scripts/import-macos-csc-cert.sh
+          sparse-checkout-cone-mode: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -99,16 +110,23 @@ jobs:
       - name: Test
         run: npm test
 
+      # electron-builder 26.15.3 + macOS 26.6: CSC_LINK makes the builder call
+      # `security set-key-partition-list -k <p12 password>`, but that flag
+      # needs the temporary keychain password. Import the cert ourselves and
+      # leave CSC_LINK unset so the builder auto-discovers the identity.
+      # See electron-userland/electron-builder#10066.
+      - name: Import macOS signing certificate
+        if: matrix.platform == 'macos-latest'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: bash .ci-helpers/scripts/import-macos-csc-cert.sh
+
       - name: Build Electron app
         env:
           FREEBUDDY_POSTHOG_KEY: ${{ secrets.FREEBUDDY_POSTHOG_KEY }}
           FREEBUDDY_POSTHOG_HOST: ${{ vars.FREEBUDDY_POSTHOG_HOST }}
-          # macOS code signing (REQUIRED for Squirrel.Mac auto-update to work).
-          # Scoped to macOS only: the Apple Development cert cannot sign
-          # Windows exes, and feeding the multi-cert .p12 to Windows
-          # signtool fails with "Multiple certificates were found".
-          CSC_LINK: ${{ matrix.platform == 'macos-latest' && secrets.CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.CSC_KEY_PASSWORD || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'macos-latest' && 'true' || 'false' }}
         run: |
           node scripts/ensure-tokscale-platform.mjs --platform ${{ matrix.tokscale_platform }} --arch ${{ matrix.tokscale_arch }}
           npm run build

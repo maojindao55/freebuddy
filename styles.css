@@ -8771,6 +8771,7 @@ button.new-task-context-control {
 }
 
 .chat-scroll > .msg,
+.chat-scroll > .scheduled-send-bubble,
 .chat-scroll > .context-reference-card,
 .chat-scroll > .context-reference-tray,
 .chat-empty-hero {

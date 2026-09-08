@@ -114,6 +114,8 @@ test("scheduled message renders as a user bubble in the thread with a countdown 
   assert.match(controlSource, /countdown: formatCountdown\(entry\.fireAt - now\)/);
   assert.doesNotMatch(controlSource, /scheduled-send-banner/);
   assert.doesNotMatch(stylesSource, /scheduled-send-banner/);
+  // The wrapper must share the centered 820px column with regular messages.
+  assert.match(stylesSource, /\.chat-scroll > \.msg,\s+\.chat-scroll > \.scheduled-send-bubble,/);
 });
 
 test("scheduled send trigger stays clickable with an empty draft; the message stays in the composer", () => {

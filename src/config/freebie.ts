@@ -1,4 +1,4 @@
-import providersSnapshot from "../../sites/freebie/providers.json";
+import providersSnapshot from "@/services/freebie/providers.json";
 import {
   parseHttpsUrl,
   validateFreebiePreset,
@@ -10,7 +10,7 @@ import {
  * with `VITE_FREEBIE_PAGE_URL` (e.g. `http://localhost:8788/`) while developing
  * the page locally; only https and loopback http origins are accepted.
  */
-const DEFAULT_FREEBIE_PAGE_URL = "https://freebuddy-freebie.pages.dev/";
+const DEFAULT_FREEBIE_PAGE_URL = "https://freebuddy-freebie.binbinzhaili.workers.dev/";
 
 function resolvePageUrl(): URL {
   const configured = import.meta.env?.VITE_FREEBIE_PAGE_URL as string | undefined;

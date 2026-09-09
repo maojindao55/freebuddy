@@ -215,7 +215,7 @@ test("freebie override ids round-trip the provider slug", async () => {
 
 test("bundled providers.json validates and has unique ids", async () => {
   const { validateFreebiePreset } = await loadProtocol();
-  const catalog = JSON.parse(read("../sites/freebie/providers.json"));
+  const catalog = JSON.parse(read("../src/services/freebie/providers.json"));
   assert.match(catalog.updatedAt, /^\d{4}-\d{2}-\d{2}$/);
   assert.ok(Array.isArray(catalog.providers) && catalog.providers.length >= 5);
   const ids = new Set();
@@ -228,7 +228,7 @@ test("bundled providers.json validates and has unique ids", async () => {
     assert.ok(provider.freeTierSummary?.["zh-CN"] && provider.freeTierSummary?.en, `${provider.id} needs zh-CN and en summaries`);
     assert.match(provider.verifiedAt, /^\d{4}-\d{2}-\d{2}$/, `${provider.id} needs verifiedAt`);
   }
-  assert.ok(fs.existsSync(new URL("../sites/freebie/providers.schema.json", import.meta.url)));
+  assert.ok(fs.existsSync(new URL("../src/services/freebie/providers.schema.json", import.meta.url)));
 });
 
 test("freebie is wired as a first-class workspace with a hardened bridge", () => {
@@ -272,18 +272,4 @@ test("freebie is wired as a first-class workspace with a hardened bridge", () =>
   }
   assert.match(css, /\.freebie-page\s*\{/);
   assert.match(css, /\.freebie-import-dialog\s*\{/);
-});
-
-test("the static freebie site ships the bridge client and never asks for a key", () => {
-  const html = read("../sites/freebie/index.html");
-  const appJs = read("../sites/freebie/app.js");
-  const bridgeJs = read("../sites/freebie/freebuddy-bridge.js");
-
-  assert.match(html, /freebuddy-bridge\.js/);
-  assert.doesNotMatch(html, /type="password"/);
-  assert.doesNotMatch(appJs, /apiKey/);
-  assert.match(bridgeJs, /const SOURCE = "freebuddy-freebie"/);
-  assert.match(bridgeJs, /const PROTOCOL_VERSION = 1/);
-  assert.match(bridgeJs, /event\.source !== global\.parent/);
-  assert.match(appJs, /bridge\.importAgent\(provider\)/);
 });

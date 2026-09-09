@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>白嫖兄弟 · FreeBuddy 免费模型专区</title>
+    <meta
+      name="description"
+      content="汇总提供免费额度或免费模型的大模型服务商，一键导入 FreeBuddy 生成可直接使用的自定义 Agent。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="hero-brand">
+          <span class="hero-mark" aria-hidden="true">🎁</span>
+          <div>
+            <h1 data-i18n="title">白嫖兄弟</h1>
+            <p class="hero-sub" data-i18n="subtitle">免费模型 &amp; 免费额度专区</p>
+          </div>
+        </div>
+        <p class="hero-lead" data-i18n="lead">
+          这些服务商提供免费模型或新用户免费额度。点「一键导入」即可在 FreeBuddy 里生成一个 BYOK
+          自定义 Agent，API Key 只会在 FreeBuddy 的原生窗口里输入，不经过本页面。
+        </p>
+        <div class="hero-status" id="host-status" role="status"></div>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="toolbar">
+        <div class="filters" role="tablist" aria-label="Region filter">
+          <button type="button" class="filter active" data-region="all" data-i18n="filterAll">全部</button>
+          <button type="button" class="filter" data-region="cn" data-i18n="filterCn">国内直连</button>
+          <button type="button" class="filter" data-region="global" data-i18n="filterGlobal">海外</button>
+        </div>
+        <div class="toolbar-meta" id="catalog-meta"></div>
+      </div>
+
+      <section class="grid" id="providers" aria-live="polite"></section>
+
+      <p class="disclaimer" data-i18n="disclaimer">
+        免费政策随时变化，以各服务商官网为准。发现过期信息欢迎到 GitHub 提交 PR。
+      </p>
+    </main>
+
+    <template id="provider-card">
+      <article class="card">
+        <header class="card-head">
+          <div class="card-title">
+            <h2 class="card-name"></h2>
+            <div class="card-tags"></div>
+          </div>
+          <span class="card-imported" hidden></span>
+        </header>
+        <p class="card-summary"></p>
+        <ul class="card-models"></ul>
+        <footer class="card-foot">
+          <div class="card-links">
+            <a class="card-link card-homepage" rel="noopener noreferrer" target="_blank"></a>
+            <a class="card-link card-console" rel="noopener noreferrer" target="_blank"></a>
+          </div>
+          <button type="button" class="import-btn"></button>
+        </footer>
+        <p class="card-verified"></p>
+      </article>
+    </template>
+
+    <script src="./freebuddy-bridge.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

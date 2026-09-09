@@ -1,0 +1,11 @@
+# Cloudflare Pages headers. The page must remain embeddable by the FreeBuddy
+# desktop app (file:// renderer) and the FreeBuddy web UI, so no
+# X-Frame-Options / frame-ancestors restriction is set here.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/providers.json
+  Cache-Control: public, max-age=300, must-revalidate
+  Access-Control-Allow-Origin: *

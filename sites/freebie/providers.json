@@ -1,0 +1,165 @@
+{
+  "$schema": "./providers.schema.json",
+  "updatedAt": "2026-09-09",
+  "providers": [
+    {
+      "id": "zhipu",
+      "name": "智谱 BigModel",
+      "region": "cn",
+      "homepage": "https://bigmodel.cn",
+      "consoleUrl": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
+      "freeTierSummary": {
+        "zh-CN": "GLM-4-Flash / GLM-4.5-Flash 永久免费，新用户另送 2000 万 tokens，限并发 30。",
+        "en": "GLM-4-Flash and GLM-4.5-Flash are permanently free; new accounts also get 20M tokens. 30 concurrent requests."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "glm-4.5-flash", "name": "GLM-4.5-Flash", "contextWindow": 128000 },
+        { "id": "glm-4-flash", "name": "GLM-4-Flash", "contextWindow": 128000 },
+        { "id": "glm-4.1v-thinking-flash", "name": "GLM-4.1V-Thinking-Flash", "contextWindow": 64000, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-09"
+    },
+    {
+      "id": "siliconflow",
+      "name": "硅基流动 SiliconFlow",
+      "region": "cn",
+      "homepage": "https://siliconflow.cn",
+      "consoleUrl": "https://cloud.siliconflow.cn/account/ak",
+      "freeTierSummary": {
+        "zh-CN": "实名认证后一组小模型固定免费（GLM-4-9B、Qwen3-8B 等），新用户另送 2000 万 tokens。",
+        "en": "A fixed set of small models (GLM-4-9B, Qwen3-8B, ...) is free after identity verification; new accounts get 20M tokens."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "Qwen/Qwen3-8B", "name": "Qwen3-8B", "contextWindow": 128000 },
+        { "id": "THUDM/GLM-4-9B-0414", "name": "GLM-4-9B-0414", "contextWindow": 32000 },
+        { "id": "THUDM/GLM-Z1-9B-0414", "name": "GLM-Z1-9B-0414", "contextWindow": 32000 }
+      ],
+      "verifiedAt": "2026-09-09"
+    },
+    {
+      "id": "modelscope",
+      "name": "魔搭 ModelScope",
+      "region": "cn",
+      "homepage": "https://modelscope.cn",
+      "consoleUrl": "https://modelscope.cn/my/myaccesstoken",
+      "freeTierSummary": {
+        "zh-CN": "API-Inference 每天 2000 次免费调用，覆盖 Qwen3 / DeepSeek 等主流开源模型，需绑定阿里云账号。",
+        "en": "API-Inference gives 2,000 free calls per day across Qwen3, DeepSeek and other open models; requires a linked Aliyun account."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api-inference.modelscope.cn/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "Qwen/Qwen3-235B-A22B-Instruct-2507", "name": "Qwen3-235B-A22B-Instruct", "contextWindow": 256000 },
+        { "id": "Qwen/Qwen3-Coder-480B-A35B-Instruct", "name": "Qwen3-Coder-480B", "contextWindow": 256000 },
+        { "id": "deepseek-ai/DeepSeek-V3.1", "name": "DeepSeek-V3.1", "contextWindow": 128000 }
+      ],
+      "verifiedAt": "2026-09-09"
+    },
+    {
+      "id": "volcengine",
+      "name": "火山引擎 方舟",
+      "region": "cn",
+      "homepage": "https://www.volcengine.com/product/ark",
+      "consoleUrl": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+      "freeTierSummary": {
+        "zh-CN": "新用户每个模型赠送 50 万 tokens，豆包 Flash / Lite 系列价格极低。",
+        "en": "New accounts get 500K free tokens per model; Doubao Flash / Lite models are very cheap after that."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "doubao-seed-1-6-flash-250715", "name": "Doubao-Seed-1.6-Flash", "contextWindow": 256000, "supportsVision": true },
+        { "id": "doubao-seed-1-6-250615", "name": "Doubao-Seed-1.6", "contextWindow": 256000, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-09"
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "region": "global",
+      "homepage": "https://openrouter.ai",
+      "consoleUrl": "https://openrouter.ai/settings/keys",
+      "freeTierSummary": {
+        "zh-CN": "以 :free 结尾的模型免费，每天 50 次请求（充值 10 美元后 1000 次/天）。openrouter/free 会自动挑选可用免费模型。",
+        "en": "Models ending in :free cost nothing; 50 requests/day (1,000/day after a $10 top-up). openrouter/free auto-routes to an available free model."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "openrouter/free", "name": "Auto (free router)", "contextWindow": 128000 },
+        { "id": "openai/gpt-oss-20b:free", "name": "GPT-OSS-20B (free)", "contextWindow": 131072 },
+        { "id": "nvidia/nemotron-3-super-120b-a12b:free", "name": "Nemotron 3 Super (free)", "contextWindow": 262144 },
+        { "id": "google/gemma-4-31b-it:free", "name": "Gemma 4 31B (free)", "contextWindow": 262144, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-09"
+    },
+    {
+      "id": "google-ai-studio",
+      "name": "Google AI Studio",
+      "region": "global",
+      "homepage": "https://aistudio.google.com",
+      "consoleUrl": "https://aistudio.google.com/apikey",
+      "freeTierSummary": {
+        "zh-CN": "Gemini Flash 系列有免费层（按天限次），无需信用卡，需要能访问 Google 服务。",
+        "en": "Gemini Flash models have a free tier with daily request caps; no credit card required."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "contextWindow": 1048576, "supportsVision": true },
+        { "id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite", "contextWindow": 1048576, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-09"
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "region": "global",
+      "homepage": "https://groq.com",
+      "consoleUrl": "https://console.groq.com/keys",
+      "freeTierSummary": {
+        "zh-CN": "免费层长期稳定，Llama / Qwen / GPT-OSS 都能用，速度极快；瓶颈在每分钟 tokens 限额。",
+        "en": "Long-standing free tier with Llama, Qwen and GPT-OSS at very high speed; the real ceiling is tokens per minute."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "openai/gpt-oss-120b", "name": "GPT-OSS-120B", "contextWindow": 131072 },
+        { "id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B", "contextWindow": 131072 },
+        { "id": "qwen/qwen3-32b", "name": "Qwen3 32B", "contextWindow": 131072 },
+        { "id": "meta-llama/llama-4-scout-17b-16e-instruct", "name": "Llama 4 Scout", "contextWindow": 131072, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-09"
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras",
+      "region": "global",
+      "homepage": "https://cerebras.ai",
+      "consoleUrl": "https://cloud.cerebras.ai",
+      "freeTierSummary": {
+        "zh-CN": "免费层可用 GPT-OSS-120B 等模型，推理速度最快的一档；模型目录变动频繁。",
+        "en": "Free tier includes GPT-OSS-120B and a few others at the fastest inference speeds around; the catalog changes often."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.cerebras.ai/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "gpt-oss-120b", "name": "GPT-OSS-120B", "contextWindow": 131072 },
+        { "id": "zai-glm-4.7", "name": "GLM-4.7 (preview)", "contextWindow": 131072 }
+      ],
+      "verifiedAt": "2026-09-09"
+    }
+  ]
+}

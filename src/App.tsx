@@ -31,6 +31,7 @@ import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
 import { AgentUsagePage } from "./components/Usage/AgentUsagePage";
+import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
@@ -613,10 +614,14 @@ function App() {
   const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
   const requestNewTask = useNewTaskUiStore((s) => s.requestNewTask);
-  const startNewTask = (options?: { cwd?: string; projectId?: string }) => {
+  const startNewTask = (options?: { cwd?: string; projectId?: string; agentId?: string }) => {
     setRequestedTeamId(undefined);
     setNewTaskMode("normal");
-    requestNewTask({ cwd: options?.cwd, projectId: options?.projectId });
+    requestNewTask({
+      cwd: options?.cwd,
+      projectId: options?.projectId,
+      agentId: options?.agentId
+    });
     setSettingsOpen(false);
     setWorkspaceView("chat");
     void setActive(undefined);
@@ -639,6 +644,11 @@ function App() {
   const openUsage = () => {
     setSettingsOpen(false);
     setWorkspaceView("usage");
+    void setActive(undefined);
+  };
+  const openFreebie = () => {
+    setSettingsOpen(false);
+    setWorkspaceView("freebie");
     void setActive(undefined);
   };
 
@@ -679,6 +689,8 @@ function App() {
         ? t("workflow.teamList")
         : workspaceView === "usage"
           ? t("usage.title")
+          : workspaceView === "freebie"
+            ? t("freebie.title")
         : activeConversation?.title ?? t("app.chat");
   const renderToggleButton = (extraClass = "") => (
     <button
@@ -774,6 +786,7 @@ function App() {
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
               onOpenUsage={openUsage}
+              onOpenFreebie={openFreebie}
             />
             <ConversationList
               onNewTaskInProject={({ cwd, projectId }) =>
@@ -917,6 +930,13 @@ function App() {
               <div className="workspace-tool-page-inner">
                 <AgentUsagePage />
               </div>
+            </section>
+          ) : workspaceView === "freebie" ? (
+            <section className="workspace-tool-page freebie-workspace-page">
+              <FreebiePage
+                onStartChat={(agentId) => startNewTask({ agentId })}
+                onOpenAgentSettings={() => openSettings("cli")}
+              />
             </section>
           ) : (
             <ChatView onOpenAgentSettings={() => openSettings("cli")} />

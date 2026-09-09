@@ -331,7 +331,57 @@
     "importCodexSession": "导入 Codex 会话",
     "teams": "团队",
     "usage": "用量",
+    "freebie": "白嫖",
     "allTeams": "全部团队"
+  },
+  "freebie": {
+    "title": "白嫖专区",
+    "loading": "正在加载白嫖目录…",
+    "agentLabel": "{{name}}（白嫖）",
+    "region": { "cn": "国内直连", "global": "海外" },
+    "protocol": {
+      "openaiChat": "OpenAI 兼容",
+      "openaiResponses": "OpenAI Responses",
+      "anthropic": "Anthropic 兼容",
+      "deepseek": "DeepSeek"
+    },
+    "offline": {
+      "message": "白嫖页面加载失败，暂时显示随本版本内置的目录。",
+      "retry": "重试",
+      "openInBrowser": "在浏览器打开"
+    },
+    "fallback": {
+      "count": "{{count}} 家服务商",
+      "updatedAt": "目录快照 {{date}}",
+      "imported": "已导入",
+      "import": "一键导入",
+      "importAgain": "再导入一个",
+      "homepage": "官网",
+      "runtimeMissing": "该服务商依赖的基座 CLI 尚未安装，导入时会给出指引。"
+    },
+    "import": {
+      "title": "创建白嫖 Agent",
+      "description": "FreeBuddy 将为 {{name}} 创建一个 BYOK 自定义 Agent。请核对下方信息并粘贴 API Key。",
+      "doneTitle": "Agent 已创建",
+      "doneDescription": "{{name}} 已作为自定义 Agent 可用。",
+      "successHint": "随时可以在「设置 → Agent」中找到并修改它。",
+      "startChat": "开始对话",
+      "protocol": "协议",
+      "baseAdapter": "由 {{runtime}} 承载",
+      "baseUrl": "API 地址",
+      "envKey": "Key 变量",
+      "models": "模型",
+      "selectAtLeastOne": "至少选择一个模型。",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "粘贴服务商颁发的 Key",
+      "apiKeyHint": "加密保存在本机，只会发送到上方的 API 地址。",
+      "getKey": "去领取 Key",
+      "runtimeMissing": "尚未安装 {{runtime}} CLI。Agent 会先创建，但安装后才能运行。",
+      "openAgentSettings": "打开 Agent 设置",
+      "alreadyImported": "你已经导入过这家服务商，继续会再创建一个 Agent。",
+      "securityNote": "请确认 API 地址确实属于你预期的服务商，Key 会发送到该地址。",
+      "create": "创建 Agent"
+    }
   },
   "commandPalette": {
     "open": "搜索对话",

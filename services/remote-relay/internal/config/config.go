@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,15 +27,16 @@ type Config struct {
 	SQLitePath string
 
 	// Authentication (Production)
-	WeChatAppID      string
-	WeChatAppSecret  string
-	AdminOpenID      string
-	TokenHashPepper  string
+	WeChatAppID     string
+	WeChatAppSecret string
+	AdminOpenID     string
+	TokenHashPepper string
 
 	// Development / POC Mode
 	DevAuthMode       bool
 	DevAuthAdminToken string
 	DevAuthHostToken  string
+	DevAuthHostID     string
 
 	// Logging
 	LogLevel  string // "debug", "info", "warn", "error"
@@ -54,6 +56,9 @@ type Config struct {
 	TokenTTL         time.Duration
 	RefreshTokenTTL  time.Duration
 	ChallengeTTL     time.Duration
+
+	HeartbeatInterval time.Duration
+	HeartbeatTimeout  time.Duration
 }
 
 // DefaultConfig returns a Config initialized with sensible defaults.
@@ -70,6 +75,7 @@ func DefaultConfig() Config {
 		DevAuthMode:           false,
 		DevAuthAdminToken:     "",
 		DevAuthHostToken:      "",
+		DevAuthHostID:         "host_dev",
 		LogLevel:              "info",
 		LogFormat:             "json",
 		HTTPReadHeaderTimeout: 5 * time.Second,
@@ -84,6 +90,8 @@ func DefaultConfig() Config {
 		TokenTTL:              24 * time.Hour,
 		RefreshTokenTTL:       30 * 24 * time.Hour,
 		ChallengeTTL:          60 * time.Second,
+		HeartbeatInterval:     30 * time.Second,
+		HeartbeatTimeout:      10 * time.Second,
 	}
 }
 
@@ -120,9 +128,18 @@ func LoadFromEnv() (Config, error) {
 	}
 	if v := os.Getenv("DEV_AUTH_ADMIN_TOKEN"); v != "" {
 		cfg.DevAuthAdminToken = v
+	} else if v := os.Getenv("DEV_ADMIN_TOKEN"); v != "" {
+		cfg.DevAuthAdminToken = v
 	}
 	if v := os.Getenv("DEV_AUTH_HOST_TOKEN"); v != "" {
 		cfg.DevAuthHostToken = v
+	} else if v := os.Getenv("DEV_HOST_TOKEN"); v != "" {
+		cfg.DevAuthHostToken = v
+	}
+	if v := os.Getenv("DEV_AUTH_HOST_ID"); v != "" {
+		cfg.DevAuthHostID = v
+	} else if v := os.Getenv("DEV_HOST_ID"); v != "" {
+		cfg.DevAuthHostID = v
 	}
 	if v := os.Getenv("LOG_LEVEL"); v != "" {
 		cfg.LogLevel = strings.ToLower(v)
@@ -189,6 +206,16 @@ func LoadFromEnv() (Config, error) {
 	if v := os.Getenv("CHALLENGE_TTL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.ChallengeTTL = d
+		}
+	}
+	if v := os.Getenv("HEARTBEAT_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.HeartbeatInterval = d
+		}
+	}
+	if v := os.Getenv("HEARTBEAT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.HeartbeatTimeout = d
 		}
 	}
 
@@ -261,6 +288,10 @@ func (c *Config) Validate() error {
 
 	// Production vs Dev mode validation
 	if !c.DevAuthMode {
+		// In production mode, dev tokens must not be set
+		if c.DevAuthAdminToken != "" || c.DevAuthHostToken != "" {
+			errs = append(errs, "DEV_AUTH_ADMIN_TOKEN and DEV_AUTH_HOST_TOKEN must not be set when DEV_AUTH_MODE is false")
+		}
 		// In production mode, authentication secrets are strictly required and cannot be empty or weak
 		if strings.TrimSpace(c.WeChatAppID) == "" {
 			errs = append(errs, "WECHAT_APP_ID is required in production mode (DEV_AUTH_MODE=false)")
@@ -276,9 +307,16 @@ func (c *Config) Validate() error {
 		} else if len(c.TokenHashPepper) < 16 {
 			errs = append(errs, "TOKEN_HASH_PEPPER must be at least 16 characters long for cryptographic security")
 		}
+	} else {
+		// In dev auth mode, dev tokens must be provided and have high entropy (>= 32 characters, OpaqueToken character set, non-weak)
+		errs = append(errs, validateDevToken("DEV_AUTH_ADMIN_TOKEN (or DEV_ADMIN_TOKEN)", c.DevAuthAdminToken)...)
+		errs = append(errs, validateDevToken("DEV_AUTH_HOST_TOKEN (or DEV_HOST_TOKEN)", c.DevAuthHostToken)...)
+		if strings.TrimSpace(c.DevAuthHostID) == "" {
+			errs = append(errs, "DEV_AUTH_HOST_ID must not be empty when DEV_AUTH_MODE=true")
+		}
 	}
 
-	// Timeouts must be positive
+	// Timeouts must be positive and conform to wire protocol limits
 	if c.HTTPReadHeaderTimeout <= 0 {
 		errs = append(errs, "HTTP_READ_HEADER_TIMEOUT must be positive")
 	}
@@ -302,8 +340,8 @@ func (c *Config) Validate() error {
 	if c.MaxSendQueueSize <= 0 {
 		errs = append(errs, "MAX_SEND_QUEUE_SIZE must be positive")
 	}
-	if c.RPCTimeout <= 0 {
-		errs = append(errs, "RPC_TIMEOUT must be positive")
+	if c.RPCTimeout < 1*time.Second || c.RPCTimeout > 120*time.Second {
+		errs = append(errs, "RPC_TIMEOUT must be between 1s and 120s (1000ms to 120000ms)")
 	}
 	if c.PairingTTL <= 0 {
 		errs = append(errs, "PAIRING_TTL must be positive")
@@ -314,8 +352,16 @@ func (c *Config) Validate() error {
 	if c.RefreshTokenTTL <= 0 {
 		errs = append(errs, "REFRESH_TOKEN_TTL must be positive")
 	}
-	if c.ChallengeTTL <= 0 {
-		errs = append(errs, "CHALLENGE_TTL must be positive")
+	if c.ChallengeTTL < 1*time.Second || c.ChallengeTTL > 300*time.Second {
+		errs = append(errs, "CHALLENGE_TTL must be between 1s and 300s (1000ms to 300000ms)")
+	}
+	if c.HeartbeatInterval < 5*time.Second || c.HeartbeatInterval > 120*time.Second {
+		errs = append(errs, "HEARTBEAT_INTERVAL must be between 5s and 120s (5000ms to 120000ms)")
+	}
+	if c.HeartbeatTimeout <= 0 {
+		errs = append(errs, "HEARTBEAT_TIMEOUT must be positive")
+	} else if c.HeartbeatInterval > 0 && c.HeartbeatTimeout >= c.HeartbeatInterval {
+		errs = append(errs, "HEARTBEAT_TIMEOUT must be less than HEARTBEAT_INTERVAL")
 	}
 
 	if len(errs) > 0 {
@@ -336,8 +382,9 @@ func (c Config) RedactedString() string {
 	return fmt.Sprintf(
 		"Config{ListenAddr:%s, PublicBaseURL:%s, TrustProxy:%v, SQLitePath:%s, "+
 			"WeChatAppID:%s, WeChatAppSecret:%s, AdminOpenID:%s, TokenHashPepper:%s, "+
-			"DevAuthMode:%v, DevAuthAdminToken:%s, DevAuthHostToken:%s, LogLevel:%s, LogFormat:%s, "+
-			"ShutdownGracePeriod:%v, MaxFrameBytes:%d, RPCTimeout:%v}",
+			"DevAuthMode:%v, DevAuthAdminToken:%s, DevAuthHostToken:%s, DevAuthHostID:%s, LogLevel:%s, LogFormat:%s, "+
+			"ShutdownGracePeriod:%v, MaxFrameBytes:%d, RPCTimeout:%v, "+
+			"HeartbeatInterval:%v, HeartbeatTimeout:%v}",
 		c.ListenAddr,
 		c.PublicBaseURL,
 		c.TrustProxy,
@@ -349,11 +396,14 @@ func (c Config) RedactedString() string {
 		c.DevAuthMode,
 		mask(c.DevAuthAdminToken),
 		mask(c.DevAuthHostToken),
+		c.DevAuthHostID,
 		c.LogLevel,
 		c.LogFormat,
 		c.ShutdownGracePeriod,
 		c.MaxFrameBytes,
 		c.RPCTimeout,
+		c.HeartbeatInterval,
+		c.HeartbeatTimeout,
 	)
 }
 
@@ -376,4 +426,56 @@ func parseBool(val string, defaultVal bool) bool {
 	default:
 		return defaultVal
 	}
+}
+
+var opaqueTokenRegex = regexp.MustCompile(`^[A-Za-z0-9._~-]{32,512}$`)
+
+func isWeakToken(token string) bool {
+	// 1. Check distinct characters (at least 8 distinct characters)
+	seen := make(map[rune]struct{})
+	for _, r := range token {
+		seen[r] = struct{}{}
+	}
+	if len(seen) < 8 {
+		return true
+	}
+	// 2. Check for simple repeating patterns (period 1 to 8)
+	for period := 1; period <= 8; period++ {
+		pattern := token[:period]
+		repeats := true
+		for i := period; i < len(token); i += period {
+			end := i + period
+			if end > len(token) {
+				end = len(token)
+			}
+			if token[i:end] != pattern[:end-i] {
+				repeats = false
+				break
+			}
+		}
+		if repeats {
+			return true
+		}
+	}
+	return false
+}
+
+func validateDevToken(name, token string) []string {
+	var errs []string
+	if strings.TrimSpace(token) == "" {
+		errs = append(errs, fmt.Sprintf("%s is required when DEV_AUTH_MODE=true", name))
+		return errs
+	}
+	if len(token) < 32 {
+		errs = append(errs, fmt.Sprintf("%s must be at least 32 characters long", name))
+	} else if len(token) > 512 {
+		errs = append(errs, fmt.Sprintf("%s must not exceed 512 characters", name))
+	}
+	if !opaqueTokenRegex.MatchString(token) {
+		errs = append(errs, fmt.Sprintf("%s must match OpaqueToken character set (^[A-Za-z0-9._~-]+$)", name))
+	}
+	if isWeakToken(token) {
+		errs = append(errs, fmt.Sprintf("%s rejected due to insufficient entropy or weak repetitive pattern", name))
+	}
+	return errs
 }

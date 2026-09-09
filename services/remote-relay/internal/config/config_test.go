@@ -19,13 +19,96 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.MaxFrameBytes != MaxAllowedFrameBytes {
 		t.Errorf("expected MaxFrameBytes %d, got %d", MaxAllowedFrameBytes, cfg.MaxFrameBytes)
 	}
+	if cfg.HeartbeatInterval != 30*time.Second {
+		t.Errorf("expected HeartbeatInterval 30s, got %v", cfg.HeartbeatInterval)
+	}
+	if cfg.HeartbeatTimeout != 10*time.Second {
+		t.Errorf("expected HeartbeatTimeout 10s, got %v", cfg.HeartbeatTimeout)
+	}
 }
 
 func TestValidate_DevMode(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.DevAuthMode = true
+	cfg.DevAuthAdminToken = "dev-admin-token-with-sufficient-entropy-32"
+	cfg.DevAuthHostToken = "dev-host-token-with-sufficient-entropy-32"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected valid config in dev mode, got: %v", err)
+	}
+}
+
+func TestValidate_DevMode_MissingOrWeakTokens(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.DevAuthMode = true
+
+	// Missing tokens
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "DEV_AUTH_ADMIN_TOKEN") {
+		t.Fatalf("expected error for missing DEV_AUTH_ADMIN_TOKEN, got: %v", err)
+	}
+
+	// 16 chars (less than 32 chars)
+	cfg.DevAuthAdminToken = "1234567890123456"
+	cfg.DevAuthHostToken = "1234567890123456"
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "must be at least 32 characters long") {
+		t.Fatalf("expected error for short dev tokens (<32), got: %v", err)
+	}
+
+	// 31 chars
+	cfg.DevAuthAdminToken = "1234567890123456789012345678901"
+	cfg.DevAuthHostToken = "1234567890123456789012345678901"
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "must be at least 32 characters long") {
+		t.Fatalf("expected error for 31-char dev tokens, got: %v", err)
+	}
+
+	// Invalid characters (not in OpaqueToken charset)
+	cfg.DevAuthAdminToken = "token_with_invalid_char_@#$%_1234567890"
+	cfg.DevAuthHostToken = "token_with_invalid_char_@#$%_1234567890"
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "must match OpaqueToken character set") {
+		t.Fatalf("expected error for invalid characters in dev tokens, got: %v", err)
+	}
+
+	// Low entropy / uniform characters (32 identical chars)
+	cfg.DevAuthAdminToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	cfg.DevAuthHostToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "insufficient entropy") {
+		t.Fatalf("expected error for weak uniform dev tokens, got: %v", err)
+	}
+
+	// Repetitive short sequence pattern
+	cfg.DevAuthAdminToken = "12345678123456781234567812345678"
+	cfg.DevAuthHostToken = "12345678123456781234567812345678"
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "insufficient entropy") {
+		t.Fatalf("expected error for repetitive pattern dev tokens, got: %v", err)
+	}
+
+	// Over 512 characters
+	longToken := strings.Repeat("a1b2c3d4-e5f6-g7h8-i9j0.", 25) // 600 chars
+	cfg.DevAuthAdminToken = longToken
+	cfg.DevAuthHostToken = longToken
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "must not exceed 512 characters") {
+		t.Fatalf("expected error for dev token exceeding 512 characters, got: %v", err)
+	}
+}
+
+func TestValidate_ProductionMode_DevTokensRejected(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.DevAuthMode = false
+	cfg.WeChatAppID = "wx123456"
+	cfg.WeChatAppSecret = "secret1234567890"
+	cfg.AdminOpenID = "openid_admin"
+	cfg.TokenHashPepper = "super-secret-pepper-with-sufficient-entropy-12345"
+	cfg.DevAuthAdminToken = "dev-admin-token-with-sufficient-entropy-32"
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "must not be set when DEV_AUTH_MODE is false") {
+		t.Fatalf("expected error when dev tokens are set in production mode, got: %v", err)
 	}
 }
 
@@ -83,6 +166,8 @@ func TestValidate_ValidPublicBaseURL(t *testing.T) {
 	for _, u := range validURLs {
 		cfg := DefaultConfig()
 		cfg.DevAuthMode = true
+		cfg.DevAuthAdminToken = "dev-admin-token-with-sufficient-entropy-32"
+		cfg.DevAuthHostToken = "dev-host-token-with-sufficient-entropy-32"
 		cfg.PublicBaseURL = u
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("expected valid for PublicBaseURL %q, got: %v", u, err)
@@ -229,12 +314,63 @@ func TestValidate_InvalidFields(t *testing.T) {
 			},
 			expectErr: "MAX_FRAME_BYTES must not exceed protocol limit of 262144 bytes",
 		},
+		{
+			name: "rpc timeout too small",
+			modify: func(c *Config) {
+				c.RPCTimeout = 500 * time.Millisecond
+			},
+			expectErr: "RPC_TIMEOUT must be between 1s and 120s",
+		},
+		{
+			name: "rpc timeout too large",
+			modify: func(c *Config) {
+				c.RPCTimeout = 150 * time.Second
+			},
+			expectErr: "RPC_TIMEOUT must be between 1s and 120s",
+		},
+		{
+			name: "challenge ttl too small",
+			modify: func(c *Config) {
+				c.ChallengeTTL = 500 * time.Millisecond
+			},
+			expectErr: "CHALLENGE_TTL must be between 1s and 300s",
+		},
+		{
+			name: "challenge ttl too large",
+			modify: func(c *Config) {
+				c.ChallengeTTL = 350 * time.Second
+			},
+			expectErr: "CHALLENGE_TTL must be between 1s and 300s",
+		},
+		{
+			name: "heartbeat interval too small",
+			modify: func(c *Config) {
+				c.HeartbeatInterval = 2 * time.Second
+			},
+			expectErr: "HEARTBEAT_INTERVAL must be between 5s and 120s",
+		},
+		{
+			name: "heartbeat interval too large",
+			modify: func(c *Config) {
+				c.HeartbeatInterval = 150 * time.Second
+			},
+			expectErr: "HEARTBEAT_INTERVAL must be between 5s and 120s",
+		},
+		{
+			name: "empty dev host id",
+			modify: func(c *Config) {
+				c.DevAuthHostID = ""
+			},
+			expectErr: "DEV_AUTH_HOST_ID must not be empty",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := DefaultConfig()
 			cfg.DevAuthMode = true
+			cfg.DevAuthAdminToken = "dev-admin-token-with-sufficient-entropy-32"
+			cfg.DevAuthHostToken = "dev-host-token-with-sufficient-entropy-32"
 			tt.modify(&cfg)
 			err := cfg.Validate()
 			if err == nil {
@@ -250,6 +386,8 @@ func TestValidate_InvalidFields(t *testing.T) {
 func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("LISTEN_ADDR", ":9090")
 	t.Setenv("DEV_AUTH_MODE", "true")
+	t.Setenv("DEV_ADMIN_TOKEN", "dev-admin-token-with-sufficient-entropy-32")
+	t.Setenv("DEV_HOST_TOKEN", "dev-host-token-with-sufficient-entropy-32")
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("MAX_FRAME_BYTES", "131072")
 	t.Setenv("RPC_TIMEOUT", "45s")
@@ -265,6 +403,12 @@ func TestLoadFromEnv(t *testing.T) {
 	if !cfg.DevAuthMode {
 		t.Errorf("expected DevAuthMode true")
 	}
+	if cfg.DevAuthAdminToken != "dev-admin-token-with-sufficient-entropy-32" {
+		t.Errorf("expected DevAuthAdminToken loaded")
+	}
+	if cfg.DevAuthHostToken != "dev-host-token-with-sufficient-entropy-32" {
+		t.Errorf("expected DevAuthHostToken loaded")
+	}
 	if cfg.LogLevel != "debug" {
 		t.Errorf("expected LogLevel debug, got %s", cfg.LogLevel)
 	}
@@ -278,6 +422,8 @@ func TestLoadFromEnv(t *testing.T) {
 
 func TestLoadFromEnv_ExceedsMaxFrameBytes(t *testing.T) {
 	t.Setenv("DEV_AUTH_MODE", "true")
+	t.Setenv("DEV_AUTH_ADMIN_TOKEN", "dev-admin-token-with-sufficient-entropy-32")
+	t.Setenv("DEV_AUTH_HOST_TOKEN", "dev-host-token-with-sufficient-entropy-32")
 	t.Setenv("MAX_FRAME_BYTES", "524288")
 
 	_, err := LoadFromEnv()
@@ -291,6 +437,8 @@ func TestLoadFromEnv_ExceedsMaxFrameBytes(t *testing.T) {
 
 func TestLoadFromEnv_InvalidPublicBaseURL_CarryingToken(t *testing.T) {
 	t.Setenv("DEV_AUTH_MODE", "true")
+	t.Setenv("DEV_AUTH_ADMIN_TOKEN", "dev-admin-token-with-sufficient-entropy-32")
+	t.Setenv("DEV_AUTH_HOST_TOKEN", "dev-host-token-with-sufficient-entropy-32")
 	t.Setenv("PUBLIC_BASE_URL", "https://token123:secret456@remote.example.com")
 
 	_, err := LoadFromEnv()
@@ -345,5 +493,115 @@ func TestRedactedString_NoSecretsLeaked(t *testing.T) {
 		if strings.Contains(logOutput, secret) {
 			t.Errorf("slog output leaked secret: %s", secret)
 		}
+	}
+
+	if !strings.Contains(s, "HeartbeatInterval:30s") || !strings.Contains(s, "HeartbeatTimeout:10s") {
+		t.Errorf("expected Heartbeat settings in RedactedString, got: %s", s)
+	}
+}
+
+func TestValidate_Heartbeat(t *testing.T) {
+	tests := []struct {
+		name      string
+		interval  time.Duration
+		timeout   time.Duration
+		expectErr string
+	}{
+		{
+			name:      "zero interval",
+			interval:  0,
+			timeout:   10 * time.Second,
+			expectErr: "HEARTBEAT_INTERVAL must be between 5s and 120s",
+		},
+		{
+			name:      "negative interval",
+			interval:  -10 * time.Second,
+			timeout:   10 * time.Second,
+			expectErr: "HEARTBEAT_INTERVAL must be between 5s and 120s",
+		},
+		{
+			name:      "interval below 5s minimum",
+			interval:  4 * time.Second,
+			timeout:   1 * time.Second,
+			expectErr: "HEARTBEAT_INTERVAL must be between 5s and 120s",
+		},
+		{
+			name:      "interval above 120s maximum",
+			interval:  130 * time.Second,
+			timeout:   10 * time.Second,
+			expectErr: "HEARTBEAT_INTERVAL must be between 5s and 120s",
+		},
+		{
+			name:      "zero timeout",
+			interval:  30 * time.Second,
+			timeout:   0,
+			expectErr: "HEARTBEAT_TIMEOUT must be positive",
+		},
+		{
+			name:      "negative timeout",
+			interval:  30 * time.Second,
+			timeout:   -5 * time.Second,
+			expectErr: "HEARTBEAT_TIMEOUT must be positive",
+		},
+		{
+			name:      "timeout equal to interval",
+			interval:  10 * time.Second,
+			timeout:   10 * time.Second,
+			expectErr: "HEARTBEAT_TIMEOUT must be less than HEARTBEAT_INTERVAL",
+		},
+		{
+			name:      "timeout greater than interval",
+			interval:  10 * time.Second,
+			timeout:   15 * time.Second,
+			expectErr: "HEARTBEAT_TIMEOUT must be less than HEARTBEAT_INTERVAL",
+		},
+		{
+			name:      "valid interval and timeout",
+			interval:  10 * time.Second,
+			timeout:   3 * time.Second,
+			expectErr: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.DevAuthMode = true
+			cfg.DevAuthAdminToken = "dev-admin-token-with-sufficient-entropy-32"
+			cfg.DevAuthHostToken = "dev-host-token-with-sufficient-entropy-32"
+			cfg.HeartbeatInterval = tc.interval
+			cfg.HeartbeatTimeout = tc.timeout
+
+			err := cfg.Validate()
+			if tc.expectErr == "" {
+				if err != nil {
+					t.Fatalf("expected valid heartbeat config, got: %v", err)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), tc.expectErr) {
+					t.Fatalf("expected error containing %q, got: %v", tc.expectErr, err)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadFromEnv_Heartbeat(t *testing.T) {
+	t.Setenv("DEV_AUTH_MODE", "true")
+	t.Setenv("DEV_AUTH_ADMIN_TOKEN", "dev-admin-token-with-sufficient-entropy-32")
+	t.Setenv("DEV_AUTH_HOST_TOKEN", "dev-host-token-with-sufficient-entropy-32")
+	t.Setenv("HEARTBEAT_INTERVAL", "15s")
+	t.Setenv("HEARTBEAT_TIMEOUT", "5s")
+
+	cfg, err := LoadFromEnv()
+	if err != nil {
+		t.Fatalf("unexpected error loading env: %v", err)
+	}
+
+	if cfg.HeartbeatInterval != 15*time.Second {
+		t.Errorf("expected HeartbeatInterval 15s, got %v", cfg.HeartbeatInterval)
+	}
+	if cfg.HeartbeatTimeout != 5*time.Second {
+		t.Errorf("expected HeartbeatTimeout 5s, got %v", cfg.HeartbeatTimeout)
 	}
 }

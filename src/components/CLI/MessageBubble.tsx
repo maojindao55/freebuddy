@@ -1003,6 +1003,7 @@ export const MessageBubble = memo(function MessageBubble({
       <div className="msg msg-user">
         <div className="msg-content-wrapper">
           <div className="msg-header">
+            {timeStr && <span className="msg-time">{timeStr}</span>}
             <span className="msg-author">
               {userAuthor || t("message.you")}
             </span>

@@ -99,6 +99,11 @@ import {
   upsertConversationMessage
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
+import {
+  ScheduledSendControl,
+  ScheduledSendMeta
+} from "./ScheduledSendControl";
+import { useScheduledSendStore } from "@/store/scheduledSendStore";
 import { ComposerAddMenu } from "./ComposerAddMenu";
 import { AgentPicker } from "./AgentPicker";
 import { NewTaskUnreadConversations } from "./NewTaskUnreadConversations";
@@ -864,6 +869,16 @@ export function ChatView({
   const sendMessage = useConversationStore((s) => s.sendMessage);
   const stopActive = useConversationStore((s) => s.stopActive);
   const notify = useAgentBridgeStore((s) => s.notify);
+  const scheduledSend = useScheduledSendStore((s) =>
+    activeId ? s.entries[activeId] : undefined
+  );
+  const scheduledSendNow = useScheduledSendStore((s) =>
+    activeId && s.entries[activeId] ? s.now : 0
+  );
+  const scheduleSend = useScheduledSendStore((s) => s.schedule);
+  const removeScheduledSend = useScheduledSendStore((s) => s.remove);
+  const fireScheduledSendNow = useScheduledSendStore((s) => s.fireNow);
+  const retryScheduledSend = useScheduledSendStore((s) => s.retry);
   const setApprovalMode = useConversationStore(
     (s) => s.setConversationApprovalMode
   );
@@ -1699,7 +1714,15 @@ export function ChatView({
     if (el && (replaying || isNearBottomRef.current)) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, live, submitPreview, gatingPhaseId, replaying, replayIndex]);
+  }, [
+    messages,
+    live,
+    submitPreview,
+    scheduledSend?.createdAt,
+    gatingPhaseId,
+    replaying,
+    replayIndex
+  ]);
 
   useEffect(() => {
     if (!pendingWorkflowAction) return;
@@ -2368,6 +2391,44 @@ export function ChatView({
     }
   };
 
+  const onScheduleSend = (fireAt: number) => {
+    if (!conv || attachmentBusy || sendLock || pendingWorkflowAction) return;
+    const prompt = draft.trim();
+    const attachmentsToSend = pendingAttachments;
+    if (!prompt && attachmentsToSend.length === 0) return;
+
+    const previous = useScheduledSendStore.getState().entries[conv.id];
+    scheduleSend({
+      conversationId: conv.id,
+      prompt,
+      attachments: attachmentsToSend,
+      fireAt
+    });
+    protectManagedAttachments(attachmentsToSend);
+    if (previous) unprotectManagedAttachments(previous.attachments);
+    setPreflightMsg(null);
+    setDraft("");
+    setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
+  };
+
+  const onEditScheduledSend = () => {
+    if (!conv) return;
+    const entry = removeScheduledSend(conv.id);
+    if (!entry) return;
+    unprotectManagedAttachments(entry.attachments);
+    setDraft((current) =>
+      current.trim() ? `${entry.prompt}\n${current}` : entry.prompt
+    );
+    setPendingAttachments((prev) => restoreAttachmentsForSend(entry.attachments, prev));
+    window.setTimeout(() => chatTextareaRef.current?.focus(), 0);
+  };
+
+  const onCancelScheduledSend = () => {
+    if (!conv) return;
+    const entry = removeScheduledSend(conv.id);
+    if (entry) unprotectManagedAttachments(entry.attachments);
+  };
+
   const handleGeneratePlan = async () => {
     const prompt = newTaskDraft.trim();
     if (!prompt) return;
@@ -2659,6 +2720,36 @@ export function ChatView({
             </Fragment>
           );
         })}
+        {scheduledSend && scheduledSend.conversationId === conv.id && !replaying ? (
+          <div
+            className={`scheduled-send-bubble scheduled-send-bubble-${scheduledSend.status}`}
+          >
+            <MessageBubble
+              message={{
+                id: `scheduled-send:${conv.id}`,
+                conversationId: conv.id,
+                role: "user",
+                status: "sent",
+                content: scheduledSend.prompt,
+                attachments: scheduledSend.attachments,
+                authorUsername: currentUser?.username ?? null,
+                createdAt: new Date(scheduledSend.createdAt).toISOString(),
+                updatedAt: new Date(scheduledSend.createdAt).toISOString()
+              }}
+              cwd={conv.cwd || conv.sourceCwd}
+              afterContent={
+                <ScheduledSendMeta
+                  entry={scheduledSend}
+                  now={scheduledSendNow}
+                  onSendNow={() => fireScheduledSendNow(conv.id)}
+                  onRetry={() => retryScheduledSend(conv.id)}
+                  onEdit={onEditScheduledSend}
+                  onCancel={onCancelScheduledSend}
+                />
+              }
+            />
+          </div>
+        ) : null}
         {activeRun?.conversationId === conv.id &&
           workflowGateIsActionable &&
           gatingPhaseId &&
@@ -2911,6 +3002,14 @@ export function ChatView({
                 if (conv?.id) void setConfigOptionOverrides(conv.id, next);
               }}
             />
+            {!sending && !pendingWorkflowAction ? (
+              <ScheduledSendControl
+                adapter={member?.cli.adapter ?? conv.adapter}
+                disabled={replaying || attachmentBusy || sendLock}
+                canSchedule={!!(draft.trim() || pendingAttachments.length > 0)}
+                onSchedule={onScheduleSend}
+              />
+            ) : null}
             {sending ? (
               <button
                 className="danger stop-icon-button"

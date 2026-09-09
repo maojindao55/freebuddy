@@ -11117,12 +11117,21 @@ button.new-task-context-control {
   font-size: 12px;
 }
 
-.freebie-import-model {
+/* `.modal label` stacks children vertically; model rows must stay inline. */
+.freebie-import-dialog .freebie-import-model {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   font-size: 13px;
+  font-weight: 400;
   color: var(--fb-text-primary);
+}
+
+.freebie-import-model input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--fb-brand);
 }
 
 .freebie-import-model code {

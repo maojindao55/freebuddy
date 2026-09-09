@@ -361,6 +361,8 @@ function App() {
   }, []);
 
   const { t } = useTranslation();
+  // Locale-specific secondary brand name; empty in locales that only use "FreeBuddy".
+  const brandSub = t("app.brandSub", { defaultValue: "" }).trim();
   const loadSettings = useSettingsStore((s) => s.load);
   const themePreference = useSettingsStore((s) => s.theme);
   const theme = useSettingsStore((s) => s.resolvedTheme);
@@ -742,9 +744,14 @@ function App() {
               <div className="sidebar-brand">
                 <BrandMark />
                 <div className="sidebar-brand-text">
-                  <h1>{t("app.brand")}</h1>
-                  {import.meta.env.DEV && (
-                    <span className="sidebar-dev-badge">DEV</span>
+                  <div className="sidebar-brand-row">
+                    <h1>{t("app.brand")}</h1>
+                    {import.meta.env.DEV && (
+                      <span className="sidebar-dev-badge">DEV</span>
+                    )}
+                  </div>
+                  {brandSub && (
+                    <span className="sidebar-brand-sub">{brandSub}</span>
                   )}
                 </div>
               </div>

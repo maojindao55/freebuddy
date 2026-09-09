@@ -188,7 +188,7 @@
     "butlerMainWindowShortcutUnavailable": "That shortcut is already used by another app. Try another one.",
     "butlerMainWindowShortcutInvalid": "Include Ctrl/⌘ or Alt together with another key."
   },
-  "app": { "brand": "FreeBuddy", "chat": "Chat" },
+  "app": { "brand": "FreeBuddy", "brandSub": "", "chat": "Chat" },
   "skills": {
     "title": "Skills",
     "description": "Reusable instruction packages shared across supported agents. Conversations keep a versioned snapshot.",

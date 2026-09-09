@@ -188,7 +188,7 @@
     "butlerMainWindowShortcutUnavailable": "这个组合键已被其他应用占用，请换一个。",
     "butlerMainWindowShortcutInvalid": "请同时按下 Ctrl/⌘ 或 Alt 与另一个按键。"
   },
-  "app": { "brand": "FreeBuddy", "chat": "聊天" },
+  "app": { "brand": "FreeBuddy", "brandSub": "白嫖兄弟", "chat": "聊天" },
   "skills": {
     "title": "Skills",
     "description": "跨 Agent 复用的指令包；会话保存带版本与哈希的快照。",

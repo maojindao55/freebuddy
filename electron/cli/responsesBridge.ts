@@ -211,6 +211,35 @@ export function responsesInputToChatMessages(
       });
       continue;
     }
+    if (item.type === "tool_search_call") {
+      pendingToolCalls.push({
+        id: typeof item.call_id === "string" && item.call_id
+          ? item.call_id
+          : genId("call"),
+        type: "function",
+        function: {
+          name:
+            typeof item.name === "string" && item.name
+              ? item.name
+              : "tool_search",
+          arguments: stringifyToolSearchArguments(item.arguments)
+        }
+      });
+      continue;
+    }
+    if (
+      item.type === "tool_search_output" ||
+      item.type === "tool_search_call_output"
+    ) {
+      flushToolCalls();
+      messages.push({
+        role: "tool",
+        tool_call_id:
+          typeof item.call_id === "string" ? item.call_id : "",
+        content: JSON.stringify(asArray(item.tools))
+      });
+      continue;
+    }
     if (item.type === "reasoning") {
       continue;
     }
@@ -307,17 +336,116 @@ function buildLocalShellCallItem(call: {
   };
 }
 
+const DEFAULT_TOOL_SEARCH_PARAMETERS: JsonObject = {
+  type: "object",
+  properties: {
+    query: {
+      type: "string",
+      description: "Search query for deferred tools."
+    },
+    limit: {
+      type: "number",
+      description: "Maximum number of tools to return."
+    }
+  },
+  required: ["query"]
+};
+
+function stringifyToolSearchArguments(value: unknown): string {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value ?? {});
+}
+
+/** Parse a chat tool_search function call back into a JSON object. */
+function parseToolSearchArguments(args: string): JsonObject {
+  try {
+    const parsed = JSON.parse(args);
+    const obj = asObject(parsed);
+    if (obj) return obj;
+    if (typeof parsed === "string" && parsed.trim()) {
+      return { query: parsed };
+    }
+  } catch {
+    /* fall through */
+  }
+  return args.trim() ? { query: args } : {};
+}
+
+/**
+ * Build a Responses `tool_search_call` item from a chat function call named
+ * `tool_search`. Codex only dispatches client-executed searches, and it
+ * requires `arguments` as a JSON object (not a string).
+ */
+function buildToolSearchCallItem(call: {
+  id: string;
+  arguments: string;
+}): JsonObject {
+  const itemId = genId("tsc");
+  const callId = call.id || genId("call");
+  return {
+    id: itemId,
+    type: "tool_search_call",
+    status: "completed",
+    call_id: callId,
+    execution: "client",
+    arguments: parseToolSearchArguments(call.arguments)
+  };
+}
+
+function collectDiscoveredChatTools(input: unknown): {
+  tools: ChatTool[];
+  namespaces: Record<string, string>;
+} {
+  const tools: ChatTool[] = [];
+  const namespaces: Record<string, string> = {};
+  const seen = new Set<string>();
+  const visit = (raw: unknown, namespace?: string) => {
+    const tool = asObject(raw);
+    if (!tool) return;
+    if (tool.type === "namespace" || tool.type === "mcp") {
+      const ns = typeof tool.name === "string" && tool.name ? tool.name : namespace;
+      for (const child of asArray(tool.tools)) visit(child, ns);
+      return;
+    }
+    if (typeof tool.name !== "string" || !tool.name) return;
+    if (tool.type && tool.type !== "function" && tool.type !== "custom") return;
+    if (seen.has(tool.name)) return;
+    seen.add(tool.name);
+    if (namespace) namespaces[tool.name] = namespace;
+    tools.push({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters ?? { type: "object", properties: {} }
+      }
+    });
+  };
+  for (const raw of asArray(input)) {
+    const item = asObject(raw);
+    if (
+      item?.type === "tool_search_output" ||
+      item?.type === "tool_search_call_output"
+    ) {
+      for (const tool of asArray(item.tools)) visit(tool);
+    }
+  }
+  return { tools, namespaces };
+}
+
 export function responsesToolsToChatTools(
   tools: unknown
 ): {
   tools: ChatTool[];
   customToolNames: string[];
   localShellToolNames: string[];
+  toolSearchToolNames: string[];
   droppedToolTypes: string[];
 } {
   const out: ChatTool[] = [];
   const customToolNames: string[] = [];
   const localShellToolNames: string[] = [];
+  const toolSearchToolNames: string[] = [];
   const droppedToolTypes: string[] = [];
   for (const raw of asArray(tools)) {
     const tool = asObject(raw);
@@ -385,9 +513,36 @@ export function responsesToolsToChatTools(
       });
       continue;
     }
+    // Codex defers MCP tools behind a Responses `tool_search` tool. Chat
+    // providers only understand `function` tools, so expose it as a
+    // `tool_search` function and restore `tool_search_call` on the return
+    // path. Dropping this type silently hides every deferred MCP tool.
+    if (tool.type === "tool_search") {
+      const name =
+        typeof tool.name === "string" && tool.name ? tool.name : "tool_search";
+      toolSearchToolNames.push(name);
+      out.push({
+        type: "function",
+        function: {
+          name,
+          description:
+            typeof tool.description === "string" && tool.description
+              ? tool.description
+              : "Search for deferred MCP tools. Always use tool_search to discover MCP tools instead of list_mcp_resources.",
+          parameters: asObject(tool.parameters) ?? DEFAULT_TOOL_SEARCH_PARAMETERS
+        }
+      });
+      continue;
+    }
     droppedToolTypes.push(String(tool.type ?? "unknown"));
   }
-  return { tools: out, customToolNames, localShellToolNames, droppedToolTypes };
+  return {
+    tools: out,
+    customToolNames,
+    localShellToolNames,
+    toolSearchToolNames,
+    droppedToolTypes
+  };
 }
 
 export function mapToolChoice(
@@ -405,6 +560,8 @@ export interface ResponsesToChatResult {
   chat: JsonObject;
   customToolNames: string[];
   localShellToolNames: string[];
+  toolSearchToolNames: string[];
+  toolNamespaces: Record<string, string>;
   droppedToolTypes: string[];
   stream: boolean;
 }
@@ -416,8 +573,17 @@ export function translateResponsesRequestToChat(
   if (!obj || typeof obj.model !== "string" || !obj.model) return undefined;
 
   const messages = responsesInputToChatMessages(obj);
-  const { tools, customToolNames, localShellToolNames, droppedToolTypes } =
+  const { tools, customToolNames, localShellToolNames, toolSearchToolNames, droppedToolTypes } =
     responsesToolsToChatTools(obj.tools);
+  const discovered = collectDiscoveredChatTools(obj.input);
+  const existingNames = new Set(
+    tools.map((tool) => tool.function.name).filter((name) => name)
+  );
+  for (const tool of discovered.tools) {
+    if (existingNames.has(tool.function.name)) continue;
+    existingNames.add(tool.function.name);
+    tools.push(tool);
+  }
 
   const chat: JsonObject = {
     model: obj.model,
@@ -448,6 +614,8 @@ export function translateResponsesRequestToChat(
     chat,
     customToolNames,
     localShellToolNames,
+    toolSearchToolNames,
+    toolNamespaces: discovered.namespaces,
     droppedToolTypes,
     stream: chat.stream === true
   };
@@ -500,6 +668,8 @@ export class ChatToResponsesStream {
   private readonly model: string;
   private readonly customToolNames: Set<string>;
   private readonly localShellToolNames: Set<string>;
+  private readonly toolSearchToolNames: Set<string>;
+  private readonly toolNamespaces: Map<string, string>;
   private outputIndex = 0;
   private usage: JsonObject | undefined;
   private finished = false;
@@ -515,11 +685,15 @@ export class ChatToResponsesStream {
   constructor(
     model: string,
     customToolNames: string[] = [],
-    localShellToolNames: string[] = []
+    localShellToolNames: string[] = [],
+    toolSearchToolNames: string[] = [],
+    toolNamespaces: Record<string, string> = {}
   ) {
     this.model = model;
     this.customToolNames = new Set(customToolNames);
     this.localShellToolNames = new Set(localShellToolNames);
+    this.toolSearchToolNames = new Set(toolSearchToolNames);
+    this.toolNamespaces = new Map(Object.entries(toolNamespaces));
   }
 
   hasUpstreamError(): boolean {
@@ -640,15 +814,39 @@ export class ChatToResponsesStream {
         this.outputIndex += 1;
         continue;
       }
+      if (this.toolSearchToolNames.has(call.name)) {
+        const item = buildToolSearchCallItem({
+          id: callId,
+          arguments: call.arguments
+        });
+        events.push(
+          serializeSse({
+            type: "response.output_item.added",
+            output_index: this.outputIndex,
+            item: { ...item, status: "in_progress" }
+          })
+        );
+        events.push(
+          serializeSse({
+            type: "response.output_item.done",
+            output_index: this.outputIndex,
+            item
+          })
+        );
+        this.outputIndex += 1;
+        continue;
+      }
       const itemId = genId("fc");
       const args = this.unwrapCustomArguments(call.name, call.arguments);
+      const namespace = this.toolNamespaces.get(call.name);
       const item = {
         id: itemId,
         type: "function_call",
         status: "completed",
         call_id: callId,
         name: call.name,
-        arguments: args
+        arguments: args,
+        ...(namespace ? { namespace } : {})
       };
       events.push(
         serializeSse({
@@ -844,7 +1042,9 @@ export class ChatToResponsesStream {
 export function translateChatResponseToResponses(
   chat: unknown,
   fallbackModel?: string,
-  localShellToolNames: string[] = []
+  localShellToolNames: string[] = [],
+  toolSearchToolNames: string[] = [],
+  toolNamespaces: Record<string, string> = {}
 ): JsonObject | undefined {
   const obj = asObject(chat);
   const choice = asObject(asArray(obj?.choices)[0]);
@@ -852,6 +1052,8 @@ export function translateChatResponseToResponses(
   if (!obj || !message) return undefined;
 
   const localShellNames = new Set(localShellToolNames);
+  const toolSearchNames = new Set(toolSearchToolNames);
+  const namespaces = new Map(Object.entries(toolNamespaces));
   const output: JsonObject[] = [];
   const reasoning = message.reasoning_content ?? message.reasoning;
   if (typeof reasoning === "string" && reasoning) {
@@ -888,13 +1090,24 @@ export function translateChatResponseToResponses(
       );
       continue;
     }
+    if (toolSearchNames.has(fn.name)) {
+      output.push(
+        buildToolSearchCallItem({
+          id: typeof call.id === "string" ? call.id : "",
+          arguments: typeof fn.arguments === "string" ? fn.arguments : ""
+        })
+      );
+      continue;
+    }
+    const namespace = namespaces.get(fn.name);
     output.push({
       id: genId("fc"),
       type: "function_call",
       status: "completed",
       call_id: typeof call.id === "string" ? call.id : genId("call"),
       name: fn.name,
-      arguments: typeof fn.arguments === "string" ? fn.arguments : ""
+      arguments: typeof fn.arguments === "string" ? fn.arguments : "",
+      ...(namespace ? { namespace } : {})
     });
   }
 
@@ -1008,6 +1221,7 @@ export interface BridgeRequestLog {
   toolNames: string[];
   customToolNames: string[];
   localShellToolNames: string[];
+  toolSearchToolNames: string[];
   droppedToolTypes: string[];
 }
 
@@ -1205,6 +1419,7 @@ async function handleBridgeRequest(
       .filter((name): name is string => typeof name === "string"),
     customToolNames: translated.customToolNames,
     localShellToolNames: translated.localShellToolNames,
+    toolSearchToolNames: translated.toolSearchToolNames,
     droppedToolTypes: translated.droppedToolTypes
   });
 
@@ -1319,7 +1534,9 @@ async function handleBridgeRequest(
       bodyText,
       requestModel ?? translated.chat.model as string,
       translated.customToolNames,
-      translated.localShellToolNames
+      translated.localShellToolNames,
+      translated.toolSearchToolNames,
+      translated.toolNamespaces
     )) {
       res.write(event);
     }
@@ -1341,7 +1558,9 @@ async function handleBridgeRequest(
   const responseObj = translateChatResponseToResponses(
     chatJson,
     requestModel,
-    translated.localShellToolNames
+    translated.localShellToolNames,
+    translated.toolSearchToolNames,
+    translated.toolNamespaces
   );
   if (!responseObj) {
     sendJson(res, 502, {
@@ -1376,9 +1595,17 @@ function synthesizeSseFromChatText(
   text: string,
   model: string,
   customToolNames: string[],
-  localShellToolNames: string[] = []
+  localShellToolNames: string[] = [],
+  toolSearchToolNames: string[] = [],
+  toolNamespaces: Record<string, string> = {}
 ): string[] {
-  const stream = new ChatToResponsesStream(model, customToolNames, localShellToolNames);
+  const stream = new ChatToResponsesStream(
+    model,
+    customToolNames,
+    localShellToolNames,
+    toolSearchToolNames,
+    toolNamespaces
+  );
   const parser = new SseParser();
   const events = [...stream.begin()];
   const feed = (frames: SseFrame[]) => {
@@ -1458,7 +1685,9 @@ async function pipeUpstreamSse(
   const stream = new ChatToResponsesStream(
     requestModel ?? translated.chat.model as string,
     translated.customToolNames,
-    translated.localShellToolNames
+    translated.localShellToolNames,
+    translated.toolSearchToolNames,
+    translated.toolNamespaces
   );
   for (const event of stream.begin()) res.write(event);
 

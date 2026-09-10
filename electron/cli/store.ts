@@ -480,6 +480,7 @@ export async function ensureCodexChatBridge(): Promise<void> {
       tools: log.toolNames,
       localShell: log.localShellToolNames,
       custom: log.customToolNames,
+      toolSearch: log.toolSearchToolNames,
       droppedToolTypes: log.droppedToolTypes
     });
   });

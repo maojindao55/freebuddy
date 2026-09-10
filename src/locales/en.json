@@ -1063,8 +1063,9 @@
       "cli": "CLI Agents",
       "skills": "Skills",
       "plugins": "Plugins",
-      "workflowTeams": "Workflow Teams",
       "feed": "Information Cards",
+      "usage": "Usage",
+      "workflowTeams": "Workflow Teams",
       "remote": "Shared",
       "about": "About"
     },

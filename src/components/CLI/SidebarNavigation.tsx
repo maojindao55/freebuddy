@@ -1,13 +1,12 @@
 import {
   AlarmClock,
-  ChartNoAxesCombined,
   Gift,
   MessageSquarePlus,
   UsersRound
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export type WorkspaceView = "chat" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
+export type WorkspaceView = "chat" | "scheduledTasks" | "workflowTeams" | "freebie";
 
 export function SidebarNavigation({
   workspaceView,
@@ -15,7 +14,6 @@ export function SidebarNavigation({
   onNewTask,
   onOpenScheduledTasks,
   onOpenTeams,
-  onOpenUsage,
   onOpenFreebie
 }: {
   workspaceView: WorkspaceView;
@@ -23,14 +21,12 @@ export function SidebarNavigation({
   onNewTask: () => void;
   onOpenScheduledTasks: () => void;
   onOpenTeams: () => void;
-  onOpenUsage: () => void;
   onOpenFreebie: () => void;
 }) {
   const { t } = useTranslation();
   const newTaskActive = workspaceView === "chat" && isNewTask;
   const scheduledTasksActive = workspaceView === "scheduledTasks";
   const workflowTeamsActive = workspaceView === "workflowTeams";
-  const usageActive = workspaceView === "usage";
   const freebieActive = workspaceView === "freebie";
 
   return (
@@ -68,17 +64,6 @@ export function SidebarNavigation({
             <UsersRound />
           </span>
           <span>{t("sidebar.teams")}</span>
-        </button>
-        <button
-          type="button"
-          className={`sidebar-primary-item${usageActive ? " active" : ""}`}
-          aria-current={usageActive ? "page" : undefined}
-          onClick={onOpenUsage}
-        >
-          <span className="sidebar-primary-icon" aria-hidden="true">
-            <ChartNoAxesCombined />
-          </span>
-          <span>{t("sidebar.usage")}</span>
         </button>
         <button
           type="button"

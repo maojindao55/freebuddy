@@ -335,6 +335,7 @@ declare global {
         | "skills"
         | "plugins"
         | "feed"
+        | "usage"
         | "remote"
         | "about"
         | null;

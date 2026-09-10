@@ -30,7 +30,6 @@ import { SidebarUserMenu } from "./components/SidebarUserMenu";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
-import { AgentUsagePage } from "./components/Usage/AgentUsagePage";
 import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
@@ -642,9 +641,7 @@ function App() {
     void setActive(undefined);
   };
   const openUsage = () => {
-    setSettingsOpen(false);
-    setWorkspaceView("usage");
-    void setActive(undefined);
+    openSettings("usage");
   };
   const openFreebie = () => {
     setSettingsOpen(false);
@@ -687,10 +684,8 @@ function App() {
       ? t("scheduledTasks.title")
       : workspaceView === "workflowTeams"
         ? t("workflow.teamList")
-        : workspaceView === "usage"
-          ? t("usage.title")
-          : workspaceView === "freebie"
-            ? t("freebie.title")
+        : workspaceView === "freebie"
+          ? t("freebie.title")
         : activeConversation?.title ?? t("app.chat");
   const renderToggleButton = (extraClass = "") => (
     <button
@@ -785,7 +780,6 @@ function App() {
               onNewTask={startNewTask}
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
-              onOpenUsage={openUsage}
               onOpenFreebie={openFreebie}
             />
             <ConversationList
@@ -923,12 +917,6 @@ function App() {
                   initialTeamId={teamPageRequest.teamId}
                   startCreating={teamPageRequest.create}
                 />
-              </div>
-            </section>
-          ) : workspaceView === "usage" ? (
-            <section className="workspace-tool-page usage-workspace-page">
-              <div className="workspace-tool-page-inner">
-                <AgentUsagePage />
               </div>
             </section>
           ) : workspaceView === "freebie" ? (

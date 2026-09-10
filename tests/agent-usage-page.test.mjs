@@ -4,21 +4,18 @@ import fs from "node:fs";
 
 const read = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("usage is a first-class workspace directly after teams", () => {
+test("usage is configured as a settings tab and removed from primary sidebar", () => {
   const app = read("../src/App.tsx");
   const sidebar = read("../src/components/CLI/SidebarNavigation.tsx");
+  const settingsModal = read("../src/components/Settings/SettingsModal.tsx");
 
-  assert.match(sidebar, /WorkspaceView = [^;]*"usage"/);
-  assert.match(sidebar, /const usageActive = workspaceView === "usage"/);
-  assert.match(sidebar, /aria-current=\{usageActive \? "page" : undefined\}/);
-  assert.match(
-    sidebar,
-    /<UsersRound \/>[\s\S]*?sidebar\.teams[\s\S]*?<ChartNoAxesCombined \/>[\s\S]*?sidebar\.usage/
-  );
-  assert.match(app, /onOpenUsage=\{openUsage\}/);
-  assert.match(app, /setWorkspaceView\("usage"\)/);
-  assert.match(app, /workspaceView === "usage"/);
-  assert.match(app, /<AgentUsagePage \/>/);
+  assert.doesNotMatch(sidebar, /sidebar\.usage/);
+  assert.doesNotMatch(sidebar, /ChartNoAxesCombined/);
+  assert.match(settingsModal, /SettingsTab = [^;]*"usage"/);
+  assert.match(settingsModal, /key: "usage", labelKey: "settings.tabs.usage"/);
+  assert.match(settingsModal, /activeTab === "usage"/);
+  assert.match(settingsModal, /<UsageTab \/>/);
+  assert.match(app, /openSettings\("usage"\)/);
 });
 
 test("usage page reads cached totals, refreshes, and supports agent filtering", () => {
@@ -108,6 +105,8 @@ test("usage page has localized copy and responsive product styles", () => {
     "methodNote"
   ];
 
+  assert.equal(en.settings.tabs.usage, "Usage");
+  assert.equal(zh.settings.tabs.usage, "用量");
   assert.equal(en.sidebar.usage, "Usage");
   assert.equal(zh.sidebar.usage, "用量");
   assert.deepEqual(Object.keys(en.usage.period), ["label", "today", "week", "month", "year", "all"]);

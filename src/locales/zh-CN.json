@@ -1049,8 +1049,9 @@
       "cli": "CLI Agent",
       "skills": "Skills",
       "plugins": "插件",
-      "workflowTeams": "工作流团队",
       "feed": "信息卡片",
+      "usage": "用量",
+      "workflowTeams": "工作流团队",
       "remote": "共享",
       "about": "关于"
     },

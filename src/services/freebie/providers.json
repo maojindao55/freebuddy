@@ -192,17 +192,19 @@
       "homepage": "https://b.ai",
       "consoleUrl": "https://b.ai",
       "freeTierSummary": {
-        "zh-CN": "聚合主流大模型的统一 API 平台，支持 OpenAI 兼容接口，注册赠送体验额度（Credits），可快捷调用 DeepSeek 与 Claude 系列。",
-        "en": "Unified API platform aggregating leading LLMs; new accounts receive trial credits, enabling quick access to DeepSeek, Claude, and more."
+        "zh-CN": "当前提供 GLM 5.3 Flash、Qwen3.8 Flash、Hy3、Mimo2.5 等多款大模型限时免费（0 Credits）调用，注册另赠送体验额度，兼容 OpenAI 接口协议。",
+        "en": "Currently offering limited-time free access (0 Credits) to GLM 5.3 Flash, Qwen3.8 Flash, Hy3, and Mimo2.5; new accounts also get trial credits."
       },
       "protocol": "openai-chat",
       "baseUrl": "https://api.b.ai/v1",
       "envKey": "BAI_API_KEY",
       "models": [
+        { "id": "glm-5.3-flash", "name": "GLM 5.3 Flash (限免)", "contextWindow": 1048576, "supportsVision": true },
+        { "id": "qwen3.8-flash", "name": "Qwen3.8 Flash (限免)", "contextWindow": 1048576, "supportsVision": true },
+        { "id": "hy3", "name": "Hy3 (限免)", "contextWindow": 256000 },
+        { "id": "mimo-2.5", "name": "Mimo2.5 (限免)", "contextWindow": 256000, "supportsVision": true },
         { "id": "deepseek-chat", "name": "DeepSeek-V3", "contextWindow": 64000 },
-        { "id": "deepseek-reasoner", "name": "DeepSeek-R1 (推理思考)", "contextWindow": 64000 },
-        { "id": "claude-3-5-sonnet", "name": "Claude 3.5 Sonnet", "contextWindow": 200000, "supportsVision": true },
-        { "id": "gpt-4o-mini", "name": "GPT-4o Mini", "contextWindow": 128000, "supportsVision": true }
+        { "id": "deepseek-reasoner", "name": "DeepSeek-R1 (推理思考)", "contextWindow": 64000 }
       ],
       "verifiedAt": "2026-09-10"
     }

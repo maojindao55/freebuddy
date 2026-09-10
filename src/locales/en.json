@@ -188,7 +188,7 @@
     "butlerMainWindowShortcutUnavailable": "That shortcut is already used by another app. Try another one.",
     "butlerMainWindowShortcutInvalid": "Include Ctrl/⌘ or Alt together with another key."
   },
-  "app": { "brand": "FreeBuddy", "chat": "Chat" },
+  "app": { "brand": "FreeBuddy", "brandSub": "", "chat": "Chat" },
   "skills": {
     "title": "Skills",
     "description": "Reusable instruction packages shared across supported agents. Conversations keep a versioned snapshot.",
@@ -331,7 +331,57 @@
     "importCodexSession": "Import Codex session",
     "teams": "Teams",
     "usage": "Usage",
+    "freebie": "Free tier",
     "allTeams": "All teams"
+  },
+  "freebie": {
+    "title": "Free tier",
+    "loading": "Loading the free-tier catalog…",
+    "agentLabel": "{{name}} (Free)",
+    "region": { "cn": "China", "global": "Global" },
+    "protocol": {
+      "openaiChat": "OpenAI-compatible",
+      "openaiResponses": "OpenAI Responses",
+      "anthropic": "Anthropic-compatible",
+      "deepseek": "DeepSeek"
+    },
+    "offline": {
+      "message": "The free-tier page could not be loaded. Showing the catalog bundled with this version instead.",
+      "retry": "Retry",
+      "openInBrowser": "Open in browser"
+    },
+    "fallback": {
+      "count": "{{count}} providers",
+      "updatedAt": "catalog snapshot {{date}}",
+      "imported": "Imported",
+      "import": "Import",
+      "importAgain": "Import another",
+      "homepage": "Website",
+      "runtimeMissing": "The base CLI for this provider is not installed yet; you will be guided during import."
+    },
+    "import": {
+      "title": "Create a free-tier agent",
+      "description": "FreeBuddy will create a BYOK custom agent for {{name}}. Check the details below and paste your API key.",
+      "doneTitle": "Agent created",
+      "doneDescription": "{{name}} is now available as a custom agent.",
+      "successHint": "You can find it under Settings → Agents at any time.",
+      "startChat": "Start chatting",
+      "protocol": "Protocol",
+      "baseAdapter": "runs on {{runtime}}",
+      "baseUrl": "API base URL",
+      "envKey": "Key variable",
+      "models": "Models",
+      "selectAtLeastOne": "Select at least one model.",
+      "apiKey": "API key",
+      "apiKeyPlaceholder": "Paste the key issued by the provider",
+      "apiKeyHint": "Stored encrypted on this device and only sent to the API base URL above.",
+      "getKey": "Get a key",
+      "runtimeMissing": "The {{runtime}} CLI is not installed. The agent will be created but cannot run until it is installed.",
+      "openAgentSettings": "Open Agents settings",
+      "alreadyImported": "You already imported this provider. Continuing will create another agent.",
+      "securityNote": "Only continue if the API base URL belongs to the provider you expect. Your key is sent to that URL.",
+      "create": "Create agent"
+    }
   },
   "commandPalette": {
     "open": "Search conversations",
@@ -1013,8 +1063,9 @@
       "cli": "CLI Agents",
       "skills": "Skills",
       "plugins": "Plugins",
-      "workflowTeams": "Workflow Teams",
       "feed": "Information Cards",
+      "usage": "Usage",
+      "workflowTeams": "Workflow Teams",
       "remote": "Shared",
       "about": "About"
     },

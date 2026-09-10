@@ -319,7 +319,7 @@ declare global {
     onOpenTaskReceipt(cb: () => void): () => void;
     onOpenView(
       cb: (payload: {
-        view: "chat" | "scheduledTasks" | "workflowTeams" | "usage" | string;
+        view: "chat" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie" | string;
         teamId?: string;
         create?: boolean;
       }) => void
@@ -327,7 +327,7 @@ declare global {
     onOpenSettings(cb: (tab: string) => void): () => void;
     onAppearanceChanged(cb: (theme: string) => void): () => void;
     setUiPresence(snapshot: {
-      workspaceView: "chat" | "scheduledTasks" | "workflowTeams" | "usage";
+      workspaceView: "chat" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
       settingsOpen: boolean;
       settingsTab:
         | "general"
@@ -335,6 +335,7 @@ declare global {
         | "skills"
         | "plugins"
         | "feed"
+        | "usage"
         | "remote"
         | "about"
         | null;

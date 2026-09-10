@@ -1,0 +1,212 @@
+{
+  "$schema": "./providers.schema.json",
+  "updatedAt": "2026-09-10",
+  "providers": [
+    {
+      "id": "zhipu",
+      "name": "智谱 BigModel",
+      "region": "cn",
+      "homepage": "https://bigmodel.cn",
+      "consoleUrl": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
+      "freeTierSummary": {
+        "zh-CN": "GLM-4-Flash / GLM-4V-Flash / GLM-Z1-Flash 永久免费，支持深度思考与多模态视觉理解，新用户赠送 2000 万 tokens，限并发 30。",
+        "en": "GLM-4-Flash, GLM-4V-Flash, and GLM-Z1-Flash are permanently free with reasoning and vision support; new accounts get 20M tokens. Concurrency limit 30."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "glm-4-flash", "name": "GLM-4-Flash", "contextWindow": 128000 },
+        { "id": "glm-4v-flash", "name": "GLM-4V-Flash", "contextWindow": 128000, "supportsVision": true },
+        { "id": "glm-z1-flash", "name": "GLM-Z1-Flash (思考推理)", "contextWindow": 128000 },
+        { "id": "glm-4.1v-thinking-flash", "name": "GLM-4.1V-Thinking-Flash", "contextWindow": 64000, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek 深度求索",
+      "region": "cn",
+      "homepage": "https://deepseek.com",
+      "consoleUrl": "https://platform.deepseek.com/api_keys",
+      "freeTierSummary": {
+        "zh-CN": "新用户注册即送 500 万 tokens 免费额度（有效期 30 天），支持 DeepSeek-V3 与 DeepSeek-R1 深度思考推理模型。",
+        "en": "New accounts receive 5M free tokens (valid for 30 days), supporting DeepSeek-V3 and DeepSeek-R1 reasoning models."
+      },
+      "protocol": "deepseek",
+      "baseUrl": "https://api.deepseek.com",
+      "envKey": "DEEPSEEK_API_KEY",
+      "models": [
+        { "id": "deepseek-chat", "name": "DeepSeek-V3 (Chat)", "contextWindow": 64000 },
+        { "id": "deepseek-reasoner", "name": "DeepSeek-R1 (推理思考)", "contextWindow": 64000 }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "siliconflow",
+      "name": "硅基流动 SiliconFlow",
+      "region": "cn",
+      "homepage": "https://siliconflow.cn",
+      "consoleUrl": "https://cloud.siliconflow.cn/account/ak",
+      "freeTierSummary": {
+        "zh-CN": "实名认证后一组开源小模型（Qwen2.5-7B、GLM-4-9B 等）永久免费，新用户注册赠送额度（可体验 DeepSeek-V3）。",
+        "en": "A set of open-source models (Qwen2.5-7B, GLM-4-9B, etc.) is free after identity verification; new accounts get tokens for DeepSeek-V3."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen2.5-7B-Instruct", "contextWindow": 128000 },
+        { "id": "THUDM/glm-4-9b-chat", "name": "GLM-4-9B-Chat", "contextWindow": 32000 },
+        { "id": "internlm/internlm2_5-7b-chat", "name": "InternLM2.5-7B-Chat", "contextWindow": 32000 },
+        { "id": "deepseek-ai/DeepSeek-V3", "name": "DeepSeek-V3 (赠送额度)", "contextWindow": 64000 }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "modelscope",
+      "name": "魔搭 ModelScope",
+      "region": "cn",
+      "homepage": "https://modelscope.cn",
+      "consoleUrl": "https://modelscope.cn/my/myaccesstoken",
+      "freeTierSummary": {
+        "zh-CN": "API-Inference 每天约 2000 次免费调用，覆盖 Qwen2.5-72B / Coder-32B 及 DeepSeek 等主流开源大模型，需绑定阿里云账号并实名。",
+        "en": "API-Inference gives ~2,000 free calls per day across Qwen2.5-72B, Coder-32B, and DeepSeek; requires a linked verified Aliyun account."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api-inference.modelscope.cn/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "Qwen/Qwen2.5-72B-Instruct", "name": "Qwen2.5-72B-Instruct", "contextWindow": 128000 },
+        { "id": "Qwen/Qwen2.5-Coder-32B-Instruct", "name": "Qwen2.5-Coder-32B-Instruct", "contextWindow": 128000 },
+        { "id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", "name": "DeepSeek-R1-Distill-Qwen-32B", "contextWindow": 64000 },
+        { "id": "deepseek-ai/DeepSeek-V3", "name": "DeepSeek-V3", "contextWindow": 64000 }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "volcengine",
+      "name": "火山引擎 方舟",
+      "region": "cn",
+      "homepage": "https://www.volcengine.com/product/ark",
+      "consoleUrl": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+      "freeTierSummary": {
+        "zh-CN": "新用户每个模型赠送 50 万 tokens 免费体验额度，包含豆包 1.5 系列（Lite / Pro / 深度思考），支持极低价格高性价比推理。",
+        "en": "New accounts receive 500K free tokens per model covering the Doubao 1.5 series (Lite, Pro, Thinking) with high speed and low cost."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "doubao-1-5-lite-32k-250115", "name": "Doubao-1.5-Lite-32K", "contextWindow": 32768 },
+        { "id": "doubao-1-5-pro-32k-250115", "name": "Doubao-1.5-Pro-32K", "contextWindow": 32768, "supportsVision": true },
+        { "id": "doubao-1-5-thinking-pro", "name": "Doubao-1.5-Thinking-Pro", "contextWindow": 32768 }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "region": "global",
+      "homepage": "https://openrouter.ai",
+      "consoleUrl": "https://openrouter.ai/settings/keys",
+      "freeTierSummary": {
+        "zh-CN": "以 :free 结尾的模型完全免费，每天约 50 次调用额度（充值后可达 1000 次/天）。推荐使用 openrouter/free 自动分配合适的免费模型。",
+        "en": "Models with the :free suffix are completely free (50 req/day, up to 1,000/day after deposit). Use openrouter/free to auto-route available models."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "openrouter/free", "name": "Auto (free router)", "contextWindow": 128000 },
+        { "id": "meta-llama/llama-3.3-70b-instruct:free", "name": "Llama 3.3 70B Instruct (free)", "contextWindow": 131072 },
+        { "id": "google/gemma-2-9b-it:free", "name": "Gemma 2 9B (free)", "contextWindow": 8192 },
+        { "id": "qwen/qwen-2.5-coder-32b-instruct:free", "name": "Qwen 2.5 Coder 32B (free)", "contextWindow": 32768 }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "google-ai-studio",
+      "name": "Google AI Studio",
+      "region": "global",
+      "homepage": "https://aistudio.google.com",
+      "consoleUrl": "https://aistudio.google.com/apikey",
+      "freeTierSummary": {
+        "zh-CN": "Gemini 2.5 / 2.0 Flash 系列提供慷慨的免费层（按天/按分钟限频），拥有 100 万超长多模态上下文，无需信用卡，需能访问 Google。",
+        "en": "Gemini 2.5 / 2.0 Flash series offers a generous free tier with 1M multimodal context window; no credit card required."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "contextWindow": 1048576, "supportsVision": true },
+        { "id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite", "contextWindow": 1048576, "supportsVision": true },
+        { "id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "contextWindow": 1048576, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "region": "global",
+      "homepage": "https://groq.com",
+      "consoleUrl": "https://console.groq.com/keys",
+      "freeTierSummary": {
+        "zh-CN": "免费层长期稳定，Llama 3.3 70B / 8B 推理速度极高（高达 300~500 tokens/s），受每分钟 tokens (TPM) 及请求数限制。",
+        "en": "Long-standing free tier offering Llama 3.3 70B and 8B at extreme inference speeds (>300 t/s); limited by tokens per minute."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B", "contextWindow": 131072 },
+        { "id": "llama-3.1-8b-instant", "name": "Llama 3.1 8B", "contextWindow": 131072 },
+        { "id": "qwen-2.5-32b", "name": "Qwen 2.5 32B", "contextWindow": 32768 }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras",
+      "region": "global",
+      "homepage": "https://cerebras.ai",
+      "consoleUrl": "https://cloud.cerebras.ai",
+      "freeTierSummary": {
+        "zh-CN": "基于晶圆级引擎（WSE）提供全球最快级别的推理速度（超过 2000 tokens/s），免费层支持 Llama 3.3 70B 与 3.1 8B 等模型。",
+        "en": "Fastest inference speed in the world (>2,000 t/s) powered by Wafer Scale Engine; free tier supports Llama 3.3 70B and 3.1 8B."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.cerebras.ai/v1",
+      "envKey": "OPENAI_API_KEY",
+      "models": [
+        { "id": "llama-3.3-70b", "name": "Llama 3.3 70B", "contextWindow": 8192 },
+        { "id": "llama3.1-8b", "name": "Llama 3.1 8B", "contextWindow": 8192 },
+        { "id": "llama3.1-70b", "name": "Llama 3.1 70B", "contextWindow": 8192 }
+      ],
+      "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "b-ai",
+      "name": "B.AI",
+      "region": "global",
+      "homepage": "https://b.ai",
+      "consoleUrl": "https://b.ai",
+      "freeTierSummary": {
+        "zh-CN": "当前提供 GLM 5.3 Flash、Qwen3.8 Flash、Hy3、Mimo2.5 等多款大模型限时免费（0 Credits）调用，注册另赠送体验额度，兼容 OpenAI 接口协议。",
+        "en": "Currently offering limited-time free access (0 Credits) to GLM 5.3 Flash, Qwen3.8 Flash, Hy3, and Mimo2.5; new accounts also get trial credits."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.b.ai/v1",
+      "envKey": "BAI_API_KEY",
+      "models": [
+        { "id": "glm-5.3-flash", "name": "GLM 5.3 Flash (限免)", "contextWindow": 1048576, "supportsVision": true },
+        { "id": "qwen3.8-flash", "name": "Qwen3.8 Flash (限免)", "contextWindow": 1048576, "supportsVision": true },
+        { "id": "hy3", "name": "Hy3 (限免)", "contextWindow": 256000 },
+        { "id": "mimo-2.5", "name": "Mimo2.5 (限免)", "contextWindow": 256000, "supportsVision": true },
+        { "id": "deepseek-chat", "name": "DeepSeek-V3", "contextWindow": 64000 },
+        { "id": "deepseek-reasoner", "name": "DeepSeek-R1 (推理思考)", "contextWindow": 64000 }
+      ],
+      "verifiedAt": "2026-09-10"
+    }
+  ]
+}

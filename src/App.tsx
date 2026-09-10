@@ -30,7 +30,7 @@ import { SidebarUserMenu } from "./components/SidebarUserMenu";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
-import { AgentUsagePage } from "./components/Usage/AgentUsagePage";
+import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useSettingsStore } from "./store/settingsStore";
@@ -361,6 +361,8 @@ function App() {
   }, []);
 
   const { t } = useTranslation();
+  // Locale-specific secondary brand name; empty in locales that only use "FreeBuddy".
+  const brandSub = t("app.brandSub", { defaultValue: "" }).trim();
   const loadSettings = useSettingsStore((s) => s.load);
   const themePreference = useSettingsStore((s) => s.theme);
   const theme = useSettingsStore((s) => s.resolvedTheme);
@@ -611,10 +613,14 @@ function App() {
   const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
   const requestNewTask = useNewTaskUiStore((s) => s.requestNewTask);
-  const startNewTask = (options?: { cwd?: string; projectId?: string }) => {
+  const startNewTask = (options?: { cwd?: string; projectId?: string; agentId?: string }) => {
     setRequestedTeamId(undefined);
     setNewTaskMode("normal");
-    requestNewTask({ cwd: options?.cwd, projectId: options?.projectId });
+    requestNewTask({
+      cwd: options?.cwd,
+      projectId: options?.projectId,
+      agentId: options?.agentId
+    });
     setSettingsOpen(false);
     setWorkspaceView("chat");
     void setActive(undefined);
@@ -635,8 +641,11 @@ function App() {
     void setActive(undefined);
   };
   const openUsage = () => {
+    openSettings("usage");
+  };
+  const openFreebie = () => {
     setSettingsOpen(false);
-    setWorkspaceView("usage");
+    setWorkspaceView("freebie");
     void setActive(undefined);
   };
 
@@ -675,8 +684,8 @@ function App() {
       ? t("scheduledTasks.title")
       : workspaceView === "workflowTeams"
         ? t("workflow.teamList")
-        : workspaceView === "usage"
-          ? t("usage.title")
+        : workspaceView === "freebie"
+          ? t("freebie.title")
         : activeConversation?.title ?? t("app.chat");
   const renderToggleButton = (extraClass = "") => (
     <button
@@ -742,9 +751,14 @@ function App() {
               <div className="sidebar-brand">
                 <BrandMark />
                 <div className="sidebar-brand-text">
-                  <h1>{t("app.brand")}</h1>
-                  {import.meta.env.DEV && (
-                    <span className="sidebar-dev-badge">DEV</span>
+                  <div className="sidebar-brand-row">
+                    <h1>{t("app.brand")}</h1>
+                    {import.meta.env.DEV && (
+                      <span className="sidebar-dev-badge">DEV</span>
+                    )}
+                  </div>
+                  {brandSub && (
+                    <span className="sidebar-brand-sub">{brandSub}</span>
                   )}
                 </div>
               </div>
@@ -766,7 +780,7 @@ function App() {
               onNewTask={startNewTask}
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
-              onOpenUsage={openUsage}
+              onOpenFreebie={openFreebie}
             />
             <ConversationList
               onNewTaskInProject={({ cwd, projectId }) =>
@@ -905,11 +919,12 @@ function App() {
                 />
               </div>
             </section>
-          ) : workspaceView === "usage" ? (
-            <section className="workspace-tool-page usage-workspace-page">
-              <div className="workspace-tool-page-inner">
-                <AgentUsagePage />
-              </div>
+          ) : workspaceView === "freebie" ? (
+            <section className="workspace-tool-page freebie-workspace-page">
+              <FreebiePage
+                onStartChat={(agentId) => startNewTask({ agentId })}
+                onOpenAgentSettings={() => openSettings("cli")}
+              />
             </section>
           ) : (
             <ChatView onOpenAgentSettings={() => openSettings("cli")} />

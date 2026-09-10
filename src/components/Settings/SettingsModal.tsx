@@ -8,14 +8,16 @@ import { InfoCardsTab } from "./InfoCardsTab";
 import { SkillsTab } from "./SkillsTab";
 import { PluginsTab } from "./PluginsTab";
 import { RemoteTab } from "./RemoteTab";
+import { UsageTab } from "./UsageTab";
 
-export type SettingsTab = "general" | "cli" | "skills" | "plugins" | "feed" | "remote" | "about";
+export type SettingsTab = "general" | "cli" | "skills" | "plugins" | "feed" | "usage" | "remote" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "skills", labelKey: "settings.tabs.skills" },
   { key: "plugins", labelKey: "settings.tabs.plugins" },
   { key: "feed", labelKey: "settings.tabs.feed" },
+  { key: "usage", labelKey: "settings.tabs.usage" },
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "remote", labelKey: "settings.tabs.remote" },
   { key: "about", labelKey: "settings.tabs.about" }
@@ -93,6 +95,11 @@ function SettingsContent({
       {activeTab === "skills" && <SkillsTab />}
       {activeTab === "plugins" && <PluginsTab />}
       {activeTab === "feed" && <InfoCardsTab />}
+      {activeTab === "usage" && (
+        <SettingsTabErrorBoundary>
+          <UsageTab />
+        </SettingsTabErrorBoundary>
+      )}
       {activeTab === "remote" && <RemoteTab />}
       {activeTab === "about" && <AboutTab />}
     </>

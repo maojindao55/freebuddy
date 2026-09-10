@@ -2,7 +2,8 @@ export type MainWorkspaceView =
   | "chat"
   | "scheduledTasks"
   | "workflowTeams"
-  | "usage";
+  | "usage"
+  | "freebie";
 
 export type MainSettingsTab =
   | "general"
@@ -10,6 +11,7 @@ export type MainSettingsTab =
   | "skills"
   | "plugins"
   | "feed"
+  | "usage"
   | "remote"
   | "about";
 
@@ -51,7 +53,8 @@ const WORKSPACE_VIEWS = new Set<MainWorkspaceView>([
   "chat",
   "scheduledTasks",
   "workflowTeams",
-  "usage"
+  "usage",
+  "freebie"
 ]);
 
 const SETTINGS_TABS = new Set<MainSettingsTab>([
@@ -60,6 +63,7 @@ const SETTINGS_TABS = new Set<MainSettingsTab>([
   "skills",
   "plugins",
   "feed",
+  "usage",
   "remote",
   "about"
 ]);

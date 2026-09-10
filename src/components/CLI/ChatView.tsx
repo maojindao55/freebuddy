@@ -897,6 +897,7 @@ export function ChatView({
   const requestedCwd = useNewTaskUiStore((s) => s.requestedCwd);
   const requestedProjectId = useNewTaskUiStore((s) => s.requestedProjectId);
   const requestedDraft = useNewTaskUiStore((s) => s.requestedDraft);
+  const requestedAgentId = useNewTaskUiStore((s) => s.requestedAgentId);
   const cwdRequestToken = useNewTaskUiStore((s) => s.cwdRequestToken);
   const teamMode = taskMode === "team";
   const workflowMode = false;
@@ -1661,6 +1662,20 @@ export function ChatView({
     requestedDraft,
     requestedProjectId
   ]);
+
+  // Preselect an agent requested by another page (e.g. right after a freebie
+  // import). Applied once per request token, retrying until the member exists.
+  const appliedAgentRequestTokenRef = useRef(0);
+  useEffect(() => {
+    if (activeId || cwdRequestToken === 0 || !requestedAgentId) return;
+    if (appliedAgentRequestTokenRef.current === cwdRequestToken) return;
+    const member = members.find((entry) => entry.id === requestedAgentId);
+    if (!member) return;
+    appliedAgentRequestTokenRef.current = cwdRequestToken;
+    memberSelectionTouchedRef.current = true;
+    setSelectedMemberId(requestedAgentId);
+    if (member.cli.approvalMode) setPermissionMode(member.cli.approvalMode);
+  }, [activeId, cwdRequestToken, members, requestedAgentId]);
 
   useEffect(() => {
     let cancelled = false;

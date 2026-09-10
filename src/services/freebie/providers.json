@@ -184,6 +184,27 @@
         { "id": "llama3.1-70b", "name": "Llama 3.1 70B", "contextWindow": 8192 }
       ],
       "verifiedAt": "2026-09-10"
+    },
+    {
+      "id": "b-ai",
+      "name": "B.AI",
+      "region": "global",
+      "homepage": "https://b.ai",
+      "consoleUrl": "https://b.ai",
+      "freeTierSummary": {
+        "zh-CN": "聚合主流大模型的统一 API 平台，支持 OpenAI 兼容接口，注册赠送体验额度（Credits），可快捷调用 DeepSeek 与 Claude 系列。",
+        "en": "Unified API platform aggregating leading LLMs; new accounts receive trial credits, enabling quick access to DeepSeek, Claude, and more."
+      },
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.b.ai/v1",
+      "envKey": "BAI_API_KEY",
+      "models": [
+        { "id": "deepseek-chat", "name": "DeepSeek-V3", "contextWindow": 64000 },
+        { "id": "deepseek-reasoner", "name": "DeepSeek-R1 (推理思考)", "contextWindow": 64000 },
+        { "id": "claude-3-5-sonnet", "name": "Claude 3.5 Sonnet", "contextWindow": 200000, "supportsVision": true },
+        { "id": "gpt-4o-mini", "name": "GPT-4o Mini", "contextWindow": 128000, "supportsVision": true }
+      ],
+      "verifiedAt": "2026-09-10"
     }
   ]
 }

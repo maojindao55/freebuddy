@@ -208,13 +208,27 @@ export function buildDelegateWakePrompt(
 ): string {
   const summary = info.resultSummary?.trim() || "(无输出)";
   const verdict = info.verdict ?? null;
-  const verdictLine =
-    verdict === null
+  // A failed/timeout/cancelled child never produced a usable outcome. Reporting it
+  // as "needs_changes" would tell the parent to fix + re-delegate review, trapping
+  // it in a re-review loop that can never reach verdict=pass.
+  const abnormal =
+    info.status === "failed" ||
+    info.status === "timeout" ||
+    info.status === "cancelled";
+  const verdictLine = abnormal
+    ? `结构化结论：本子任务以 ${info.status} 结束，未产出可用结论。`
+    : verdict === null
       ? "结构化结论：未提交 verdict（按 needs_changes 保守处理）。"
       : `结构化结论：verdict=${verdict}${info.verdictSummary ? `；摘要：${info.verdictSummary}` : ""}`;
 
   let nextSteps: string;
-  if (verdict === "pass") {
+  if (abnormal) {
+    nextSteps = [
+      "该子任务没有正常返回结果，这不等于「需要修改」。",
+      "按兜底规则处理：可直接重试同一角色、改派其他角色，或由你自己完成。",
+      "不要把它当作已完成产出，也不要因此宣布整体收尾。"
+    ].join("");
+  } else if (verdict === "pass") {
     nextSteps =
       "评审已通过（pass）。若无新待办可以收尾；不要无故再开一轮复审。";
   } else {

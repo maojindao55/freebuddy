@@ -14,14 +14,14 @@ export interface ConcurrencyDeps<TExecArgs, TResult> {
   getPolicy: (runId: string) => DelegationPolicy | undefined;
   executor: (args: TExecArgs) => Promise<TResult>;
   onResult: (childEventId: string, result: TResult) => void;
-  onTimeout: (childEventId: string) => void;
+  onTimeout: (childEventId: string, info: { timeoutMs: number }) => void;
   onError: (childEventId: string, err: unknown) => void;
   onCancelled: (childEventId: string, reason: string) => void;
   onSettled: (childEventId: string, runId: string) => void;
 }
 
 export class DelegateTimeout extends Error {
-  constructor() {
+  constructor(readonly timeoutMs?: number) {
     super("delegate exceeded timeout");
     this.name = "DelegateTimeout";
   }
@@ -35,7 +35,7 @@ export function withActiveTimeTimeout<T>(
 ): Promise<T> {
   const tickMs = opts?.tickMs ?? 50;
   if (ms <= 0) {
-    return Promise.reject(new DelegateTimeout());
+    return Promise.reject(new DelegateTimeout(ms));
   }
   return new Promise<T>((resolve, reject) => {
     let remaining = ms;
@@ -50,7 +50,7 @@ export function withActiveTimeTimeout<T>(
       remaining -= elapsed;
       if (remaining <= 0) {
         cleanup();
-        reject(new DelegateTimeout());
+        reject(new DelegateTimeout(ms));
       }
     }, tickMs);
     const cleanup = () => {
@@ -148,8 +148,10 @@ export class DelegateConcurrencyQueue<TExecArgs, TResult> {
             reason instanceof Error ? reason.message : String(reason ?? "cancelled")
           );
         } else if (err instanceof DelegateTimeout) {
-          q.abortController.abort(new DelegateTimeout());
-          this.deps.onTimeout(q.childEventId);
+          q.abortController.abort(err);
+          this.deps.onTimeout(q.childEventId, {
+            timeoutMs: err.timeoutMs ?? q.timeoutMs
+          });
         } else {
           this.deps.onError(q.childEventId, err);
         }

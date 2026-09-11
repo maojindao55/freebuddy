@@ -289,6 +289,41 @@ test("delegate executor failure -> pending now, poll -> failed", async (t) => {
   });
 });
 
+test("delegate timeout writes a structured outcome naming the role and deadline", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 unavailable"); return; }
+  await withDb(async () => {
+    const { createDelegationRun, listDelegationEvents } = await import("../dist-electron/cli/delegationRuns.js");
+    const { runDelegateAction } = await import("../dist-electron/cli/delegationDispatch.js");
+    const runId = createDelegationRun({ goal: "g", teamId: "team-1", teamSnapshotJson: "{}" });
+    const binding = makeBinding(runId);
+    const shortTimeout = {
+      roster,
+      policy: { ...policy, delegateTimeoutMs: 60 },
+      teamId: "team-1",
+      cwd: "/repo"
+    };
+    const res = await runDelegateAction(binding, "delegate", { teammate_id: "r-rev", task: "审" }, {
+      contextProvider: () => shortTimeout,
+      executor: () => new Promise(() => {}),
+      writeApproval: async () => true
+    });
+    assert.equal(res.status, "pending");
+    await tick(300);
+
+    const ev = listDelegationEvents(runId).find((e) => e.id === res.request_id);
+    assert.equal(ev.status, "timeout");
+    assert.match(ev.resultSummary, /委派超时/);
+    assert.match(ev.resultSummary, /「评审」/);
+    assert.match(ev.resultSummary, /团队策略时限/);
+    assert.match(ev.resultSummary, /1 分钟/);
+    assert.match(ev.resultSummary, /仅计活跃时间/);
+    assert.equal(ev.result?.schemaVersion, 1);
+    assert.equal(ev.result?.status, "timeout");
+    assert.equal(ev.result?.error?.code, "delegate_timeout");
+    assert.equal(ev.result?.error?.retryable, true);
+  });
+});
+
 test("delegate synchronous start failure becomes terminal and settles the parent", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 unavailable"); return; }
   await withDb(async () => {

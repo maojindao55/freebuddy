@@ -485,6 +485,21 @@ function buildConversationMembers(
   return [...builtinMembers, ...customMembers];
 }
 
+/**
+ * A cloned adapter keeps its base adapter id in `member.cli.adapter` (see
+ * {@link buildConversationMembers}), so resolving that id returns the *base*
+ * adapter's override. The clone's own override id is encoded in the `cli-`
+ * prefixed member id; resolve that instead so a clone's BYOK config — and the
+ * model list that seeds its session — is used rather than the base adapter's.
+ */
+function resolveMemberExecutor(member: CLIMember) {
+  const store = useCliExecutorStore.getState();
+  const resolved = store.resolve(member.cli.adapter);
+  const overrideId = member.id.startsWith("cli-") ? member.id.slice(4) : "";
+  if (!overrideId || overrideId === member.cli.adapter) return resolved;
+  return store.resolve(overrideId) ?? resolved;
+}
+
 function defaultTitleForAgentName(agentName: string, cwd?: string): string {
   const tail = cwd
     ? cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
@@ -877,9 +892,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     skillIds
   }) {
     const id = nanoid();
-    const resolvedExecutor = useCliExecutorStore
-      .getState()
-      .resolve(member.cli.adapter);
+    const resolvedExecutor = resolveMemberExecutor(member);
     const defaultCodexByokModel =
       member.cli.adapter === "codex-acp" && resolvedExecutor?.codexByok?.enabled
         ? resolvedExecutor.codexByok.models?.[0]?.id?.trim()
@@ -1248,6 +1261,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const resolved = useCliExecutorStore
       .getState()
       .resolve(member.cli.adapter);
+    // BYOK defaults must come from the member's own override; `resolved` points
+    // at the base adapter for clones (see resolveMemberExecutor).
+    const memberExecutor = resolveMemberExecutor(member);
     const binary = member.cli.binary || resolved?.binary;
     const extraArgs = [
       ...(resolved?.extraArgs ?? []),
@@ -1298,8 +1314,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       configOptions
     );
     const combinedOverrides = {
-      ...(member.cli.adapter === "codex-acp" && resolved?.codexByok?.enabled
-        ? { model: resolved.codexByok.models?.[0]?.id?.trim() }
+      ...(member.cli.adapter === "codex-acp" && memberExecutor?.codexByok?.enabled
+        ? { model: memberExecutor.codexByok.models?.[0]?.id?.trim() }
         : {}),
       ...(overridesToSend ?? {}),
       ...(configOptionOverrides ?? {})

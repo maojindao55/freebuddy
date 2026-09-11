@@ -16298,6 +16298,12 @@ button.ghost:focus-visible,
   margin-top: 8px;
 }
 
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
 .markdown-body strong {
   font-weight: 600;
 }

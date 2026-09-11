@@ -129,5 +129,14 @@ export const builtinCliMembers: CLIMember[] = [
     source: "builtin",
     enabled: true,
     cli: { adapter: "dsh-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-zcode-acp",
+    kind: "cli",
+    name: "ZCode",
+    description: "Local ZCode coding agent via ACP.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "zcode-acp", approvalMode: "auto", showStderr: true }
   }
 ];

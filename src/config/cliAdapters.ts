@@ -14,6 +14,7 @@ export type CLIAdapterId =
   | "grok-acp"
   | "agy-acp"
   | "dsh-acp"
+  | "zcode-acp"
   | (string & {});
 
 export type { CLIStreamMode } from "@freebuddy/protocol/cli";
@@ -172,6 +173,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g deepseek-harness-acp",
     docsUrl: "https://github.com/deepseek-ai/deepseek-harness",
+    protocol: "acp"
+  },
+  {
+    id: "zcode-acp",
+    label: "ZCode",
+    defaultBinary: "zcode-acp-server",
+    streamMode: "raw",
+    commandGroup: "zcode",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g zcode-acp-server",
+    docsUrl: "https://github.com/william0wang/zcode-acp",
     protocol: "acp"
   }
 ];

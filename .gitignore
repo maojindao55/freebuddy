@@ -10,3 +10,4 @@ node_modules/
 .worktrees/
 .sessions/
 .agents/
+.zcode/

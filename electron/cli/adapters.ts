@@ -30,6 +30,7 @@ export type CLIAdapterId =
   | "grok-acp"
   | "agy-acp"
   | "dsh-acp"
+  | "zcode-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -265,6 +266,27 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: dshAcpInstallCommand(),
     docsUrl: "https://github.com/deepseek-ai/deepseek-harness",
+    protocol: "acp"
+  },
+  {
+    id: "zcode-acp",
+    label: "ZCode",
+    defaultBinary: "zcode-acp-server",
+    checkProbe: { args: ["--version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "zcode",
+    capabilities: {
+      toolSession: true,
+      skills: {
+        mode: "native",
+        nativeDirs: [".agents/skills", ".zcode/skills"],
+        reloadPolicy: "process-start"
+      }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g zcode-acp-server",
+    docsUrl: "https://github.com/william0wang/zcode-acp",
     protocol: "acp"
   }
 ];
@@ -1470,6 +1492,15 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
       };
     }
     case "agy-acp": {
+      const args: string[] = [...extra];
+      return {
+        bin,
+        args,
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "zcode-acp": {
       const args: string[] = [...extra];
       return {
         bin,

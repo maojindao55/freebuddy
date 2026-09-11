@@ -90,5 +90,11 @@ export const builtinCliMembers: CLIMember[] = [
     name: "DeepSeek Harness",
     enabled: true,
     cli: { adapter: "dsh-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-zcode-acp",
+    name: "ZCode",
+    enabled: true,
+    cli: { adapter: "zcode-acp", approvalMode: "auto", showStderr: true }
   }
 ];

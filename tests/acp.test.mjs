@@ -163,7 +163,8 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "codebuddy-acp", label: "CodeBuddy", protocol: "acp" },
       { id: "grok-acp", label: "Grok", protocol: "acp" },
       { id: "agy-acp", label: "Antigravity", protocol: "acp" },
-      { id: "dsh-acp", label: "DeepSeek Harness", protocol: "acp" }
+      { id: "dsh-acp", label: "DeepSeek Harness", protocol: "acp" },
+      { id: "zcode-acp", label: "ZCode", protocol: "acp" }
     ]
   );
 });
@@ -182,6 +183,18 @@ test("buildCommand starts Codex and Claude ACP adapters", () => {
     buildCommand({ adapter: "claude-agent-acp", prompt: "hello" }),
     {
       bin: "claude-agent-acp",
+      args: [],
+      promptViaStdin: false,
+      protocol: "acp"
+    }
+  );
+});
+
+test("buildCommand starts ZCode ACP adapter", () => {
+  assert.deepEqual(
+    buildCommand({ adapter: "zcode-acp", prompt: "hello" }),
+    {
+      bin: "zcode-acp-server",
       args: [],
       promptViaStdin: false,
       protocol: "acp"

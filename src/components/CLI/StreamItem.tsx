@@ -372,6 +372,117 @@ function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
   );
 }
 
+export interface RawMarkdownListItem {
+  indent: number;
+  ordered: boolean;
+  start?: number;
+  text: string;
+}
+
+export interface ParsedMarkdownListItem {
+  text: string;
+  subLists?: ParsedMarkdownList[];
+}
+
+export interface ParsedMarkdownList {
+  ordered: boolean;
+  start?: number;
+  items: ParsedMarkdownListItem[];
+}
+
+export const MARKDOWN_LIST_ITEM_RE = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
+
+export function getMarkdownIndent(whitespace: string): number {
+  let count = 0;
+  for (const ch of whitespace) {
+    if (ch === "\t") {
+      count += 4 - (count % 4);
+    } else {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+export function buildMarkdownListTrees(
+  rawItems: RawMarkdownListItem[]
+): ParsedMarkdownList[] {
+  if (rawItems.length === 0) return [];
+
+  let index = 0;
+
+  function parseLevel(parentIndent: number): ParsedMarkdownList {
+    const first = rawItems[index];
+    const currentIndent = first.indent;
+    const ordered = first.ordered;
+    const list: ParsedMarkdownList = {
+      ordered,
+      start: ordered && first.start && first.start !== 1 ? first.start : undefined,
+      items: []
+    };
+
+    while (index < rawItems.length) {
+      const item = rawItems[index];
+
+      if (item.indent < currentIndent) {
+        break;
+      }
+
+      if (item.indent > currentIndent) {
+        if (list.items.length > 0) {
+          const prevItem = list.items[list.items.length - 1];
+          const sub = parseLevel(currentIndent);
+          if (!prevItem.subLists) prevItem.subLists = [];
+          prevItem.subLists.push(sub);
+        } else {
+          list.items.push({ text: item.text });
+          index += 1;
+        }
+        continue;
+      }
+
+      if (item.ordered !== ordered) {
+        break;
+      }
+
+      list.items.push({ text: item.text });
+      index += 1;
+    }
+
+    return list;
+  }
+
+  const result: ParsedMarkdownList[] = [];
+  while (index < rawItems.length) {
+    result.push(parseLevel(-1));
+  }
+  return result;
+}
+
+function renderMarkdownListTree(
+  list: ParsedMarkdownList,
+  keyPrefix: string,
+  cwd: string
+): ReactNode {
+  const ListTag = list.ordered ? "ol" : "ul";
+  return (
+    <ListTag key={keyPrefix} start={list.start}>
+      {list.items.map((item, itemIndex) => {
+        const itemKey = `${keyPrefix}-${itemIndex}`;
+        return (
+          <li key={itemKey}>
+            {renderInline(item.text, itemKey, 0, cwd)}
+            {item.subLists?.map((sub, subIndex) =>
+              renderMarkdownListTree(sub, `${itemKey}-sub-${subIndex}`, cwd)
+            )}
+          </li>
+        );
+      })}
+    </ListTag>
+  );
+}
+
+
 export function MarkdownText({
   content,
   cwd: cwdProp
@@ -482,23 +593,46 @@ export function MarkdownText({
       continue;
     }
 
-    if (/^\s*(?:[-*]|\d+\.)\s+/.test(line)) {
-      const ordered = /^\s*\d+\.\s+/.test(line);
-      const items: string[] = [];
-      while (i < lines.length && /^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, ""));
-        i += 1;
+    if (MARKDOWN_LIST_ITEM_RE.test(line)) {
+      const rawItems: RawMarkdownListItem[] = [];
+      while (i < lines.length) {
+        const curLine = lines[i];
+        const match = curLine.match(MARKDOWN_LIST_ITEM_RE);
+        if (match) {
+          const indent = getMarkdownIndent(match[1]);
+          const ordered = Boolean(match[3]);
+          const start = match[3] ? parseInt(match[3], 10) : undefined;
+          const text = match[4];
+          rawItems.push({ indent, ordered, start, text });
+          i += 1;
+        } else if (
+          rawItems.length > 0 &&
+          curLine.trim() &&
+          !curLine.trim().startsWith("```") &&
+          !/^#{1,6}\s+/.test(curLine) &&
+          !/^\s*>\s?/.test(curLine) &&
+          !(curLine.includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) &&
+          getMarkdownIndent(curLine.match(/^(\s*)/)?.[1] ?? "") >= rawItems[rawItems.length - 1].indent + 2
+        ) {
+          rawItems[rawItems.length - 1].text += "\n" + curLine.trim();
+          i += 1;
+        } else if (
+          !curLine.trim() &&
+          i + 1 < lines.length &&
+          MARKDOWN_LIST_ITEM_RE.test(lines[i + 1])
+        ) {
+          i += 1;
+        } else {
+          break;
+        }
       }
-      const ListTag = ordered ? "ol" : "ul";
-      blocks.push(
-        <ListTag key={`list-${i}`}>
-          {items.map((item, itemIndex) => (
-            <li key={itemIndex}>
-              {renderInline(item, `li-${i}-${itemIndex}`, 0, cwd)}
-            </li>
-          ))}
-        </ListTag>
-      );
+
+      const parsedLists = buildMarkdownListTrees(rawItems);
+      parsedLists.forEach((parsedList, listIndex) => {
+        blocks.push(
+          renderMarkdownListTree(parsedList, `list-${i}-${listIndex}`, cwd)
+        );
+      });
       continue;
     }
 
@@ -511,7 +645,7 @@ export function MarkdownText({
       !/^#{1,6}\s+/.test(lines[i]) &&
       !/^\s*>\s?/.test(lines[i]) &&
       !(lines[i].includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) &&
-      !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])
+      !MARKDOWN_LIST_ITEM_RE.test(lines[i])
     ) {
       paragraph.push(lines[i]);
       i += 1;

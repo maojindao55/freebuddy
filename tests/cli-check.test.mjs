@@ -55,6 +55,20 @@ test("agy-acp checks agy-acp binary probe", () => {
   });
 });
 
+test("zcode-acp checks zcode-acp-server binary probe", () => {
+  assert.deepEqual(getCliCheckProbe("zcode-acp"), {
+    args: ["--version"],
+    versionOptional: false
+  });
+});
+
+test("ZCode ACP install hint matches official package", () => {
+  assert.equal(
+    getAdapterDefinition("zcode-acp")?.installHint,
+    "npm install -g zcode-acp-server"
+  );
+});
+
 test("Windows fallback search includes the native Claude installer directory", () => {
   const source = fs.readFileSync(
     new URL("../electron/cli/check.ts", import.meta.url),

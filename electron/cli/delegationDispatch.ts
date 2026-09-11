@@ -91,14 +91,24 @@ const queuesByDeps = new WeakMap<
   DelegateConcurrencyQueue<DelegateExecArgs, DelegateExecResult>
 >();
 
+function delegateTargetLabel(
+  repository: ReturnType<typeof electronDelegationRepository>,
+  childEventId: string
+): string {
+  const event = repository.getEvent(childEventId);
+  const label = event?.roleLabel?.trim() || event?.agentName?.trim();
+  return label ? `「${label}」` : "该角色";
+}
+
 function queueFor(deps: DelegateActionDeps): DelegateConcurrencyQueue<
   DelegateExecArgs,
   DelegateExecResult
 > {
   let q = queuesByDeps.get(deps);
   if (!q) {
+    const repository = electronDelegationRepository();
     q = new DelegateConcurrencyQueue<DelegateExecArgs, DelegateExecResult>({
-      repository: electronDelegationRepository(),
+      repository,
       getPolicy: (runId) => deps.contextProvider(runId)?.policy,
       executor: async (args) => deps.executor(args),
       onResult: (childEventId, result) => {
@@ -119,18 +129,33 @@ function queueFor(deps: DelegateActionDeps): DelegateConcurrencyQueue<
           }
         );
       },
-      onTimeout: (childEventId) => {
-        transitionDelegationEvent(childEventId, "timeout", "委派超时");
+      onTimeout: (childEventId, info) => {
+        const minutes = Math.max(1, Math.round(info.timeoutMs / 60_000));
+        const summary =
+          `委派超时：${delegateTargetLabel(repository, childEventId)}执行超过团队策略时限` +
+          `（${minutes} 分钟，仅计活跃时间，等待其下级委派时暂停计时）。`;
+        transitionDelegationEvent(childEventId, "timeout", summary, {
+          result: buildDelegationResult({ status: "timeout", summary })
+        });
       },
       onError: (childEventId, err) => {
-        transitionDelegationEvent(
-          childEventId,
-          "failed",
-          (err as Error)?.message ?? String(err)
-        );
+        const message = (err as Error)?.message ?? String(err);
+        transitionDelegationEvent(childEventId, "failed", message, {
+          result: buildDelegationResult({
+            status: "failed",
+            summary: message,
+            errorMessage: message
+          })
+        });
       },
       onCancelled: (childEventId, reason) => {
-        transitionDelegationEvent(childEventId, "cancelled", reason);
+        transitionDelegationEvent(childEventId, "cancelled", reason, {
+          result: buildDelegationResult({
+            status: "cancelled",
+            summary: reason,
+            errorMessage: reason
+          })
+        });
       },
       onSettled: (childEventId) => {
         deps.onSettle?.(childEventId);

@@ -133,6 +133,52 @@ test("parseFreebiePageMessage ignores unrelated traffic and validates bridge mes
   assert.equal(imported.value.requestId, "r1");
   assert.equal(imported.value.preset.id, "zhipu");
 
+  const reviewOk = parseFreebiePageMessage(
+    envelope({
+      type: "submitReview",
+      requestId: "rev-1",
+      providerId: "deepseek",
+      rating: 5,
+      content: "速度很快，推荐！",
+      author: "老司机"
+    })
+  );
+  assert.equal(reviewOk.ok, true);
+  assert.equal(reviewOk.value.rating, 5);
+  assert.equal(reviewOk.value.providerId, "deepseek");
+
+  const badReview = parseFreebiePageMessage(
+    envelope({
+      type: "submitReview",
+      requestId: "rev-2",
+      providerId: "deepseek",
+      rating: 6,
+      content: "超出范围"
+    })
+  );
+  assert.equal(badReview.ok, false);
+
+  const voteOk = parseFreebiePageMessage(
+    envelope({
+      type: "submitVote",
+      requestId: "v-1",
+      providerId: "deepseek",
+      vote: "working"
+    })
+  );
+  assert.equal(voteOk.ok, true);
+  assert.equal(voteOk.value.vote, "working");
+
+  const badVote = parseFreebiePageMessage(
+    envelope({
+      type: "submitVote",
+      requestId: "v-2",
+      providerId: "deepseek",
+      vote: "invalid"
+    })
+  );
+  assert.equal(badVote.ok, false);
+
   assert.equal(parseFreebiePageMessage(envelope({ type: "deleteEverything" })).ok, false);
 });
 

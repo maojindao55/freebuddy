@@ -9,6 +9,7 @@ import {
   type FreebieHostState,
   type FreebieProviderPreset
 } from "@/services/freebie/protocol";
+import { submitCommunityReview, submitCommunityVote } from "@/services/freebie/communityClient";
 
 export type FreebieBridgeStatus = "connecting" | "ready" | "failed";
 
@@ -108,6 +109,52 @@ export function useFreebieBridge({
             .then((result) => {
               if (result.ok) {
                 post({ type: "result", requestId: message.requestId, ok: true, agentId: result.agentId });
+              } else {
+                post({ type: "result", requestId: message.requestId, ok: false, error: result.error });
+              }
+            })
+            .catch((err: unknown) => {
+              post({
+                type: "result",
+                requestId: message.requestId,
+                ok: false,
+                error: err instanceof Error ? err.message : String(err)
+              });
+            });
+          return;
+        }
+        case "submitReview": {
+          void submitCommunityReview({
+            providerId: message.providerId,
+            rating: message.rating,
+            content: message.content,
+            author: message.author
+          })
+            .then((result) => {
+              if (result.ok) {
+                post({ type: "result", requestId: message.requestId, ok: true });
+              } else {
+                post({ type: "result", requestId: message.requestId, ok: false, error: result.error });
+              }
+            })
+            .catch((err: unknown) => {
+              post({
+                type: "result",
+                requestId: message.requestId,
+                ok: false,
+                error: err instanceof Error ? err.message : String(err)
+              });
+            });
+          return;
+        }
+        case "submitVote": {
+          void submitCommunityVote({
+            providerId: message.providerId,
+            vote: message.vote
+          })
+            .then((result) => {
+              if (result.ok) {
+                post({ type: "result", requestId: message.requestId, ok: true });
               } else {
                 post({ type: "result", requestId: message.requestId, ok: false, error: result.error });
               }

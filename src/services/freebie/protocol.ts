@@ -68,7 +68,21 @@ export type FreebiePageMessage =
   | { type: "ready" }
   | { type: "importAgent"; requestId: string; preset: FreebieProviderPreset }
   | { type: "openExternal"; url: string }
-  | { type: "getState"; requestId: string };
+  | { type: "getState"; requestId: string }
+  | {
+      type: "submitReview";
+      requestId: string;
+      providerId: string;
+      rating: number;
+      content: string;
+      author?: string;
+    }
+  | {
+      type: "submitVote";
+      requestId: string;
+      providerId: string;
+      vote: "working" | "failed";
+    };
 
 /** Messages FreeBuddy sends to the page. */
 export type FreebieHostMessage =
@@ -78,7 +92,7 @@ export type FreebieHostMessage =
       theme: "light" | "dark";
       platform: string;
     } & FreebieHostState)
-  | { type: "result"; requestId: string; ok: true; agentId: string }
+  | { type: "result"; requestId: string; ok: true; agentId?: string }
   | { type: "result"; requestId: string; ok: false; error: string }
   | ({ type: "state" } & FreebieHostState);
 
@@ -284,6 +298,47 @@ export function parseFreebiePageMessage(data: unknown): Validation<FreebiePageMe
       const preset = validateFreebiePreset(data.preset);
       if (!preset.ok) return preset;
       return { ok: true, value: { type: "importAgent", requestId, preset: preset.value } };
+    }
+    case "submitReview": {
+      const requestId = optionalString(data.requestId, 128);
+      if (!requestId) return { ok: false, error: "missing requestId" };
+      const providerId = optionalString(data.providerId, 64);
+      if (!providerId) return { ok: false, error: "missing providerId" };
+      const rating = optionalPositiveInt(data.rating);
+      if (!rating || rating < 1 || rating > 5) return { ok: false, error: "rating must be between 1 and 5" };
+      const content = optionalString(data.content, 300);
+      if (!content || content.length < 2) return { ok: false, error: "content must be 2-300 characters" };
+      const author = optionalString(data.author, 32);
+      return {
+        ok: true,
+        value: {
+          type: "submitReview",
+          requestId,
+          providerId,
+          rating,
+          content,
+          author: author || undefined
+        }
+      };
+    }
+    case "submitVote": {
+      const requestId = optionalString(data.requestId, 128);
+      if (!requestId) return { ok: false, error: "missing requestId" };
+      const providerId = optionalString(data.providerId, 64);
+      if (!providerId) return { ok: false, error: "missing providerId" };
+      const vote = data.vote;
+      if (vote !== "working" && vote !== "failed") {
+        return { ok: false, error: "vote must be 'working' or 'failed'" };
+      }
+      return {
+        ok: true,
+        value: {
+          type: "submitVote",
+          requestId,
+          providerId,
+          vote
+        }
+      };
     }
     default:
       return { ok: false, error: "unknown message type" };

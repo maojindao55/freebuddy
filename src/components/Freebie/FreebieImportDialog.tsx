@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ExternalLink, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Pencil, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { AvatarPicker } from "@/components/Settings/AvatarPicker";
 import { cliClient } from "@/services/cli/client";
 import {
-  baseAdapterForProtocol,
   buildFreebieOverride,
-  defaultEnvKeyForProtocol
+  defaultEnvKeyForAdapter,
+  normalizeFreebieIcon,
+  resolveAvailableAgents,
+  type FreebieBaseAdapter
 } from "@/services/freebie/presetToOverride";
 import type { FreebieProviderPreset } from "@/services/freebie/protocol";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
+import { resolveLobehubAvatarUrl } from "@/utils/lobehubAvatar";
 
 const RUNTIME_LABEL: Record<string, string> = {
   "codex-acp": "Codex",
@@ -42,6 +46,18 @@ export function FreebieImportDialog({
   const { t } = useTranslation();
   const upsertOverride = useCliExecutorStore((s) => s.upsertOverride);
   const refreshMembers = useConversationStore((s) => s.refreshMembers);
+  const runtimes = useCliExecutorStore((s) => s.runtimes);
+
+  const availableAgents = useMemo(
+    () => resolveAvailableAgents(preset.protocols, preset.protocol),
+    [preset.protocols, preset.protocol]
+  );
+  const [selectedAdapter, setSelectedAdapter] = useState<FreebieBaseAdapter>(() => {
+    const rec = availableAgents.find((a) => a.isRecommended);
+    return rec ? rec.adapter : availableAgents[0].adapter;
+  });
+  const [avatar, setAvatar] = useState<string>(() => normalizeFreebieIcon(preset.icon) || "");
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   const [apiKey, setApiKey] = useState("");
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>(() =>
@@ -53,20 +69,30 @@ export function FreebieImportDialog({
   const resultSentRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  const baseAdapter = baseAdapterForProtocol(preset.protocol);
-  const envKey = preset.envKey ?? defaultEnvKeyForProtocol(preset.protocol);
+  const avatarUrl = useMemo(() => resolveLobehubAvatarUrl(avatar), [avatar]);
+  const isRuntimeInstalled =
+    runtimes[selectedAdapter] !== undefined
+      ? runtimes[selectedAdapter]?.installed !== false
+      : runtimeInstalled;
+
+  const envKey = preset.envKey ?? defaultEnvKeyForAdapter(selectedAdapter, preset.protocol);
   const protocolLabel = useMemo(() => {
-    switch (preset.protocol) {
-      case "anthropic":
-        return t("freebie.protocol.anthropic");
-      case "deepseek":
-        return t("freebie.protocol.deepseek");
-      case "openai-responses":
-        return t("freebie.protocol.openaiResponses");
-      default:
-        return t("freebie.protocol.openaiChat");
-    }
-  }, [preset.protocol, t]);
+    const protos = preset.protocols?.length ? preset.protocols : [preset.protocol];
+    return protos
+      .map((proto) => {
+        switch (proto) {
+          case "anthropic":
+            return t("freebie.protocol.anthropic");
+          case "deepseek":
+            return t("freebie.protocol.deepseek");
+          case "openai-responses":
+            return t("freebie.protocol.openaiResponses");
+          default:
+            return t("freebie.protocol.openaiChat");
+        }
+      })
+      .join(" / ");
+  }, [preset.protocols, preset.protocol, t]);
 
   const finish = (agentId: string | null) => {
     if (!resultSentRef.current) {
@@ -105,7 +131,9 @@ export function FreebieImportDialog({
         preset,
         apiKey,
         modelIds: ordered,
-        label: t("freebie.agentLabel", { name: preset.name })
+        label: t("freebie.agentLabel", { name: preset.name }),
+        baseAdapter: selectedAdapter,
+        icon: avatar || undefined
       });
       await upsertOverride(override);
       refreshMembers();
@@ -138,15 +166,34 @@ export function FreebieImportDialog({
         }}
       >
         <div className="freebie-import-header">
-          <div>
-            <h3 id="freebie-import-title">
-              {createdAgentId ? t("freebie.import.doneTitle") : t("freebie.import.title")}
-            </h3>
-            <p>
-              {createdAgentId
-                ? t("freebie.import.doneDescription", { name: preset.name })
-                : t("freebie.import.description", { name: preset.name })}
-            </p>
+          <div className="freebie-import-header-lead">
+            <button
+              type="button"
+              className="freebie-import-avatar-btn"
+              title={t("freebie.import.changeAvatar")}
+              onClick={() => setShowAvatarPicker((prev) => !prev)}
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" className="freebie-import-avatar-img" />
+              ) : (
+                <span className="freebie-import-avatar-fallback">
+                  {preset.name.slice(0, 2).toUpperCase()}
+                </span>
+              )}
+              <span className="freebie-import-avatar-badge-edit">
+                <Pencil size={10} aria-hidden="true" />
+              </span>
+            </button>
+            <div>
+              <h3 id="freebie-import-title">
+                {createdAgentId ? t("freebie.import.doneTitle") : t("freebie.import.title")}
+              </h3>
+              <p>
+                {createdAgentId
+                  ? t("freebie.import.doneDescription", { name: preset.name })
+                  : t("freebie.import.description", { name: preset.name })}
+              </p>
+            </div>
           </div>
           <button
             type="button"
@@ -158,6 +205,20 @@ export function FreebieImportDialog({
             <X size={17} />
           </button>
         </div>
+
+        {showAvatarPicker && !createdAgentId ? (
+          <div className="freebie-import-picker-card">
+            <AvatarPicker
+              value={avatar}
+              onChange={(val) => {
+                setAvatar(val);
+                setShowAvatarPicker(false);
+              }}
+              defaultAdapter={selectedAdapter}
+              defaultLabel={preset.name}
+            />
+          </div>
+        ) : null}
 
         {createdAgentId ? (
           <>
@@ -184,6 +245,32 @@ export function FreebieImportDialog({
           </>
         ) : (
           <>
+            {availableAgents.length > 1 ? (
+              <div className="freebie-import-field">
+                <span>{t("freebie.import.baseAgent")}</span>
+                <div className="freebie-import-agent-chips">
+                  {availableAgents.map((opt) => {
+                    const active = selectedAdapter === opt.adapter;
+                    return (
+                      <button
+                        key={opt.adapter}
+                        type="button"
+                        className={`freebie-import-agent-chip ${active ? "active" : ""}`}
+                        onClick={() => setSelectedAdapter(opt.adapter)}
+                      >
+                        <span>{opt.label}</span>
+                        {opt.isRecommended ? (
+                          <span className="freebie-import-chip-rec">
+                            {t("freebie.import.recommended")}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <dl className="freebie-import-facts">
               <div>
                 <dt>{t("freebie.import.protocol")}</dt>
@@ -191,7 +278,7 @@ export function FreebieImportDialog({
                   {protocolLabel}
                   <span className="freebie-import-muted">
                     {" · "}
-                    {t("freebie.import.baseAdapter", { runtime: RUNTIME_LABEL[baseAdapter] })}
+                    {t("freebie.import.baseAdapter", { runtime: RUNTIME_LABEL[selectedAdapter] })}
                   </span>
                 </dd>
               </div>
@@ -260,11 +347,11 @@ export function FreebieImportDialog({
               </small>
             </label>
 
-            {!runtimeInstalled ? (
+            {!isRuntimeInstalled ? (
               <div className="freebie-import-notice warning">
                 <AlertTriangle size={17} aria-hidden="true" />
                 <span>
-                  {t("freebie.import.runtimeMissing", { runtime: RUNTIME_LABEL[baseAdapter] })}{" "}
+                  {t("freebie.import.runtimeMissing", { runtime: RUNTIME_LABEL[selectedAdapter] })}{" "}
                   <button type="button" className="freebie-link-button" onClick={onOpenAgentSettings}>
                     {t("freebie.import.openAgentSettings")}
                   </button>

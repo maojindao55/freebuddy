@@ -19,6 +19,7 @@
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
         "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "icon": { "type": "string", "maxLength": 200 },
         "region": { "enum": ["cn", "global"] },
         "homepage": { "type": "string", "format": "uri", "pattern": "^https://" },
         "consoleUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
@@ -27,6 +28,10 @@
           "additionalProperties": { "type": "string", "maxLength": 400 }
         },
         "protocol": { "enum": ["openai-chat", "openai-responses", "anthropic", "deepseek"] },
+        "protocols": {
+          "type": "array",
+          "items": { "enum": ["openai-chat", "openai-responses", "anthropic", "deepseek"] }
+        },
         "baseUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
         "envKey": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" },
         "models": {

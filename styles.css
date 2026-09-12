@@ -11058,6 +11058,113 @@ button.new-task-context-control {
   gap: 16px;
 }
 
+.freebie-import-header-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.freebie-import-avatar-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 10px;
+  background: var(--fb-panel-soft);
+  cursor: pointer;
+  overflow: visible;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+
+.freebie-import-avatar-btn:hover {
+  border-color: var(--fb-brand);
+  transform: translateY(-1px);
+}
+
+.freebie-import-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 9px;
+  object-fit: cover;
+  display: block;
+}
+
+.freebie-import-avatar-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-family: 'Outfit', var(--fb-font);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--fb-text-secondary);
+}
+
+.freebie-import-avatar-badge-edit {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border-strong);
+  display: grid;
+  place-items: center;
+  color: var(--fb-text-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.freebie-import-picker-card {
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-home-bg-primary);
+}
+
+.freebie-import-agent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.freebie-import-agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.freebie-import-agent-chip:hover {
+  border-color: var(--fb-brand);
+  color: var(--fb-text-primary);
+}
+
+.freebie-import-agent-chip.active {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+  color: var(--fb-text-primary);
+  font-weight: 500;
+}
+
+.freebie-import-chip-rec {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--fb-brand) 18%, transparent);
+  color: var(--fb-brand);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
 .freebie-import-header h3 {
   margin: 0;
   color: var(--fb-text-primary);

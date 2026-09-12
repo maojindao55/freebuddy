@@ -194,11 +194,54 @@ test("buildFreebieOverride maps protocols to base adapters and BYOK blocks", asy
   assert.equal(deepseek.deepseekByok.wireApi, "chat");
   assert.equal(deepseek.deepseekByok.envKey, "DEEPSEEK_API_KEY");
 
+  // Test custom baseAdapter and custom icon
+  const customCodex = mod.buildFreebieOverride({
+    preset: { ...preset, icon: "zhipu-color" },
+    apiKey: "k",
+    label: "x",
+    baseAdapter: "dsh-acp",
+    icon: "lobehub:custom-icon"
+  });
+  assert.equal(customCodex.baseAdapter, "dsh-acp");
+  assert.equal(customCodex.icon, "lobehub:custom-icon");
+  assert.equal(customCodex.deepseekByok.enabled, true);
+
+  // Test automatic preset icon normalization
+  const autoIcon = mod.buildFreebieOverride({
+    preset: { ...preset, icon: "zhipu-color" },
+    apiKey: "k",
+    label: "x"
+  });
+  assert.equal(autoIcon.icon, "lobehub:zhipu");
+
   assert.throws(() => mod.buildFreebieOverride({ preset, apiKey: "   ", label: "x" }), /apiKey/);
   assert.throws(
     () => mod.buildFreebieOverride({ preset, apiKey: "k", modelIds: ["nope"], label: "x" }),
     /model/
   );
+});
+
+test("resolveAvailableAgents maps provider protocols to compatible runtimes", async () => {
+  const mod = await loadPresetToOverride();
+
+  // openai-chat provides Codex (recommended) and DeepSeek
+  const openAiOptions = mod.resolveAvailableAgents(["openai-chat"], "openai-chat");
+  assert.deepEqual(openAiOptions.map((o) => o.adapter), ["codex-acp", "dsh-acp"]);
+  assert.equal(openAiOptions.find((o) => o.adapter === "codex-acp").isRecommended, true);
+
+  // deepseek provides DeepSeek (recommended) and Codex
+  const deepseekOptions = mod.resolveAvailableAgents(["deepseek"], "deepseek");
+  assert.deepEqual(deepseekOptions.map((o) => o.adapter), ["codex-acp", "dsh-acp"]);
+  assert.equal(deepseekOptions.find((o) => o.adapter === "dsh-acp").isRecommended, true);
+
+  // anthropic provides Claude Code
+  const anthropicOptions = mod.resolveAvailableAgents(["anthropic"], "anthropic");
+  assert.deepEqual(anthropicOptions.map((o) => o.adapter), ["claude-agent-acp"]);
+  assert.equal(anthropicOptions[0].isRecommended, true);
+
+  // Multi-protocol (e.g. openai-chat + anthropic) provides all three
+  const multiOptions = mod.resolveAvailableAgents(["openai-chat", "anthropic"], "openai-chat");
+  assert.deepEqual(multiOptions.map((o) => o.adapter), ["codex-acp", "dsh-acp", "claude-agent-acp"]);
 });
 
 test("freebie override ids round-trip the provider slug", async () => {

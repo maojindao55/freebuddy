@@ -38,7 +38,10 @@ export interface FreebieProviderPreset {
   consoleUrl?: string;
   /** Localized one-line summary of the free tier, keyed by locale (`zh-CN`, `en`). */
   freeTierSummary?: Record<string, string>;
+  icon?: string;
   protocol: FreebieProtocol;
+  /** Optional list of protocols supported by the provider. */
+  protocols?: FreebieProtocol[];
   /** HTTPS API base URL the agent will talk to. */
   baseUrl: string;
   /** Environment variable the base adapter reads the key from. */
@@ -210,6 +213,24 @@ export function validateFreebiePreset(input: unknown): Validation<FreebieProvide
   };
 
   if (input.region === "cn" || input.region === "global") preset.region = input.region;
+
+  const icon = optionalString(input.icon, 200);
+  if (icon) preset.icon = icon;
+
+  if (Array.isArray(input.protocols)) {
+    const protocols: FreebieProtocol[] = [];
+    for (const raw of input.protocols) {
+      if (typeof raw === "string" && FREEBIE_PROTOCOLS.includes(raw as FreebieProtocol) && !protocols.includes(raw as FreebieProtocol)) {
+        protocols.push(raw as FreebieProtocol);
+      }
+    }
+    if (protocols.length > 0) {
+      preset.protocols = protocols;
+    }
+  }
+  if (!preset.protocols || preset.protocols.length === 0) {
+    preset.protocols = [preset.protocol];
+  }
 
   const homepage = parseHttpsUrl(input.homepage);
   if (homepage) preset.homepage = homepage.toString();

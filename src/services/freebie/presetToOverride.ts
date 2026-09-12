@@ -24,26 +24,103 @@ export function baseAdapterForProtocol(protocol: FreebieProtocol): FreebieBaseAd
   }
 }
 
-export function runtimeKeyForProtocol(protocol: FreebieProtocol): keyof FreebieRuntimeState {
-  switch (protocol) {
-    case "anthropic":
+export function runtimeKeyForAdapter(adapter: FreebieBaseAdapter): keyof FreebieRuntimeState {
+  switch (adapter) {
+    case "claude-agent-acp":
       return "claude";
-    case "deepseek":
+    case "dsh-acp":
       return "deepseek";
     default:
       return "codex";
   }
 }
 
-export function defaultEnvKeyForProtocol(protocol: FreebieProtocol): string {
-  switch (protocol) {
-    case "anthropic":
+export function runtimeKeyForProtocol(protocol: FreebieProtocol): keyof FreebieRuntimeState {
+  return runtimeKeyForAdapter(baseAdapterForProtocol(protocol));
+}
+
+export function defaultEnvKeyForAdapter(
+  adapter: FreebieBaseAdapter,
+  protocol: FreebieProtocol
+): string {
+  switch (adapter) {
+    case "claude-agent-acp":
       return "ANTHROPIC_API_KEY";
-    case "deepseek":
-      return "DEEPSEEK_API_KEY";
+    case "dsh-acp":
+      return protocol === "deepseek" ? "DEEPSEEK_API_KEY" : "OPENAI_API_KEY";
+    case "codex-acp":
     default:
       return "OPENAI_API_KEY";
   }
+}
+
+export function defaultEnvKeyForProtocol(protocol: FreebieProtocol): string {
+  return defaultEnvKeyForAdapter(baseAdapterForProtocol(protocol), protocol);
+}
+
+export function normalizeFreebieIcon(rawIcon?: string | null): string | undefined {
+  if (!rawIcon) return undefined;
+  const trimmed = rawIcon.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("lobehub:")) return trimmed;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("data:")) {
+    return trimmed;
+  }
+  const clean = trimmed.replace(/-color$/i, "");
+  return `lobehub:${clean}`;
+}
+
+export interface AvailableAgentOption {
+  adapter: FreebieBaseAdapter;
+  label: string;
+  isRecommended?: boolean;
+}
+
+export function resolveAvailableAgents(
+  protocols: FreebieProtocol[] | undefined,
+  fallbackProtocol: FreebieProtocol
+): AvailableAgentOption[] {
+  const list = protocols?.length ? protocols : [fallbackProtocol];
+  const set = new Set(list);
+  const options: AvailableAgentOption[] = [];
+
+  // Codex: supports openai-chat, openai-responses, deepseek
+  if (set.has("openai-chat") || set.has("openai-responses") || set.has("deepseek")) {
+    options.push({
+      adapter: "codex-acp",
+      label: "Codex",
+      isRecommended: set.has("openai-chat") || set.has("openai-responses")
+    });
+  }
+
+  // DeepSeek (Dsh): supports deepseek, openai-chat
+  if (set.has("deepseek") || set.has("openai-chat")) {
+    options.push({
+      adapter: "dsh-acp",
+      label: "DeepSeek",
+      isRecommended: set.has("deepseek") && !set.has("openai-chat")
+    });
+  }
+
+  // Claude Code: supports anthropic
+  if (set.has("anthropic")) {
+    options.push({
+      adapter: "claude-agent-acp",
+      label: "Claude Code",
+      isRecommended: true
+    });
+  }
+
+  if (options.length === 0) {
+    const fallback = baseAdapterForProtocol(fallbackProtocol);
+    options.push({
+      adapter: fallback,
+      label: fallback === "claude-agent-acp" ? "Claude Code" : fallback === "dsh-acp" ? "DeepSeek" : "Codex",
+      isRecommended: true
+    });
+  }
+
+  return options;
 }
 
 export function newFreebieOverrideId(providerId: string): string {
@@ -72,6 +149,8 @@ export interface BuildFreebieOverrideInput {
   modelIds?: string[];
   label: string;
   overrideId?: string;
+  baseAdapter?: FreebieBaseAdapter;
+  icon?: string;
 }
 
 /**
@@ -96,18 +175,20 @@ export function buildFreebieOverride(input: BuildFreebieOverrideInput): CLIExecu
     }));
   if (!models.length) throw new Error("at least one model must be selected");
 
-  const baseAdapter: CLIAdapterId = baseAdapterForProtocol(preset.protocol);
-  const envKey = preset.envKey ?? defaultEnvKeyForProtocol(preset.protocol);
+  const baseAdapter: FreebieBaseAdapter = input.baseAdapter ?? baseAdapterForProtocol(preset.protocol);
+  const envKey = preset.envKey ?? defaultEnvKeyForAdapter(baseAdapter, preset.protocol);
+  const icon = input.icon !== undefined ? input.icon : normalizeFreebieIcon(preset.icon);
   const override: CLIExecutorOverride = {
     id: input.overrideId ?? newFreebieOverrideId(preset.id),
     baseAdapter,
     label: input.label,
+    icon: icon || undefined,
     extraArgs: [`--model=${models[0].id}`],
     enabled: true
   };
 
-  switch (preset.protocol) {
-    case "anthropic":
+  switch (baseAdapter) {
+    case "claude-agent-acp":
       override.claudeByok = {
         enabled: true,
         baseUrl: preset.baseUrl,
@@ -117,7 +198,7 @@ export function buildFreebieOverride(input: BuildFreebieOverrideInput): CLIExecu
         contextWindow: preset.contextWindow
       };
       break;
-    case "deepseek":
+    case "dsh-acp":
       override.deepseekByok = {
         enabled: true,
         baseUrl: preset.baseUrl,

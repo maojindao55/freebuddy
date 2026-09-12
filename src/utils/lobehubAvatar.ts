@@ -23,6 +23,9 @@ export function lobehubAvatarUrl(iconId: string): string {
 /** Resolve a stored avatar value (lobehub:<id> or bare id) to a renderable CDN url. */
 export function resolveLobehubAvatarUrl(value?: string | null): string | undefined {
   if (!value) return undefined;
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
+    return value;
+  }
   const id = parseLobehubAvatar(value) ?? value;
   return lobehubAvatarUrl(id);
 }

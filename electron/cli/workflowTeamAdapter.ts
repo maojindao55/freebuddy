@@ -51,6 +51,25 @@ function renderPrompt(
     .replace(/\{\{targetPaths\}\}/g, target);
 }
 
+/** Merge a role's model + thinking-effort picks into ACP config overrides. */
+function roleConfigOptionOverrides(role: {
+  model?: string;
+  modelOptionId?: string;
+  thoughtLevel?: string;
+  thoughtLevelOptionId?: string;
+}): Record<string, string> | undefined {
+  const overrides: Record<string, string> = {};
+  const model = role.model?.trim();
+  if (model) {
+    overrides[role.modelOptionId?.trim() || "model"] = model;
+  }
+  const thoughtLevel = role.thoughtLevel?.trim();
+  if (thoughtLevel) {
+    overrides[role.thoughtLevelOptionId?.trim() || "thought_level"] = thoughtLevel;
+  }
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
 function applyRoleModelsToPlan(
   plan: WorkflowPlan,
   roleByPhaseId: Map<string, WorkflowTeamRole | undefined>
@@ -60,17 +79,21 @@ function applyRoleModelsToPlan(
     phases: plan.phases.map((phase) => {
       const role = roleByPhaseId.get(phase.id);
       const model = role?.model?.trim();
-      if (!role || !model) return phase;
-      const optionId = role.modelOptionId?.trim() || "model";
+      const roleOverrides = role ? roleConfigOptionOverrides(role) : undefined;
+      if (!model && !roleOverrides) return phase;
       return {
         ...phase,
         steps: phase.steps.map((step) => ({
           ...step,
-          model,
-          configOptionOverrides: {
-            ...step.configOptionOverrides,
-            [optionId]: model
-          }
+          ...(model ? { model } : {}),
+          ...(roleOverrides
+            ? {
+                configOptionOverrides: {
+                  ...step.configOptionOverrides,
+                  ...roleOverrides
+                }
+              }
+            : {})
         }))
       };
     })
@@ -177,20 +200,15 @@ export function expandTeamToPlan(
       };
     }
 
+    const roleOverrides = roleConfigOptionOverrides(role ?? {});
     const step: WorkflowStep = {
       id: `${node.id}-step`,
       title: node.title,
       agentId: agentRef.id,
       mode: nodeModeToStepMode(node.mode),
       prompt: renderPrompt(node.promptTemplate, input),
-      ...(role?.model?.trim()
-        ? {
-            model: role.model.trim(),
-            configOptionOverrides: {
-              [role.modelOptionId?.trim() || "model"]: role.model.trim()
-            }
-          }
-        : {}),
+      ...(role?.model?.trim() ? { model: role.model.trim() } : {}),
+      ...(roleOverrides ? { configOptionOverrides: roleOverrides } : {}),
       skillIds: role?.skillIds ?? agentRef.skillIds ?? [],
       ...(priorStepIds.length ? { consumes: priorStepIds } : {})
     };

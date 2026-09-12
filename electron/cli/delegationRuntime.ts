@@ -74,11 +74,20 @@ function delegationTurnSessionId(runId: string, nodeKey: string): string {
 function modelConfigOverride(entry: {
   model?: string;
   modelOptionId?: string;
+  thoughtLevel?: string;
+  thoughtLevelOptionId?: string;
 }): Record<string, string> | undefined {
+  const overrides: Record<string, string> = {};
   const model = entry.model?.trim();
-  if (!model) return undefined;
-  const optionId = entry.modelOptionId?.trim() || "model";
-  return { [optionId]: model };
+  if (model) {
+    const optionId = entry.modelOptionId?.trim() || "model";
+    overrides[optionId] = model;
+  }
+  const thoughtLevel = entry.thoughtLevel?.trim();
+  if (thoughtLevel) {
+    overrides[entry.thoughtLevelOptionId?.trim() || "thought_level"] = thoughtLevel;
+  }
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
 
 type ResolvedAgent = {

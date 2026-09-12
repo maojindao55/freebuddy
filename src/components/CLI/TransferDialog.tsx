@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -13,11 +14,14 @@ import { useTranslation } from "react-i18next";
 import type { CLIMember } from "@/config/aiMembers";
 import { useConversationStore } from "@/store/conversationStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
+import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { cliClient } from "@/services/cli/client";
 import type {
   Conversation,
   HandoffBrief,
-  PreviewHandoffBriefResult
+  PreviewHandoffBriefResult,
+  SessionConfigOption,
+  SessionConfigProbeInput
 } from "@/services/cli/types";
 import { conversationDisplayCwd } from "./conversationProjectGrouping";
 
@@ -28,6 +32,16 @@ interface TransferConversationPanelProps {
   descriptionId: string;
   onClose(): void;
   onBusyChange?(busy: boolean): void;
+}
+
+function findConfigOption(
+  options: SessionConfigOption[],
+  category: string
+): SessionConfigOption | undefined {
+  return (
+    options.find((option) => option.category === category) ??
+    options.find((option) => option.id === category)
+  );
 }
 
 export function TransferConversationPanel({
@@ -44,11 +58,16 @@ export function TransferConversationPanel({
   const targetSelectRef = useRef<HTMLSelectElement>(null);
   const mountedRef = useRef(true);
   const previewLoadingRef = useRef(false);
+  const configProbeInFlightRef = useRef(false);
   const [targetMemberId, setTargetMemberId] = useState<string>("");
   const [preview, setPreview] = useState<PreviewHandoffBriefResult | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [configOptions, setConfigOptions] = useState<SessionConfigOption[]>([]);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedThought, setSelectedThought] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +82,104 @@ export function TransferConversationPanel({
   useEffect(() => {
     onBusyChange?.(submitting);
   }, [submitting, onBusyChange]);
+
+  const modelOption = useMemo(
+    () => findConfigOption(configOptions, "model"),
+    [configOptions]
+  );
+  const thoughtOption = useMemo(
+    () => findConfigOption(configOptions, "thought_level"),
+    [configOptions]
+  );
+
+  const sessionProbeInputForMember = useCallback(
+    (member: CLIMember | undefined): SessionConfigProbeInput | undefined => {
+      if (!member) return undefined;
+      const resolved = useCliExecutorStore
+        .getState()
+        .resolve(member.cli.adapter);
+      return {
+        agentId: member.id,
+        adapter: member.cli.adapter,
+        binary: member.cli.binary || resolved?.binary,
+        extraArgs: [
+          ...(resolved?.extraArgs ?? []),
+          ...(member.cli.extraArgs ?? [])
+        ],
+        env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
+        cwd: source.cwd?.trim() || undefined
+      };
+    },
+    [source.cwd]
+  );
+
+  // Load the target agent's cached config catalog when the selection changes and
+  // prefill the pickers from the source conversation when transferring back to
+  // the same agent (its stored option ids and values stay valid there).
+  useEffect(() => {
+    setConfigOptions([]);
+    setConfigLoading(false);
+    setSelectedModel("");
+    setSelectedThought("");
+    if (!targetMemberId || !cliClient.isAvailable()) return;
+    const member = members.find((m) => m.id === targetMemberId);
+    const input = sessionProbeInputForMember(member);
+    if (!input) return;
+    let cancelled = false;
+    void cliClient
+      .getCachedSessionConfigOptions(input)
+      .then((options) => {
+        if (cancelled || options.length === 0) return;
+        setConfigOptions(options);
+        if (targetMemberId !== source.agentId) return;
+        const stored = source.configOptionOverrides ?? {};
+        const cachedModelOption = findConfigOption(options, "model");
+        const cachedThoughtOption = findConfigOption(options, "thought_level");
+        if (cachedModelOption && stored[cachedModelOption.id]) {
+          setSelectedModel(stored[cachedModelOption.id]);
+        }
+        if (cachedThoughtOption && stored[cachedThoughtOption.id]) {
+          setSelectedThought(stored[cachedThoughtOption.id]);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    targetMemberId,
+    members,
+    sessionProbeInputForMember,
+    source.agentId,
+    source.configOptionOverrides
+  ]);
+
+  const refreshConfigOptions = async () => {
+    if (
+      !targetMemberId ||
+      !cliClient.isAvailable() ||
+      configProbeInFlightRef.current
+    ) {
+      return;
+    }
+    const input = sessionProbeInputForMember(
+      members.find((m) => m.id === targetMemberId)
+    );
+    if (!input) return;
+    configProbeInFlightRef.current = true;
+    setConfigLoading(true);
+    try {
+      const options = await cliClient.inspectSessionConfigOptions(input);
+      if (mountedRef.current && options.length > 0) {
+        setConfigOptions(options);
+      }
+    } catch {
+      // Keep any cached catalog and allow another refresh attempt.
+    } finally {
+      configProbeInFlightRef.current = false;
+      if (mountedRef.current) setConfigLoading(false);
+    }
+  };
 
   const loadPreview = async () => {
     if (preview || previewLoadingRef.current || previewError) return;
@@ -97,9 +214,19 @@ export function TransferConversationPanel({
     setSubmitting(true);
     setError(null);
     try {
+      const overrides: Record<string, string> = {};
+      if (selectedModel) {
+        overrides[modelOption?.id ?? "model"] = selectedModel;
+      }
+      if (selectedThought) {
+        overrides[thoughtOption?.id ?? "thought_level"] = selectedThought;
+      }
       const result = await transferConversation({
         sourceConversationId: source.id,
-        targetMember
+        targetMember,
+        ...(Object.keys(overrides).length > 0
+          ? { configOptionOverrides: overrides }
+          : {})
       });
       if (result.warning === "brief_extraction_failed") {
         notify(t("handoff.briefExtractionFailed"));
@@ -137,15 +264,84 @@ export function TransferConversationPanel({
               {t("handoff.selectAgent")}
             </option>
             {members.map((m) => (
-              <option
-                key={m.id}
-                value={m.id}
-                disabled={m.id === source.agentId}
-              >
+              <option key={m.id} value={m.id}>
                 {m.name}
                 {m.id === source.agentId ? ` (${t("handoff.current")})` : ""}
               </option>
             ))}
+          </select>
+          <ChevronDown
+            className="transfer-dialog-select-chevron"
+            size={16}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
+        </div>
+        {targetMemberId && targetMemberId === source.agentId ? (
+          <span className="transfer-dialog-same-agent-hint">
+            {t("handoff.sameAgentHint")}
+          </span>
+        ) : null}
+      </label>
+
+      <label className="transfer-dialog-field">
+        <span>{t("handoff.targetModel")}</span>
+        <div className="transfer-dialog-select-wrap">
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            onFocus={() => void refreshConfigOptions()}
+            disabled={!targetMemberId || submitting}
+          >
+            <option value="">{t("workflow.defaultModel")}</option>
+            {configLoading && !modelOption ? (
+              <option disabled>{t("chat.modelLoading")}</option>
+            ) : null}
+            {(() => {
+              const values = [...(modelOption?.values ?? [])];
+              if (selectedModel && !values.some((v) => v.id === selectedModel)) {
+                values.unshift({ id: selectedModel, name: selectedModel });
+              }
+              return values.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name || v.id}
+                </option>
+              ));
+            })()}
+          </select>
+          <ChevronDown
+            className="transfer-dialog-select-chevron"
+            size={16}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
+        </div>
+      </label>
+
+      <label className="transfer-dialog-field">
+        <span>{t("handoff.targetThoughtLevel")}</span>
+        <div className="transfer-dialog-select-wrap">
+          <select
+            value={selectedThought}
+            onChange={(e) => setSelectedThought(e.target.value)}
+            onFocus={() => void refreshConfigOptions()}
+            disabled={!targetMemberId || submitting}
+          >
+            <option value="">{t("workflow.defaultThoughtLevel")}</option>
+            {(() => {
+              const values = [...(thoughtOption?.values ?? [])];
+              if (
+                selectedThought &&
+                !values.some((v) => v.id === selectedThought)
+              ) {
+                values.unshift({ id: selectedThought, name: selectedThought });
+              }
+              return values.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name || v.id}
+                </option>
+              ));
+            })()}
           </select>
           <ChevronDown
             className="transfer-dialog-select-chevron"

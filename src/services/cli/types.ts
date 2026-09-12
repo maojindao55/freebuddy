@@ -781,6 +781,8 @@ export interface TransferConversationInput {
   targetAgentId: string;
   targetAgentName: string;
   targetAdapter: string;
+  /** Optional session config overrides (model, thought level) for the target conversation. */
+  configOptionOverrides?: Record<string, string>;
 }
 
 export interface TransferConversationResult {

@@ -3121,6 +3121,15 @@ html[data-surface="butler-screen-ball"] #root {
   font-weight: 600;
 }
 
+.transfer-dialog-field span.transfer-dialog-same-agent-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
 .transfer-dialog-select-wrap,
 .transfer-dialog-readonly-wrap {
   position: relative;

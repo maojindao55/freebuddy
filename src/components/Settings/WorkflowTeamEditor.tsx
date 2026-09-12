@@ -203,6 +203,8 @@ function buildDeliveryRoles(
         fallbackAgentForRole(members, def.roleKind!),
       model: existing?.model,
       modelOptionId: existing?.modelOptionId,
+      thoughtLevel: existing?.thoughtLevel,
+      thoughtLevelOptionId: existing?.thoughtLevelOptionId,
       skillIds: existing?.skillIds,
       required: true,
       canWrite: def.mode === "write",
@@ -453,7 +455,14 @@ export function WorkflowTeamEditor({
       ...d,
       roles: d.roles.map((r) =>
         r.id === roleId
-          ? { ...r, agentId, model: undefined, modelOptionId: undefined }
+          ? {
+              ...r,
+              agentId,
+              model: undefined,
+              modelOptionId: undefined,
+              thoughtLevel: undefined,
+              thoughtLevelOptionId: undefined
+            }
           : r
       )
     }));
@@ -468,6 +477,27 @@ export function WorkflowTeamEditor({
               ...role,
               model: model.trim() || undefined,
               modelOptionId: model.trim() ? modelOptionId : undefined
+            }
+          : role
+      )
+    }));
+  };
+
+  const setRoleThoughtLevel = (
+    roleId: string,
+    thoughtLevel: string,
+    thoughtLevelOptionId: string
+  ) => {
+    setDraft((d) => ({
+      ...d,
+      roles: d.roles.map((role) =>
+        role.id === roleId
+          ? {
+              ...role,
+              thoughtLevel: thoughtLevel.trim() || undefined,
+              thoughtLevelOptionId: thoughtLevel.trim()
+                ? thoughtLevelOptionId
+                : undefined
             }
           : role
       )
@@ -770,6 +800,54 @@ export function WorkflowTeamEditor({
                             !values.some((value) => value.id === role.model)
                           ) {
                             values.unshift({ id: role.model, name: role.model });
+                          }
+                          return values.map((value) => (
+                            <option key={value.id} value={value.id}>
+                              {value.name || value.id}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                      <span className="custom-select-arrow">▼</span>
+                    </div>
+                  </div>
+                  <div className="workflow-team-role-selector">
+                    <span className="selector-label">{t("workflow.currentThoughtLevel")}</span>
+                    <div className="custom-select-wrapper">
+                      <select
+                        value={role.thoughtLevel ?? ""}
+                        onFocus={() => void refreshRoleModels(role.agentId)}
+                        onChange={(e) =>
+                          setRoleThoughtLevel(
+                            role.id,
+                            e.target.value,
+                            (modelOptionsByAgent[role.agentId] ?? []).find(
+                              (entry) => entry.category === "thought_level"
+                            )?.id ??
+                              (modelOptionsByAgent[role.agentId] ?? []).find(
+                                (entry) => entry.id === "thought_level"
+                              )?.id ??
+                              role.thoughtLevelOptionId ??
+                              "thought_level"
+                          )
+                        }
+                      >
+                        <option value="">{t("workflow.defaultThoughtLevel")}</option>
+                        {(() => {
+                          const option = (modelOptionsByAgent[role.agentId] ?? []).find(
+                            (entry) => entry.category === "thought_level"
+                          ) ?? (modelOptionsByAgent[role.agentId] ?? []).find(
+                            (entry) => entry.id === "thought_level"
+                          );
+                          const values = [...(option?.values ?? [])];
+                          if (
+                            role.thoughtLevel &&
+                            !values.some((value) => value.id === role.thoughtLevel)
+                          ) {
+                            values.unshift({
+                              id: role.thoughtLevel,
+                              name: role.thoughtLevel
+                            });
                           }
                           return values.map((value) => (
                             <option key={value.id} value={value.id}>

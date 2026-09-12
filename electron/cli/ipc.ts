@@ -1356,6 +1356,11 @@ export function registerCliIpc() {
           // conversations(id), so B must exist before the brief row is inserted.
           // conversations.source_brief_id is a plain TEXT column (no FK), so it
           // can reference a brief that doesn't exist yet.
+          const overrides = Object.fromEntries(
+            Object.entries(input.configOptionOverrides ?? {}).filter(
+              ([id, value]) => id.trim() !== "" && value.trim() !== ""
+            )
+          );
           const conversation = createConversation({
             id: input.targetConversationId,
             title: source.title,
@@ -1367,6 +1372,9 @@ export function registerCliIpc() {
             cwd: source.cwd,
             skillIds: [],
             titleSource: "default",
+            ...(Object.keys(overrides).length > 0
+              ? { configOptionOverrides: overrides }
+              : {}),
             sourceConversationId: source.id,
             sourceAgentId: source.agentId,
             sourceAgentName: source.agentName,

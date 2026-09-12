@@ -135,6 +135,7 @@ export interface ConversationState {
   transferConversation(input: {
     sourceConversationId: string;
     targetMember: CLIMember;
+    configOptionOverrides?: Record<string, string>;
   }): Promise<{
     conversation: Conversation;
     warning?: "brief_extraction_failed";
@@ -946,7 +947,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     return conv;
   },
 
-  async transferConversation({ sourceConversationId, targetMember }) {
+  async transferConversation({ sourceConversationId, targetMember, configOptionOverrides }) {
     if (transferInFlight) {
       throw new Error("Another transfer is in progress");
     }
@@ -958,7 +959,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         targetConversationId,
         targetAgentId: targetMember.id,
         targetAgentName: targetMember.name,
-        targetAdapter: targetMember.cli.adapter
+        targetAdapter: targetMember.cli.adapter,
+        ...(configOptionOverrides && Object.keys(configOptionOverrides).length > 0
+          ? { configOptionOverrides }
+          : {})
       });
       set((s) => ({
         conversations: [

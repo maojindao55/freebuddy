@@ -174,6 +174,9 @@ export interface WorkflowTeamRole {
   agentId: string;
   model?: string;
   modelOptionId?: string;
+  /** Optional thinking-effort override (session config option such as thought_level). */
+  thoughtLevel?: string;
+  thoughtLevelOptionId?: string;
   required: boolean;
   canWrite: boolean;
   description?: string;

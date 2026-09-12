@@ -206,7 +206,14 @@ export function DelegationTeamEditor({
     setRoster((rs) =>
       rs.map((r) =>
         r.id === id
-          ? { ...r, agentId, model: undefined, modelOptionId: undefined }
+          ? {
+              ...r,
+              agentId,
+              model: undefined,
+              modelOptionId: undefined,
+              thoughtLevel: undefined,
+              thoughtLevelOptionId: undefined
+            }
           : r
       )
     );
@@ -228,11 +235,36 @@ export function DelegationTeamEditor({
       )
     );
 
+  const setEntryThoughtLevel = (
+    id: string,
+    thoughtLevel: string,
+    thoughtLevelOptionId: string
+  ) =>
+    setRoster((rs) =>
+      rs.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              thoughtLevel: thoughtLevel.trim() || undefined,
+              thoughtLevelOptionId: thoughtLevel.trim()
+                ? thoughtLevelOptionId
+                : undefined
+            }
+          : r
+      )
+    );
+
   const modelOptionForAgent = (agentId: string): SessionConfigOption | undefined =>
     (modelOptionsByAgent[agentId] ?? []).find(
       (entry) => entry.category === "model"
     ) ??
     (modelOptionsByAgent[agentId] ?? []).find((entry) => entry.id === "model");
+
+  const thoughtOptionForAgent = (agentId: string): SessionConfigOption | undefined =>
+    (modelOptionsByAgent[agentId] ?? []).find(
+      (entry) => entry.category === "thought_level"
+    ) ??
+    (modelOptionsByAgent[agentId] ?? []).find((entry) => entry.id === "thought_level");
 
   const addEntry = () =>
     setRoster((rs) => [...rs, newEntry(`r-${Date.now().toString(36)}`)]);
@@ -403,6 +435,42 @@ export function DelegationTeamEditor({
               loading={
                 modelLoadingByAgent[r.agentId] &&
                 !(modelOptionForAgent(r.agentId)?.values?.length ?? 0)
+              }
+            />
+            <Select
+              value={r.thoughtLevel || undefined}
+              options={(() => {
+                const option = thoughtOptionForAgent(r.agentId);
+                const values = [...(option?.values ?? [])];
+                if (
+                  r.thoughtLevel &&
+                  !values.some((v) => v.id === r.thoughtLevel)
+                ) {
+                  values.unshift({ id: r.thoughtLevel, name: r.thoughtLevel });
+                }
+                return [
+                  { value: "", label: t("workflow.defaultThoughtLevel") },
+                  ...values.map((v) => ({
+                    value: v.id,
+                    label: v.name || v.id
+                  }))
+                ];
+              })()}
+              onChange={(v: string) =>
+                setEntryThoughtLevel(
+                  r.id,
+                  v,
+                  thoughtOptionForAgent(r.agentId)?.id ??
+                    r.thoughtLevelOptionId ??
+                    "thought_level"
+                )
+              }
+              onFocus={() => void refreshEntryModels(r.agentId)}
+              placeholder={t("workflow.currentThoughtLevel")}
+              style={{ width: "100%" }}
+              disabled={
+                !thoughtOptionForAgent(r.agentId) &&
+                !r.thoughtLevel
               }
             />
             <TextArea

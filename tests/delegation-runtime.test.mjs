@@ -289,6 +289,11 @@ const rosterWithModels = [
   { id: "r-rev", label: "评审", agentId: "cli-claude-agent-acp", capability: "审", canWrite: false, model: "claude-sonnet-4", modelOptionId: "model" }
 ];
 const snapWithModels = { roster: rosterWithModels, policy, entryRoleId: "r-impl" };
+const rosterWithThoughtLevels = [
+  { id: "r-impl", label: "实现", agentId: "cli-codex-acp", capability: "写", canWrite: true, model: "gpt-5.1", modelOptionId: "model", thoughtLevel: "high" },
+  { id: "r-rev", label: "评审", agentId: "cli-claude-agent-acp", capability: "审", canWrite: false, thoughtLevel: "max", thoughtLevelOptionId: "effort-option" }
+];
+const snapWithThoughtLevels = { roster: rosterWithThoughtLevels, policy, entryRoleId: "r-impl" };
 const tick = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test("entry agent runAgent receives configOptionOverrides from entry roster model", async (t) => {
@@ -375,6 +380,47 @@ test("entry agent without model omits configOptionOverrides", async (t) => {
     const runId = rt.prepareRun({ goal: "实现X", teamId: "t", teamSnapshot: snap, cwd: "/r" });
     await rt.runEntry(runId, "实现X");
     assert.equal(spawned.configOptionOverrides, undefined);
+  });
+});
+
+test("entry agent runAgent receives thought-level config override", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    let spawned = null;
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: (id) => ({ adapter: "codex-acp", agentName: "Codex", skillIds: [] }),
+      runAgent: async (args) => { spawned = args; return { summary: "done", exitCode: 0, error: null }; }
+    });
+    const runId = rt.prepareRun({ goal: "实现X", teamId: "t", teamSnapshot: snapWithThoughtLevels, cwd: "/r" });
+    await rt.runEntry(runId, "实现X");
+    assert.deepEqual(spawned.configOptionOverrides, {
+      model: "gpt-5.1",
+      thought_level: "high"
+    });
+  });
+});
+
+test("delegated teammate runAgent receives thought-level config override", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const { dispatchDelegateAction } = await import("../dist-electron/cli/delegationDispatch.js");
+    let spawned = null;
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: (id) => ({ adapter: "claude-agent-acp", agentName: "Claude", skillIds: [] }),
+      runAgent: async (args) => { spawned = args; return { summary: "LGTM", exitCode: 0, error: null }; }
+    });
+    const runId = rt.prepareRun({ goal: "实现X", teamId: "t", teamSnapshot: snapWithThoughtLevels, cwd: "/r" });
+    const binding = { token: "t", taskSessionId: "sess-entry", runId, parentEventId: "evt-root", depth: 0, selfAgentId: "r-impl", selfLabel: "实现" };
+    const res = await dispatchDelegateAction(binding, "delegate", { teammate_id: "r-rev", task: "审 auth" });
+    assert.equal(res.status, "pending");
+    await tick(50);
+    assert.deepEqual(spawned.configOptionOverrides, {
+      "effort-option": "max"
+    });
   });
 });
 

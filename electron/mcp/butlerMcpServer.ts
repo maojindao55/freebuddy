@@ -96,6 +96,18 @@ const delegationRoleSchema = z.object({
     .trim()
     .optional()
     .describe("Optional configured model-option id."),
+  thoughtLevel: z
+    .string()
+    .trim()
+    .optional()
+    .describe(
+      "Optional thinking-effort override id (e.g. low, medium, high, max) applied on every turn of this role."
+    ),
+  thoughtLevelOptionId: z
+    .string()
+    .trim()
+    .optional()
+    .describe("Optional configured thought-level option id (defaults to thought_level)."),
   capability: z
     .string()
     .trim()

@@ -4,6 +4,9 @@ export interface DelegationRosterEntry {
   agentId: string;
   model?: string;
   modelOptionId?: string;
+  /** Optional thinking-effort override (session config option such as thought_level). */
+  thoughtLevel?: string;
+  thoughtLevelOptionId?: string;
   capability: string;
   /** Instructions this role must follow whenever it executes a turn. */
   instructions?: string;

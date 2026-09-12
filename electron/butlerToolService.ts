@@ -321,6 +321,8 @@ function publicDelegationTeam(
       agentId: role.agentId,
       model: role.model,
       modelOptionId: role.modelOptionId,
+      thoughtLevel: role.thoughtLevel,
+      thoughtLevelOptionId: role.thoughtLevelOptionId,
       capability: role.capability,
       instructions: role.instructions,
       canWrite: role.canWrite,

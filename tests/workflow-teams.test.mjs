@@ -120,6 +120,44 @@ test("team role models become per-step ACP config overrides", async () => {
   assert.equal(result.preview.plan.phases[2].steps[0].configOptionOverrides, undefined);
 });
 
+test("team role thought levels become per-step ACP config overrides", async () => {
+  const { builtinWorkflowTeams } = await import(
+    "../dist-electron/cli/workflowTeamBuiltins.js"
+  );
+  const { expandTeamToPlan } = await import(
+    "../dist-electron/cli/workflowTeamAdapter.js"
+  );
+  const delivery = structuredClone(
+    builtinWorkflowTeams().find((team) => team.id === "team-delivery-example")
+  );
+  assert.ok(delivery);
+  const plannerRole = delivery.roles.find((role) => role.id === "role-planner");
+  plannerRole.thoughtLevel = "high";
+  const implementerRole = delivery.roles.find(
+    (role) => role.id === "role-implementer"
+  );
+  implementerRole.model = "writer-model";
+  implementerRole.thoughtLevel = "max";
+  implementerRole.thoughtLevelOptionId = "effort-option";
+  const agents = delivery.roles.map((role) => ({
+    id: role.agentId,
+    name: role.agentId,
+    adapter: "stub-acp",
+    enabled: true
+  }));
+
+  const result = expandTeamToPlan(delivery, { goal: "fix bug" }, agents);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.preview.plan.phases[0].steps[0].configOptionOverrides, {
+    thought_level: "high"
+  });
+  assert.deepEqual(result.preview.plan.phases[1].steps[0].configOptionOverrides, {
+    model: "writer-model",
+    "effort-option": "max"
+  });
+  assert.equal(result.preview.plan.phases[2].steps[0].configOptionOverrides, undefined);
+});
+
 test("builtin workflow teams include the default teams", async () => {
   const { builtinWorkflowTeams } = await import(
     "../dist-electron/cli/workflowTeamBuiltins.js"
@@ -350,7 +388,10 @@ test("workflow team editor loads cached models and saves a model per role", () =
   assert.match(src, /inspectSessionConfigOptions\(input\)/);
   assert.match(src, /value=\{role\.model \?\? ""\}/);
   assert.match(src, /setRoleModel\(\s*role\.id,\s*e\.target\.value,/);
-  assert.match(src, /model: undefined, modelOptionId: undefined/);
+  assert.match(
+    src,
+    /model: undefined,\s*modelOptionId: undefined,\s*thoughtLevel: undefined,\s*thoughtLevelOptionId: undefined/
+  );
 });
 
 test("workflow runtime forwards step model overrides to cliRun", () => {

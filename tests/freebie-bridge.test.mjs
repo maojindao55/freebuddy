@@ -29,6 +29,14 @@ async function loadPresetToOverride() {
   return importInline(transpile(source));
 }
 
+async function loadCommunityClient() {
+  const source = read("../src/services/freebie/communityClient.ts").replace(
+    /import \{ FREEBIE_PAGE_URL \} from "@\/config\/freebie";/,
+    'const FREEBIE_PAGE_URL = new URL("https://freebuddy-freebie.binbinzhaili.workers.dev/");'
+  );
+  return importInline(transpile(source));
+}
+
 const validPreset = {
   id: "zhipu",
   name: "智谱 BigModel",
@@ -362,3 +370,90 @@ test("freebie is wired as a first-class workspace with a hardened bridge", () =>
   assert.match(css, /\.freebie-page\s*\{/);
   assert.match(css, /\.freebie-import-dialog\s*\{/);
 });
+
+test("communityClient auth headers only contain anonymous device id and no secrets or HMAC (CWE-798 regression guard)", async () => {
+  const clientSource = read("../src/services/freebie/communityClient.ts");
+  const workerPath = new URL("../../freebuddy-freebie/worker.js", import.meta.url);
+  const workerSource = fs.existsSync(workerPath) ? fs.readFileSync(workerPath, "utf8") : "";
+
+  // 1. Static security check: ensure no hardcoded secrets, HMAC logic, or signature headers exist in source
+  assert.doesNotMatch(clientSource, /CLIENT_AUTH_SECRET/);
+  assert.doesNotMatch(clientSource, /fb_sec_v1_/);
+  assert.doesNotMatch(clientSource, /computeHmacSha256/);
+  assert.doesNotMatch(clientSource, /crypto\.subtle/);
+  assert.doesNotMatch(clientSource, /HMAC/i);
+  assert.doesNotMatch(clientSource, /X-FreeBuddy-Signature/i);
+  assert.doesNotMatch(clientSource, /X-FreeBuddy-Timestamp/i);
+
+  if (workerSource) {
+    assert.doesNotMatch(workerSource, /CLIENT_AUTH_SECRET/);
+    assert.doesNotMatch(workerSource, /fb_sec_v1_/);
+    assert.doesNotMatch(workerSource, /computeHmacSha256/);
+    assert.doesNotMatch(workerSource, /X-FreeBuddy-Signature/);
+    assert.doesNotMatch(workerSource, /isVerifiedClient/);
+  }
+
+  // 2. Runtime behavioral check: outgoing requests must contain ONLY Content-Type and X-FreeBuddy-Device-Id
+  const mod = await loadCommunityClient();
+  const originalFetch = globalThis.fetch;
+
+  let capturedRequests = [];
+  globalThis.fetch = async (url, options) => {
+    capturedRequests.push({ url: String(url), options });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  };
+
+  try {
+    const reviewResult = await mod.submitCommunityReview({
+      providerId: "zhipu",
+      rating: 5,
+      content: "速度稳定，效果很好",
+      author: "测试者"
+    });
+    assert.equal(reviewResult.ok, true);
+
+    const voteResult = await mod.submitCommunityVote({
+      providerId: "zhipu",
+      vote: "working"
+    });
+    assert.equal(voteResult.ok, true);
+
+    assert.equal(capturedRequests.length, 2);
+
+    for (const req of capturedRequests) {
+      const headers = req.options.headers;
+      // Headers must contain Content-Type and X-FreeBuddy-Device-Id, and NOTHING ELSE
+      assert.deepEqual(Object.keys(headers).sort(), ["Content-Type", "X-FreeBuddy-Device-Id"].sort());
+      assert.equal(headers["Content-Type"], "application/json");
+      assert.ok(typeof headers["X-FreeBuddy-Device-Id"] === "string");
+      assert.ok(headers["X-FreeBuddy-Device-Id"].length >= 8);
+
+      // Explicitly guard against any reintroduced signature or timestamp headers
+      assert.equal(headers["X-FreeBuddy-Signature"], undefined);
+      assert.equal(headers["X-FreeBuddy-Timestamp"], undefined);
+    }
+
+    // 3. Test HTTP 401 handling (deployment synchronization guard)
+    globalThis.fetch = async () => {
+      return new Response(
+        JSON.stringify({ ok: false, error: "unauthorized_client", message: "缺少客户端认证标识" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    };
+
+    const errResult = await mod.submitCommunityReview({
+      providerId: "zhipu",
+      rating: 5,
+      content: "测试 401 提示"
+    });
+    assert.equal(errResult.ok, false);
+    assert.match(errResult.error, /401/);
+    assert.match(errResult.error, /backend update in progress|updating/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+

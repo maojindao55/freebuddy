@@ -1,7 +1,6 @@
 import { FREEBIE_PAGE_URL } from "@/config/freebie";
 
 const DEVICE_ID_STORAGE_KEY = "freebuddy:client_device_id";
-const CLIENT_AUTH_SECRET = "fb_sec_v1_8f9c2d1b4e6a0375";
 
 export function getOrCreateDeviceId(): string {
   try {
@@ -19,32 +18,11 @@ export function getOrCreateDeviceId(): string {
   }
 }
 
-async function computeHmacSha256(secret: string, message: string): Promise<string> {
-  const enc = new TextEncoder();
-  const key = await globalThis.crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await globalThis.crypto.subtle.sign("HMAC", key, enc.encode(message));
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function createAuthHeaders(method: string, path: string): Promise<Record<string, string>> {
+function createAuthHeaders(): Record<string, string> {
   const deviceId = getOrCreateDeviceId();
-  const timestamp = Date.now().toString();
-  const payload = `${method.toUpperCase()}:${path}:${deviceId}:${timestamp}`;
-  const signature = await computeHmacSha256(CLIENT_AUTH_SECRET, payload);
-
   return {
     "Content-Type": "application/json",
-    "X-FreeBuddy-Device-Id": deviceId,
-    "X-FreeBuddy-Timestamp": timestamp,
-    "X-FreeBuddy-Signature": signature
+    "X-FreeBuddy-Device-Id": deviceId
   };
 }
 
@@ -60,7 +38,7 @@ export async function submitCommunityReview(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const targetUrl = new URL("/api/reviews", FREEBIE_PAGE_URL).toString();
-    const headers = await createAuthHeaders("POST", "/api/reviews");
+    const headers = createAuthHeaders();
     const response = await fetch(targetUrl, {
       method: "POST",
       headers,
@@ -69,6 +47,14 @@ export async function submitCommunityReview(
 
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.ok) {
+      if (response.status === 401) {
+        return {
+          ok: false,
+          error: data?.message
+            ? `${data.message} (HTTP 401: backend update in progress, please retry shortly)`
+            : "HTTP 401: client authentication failed; server may be updating"
+        };
+      }
       return { ok: false, error: data?.message || data?.error || `HTTP ${response.status}` };
     }
     return { ok: true };
@@ -87,7 +73,7 @@ export async function submitCommunityVote(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const targetUrl = new URL("/api/votes", FREEBIE_PAGE_URL).toString();
-    const headers = await createAuthHeaders("POST", "/api/votes");
+    const headers = createAuthHeaders();
     const response = await fetch(targetUrl, {
       method: "POST",
       headers,
@@ -96,6 +82,14 @@ export async function submitCommunityVote(
 
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.ok) {
+      if (response.status === 401) {
+        return {
+          ok: false,
+          error: data?.message
+            ? `${data.message} (HTTP 401: backend update in progress, please retry shortly)`
+            : "HTTP 401: client authentication failed; server may be updating"
+        };
+      }
       return { ok: false, error: data?.message || data?.error || `HTTP ${response.status}` };
     }
     return { ok: true };

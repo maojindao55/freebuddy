@@ -23,6 +23,10 @@ cp "$ROOT_DIR/desktop/macos/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$ROOT_DIR/desktop/macos/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 cp -R "$ROOT_DIR/dist/." "$WEB_DIR/"
 
+node "$ROOT_DIR/scripts/build-macos-share-extension.mjs"
+mkdir -p "$CONTENTS_DIR/PlugIns"
+cp -R "$ROOT_DIR/.build/macos/FreeBuddyShare.appex" "$CONTENTS_DIR/PlugIns/"
+
 plutil -lint "$CONTENTS_DIR/Info.plist"
 
 if command -v codesign >/dev/null 2>&1; then

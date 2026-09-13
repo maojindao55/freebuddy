@@ -32,10 +32,15 @@ const ATTACHMENT_EXTENSIONS = new Set([
   "xls",
   "xlsx",
   "ppt",
-  "pptx"
+  "pptx",
+  "zip",
+  "tar",
+  "gz",
+  "7z",
+  "rar"
 ]);
 
-const BINARY_ATTACHMENT_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "pdf"]);
+const BINARY_ATTACHMENT_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "pdf", "zip"]);
 
 function attachmentMimeFromExtension(extension: string): string {
   switch (extension.toLowerCase()) {
@@ -68,6 +73,16 @@ function attachmentMimeFromExtension(extension: string): string {
       return "application/vnd.ms-powerpoint";
     case "pptx":
       return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    case "zip":
+      return "application/zip";
+    case "tar":
+      return "application/x-tar";
+    case "gz":
+      return "application/gzip";
+    case "7z":
+      return "application/x-7z-compressed";
+    case "rar":
+      return "application/vnd.rar";
     default:
       return "text/plain";
   }
@@ -106,6 +121,17 @@ export function extensionFromMime(mimeType: string): string | null {
       return "ppt";
     case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
       return "pptx";
+    case "application/zip":
+    case "application/x-zip-compressed":
+      return "zip";
+    case "application/x-tar":
+      return "tar";
+    case "application/gzip":
+      return "gz";
+    case "application/x-7z-compressed":
+      return "7z";
+    case "application/vnd.rar":
+      return "rar";
     default:
       return null;
   }
@@ -154,6 +180,15 @@ export function detectMagicBinaryType(
   }
   if (buffer.length >= 4 && buffer.toString("ascii", 0, 4) === "%PDF") {
     return { extension: "pdf", mimeType: "application/pdf" };
+  }
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x50 &&
+    buffer[1] === 0x4b &&
+    (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
+    (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08)
+  ) {
+    return { extension: "zip", mimeType: "application/zip" };
   }
   return null;
 }

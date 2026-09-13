@@ -12,7 +12,12 @@ const MIME_BY_EXT: Record<string, string> = {
   txt: "text/plain",
   md: "text/markdown",
   json: "application/json",
-  csv: "text/csv"
+  csv: "text/csv",
+  zip: "application/zip",
+  tar: "application/x-tar",
+  gz: "application/gzip",
+  "7z": "application/x-7z-compressed",
+  rar: "application/vnd.rar"
 };
 
 export function buildAttachmentPreviewUrl(filePath: string): string {

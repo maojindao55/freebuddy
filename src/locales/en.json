@@ -2065,5 +2065,9 @@
     "hardModeWonAgentGomoku": "You placed at \"{{agentMove}}\", five-in-a-row win! You won this match - please share your victory thoughts in chat!",
     "player": "You",
     "engine": "Engine"
+  },
+  "externalShare": {
+    "imported": "Imported content from external share",
+    "importedWithFiles": "Imported {{count}} files and text from external share"
   }
 }

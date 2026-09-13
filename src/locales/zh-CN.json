@@ -2050,5 +2050,9 @@
     "hardModeWonAgentGomoku": "你落子在「{{agentMove}}」，五连珠获胜！本局你赢了，请在聊天中发表胜利感言！",
     "player": "你",
     "engine": "极智引擎"
+  },
+  "externalShare": {
+    "imported": "已导入来自外部分享的内容",
+    "importedWithFiles": "已导入来自外部分享的 {{count}} 个文件与文本内容"
   }
 }

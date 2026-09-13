@@ -898,6 +898,7 @@ export function ChatView({
   const requestedProjectId = useNewTaskUiStore((s) => s.requestedProjectId);
   const requestedDraft = useNewTaskUiStore((s) => s.requestedDraft);
   const requestedAgentId = useNewTaskUiStore((s) => s.requestedAgentId);
+  const requestedAttachments = useNewTaskUiStore((s) => s.requestedAttachments);
   const cwdRequestToken = useNewTaskUiStore((s) => s.cwdRequestToken);
   const teamMode = taskMode === "team";
   const workflowMode = false;
@@ -1648,6 +1649,9 @@ export function ChatView({
     if (activeId) return;
     if (cwdRequestToken === 0) return;
     setNewTaskDraft(requestedDraft ?? "");
+    if (requestedAttachments !== undefined) {
+      setNewTaskPendingAttachments(requestedAttachments);
+    }
     if (requestedProjectId) {
       setNewTaskCwd(requestedCwd ?? "");
       setNewTaskProjectId(requestedProjectId);
@@ -1658,6 +1662,7 @@ export function ChatView({
     activeId,
     applyNewTaskWorkspace,
     cwdRequestToken,
+    requestedAttachments,
     requestedCwd,
     requestedDraft,
     requestedProjectId

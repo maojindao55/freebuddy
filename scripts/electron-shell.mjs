@@ -58,6 +58,13 @@ export function prepareMacElectronShell({
     setPlistString(plistPath, "CFBundleIconFile", "AppIcon");
   }
 
+  const devAppex = path.join(path.dirname(path.dirname(targetApp)), ".build/macos/FreeBuddyShareDev.appex");
+  if (fs.existsSync(devAppex)) {
+    const pluginsDir = path.join(contentsDir, "PlugIns");
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.cpSync(devAppex, path.join(pluginsDir, "FreeBuddyShare.appex"), { recursive: true });
+  }
+
   return path.join(targetApp, "Contents", "MacOS", "Electron");
 }
 

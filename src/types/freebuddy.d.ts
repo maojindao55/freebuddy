@@ -307,6 +307,21 @@ declare global {
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;
   }
 
+  interface ExternalShareFile {
+    name: string;
+    path: string;
+    size?: number;
+    managed?: boolean;
+  }
+
+  interface ExternalSharePayload {
+    id: string;
+    timestamp: number;
+    instruction?: string;
+    text?: string;
+    files?: ExternalShareFile[];
+  }
+
   interface FreebuddyWindow {
     onChromeVisible(cb: (visible: boolean) => void): () => void;
     onBridge(
@@ -316,6 +331,7 @@ declare global {
     resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean>;
     onOpenConversation(cb: (conversationId: string) => void): () => void;
     onNewConversation(cb: () => void): () => void;
+    onExternalShare(cb: (payload: ExternalSharePayload) => void): () => void;
     onOpenTaskReceipt(cb: () => void): () => void;
     onOpenView(
       cb: (payload: {

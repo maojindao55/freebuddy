@@ -57,7 +57,12 @@ const DOCUMENT_MIME: Record<string, string> = {
   xls: "application/vnd.ms-excel",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ppt: "application/vnd.ms-powerpoint",
-  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  zip: "application/zip",
+  tar: "application/x-tar",
+  gz: "application/gzip",
+  "7z": "application/x-7z-compressed",
+  rar: "application/vnd.rar"
 };
 
 const CODE_EXTENSIONS = new Set([

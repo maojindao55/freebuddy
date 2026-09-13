@@ -362,6 +362,28 @@ const window = {
     ipcRenderer.on("window:new-conversation", handler);
     return () => ipcRenderer.off("window:new-conversation", handler);
   },
+  onExternalShare(
+    cb: (payload: {
+      id: string;
+      timestamp: number;
+      instruction?: string;
+      text?: string;
+      files?: Array<{ name: string; path: string; size?: number; managed?: boolean }>;
+    }) => void
+  ): () => void {
+    const handler = (
+      _e: IpcRendererEvent,
+      payload: {
+        id: string;
+        timestamp: number;
+        instruction?: string;
+        text?: string;
+        files?: Array<{ name: string; path: string; size?: number; managed?: boolean }>;
+      }
+    ) => cb(payload);
+    ipcRenderer.on("freebuddy://external-share", handler);
+    return () => ipcRenderer.off("freebuddy://external-share", handler);
+  },
   onOpenTaskReceipt(cb: () => void): () => void {
     const handler = () => cb();
     ipcRenderer.on("window:open-task-receipt", handler);

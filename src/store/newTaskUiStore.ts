@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ChatAttachment } from "@/services/cli/types";
 
 export type NewTaskMode = "normal" | "team";
 
@@ -15,6 +16,8 @@ interface NewTaskUiState {
   requestedDraft?: string;
   /** Member id to preselect in the agent picker when the new-task page opens. */
   requestedAgentId?: string;
+  /** Optional attachments to prefill when the new-task page opens. */
+  requestedAttachments?: ChatAttachment[];
   setTaskMode(mode: NewTaskMode): void;
   setRequestedTeamId(teamId?: string): void;
   requestNewTask(options?: {
@@ -22,6 +25,7 @@ interface NewTaskUiState {
     projectId?: string;
     draft?: string;
     agentId?: string;
+    attachments?: ChatAttachment[];
   }): void;
   /** @deprecated Prefer requestNewTask */
   requestNewTaskCwd(cwd?: string): void;
@@ -35,6 +39,7 @@ export const useNewTaskUiStore = create<NewTaskUiState>((set) => ({
   requestedProjectId: undefined,
   requestedDraft: undefined,
   requestedAgentId: undefined,
+  requestedAttachments: undefined,
   setTaskMode: (taskMode) =>
     set((state) => ({
       taskMode,
@@ -47,6 +52,7 @@ export const useNewTaskUiStore = create<NewTaskUiState>((set) => ({
       requestedProjectId: options?.projectId,
       requestedDraft: options?.draft,
       requestedAgentId: options?.agentId,
+      requestedAttachments: options?.attachments,
       cwdRequestToken: state.cwdRequestToken + 1
     })),
   requestNewTaskCwd: (cwd) =>
@@ -55,6 +61,7 @@ export const useNewTaskUiStore = create<NewTaskUiState>((set) => ({
       requestedProjectId: undefined,
       requestedDraft: undefined,
       requestedAgentId: undefined,
+      requestedAttachments: undefined,
       cwdRequestToken: state.cwdRequestToken + 1
     }))
 }));

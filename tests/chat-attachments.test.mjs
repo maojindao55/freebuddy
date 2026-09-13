@@ -39,7 +39,12 @@ test("classifies supported attachment paths", async () => {
     extension: "tsx",
     mimeType: "text/plain"
   });
-  assert.equal(classifyAttachmentPath("/tmp/archive.zip"), null);
+  assert.deepEqual(classifyAttachmentPath("/tmp/archive.zip"), {
+    kind: "document",
+    extension: "zip",
+    mimeType: "application/zip"
+  });
+  assert.equal(classifyAttachmentPath("/tmp/binary.bin"), null);
   assert.equal(classifyAttachmentPath("/tmp/no-extension"), null);
 });
 

@@ -1,9 +1,13 @@
 import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, protocol, screen, shell } from "electron";
 import type { WebContents } from "electron";
+import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
+import AdmZip from "adm-zip";
 
 import { registerCliIpc } from "./cli/ipc.js";
 import { logAllCliRuntimes, startCodexToolchainAutoUpdate } from "./cli/check.js";
@@ -82,7 +86,14 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
+const isPackagedDev = app.isPackaged && (process.execPath.includes("FreeBuddy Dev") || process.env.FB_ENV === "dev");
+const isDevInstance = !app.isPackaged || isPackagedDev;
+
 if (!app.isPackaged) {
+  app.setName("FreeBuddy Dev");
+  app.setPath("userData", path.join(app.getPath("appData"), "freebuddy-dev"));
+  app.setAppUserModelId("dev.freebuddy.app.dev");
+} else if (isPackagedDev) {
   app.setName("FreeBuddy Dev");
   app.setPath("userData", path.join(app.getPath("appData"), "freebuddy-dev"));
   app.setAppUserModelId("dev.freebuddy.app.dev");
@@ -95,17 +106,129 @@ if (process.platform === "darwin") {
 }
 process.env.FB_APP_VERSION = APP_VERSION;
 app.setAboutPanelOptions({
-  applicationName: app.isPackaged ? APP_NAME : `${APP_NAME} (Dev)`,
+  applicationName: !isDevInstance ? APP_NAME : `${APP_NAME} (Dev)`,
   applicationVersion: APP_VERSION,
   version: APP_VERSION
 });
 crashReporter.start({
-  productName: app.isPackaged ? APP_NAME : `${APP_NAME} Dev`,
+  productName: !isDevInstance ? APP_NAME : `${APP_NAME} Dev`,
   uploadToServer: false,
   compress: false
 });
 
-const PROTOCOL = "freebuddy";
+const PROTOCOL = isDevInstance ? "freebuddy-dev" : "freebuddy";
+
+let pendingExternalShare: {
+  id: string;
+  timestamp: number;
+  instruction?: string;
+  text?: string;
+  files?: Array<{ name: string; path: string; size?: number; managed?: boolean }>;
+} | null = null;
+
+function handleExternalShare(shareId: string | null, payloadPath: string | null) {
+  try {
+    let jsonFile = payloadPath && fs.existsSync(payloadPath) ? payloadPath : null;
+    if (!jsonFile && shareId) {
+      const possibleDirs = [
+        path.join(os.homedir(), "Library", "Containers", "dev.freebuddy.app.dev.share", "Data", "Library", "Application Support", "FreeBuddy", "share-inbox"),
+        path.join(os.homedir(), "Library", "Containers", "dev.freebuddy.app.share", "Data", "Library", "Application Support", "FreeBuddy", "share-inbox"),
+        path.join(os.homedir(), "Library", "Application Support", "freebuddy-dev", "share-inbox"),
+        path.join(os.homedir(), "Library", "Application Support", "FreeBuddy", "share-inbox"),
+        path.join(app.getPath("userData"), "share-inbox")
+      ];
+      for (const dir of possibleDirs) {
+        const candidate = path.join(dir, `${shareId}.json`);
+        if (fs.existsSync(candidate)) {
+          jsonFile = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!jsonFile) return;
+
+    const raw = fs.readFileSync(jsonFile, "utf-8");
+    const payload = JSON.parse(raw);
+    try {
+      fs.unlinkSync(jsonFile);
+    } catch {}
+
+    const managedDir = path.join(app.getPath("userData"), "managed-attachments");
+    fs.mkdirSync(managedDir, { recursive: true });
+
+    let extractedChatText = "";
+    const importedFiles: Array<{ name: string; path: string; size?: number; managed: boolean }> = [];
+    if (Array.isArray(payload.files)) {
+      for (const file of payload.files) {
+        if (!file?.path || !fs.existsSync(file.path)) continue;
+        try {
+          const ext = path.extname(file.name || file.path) || "";
+          const targetName = `${crypto.randomUUID()}${ext}`;
+          const targetPath = path.join(managedDir, targetName);
+          fs.copyFileSync(file.path, targetPath);
+          try {
+            fs.unlinkSync(file.path);
+          } catch {}
+          const stat = fs.statSync(targetPath);
+          importedFiles.push({
+            name: file.name || path.basename(file.path),
+            path: targetPath,
+            size: stat.size,
+            managed: true
+          });
+
+          if (ext.toLowerCase() === ".zip") {
+            try {
+              const zip = new AdmZip(targetPath);
+              const entries = zip.getEntries();
+              for (const entry of entries) {
+                if (!entry.isDirectory && (entry.entryName.endsWith(".txt") || entry.entryName.includes("聊天记录"))) {
+                  const text = zip.readAsText(entry);
+                  if (text && text.trim()) {
+                    extractedChatText = text.trim();
+                    break;
+                  }
+                }
+              }
+            } catch {
+              // ignore non-chat zip
+            }
+          }
+        } catch (err) {
+          console.warn("[FreeBuddy] Failed to import shared file:", err);
+        }
+      }
+    }
+
+    let shareText = typeof payload.text === "string" ? payload.text : "";
+    if (extractedChatText) {
+      if (shareText.trim()) {
+        shareText = `${shareText.trim()}\n\n${extractedChatText}`;
+      } else {
+        shareText = extractedChatText;
+      }
+    }
+
+    const shareEvent = {
+      id: payload.id || shareId || crypto.randomUUID(),
+      timestamp: payload.timestamp || Date.now(),
+      instruction: typeof payload.instruction === "string" ? payload.instruction : "",
+      text: shareText,
+      files: importedFiles
+    };
+
+    revealMainWindow();
+
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+      safeSendToWebContents(mainWindow.webContents, "freebuddy://external-share", shareEvent);
+    } else {
+      pendingExternalShare = shareEvent;
+    }
+  } catch (err) {
+    console.error("[FreeBuddy] Failed to handle external share:", err);
+  }
+}
 
 function handleSchemeUrl(raw: string) {
   try {
@@ -116,14 +239,27 @@ function handleSchemeUrl(raw: string) {
         action: "preview",
         params: {}
       });
+      return;
+    }
+    if (action === "share") {
+      const shareId = parsed.searchParams.get("id");
+      const payloadPath = parsed.searchParams.get("path");
+      handleExternalShare(shareId, payloadPath);
+      return;
     }
   } catch {
     // ignore malformed scheme urls
   }
 }
 
-if (app.isPackaged && !app.isDefaultProtocolClient(PROTOCOL)) {
+if (!app.isDefaultProtocolClient(PROTOCOL)) {
   app.setAsDefaultProtocolClient(PROTOCOL);
+}
+if (!isDevInstance && !app.isDefaultProtocolClient("freebuddy")) {
+  app.setAsDefaultProtocolClient("freebuddy");
+}
+if (isDevInstance && !app.isDefaultProtocolClient("freebuddy-dev")) {
+  app.setAsDefaultProtocolClient("freebuddy-dev");
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -136,10 +272,47 @@ app.on("open-url", (event, url) => {
 });
 
 app.on("second-instance", (_event, argv) => {
-  const url = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+  const url = argv.find((arg) => arg.startsWith("freebuddy://") || arg.startsWith("freebuddy-dev://"));
   if (url) handleSchemeUrl(url);
   revealMainWindow();
 });
+
+function ensureMacShareExtensionRegistered() {
+  if (process.platform !== "darwin") return;
+
+  try {
+    const pluginsDir = path.join(process.resourcesPath, "..", "PlugIns");
+    const appexPath = path.join(pluginsDir, "FreeBuddyShare.appex");
+    if (!fs.existsSync(appexPath)) return;
+
+    const bundleId = isDevInstance
+      ? "dev.freebuddy.app.dev.share"
+      : "dev.freebuddy.app.share";
+
+    execFile("pluginkit", ["-a", appexPath], (err) => {
+      if (err) {
+        logMain().warn("share", "pluginkit -a failed", { error: String(err) });
+        return;
+      }
+      execFile("pluginkit", ["-e", "use", "-i", bundleId], (enableErr) => {
+        if (enableErr) {
+          logMain().warn("share", "pluginkit -e use failed", { error: String(enableErr) });
+        } else {
+          logMain().info("share", "Share extension registered and enabled", { bundleId, appexPath });
+        }
+      });
+    });
+
+    const lsregister =
+      "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+    const appBundlePath = path.resolve(process.resourcesPath, "..", "..");
+    if (fs.existsSync(lsregister) && fs.existsSync(appBundlePath) && appBundlePath.endsWith(".app")) {
+      execFile(lsregister, ["-f", appBundlePath], () => {});
+    }
+  } catch (err) {
+    logMain().warn("share", "Failed to ensure share extension registration", { error: String(err) });
+  }
+}
 
 function resolveAppIconPath() {
   return app.isPackaged
@@ -1381,11 +1554,19 @@ function windowChromeOptions() {
 
 function revealMainWindow() {
   const win = mainWindow;
-  if (!win || win.isDestroyed()) return;
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
   if (win.isMinimized()) win.restore();
   if (!win.isVisible()) win.show();
   win.moveTop();
   win.focus();
+  app.focus({ steal: true });
+  try {
+    win.setAlwaysOnTop(true);
+    win.setAlwaysOnTop(false);
+  } catch {}
 }
 
 function quitApp() {
@@ -1518,6 +1699,13 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (pendingExternalShare && mainWindow && !mainWindow.isDestroyed()) {
+      safeSendToWebContents(mainWindow.webContents, "freebuddy://external-share", pendingExternalShare);
+      pendingExternalShare = null;
+    }
+  });
+
   if (isDev) {
     void mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL as string);
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -1645,6 +1833,7 @@ app.whenReady().then(async () => {
     arch: process.arch
   });
   await injectShellPath();
+  ensureMacShareExtensionRegistered();
   registerLocalFileProtocol();
   registerBrowserProtocol();
   startPreviewServer(() =>

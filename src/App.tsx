@@ -41,6 +41,8 @@ import { useNewTaskUiStore } from "./store/newTaskUiStore";
 import { useProjectStore } from "./store/projectStore";
 import { useWorkflowStore } from "./store/workflowStore";
 import { useTaskReceiptStore } from "./store/taskReceiptStore";
+import { useAgentBridgeStore } from "./store/agentBridgeStore";
+import { createChatAttachment } from "./utils/chatAttachments";
 import {
   notifyTaskFinished,
   playTaskFailure,
@@ -252,6 +254,52 @@ function App() {
   useEffect(() => {
     const off = window.freebuddy?.window?.onNewConversation?.(() => {
       startNewTask();
+    });
+    return () => {
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const off = window.freebuddy?.window?.onExternalShare?.((payload) => {
+      setSettingsOpen(false);
+      setWorkspaceView("chat");
+
+      const attachments = (payload.files || [])
+        .map((f) =>
+          createChatAttachment({
+            name: f.name,
+            path: f.path,
+            size: f.size,
+            managed: f.managed ?? true
+          })
+        )
+        .filter((att): att is NonNullable<typeof att> => Boolean(att));
+
+      let draft = "";
+      if (payload.instruction?.trim()) {
+        draft = payload.instruction.trim();
+        if (payload.text?.trim()) {
+          draft += `\n\n${payload.text.trim()}`;
+        }
+      } else if (payload.text?.trim()) {
+        draft = payload.text.trim();
+      }
+
+      void (async () => {
+        await useConversationStore.getState().setActive(undefined);
+        useNewTaskUiStore.getState().setRequestedTeamId(undefined);
+        useNewTaskUiStore.getState().setTaskMode("normal");
+        useNewTaskUiStore.getState().requestNewTask({
+          draft,
+          attachments
+        });
+        const summary =
+          attachments.length > 0
+            ? i18next.t("externalShare.importedWithFiles", { count: attachments.length })
+            : i18next.t("externalShare.imported");
+        useAgentBridgeStore.getState().notify(summary);
+      })();
     });
     return () => {
       off?.();

@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,15 +24,30 @@ function patchAsar(targetAsarPath) {
   fs.rmSync(tempExtract, { recursive: true, force: true });
 }
 
-function updatePlistValue(plistPath, key, value) {
-  let content = fs.readFileSync(plistPath, "utf-8");
-  const regex = new RegExp(`(<key>${key}</key>\\s*<string>)[^<]*(</string>)`);
-  if (regex.test(content)) {
-    content = content.replace(regex, `$1${value}$2`);
-  } else {
-    content = content.replace("</dict>", `  <key>${key}</key>\n  <string>${value}</string>\n</dict>`);
-  }
-  fs.writeFileSync(plistPath, content);
+function updateAppInfoPlist(appPlist, { appName, bundleId, isDev }) {
+  const pyCode = `
+import plistlib
+
+with open(${JSON.stringify(appPlist)}, 'rb') as f:
+    data = plistlib.load(f)
+
+if 'ElectronAsarIntegrity' in data and 'Resources/app.asar' in data['ElectronAsarIntegrity']:
+    data['ElectronAsarIntegrity']['Resources/app.asar'].pop('CFBundleURLTypes', None)
+
+data['CFBundleDisplayName'] = ${JSON.stringify(appName)}
+data['CFBundleName'] = ${JSON.stringify(appName)}
+data['CFBundleIdentifier'] = ${JSON.stringify(bundleId)}
+data['CFBundleURLTypes'] = [
+    {
+        'CFBundleURLName': ${JSON.stringify(isDev ? "FreeBuddy Dev Protocol" : "FreeBuddy Protocol")},
+        'CFBundleURLSchemes': ${isDev ? "['freebuddy-dev', 'freebuddy']" : "['freebuddy']"}
+    }
+]
+
+with open(${JSON.stringify(appPlist)}, 'wb') as f:
+    plistlib.dump(data, f)
+`;
+  execFileSync("python3", ["-c", pyCode]);
 }
 
 export function deployApp(isDev = false) {
@@ -61,29 +76,26 @@ export function deployApp(isDev = false) {
 
   // Update app Info.plist
   const appPlist = path.join(targetApp, "Contents", "Info.plist");
-  updatePlistValue(appPlist, "CFBundleDisplayName", appName);
-  updatePlistValue(appPlist, "CFBundleName", appName);
-  updatePlistValue(appPlist, "CFBundleIdentifier", bundleId);
+  updateAppInfoPlist(appPlist, { appName, bundleId, isDev });
 
   if (isDev) {
-    let plistContent = fs.readFileSync(appPlist, "utf-8");
-    if (!plistContent.includes("freebuddy-dev")) {
-      const urlTypesSnippet = `
-  <key>CFBundleURLTypes</key>
-  <array>
-    <dict>
-      <key>CFBundleURLName</key>
-      <string>FreeBuddy Dev Protocol</string>
-      <key>CFBundleURLSchemes</key>
-      <array>
-        <string>freebuddy-dev</string>
-        <string>freebuddy</string>
-      </array>
-    </dict>
-  </array>
-</dict>`;
-      plistContent = plistContent.replace("</dict>", urlTypesSnippet);
-      fs.writeFileSync(appPlist, plistContent);
+    const frameworksDir = path.join(targetApp, "Contents", "Frameworks");
+    if (fs.existsSync(frameworksDir)) {
+      const helpers = [
+        ["FreeBuddy Helper.app", "FreeBuddy Dev Helper.app"],
+        ["FreeBuddy Helper (GPU).app", "FreeBuddy Dev Helper (GPU).app"],
+        ["FreeBuddy Helper (Plugin).app", "FreeBuddy Dev Helper (Plugin).app"],
+        ["FreeBuddy Helper (Renderer).app", "FreeBuddy Dev Helper (Renderer).app"]
+      ];
+      for (const [src, dest] of helpers) {
+        const srcPath = path.join(frameworksDir, src);
+        const destPath = path.join(frameworksDir, dest);
+        if (fs.existsSync(srcPath) && !fs.existsSync(destPath)) {
+          try {
+            fs.symlinkSync(src, destPath);
+          } catch {}
+        }
+      }
     }
   }
 

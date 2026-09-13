@@ -5,6 +5,12 @@ artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 beforePack: scripts/prepare-tokscale-for-pack.mjs
 afterPack: scripts/after-pack-macos.mjs
 
+protocols:
+  - name: FreeBuddy URL Protocol
+    schemes:
+      - freebuddy
+      - freebuddy-dev
+
 directories:
   output: release
 

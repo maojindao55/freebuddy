@@ -412,18 +412,36 @@ class ShareViewController: NSViewController {
 
         let encodedPath = payloadPath.path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let isDev = Bundle.main.bundleIdentifier?.contains(".dev") == true
+        let targetBundleId = isDev ? "dev.freebuddy.app.dev" : "dev.freebuddy.app"
+        let fallbackBundleId = isDev ? "dev.freebuddy.app" : "dev.freebuddy.app.dev"
         let schemeString = isDev ? "freebuddy-dev://share?id=\(shareId)&path=\(encodedPath)" : "freebuddy://share?id=\(shareId)&path=\(encodedPath)"
-        logDebug("Dispatching scheme: \(schemeString)")
+        logDebug("Dispatching scheme: \(schemeString) targeting \(targetBundleId)")
 
         if let url = URL(string: schemeString) {
-            logDebug("Dispatching scheme: \(schemeString)")
-            var opened = NSWorkspace.shared.open(url)
-            logDebug("NSWorkspace.shared.open returned: \(opened)")
-            if !opened && isDev, let fallbackUrl = URL(string: "freebuddy://share?id=\(shareId)&path=\(encodedPath)") {
-                opened = NSWorkspace.shared.open(fallbackUrl)
-            }
-            if !opened, let context = self.extensionContext {
-                context.open(url, completionHandler: nil)
+            let targetAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: targetBundleId)
+                ?? (isDev ? NSWorkspace.shared.urlForApplication(withBundleIdentifier: fallbackBundleId) : nil)
+
+            if let appURL = targetAppURL {
+                logDebug("Found target app: \(appURL.path), opening with configuration...")
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: config) { app, error in
+                    if let error = error {
+                        self.logDebug("open with configuration error: \(error)")
+                    } else {
+                        self.logDebug("open with configuration success: \(app?.localizedName ?? "app")")
+                    }
+                }
+            } else {
+                logDebug("Target app URL not found by bundle ID, falling back to open(url)...")
+                var opened = NSWorkspace.shared.open(url)
+                logDebug("NSWorkspace.shared.open returned: \(opened)")
+                if !opened && isDev, let fallbackUrl = URL(string: "freebuddy://share?id=\(shareId)&path=\(encodedPath)") {
+                    opened = NSWorkspace.shared.open(fallbackUrl)
+                }
+                if !opened, let context = self.extensionContext {
+                    context.open(url, completionHandler: nil)
+                }
             }
         }
         self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)

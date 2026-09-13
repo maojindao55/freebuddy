@@ -252,14 +252,21 @@ function handleSchemeUrl(raw: string) {
   }
 }
 
-if (!app.isDefaultProtocolClient(PROTOCOL)) {
-  app.setAsDefaultProtocolClient(PROTOCOL);
-}
-if (!isDevInstance && !app.isDefaultProtocolClient("freebuddy")) {
-  app.setAsDefaultProtocolClient("freebuddy");
-}
-if (isDevInstance && !app.isDefaultProtocolClient("freebuddy-dev")) {
-  app.setAsDefaultProtocolClient("freebuddy-dev");
+if (app.isPackaged) {
+  if (!app.isDefaultProtocolClient(PROTOCOL)) {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+  if (!isDevInstance && !app.isDefaultProtocolClient("freebuddy")) {
+    app.setAsDefaultProtocolClient("freebuddy");
+  }
+  if (isDevInstance && !app.isDefaultProtocolClient("freebuddy-dev")) {
+    app.setAsDefaultProtocolClient("freebuddy-dev");
+  }
+} else {
+  const devArgs = process.argv.slice(1);
+  if (!app.isDefaultProtocolClient("freebuddy-dev", process.execPath, devArgs)) {
+    app.setAsDefaultProtocolClient("freebuddy-dev", process.execPath, devArgs);
+  }
 }
 
 if (!app.requestSingleInstanceLock()) {

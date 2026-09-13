@@ -2,6 +2,18 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.9.24] - 2026-09-13
+
+### 新功能
+
+- bundle and auto-register share extension for wechat integration
+- bridge community reviews and availability votes with HMAC client auth
+
+### 问题修复
+
+- fix dev scheme dispatch and helper resolution
+- remove hardcoded client secret and enforce CWE-798 regression guard
+
 ## [0.9.23] - 2026-09-12
 
 ### 新功能

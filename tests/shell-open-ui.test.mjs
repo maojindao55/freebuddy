@@ -44,3 +44,15 @@ test("NSIS uninstall removes Explorer context-menu keys", () => {
   assert.match(nsh, /Directory\\shell\\FreeBuddy/);
   assert.match(nsh, /Classes\\\*\\shell\\FreeBuddy/);
 });
+
+test("macOS pack registers Finder Open With and a Quick Action", () => {
+  const builder = read("electron-builder.yml");
+  assert.match(builder, /extendInfo:/);
+  assert.match(builder, /public\.folder/);
+  assert.match(builder, /LSHandlerRank:\s+Alternate/);
+  const afterPack = read("scripts/after-pack-macos.mjs");
+  assert.match(afterPack, /writeMacOpenWithService/);
+  assert.match(afterPack, /dev\.freebuddy\.app\.dev/);
+  const mainTs = read("electron/main.ts");
+  assert.match(mainTs, /app\.on\("open-file"/);
+});

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,7 +13,13 @@ const {
   windowsContextMenuLabel,
   windowsContextMenuCommand,
   windowsContextMenuKeys,
-  buildWindowsContextMenuReg
+  buildWindowsContextMenuReg,
+  macOpenWithServiceLabel,
+  macOpenWithServiceFileName,
+  macOpenWithServiceScript,
+  buildMacOpenWithServiceInfoPlist,
+  buildMacOpenWithServiceWorkflow,
+  writeMacOpenWithService
 } = await import("../dist-electron/cli/shellOpen.js");
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -136,5 +143,40 @@ test("shell-open file extensions stay aligned with attachment allowlist", () => 
   assert.ok(match, "ATTACHMENT_EXTENSIONS should exist");
   const listed = [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
   assert.deepEqual([...SHELL_OPEN_FILE_EXTENSIONS], listed);
+});
+
+test("macOS Finder service opens items through the app bundle id", () => {
+  const spec = { bundleId: "dev.freebuddy.app", productName: "FreeBuddy" };
+  assert.equal(macOpenWithServiceLabel("zh-CN", "FreeBuddy"), "使用 FreeBuddy 打开");
+  assert.equal(macOpenWithServiceLabel("en-US", "FreeBuddy"), "Open with FreeBuddy");
+  assert.equal(macOpenWithServiceFileName("FreeBuddy"), "Open with FreeBuddy.workflow");
+  assert.equal(macOpenWithServiceScript(spec.bundleId), `open -b 'dev.freebuddy.app' "$@"`);
+
+  const plist = buildMacOpenWithServiceInfoPlist(spec);
+  assert.match(plist, /Open with FreeBuddy/);
+  assert.match(plist, /public\.folder/);
+  assert.match(plist, /public\.item/);
+  assert.match(plist, /com\.apple\.finder/);
+  assert.match(plist, /runWorkflowAsService/);
+
+  const workflow = buildMacOpenWithServiceWorkflow(spec);
+  assert.match(workflow, /open -b 'dev\.freebuddy\.app'/);
+  assert.match(workflow, /com\.apple\.Automator\.quickAction/);
+  assert.match(workflow, /inputMethod<\/key>\s*<integer>1<\/integer>/);
+
+  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mac-open-"));
+  try {
+    const written = writeMacOpenWithService(appRoot, spec);
+    assert.equal(path.basename(written), "Open with FreeBuddy.workflow");
+    assert.ok(fs.existsSync(path.join(written, "Contents", "Info.plist")));
+    assert.ok(fs.existsSync(path.join(written, "Contents", "document.wflow")));
+    const zh = fs.readFileSync(
+      path.join(written, "Contents", "Resources", "zh_CN.lproj", "InfoPlist.strings"),
+      "utf8"
+    );
+    assert.match(zh, /使用 FreeBuddy 打开/);
+  } finally {
+    fs.rmSync(appRoot, { recursive: true, force: true });
+  }
 });
 

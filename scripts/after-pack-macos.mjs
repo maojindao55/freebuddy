@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildShareExtension } from "./build-macos-share-extension.mjs";
 import { resolveMacSigningIdentity } from "./resolve-codesign-identity.mjs";
+import { writeMacOpenWithService } from "../dist-electron/cli/shellOpen.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -19,14 +20,23 @@ export default async function afterPack(context) {
     context.packager.config?.appId?.includes(".dev") ||
     false;
 
+  const appName = `${context.packager.appInfo.productFilename}.app`;
+  const appPath = path.join(context.appOutDir, appName);
+  const productName = context.packager.appInfo.productName || "FreeBuddy";
+  const bundleId = isDev ? "dev.freebuddy.app.dev" : "dev.freebuddy.app";
+  try {
+    const servicePath = writeMacOpenWithService(appPath, { bundleId, productName });
+    console.log(`[afterPack] Bundled Finder Open with service into ${servicePath}`);
+  } catch (err) {
+    console.warn("[afterPack] Failed to bundle Finder Open with service:", err);
+  }
+
   const appexSource = buildShareExtension({ silent: false, isDev });
   if (!appexSource || !fs.existsSync(appexSource)) {
     console.warn("[afterPack] Share extension build skipped or output missing.");
     return;
   }
 
-  const appName = `${context.packager.appInfo.productFilename}.app`;
-  const appPath = path.join(context.appOutDir, appName);
   const pluginsDir = path.join(appPath, "Contents", "PlugIns");
 
   fs.mkdirSync(pluginsDir, { recursive: true });

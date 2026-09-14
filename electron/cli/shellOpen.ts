@@ -337,3 +337,215 @@ async function importRegFile(filePath: string): Promise<void> {
     windowsHide: true
   });
 }
+
+export interface MacOpenWithServiceSpec {
+  bundleId: string;
+  productName: string;
+}
+
+export function macOpenWithServiceLabel(
+  locale: string,
+  productName: string
+): string {
+  return windowsContextMenuLabel(locale, productName);
+}
+
+export function macOpenWithServiceFileName(productName: string): string {
+  return `Open with ${productName}.workflow`;
+}
+
+export function macOpenWithServiceScript(bundleId: string): string {
+  return `open -b '${bundleId.replace(/'/g, "")}' "$@"`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export function buildMacOpenWithServiceInfoPlist(
+  spec: MacOpenWithServiceSpec
+): string {
+  const label = macOpenWithServiceLabel("en", spec.productName);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSServices</key>
+  <array>
+    <dict>
+      <key>NSBackgroundColorName</key>
+      <string>background</string>
+      <key>NSIconName</key>
+      <string>NSShareTemplate</string>
+      <key>NSMenuItem</key>
+      <dict>
+        <key>default</key>
+        <string>${escapeXml(label)}</string>
+      </dict>
+      <key>NSMessage</key>
+      <string>runWorkflowAsService</string>
+      <key>NSRequiredContext</key>
+      <dict>
+        <key>NSApplicationIdentifier</key>
+        <string>com.apple.finder</string>
+      </dict>
+      <key>NSSendFileTypes</key>
+      <array>
+        <string>public.item</string>
+        <string>public.folder</string>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>
+`;
+}
+
+export function buildMacOpenWithServiceWorkflow(
+  spec: MacOpenWithServiceSpec
+): string {
+  const script = escapeXml(macOpenWithServiceScript(spec.bundleId));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>AMDocumentVersion</key>
+  <string>2</string>
+  <key>actions</key>
+  <array>
+    <dict>
+      <key>action</key>
+      <dict>
+        <key>AMAccepts</key>
+        <dict>
+          <key>Container</key>
+          <string>List</string>
+          <key>Optional</key>
+          <false/>
+          <key>Types</key>
+          <array>
+            <string>com.apple.cocoa.path</string>
+          </array>
+        </dict>
+        <key>AMActionVersion</key>
+        <string>2.0.3</string>
+        <key>AMApplication</key>
+        <array>
+          <string>Automator</string>
+        </array>
+        <key>AMParameterProperties</key>
+        <dict>
+          <key>COMMAND_STRING</key>
+          <dict/>
+          <key>CheckedForUserDefaultShell</key>
+          <dict/>
+          <key>inputMethod</key>
+          <dict/>
+          <key>shell</key>
+          <dict/>
+          <key>source</key>
+          <dict/>
+        </dict>
+        <key>AMProvides</key>
+        <dict>
+          <key>Container</key>
+          <string>List</string>
+          <key>Types</key>
+          <array>
+            <string>com.apple.cocoa.path</string>
+          </array>
+        </dict>
+        <key>ActionBundlePath</key>
+        <string>/System/Library/Automator/Run Shell Script.action</string>
+        <key>ActionName</key>
+        <string>Run Shell Script</string>
+        <key>ActionParameters</key>
+        <dict>
+          <key>COMMAND_STRING</key>
+          <string>${script}</string>
+          <key>CheckedForUserDefaultShell</key>
+          <true/>
+          <key>inputMethod</key>
+          <integer>1</integer>
+          <key>shell</key>
+          <string>/bin/zsh</string>
+          <key>source</key>
+          <string></string>
+        </dict>
+        <key>BundleIdentifier</key>
+        <string>com.apple.RunShellScript</string>
+        <key>CFBundleVersion</key>
+        <string>2.0.3</string>
+        <key>CanShowSelectedItemsWhenRun</key>
+        <false/>
+        <key>CanShowWhenRun</key>
+        <true/>
+        <key>Category</key>
+        <array>
+          <string>AMCategoryUtilities</string>
+        </array>
+        <key>Class Name</key>
+        <string>RunShellScriptAction</string>
+        <key>InputUUID</key>
+        <string>8f3c1a62-0b4e-4d5a-9c7f-2a1d6b8e4c90</string>
+        <key>Keywords</key>
+        <array>
+          <string>Shell</string>
+        </array>
+        <key>OutputUUID</key>
+        <string>b2d91e04-7c53-4aa1-8f16-5e0c9a47d2bb</string>
+        <key>UUID</key>
+        <string>d4a77c18-9e2f-4b80-a631-1c8f5d0e93aa</string>
+        <key>UnlocalizedApplications</key>
+        <array>
+          <string>Automator</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
+  <key>connectors</key>
+  <dict/>
+  <key>workflowTypeIdentifier</key>
+  <string>com.apple.Automator.quickAction</string>
+</dict>
+</plist>
+`;
+}
+
+export function writeMacOpenWithService(
+  appBundlePath: string,
+  spec: MacOpenWithServiceSpec
+): string {
+  const workflowRoot = path.join(
+    appBundlePath,
+    "Contents",
+    "Library",
+    "Services",
+    macOpenWithServiceFileName(spec.productName)
+  );
+  const contentsDir = path.join(workflowRoot, "Contents");
+  const resourcesZh = path.join(contentsDir, "Resources", "zh_CN.lproj");
+  fs.mkdirSync(resourcesZh, { recursive: true });
+  fs.writeFileSync(
+    path.join(contentsDir, "Info.plist"),
+    buildMacOpenWithServiceInfoPlist(spec),
+    "utf8"
+  );
+  fs.writeFileSync(
+    path.join(contentsDir, "document.wflow"),
+    buildMacOpenWithServiceWorkflow(spec),
+    "utf8"
+  );
+  const englishLabel = macOpenWithServiceLabel("en", spec.productName);
+  const chineseLabel = macOpenWithServiceLabel("zh-CN", spec.productName);
+  fs.writeFileSync(
+    path.join(resourcesZh, "InfoPlist.strings"),
+    `"${englishLabel.replace(/"/g, '\\"')}" = "${chineseLabel.replace(/"/g, '\\"')}";\n`,
+    "utf8"
+  );
+  return workflowRoot;
+}

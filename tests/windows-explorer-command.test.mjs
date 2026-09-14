@@ -61,10 +61,11 @@ test("MSIX version padding and AppxManifest wire COM + Explorer menus", () => {
   });
   assert.match(xml, /uap10:AllowExternalContent>true/);
   assert.match(xml, /windows\.fileExplorerContextMenus/);
-  assert.match(xml, /Type="Directory"/);
-  assert.match(xml, /Type="Directory\\Background"/);
-  assert.match(xml, /Type="Drive"/);
-  assert.match(xml, /Type="\*"/);
+  assert.match(xml, /desktop5:ItemType Type="Directory"/);
+  assert.match(xml, /desktop5:ItemType Type="Directory\\Background"/);
+  assert.match(xml, /desktop5:ItemType Type="\*"/);
+  assert.match(xml, /desktop5:Verb /);
+  assert.doesNotMatch(xml, /desktop4:ItemType/);
   assert.match(xml, /windows\.comServer/);
   assert.match(xml, /FreeBuddyExplorerCommand\.dll/);
   assert.match(xml, /5C8A1E2D-9B74-4A16-8F3C-6E2D91B0487A/i);
@@ -113,6 +114,7 @@ test("afterPack and NSIS uninstall ship the Win11 Explorer command", () => {
 
   const buildDll = read("scripts/build-windows-explorer-command.mjs");
   assert.match(buildDll, /\/MT/);
+  assert.match(buildDll, /build\.bat/);
   assert.match(buildDll, /static-libgcc/);
   assert.match(buildDll, /fno-exceptions/);
   assert.match(buildDll, /--kill-at/);

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -87,11 +88,24 @@ export function compileWindowsExplorerCommandDll(outDir, options = {}) {
   const msvc = findMsvcCl();
   const gxx = findMingwGxx();
   if (msvc) {
+    const batDir = fs.mkdtempSync(path.join(os.tmpdir(), "fb-explorer-cl-"));
     try {
-      const cmd = `call "${msvc.vcvars}" && cl /nologo /O2 /LD /EHsc /MT /DUNICODE /D_UNICODE /W3 /Fe:"${outDll}" "${cpp}" /DEF:"${def}" ole32.lib oleaut32.lib shell32.lib shlwapi.lib uuid.lib`;
-      execFileSync("cmd.exe", ["/d", "/s", "/c", cmd], {
+      const batPath = path.join(batDir, "build.bat");
+      fs.writeFileSync(
+        batPath,
+        [
+          "@echo off",
+          `call "${msvc.vcvars}"`,
+          `if errorlevel 1 exit /b %ERRORLEVEL%`,
+          `cl /nologo /O2 /LD /EHsc /MT /DUNICODE /D_UNICODE /W3 /Fe:"${outDll}" "${cpp}" /DEF:"${def}" ole32.lib oleaut32.lib shell32.lib shlwapi.lib uuid.lib`,
+          "exit /b %ERRORLEVEL%"
+        ].join("\r\n"),
+        "utf8"
+      );
+      execFileSync(batPath, {
         stdio: options.silent ? "pipe" : "inherit",
-        windowsHide: true
+        windowsHide: true,
+        shell: true
       });
       cleanupMsvcByproducts(outDir, outDll);
       return outDll;
@@ -100,6 +114,8 @@ export function compileWindowsExplorerCommandDll(outDir, options = {}) {
       if (!options.silent) {
         console.warn("[explorer-command] MSVC build failed, falling back to MinGW:", err.message || err);
       }
+    } finally {
+      fs.rmSync(batDir, { recursive: true, force: true });
     }
   }
   if (gxx) {

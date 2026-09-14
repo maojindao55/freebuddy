@@ -22,7 +22,60 @@ type ToolCallItem = Extract<CliStreamItem, { kind: "tool-call" }>;
  */
 export const MAX_MERGED_ASSISTANT_CHARS = 200_000;
 export const MAX_MERGED_OUTPUT_CHARS = 12_000;
+export const MAX_PERSISTED_STREAM_JSON_CHARS = 400_000;
+export const INITIAL_VISIBLE_MESSAGES = 40;
+export const VISIBLE_MESSAGE_STEP = 40;
 const MERGED_STREAM_TRUNCATION_MARKER = "\n… [stream truncated] …\n";
+
+export function visibleConversationSlice<T>(
+  messages: readonly T[],
+  visibleCount: number
+): { hiddenCount: number; items: T[] } {
+  if (visibleCount <= 0 || messages.length <= visibleCount) {
+    return { hiddenCount: 0, items: [...messages] };
+  }
+  const hiddenCount = messages.length - visibleCount;
+  return { hiddenCount, items: messages.slice(hiddenCount) };
+}
+
+function stripBulkyToolCallFields(
+  item: Extract<CliStreamItem, { kind: "tool-call" }>
+): Extract<CliStreamItem, { kind: "tool-call" }> {
+  const next: Extract<CliStreamItem, { kind: "tool-call" }> = { ...item };
+  delete next.input;
+  if (next.output && next.output.length > MAX_MERGED_OUTPUT_CHARS) {
+    next.output = boundMergedStreamText(next.output, MAX_MERGED_OUTPUT_CHARS);
+  }
+  return next;
+}
+
+export function capPersistedStreamItems(
+  items: CliStreamItem[],
+  maxChars = MAX_PERSISTED_STREAM_JSON_CHARS
+): CliStreamItem[] {
+  if (JSON.stringify(items).length <= maxChars) return items;
+  const stripped = items.map((item) =>
+    item.kind === "tool-call" ? stripBulkyToolCallFields(item) : item
+  );
+  if (JSON.stringify(stripped).length <= maxChars) return stripped;
+
+  const keepKind = (kind: CliStreamItem["kind"]) =>
+    kind === "text" ||
+    kind === "thinking" ||
+    kind === "error" ||
+    kind === "done" ||
+    kind === "usage" ||
+    kind === "session";
+  const essential = stripped.filter((item) => keepKind(item.kind));
+  let keptExtras = stripped.filter((item) => !keepKind(item.kind));
+  while (
+    keptExtras.length > 0 &&
+    JSON.stringify([...essential, ...keptExtras]).length > maxChars
+  ) {
+    keptExtras = keptExtras.slice(1);
+  }
+  return [...essential, ...keptExtras];
+}
 
 function boundMergedStreamText(value: string, max: number): string {
   if (value.length <= max) return value;

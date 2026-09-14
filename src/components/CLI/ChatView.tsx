@@ -96,7 +96,10 @@ import {
 } from "@/store/sessionMetaUtils";
 import {
   buildConversationTitle,
-  upsertConversationMessage
+  upsertConversationMessage,
+  visibleConversationSlice,
+  INITIAL_VISIBLE_MESSAGES,
+  VISIBLE_MESSAGE_STEP
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
 import {
@@ -932,6 +935,7 @@ export function ChatView({
   const executorRuntimes = useCliExecutorStore((s) => s.runtimes);
 
   const [draft, setDraft] = useState("");
+  const [historyReveal, setHistoryReveal] = useState(INITIAL_VISIBLE_MESSAGES);
   const [newTaskDraft, setNewTaskDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [newTaskPendingAttachments, setNewTaskPendingAttachments] = useState<ChatAttachment[]>([]);
@@ -1210,6 +1214,7 @@ export function ChatView({
   }, [workspaceDetailsOpen, closeWorkspaceDetails]);
   useEffect(() => {
     closeWorkspaceDetails();
+    setHistoryReveal(INITIAL_VISIBLE_MESSAGES);
   }, [conv?.id, closeWorkspaceDetails]);
   const newTaskMentionRoots = useMemo(() => {
     if (!newTaskProjectId) return undefined;
@@ -1354,6 +1359,14 @@ export function ChatView({
     if (!replayFrame) return [];
     return messages.slice(0, replayFrame.messageIndex + 1);
   }, [replaying, replayFrame, messages, previewMessages, live]);
+  const historyWindow = useMemo(() => {
+    if (replaying) {
+      return { hiddenCount: 0, items: displayMessages };
+    }
+    return visibleConversationSlice(displayMessages, historyReveal);
+  }, [replaying, displayMessages, historyReveal]);
+  const renderedMessages = historyWindow.items;
+  const hiddenHistoryCount = historyWindow.hiddenCount;
   const shareReferencesByMessageId = useMemo(
     () => assignShareReferencesToMessages(displayMessages, contextReferences),
     [displayMessages, contextReferences]
@@ -2692,7 +2705,22 @@ export function ChatView({
             }}
           />
         )}
-        {displayMessages.map((m, idx) => {
+        {hiddenHistoryCount > 0 && (
+          <button
+            type="button"
+            className="chat-load-earlier"
+            onClick={() =>
+              setHistoryReveal((count) =>
+                count + Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
+              )
+            }
+          >
+            {t("chat.loadEarlier", {
+              count: Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
+            })}
+          </button>
+        )}
+        {renderedMessages.map((m, idx) => {
           const partial =
             replayPartial && replayPartial.messageId === m.id
               ? replayPartial
@@ -2701,7 +2729,7 @@ export function ChatView({
             (m.agentId ? membersById.get(m.agentId) : undefined) ??
             (m.agentName ? membersByName.get(m.agentName) : undefined);
           const shareReferences = shareReferencesByMessageId.get(m.id);
-          const prevMessage = idx > 0 ? displayMessages[idx - 1] : undefined;
+          const prevMessage = idx > 0 ? renderedMessages[idx - 1] : undefined;
           const showHandoff =
             !!prevMessage &&
             prevMessage.role === "assistant" &&

@@ -802,6 +802,7 @@
     "unreadConversationsAria": "未读对话",
     "commonTasksAria": "常用任务",
     "titlebarMore": "更多操作",
+    "loadEarlier": "加载更早的 {{count}} 条消息",
     "replay": {
       "title": "对话回放",
       "entry": "回放",
@@ -2054,5 +2055,10 @@
   "externalShare": {
     "imported": "已导入来自外部分享的内容",
     "importedWithFiles": "已导入来自外部分享的 {{count}} 个文件与文本内容"
+  },
+  "shellOpen": {
+    "openedFolder": "已将 {{name}} 设为工作区",
+    "openedFiles": "已附加 {{count}} 个文件",
+    "openedFolderWithFiles": "已打开 {{name}} 并附加 {{count}} 个文件"
   }
 }

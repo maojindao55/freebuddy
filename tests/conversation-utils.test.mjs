@@ -1060,3 +1060,38 @@ test("buildOrphanFollowupContext returns undefined when there is no prior histor
     undefined
   );
 });
+
+test("visibleConversationSlice keeps the newest messages", async () => {
+  const { visibleConversationSlice } = await loadConversationUtils();
+  const messages = Array.from({ length: 5 }, (_, i) => ({ id: String(i) }));
+  assert.deepEqual(visibleConversationSlice(messages, 5), {
+    hiddenCount: 0,
+    items: messages
+  });
+  assert.deepEqual(visibleConversationSlice(messages, 2), {
+    hiddenCount: 3,
+    items: [{ id: "3" }, { id: "4" }]
+  });
+});
+
+test("capPersistedStreamItems drops bulky tool inputs before the JSON cap", async () => {
+  const { capPersistedStreamItems } = await loadConversationUtils();
+  const bulky = {
+    kind: "tool-call",
+    id: "tool-1",
+    tool: "Delegate",
+    input: { task: "x".repeat(5000) },
+    toolOutputs: [{ kind: "text", role: "assistant", content: "ok" }]
+  };
+  const capped = capPersistedStreamItems(
+    [
+      { kind: "text", role: "assistant", content: "done" },
+      bulky
+    ],
+    800
+  );
+  assert.equal(JSON.stringify(capped).includes("xxxxx"), false);
+  assert.equal(capped[0].kind, "text");
+  assert.equal(capped[1].kind, "tool-call");
+  assert.equal(capped[1].id, "tool-1");
+});

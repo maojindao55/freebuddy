@@ -44,7 +44,7 @@ import {
   getConfiguredBindMode,
   getConfiguredPort
 } from "./cli/remoteControl.js";
-import { cleanupOrphanManagedAttachments } from "./cli/attachments.js";
+import { cleanupOrphanManagedAttachments, prepareAttachmentFiles } from "./cli/attachments.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { seedBuiltinDelegationTeams } from "./cli/delegationTeams.js";
 import { seedBuiltinSkills } from "./cli/skills.js";
@@ -54,6 +54,11 @@ import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
 import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
+import {
+  applyWindowsContextMenu,
+  classifyShellOpenPaths,
+  collectShellOpenPaths
+} from "./cli/shellOpen.js";
 import { initializeAgentUsageReconciler } from "./cli/usageReconciler.js";
 import { initDebugLog, logMain } from "./debugLog.js";
 import {
@@ -125,6 +130,87 @@ let pendingExternalShare: {
   text?: string;
   files?: Array<{ name: string; path: string; size?: number; managed?: boolean }>;
 } | null = null;
+
+const MAX_SHELL_OPEN_FILES = 10;
+
+type ShellOpenEvent = {
+  cwd?: string;
+  files: Array<{
+    name: string;
+    path: string;
+    size?: number;
+    mimeType?: string;
+    managed?: boolean;
+  }>;
+};
+
+let pendingShellOpen: ShellOpenEvent | null = null;
+const queuedShellOpenPaths: string[] = [];
+let shellOpenListenerReady = false;
+let shellOpenFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function emitShellOpen(event: ShellOpenEvent) {
+  if (!event.cwd && event.files.length === 0) return;
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isLoading()
+  ) {
+    safeSendToWebContents(mainWindow.webContents, "freebuddy://shell-open", event);
+    revealMainWindow();
+    return;
+  }
+  pendingShellOpen = event;
+}
+
+function handleShellOpenPaths(rawPaths: string[]) {
+  if (rawPaths.length === 0) return;
+  const target = classifyShellOpenPaths(rawPaths);
+  const prepared = prepareAttachmentFiles(
+    target.files.slice(0, MAX_SHELL_OPEN_FILES).map((filePath) => ({
+      kind: "path" as const,
+      path: filePath
+    }))
+  );
+  emitShellOpen({
+    ...(target.cwd ? { cwd: target.cwd } : {}),
+    files: prepared.candidates.map((file) => ({
+      name: file.name,
+      path: file.path,
+      size: file.size,
+      mimeType: file.mimeType,
+      ...(file.managed ? { managed: true } : {})
+    }))
+  });
+}
+
+function enqueueShellOpenPaths(rawPaths: string[]) {
+  if (rawPaths.length === 0) return;
+  queuedShellOpenPaths.push(...rawPaths);
+  scheduleShellOpenFlush();
+}
+
+function scheduleShellOpenFlush() {
+  if (!shellOpenListenerReady) return;
+  if (shellOpenFlushTimer) clearTimeout(shellOpenFlushTimer);
+  shellOpenFlushTimer = setTimeout(() => {
+    shellOpenFlushTimer = null;
+    flushQueuedShellOpen();
+  }, 75);
+}
+
+function flushQueuedShellOpen() {
+  if (queuedShellOpenPaths.length === 0) return;
+  const paths = queuedShellOpenPaths.splice(0, queuedShellOpenPaths.length);
+  handleShellOpenPaths(paths);
+}
+
+function collectLaunchShellOpenPaths(argv: readonly string[]): string[] {
+  return collectShellOpenPaths(argv, {
+    execPath: process.execPath,
+    appPath: app.isPackaged ? undefined : app.getAppPath()
+  });
+}
 
 function handleExternalShare(shareId: string | null, payloadPath: string | null) {
   try {
@@ -278,9 +364,15 @@ app.on("open-url", (event, url) => {
   handleSchemeUrl(url);
 });
 
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  enqueueShellOpenPaths([filePath]);
+});
+
 app.on("second-instance", (_event, argv) => {
   const url = argv.find((arg) => arg.startsWith("freebuddy://") || arg.startsWith("freebuddy-dev://"));
   if (url) handleSchemeUrl(url);
+  enqueueShellOpenPaths(collectLaunchShellOpenPaths(argv));
   revealMainWindow();
 });
 
@@ -1711,6 +1803,10 @@ function createWindow() {
       safeSendToWebContents(mainWindow.webContents, "freebuddy://external-share", pendingExternalShare);
       pendingExternalShare = null;
     }
+    if (pendingShellOpen && mainWindow && !mainWindow.isDestroyed()) {
+      safeSendToWebContents(mainWindow.webContents, "freebuddy://shell-open", pendingShellOpen);
+      pendingShellOpen = null;
+    }
   });
 
   if (isDev) {
@@ -1850,6 +1946,21 @@ app.whenReady().then(async () => {
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
   getDb();
+  enqueueShellOpenPaths(collectLaunchShellOpenPaths(process.argv));
+  shellOpenListenerReady = true;
+  scheduleShellOpenFlush();
+  void applyWindowsContextMenu({
+    exePath: process.execPath,
+    appPath: app.isPackaged ? undefined : app.getAppPath(),
+    packaged: app.isPackaged,
+    locale: app.getLocale(),
+    productName: app.getName(),
+    isDevInstance
+  }).catch((err) => {
+    logMain().warn("shell-open", "failed to register Explorer context menu", {
+      error: String(err)
+    });
+  });
   logAllCliRuntimes();
   const existingOwner = getOwnerUser();
   if (existingOwner) {

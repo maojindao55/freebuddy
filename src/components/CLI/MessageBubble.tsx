@@ -511,6 +511,7 @@ function renderMessageBlock(block: MessageBlock, key: string | number) {
 
 function StreamProcessGroup({ blocks }: { blocks: MessageBlock[] }) {
   const { t } = useTranslation();
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const hasRunning = blocks.some(blockIsRunning);
   const activityCounts = countProcessActivity(blocks);
   const outcomeCounts = countProcessOutcomes(blocks);
@@ -526,6 +527,9 @@ function StreamProcessGroup({ blocks }: { blocks: MessageBlock[] }) {
     <details
       className={`stream-process${hasRunning ? " running" : ""}`}
       aria-label={t("stream.processDetails", { count: blocks.length })}
+      onToggle={(event) => {
+        setDetailsOpen(event.currentTarget.open);
+      }}
     >
       <summary>
         <Icon
@@ -550,11 +554,13 @@ function StreamProcessGroup({ blocks }: { blocks: MessageBlock[] }) {
           )}
         </span>
       </summary>
-      <div className="stream-process-detail-list">
-        {blocks.map((block, index) =>
-          renderMessageBlock(block, `process-${index}`)
-        )}
-      </div>
+      {detailsOpen ? (
+        <div className="stream-process-detail-list">
+          {blocks.map((block, index) =>
+            renderMessageBlock(block, `process-${index}`)
+          )}
+        </div>
+      ) : null}
     </details>
   );
 }

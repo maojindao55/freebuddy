@@ -8575,6 +8575,23 @@ button.new-task-context-control {
   scroll-padding-bottom: var(--chat-composer-reserve);
 }
 
+.chat-load-earlier {
+  align-self: center;
+  margin: 4px 0 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--fb-border, #e6e8ec);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chat-load-earlier:hover {
+  color: var(--fb-text);
+  background: var(--fb-fill-muted, rgba(0, 0, 0, 0.04));
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

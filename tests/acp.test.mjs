@@ -53,6 +53,8 @@ import {
   shouldRetryEmptyResumedDshTurn,
   shouldSkipUserMessageChunk,
   shouldDropReplayPhaseAgentChunk,
+  compactAcpStdoutLine,
+  shouldWriteAcpStdoutLog,
   updateActiveAcpToolCalls
 } from "../dist-electron/cli/acp.js";
 
@@ -1950,6 +1952,22 @@ test("acpUpdateToItems maps image and resource_link message chunks", () => {
   );
 });
 
+test("acpUpdateToItems omits streaming tool_call_update rawInput", () => {
+  const task = "x".repeat(4000);
+  const items = acpUpdateToItems({
+    sessionUpdate: "tool_call_update",
+    toolCallId: "call_stream",
+    title: "Delegate",
+    rawInput: { params: { task } },
+    content: [{ type: "content", content: { type: "text", text: "ok" } }]
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "tool-call");
+  assert.equal(items[0].id, "call_stream");
+  assert.equal("input" in items[0], false);
+  assert.equal(JSON.stringify(items).includes(task), false);
+});
+
 test("acpUpdateToItems maps tool_call_update content blocks", () => {
   assert.deepEqual(
     acpUpdateToItems({
@@ -2400,6 +2418,98 @@ test("acpSessionSetupToItems maps Kimi legacy modes and models", () => {
     ["mode", "model"]
   );
   assert.equal(items[1].options[1].currentValue, "kimi-k2");
+});
+
+test("compactAcpStdoutLine strips streaming tool_call_update rawInput", () => {
+  const task = "review this whole module ".repeat(80);
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "sess-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call_stream",
+        rawInput: { params: { task } },
+        content: [{ type: "content", content: { type: "text", text: "H" } }]
+      }
+    }
+  });
+  const compacted = compactAcpStdoutLine(line);
+  assert.equal(compacted.includes(task), false);
+  assert.equal(compacted.includes("rawInput"), false);
+  const parsed = JSON.parse(compacted);
+  assert.equal(parsed.params.update.toolCallId, "call_stream");
+  assert.equal(parsed.params.update.content[0].content.text, "H");
+});
+
+test("compactAcpStdoutLine keeps initial tool_call rawInput", () => {
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-1",
+        rawInput: { command: "npm test" }
+      }
+    }
+  });
+  assert.equal(compactAcpStdoutLine(line), line);
+});
+
+test("shouldWriteAcpStdoutLog skips replayed session updates", () => {
+  const replayState = {
+    promptStarted: true,
+    replaySuppressionEnabled: true,
+    replayMessageIds: new Set(["tool-old-1"])
+  };
+  assert.equal(
+    shouldWriteAcpStdoutLog(
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          update: { sessionUpdate: "tool_call", toolCallId: "tool-old-1" }
+        }
+      },
+      replayState
+    ),
+    false
+  );
+  assert.equal(
+    shouldWriteAcpStdoutLog(
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          update: { sessionUpdate: "tool_call", toolCallId: "tool-new-1" }
+        }
+      },
+      replayState
+    ),
+    true
+  );
+  assert.equal(
+    shouldWriteAcpStdoutLog(
+      { jsonrpc: "2.0", id: 1, result: { sessionId: "sess" } },
+      replayState
+    ),
+    true
+  );
+});
+
+test("ACP runtime logs compacted stdout and skips replayed session updates", () => {
+  assert.match(acpRuntimeSource, /shouldWriteAcpStdoutLog/);
+  assert.match(acpRuntimeSource, /compactAcpStdoutLine/);
+  assert.match(
+    acpRuntimeSource,
+    /appendLog\(\s*logStream,\s*"stdout",\s*compactAcpStdoutLine\(line\)/
+  );
+  assert.doesNotMatch(
+    acpRuntimeSource,
+    /const handleAcpLine = \(line: string\) => \{\s*appendLog\(logStream, "stdout", line\);/
+  );
 });
 
 test("acpSessionListToItems maps session/list titles", () => {

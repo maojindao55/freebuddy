@@ -27,6 +27,8 @@ import {
   selectAcpAuthMethod,
   shouldDropReplayPhaseAgentChunk,
   shouldEmitAcpUpdate,
+  shouldWriteAcpStdoutLog,
+  compactAcpStdoutLine,
   shouldSkipUserMessageChunk,
   shouldDiscardAcpToolSession,
   shouldRetryEmptyResumedDshTurn,
@@ -507,11 +509,20 @@ export async function runAcpAgent({
   updateRunningProcess();
 
   const handleAcpLine = (line: string) => {
-    appendLog(logStream, "stdout", line);
     const msg = parseAcpLine(line);
+    const logState = {
+      promptStarted,
+      replaySuppressionEnabled: sessionWasResumed,
+      replayMessageIds,
+      replayContentSignatures
+    };
     if (!msg) {
+      appendLog(logStream, "stdout", line);
       emit({ type: "stderr", content: line });
       return;
+    }
+    if (shouldWriteAcpStdoutLog(msg, logState)) {
+      appendLog(logStream, "stdout", compactAcpStdoutLine(line));
     }
 
     if (msg.id != null && (msg.result !== undefined || msg.error)) {

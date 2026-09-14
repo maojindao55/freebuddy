@@ -75,6 +75,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
+  include: desktop/windows/installer.nsh
 
 linux:
   icon: assets/app-icon.png

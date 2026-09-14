@@ -17,7 +17,7 @@ test("high-frequency ACP events are batched below animation-frame frequency", ()
 test("background streams keep one progressive snapshot instead of duplicating message JSON", () => {
   assert.match(handlers, /Keep progressive output only in `live`/);
   assert.match(chatView, /const liveContent = JSON\.stringify\(live\.items\)/);
-  assert.match(handlers, /const finalContent = JSON\.stringify\(live\.items\)/);
+  assert.match(handlers, /capPersistedStreamItems\(live\.items\)/);
 });
 
 test("main renderer crash records dumps and reloads with loop protection", () => {

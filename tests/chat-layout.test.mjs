@@ -57,6 +57,14 @@ test("titlebar truncates long conversation titles to one line", () => {
   assert.match(appSource, /className="breadcrumb"[\s\S]*title=\{/m);
 });
 
+test("chat history windows to the newest messages with an earlier-load control", () => {
+  assert.match(chatViewSource, /INITIAL_VISIBLE_MESSAGES/);
+  assert.match(chatViewSource, /visibleConversationSlice/);
+  assert.match(chatViewSource, /chat\.loadEarlier/);
+  assert.match(chatViewSource, /setHistoryReveal/);
+  assert.match(stylesSource, /\.chat-load-earlier\s*\{/);
+});
+
 test("sending a message restores auto-follow to the latest output", () => {
   assert.match(
     chatViewSource,

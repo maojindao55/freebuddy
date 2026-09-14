@@ -384,6 +384,34 @@ const window = {
     ipcRenderer.on("freebuddy://external-share", handler);
     return () => ipcRenderer.off("freebuddy://external-share", handler);
   },
+  onShellOpen(
+    cb: (payload: {
+      cwd?: string;
+      files?: Array<{
+        name: string;
+        path: string;
+        size?: number;
+        mimeType?: string;
+        managed?: boolean;
+      }>;
+    }) => void
+  ): () => void {
+    const handler = (
+      _e: IpcRendererEvent,
+      payload: {
+        cwd?: string;
+        files?: Array<{
+          name: string;
+          path: string;
+          size?: number;
+          mimeType?: string;
+          managed?: boolean;
+        }>;
+      }
+    ) => cb(payload);
+    ipcRenderer.on("freebuddy://shell-open", handler);
+    return () => ipcRenderer.off("freebuddy://shell-open", handler);
+  },
   onOpenTaskReceipt(cb: () => void): () => void {
     const handler = () => cb();
     ipcRenderer.on("window:open-task-receipt", handler);

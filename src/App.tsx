@@ -307,6 +307,51 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const off = window.freebuddy?.window?.onShellOpen?.((payload) => {
+      setSettingsOpen(false);
+      setWorkspaceView("chat");
+
+      const attachments = (payload.files || [])
+        .map((f) =>
+          createChatAttachment({
+            name: f.name,
+            path: f.path,
+            size: f.size,
+            mimeType: f.mimeType,
+            managed: f.managed ?? false
+          })
+        )
+        .filter((att): att is NonNullable<typeof att> => Boolean(att));
+
+      void (async () => {
+        await useConversationStore.getState().setActive(undefined);
+        useNewTaskUiStore.getState().setRequestedTeamId(undefined);
+        useNewTaskUiStore.getState().setTaskMode("normal");
+        useNewTaskUiStore.getState().requestNewTask({
+          cwd: payload.cwd,
+          attachments
+        });
+        const folderName = payload.cwd
+          ? payload.cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || payload.cwd
+          : "";
+        const summary =
+          attachments.length > 0 && folderName
+            ? i18next.t("shellOpen.openedFolderWithFiles", {
+                name: folderName,
+                count: attachments.length
+              })
+            : attachments.length > 0
+              ? i18next.t("shellOpen.openedFiles", { count: attachments.length })
+              : i18next.t("shellOpen.openedFolder", { name: folderName });
+        useAgentBridgeStore.getState().notify(summary);
+      })();
+    });
+    return () => {
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
     const off = window.freebuddy?.window?.onOpenTaskReceipt?.(() => {
       setSettingsOpen(false);
       useTaskReceiptStore.getState().openReport();

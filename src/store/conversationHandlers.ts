@@ -17,7 +17,7 @@ import type { ConversationState } from "./conversationStore";
 import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
 import { useAuthenticationStore } from "./authenticationStore";
-import { appendItems, shouldApplyAgentSessionTitle } from "./conversationUtils";
+import { appendItems, capPersistedStreamItems, shouldApplyAgentSessionTitle } from "./conversationUtils";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 import { useImagePreviewStore } from "./imagePreviewStore";
 import { useTerminalStore } from "./terminalStore";
@@ -420,7 +420,7 @@ async function finalizeRun(
       : live.status === "done" && live.exitCode === 0
         ? "done"
         : "failed";
-  const finalContent = JSON.stringify(live.items);
+  const finalContent = JSON.stringify(capPersistedStreamItems(live.items));
 
   const ctx = runCtxMap.get(live.taskSessionId);
   ctx?.unsubscribe();

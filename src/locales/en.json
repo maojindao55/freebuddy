@@ -803,6 +803,7 @@
     "unreadConversationsAria": "Unread conversations",
     "commonTasksAria": "Common tasks",
     "titlebarMore": "More actions",
+    "loadEarlier": "Load {{count}} earlier messages",
     "replay": {
       "title": "Conversation replay",
       "entry": "Replay",
@@ -2069,5 +2070,10 @@
   "externalShare": {
     "imported": "Imported content from external share",
     "importedWithFiles": "Imported {{count}} files and text from external share"
+  },
+  "shellOpen": {
+    "openedFolder": "Opened {{name}} as a workspace",
+    "openedFiles": "Attached {{count}} files",
+    "openedFolderWithFiles": "Opened {{name}} and attached {{count}} files"
   }
 }

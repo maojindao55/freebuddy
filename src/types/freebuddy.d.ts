@@ -322,6 +322,17 @@ declare global {
     files?: ExternalShareFile[];
   }
 
+  interface ShellOpenPayload {
+    cwd?: string;
+    files?: Array<{
+      name: string;
+      path: string;
+      size?: number;
+      mimeType?: string;
+      managed?: boolean;
+    }>;
+  }
+
   interface FreebuddyWindow {
     onChromeVisible(cb: (visible: boolean) => void): () => void;
     onBridge(
@@ -332,6 +343,7 @@ declare global {
     onOpenConversation(cb: (conversationId: string) => void): () => void;
     onNewConversation(cb: () => void): () => void;
     onExternalShare(cb: (payload: ExternalSharePayload) => void): () => void;
+    onShellOpen(cb: (payload: ShellOpenPayload) => void): () => void;
     onOpenTaskReceipt(cb: () => void): () => void;
     onOpenView(
       cb: (payload: {

@@ -850,9 +850,13 @@ function buildToolCallItem(
     tool: String(update.title ?? update.kind ?? "tool")
   };
 
-  if (!isUpdate || update.rawInput !== undefined) {
+  const streamingContent =
+    Array.isArray(update.content) && update.content.length > 0;
+  if (!isUpdate) {
     if (update.rawInput !== undefined) item.input = update.rawInput;
-    else if (!isUpdate && update.content !== undefined) item.input = update.content;
+    else if (update.content !== undefined) item.input = update.content;
+  } else if (update.rawInput !== undefined && !streamingContent) {
+    item.input = update.rawInput;
   }
 
   const status = normalizeToolStatus(update.status);
@@ -1579,6 +1583,43 @@ export function shouldDropReplayPhaseAgentChunk(
     return false;
   }
   return typeof update?.messageId === "string" && update.messageId.length > 0;
+}
+
+export function compactAcpStdoutLine(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) return line;
+  let msg: AcpMessage;
+  try {
+    msg = JSON.parse(trimmed) as AcpMessage;
+  } catch {
+    return line;
+  }
+  const update = msg?.params?.update;
+  if (msg?.method !== "session/update" || !update) return line;
+  if (String(update.sessionUpdate) !== "tool_call_update") return line;
+  if (update.rawInput === undefined) return line;
+  if (!Array.isArray(update.content) || update.content.length === 0) return line;
+  const { rawInput: _rawInput, ...rest } = update;
+  return JSON.stringify({
+    ...msg,
+    params: {
+      ...msg.params,
+      update: rest
+    }
+  });
+}
+
+export function shouldWriteAcpStdoutLog(
+  msg: AcpMessage | null | undefined,
+  state: {
+    promptStarted: boolean;
+    replaySuppressionEnabled: boolean;
+    replayMessageIds?: ReadonlySet<string>;
+    replayContentSignatures?: ReadonlySet<string>;
+  }
+): boolean {
+  if (!msg || msg.method !== "session/update") return true;
+  return shouldEmitAcpUpdate(msg.params?.update, state);
 }
 
 export function shouldEmitAcpUpdate(

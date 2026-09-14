@@ -306,6 +306,9 @@ test("MessageBubble compacts execution process while preserving final text", () 
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
   assert.match(src, /function StreamProcessGroup/);
+  assert.match(src, /const \[detailsOpen, setDetailsOpen\] = useState\(false\)/);
+  assert.match(src, /onToggle=\{/);
+  assert.match(src, /detailsOpen \?/);
   assert.match(src, /const hasRunning = blocks\.some\(blockIsRunning\)/);
   assert.doesNotMatch(src, /messageStatus=\{message\.status\}/);
   assert.match(src, /countProcessActivity/);

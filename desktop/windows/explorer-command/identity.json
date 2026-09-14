@@ -1,0 +1,12 @@
+{
+  "clsid": "{5C8A1E2D-9B74-4A16-8F3C-6E2D91B0487A}",
+  "packageName": "dev.freebuddy.app.shell",
+  "devPackageName": "dev.freebuddy.app.dev.shell",
+  "publisher": "CN=FreeBuddy",
+  "publisherDisplayName": "FreeBuddy",
+  "dllName": "FreeBuddyExplorerCommand.dll",
+  "msixName": "FreeBuddyExplorerCommand.msix",
+  "cerName": "FreeBuddyExplorerCommand.cer",
+  "metaName": "FreeBuddyExplorerCommand.json",
+  "displayName": "FreeBuddy Explorer Command"
+}

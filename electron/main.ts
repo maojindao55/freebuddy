@@ -59,6 +59,7 @@ import {
   classifyShellOpenPaths,
   collectShellOpenPaths
 } from "./cli/shellOpen.js";
+import { applyWindowsExplorerCommandPackage } from "./cli/windowsExplorerCommand.js";
 import { initializeAgentUsageReconciler } from "./cli/usageReconciler.js";
 import { initDebugLog, logMain } from "./debugLog.js";
 import {
@@ -1958,6 +1959,16 @@ app.whenReady().then(async () => {
     isDevInstance
   }).catch((err) => {
     logMain().warn("shell-open", "failed to register Explorer context menu", {
+      error: String(err)
+    });
+  });
+  void applyWindowsExplorerCommandPackage({
+    packaged: app.isPackaged,
+    installDir: path.dirname(process.execPath),
+    stampPath: path.join(app.getPath("userData"), "windows-explorer-command.json"),
+    isDevInstance
+  }).catch((err) => {
+    logMain().warn("shell-open", "failed to register Win11 Explorer command", {
       error: String(err)
     });
   });

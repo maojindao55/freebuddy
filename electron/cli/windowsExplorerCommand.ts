@@ -76,9 +76,10 @@ export function buildWindowsExplorerCommandAppxManifest(
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
-  IgnorableNamespaces="uap uap10 desktop4 rescap com">
+  IgnorableNamespaces="uap uap10 desktop4 desktop5 rescap com">
   <Identity
     Name="${escapeXml(spec.packageName)}"
     Publisher="${escapeXml(publisher)}"
@@ -116,18 +117,15 @@ export function buildWindowsExplorerCommandAppxManifest(
       <Extensions>
         <desktop4:Extension Category="windows.fileExplorerContextMenus">
           <desktop4:FileExplorerContextMenus>
-            <desktop4:ItemType Type="Directory">
-              <desktop4:Verb Id="OpenWithFreeBuddy" Clsid="${clsid}" />
-            </desktop4:ItemType>
-            <desktop4:ItemType Type="Directory\\Background">
-              <desktop4:Verb Id="OpenWithFreeBuddyBg" Clsid="${clsid}" />
-            </desktop4:ItemType>
-            <desktop4:ItemType Type="Drive">
-              <desktop4:Verb Id="OpenWithFreeBuddyDrive" Clsid="${clsid}" />
-            </desktop4:ItemType>
-            <desktop4:ItemType Type="*">
-              <desktop4:Verb Id="OpenWithFreeBuddyFile" Clsid="${clsid}" />
-            </desktop4:ItemType>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="OpenWithFreeBuddy" Clsid="${clsid}" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory\\Background">
+              <desktop5:Verb Id="OpenWithFreeBuddyBg" Clsid="${clsid}" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="OpenWithFreeBuddyFile" Clsid="${clsid}" />
+            </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>
         <com:Extension Category="windows.comServer">

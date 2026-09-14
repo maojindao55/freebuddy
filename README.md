@@ -140,6 +140,21 @@ because the sandbox may be unable to access the macOS keychain or network.
 
 > **Note:** `postinstall` runs `electron-rebuild` for `better-sqlite3` to ensure the native binding matches your Electron version.
 
+### Remote host D3 local POC
+
+The remote host is disabled by default. Its private key requires Electron
+`safeStorage`; if OS credential encryption is unavailable, enabling remote host
+fails closed and never stores a plaintext fallback. To exercise the local
+development relay POC, run:
+
+```bash
+npm run build:electron
+node --test electron/remote/relay.integration.test.mjs
+```
+
+This uses a temporary loopback-only Relay, SQLite database, and in-memory test
+tokens; it does not connect to or modify any running Relay service.
+
 ---
 
 ## Star History

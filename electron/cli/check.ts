@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import spawn from "cross-spawn";
-import { BrowserWindow } from "electron";
+import { electronModule } from "../shared/electronModule.js";
 import {
   adapterBinary,
   applyDshAcpNpmInstallEnv,
@@ -536,7 +536,8 @@ function runtimeFor(adapter: string): CliRuntime | undefined {
 function broadcastRuntime(adapter: string): void {
   const runtime = runtimeFor(adapter);
   if (!runtime) return;
-  for (const window of BrowserWindow.getAllWindows()) {
+  const BrowserWindow = electronModule()?.BrowserWindow;
+  for (const window of BrowserWindow?.getAllWindows() ?? []) {
     safeSendToWebContents(window.webContents, CLI_RUNTIME_CHANNEL, runtime);
   }
 }

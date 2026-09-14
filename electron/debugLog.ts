@@ -3,7 +3,7 @@
  * intercepts console.* and process-level crash hooks, and accepts
  * batched log entries forwarded from the renderer.
  */
-import { app } from "electron";
+import { electronModule } from "./shared/electronModule.js";
 import path from "node:path";
 import {
   createDebugLogger,
@@ -36,8 +36,17 @@ export function mainLogDroppedLines(): number {
   return mainLogger?.droppedLines ?? 0;
 }
 
+// In ELECTRON_RUN_AS_NODE, Electron's default export is its executable path,
+// so do not access named Electron APIs during module evaluation. Callers that
+// actually need an app path must run in a real Electron main process.
+function electronAppPath(name: Parameters<NonNullable<ReturnType<typeof electronModule>>["app"]["getPath"]>[0]): string {
+  const app = electronModule()?.app;
+  if (!app) throw new Error("Electron app APIs are unavailable before debug log initialization");
+  return app.getPath(name);
+}
+
 export function debugLogDir(): string {
-  return path.join(app.getPath("userData"), "freebuddy", "logs");
+  return path.join(electronAppPath("userData"), "freebuddy", "logs");
 }
 
 /** Route console.* into the log file while preserving original output. */

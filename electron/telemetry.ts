@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { electronModule } from "./shared/electronModule.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -145,7 +145,11 @@ function capture(
       event_schema_version: 1,
       platform: process.platform,
       arch: process.arch,
-      packaged: app.isPackaged,
+      // Telemetry is never initialized in ELECTRON_RUN_AS_NODE. Keep its
+      // transitive read-model imports loadable for headless D4 verification.
+      packaged: electronModule()?.app
+        ? electronModule()!.app.isPackaged
+        : false,
       ...properties
     }
   });

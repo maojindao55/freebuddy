@@ -1470,3 +1470,429 @@ func TestE2E_AuthOk_FixedMaxFrameBytesConstant(t *testing.T) {
 		t.Fatal("expected connection closed by transport for frame exceeding internal MaxFrameBytes")
 	}
 }
+
+func TestE2E_Resume_Replay_And_DuplicateResume(t *testing.T) {
+	ts, _, _ := setupE2ETLSServer(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hostWS := connectAndAuthHost(t, ctx, ts, testDevHostID, testDevHostToken)
+	defer hostWS.Close(websocket.StatusNormalClosure, "done")
+
+	adminWS := connectAndAuthAdmin(t, ctx, ts, testDevAdminToken)
+	defer adminWS.Close(websocket.StatusNormalClosure, "done")
+
+	// 1. Host sends initial event 0
+	seq0 := int64(0)
+	event0 := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeEvent,
+		ID:      protocol.GenerateMessageID(),
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Seq:     &seq0,
+		Payload: json.RawMessage(`{"name":"conversation.updated","data":{"conversationId":"conv_01","title":"Test Conv","archived":false,"updatedAt":"2026-09-01T10:00:00.000Z"}}`),
+	}
+	if err := sendJSONEnvelope(ctx, hostWS, event0); err != nil {
+		t.Fatalf("failed to send event 0: %v", err)
+	}
+
+	gotEvent0, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("failed to read event 0 on admin: %v", err)
+	}
+	if gotEvent0.Type != protocol.FrameTypeEvent || gotEvent0.Seq == nil || *gotEvent0.Seq != 0 {
+		t.Fatalf("expected event seq 0, got type %s, seq %v", gotEvent0.Type, gotEvent0.Seq)
+	}
+
+	// 2. Host sends event 1
+	seq1 := int64(1)
+	event1 := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeEvent,
+		ID:      protocol.GenerateMessageID(),
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Seq:     &seq1,
+		Payload: json.RawMessage(`{"name":"conversation.updated","data":{"conversationId":"conv_01","title":"Updated Title","archived":false,"updatedAt":"2026-09-01T10:01:00.000Z"}}`),
+	}
+	if err := sendJSONEnvelope(ctx, hostWS, event1); err != nil {
+		t.Fatalf("failed to send event 1: %v", err)
+	}
+
+	gotEvent1, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("failed to read event 1 on admin: %v", err)
+	}
+	if gotEvent1.Type != protocol.FrameTypeEvent || gotEvent1.Seq == nil || *gotEvent1.Seq != 1 {
+		t.Fatalf("expected event seq 1, got type %s, seq %v", gotEvent1.Type, gotEvent1.Seq)
+	}
+
+	// 3. Admin sends resume with resumeFrom: 0 (requesting replay of events > 0)
+	resumeEnv1 := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeResume,
+		ID:      "msg_resume_first",
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"resumeFrom":0}`),
+	}
+	if err := sendJSONEnvelope(ctx, adminWS, resumeEnv1); err != nil {
+		t.Fatalf("failed to send resume frame: %v", err)
+	}
+
+	// Host reads the forwarded resume frame
+	hostGotResume, err := readJSONEnvelope(ctx, hostWS)
+	if err != nil {
+		t.Fatalf("failed to read resume frame on host: %v", err)
+	}
+	if hostGotResume.Type != protocol.FrameTypeResume || hostGotResume.ID != "msg_resume_first" {
+		t.Fatalf("expected resume frame msg_resume_first on host, got %s / %s", hostGotResume.Type, hostGotResume.ID)
+	}
+
+	// Host replays event 1 (seq=1 <= current tail, re-using original event structure)
+	if err := sendJSONEnvelope(ctx, hostWS, event1); err != nil {
+		t.Fatalf("host failed to replay event 1: %v", err)
+	}
+
+	// Admin receives replayed event 1
+	gotReplay1, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("admin failed to read replayed event 1: %v", err)
+	}
+	if gotReplay1.Type != protocol.FrameTypeEvent || gotReplay1.Seq == nil || *gotReplay1.Seq != 1 {
+		t.Fatalf("expected replayed event seq 1 on admin, got %s, seq %v", gotReplay1.Type, gotReplay1.Seq)
+	}
+
+	// 4. Admin sends duplicate resume frame (same resumeFrom: 0)
+	resumeEnv2 := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeResume,
+		ID:      "msg_resume_duplicate",
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"resumeFrom":0}`),
+	}
+	if err := sendJSONEnvelope(ctx, adminWS, resumeEnv2); err != nil {
+		t.Fatalf("failed to send duplicate resume frame: %v", err)
+	}
+
+	hostGotResume2, err := readJSONEnvelope(ctx, hostWS)
+	if err != nil {
+		t.Fatalf("failed to read duplicate resume frame on host: %v", err)
+	}
+	if hostGotResume2.Type != protocol.FrameTypeResume || hostGotResume2.ID != "msg_resume_duplicate" {
+		t.Fatalf("expected duplicate resume frame on host, got %s / %s", hostGotResume2.Type, hostGotResume2.ID)
+	}
+
+	// Host replays event 1 again
+	if err := sendJSONEnvelope(ctx, hostWS, event1); err != nil {
+		t.Fatalf("host failed to send second replay: %v", err)
+	}
+
+	// Admin receives second replayed event 1 without Relay dropping it
+	gotReplay2, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("admin failed to read second replayed event 1: %v", err)
+	}
+	if gotReplay2.Type != protocol.FrameTypeEvent || gotReplay2.Seq == nil || *gotReplay2.Seq != 1 {
+		t.Fatalf("expected second replayed event seq 1 on admin, got %s, seq %v", gotReplay2.Type, gotReplay2.Seq)
+	}
+}
+
+func TestE2E_Resume_TooOldCursor_SnapshotFallback(t *testing.T) {
+	ts, _, _ := setupE2ETLSServer(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hostWS := connectAndAuthHost(t, ctx, ts, testDevHostID, testDevHostToken)
+	defer hostWS.Close(websocket.StatusNormalClosure, "done")
+
+	adminWS := connectAndAuthAdmin(t, ctx, ts, testDevAdminToken)
+	defer adminWS.Close(websocket.StatusNormalClosure, "done")
+
+	// Admin requests resume from cursor that is too old (e.g. 999999)
+	resumeEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeResume,
+		ID:      "msg_resume_too_old",
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"resumeFrom":999999}`),
+	}
+	if err := sendJSONEnvelope(ctx, adminWS, resumeEnv); err != nil {
+		t.Fatalf("failed to send resume frame: %v", err)
+	}
+
+	// Host receives resume
+	hostGotResume, err := readJSONEnvelope(ctx, hostWS)
+	if err != nil {
+		t.Fatalf("host failed to read resume frame: %v", err)
+	}
+	if hostGotResume.Type != protocol.FrameTypeResume {
+		t.Fatalf("expected resume frame, got %s", hostGotResume.Type)
+	}
+
+	// Host sends snapshot fallback frame with valid HostStatus according to protocol v1 schema.
+	seq10 := int64(10)
+	snapshotEnv := &protocol.Envelope{
+		V:      1,
+		Type:   protocol.FrameTypeSnapshot,
+		ID:     "msg_snap_fallback_01",
+		HostID: testDevHostID,
+		SentAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Seq:    &seq10,
+		Payload: json.RawMessage(fmt.Sprintf(`{
+			"baseSeq": 10,
+			"host": {
+				"hostId": %q,
+				"online": true,
+				"appVersion": "0.9.10",
+				"protocolVersion": 1,
+				"remoteEnabled": true,
+				"activeRunCount": 0,
+				"pendingDecisionCount": 0,
+				"activeTerminalCount": 0,
+				"serverTime": "2026-09-01T10:00:00.000Z"
+			},
+			"projects": [],
+			"agents": [],
+			"conversations": []
+		}`, testDevHostID)),
+	}
+
+	if err := sendJSONEnvelope(ctx, hostWS, snapshotEnv); err != nil {
+		t.Fatalf("host failed to send snapshot fallback: %v", err)
+	}
+
+	// Admin receives snapshot frame successfully
+	adminGotSnapshot, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("admin failed to read snapshot fallback frame: %v", err)
+	}
+	if adminGotSnapshot.Type != protocol.FrameTypeSnapshot {
+		t.Fatalf("expected snapshot frame on admin, got %s", adminGotSnapshot.Type)
+	}
+	if adminGotSnapshot.Seq == nil || *adminGotSnapshot.Seq != 10 {
+		t.Fatalf("expected snapshot seq 10, got %v", adminGotSnapshot.Seq)
+	}
+
+	// Subsequent live events with seq > baseSeq flow normally
+	seq11 := int64(11)
+	event11 := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeEvent,
+		ID:      protocol.GenerateMessageID(),
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Seq:     &seq11,
+		Payload: json.RawMessage(`{"name":"conversation.updated","data":{"conversationId":"conv_01","title":"Post-Snapshot Title","archived":false,"updatedAt":"2026-09-01T10:05:00.000Z"}}`),
+	}
+	if err := sendJSONEnvelope(ctx, hostWS, event11); err != nil {
+		t.Fatalf("host failed to send live event 11: %v", err)
+	}
+
+	adminGotEvent11, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("admin failed to read event 11: %v", err)
+	}
+	if adminGotEvent11.Type != protocol.FrameTypeEvent || adminGotEvent11.Seq == nil || *adminGotEvent11.Seq != 11 {
+		t.Fatalf("expected event seq 11, got type %s, seq %v", adminGotEvent11.Type, adminGotEvent11.Seq)
+	}
+}
+
+func TestE2E_Resume_MultipleAdmins_BroadcastImpact(t *testing.T) {
+	ts, _, _ := setupE2ETLSServer(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	hostWS := connectAndAuthHost(t, ctx, ts, testDevHostID, testDevHostToken)
+	defer hostWS.Close(websocket.StatusNormalClosure, "done")
+
+	// Connect two admin WebSocket clients
+	admin1WS := connectAndAuthAdmin(t, ctx, ts, testDevAdminToken)
+	defer admin1WS.Close(websocket.StatusNormalClosure, "done")
+
+	admin2WS := connectAndAuthAdmin(t, ctx, ts, testDevAdminToken)
+	defer admin2WS.Close(websocket.StatusNormalClosure, "done")
+
+	// Host sends initial live event
+	seq0 := int64(0)
+	event0 := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeEvent,
+		ID:      protocol.GenerateMessageID(),
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Seq:     &seq0,
+		Payload: json.RawMessage(`{"name":"conversation.updated","data":{"conversationId":"conv_multi","title":"Multi-Admin Event","archived":false,"updatedAt":"2026-09-01T10:00:00.000Z"}}`),
+	}
+	if err := sendJSONEnvelope(ctx, hostWS, event0); err != nil {
+		t.Fatalf("host failed to send event 0: %v", err)
+	}
+
+	// Both admins receive event 0
+	for idx, aWS := range []*websocket.Conn{admin1WS, admin2WS} {
+		got, err := readJSONEnvelope(ctx, aWS)
+		if err != nil {
+			t.Fatalf("admin %d failed to read event 0: %v", idx+1, err)
+		}
+		if got.Type != protocol.FrameTypeEvent || got.Seq == nil || *got.Seq != 0 {
+			t.Fatalf("admin %d expected event 0, got %s seq %v", idx+1, got.Type, got.Seq)
+		}
+	}
+
+	// Admin 1 sends resume
+	resumeEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeResume,
+		ID:      "msg_resume_multi",
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"resumeFrom":0}`),
+	}
+	if err := sendJSONEnvelope(ctx, admin1WS, resumeEnv); err != nil {
+		t.Fatalf("admin 1 failed to send resume: %v", err)
+	}
+
+	hostGotResume, err := readJSONEnvelope(ctx, hostWS)
+	if err != nil {
+		t.Fatalf("host failed to read resume: %v", err)
+	}
+	if hostGotResume.Type != protocol.FrameTypeResume {
+		t.Fatalf("expected resume on host, got %s", hostGotResume.Type)
+	}
+
+	// Host replays event 0
+	if err := sendJSONEnvelope(ctx, hostWS, event0); err != nil {
+		t.Fatalf("host failed to replay event 0: %v", err)
+	}
+
+	// Admin 1 (initiator) receives replayed event
+	replayedAdmin1, err := readJSONEnvelope(ctx, admin1WS)
+	if err != nil {
+		t.Fatalf("admin 1 failed to read replayed event: %v", err)
+	}
+	if replayedAdmin1.Type != protocol.FrameTypeEvent || replayedAdmin1.Seq == nil || *replayedAdmin1.Seq != 0 {
+		t.Fatalf("admin 1 expected replayed event seq 0, got %v", replayedAdmin1.Seq)
+	}
+
+	// Admin 2 also receives the host replayed event (as Relay routes host events to active admins)
+	replayedAdmin2, err := readJSONEnvelope(ctx, admin2WS)
+	if err != nil {
+		t.Fatalf("admin 2 failed to read replayed event: %v", err)
+	}
+	if replayedAdmin2.Type != protocol.FrameTypeEvent || replayedAdmin2.Seq == nil || *replayedAdmin2.Seq != 0 {
+		t.Fatalf("admin 2 expected replayed event seq 0, got %v", replayedAdmin2.Seq)
+	}
+}
+
+func TestE2E_Resume_OfflineHost_ReturnsHostOffline(t *testing.T) {
+	ts, _, _ := setupE2ETLSServer(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	adminWS := connectAndAuthAdmin(t, ctx, ts, testDevAdminToken)
+	defer adminWS.Close(websocket.StatusNormalClosure, "done")
+
+	// Target host is not connected
+	offlineHostID := "host_offline_target"
+	resumeEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeResume,
+		ID:      "msg_resume_offline",
+		HostID:  offlineHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"resumeFrom":0}`),
+	}
+	if err := sendJSONEnvelope(ctx, adminWS, resumeEnv); err != nil {
+		t.Fatalf("failed to send resume: %v", err)
+	}
+
+	resp, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("failed to read error response: %v", err)
+	}
+	if resp.Type != protocol.FrameTypeError {
+		t.Fatalf("expected error frame for offline host, got %s", resp.Type)
+	}
+	if resp.ID != "msg_resume_offline" {
+		t.Fatalf("expected matching error envelope ID msg_resume_offline, got %s", resp.ID)
+	}
+
+	var errPayload protocol.StructuredError
+	if err := json.Unmarshal(resp.Payload, &errPayload); err != nil {
+		t.Fatalf("failed to unmarshal error payload: %v", err)
+	}
+	if errPayload.Code != protocol.ErrCodeHostOffline {
+		t.Fatalf("expected error code %s, got %s", protocol.ErrCodeHostOffline, errPayload.Code)
+	}
+}
+
+func TestE2E_Resume_HostReplacement(t *testing.T) {
+	ts, _, _ := setupE2ETLSServer(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	adminWS := connectAndAuthAdmin(t, ctx, ts, testDevAdminToken)
+	defer adminWS.Close(websocket.StatusNormalClosure, "done")
+
+	// Host 1 connects
+	host1WS := connectAndAuthHost(t, ctx, ts, testDevHostID, testDevHostToken)
+
+	// Host 2 connects with same hostId -> Host 1 must be replaced
+	host2WS := connectAndAuthHost(t, ctx, ts, testDevHostID, testDevHostToken)
+	defer host2WS.Close(websocket.StatusNormalClosure, "done")
+
+	// Verify Host 1 connection is closed by replacement
+	_, err := readJSONEnvelope(ctx, host1WS)
+	if err == nil {
+		t.Fatal("expected host 1 connection to be closed by replacement")
+	}
+
+	// Admin sends resume targeting testDevHostID
+	resumeEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeResume,
+		ID:      "msg_resume_after_replace",
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"resumeFrom":5}`),
+	}
+	if err := sendJSONEnvelope(ctx, adminWS, resumeEnv); err != nil {
+		t.Fatalf("failed to send resume: %v", err)
+	}
+
+	// Host 2 receives the resume frame
+	host2GotResume, err := readJSONEnvelope(ctx, host2WS)
+	if err != nil {
+		t.Fatalf("host 2 failed to read resume frame: %v", err)
+	}
+	if host2GotResume.Type != protocol.FrameTypeResume || host2GotResume.ID != "msg_resume_after_replace" {
+		t.Fatalf("host 2 expected msg_resume_after_replace, got %s / %s", host2GotResume.Type, host2GotResume.ID)
+	}
+
+	// Host 2 replays event seq=6
+	seq6 := int64(6)
+	replayedEvent := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypeEvent,
+		ID:      "msg_event_post_replace",
+		HostID:  testDevHostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Seq:     &seq6,
+		Payload: json.RawMessage(`{"name":"conversation.updated","data":{"conversationId":"conv_01","title":"Post-Replace Title","archived":false,"updatedAt":"2026-09-01T10:10:00.000Z"}}`),
+	}
+	if err := sendJSONEnvelope(ctx, host2WS, replayedEvent); err != nil {
+		t.Fatalf("host 2 failed to send replayed event: %v", err)
+	}
+
+	// Admin receives replayed event
+	adminGotEvent, err := readJSONEnvelope(ctx, adminWS)
+	if err != nil {
+		t.Fatalf("admin failed to read replayed event: %v", err)
+	}
+	if adminGotEvent.Type != protocol.FrameTypeEvent || adminGotEvent.Seq == nil || *adminGotEvent.Seq != 6 {
+		 t.Fatalf("expected replayed event seq 6 on admin, got type %s, seq %v", adminGotEvent.Type, adminGotEvent.Seq)
+	}
+}

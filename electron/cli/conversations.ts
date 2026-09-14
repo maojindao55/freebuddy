@@ -1,5 +1,5 @@
 import { getDb } from "./db.js";
-import { BrowserWindow } from "electron";
+import { electronModule } from "../shared/electronModule.js";
 import {
   discardManagedAttachmentIfUnreferenced,
   isManagedAttachmentPath
@@ -26,7 +26,8 @@ export function bindConversationNotifier(
 }
 
 export function notifyConversationsChanged(): void {
-  for (const win of BrowserWindow.getAllWindows()) {
+  const BrowserWindow = electronModule()?.BrowserWindow;
+  for (const win of BrowserWindow?.getAllWindows() ?? []) {
     if (win.isDestroyed()) continue;
     safeSendToWebContents(win.webContents, "conversations://changed", {
       at: Date.now()

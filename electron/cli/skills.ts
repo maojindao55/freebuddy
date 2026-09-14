@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow } from "electron";
+import { electronModule } from "../shared/electronModule.js";
 
 import { getDataDir, getDb } from "./db.js";
 import { extractSkillArchive } from "./skillArchive.js";
@@ -29,8 +29,15 @@ import { BUTLERBUDDY_SKILL_ID } from "./agentProfiles.js";
 
 export { nextSkillEnabledFlag } from "./skillEnabled.js";
 
+function electronApp(): typeof import("electron").app {
+  const app = electronModule()?.app;
+  if (!app) throw new Error("Electron app APIs are unavailable while resolving skill files");
+  return app;
+}
+
 export function notifySkillsChanged(): void {
-  for (const win of BrowserWindow.getAllWindows()) {
+  const BrowserWindow = electronModule()?.BrowserWindow;
+  for (const win of BrowserWindow?.getAllWindows() ?? []) {
     if (win.isDestroyed()) continue;
     safeSendToWebContents(win.webContents, "skills://changed", {
       at: Date.now()
@@ -81,7 +88,7 @@ export interface PreparedSkillInstallResult {
 }
 
 function builtinRoot(): string {
-  return app.isPackaged
+  return electronApp().isPackaged
     ? path.join(process.resourcesPath, "skills")
     : path.resolve(
         path.dirname(fileURLToPath(import.meta.url)),

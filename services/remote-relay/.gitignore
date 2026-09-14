@@ -1,0 +1,13 @@
+# Local development data, dev tokens, databases, logs, and binaries
+.local/
+local-data/
+*.db
+*.db-shm
+*.db-wal
+*.env.local
+*.log
+/relay
+/cmd/relay/relay
+/cmd/wss-smoke/wss-smoke
+/cmd/safeenv-helper/safeenv-helper
+/safeenv-helper

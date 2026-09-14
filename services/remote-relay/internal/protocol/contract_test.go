@@ -579,6 +579,81 @@ func TestRegression_Snapshot_NestedUnknownAndMissing(t *testing.T) {
 	}
 }
 
+func TestRegression_Snapshot_HostStatus_ServerTime(t *testing.T) {
+	cases := []struct {
+		name    string
+		json    string
+		wantErr bool
+	}{
+		{
+			name: "snapshot host with valid serverTime succeeds and preserves timestamp",
+			json: `{"v":1,"type":"snapshot","id":"msg_snap_st_1","hostId":"host_01","sentAt":"2026-09-01T10:00:00.000Z","seq":100,"payload":{"baseSeq":100,"host":{"hostId":"host_01","online":true,"appVersion":"0.9.10","protocolVersion":1,"remoteEnabled":true,"activeRunCount":0,"pendingDecisionCount":0,"activeTerminalCount":0,"serverTime":"2026-09-01T10:00:00.000Z"}}}`,
+			wantErr: false,
+		},
+		{
+			name: "snapshot host without serverTime is rejected",
+			json: `{"v":1,"type":"snapshot","id":"msg_snap_st_2","hostId":"host_01","sentAt":"2026-09-01T10:00:00.000Z","seq":100,"payload":{"baseSeq":100,"host":{"hostId":"host_01","online":true,"appVersion":"0.9.10","protocolVersion":1,"remoteEnabled":true,"activeRunCount":0,"pendingDecisionCount":0,"activeTerminalCount":0}}}`,
+			wantErr: true,
+		},
+		{
+			name: "snapshot host with null serverTime is rejected",
+			json: `{"v":1,"type":"snapshot","id":"msg_snap_st_3","hostId":"host_01","sentAt":"2026-09-01T10:00:00.000Z","seq":100,"payload":{"baseSeq":100,"host":{"hostId":"host_01","online":true,"appVersion":"0.9.10","protocolVersion":1,"remoteEnabled":true,"activeRunCount":0,"pendingDecisionCount":0,"activeTerminalCount":0,"serverTime":null}}}`,
+			wantErr: true,
+		},
+		{
+			name: "snapshot host with empty string serverTime is rejected",
+			json: `{"v":1,"type":"snapshot","id":"msg_snap_st_4","hostId":"host_01","sentAt":"2026-09-01T10:00:00.000Z","seq":100,"payload":{"baseSeq":100,"host":{"hostId":"host_01","online":true,"appVersion":"0.9.10","protocolVersion":1,"remoteEnabled":true,"activeRunCount":0,"pendingDecisionCount":0,"activeTerminalCount":0,"serverTime":""}}}`,
+			wantErr: true,
+		},
+		{
+			name: "snapshot host with invalid format serverTime is rejected",
+			json: `{"v":1,"type":"snapshot","id":"msg_snap_st_5","hostId":"host_01","sentAt":"2026-09-01T10:00:00.000Z","seq":100,"payload":{"baseSeq":100,"host":{"hostId":"host_01","online":true,"appVersion":"0.9.10","protocolVersion":1,"remoteEnabled":true,"activeRunCount":0,"pendingDecisionCount":0,"activeTerminalCount":0,"serverTime":"not-a-timestamp"}}}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env, err := DecodeEnvelope([]byte(tc.json))
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for %s, but DecodeEnvelope succeeded", tc.name)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("expected success for %s, got error: %v", tc.name, err)
+			}
+			if !tc.wantErr && env != nil {
+				var payload SnapshotPayload
+				if err := json.Unmarshal(env.Payload, &payload); err != nil {
+					t.Fatalf("failed to unmarshal snapshot payload: %v", err)
+				}
+				if payload.Host.HostID != "host_01" {
+					t.Fatalf("expected hostId host_01, got %s", payload.Host.HostID)
+				}
+				if payload.Host.ServerTime != "2026-09-01T10:00:00.000Z" {
+					t.Fatalf("expected serverTime %q, got %q", "2026-09-01T10:00:00.000Z", payload.Host.ServerTime)
+				}
+			}
+		})
+	}
+
+	t.Run("ValidateHostStatus directly rejects empty serverTime", func(t *testing.T) {
+		h := HostStatus{
+			HostID:               "host_01",
+			Online:               true,
+			AppVersion:           "0.9.10",
+			ProtocolVersion:      1,
+			RemoteEnabled:        true,
+			ActiveRunCount:       0,
+			PendingDecisionCount: 0,
+			ActiveTerminalCount:  0,
+			ServerTime:           "",
+		}
+		if err := ValidateHostStatus(h); err == nil {
+			t.Fatal("expected ValidateHostStatus to reject empty serverTime")
+		}
+	})
+}
+
 func TestRegression_Resume_MissingAndInvalidFields(t *testing.T) {
 	cases := []struct {
 		name    string

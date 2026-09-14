@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { electronModule } from "../shared/electronModule.js";
 import { getDb } from "./db.js";
 import { logMain } from "../debugLog.js";
 import { safeSendToWebContents } from "./ipcSend.js";
@@ -12,7 +12,8 @@ import { auditTeamWrite } from "./workflowTeams.js";
 import * as sqlite from "@freebuddy/storage-sqlite";
 
 function notifyDelegationTeamsChanged(): void {
-  for (const win of BrowserWindow.getAllWindows()) {
+  const BrowserWindow = electronModule()?.BrowserWindow;
+  for (const win of BrowserWindow?.getAllWindows() ?? []) {
     safeSendToWebContents(win.webContents, "delegationTeams://changed", undefined);
   }
 }

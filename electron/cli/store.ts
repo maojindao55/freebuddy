@@ -1,4 +1,4 @@
-import { safeStorage } from "electron";
+import { electronModule } from "../shared/electronModule.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -91,6 +91,29 @@ const SAFE_STORAGE_PREFIX = "safe:";
 const FALLBACK_STORAGE_PREFIX = "base64:";
 const secretDecryptCache = new Map<string, string>();
 
+type SafeStorageApi = Pick<
+  typeof import("electron").safeStorage,
+  "isEncryptionAvailable" | "encryptString" | "decryptString"
+>;
+
+// ELECTRON_RUN_AS_NODE exposes Electron as its executable path. Domain reads
+// import this module but do not need secrets, so defer real Electron API access
+// until a secret operation is requested. Missing APIs must never select the
+// legacy base64 branch: only Electron's actual unavailable-encryption result
+// retains that existing compatibility behavior.
+function getSafeStorage(): SafeStorageApi {
+  const storage = electronModule()?.safeStorage;
+  if (
+    !storage ||
+    typeof storage.isEncryptionAvailable !== "function" ||
+    typeof storage.encryptString !== "function" ||
+    typeof storage.decryptString !== "function"
+  ) {
+    throw new Error("Electron safeStorage API is unavailable");
+  }
+  return storage;
+}
+
 export function redactApiKey(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -99,8 +122,9 @@ export function redactApiKey(value: string): string {
 }
 
 export function encryptSecret(value: string): string {
-  if (safeStorage.isEncryptionAvailable()) {
-    return `${SAFE_STORAGE_PREFIX}${safeStorage.encryptString(value).toString("base64")}`;
+  const storage = getSafeStorage();
+  if (storage.isEncryptionAvailable()) {
+    return `${SAFE_STORAGE_PREFIX}${storage.encryptString(value).toString("base64")}`;
   }
   return `${FALLBACK_STORAGE_PREFIX}${Buffer.from(value, "utf8").toString("base64")}`;
 }
@@ -111,7 +135,7 @@ export function decryptSecret(value: string | undefined): string | undefined {
   if (cached !== undefined) return cached;
   try {
     if (value.startsWith(SAFE_STORAGE_PREFIX)) {
-      const decrypted = safeStorage.decryptString(
+      const decrypted = getSafeStorage().decryptString(
         Buffer.from(value.slice(SAFE_STORAGE_PREFIX.length), "base64")
       );
       secretDecryptCache.set(value, decrypted);

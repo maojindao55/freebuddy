@@ -1,0 +1,96 @@
+name: freebuddy-remote-relay
+
+services:
+  relay:
+    image: ${RELAY_IMAGE:-freebuddy/remote-relay:m2}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ${RELAY_ENV_FILE:-./remote-relay.env.example}
+    environment:
+      LISTEN_ADDR: ":8080"
+      SQLITE_PATH: "/data/relay.db"
+      LOG_FORMAT: "json"
+      TRUST_PROXY: "false"
+    expose:
+      - "8080"
+    volumes:
+      - type: bind
+        source: ${RELAY_DATA_DIR:-/var/lib/freebuddy/remote-relay}
+        target: /data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "2", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - relay_internal
+
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2.10.2-alpine}
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?set RELAY_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "443:443/udp"
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: bind
+        source: ${CADDY_DATA_DIR:-/var/lib/freebuddy/caddy-data}
+        target: /data
+      - type: bind
+        source: ${CADDY_CONFIG_DIR:-/var/lib/freebuddy/caddy-config}
+        target: /config
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    user: "10000:10000"
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - edge
+      - relay_internal
+
+networks:
+  edge:
+    driver: bridge
+  relay_internal:
+    internal: true

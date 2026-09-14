@@ -18,7 +18,14 @@ const result = spawnSync(
 );
 
 if (result.error) {
-  console.error(result.error.message);
+  // Keep diagnostic output on stderr. This runner never prints test input,
+  // credentials, or relay frames, so node:test assertion stacks stay useful
+  // without exposing remote payloads.
+  console.error(result.error.stack || result.error.message);
+  process.exit(1);
+}
+if (result.signal) {
+  console.error(`Electron node:test terminated by ${result.signal}`);
   process.exit(1);
 }
 process.exit(result.status ?? 1);

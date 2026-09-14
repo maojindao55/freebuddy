@@ -1,5 +1,5 @@
 import Database, { type Database as DB } from "better-sqlite3";
-import { app } from "electron";
+import { electronModule } from "../shared/electronModule.js";
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -11,6 +11,15 @@ import { pruneOldLogs, LOG_RETENTION_DAYS } from "../shared/debugLogCore.js";
 
 let dbInstance: DB | null = null;
 
+// `ELECTRON_RUN_AS_NODE` intentionally exposes the Electron package as its
+// executable path. Database tests inject their database before this is read,
+// so defer the real Electron-only lookup until a persistent database is needed.
+function electronAppPath(name: Parameters<NonNullable<ReturnType<typeof electronModule>>["app"]["getPath"]>[0]): string {
+  const app = electronModule()?.app;
+  if (!app) throw new Error("Electron app APIs are unavailable before database initialization");
+  return app.getPath(name);
+}
+
 export function setDbForTest(db: DB | null): void {
   dbInstance = db;
 }
@@ -18,7 +27,7 @@ export function setDbForTest(db: DB | null): void {
 export function getDb(): DB {
   if (dbInstance) return dbInstance;
 
-  const dir = path.join(app.getPath("userData"), "freebuddy");
+  const dir = path.join(electronAppPath("userData"), "freebuddy");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "freebuddy.db");
 
@@ -48,7 +57,7 @@ export function getDb(): DB {
 }
 
 export function getDataDir(): string {
-  const dir = path.join(app.getPath("userData"), "freebuddy");
+  const dir = path.join(electronAppPath("userData"), "freebuddy");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

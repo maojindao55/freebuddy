@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app } from "electron";
+import { electronModule } from "./shared/electronModule.js";
 
 export const APP_NAME = "FreeBuddy";
 
@@ -19,6 +19,11 @@ function readAppVersion(): string {
   } catch {
     /* fall back to app.getVersion() below */
   }
+  // ELECTRON_RUN_AS_NODE exposes Electron as its executable path. The package
+  // file above is available for the normal development/test layouts; only a
+  // real Electron main process may use the final runtime fallback.
+  const app = electronModule()?.app;
+  if (!app) throw new Error("Electron app APIs are unavailable while resolving the application version");
   return app.getVersion();
 }
 

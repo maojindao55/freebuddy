@@ -46,6 +46,7 @@ import { seedBuiltinDelegationTeams } from "./cli/delegationTeams.js";
 import { seedBuiltinSkills } from "./cli/skills.js";
 import { initApplicationMenu, setupContextMenu } from "./menu.js";
 import { APP_NAME, APP_VERSION } from "./app-meta.js";
+import { startReadOnlyRemoteDevelopment } from "./remote/localDevelopment.js";
 import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
@@ -1654,6 +1655,9 @@ app.whenReady().then(async () => {
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
   getDb();
+  // D4's only startup path is an explicit local-development opt-in. It is
+  // independent from the legacy LAN WebUI switch and remains disabled by default.
+  const readOnlyRemoteDevelopment = startReadOnlyRemoteDevelopment();
   logAllCliRuntimes();
   const existingOwner = getOwnerUser();
   if (existingOwner) {
@@ -1728,6 +1732,7 @@ app.whenReady().then(async () => {
         await shutdownTelemetry().catch(() => {});
       }
       try {
+        readOnlyRemoteDevelopment?.disable();
         const { shutdownRuntimeProcesses } = await import("./runtime/runtimeIpc.js");
         await shutdownRuntimeProcesses();
       } catch {

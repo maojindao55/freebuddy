@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { electronModule } from "../shared/electronModule.js";
 import { getDb } from "./db.js";
 
 type AppLocale = "en" | "zh-CN";
@@ -37,5 +37,10 @@ export function getLanguagePreference(): LanguagePreference {
 export function getLanguage(): AppLocale {
   const stored = getLanguagePreference();
   if (stored === "en" || stored === "zh-CN") return stored;
-  return detectLocale(app.getLocale());
+  // Electron's Node mode exposes its executable path as the default export and
+  // has no app API. System language is only needed for the system preference,
+  // so defer the real Electron access until this branch. Node mode preserves
+  // the established no-locale fallback rather than fabricating an app object.
+  const app = electronModule()?.app;
+  return detectLocale(app ? app.getLocale() : undefined);
 }

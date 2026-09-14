@@ -1,0 +1,25 @@
+{
+	admin off
+	email {$ACME_EMAIL}
+}
+
+{$RELAY_DOMAIN} {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>headers>Authorization delete
+				request>headers>X-Dev-Admin-Token delete
+				request>headers>X-Dev-Host-Token delete
+				request>headers>Cookie delete
+			}
+		}
+	}
+
+	reverse_proxy relay:8080 {
+		health_uri /readyz
+		health_interval 10s
+		health_timeout 2s
+	}
+}

@@ -283,12 +283,15 @@ test("listMessagesForIpc pages newest messages and does not load oversized blobs
     status: "done",
     content: huge
   });
-  const full = listMessages("c1");
-  assert.equal(full.at(-1)?.content.length, huge.length);
+  const storedHuge = listMessages("c1").find((entry) => entry.id === hugeId);
+  assert.equal(storedHuge?.content.length, huge.length);
 
-  const ipcLatest = listMessagesForIpc("c1", { limit: 1 });
-  assert.equal(ipcLatest.messages[0]?.id, hugeId);
-  assert.ok(ipcLatest.messages[0].content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS + 1);
+  // created_at is millisecond ISO time; when it collides with m5, IPC orders by
+  // id DESC ("m5" > "huge") so the newest *page* is not always this row.
+  const ipcPage = listMessagesForIpc("c1", { limit: 6 });
+  const ipcHuge = ipcPage.messages.find((entry) => entry.id === hugeId);
+  assert.ok(ipcHuge);
+  assert.ok(ipcHuge.content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS + 1);
 
   const ipcOne = getMessageForIpc(hugeId);
   assert.ok(ipcOne);

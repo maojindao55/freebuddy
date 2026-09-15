@@ -4,6 +4,8 @@ import type { ConversationMessage } from "./conversations.js";
 export const MAX_IPC_MESSAGE_CONTENT_CHARS = 400_000;
 /** Keep the full list under Chromium's structured-clone CHECK range. */
 export const MAX_IPC_LIST_MESSAGES_CHARS = 16 * 1024 * 1024;
+/** Opening a conversation only hydrates the newest page over IPC. */
+export const IPC_LIST_MESSAGES_PAGE_SIZE = 40;
 const MAX_STREAM_STRING_CHARS = 12_000;
 const MAX_ASSISTANT_TEXT_CHARS = 200_000;
 const TRUNCATION_MARKER = "\n… [truncated]";
@@ -147,6 +149,13 @@ export function sanitizeMessageContent(
   role: ConversationMessage["role"]
 ): string {
   if (typeof content !== "string") return omittedContent(role);
+  // JSON.parse / regex over multi-megabyte blobs freeze the Electron main
+  // process (macOS shows a spinning wait cursor). Slice first, and never
+  // parse a payload that already exceeds the IPC cap.
+  if (content.length > MAX_IPC_MESSAGE_CONTENT_CHARS) {
+    if (role === "assistant") return omittedContent(role);
+    return capRawString(content.slice(0, MAX_IPC_MESSAGE_CONTENT_CHARS));
+  }
   if (role !== "assistant") {
     return contentNeedsSanitize(content)
       ? capRawString(content)
@@ -162,6 +171,11 @@ export function sanitizeMessageContent(
     /* fall through to raw cap */
   }
   return capRawString(normalized);
+}
+
+/** Cap live stream items before writing them to SQLite. */
+export function serializeStreamItemsForPersist(items: unknown[]): string {
+  return capStreamJson(Array.isArray(items) ? items : []);
 }
 
 export function sanitizeMessageForIpc(

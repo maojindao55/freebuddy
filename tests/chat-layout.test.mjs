@@ -62,6 +62,8 @@ test("chat history windows to the newest messages with an earlier-load control",
   assert.match(chatViewSource, /visibleConversationSlice/);
   assert.match(chatViewSource, /chat\.loadEarlier/);
   assert.match(chatViewSource, /setHistoryReveal/);
+  assert.match(chatViewSource, /loadOlderMessages/);
+  assert.match(chatViewSource, /olderMessagesAvailable/);
   assert.match(stylesSource, /\.chat-load-earlier\s*\{/);
 });
 

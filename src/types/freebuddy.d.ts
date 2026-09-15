@@ -257,7 +257,14 @@ declare global {
       skillIds: string[]
     ): Promise<Conversation | undefined>;
 
-    listMessages(conversationId: string): Promise<ConversationMessage[]>;
+    listMessages(
+      conversationId: string,
+      options?: {
+        limit?: number;
+        beforeCreatedAt?: string;
+        beforeId?: string;
+      }
+    ): Promise<{ messages: ConversationMessage[]; hasMore: boolean }>;
     listMessage(id: string): Promise<ConversationMessage | undefined>;
     appendMessage(input: AppendMessageInput): Promise<ConversationMessage>;
     updateMessage(input: UpdateMessageInput): Promise<void>;

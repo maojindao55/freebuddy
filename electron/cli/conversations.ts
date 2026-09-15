@@ -16,6 +16,10 @@ import {
   type RemoteWorkspace
 } from "./remoteWorkspaces.js";
 import { safeSendToWebContents } from "./ipcSend.js";
+import {
+  IPC_LIST_MESSAGES_PAGE_SIZE,
+  MAX_IPC_MESSAGE_CONTENT_CHARS
+} from "./messagePayloadSanitize.js";
 
 let notifyMessagesChangedHandler: ((conversationId: string) => void) | null = null;
 
@@ -684,4 +688,70 @@ export function listMessages(conversationId: string): ConversationMessage[] {
     )
     .all(conversationId) as any[];
   return rows.map(rowToMessage);
+}
+
+export interface ListMessagesIpcOptions {
+  limit?: number;
+  beforeCreatedAt?: string;
+  beforeId?: string;
+}
+
+export interface ListMessagesIpcPage {
+  messages: ConversationMessage[];
+  hasMore: boolean;
+}
+
+const IPC_MESSAGE_SELECT = `
+  SELECT
+    id, conversation_id, role, status,
+    substr(content, 1, ?) AS content,
+    attachments, task_id, agent_id, agent_name, adapter, role_label,
+    workflow_run_id, workflow_step_row_id, author_username,
+    created_at, updated_at
+  FROM conversation_messages
+`;
+
+const IPC_CONTENT_FETCH_CHARS = MAX_IPC_MESSAGE_CONTENT_CHARS + 1;
+const IPC_LIST_MESSAGES_MAX_PAGE = 80;
+
+function clampIpcMessageLimit(limit: number | undefined): number {
+  const requested = limit ?? IPC_LIST_MESSAGES_PAGE_SIZE;
+  if (!Number.isFinite(requested)) return IPC_LIST_MESSAGES_PAGE_SIZE;
+  return Math.min(Math.max(1, Math.floor(requested)), IPC_LIST_MESSAGES_MAX_PAGE);
+}
+
+/** IPC reads: newest page only, content capped so Node never holds the full blob. */
+export function getMessageForIpc(id: string): ConversationMessage | undefined {
+  const row = getDb()
+    .prepare(`${IPC_MESSAGE_SELECT} WHERE id = ?`)
+    .get(IPC_CONTENT_FETCH_CHARS, id) as any;
+  return row ? rowToMessage(row) : undefined;
+}
+
+export function listMessagesForIpc(
+  conversationId: string,
+  options: ListMessagesIpcOptions = {}
+): ListMessagesIpcPage {
+  const limit = clampIpcMessageLimit(options.limit);
+  const params: unknown[] = [IPC_CONTENT_FETCH_CHARS, conversationId];
+  let where = "conversation_id = ?";
+  if (options.beforeCreatedAt && options.beforeId) {
+    where += " AND (created_at < ? OR (created_at = ? AND id < ?))";
+    params.push(options.beforeCreatedAt, options.beforeCreatedAt, options.beforeId);
+  } else if (options.beforeCreatedAt) {
+    where += " AND created_at < ?";
+    params.push(options.beforeCreatedAt);
+  }
+  const rows = getDb()
+    .prepare(
+      `${IPC_MESSAGE_SELECT}
+       WHERE ${where}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?`
+    )
+    .all(...params, limit + 1) as any[];
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  page.reverse();
+  return { messages: page.map(rowToMessage), hasMore };
 }

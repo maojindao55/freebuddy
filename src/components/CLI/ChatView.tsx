@@ -865,6 +865,9 @@ export function ChatView({
   const messages = useConversationStore((s) =>
     s.activeId ? s.messages[s.activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
   );
+  const olderMessagesAvailable = useConversationStore((s) =>
+    s.activeId ? Boolean(s.olderMessagesAvailable[s.activeId]) : false
+  );
   const live = useConversationStore((s) =>
     s.activeId ? s.live[s.activeId] : undefined
   );
@@ -936,6 +939,7 @@ export function ChatView({
 
   const [draft, setDraft] = useState("");
   const [historyReveal, setHistoryReveal] = useState(INITIAL_VISIBLE_MESSAGES);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [newTaskDraft, setNewTaskDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [newTaskPendingAttachments, setNewTaskPendingAttachments] = useState<ChatAttachment[]>([]);
@@ -1215,6 +1219,7 @@ export function ChatView({
   useEffect(() => {
     closeWorkspaceDetails();
     setHistoryReveal(INITIAL_VISIBLE_MESSAGES);
+    setLoadingEarlier(false);
   }, [conv?.id, closeWorkspaceDetails]);
   const newTaskMentionRoots = useMemo(() => {
     if (!newTaskProjectId) return undefined;
@@ -2705,21 +2710,42 @@ export function ChatView({
             }}
           />
         )}
-        {hiddenHistoryCount > 0 && (
+        {hiddenHistoryCount > 0 || olderMessagesAvailable ? (
           <button
             type="button"
             className="chat-load-earlier"
-            onClick={() =>
-              setHistoryReveal((count) =>
-                count + Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
-              )
-            }
+            disabled={loadingEarlier}
+            onClick={() => {
+              if (hiddenHistoryCount > 0) {
+                setHistoryReveal(
+                  (count) =>
+                    count + Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
+                );
+                return;
+              }
+              if (!conv?.id || loadingEarlier) return;
+              setLoadingEarlier(true);
+              void useConversationStore
+                .getState()
+                .loadOlderMessages(conv.id)
+                .then((loaded) => {
+                  if (loaded > 0) {
+                    setHistoryReveal((count) => count + loaded);
+                  }
+                })
+                .finally(() => {
+                  setLoadingEarlier(false);
+                });
+            }}
           >
             {t("chat.loadEarlier", {
-              count: Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
+              count:
+                hiddenHistoryCount > 0
+                  ? Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
+                  : VISIBLE_MESSAGE_STEP
             })}
           </button>
-        )}
+        ) : null}
         {renderedMessages.map((m, idx) => {
           const partial =
             replayPartial && replayPartial.messageId === m.id

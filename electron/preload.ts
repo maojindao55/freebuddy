@@ -176,8 +176,10 @@ const cli = {
     }),
   setConversationSkills: (id: string, skillIds: string[]) =>
     ipcRenderer.invoke("cli:setConversationSkills", { id, skillIds }),
-  listMessages: (conversationId: string) =>
-    ipcRenderer.invoke("cli:listMessages", conversationId),
+  listMessages: (
+    conversationId: string,
+    options?: { limit?: number; beforeCreatedAt?: string; beforeId?: string }
+  ) => ipcRenderer.invoke("cli:listMessages", conversationId, options),
   listMessage: (id: string) =>
     ipcRenderer.invoke("cli:listMessage", id),
   appendMessage: (input: unknown) =>

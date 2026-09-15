@@ -826,6 +826,17 @@ export interface CreateConversationShareResult {
   transcriptTruncated: boolean;
 }
 
+export interface ListMessagesQuery {
+  limit?: number;
+  beforeCreatedAt?: string;
+  beforeId?: string;
+}
+
+export interface ListMessagesPage {
+  messages: ConversationMessage[];
+  hasMore: boolean;
+}
+
 export interface AttachConversationSharesInput {
   targetConversationId: string;
   text: string;

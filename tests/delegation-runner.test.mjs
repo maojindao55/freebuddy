@@ -1,6 +1,7 @@
 import "./fixtures/electron-stub.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 test("summarizeDelegateOutput joins assistant text items", async () => {
   const { summarizeDelegateOutput } = await import("../dist-electron/cli/delegationRunner.js");
@@ -141,4 +142,13 @@ test("summarizeDelegateOutput truncates very long assistant text", async () => {
   const out = summarizeDelegateOutput([{ kind: "text", role: "assistant", content: "x".repeat(50_000) }]);
   assert.ok(out.length < 50_000);
   assert.match(out, /truncated/);
+});
+
+test("delegate runner persists capped stream JSON instead of the raw collected blob", () => {
+  const src = fs.readFileSync(
+    new URL("../electron/cli/delegationRunner.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(src, /serializeStreamItemsForPersist\(collected\)/);
+  assert.doesNotMatch(src, /JSON\.stringify\(collected\)/);
 });

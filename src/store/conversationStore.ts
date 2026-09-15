@@ -43,7 +43,8 @@ import {
   feedArticleTitleFromMessages,
   mergeConversationMessages,
   shouldApplyAgentSessionTitle,
-  upsertConversationMessage
+  upsertConversationMessage,
+  INITIAL_VISIBLE_MESSAGES
 } from "./conversationUtils";
 import {
   handleStreamControlEvent,
@@ -101,6 +102,7 @@ export interface ConversationState {
   conversations: Conversation[];
   activeId?: string;
   messages: Record<string, ConversationMessage[]>;
+  olderMessagesAvailable: Record<string, boolean>;
   live: Record<string, LiveAssistant>;
   unreadConversations: UnreadConversationMap;
   pendingFreshContext: Record<string, boolean>;
@@ -114,6 +116,7 @@ export interface ConversationState {
   requestFreshContext(id: string): void;
   setActive(id: string | undefined): Promise<void>;
   loadMessages(id: string, messageIds?: string[]): Promise<void>;
+  loadOlderMessages(id: string): Promise<number>;
   markConversationUnread(id: string): void;
   markConversationCompletedUnread(
     id: string,
@@ -188,6 +191,7 @@ export interface RunCtx {
 export const runCtxMap = new Map<string, RunCtx>();
 
 let transferInFlight = false;
+const olderMessagesInFlight = new Set<string>();
 
 const workflowMessageUnsubscribes = new Map<string, () => void>();
 const workflowEventUnsubscribes = new Map<string, () => void>();
@@ -656,6 +660,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   conversations: [],
   activeId: undefined,
   messages: {},
+  olderMessagesAvailable: {},
   live: {},
   unreadConversations: loadUnreadConversations(),
   pendingFreshContext: {},
@@ -837,7 +842,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       return;
     }
 
-    const list = await cliClient.listMessages(id);
+    const page = await cliClient.listMessages(id, {
+      limit: INITIAL_VISIBLE_MESSAGES
+    });
+    const list = page.messages;
     set((s) => {
       const sessionInfo = latestSessionInfoFromMessages(list);
       const agentTitle = sessionInfo?.title?.trim();
@@ -871,14 +879,52 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           void cliClient.renameConversation(id, agentTitle, "agent");
         }
       }
+      const existing = s.messages[id] ?? [];
+      const alreadyPaged = Object.prototype.hasOwnProperty.call(
+        s.olderMessagesAvailable,
+        id
+      );
       return {
         messages: {
           ...s.messages,
-          [id]: mergeConversationMessages(s.messages[id] ?? [], list)
+          [id]: mergeConversationMessages(existing, list)
+        },
+        olderMessagesAvailable: {
+          ...s.olderMessagesAvailable,
+          [id]: alreadyPaged ? s.olderMessagesAvailable[id] : page.hasMore
         },
         conversations
       };
     });
+  },
+
+  async loadOlderMessages(id) {
+    if (!cliClient.isAvailable()) return 0;
+    if (olderMessagesInFlight.has(id)) return 0;
+    const existing = get().messages[id] ?? [];
+    const oldest = existing[0];
+    if (!oldest) return 0;
+    olderMessagesInFlight.add(id);
+    try {
+      const page = await cliClient.listMessages(id, {
+        limit: INITIAL_VISIBLE_MESSAGES,
+        beforeCreatedAt: oldest.createdAt,
+        beforeId: oldest.id
+      });
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [id]: mergeConversationMessages(s.messages[id] ?? [], page.messages)
+        },
+        olderMessagesAvailable: {
+          ...s.olderMessagesAvailable,
+          [id]: page.hasMore
+        }
+      }));
+      return page.messages.length;
+    } finally {
+      olderMessagesInFlight.delete(id);
+    }
   },
 
   async newConversation({
@@ -1045,15 +1091,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => {
       const next = s.conversations.filter((c) => c.id !== id);
       const nextMessages = { ...s.messages };
+      const olderMessagesAvailable = { ...s.olderMessagesAvailable };
       const unreadConversations = { ...s.unreadConversations };
       const pendingFreshContext = { ...s.pendingFreshContext };
       delete nextMessages[id];
+      delete olderMessagesAvailable[id];
       delete unreadConversations[id];
       delete pendingFreshContext[id];
       persistUnreadConversations(unreadConversations);
       return {
         conversations: next,
         messages: nextMessages,
+        olderMessagesAvailable,
         unreadConversations,
         pendingFreshContext,
         activeId: s.activeId === id ? next[0]?.id : s.activeId

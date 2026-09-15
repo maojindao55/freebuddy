@@ -50,8 +50,9 @@ import {
   deleteConversation,
   getConversation,
   listConversations,
-  listMessage,
+  getMessageForIpc,
   listMessages,
+  listMessagesForIpc,
   notifyConversationsChanged,
   renameConversation,
   requireOwnedConversation,
@@ -65,6 +66,7 @@ import {
   type ConversationTitleSource,
   type CreateConversationInput,
   type ListConversationsArgs,
+  type ListMessagesIpcOptions,
   type UpdateMessageInput
 } from "./conversations.js";
 import {
@@ -1561,14 +1563,22 @@ export function registerCliIpc() {
     }
   );
 
-  registerHandler("cli:listMessages", (_e, conversationId: string) =>
-    requireOwnedConversation(conversationId)
-      ? sanitizeMessagesForIpc(listMessages(conversationId))
-      : []
+  registerHandler(
+    "cli:listMessages",
+    (_e, conversationId: string, options?: ListMessagesIpcOptions) => {
+      if (!requireOwnedConversation(conversationId)) {
+        return { messages: [], hasMore: false };
+      }
+      const page = listMessagesForIpc(conversationId, options);
+      return {
+        messages: sanitizeMessagesForIpc(page.messages),
+        hasMore: page.hasMore
+      };
+    }
   );
   registerHandler("cli:listMessage", (_e, id: string) => {
     if (!callerCanAccessMessage(id)) return undefined;
-    const message = listMessage(id);
+    const message = getMessageForIpc(id);
     return message ? sanitizeMessageForIpc(message) : undefined;
   });
   registerHandler("cli:appendMessage", (_e, input: AppendMessageInput) => {

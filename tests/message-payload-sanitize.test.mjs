@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  IPC_LIST_MESSAGES_PAGE_SIZE,
   MAX_IPC_LIST_MESSAGES_CHARS,
   MAX_IPC_MESSAGE_CONTENT_CHARS,
   sanitizeMessageForIpc,
-  sanitizeMessagesForIpc
+  sanitizeMessagesForIpc,
+  serializeStreamItemsForPersist
 } from "../dist-electron/cli/messagePayloadSanitize.js";
 
 function message(overrides = {}) {
@@ -98,4 +100,46 @@ test("small conversation messages pass through unchanged", () => {
     content: JSON.stringify([{ kind: "text", content: "hi" }])
   });
   assert.deepEqual(sanitizeMessageForIpc(original), original);
+});
+
+test("sanitizeMessageForIpc does not JSON.parse oversized assistant blobs", () => {
+  const content = JSON.stringify([
+    {
+      kind: "tool-call",
+      id: "tool-1",
+      input: { blob: "a".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS + 50_000) },
+      output: "ok"
+    },
+    { kind: "text", content: "keep me" }
+  ]);
+  assert.ok(content.length > MAX_IPC_MESSAGE_CONTENT_CHARS);
+
+  const started = Date.now();
+  const sanitized = sanitizeMessageForIpc(message({ content }));
+  const elapsed = Date.now() - started;
+
+  assert.ok(elapsed < 250, `sanitize took ${elapsed}ms`);
+  assert.match(sanitized.content, /omitted/i);
+  assert.doesNotMatch(sanitized.content, /keep me/);
+  assert.doesNotThrow(() => JSON.parse(sanitized.content));
+  assert.doesNotThrow(() => structuredClone(sanitized));
+});
+
+test("serializeStreamItemsForPersist caps bulky collected tool payloads", () => {
+  const persisted = serializeStreamItemsForPersist([
+    { kind: "text", content: "done" },
+    {
+      kind: "tool-call",
+      id: "tool-1",
+      input: { blob: "a".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS) },
+      output: "ok"
+    }
+  ]);
+  assert.ok(persisted.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.match(persisted, /done/);
+  assert.doesNotMatch(persisted, /"input"/);
+});
+
+test("IPC history page size matches the renderer initial window", () => {
+  assert.equal(IPC_LIST_MESSAGES_PAGE_SIZE, 40);
 });

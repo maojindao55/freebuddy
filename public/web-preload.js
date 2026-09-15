@@ -217,7 +217,7 @@
       setConversationApprovalMode: function (id, approvalMode) { return invoke("cli:setConversationApprovalMode", { id: id, approvalMode: approvalMode }); },
       setConversationConfigOptionOverrides: function (id, overrides) { return invoke("cli:setConversationConfigOptionOverrides", { id: id, overrides: overrides }); },
       setConversationSkills: function (id, skillIds) { return invoke("cli:setConversationSkills", { id: id, skillIds: skillIds }); },
-      listMessages: function (conversationId) { return invoke("cli:listMessages", conversationId); },
+      listMessages: function (conversationId, options) { return invoke("cli:listMessages", conversationId, options); },
       listMessage: function (id) { return invoke("cli:listMessage", id); },
       appendMessage: function (input) { return invoke("cli:appendMessage", input); },
       updateMessage: function (input) { return invoke("cli:updateMessage", input); },

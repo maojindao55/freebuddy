@@ -226,3 +226,71 @@ test("admin (desktop owner) sees every user's conversations", async (t) => {
     ["b1"]
   );
 });
+
+test("listMessagesForIpc pages newest messages and does not load oversized blobs", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  migrate(db);
+  setDbForTest(db);
+  const {
+    createConversation,
+    appendMessage,
+    listMessages,
+    listMessagesForIpc,
+    getMessageForIpc
+  } = await import("../dist-electron/cli/conversations.js");
+  const { MAX_IPC_MESSAGE_CONTENT_CHARS } = await import(
+    "../dist-electron/cli/messagePayloadSanitize.js"
+  );
+
+  createConversation(baseInput("c1"));
+  for (const id of ["m1", "m2", "m3", "m4", "m5"]) {
+    appendMessage({
+      id,
+      conversationId: "c1",
+      role: "user",
+      status: "sent",
+      content: id
+    });
+  }
+
+  const page1 = listMessagesForIpc("c1", { limit: 2 });
+  assert.equal(page1.hasMore, true);
+  assert.deepEqual(
+    page1.messages.map((entry) => entry.id),
+    ["m4", "m5"]
+  );
+
+  const oldest = page1.messages[0];
+  const page2 = listMessagesForIpc("c1", {
+    limit: 2,
+    beforeCreatedAt: oldest.createdAt,
+    beforeId: oldest.id
+  });
+  assert.equal(page2.hasMore, true);
+  assert.deepEqual(
+    page2.messages.map((entry) => entry.id),
+    ["m2", "m3"]
+  );
+
+  const hugeId = "huge";
+  const huge = "x".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS + 50_000);
+  appendMessage({
+    id: hugeId,
+    conversationId: "c1",
+    role: "assistant",
+    status: "done",
+    content: huge
+  });
+  const full = listMessages("c1");
+  assert.equal(full.at(-1)?.content.length, huge.length);
+
+  const ipcLatest = listMessagesForIpc("c1", { limit: 1 });
+  assert.equal(ipcLatest.messages[0]?.id, hugeId);
+  assert.ok(ipcLatest.messages[0].content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS + 1);
+
+  const ipcOne = getMessageForIpc(hugeId);
+  assert.ok(ipcOne);
+  assert.ok(ipcOne.content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS + 1);
+});

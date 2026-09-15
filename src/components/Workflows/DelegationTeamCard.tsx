@@ -17,7 +17,6 @@ import {
   type DelegationEventRow,
   type DelegationEventStatus
 } from "@/services/delegation/client";
-import { cliClient } from "@/services/cli/client";
 import type { DelegationTeam } from "@/services/workflowTeams/types";
 import { useConversationStore } from "@/store/conversationStore";
 import { AgentAvatar } from "../CLI/AgentAvatar";
@@ -49,6 +48,9 @@ export function DelegationTeamCard({
   const { t } = useTranslation();
   const members = useConversationStore((s) => s.members);
   const liveStatus = useConversationStore((s) => s.live[conversationId]?.status);
+  const conversationMessages = useConversationStore(
+    (s) => s.messages[conversationId]
+  );
   const [team, setTeam] = useState<DelegationTeam | undefined>(undefined);
   const [activeRoleId, setActiveRoleId] = useState<string | undefined>(undefined);
   const [runStatus, setRunStatus] = useState<string | undefined>(undefined);
@@ -68,41 +70,36 @@ export function DelegationTeamCard({
     setExpandedEventIds(new Set());
   }, [conversationId]);
 
-  // Extract model per agent from the conversation's streamed config-options
-  // items — same mechanism as WorkspacePanel's sessionConfigSummary.
+  // Extract model per agent from already-loaded conversation messages —
+  // same mechanism as WorkspacePanel's sessionConfigSummary. Do not call
+  // listMessages here: opening a large team session would freeze the UI.
   useEffect(() => {
     if (!team) return;
-    let cancelled = false;
-    (async () => {
+    const messages = conversationMessages ?? [];
+    const map: Record<string, string> = {};
+    for (const msg of messages) {
+      if (msg.role !== "assistant" || !msg.agentId) continue;
+      if (msg.content.length > 80_000) continue;
       try {
-        const messages = await cliClient.listMessages(conversationId);
-        if (cancelled) return;
-        const map: Record<string, string> = {};
-        for (const msg of messages) {
-          if (msg.role !== "assistant" || !msg.agentId) continue;
-          try {
-            const items = JSON.parse(msg.content);
-            if (!Array.isArray(items)) continue;
-            for (const item of items) {
-              if (item.kind === "config-options" && Array.isArray(item.options)) {
-                const modelOpt = item.options.find((o: any) => o.id === "model");
-                if (modelOpt?.currentLabel || modelOpt?.currentValue) {
-                  map[msg.agentId] = modelOpt.currentLabel ?? modelOpt.currentValue;
-                }
-              }
+        const items = JSON.parse(msg.content);
+        if (!Array.isArray(items)) continue;
+        for (const item of items) {
+          if (item.kind === "config-options" && Array.isArray(item.options)) {
+            const modelOpt = item.options.find((o: any) => o.id === "model");
+            if (modelOpt?.currentLabel || modelOpt?.currentValue) {
+              map[msg.agentId] = modelOpt.currentLabel ?? modelOpt.currentValue;
             }
-          } catch {}
+          }
         }
-        for (const r of team.roster) {
-          if (r.model && !map[r.agentId]) map[r.agentId] = r.model;
-        }
-        if (!cancelled) setModelsByAgent(map);
       } catch {
-        if (!cancelled) setModelsByAgent({});
+        /* ignore malformed stream JSON */
       }
-    })();
-    return () => { cancelled = true; };
-  }, [team, conversationId]);
+    }
+    for (const r of team.roster) {
+      if (r.model && !map[r.agentId]) map[r.agentId] = r.model;
+    }
+    setModelsByAgent(map);
+  }, [team, conversationId, conversationMessages]);
 
   useEffect(() => {
     let cancelled = false;

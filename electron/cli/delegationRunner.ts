@@ -8,6 +8,7 @@ import {
 import { cliRun } from "./runtime.js";
 import type { CliRunArgs } from "./runtimeShared.js";
 import { appendMessage, updateMessage } from "./conversations.js";
+import { serializeStreamItemsForPersist } from "./messagePayloadSanitize.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 
 export interface DelegateRunResult {
@@ -53,7 +54,10 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
       flushTimer = setTimeout(() => {
         flushTimer = undefined;
         if (messageId) {
-          updateMessage({ id: messageId, content: JSON.stringify(collected) });
+          updateMessage({
+            id: messageId,
+            content: serializeStreamItemsForPersist(collected)
+          });
           broadcastMsg("updated");
         }
       }, 300);
@@ -109,7 +113,7 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
       if (messageId) {
         updateMessage({
           id: messageId,
-          content: JSON.stringify(collected),
+          content: serializeStreamItemsForPersist(collected),
           status:
             errored || (!evidence.hasOutput && evidence.toolError)
               ? "failed"

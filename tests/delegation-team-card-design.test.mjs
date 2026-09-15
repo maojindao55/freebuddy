@@ -59,6 +59,11 @@ test("member running state is keyed by roster role id, not shared CLI adapter", 
   assert.doesNotMatch(source, /setActiveAgentId/);
 });
 
+test("member model lookup uses loaded store messages instead of refetching history", () => {
+  assert.match(source, /s\.messages\[conversationId\]/);
+  assert.doesNotMatch(source, /cliClient\.listMessages/);
+});
+
 test("failed delegation events show their upstream error without expanding details", () => {
   assert.match(source, /event\.status === "failed" \|\| event\.status === "timeout"/);
   assert.match(source, /className="delegation-event-failure"/);

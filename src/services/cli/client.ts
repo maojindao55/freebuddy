@@ -32,6 +32,8 @@ import type {
   PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
+  ListMessagesPage,
+  ListMessagesQuery,
   AppendMessageInput,
   UpdateMessageInput,
   Project,
@@ -314,8 +316,11 @@ export const cliClient = {
   ): Promise<Conversation | undefined> {
     return api().setConversationSkills(id, skillIds);
   },
-  listMessages(conversationId: string): Promise<ConversationMessage[]> {
-    return api().listMessages(conversationId);
+  listMessages(
+    conversationId: string,
+    options?: ListMessagesQuery
+  ): Promise<ListMessagesPage> {
+    return api().listMessages(conversationId, options);
   },
   listMessage(id: string): Promise<ConversationMessage | undefined> {
     return api().listMessage(id);

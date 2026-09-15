@@ -1662,6 +1662,14 @@
       },
       "details": "详情",
       "hide": "收起",
+      "viewsLabel": "委派视图",
+      "viewRoster": "成员",
+      "viewTree": "委派树",
+      "treeLabel": "委派树：谁委派给谁",
+      "expandNode": "展开",
+      "collapseNode": "收起",
+      "hiddenTasks": "{{count}} 个下级任务",
+      "orphanNote": "部分任务的上级缺失，已置顶显示。",
       "errors": {
         "invalidRoster": "花名册需至少一项，且每项需填写角色名与 agent"
       }

@@ -256,6 +256,17 @@ function escapePowerShellSingleQuoted(value: string): string {
   return value.replace(/'/g, "''");
 }
 
+export function buildWindowsExplorerCommandTrustScript(): string {
+  return `
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$CerPath
+)
+$ErrorActionPreference = 'Stop'
+Import-Certificate -FilePath $CerPath -CertStoreLocation 'Cert:\\LocalMachine\\TrustedPeople' | Out-Null
+`.trim();
+}
+
 export function buildWindowsExplorerCommandRegisterScript(spec: {
   installDir: string;
   msixPath: string;
@@ -275,12 +286,58 @@ $msix = '${msixPath}'
 $loc = '${installDir}'
 $name = '${packageName}'
 $thumb = '${thumbprint}'.ToUpperInvariant()
-$store = 'Cert:\\CurrentUser\\TrustedPeople'
-$existing = Get-ChildItem $store -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb }
-if (-not $existing) {
-  Import-Certificate -FilePath $cer -CertStoreLocation $store | Out-Null
+$trustScript = Join-Path $loc 'trust-explorer-command.ps1'
+function Test-ThumbprintInStore([string]$storePath) {
+  return [bool](Get-ChildItem $storePath -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumb })
 }
-Add-AppxPackage -Path $msix -ExternalLocation $loc -ForceUpdateFromAnyVersion
+function Import-CurrentUserTrust {
+  if (Test-ThumbprintInStore 'Cert:\\CurrentUser\\TrustedPeople') { return }
+  Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\\CurrentUser\\TrustedPeople' | Out-Null
+}
+function Import-LocalMachineTrust {
+  if (Test-ThumbprintInStore 'Cert:\\LocalMachine\\TrustedPeople') { return $true }
+  try {
+    Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\\LocalMachine\\TrustedPeople' | Out-Null
+    return $true
+  } catch {
+    return $false
+  }
+}
+function Install-ExplorerCommandPackage {
+  Add-AppxPackage -Path $msix -ExternalLocation $loc -ForceUpdateFromAnyVersion
+}
+function Request-ElevatedLocalMachineTrust {
+  if (-not (Test-Path $trustScript)) { throw "missing $trustScript" }
+  $powershell = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+  $proc = Start-Process -FilePath $powershell -Verb RunAs -Wait -PassThru -ArgumentList @(
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    $trustScript,
+    '-CerPath',
+    $cer
+  )
+  if ($null -eq $proc) { throw 'UAC certificate trust was cancelled' }
+  if ($proc.ExitCode -ne 0) { throw "elevated certificate trust failed with $($proc.ExitCode)" }
+  if (-not (Test-ThumbprintInStore 'Cert:\\LocalMachine\\TrustedPeople')) {
+    throw 'LocalMachine TrustedPeople still missing FreeBuddy certificate'
+  }
+}
+Import-CurrentUserTrust
+$machineTrusted = Import-LocalMachineTrust
+try {
+  Install-ExplorerCommandPackage
+} catch {
+  $text = "$($_.Exception.Message) $($_.FullyQualifiedErrorId) $($_.Exception.HResult)"
+  if (-not $machineTrusted -and ($text -match '800B0109|80073CF0')) {
+    Request-ElevatedLocalMachineTrust
+    Install-ExplorerCommandPackage
+  } else {
+    throw
+  }
+}
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -304,6 +361,7 @@ export function buildWindowsExplorerCommandUnregisterScript(): string {
   return `
 Get-AppxPackage | Where-Object { @(${list}) -contains $_.Name } | Remove-AppxPackage -ErrorAction SilentlyContinue
 Get-ChildItem Cert:\\CurrentUser\\TrustedPeople -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq '${publisher}' } | Remove-Item -ErrorAction SilentlyContinue
+Get-ChildItem Cert:\\LocalMachine\\TrustedPeople -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq '${publisher}' } | Remove-Item -ErrorAction SilentlyContinue
 `.trim();
 }
 
@@ -350,7 +408,7 @@ async function runPowerShellScript(script: string): Promise<string> {
   const result = await execFileAsync(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-    { windowsHide: true, timeout: 120000, encoding: "utf8" }
+    { windowsHide: true, timeout: 180000, encoding: "utf8" }
   );
   return String(result.stdout || "").trim();
 }

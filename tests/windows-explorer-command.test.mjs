@@ -18,6 +18,7 @@ const {
   writeWindowsExplorerCommandStamp,
   readWindowsExplorerCommandStamp,
   buildWindowsExplorerCommandRegisterScript,
+  buildWindowsExplorerCommandTrustScript,
   buildWindowsExplorerCommandUnregisterScript,
   applyWindowsExplorerCommandPackage
 } = await import("../dist-electron/cli/windowsExplorerCommand.js");
@@ -89,6 +90,10 @@ test("sparse package registration script trusts the bundled cert then Add-AppxPa
   });
   assert.match(script, /Import-Certificate/);
   assert.match(script, /TrustedPeople/);
+  assert.match(script, /LocalMachine/);
+  assert.match(script, /Verb RunAs/);
+  assert.match(script, /trust-explorer-command\.ps1/);
+  assert.match(script, /800B0109/);
   assert.match(script, /Add-AppxPackage/);
   assert.match(script, /ExternalLocation/);
   assert.match(script, /ForceUpdateFromAnyVersion/);
@@ -101,6 +106,11 @@ test("sparse package registration script trusts the bundled cert then Add-AppxPa
   assert.match(uninstall, /dev\.freebuddy\.app\.dev\.shell/);
   assert.match(uninstall, /Remove-AppxPackage/);
   assert.match(uninstall, /CN=FreeBuddy/);
+  assert.match(uninstall, /LocalMachine/);
+
+  const trust = buildWindowsExplorerCommandTrustScript();
+  assert.match(trust, /LocalMachine\\TrustedPeople/);
+  assert.match(trust, /CerPath/);
 });
 
 test("afterPack and NSIS uninstall ship the Win11 Explorer command", () => {
@@ -117,6 +127,7 @@ test("afterPack and NSIS uninstall ship the Win11 Explorer command", () => {
   assert.doesNotMatch(pack, /ConvertTo-SecureString/);
   assert.doesNotMatch(pack, /New-SelfSignedCertificate/);
   assert.match(pack, /uninstall-explorer-command\.ps1/);
+  assert.match(pack, /trust-explorer-command\.ps1/);
   assert.match(pack, /explorer-command\.pfx/);
 
   const buildDll = read("scripts/build-windows-explorer-command.mjs");

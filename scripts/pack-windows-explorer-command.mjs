@@ -8,6 +8,7 @@ import { compileWindowsExplorerCommandDll } from "./build-windows-explorer-comma
 import {
   WINDOWS_EXPLORER_COMMAND,
   buildWindowsExplorerCommandAppxManifest,
+  buildWindowsExplorerCommandTrustScript,
   buildWindowsExplorerCommandUnregisterScript,
   toMsixVersion,
   windowsExplorerCommandPackageName
@@ -145,6 +146,11 @@ export async function packWindowsExplorerCommand(context) {
     fs.writeFileSync(
       path.join(appOutDir, "uninstall-explorer-command.ps1"),
       `${buildWindowsExplorerCommandUnregisterScript()}\n`,
+      "utf8"
+    );
+    fs.writeFileSync(
+      path.join(appOutDir, "trust-explorer-command.ps1"),
+      `${buildWindowsExplorerCommandTrustScript()}\n`,
       "utf8"
     );
   } catch (err) {

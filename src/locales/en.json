@@ -1677,6 +1677,14 @@
       },
       "details": "Details",
       "hide": "Hide",
+      "viewsLabel": "Delegation views",
+      "viewRoster": "Members",
+      "viewTree": "Delegation tree",
+      "treeLabel": "Delegation tree: who delegated to whom",
+      "expandNode": "Expand",
+      "collapseNode": "Collapse",
+      "hiddenTasks": "{{count}} nested tasks",
+      "orphanNote": "Some tasks reference a missing parent and are shown at the top level.",
       "errors": {
         "invalidRoster": "Roster needs at least one entry, each with a label and an agent"
       }

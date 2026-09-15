@@ -125,6 +125,19 @@ test("sanitizeMessageForIpc does not JSON.parse oversized assistant blobs", () =
   assert.doesNotThrow(() => structuredClone(sanitized));
 });
 
+test("serializeStreamItemsForPersist keeps recent text instead of omitting a busy stream", () => {
+  const items = Array.from({ length: 4000 }, (_, index) => ({
+    kind: "text",
+    content: `chunk-${index} ${"n".repeat(80)}`
+  }));
+  const persisted = serializeStreamItemsForPersist(items);
+
+  assert.ok(persisted.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.doesNotMatch(persisted, /omitted/i);
+  assert.match(persisted, /chunk-3999/);
+  assert.doesNotThrow(() => JSON.parse(persisted));
+});
+
 test("serializeStreamItemsForPersist caps bulky collected tool payloads", () => {
   const persisted = serializeStreamItemsForPersist([
     { kind: "text", content: "done" },

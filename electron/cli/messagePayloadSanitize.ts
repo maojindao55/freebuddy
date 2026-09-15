@@ -114,6 +114,54 @@ function keepEssentialStreamItem(item: unknown): boolean {
   );
 }
 
+function fitJsonArrayToBudget(items: unknown[], max: number): string {
+  let serialized = JSON.stringify(items);
+  if (serialized.length <= max) return serialized;
+
+  let lo = 1;
+  let hi = items.length;
+  let best = items.slice(-1);
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const slice = items.slice(-mid);
+    const next = JSON.stringify(slice);
+    if (next.length <= max) {
+      best = slice;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  serialized = JSON.stringify(best);
+  if (serialized.length <= max) return serialized;
+
+  const last = best[0];
+  if (last && typeof last === "object" && !Array.isArray(last)) {
+    const rec: Record<string, unknown> = { ...(last as Record<string, unknown>) };
+    const raw =
+      typeof rec.content === "string" ? rec.content : JSON.stringify(rec);
+    rec.kind = rec.kind ?? "text";
+    const emptyWrap = JSON.stringify([{ ...rec, content: "" }]);
+    const available = Math.max(
+      0,
+      max - emptyWrap.length - TRUNCATION_MARKER.length
+    );
+    rec.content = `${raw.slice(Math.max(0, raw.length - available))}${TRUNCATION_MARKER}`;
+    serialized = JSON.stringify([rec]);
+    if (serialized.length <= max) return serialized;
+  }
+
+  return JSON.stringify([
+    {
+      kind: "text",
+      content: truncateChars(
+        typeof last === "string" ? last : "…",
+        Math.max(32, max - 40)
+      )
+    }
+  ]);
+}
+
 function capStreamJson(items: unknown[]): string {
   const compacted = items.map(compactStreamItem);
   let serialized = JSON.stringify(compacted);
@@ -130,10 +178,7 @@ function capStreamJson(items: unknown[]): string {
     serialized = JSON.stringify([...essential, ...extras]);
   }
   if (serialized.length <= MAX_IPC_MESSAGE_CONTENT_CHARS) return serialized;
-
-  const essentialOnly = JSON.stringify(essential);
-  if (essentialOnly.length <= MAX_IPC_MESSAGE_CONTENT_CHARS) return essentialOnly;
-  return omittedContent("assistant");
+  return fitJsonArrayToBudget(essential, MAX_IPC_MESSAGE_CONTENT_CHARS);
 }
 
 function contentNeedsSanitize(content: string): boolean {

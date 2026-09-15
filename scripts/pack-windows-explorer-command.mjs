@@ -53,11 +53,39 @@ function mapMsixArchitecture(arch) {
   return "x64";
 }
 
-function powershellJson(script) {
+export function buildWindowsExplorerCommandCertScript(spec) {
+  const pfx = String(spec.pfxPath || "").replace(/'/g, "''");
+  const cer = String(spec.cerPath || "").replace(/'/g, "''");
+  const subject = String(spec.subject || WINDOWS_EXPLORER_COMMAND.publisher).replace(/'/g, "''");
+  return `
+$ErrorActionPreference = 'Stop'
+$pfx = '${pfx}'
+$cer = '${cer}'
+$plain = $env:FB_EXPLORER_CERT_PASSWORD
+if (-not $plain) { throw 'FB_EXPLORER_CERT_PASSWORD is missing' }
+$subject = New-Object System.Security.Cryptography.X509Certificates.X500DistinguishedName '${subject}'
+$rsa = [System.Security.Cryptography.RSA]::Create(2048)
+$req = New-Object System.Security.Cryptography.X509Certificates.CertificateRequest($subject, $rsa, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+$ekuOids = New-Object System.Security.Cryptography.OidCollection
+[void]$ekuOids.Add((New-Object System.Security.Cryptography.Oid '1.3.6.1.5.5.7.3.3'))
+$req.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($ekuOids, $false)))
+$req.CertificateExtensions.Add((New-Object System.Security.Cryptography.X509Certificates.X509KeyUsageExtension([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature, $true)))
+$cert = $req.CreateSelfSigned([DateTime]::UtcNow.AddDays(-1), [DateTime]::UtcNow.AddYears(10))
+[System.IO.File]::WriteAllBytes($pfx, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $plain))
+[System.IO.File]::WriteAllBytes($cer, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+@{ thumbprint = $cert.Thumbprint; pfx = $pfx; cer = $cer } | ConvertTo-Json -Compress
+`.trim();
+}
+
+function powershellJson(script, env = {}) {
   const stdout = execFileSync(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-    { encoding: "utf8", windowsHide: true }
+    {
+      encoding: "utf8",
+      windowsHide: true,
+      env: { ...process.env, ...env }
+    }
   );
   return JSON.parse(String(stdout).trim());
 }
@@ -66,18 +94,14 @@ function createCodeSigningCert(workDir) {
   const pfxPath = path.join(workDir, "explorer-command.pfx");
   const cerPath = path.join(workDir, WINDOWS_EXPLORER_COMMAND.cerName);
   const password = crypto.randomBytes(16).toString("hex");
-  const script = `
-$ErrorActionPreference = 'Stop'
-$pfx = '${pfxPath.replace(/'/g, "''")}'
-$cer = '${cerPath.replace(/'/g, "''")}'
-$password = ConvertTo-SecureString -String '${password}' -Force -AsPlainText
-$cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject '${WINDOWS_EXPLORER_COMMAND.publisher}' -FriendlyName 'FreeBuddy Explorer Command' -CertStoreLocation 'Cert:\\CurrentUser\\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(10)
-Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $password | Out-Null
-Export-Certificate -Cert $cert -FilePath $cer -Type CERT | Out-Null
-Remove-Item $cert.PSPath -ErrorAction SilentlyContinue
-@{ thumbprint = $cert.Thumbprint; pfx = $pfx; cer = $cer } | ConvertTo-Json -Compress
-`;
-  const result = powershellJson(script);
+  const result = powershellJson(
+    buildWindowsExplorerCommandCertScript({
+      pfxPath,
+      cerPath,
+      subject: WINDOWS_EXPLORER_COMMAND.publisher
+    }),
+    { FB_EXPLORER_CERT_PASSWORD: password }
+  );
   return {
     thumbprint: String(result.thumbprint || "").replace(/\s/g, ""),
     pfxPath,

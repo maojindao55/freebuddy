@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,6 +21,9 @@ const {
   buildWindowsExplorerCommandUnregisterScript,
   applyWindowsExplorerCommandPackage
 } = await import("../dist-electron/cli/windowsExplorerCommand.js");
+const { buildWindowsExplorerCommandCertScript } = await import(
+  "../scripts/pack-windows-explorer-command.mjs"
+);
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(rootDir, rel), "utf8");
@@ -108,7 +112,10 @@ test("afterPack and NSIS uninstall ship the Win11 Explorer command", () => {
   assert.match(pack, /compileWindowsExplorerCommandDll/);
   assert.match(pack, /MakeAppx/);
   assert.match(pack, /signtool/i);
-  assert.match(pack, /New-SelfSignedCertificate/);
+  assert.match(pack, /CertificateRequest/);
+  assert.match(pack, /FB_EXPLORER_CERT_PASSWORD/);
+  assert.doesNotMatch(pack, /ConvertTo-SecureString/);
+  assert.doesNotMatch(pack, /New-SelfSignedCertificate/);
   assert.match(pack, /uninstall-explorer-command\.ps1/);
   assert.match(pack, /explorer-command\.pfx/);
 
@@ -122,6 +129,54 @@ test("afterPack and NSIS uninstall ship the Win11 Explorer command", () => {
   const nsh = read("desktop/windows/installer.nsh");
   assert.match(nsh, /uninstall-explorer-command\.ps1/);
   assert.match(nsh, /nsExec::ExecToLog/);
+
+  const certScript = buildWindowsExplorerCommandCertScript({
+    pfxPath: "C:\\tmp\\explorer-command.pfx",
+    cerPath: "C:\\tmp\\FreeBuddyExplorerCommand.cer",
+    subject: identity.publisher
+  });
+  assert.match(certScript, /CertificateRequest/);
+  assert.match(certScript, /FB_EXPLORER_CERT_PASSWORD/);
+  assert.match(certScript, /1\.3\.6\.1\.5\.5\.7\.3\.3/);
+  assert.doesNotMatch(certScript, /ConvertTo-SecureString/);
+});
+
+test("code-signing cert export uses .NET and skips the Security module", {
+  skip: process.platform !== "win32" ? "Windows only" : false
+}, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fb-explorer-cert-"));
+  try {
+    const pfxPath = path.join(dir, "explorer-command.pfx");
+    const cerPath = path.join(dir, "explorer-command.cer");
+    const stdout = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        buildWindowsExplorerCommandCertScript({
+          pfxPath,
+          cerPath,
+          subject: identity.publisher
+        })
+      ],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        env: { ...process.env, FB_EXPLORER_CERT_PASSWORD: "unit-test-password" }
+      }
+    );
+    const parsed = JSON.parse(String(stdout).trim());
+    assert.match(String(parsed.thumbprint), /^[0-9A-Fa-f]{40}$/);
+    assert.ok(fs.existsSync(pfxPath));
+    assert.ok(fs.existsSync(cerPath));
+    assert.ok(fs.statSync(pfxPath).size > 0);
+    assert.ok(fs.statSync(cerPath).size > 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("applyWindowsExplorerCommandPackage is idempotent and skips missing payloads", async () => {

@@ -415,6 +415,7 @@ export class DelegationRuntime {
     let ctx = this.contexts.get(runId);
     if (!ctx) ctx = this.loadContextFromDb(runId);
     if (!ctx) throw new Error("delegation run not found");
+    this.refreshTeamFromDb(ctx);
 
     this.killedRunIds.delete(runId);
     this.pausedRunIds.delete(runId);

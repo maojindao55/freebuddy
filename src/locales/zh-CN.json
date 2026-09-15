@@ -1000,6 +1000,8 @@
     "attachmentImportEmpty": "没有可添加的附件。",
     "cliBridgeUnavailable": "FreeBuddy CLI 桥接不可用。请在 Electron 桌面端运行。",
     "agentNotInstalled": "{{agent}} 未安装。请在“设置 → Cli Agents”中安装。",
+    "teamFollowupAgentMissing": "团队或当前入口 Agent 已不存在，请在团队设置中选择有效的入口 Agent 后重试。",
+    "followupAgentMissing": "此会话关联的 Agent 已不存在，请选择有效的 Agent 后重试。",
     "checkFailed": "检查失败：{{err}}",
     "taskFailed": "任务失败：{{err}}",
     "sendFailed": "发送失败：{{err}}",

@@ -363,6 +363,16 @@ export function setConversationSkills(
   return getConversation(id);
 }
 
+/** Rebind future turns without changing the authors of historical messages. */
+export function updateConversationAgentBinding(
+  id: string,
+  agent: { id: string; name: string; cli: { adapter: string } }
+): void {
+  getDb().prepare(
+    "UPDATE conversations SET agent_id = ?, agent_name = ?, adapter = ?, updated_at = ? WHERE id = ?"
+  ).run(agent.id, agent.name, agent.cli.adapter, new Date().toISOString(), id);
+}
+
 export function updateConversationMetadata(
   id: string,
   patch: Record<string, unknown>

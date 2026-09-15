@@ -1012,6 +1012,8 @@
     "attachmentImportEmpty": "No attachments could be added.",
     "cliBridgeUnavailable": "FreeBuddy CLI bridge is unavailable. Please run the Electron desktop app.",
     "agentNotInstalled": "{{agent}} is not installed. Open Settings → Cli Agents to install.",
+    "teamFollowupAgentMissing": "The team or its entry agent no longer exists. Select a valid entry agent in team settings and retry.",
+    "followupAgentMissing": "This conversation's agent no longer exists. Select a valid agent and retry.",
     "checkFailed": "Check failed: {{err}}",
     "taskFailed": "Task failed: {{err}}",
     "sendFailed": "Send failed: {{err}}",

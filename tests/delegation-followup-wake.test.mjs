@@ -40,6 +40,50 @@ const policy = {
 const snap = { roster, policy, entryRoleId: "r-impl" };
 const tick = (ms) => new Promise((r) => setTimeout(r, ms));
 
+test("rebinding a conversation preserves historical message authors and content", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { createConversation, appendMessage, getConversation, listMessages, updateConversationAgentBinding } = await import("../dist-electron/cli/conversations.js");
+    createConversation({ id: "old-task", title: "Original task", agentId: "old", agentName: "Old", adapter: "dsh-acp" });
+    appendMessage({ id: "history", conversationId: "old-task", role: "assistant", status: "done", content: "Original progress", agentId: "old", agentName: "Old" });
+    const before = listMessages("old-task");
+    updateConversationAgentBinding("old-task", { id: "new", name: "New", cli: { adapter: "dsh-acp" } });
+    assert.equal(getConversation("old-task").agentId, "new");
+    assert.equal(getConversation("old-task").agentName, "New");
+    assert.deepEqual(listMessages("old-task"), before);
+  });
+});
+
+test("follow-up uses edited team entry after deleting the old agent, including after restart", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const { insertDelegationTeam, updateDelegationTeam } = await import("../dist-electron/cli/delegationTeams.js");
+    insertDelegationTeam({ id: "replacement-team", name: "Team", enabled: true, source: "user", ...snap });
+    let deleted = false;
+    const calls = [];
+    const deps = {
+      webContents: undefined,
+      resolveAgent: (id) => deleted && id === roster[0].agentId ? undefined : ({ adapter: "dsh-acp", agentName: id, skillIds: [] }),
+      runAgent: async (args) => {
+        calls.push(args);
+        return { summary: "Saved task progress", exitCode: 0, error: null };
+      }
+    };
+    const rt = new DelegationRuntime(deps);
+    const runId = await rt.start({ goal: "Keep original task", teamId: "replacement-team", teamSnapshot: snap, cwd: "/r" });
+    updateDelegationTeam("replacement-team", { roster: [{ ...roster[0], agentId: "replacement" }, roster[1]] });
+    deleted = true;
+    await rt.followUp(runId, "Continue after replacement");
+    assert.equal(calls.at(-1).agentId, "replacement");
+    assert.match(calls.at(-1).prompt, /Continue after replacement/);
+    const restarted = new DelegationRuntime(deps);
+    await restarted.followUp(runId, "Continue after restart");
+    assert.equal(calls.at(-1).agentId, "replacement");
+    assert.match(calls.at(-1).prompt, /Continue after restart/);
+  });
+});
+
 test("followUp after completed run parks on delegate and wakes with result", async (t) => {
   if (!bindingAvailable) { t.skip(); return; }
   await withDb(async () => {

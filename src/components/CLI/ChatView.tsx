@@ -33,6 +33,7 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useDelegationTeamStore } from "@/store/delegationStore";
 import { delegationClient } from "@/services/delegation/client";
+import { resolveDelegationFollowupMember } from "@/services/delegation/followupMember";
 import { useNewTaskUiStore } from "@/store/newTaskUiStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useProjectStore } from "@/store/projectStore";
@@ -2265,6 +2266,17 @@ export function ChatView({
   };
 
   const resolveWorkflowFollowupMember = async () => {
+    // A delegation conversation may still reference its original, deleted agent.
+    // Resolve the current team entry before validating the historical binding.
+    if (conv && delegationClient.isAvailable()) {
+      const delegationRun = await delegationClient.getRunByConversation(conv.id);
+      if (delegationRun?.teamId) {
+        const team = await delegationClient.get(delegationRun.teamId);
+        const currentMember = resolveDelegationFollowupMember(team, members);
+        if (!currentMember) throw new Error(t("errors.teamFollowupAgentMissing"));
+        return currentMember;
+      }
+    }
     if (!conv || !workflowClient.isAvailable()) return member;
     const run =
       activeRun?.conversationId === conv.id
@@ -2350,6 +2362,7 @@ export function ChatView({
       }
 
       const targetMember = await resolveWorkflowFollowupMember();
+      if (!targetMember) throw new Error(t("errors.followupAgentMissing"));
       if (!conv || !targetMember || (!prompt && attachmentsToSend.length === 0) || sending) {
         return;
       }

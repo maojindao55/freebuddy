@@ -21,6 +21,11 @@
 #pragma comment(lib, "shell32")
 #pragma comment(lib, "shlwapi")
 #pragma comment(lib, "uuid")
+// combaseapi.h already declares DllGetClassObject / DllCanUnloadNow; do not
+// add dllexport here (C2375). The .def file passed via /link /DEF publishes them.
+#define FB_DLLEXPORT extern "C"
+#else
+#define FB_DLLEXPORT extern "C" __attribute__((dllexport))
 #endif
 
 // Keep in sync with identity.json — tests assert the same CLSID.
@@ -370,7 +375,7 @@ class ClassFactory final : public IClassFactory {
   LONG ref_ = 1;
 };
 
-extern "C" HRESULT STDAPICALLTYPE DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
+FB_DLLEXPORT HRESULT STDAPICALLTYPE DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
   if (!ppv) return E_POINTER;
   *ppv = nullptr;
   if (!IsEqualCLSID(clsid, CLSID_FreeBuddyExplorerCommand)) return CLASS_E_CLASSNOTAVAILABLE;
@@ -382,11 +387,11 @@ extern "C" HRESULT STDAPICALLTYPE DllGetClassObject(REFCLSID clsid, REFIID riid,
   return hr;
 }
 
-extern "C" HRESULT STDAPICALLTYPE DllCanUnloadNow() {
+FB_DLLEXPORT HRESULT STDAPICALLTYPE DllCanUnloadNow() {
   return g_moduleLocks == 0 ? S_OK : S_FALSE;
 }
 
-extern "C" HRESULT STDAPICALLTYPE DllRegisterServer() { return S_OK; }
-extern "C" HRESULT STDAPICALLTYPE DllUnregisterServer() { return S_OK; }
+FB_DLLEXPORT HRESULT STDAPICALLTYPE DllRegisterServer() { return S_OK; }
+FB_DLLEXPORT HRESULT STDAPICALLTYPE DllUnregisterServer() { return S_OK; }
 
 BOOL APIENTRY DllMain(HMODULE, DWORD, LPVOID) { return TRUE; }

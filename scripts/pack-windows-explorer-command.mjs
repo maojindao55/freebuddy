@@ -48,10 +48,10 @@ export function findWindowsKitTool(toolName) {
   return null;
 }
 
-function mapMsixArchitecture(arch) {
-  if (arch === "ia32" || arch === "x86") return "x86";
-  if (arch === "arm64") return "arm64";
-  return "x64";
+function mapMsixArchitecture(_arch) {
+  // Sparse identity packages used by Zed/VS Code are architecture-neutral;
+  // the real DLL lives at ExternalLocation.
+  return "neutral";
 }
 
 export function buildWindowsExplorerCommandCertScript(spec) {

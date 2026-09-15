@@ -61,15 +61,19 @@ test("MSIX version padding and AppxManifest wire COM + Explorer menus", () => {
   const xml = buildWindowsExplorerCommandAppxManifest({
     packageName: identity.packageName,
     version: "0.9.26",
-    executable: "FreeBuddy.exe",
-    architecture: "x64"
+    executable: "FreeBuddy.exe"
   });
+  assert.match(xml, /ProcessorArchitecture="neutral"/);
+  assert.match(xml, /AppListEntry="none"/);
+  assert.match(xml, /RegistryWriteVirtualization>disabled/);
+  assert.match(xml, /FileSystemWriteVirtualization>disabled/);
   assert.match(xml, /uap10:AllowExternalContent>true/);
   assert.match(xml, /windows\.fileExplorerContextMenus/);
   assert.match(xml, /desktop5:ItemType Type="Directory"/);
   assert.match(xml, /desktop5:ItemType Type="Directory\\Background"/);
   assert.match(xml, /desktop5:ItemType Type="\*"/);
-  assert.match(xml, /desktop5:Verb /);
+  assert.match(xml, /desktop5:Verb Id="OpenWithFreeBuddy"/);
+  assert.doesNotMatch(xml, /OpenWithFreeBuddyBg|OpenWithFreeBuddyFile/);
   assert.doesNotMatch(xml, /desktop4:ItemType/);
   assert.match(xml, /windows\.comServer/);
   assert.match(xml, /FreeBuddyExplorerCommand\.dll/);
@@ -95,6 +99,8 @@ test("sparse package registration script trusts the bundled cert then Add-AppxPa
   assert.match(script, /trust-explorer-command\.ps1/);
   assert.match(script, /800B0109/);
   assert.match(script, /Add-AppxPackage/);
+  assert.match(script, /Remove-AppxPackage/);
+  assert.match(script, /Stop-Process -Name explorer/);
   assert.match(script, /ExternalLocation/);
   assert.match(script, /ForceUpdateFromAnyVersion/);
   assert.match(script, /FreeBuddyExplorerCommand\.msix/);
@@ -119,7 +125,8 @@ test("afterPack and NSIS uninstall ship the Win11 Explorer command", () => {
   assert.match(dispatcher, /packWindowsExplorerCommand/);
 
   const pack = read("scripts/pack-windows-explorer-command.mjs");
-  assert.match(pack, /compileWindowsExplorerCommandDll/);
+  assert.match(pack, /ProcessorArchitecture|neutral/);
+  assert.match(pack, /mapMsixArchitecture/);
   assert.match(pack, /MakeAppx/);
   assert.match(pack, /signtool/i);
   assert.match(pack, /CertificateRequest/);
@@ -131,6 +138,11 @@ test("afterPack and NSIS uninstall ship the Win11 Explorer command", () => {
   assert.match(pack, /explorer-command\.pfx/);
 
   const buildDll = read("scripts/build-windows-explorer-command.mjs");
+  assert.match(buildDll, /listPeExportNames/);
+  assert.match(buildDll, /DllGetClassObject/);
+  assert.match(buildDll, /\/link/);
+  assert.match(buildDll, /\/DEF:/);
+  assert.match(buildDll, /\/utf-8/);
   assert.match(buildDll, /\/MT/);
   assert.match(buildDll, /build\.bat/);
   assert.match(buildDll, /static-libgcc/);
@@ -281,5 +293,28 @@ test("applyWindowsExplorerCommandPackage is idempotent and skips missing payload
     }
   } finally {
     fs.rmSync(installDir, { recursive: true, force: true });
+  }
+});
+
+test("compiled explorer-command DLL exports COM entry points", {
+  skip: process.platform !== "win32" ? "Windows only" : false
+}, async () => {
+  const {
+    compileWindowsExplorerCommandDll,
+    listPeExportNames,
+    findMsvcCl,
+    findMingwGxx
+  } = await import("../scripts/build-windows-explorer-command.mjs");
+  if (!findMsvcCl() && !findMingwGxx()) {
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fb-explorer-dll-"));
+  try {
+    const dll = compileWindowsExplorerCommandDll(dir, { silent: true });
+    const names = listPeExportNames(dll);
+    assert.ok(names.includes("DllGetClassObject"), `exports=${names.join(",")}`);
+    assert.ok(names.includes("DllCanUnloadNow"), `exports=${names.join(",")}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

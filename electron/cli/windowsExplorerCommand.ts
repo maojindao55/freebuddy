@@ -67,7 +67,7 @@ export function buildWindowsExplorerCommandAppxManifest(
   const publisherDisplayName =
     spec.publisherDisplayName || WINDOWS_EXPLORER_COMMAND.publisherDisplayName;
   const dllName = spec.dllName || WINDOWS_EXPLORER_COMMAND.dllName;
-  const architecture = spec.architecture || "x64";
+  const architecture = spec.architecture || "neutral";
   const displayName = spec.displayName || "FreeBuddy";
   const version = toMsixVersion(spec.version);
   return `<?xml version="1.0" encoding="utf-8"?>
@@ -77,9 +77,10 @@ export function buildWindowsExplorerCommandAppxManifest(
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
-  IgnorableNamespaces="uap uap10 desktop4 desktop5 rescap com">
+  IgnorableNamespaces="uap uap10 desktop4 desktop5 desktop6 rescap com">
   <Identity
     Name="${escapeXml(spec.packageName)}"
     Publisher="${escapeXml(publisher)}"
@@ -90,6 +91,8 @@ export function buildWindowsExplorerCommandAppxManifest(
     <PublisherDisplayName>${escapeXml(publisherDisplayName)}</PublisherDisplayName>
     <Logo>Assets\\StoreLogo.png</Logo>
     <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
   </Properties>
   <Resources>
     <Resource Language="en-us" />
@@ -109,6 +112,7 @@ export function buildWindowsExplorerCommandAppxManifest(
       uap10:TrustLevel="mediumIL"
       uap10:RuntimeBehavior="win32App">
       <uap:VisualElements
+        AppListEntry="none"
         DisplayName="${escapeXml(displayName)}"
         Description="FreeBuddy Explorer Command"
         BackgroundColor="transparent"
@@ -121,10 +125,10 @@ export function buildWindowsExplorerCommandAppxManifest(
               <desktop5:Verb Id="OpenWithFreeBuddy" Clsid="${clsid}" />
             </desktop5:ItemType>
             <desktop5:ItemType Type="Directory\\Background">
-              <desktop5:Verb Id="OpenWithFreeBuddyBg" Clsid="${clsid}" />
+              <desktop5:Verb Id="OpenWithFreeBuddy" Clsid="${clsid}" />
             </desktop5:ItemType>
             <desktop5:ItemType Type="*">
-              <desktop5:Verb Id="OpenWithFreeBuddyFile" Clsid="${clsid}" />
+              <desktop5:Verb Id="OpenWithFreeBuddy" Clsid="${clsid}" />
             </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>
@@ -304,6 +308,7 @@ function Import-LocalMachineTrust {
   }
 }
 function Install-ExplorerCommandPackage {
+  Get-AppxPackage -Name $name -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
   Add-AppxPackage -Path $msix -ExternalLocation $loc -ForceUpdateFromAnyVersion
 }
 function Request-ElevatedLocalMachineTrust {
@@ -347,6 +352,11 @@ public static class FreeBuddyShellNotify {
 }
 "@
 [FreeBuddyShellNotify]::SHChangeNotify(0x08000000, 0x1000, [IntPtr]::Zero, [IntPtr]::Zero)
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) {
+  Start-Process explorer
+}
 Get-AppxPackage -Name $name | Select-Object -ExpandProperty PackageFullName
 `.trim();
 }

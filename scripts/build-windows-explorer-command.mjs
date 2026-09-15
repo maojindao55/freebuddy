@@ -70,6 +70,70 @@ export function findMsvcCl() {
   return { vcvars };
 }
 
+function rvaToFileOffset(buf, rva) {
+  const peOff = buf.readUInt32LE(0x3c);
+  const coff = peOff + 4;
+  const numSections = buf.readUInt16LE(coff + 2);
+  const sizeOfOptional = buf.readUInt16LE(coff + 16);
+  const sectionOff = coff + 20 + sizeOfOptional;
+  for (let i = 0; i < numSections; i += 1) {
+    const section = sectionOff + i * 40;
+    const virtualAddress = buf.readUInt32LE(section + 12);
+    const rawSize = buf.readUInt32LE(section + 16);
+    const rawPtr = buf.readUInt32LE(section + 20);
+    const virtualSize = buf.readUInt32LE(section + 8);
+    const span = Math.max(virtualSize, rawSize);
+    if (rva >= virtualAddress && rva < virtualAddress + span) {
+      return rawPtr + (rva - virtualAddress);
+    }
+  }
+  return -1;
+}
+
+export function listPeExportNames(dllPath) {
+  const buf = fs.readFileSync(dllPath);
+  if (buf.length < 64 || buf.readUInt16LE(0) !== 0x5a4d) {
+    throw new Error(`Not a PE image: ${dllPath}`);
+  }
+  const peOff = buf.readUInt32LE(0x3c);
+  if (peOff <= 0 || peOff + 24 > buf.length || buf.toString("ascii", peOff, peOff + 4) !== "PE\0\0") {
+    throw new Error(`Invalid PE header: ${dllPath}`);
+  }
+  const optOff = peOff + 24;
+  const magic = buf.readUInt16LE(optOff);
+  const ddOff = magic === 0x20b ? optOff + 112 : optOff + 96;
+  const exportRva = buf.readUInt32LE(ddOff);
+  const exportSize = buf.readUInt32LE(ddOff + 4);
+  if (!exportRva || !exportSize) return [];
+  const expOff = rvaToFileOffset(buf, exportRva);
+  if (expOff < 0) return [];
+  const numberOfNames = buf.readUInt32LE(expOff + 24);
+  const namesRva = buf.readUInt32LE(expOff + 32);
+  const namesOff = rvaToFileOffset(buf, namesRva);
+  if (namesOff < 0) return [];
+  const names = [];
+  for (let i = 0; i < numberOfNames; i += 1) {
+    const nameRva = buf.readUInt32LE(namesOff + i * 4);
+    const nameOff = rvaToFileOffset(buf, nameRva);
+    if (nameOff < 0) continue;
+    let end = nameOff;
+    while (end < buf.length && buf[end] !== 0) end += 1;
+    names.push(buf.toString("ascii", nameOff, end));
+  }
+  return names;
+}
+
+function assertComExports(dllPath) {
+  const names = listPeExportNames(dllPath);
+  const required = ["DllGetClassObject", "DllCanUnloadNow"];
+  const missing = required.filter((name) => !names.includes(name));
+  if (missing.length) {
+    throw new Error(
+      `Explorer command DLL is missing COM exports (${missing.join(", ")}). Found: ${names.join(", ") || "(none)"}`
+    );
+  }
+}
+
 export function findMingwGxx() {
   const fromPath = which("g++");
   const candidates = [
@@ -97,7 +161,10 @@ export function compileWindowsExplorerCommandDll(outDir, options = {}) {
           "@echo off",
           `call "${msvc.vcvars}"`,
           `if errorlevel 1 exit /b %ERRORLEVEL%`,
-          `cl /nologo /O2 /LD /EHsc /MT /DUNICODE /D_UNICODE /W3 /Fe:"${outDll}" "${cpp}" /DEF:"${def}" ole32.lib oleaut32.lib shell32.lib shlwapi.lib uuid.lib`,
+          // cl.exe does not forward a bare /DEF: flag to the linker, which
+          // ships a DLL with no exports. Explorer then hides the verb
+          // (CO_E_ERRORINDLL / 0x800401F9).
+          `cl /nologo /O2 /LD /EHsc /MT /utf-8 /DUNICODE /D_UNICODE /W3 /Fe:"${outDll}" "${cpp}" ole32.lib oleaut32.lib shell32.lib shlwapi.lib uuid.lib /link /DEF:"${def}"`,
           "exit /b %ERRORLEVEL%"
         ].join("\r\n"),
         "utf8"
@@ -108,6 +175,7 @@ export function compileWindowsExplorerCommandDll(outDir, options = {}) {
         shell: true
       });
       cleanupMsvcByproducts(outDir, outDll);
+      assertComExports(outDll);
       return outDll;
     } catch (err) {
       if (!gxx) throw err;
@@ -140,6 +208,7 @@ export function compileWindowsExplorerCommandDll(outDir, options = {}) {
       ],
       { stdio: options.silent ? "pipe" : "inherit", windowsHide: true }
     );
+    assertComExports(outDll);
     return outDll;
   }
   throw new Error("No MSVC cl.exe or MinGW g++ found to build FreeBuddyExplorerCommand.dll");

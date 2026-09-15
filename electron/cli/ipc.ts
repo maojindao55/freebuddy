@@ -68,6 +68,10 @@ import {
   type UpdateMessageInput
 } from "./conversations.js";
 import {
+  sanitizeMessageForIpc,
+  sanitizeMessagesForIpc
+} from "./messagePayloadSanitize.js";
+import {
   createProject,
   cwdForProjectLookup,
   deleteProject,
@@ -1558,14 +1562,18 @@ export function registerCliIpc() {
   );
 
   registerHandler("cli:listMessages", (_e, conversationId: string) =>
-    requireOwnedConversation(conversationId) ? listMessages(conversationId) : []
+    requireOwnedConversation(conversationId)
+      ? sanitizeMessagesForIpc(listMessages(conversationId))
+      : []
   );
-  registerHandler("cli:listMessage", (_e, id: string) =>
-    callerCanAccessMessage(id) ? listMessage(id) : undefined
-  );
+  registerHandler("cli:listMessage", (_e, id: string) => {
+    if (!callerCanAccessMessage(id)) return undefined;
+    const message = listMessage(id);
+    return message ? sanitizeMessageForIpc(message) : undefined;
+  });
   registerHandler("cli:appendMessage", (_e, input: AppendMessageInput) => {
     if (!requireOwnedConversation(input.conversationId)) return undefined;
-    return appendMessage(input);
+    return sanitizeMessageForIpc(appendMessage(input));
   });
   registerHandler("cli:updateMessage", (_e, input: UpdateMessageInput) => {
     if (!callerCanAccessMessage(input.id)) return;

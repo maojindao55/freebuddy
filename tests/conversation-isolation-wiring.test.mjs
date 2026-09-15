@@ -15,6 +15,17 @@ test("conversation data handlers enforce ownership at the boundary", () => {
 
   const listMsgs = ipc.slice(ipc.indexOf('"cli:listMessages"'));
   assert.match(listMsgs, /requireOwnedConversation/, "listMessages checks ownership");
+  assert.match(
+    listMsgs,
+    /sanitizeMessagesForIpc/,
+    "listMessages sanitizes stored payloads before IPC"
+  );
+  const listMsg = ipc.slice(ipc.indexOf('"cli:listMessage",'));
+  assert.match(
+    listMsg,
+    /sanitizeMessageForIpc/,
+    "listMessage sanitizes stored payloads before IPC"
+  );
 
   const append = ipc.slice(ipc.indexOf('"cli:appendMessage"'));
   assert.match(append, /requireOwnedConversation/, "appendMessage checks ownership");

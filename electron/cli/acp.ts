@@ -798,6 +798,7 @@ type ToolCallItem = Extract<AcpStreamItem, { kind: "tool-call" }>;
 function normalizeToolStatus(
   value: unknown
 ): ToolCallItem["status"] | undefined {
+  if (value === "in_progress") return "running";
   return value === "pending" ||
     value === "running" ||
     value === "completed" ||

@@ -25,6 +25,28 @@ export function summarizeDelegateOutput(items: unknown[]): string {
   return analyzeAgentOutput(items).summary;
 }
 
+/** Close abandoned calls in the persisted turn, without overriding real results. */
+export function finalizeDelegateToolCalls(items: unknown[], successful: boolean): unknown[] {
+  const latest = new Map<unknown, Record<string, unknown>>();
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const call = item as Record<string, unknown>;
+    if (call.kind !== "tool-call" || !call.id) continue;
+    latest.set(call.id, { ...latest.get(call.id), ...call });
+  }
+  const updates: unknown[] = [];
+  for (const call of latest.values()) {
+    if (call.status !== "pending" && call.status !== "running") continue;
+    const input = call.input as { server?: string; tool?: string } | undefined;
+    const isYield = call.tool === "mcp.freebuddy-delegate.yield_to_delegates" ||
+      (input?.server === "freebuddy-delegate" && input.tool === "yield_to_delegates");
+    // Yield intentionally cancels the ACP prompt after acceptance. Other
+    // abandoned calls have no successful result and must not be marked passed.
+    updates.push({ ...call, status: successful && isYield ? "completed" : "failed" });
+  }
+  return updates.length ? [...items, ...updates] : items;
+}
+
 export function createDelegateAgentRunner(webContents: WebContents | undefined): DelegateAgentRunner {
   return async (args: CliRunArgs): Promise<DelegateRunResult> => {
     const collected: unknown[] = [];
@@ -113,7 +135,7 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
       if (messageId) {
         updateMessage({
           id: messageId,
-          content: serializeStreamItemsForPersist(collected),
+          content: serializeStreamItemsForPersist(finalizeDelegateToolCalls(collected, !errored && exitCode === 0)),
           status:
             errored || (!evidence.hasOutput && evidence.toolError)
               ? "failed"

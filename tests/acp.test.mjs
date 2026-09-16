@@ -1315,6 +1315,16 @@ test("parseAcpLine parses JSON-RPC messages and ignores blank lines", () => {
   });
 });
 
+test("ACP in_progress tool calls and updates are running, not pending", () => {
+  for (const sessionUpdate of ["tool_call", "tool_call_update"]) {
+    const [item] = acpUpdateToItems({
+      sessionUpdate, toolCallId: "yield-1",
+      title: "mcp.freebuddy-delegate.yield_to_delegates", status: "in_progress"
+    });
+    assert.equal(item.status, "running");
+  }
+});
+
 test("acpUpdateToItems maps message, thought, tool, session and usage updates", () => {
   assert.deepEqual(
     acpUpdateToItems({

@@ -119,8 +119,17 @@ export class DelegationOrchestrator {
       entryRoleId: string;
       spawnTurn: (args: OrchestratorSpawnArgs) => Promise<OrchestratorTurnResult>;
       repository: DelegationRunRepository;
+      trace?: (event: string, data: Record<string, unknown>) => void;
     }
   ) {}
+
+  private trace(event: string, data: Record<string, unknown>): void {
+    try {
+      this.opts.trace?.(event, { runId: this.opts.runId, ...data });
+    } catch {
+      // Diagnostics must never interrupt delivery of a delegate result.
+    }
+  }
 
   get state(): BusState | null {
     return this.bus;
@@ -167,6 +176,12 @@ export class DelegationOrchestrator {
     const evt = this.opts.repository.getEvent(eventId);
     const waiters = this.eventWaiters.get(eventId);
     const hadWaiters = Boolean(waiters?.size);
+    this.trace("child settled notification", {
+      childEventId: eventId, parentEventId: evt?.parentEventId,
+      persistedStatus: evt?.status, waiterCount: waiters?.size ?? 0,
+      parentState: evt?.parentEventId ? this.bus?.nodes[evt.parentEventId]?.status : undefined,
+      hasBus: Boolean(this.bus)
+    });
     if (hadWaiters) {
       this.eventWaiters.delete(eventId);
       for (const resolve of [...waiters!]) resolve(evt);
@@ -185,6 +200,10 @@ export class DelegationOrchestrator {
     });
     this.bus = state;
     this.applyEffects(effects.filter((e) => e.type !== "SpawnWake"));
+    this.trace("child settlement dispatched", {
+      childEventId: eventId, parentEventId: evt.parentEventId,
+      effects: effects.map((effect) => effect.type), hadWaiters
+    });
     if (!hadWaiters) {
       for (const effect of effects) {
         if (effect.type === "SpawnWake") this.scheduleRecoveryWake(effect);
@@ -199,11 +218,19 @@ export class DelegationOrchestrator {
    * completed child notification.
    */
   private scheduleRecoveryWake(effect: Extract<BusEffect, { type: "SpawnWake" }>): void {
-    if (this.recoveryWakeDrives.has(effect.nodeId) || this.killed) return;
+    if (this.recoveryWakeDrives.has(effect.nodeId) || this.killed) {
+      this.trace("recovery wake skipped", { parentEventId: effect.nodeId, childEventId: effect.childId,
+        reason: this.killed ? "interrupted" : "already_scheduled" });
+      return;
+    }
     const node = this.bus?.nodes[effect.nodeId];
     const parent = this.opts.repository.getEvent(effect.nodeId);
     const child = this.opts.repository.getEvent(effect.childId);
-    if (!node || !parent || !child) return;
+    if (!node || !parent || !child) {
+      this.trace("recovery wake skipped", { parentEventId: effect.nodeId, childEventId: effect.childId,
+        reason: "missing_state", hasNode: Boolean(node), hasParent: Boolean(parent), hasChild: Boolean(child) });
+      return;
+    }
     const role =
       this.opts.roster.find(
         (candidate) =>
@@ -212,7 +239,11 @@ export class DelegationOrchestrator {
       this.opts.roster.find((candidate) => candidate.agentId === parent.agentId) ??
       this.opts.roster.find((candidate) => candidate.id === this.opts.entryRoleId) ??
       this.opts.roster[0];
-    if (!role) return;
+    if (!role) {
+      this.trace("recovery wake skipped", { parentEventId: effect.nodeId, childEventId: effect.childId, reason: "missing_role" });
+      return;
+    }
+    this.trace("recovery wake scheduled", { parentEventId: effect.nodeId, childEventId: effect.childId });
 
     const effective = resolveEffectiveWakeVerdict(
       child,
@@ -251,6 +282,8 @@ export class DelegationOrchestrator {
         });
       })
       .catch((error) => {
+        this.trace("recovery wake failed", { parentEventId: effect.nodeId, childEventId: effect.childId,
+          errorType: error instanceof Error ? error.name : typeof error });
         const message = (error as Error)?.message ?? String(error);
         this.opts.repository.updateEvent(effect.nodeId, {
           status: "failed",
@@ -283,6 +316,7 @@ export class DelegationOrchestrator {
 
   awaitEventSettle(eventId: string): Promise<DelegationEvent | undefined> {
     const existing = this.opts.repository.getEvent(eventId);
+    this.trace("wait requested", { childEventId: eventId, parentEventId: existing?.parentEventId, persistedStatus: existing?.status });
     if (existing && isTerminalDelegationStatus(existing.status)) {
       return Promise.resolve(existing);
     }
@@ -290,6 +324,7 @@ export class DelegationOrchestrator {
       const waiters = this.eventWaiters.get(eventId) ?? new Set();
       waiters.add(resolve);
       this.eventWaiters.set(eventId, waiters);
+      this.trace("wait registered", { childEventId: eventId, parentEventId: existing?.parentEventId, waiterCount: waiters.size });
     });
   }
 
@@ -403,6 +438,7 @@ export class DelegationOrchestrator {
           .filter((event) => event.parentEventId === opts.nodeId)
           .map((event) => event.id)
       );
+      this.trace("turn starting", { parentEventId: opts.nodeId, kind });
       const turn = await this.opts.spawnTurn({
         kind,
         nodeId: opts.nodeId,
@@ -410,7 +446,11 @@ export class DelegationOrchestrator {
         depth: opts.depth,
         selfAgentId: opts.selfAgentId,
         selfLabel: opts.selfLabel
+      }).catch((error) => {
+        this.trace("turn threw", { parentEventId: opts.nodeId, kind, errorType: error instanceof Error ? error.name : typeof error });
+        throw error;
       });
+      this.trace("turn ended", { parentEventId: opts.nodeId, kind, failed: Boolean(turn.error), interrupted: this.killed });
       lastSummary = turn.summary ?? "";
       if (this.killed) break;
 
@@ -422,6 +462,7 @@ export class DelegationOrchestrator {
         childIdsBeforeTurn
       );
       if (!turn.error && newlyAccepted.settled.length > 0) {
+        this.trace("immediate wake selected", { parentEventId: opts.nodeId, childEventIds: newlyAccepted.settled.map((child) => child.id) });
         const immediateWake = delegationWakeInfoForSettled(newlyAccepted.settled);
         const effectiveVerdict =
           newlyAccepted.settled.length === 1
@@ -459,6 +500,7 @@ export class DelegationOrchestrator {
         });
         this.bus = state;
         const parked = state.nodes[opts.nodeId]?.status === "parked";
+        this.trace("turn disposition", { parentEventId: opts.nodeId, parked, pendingChildIds: pending.map((child) => child.id) });
         if (!parked) {
           this.applyEffects(effects);
           break;
@@ -487,6 +529,7 @@ export class DelegationOrchestrator {
           : this.opts.repository.listPendingChildEvents(this.opts.runId, opts.nodeId)
         ).map((e) => e.id)
       );
+      this.trace("wait resumed", { parentEventId: opts.nodeId, childEventId: settled?.id, persistedStatus: settled?.status, interrupted: this.killed });
       if (this.killed) break;
 
       if (settled && this.bus) {

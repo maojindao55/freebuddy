@@ -38,6 +38,7 @@ import {
   buildDelegateTaskPrompt
 } from "./delegation/protocol/text.js";
 import type { DelegateAgentRunner } from "./delegationRunner.js";
+import { logMain } from "../debugLog.js";
 import {
   classifyNewDelegationChildren,
   delegationWakeInfoForSettled,
@@ -153,6 +154,10 @@ export class DelegationRuntime {
       writeApproval: (binding, teammate) => this.requestWriteApproval(binding.runId, teammate),
       onSettle: (id) => {
         const evtRun = this.findRunIdForEvent(id);
+        logMain().info("delegation", "settlement notification received", {
+          childEventId: id, runId: evtRun ?? null,
+          hasOrchestrator: Boolean(evtRun && this.contexts.get(evtRun)?.orchestrator)
+        });
         if (evtRun) {
           this.contexts.get(evtRun)?.orchestrator?.onEventSettled(id);
           const child = this.contexts
@@ -237,6 +242,7 @@ export class DelegationRuntime {
     if (ctx.orchestrator) return ctx.orchestrator;
     const orch = new DelegationOrchestrator({
       runId: ctx.runId,
+      trace: (event, data) => logMain().info("delegation", event, data),
       roster: ctx.roster,
       sharedInstructions: ctx.sharedInstructions,
       policy: ctx.policy,
@@ -521,6 +527,9 @@ export class DelegationRuntime {
     this.activeSessionsByRun.set(opts.ctx.runId, sessions);
     let removeSignalListener: (() => void) | undefined;
     try {
+      logMain().info("delegation", "agent turn launching", {
+        runId: opts.ctx.runId, parentEventId: opts.parentEventId, sessionId: opts.sessionId, depth: opts.depth
+      });
       const runAgent = () =>
         this.deps.runAgent({
           sessionId: opts.sessionId,
@@ -581,6 +590,10 @@ export class DelegationRuntime {
         );
       }
       const result = await Promise.race(races);
+      logMain().info("delegation", "agent turn returned", {
+        runId: opts.ctx.runId, parentEventId: opts.parentEventId, sessionId: opts.sessionId,
+        exitCode: result.exitCode, failed: Boolean(result.error)
+      });
       if (this.pausedRunIds.has(opts.ctx.runId) || this.killedRunIds.has(opts.ctx.runId)) {
         return {
           summary: result.summary,

@@ -9,6 +9,7 @@ import {
 } from "./delegationRuns.js";
 import { DelegateConcurrencyQueue } from "./delegation/bus/concurrency.js";
 import { electronDelegationRepository } from "../runtime/adapters/delegationRepository.js";
+import { logMain } from "../debugLog.js";
 import {
   checkDelegateResultAction,
   decideDelegate,
@@ -158,6 +159,11 @@ function queueFor(deps: DelegateActionDeps): DelegateConcurrencyQueue<
         });
       },
       onSettled: (childEventId) => {
+        const child = repository.getEvent(childEventId);
+        logMain().info("delegation", "child persisted before notification", {
+          runId: child?.runId, parentEventId: child?.parentEventId,
+          childEventId, status: child?.status, verdict: child?.verdict
+        });
         deps.onSettle?.(childEventId);
       }
     });
@@ -363,7 +369,12 @@ export async function runDelegateAction(
   }
 
   if (action === "yield_to_delegates") {
-    return yieldToDelegatesAction(binding, params);
+    const result = yieldToDelegatesAction(binding, params);
+    logMain().info("delegation", "yield decision", {
+      runId: binding.runId, parentEventId: binding.parentEventId,
+      sessionId: binding.taskSessionId, ok: result.ok, status: result.status
+    });
+    return result;
   }
 
   if (action === "check_delegate_result") {

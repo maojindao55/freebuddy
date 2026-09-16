@@ -274,6 +274,7 @@ test("a child that fails before the parent turn ends triggers a wake instead of 
 });
 
 test("a settled child schedules a recovery wake when the parked waiter's memory is lost", async () => {
+  const traces = [];
   const repository = createMemoryDelegationRepository();
   const run = repository.createRun({
     goal: "g",
@@ -296,6 +297,7 @@ test("a settled child schedules a recovery wake when the parked waiter's memory 
   let calls = 0;
   let orchestrator;
   orchestrator = new DelegationOrchestrator({
+    trace: (event, data) => traces.push({ event, ...data }),
     runId: run.id,
     roster,
     policy,
@@ -357,6 +359,16 @@ test("a settled child schedules a recovery wake when the parked waiter's memory 
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   assert.equal(calls, 2, "settlement must start a recovery wake without a live waiter");
+  const settlement = traces.find((entry) => entry.event === "child settled notification");
+  assert.equal(settlement.runId, run.id);
+  assert.equal(settlement.parentEventId, rootId);
+  assert.equal(settlement.childEventId, childId);
+  assert.equal(settlement.persistedStatus, "done");
+  assert.equal(settlement.waiterCount, 0);
+  assert.ok(traces.some((entry) => entry.event === "recovery wake scheduled"));
+  assert.ok(traces.some((entry) => entry.event === "turn starting" && entry.kind === "wake"));
+  assert.ok(traces.some((entry) => entry.event === "turn ended" && entry.kind === "wake" && !entry.failed));
+  assert.ok(traces.every((entry) => !("prompt" in entry) && !("resultSummary" in entry)));
   assert.equal(repository.getEvent(rootId)?.status, "done");
   assert.equal(repository.getRun(run.id)?.status, "completed");
 });

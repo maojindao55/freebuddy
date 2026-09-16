@@ -3,6 +3,34 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+test("parked delegate turn closes yield but preserves actual tool outcomes", async () => {
+  const { finalizeDelegateToolCalls } = await import("../dist-electron/cli/delegationRunner.js");
+  const calls = [
+    { kind: "tool-call", id: "yield", tool: "mcp.freebuddy-delegate.yield_to_delegates", status: "running" },
+    { kind: "tool-call", id: "read", tool: "read", status: "running" },
+    { kind: "tool-call", id: "read", tool: "read", status: "completed", output: "ok" },
+    { kind: "tool-call", id: "failed", tool: "read", status: "failed" },
+    { kind: "tool-call", id: "abandoned", tool: "write", status: "running" }
+  ];
+  const result = finalizeDelegateToolCalls(calls, true);
+  const latest = new Map(result.map(call => [call.id, call]));
+  assert.equal(latest.get("yield").status, "completed");
+  assert.equal(latest.get("read").output, "ok");
+  assert.equal(latest.get("failed").status, "failed");
+  assert.equal(latest.get("abandoned").status, "failed");
+  assert.equal(calls[0].status, "running");
+  assert.equal(finalizeDelegateToolCalls(calls, false).at(-2).status, "failed");
+});
+
+test("legacy pending yield is recognized by MCP input and terminal calls stay unchanged", async () => {
+  const { finalizeDelegateToolCalls } = await import("../dist-electron/cli/delegationRunner.js");
+  const calls = [{ kind: "tool-call", id: "y", tool: "execute", status: "pending",
+    input: { server: "freebuddy-delegate", tool: "yield_to_delegates" } }];
+  assert.equal(finalizeDelegateToolCalls(calls, true).at(-1).status, "completed");
+  const terminal = [{ ...calls[0], status: "failed" }];
+  assert.equal(finalizeDelegateToolCalls(terminal, true), terminal);
+});
+
 test("summarizeDelegateOutput joins assistant text items", async () => {
   const { summarizeDelegateOutput } = await import("../dist-electron/cli/delegationRunner.js");
   const items = [

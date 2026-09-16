@@ -133,6 +133,7 @@ const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 // capped so a permanently silent run still gets killed eventually.
 const INACTIVITY_PING_TIMEOUT_MS = 15_000;
 const MAX_INACTIVITY_REPRIEVES = 2;
+const CLEANUP_REQUEST_TIMEOUT_MS = 2_000;
 
 function writeAcp(
   child: ChildProcessByStdio<Writable, Readable, Readable>,
@@ -314,15 +315,45 @@ export async function runAcpAgent({
   >();
 
   const nextId = () => ++requestId;
-  const request = (msg: AcpMessage) =>
+  const request = (msg: AcpMessage, timeoutMs?: number) =>
     new Promise<any>((resolve, reject) => {
+      if (finished || child.exitCode != null || child.signalCode != null ||
+          child.stdin.destroyed || child.stdin.writableEnded) {
+        reject(new Error("ACP connection is closed."));
+        return;
+      }
       if (msg.id == null) {
         reject(new Error("ACP requests require an id"));
         return;
       }
-      pending.set(String(msg.id), { resolve, reject });
-      appendLog(logStream, "stdin", JSON.stringify(msg));
-      writeAcp(child, msg);
+      const id = String(msg.id);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const settle = (complete: () => void) => {
+        if (!pending.delete(id)) return;
+        if (timer) clearTimeout(timer);
+        complete();
+      };
+      const waiter = {
+        resolve: (value: any) => settle(() => resolve(value)),
+        reject: (error: Error) => settle(() => reject(error))
+      };
+      pending.set(id, waiter);
+      if (timeoutMs != null) {
+        timer = setTimeout(() => {
+          logMain().warn("acp", "cleanup request timed out", {
+            sessionId: args.sessionId, method: msg.method, timeoutMs
+          });
+          waiter.reject(new Error(`ACP ${msg.method} timed out.`));
+        }, timeoutMs);
+      }
+      try {
+        appendLog(logStream, "stdin", JSON.stringify(msg));
+        child.stdin.write(JSON.stringify(msg) + "\n", (error) => {
+          if (error) waiter.reject(error);
+        });
+      } catch (error) {
+        waiter.reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   const notify = (msg: AcpMessage) => {
     appendLog(logStream, "stdin", JSON.stringify(msg));
@@ -430,6 +461,10 @@ export async function runAcpAgent({
   ) => {
     if (finished) return;
     finished = true;
+    for (const waiter of pending.values()) {
+      waiter.reject(new Error("ACP turn finished."));
+    }
+    pending.clear();
     disarmInactivityTimer();
     removeInactivitySuppression(args.sessionId);
     terminalManager.dispose();
@@ -482,15 +517,17 @@ export async function runAcpAgent({
   };
 
   const cancelRun = () => {
+    const cancellingChild = child;
     clearAuthenticationTerminalsForSession(args.sessionId);
     if (activeAcpSessionId) {
       notify(buildSessionCancelNotification(activeAcpSessionId));
     }
     setTimeout(() => {
-      const still = running.get(args.sessionId);
-      if (still) {
+      // finish() removes the running entry before this timer fires on yield.
+      // Retain this specific process so it is still reaped after logical finish.
+      if (cancellingChild.exitCode == null && cancellingChild.signalCode == null) {
         try {
-          killProcessTree(still.child, "term");
+          killProcessTree(cancellingChild, "term");
         } catch {
           /* noop */
         }
@@ -502,6 +539,9 @@ export async function runAcpAgent({
     yieldRequested = true;
     appendLog(logStream, "system", "delegate yield accepted; parking current ACP turn");
     cancelRun();
+    // Release the awaited prompt immediately. Parking must not depend on a
+    // cancelled agent replying to session/list or session/close during teardown.
+    finish("done", 0);
   };
   const updateRunningProcess = () => {
     running.set(args.sessionId, { child, pid, cancel: cancelRun, yield: yieldRun });
@@ -528,7 +568,6 @@ export async function runAcpAgent({
     if (msg.id != null && (msg.result !== undefined || msg.error)) {
       const waiter = pending.get(String(msg.id));
       if (waiter) {
-        pending.delete(String(msg.id));
         if (msg.error) {
           const err = new Error(msg.error.message);
           (err as Error & { code?: number; data?: unknown }).code = msg.error.code;
@@ -537,6 +576,7 @@ export async function runAcpAgent({
         } else {
           waiter.resolve(msg.result);
         }
+        pending.delete(String(msg.id));
       }
       return;
     }
@@ -1146,7 +1186,7 @@ export async function runAcpAgent({
   const syncSessionMetadataFromList = async () => {
     if (!agentCaps?.sessionCapabilities?.list || !activeAcpSessionId) return;
     try {
-      const listed = await request(buildSessionListRequest(nextId(), args.cwd));
+      const listed = await request(buildSessionListRequest(nextId(), args.cwd), CLEANUP_REQUEST_TIMEOUT_MS);
       const items = acpSessionListToItems(activeAcpSessionId, listed);
       if (items.length) emit({ type: "items", items });
     } catch {
@@ -1558,7 +1598,7 @@ export async function runAcpAgent({
         );
         if (exhaustedSessionId && agentCaps?.sessionCapabilities?.close) {
           try {
-            await request(buildSessionCloseRequest(nextId(), exhaustedSessionId));
+            await request(buildSessionCloseRequest(nextId(), exhaustedSessionId), CLEANUP_REQUEST_TIMEOUT_MS);
           } catch {
             /* best-effort */
           }
@@ -1596,6 +1636,7 @@ export async function runAcpAgent({
         throw promptErr;
       }
     }
+    if (yieldRequested || finished) return;
     if (nonRetryableUpstreamError) {
       throw new Error(nonRetryableUpstreamError);
     }
@@ -1648,7 +1689,9 @@ export async function runAcpAgent({
         throw new Error(nonRetryableUpstreamError);
       }
     }
+    if (yieldRequested || finished) return;
     await syncSessionMetadataFromList();
+    if (yieldRequested || finished) return;
 
     // Some agents (e.g. kimi when signed out) let session creation succeed but
     // return an empty turn because the model layer is unauthenticated. If the
@@ -1665,7 +1708,7 @@ export async function runAcpAgent({
 
     if (agentCaps?.sessionCapabilities?.close) {
       try {
-        await request(buildSessionCloseRequest(nextId(), activeAcpSessionId!));
+        await request(buildSessionCloseRequest(nextId(), activeAcpSessionId!), CLEANUP_REQUEST_TIMEOUT_MS);
       } catch {
         /* best-effort */
       }

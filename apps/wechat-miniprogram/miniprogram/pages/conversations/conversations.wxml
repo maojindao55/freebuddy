@@ -1,0 +1,39 @@
+<view class="page">
+  <view class="banner banner--{{banner.tone}}">
+    <text class="banner__label">{{banner.label}}</text>
+    <text class="banner__detail">{{banner.detail}}</text>
+  </view>
+
+  <view class="card">
+    <text class="title">会话</text>
+    <text class="muted">只读列表，下拉可刷新。</text>
+    <text class="error" wx:if="{{error}}">{{error}}</text>
+    <text class="muted" wx:if="{{loading}}">加载中…</text>
+    <text class="empty" wx:if="{{empty}}">{{emptyMessage}}</text>
+    <text class="notice" wx:if="{{truncated}}">
+      本地仅保留最近 200 条会话，更早的内容未缓存。
+    </text>
+
+    <view
+      class="row"
+      wx:for="{{items}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="onOpenConversation"
+    >
+      <text class="text">{{item.title}}</text>
+      <text class="muted">{{item.subtitle}}</text>
+      <text class="chip" wx:if="{{item.archived}}">已归档</text>
+    </view>
+
+    <button
+      class="button button--ghost"
+      wx:if="{{hasMore}}"
+      disabled="{{!loadMoreEnabled}}"
+      bindtap="onLoadMore"
+    >
+      加载更多
+    </button>
+    <text class="muted" wx:if="{{!hasMore && items.length}}">已到列表末尾。</text>
+  </view>
+</view>

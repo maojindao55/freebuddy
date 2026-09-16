@@ -3,3 +3,200 @@ page {
   color: #e6e8eb;
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
 }
+
+/* Shared layout and the read-only visual language used by every page. */
+
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 32rpx;
+}
+
+.card {
+  background: #1c1f24;
+  border-radius: 16rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+}
+
+.title {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #8b919b;
+}
+
+.text {
+  display: block;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.message {
+  display: block;
+  margin-top: 24rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: #a8adb5;
+}
+
+.muted {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #8b919b;
+}
+
+.chip {
+  display: inline-block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #6f7580;
+}
+
+.notice {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #e6c26a;
+}
+
+.error {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #f08c8c;
+}
+
+.ready {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #7ddb9a;
+}
+
+.empty {
+  display: block;
+  padding: 48rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #7c828c;
+}
+
+.banner {
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 24rpx;
+}
+
+.banner__label {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.banner__detail {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.banner--ok {
+  background: #12291b;
+  color: #7ddb9a;
+}
+
+.banner--warn {
+  background: #2c2410;
+  color: #e6c26a;
+}
+
+.banner--error {
+  background: #2c1414;
+  color: #f08c8c;
+}
+
+.banner--neutral {
+  background: #22262c;
+  color: #a8adb5;
+}
+
+.button {
+  margin-top: 16rpx;
+  background: #2f6fed;
+  color: #fff;
+  font-size: 28rpx;
+  line-height: 2.6;
+}
+
+.button--ghost {
+  background: #22262c;
+  color: #e6e8eb;
+}
+
+.button--danger {
+  background: #3a1a1a;
+  color: #f08c8c;
+}
+
+.button--disabled {
+  background: #23262c;
+  color: #6f7580;
+}
+
+.row {
+  border-top: 1rpx solid #23262c;
+  padding: 20rpx 0;
+}
+
+.row:first-child {
+  border-top: none;
+}
+
+.input {
+  margin-top: 12rpx;
+  background: #14161a;
+  border: 1rpx solid #2b2f36;
+  border-radius: 8rpx;
+  padding: 16rpx 20rpx;
+  font-size: 28rpx;
+  color: #e6e8eb;
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 24rpx;
+}
+
+.metric {
+  width: 33.33%;
+  padding: 12rpx 0;
+}
+
+.metric__value {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.metric__label {
+  display: block;
+  font-size: 22rpx;
+  color: #8b919b;
+}
+
+.meta {
+  margin-top: 24rpx;
+}

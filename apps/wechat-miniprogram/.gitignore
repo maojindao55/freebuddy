@@ -1,5 +1,7 @@
 node_modules/
 .tmp-test/
+# Emitted by `npm run emit:check` to prove the sources compile to JS; removed again by the script.
+.tmp-js/
 
 # Generated from packages/protocol/src/remote.ts by `npm run sync:protocol`.
 miniprogram/protocol/remote.generated.ts

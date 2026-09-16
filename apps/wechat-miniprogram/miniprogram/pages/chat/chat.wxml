@@ -1,0 +1,32 @@
+<view class="page">
+  <view class="banner banner--{{banner.tone}}">
+    <text class="banner__label">{{banner.label}}</text>
+    <text class="banner__detail">{{banner.detail}}</text>
+  </view>
+
+  <view class="card">
+    <text class="title">{{title}}</text>
+    <text class="muted">{{subtitle}}</text>
+    <text class="notice">{{readonlyNotice}}</text>
+
+    <text class="error" wx:if="{{error}}">{{error}}</text>
+    <text class="muted" wx:if="{{loading}}">加载中…</text>
+    <text class="empty" wx:if="{{empty}}">{{emptyMessage}}</text>
+    <text class="notice" wx:if="{{truncated}}">更早的消息已超出本地窗口，未缓存。</text>
+
+    <button
+      class="button button--ghost"
+      wx:if="{{hasMore}}"
+      disabled="{{!loadOlderEnabled}}"
+      bindtap="onLoadOlder"
+    >
+      加载更早消息
+    </button>
+
+    <view class="msg msg--{{item.role}}" wx:for="{{messages}}" wx:key="id">
+      <text class="msg__role">{{item.roleLabel}} · {{item.at}}</text>
+      <text class="msg__text">{{item.text}}</text>
+      <text class="muted" wx:if="{{item.truncated}}">该条内容已被主机截断</text>
+    </view>
+  </view>
+</view>

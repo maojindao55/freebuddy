@@ -8,7 +8,10 @@
     "prepare": "node scripts/sync-protocol.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node scripts/run-tests.mjs",
-    "build": "npm run sync:protocol && npm run typecheck && npm run test",
+    "emit:check": "node scripts/check-ts-emit.mjs",
+    "prepare:devtools": "node scripts/prepare-devtools.mjs",
+    "devtools": "node scripts/open-devtools.mjs",
+    "build": "npm run sync:protocol && npm run typecheck && npm run emit:check && npm run test",
     "check": "npm run build"
   },
   "devDependencies": {

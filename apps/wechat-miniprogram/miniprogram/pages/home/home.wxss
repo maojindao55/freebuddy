@@ -1,0 +1,3 @@
+.card .button {
+  margin-top: 24rpx;
+}

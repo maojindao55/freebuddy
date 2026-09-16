@@ -1,14 +1,25 @@
 /**
  * App entry point.
  *
- * W1 scope: prove the scaffold boots, the generated protocol binding matches this build, the
- * environment table satisfies the transport constraints, and failures are contained by the
- * error boundary. Authentication, sockets and RPC arrive in W2+.
+ * Responsible for exactly three things:
+ *
+ * 1. Fail fast at boot when the generated protocol binding drifted or the environment table would
+ *    weaken transport security.
+ * 2. Own the App-scoped session (`services/appSession.ts`): the single socket, the single network
+ *    listener and the recovery state that must outlive every page. `onLaunch` registers the
+ *    listener; `onShow`/`onHide` tell the session the process went to the background and back,
+ *    which is when WeChat may have reclaimed the socket or frozen the process.
+ * 3. Contain failures: `onError`, `onUnhandledRejection` and `onPageNotFound` are routed to the
+ *    error boundary, which never rethrows and always redacts.
+ *
+ * Nothing here authenticates: there is no `wx.login`, no code exchange and no token. The only
+ * credential this stage can hold is the DEV operator token entered on the connect page.
  */
 
 import { ENVIRONMENTS } from "./config/environments";
 import { assertEnvironmentTable, getActiveEnvironment } from "./config/runtimeConfig";
 import { assertProtocolBinding, REMOTE_PROTOCOL_VERSION } from "./protocol";
+import { getAppSession } from "./services/appSession";
 import { createAppErrorBoundary } from "./utils/errorBoundary";
 
 // Fail fast on a drifted protocol binding or an unsafe environment table.
@@ -22,6 +33,23 @@ App({
   globalData: {
     environment: environment.name,
     protocolVersion: REMOTE_PROTOCOL_VERSION
+  },
+
+  onLaunch() {
+    // Register the single network listener now. Nothing connects yet: without a credential the
+    // socket layer stays `signedOut`, which is exactly what the connect page reports.
+    boundary.run("app.onLaunch", () => getAppSession().start(), undefined);
+  },
+
+  onShow() {
+    // A backgrounded mini program must not assume its socket survived: this re-proves liveness or
+    // reconnects, and never stacks a second reconnect timer.
+    boundary.run("app.onShow", () => getAppSession().onShow(), undefined);
+  },
+
+  onHide() {
+    // The process may be frozen or reclaimed from here, so the cursor is persisted first.
+    boundary.run("app.onHide", () => getAppSession().onHide(), undefined);
   },
 
   onError(error: string) {

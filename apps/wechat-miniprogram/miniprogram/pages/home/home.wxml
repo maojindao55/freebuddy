@@ -1,0 +1,60 @@
+<view class="page">
+  <view class="banner banner--{{banner.tone}}">
+    <text class="banner__label">{{banner.label}}</text>
+    <text class="banner__detail">{{banner.detail}}</text>
+    <button class="button button--ghost" wx:if="{{banner.canReconnect}}" bindtap="onReconnect">
+      立即重连
+    </button>
+  </view>
+
+  <view class="card">
+    <text class="title">{{hostTitle}}</text>
+    <text class="subtitle">{{hostSubtitle}}</text>
+    <view class="metrics" wx:if="{{hasHost}}">
+      <view class="metric" wx:for="{{metrics}}" wx:key="label">
+        <text class="metric__value">{{item.value}}</text>
+        <text class="metric__label">{{item.label}}</text>
+      </view>
+    </view>
+    <text class="notice" wx:if="{{hasHost && !remoteEnabled}}">
+      主机当前关闭了远程控制开关，只读数据可能不是最新的。
+    </text>
+    <text class="error" wx:if="{{hostStatusError}}">主机状态读取失败：{{hostStatusError}}</text>
+  </view>
+
+  <view class="card">
+    <text class="text">环境 {{environment}}</text>
+    <text class="notice">{{credentialNotice}}</text>
+  </view>
+
+  <view class="card" wx:if="{{hasPendingDecisions}}">
+    <text class="title">待处理决策（只读）</text>
+    <view class="row" wx:for="{{pendingDecisions}}" wx:key="id">
+      <text class="text">{{item.title}}</text>
+      <text class="muted">{{item.subtitle}}</text>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{activeTasks.length}}">
+    <text class="title">进行中的任务</text>
+    <view class="row" wx:for="{{activeTasks}}" wx:key="id">
+      <text class="text">{{item.title}}</text>
+      <text class="muted">{{item.subtitle}}</text>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{projects.length}}">
+    <text class="title">项目</text>
+    <view class="row" wx:for="{{projects}}" wx:key="id">
+      <text class="text">{{item.title}}</text>
+      <text class="muted">{{item.subtitle}}</text>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{!hasHost}}">
+    <text class="empty">尚未收到主机快照。连接成功后会自动获取；若长时间为空，请检查连接页填写的主机 ID。</text>
+  </view>
+
+  <button class="button" bindtap="onOpenConversations">浏览会话</button>
+  <button class="button button--danger" bindtap="onLogout">断开并清除凭证</button>
+</view>

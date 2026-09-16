@@ -39,4 +39,8 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-process.exit(run(["--test", "--test-force-exit", ...testFiles]));
+// `--test-force-exit` is deliberately *not* used: it makes the runner exit while child TAP
+// streams are still flushing, which silently drops whole tests from the report (observed as
+// 176 vs 170 tests between identical runs). Every suite exits on its own; if one ever hangs,
+// that hang is a real leak and must be fixed, not hidden.
+process.exit(run(["--test", ...testFiles]));

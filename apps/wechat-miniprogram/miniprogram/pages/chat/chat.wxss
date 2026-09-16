@@ -1,0 +1,24 @@
+.msg {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 12rpx;
+  background: #171a1f;
+}
+
+.msg--user {
+  background: #1b2433;
+}
+
+.msg__role {
+  display: block;
+  font-size: 22rpx;
+  color: #8b919b;
+}
+
+.msg__text {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  word-break: break-all;
+}

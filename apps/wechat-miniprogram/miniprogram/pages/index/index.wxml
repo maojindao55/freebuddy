@@ -1,12 +1,63 @@
 <view class="page">
+  <view class="banner banner--{{banner.tone}}">
+    <text class="banner__label">{{banner.label}}</text>
+    <text class="banner__detail">{{banner.detail}}</text>
+  </view>
+
   <view class="card">
     <text class="title">{{title}}</text>
     <text class="message">{{message}}</text>
-    <button class="primary" disabled="{{!actionEnabled}}" bindtap="onPlaceholderAction">
-      {{actionLabel}}
+    <button class="button button--disabled" disabled="{{true}}" bindtap="onWechatLogin">
+      {{wechatActionLabel}}
     </button>
     <view class="meta">
       <text class="chip">环境 {{environment}}</text>
     </view>
+  </view>
+
+  <view class="card" wx:if="{{devVisible}}">
+    <text class="title">本地 DEV 直连（不是管理员登录）</text>
+    <text class="notice">{{devNotice}}</text>
+    <text class="muted">端点 {{devSocketUrl}}：由环境表决定，不可编辑，不接受任意地址。</text>
+
+    <view class="row">
+      <text class="text">1. 明确开启本地 DEV 入口</text>
+      <button class="button button--ghost" bindtap="onToggleArm">
+        {{devArmed ? "关闭入口" : "开启入口"}}
+      </button>
+      <text class="muted" wx:if="{{devBlockMessage}}">{{devBlockMessage}}</text>
+    </view>
+
+    <view class="row">
+      <text class="text">2. 主机 ID（服务端无主机发现接口，需显式填写）</text>
+      <input
+        class="input"
+        value="{{hostIdInput}}"
+        placeholder="例如 host-1"
+        bindinput="onHostIdInput"
+      />
+    </view>
+
+    <view class="row">
+      <text class="text">3. DEV 操作令牌（仅内存，不写存储、不写日志）</text>
+      <input
+        class="input"
+        password="{{true}}"
+        value="{{tokenField}}"
+        placeholder="粘贴 Relay DEV 操作令牌"
+        bindinput="onTokenInput"
+      />
+      <text class="muted">{{tokenFieldHint}}</text>
+      <text class="ready" wx:if="{{devHasToken}}">令牌已就绪 {{devTokenMask}}</text>
+    </view>
+
+    <button class="button" disabled="{{!canSaveToken}}" bindtap="onSaveToken">保存令牌到内存</button>
+    <button class="button" disabled="{{!canConnect}}" bindtap="onConnect">连接本机 Relay</button>
+    <button class="button button--ghost" disabled="{{!canEnterConsole}}" bindtap="onEnterConsole">
+      进入只读主控台
+    </button>
+    <button class="button button--danger" disabled="{{!canSignOut}}" bindtap="onSignOut">
+      断开并清除凭证
+    </button>
   </view>
 </view>

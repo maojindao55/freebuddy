@@ -65,6 +65,39 @@ RPCs through a temporary SQLite domain store and Go Relay, validates every
 response against the protocol v1 schema, checks resume snapshot fallback's
 host-generated `serverTime`, and rejects every protocol-defined write method.
 
+### M3 real Electron hidden-window acceptance
+
+This is separate from the Node-mode D4 test. It starts an actual Electron
+process with a temporary `userData` directory, uses Electron's real OS-backed
+`safeStorage`, calls `startReadOnlyRemoteDevelopment`, creates a real window,
+then hides it. A simulated admin obtains a snapshot before hiding, receives a
+whitelisted real-time event after hiding, disconnects, reconnects, and receives
+the protocol-v1 snapshot fallback. The harness stops its EventHub subscription,
+Relay child, Electron process, and temporary directory.
+
+```bash
+npm run build:electron
+node --test electron/remote/electron-hidden-window.integration.test.mjs
+```
+
+If the host OS reports that Electron `safeStorage` encryption is unavailable,
+the test fails as blocked. It never substitutes a fake storage implementation.
+
+If the full harness times out before `ready`, run this direct-GUI probe with
+the Electron package binary (not its `.bin` wrapper) and with
+`ELECTRON_RUN_AS_NODE` removed. If it also cannot reach `gui_ready`, record
+the environment limitation separately from a host lifecycle failure:
+
+```bash
+env -u ELECTRON_RUN_AS_NODE node_modules/electron/dist/Electron.app/Contents/MacOS/Electron electron/remote/electron-gui-probe.mjs
+```
+
+The acceptance test performs the same probe before starting its Relay or host
+child. A missing `gui_ready` fails with `real Electron GUI runtime prerequisite
+unavailable`; it is an environment/runtime result, not evidence that the
+Remote Host lifecycle is stuck. M3 remains unmet until this probe and the full
+hidden-window flow both pass.
+
 ## Local Relay POC
 
 Build the Electron output, then run the D3 integration test. It builds a

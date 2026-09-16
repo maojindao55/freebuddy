@@ -131,6 +131,39 @@ go test -race ./...
 go vet ./...
 ```
 
+## M1 Formal Acceptance Evidence & Verification Scope
+
+This section formally records the M1 acceptance criteria, verification evidence, and boundary adherence per Master Plan (`docs/plans/2026-09-01-001-remote-admin-control-master-plan.md`) and Relay Implementation Plan (`docs/plans/2026-09-01-003-remote-admin-relay-server-plan.md`).
+
+### Verification Scope & Boundaries (M1 Minimal Closed Loop)
+
+- **Included in M1**:
+  - Explicit DEV temporary tokens (`DEV_AUTH_MODE=true`, `DEV_AUTH_ADMIN_TOKEN`, `DEV_AUTH_HOST_TOKEN`, `DEV_AUTH_HOST_ID`).
+  - Production fail-closed validation (`DEV_AUTH_MODE=false` requires valid WeChat secrets & pepper; dev tokens prohibited).
+  - Single protocol authority: consumes `protocol/remote/v1` schema and fixtures; no invented fields; strict validation rejecting unknown fields and prohibited paths (e.g., `cwd`).
+  - Two simulated WebSocket clients (Admin and Host) over loopback WSS/WS proving bidirectional request / response / event routing.
+  - Stress testing with 1,000 strictly ordered events (`seq: 1..1000`) without drop or reorder.
+  - RPC timeout handling (returns `rpc_timeout`, purges pending map).
+  - Host/Admin disconnection handling and active pending cleanup.
+  - Slow consumer isolation (slow client send-queue saturation drops only the slow consumer with `backpressure`, preserving healthy peers).
+  - Bounded memory structures (per-connection `MaxSendQueueSize`, bounded frame sizes up to 256 KiB, bounded pending map).
+  - Native heartbeat ping/pong and graceful draining shutdown (`server.draining`, WS explicit closure, HTTP server shutdown).
+  - Strict zero-retention verification for SQLite database and logs (no chat, code, terminal chunks, raw tokens, or payload markers).
+- **Explicitly Deferred (Non-M1)**:
+  - Real WeChat `code2Session` authentication (M4).
+  - Host pairing lifecycle and challenge signing persistence (M3).
+  - Terminal multiplexing and execution backend (M7).
+  - Public CVM Docker & Caddy TLS deployment (M2).
+
+### Acceptance Test Execution Evidence
+
+1. `go test -count=1 ./...` — 100% pass across all packages (`cmd/wss-smoke`, `deploy`, `internal/config`, `internal/httpapi`, `internal/protocol`, `internal/registry`, `internal/router`, `internal/safeenv`, `internal/store`, `internal/wsconn`).
+2. `go test -race -count=1 ./...` — 100% pass with zero data race warnings under Go race detector.
+3. `go vet ./...` — clean exit with zero warnings.
+4. `./services/remote-relay/scripts/local-dev.sh self-test` — complete native startup, 1000-event smoke run, and zero-retention data boundary audit passed.
+5. `./services/remote-relay/scripts/test-local-dev.sh` — all 10 security invariant and lifecycle tests passed.
+
 ## Public CVM Deployment (Deferred)
 
 Public M2 CVM deployment is deferred. Pre-existing Docker Compose, Caddy configuration, and deployment documentation remain archived in [`DEPLOYMENT.md`](./DEPLOYMENT.md) and `deploy/` for future reference when public CVM rollout is resumed.
+

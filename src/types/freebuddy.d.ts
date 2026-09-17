@@ -116,6 +116,20 @@ import type {
 export {};
 
 declare global {
+  interface FreebuddyProviders {
+    list(): Promise<import("@/services/providers/types").Provider[]>;
+    upsert(
+      input: import("@/services/providers/types").ProviderInput & { apiKey?: string }
+    ): Promise<import("@/services/providers/types").Provider>;
+    remove(id: string): Promise<void>;
+    setEnabled(input: {
+      id: string;
+      enabled: boolean;
+    }): Promise<import("@/services/providers/types").Provider>;
+    reorder(ids: string[]): Promise<import("@/services/providers/types").Provider[]>;
+    test(id: string): Promise<import("@/services/providers/types").ProviderTestResult>;
+  }
+
   interface FreebuddyCli {
     listAdapters(): Promise<CLIAdapterDefinition[]>;
 
@@ -376,6 +390,7 @@ declare global {
       settingsTab:
         | "general"
         | "cli"
+        | "providers"
         | "skills"
         | "plugins"
         | "feed"
@@ -964,6 +979,7 @@ declare global {
     /** WebUI only: bearer token for media URLs that cannot send Authorization headers. */
     sessionToken?: () => string;
     cli: FreebuddyCli;
+    providers?: FreebuddyProviders;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
     delegation: FreebuddyDelegation;

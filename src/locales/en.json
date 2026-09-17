@@ -18,7 +18,8 @@
     "copy": "Copy",
     "copied": "Copied",
     "copyFailed": "Failed to copy",
-    "remove": "Remove"
+    "remove": "Remove",
+    "refresh": "Refresh"
   },
   "status": {
     "running": "Running",
@@ -188,7 +189,11 @@
     "butlerMainWindowShortcutUnavailable": "That shortcut is already used by another app. Try another one.",
     "butlerMainWindowShortcutInvalid": "Include Ctrl/⌘ or Alt together with another key."
   },
-  "app": { "brand": "FreeBuddy", "brandSub": "", "chat": "Chat" },
+  "app": {
+    "brand": "FreeBuddy",
+    "brandSub": "",
+    "chat": "Chat"
+  },
   "skills": {
     "title": "Skills",
     "description": "Reusable instruction packages shared across supported agents. Conversations keep a versioned snapshot.",
@@ -338,7 +343,10 @@
     "title": "Free tier",
     "loading": "Loading the free-tier catalog…",
     "agentLabel": "{{name}} (Free)",
-    "region": { "cn": "China", "global": "Global" },
+    "region": {
+      "cn": "China",
+      "global": "Global"
+    },
     "protocol": {
       "openaiChat": "OpenAI-compatible",
       "openaiResponses": "OpenAI Responses",
@@ -930,8 +938,6 @@
     "system": "System",
     "copy": "Copy",
     "copySelection": "Copy selection",
-    "upvote": "Good response",
-    "downvote": "Bad response",
     "upvote": "Upvote",
     "downvote": "Downvote",
     "copyAll": "Copy all"
@@ -1092,7 +1098,8 @@
       "usage": "Usage",
       "workflowTeams": "Workflow Teams",
       "remote": "Shared",
-      "about": "About"
+      "about": "About",
+      "providers": "Providers"
     },
     "cli": {
       "title": "Cli Agents",
@@ -2092,5 +2099,30 @@
     "openedFolder": "Opened {{name}} as a workspace",
     "openedFiles": "Attached {{count}} files",
     "openedFolderWithFiles": "Opened {{name}} and attached {{count}} files"
+  },
+  "providers": {
+    "title": "Providers",
+    "description": "Manage model API channels (relays / BYOK) in one place. Agent BYOK can reference a provider key; rotate it once.",
+    "add": "Add provider",
+    "edit": "Edit provider",
+    "empty": "No providers yet. Add one or import from Freebie.",
+    "name": "Name",
+    "protocol": "Protocol",
+    "adapter": "Adapter",
+    "baseUrl": "Base URL",
+    "envKey": "Key env var",
+    "apiKey": "API Key",
+    "models": "Models (one per line)",
+    "test": "Test connection",
+    "enable": "Enable",
+    "disable": "Disable",
+    "noKey": "No key",
+    "unreachable": "Unreachable",
+    "deleteConfirm": "Delete provider \"{{name}}\"?",
+    "useProvider": "Use provider",
+    "custom": "Custom (manual key)",
+    "managedHint": "Key managed by provider",
+    "modelsCount": "{{count}} models",
+    "savedKeyHint": "Saved {{preview}}; leave blank to keep"
   }
 }

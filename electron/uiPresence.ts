@@ -8,6 +8,7 @@ export type MainWorkspaceView =
 export type MainSettingsTab =
   | "general"
   | "cli"
+  | "providers"
   | "skills"
   | "plugins"
   | "feed"
@@ -60,6 +61,7 @@ const WORKSPACE_VIEWS = new Set<MainWorkspaceView>([
 const SETTINGS_TABS = new Set<MainSettingsTab>([
   "general",
   "cli",
+  "providers",
   "skills",
   "plugins",
   "feed",

@@ -1012,6 +1012,91 @@ export function migrate(db: DB) {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN config_option_overrides TEXT");
   }
 
+  // ---- 服务商 / Provider（模型 API 渠道，中转站/BYOK）----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS providers (
+      id TEXT PRIMARY KEY,
+      preset_id TEXT,
+      name TEXT NOT NULL,
+      base_adapter TEXT NOT NULL DEFAULT 'codex-acp',
+      protocol TEXT NOT NULL DEFAULT 'openai-chat',
+      protocols TEXT,
+      base_url TEXT NOT NULL,
+      env_key TEXT,
+      api_key_encrypted TEXT,
+      api_key_preview TEXT,
+      models TEXT,
+      context_window INTEGER,
+      icon TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL DEFAULT 100,
+      wire_api TEXT,
+      notes TEXT,
+      last_health TEXT,
+      last_latency_ms INTEGER,
+      last_error TEXT,
+      last_checked_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_providers_preset ON providers(preset_id);
+    CREATE INDEX IF NOT EXISTS idx_providers_enabled ON providers(enabled, position);
+  `);
+  // 老 freebie-* override 迁移：只建服务商架子（不含 Key，由用户重新填），避免 Key 明文搬运
+  try {
+    const hasOverrides = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='cli_executor_overrides'`)
+      .get();
+    if (hasOverrides) {
+      const rows = db
+        .prepare(`SELECT id, label, base_adapter, codex_byok, claude_byok, deepseek_byok FROM cli_executor_overrides WHERE id LIKE 'freebie-%'`)
+        .all() as Array<{
+        id: string; label: string | null; base_adapter: string | null;
+        codex_byok: string | null; claude_byok: string | null; deepseek_byok: string | null;
+      }>;
+      const now = new Date().toISOString();
+      for (const r of rows) {
+        const m = /^freebie-(.+)-([0-9a-z]{6})$/.exec(r.id);
+        const presetId = m ? m[1] : undefined;
+        const byokRaw = r.codex_byok || r.claude_byok || r.deepseek_byok;
+        let baseUrl = "";
+        let envKey: string | null = null;
+        let models = "[]";
+        let providerName: string | null = null;
+        let wireApi: string | null = null;
+        let contextWindow: number | null = null;
+        let icon: string | null = null;
+        try {
+          const b = byokRaw ? (JSON.parse(byokRaw) as Record<string, unknown>) : null;
+          if (b) {
+            if (typeof b.baseUrl === "string") baseUrl = b.baseUrl;
+            if (typeof b.envKey === "string") envKey = b.envKey;
+            if (typeof b.providerName === "string") providerName = b.providerName;
+            if (typeof b.providerId === "string" && !presetId) void 0;
+            if (typeof b.wireApi === "string") wireApi = b.wireApi;
+            if (typeof b.contextWindow === "number") contextWindow = b.contextWindow;
+            if (Array.isArray(b.models)) models = JSON.stringify(b.models);
+          }
+        } catch { /* ignore */ }
+        if (!baseUrl) continue;
+        const exists = db.prepare(`SELECT id FROM providers WHERE id = ?`).get(r.id) as { id: string } | undefined;
+        if (exists) continue;
+        const dup = presetId
+          ? (db.prepare(`SELECT id FROM providers WHERE preset_id = ? AND base_url = ? LIMIT 1`).get(presetId, baseUrl) as { id: string } | undefined)
+          : undefined;
+        if (dup) continue;
+        const baseAdapter = r.base_adapter || "codex-acp";
+        const protocol = baseAdapter === "claude-agent-acp" ? "anthropic" : baseAdapter === "dsh-acp" ? "deepseek" : "openai-chat";
+        db.prepare(
+          `INSERT INTO providers (id, preset_id, name, base_adapter, protocol, base_url, env_key, models, context_window, icon, enabled, position, wire_api, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 100, ?, ?)`,
+        ).run(
+          r.id, presetId ?? null, r.label || providerName || presetId || r.id,
+          baseAdapter, protocol, baseUrl, envKey, models, contextWindow, icon, wireApi, now,
+        );
+      }
+    }
+  } catch { /* 迁移失败不阻塞启动 */ }
+
   installHostIdempotencySchema(db);
   pruneHostIdempotencyResults({
     db,

@@ -84,7 +84,8 @@ export interface AcpAuthMethod {
 
 export function selectAcpAuthMethod(
   methods: AcpAuthMethod[],
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  preferredMethodId?: string
 ): AcpAuthMethod | undefined {
   const supported = methods.filter(
     (method) =>
@@ -95,6 +96,11 @@ export function selectAcpAuthMethod(
         method.type === "terminal")
   );
   if (supported.length <= 1) return supported[0];
+
+  if (preferredMethodId) {
+    const preferred = supported.find((method) => method.id === preferredMethodId);
+    if (preferred) return preferred;
+  }
 
   const apiKeyMethod = supported.find((method) =>
     /api[-_ ]?key/i.test(`${method.id} ${method.name ?? ""}`)

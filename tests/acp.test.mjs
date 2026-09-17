@@ -1055,6 +1055,30 @@ test("ACP auth selection prefers available API keys, otherwise interactive login
     )?.id,
     "cline"
   );
+  assert.equal(
+    selectAcpAuthMethod(
+      [
+        { id: "cline", name: "Sign in with Cline" },
+        { id: "cline-pass", name: "Sign in with ClinePass" },
+        { id: "openai-codex", name: "Sign in with ChatGPT Subscription" }
+      ],
+      {},
+      "cline-pass"
+    )?.id,
+    "cline-pass"
+  );
+  assert.equal(
+    selectAcpAuthMethod(
+      [
+        { id: "cline", name: "Sign in with Cline" },
+        { id: "cline-pass", name: "Sign in with ClinePass" },
+        { id: "openai-codex", name: "Sign in with ChatGPT Subscription" }
+      ],
+      {},
+      "openai-codex"
+    )?.id,
+    "openai-codex"
+  );
 });
 
 test("terminal/output uses the stable ACP exitStatus shape", () => {

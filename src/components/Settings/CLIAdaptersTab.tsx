@@ -19,6 +19,8 @@ import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { getAgentIconId } from "@/config/agentIcon";
 import { SkillPicker } from "@/components/CLI/SkillPicker";
 import { useSkillStore } from "@/store/skillStore";
+import { useProviderStore } from "@/store/providerStore";
+import { ProviderSelect } from "./ProviderSelect";
 import { cliAdapterDefinitions, type CLIAdapterDefinition } from "@/config/cliAdapters";
 import type { CLIMember } from "@/config/aiMembers";
 
@@ -927,6 +929,9 @@ function EditOverridePanel({
   const installing = useCliInstallStore((s) =>
     s.jobs.some((j) => j.adapterId === executorId && !j.done)
   );
+  const providers = useProviderStore((s) => s.providers);
+  const providersLoaded = useProviderStore((s) => s.loaded);
+  const loadProviders = useProviderStore((s) => s.load);
 
   const [label, setLabel] = useState(ex?.label ?? "");
   const [binary, setBinary] = useState(
@@ -964,6 +969,12 @@ function EditOverridePanel({
   const [codexByokEnabled, setCodexByokEnabled] = useState(
     savedByok?.enabled === true
   );
+  const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>(() => {
+    const byok = savedByok as { providerId?: string } | undefined;
+    const pid = byok?.providerId;
+    return pid && pid.startsWith("provider-") ? pid : undefined;
+  });
+  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
   const [codexProviderId, setCodexProviderId] = useState(
     savedCodexByok?.providerId ?? "proxy"
   );
@@ -1083,48 +1094,71 @@ function EditOverridePanel({
 
     const codexByokConfig =
       isCodex && codexByokEnabled
-        ? {
-            enabled: true,
-            providerId: codexProviderId.trim() || "proxy",
-            providerName: codexProviderName.trim() || "BYOK provider",
-            baseUrl: codexBaseUrl.trim(),
-            envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
-            wireApi: codexWireApi,
-            apiKey: codexApiKey.trim() || undefined,
-            models: normalizedByokModels,
-            apiKeyPreview: savedByok?.apiKeyPreview
-          }
+        ? selectedProviderId && selectedProvider
+          ? {
+              // Provider-reference mode: store providerId only; key/url/models resolve at runtime
+              enabled: true,
+              providerId: selectedProviderId,
+              providerName: selectedProvider.name,
+              envKey: selectedProvider.envKey,
+              wireApi: selectedProvider.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const)
+            }
+          : {
+              enabled: true,
+              providerId: codexProviderId.trim() || "proxy",
+              providerName: codexProviderName.trim() || "BYOK provider",
+              baseUrl: codexBaseUrl.trim(),
+              envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
+              wireApi: codexWireApi,
+              apiKey: codexApiKey.trim() || undefined,
+              models: normalizedByokModels,
+              apiKeyPreview: savedByok?.apiKeyPreview
+            }
         : undefined;
     const claudeByokConfig =
       isClaude && codexByokEnabled
-        ? {
-            enabled: true,
-            baseUrl: codexBaseUrl.trim(),
-            envKey: codexEnvKey.trim() || "ANTHROPIC_API_KEY",
-            apiKey: codexApiKey.trim() || undefined,
-            models: normalizedByokModels,
-            contextWindow: parseByokContextWindow(byokContextWindow),
-            compaction: {
-              enabled: claudeCompactionEnabled
-            },
-            apiKeyPreview: savedClaudeByok?.apiKeyPreview
-          }
+        ? selectedProviderId && selectedProvider
+          ? {
+              enabled: true,
+              providerId: selectedProviderId,
+              envKey: selectedProvider.envKey,
+              compaction: { enabled: claudeCompactionEnabled }
+            }
+          : {
+              enabled: true,
+              baseUrl: codexBaseUrl.trim(),
+              envKey: codexEnvKey.trim() || "ANTHROPIC_API_KEY",
+              apiKey: codexApiKey.trim() || undefined,
+              models: normalizedByokModels,
+              contextWindow: parseByokContextWindow(byokContextWindow),
+              compaction: {
+                enabled: claudeCompactionEnabled
+              },
+              apiKeyPreview: savedClaudeByok?.apiKeyPreview
+            }
         : undefined;
     const deepseekByokConfig = isDeepSeek
-      ? {
-          enabled: codexByokEnabled,
-          baseUrl: codexByokEnabled ? codexBaseUrl.trim() || undefined : undefined,
-          envKey: codexByokEnabled ? codexEnvKey.trim() || undefined : undefined,
-          wireApi: "chat" as const,
-          officialApiKey: deepseekOfficialApiKey.trim() || undefined,
-          officialApiKeyPreview: savedDeepSeekByok?.officialApiKeyPreview,
-          apiKey: codexApiKey.trim() || undefined,
-          apiKeyPreview: savedDeepSeekByok?.apiKeyPreview,
-          models: codexByokEnabled ? normalizedByokModels : [],
-          contextWindow: codexByokEnabled
-            ? parseByokContextWindow(byokContextWindow)
-            : undefined
-        }
+      ? selectedProviderId && selectedProvider
+        ? {
+            enabled: true,
+            providerId: selectedProviderId,
+            envKey: selectedProvider.envKey,
+            wireApi: "chat" as const
+          }
+        : {
+            enabled: codexByokEnabled,
+            baseUrl: codexByokEnabled ? codexBaseUrl.trim() || undefined : undefined,
+            envKey: codexByokEnabled ? codexEnvKey.trim() || undefined : undefined,
+            wireApi: "chat" as const,
+            officialApiKey: deepseekOfficialApiKey.trim() || undefined,
+            officialApiKeyPreview: savedDeepSeekByok?.officialApiKeyPreview,
+            apiKey: codexApiKey.trim() || undefined,
+            apiKeyPreview: savedDeepSeekByok?.apiKeyPreview,
+            models: codexByokEnabled ? normalizedByokModels : [],
+            contextWindow: codexByokEnabled
+              ? parseByokContextWindow(byokContextWindow)
+              : undefined
+          }
       : undefined;
 
     const override: CLIExecutorOverride = {
@@ -1365,12 +1399,45 @@ function EditOverridePanel({
 
             {codexByokEnabled && (
               <>
+                <div className="adapter-editor-field">
+                  <ProviderSelect
+                    adapter={ex.baseAdapter ?? ex.id}
+                    value={selectedProviderId}
+                    onChange={(pid) => {
+                      setSelectedProviderId(pid);
+                      if (pid) {
+                        const p = providers.find((x) => x.id === pid);
+                        if (p) {
+                          if (isCodex) {
+                            setCodexProviderId(p.presetId ?? p.id);
+                            setCodexProviderName(p.name);
+                          }
+                          setCodexBaseUrl(p.baseUrl);
+                          setCodexEnvKey(p.envKey);
+                          setByokModels(
+                            p.models.map((m) => ({
+                              id: m.id, name: m.name ?? "",
+                              contextWindow: m.contextWindow, supportsVision: m.supportsVision,
+                            })),
+                          );
+                        }
+                      }
+                    }}
+                  />
+                </div>
+                {selectedProvider ? (
+                  <p className="settings-field-hint">
+                    {t("providers.managedHint")}：{selectedProvider.name} · {selectedProvider.baseUrl}
+                    {selectedProvider.apiKeyPreview ? ` · ${selectedProvider.apiKeyPreview}` : ""}
+                  </p>
+                ) : null}
                 <label className="adapter-editor-field">
                   <span className="adapter-editor-field-label">{t("settings.cli.byok.baseUrl")}</span>
                   <input
                     type="url"
                     value={codexBaseUrl}
                     placeholder={byokBaseUrlPlaceholder}
+                    disabled={Boolean(selectedProvider)}
                     onChange={(e) => setCodexBaseUrl(e.target.value)}
                   />
                   <span className="settings-field-hint">

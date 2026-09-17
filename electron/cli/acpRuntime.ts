@@ -1238,7 +1238,8 @@ export async function runAcpAgent({
   };
 
   const authRequiredError = (methods: AcpAuthMethod[]) => {
-    const selected = selectAcpAuthMethod(methods, agentCommand.env);
+    const preferredId = args.configOptionOverrides?.provider;
+    const selected = selectAcpAuthMethod(methods, agentCommand.env, preferredId);
     const method = selected ?? methods[0];
     const label = method?.name ? ` (${method.name})` : "";
     const unsupportedType =
@@ -1715,7 +1716,28 @@ export async function runAcpAgent({
         if (restarted) await establishSession();
         await runPromptOnSession();
       }
-      if (!promptHadContent) throw authRequiredError(authMethods);
+      if (!promptHadContent) {
+        const hasExistingCreds = recentStderr.some((line) =>
+          /using existing credentials/i.test(line)
+        );
+        if (authenticationAttempted || hasExistingCreds) {
+          const provider = args.configOptionOverrides?.provider;
+          const model = args.configOptionOverrides?.model;
+          const contextParts = [
+            provider ? `provider: ${provider}` : "",
+            model ? `model: ${model}` : ""
+          ].filter(Boolean);
+          const contextInfo =
+            contextParts.length > 0 ? ` (${contextParts.join(", ")})` : "";
+          throw new Error(
+            `The agent completed the turn without producing output${contextInfo}. ` +
+              `This usually indicates the selected model is unsupported for this provider, ` +
+              `the account lacks a required subscription (such as ClinePass), or an upstream limit occurred. ` +
+              `Please check your provider and model configuration.`
+          );
+        }
+        throw authRequiredError(authMethods);
+      }
     }
 
     if (agentCaps?.sessionCapabilities?.close) {

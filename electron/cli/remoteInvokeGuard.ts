@@ -198,13 +198,19 @@ export function guardRemoteInvokeArgs(
  * desktop.
  */
 export function filterRemoteInvokeResult(channel: string, result: unknown): unknown {
-  if (channel !== "cli:listOverrides" || !Array.isArray(result)) return result;
-  return result.map((entry) => {
-    const override = asRecord(entry);
-    if (!override?.env || typeof override.env !== "object") return entry;
-    const redacted = Object.fromEntries(
-      Object.keys(override.env as Record<string, string>).map((key) => [key, ""])
-    );
-    return { ...override, env: redacted };
-  });
+  if (channel === "cli:listOverrides" && Array.isArray(result)) {
+    return result.map((entry) => {
+      const override = asRecord(entry);
+      if (!override?.env || typeof override.env !== "object") return entry;
+      const redacted = Object.fromEntries(
+        Object.keys(override.env as Record<string, string>).map((key) => [key, ""])
+      );
+      return { ...override, env: redacted };
+    });
+  }
+  if (channel === "providers:list" && Array.isArray(result)) {
+    // 服务商列表本就脱敏（无明文 Key），远程直接拒绝由 policy 处理，这里兜底
+    return result;
+  }
+  return result;
 }

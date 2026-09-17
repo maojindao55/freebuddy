@@ -194,6 +194,14 @@ const ADMIN_ONLY = [
   "cli:upsertOverride",
   "cli:resetOverride",
 
+  // 服务商含 API Key：读是脱敏列表，写是 host 配置，均仅桌面端。
+  "providers:list",
+  "providers:upsert",
+  "providers:delete",
+  "providers:setEnabled",
+  "providers:reorder",
+  "providers:test",
+
   // Host workspace project mounts affect agent cwd/roots; no remote path guard yet.
   "cli:createProject",
   "cli:ensureProjectForCwd",

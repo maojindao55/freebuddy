@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AboutTab } from "./AboutTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
+import { ProvidersTab } from "./ProvidersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { InfoCardsTab } from "./InfoCardsTab";
@@ -10,10 +11,11 @@ import { PluginsTab } from "./PluginsTab";
 import { RemoteTab } from "./RemoteTab";
 import { UsageTab } from "./UsageTab";
 
-export type SettingsTab = "general" | "cli" | "skills" | "plugins" | "feed" | "usage" | "remote" | "about";
+export type SettingsTab = "general" | "cli" | "providers" | "skills" | "plugins" | "feed" | "usage" | "remote" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
+  { key: "providers", labelKey: "settings.tabs.providers" },
   { key: "skills", labelKey: "settings.tabs.skills" },
   { key: "plugins", labelKey: "settings.tabs.plugins" },
   { key: "feed", labelKey: "settings.tabs.feed" },
@@ -90,6 +92,11 @@ function SettingsContent({
       {activeTab === "cli" && (
         <SettingsTabErrorBoundary>
           <CLIAdaptersTab />
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "providers" && (
+        <SettingsTabErrorBoundary>
+          <ProvidersTab />
         </SettingsTabErrorBoundary>
       )}
       {activeTab === "skills" && <SkillsTab />}

@@ -42,6 +42,7 @@ import {
   defaultTitleFor,
   feedArticleTitleFromMessages,
   mergeConversationMessages,
+  recoverConversationTitleFromMessages,
   shouldApplyAgentSessionTitle,
   upsertConversationMessage,
   INITIAL_VISIBLE_MESSAGES
@@ -851,8 +852,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       const agentTitle = sessionInfo?.title?.trim();
       const feedArticleTitle = feedArticleTitleFromMessages(list);
       let conversations = s.conversations;
-      if (agentTitle) {
-        const conversation = conversations.find((entry) => entry.id === id);
+      const conversation = conversations.find((entry) => entry.id === id);
+      const recoveredTitle = conversation
+        ? recoverConversationTitleFromMessages(conversation, list)
+        : undefined;
+      if (conversation && recoveredTitle) {
+        conversations = conversations.map((entry) =>
+          entry.id === id
+            ? { ...entry, title: recoveredTitle, titleSource: "prompt" as const }
+            : entry
+        );
+        void cliClient.renameConversation(id, recoveredTitle, "prompt");
+      } else if (agentTitle) {
         const nextTitle =
           conversation &&
           feedArticleTitle &&

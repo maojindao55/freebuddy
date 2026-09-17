@@ -807,8 +807,55 @@ export function buildConversationTitle(input: {
   return Array.from(source).slice(0, maxLength).join("");
 }
 
+export function buildDelegationConversationTitle(
+  teamName: string,
+  goal: string,
+  maxLength = 80
+): string {
+  const task = isInternalSkillAnnouncementTitle(goal) ? "" : goal;
+  return buildConversationTitle({
+    prompt: task,
+    fallback: teamName,
+    maxLength
+  });
+}
+
 function normalizeTitleText(value: string | undefined): string {
   return value?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+export function isInternalSkillAnnouncementTitle(
+  title: string | undefined
+): boolean {
+  const normalized = normalizeTitleText(title);
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  if (lower.includes("[freebuddy active skills]")) return true;
+  if (lower.includes("freebuddy-skills mcp")) return true;
+  if (lower.includes("self-organizing delegation")) return true;
+  return /^[-\s]*delegation\s+\([^)]+\):/i.test(normalized);
+}
+
+export function isDelegationSkillAnnouncementTitle(
+  title: string | undefined
+): boolean {
+  const normalized = normalizeTitleText(title);
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  if (lower.includes("self-organizing delegation")) return true;
+  if (/^[-\s]*delegation\s+\([^)]+\):/i.test(normalized)) return true;
+  return (
+    lower.includes("[freebuddy active skills]") && /\bdelegation\b/.test(lower)
+  );
+}
+
+export function isDelegationConversation(
+  conversation: Pick<Conversation, "kind" | "title">
+): boolean {
+  return (
+    conversation.kind === "delegation" ||
+    isDelegationSkillAnnouncementTitle(conversation.title)
+  );
 }
 
 function defaultTitleForConversation(
@@ -818,6 +865,39 @@ function defaultTitleForConversation(
     ? conversation.cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
     : undefined;
   return tail ? `${conversation.agentName} · ${tail}` : conversation.agentName;
+}
+
+export function displayConversationTitle(
+  conversation: Pick<Conversation, "title" | "agentName" | "cwd">,
+  fallback?: string
+): string {
+  const title = normalizeTitleText(conversation.title);
+  if (title && !isInternalSkillAnnouncementTitle(title)) return title;
+  const recovered = defaultTitleForConversation(conversation);
+  return (
+    normalizeTitleText(fallback) ||
+    normalizeTitleText(recovered) ||
+    title ||
+    "New chat"
+  );
+}
+
+export function recoverConversationTitleFromMessages(
+  conversation: ConversationForTitleSource,
+  messages: Pick<ConversationMessage, "role" | "content">[]
+): string | undefined {
+  if (!isInternalSkillAnnouncementTitle(conversation.title)) return undefined;
+  if (inferConversationTitleSource(conversation) === "user") return undefined;
+  const firstUser = messages.find(
+    (message) => message.role === "user" && normalizeTitleText(message.content)
+  );
+  const recovered = buildConversationTitle({
+    prompt: firstUser?.content,
+    fallback: defaultTitleForConversation(conversation)
+  });
+  if (!recovered || recovered === conversation.title) return undefined;
+  if (isInternalSkillAnnouncementTitle(recovered)) return undefined;
+  return recovered;
 }
 
 type ConversationForTitleSource = Pick<
@@ -850,6 +930,7 @@ export function shouldApplyAgentSessionTitle(
     Array.isArray(messagesOrTitle) ? maybeTitle : messagesOrTitle
   );
   if (!title || conversation.title === title) return false;
+  if (isInternalSkillAnnouncementTitle(title)) return false;
   if (messages.some((message) => Boolean(message.workflowRunId))) return false;
   const source = inferConversationTitleSource(conversation);
   return source === "default" || source === "prompt";

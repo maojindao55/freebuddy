@@ -28,6 +28,22 @@ import {
   resolveHostWriteApproval
 } from "../runtime/runtimeHostApi.js";
 
+function buildDelegationConversationTitle(teamName: string, goal: string): string {
+  const normalizedGoal = goal.replace(/\s+/g, " ").trim();
+  const looksLikeAnnouncement =
+    /\[FreeBuddy active skills\]/i.test(normalizedGoal) ||
+    /self-organizing delegation/i.test(normalizedGoal) ||
+    /freebuddy-skills mcp/i.test(normalizedGoal) ||
+    /^[-\s]*delegation\s+\([^)]+\):/i.test(normalizedGoal);
+  const source =
+    !normalizedGoal || looksLikeAnnouncement
+      ? teamName.trim()
+      : normalizedGoal;
+  return Array.from(source || teamName.trim() || "New chat")
+    .slice(0, 80)
+    .join("");
+}
+
 let runtime: DelegationRuntime | null = null;
 
 export function ensureDelegationRuntime(event: IpcMainInvokeEvent): DelegationRuntime {
@@ -73,14 +89,12 @@ export function registerDelegationIpc(): void {
       const adapter = member?.cli.adapter ?? "claude";
 
       const conversationId = randomUUID();
-      const title =
-        input.goal.length > 100
-          ? `${input.goal.slice(0, 97)}…`
-          : input.goal;
+      const title = buildDelegationConversationTitle(team.name, input.goal);
       createConversation({
         id: conversationId,
         title,
         titleSource: "prompt",
+        kind: "delegation",
         agentId: entry.agentId,
         agentName,
         adapter,

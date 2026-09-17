@@ -17,6 +17,10 @@ import {
   projectLabelFromCwd,
   conversationActivityTime
 } from "./conversationProjectGrouping";
+import {
+  ConversationKindBadge,
+  conversationVisibleTitle
+} from "./conversationTitle";
 
 const RESULT_LIMIT = 9;
 
@@ -125,9 +129,15 @@ export function ConversationCommandPalette({
 
   const results = useMemo(() => {
     const normalized = query.trim().toLowerCase();
+    const fallback = t("workflow.delegation.sessionTitleFallback");
     const filtered = normalized
       ? conversations.filter((conversation) => {
+          const visibleTitle = conversationVisibleTitle(
+            conversation,
+            fallback
+          ).toLowerCase();
           if (conversation.title.toLowerCase().includes(normalized)) return true;
+          if (visibleTitle.includes(normalized)) return true;
           if (conversation.cwd?.toLowerCase().includes(normalized)) return true;
           if (conversation.sourceCwd?.toLowerCase().includes(normalized)) return true;
           return displayAgentName(conversation.agentName, conversation.adapter)
@@ -138,7 +148,7 @@ export function ConversationCommandPalette({
     return [...filtered]
       .sort((a, b) => conversationActivityTime(b) - conversationActivityTime(a))
       .slice(0, RESULT_LIMIT);
-  }, [conversations, query]);
+  }, [conversations, query, t]);
 
   const selectableCount = results.length + actions.length;
 
@@ -297,7 +307,13 @@ export function ConversationCommandPalette({
                         onClick={() => selectConversation(conversation)}
                       >
                         <span className="command-palette-row-title">
-                          {conversation.title}
+                          <ConversationKindBadge conversation={conversation} />
+                          <span>
+                            {conversationVisibleTitle(
+                              conversation,
+                              t("workflow.delegation.sessionTitleFallback")
+                            )}
+                          </span>
                         </span>
                         {project ? (
                           <span className="command-palette-row-meta">{project}</span>

@@ -2008,6 +2008,23 @@ html[data-surface="butler-screen-ball"] #root {
   white-space: nowrap;
 }
 
+.conversation-kind-badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(6, 182, 212, 0.12);
+  color: #0891b2;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .conversation-kind-badge {
+  background: rgba(34, 211, 238, 0.16);
+  color: #67e8f9;
+}
+
 .titlebar-actions {
   display: inline-flex;
   flex: 0 0 auto;
@@ -8354,11 +8371,20 @@ button.new-task-context-control {
 }
 
 .new-task-unread-copy strong {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   color: var(--fb-text-primary);
   font-size: 13px;
   font-weight: 650;
   line-height: 1.3;
+}
+
+.new-task-unread-copy strong > span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -13948,6 +13974,7 @@ button.new-task-context-control {
 .conv-item-title-row {
   display: flex;
   align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -14192,6 +14219,14 @@ button.new-task-context-control {
 }
 
 .command-palette-row-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.command-palette-row-title > span:last-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

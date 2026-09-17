@@ -17,7 +17,13 @@ import type { ConversationState } from "./conversationStore";
 import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
 import { useAuthenticationStore } from "./authenticationStore";
-import { appendItems, capPersistedStreamItems, shouldApplyAgentSessionTitle } from "./conversationUtils";
+import {
+  displayConversationTitle,
+  isDelegationConversation,
+  appendItems,
+  capPersistedStreamItems,
+  shouldApplyAgentSessionTitle
+} from "./conversationUtils";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 import { useImagePreviewStore } from "./imagePreviewStore";
 import { useTerminalStore } from "./terminalStore";
@@ -329,9 +335,15 @@ export function handleStreamEvent(
         conversationId,
         success ? "success" : "failure"
       );
-      const conversationTitle =
-        get().conversations.find((c) => c.id === conversationId)?.title ??
-        i18next.t("conversations.untitled");
+      const conversation = get().conversations.find((c) => c.id === conversationId);
+      const conversationTitle = conversation
+        ? displayConversationTitle(
+            conversation,
+            isDelegationConversation(conversation)
+              ? i18next.t("workflow.delegation.sessionTitleFallback")
+              : undefined
+          )
+        : i18next.t("conversations.untitled");
       if (success) {
         playTaskSuccess(true);
         notifyTaskFinished(

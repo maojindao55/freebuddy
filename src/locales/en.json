@@ -1648,6 +1648,7 @@
       "requireApprovalBeforeDelegateWrite": "Approve before write",
       "stopOnDelegateFailure": "Stop on failure",
       "kindBadge": "Self-organizing",
+      "sessionTitleFallback": "Self-organizing team",
       "newTeam": "New delegation team",
       "teamKindDelegation": "Self-organizing team",
       "writeApproval": "Write approval",

@@ -1633,6 +1633,7 @@
       "requireApprovalBeforeDelegateWrite": "写前审批",
       "stopOnDelegateFailure": "失败即停",
       "kindBadge": "自组织",
+      "sessionTitleFallback": "自组织团队会话",
       "newTeam": "新建自组织团队",
       "teamKindDelegation": "自组织团队",
       "writeApproval": "写权限",

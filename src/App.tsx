@@ -7,6 +7,10 @@ import { ChatView } from "./components/CLI/ChatView";
 import { TitlebarOverflowMenu } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
+import {
+  ConversationKindBadge,
+  conversationVisibleTitle
+} from "./components/CLI/conversationTitle";
 import { ConversationContextDialog } from "./components/CLI/ConversationContextDialog";
 import { ImportCodexSessionDialog } from "./components/CLI/ImportCodexSessionDialog";
 import {
@@ -582,7 +586,10 @@ function App() {
         if (unread?.kind === "success" || unread?.kind === "failure") {
           tasks.push({
             id: conversation.id,
-            title: conversation.title,
+            title: conversationVisibleTitle(
+              conversation,
+              t("workflow.delegation.sessionTitleFallback")
+            ),
             result: unread.kind,
             completedAt: unread.at
           });
@@ -644,7 +651,10 @@ function App() {
       activeConversation: activeConversation
         ? {
             id: activeConversation.id,
-            title: activeConversation.title,
+            title: conversationVisibleTitle(
+              activeConversation,
+              t("workflow.delegation.sessionTitleFallback")
+            ),
             agentId: activeConversation.agentId,
             agentName:
               member?.name ??
@@ -657,7 +667,10 @@ function App() {
         .filter((conversation) => runningIds.has(conversation.id))
         .map((conversation) => ({
           id: conversation.id,
-          title: conversation.title
+          title: conversationVisibleTitle(
+            conversation,
+            t("workflow.delegation.sessionTitleFallback")
+          )
         })),
       completedUnreadTasks: JSON.parse(completedUnreadTasksJson) as Array<{
         id: string;
@@ -678,6 +691,7 @@ function App() {
     settingsInitialTab,
     activeConversation?.id,
     activeConversation?.title,
+    activeConversation?.kind,
     activeConversation?.agentId,
     activeConversation?.agentName,
     activeConversationRunning,
@@ -685,7 +699,8 @@ function App() {
     completedUnreadTasksJson,
     unreadCount,
     members,
-    conversations
+    conversations,
+    t
   ]);
 
   const activeWorkflowRunning = useWorkflowStore((s) =>
@@ -779,7 +794,12 @@ function App() {
         ? t("workflow.teamList")
         : workspaceView === "freebie"
           ? t("freebie.title")
-        : activeConversation?.title ?? t("app.chat");
+        : activeConversation
+          ? conversationVisibleTitle(
+              activeConversation,
+              t("workflow.delegation.sessionTitleFallback")
+            )
+        : t("app.chat");
   const renderToggleButton = (extraClass = "") => (
     <button
       type="button"
@@ -929,6 +949,9 @@ function App() {
             className="breadcrumb"
             title={workspaceTitle}
           >
+            {workspaceView === "chat" && activeConversation ? (
+              <ConversationKindBadge conversation={activeConversation} />
+            ) : null}
             <strong>{workspaceTitle}</strong>
           </div>
           {settingsOpen ? (

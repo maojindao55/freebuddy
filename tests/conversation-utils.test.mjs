@@ -313,6 +313,99 @@ test("shouldApplyAgentSessionTitle respects titleSource state machine", async ()
   );
 });
 
+test("skill announcement session titles are not applied or shown as conversation titles", async () => {
+  const {
+    shouldApplyAgentSessionTitle,
+    isInternalSkillAnnouncementTitle,
+    isDelegationConversation,
+    displayConversationTitle,
+    buildDelegationConversationTitle,
+    recoverConversationTitleFromMessages
+  } = await loadConversationUtils();
+
+  const leaked =
+    "[FreeBuddy active skills] - delegation (1.4.0): Collaborate with teammate agents in a self-organizing delegation run. Discover teammates and delegate sub-tasks asynchronously; the system ...";
+
+  assert.equal(isInternalSkillAnnouncementTitle(leaked), true);
+  assert.equal(
+    isInternalSkillAnnouncementTitle(
+      "delegation (1.4.0): Collaborate with teammate agents in a self-organizing delegation run."
+    ),
+    true
+  );
+  assert.equal(isInternalSkillAnnouncementTitle("Fix the login bug"), false);
+  assert.equal(isDelegationConversation({ kind: "delegation", title: "Fix cwd" }), true);
+  assert.equal(isDelegationConversation({ title: leaked }), true);
+  assert.equal(
+    isDelegationConversation({ title: "[FreeBuddy active skills] - verify-change (1.0.0): checks" }),
+    false
+  );
+
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "你怎么在这个工作区搞的", titleSource: "prompt" },
+      [],
+      leaked
+    ),
+    false
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "Codex · project", agentName: "Codex", cwd: "/tmp/project", titleSource: "default" },
+      [],
+      "Fix workspace mapping"
+    ),
+    true
+  );
+
+  assert.equal(
+    displayConversationTitle(
+      { title: leaked, agentName: "Codex", cwd: "/tmp/zombie-workspace" },
+      "自组织团队会话"
+    ),
+    "自组织团队会话"
+  );
+  assert.equal(
+    displayConversationTitle({
+      title: leaked,
+      agentName: "Codex",
+      cwd: "/tmp/zombie-workspace"
+    }),
+    "Codex · zombie-workspace"
+  );
+  assert.equal(
+    displayConversationTitle({
+      title: "你怎么在这个工作区搞的",
+      agentName: "Codex",
+      cwd: "/tmp/zombie-workspace"
+    }),
+    "你怎么在这个工作区搞的"
+  );
+
+  assert.equal(
+    buildDelegationConversationTitle("自组织：实现+评审", "你怎么在这个工作区搞的 没在我选的目录呢？"),
+    "你怎么在这个工作区搞的 没在我选的目录呢？"
+  );
+  assert.equal(
+    buildDelegationConversationTitle("自组织：实现+评审", leaked),
+    "自组织：实现+评审"
+  );
+  assert.equal(
+    recoverConversationTitleFromMessages(
+      { title: leaked, titleSource: "agent", agentName: "Codex", cwd: "/tmp/zombie-workspace" },
+      [{ role: "user", content: "你怎么在这个工作区搞的 没在我选的目录呢？" }]
+    ),
+    "你怎么在这个工作区搞的 没在我选的目录呢？"
+  );
+  assert.equal(
+    recoverConversationTitleFromMessages(
+      { title: "My custom name", titleSource: "user" },
+      [{ role: "user", content: "ignore me" }]
+    ),
+    undefined
+  );
+});
+
 test("agent session titles do not override custom conversation titles", async () => {
   const { feedArticleTitleFromMessages, shouldApplyAgentSessionTitle } =
     await loadConversationUtils();

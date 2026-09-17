@@ -8,6 +8,7 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { formatDisplayPath } from "@/utils/projectPaths";
 
 import { AgentAvatar } from "./AgentAvatar";
+import { ConversationKindBadge, conversationVisibleTitle } from "./conversationTitle";
 import {
   conversationActivityTime,
   conversationDisplayCwd,
@@ -82,13 +83,17 @@ export function NewTaskUnreadConversations() {
             conversationActivityTime(conversation),
             i18n.language
           );
+          const visibleTitle = conversationVisibleTitle(
+            conversation,
+            t("workflow.delegation.sessionTitleFallback")
+          );
 
           return (
             <li key={conversation.id}>
               <button
                 type="button"
                 className={`new-task-unread-item${isBusy ? " busy" : ""}`}
-                title={conversation.title}
+                title={visibleTitle}
                 onClick={() => void setActive(conversation.id)}
               >
                 <AgentAvatar
@@ -97,7 +102,10 @@ export function NewTaskUnreadConversations() {
                   fallback={<MessageSquare aria-hidden="true" />}
                 />
                 <span className="new-task-unread-copy">
-                  <strong>{conversation.title}</strong>
+                  <strong>
+                    <ConversationKindBadge conversation={conversation} />
+                    <span>{visibleTitle}</span>
+                  </strong>
                   <span className="new-task-unread-meta">
                     <span className="new-task-unread-agent">{agentLabel}</span>
                     {workspaceLabel ? (

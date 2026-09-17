@@ -31,6 +31,7 @@ import {
   X
 } from "lucide-react";
 import { AgentAvatar } from "./AgentAvatar";
+import { ConversationKindBadge, useConversationVisibleTitle } from "./conversationTitle";
 import { ProjectFormModal } from "./ProjectFormModal";
 import { useDetailLayoutStore } from "@/store/detailLayoutStore";
 import {
@@ -64,6 +65,7 @@ const ConversationRow = memo(function ConversationRow({
 }) {
   const { t } = useTranslation();
   const currentUser = useConversationStore((s) => s.currentUser);
+  const visibleTitle = useConversationVisibleTitle(conversation);
   const showOwner = currentUser?.isOwner === true;
   const ownerName = conversation.ownerUsername?.trim() || "";
   const isOwnConversation = ownerName === (currentUser?.username ?? "");
@@ -75,7 +77,7 @@ const ConversationRow = memo(function ConversationRow({
       role="button"
       tabIndex={0}
       aria-current={isActive ? "true" : undefined}
-      title={conversation.title}
+      title={visibleTitle}
       onClick={() => onSelect(conversation.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -101,7 +103,8 @@ const ConversationRow = memo(function ConversationRow({
       )}
       <div className="conv-item-main">
         <div className="conv-item-title-row">
-          <strong>{conversation.title}</strong>
+          <ConversationKindBadge conversation={conversation} />
+          <strong>{visibleTitle}</strong>
         </div>
         {showOwner && ownerName && !isOwnConversation && (
           <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
@@ -133,7 +136,7 @@ const ConversationRow = memo(function ConversationRow({
               aria-label={t("common.delete")}
               onClick={(event) => {
                 event.stopPropagation();
-                onDelete(conversation.id, conversation.title);
+                onDelete(conversation.id, visibleTitle);
               }}
             >
               <X aria-hidden="true" />

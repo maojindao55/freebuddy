@@ -111,6 +111,7 @@ import { useScheduledSendStore } from "@/store/scheduledSendStore";
 import { ComposerAddMenu } from "./ComposerAddMenu";
 import { AgentPicker } from "./AgentPicker";
 import { NewTaskUnreadConversations } from "./NewTaskUnreadConversations";
+import { conversationVisibleTitle } from "./conversationTitle";
 import { HostDirectoryPicker } from "./HostDirectoryPicker";
 import { useSkillStore } from "@/store/skillStore";
 import { useAttachmentImport } from "@/hooks/useAttachmentImport";
@@ -784,7 +785,10 @@ function HandoffConversationCard({
   return (
     <ContextReferenceCard
       label={t("handoff.referenceLabel")}
-      title={conversation.title}
+      title={conversationVisibleTitle(
+        conversation,
+        t("workflow.delegation.sessionTitleFallback")
+      )}
       meta={metaParts.join(" · ")}
       description={t(
         contextAvailable

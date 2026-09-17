@@ -644,7 +644,7 @@ let registeredButlerMainWindowShortcut: string | null = null;
 let butlerMainWindowShortcutError: "shortcutUnavailable" | undefined;
 
 function readButlerBuddyPreferences(): ButlerBuddyPreferences {
-  const visible = getSetting(BUTLER_VISIBLE_SETTING) !== "false";
+  const visible = getSetting(BUTLER_VISIBLE_SETTING) === "true";
   const shortcutEnabled =
     getSetting(BUTLER_SHORTCUT_ENABLED_SETTING) !== "false";
   const shortcut =

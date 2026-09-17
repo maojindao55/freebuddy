@@ -1018,7 +1018,6 @@ export function migrate(db: DB) {
       id TEXT PRIMARY KEY,
       preset_id TEXT,
       name TEXT NOT NULL,
-      base_adapter TEXT NOT NULL DEFAULT 'codex-acp',
       protocol TEXT NOT NULL DEFAULT 'openai-chat',
       protocols TEXT,
       base_url TEXT NOT NULL,
@@ -1087,15 +1086,28 @@ export function migrate(db: DB) {
         const baseAdapter = r.base_adapter || "codex-acp";
         const protocol = baseAdapter === "claude-agent-acp" ? "anthropic" : baseAdapter === "dsh-acp" ? "deepseek" : "openai-chat";
         db.prepare(
-          `INSERT INTO providers (id, preset_id, name, base_adapter, protocol, base_url, env_key, models, context_window, icon, enabled, position, wire_api, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 100, ?, ?)`,
+          `INSERT INTO providers (id, preset_id, name, protocol, base_url, env_key, models, context_window, icon, enabled, position, wire_api, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 100, ?, ?)`,
         ).run(
           r.id, presetId ?? null, r.label || providerName || presetId || r.id,
-          baseAdapter, protocol, baseUrl, envKey, models, contextWindow, icon, wireApi, now,
+          protocol, baseUrl, envKey, models, contextWindow, icon, wireApi, now,
         );
       }
     }
   } catch { /* 迁移失败不阻塞启动 */ }
+
+  // providers.base_adapter was dropped: a provider is described by its wire
+  // protocol, and the set of agents that can use it is derived at read time.
+  // Databases created by an earlier build still carry the column (NOT NULL
+  // DEFAULT), and SQLite has supported DROP COLUMN since 3.35.
+  try {
+    const providerCols = db
+      .prepare("PRAGMA table_info(providers)")
+      .all() as Array<{ name: string }>;
+    if (providerCols.some((c) => c.name === "base_adapter")) {
+      db.exec("ALTER TABLE providers DROP COLUMN base_adapter");
+    }
+  } catch { /* 老 SQLite 不支持 DROP COLUMN 时保留该列，读取侧已不再依赖它 */ }
 
   installHostIdempotencySchema(db);
   pruneHostIdempotencyResults({

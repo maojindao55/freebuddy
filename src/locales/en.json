@@ -2108,7 +2108,6 @@
     "empty": "No providers yet. Add one or import from Freebie.",
     "name": "Name",
     "protocol": "Protocol",
-    "adapter": "Adapter",
     "baseUrl": "Base URL",
     "envKey": "Key env var",
     "apiKey": "API Key",
@@ -2123,6 +2122,8 @@
     "custom": "Custom (manual key)",
     "managedHint": "Key managed by provider",
     "modelsCount": "{{count}} models",
-    "savedKeyHint": "Saved {{preview}}; leave blank to keep"
+    "savedKeyHint": "Saved {{preview}}; leave blank to keep",
+    "alsoSupports": "Also supports",
+    "alsoSupportsHint": "Relays often speak several protocols; checked ones also appear in the agent picker."
   }
 }

@@ -208,9 +208,5 @@ export function filterRemoteInvokeResult(channel: string, result: unknown): unkn
       return { ...override, env: redacted };
     });
   }
-  if (channel === "providers:list" && Array.isArray(result)) {
-    // 服务商列表本就脱敏（无明文 Key），远程直接拒绝由 policy 处理，这里兜底
-    return result;
-  }
   return result;
 }

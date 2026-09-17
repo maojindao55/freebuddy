@@ -7,8 +7,14 @@
  * - Presets: read-only, shipped (the old FreebieProviderPreset)
  * - Instances: user-created, one preset can spawn many, holds key/url/models
  *
- * FreeBuddy-specific (Cherry lacks): baseAdapter / protocol / envKey / wireApi
- * because we do not call APIs directly; we inject env into CLI agent processes.
+ * FreeBuddy-specific (Cherry lacks): protocol / envKey / wireApi, because we do
+ * not call APIs directly; we inject env into CLI agent processes.
+ *
+ * There is deliberately no adapter binding here. A provider is described by the
+ * wire protocol it speaks, and any CLI agent whose adapter speaks that protocol
+ * can use it. Which agents that is gets derived in
+ * {@link isProviderCompatibleWithAdapter} instead of being stored, so one relay
+ * can serve Codex and DeepSeek Harness at the same time.
  */
 
 export const PROVIDER_PROTOCOLS = [
@@ -18,8 +24,6 @@ export const PROVIDER_PROTOCOLS = [
   "deepseek",
 ] as const;
 export type ProviderProtocol = (typeof PROVIDER_PROTOCOLS)[number];
-
-export type ProviderBaseAdapter = "codex-acp" | "claude-agent-acp" | "dsh-acp";
 
 export type ProviderHealth = "unknown" | "ok" | "error";
 
@@ -61,7 +65,6 @@ export interface ProviderInput {
   id?: string;
   presetId?: string;
   name: string;
-  baseAdapter: ProviderBaseAdapter;
   protocol: ProviderProtocol;
   protocols?: ProviderProtocol[];
   baseUrl: string;
@@ -105,55 +108,41 @@ export function providerSlugFromId(id: string): string | null {
   return m ? m[2] : null;
 }
 
-/** Filter providers compatible with a base adapter (Agent BYOK picker). */
+/** Normalises `protocols` to a non-empty list, falling back to `protocol`. */
+export function protocolsOf(
+  provider: Pick<ProviderPreset, "protocol" | "protocols"> & { protocol?: ProviderProtocol },
+): ProviderProtocol[] {
+  const list = provider.protocols?.length ? provider.protocols : [provider.protocol];
+  return (list ?? []).filter((p): p is ProviderProtocol => Boolean(p));
+}
+
+/**
+ * Which CLI agents can run against a provider, derived from its wire protocol.
+ * Storing this on the row would go stale the moment a new adapter lands, and it
+ * would stop a single relay from serving several agents at once.
+ */
 export function isProviderCompatibleWithAdapter(
-  provider: Pick<ProviderPreset, "protocol" | "protocols"> & {
-    baseAdapter?: string;
-    protocol?: ProviderProtocol;
-  },
+  provider: Pick<ProviderPreset, "protocol" | "protocols"> & { protocol?: ProviderProtocol },
   adapter: string,
 ): boolean {
-  const protocols: ProviderProtocol[] =
-    (provider.protocols?.length ? provider.protocols : [(provider as { protocol: ProviderProtocol }).protocol]).filter(
-      Boolean,
-    ) as ProviderProtocol[];
-  if (adapter === "codex-acp" || adapter === "codex") {
+  const protocols = protocolsOf(provider);
+  const id = adapter.replace(/^cli-/, "");
+  if (id === "codex-acp" || id === "codex") {
     return protocols.some((p) => p === "openai-chat" || p === "openai-responses" || p === "deepseek");
   }
-  if (adapter === "claude-agent-acp" || adapter === "claude") {
+  if (id === "claude-agent-acp" || id === "claude") {
     return protocols.some((p) => p === "anthropic");
   }
-  if (adapter === "dsh-acp") {
+  if (id === "dsh-acp") {
     return protocols.some((p) => p === "deepseek" || p === "openai-chat");
   }
   // Other agents: only openai-chat compatible relays by default
   return protocols.some((p) => p === "openai-chat" || p === "openai-responses");
 }
 
-export function baseAdapterForProtocol(protocol: ProviderProtocol): ProviderBaseAdapter {
-  switch (protocol) {
-    case "anthropic":
-      return "claude-agent-acp";
-    case "deepseek":
-      return "dsh-acp";
-    case "openai-chat":
-    case "openai-responses":
-    default:
-      return "codex-acp";
-  }
-}
-
-export function defaultEnvKeyForProvider(
-  adapter: ProviderBaseAdapter,
-  protocol: ProviderProtocol,
-): string {
-  switch (adapter) {
-    case "claude-agent-acp":
-      return "ANTHROPIC_API_KEY";
-    case "dsh-acp":
-      return protocol === "deepseek" ? "DEEPSEEK_API_KEY" : "OPENAI_API_KEY";
-    case "codex-acp":
-    default:
-      return "OPENAI_API_KEY";
-  }
+/** Env var name the adapter reads the key from, derived from the protocol alone. */
+export function defaultEnvKeyForProtocol(protocol: ProviderProtocol): string {
+  if (protocol === "anthropic") return "ANTHROPIC_API_KEY";
+  if (protocol === "deepseek") return "DEEPSEEK_API_KEY";
+  return "OPENAI_API_KEY";
 }

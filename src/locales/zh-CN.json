@@ -2095,7 +2095,6 @@
     "empty": "还没有服务商，点击右上角添加，或从免费站导入。",
     "name": "名称",
     "protocol": "协议",
-    "adapter": "适配器",
     "baseUrl": "Base URL",
     "envKey": "密钥环境变量",
     "apiKey": "API Key",
@@ -2110,6 +2109,8 @@
     "custom": "自定义（手填 Key）",
     "managedHint": "Key 由服务商统一管理",
     "modelsCount": "{{count}} 个模型",
-    "savedKeyHint": "已保存 {{preview}}，留空保持不变"
+    "savedKeyHint": "已保存 {{preview}}，留空保持不变",
+    "alsoSupports": "同时支持",
+    "alsoSupportsHint": "同一家中转站常兼容多种协议，勾选后 Agent 下拉里也会出现。"
   }
 }

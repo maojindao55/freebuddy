@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { providersClient } from "@/services/providers/client";
+import { isProviderCompatibleWithAdapter } from "@/services/providers/types";
 import type { Provider, ProviderInput } from "@/services/providers/types";
 
 interface ProviderState {
@@ -74,21 +75,9 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     return r;
   },
 
-  compatibleWith(adapter) {
-    const base = adapter.replace(/^cli-/, "");
-    return get().providers.filter((p) => {
-      if (!p.enabled) return false;
-      const protos = p.protocols?.length ? p.protocols : [p.protocol];
-      if (base === "codex-acp" || base === "codex") {
-        return protos.some((x) => x === "openai-chat" || x === "openai-responses" || x === "deepseek");
-      }
-      if (base === "claude-agent-acp" || base === "claude") {
-        return protos.some((x) => x === "anthropic");
-      }
-      if (base === "dsh-acp") {
-        return protos.some((x) => x === "deepseek" || x === "openai-chat");
-      }
-      return protos.some((x) => x === "openai-chat" || x === "openai-responses");
-    });
+  compatibleWith(adapter: string): Provider[] {
+    return get().providers.filter(
+      (p) => p.enabled && isProviderCompatibleWithAdapter(p, adapter),
+    );
   },
 }));

@@ -2,13 +2,12 @@ import { getDb } from "./db.js";
 import { decryptSecret, encryptSecret, redactApiKey } from "./store.js";
 
 export type ProviderProtocol = "openai-chat" | "openai-responses" | "anthropic" | "deepseek";
-export type ProviderBaseAdapter = "codex-acp" | "claude-agent-acp" | "dsh-acp";
 
 export interface ProviderModel { id: string; name?: string; contextWindow?: number; supportsVision?: boolean; }
 
 export interface ProviderRecord {
   id: string; presetId?: string; name: string;
-  baseAdapter: ProviderBaseAdapter; protocol: ProviderProtocol;
+  protocol: ProviderProtocol;
   protocols?: ProviderProtocol[]; baseUrl: string; envKey: string;
   apiKeyPreview?: string; hasKey: boolean; models: ProviderModel[];
   contextWindow?: number; icon?: string; enabled: boolean; position: number;
@@ -19,7 +18,7 @@ export interface ProviderRecord {
 
 export interface ProviderInput {
   id?: string; presetId?: string; name: string;
-  baseAdapter: ProviderBaseAdapter; protocol: ProviderProtocol;
+  protocol: ProviderProtocol;
   protocols?: ProviderProtocol[]; baseUrl: string; envKey?: string;
   apiKey?: string; models?: ProviderModel[]; contextWindow?: number;
   icon?: string; enabled?: boolean; position?: number;
@@ -28,7 +27,7 @@ export interface ProviderInput {
 
 interface ProviderRow {
   id: string; preset_id: string | null; name: string;
-  base_adapter: string; protocol: string; protocols: string | null;
+  protocol: string; protocols: string | null;
   base_url: string; env_key: string | null;
   api_key_encrypted: string | null; api_key_preview: string | null;
   models: string | null; context_window: number | null; icon: string | null;
@@ -73,8 +72,7 @@ function rowToRecord(r: ProviderRow): ProviderRecord {
   const protocol = (r.protocol || "openai-chat") as ProviderProtocol;
   return {
     id: r.id, presetId: r.preset_id ?? undefined, name: r.name,
-    baseAdapter: (r.base_adapter || "codex-acp") as ProviderBaseAdapter, protocol,
-    protocols: parseProtocols(r.protocols, protocol), baseUrl: r.base_url,
+    protocol, protocols: parseProtocols(r.protocols, protocol), baseUrl: r.base_url,
     envKey: r.env_key || "OPENAI_API_KEY",
     apiKeyPreview: r.api_key_preview ?? undefined, hasKey: Boolean(r.api_key_encrypted),
     models: parseModels(r.models), contextWindow: r.context_window ?? undefined,
@@ -143,12 +141,12 @@ export function upsertProvider(input: ProviderInput): ProviderRecord {
   }
   const maxPos = (db.prepare(`SELECT COALESCE(MAX(position),0) AS m FROM providers`).get() as { m: number }).m;
   db.prepare(
-    `INSERT INTO providers (id,preset_id,name,base_adapter,protocol,protocols,base_url,env_key,
+    `INSERT INTO providers (id,preset_id,name,protocol,protocols,base_url,env_key,
       api_key_encrypted,api_key_preview,models,context_window,icon,enabled,position,wire_api,notes,updated_at)
-     VALUES (@id,@preset_id,@name,@base_adapter,@protocol,@protocols,@base_url,@env_key,
+     VALUES (@id,@preset_id,@name,@protocol,@protocols,@base_url,@env_key,
       @api_key_encrypted,@api_key_preview,@models,@context_window,@icon,@enabled,@position,@wire_api,@notes,@updated_at)
      ON CONFLICT(id) DO UPDATE SET preset_id=excluded.preset_id,name=excluded.name,
-      base_adapter=excluded.base_adapter,protocol=excluded.protocol,protocols=excluded.protocols,
+      protocol=excluded.protocol,protocols=excluded.protocols,
       base_url=excluded.base_url,env_key=excluded.env_key,
       api_key_encrypted=excluded.api_key_encrypted,api_key_preview=excluded.api_key_preview,
       models=excluded.models,context_window=excluded.context_window,icon=excluded.icon,
@@ -156,7 +154,7 @@ export function upsertProvider(input: ProviderInput): ProviderRecord {
       notes=excluded.notes,updated_at=excluded.updated_at`,
   ).run({
     id, preset_id: input.presetId ?? ex?.preset_id ?? null, name,
-    base_adapter: input.baseAdapter, protocol: input.protocol,
+    protocol: input.protocol,
     protocols: JSON.stringify(input.protocols ?? parseProtocols(ex?.protocols ?? null, input.protocol)),
     base_url: baseUrl, env_key: input.envKey?.trim() || ex?.env_key || "OPENAI_API_KEY",
     api_key_encrypted: enc, api_key_preview: prev,

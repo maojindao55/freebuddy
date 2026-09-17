@@ -921,7 +921,12 @@ export function resolveClaudeByokEnv(
   const env: Record<string, string> = {};
   const baseUrl = byok.baseUrl?.trim();
   if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
-  if (apiKey) env[envKey] = apiKey;
+  if (apiKey) {
+    env[envKey] = apiKey;
+    if (envKey !== "ANTHROPIC_API_KEY") {
+      env.ANTHROPIC_API_KEY = apiKey;
+    }
+  }
   // Claude Code assumes 200K for model names it does not recognize (e.g. a
   // non-Claude model served through a proxy). autoCompactWindow alone cannot
   // raise that perceived limit — it is capped at the model's assumed window.

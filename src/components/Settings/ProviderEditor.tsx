@@ -3,13 +3,11 @@ import { useTranslation } from "react-i18next";
 import { useProviderStore } from "@/store/providerStore";
 import type { Provider } from "@/services/providers/types";
 import {
-  baseAdapterForProtocol,
-  defaultEnvKeyForProvider,
-  type ProviderBaseAdapter,
+  defaultEnvKeyForProtocol,
+  protocolsOf,
   type ProviderProtocol,
 } from "@/services/providers/types";
 
-const ADAPTERS: ProviderBaseAdapter[] = ["codex-acp", "claude-agent-acp", "dsh-acp"];
 const PROTOCOLS: ProviderProtocol[] = ["openai-chat", "openai-responses", "anthropic", "deepseek"];
 
 export function ProviderEditor({ initial, onClose, onSaved }: {
@@ -18,16 +16,21 @@ export function ProviderEditor({ initial, onClose, onSaved }: {
   const { t } = useTranslation();
   const upsert = useProviderStore((s) => s.upsert);
   const [name, setName] = useState(initial?.name ?? "");
-  const [adapter, setAdapter] = useState<ProviderBaseAdapter>(initial?.baseAdapter ?? "codex-acp");
   const [protocol, setProtocol] = useState<ProviderProtocol>(initial?.protocol ?? "openai-chat");
+  const [extraProtocols, setExtraProtocols] = useState<ProviderProtocol[]>(() =>
+    protocolsOf(initial ?? { protocol: "openai-chat" }).filter((p) => p !== (initial?.protocol ?? "openai-chat")),
+  );
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
   const [envKey, setEnvKey] = useState(initial?.envKey ?? "");
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState((initial?.models ?? []).map((m) => m.id).join("\n"));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const envPlaceholder = useMemo(
-    () => defaultEnvKeyForProvider(adapter, protocol), [adapter, protocol],
+  const envPlaceholder = useMemo(() => defaultEnvKeyForProtocol(protocol), [protocol]);
+  // Protocols drive everything: env var, wire API and which agents can use it.
+  const selectedProtocols = useMemo(
+    () => [protocol, ...extraProtocols.filter((p) => p !== protocol)],
+    [protocol, extraProtocols],
   );
   const submit = async () => {
     setSaving(true); setError("");
@@ -36,9 +39,8 @@ export function ProviderEditor({ initial, onClose, onSaved }: {
         id: initial?.id,
         presetId: initial?.presetId,
         name: name.trim(),
-        baseAdapter: protocol === "anthropic" ? "claude-agent-acp"
-          : protocol === "deepseek" && adapter === "dsh-acp" ? "dsh-acp" : adapter,
         protocol,
+        protocols: selectedProtocols,
         baseUrl: baseUrl.trim(),
         envKey: envKey.trim() || envPlaceholder,
         apiKey: apiKey.trim() || undefined,
@@ -59,18 +61,28 @@ export function ProviderEditor({ initial, onClose, onSaved }: {
         <div className="modal-body provider-editor">
           <label>{t("providers.name")}<input value={name} onChange={(e) => setName(e.target.value)} /></label>
           <label>{t("providers.protocol")}
-            <select value={protocol} onChange={(e) => {
-              const p = e.target.value as ProviderProtocol;
-              setProtocol(p); setAdapter(baseAdapterForProtocol(p));
-            }}>
+            <select value={protocol} onChange={(e) => setProtocol(e.target.value as ProviderProtocol)}>
               {PROTOCOLS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </label>
-          <label>{t("providers.adapter")}
-            <select value={adapter} onChange={(e) => setAdapter(e.target.value as ProviderBaseAdapter)}>
-              {ADAPTERS.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </label>
+          <fieldset className="provider-editor-protocols">
+            <legend>{t("providers.alsoSupports")}</legend>
+            {PROTOCOLS.filter((p) => p !== protocol).map((p) => (
+              <label key={p} className="provider-editor-check">
+                <input
+                  type="checkbox"
+                  checked={extraProtocols.includes(p)}
+                  onChange={() =>
+                    setExtraProtocols((prev) =>
+                      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p],
+                    )
+                  }
+                />
+                <span>{p}</span>
+              </label>
+            ))}
+            <small className="provider-editor-hint">{t("providers.alsoSupportsHint")}</small>
+          </fieldset>
           <label>{t("providers.baseUrl")}<input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://" /></label>
           <label>{t("providers.envKey")}<input value={envKey} onChange={(e) => setEnvKey(e.target.value)} placeholder={envPlaceholder} /></label>
           <label>{t("providers.apiKey")}

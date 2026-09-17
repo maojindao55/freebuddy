@@ -1,6 +1,14 @@
 import "./fixtures/electron-stub.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import ts from "typescript";
+
+function transpile(source) {
+  return ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 }
+  }).outputText;
+}
 
 let Database;
 let bindingAvailable = true;
@@ -27,7 +35,6 @@ test("providers CRUD + BYOK reference resolution", async (t) => {
   // 1. 新建服务商
   const p = providers.upsertProvider({
     name: "硅基流动",
-    baseAdapter: "codex-acp",
     protocol: "openai-chat",
     baseUrl: "https://api.siliconflow.cn/v1",
     envKey: "OPENAI_API_KEY",
@@ -41,14 +48,14 @@ test("providers CRUD + BYOK reference resolution", async (t) => {
 
   // 2. 去重：同 presetId + baseUrl 拒绝
   const p1 = providers.upsertProvider({
-    name: "硅基流动2", baseAdapter: "codex-acp", protocol: "openai-chat",
+    name: "硅基流动2", protocol: "openai-chat",
     baseUrl: "https://api.siliconflow.cn/v1", presetId: "siliconflow",
     apiKey: "sk-aaa",
   });
   assert.throws(
     () =>
       providers.upsertProvider({
-        name: "重复", baseAdapter: "codex-acp", protocol: "openai-chat",
+        name: "重复", protocol: "openai-chat",
         baseUrl: "https://api.siliconflow.cn/v1/", presetId: "siliconflow",
         apiKey: "sk-bbb",
       }),
@@ -59,7 +66,6 @@ test("providers CRUD + BYOK reference resolution", async (t) => {
   // 3. Agent BYOK 引用服务商
   store.upsertOverride({
     id: "test-agent",
-    baseAdapter: "codex-acp",
     codexByok: { enabled: true, providerId: p.id },
   });
   const env = store.resolveCodexByokEnv("cli-test-agent", "codex-acp");
@@ -68,12 +74,12 @@ test("providers CRUD + BYOK reference resolution", async (t) => {
   assert.match(env?.["CODEX_CONFIG"] ?? "", /siliconflow/, "baseUrl 应来自服务商");
 
   // 4. 服务商改 Key，Agent 自动生效
-  providers.upsertProvider({ id: p.id, name: p.name, baseAdapter: p.baseAdapter, protocol: p.protocol, baseUrl: p.baseUrl, apiKey: "sk-rotated-9999" });
+  providers.upsertProvider({ id: p.id, name: p.name, protocol: p.protocol, baseUrl: p.baseUrl, apiKey: "sk-rotated-9999" });
   const env2 = store.resolveCodexByokEnv("cli-test-agent", "codex-acp");
   assert.equal(env2?.["OPENAI_API_KEY"], "sk-rotated-9999");
 
   // 5. 更新空 Key 保持原 Key
-  providers.upsertProvider({ id: p.id, name: "改名", baseAdapter: p.baseAdapter, protocol: p.protocol, baseUrl: p.baseUrl });
+  providers.upsertProvider({ id: p.id, name: "改名", protocol: p.protocol, baseUrl: p.baseUrl });
   const env3 = store.resolveCodexByokEnv("cli-test-agent", "codex-acp");
   assert.equal(env3?.["OPENAI_API_KEY"], "sk-rotated-9999", "空 Key 不应清空");
 
@@ -86,6 +92,163 @@ test("providers CRUD + BYOK reference resolution", async (t) => {
   assert.equal(rec?.enabled, false);
 
   setDbForTest(null);
+});
+
+test("one provider serves several agent kinds, gated by protocol only", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const providers = await import("../dist-electron/cli/providers.js");
+  const store = await import("../dist-electron/cli/store.js");
+  const db = new Database(":memory:");
+  setDbForTest(db);
+  migrate(db);
+
+  // A relay that speaks both OpenAI-compatible chat and DeepSeek.
+  const relay = providers.upsertProvider({
+    name: "OneRelay",
+    protocol: "openai-chat",
+    protocols: ["openai-chat", "deepseek"],
+    baseUrl: "https://relay.example.com/v1",
+    envKey: "OPENAI_API_KEY",
+    apiKey: "sk-shared-key",
+    models: [{ id: "m-1" }],
+  });
+
+  // Same provider referenced by two different agent kinds at once.
+  store.upsertOverride({
+    id: "agent-codex",
+    codexByok: { enabled: true, providerId: relay.id },
+  });
+  store.upsertOverride({
+    id: "agent-dsh",
+    baseAdapter: "dsh-acp",
+    deepseekByok: { enabled: true, providerId: relay.id },
+  });
+
+  const codexEnv = store.resolveCodexByokEnv("cli-agent-codex", "codex-acp");
+  assert.ok(codexEnv, "Codex should resolve the shared provider");
+  assert.equal(codexEnv?.["OPENAI_API_KEY"], "sk-shared-key");
+
+  // The provider row itself must not carry an adapter binding.
+  const record = providers.getProvider(relay.id);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(record, "baseAdapter"),
+    false,
+    "provider must not store an adapter binding",
+  );
+
+  setDbForTest(null);
+});
+
+test("provider compatibility is derived from protocol, not a stored adapter", async () => {
+  const source = fs.readFileSync(
+    new URL("../src/services/providers/types.ts", import.meta.url),
+    "utf8"
+  );
+  const mod = await import(
+    `data:text/javascript;base64,${Buffer.from(transpile(source)).toString("base64")}`
+  );
+
+  // A relay that speaks both OpenAI chat and DeepSeek is usable by Codex and
+  // by DeepSeek Harness at the same time. This is the whole point of not
+  // binding a provider to one adapter.
+  const relay = { protocol: "openai-chat", protocols: ["openai-chat", "deepseek"] };
+  assert.equal(mod.isProviderCompatibleWithAdapter(relay, "codex-acp"), true);
+  assert.equal(mod.isProviderCompatibleWithAdapter(relay, "dsh-acp"), true);
+  assert.equal(mod.isProviderCompatibleWithAdapter(relay, "claude-agent-acp"), false);
+
+  // Anthropic-only relays are Claude-only.
+  const anthropic = { protocol: "anthropic", protocols: ["anthropic"] };
+  assert.equal(mod.isProviderCompatibleWithAdapter(anthropic, "claude-agent-acp"), true);
+  assert.equal(mod.isProviderCompatibleWithAdapter(anthropic, "codex-acp"), false);
+  assert.equal(mod.isProviderCompatibleWithAdapter(anthropic, "dsh-acp"), false);
+
+  // `protocols` wins when present; bare `protocol` is the fallback.
+  assert.deepEqual(mod.protocolsOf({ protocol: "deepseek" }), ["deepseek"]);
+  assert.deepEqual(
+    mod.protocolsOf({ protocol: "openai-chat", protocols: ["openai-chat", "anthropic"] }),
+    ["openai-chat", "anthropic"]
+  );
+
+  // env key follows the protocol alone.
+  assert.equal(mod.defaultEnvKeyForProtocol("anthropic"), "ANTHROPIC_API_KEY");
+  assert.equal(mod.defaultEnvKeyForProtocol("deepseek"), "DEEPSEEK_API_KEY");
+  assert.equal(mod.defaultEnvKeyForProtocol("openai-chat"), "OPENAI_API_KEY");
+  assert.equal(mod.defaultEnvKeyForProtocol("openai-responses"), "OPENAI_API_KEY");
+
+  // No adapter-binding API may survive on the provider surface.
+  assert.equal("baseAdapterForProtocol" in mod, false);
+  assert.equal("defaultEnvKeyForProvider" in mod, false);
+  assert.doesNotMatch(source, /baseAdapter\s*[:?]/, "provider types must not declare baseAdapter");
+});
+
+test("provider compatibility helper is not duplicated in the UI layer", () => {
+  const store = fs.readFileSync(
+    new URL("../src/store/providerStore.ts", import.meta.url),
+    "utf8"
+  );
+  const picker = fs.readFileSync(
+    new URL("../src/components/Settings/ProviderSelect.tsx", import.meta.url),
+    "utf8"
+  );
+  for (const [name, src] of [["providerStore", store], ["ProviderSelect", picker]]) {
+    assert.match(src, /isProviderCompatibleWithAdapter/, `${name} must reuse the shared helper`);
+    assert.doesNotMatch(
+      src,
+      /=== "dsh-acp"/,
+      `${name} must not re-implement protocol compatibility inline`
+    );
+  }
+});
+
+test("a pre-existing providers table loses base_adapter without losing rows", (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  // Mirrors the column set an earlier build created, NOT NULL DEFAULT included,
+  // which is the shape that makes a naive DROP COLUMN fail.
+  const db = new Database(":memory:");
+  db.exec(
+    `CREATE TABLE providers (
+       id TEXT PRIMARY KEY, name TEXT NOT NULL,
+       base_adapter TEXT NOT NULL DEFAULT 'codex-acp',
+       protocol TEXT NOT NULL DEFAULT 'openai-chat',
+       base_url TEXT NOT NULL, env_key TEXT, models TEXT,
+       enabled INTEGER DEFAULT 1, position INTEGER DEFAULT 100,
+       updated_at TEXT NOT NULL)`
+  );
+  db.prepare(
+    "INSERT INTO providers (id,name,base_url,updated_at) VALUES (?,?,?,?)"
+  ).run("p1", "legacy", "https://x.example.com", "2026-01-01");
+
+  assert.ok(
+    db.prepare("PRAGMA table_info(providers)").all().some((c) => c.name === "base_adapter")
+  );
+
+  // The migration step under test.
+  db.exec("ALTER TABLE providers DROP COLUMN base_adapter");
+
+  assert.equal(
+    db.prepare("PRAGMA table_info(providers)").all().some((c) => c.name === "base_adapter"),
+    false
+  );
+  assert.deepEqual(db.prepare("SELECT id,name,base_url FROM providers").get(), {
+    id: "p1",
+    name: "legacy",
+    base_url: "https://x.example.com"
+  });
+});
+
+test("providers table no longer declares base_adapter", () => {
+  const db = fs.readFileSync(new URL("../electron/cli/db.ts", import.meta.url), "utf8");
+  const providersTable = db.slice(db.indexOf("CREATE TABLE IF NOT EXISTS providers"));
+  const createBlock = providersTable.slice(0, providersTable.indexOf(");"));
+  assert.doesNotMatch(createBlock, /base_adapter/, "fresh installs must not create the column");
+  assert.match(db, /ALTER TABLE providers DROP COLUMN base_adapter/, "upgrade path must drop it");
 });
 
 test("legacy freebie-* overrides migrate to providers", async (t) => {

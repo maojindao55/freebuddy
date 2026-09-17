@@ -43,6 +43,7 @@ import {
   feedArticleTitleFromMessages,
   mergeConversationMessages,
   recoverConversationTitleFromMessages,
+  sanitizeUserConversationTitle,
   shouldApplyAgentSessionTitle,
   upsertConversationMessage,
   INITIAL_VISIBLE_MESSAGES
@@ -1079,10 +1080,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async renameConversation(id, title) {
-    await cliClient.renameConversation(id, title, "user");
+    const next = sanitizeUserConversationTitle(title);
+    if (!next) return;
+    const current = get().conversations.find((entry) => entry.id === id);
+    if (current?.title === next && current.titleSource === "user") return;
+    await cliClient.renameConversation(id, next, "user");
     set((s) => ({
       conversations: s.conversations.map((c) =>
-        c.id === id ? { ...c, title, titleSource: "user" as const } : c
+        c.id === id ? { ...c, title: next, titleSource: "user" as const } : c
       )
     }));
   },

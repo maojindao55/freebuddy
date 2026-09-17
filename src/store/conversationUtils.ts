@@ -792,6 +792,14 @@ export function defaultTitleFor(member: CLIMember, cwd?: string): string {
   return tail ? `${member.name} · ${tail}` : member.name;
 }
 
+export const USER_CONVERSATION_TITLE_MAX = 80;
+
+export function sanitizeUserConversationTitle(value: string): string {
+  return Array.from(value.replace(/\s+/g, " ").trim())
+    .slice(0, USER_CONVERSATION_TITLE_MAX)
+    .join("");
+}
+
 export function buildConversationTitle(input: {
   prompt?: string;
   attachmentName?: string;
@@ -868,10 +876,11 @@ function defaultTitleForConversation(
 }
 
 export function displayConversationTitle(
-  conversation: Pick<Conversation, "title" | "agentName" | "cwd">,
+  conversation: Pick<Conversation, "title" | "agentName" | "cwd" | "titleSource">,
   fallback?: string
 ): string {
   const title = normalizeTitleText(conversation.title);
+  if (conversation.titleSource === "user" && title) return title;
   if (title && !isInternalSkillAnnouncementTitle(title)) return title;
   const recovered = defaultTitleForConversation(conversation);
   return (

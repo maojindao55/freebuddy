@@ -381,6 +381,15 @@ test("skill announcement session titles are not applied or shown as conversation
     }),
     "你怎么在这个工作区搞的"
   );
+  assert.equal(
+    displayConversationTitle({
+      title: "工作区映射",
+      titleSource: "user",
+      agentName: "Codex",
+      cwd: "/tmp/zombie-workspace"
+    }),
+    "工作区映射"
+  );
 
   assert.equal(
     buildDelegationConversationTitle("自组织：实现+评审", "你怎么在这个工作区搞的 没在我选的目录呢？"),
@@ -403,6 +412,30 @@ test("skill announcement session titles are not applied or shown as conversation
       [{ role: "user", content: "ignore me" }]
     ),
     undefined
+  );
+});
+
+test("user conversation titles are sanitized and kept as custom names", async () => {
+  const {
+    sanitizeUserConversationTitle,
+    USER_CONVERSATION_TITLE_MAX,
+    displayConversationTitle
+  } = await loadConversationUtils();
+
+  assert.equal(sanitizeUserConversationTitle("  修复  登录  "), "修复 登录");
+  assert.equal(sanitizeUserConversationTitle("\n\t"), "");
+  assert.equal(
+    Array.from(sanitizeUserConversationTitle("😀".repeat(90))).length,
+    USER_CONVERSATION_TITLE_MAX
+  );
+  assert.equal(
+    displayConversationTitle({
+      title: "[FreeBuddy active skills] - keep my name",
+      titleSource: "user",
+      agentName: "Codex",
+      cwd: "/tmp/project"
+    }),
+    "[FreeBuddy active skills] - keep my name"
   );
 });
 

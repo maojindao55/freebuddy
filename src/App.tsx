@@ -8,8 +8,8 @@ import { TitlebarOverflowMenu } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
 import {
-  ConversationKindBadge,
-  conversationVisibleTitle
+  conversationVisibleTitle,
+  EditableConversationTitle
 } from "./components/CLI/conversationTitle";
 import { ConversationContextDialog } from "./components/CLI/ConversationContextDialog";
 import { ImportCodexSessionDialog } from "./components/CLI/ImportCodexSessionDialog";
@@ -945,15 +945,19 @@ function App() {
       <main className={`workspace${settingsOpen ? " settings-workspace" : ""}`}>
         <header className="titlebar">
           {sidebarCollapsed && renderToggleButton("floating")}
-          <div
-            className="breadcrumb"
-            title={workspaceTitle}
-          >
-            {workspaceView === "chat" && activeConversation ? (
-              <ConversationKindBadge conversation={activeConversation} />
-            ) : null}
-            <strong>{workspaceTitle}</strong>
-          </div>
+          {workspaceView === "chat" && activeConversation ? (
+            <EditableConversationTitle
+              conversation={activeConversation}
+              variant="titlebar"
+            />
+          ) : (
+            <div
+              className="breadcrumb"
+              title={workspaceTitle}
+            >
+              <strong>{workspaceTitle}</strong>
+            </div>
+          )}
           {settingsOpen ? (
             <div className="titlebar-actions titlebar-actions-plain">
               <button

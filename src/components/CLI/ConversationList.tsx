@@ -31,7 +31,7 @@ import {
   X
 } from "lucide-react";
 import { AgentAvatar } from "./AgentAvatar";
-import { ConversationKindBadge, useConversationVisibleTitle } from "./conversationTitle";
+import { EditableConversationTitle, useConversationVisibleTitle } from "./conversationTitle";
 import { ProjectFormModal } from "./ProjectFormModal";
 import { useDetailLayoutStore } from "@/store/detailLayoutStore";
 import {
@@ -80,6 +80,8 @@ const ConversationRow = memo(function ConversationRow({
       title={visibleTitle}
       onClick={() => onSelect(conversation.id)}
       onKeyDown={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("input, textarea, button")) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onSelect(conversation.id);
@@ -103,8 +105,7 @@ const ConversationRow = memo(function ConversationRow({
       )}
       <div className="conv-item-main">
         <div className="conv-item-title-row">
-          <ConversationKindBadge conversation={conversation} />
-          <strong>{visibleTitle}</strong>
+          <EditableConversationTitle conversation={conversation} variant="list" />
         </div>
         {showOwner && ownerName && !isOwnConversation && (
           <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>

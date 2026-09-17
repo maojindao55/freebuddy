@@ -574,6 +574,8 @@
     "clearSearchAria": "Clear search",
     "noResults": "No matching conversations.",
     "unread": "Unread conversation",
+    "renameTitle": "Rename",
+    "titlePlaceholder": "Conversation title",
     "projectRunning": "A task is running in this project",
     "newProject": "New project",
     "editProject": "Edit project",

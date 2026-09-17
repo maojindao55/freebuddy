@@ -1998,6 +1998,100 @@ html[data-surface="butler-screen-ball"] #root {
   color: var(--fb-text-tertiary);
 }
 
+.conversation-title-editor {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.conversation-title-editor.titlebar {
+  -webkit-app-region: no-drag;
+}
+
+.conversation-title-editor.titlebar .conversation-title-edit-btn {
+  flex: 0 0 auto;
+}
+
+.conversation-title-editor.list {
+  width: 100%;
+}
+
+.conversation-title-editor.list strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: text;
+}
+
+.conversation-title-text {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.conversation-title-text strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fb-text-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--fb-brand) 42%, var(--fb-border));
+  border-radius: 7px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+}
+
+.conversation-title-input:focus {
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fb-brand) 16%, transparent);
+}
+
+.conversation-title-editor.list .conversation-title-edit-btn {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  opacity: 0;
+  color: var(--fb-text-tertiary);
+}
+
+.conv-item:hover .conversation-title-editor.list .conversation-title-edit-btn,
+.conv-item:focus-within .conversation-title-editor.list .conversation-title-edit-btn {
+  opacity: 1;
+}
+
+.conversation-title-editor.list .conversation-title-edit-btn:hover,
+.conversation-title-editor.list .conversation-title-edit-btn:focus-visible {
+  color: var(--fb-brand);
+}
+
+.conversation-title-editor.list .conversation-title-input {
+  height: 22px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .breadcrumb strong {
   display: block;
   min-width: 0;

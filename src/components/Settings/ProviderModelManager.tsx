@@ -30,6 +30,7 @@ import {
   formatTokenCount,
 } from "@/services/providers/modelUtils";
 import { ModelConfigModal } from "./ModelConfigModal";
+import { ProviderBrandIcon } from "./ProviderBrandIcon";
 
 interface ProviderModelManagerProps {
   models: ProviderModel[];
@@ -311,14 +312,14 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
           <div className="model-mgr-batch-actions">
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="provider-header-btn secondary btn-sm"
               onClick={() => setViewMode("list")}
             >
               {t("common.cancel")}
             </button>
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className="provider-header-btn primary btn-sm"
               onClick={() => handleApplyBatch(rawBatchText)}
             >
               <Check size={13} />
@@ -450,9 +451,10 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                 });
                 return (
                   <div key={m.id} className="model-mgr-tag-card">
-                    <span
-                      className="model-tag-brand-dot"
-                      style={{ backgroundColor: brand.color }}
+                    <ProviderBrandIcon
+                      nameOrId={m.id}
+                      size={16}
+                      className="model-tag-brand-avatar"
                     />
                     <code className="model-tag-name">{m.name || m.id}</code>
                     <div className="model-tag-badges">
@@ -521,17 +523,11 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                             <div key={m.id} className="model-mgr-row-card">
                               {/* Left: Brand Avatar + Name / ID */}
                               <div className="model-row-left">
-                                <div
+                                <ProviderBrandIcon
+                                  nameOrId={m.id}
+                                  size={26}
                                   className="model-row-avatar"
-                                  style={{
-                                    color: brand.color,
-                                    backgroundColor: brand.bg,
-                                    borderColor: brand.border,
-                                  }}
-                                  title={brand.name}
-                                >
-                                  {brand.badge}
-                                </div>
+                                />
                                 <div className="model-row-info">
                                   {m.name ? (
                                     <>

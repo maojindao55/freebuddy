@@ -27,6 +27,7 @@ import {
   inferModelCapabilities,
   inferModelGroup,
 } from "@/services/providers/modelUtils";
+import { ProviderBrandIcon } from "./ProviderBrandIcon";
 
 const PROTOCOLS: ProviderProtocol[] = [
   "openai-chat",
@@ -320,32 +321,39 @@ export function ProviderEditor({
       {/* Workspace Header */}
       <div className="provider-detail-header">
         <div className="provider-detail-title-wrap">
-          <h3>
-            {initial
-              ? name.trim() || initial.name || t("providers.edit")
-              : t("providers.newProvider")}
-          </h3>
-          {initial?.lastHealth === "ok" ? (
-            <span className="provider-health-badge ok" title={initial.lastCheckedAt}>
-              <span className="provider-health-dot" />
-              {initial.lastLatencyMs ? `${initial.lastLatencyMs}ms` : t("providers.statusOk")}
-            </span>
-          ) : initial?.lastHealth === "error" ? (
-            <span
-              className="provider-health-badge error"
-              title={initial.lastError || initial.lastCheckedAt}
-            >
-              <span className="provider-health-dot" />
-              {initial.lastError ? initial.lastError.slice(0, 24) : t("providers.statusError")}
-            </span>
-          ) : null}
+          <ProviderBrandIcon
+            nameOrId={name.trim() || initial?.name || initial?.presetId || initial?.id || ""}
+            size={34}
+            className="provider-detail-brand-icon"
+          />
+          <div className="provider-detail-title-text">
+            <h3>
+              {initial
+                ? name.trim() || initial.name || t("providers.edit")
+                : t("providers.newProvider")}
+            </h3>
+            {initial?.lastHealth === "ok" ? (
+              <span className="provider-health-badge ok" title={initial.lastCheckedAt}>
+                <span className="provider-health-dot" />
+                {initial.lastLatencyMs ? `${initial.lastLatencyMs}ms` : t("providers.statusOk")}
+              </span>
+            ) : initial?.lastHealth === "error" ? (
+              <span
+                className="provider-health-badge error"
+                title={initial.lastError || initial.lastCheckedAt}
+              >
+                <span className="provider-health-dot" />
+                {initial.lastError ? initial.lastError.slice(0, 24) : t("providers.statusError")}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="provider-detail-actions">
           {initial && onDeleted && (
             <button
               type="button"
-              className="btn btn-secondary danger"
+              className="provider-header-btn danger"
               onClick={handleDelete}
               title={t("providers.deleteProvider")}
             >
@@ -355,7 +363,7 @@ export function ProviderEditor({
           )}
           <button
             type="button"
-            className="btn btn-secondary"
+            className="provider-header-btn secondary"
             disabled={testing || !baseUrl.trim()}
             onClick={() => void testConnection()}
           >
@@ -364,7 +372,7 @@ export function ProviderEditor({
           </button>
           <button
             type="button"
-            className="btn btn-primary"
+            className="provider-header-btn primary"
             disabled={saving || !name.trim() || !baseUrl.trim()}
             onClick={() => void submit()}
           >

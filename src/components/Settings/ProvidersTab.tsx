@@ -5,6 +5,7 @@ import { useProviderStore } from "@/store/providerStore";
 import type { Provider } from "@/services/providers/types";
 import { getModelBrand } from "@/services/providers/modelUtils";
 import { ProviderEditor } from "./ProviderEditor";
+import { ProviderBrandIcon } from "./ProviderBrandIcon";
 
 export function ProvidersTab() {
   const { t } = useTranslation();
@@ -106,16 +107,11 @@ export function ProvidersTab() {
                   }`}
                   onClick={() => setSelectedId(p.id)}
                 >
-                  <div
+                  <ProviderBrandIcon
+                    nameOrId={p.name || p.id}
+                    size={28}
                     className="provider-item-brand"
-                    style={{
-                      color: brand.color,
-                      backgroundColor: brand.bg,
-                      borderColor: brand.border,
-                    }}
-                  >
-                    {brand.badge}
-                  </div>
+                  />
 
                   <div className="provider-item-content">
                     <div className="provider-item-row-top">

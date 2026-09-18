@@ -14,6 +14,7 @@ import {
   inferModelCapabilities,
   inferContextWindow,
 } from "@/services/providers/modelUtils";
+import { ProviderBrandIcon } from "./ProviderBrandIcon";
 
 export interface ModelConfigModalProps {
   open: boolean;
@@ -122,16 +123,11 @@ const ModelConfigDrawerContent: React.FC<ModelConfigDrawerContentProps> = ({
           <div className="model-config-drawer-body">
             {/* Target Model Card */}
             <div className="model-config-target-banner">
-              <div
+              <ProviderBrandIcon
+                nameOrId={model.id}
+                size={36}
                 className="model-brand-avatar"
-                style={{
-                  color: brand.color,
-                  backgroundColor: brand.bg,
-                  borderColor: brand.border,
-                }}
-              >
-                {brand.badge}
-              </div>
+              />
               <div className="model-config-target-info">
                 <span className="model-config-target-id">{model.id}</span>
                 <span className="model-config-target-brand">
@@ -276,12 +272,12 @@ const ModelConfigDrawerContent: React.FC<ModelConfigDrawerContentProps> = ({
           <div className="model-config-drawer-footer">
             <button
               type="button"
-              className="btn btn-secondary"
+              className="provider-header-btn secondary"
               onClick={onClose}
             >
               {t("common.cancel")}
             </button>
-            <button type="submit" className="btn btn-primary">
+            <button type="submit" className="provider-header-btn primary">
               <Check size={14} />
               {t("common.save")}
             </button>

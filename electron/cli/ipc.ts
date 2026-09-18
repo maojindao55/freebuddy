@@ -30,7 +30,7 @@ import {
   reorderProviders,
   type ProviderInput,
 } from "./providers.js";
-import { testProvider } from "./providerCheck.js";
+import { testProvider, type TestProviderOptions } from "./providerCheck.js";
 import {
   cliKill,
   cliRun,
@@ -901,8 +901,9 @@ export function registerCliIpc() {
   registerHandler("providers:setEnabled", (_e, args: { id: string; enabled: boolean }) =>
     setProviderEnabled(args.id, args.enabled)
   );
-  registerHandler("providers:reorder", (_e, ids: string[]) => reorderProviders(ids));
-  registerHandler("providers:test", (_e, id: string) => testProvider(id));
+  registerHandler("providers:test", (_e, target: unknown) =>
+    testProvider(target as string | TestProviderOptions)
+  );
 
   registerHandler("cli:listRuntimes", () => listRuntimes());
   registerHandler("cli:codexUsage", () => readCodexUsage());

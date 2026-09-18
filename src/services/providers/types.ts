@@ -99,6 +99,13 @@ export interface ProviderTestResult {
   checkedAt: string;
 }
 
+export interface TestProviderOptions {
+  id?: string;
+  baseUrl: string;
+  protocol?: ProviderProtocol;
+  apiKey?: string;
+}
+
 export const PROVIDER_ID_PREFIX = "provider-";
 
 const PROVIDER_ID_PATTERN = /^(provider|freebie)-(.+)-([0-9a-z]{6})$/;

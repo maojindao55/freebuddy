@@ -1,4 +1,4 @@
-import type { Provider, ProviderInput, ProviderTestResult } from "./types";
+import type { Provider, ProviderInput, ProviderTestResult, TestProviderOptions } from "./types";
 
 interface ProvidersBridge {
   list(): Promise<Provider[]>;
@@ -6,7 +6,7 @@ interface ProvidersBridge {
   remove(id: string): Promise<void>;
   setEnabled(input: { id: string; enabled: boolean }): Promise<Provider>;
   reorder(ids: string[]): Promise<Provider[]>;
-  test(id: string): Promise<ProviderTestResult>;
+  test(target: string | TestProviderOptions): Promise<ProviderTestResult>;
 }
 
 function api(): ProvidersBridge {
@@ -34,7 +34,7 @@ export const providersClient = {
   reorder(ids: string[]): Promise<Provider[]> {
     return api().reorder(ids);
   },
-  test(id: string): Promise<ProviderTestResult> {
-    return api().test(id);
+  test(target: string | TestProviderOptions): Promise<ProviderTestResult> {
+    return api().test(target);
   },
 };

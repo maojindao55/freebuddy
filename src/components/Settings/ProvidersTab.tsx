@@ -60,6 +60,22 @@ export function ProvidersTab() {
                 <div className="provider-card-title">
                   <strong>{p.name}</strong>
                   <span className="provider-protocol">{p.protocol}</span>
+                  {p.protocols && p.protocols.length > 1 ? (
+                    <span className="provider-protocol-extra" title={p.protocols.join(", ")}>
+                      +{p.protocols.length - 1}
+                    </span>
+                  ) : null}
+                  {p.lastHealth === "ok" ? (
+                    <span className="provider-health-badge ok" title={p.lastCheckedAt}>
+                      <span className="provider-health-dot" />
+                      {p.lastLatencyMs ? `${p.lastLatencyMs}ms` : t("providers.statusOk")}
+                    </span>
+                  ) : p.lastHealth === "error" ? (
+                    <span className="provider-health-badge error" title={p.lastError || p.lastCheckedAt}>
+                      <span className="provider-health-dot" />
+                      {p.lastError ? p.lastError.slice(0, 24) : t("providers.statusError")}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="provider-card-meta">
                   <code>{p.baseUrl}</code><span>·</span>
@@ -68,16 +84,37 @@ export function ProvidersTab() {
                 </div>
               </div>
               <div className="provider-card-actions">
-                <button type="button" className="icon-btn" onClick={() => void setEnabled(p.id, !p.enabled)}>
+                <button
+                  type="button"
+                  className={`icon-btn${p.enabled ? " active" : ""}`}
+                  title={p.enabled ? t("providers.disable") : t("providers.enable")}
+                  onClick={() => void setEnabled(p.id, !p.enabled)}
+                >
                   <Power size={15} aria-hidden="true" />
                 </button>
-                <button type="button" className="icon-btn" disabled={testingId === p.id} onClick={() => void onTest(p)}>
-                  <RefreshCw size={15} aria-hidden="true" />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title={t("providers.testConnection")}
+                  disabled={testingId === p.id}
+                  onClick={() => void onTest(p)}
+                >
+                  <RefreshCw size={15} className={testingId === p.id ? "spinning" : ""} aria-hidden="true" />
                 </button>
-                <button type="button" className="icon-btn" onClick={() => setEditing(p)}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title={t("providers.edit")}
+                  onClick={() => setEditing(p)}
+                >
                   <Pencil size={15} aria-hidden="true" />
                 </button>
-                <button type="button" className="icon-btn danger" onClick={() => void onDelete(p)}>
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  title={t("common.delete")}
+                  onClick={() => void onDelete(p)}
+                >
                   <Trash2 size={15} aria-hidden="true" />
                 </button>
               </div>

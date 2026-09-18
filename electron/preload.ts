@@ -953,7 +953,7 @@ const providers = {
   setEnabled: (input: { id: string; enabled: boolean }) =>
     ipcRenderer.invoke("providers:setEnabled", input),
   reorder: (ids: string[]) => ipcRenderer.invoke("providers:reorder", ids),
-  test: (id: string) => ipcRenderer.invoke("providers:test", id),
+  test: (target: unknown) => ipcRenderer.invoke("providers:test", target),
 };
 
 contextBridge.exposeInMainWorld("freebuddy", {

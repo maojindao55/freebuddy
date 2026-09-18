@@ -16,6 +16,15 @@ interface ProviderState {
   setEnabled(id: string, enabled: boolean): Promise<void>;
   reorder(ids: string[]): Promise<void>;
   test(id: string): Promise<{ ok: boolean; error?: string; latencyMs?: number }>;
+  /**
+   * Patch a single provider's health fields in place. Used after connectivity
+   * tests so the sidebar dots update immediately without a full `refresh()`
+   * (which would also clobber any unsaved state the editor is holding).
+   */
+  applyHealth(
+    id: string,
+    result: { ok: boolean; latencyMs: number; error?: string; checkedAt: string },
+  ): void;
   compatibleWith(adapter: string): Provider[];
 }
 
@@ -71,8 +80,29 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
 
   async test(id) {
     const r = await providersClient.test(id);
-    await get().refresh();
+    get().applyHealth(id, {
+      ok: r.ok,
+      latencyMs: r.latencyMs,
+      error: r.error,
+      checkedAt: r.checkedAt,
+    });
     return r;
+  },
+
+  applyHealth(id, result) {
+    set((s) => ({
+      providers: s.providers.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              lastHealth: result.ok ? "ok" : "error",
+              lastLatencyMs: result.latencyMs,
+              lastError: result.error,
+              lastCheckedAt: result.checkedAt,
+            }
+          : p,
+      ),
+    }));
   },
 
   compatibleWith(adapter: string): Provider[] {

@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Download,
   ExternalLink,
@@ -28,6 +30,7 @@ import {
   inferModelGroup,
 } from "@/services/providers/modelUtils";
 import { ProviderBrandIcon } from "./ProviderBrandIcon";
+import { ProviderPresetPicker } from "./ProviderPresetPicker";
 
 const PROTOCOLS: ProviderProtocol[] = [
   "openai-chat",
@@ -87,22 +90,57 @@ function detectConsoleUrl(baseUrl: string, presetId?: string): string | undefine
   return undefined;
 }
 
+/**
+ * Normalise a model list to a canonical string so dirty-checking matches what
+ * the backend actually persists (`parseModels` drops undefined optional fields
+ * and JSON.stringify key order is stable). Comparing raw objects made the
+ * auto-save loop forever because `undefined` fields came back stripped.
+ */
+function normalizeModels(list: ProviderModel[]): string {
+  const norm = list
+    .map((m) => ({
+      id: m.id,
+      name: m.name ?? "",
+      contextWindow: m.contextWindow ?? 0,
+      maxTokens: m.maxTokens ?? 0,
+      supportsVision: m.supportsVision ?? false,
+      supportsReasoning: m.supportsReasoning ?? false,
+      supportsTools: m.supportsTools ?? false,
+      group: m.group ?? "",
+      enabled: m.enabled !== false,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return JSON.stringify(norm);
+}
+
 export interface ProviderEditorProps {
   initial?: Provider;
+  /** Bundled preset to prefill the "new provider" form with. */
+  presetId?: string;
+  /** Switch the prefill preset while staying on the "new provider" form. */
+  onPickPreset?: (presetId: string | null) => void;
   onSaved: (saved: Provider) => void;
   onDeleted?: (id: string) => void;
 }
 
 export function ProviderEditor({
   initial,
+  presetId,
+  onPickPreset,
   onSaved,
   onDeleted,
 }: ProviderEditorProps) {
   const { t } = useTranslation();
   const upsert = useProviderStore((s) => s.upsert);
   const remove = useProviderStore((s) => s.remove);
+  const applyHealth = useProviderStore((s) => s.applyHealth);
 
-  const [name, setName] = useState(initial?.name ?? "");
+  const preset = useMemo(
+    () => (initial || !presetId ? undefined : FREEBIE_BUNDLED_PROVIDERS.find((p) => p.id === presetId)),
+    [initial, presetId],
+  );
+
+  const [name, setName] = useState(initial?.name ?? preset?.name ?? "");
   const [selectedProtocols, setSelectedProtocols] = useState<ProviderProtocol[]>(
     () => {
       if (initial?.protocols && initial.protocols.length > 0) {
@@ -110,6 +148,9 @@ export function ProviderEditor({
       }
       if (initial?.protocol) {
         return [initial.protocol];
+      }
+      if (preset) {
+        return preset.protocols?.length ? [...preset.protocols] : [preset.protocol];
       }
       return ["openai-chat"];
     },
@@ -124,13 +165,28 @@ export function ProviderEditor({
   }, [selectedProtocols]);
 
   const [baseUrl, setBaseUrl] = useState(
-    initial?.baseUrl ?? PROTOCOL_CONFIG["openai-chat"].defaultUrl,
+    initial?.baseUrl ?? preset?.baseUrl ?? PROTOCOL_CONFIG["openai-chat"].defaultUrl,
   );
 
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [keyCopied, setKeyCopied] = useState(false);
-  const [models, setModels] = useState<ProviderModel[]>(initial?.models ?? []);
+  const [models, setModels] = useState<ProviderModel[]>(() => {
+    if (initial) return initial.models;
+    return (preset?.models ?? []).map((m) => {
+      const caps = inferModelCapabilities(m.id);
+      return {
+        id: m.id,
+        name: m.name,
+        enabled: true,
+        contextWindow: m.contextWindow ?? preset?.contextWindow ?? inferContextWindow(m.id),
+        supportsTools: caps.tools,
+        supportsReasoning: caps.reasoning,
+        supportsVision: m.supportsVision ?? caps.vision,
+        group: inferModelGroup(m.id),
+      };
+    });
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -141,6 +197,10 @@ export function ProviderEditor({
     error?: string;
     count?: number;
   } | null>(null);
+  const [errorExpanded, setErrorExpanded] = useState(false);
+
+  /** Last moment any change (connection or models) was persisted. */
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
 
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelMessage, setModelMessage] = useState<{
@@ -154,8 +214,8 @@ export function ProviderEditor({
   );
 
   const consoleUrl = useMemo(
-    () => detectConsoleUrl(baseUrl, initial?.presetId),
-    [baseUrl, initial?.presetId],
+    () => detectConsoleUrl(baseUrl, initial?.presetId ?? presetId),
+    [baseUrl, initial?.presetId, presetId],
   );
 
   const keyPlaceholder = useMemo(() => {
@@ -205,6 +265,7 @@ export function ProviderEditor({
       return null;
     }
     setTesting(true);
+    setErrorExpanded(false);
     setTestResult(null);
     try {
       const res = await providersClient.test({
@@ -219,6 +280,16 @@ export function ProviderEditor({
         error: res.error,
         count: res.models?.length,
       });
+      // Reflect the result on the sidebar health dot immediately, without a
+      // full refresh that would clobber unsaved form state.
+      if (initial?.id) {
+        applyHealth(initial.id, {
+          ok: res.ok,
+          latencyMs: res.latencyMs,
+          error: res.error,
+          checkedAt: res.checkedAt,
+        });
+      }
       return res;
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
@@ -227,7 +298,7 @@ export function ProviderEditor({
     } finally {
       setTesting(false);
     }
-  }, [baseUrl, primaryProtocol, apiKey, initial?.id, t]);
+  }, [baseUrl, primaryProtocol, apiKey, initial?.id, applyHealth, t]);
 
   const onFetchModels = useCallback(async () => {
     setFetchingModels(true);
@@ -296,7 +367,9 @@ export function ProviderEditor({
   const connectionDirty = useMemo(() => {
     if (!initial) return true;
     if (name.trim() !== initial.name) return true;
-    if (baseUrl.trim() !== initial.baseUrl) return true;
+    // Backend normalises baseUrl by stripping trailing slashes; compare the
+    // same way so a saved value never shows as dirty again.
+    if (baseUrl.trim().replace(/\/+$/, "") !== initial.baseUrl) return true;
     if (apiKey.trim() !== "") return true;
     const initProtos = initial.protocols?.length ? initial.protocols : [initial.protocol];
     if (
@@ -309,21 +382,7 @@ export function ProviderEditor({
   }, [initial, name, baseUrl, apiKey, selectedProtocols]);
 
   const modelsDirty = useMemo(() => {
-    const initModels = initial?.models ?? [];
-    if (models.length !== initModels.length) return true;
-    const initMap = new Map(initModels.map((m) => [m.id, m]));
-    for (const m of models) {
-      const initM = initMap.get(m.id);
-      if (!initM) return true;
-      if ((m.enabled ?? true) !== (initM.enabled ?? true)) return true;
-      if (m.name !== initM.name) return true;
-      if (m.group !== initM.group) return true;
-      if (m.contextWindow !== initM.contextWindow) return true;
-      if (m.supportsTools !== initM.supportsTools) return true;
-      if (m.supportsReasoning !== initM.supportsReasoning) return true;
-      if (m.supportsVision !== initM.supportsVision) return true;
-    }
-    return false;
+    return normalizeModels(models) !== normalizeModels(initial?.models ?? []);
   }, [initial?.models, models]);
 
   const isDirty = connectionDirty || modelsDirty;
@@ -338,7 +397,7 @@ export function ProviderEditor({
     try {
       const saved = await upsert({
         id: initial?.id,
-        presetId: initial?.presetId,
+        presetId: initial?.presetId ?? presetId,
         name: name.trim(),
         protocol: primaryProtocol,
         protocols: selectedProtocols,
@@ -348,6 +407,7 @@ export function ProviderEditor({
         models,
         wireApi: selectedProtocols.includes("openai-responses") ? "responses" : "chat",
       });
+      setSavedAt(new Date());
       onSaved(saved);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -356,6 +416,7 @@ export function ProviderEditor({
     }
   }, [
     initial,
+    presetId,
     name,
     primaryProtocol,
     selectedProtocols,
@@ -368,19 +429,24 @@ export function ProviderEditor({
     t,
   ]);
 
-  // Debounced auto-save when only models are modified on an existing provider
+  // Unified save model: every change (connection fields OR model list) on an
+  // existing provider is debounce-auto-saved; the header status pill reports
+  // unsaved / saving / saved instead of a separate manual save button.
   useEffect(() => {
-    if (!initial?.id || !modelsDirty || connectionDirty || saving) {
+    if (!initial?.id || !isDirty || saving) {
       return;
     }
     if (models.length > 0 && !models.some((m) => m.enabled !== false)) {
+      return;
+    }
+    if (!name.trim() || !baseUrl.trim()) {
       return;
     }
     const timer = setTimeout(() => {
       void submit();
     }, 800);
     return () => clearTimeout(timer);
-  }, [initial?.id, modelsDirty, connectionDirty, saving, models, submit]);
+  }, [initial?.id, isDirty, saving, models, name, baseUrl, submit]);
 
   return (
     <div className="provider-detail-workspace">
@@ -388,7 +454,7 @@ export function ProviderEditor({
       <div className="provider-detail-header">
         <div className="provider-detail-title-wrap">
           <ProviderBrandIcon
-            nameOrId={name.trim() || initial?.name || initial?.presetId || initial?.id || ""}
+            nameOrId={name.trim() || initial?.name || initial?.presetId || presetId || initial?.id || ""}
             size={34}
             className="provider-detail-brand-icon"
           />
@@ -412,6 +478,30 @@ export function ProviderEditor({
                 {initial.lastError ? initial.lastError.slice(0, 24) : t("providers.statusError")}
               </span>
             ) : null}
+            {/* Unified save status: every change auto-saves; this pill is the
+                single source of truth for "is my change persisted?". */}
+            {initial ? (
+              saving ? (
+                <span className="provider-save-status saving">
+                  <RefreshCw size={11} className="spinning" />
+                  <span>{t("common.saving")}</span>
+                </span>
+              ) : isDirty ? (
+                <span className="provider-save-status unsaved">
+                  <span className="provider-save-status-dot" />
+                  <span>{t("providers.unsavedChanges")}</span>
+                </span>
+              ) : savedAt ? (
+                <span className="provider-save-status saved">
+                  <Check size={11} />
+                  <span>
+                    {t("providers.savedAt", {
+                      time: savedAt.toLocaleTimeString([], { hour12: false }),
+                    })}
+                  </span>
+                </span>
+              ) : null
+            ) : null}
           </div>
         </div>
 
@@ -432,23 +522,26 @@ export function ProviderEditor({
             className="provider-header-btn secondary"
             disabled={testing || !baseUrl.trim()}
             onClick={() => void testConnection()}
+            title={t("providers.testFormHint")}
           >
             <RefreshCw size={14} className={testing ? "spinning" : ""} />
             <span>{testing ? t("providers.testing") : t("providers.testConnection")}</span>
           </button>
-          <button
-            type="button"
-            className={`provider-header-btn primary ${isDirty ? "dirty" : ""}`}
-            disabled={saving || !name.trim() || !baseUrl.trim()}
-            onClick={() => void submit()}
-          >
-            {saving ? (
-              <RefreshCw size={14} className="spinning" />
-            ) : (
-              <Check size={14} />
-            )}
-            <span>{saving ? t("common.saving") : t("providers.saveChanges")}</span>
-          </button>
+          {!initial ? (
+            <button
+              type="button"
+              className="provider-header-btn primary"
+              disabled={saving || !name.trim() || !baseUrl.trim()}
+              onClick={() => void submit()}
+            >
+              {saving ? (
+                <RefreshCw size={14} className="spinning" />
+              ) : (
+                <Check size={14} />
+              )}
+              <span>{saving ? t("common.saving") : t("providers.createProvider")}</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -456,6 +549,10 @@ export function ProviderEditor({
         <div className="providers-error" role="alert">
           {error}
         </div>
+      ) : null}
+
+      {!initial && onPickPreset ? (
+        <ProviderPresetPicker onPick={onPickPreset} />
       ) : null}
 
       {/* Compact Config + Full-Width Model List */}
@@ -582,23 +679,53 @@ export function ProviderEditor({
                 : t("providers.fetchModels")}
             </button>
             {testResult ? (
-              <div className={`provider-test-pill ${testResult.ok ? "ok" : "error"}`}>
-                {testResult.ok ? (
-                  <>
-                    <CheckCircle2 size={14} />
-                    <span>{t("providers.testSuccess", { latency: testResult.latencyMs ?? 0 })}</span>
-                    {testResult.count ? (
-                      <span className="provider-test-pill-extra">
-                        ({t("providers.modelsCount", { count: testResult.count })})
-                      </span>
+              <div className="provider-test-result-wrap">
+                <div className={`provider-test-pill ${testResult.ok ? "ok" : "error"}`}>
+                  {testResult.ok ? (
+                    <>
+                      <CheckCircle2 size={14} />
+                      <span>{t("providers.testSuccess", { latency: testResult.latencyMs ?? 0 })}</span>
+                      {testResult.count ? (
+                        <span className="provider-test-pill-extra">
+                          ({t("providers.modelsCount", { count: testResult.count })})
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle size={14} />
+                      <span>{t("providers.testFailedShort")}</span>
+                      <button
+                        type="button"
+                        className="provider-test-detail-toggle"
+                        onClick={() => setErrorExpanded((v) => !v)}
+                      >
+                        {errorExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        <span>
+                          {errorExpanded ? t("providers.collapseDetail") : t("providers.viewDetail")}
+                        </span>
+                      </button>
+                    </>
+                  )}
+                </div>
+                {!testResult.ok && errorExpanded ? (
+                  <div className="provider-test-detail">
+                    <pre className="provider-test-detail-error">
+                      {testResult.error || t("providers.statusError")}
+                    </pre>
+                    {consoleUrl ? (
+                      <a
+                        href={consoleUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="provider-key-console-link"
+                      >
+                        {t("providers.troubleshootKey")}
+                        <ExternalLink size={11} />
+                      </a>
                     ) : null}
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle size={14} />
-                    <span>{t("providers.testFailed", { error: testResult.error || "Failed" })}</span>
-                  </>
-                )}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {modelMessage ? (

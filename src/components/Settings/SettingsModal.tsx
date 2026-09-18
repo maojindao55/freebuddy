@@ -1,5 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  Bot,
+  ChartColumn,
+  Cog,
+  Cpu,
+  Info,
+  Layers,
+  Newspaper,
+  Puzzle,
+  Share2,
+} from "lucide-react";
 import { AboutTab } from "./AboutTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { ProvidersTab } from "./ProvidersTab";
@@ -25,6 +36,26 @@ export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "about", labelKey: "settings.tabs.about" }
 ];
 
+/** Per-tab icon so the sidebar is scannable at a glance. */
+const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> = {
+  general: Cog,
+  cli: Bot,
+  providers: Cpu,
+  skills: Layers,
+  plugins: Puzzle,
+  feed: Newspaper,
+  usage: ChartColumn,
+  remote: Share2,
+  about: Info,
+};
+
+/** Grouped sidebar sections; every tab key above appears exactly once. */
+const TAB_GROUPS: { groupKey: string; items: SettingsTab[] }[] = [
+  { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "skills", "plugins"] },
+  { groupKey: "settings.navGroup.data", items: ["feed", "usage"] },
+  { groupKey: "settings.navGroup.system", items: ["general", "remote", "about"] },
+];
+
 interface SettingsSurfaceProps {
   onClose: () => void;
   initialTab?: SettingsTab;
@@ -45,16 +76,27 @@ export function SettingsNav({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const labelByKey = new Map(SETTINGS_TABS.map((tab) => [tab.key, tab.labelKey]));
   return (
     <nav className={`settings-nav${className ? ` ${className}` : ""}`}>
-      {SETTINGS_TABS.map((tab) => (
-        <button
-          key={tab.key}
-          className={`settings-nav-item${activeTab === tab.key ? " active" : ""}`}
-          onClick={() => onTabChange(tab.key)}
-        >
-          {t(tab.labelKey)}
-        </button>
+      {TAB_GROUPS.map((group) => (
+        <div key={group.groupKey} className="settings-nav-group">
+          <div className="settings-nav-group-title">{t(group.groupKey)}</div>
+          {group.items.map((key) => {
+            const Icon = TAB_ICONS[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`settings-nav-item${activeTab === key ? " active" : ""}`}
+                onClick={() => onTabChange(key)}
+              >
+                <Icon size={14} />
+                <span className="settings-nav-label">{t(labelByKey.get(key)!)}</span>
+              </button>
+            );
+          })}
+        </div>
       ))}
     </nav>
   );

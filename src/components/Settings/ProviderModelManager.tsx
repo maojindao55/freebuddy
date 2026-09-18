@@ -773,24 +773,8 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
         </>
       )}
 
-      {/* Sticky Unsaved Notice Bar */}
-      {isDirty && onSave && (
-        <div className="model-mgr-unsaved-bar">
-          <div className="model-mgr-unsaved-info">
-            <span className="model-mgr-unsaved-dot" />
-            <span className="model-mgr-unsaved-text">{t("providers.unsavedModelsHint")}</span>
-          </div>
-          <button
-            type="button"
-            className="provider-primary-btn model-mgr-unsaved-save-btn"
-            onClick={onSave}
-            disabled={saving}
-          >
-            {saving ? <RefreshCw size={13} className="spinning" /> : <Check size={13} />}
-            <span>{saving ? t("common.saving") : t("providers.saveChanges")}</span>
-          </button>
-        </div>
-      )}
+      {/* Unsaved state is surfaced by the editor header status pill (auto-save
+          is enabled for existing providers), so no sticky bar here. */}
 
       {/* Model Config Modal */}
       <ModelConfigModal

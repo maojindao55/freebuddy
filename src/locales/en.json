@@ -1260,6 +1260,11 @@
         "apps": "Apps"
       },
       "defaultAlt": "Default"
+    },
+    "navGroup": {
+      "ai": "AI",
+      "data": "Data & Insights",
+      "system": "System"
     }
   },
   "scheduledTasks": {
@@ -2219,6 +2224,23 @@
     "enableGroup": "Enable Group",
     "disableGroup": "Disable Group",
     "atLeastOneModelEnabled": "Please enable at least one model before saving",
-    "unsavedModelsHint": "Model status changed. Remember to save changes."
+    "unsavedModelsHint": "Model status changed. Remember to save changes.",
+    "searchProviders": "Search name / URL / model…",
+    "onlyEnabled": "Enabled only",
+    "noMatch": "No matching providers",
+    "testAll": "Test all",
+    "noKeyBadge": "No key",
+    "noKeyHint": "No API key configured; this provider cannot be used yet",
+    "pickPreset": "Quick create from a preset",
+    "customProvider": "Custom provider (fill manually)",
+    "unsavedChanges": "Unsaved changes",
+    "savedAt": "Saved {{time}}",
+    "createProvider": "Create provider",
+    "testFormHint": "Tests the configuration currently in the form",
+    "testFailedShort": "Connection failed",
+    "viewDetail": "View details",
+    "collapseDetail": "Hide details",
+    "troubleshootKey": "Open console to check API key",
+    "dragToReorder": "Drag to reorder"
   }
 }

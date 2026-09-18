@@ -3730,6 +3730,13 @@ html[data-surface="butler-screen-ball"] #root {
   font-weight: 700;
   color: var(--fb-text-primary);
 }
+.modal-header h3 {
+  margin: 0;
+  font-family: 'Outfit', var(--fb-font);
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--fb-text-primary);
+}
 
 .settings-page-shell {
   display: flex;
@@ -23864,3 +23871,306 @@ button.ghost:focus-visible,
   font: inherit; cursor: pointer; text-decoration: underline;
 }
 .history-details-hint .spinning { animation: stream-process-spin 1s linear infinite; }
+
+/* ===== Provider Management ===== */
+
+/* -- Providers Tab --------------------------------------------------------- */
+
+.providers-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.providers-tab-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.providers-tab-header h3 {
+  margin: 0;
+  font-family: 'Outfit', var(--fb-font);
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--fb-text-primary);
+  letter-spacing: -0.01em;
+}
+
+.providers-tab-desc {
+  margin: 4px 0 0;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.providers-tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.providers-tab-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid var(--fb-border-strong);
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.providers-tab-actions button:hover {
+  border-color: var(--fb-brand);
+  color: var(--fb-text-primary);
+}
+
+.providers-tab-actions button.primary {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+.providers-tab-actions button.primary:hover {
+  filter: brightness(0.92);
+}
+
+/* -- Providers List / Cards ------------------------------------------------ */
+
+.providers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.provider-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--fb-border);
+  border-radius: 12px;
+  background: var(--fb-panel-bg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.provider-card:hover {
+  border-color: var(--fb-border-strong);
+  box-shadow: var(--fb-shadow-sm);
+}
+
+.provider-card.disabled {
+  opacity: 0.5;
+}
+
+.provider-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.provider-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.provider-card-title strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+
+.provider-protocol {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fb-text-tertiary) 16%, transparent);
+  color: var(--fb-text-secondary);
+  font-family: var(--fb-mono);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+
+.provider-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+}
+
+.provider-card-meta code {
+  font-family: var(--fb-mono);
+  font-size: 11.5px;
+  color: var(--fb-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.provider-card-meta > span {
+  color: var(--fb-border-strong);
+}
+
+.provider-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.provider-card-actions .icon-btn {
+  width: 30px;
+  height: 30px;
+}
+
+/* -- Providers Error / Empty ------------------------------------------------ */
+
+.providers-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, #ef4444 28%, var(--fb-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, #ef4444 7%, var(--fb-panel-bg));
+  color: #b91c1c;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+[data-theme="dark"] .providers-error {
+  color: #fca5a5;
+}
+
+.providers-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--fb-text-tertiary);
+  font-size: 13px;
+  border: 1px dashed var(--fb-border);
+  border-radius: 12px;
+}
+
+/* -- Provider Editor modal ------------------------------------------------- */
+
+.provider-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.provider-editor-protocols {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+}
+
+.provider-editor-protocols legend {
+  padding: 0 4px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.provider-editor-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--fb-text-primary) !important;
+  cursor: pointer;
+}
+
+.provider-editor-check input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--fb-brand);
+  width: auto !important;
+  padding: 0 !important;
+  border: revert !important;
+  border-radius: revert !important;
+  background: revert !important;
+  font-family: revert !important;
+  box-shadow: none !important;
+}
+
+.provider-editor-check span {
+  font-family: var(--fb-mono);
+  font-size: 12.5px;
+  color: var(--fb-text-primary);
+}
+
+.provider-editor-hint {
+  margin-top: 2px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* -- Provider Select (Agent BYOK picker) ----------------------------------- */
+
+.provider-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.provider-select label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.provider-select label > span {
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.provider-select select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.provider-select select:focus {
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+
+.provider-select-hint {
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}

@@ -1166,6 +1166,7 @@
         "apiKeyPlaceholder": "Paste a key to save or replace",
         "newKeyHint": "The plaintext key will not be shown again after saving.",
         "savedKeyHint": "Saved {{preview}}; leave blank to keep the current key.",
+        "providerKeyHint": "Using key from provider \"{{name}}\" ({{preview}})",
         "hint": "The key is stored only on this device and injected when this agent starts."
       },
       "extraArgs": "Extra args (one per line)",

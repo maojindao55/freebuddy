@@ -1153,6 +1153,7 @@
         "apiKeyPlaceholder": "粘贴 Key 以保存或替换",
         "newKeyHint": "保存后不会再显示明文。",
         "savedKeyHint": "已保存 {{preview}}；留空会继续使用当前 Key。",
+        "providerKeyHint": "已使用服务商「{{name}}」统一配置的 Key（{{preview}}）",
         "hint": "Key 只保存在本机，运行这个 Agent 时临时注入。"
       },
       "extraArgs": "附加参数（每行一个）",

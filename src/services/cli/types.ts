@@ -35,6 +35,7 @@ export interface CLICodexByokConfig {
 
 export interface CLIClaudeByokConfig {
   enabled?: boolean;
+  providerId?: string;
   baseUrl?: string;
   envKey?: string;
   apiKey?: string;
@@ -47,6 +48,7 @@ export interface CLIClaudeByokConfig {
 
 export interface CLIDeepSeekByokConfig {
   enabled?: boolean;
+  providerId?: string;
   baseUrl?: string;
   envKey?: string;
   wireApi?: "chat" | "responses";

@@ -972,7 +972,7 @@ function EditOverridePanel({
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>(() => {
     const byok = savedByok as { providerId?: string } | undefined;
     const pid = byok?.providerId;
-    return pid && pid.startsWith("provider-") ? pid : undefined;
+    return pid && pid !== "proxy" && pid !== "custom" ? pid : undefined;
   });
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
   const [codexProviderId, setCodexProviderId] = useState(
@@ -1043,6 +1043,17 @@ function EditOverridePanel({
   useEffect(() => {
     if (!providersLoaded) void loadProviders();
   }, [loadProviders, providersLoaded]);
+
+  useEffect(() => {
+    if (selectedProvider) {
+      if (selectedProvider.baseUrl && !codexBaseUrl) {
+        setCodexBaseUrl(selectedProvider.baseUrl);
+      }
+      if (selectedProvider.envKey && !codexEnvKey) {
+        setCodexEnvKey(selectedProvider.envKey);
+      }
+    }
+  }, [selectedProvider, codexBaseUrl, codexEnvKey]);
 
   useEffect(() => {
     if (selectedProvider && byokModels.length === 0 && selectedProvider.models.length > 0) {
@@ -1123,14 +1134,14 @@ function EditOverridePanel({
 
     const codexByokConfig =
       isCodex && codexByokEnabled
-        ? selectedProviderId && selectedProvider
+        ? selectedProviderId
           ? {
               // Provider-reference mode: store providerId with current models snapshot
               enabled: true,
               providerId: selectedProviderId,
-              providerName: selectedProvider.name,
-              envKey: selectedProvider.envKey,
-              wireApi: selectedProvider.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const),
+              providerName: selectedProvider?.name || codexProviderName.trim() || "BYOK provider",
+              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "OPENAI_API_KEY",
+              wireApi: selectedProvider?.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const),
               models: normalizedByokModels
             }
           : {
@@ -1147,11 +1158,11 @@ function EditOverridePanel({
         : undefined;
     const claudeByokConfig =
       isClaude && codexByokEnabled
-        ? selectedProviderId && selectedProvider
+        ? selectedProviderId
           ? {
               enabled: true,
               providerId: selectedProviderId,
-              envKey: selectedProvider.envKey,
+              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "ANTHROPIC_API_KEY",
               models: normalizedByokModels,
               compaction: { enabled: claudeCompactionEnabled }
             }
@@ -1169,11 +1180,11 @@ function EditOverridePanel({
             }
         : undefined;
     const deepseekByokConfig = isDeepSeek
-      ? selectedProviderId && selectedProvider
+      ? selectedProviderId
         ? {
             enabled: true,
             providerId: selectedProviderId,
-            envKey: selectedProvider.envKey,
+            envKey: selectedProvider?.envKey || codexEnvKey.trim() || "DEEPSEEK_API_KEY",
             wireApi: "chat" as const,
             models: normalizedByokModels
           }
@@ -1473,7 +1484,7 @@ function EditOverridePanel({
                   <span className="adapter-editor-field-label">{t("settings.cli.byok.baseUrl")}</span>
                   <input
                     type="url"
-                    value={codexBaseUrl}
+                    value={selectedProvider ? selectedProvider.baseUrl : codexBaseUrl}
                     placeholder={byokBaseUrlPlaceholder}
                     disabled={Boolean(selectedProvider)}
                     onChange={(e) => setCodexBaseUrl(e.target.value)}
@@ -1494,17 +1505,26 @@ function EditOverridePanel({
                     type="password"
                     value={codexApiKey}
                     placeholder={
+                      selectedProvider?.apiKeyPreview ||
                       savedByok?.apiKeyPreview ||
                       t("settings.cli.byok.apiKeyPlaceholder")
                     }
+                    disabled={Boolean(selectedProvider)}
                     onChange={(e) => setCodexApiKey(e.target.value)}
                   />
                   <span className="settings-field-hint">
-                    {savedByok?.apiKeyPreview
-                      ? t("settings.cli.byok.savedKeyHint", {
-                          preview: savedByok.apiKeyPreview
-                        })
-                      : t("settings.cli.byok.newKeyHint")}
+                    {selectedProvider
+                      ? selectedProvider.apiKeyPreview
+                        ? t("settings.cli.byok.providerKeyHint", {
+                            name: selectedProvider.name,
+                            preview: selectedProvider.apiKeyPreview
+                          })
+                        : t("providers.managedHint")
+                      : savedByok?.apiKeyPreview
+                        ? t("settings.cli.byok.savedKeyHint", {
+                            preview: savedByok.apiKeyPreview
+                          })
+                        : t("settings.cli.byok.newKeyHint")}
                   </span>
                 </label>
 

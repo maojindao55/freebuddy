@@ -580,12 +580,22 @@ function normalizeByokForStorage(
   if (!input?.enabled) return undefined;
   const previous = readCodexByokPrivate(id);
   // 引用服务商模式：只存 providerId + enabled，其它走服务商表
-  const providerRef = input.providerId?.trim() || previous?.providerId?.trim();
-  if (providerRef && !input.apiKey?.trim() && !input.baseUrl?.trim()) {
+  const isExplicitProvider = Boolean(
+    input.providerId?.trim() &&
+    input.providerId.trim() !== "proxy" &&
+    input.providerId.trim() !== "custom"
+  );
+  const providerRef = isExplicitProvider
+    ? input.providerId!.trim()
+    : previous?.providerId && previous.providerId !== "proxy" && previous.providerId !== "custom" && !input.apiKey?.trim() && !input.baseUrl?.trim()
+      ? previous.providerId.trim()
+      : undefined;
+  if (providerRef && !input.apiKey?.trim()) {
     return {
       enabled: true,
       providerId: providerRef,
       ...(input.providerName?.trim() ? { providerName: input.providerName.trim() } : {}),
+      ...(input.baseUrl?.trim() ? { baseUrl: input.baseUrl.trim() } : {}),
       ...(input.envKey?.trim() ? { envKey: input.envKey.trim() } : {}),
       ...(input.wireApi ? { wireApi: normalizeWireApi(input.wireApi) } : {}),
       ...(input.models?.length ? { models: normalizeCodexByokModels(input.models) } : {}),
@@ -625,6 +635,43 @@ function normalizeClaudeByokForStorage(
 ): CLIClaudeByokConfig | undefined {
   if (!input?.enabled) return undefined;
   const previous = readClaudeByokPrivate(id);
+  // 引用服务商模式：只存 providerId + enabled，其它走服务商表
+  const isExplicitProvider = Boolean(
+    input.providerId?.trim() &&
+    input.providerId.trim() !== "proxy" &&
+    input.providerId.trim() !== "custom"
+  );
+  const providerRef = isExplicitProvider
+    ? input.providerId!.trim()
+    : previous?.providerId && previous.providerId !== "proxy" && previous.providerId !== "custom" && !input.apiKey?.trim() && !input.baseUrl?.trim()
+      ? previous.providerId.trim()
+      : undefined;
+  if (providerRef && !input.apiKey?.trim()) {
+    const hasContextWindowInput =
+      Object.prototype.hasOwnProperty.call(input, "contextWindow") ||
+      Object.prototype.hasOwnProperty.call(input.compaction ?? {}, "window");
+    const contextWindow = hasContextWindowInput
+      ? normalizeByokContextWindow(
+          input.contextWindow ?? input.compaction?.window
+        )
+      : normalizeByokContextWindow(
+          previous?.contextWindow ?? previous?.compaction?.window
+        );
+    const compaction = normalizeClaudeCompaction(
+      input.compaction ?? previous?.compaction,
+      contextWindow
+    );
+    return {
+      enabled: true,
+      providerId: providerRef,
+      ...(input.baseUrl?.trim() ? { baseUrl: input.baseUrl.trim() } : {}),
+      ...(input.envKey?.trim() ? { envKey: input.envKey.trim() } : {}),
+      ...(input.models?.length ? { models: normalizeByokModels(input.models) } : {}),
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
+      ...(compaction ? { compaction } : {}),
+    };
+  }
+
   const apiKey = input.apiKey?.trim();
   const apiKeyEncrypted = apiKey
     ? encryptSecret(apiKey)
@@ -648,6 +695,7 @@ function normalizeClaudeByokForStorage(
   );
   return {
     enabled: true,
+    ...(input.providerId?.trim() ? { providerId: input.providerId.trim() } : {}),
     baseUrl: input.baseUrl?.trim(),
     envKey: input.envKey?.trim() || "ANTHROPIC_API_KEY",
     models: normalizeByokModels(input.models),
@@ -703,6 +751,38 @@ function normalizeDeepSeekByokForStorage(
     return undefined;
   }
 
+  // 引用服务商模式：只存 providerId + enabled，其它走服务商表
+  const isExplicitProvider = Boolean(
+    input?.providerId?.trim() &&
+    input?.providerId.trim() !== "proxy" &&
+    input?.providerId.trim() !== "custom"
+  );
+  const providerRef = isExplicitProvider
+    ? input!.providerId!.trim()
+    : previous?.providerId && previous.providerId !== "proxy" && previous.providerId !== "custom" && !apiKey && !input?.baseUrl?.trim()
+      ? previous.providerId.trim()
+      : undefined;
+  if (providerRef && !apiKey) {
+    const hasContextWindowInput = Object.prototype.hasOwnProperty.call(
+      input,
+      "contextWindow"
+    );
+    const contextWindow = hasContextWindowInput
+      ? normalizeByokContextWindow(input.contextWindow)
+      : normalizeByokContextWindow(previous?.contextWindow);
+    return {
+      enabled: true,
+      providerId: providerRef,
+      ...(input.baseUrl?.trim() ? { baseUrl: input.baseUrl.trim() } : {}),
+      ...(input.envKey?.trim() ? { envKey: input.envKey.trim() } : {}),
+      wireApi: "chat",
+      models: normalizeByokModels(input.models),
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
+      officialApiKeyPreview,
+      officialApiKeyEncrypted,
+    };
+  }
+
   const hasContextWindowInput = Object.prototype.hasOwnProperty.call(
     input,
     "contextWindow"
@@ -712,6 +792,7 @@ function normalizeDeepSeekByokForStorage(
     : normalizeByokContextWindow(previous?.contextWindow);
   return {
     enabled: true,
+    ...(input.providerId?.trim() ? { providerId: input.providerId.trim() } : {}),
     baseUrl: input.baseUrl?.trim(),
     envKey: input.envKey?.trim() || "DEEPSEEK_API_KEY",
     wireApi: "chat",

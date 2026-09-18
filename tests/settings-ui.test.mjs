@@ -168,6 +168,14 @@ test("coding agent runtime stores Claude BYOK separately from Codex BYOK", () =>
   );
   assert.equal(electronStoreSource.includes("ANTHROPIC_API_KEY"), true);
   assert.equal(electronStoreSource.includes("ANTHROPIC_BASE_URL"), true);
+  assert.match(
+    electronStoreSource,
+    /function normalizeClaudeByokForStorage[\s\S]*?providerId: providerRef/
+  );
+  assert.match(
+    electronStoreSource,
+    /function normalizeDeepSeekByokForStorage[\s\S]*?providerId: providerRef/
+  );
   assert.equal(
     electronStoreSource.includes("model_supports_reasoning_summaries"),
     true

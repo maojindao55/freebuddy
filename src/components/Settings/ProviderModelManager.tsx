@@ -25,6 +25,7 @@ import {
   CheckSquare,
   Square,
   MinusSquare,
+  RefreshCw,
 } from "lucide-react";
 import type { ProviderModel } from "@/services/providers/types";
 import {
@@ -40,6 +41,9 @@ import { ProviderBrandIcon } from "./ProviderBrandIcon";
 interface ProviderModelManagerProps {
   models: ProviderModel[];
   onChange: (models: ProviderModel[]) => void;
+  isDirty?: boolean;
+  onSave?: () => void;
+  saving?: boolean;
 }
 
 type CapabilityFilter = "all" | "reasoning" | "tools" | "vision" | "code";
@@ -48,6 +52,9 @@ type ViewMode = "list" | "tags" | "batch";
 export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
   models,
   onChange,
+  isDirty,
+  onSave,
+  saving,
 }) => {
   const { t } = useTranslation();
 
@@ -308,6 +315,18 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
         </div>
 
         <div className="model-mgr-toolbar-right">
+          {isDirty && onSave && (
+            <button
+              type="button"
+              className="provider-text-btn model-mgr-save-btn"
+              onClick={onSave}
+              disabled={saving}
+              title={t("providers.saveChanges")}
+            >
+              {saving ? <RefreshCw size={13} className="spinning" /> : <Check size={13} />}
+              <span>{saving ? t("common.saving") : t("providers.saveChanges")}</span>
+            </button>
+          )}
           {models.length > 0 && viewMode !== "batch" && (
             <>
               <button
@@ -752,6 +771,25 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
             </div>
           )}
         </>
+      )}
+
+      {/* Sticky Unsaved Notice Bar */}
+      {isDirty && onSave && (
+        <div className="model-mgr-unsaved-bar">
+          <div className="model-mgr-unsaved-info">
+            <span className="model-mgr-unsaved-dot" />
+            <span className="model-mgr-unsaved-text">{t("providers.unsavedModelsHint")}</span>
+          </div>
+          <button
+            type="button"
+            className="provider-primary-btn model-mgr-unsaved-save-btn"
+            onClick={onSave}
+            disabled={saving}
+          >
+            {saving ? <RefreshCw size={13} className="spinning" /> : <Check size={13} />}
+            <span>{saving ? t("common.saving") : t("providers.saveChanges")}</span>
+          </button>
+        </div>
       )}
 
       {/* Model Config Modal */}

@@ -1163,6 +1163,8 @@
         "removeModel": "Remove model",
         "modelsHint": "Add multiple model IDs and switch between them from the conversation model picker.",
         "modelsHintCodex": "Image input is enabled by default so direct attachments and image-reading tools use the same capability. Disable it for text-only providers.",
+        "providerModelsHint": "Models are centrally managed by provider \"{{name}}\". Add or toggle models in Providers settings.",
+        "providerNoActiveModels": "No models are enabled for this provider. Enable at least one model in Providers settings.",
         "apiKeyPlaceholder": "Paste a key to save or replace",
         "newKeyHint": "The plaintext key will not be shown again after saving.",
         "savedKeyHint": "Saved {{preview}}; leave blank to keep the current key.",
@@ -2204,7 +2206,7 @@
     "protoOpenAiResponsesDesc": "OpenAI new Responses API",
     "protoAnthropic": "Anthropic Claude",
     "protoAnthropicDesc": "Claude Messages API protocol",
-    "protoDeepSeek": "DeepSeek",
+    "protoDeepSeek": "DeepSeek Harness",
     "protoDeepSeekDesc": "DeepSeek native protocol & reasoning",
     "enableThisModel": "Enable for BYOK",
     "enableThisModelHint": "When disabled, this model won't appear in Agent BYOK model lists",
@@ -2216,6 +2218,7 @@
     "groupEnabledCount": "{{enabled}}/{{total}} enabled",
     "enableGroup": "Enable Group",
     "disableGroup": "Disable Group",
-    "atLeastOneModelEnabled": "Please enable at least one model before saving"
+    "atLeastOneModelEnabled": "Please enable at least one model before saving",
+    "unsavedModelsHint": "Model status changed. Remember to save changes."
   }
 }

@@ -1003,7 +1003,6 @@ function EditOverridePanel({
   const [deepseekOfficialApiKey, setDeepseekOfficialApiKey] = useState("");
   const [codexApiKey, setCodexApiKey] = useState("");
   const [byokModels, setByokModels] = useState<ByokModelDraft[]>(() => {
-    if (savedByok?.models?.length) return savedByok.models;
     if (selectedProvider?.models?.length) {
       const active = selectedProvider.models.filter((m) => m.enabled !== false);
       return active.map((m) => ({
@@ -1013,6 +1012,7 @@ function EditOverridePanel({
         supportsVision: m.supportsVision
       }));
     }
+    if (savedByok?.models?.length) return savedByok.models;
     return parsedExtraArgs.model
       ? [{ id: parsedExtraArgs.model, name: "", supportsVision: isCodex }]
       : [];
@@ -1056,7 +1056,7 @@ function EditOverridePanel({
   }, [selectedProvider, codexBaseUrl, codexEnvKey]);
 
   useEffect(() => {
-    if (selectedProvider && byokModels.length === 0 && selectedProvider.models.length > 0) {
+    if (selectedProvider) {
       const active = selectedProvider.models.filter((m) => m.enabled !== false);
       setByokModels(
         active.map((m) => ({
@@ -1070,7 +1070,7 @@ function EditOverridePanel({
         setModel(active[0].id);
       }
     }
-  }, [selectedProvider, byokModels.length, model]);
+  }, [selectedProvider]);
 
   useEffect(() => {
     if (saveStatus !== "saved") return;
@@ -1132,6 +1132,17 @@ function EditOverridePanel({
       })
       .filter((entry) => entry.id.length > 0);
 
+    const effectiveByokModels: CLIByokModel[] = selectedProvider
+      ? selectedProvider.models
+          .filter((m) => m.enabled !== false)
+          .map((m) => ({
+            id: m.id,
+            ...(m.name ? { name: m.name } : {}),
+            ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
+            ...(isCodex ? { supportsVision: m.supportsVision !== false } : {})
+          }))
+      : normalizedByokModels;
+
     const codexByokConfig =
       isCodex && codexByokEnabled
         ? selectedProviderId
@@ -1142,7 +1153,7 @@ function EditOverridePanel({
               providerName: selectedProvider?.name || codexProviderName.trim() || "BYOK provider",
               envKey: selectedProvider?.envKey || codexEnvKey.trim() || "OPENAI_API_KEY",
               wireApi: selectedProvider?.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const),
-              models: normalizedByokModels
+              models: effectiveByokModels
             }
           : {
               enabled: true,
@@ -1163,7 +1174,7 @@ function EditOverridePanel({
               enabled: true,
               providerId: selectedProviderId,
               envKey: selectedProvider?.envKey || codexEnvKey.trim() || "ANTHROPIC_API_KEY",
-              models: normalizedByokModels,
+              models: effectiveByokModels,
               compaction: { enabled: claudeCompactionEnabled }
             }
           : {
@@ -1186,7 +1197,7 @@ function EditOverridePanel({
             providerId: selectedProviderId,
             envKey: selectedProvider?.envKey || codexEnvKey.trim() || "DEEPSEEK_API_KEY",
             wireApi: "chat" as const,
-            models: normalizedByokModels
+            models: effectiveByokModels
           }
         : {
             enabled: codexByokEnabled,
@@ -1563,6 +1574,7 @@ function EditOverridePanel({
                             "settings.cli.byok.modelIdPlaceholder"
                           )}
                           aria-label={t("settings.cli.byok.modelIdPlaceholder")}
+                          disabled={Boolean(selectedProvider)}
                           onChange={(event) =>
                             setByokModels((models) =>
                               models.map((entry, entryIndex) =>
@@ -1579,6 +1591,7 @@ function EditOverridePanel({
                             "settings.cli.byok.modelNamePlaceholder"
                           )}
                           aria-label={t("settings.cli.byok.modelNamePlaceholder")}
+                          disabled={Boolean(selectedProvider)}
                           onChange={(event) =>
                             setByokModels((models) =>
                               models.map((entry, entryIndex) =>
@@ -1602,6 +1615,7 @@ function EditOverridePanel({
                             aria-label={t(
                               "settings.cli.byok.modelContextWindowPlaceholder"
                             )}
+                            disabled={Boolean(selectedProvider)}
                             onChange={(event) =>
                               setByokModels((models) =>
                                 models.map((entry, entryIndex) =>
@@ -1627,6 +1641,7 @@ function EditOverridePanel({
                               aria-label={t(
                                 "settings.cli.byok.modelVisionEnabled"
                               )}
+                              disabled={Boolean(selectedProvider)}
                               onChange={(event) =>
                                 setByokModels((models) =>
                                   models.map((entry, entryIndex) =>
@@ -1645,43 +1660,55 @@ function EditOverridePanel({
                             </span>
                           </label>
                         )}
-                        <button
-                          type="button"
-                          className="byok-model-remove"
-                          aria-label={t("settings.cli.byok.removeModel")}
-                          title={t("settings.cli.byok.removeModel")}
-                          onClick={() =>
-                            setByokModels((models) =>
-                              models.filter(
-                                (_, entryIndex) => entryIndex !== index
+                        {selectedProvider ? (
+                          <span aria-hidden="true" />
+                        ) : (
+                          <button
+                            type="button"
+                            className="byok-model-remove"
+                            aria-label={t("settings.cli.byok.removeModel")}
+                            title={t("settings.cli.byok.removeModel")}
+                            onClick={() =>
+                              setByokModels((models) =>
+                                models.filter(
+                                  (_, entryIndex) => entryIndex !== index
+                                )
                               )
-                            )
-                          }
-                        >
-                          <Trash2 size={15} aria-hidden="true" />
-                        </button>
+                            }
+                          >
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                        )}
                       </div>
                     ))}
-                    <button
-                      type="button"
-                      className="byok-model-add"
-                      onClick={() =>
-                        setByokModels((models) => [
-                          ...models,
-                          { id: "", name: "", supportsVision: isCodex }
-                        ])
-                      }
-                    >
-                      <Plus size={15} aria-hidden="true" />
-                      {t("settings.cli.byok.addModel")}
-                    </button>
+                    {!selectedProvider && (
+                      <button
+                        type="button"
+                        className="byok-model-add"
+                        onClick={() =>
+                          setByokModels((models) => [
+                            ...models,
+                            { id: "", name: "", supportsVision: isCodex }
+                          ])
+                        }
+                      >
+                        <Plus size={15} aria-hidden="true" />
+                        {t("settings.cli.byok.addModel")}
+                      </button>
+                    )}
                   </div>
                   <span className="settings-field-hint">
-                    {t(
-                      isCodex
-                        ? "settings.cli.byok.modelsHintCodex"
-                        : "settings.cli.byok.modelsHint"
-                    )}
+                    {selectedProvider
+                      ? selectedProvider.models.filter((m) => m.enabled !== false).length === 0
+                        ? t("settings.cli.byok.providerNoActiveModels")
+                        : t("settings.cli.byok.providerModelsHint", {
+                            name: selectedProvider.name
+                          })
+                      : t(
+                          isCodex
+                            ? "settings.cli.byok.modelsHintCodex"
+                            : "settings.cli.byok.modelsHint"
+                        )}
                   </span>
                 </div>
 

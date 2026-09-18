@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -126,7 +126,7 @@ export function ProviderEditor({
   const [baseUrl, setBaseUrl] = useState(
     initial?.baseUrl ?? PROTOCOL_CONFIG["openai-chat"].defaultUrl,
   );
-  const [envKey, setEnvKey] = useState(initial?.envKey ?? "");
+
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [keyCopied, setKeyCopied] = useState(false);
@@ -293,7 +293,42 @@ export function ProviderEditor({
     }
   };
 
-  const submit = async () => {
+  const connectionDirty = useMemo(() => {
+    if (!initial) return true;
+    if (name.trim() !== initial.name) return true;
+    if (baseUrl.trim() !== initial.baseUrl) return true;
+    if (apiKey.trim() !== "") return true;
+    const initProtos = initial.protocols?.length ? initial.protocols : [initial.protocol];
+    if (
+      initProtos.length !== selectedProtocols.length ||
+      !initProtos.every((p) => selectedProtocols.includes(p))
+    ) {
+      return true;
+    }
+    return false;
+  }, [initial, name, baseUrl, apiKey, selectedProtocols]);
+
+  const modelsDirty = useMemo(() => {
+    const initModels = initial?.models ?? [];
+    if (models.length !== initModels.length) return true;
+    const initMap = new Map(initModels.map((m) => [m.id, m]));
+    for (const m of models) {
+      const initM = initMap.get(m.id);
+      if (!initM) return true;
+      if ((m.enabled ?? true) !== (initM.enabled ?? true)) return true;
+      if (m.name !== initM.name) return true;
+      if (m.group !== initM.group) return true;
+      if (m.contextWindow !== initM.contextWindow) return true;
+      if (m.supportsTools !== initM.supportsTools) return true;
+      if (m.supportsReasoning !== initM.supportsReasoning) return true;
+      if (m.supportsVision !== initM.supportsVision) return true;
+    }
+    return false;
+  }, [initial?.models, models]);
+
+  const isDirty = connectionDirty || modelsDirty;
+
+  const submit = useCallback(async () => {
     if (models.length > 0 && !models.some((m) => m.enabled !== false)) {
       setError(t("providers.atLeastOneModelEnabled"));
       return;
@@ -308,7 +343,7 @@ export function ProviderEditor({
         protocol: primaryProtocol,
         protocols: selectedProtocols,
         baseUrl: baseUrl.trim(),
-        envKey: envKey.trim() || envPlaceholder,
+        envKey: envPlaceholder,
         apiKey: apiKey.trim() || undefined,
         models,
         wireApi: selectedProtocols.includes("openai-responses") ? "responses" : "chat",
@@ -319,7 +354,33 @@ export function ProviderEditor({
     } finally {
       setSaving(false);
     }
-  };
+  }, [
+    initial,
+    name,
+    primaryProtocol,
+    selectedProtocols,
+    baseUrl,
+    envPlaceholder,
+    apiKey,
+    models,
+    upsert,
+    onSaved,
+    t,
+  ]);
+
+  // Debounced auto-save when only models are modified on an existing provider
+  useEffect(() => {
+    if (!initial?.id || !modelsDirty || connectionDirty || saving) {
+      return;
+    }
+    if (models.length > 0 && !models.some((m) => m.enabled !== false)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      void submit();
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [initial?.id, modelsDirty, connectionDirty, saving, models, submit]);
 
   return (
     <div className="provider-detail-workspace">
@@ -377,7 +438,7 @@ export function ProviderEditor({
           </button>
           <button
             type="button"
-            className="provider-header-btn primary"
+            className={`provider-header-btn primary ${isDirty ? "dirty" : ""}`}
             disabled={saving || !name.trim() || !baseUrl.trim()}
             onClick={() => void submit()}
           >
@@ -397,150 +458,131 @@ export function ProviderEditor({
         </div>
       ) : null}
 
-      {/* Two-Column Grid: Left = Basic Config, Right = Dedicated Model Column */}
-      <div className="provider-editor-grid">
-        {/* Left Column: Connection & Credentials */}
-        <div className="provider-config-column">
-          <div className="provider-column-header">
-            <h4>{t("providers.basicSettings")}</h4>
-          </div>
-
-          {/* 1. Name */}
-          <label className="provider-form-label">
-            <span>{t("providers.name")}</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("providers.modelNamePlaceholder")}
-            />
-          </label>
-
-          {/* 2. Supported Protocols */}
-          <div className="provider-form-group">
-            <div className="provider-form-group-header">
-              <span className="provider-form-group-title">
-                {t("providers.supportedProtocols")}
-              </span>
-              <span className="provider-form-group-hint">
-                {t("providers.supportedProtocolsHint")}
-              </span>
-            </div>
-            <div className="provider-protocol-grid">
-              {PROTOCOLS.map((p) => {
-                const active = selectedProtocols.includes(p);
-                const cfg = PROTOCOL_CONFIG[p];
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`provider-protocol-card ${active ? "active" : ""}`}
-                    onClick={() => {
-                      toggleProtocol(p);
-                      if (!baseUrl && !active) {
-                        setBaseUrl(cfg.defaultUrl);
-                      }
-                    }}
-                  >
-                    <div className="protocol-card-head">
-                      <strong>{t(cfg.labelKey)}</strong>
-                      <div className={`protocol-checkbox ${active ? "checked" : ""}`}>
-                        {active ? <Check size={12} /> : null}
-                      </div>
-                    </div>
-                    <span className="protocol-card-desc">{t(cfg.descKey)}</span>
-                    <code className="protocol-card-id">{p}</code>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 3. Base URL */}
-          <label className="provider-form-label">
-            <span>{t("providers.baseUrl")}</span>
-            <input
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://..."
-            />
-          </label>
-
-          {/* 4. API Key */}
-          <div className="provider-form-label">
-            <div className="provider-key-label-row">
-              <span>{t("providers.apiKey")}</span>
-              {consoleUrl ? (
-                <a
-                  href={consoleUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="provider-key-console-link"
-                >
-                  {t("providers.getKey")}
-                  <ExternalLink size={12} />
-                </a>
-              ) : null}
-            </div>
-            <div className="provider-key-input-wrapper">
+      {/* Compact Config + Full-Width Model List */}
+      <div className="provider-editor-compact">
+        {/* Compact top config area */}
+        <div className="provider-compact-config">
+          {/* Row 1: Name + Protocol pills */}
+          <div className="provider-compact-row">
+            <label className="provider-compact-field provider-compact-name">
+              <span>{t("providers.name")}</span>
               <input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={keyPlaceholder}
-                autoComplete="off"
-                spellCheck={false}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t("providers.modelNamePlaceholder")}
               />
-              <div className="provider-key-actions">
-                <button
-                  type="button"
-                  className="provider-eye-btn"
-                  title={showKey ? t("providers.hideKey") : t("providers.showKey")}
-                  onClick={() => setShowKey(!showKey)}
-                >
-                  {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-                {(apiKey || initial?.hasKey) && (
-                  <button
-                    type="button"
-                    className="provider-eye-btn"
-                    title={keyCopied ? t("providers.keyCopied") : t("providers.copyKey")}
-                    onClick={() => void onCopyKey()}
-                  >
-                    {keyCopied ? (
-                      <Check size={14} className="copied-icon" />
-                    ) : (
-                      <Copy size={14} />
-                    )}
-                  </button>
-                )}
+            </label>
+            <div className="provider-compact-field provider-compact-protos">
+              <span>{t("providers.supportedProtocols")}</span>
+              <div className="provider-proto-pills">
+                {PROTOCOLS.map((p) => {
+                  const active = selectedProtocols.includes(p);
+                  const cfg = PROTOCOL_CONFIG[p];
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`provider-proto-pill ${active ? "active" : ""}`}
+                      onClick={() => {
+                        toggleProtocol(p);
+                        if (!baseUrl && !active) {
+                          setBaseUrl(cfg.defaultUrl);
+                        }
+                      }}
+                      title={t(cfg.descKey)}
+                    >
+                      <div className={`proto-pill-check ${active ? "checked" : ""}`}>
+                        {active ? <Check size={10} /> : null}
+                      </div>
+                      <span>{t(cfg.labelKey)}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          {/* 5. Fetch Models & Test Connection Actions */}
-          <div className="provider-action-buttons-wrap">
-            <div className="provider-action-buttons-row">
-              <button
-                type="button"
-                className="provider-secondary-btn"
-                disabled={fetchingModels || !baseUrl.trim() || (!apiKey.trim() && !initial?.hasKey)}
-                onClick={() => void onFetchModels()}
-              >
-                <Download
-                  size={14}
-                  className={fetchingModels ? "spinning" : ""}
-                  aria-hidden="true"
+          {/* Row 2: Base URL + API Key side by side */}
+          <div className="provider-compact-row">
+            <label className="provider-compact-field provider-compact-url">
+              <span>{t("providers.baseUrl")}</span>
+              <input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </label>
+            <div className="provider-compact-field provider-compact-key">
+              <div className="provider-key-label-row">
+                <span>{t("providers.apiKey")}</span>
+                {consoleUrl ? (
+                  <a
+                    href={consoleUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="provider-key-console-link"
+                  >
+                    {t("providers.getKey")}
+                    <ExternalLink size={12} />
+                  </a>
+                ) : null}
+              </div>
+              <div className="provider-key-input-wrapper">
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={keyPlaceholder}
+                  autoComplete="off"
+                  spellCheck={false}
                 />
-                {fetchingModels
-                  ? t("providers.fetchingModels")
-                  : t("providers.fetchModels")}
-              </button>
+                <div className="provider-key-actions">
+                  <button
+                    type="button"
+                    className="provider-eye-btn"
+                    title={showKey ? t("providers.hideKey") : t("providers.showKey")}
+                    onClick={() => setShowKey(!showKey)}
+                  >
+                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                  {(apiKey || initial?.hasKey) && (
+                    <button
+                      type="button"
+                      className="provider-eye-btn"
+                      title={keyCopied ? t("providers.keyCopied") : t("providers.copyKey")}
+                      onClick={() => void onCopyKey()}
+                    >
+                      {keyCopied ? (
+                        <Check size={14} className="copied-icon" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
+          </div>
 
+          {/* Row 3: Fetch button + test/message results */}
+          <div className="provider-compact-row provider-compact-footer">
+            <button
+              type="button"
+              className="provider-secondary-btn"
+              disabled={fetchingModels || !baseUrl.trim() || (!apiKey.trim() && !initial?.hasKey)}
+              onClick={() => void onFetchModels()}
+            >
+              <Download
+                size={14}
+                className={fetchingModels ? "spinning" : ""}
+                aria-hidden="true"
+              />
+              {fetchingModels
+                ? t("providers.fetchingModels")
+                : t("providers.fetchModels")}
+            </button>
             {testResult ? (
-              <div
-                className={`provider-test-pill ${testResult.ok ? "ok" : "error"}`}
-              >
+              <div className={`provider-test-pill ${testResult.ok ? "ok" : "error"}`}>
                 {testResult.ok ? (
                   <>
                     <CheckCircle2 size={14} />
@@ -559,38 +601,30 @@ export function ProviderEditor({
                 )}
               </div>
             ) : null}
+            {modelMessage ? (
+              <div
+                className={`provider-test-pill ${modelMessage.type === "success" ? "ok" : "error"}`}
+              >
+                {modelMessage.type === "success" ? (
+                  <CheckCircle2 size={14} />
+                ) : (
+                  <AlertTriangle size={14} />
+                )}
+                <span>{modelMessage.text}</span>
+              </div>
+            ) : null}
           </div>
-
-          {modelMessage ? (
-            <div
-              className={`provider-model-message ${modelMessage.type === "success" ? "ok" : "error"}`}
-            >
-              {modelMessage.type === "success" ? (
-                <CheckCircle2 size={14} />
-              ) : (
-                <AlertTriangle size={14} />
-              )}
-              <span>{modelMessage.text}</span>
-            </div>
-          ) : null}
-
-          {/* 6. Env Key (Advanced) */}
-          <label className="provider-form-label">
-            <span>{t("providers.envKey")}</span>
-            <input
-              value={envKey}
-              onChange={(e) => setEnvKey(e.target.value)}
-              placeholder={envPlaceholder}
-            />
-          </label>
         </div>
 
-        {/* Right Column: Dedicated Model Management Column */}
-        <div className="provider-models-column">
-          <div className="provider-column-header">
-            <h4>{t("providers.modelsColumn")}</h4>
-          </div>
-          <ProviderModelManager models={models} onChange={setModels} />
+        {/* Full-width Model Management */}
+        <div className="provider-compact-models">
+          <ProviderModelManager
+            models={models}
+            onChange={setModels}
+            isDirty={modelsDirty}
+            onSave={() => void submit()}
+            saving={saving}
+          />
         </div>
       </div>
     </div>

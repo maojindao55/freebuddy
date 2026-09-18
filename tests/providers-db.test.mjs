@@ -338,3 +338,98 @@ test("freebie preset import registers a provider and agent BYOK references it wi
 
   setDbForTest(null);
 });
+
+test("agent referencing provider resolves models dynamically from provider", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const providers = await import("../dist-electron/cli/providers.js");
+  const store = await import("../dist-electron/cli/store.js");
+  const db = new Database(":memory:");
+  setDbForTest(db);
+  migrate(db);
+
+  // 1. 创建服务商，带启用的模型和禁用的模型
+  const provider = providers.upsertProvider({
+    name: "硅基流动",
+    protocol: "openai-chat",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    envKey: "OPENAI_API_KEY",
+    apiKey: "sk-test-models",
+    models: [
+      { id: "model-active-1", name: "Active Model 1" },
+      { id: "model-disabled", name: "Disabled Model", enabled: false },
+      { id: "model-active-2", name: "Active Model 2", enabled: true },
+    ],
+  });
+
+  // 2. Agent 引用该服务商
+  store.upsertOverride({
+    id: "agent-dynamic-models",
+    baseAdapter: "codex-acp",
+    label: "Dynamic Models Agent",
+    codexByok: {
+      enabled: true,
+      providerId: provider.id,
+    },
+  });
+
+  // 3. hasCliByokModels 应该返回 true
+  assert.equal(
+    store.hasCliByokModels("cli-agent-dynamic-models", "codex-acp"),
+    true,
+    "hasCliByokModels should resolve via provider"
+  );
+
+  // 4. cliByokModelSignature 只应包含启用的模型
+  const signature = JSON.parse(
+    store.cliByokModelSignature("cli-agent-dynamic-models", "codex-acp")
+  );
+  assert.equal(signature.length, 2);
+  assert.deepEqual(
+    signature.map((m) => m.id),
+    ["model-active-1", "model-active-2"]
+  );
+
+  // 5. mergeCliByokModelOption 下拉选项应解析服务商启用模型
+  const initialOptions = [];
+  const mergedOptions = store.mergeCliByokModelOption(
+    "cli-agent-dynamic-models",
+    "codex-acp",
+    initialOptions
+  );
+  const modelOption = mergedOptions.find((opt) => opt.id === "model");
+  assert.ok(modelOption, "Model option should be added");
+  assert.deepEqual(
+    modelOption.values.map((v) => v.id),
+    ["model-active-1", "model-active-2"]
+  );
+
+  // 6. 服务商动态添加模型，Agent 自动感知无需重新保存
+  providers.upsertProvider({
+    id: provider.id,
+    name: "硅基流动",
+    protocol: "openai-chat",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    models: [
+      { id: "model-active-1", name: "Active Model 1" },
+      { id: "model-active-3", name: "Active Model 3" },
+    ],
+  });
+
+  const updatedOptions = store.mergeCliByokModelOption(
+    "cli-agent-dynamic-models",
+    "codex-acp",
+    initialOptions
+  );
+  const updatedModelOption = updatedOptions.find((opt) => opt.id === "model");
+  assert.deepEqual(
+    updatedModelOption.values.map((v) => v.id),
+    ["model-active-1", "model-active-3"],
+    "Options should dynamically reflect provider model updates"
+  );
+
+  setDbForTest(null);
+});

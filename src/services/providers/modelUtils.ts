@@ -338,16 +338,10 @@ export function inferModelCapabilities(
 }
 
 export function inferContextWindow(
-  modelId: string,
+  _modelId: string,
   configured?: number,
 ): number | undefined {
   if (configured && configured > 0) return configured;
-  const lower = modelId.toLowerCase();
-  if (/gemini-(1\.5|2\.0)/i.test(lower)) return 1000000;
-  if (/claude-(3|3-5|3-7)/i.test(lower)) return 200000;
-  if (/(gpt-4o|o1|o3|deepseek|qwen|glm-4|moonshot)/i.test(lower)) return 128000;
-  if (/gpt-4-turbo/i.test(lower)) return 128000;
-  if (/gpt-4/i.test(lower)) return 32768;
   return undefined;
 }
 

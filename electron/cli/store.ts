@@ -1129,19 +1129,28 @@ export function resolveCliByokEnv(
   );
 }
 
+function resolveByokForAdapter(
+  overrideId: string,
+  adapter: string
+): ResolvedCodexByok | ResolvedClaudeByok | ResolvedDeepSeekByok | undefined {
+  if (adapter === "codex-acp") {
+    return resolveByokWithProvider(overrideId, "codex");
+  }
+  if (adapter === "claude-agent-acp" || adapter === "claude") {
+    return resolveByokWithProvider(overrideId, "claude");
+  }
+  if (adapter === "dsh-acp") {
+    return resolveByokWithProvider(overrideId, "deepseek");
+  }
+  return undefined;
+}
+
 export function cliByokModelSignature(
   agentId: string,
   adapter: string
 ): string {
   const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
-  const byok =
-    adapter === "codex-acp"
-      ? readCodexByokPrivate(overrideId)
-      : adapter === "claude-agent-acp" || adapter === "claude"
-        ? readClaudeByokPrivate(overrideId)
-        : adapter === "dsh-acp"
-          ? readDeepSeekByokPrivate(overrideId)
-          : undefined;
+  const byok = resolveByokForAdapter(overrideId, adapter);
   return JSON.stringify(
     adapter === "codex-acp"
       ? normalizeCodexByokModels(byok?.models)
@@ -1151,14 +1160,7 @@ export function cliByokModelSignature(
 
 export function hasCliByokModels(agentId: string, adapter: string): boolean {
   const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
-  const byok =
-    adapter === "codex-acp"
-      ? readCodexByokPrivate(overrideId)
-      : adapter === "claude-agent-acp" || adapter === "claude"
-        ? readClaudeByokPrivate(overrideId)
-        : adapter === "dsh-acp"
-          ? readDeepSeekByokPrivate(overrideId)
-          : undefined;
+  const byok = resolveByokForAdapter(overrideId, adapter);
   return byok?.enabled === true && normalizeByokModels(byok.models).length > 0;
 }
 
@@ -1176,14 +1178,7 @@ export function mergeCliByokModelOption<T extends {
   selectedModel?: string
 ): T[] {
   const overrideId = agentId.startsWith("cli-") ? agentId.slice(4) : agentId;
-  const byok =
-    adapter === "codex-acp"
-      ? readCodexByokPrivate(overrideId)
-      : adapter === "claude-agent-acp" || adapter === "claude"
-        ? readClaudeByokPrivate(overrideId)
-        : adapter === "dsh-acp"
-          ? readDeepSeekByokPrivate(overrideId)
-          : undefined;
+  const byok = resolveByokForAdapter(overrideId, adapter);
   if (!byok?.enabled) return options;
   const models = normalizeByokModels(byok.models);
   if (!models.length) return options;

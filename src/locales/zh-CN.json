@@ -1150,6 +1150,8 @@
         "removeModel": "删除模型",
         "modelsHint": "可添加多个模型 ID；保存后可在对话的模型选择器中切换。",
         "modelsHintCodex": "默认开启图片输入，使直接图片附件与图片读取工具使用同一能力声明；纯文本服务请关闭。",
+        "providerModelsHint": "模型由服务商「{{name}}」统一管理，可在「服务商」设置中添加或启停模型。",
+        "providerNoActiveModels": "当前服务商未启用任何模型，请前往「服务商」开启至少一个模型。",
         "apiKeyPlaceholder": "粘贴 Key 以保存或替换",
         "newKeyHint": "保存后不会再显示明文。",
         "savedKeyHint": "已保存 {{preview}}；留空会继续使用当前 Key。",
@@ -2191,7 +2193,7 @@
     "protoOpenAiResponsesDesc": "OpenAI 新版 Responses API",
     "protoAnthropic": "Anthropic Claude",
     "protoAnthropicDesc": "Claude Messages API 协议",
-    "protoDeepSeek": "DeepSeek",
+    "protoDeepSeek": "DeepSeek Harness",
     "protoDeepSeekDesc": "DeepSeek 原生协议及推理模型",
     "enableThisModel": "在 BYOK 中启用",
     "enableThisModelHint": "禁用后，此模型不会出现在 Agent 的 BYOK 模型列表中",
@@ -2203,6 +2205,7 @@
     "groupEnabledCount": "{{enabled}}/{{total}} 启用",
     "enableGroup": "启用全组",
     "disableGroup": "禁用全组",
-    "atLeastOneModelEnabled": "请至少启用一个模型后再保存"
+    "atLeastOneModelEnabled": "请至少启用一个模型后再保存",
+    "unsavedModelsHint": "模型启用状态已更改，尚未保存"
   }
 }

@@ -35,6 +35,7 @@ import { useDelegationTeamStore } from "@/store/delegationStore";
 import { delegationClient } from "@/services/delegation/client";
 import { resolveDelegationFollowupMember } from "@/services/delegation/followupMember";
 import { useNewTaskUiStore } from "@/store/newTaskUiStore";
+import { useProviderStore } from "@/store/providerStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useProjectStore } from "@/store/projectStore";
 import {
@@ -944,6 +945,7 @@ export function ChatView({
   const executorsLoaded = useCliExecutorStore((s) => s.loaded);
   const executorOverrides = useCliExecutorStore((s) => s.overrides);
   const executorRuntimes = useCliExecutorStore((s) => s.runtimes);
+  const providers = useProviderStore((s) => s.providers);
 
   const [draft, setDraft] = useState("");
   const [historyReveal, setHistoryReveal] = useState(INITIAL_VISIBLE_MESSAGES);
@@ -1647,13 +1649,69 @@ export function ChatView({
     executorOverrides,
     availableAgentIds,
     members,
-    selectedMemberId
+    selectedMemberId,
+    providers
   ]);
 
   useEffect(() => {
     isNearBottomRef.current = true;
-    setActiveConversationConfigOptions(null);
   }, [activeId]);
+
+  // Keep active conversation composer options in sync when providers or agent config changes
+  useEffect(() => {
+    if (!activeId || !conv?.agentId) {
+      setActiveConversationConfigOptions(null);
+      return;
+    }
+    const member = members.find((entry) => entry.id === conv.agentId);
+    if (!member) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const resolved = useCliExecutorStore.getState().resolve(member.cli.adapter);
+        const probeInput = {
+          agentId: member.id,
+          adapter: member.cli.adapter,
+          binary: member.cli.binary || resolved?.binary,
+          extraArgs: [
+            ...(resolved?.extraArgs ?? []),
+            ...(member.cli.extraArgs ?? [])
+          ],
+          env: {
+            ...(resolved?.env ?? {}),
+            ...(member.cli.env ?? {})
+          },
+          cwd: conv.cwd || undefined,
+          configOptionOverrides: conv.configOptionOverrides
+        };
+
+        const cached = await cliClient.getCachedSessionConfigOptions(probeInput);
+        if (!cancelled && cached.length > 0) {
+          setActiveConversationConfigOptions(cached);
+        }
+
+        const fresh = await cliClient.inspectSessionConfigOptions(probeInput);
+        if (!cancelled && fresh.length > 0) {
+          setActiveConversationConfigOptions(fresh);
+        }
+      } catch {
+        // ignore best-effort probe failure
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeId,
+    conv?.agentId,
+    conv?.cwd,
+    conv?.configOptionOverrides,
+    providers,
+    executorOverrides,
+    members
+  ]);
 
   useEffect(() => {
     if (activeId) void loadWorkflowForConversation(activeId);

@@ -116,6 +116,15 @@ export function getModelBrand(modelId: string): ModelBrandMeta {
       border: "rgba(59, 130, 246, 0.28)",
     };
   }
+  if (/senseaudio/i.test(lower)) {
+    return {
+      name: "SenseAudio",
+      badge: "Sense",
+      color: "#6366f1",
+      bg: "rgba(99, 102, 241, 0.12)",
+      border: "rgba(99, 102, 241, 0.28)",
+    };
+  }
   // Fallback
   const initials = modelId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 2).toUpperCase() || "AI";
   return {
@@ -187,10 +196,22 @@ export function inferModelGroup(modelId: string, customGroup?: string): string {
   if (/deepseek/i.test(lower)) return "DeepSeek";
   if (/gemini|google/i.test(lower)) return "Gemini";
   if (/qwen/i.test(lower)) return "Qwen";
-  if (/llama|meta/i.test(lower)) return "Llama";
+  if (/(llama|meta)/i.test(lower)) return "Llama";
   if (/(mistral|codestral|pixtral|mixtral)/i.test(lower)) return "Mistral";
   if (/(kimi|moonshot)/i.test(lower)) return "Moonshot";
   if (/(glm|zhipu)/i.test(lower)) return "GLM";
+  if (/minimax|abab/i.test(lower)) return "MiniMax";
+  if (/baichuan/i.test(lower)) return "Baichuan";
+  if (/doubao|skylark/i.test(lower)) return "Doubao";
+  if (/senseaudio/i.test(lower)) return "SenseAudio";
+
+  // Check prefix before "-" or "/" or ":"
+  const match = modelId.match(/^([a-zA-Z0-9]+)[-_/:]/);
+  if (match && match[1] && match[1].length >= 3 && match[1].toLowerCase() !== "text") {
+    const prefix = match[1];
+    return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+  }
+
   return "Other";
 }
 

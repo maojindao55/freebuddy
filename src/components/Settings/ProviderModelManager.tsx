@@ -208,7 +208,16 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
       if (!groups[g]) groups[g] = [];
       groups[g].push(m);
     }
-    return groups;
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      return a.localeCompare(b);
+    });
+    const result: Record<string, ProviderModel[]> = {};
+    for (const k of sortedKeys) {
+      result[k] = groups[k];
+    }
+    return result;
   }, [filteredModels]);
 
   // Capability counts for tabs
@@ -349,9 +358,9 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
 
           {/* Search & Capability Filter Row */}
           {models.length > 0 && (
-            <div className="model-mgr-search-filter-row">
+            <div className="model-mgr-controls">
               <div className="model-mgr-search-wrap">
-                <Search size={13} className="model-mgr-search-icon" />
+                <Search size={14} className="model-mgr-search-icon" />
                 <input
                   type="text"
                   value={searchText}
@@ -365,61 +374,63 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                     className="model-mgr-search-clear"
                     onClick={() => setSearchText("")}
                   >
-                    <X size={11} />
+                    <X size={12} />
                   </button>
                 )}
               </div>
 
-              {/* Capability Tabs */}
-              <div className="model-mgr-cap-tabs">
-                <button
-                  type="button"
-                  className={`cap-tab ${capFilter === "all" ? "active" : ""}`}
-                  onClick={() => setCapFilter("all")}
-                >
-                  全部 ({counts.all})
-                </button>
-                <button
-                  type="button"
-                  className={`cap-tab ${capFilter === "reasoning" ? "active" : ""}`}
-                  onClick={() => setCapFilter("reasoning")}
-                >
-                  🧠 推理 ({counts.reasoning})
-                </button>
-                <button
-                  type="button"
-                  className={`cap-tab ${capFilter === "tools" ? "active" : ""}`}
-                  onClick={() => setCapFilter("tools")}
-                >
-                  🛠️ 工具 ({counts.tools})
-                </button>
-                <button
-                  type="button"
-                  className={`cap-tab ${capFilter === "vision" ? "active" : ""}`}
-                  onClick={() => setCapFilter("vision")}
-                >
-                  👁️ 视觉 ({counts.vision})
-                </button>
-                <button
-                  type="button"
-                  className={`cap-tab ${capFilter === "code" ? "active" : ""}`}
-                  onClick={() => setCapFilter("code")}
-                >
-                  💻 代码 ({counts.code})
-                </button>
-              </div>
+              {/* Capability Tabs & Group Toggle Row */}
+              <div className="model-mgr-filter-row">
+                <div className="model-mgr-cap-tabs">
+                  <button
+                    type="button"
+                    className={`cap-tab ${capFilter === "all" ? "active" : ""}`}
+                    onClick={() => setCapFilter("all")}
+                  >
+                    全部 ({counts.all})
+                  </button>
+                  <button
+                    type="button"
+                    className={`cap-tab ${capFilter === "reasoning" ? "active" : ""}`}
+                    onClick={() => setCapFilter("reasoning")}
+                  >
+                    🧠 推理 ({counts.reasoning})
+                  </button>
+                  <button
+                    type="button"
+                    className={`cap-tab ${capFilter === "tools" ? "active" : ""}`}
+                    onClick={() => setCapFilter("tools")}
+                  >
+                    🛠️ 工具 ({counts.tools})
+                  </button>
+                  <button
+                    type="button"
+                    className={`cap-tab ${capFilter === "vision" ? "active" : ""}`}
+                    onClick={() => setCapFilter("vision")}
+                  >
+                    👁️ 视觉 ({counts.vision})
+                  </button>
+                  <button
+                    type="button"
+                    className={`cap-tab ${capFilter === "code" ? "active" : ""}`}
+                    onClick={() => setCapFilter("code")}
+                  >
+                    💻 代码 ({counts.code})
+                  </button>
+                </div>
 
-              {/* Expand/Collapse All (for list view) */}
-              {viewMode === "list" && (
-                <button
-                  type="button"
-                  className="model-mgr-group-toggle-all"
-                  onClick={toggleAllGroups}
-                  title={allExpanded ? "全部收起" : "全部展开"}
-                >
-                  {allExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-                </button>
-              )}
+                {/* Expand/Collapse All (for list view) */}
+                {viewMode === "list" && (
+                  <button
+                    type="button"
+                    className="model-mgr-group-toggle-all"
+                    onClick={toggleAllGroups}
+                    title={allExpanded ? "全部收起" : "全部展开"}
+                  >
+                    {allExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

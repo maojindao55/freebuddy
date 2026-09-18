@@ -24116,7 +24116,7 @@ button.ghost:focus-visible,
 /* -- Provider Editor Modal ------------------------------------------------- */
 
 .provider-editor-modal {
-  width: min(600px, calc(100vw - 32px)) !important;
+  width: min(660px, calc(100vw - 32px)) !important;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -24631,32 +24631,30 @@ button.ghost:focus-visible,
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.model-mgr-search-filter-row {
+.model-mgr-controls {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .model-mgr-search-wrap {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1;
-  min-width: 140px;
+  width: 100%;
 }
 
 .model-mgr-search-icon {
   position: absolute;
-  left: 8px;
+  left: 9px;
   color: var(--fb-text-tertiary);
   pointer-events: none;
 }
 
 .model-mgr-search-input {
   width: 100%;
-  padding: 4px 24px 4px 26px;
-  font-size: 11.5px;
+  padding: 6px 28px 6px 30px;
+  font-size: 12px;
   border-radius: 6px;
   border: 1px solid var(--fb-border);
   background: var(--fb-panel-bg);
@@ -24683,11 +24681,23 @@ button.ghost:focus-visible,
   cursor: pointer;
 }
 
+.model-mgr-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .model-mgr-cap-tabs {
   display: flex;
   align-items: center;
   gap: 4px;
   overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.model-mgr-cap-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .cap-tab {
@@ -24727,6 +24737,7 @@ button.ghost:focus-visible,
   color: var(--fb-text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .model-mgr-group-toggle-all:hover {
@@ -24738,13 +24749,14 @@ button.ghost:focus-visible,
 .model-mgr-groups-container {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 290px;
+  gap: 8px;
+  max-height: 350px;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 4px;
 }
 
 .model-mgr-group {
+  flex-shrink: 0;
   border: 1px solid var(--fb-border);
   border-radius: 8px;
   background: var(--fb-panel-soft);
@@ -24752,6 +24764,8 @@ button.ghost:focus-visible,
 }
 
 .model-mgr-group-header {
+  flex-shrink: 0;
+  min-height: 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -24792,6 +24806,8 @@ button.ghost:focus-visible,
 }
 
 .model-mgr-row-card {
+  flex-shrink: 0;
+  min-height: 38px;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -94,6 +94,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
         supportsReasoning: caps.reasoning,
         supportsVision: caps.vision,
         group: inferModelGroup(clean),
+        enabled: false,
       };
       onChange([...models, newEntry]);
       setNewModelId("");
@@ -184,6 +185,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
         supportsReasoning: caps.reasoning,
         supportsVision: caps.vision,
         group: inferModelGroup(id),
+        enabled: false,
       };
     });
 

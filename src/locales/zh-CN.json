@@ -2201,6 +2201,7 @@
     "disableAll": "全部禁用",
     "groupEnabledCount": "{{enabled}}/{{total}} 启用",
     "enableGroup": "启用全组",
-    "disableGroup": "禁用全组"
+    "disableGroup": "禁用全组",
+    "atLeastOneModelEnabled": "请至少启用一个模型后再保存"
   }
 }

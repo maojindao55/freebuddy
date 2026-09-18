@@ -261,6 +261,7 @@ export function ProviderEditor({
               supportsReasoning: caps.reasoning,
               supportsVision: caps.vision,
               group: inferModelGroup(id),
+              enabled: false,
             });
           }
         }
@@ -293,6 +294,10 @@ export function ProviderEditor({
   };
 
   const submit = async () => {
+    if (models.length > 0 && !models.some((m) => m.enabled !== false)) {
+      setError(t("providers.atLeastOneModelEnabled"));
+      return;
+    }
     setSaving(true);
     setError("");
     try {

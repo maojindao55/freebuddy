@@ -2214,6 +2214,7 @@
     "disableAll": "Disable All",
     "groupEnabledCount": "{{enabled}}/{{total}} enabled",
     "enableGroup": "Enable Group",
-    "disableGroup": "Disable Group"
+    "disableGroup": "Disable Group",
+    "atLeastOneModelEnabled": "Please enable at least one model before saving"
   }
 }

@@ -3,7 +3,17 @@ import { decryptSecret, encryptSecret, redactApiKey } from "./store.js";
 
 export type ProviderProtocol = "openai-chat" | "openai-responses" | "anthropic" | "deepseek";
 
-export interface ProviderModel { id: string; name?: string; contextWindow?: number; supportsVision?: boolean; }
+export interface ProviderModel {
+  id: string;
+  name?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  supportsVision?: boolean;
+  supportsReasoning?: boolean;
+  supportsTools?: boolean;
+  group?: string;
+  enabled?: boolean;
+}
 
 export interface ProviderRecord {
   id: string; presetId?: string; name: string;
@@ -59,6 +69,7 @@ function parseModels(raw: string | null): ProviderModel[] {
       ...(typeof m.supportsReasoning === "boolean" ? { supportsReasoning: m.supportsReasoning } : {}),
       ...(typeof m.supportsTools === "boolean" ? { supportsTools: m.supportsTools } : {}),
       ...(typeof m.group === "string" ? { group: m.group } : {}),
+      ...(typeof m.enabled === "boolean" ? { enabled: m.enabled } : {}),
     }));
   } catch { return []; }
 }

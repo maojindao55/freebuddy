@@ -25908,3 +25908,171 @@ button.ghost:focus-visible,
   font-size: 11px;
   line-height: 1.4;
 }
+
+/* -- Model Toggle Switch (iOS-style) --------------------------------------- */
+
+.model-toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.model-toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.model-toggle-slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  background: var(--fb-border-strong);
+  transition: background 0.18s ease;
+}
+
+.model-toggle-slider::before {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.18s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.model-toggle-switch input:checked + .model-toggle-slider {
+  background: var(--fb-brand);
+}
+
+.model-toggle-switch input:checked + .model-toggle-slider::before {
+  transform: translateX(14px);
+}
+
+/* Mini variant for tag cards */
+.model-toggle-switch.mini {
+  width: 24px;
+  height: 14px;
+}
+
+.model-toggle-switch.mini .model-toggle-slider::before {
+  width: 9px;
+  height: 9px;
+  top: 2.5px;
+  left: 2.5px;
+}
+
+.model-toggle-switch.mini input:checked + .model-toggle-slider::before {
+  transform: translateX(10px);
+}
+
+/* -- Model Config Drawer: enable row --------------------------------------- */
+
+.model-config-enable-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+}
+
+.model-config-enable-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.model-config-enable-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+
+.model-config-enable-desc {
+  font-size: 11px;
+  color: var(--fb-text-secondary);
+  line-height: 1.4;
+}
+
+/* -- Model Manager: enabled badge ------------------------------------------ */
+
+.model-mgr-enabled-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  border: 1px solid color-mix(in srgb, var(--fb-brand) 25%, transparent);
+}
+
+.model-mgr-enabled-badge.zero {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+/* -- Model Manager: group actions ------------------------------------------ */
+
+.model-mgr-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.model-group-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--fb-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.model-group-switch-btn:hover {
+  border-color: var(--fb-brand);
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
+.model-group-switch-btn.active {
+  color: var(--fb-brand);
+  border-color: color-mix(in srgb, var(--fb-brand) 30%, transparent);
+}
+
+.group-enabled-count {
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+  font-weight: 400;
+}
+
+/* -- Disabled model rows --------------------------------------------------- */
+
+.model-mgr-row-card.disabled {
+  opacity: 0.45;
+}
+
+.model-mgr-tag-card.disabled {
+  opacity: 0.45;
+}
+

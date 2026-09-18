@@ -2191,6 +2191,16 @@
     "protoAnthropic": "Anthropic Claude",
     "protoAnthropicDesc": "Claude Messages API 协议",
     "protoDeepSeek": "DeepSeek",
-    "protoDeepSeekDesc": "DeepSeek 原生协议及推理模型"
+    "protoDeepSeekDesc": "DeepSeek 原生协议及推理模型",
+    "enableThisModel": "在 BYOK 中启用",
+    "enableThisModelHint": "禁用后，此模型不会出现在 Agent 的 BYOK 模型列表中",
+    "modelEnabled": "已启用",
+    "modelDisabled": "已禁用（不参与 BYOK）",
+    "enabledCount": "启用 {{enabled}}/{{total}}",
+    "enableAll": "全部启用",
+    "disableAll": "全部禁用",
+    "groupEnabledCount": "{{enabled}}/{{total}} 启用",
+    "enableGroup": "启用全组",
+    "disableGroup": "禁用全组"
   }
 }

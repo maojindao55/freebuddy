@@ -1005,7 +1005,8 @@ function EditOverridePanel({
   const [byokModels, setByokModels] = useState<ByokModelDraft[]>(() => {
     if (savedByok?.models?.length) return savedByok.models;
     if (selectedProvider?.models?.length) {
-      return selectedProvider.models.map((m) => ({
+      const active = selectedProvider.models.filter((m) => m.enabled !== false);
+      return active.map((m) => ({
         id: m.id,
         name: m.name ?? "",
         contextWindow: m.contextWindow,
@@ -1045,16 +1046,17 @@ function EditOverridePanel({
 
   useEffect(() => {
     if (selectedProvider && byokModels.length === 0 && selectedProvider.models.length > 0) {
+      const active = selectedProvider.models.filter((m) => m.enabled !== false);
       setByokModels(
-        selectedProvider.models.map((m) => ({
+        active.map((m) => ({
           id: m.id,
           name: m.name ?? "",
           contextWindow: m.contextWindow,
           supportsVision: m.supportsVision
         }))
       );
-      if (!model.trim() && selectedProvider.models[0]?.id) {
-        setModel(selectedProvider.models[0].id);
+      if (!model.trim() && active[0]?.id) {
+        setModel(active[0].id);
       }
     }
   }, [selectedProvider, byokModels.length, model]);
@@ -1444,16 +1446,17 @@ function EditOverridePanel({
                           }
                           setCodexBaseUrl(p.baseUrl);
                           setCodexEnvKey(p.envKey);
+                          const active = p.models.filter((m) => m.enabled !== false);
                           setByokModels(
-                            p.models.map((m) => ({
+                            active.map((m) => ({
                               id: m.id,
                               name: m.name ?? "",
                               contextWindow: m.contextWindow,
                               supportsVision: m.supportsVision
                             }))
                           );
-                          if (!model.trim() && p.models[0]?.id) {
-                            setModel(p.models[0].id);
+                          if (!model.trim() && active[0]?.id) {
+                            setModel(active[0].id);
                           }
                         }
                       }

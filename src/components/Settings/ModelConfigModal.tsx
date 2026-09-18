@@ -75,6 +75,7 @@ const ModelConfigDrawerContent: React.FC<ModelConfigDrawerContentProps> = ({
   const [supportsVision, setSupportsVision] = useState<boolean>(
     model.supportsVision ?? inferredCaps.vision,
   );
+  const [enabled, setEnabled] = useState<boolean>(model.enabled !== false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +84,7 @@ const ModelConfigDrawerContent: React.FC<ModelConfigDrawerContentProps> = ({
 
     const updated: ProviderModel = {
       ...model,
+      enabled,
       name: displayName.trim() || undefined,
       group: group.trim() || undefined,
       contextWindow: !isNaN(ctxNum) && ctxNum > 0 ? ctxNum : undefined,
@@ -134,6 +136,22 @@ const ModelConfigDrawerContent: React.FC<ModelConfigDrawerContentProps> = ({
                   {brand.name} {t("providers.series")}
                 </span>
               </div>
+            </div>
+
+            {/* Enable Toggle Row */}
+            <div className="model-config-enable-row">
+              <div className="model-config-enable-info">
+                <span className="model-config-enable-title">{t("providers.enableThisModel")}</span>
+                <span className="model-config-enable-desc">{t("providers.enableThisModelHint")}</span>
+              </div>
+              <label className="model-toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                />
+                <span className="model-toggle-slider" />
+              </label>
             </div>
 
             {/* Display Name */}

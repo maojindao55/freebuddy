@@ -2204,6 +2204,16 @@
     "protoAnthropic": "Anthropic Claude",
     "protoAnthropicDesc": "Claude Messages API protocol",
     "protoDeepSeek": "DeepSeek",
-    "protoDeepSeekDesc": "DeepSeek native protocol & reasoning"
+    "protoDeepSeekDesc": "DeepSeek native protocol & reasoning",
+    "enableThisModel": "Enable for BYOK",
+    "enableThisModelHint": "When disabled, this model won't appear in Agent BYOK model lists",
+    "modelEnabled": "Enabled",
+    "modelDisabled": "Disabled (excluded from BYOK)",
+    "enabledCount": "Enabled {{enabled}}/{{total}}",
+    "enableAll": "Enable All",
+    "disableAll": "Disable All",
+    "groupEnabledCount": "{{enabled}}/{{total}} enabled",
+    "enableGroup": "Enable Group",
+    "disableGroup": "Disable Group"
   }
 }

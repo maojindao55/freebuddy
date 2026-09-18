@@ -460,7 +460,9 @@ function providerModelsOf(rec: Record<string, unknown>): CLIByokModel[] {
     const raw = rec.models;
     const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (!Array.isArray(arr)) return [];
-    return arr.filter((m): m is CLIByokModel => !!m && typeof (m as CLIByokModel).id === "string");
+    return arr
+      .filter((m): m is CLIByokModel & { enabled?: boolean } => !!m && typeof (m as CLIByokModel).id === "string")
+      .filter((m) => m.enabled !== false);
   } catch {
     return [];
   }

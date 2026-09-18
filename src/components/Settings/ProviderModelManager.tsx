@@ -20,6 +20,11 @@ import {
   LayoutList,
   Tags,
   FileText,
+  ToggleLeft,
+  ToggleRight,
+  CheckSquare,
+  Square,
+  MinusSquare,
 } from "lucide-react";
 import type { ProviderModel } from "@/services/providers/types";
 import {
@@ -108,6 +113,45 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
   const handleSaveModelConfig = useCallback(
     (updated: ProviderModel) => {
       onChange(models.map((m) => (m.id === updated.id ? updated : m)));
+    },
+    [models, onChange],
+  );
+
+  // Toggle model enabled state
+  const handleToggleModelEnabled = useCallback(
+    (id: string) => {
+      onChange(
+        models.map((m) => {
+          if (m.id === id) {
+            return { ...m, enabled: m.enabled === false ? true : false };
+          }
+          return m;
+        }),
+      );
+    },
+    [models, onChange],
+  );
+
+  // Toggle all models enabled
+  const handleToggleAll = useCallback(
+    (enable: boolean) => {
+      onChange(models.map((m) => ({ ...m, enabled: enable })));
+    },
+    [models, onChange],
+  );
+
+  // Toggle all models in a group
+  const handleToggleGroup = useCallback(
+    (groupName: string, enable: boolean) => {
+      onChange(
+        models.map((m) => {
+          const g = inferModelGroup(m.id, m.group);
+          if (g === groupName) {
+            return { ...m, enabled: enable };
+          }
+          return m;
+        }),
+      );
     },
     [models, onChange],
   );
@@ -238,6 +282,11 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
     return c;
   }, [models]);
 
+  const enabledCount = useMemo(
+    () => models.filter((m) => m.enabled !== false).length,
+    [models],
+  );
+
   return (
     <div className="provider-model-manager">
       {/* 1. Header Toolbar */}
@@ -245,6 +294,9 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
         <div className="model-mgr-toolbar-left">
           <span className="model-mgr-count-badge">
             {t("providers.modelTotalCount")} ({models.length})
+          </span>
+          <span className={`model-mgr-enabled-badge ${enabledCount === 0 ? "zero" : ""}`}>
+            {t("providers.enabledCount", { enabled: enabledCount, total: models.length })}
           </span>
           {filteredModels.length !== models.length && (
             <span className="model-mgr-filtered-badge">
@@ -255,15 +307,35 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
 
         <div className="model-mgr-toolbar-right">
           {models.length > 0 && viewMode !== "batch" && (
-            <button
-              type="button"
-              className="provider-text-btn danger"
-              onClick={() => onChange([])}
-              title={t("providers.clearModels")}
-            >
-              <Trash2 size={12} />
-              {t("providers.clearModels")}
-            </button>
+            <>
+              <button
+                type="button"
+                className="provider-text-btn"
+                onClick={() => handleToggleAll(enabledCount < models.length)}
+                title={enabledCount === models.length ? t("providers.disableAll") : t("providers.enableAll")}
+              >
+                {enabledCount === models.length ? (
+                  <>
+                    <ToggleLeft size={13} />
+                    <span>{t("providers.disableAll")}</span>
+                  </>
+                ) : (
+                  <>
+                    <ToggleRight size={13} />
+                    <span>{t("providers.enableAll")}</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className="provider-text-btn danger"
+                onClick={() => onChange([])}
+                title={t("providers.clearModels")}
+              >
+                <Trash2 size={12} />
+                <span>{t("providers.clearModels")}</span>
+              </button>
+            </>
           )}
 
           {/* View mode buttons */}
@@ -450,7 +522,19 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                   supportsVision: m.supportsVision,
                 });
                 return (
-                  <div key={m.id} className="model-mgr-tag-card">
+                  <div key={m.id} className={`model-mgr-tag-card ${m.enabled === false ? "disabled" : ""}`}>
+                    <label
+                      className="model-toggle-switch mini"
+                      title={m.enabled !== false ? t("providers.modelEnabled") : t("providers.modelDisabled")}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={m.enabled !== false}
+                        onChange={() => handleToggleModelEnabled(m.id)}
+                      />
+                      <span className="model-toggle-slider" />
+                    </label>
                     <ProviderBrandIcon
                       nameOrId={m.id}
                       size={16}
@@ -502,6 +586,38 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                         )}
                         <span className="group-name">{groupName}</span>
                         <span className="group-count">({groupList.length})</span>
+                        <span className="group-enabled-count">
+                          · {t("providers.groupEnabledCount", {
+                            enabled: groupList.filter((m) => m.enabled !== false).length,
+                            total: groupList.length
+                          })}
+                        </span>
+                      </div>
+                      <div
+                        className="model-mgr-group-actions"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {(() => {
+                          const grpActive = groupList.filter((m) => m.enabled !== false).length;
+                          const allOn = grpActive === groupList.length;
+                          return (
+                            <button
+                              type="button"
+                              className={`model-group-switch-btn ${grpActive > 0 ? "active" : ""}`}
+                              onClick={() => handleToggleGroup(groupName, !allOn)}
+                              title={allOn ? t("providers.disableGroup") : t("providers.enableGroup")}
+                            >
+                              {allOn ? (
+                                <CheckSquare size={13} />
+                              ) : grpActive > 0 ? (
+                                <MinusSquare size={13} />
+                              ) : (
+                                <Square size={13} />
+                              )}
+                              <span>{allOn ? t("providers.disableGroup") : t("providers.enableGroup")}</span>
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -520,7 +636,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                           const isCopied = copiedId === m.id;
 
                           return (
-                            <div key={m.id} className="model-mgr-row-card">
+                            <div key={m.id} className={`model-mgr-row-card ${m.enabled === false ? "disabled" : ""}`}>
                               {/* Left: Brand Avatar + Name / ID */}
                               <div className="model-row-left">
                                 <ProviderBrandIcon
@@ -582,6 +698,18 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
 
                               {/* Right: Actions */}
                               <div className="model-row-actions">
+                                <label
+                                  className="model-toggle-switch"
+                                  title={m.enabled !== false ? t("providers.modelEnabled") : t("providers.modelDisabled")}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={m.enabled !== false}
+                                    onChange={() => handleToggleModelEnabled(m.id)}
+                                  />
+                                  <span className="model-toggle-slider" />
+                                </label>
                                 <button
                                   type="button"
                                   className="model-action-btn"

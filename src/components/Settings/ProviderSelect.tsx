@@ -31,11 +31,14 @@ export function ProviderSelect({ adapter, value, onChange }: {
           onChange={(e) => onChange(e.target.value || undefined)}
         >
           <option value="">{t("providers.custom")}</option>
-          {options.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} ({p.models.length} models{p.apiKeyPreview ? ` · ${p.apiKeyPreview}` : ""})
-            </option>
-          ))}
+          {options.map((p) => {
+            const activeCount = p.models.filter((m) => m.enabled !== false).length;
+            return (
+              <option key={p.id} value={p.id}>
+                {p.name} ({activeCount} models{p.apiKeyPreview ? ` · ${p.apiKeyPreview}` : ""})
+              </option>
+            );
+          })}
         </select>
       </label>
       {selected ? (

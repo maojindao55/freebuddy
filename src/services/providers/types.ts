@@ -36,6 +36,7 @@ export interface ProviderModel {
   supportsReasoning?: boolean;
   supportsTools?: boolean;
   group?: string;
+  enabled?: boolean;
 }
 
 export interface ProviderWebsites {

@@ -7,6 +7,7 @@ import { cliClient } from "@/services/cli/client";
 import {
   buildFreebieOverride,
   defaultEnvKeyForAdapter,
+  defaultEnvKeyForProtocol,
   normalizeFreebieIcon,
   resolveAvailableAgents,
   type FreebieBaseAdapter
@@ -14,6 +15,7 @@ import {
 import type { FreebieProviderPreset } from "@/services/freebie/protocol";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
+import { useProviderStore } from "@/store/providerStore";
 import { resolveLobehubAvatarUrl } from "@/utils/lobehubAvatar";
 
 const RUNTIME_LABEL: Record<string, string> = {
@@ -47,6 +49,24 @@ export function FreebieImportDialog({
   const upsertOverride = useCliExecutorStore((s) => s.upsertOverride);
   const refreshMembers = useConversationStore((s) => s.refreshMembers);
   const runtimes = useCliExecutorStore((s) => s.runtimes);
+
+  const providers = useProviderStore((s) => s.providers);
+  const providersLoaded = useProviderStore((s) => s.loaded);
+  const loadProviders = useProviderStore((s) => s.load);
+  const upsertProvider = useProviderStore((s) => s.upsert);
+
+  useEffect(() => {
+    if (!providersLoaded) void loadProviders();
+  }, [providersLoaded, loadProviders]);
+
+  const existingProvider = useMemo(() => {
+    const cleanUrl = preset.baseUrl.replace(/\/+$/, "");
+    return providers.find(
+      (p) =>
+        (p.presetId && p.presetId === preset.id) ||
+        p.baseUrl.replace(/\/+$/, "") === cleanUrl
+    );
+  }, [providers, preset]);
 
   const availableAgents = useMemo(
     () => resolveAvailableAgents(preset.protocols, preset.protocol),
@@ -117,19 +137,51 @@ export function FreebieImportDialog({
     );
   };
 
-  const canSubmit = apiKey.trim().length > 0 && selectedModelIds.length > 0 && !saving;
+  const hasValidKey = apiKey.trim().length > 0 || Boolean(existingProvider?.hasKey);
+  const canSubmit = hasValidKey && selectedModelIds.length > 0 && !saving;
 
   const submit = async () => {
     if (!canSubmit) return;
     setSaving(true);
     setError(null);
     try {
+      const trimmedKey = apiKey.trim();
+      const existingModels = existingProvider?.models ?? [];
+      const presetModels = preset.models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        contextWindow: m.contextWindow,
+        supportsVision: m.supportsVision
+      }));
+      const presetModelIds = new Set(presetModels.map((m) => m.id));
+      const mergedModels = [
+        ...presetModels,
+        ...existingModels.filter((m) => !presetModelIds.has(m.id))
+      ];
+
+      // 1. 将免费站预设创建或更新为 Provider，由主进程安全加密存储 Key
+      const provider = await upsertProvider({
+        id: existingProvider?.id,
+        presetId: preset.id,
+        name: preset.name,
+        protocol: preset.protocol,
+        protocols: preset.protocols?.length ? preset.protocols : [preset.protocol],
+        baseUrl: preset.baseUrl,
+        envKey: preset.envKey ?? defaultEnvKeyForProtocol(preset.protocol),
+        apiKey: trimmedKey || undefined,
+        models: mergedModels,
+        contextWindow: preset.contextWindow,
+        icon: avatar || normalizeFreebieIcon(preset.icon),
+        wireApi: preset.protocol === "openai-responses" ? "responses" : "chat"
+      });
+
+      // 2. 创建 Agent override，BYOK 仅存储 providerId 引用
       const ordered = preset.models
         .map((model) => model.id)
         .filter((id) => selectedModelIds.includes(id));
       const override = buildFreebieOverride({
         preset,
-        apiKey,
+        providerId: provider.id,
         modelIds: ordered,
         label: t("freebie.agentLabel", { name: preset.name }),
         baseAdapter: selectedAdapter,
@@ -327,10 +379,16 @@ export function FreebieImportDialog({
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void submit();
                 }}
-                placeholder={t("freebie.import.apiKeyPlaceholder")}
+                placeholder={
+                  existingProvider?.apiKeyPreview
+                    ? t("providers.savedKeyHint", { preview: existingProvider.apiKeyPreview })
+                    : t("freebie.import.apiKeyPlaceholder")
+                }
               />
               <small>
-                {t("freebie.import.apiKeyHint")}
+                {existingProvider?.hasKey
+                  ? t("providers.savedKeyHint", { preview: existingProvider.apiKeyPreview })
+                  : t("freebie.import.apiKeyHint")}
                 {preset.consoleUrl ? (
                   <>
                     {" "}

@@ -279,3 +279,62 @@ test("legacy freebie-* overrides migrate to providers", async (t) => {
   assert.equal(list.find((x) => x.id === "freebie-siliconflow-abc123")?.presetId, "siliconflow");
   setDbForTest(null);
 });
+
+test("freebie preset import registers a provider and agent BYOK references it without plaintext key", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const providers = await import("../dist-electron/cli/providers.js");
+  const store = await import("../dist-electron/cli/store.js");
+  const db = new Database(":memory:");
+  setDbForTest(db);
+  migrate(db);
+
+  // 1. 模拟 Freebie 一键导入创建 Provider
+  const provider = providers.upsertProvider({
+    presetId: "siliconflow",
+    name: "硅基流动",
+    protocol: "openai-chat",
+    protocols: ["openai-chat", "deepseek"],
+    baseUrl: "https://api.siliconflow.cn/v1",
+    envKey: "OPENAI_API_KEY",
+    apiKey: "sk-silicon-secret-12345",
+    models: [{ id: "deepseek-ai/DeepSeek-V3", name: "DeepSeek V3" }],
+  });
+  assert.equal(provider.presetId, "siliconflow");
+  assert.equal(provider.hasKey, true);
+
+  // 2. 模拟创建的 Agent Override：仅保存 providerId 引用，绝无明文 Key
+  store.upsertOverride({
+    id: "freebie-siliconflow-xyz789",
+    baseAdapter: "codex-acp",
+    label: "硅基流动 Agent",
+    codexByok: {
+      enabled: true,
+      providerId: provider.id,
+      providerName: "硅基流动",
+    },
+  });
+
+  // 3. 运行期解析：主进程自动合并服务商的 Key 和 BaseUrl
+  const env = store.resolveCodexByokEnv("cli-freebie-siliconflow-xyz789", "codex-acp");
+  assert.ok(env, "Codex env should resolve");
+  assert.equal(env?.["OPENAI_API_KEY"], "sk-silicon-secret-12345");
+  assert.match(env?.["CODEX_CONFIG"] ?? "", /api\.siliconflow\.cn/);
+
+  // 4. 重复导入/编辑：提供原 id 可就地更新 Key，Agent 自动感知
+  providers.upsertProvider({
+    id: provider.id,
+    presetId: "siliconflow",
+    name: "硅基流动",
+    protocol: "openai-chat",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    apiKey: "sk-silicon-secret-rotated",
+  });
+  const envRotated = store.resolveCodexByokEnv("cli-freebie-siliconflow-xyz789", "codex-acp");
+  assert.equal(envRotated?.["OPENAI_API_KEY"], "sk-silicon-secret-rotated");
+
+  setDbForTest(null);
+});

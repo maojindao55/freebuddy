@@ -298,6 +298,37 @@ test("resolveAvailableAgents maps provider protocols to compatible runtimes", as
   assert.deepEqual(multiOptions.map((o) => o.adapter), ["codex-acp", "dsh-acp", "claude-agent-acp"]);
 });
 
+test("buildFreebieOverride with providerId references provider without embedding plaintext key", async () => {
+  const mod = await loadPresetToOverride();
+  const { validateFreebiePreset } = await loadProtocol();
+  const preset = validateFreebiePreset(validPreset).value;
+
+  const codex = mod.buildFreebieOverride({
+    preset,
+    providerId: "provider-zhipu-123456",
+    label: "智谱（服务商引用）"
+  });
+  assert.equal(codex.codexByok.providerId, "provider-zhipu-123456");
+  assert.equal(codex.codexByok.apiKey, undefined, "引用模式下不应内联明文 Key");
+  assert.equal(codex.codexByok.baseUrl, undefined, "引用模式下 baseUrl 应交由运行时从 provider 表合并");
+
+  const claude = mod.buildFreebieOverride({
+    preset: { ...preset, protocol: "anthropic" },
+    providerId: "provider-claude-999999",
+    label: "Claude 服务商引用"
+  });
+  assert.equal(claude.claudeByok.providerId, "provider-claude-999999");
+  assert.equal(claude.claudeByok.apiKey, undefined);
+
+  const deepseek = mod.buildFreebieOverride({
+    preset: { ...preset, protocol: "deepseek" },
+    providerId: "provider-dsh-888888",
+    label: "DeepSeek 服务商引用"
+  });
+  assert.equal(deepseek.deepseekByok.providerId, "provider-dsh-888888");
+  assert.equal(deepseek.deepseekByok.apiKey, undefined);
+});
+
 test("freebie override ids round-trip the provider slug", async () => {
   const mod = await loadPresetToOverride();
   assert.equal(mod.freebieProviderIdFromOverrideId("freebie-zhipu-abc123"), "zhipu");
@@ -307,6 +338,11 @@ test("freebie override ids round-trip the provider slug", async () => {
   assert.deepEqual(
     mod.importedFreebieProviderIds(["freebie-zhipu-abc123", "freebie-zhipu-def456", "codex-acp", "freebie-groq-000000"]),
     ["groq", "zhipu"]
+  );
+  // Also supports providerPresets
+  assert.deepEqual(
+    mod.importedFreebieProviderIds(["freebie-zhipu-abc123"], ["siliconflow", "zhipu", undefined]),
+    ["siliconflow", "zhipu"]
   );
 });
 

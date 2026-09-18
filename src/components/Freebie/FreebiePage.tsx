@@ -15,6 +15,7 @@ import {
 } from "@/services/freebie/presetToOverride";
 import type { FreebieHostState, FreebieProviderPreset } from "@/services/freebie/protocol";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useProviderStore } from "@/store/providerStore";
 import { useSettingsStore } from "@/store/settingsStore";
 
 import { FreebieFallbackList } from "./FreebieFallbackList";
@@ -40,20 +41,31 @@ export function FreebiePage({
   const executorsLoaded = useCliExecutorStore((s) => s.loaded);
   const loadExecutors = useCliExecutorStore((s) => s.load);
 
+  const providers = useProviderStore((s) => s.providers);
+  const providersLoaded = useProviderStore((s) => s.loaded);
+  const loadProviders = useProviderStore((s) => s.load);
+
   useEffect(() => {
     if (!executorsLoaded) void loadExecutors();
   }, [executorsLoaded, loadExecutors]);
 
+  useEffect(() => {
+    if (!providersLoaded) void loadProviders();
+  }, [providersLoaded, loadProviders]);
+
   const hostState = useMemo<FreebieHostState>(
     () => ({
-      importedProviderIds: importedFreebieProviderIds(Object.keys(overrides)),
+      importedProviderIds: importedFreebieProviderIds(
+        Object.keys(overrides),
+        providers.map((p) => p.presetId),
+      ),
       runtimes: {
         codex: runtimes["codex-acp"]?.installed !== false,
         claude: runtimes["claude-agent-acp"]?.installed !== false,
         deepseek: runtimes["dsh-acp"]?.installed !== false
       }
     }),
-    [overrides, runtimes]
+    [overrides, providers, runtimes]
   );
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);

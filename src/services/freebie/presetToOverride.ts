@@ -133,18 +133,27 @@ export function freebieProviderIdFromOverrideId(overrideId: string): string | nu
   return match ? match[1] : null;
 }
 
-export function importedFreebieProviderIds(overrideIds: Iterable<string>): string[] {
+export function importedFreebieProviderIds(
+  overrideIds: Iterable<string>,
+  providerPresets?: Iterable<string | undefined | null>
+): string[] {
   const ids = new Set<string>();
   for (const overrideId of overrideIds) {
     const providerId = freebieProviderIdFromOverrideId(overrideId);
     if (providerId) ids.add(providerId);
+  }
+  if (providerPresets) {
+    for (const presetId of providerPresets) {
+      if (presetId) ids.add(presetId);
+    }
   }
   return [...ids].sort();
 }
 
 export interface BuildFreebieOverrideInput {
   preset: FreebieProviderPreset;
-  apiKey: string;
+  apiKey?: string;
+  providerId?: string;
   /** Subset of `preset.models` ids the user kept; empty means all. */
   modelIds?: string[];
   label: string;
@@ -161,8 +170,9 @@ export interface BuildFreebieOverrideInput {
  */
 export function buildFreebieOverride(input: BuildFreebieOverrideInput): CLIExecutorOverride {
   const { preset } = input;
-  const apiKey = input.apiKey.trim();
-  if (!apiKey) throw new Error("apiKey is required");
+  const apiKey = input.apiKey?.trim();
+  const providerId = input.providerId?.trim();
+  if (!apiKey && !providerId) throw new Error("apiKey or providerId is required");
 
   const keep = input.modelIds?.length ? new Set(input.modelIds) : null;
   const models: CLIByokModel[] = preset.models
@@ -191,9 +201,8 @@ export function buildFreebieOverride(input: BuildFreebieOverrideInput): CLIExecu
     case "claude-agent-acp":
       override.claudeByok = {
         enabled: true,
-        baseUrl: preset.baseUrl,
-        envKey,
-        apiKey,
+        ...(providerId ? { providerId } : {}),
+        ...(apiKey ? { apiKey, baseUrl: preset.baseUrl, envKey } : {}),
         models,
         contextWindow: preset.contextWindow
       };
@@ -201,10 +210,9 @@ export function buildFreebieOverride(input: BuildFreebieOverrideInput): CLIExecu
     case "dsh-acp":
       override.deepseekByok = {
         enabled: true,
-        baseUrl: preset.baseUrl,
-        envKey,
+        ...(providerId ? { providerId } : {}),
         wireApi: "chat",
-        apiKey,
+        ...(apiKey ? { apiKey, baseUrl: preset.baseUrl, envKey } : {}),
         models,
         contextWindow: preset.contextWindow
       };
@@ -212,12 +220,10 @@ export function buildFreebieOverride(input: BuildFreebieOverrideInput): CLIExecu
     default:
       override.codexByok = {
         enabled: true,
-        providerId: preset.id,
+        providerId: providerId ?? preset.id,
         providerName: preset.name,
-        baseUrl: preset.baseUrl,
-        envKey,
         wireApi: preset.protocol === "openai-responses" ? "responses" : "chat",
-        apiKey,
+        ...(apiKey ? { apiKey, baseUrl: preset.baseUrl, envKey } : {}),
         models,
         contextWindow: preset.contextWindow
       };

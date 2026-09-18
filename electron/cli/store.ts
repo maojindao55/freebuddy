@@ -1003,7 +1003,11 @@ export function resolveClaudeByokEnv(
   const envKey = byok.envKey?.trim() || "ANTHROPIC_API_KEY";
   const env: Record<string, string> = {};
   const baseUrl = byok.baseUrl?.trim();
-  if (baseUrl) env.ANTHROPIC_BASE_URL = baseUrl;
+  if (baseUrl) {
+    // Anthropic SDK appends /v1/messages to baseURL. Strip trailing /v1 so providers
+    // registered with OpenAI-style paths (e.g. https://api.example.com/v1) work seamlessly.
+    env.ANTHROPIC_BASE_URL = baseUrl.replace(/\/v1\/?$/, "");
+  }
   if (apiKey) {
     env[envKey] = apiKey;
     if (envKey !== "ANTHROPIC_API_KEY") {

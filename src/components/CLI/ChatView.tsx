@@ -1087,8 +1087,19 @@ export function ChatView({
           workspace: conv.cwd
         })
       : conv?.cwd;
+  const hasRunningMessage = useMemo(
+    () =>
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          (message.status === "running" || message.status === "starting")
+      ),
+    [messages]
+  );
   const running =
-    live?.status === "running" || live?.status === "starting";
+    live?.status === "running" ||
+    live?.status === "starting" ||
+    hasRunningMessage;
   const sending =
     running ||
     (submitPreview !== null && submitPreview.conversationId === conv?.id);

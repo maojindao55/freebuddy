@@ -429,8 +429,6 @@ export class DelegationRuntime {
     if (!ctx) throw new Error("delegation run not found");
     this.refreshTeamFromDb(ctx);
 
-    this.killedRunIds.delete(runId);
-    this.pausedRunIds.delete(runId);
     const entry = ctx.roster.find((r) => r.id === ctx!.entryRoleId) ?? ctx.roster[0];
     const events = listDelegationEvents(runId);
     let root = events.find((e) => e.depth === 0);
@@ -452,6 +450,33 @@ export class DelegationRuntime {
 
     const orch = this.ensureOrchestrator(ctx);
     if (!orch.state) orch.bindEntry(root.id);
+
+    const isParkedWaiting = Boolean(
+      orch.state &&
+      orch.state.nodes[root.id]?.status === "parked" &&
+      listDelegationEvents(runId).some(
+        (e) => e.parentEventId === root.id && (e.status === "running" || e.status === "pending")
+      )
+    );
+
+    if (!isParkedWaiting) {
+      const activeSessions = this.activeSessionsByRun.get(runId);
+      if (activeSessions && activeSessions.size > 0) {
+        for (const sessionId of activeSessions) {
+          try {
+            cliKill(sessionId);
+          } catch {
+            /* noop */
+          }
+        }
+        this.activeSessionsByRun.delete(runId);
+        cancelActiveDelegationEvents(runId, "follow_up_interrupted");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+
+    this.killedRunIds.delete(runId);
+    this.pausedRunIds.delete(runId);
 
     const followUpTask = buildDelegateFollowUpTask(
       root.taskText,

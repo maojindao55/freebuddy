@@ -35,6 +35,7 @@ import {
   textFromContent,
   updateActiveAcpToolCalls,
   isMissingSavedSessionError,
+  isAcpMetadataSessionUpdate,
   type AcpAuthMethod,
   type AcpMessage,
   type AcpSessionMeta,
@@ -654,6 +655,7 @@ export async function runAcpAgent({
           msg.params.update.messageId.length > 0;
         if (!hasMessageId) {
           turnHadLiveAgentChunk = true;
+          sessionWasResumed = false;
         }
       }
       if (
@@ -665,6 +667,10 @@ export async function runAcpAgent({
         })
       ) {
         return;
+      }
+      if (sessionWasResumed && !isAcpMetadataSessionUpdate(updateType)) {
+        turnHadLiveAgentChunk = true;
+        sessionWasResumed = false;
       }
       const items = acpUpdateToItems(msg.params?.update, sessionId, args.adapter);
       const terminalError = items.find(
@@ -1207,10 +1213,8 @@ export async function runAcpAgent({
     turnHadLiveAgentChunk = false;
     inactivityReprieves = 0;
     activeToolCallIds.clear();
-    // Live generation begins here. Replay suppression (sessionWasResumed) must
-    // be confined to the pre-prompt replay phase; keeping it enabled would drop
-    // live agent chunks whose text matches a persisted history signature.
-    sessionWasResumed = false;
+    // Replay suppression remains active on resumed sessions until the first
+    // live chunk or non-replayed tool call signals real generation.
     armInactivityTimer();
     try {
       const promptResult = await request(

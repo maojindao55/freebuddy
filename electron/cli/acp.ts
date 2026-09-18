@@ -1558,12 +1558,17 @@ export function acpUpdateToItems(
   }
 }
 
-const METADATA_SESSION_UPDATES = new Set([
+export const METADATA_SESSION_UPDATES = new Set([
   "session_info_update",
   "config_option_update",
   "available_commands_update",
-  "usage_update"
+  "usage_update",
+  "current_mode_update"
 ]);
+
+export function isAcpMetadataSessionUpdate(type: string): boolean {
+  return METADATA_SESSION_UPDATES.has(type);
+}
 
 export function shouldSkipUserMessageChunk(
   update: any,

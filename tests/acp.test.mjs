@@ -54,6 +54,7 @@ import {
   shouldRetryEmptyResumedDshTurn,
   shouldSkipUserMessageChunk,
   shouldDropReplayPhaseAgentChunk,
+  isAcpMetadataSessionUpdate,
   compactAcpStdoutLine,
   shouldWriteAcpStdoutLog,
   updateActiveAcpToolCalls
@@ -2627,4 +2628,33 @@ test("acpSessionListToItems maps session/list titles", () => {
       updatedAt: "2026-06-23T12:00:00.000Z"
     }
   ]);
+});
+
+test("isAcpMetadataSessionUpdate recognizes metadata vs live session updates", () => {
+  assert.equal(isAcpMetadataSessionUpdate("session_info_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("config_option_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("available_commands_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("usage_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("current_mode_update"), true);
+
+  assert.equal(isAcpMetadataSessionUpdate("agent_message_chunk"), false);
+  assert.equal(isAcpMetadataSessionUpdate("agent_thought_chunk"), false);
+  assert.equal(isAcpMetadataSessionUpdate("tool_call"), false);
+  assert.equal(isAcpMetadataSessionUpdate("tool_call_update"), false);
+  assert.equal(isAcpMetadataSessionUpdate("plan"), false);
+});
+
+test("ACP runtime keeps sessionWasResumed active across prompt until first live chunk or non-replayed tool call", () => {
+  assert.match(
+    acpRuntimeSource,
+    /Replay suppression remains active on resumed sessions until the first/
+  );
+  assert.doesNotMatch(
+    acpRuntimeSource,
+    /const runPromptOnSession = async \(\) => \{[\s\S]*?sessionWasResumed = false;[\s\S]*?buildSessionPromptRequest/
+  );
+  assert.match(
+    acpRuntimeSource,
+    /if\s*\(\s*sessionWasResumed\s*&&\s*!isAcpMetadataSessionUpdate\(updateType\)\s*\)\s*\{\s*turnHadLiveAgentChunk = true;\s*sessionWasResumed = false;\s*\}/
+  );
 });

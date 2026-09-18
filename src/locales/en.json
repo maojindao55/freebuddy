@@ -2136,6 +2136,8 @@
     "noModelsFound": "No models returned by server, please add manually",
     "primaryProtocol": "Primary protocol",
     "compatibleProtocols": "Compatible protocols",
+    "supportedProtocols": "Supported protocols (multi-select)",
+    "supportedProtocolsHint": "Check all protocols this provider supports to make it available to matching agents",
     "addModelPlaceholder": "Enter model ID (e.g. gpt-4o) and press Enter",
     "addModel": "Add",
     "quickAddPresets": "Quick presets",

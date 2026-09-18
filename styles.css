@@ -24209,8 +24209,29 @@ button.ghost:focus-visible,
   color: var(--fb-text-primary);
 }
 
-.protocol-card-head .check-icon {
-  color: var(--fb-brand);
+.protocol-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 5px;
+  background: var(--fb-panel-bg);
+  color: #fff;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.protocol-checkbox.checked {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand);
+}
+
+.protocol-card-desc {
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+  line-height: 1.35;
 }
 
 .protocol-card-id {

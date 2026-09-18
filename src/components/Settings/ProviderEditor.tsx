@@ -102,14 +102,23 @@ export function ProviderEditor({
   const upsert = useProviderStore((s) => s.upsert);
 
   const [name, setName] = useState(initial?.name ?? "");
-  const [protocol, setProtocol] = useState<ProviderProtocol>(
-    initial?.protocol ?? "openai-chat",
-  );
-  const [extraProtocols, setExtraProtocols] = useState<ProviderProtocol[]>(() =>
-    protocolsOf(initial ?? { protocol: "openai-chat" }).filter(
-      (p) => p !== (initial?.protocol ?? "openai-chat"),
-    ),
-  );
+  const [selectedProtocols, setSelectedProtocols] = useState<ProviderProtocol[]>(() => {
+    const p = protocolsOf(initial ?? { protocol: "openai-chat" });
+    return p.length ? p : ["openai-chat"];
+  });
+
+  const toggleProtocol = (p: ProviderProtocol) => {
+    setSelectedProtocols((prev) => {
+      if (prev.includes(p)) {
+        if (prev.length <= 1) return prev; // keep at least 1
+        return prev.filter((x) => x !== p);
+      }
+      return [...prev, p];
+    });
+  };
+
+  const primaryProtocol = selectedProtocols[0] || "openai-chat";
+
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
   const [envKey, setEnvKey] = useState(initial?.envKey ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -141,14 +150,19 @@ export function ProviderEditor({
   const [error, setError] = useState("");
 
   const envPlaceholder = useMemo(
-    () => defaultEnvKeyForProtocol(protocol),
-    [protocol],
+    () => defaultEnvKeyForProtocol(primaryProtocol),
+    [primaryProtocol],
   );
 
-  const selectedProtocols = useMemo(
-    () => [protocol, ...extraProtocols.filter((p) => p !== protocol)],
-    [protocol, extraProtocols],
-  );
+  const availablePresets = useMemo(() => {
+    const list: string[] = [];
+    for (const p of selectedProtocols) {
+      for (const m of PROTOCOL_CONFIG[p]?.presets ?? []) {
+        if (!list.includes(m)) list.push(m);
+      }
+    }
+    return list;
+  }, [selectedProtocols]);
 
   const consoleUrl = useMemo(
     () => detectConsoleUrl(baseUrl, initial?.presetId),
@@ -171,7 +185,7 @@ export function ProviderEditor({
       const res = await providersClient.test({
         id: initial?.id,
         baseUrl: baseUrl.trim(),
-        protocol,
+        protocol: primaryProtocol,
         apiKey: apiKey.trim() || undefined,
       });
       setTestResult({
@@ -188,7 +202,7 @@ export function ProviderEditor({
     } finally {
       setTesting(false);
     }
-  }, [baseUrl, protocol, apiKey, initial?.id, t]);
+  }, [baseUrl, primaryProtocol, apiKey, initial?.id, t]);
 
   const onFetchModels = useCallback(async () => {
     setFetchingModels(true);
@@ -271,13 +285,13 @@ export function ProviderEditor({
         id: initial?.id,
         presetId: initial?.presetId,
         name: name.trim(),
-        protocol,
+        protocol: primaryProtocol,
         protocols: selectedProtocols,
         baseUrl: baseUrl.trim(),
         envKey: envKey.trim() || envPlaceholder,
         apiKey: apiKey.trim() || undefined,
         models: finalModels.map((id) => ({ id })),
-        wireApi: protocol === "openai-responses" ? "responses" : "chat",
+        wireApi: selectedProtocols.includes("openai-responses") ? "responses" : "chat",
       });
       onSaved();
     } catch (e) {
@@ -311,14 +325,19 @@ export function ProviderEditor({
             />
           </label>
 
-          {/* 2. Primary Protocol (Card Chips) */}
+          {/* 2. Supported Protocols (Unified Multi-select Cards) */}
           <div className="provider-form-group">
-            <span className="provider-form-group-title">
-              {t("providers.primaryProtocol")}
-            </span>
+            <div className="provider-form-group-header">
+              <span className="provider-form-group-title">
+                {t("providers.supportedProtocols")}
+              </span>
+              <span className="provider-form-group-hint">
+                {t("providers.supportedProtocolsHint")}
+              </span>
+            </div>
             <div className="provider-protocol-grid">
               {PROTOCOLS.map((p) => {
-                const active = protocol === p;
+                const active = selectedProtocols.includes(p);
                 const cfg = PROTOCOL_CONFIG[p];
                 return (
                   <button
@@ -326,53 +345,20 @@ export function ProviderEditor({
                     type="button"
                     className={`provider-protocol-card ${active ? "active" : ""}`}
                     onClick={() => {
-                      setProtocol(p);
-                      setExtraProtocols((prev) => prev.filter((x) => x !== p));
-                      if (!baseUrl) {
+                      toggleProtocol(p);
+                      if (!baseUrl && !active) {
                         setBaseUrl(cfg.defaultUrl);
                       }
                     }}
                   >
                     <div className="protocol-card-head">
                       <strong>{cfg.label}</strong>
-                      {active ? <Check size={14} className="check-icon" /> : null}
+                      <div className={`protocol-checkbox ${active ? "checked" : ""}`}>
+                        {active ? <Check size={12} /> : null}
+                      </div>
                     </div>
+                    <span className="protocol-card-desc">{cfg.desc}</span>
                     <code className="protocol-card-id">{p}</code>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 3. Additional Compatible Protocols */}
-          <div className="provider-form-group">
-            <div className="provider-form-group-header">
-              <span className="provider-form-group-title">
-                {t("providers.compatibleProtocols")}
-              </span>
-              <span className="provider-form-group-hint">
-                {t("providers.alsoSupportsHint")}
-              </span>
-            </div>
-            <div className="provider-extra-chips">
-              {PROTOCOLS.filter((p) => p !== protocol).map((p) => {
-                const checked = extraProtocols.includes(p);
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`provider-extra-chip ${checked ? "active" : ""}`}
-                    onClick={() =>
-                      setExtraProtocols((prev) =>
-                        prev.includes(p)
-                          ? prev.filter((x) => x !== p)
-                          : [...prev, p],
-                      )
-                    }
-                  >
-                    <span>{checked ? "✓" : "+"}</span>
-                    <span>{PROTOCOL_CONFIG[p]?.label || p}</span>
-                    <code>({p})</code>
                   </button>
                 );
               })}
@@ -576,13 +562,13 @@ export function ProviderEditor({
                 </div>
 
                 {/* Quick Presets */}
-                {PROTOCOL_CONFIG[protocol]?.presets?.length ? (
+                {availablePresets.length ? (
                   <div className="provider-presets-row">
                     <span className="provider-presets-title">
                       {t("providers.quickAddPresets")}:
                     </span>
                     <div className="provider-presets-chips">
-                      {PROTOCOL_CONFIG[protocol].presets.map((preset) => {
+                      {availablePresets.map((preset) => {
                         const exists = modelList.includes(preset);
                         return (
                           <button

@@ -24240,13 +24240,15 @@ button.ghost:focus-visible,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  width: 28px;
   height: 28px;
   border-radius: 6px;
-  border: 1px solid;
+  border: none !important;
+  outline: none;
   font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .provider-item-content {
@@ -24393,19 +24395,25 @@ button.ghost:focus-visible,
 
 .provider-detail-brand-icon {
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  border: none !important;
+  outline: none;
+}
+
+.provider-brand-icon-wrapper,
+.provider-brand-badge-fallback {
+  border: none !important;
+  outline: none;
 }
 
 .provider-brand-icon-wrapper img {
   display: block;
   user-select: none;
-}
-
-.provider-brand-badge-fallback {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  border: none !important;
+  outline: none;
 }
 
 .model-tag-brand-avatar {
+  border: none !important;
   margin-right: 2px;
 }
 
@@ -24631,6 +24639,26 @@ button.ghost:focus-visible,
   font-weight: 500;
 }
 
+.provider-form-label input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.provider-form-label input:focus {
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+
 .provider-form-group {
   display: flex;
   flex-direction: column;
@@ -24772,46 +24800,83 @@ button.ghost:focus-visible,
 }
 
 /* API Key & password reveal / copy */
-.provider-key-input-wrapper {
+.provider-key-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.provider-key-console-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--fb-brand);
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.15s ease;
+}
+
+.provider-key-console-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.provider-key-input-wrapper,
+.provider-key-input-wrap {
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
 }
 
-.provider-key-input-wrapper input {
+.provider-key-input-wrapper input,
+.provider-key-input-wrap input {
   width: 100%;
-  padding-right: 64px;
+  height: 34px;
+  padding: 0 68px 0 10px !important;
+  box-sizing: border-box;
 }
 
+.provider-key-actions,
 .provider-key-actions-inner {
   position: absolute;
-  right: 4px;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
+  z-index: 2;
 }
 
-.provider-eye-btn {
-  display: flex;
+.provider-eye-btn,
+.provider-key-actions .icon-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
+  padding: 0;
+  margin: 0;
   border: none;
-  background: none;
+  background: transparent;
   color: var(--fb-text-tertiary);
   cursor: pointer;
   border-radius: 6px;
   transition: all 0.15s ease;
 }
 
-.provider-eye-btn:hover {
+.provider-eye-btn:hover,
+.provider-key-actions .icon-btn:hover {
   color: var(--fb-text-primary);
   background: var(--fb-hover);
 }
 
-.provider-eye-btn.copied {
+.provider-eye-btn.copied,
+.provider-key-actions .icon-btn.copied {
   color: var(--fb-brand);
 }
 
@@ -25322,16 +25387,19 @@ button.ghost:focus-visible,
 }
 
 .model-row-avatar {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 24px;
-  border-radius: 5px;
-  border: 1px solid;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none !important;
+  outline: none !important;
   font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: none !important;
 }
 
 .model-row-info {
@@ -25635,13 +25703,16 @@ button.ghost:focus-visible,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none !important;
+  outline: none !important;
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: none !important;
 }
 
 .model-config-target-info {

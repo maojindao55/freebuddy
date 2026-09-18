@@ -52,6 +52,9 @@ export const ProviderBrandIcon: React.FC<ProviderBrandIconProps> = ({
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
+          border: "none",
+          outline: "none",
+          boxShadow: "none",
           ...style,
         }}
         title={brand.name}
@@ -68,6 +71,8 @@ export const ProviderBrandIcon: React.FC<ProviderBrandIconProps> = ({
             objectFit: "cover",
             borderRadius,
             display: "block",
+            border: "none",
+            outline: "none",
           }}
           onError={() => {
             setLoadStage((prev) => prev + 1);
@@ -90,7 +95,9 @@ export const ProviderBrandIcon: React.FC<ProviderBrandIconProps> = ({
         borderRadius,
         backgroundColor: brand.bg,
         color: brand.color,
-        border: `1px solid ${brand.border}`,
+        border: "none",
+        outline: "none",
+        boxShadow: "none",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",

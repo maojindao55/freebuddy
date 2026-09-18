@@ -476,7 +476,7 @@ export function ProviderEditor({
                 </a>
               ) : null}
             </div>
-            <div className="provider-key-input-wrap">
+            <div className="provider-key-input-wrapper">
               <input
                 type={showKey ? "text" : "password"}
                 value={apiKey}
@@ -488,7 +488,7 @@ export function ProviderEditor({
               <div className="provider-key-actions">
                 <button
                   type="button"
-                  className="icon-btn"
+                  className="provider-eye-btn"
                   title={showKey ? t("providers.hideKey") : t("providers.showKey")}
                   onClick={() => setShowKey(!showKey)}
                 >
@@ -497,7 +497,7 @@ export function ProviderEditor({
                 {(apiKey || initial?.hasKey) && (
                   <button
                     type="button"
-                    className="icon-btn"
+                    className="provider-eye-btn"
                     title={keyCopied ? t("providers.keyCopied") : t("providers.copyKey")}
                     onClick={() => void onCopyKey()}
                   >

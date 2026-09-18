@@ -40,15 +40,18 @@ const MAX_TOKENS_PRESETS = [
   { label: "64K", val: 65536 },
 ];
 
-export const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
-  open,
+interface ModelConfigDialogContentProps {
+  model: ProviderModel;
+  onClose: () => void;
+  onSave: (model: ProviderModel) => void;
+}
+
+const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
   model,
   onClose,
   onSave,
 }) => {
   const { t } = useTranslation();
-
-  if (!open || !model) return null;
 
   const brand = getModelBrand(model.id);
   const inferredCaps = inferModelCapabilities(model.id);
@@ -284,5 +287,23 @@ export const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
         </form>
       </div>
     </div>
+  );
+};
+
+export const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
+  open,
+  model,
+  onClose,
+  onSave,
+}) => {
+  if (!open || !model) return null;
+
+  return (
+    <ModelConfigDialogContent
+      key={model.id}
+      model={model}
+      onClose={onClose}
+      onSave={onSave}
+    />
   );
 };

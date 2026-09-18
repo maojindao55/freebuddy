@@ -159,7 +159,7 @@ export function FreebieImportDialog({
         ...existingModels.filter((m) => !presetModelIds.has(m.id))
       ];
 
-      // 1. 将免费站预设创建或更新为 Provider，由主进程安全加密存储 Key
+      // 1. Create or update Provider from preset, key encrypted in main process
       const provider = await upsertProvider({
         id: existingProvider?.id,
         presetId: preset.id,
@@ -175,7 +175,7 @@ export function FreebieImportDialog({
         wireApi: preset.protocol === "openai-responses" ? "responses" : "chat"
       });
 
-      // 2. 创建 Agent override，BYOK 仅存储 providerId 引用
+      // 2. Create Agent override, BYOK references providerId
       const ordered = preset.models
         .map((model) => model.id)
         .filter((id) => selectedModelIds.includes(id));

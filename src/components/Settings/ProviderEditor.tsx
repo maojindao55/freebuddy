@@ -10,11 +10,10 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  X,
+  Trash2,
 } from "lucide-react";
 import { useProviderStore } from "@/store/providerStore";
 import { providersClient } from "@/services/providers/client";
-import { cliClient } from "@/services/cli/client";
 import { copyToClipboard } from "@/utils/clipboard";
 import { FREEBIE_BUNDLED_PROVIDERS } from "@/config/freebie";
 import type { Provider, ProviderModel, ProviderProtocol } from "@/services/providers/types";
@@ -38,26 +37,26 @@ const PROTOCOLS: ProviderProtocol[] = [
 
 const PROTOCOL_CONFIG: Record<
   ProviderProtocol,
-  { label: string; desc: string; defaultUrl: string }
+  { labelKey: string; descKey: string; defaultUrl: string }
 > = {
   "openai-chat": {
-    label: "OpenAI 兼容",
-    desc: "Chat Completions 兼容协议",
+    labelKey: "providers.protoOpenAiChat",
+    descKey: "providers.protoOpenAiChatDesc",
     defaultUrl: "https://api.openai.com/v1",
   },
   "openai-responses": {
-    label: "OpenAI Responses",
-    desc: "OpenAI 新版 Responses API",
+    labelKey: "providers.protoOpenAiResponses",
+    descKey: "providers.protoOpenAiResponsesDesc",
     defaultUrl: "https://api.openai.com/v1",
   },
   anthropic: {
-    label: "Anthropic Claude",
-    desc: "Claude Messages API 协议",
+    labelKey: "providers.protoAnthropic",
+    descKey: "providers.protoAnthropicDesc",
     defaultUrl: "https://api.anthropic.com/v1",
   },
   deepseek: {
-    label: "DeepSeek",
-    desc: "DeepSeek 原生协议及推理模型",
+    labelKey: "providers.protoDeepSeek",
+    descKey: "providers.protoDeepSeekDesc",
     defaultUrl: "https://api.deepseek.com",
   },
 };
@@ -87,77 +86,53 @@ function detectConsoleUrl(baseUrl: string, presetId?: string): string | undefine
   return undefined;
 }
 
+export interface ProviderEditorProps {
+  initial?: Provider;
+  onSaved: (saved: Provider) => void;
+  onDeleted?: (id: string) => void;
+}
+
 export function ProviderEditor({
   initial,
-  onClose,
   onSaved,
-}: {
-  initial?: Provider;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+  onDeleted,
+}: ProviderEditorProps) {
   const { t } = useTranslation();
   const upsert = useProviderStore((s) => s.upsert);
+  const remove = useProviderStore((s) => s.remove);
 
   const [name, setName] = useState(initial?.name ?? "");
-  const [selectedProtocols, setSelectedProtocols] = useState<ProviderProtocol[]>(() => {
-    const p = protocolsOf(initial ?? { protocol: "openai-chat" });
-    return p.length ? p : ["openai-chat"];
-  });
-
-  const toggleProtocol = (p: ProviderProtocol) => {
-    setSelectedProtocols((prev) => {
-      if (prev.includes(p)) {
-        if (prev.length <= 1) return prev; // keep at least 1
-        return prev.filter((x) => x !== p);
+  const [selectedProtocols, setSelectedProtocols] = useState<ProviderProtocol[]>(
+    () => {
+      if (initial?.protocols && initial.protocols.length > 0) {
+        return initial.protocols;
       }
-      return [...prev, p];
-    });
-  };
-
-  const primaryProtocol = selectedProtocols[0] || "openai-chat";
-
-  const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
-  const [envKey, setEnvKey] = useState(initial?.envKey ?? "");
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [copiedKey, setCopiedKey] = useState(false);
-
-  const handleToggleShowKey = async () => {
-    if (!showApiKey) {
-      if (!apiKey && initial?.id && initial?.hasKey) {
-        try {
-          const fetched = await providersClient.getApiKey(initial.id);
-          if (fetched) setApiKey(fetched);
-        } catch { /* ignore */ }
+      if (initial?.protocol) {
+        return [initial.protocol];
       }
-      setShowApiKey(true);
-    } else {
-      setShowApiKey(false);
-    }
-  };
-
-  const handleCopyKey = async () => {
-    let text = apiKey.trim();
-    if (!text && initial?.id && initial?.hasKey) {
-      try {
-        const fetched = await providersClient.getApiKey(initial.id);
-        if (fetched) text = fetched;
-      } catch { /* ignore */ }
-    }
-    if (text) {
-      await copyToClipboard(text);
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 2000);
-    }
-  };
-
-  // Models state
-  const [models, setModels] = useState<ProviderModel[]>(() =>
-    initial?.models ? [...initial.models] : [],
+      return ["openai-chat"];
+    },
   );
 
-  // Testing & fetching
+  const primaryProtocol = useMemo<ProviderProtocol>(() => {
+    if (selectedProtocols.includes("openai-chat")) return "openai-chat";
+    if (selectedProtocols.includes("openai-responses")) return "openai-responses";
+    if (selectedProtocols.includes("anthropic")) return "anthropic";
+    if (selectedProtocols.includes("deepseek")) return "deepseek";
+    return selectedProtocols[0] ?? "openai-chat";
+  }, [selectedProtocols]);
+
+  const [baseUrl, setBaseUrl] = useState(
+    initial?.baseUrl ?? PROTOCOL_CONFIG["openai-chat"].defaultUrl,
+  );
+  const [envKey, setEnvKey] = useState(initial?.envKey ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [keyCopied, setKeyCopied] = useState(false);
+  const [models, setModels] = useState<ProviderModel[]>(initial?.models ?? []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -165,14 +140,12 @@ export function ProviderEditor({
     error?: string;
     count?: number;
   } | null>(null);
+
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelMessage, setModelMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
-
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
 
   const envPlaceholder = useMemo(
     () => defaultEnvKeyForProtocol(primaryProtocol),
@@ -184,7 +157,43 @@ export function ProviderEditor({
     [baseUrl, initial?.presetId],
   );
 
-  const hasKey = apiKey.trim().length > 0 || Boolean(initial?.hasKey);
+  const keyPlaceholder = useMemo(() => {
+    if (initial?.hasKey && initial?.apiKeyPreview) {
+      return t("providers.savedKeyHint", { preview: initial.apiKeyPreview });
+    }
+    return t("providers.apiKey");
+  }, [initial, t]);
+
+  const onCopyKey = useCallback(async () => {
+    if (apiKey.trim()) {
+      await copyToClipboard(apiKey.trim());
+      setKeyCopied(true);
+      setTimeout(() => setKeyCopied(false), 1500);
+      return;
+    }
+    if (initial?.id) {
+      try {
+        const fullKey = await providersClient.getApiKey(initial.id);
+        if (fullKey) {
+          await copyToClipboard(fullKey);
+          setKeyCopied(true);
+          setTimeout(() => setKeyCopied(false), 1500);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [apiKey, initial?.id]);
+
+  const toggleProtocol = (proto: ProviderProtocol) => {
+    setSelectedProtocols((prev) => {
+      if (prev.includes(proto)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((p) => p !== proto);
+      }
+      return [...prev, proto];
+    });
+  };
 
   const testConnection = useCallback(async () => {
     if (!baseUrl.trim()) {
@@ -261,20 +270,32 @@ export function ProviderEditor({
         text: t("providers.fetchSuccess", { count: fetchedModelIds.length }),
       });
     } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
       setModelMessage({
         type: "error",
-        text: e instanceof Error ? e.message : String(e),
+        text: t("providers.fetchFailed", { error: err }),
       });
     } finally {
       setFetchingModels(false);
     }
   }, [testConnection, t]);
 
+  const handleDelete = async () => {
+    if (!initial) return;
+    if (!window.confirm(t("providers.deleteConfirm", { name: initial.name }))) return;
+    try {
+      await remove(initial.id);
+      onDeleted?.(initial.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const submit = async () => {
     setSaving(true);
     setError("");
     try {
-      await upsert({
+      const saved = await upsert({
         id: initial?.id,
         presetId: initial?.presetId,
         name: name.trim(),
@@ -286,7 +307,7 @@ export function ProviderEditor({
         models,
         wireApi: selectedProtocols.includes("openai-responses") ? "responses" : "chat",
       });
-      onSaved();
+      onSaved(saved);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -295,30 +316,93 @@ export function ProviderEditor({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal provider-editor-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h3>{initial ? t("providers.edit") : t("providers.add")}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
-            <X size={17} />
-          </button>
+    <div className="provider-detail-workspace">
+      {/* Workspace Header */}
+      <div className="provider-detail-header">
+        <div className="provider-detail-title-wrap">
+          <h3>
+            {initial
+              ? name.trim() || initial.name || t("providers.edit")
+              : t("providers.newProvider")}
+          </h3>
+          {initial?.lastHealth === "ok" ? (
+            <span className="provider-health-badge ok" title={initial.lastCheckedAt}>
+              <span className="provider-health-dot" />
+              {initial.lastLatencyMs ? `${initial.lastLatencyMs}ms` : t("providers.statusOk")}
+            </span>
+          ) : initial?.lastHealth === "error" ? (
+            <span
+              className="provider-health-badge error"
+              title={initial.lastError || initial.lastCheckedAt}
+            >
+              <span className="provider-health-dot" />
+              {initial.lastError ? initial.lastError.slice(0, 24) : t("providers.statusError")}
+            </span>
+          ) : null}
         </div>
 
-        <div className="modal-body provider-editor">
+        <div className="provider-detail-actions">
+          {initial && onDeleted && (
+            <button
+              type="button"
+              className="btn btn-secondary danger"
+              onClick={handleDelete}
+              title={t("providers.deleteProvider")}
+            >
+              <Trash2 size={14} />
+              <span>{t("common.delete")}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={testing || !baseUrl.trim()}
+            onClick={() => void testConnection()}
+          >
+            <RefreshCw size={14} className={testing ? "spinning" : ""} />
+            <span>{testing ? t("providers.testing") : t("providers.testConnection")}</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={saving || !name.trim() || !baseUrl.trim()}
+            onClick={() => void submit()}
+          >
+            {saving ? (
+              <RefreshCw size={14} className="spinning" />
+            ) : (
+              <Check size={14} />
+            )}
+            <span>{saving ? t("common.saving") : t("providers.saveChanges")}</span>
+          </button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="providers-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+
+      {/* Two-Column Grid: Left = Basic Config, Right = Dedicated Model Column */}
+      <div className="provider-editor-grid">
+        {/* Left Column: Connection & Credentials */}
+        <div className="provider-config-column">
+          <div className="provider-column-header">
+            <h4>{t("providers.basicSettings")}</h4>
+          </div>
+
           {/* 1. Name */}
           <label className="provider-form-label">
             <span>{t("providers.name")}</span>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="例如：OpenAI / 硅基流动 / 个人中转站"
+              placeholder={t("providers.modelNamePlaceholder")}
             />
           </label>
 
-          {/* 2. Supported Protocols (Unified Multi-select Cards) */}
+          {/* 2. Supported Protocols */}
           <div className="provider-form-group">
             <div className="provider-form-group-header">
               <span className="provider-form-group-title">
@@ -345,12 +429,12 @@ export function ProviderEditor({
                     }}
                   >
                     <div className="protocol-card-head">
-                      <strong>{cfg.label}</strong>
+                      <strong>{t(cfg.labelKey)}</strong>
                       <div className={`protocol-checkbox ${active ? "checked" : ""}`}>
                         {active ? <Check size={12} /> : null}
                       </div>
                     </div>
-                    <span className="protocol-card-desc">{cfg.desc}</span>
+                    <span className="protocol-card-desc">{t(cfg.descKey)}</span>
                     <code className="protocol-card-id">{p}</code>
                   </button>
                 );
@@ -358,7 +442,7 @@ export function ProviderEditor({
             </div>
           </div>
 
-          {/* 4. Base URL */}
+          {/* 3. Base URL */}
           <label className="provider-form-label">
             <span>{t("providers.baseUrl")}</span>
             <input
@@ -368,83 +452,61 @@ export function ProviderEditor({
             />
           </label>
 
-          {/* 5. API Key & Console link */}
-          <div className="provider-form-group">
-            <label className="provider-form-label">
+          {/* 4. API Key */}
+          <div className="provider-form-label">
+            <div className="provider-key-label-row">
               <span>{t("providers.apiKey")}</span>
-              <div className="provider-key-input-wrapper">
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={
-                    initial?.apiKeyPreview
-                      ? t("providers.savedKeyHint", {
-                          preview: initial.apiKeyPreview,
-                        })
-                      : "sk-..."
-                  }
-                />
-                <div className="provider-key-actions-inner">
-                  {hasKey ? (
-                    <button
-                      type="button"
-                      className={`provider-eye-btn ${copiedKey ? "copied" : ""}`}
-                      title={copiedKey ? t("providers.keyCopied") : t("providers.copyKey")}
-                      onClick={() => void handleCopyKey()}
-                    >
-                      {copiedKey ? <Check size={14} className="copied-icon" /> : <Copy size={14} />}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="provider-eye-btn"
-                    title={showApiKey ? t("providers.hideKey") : t("providers.showKey")}
-                    onClick={() => void handleToggleShowKey()}
-                  >
-                    {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
-            </label>
-
-            <div className="provider-key-foot">
-              {initial?.apiKeyPreview ? (
-                <span className="provider-key-hint">
-                  {t("providers.savedKeyHint", {
-                    preview: initial.apiKeyPreview,
-                  })}
-                </span>
-              ) : null}
               {consoleUrl ? (
-                <button
-                  type="button"
-                  className="provider-link-btn"
-                  onClick={() => void cliClient.openBrowserExternal(consoleUrl)}
+                <a
+                  href={consoleUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="provider-key-console-link"
                 >
                   {t("providers.getKey")}
-                  <ExternalLink size={12} aria-hidden="true" />
-                </button>
+                  <ExternalLink size={12} />
+                </a>
               ) : null}
+            </div>
+            <div className="provider-key-input-wrap">
+              <input
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={keyPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <div className="provider-key-actions">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title={showKey ? t("providers.hideKey") : t("providers.showKey")}
+                  onClick={() => setShowKey(!showKey)}
+                >
+                  {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+                {(apiKey || initial?.hasKey) && (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title={keyCopied ? t("providers.keyCopied") : t("providers.copyKey")}
+                    onClick={() => void onCopyKey()}
+                  >
+                    {keyCopied ? (
+                      <Check size={14} className="copied-icon" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* 6. Test & Fetch Bar */}
-          <div className="provider-test-bar">
-            <div className="provider-test-actions">
-              <button
-                type="button"
-                className="provider-secondary-btn"
-                disabled={testing || !baseUrl.trim() || (!apiKey.trim() && !initial?.hasKey)}
-                onClick={() => void testConnection()}
-              >
-                <RefreshCw
-                  size={14}
-                  className={testing ? "spinning" : ""}
-                  aria-hidden="true"
-                />
-                {testing ? t("providers.testing") : t("providers.testConnection")}
-              </button>
+          {/* 5. Fetch Models & Test Connection Actions */}
+          <div className="provider-action-buttons-wrap">
+            <div className="provider-action-buttons-row">
               <button
                 type="button"
                 className="provider-secondary-btn"
@@ -499,12 +561,7 @@ export function ProviderEditor({
             </div>
           ) : null}
 
-          {/* 7. Model Management */}
-          <div className="provider-models-panel">
-            <ProviderModelManager models={models} onChange={setModels} />
-          </div>
-
-          {/* 8. Env Key (Advanced) */}
+          {/* 6. Env Key (Advanced) */}
           <label className="provider-form-label">
             <span>{t("providers.envKey")}</span>
             <input
@@ -513,25 +570,16 @@ export function ProviderEditor({
               placeholder={envPlaceholder}
             />
           </label>
+        </div>
 
-          {error ? <div className="providers-error">{error}</div> : null}
-
-          <div className="modal-actions">
-            <button type="button" className="secondary" onClick={onClose}>
-              {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={saving || !name.trim() || !baseUrl.trim()}
-              onClick={() => void submit()}
-            >
-              {saving ? t("common.saving") : t("common.save")}
-            </button>
+        {/* Right Column: Dedicated Model Management Column */}
+        <div className="provider-models-column">
+          <div className="provider-column-header">
+            <h4>{t("providers.modelsColumn")}</h4>
           </div>
+          <ProviderModelManager models={models} onChange={setModels} />
         </div>
       </div>
     </div>
   );
 }
-

@@ -110,7 +110,7 @@ export function getModelBrand(modelId: string): ModelBrandMeta {
   if (/doubao|skylark|bytedance/i.test(lower)) {
     return {
       name: "Doubao",
-      badge: "豆包",
+      badge: "DB",
       color: "#3b82f6",
       bg: "rgba(59, 130, 246, 0.12)",
       border: "rgba(59, 130, 246, 0.28)",

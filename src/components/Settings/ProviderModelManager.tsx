@@ -243,11 +243,11 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
       <div className="model-mgr-toolbar">
         <div className="model-mgr-toolbar-left">
           <span className="model-mgr-count-badge">
-            {t("providers.modelTotalCount", "模型")} ({models.length})
+            {t("providers.modelTotalCount")} ({models.length})
           </span>
           {filteredModels.length !== models.length && (
             <span className="model-mgr-filtered-badge">
-              匹配 {filteredModels.length}
+              {t("providers.matchedCount", { count: filteredModels.length })}
             </span>
           )}
         </div>
@@ -258,10 +258,10 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
               type="button"
               className="provider-text-btn danger"
               onClick={() => onChange([])}
-              title={t("providers.clearModels", "清空全部")}
+              title={t("providers.clearModels")}
             >
               <Trash2 size={12} />
-              {t("providers.clearModels", "清空全部")}
+              {t("providers.clearModels")}
             </button>
           )}
 
@@ -271,7 +271,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
               type="button"
               className={`view-toggle-btn ${viewMode === "list" ? "active" : ""}`}
               onClick={() => setViewMode("list")}
-              title="结构化列表视图"
+              title={t("providers.listView")}
             >
               <LayoutList size={13} />
             </button>
@@ -279,7 +279,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
               type="button"
               className={`view-toggle-btn ${viewMode === "tags" ? "active" : ""}`}
               onClick={() => setViewMode("tags")}
-              title="紧凑胶囊视图"
+              title={t("providers.tagsView")}
             >
               <Tags size={13} />
             </button>
@@ -287,7 +287,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
               type="button"
               className={`view-toggle-btn ${viewMode === "batch" ? "active" : ""}`}
               onClick={handleSwitchToBatch}
-              title="批量换行编辑"
+              title={t("providers.batchView")}
             >
               <FileText size={13} />
             </button>
@@ -299,10 +299,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
         /* Batch Edit Mode */
         <div className="model-mgr-batch-panel">
           <p className="model-mgr-batch-hint">
-            {t(
-              "providers.batchEditHint",
-              "每行输入一个模型 ID。保存时将保留已存在配置的模型参数，自动解析新增模型。",
-            )}
+            {t("providers.batchEditHint")}
           </p>
           <textarea
             value={rawBatchText}
@@ -317,7 +314,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
               className="btn btn-secondary btn-sm"
               onClick={() => setViewMode("list")}
             >
-              {t("common.cancel", "取消")}
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -325,7 +322,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
               onClick={() => handleApplyBatch(rawBatchText)}
             >
               <Check size={13} />
-              {t("providers.applyBatch", "应用并更新列表")}
+              {t("providers.applyBatch")}
             </button>
           </div>
         </div>
@@ -343,7 +340,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                   handleAddModel(newModelId);
                 }
               }}
-              placeholder={t("providers.addModelPlaceholder", "输入模型 ID（如 gpt-4o），按回车添加")}
+              placeholder={t("providers.addModelPlaceholder")}
             />
             <button
               type="button"
@@ -352,7 +349,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
               onClick={() => handleAddModel(newModelId)}
             >
               <Plus size={14} />
-              {t("providers.addModel", "添加")}
+              {t("providers.addModel")}
             </button>
           </div>
 
@@ -365,7 +362,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                   type="text"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
-                  placeholder={t("providers.searchModels", "搜索模型 ID、别名...")}
+                  placeholder={t("providers.searchModels")}
                   className="model-mgr-search-input"
                 />
                 {searchText && (
@@ -387,35 +384,35 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                     className={`cap-tab ${capFilter === "all" ? "active" : ""}`}
                     onClick={() => setCapFilter("all")}
                   >
-                    全部 ({counts.all})
+                    {t("providers.capFilterAll")} ({counts.all})
                   </button>
                   <button
                     type="button"
                     className={`cap-tab ${capFilter === "reasoning" ? "active" : ""}`}
                     onClick={() => setCapFilter("reasoning")}
                   >
-                    🧠 推理 ({counts.reasoning})
+                    {t("providers.capFilterReasoning")} ({counts.reasoning})
                   </button>
                   <button
                     type="button"
                     className={`cap-tab ${capFilter === "tools" ? "active" : ""}`}
                     onClick={() => setCapFilter("tools")}
                   >
-                    🛠️ 工具 ({counts.tools})
+                    {t("providers.capFilterTools")} ({counts.tools})
                   </button>
                   <button
                     type="button"
                     className={`cap-tab ${capFilter === "vision" ? "active" : ""}`}
                     onClick={() => setCapFilter("vision")}
                   >
-                    👁️ 视觉 ({counts.vision})
+                    {t("providers.capFilterVision")} ({counts.vision})
                   </button>
                   <button
                     type="button"
                     className={`cap-tab ${capFilter === "code" ? "active" : ""}`}
                     onClick={() => setCapFilter("code")}
                   >
-                    💻 代码 ({counts.code})
+                    {t("providers.capFilterCode")} ({counts.code})
                   </button>
                 </div>
 
@@ -425,7 +422,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                     type="button"
                     className="model-mgr-group-toggle-all"
                     onClick={toggleAllGroups}
-                    title={allExpanded ? "全部收起" : "全部展开"}
+                    title={allExpanded ? t("providers.collapseAll") : t("providers.expandAll")}
                   >
                     {allExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
                   </button>
@@ -438,8 +435,8 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
           {filteredModels.length === 0 ? (
             <div className="provider-models-empty-hint">
               {searchText || capFilter !== "all"
-                ? t("providers.noFilterResults", "未找到符合过滤条件的模型")
-                : t("providers.noModelsFound", "暂无配置的模型，点击上方“拉取模型列表”或手动添加")}
+                ? t("providers.noFilterResults")
+                : t("providers.noModelsFound")}
             </div>
           ) : viewMode === "tags" ? (
             /* Tags View */
@@ -467,7 +464,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                       type="button"
                       className="model-mgr-icon-btn edit"
                       onClick={() => setConfigModel(m)}
-                      title="配置高级参数"
+                      title={t("providers.configAdvanced")}
                     >
                       <Settings size={11} />
                     </button>
@@ -475,7 +472,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                       type="button"
                       className="model-mgr-icon-btn del"
                       onClick={() => handleRemoveModel(m.id)}
-                      title="删除模型"
+                      title={t("providers.deleteModel")}
                     >
                       <X size={11} />
                     </button>
@@ -497,7 +494,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                     >
                       <div className="model-mgr-group-title">
                         {isCollapsed ? (
-                          <ChevronRight size={14} className="group-arrow" />
+                           <ChevronRight size={14} className="group-arrow" />
                         ) : (
                           <ChevronDown size={14} className="group-arrow" />
                         )}
@@ -553,34 +550,34 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                                   {caps.reasoning && (
                                     <span className="cap-pill reasoning">
                                       <Brain size={11} />
-                                      <span>推理</span>
+                                      <span>{t("providers.capFilterReasoning")}</span>
                                     </span>
                                   )}
                                   {caps.tools && (
                                     <span className="cap-pill tools">
                                       <Wrench size={11} />
-                                      <span>工具</span>
+                                      <span>{t("providers.capFilterTools")}</span>
                                     </span>
                                   )}
                                   {caps.vision && (
                                     <span className="cap-pill vision">
                                       <Eye size={11} />
-                                      <span>视觉</span>
+                                      <span>{t("providers.capFilterVision")}</span>
                                     </span>
                                   )}
                                   {caps.code && (
                                     <span className="cap-pill code">
                                       <Code size={11} />
-                                      <span>代码</span>
+                                      <span>{t("providers.capFilterCode")}</span>
                                     </span>
                                   )}
                                   {ctxText && (
-                                    <span className="spec-pill" title="上下文长度">
+                                    <span className="spec-pill" title={t("providers.contextWindow")}>
                                       {ctxText} ctx
                                     </span>
                                   )}
                                   {maxText && (
-                                    <span className="spec-pill out" title="最大输出 Tokens">
+                                    <span className="spec-pill out" title={t("providers.maxTokens")}>
                                       {maxText} out
                                     </span>
                                   )}
@@ -593,7 +590,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                                   type="button"
                                   className="model-action-btn"
                                   onClick={() => handleCopy(m.id)}
-                                  title="复制模型 ID"
+                                  title={t("providers.copyModelId")}
                                 >
                                   {isCopied ? (
                                     <Check size={13} className="text-emerald-500" />
@@ -605,7 +602,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                                   type="button"
                                   className="model-action-btn"
                                   onClick={() => setConfigModel(m)}
-                                  title="配置高级参数"
+                                  title={t("providers.configAdvanced")}
                                 >
                                   <Settings size={13} />
                                 </button>
@@ -613,7 +610,7 @@ export const ProviderModelManager: React.FC<ProviderModelManagerProps> = ({
                                   type="button"
                                   className="model-action-btn danger"
                                   onClick={() => handleRemoveModel(m.id)}
-                                  title="移除模型"
+                                  title={t("providers.deleteModel")}
                                 >
                                   <Trash2 size={13} />
                                 </button>

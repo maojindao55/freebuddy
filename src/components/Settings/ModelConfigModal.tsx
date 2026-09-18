@@ -7,7 +7,6 @@ import {
   Wrench,
   Eye,
   Check,
-  Sparkles,
 } from "lucide-react";
 import type { ProviderModel } from "@/services/providers/types";
 import {
@@ -16,7 +15,7 @@ import {
   inferContextWindow,
 } from "@/services/providers/modelUtils";
 
-interface ModelConfigModalProps {
+export interface ModelConfigModalProps {
   open: boolean;
   model: ProviderModel | null;
   onClose: () => void;
@@ -40,13 +39,13 @@ const MAX_TOKENS_PRESETS = [
   { label: "64K", val: 65536 },
 ];
 
-interface ModelConfigDialogContentProps {
+interface ModelConfigDrawerContentProps {
   model: ProviderModel;
   onClose: () => void;
   onSave: (model: ProviderModel) => void;
 }
 
-const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
+const ModelConfigDrawerContent: React.FC<ModelConfigDrawerContentProps> = ({
   model,
   onClose,
   onSave,
@@ -97,29 +96,30 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-container model-config-modal"
+    <div className="model-config-drawer-root">
+      <div className="model-config-drawer-backdrop" onClick={onClose} />
+      <aside
+        className="model-config-drawer"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 520 }}
+        aria-label={t("providers.modelConfigTitle")}
       >
-        <div className="modal-header">
+        <div className="model-config-drawer-header">
           <div className="model-config-header-title">
-            <SlidersHorizontal size={18} className="model-config-title-icon" />
-            <span>{t("providers.modelConfigTitle", "配置模型高级参数")}</span>
+            <SlidersHorizontal size={17} className="model-config-title-icon" />
+            <span>{t("providers.modelConfigTitle")}</span>
           </div>
           <button
             type="button"
-            className="modal-close-btn"
+            className="icon-btn"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSave}>
-          <div className="modal-body model-config-body">
+        <form onSubmit={handleSave} className="model-config-drawer-form">
+          <div className="model-config-drawer-body">
             {/* Target Model Card */}
             <div className="model-config-target-banner">
               <div
@@ -134,38 +134,40 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
               </div>
               <div className="model-config-target-info">
                 <span className="model-config-target-id">{model.id}</span>
-                <span className="model-config-target-brand">{brand.name} 系列</span>
+                <span className="model-config-target-brand">
+                  {brand.name} {t("providers.series")}
+                </span>
               </div>
             </div>
 
             {/* Display Name */}
             <label className="provider-form-label">
-              <span>{t("providers.modelDisplayName", "显示别名（可选）")}</span>
+              <span>{t("providers.modelDisplayName")}</span>
               <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="例如：Claude 3.7 思考版 / DeepSeek V3 官网"
+                placeholder={t("providers.displayNamePlaceholder")}
               />
             </label>
 
             {/* Model Group */}
             <label className="provider-form-label">
-              <span>{t("providers.modelGroup", "自定义分组（可选）")}</span>
+              <span>{t("providers.modelGroup")}</span>
               <input
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
-                placeholder="例如：主力推荐 / 备用高配 / 编程代码"
+                placeholder={t("providers.groupPlaceholder")}
               />
             </label>
 
             {/* Context Window */}
             <div className="provider-form-label">
-              <span>{t("providers.contextWindow", "上下文长度 (Context Window)")}</span>
+              <span>{t("providers.contextWindow")}</span>
               <input
                 type="number"
                 value={contextWindow}
                 onChange={(e) => setContextWindow(e.target.value)}
-                placeholder="例如：131072 (128K)"
+                placeholder={t("providers.contextPlaceholder")}
               />
               <div className="model-quick-presets">
                 {CONTEXT_PRESETS.map((p) => (
@@ -185,12 +187,12 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
 
             {/* Max Output Tokens */}
             <div className="provider-form-label">
-              <span>{t("providers.maxTokens", "最大输出限制 (Max Output Tokens)")}</span>
+              <span>{t("providers.maxTokens")}</span>
               <input
                 type="number"
                 value={maxTokens}
                 onChange={(e) => setMaxTokens(e.target.value)}
-                placeholder="例如：8192 (8K)"
+                placeholder={t("providers.maxTokensPlaceholder")}
               />
               <div className="model-quick-presets">
                 {MAX_TOKENS_PRESETS.map((p) => (
@@ -211,7 +213,7 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
             {/* Capability switches */}
             <div className="model-capabilities-group">
               <span className="provider-form-group-title">
-                {t("providers.modelCapabilities", "模型能力特性")}
+                {t("providers.modelCapabilities")}
               </span>
               <div className="model-capabilities-grid">
                 {/* Tools */}
@@ -224,10 +226,10 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
                   <div className="model-cap-toggle-info">
                     <div className="model-cap-label-row">
                       <Wrench size={14} className="text-emerald-500" />
-                      <strong>{t("providers.capTools", "工具调用 / FC")}</strong>
+                      <strong>{t("providers.capTools")}</strong>
                     </div>
                     <span className="model-cap-desc">
-                      {t("providers.capToolsDesc", "支持 Function Calling，CLI Agent 可调用工具执行命令")}
+                      {t("providers.capToolsDesc")}
                     </span>
                   </div>
                 </label>
@@ -242,10 +244,10 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
                   <div className="model-cap-toggle-info">
                     <div className="model-cap-label-row">
                       <Brain size={14} className="text-purple-500" />
-                      <strong>{t("providers.capReasoning", "深度推理 / 思考")}</strong>
+                      <strong>{t("providers.capReasoning")}</strong>
                     </div>
                     <span className="model-cap-desc">
-                      {t("providers.capReasoningDesc", "如 o1/o3/R1 类推理模型，具备思考阶段与推演过程")}
+                      {t("providers.capReasoningDesc")}
                     </span>
                   </div>
                 </label>
@@ -260,10 +262,10 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
                   <div className="model-cap-toggle-info">
                     <div className="model-cap-label-row">
                       <Eye size={14} className="text-blue-500" />
-                      <strong>{t("providers.capVision", "多模态视觉")}</strong>
+                      <strong>{t("providers.capVision")}</strong>
                     </div>
                     <span className="model-cap-desc">
-                      {t("providers.capVisionDesc", "支持图像理解与图文混合提示输入")}
+                      {t("providers.capVisionDesc")}
                     </span>
                   </div>
                 </label>
@@ -271,21 +273,21 @@ const ModelConfigDialogContent: React.FC<ModelConfigDialogContentProps> = ({
             </div>
           </div>
 
-          <div className="modal-footer">
+          <div className="model-config-drawer-footer">
             <button
               type="button"
               className="btn btn-secondary"
               onClick={onClose}
             >
-              {t("common.cancel", "取消")}
+              {t("common.cancel")}
             </button>
             <button type="submit" className="btn btn-primary">
               <Check size={14} />
-              {t("common.save", "保存配置")}
+              {t("common.save")}
             </button>
           </div>
         </form>
-      </div>
+      </aside>
     </div>
   );
 };
@@ -299,7 +301,7 @@ export const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
   if (!open || !model) return null;
 
   return (
-    <ModelConfigDialogContent
+    <ModelConfigDrawerContent
       key={model.id}
       model={model}
       onClose={onClose}
@@ -307,3 +309,5 @@ export const ModelConfigModal: React.FC<ModelConfigModalProps> = ({
     />
   );
 };
+
+export const ModelConfigDrawer = ModelConfigModal;

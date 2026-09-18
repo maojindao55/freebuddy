@@ -9,9 +9,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  Plus,
   RefreshCw,
-  Trash2,
   X,
 } from "lucide-react";
 import { useProviderStore } from "@/store/providerStore";
@@ -19,11 +17,17 @@ import { providersClient } from "@/services/providers/client";
 import { cliClient } from "@/services/cli/client";
 import { copyToClipboard } from "@/utils/clipboard";
 import { FREEBIE_BUNDLED_PROVIDERS } from "@/config/freebie";
-import type { Provider, ProviderProtocol } from "@/services/providers/types";
+import type { Provider, ProviderModel, ProviderProtocol } from "@/services/providers/types";
 import {
   defaultEnvKeyForProtocol,
   protocolsOf,
 } from "@/services/providers/types";
+import { ProviderModelManager } from "./ProviderModelManager";
+import {
+  inferContextWindow,
+  inferModelCapabilities,
+  inferModelGroup,
+} from "@/services/providers/modelUtils";
 
 const PROTOCOLS: ProviderProtocol[] = [
   "openai-chat",
@@ -149,12 +153,9 @@ export function ProviderEditor({
   };
 
   // Models state
-  const [modelList, setModelList] = useState<string[]>(() =>
-    (initial?.models ?? []).map((m) => m.id).filter(Boolean),
+  const [models, setModels] = useState<ProviderModel[]>(() =>
+    initial?.models ? [...initial.models] : [],
   );
-  const [newModelId, setNewModelId] = useState("");
-  const [isTextMode, setIsTextMode] = useState(false);
-  const [rawTextModels, setRawTextModels] = useState("");
 
   // Testing & fetching
   const [testing, setTesting] = useState(false);
@@ -235,17 +236,29 @@ export function ProviderEditor({
         setModelMessage({ type: "error", text: t("providers.noModelsFound") });
         return;
       }
-      const newModels = res.models;
-      setModelList((prev) => {
-        const set = new Set(prev);
-        for (const m of newModels) {
-          set.add(m);
+      const fetchedModelIds = res.models;
+      setModels((prev) => {
+        const existingMap = new Map(prev.map((m) => [m.id, m]));
+        const result: ProviderModel[] = [...prev];
+        for (const id of fetchedModelIds) {
+          if (!existingMap.has(id)) {
+            const defaultCtx = inferContextWindow(id);
+            const caps = inferModelCapabilities(id);
+            result.push({
+              id,
+              contextWindow: defaultCtx,
+              supportsTools: caps.tools,
+              supportsReasoning: caps.reasoning,
+              supportsVision: caps.vision,
+              group: inferModelGroup(id),
+            });
+          }
         }
-        return Array.from(set);
+        return result;
       });
       setModelMessage({
         type: "success",
-        text: t("providers.fetchSuccess", { count: newModels.length }),
+        text: t("providers.fetchSuccess", { count: fetchedModelIds.length }),
       });
     } catch (e) {
       setModelMessage({
@@ -257,44 +270,10 @@ export function ProviderEditor({
     }
   }, [testConnection, t]);
 
-  const addModel = (id: string) => {
-    const trimmed = id.trim();
-    if (!trimmed) return;
-    if (!modelList.includes(trimmed)) {
-      setModelList((prev) => [...prev, trimmed]);
-    }
-    setNewModelId("");
-  };
-
-  const removeModel = (id: string) => {
-    setModelList((prev) => prev.filter((m) => m !== id));
-  };
-
-  const toggleTextMode = () => {
-    if (!isTextMode) {
-      setRawTextModels(modelList.join("\n"));
-      setIsTextMode(true);
-    } else {
-      const parsed = rawTextModels
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      setModelList(Array.from(new Set(parsed)));
-      setIsTextMode(false);
-    }
-  };
-
   const submit = async () => {
     setSaving(true);
     setError("");
     try {
-      const finalModels = isTextMode
-        ? rawTextModels
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : modelList;
-
       await upsert({
         id: initial?.id,
         presetId: initial?.presetId,
@@ -304,7 +283,7 @@ export function ProviderEditor({
         baseUrl: baseUrl.trim(),
         envKey: envKey.trim() || envPlaceholder,
         apiKey: apiKey.trim() || undefined,
-        models: finalModels.map((id) => ({ id })),
+        models,
         wireApi: selectedProtocols.includes("openai-responses") ? "responses" : "chat",
       });
       onSaved();
@@ -520,98 +499,9 @@ export function ProviderEditor({
             </div>
           ) : null}
 
-          {/* 7. Model Management (Tags / Text mode) */}
+          {/* 7. Model Management */}
           <div className="provider-models-panel">
-            <div className="provider-models-panel-header">
-              <div className="provider-models-count">
-                <strong>
-                  {t("providers.configuredCount", {
-                    count: isTextMode
-                      ? rawTextModels.split("\n").filter((s) => s.trim()).length
-                      : modelList.length,
-                  })}
-                </strong>
-              </div>
-              <div className="provider-models-header-actions">
-                {modelList.length > 0 && !isTextMode ? (
-                  <button
-                    type="button"
-                    className="provider-text-btn danger"
-                    onClick={() => setModelList([])}
-                  >
-                    <Trash2 size={12} />
-                    {t("providers.clearModels")}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="provider-text-btn"
-                  onClick={toggleTextMode}
-                >
-                  {isTextMode ? t("providers.tagMode") : t("providers.batchEdit")}
-                </button>
-              </div>
-            </div>
-
-            {isTextMode ? (
-              <textarea
-                value={rawTextModels}
-                onChange={(e) => setRawTextModels(e.target.value)}
-                rows={5}
-                className="provider-models-textarea"
-                placeholder="gpt-4o&#10;claude-3-7-sonnet&#10;deepseek-chat"
-              />
-            ) : (
-              <div className="provider-models-tags-container">
-                {/* Quick Add row */}
-                <div className="provider-model-input-row">
-                  <input
-                    value={newModelId}
-                    onChange={(e) => setNewModelId(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addModel(newModelId);
-                      }
-                    }}
-                    placeholder={t("providers.addModelPlaceholder")}
-                  />
-                  <button
-                    type="button"
-                    className="provider-secondary-btn"
-                    disabled={!newModelId.trim()}
-                    onClick={() => addModel(newModelId)}
-                  >
-                    <Plus size={14} />
-                    {t("providers.addModel")}
-                  </button>
-                </div>
-
-
-                {/* Tags List */}
-                {modelList.length > 0 ? (
-                  <div className="provider-model-tags-list">
-                    {modelList.map((m) => (
-                      <span key={m} className="provider-model-tag">
-                        <code>{m}</code>
-                        <button
-                          type="button"
-                          className="provider-model-tag-del"
-                          onClick={() => removeModel(m)}
-                          aria-label="Remove"
-                        >
-                          <X size={12} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="provider-models-empty-hint">
-                    {t("providers.noModelsFound")}
-                  </div>
-                )}
-              </div>
-            )}
+            <ProviderModelManager models={models} onChange={setModels} />
           </div>
 
           {/* 8. Env Key (Advanced) */}

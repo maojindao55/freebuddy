@@ -2138,6 +2138,23 @@
     "statusOk": "正常",
     "statusError": "异常",
     "untested": "未检测",
-    "configuredCount": "已配置 {{count}} 个模型"
+    "configuredCount": "已配置 {{count}} 个模型",
+    "modelConfigTitle": "配置模型高级参数",
+    "modelDisplayName": "显示别名（可选）",
+    "modelGroup": "自定义分组（可选）",
+    "contextWindow": "上下文长度 (Context Window)",
+    "maxTokens": "最大输出限制 (Max Output Tokens)",
+    "modelCapabilities": "模型能力特性",
+    "capTools": "工具调用 / FC",
+    "capToolsDesc": "支持 Function Calling，CLI Agent 可调用工具执行命令",
+    "capReasoning": "深度推理 / 思考",
+    "capReasoningDesc": "如 o1/o3/R1 类推理模型，具备思考阶段与推演过程",
+    "capVision": "多模态视觉",
+    "capVisionDesc": "支持图像理解与图文混合提示输入",
+    "modelTotalCount": "模型",
+    "searchModels": "搜索模型 ID、别名...",
+    "noFilterResults": "未找到符合过滤条件的模型",
+    "applyBatch": "应用并更新列表",
+    "batchEditHint": "每行输入一个模型 ID。保存时将保留已存在配置的模型参数，自动解析新增模型。"
   }
 }

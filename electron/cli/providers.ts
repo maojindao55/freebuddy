@@ -54,7 +54,11 @@ function parseModels(raw: string | null): ProviderModel[] {
       id: String(m.id),
       ...(typeof m.name === "string" ? { name: m.name } : {}),
       ...(typeof m.contextWindow === "number" ? { contextWindow: m.contextWindow } : {}),
+      ...(typeof m.maxTokens === "number" ? { maxTokens: m.maxTokens } : {}),
       ...(typeof m.supportsVision === "boolean" ? { supportsVision: m.supportsVision } : {}),
+      ...(typeof m.supportsReasoning === "boolean" ? { supportsReasoning: m.supportsReasoning } : {}),
+      ...(typeof m.supportsTools === "boolean" ? { supportsTools: m.supportsTools } : {}),
+      ...(typeof m.group === "string" ? { group: m.group } : {}),
     }));
   } catch { return []; }
 }

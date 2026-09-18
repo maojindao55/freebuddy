@@ -2151,6 +2151,23 @@
     "statusOk": "OK",
     "statusError": "Error",
     "untested": "Untested",
-    "configuredCount": "{{count}} models configured"
+    "configuredCount": "{{count}} models configured",
+    "modelConfigTitle": "Configure Model Parameters",
+    "modelDisplayName": "Display Alias (Optional)",
+    "modelGroup": "Custom Group (Optional)",
+    "contextWindow": "Context Window",
+    "maxTokens": "Max Output Tokens",
+    "modelCapabilities": "Model Capabilities",
+    "capTools": "Tool Calling / FC",
+    "capToolsDesc": "Supports Function Calling for CLI agents to execute tools",
+    "capReasoning": "Deep Reasoning / Thinking",
+    "capReasoningDesc": "Reasoning models such as o1/o3/R1 with explicit thinking steps",
+    "capVision": "Multimodal Vision",
+    "capVisionDesc": "Supports image understanding and multimodal input",
+    "modelTotalCount": "Models",
+    "searchModels": "Search model ID, alias...",
+    "noFilterResults": "No models match the filter",
+    "applyBatch": "Apply and Update List",
+    "batchEditHint": "Enter one model ID per line. Existing configurations will be preserved while new models are parsed."
   }
 }

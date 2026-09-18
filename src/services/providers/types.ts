@@ -31,7 +31,11 @@ export interface ProviderModel {
   id: string;
   name?: string;
   contextWindow?: number;
+  maxTokens?: number;
   supportsVision?: boolean;
+  supportsReasoning?: boolean;
+  supportsTools?: boolean;
+  group?: string;
 }
 
 export interface ProviderWebsites {

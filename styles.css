@@ -4487,6 +4487,19 @@ html[data-surface="butler-screen-ball"] #root {
   padding: 32px;
 }
 
+.settings-surface-page .settings-panel.settings-panel-full {
+  height: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 .skills-tab {
   display: flex;
   flex-direction: column;
@@ -24118,13 +24131,25 @@ button.ghost:focus-visible,
 .providers-workspace {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
-  height: min(720px, calc(100vh - 200px));
-  min-height: 480px;
+  height: 100%;
+  min-height: 520px;
   flex: 1;
   border: 1px solid var(--fb-border-strong);
   border-radius: 12px;
   background: var(--fb-panel-bg);
   overflow: hidden;
+}
+
+.settings-surface-modal .providers-workspace {
+  height: min(720px, calc(86vh - 160px));
+  min-height: 480px;
+}
+
+.settings-surface-page .providers-workspace {
+  height: 100%;
+  max-height: none;
+  min-height: 520px;
+  flex: 1;
 }
 
 .providers-sidebar {
@@ -24535,6 +24560,7 @@ button.ghost:focus-visible,
   grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -24545,15 +24571,22 @@ button.ghost:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 14px;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 .provider-models-column {
-  overflow-y: auto;
+  overflow: hidden;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   background: var(--fb-panel-soft);
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 .provider-column-header {
@@ -25118,6 +25151,9 @@ button.ghost:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .model-mgr-toolbar {
@@ -25307,7 +25343,9 @@ button.ghost:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 350px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -25527,8 +25565,11 @@ button.ghost:focus-visible,
 .model-mgr-tags-container {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 6px;
-  max-height: 250px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
   padding: 4px 0;
 }
@@ -25589,6 +25630,14 @@ button.ghost:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.model-mgr-batch-panel .provider-models-textarea {
+  flex: 1;
+  min-height: 180px;
+  resize: vertical;
 }
 
 .model-mgr-batch-hint {

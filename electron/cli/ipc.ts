@@ -28,6 +28,7 @@ import {
   deleteProvider,
   setProviderEnabled,
   reorderProviders,
+  getProviderApiKey,
   type ProviderInput,
 } from "./providers.js";
 import { testProvider, type TestProviderOptions } from "./providerCheck.js";
@@ -901,9 +902,11 @@ export function registerCliIpc() {
   registerHandler("providers:setEnabled", (_e, args: { id: string; enabled: boolean }) =>
     setProviderEnabled(args.id, args.enabled)
   );
+  registerHandler("providers:reorder", (_e, ids: string[]) => reorderProviders(ids));
   registerHandler("providers:test", (_e, target: unknown) =>
     testProvider(target as string | TestProviderOptions)
   );
+  registerHandler("providers:getApiKey", (_e, id: string) => getProviderApiKey(id));
 
   registerHandler("cli:listRuntimes", () => listRuntimes());
   registerHandler("cli:codexUsage", () => readCodexUsage());

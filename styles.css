@@ -24279,7 +24279,7 @@ button.ghost:focus-visible,
   opacity: 0.7;
 }
 
-/* API Key & password reveal */
+/* API Key & password reveal / copy */
 .provider-key-input-wrapper {
   position: relative;
   display: flex;
@@ -24289,12 +24289,18 @@ button.ghost:focus-visible,
 
 .provider-key-input-wrapper input {
   width: 100%;
-  padding-right: 36px;
+  padding-right: 64px;
+}
+
+.provider-key-actions-inner {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .provider-eye-btn {
-  position: absolute;
-  right: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -24305,10 +24311,49 @@ button.ghost:focus-visible,
   color: var(--fb-text-tertiary);
   cursor: pointer;
   border-radius: 6px;
+  transition: all 0.15s ease;
 }
 
 .provider-eye-btn:hover {
   color: var(--fb-text-primary);
+  background: var(--fb-hover);
+}
+
+.provider-eye-btn.copied {
+  color: var(--fb-brand);
+}
+
+.provider-card-key-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--fb-panel-soft);
+  border: 1px solid var(--fb-border);
+}
+
+.provider-card-key-pill code {
+  font-size: 11px;
+}
+
+.provider-card-copy-key-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.provider-card-copy-key-btn:hover {
+  color: var(--fb-brand);
 }
 
 .provider-key-foot {

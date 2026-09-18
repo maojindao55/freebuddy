@@ -2147,6 +2147,8 @@
     "getKey": "Get API Key",
     "showKey": "Show key",
     "hideKey": "Hide key",
+    "copyKey": "Copy API Key",
+    "keyCopied": "API Key copied",
     "statusOk": "OK",
     "statusError": "Error",
     "untested": "Untested",

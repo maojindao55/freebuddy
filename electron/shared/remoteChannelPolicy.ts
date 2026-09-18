@@ -201,6 +201,7 @@ const ADMIN_ONLY = [
   "providers:setEnabled",
   "providers:reorder",
   "providers:test",
+  "providers:getApiKey",
 
   // Host workspace project mounts affect agent cwd/roots; no remote path guard yet.
   "cli:createProject",

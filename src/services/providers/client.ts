@@ -7,6 +7,7 @@ interface ProvidersBridge {
   setEnabled(input: { id: string; enabled: boolean }): Promise<Provider>;
   reorder(ids: string[]): Promise<Provider[]>;
   test(target: string | TestProviderOptions): Promise<ProviderTestResult>;
+  getApiKey(id: string): Promise<string | undefined>;
 }
 
 function api(): ProvidersBridge {
@@ -36,5 +37,8 @@ export const providersClient = {
   },
   test(target: string | TestProviderOptions): Promise<ProviderTestResult> {
     return api().test(target);
+  },
+  getApiKey(id: string): Promise<string | undefined> {
+    return api().getApiKey(id);
   },
 };

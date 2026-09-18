@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pencil, Plus, Power, RefreshCw, Trash2 } from "lucide-react";
+import { Check, Copy, Pencil, Plus, Power, RefreshCw, Trash2 } from "lucide-react";
 import { useProviderStore } from "@/store/providerStore";
 import { providersClient } from "@/services/providers/client";
+import { copyToClipboard } from "@/utils/clipboard";
 import type { Provider } from "@/services/providers/types";
 import { ProviderEditor } from "./ProviderEditor";
 
@@ -16,8 +17,22 @@ export function ProvidersTab() {
   const setEnabled = useProviderStore((s) => s.setEnabled);
   const [editing, setEditing] = useState<Provider | "new" | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
+
+  const onCopyKey = useCallback(async (p: Provider) => {
+    try {
+      const key = await providersClient.getApiKey(p.id);
+      if (key) {
+        await copyToClipboard(key);
+        setCopiedId(p.id);
+        setTimeout(() => setCopiedId(null), 2000);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
   const sorted = useMemo(
     () => [...providers].sort((a, b) => (a.position ?? 100) - (b.position ?? 100)),
     [providers],
@@ -80,7 +95,26 @@ export function ProvidersTab() {
                 <div className="provider-card-meta">
                   <code>{p.baseUrl}</code><span>·</span>
                   <span>{t("providers.modelsCount", { count: p.models.length })}</span>
-                  {p.apiKeyPreview ? <><span>·</span><code>{p.apiKeyPreview}</code></> : null}
+                  {p.apiKeyPreview ? (
+                    <>
+                      <span>·</span>
+                      <span className="provider-card-key-pill">
+                        <code>{p.apiKeyPreview}</code>
+                        <button
+                          type="button"
+                          className="provider-card-copy-key-btn"
+                          title={copiedId === p.id ? t("providers.keyCopied") : t("providers.copyKey")}
+                          onClick={() => void onCopyKey(p)}
+                        >
+                          {copiedId === p.id ? (
+                            <Check size={11} className="copied-icon" />
+                          ) : (
+                            <Copy size={11} />
+                          )}
+                        </button>
+                      </span>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <div className="provider-card-actions">

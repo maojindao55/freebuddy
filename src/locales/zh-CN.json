@@ -2134,6 +2134,8 @@
     "getKey": "获取 API Key",
     "showKey": "显示密钥",
     "hideKey": "隐藏密钥",
+    "copyKey": "复制 API Key",
+    "keyCopied": "已复制 API Key",
     "statusOk": "正常",
     "statusError": "异常",
     "untested": "未检测",

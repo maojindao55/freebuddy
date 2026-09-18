@@ -954,6 +954,7 @@ const providers = {
     ipcRenderer.invoke("providers:setEnabled", input),
   reorder: (ids: string[]) => ipcRenderer.invoke("providers:reorder", ids),
   test: (target: unknown) => ipcRenderer.invoke("providers:test", target),
+  getApiKey: (id: string) => ipcRenderer.invoke("providers:getApiKey", id),
 };
 
 contextBridge.exposeInMainWorld("freebuddy", {

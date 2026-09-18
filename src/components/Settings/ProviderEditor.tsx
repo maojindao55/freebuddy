@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  Copy,
   Download,
   ExternalLink,
   Eye,
@@ -16,6 +17,7 @@ import {
 import { useProviderStore } from "@/store/providerStore";
 import { providersClient } from "@/services/providers/client";
 import { cliClient } from "@/services/cli/client";
+import { copyToClipboard } from "@/utils/clipboard";
 import { FREEBIE_BUNDLED_PROVIDERS } from "@/config/freebie";
 import type { Provider, ProviderProtocol } from "@/services/providers/types";
 import {
@@ -123,6 +125,36 @@ export function ProviderEditor({
   const [envKey, setEnvKey] = useState(initial?.envKey ?? "");
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  const handleToggleShowKey = async () => {
+    if (!showApiKey) {
+      if (!apiKey && initial?.id && initial?.hasKey) {
+        try {
+          const fetched = await providersClient.getApiKey(initial.id);
+          if (fetched) setApiKey(fetched);
+        } catch { /* ignore */ }
+      }
+      setShowApiKey(true);
+    } else {
+      setShowApiKey(false);
+    }
+  };
+
+  const handleCopyKey = async () => {
+    let text = apiKey.trim();
+    if (!text && initial?.id && initial?.hasKey) {
+      try {
+        const fetched = await providersClient.getApiKey(initial.id);
+        if (fetched) text = fetched;
+      } catch { /* ignore */ }
+    }
+    if (text) {
+      await copyToClipboard(text);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    }
+  };
 
   // Models state
   const [modelList, setModelList] = useState<string[]>(() =>
@@ -392,14 +424,26 @@ export function ProviderEditor({
                       : "sk-..."
                   }
                 />
-                <button
-                  type="button"
-                  className="provider-eye-btn"
-                  title={showApiKey ? t("providers.hideKey") : t("providers.showKey")}
-                  onClick={() => setShowApiKey((v) => !v)}
-                >
-                  {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
+                <div className="provider-key-actions-inner">
+                  {hasKey ? (
+                    <button
+                      type="button"
+                      className={`provider-eye-btn ${copiedKey ? "copied" : ""}`}
+                      title={copiedKey ? t("providers.keyCopied") : t("providers.copyKey")}
+                      onClick={() => void handleCopyKey()}
+                    >
+                      {copiedKey ? <Check size={14} className="copied-icon" /> : <Copy size={14} />}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="provider-eye-btn"
+                    title={showApiKey ? t("providers.hideKey") : t("providers.showKey")}
+                    onClick={() => void handleToggleShowKey()}
+                  >
+                    {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
               </div>
             </label>
 

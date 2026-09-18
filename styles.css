@@ -24552,51 +24552,6 @@ button.ghost:focus-visible,
   font-family: var(--fb-mono);
 }
 
-/* Quick Presets */
-.provider-presets-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.provider-presets-title {
-  color: var(--fb-text-tertiary);
-  font-size: 11px;
-}
-
-.provider-presets-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.provider-preset-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  border: 1px dashed var(--fb-border-strong);
-  border-radius: 6px;
-  background: var(--fb-panel-bg);
-  color: var(--fb-text-secondary);
-  font-family: var(--fb-mono);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.provider-preset-chip:hover:not(:disabled) {
-  border-color: var(--fb-brand);
-  color: var(--fb-brand);
-}
-
-.provider-preset-chip.exists {
-  opacity: 0.45;
-  cursor: default;
-  border-style: solid;
-}
-
 /* Model tags list */
 .provider-model-tags-list {
   display: flex;

@@ -34,35 +34,27 @@ const PROTOCOLS: ProviderProtocol[] = [
 
 const PROTOCOL_CONFIG: Record<
   ProviderProtocol,
-  { label: string; desc: string; defaultUrl: string; presets: string[] }
+  { label: string; desc: string; defaultUrl: string }
 > = {
   "openai-chat": {
     label: "OpenAI 兼容",
     desc: "Chat Completions 兼容协议",
     defaultUrl: "https://api.openai.com/v1",
-    presets: ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini", "claude-3-7-sonnet"],
   },
   "openai-responses": {
     label: "OpenAI Responses",
     desc: "OpenAI 新版 Responses API",
     defaultUrl: "https://api.openai.com/v1",
-    presets: ["gpt-4o", "o1", "o3-mini"],
   },
   anthropic: {
     label: "Anthropic Claude",
     desc: "Claude Messages API 协议",
     defaultUrl: "https://api.anthropic.com/v1",
-    presets: [
-      "claude-3-7-sonnet-20250219",
-      "claude-3-5-sonnet-20241022",
-      "claude-3-5-haiku-20241022",
-    ],
   },
   deepseek: {
     label: "DeepSeek",
     desc: "DeepSeek 原生协议及推理模型",
     defaultUrl: "https://api.deepseek.com",
-    presets: ["deepseek-chat", "deepseek-reasoner"],
   },
 };
 
@@ -185,16 +177,6 @@ export function ProviderEditor({
     () => defaultEnvKeyForProtocol(primaryProtocol),
     [primaryProtocol],
   );
-
-  const availablePresets = useMemo(() => {
-    const list: string[] = [];
-    for (const p of selectedProtocols) {
-      for (const m of PROTOCOL_CONFIG[p]?.presets ?? []) {
-        if (!list.includes(m)) list.push(m);
-      }
-    }
-    return list;
-  }, [selectedProtocols]);
 
   const consoleUrl = useMemo(
     () => detectConsoleUrl(baseUrl, initial?.presetId),
@@ -605,31 +587,6 @@ export function ProviderEditor({
                   </button>
                 </div>
 
-                {/* Quick Presets */}
-                {availablePresets.length ? (
-                  <div className="provider-presets-row">
-                    <span className="provider-presets-title">
-                      {t("providers.quickAddPresets")}:
-                    </span>
-                    <div className="provider-presets-chips">
-                      {availablePresets.map((preset) => {
-                        const exists = modelList.includes(preset);
-                        return (
-                          <button
-                            key={preset}
-                            type="button"
-                            className={`provider-preset-chip ${exists ? "exists" : ""}`}
-                            disabled={exists}
-                            onClick={() => addModel(preset)}
-                          >
-                            <span>{exists ? "✓" : "+"}</span>
-                            <span>{preset}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
 
                 {/* Tags List */}
                 {modelList.length > 0 ? (

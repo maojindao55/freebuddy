@@ -2140,7 +2140,6 @@
     "supportedProtocolsHint": "Check all protocols this provider supports to make it available to matching agents",
     "addModelPlaceholder": "Enter model ID (e.g. gpt-4o) and press Enter",
     "addModel": "Add",
-    "quickAddPresets": "Quick presets",
     "batchEdit": "Batch edit",
     "tagMode": "Tags mode",
     "clearModels": "Clear all",

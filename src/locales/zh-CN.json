@@ -2127,7 +2127,6 @@
     "supportedProtocolsHint": "勾选该服务商支持的协议，即可在对应类型的 Agent BYOK 中直接选用",
     "addModelPlaceholder": "输入模型 ID（如 gpt-4o），按回车添加",
     "addModel": "添加",
-    "quickAddPresets": "常用模型快捷添加",
     "batchEdit": "批量编辑",
     "tagMode": "胶囊视图",
     "clearModels": "清空全部",

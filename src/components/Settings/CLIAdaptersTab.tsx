@@ -1002,13 +1002,20 @@ function EditOverridePanel({
   );
   const [deepseekOfficialApiKey, setDeepseekOfficialApiKey] = useState("");
   const [codexApiKey, setCodexApiKey] = useState("");
-  const [byokModels, setByokModels] = useState<ByokModelDraft[]>(
-    savedByok?.models?.length
-      ? savedByok.models
-      : parsedExtraArgs.model
-        ? [{ id: parsedExtraArgs.model, name: "", supportsVision: isCodex }]
-        : []
-  );
+  const [byokModels, setByokModels] = useState<ByokModelDraft[]>(() => {
+    if (savedByok?.models?.length) return savedByok.models;
+    if (selectedProvider?.models?.length) {
+      return selectedProvider.models.map((m) => ({
+        id: m.id,
+        name: m.name ?? "",
+        contextWindow: m.contextWindow,
+        supportsVision: m.supportsVision
+      }));
+    }
+    return parsedExtraArgs.model
+      ? [{ id: parsedExtraArgs.model, name: "", supportsVision: isCodex }]
+      : [];
+  });
   const [byokContextWindow, setByokContextWindow] = useState(
     savedClaudeByok?.contextWindow?.toString() ??
       savedClaudeByok?.compaction?.window?.toString() ??
@@ -1031,6 +1038,26 @@ function EditOverridePanel({
   useEffect(() => {
     if (!skillsLoaded) void loadSkills();
   }, [loadSkills, skillsLoaded]);
+
+  useEffect(() => {
+    if (!providersLoaded) void loadProviders();
+  }, [loadProviders, providersLoaded]);
+
+  useEffect(() => {
+    if (selectedProvider && byokModels.length === 0 && selectedProvider.models.length > 0) {
+      setByokModels(
+        selectedProvider.models.map((m) => ({
+          id: m.id,
+          name: m.name ?? "",
+          contextWindow: m.contextWindow,
+          supportsVision: m.supportsVision
+        }))
+      );
+      if (!model.trim() && selectedProvider.models[0]?.id) {
+        setModel(selectedProvider.models[0].id);
+      }
+    }
+  }, [selectedProvider, byokModels.length, model]);
 
   useEffect(() => {
     if (saveStatus !== "saved") return;
@@ -1096,12 +1123,13 @@ function EditOverridePanel({
       isCodex && codexByokEnabled
         ? selectedProviderId && selectedProvider
           ? {
-              // Provider-reference mode: store providerId only; key/url/models resolve at runtime
+              // Provider-reference mode: store providerId with current models snapshot
               enabled: true,
               providerId: selectedProviderId,
               providerName: selectedProvider.name,
               envKey: selectedProvider.envKey,
-              wireApi: selectedProvider.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const)
+              wireApi: selectedProvider.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const),
+              models: normalizedByokModels
             }
           : {
               enabled: true,
@@ -1122,6 +1150,7 @@ function EditOverridePanel({
               enabled: true,
               providerId: selectedProviderId,
               envKey: selectedProvider.envKey,
+              models: normalizedByokModels,
               compaction: { enabled: claudeCompactionEnabled }
             }
           : {
@@ -1143,7 +1172,8 @@ function EditOverridePanel({
             enabled: true,
             providerId: selectedProviderId,
             envKey: selectedProvider.envKey,
-            wireApi: "chat" as const
+            wireApi: "chat" as const,
+            models: normalizedByokModels
           }
         : {
             enabled: codexByokEnabled,
@@ -1416,10 +1446,15 @@ function EditOverridePanel({
                           setCodexEnvKey(p.envKey);
                           setByokModels(
                             p.models.map((m) => ({
-                              id: m.id, name: m.name ?? "",
-                              contextWindow: m.contextWindow, supportsVision: m.supportsVision,
-                            })),
+                              id: m.id,
+                              name: m.name ?? "",
+                              contextWindow: m.contextWindow,
+                              supportsVision: m.supportsVision
+                            }))
                           );
+                          if (!model.trim() && p.models[0]?.id) {
+                            setModel(p.models[0].id);
+                          }
                         }
                       }
                     }}

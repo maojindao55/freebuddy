@@ -118,6 +118,7 @@ test("onboarding.setup locale keys are fully mirrored", () => {
     "install",
     "installing",
     "installed",
+    "installStarted",
     "codexDesc",
     "dshDesc",
     "claudeDesc",
@@ -136,6 +137,7 @@ test("onboarding.setup locale keys are fully mirrored", () => {
     "startFirstTask",
     "firstTaskTitle",
     "firstTaskStarted",
+    "firstTaskPrompt",
     "noAgentReady",
     "exploreOtherAgents"
   ];
@@ -152,6 +154,7 @@ test("guide chat elements and setup card have styling in styles.css", () => {
   assert.match(styles, /\.guide-chat-banner-btn--finish/);
   assert.match(styles, /\.chat-empty-hero--guide/);
   assert.match(styles, /\.onboarding-setup-card/);
+  assert.match(styles, /\.setup-header-subtitle/);
   assert.match(styles, /\.step-btn--launch/);
   assert.match(styles, /\.step-btn--guide-auto/);
   assert.match(styles, /\.onboarding-core-agents-list/);

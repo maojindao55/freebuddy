@@ -16,11 +16,13 @@ import { nanoid } from "nanoid";
 import {
   Check,
   ChevronDown,
+  ChevronUp,
   ExternalLink,
   Folder,
   FolderLock,
   GitBranch,
   Laptop,
+  Layers,
   Plus,
   Search,
   Sparkles,
@@ -1127,6 +1129,26 @@ export function ChatView({
         t("chat.starter.two"),
         t("chat.starter.three")
       ];
+
+  const [setupCardExpanded, setSetupCardExpanded] = useState(false);
+
+  const handleAskGuide = useCallback(
+    (prompt: string) => {
+      if (activeId) {
+        setSetupCardExpanded(true);
+        void sendMessage({
+          conversationId: activeId,
+          prompt
+        });
+      } else {
+        setDraft(prompt);
+        setTimeout(() => {
+          chatTextareaRef.current?.focus();
+        }, 50);
+      }
+    },
+    [activeId, sendMessage]
+  );
 
   const sessionMeta = useMemo(() => {
     if (!conv) {
@@ -2843,6 +2865,18 @@ export function ChatView({
               <span>{t("onboarding.guideBannerText")}</span>
             </div>
             <div className="guide-chat-banner-actions">
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  className={`guide-chat-banner-btn guide-chat-banner-btn--setup${setupCardExpanded ? " is-active" : ""}`}
+                  onClick={() => setSetupCardExpanded((prev) => !prev)}
+                  title={t("onboarding.guideBannerSetup")}
+                >
+                  <Layers size={13} />
+                  <span>{t("onboarding.guideBannerSetup")}</span>
+                  {setupCardExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                </button>
+              )}
               {onOpenAgentSettings && (
                 <button
                   type="button"
@@ -2865,6 +2899,14 @@ export function ChatView({
             </div>
           </div>
         )}
+        {isGuide && messages.length > 0 && setupCardExpanded && (
+          <div className="guide-chat-floating-card">
+            <OnboardingGuideSetupCard
+              onOpenSettings={onOpenAgentSettings}
+              onAskGuide={handleAskGuide}
+            />
+          </div>
+        )}
         {messages.length === 0 && !conv?.sourceConversationId && (
           <div className={`chat-empty chat-empty-hero${isGuide ? " chat-empty-hero--guide" : ""}`}>
             <p className="eyebrow">
@@ -2881,12 +2923,7 @@ export function ChatView({
             {isGuide && (
               <OnboardingGuideSetupCard
                 onOpenSettings={onOpenAgentSettings}
-                onAskGuide={(prompt) => {
-                  setDraft(prompt);
-                  setTimeout(() => {
-                    chatTextareaRef.current?.focus();
-                  }, 50);
-                }}
+                onAskGuide={handleAskGuide}
               />
             )}
             <div className="starter-prompts">

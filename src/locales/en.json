@@ -391,7 +391,7 @@
       "getKey": "Get a key",
       "runtimeMissing": "The {{runtime}} CLI is not installed. The agent will be created but cannot run until it is installed.",
       "openAgentSettings": "Open Agents settings",
-      "alreadyImported": "You already imported this provider. Continuing will create another agent.",
+      "alreadyImported": "You already imported this provider. Continuing will update its configuration and key.",
       "securityNote": "Only continue if the API base URL belongs to the provider you expect. Your key is sent to that URL.",
       "create": "Create agent"
     }
@@ -1288,6 +1288,7 @@
     "guideHeroHeading": "Hi! I'm GuideBuddy",
     "guideHeroBody": "I'm your built-in onboarding guide for FreeBuddy. Whether getting familiar with features, installing coding agents, or configuring free models, ask me anything.",
     "guideBannerText": "You are chatting with GuideBuddy to help you run your first agent",
+    "guideBannerSetup": "Setup Hub",
     "guideBannerSettings": "Open Settings",
     "guideBannerFinish": "Complete Guide",
     "guideGraduated": "Onboarding completed! You can restart it anytime in Settings.",
@@ -1312,6 +1313,7 @@
       "install": "Install",
       "installing": "Installing…",
       "installed": "Installed",
+      "installStarted": "Installation started, check progress below",
       "codexDesc": "OpenAI stack / complex reasoning and autonomous implementation",
       "dshDesc": "Official DeepSeek harness / high speed and cost efficiency",
       "claudeDesc": "Claude flagship agent / deep context and architecture refactoring",
@@ -1327,6 +1329,7 @@
       "startFirstTask": "Start First Coding Task",
       "firstTaskTitle": "Sample: Classic Snake Game",
       "firstTaskStarted": "Created sample task, enjoy!",
+      "firstTaskPrompt": "Please build a classic web-based Snake game using HTML, CSS, and vanilla JavaScript, including a scoreboard and pause feature, and output a single-file HTML that I can open in a browser to play.",
       "noAgentReady": "Please install at least one agent first",
       "exploreOtherAgents": "Or explore all 10+ agents in Settings"
     }

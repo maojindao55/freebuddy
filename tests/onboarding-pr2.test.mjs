@@ -83,7 +83,7 @@ test("onboarding overlay is model-free and gated by the onboarding store", () =>
   assert.doesNotMatch(overlay, /cliClient\.(run|send|start)/);
   assert.match(overlay, /activateGuideTrial/);
   assert.match(overlay, /markSkipped/);
-  assert.match(overlay, /onOpenSettings\("providers"\)/);
+  assert.match(overlay, /handleTrial/);
 
   const store = read("src/store/onboardingStore.ts");
   assert.match(store, /ONBOARDING_STATE_SETTING_KEY/);

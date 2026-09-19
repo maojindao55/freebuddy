@@ -391,7 +391,7 @@
       "getKey": "去领取 Key",
       "runtimeMissing": "尚未安装 {{runtime}} CLI。Agent 会先创建，但安装后才能运行。",
       "openAgentSettings": "打开 Agent 设置",
-      "alreadyImported": "你已经导入过这家服务商，继续会再创建一个 Agent。",
+      "alreadyImported": "已导入过该服务商，继续将更新其配置与密钥。",
       "securityNote": "请确认 API 地址确实属于你预期的服务商，Key 会发送到该地址。",
       "create": "创建 Agent"
     }
@@ -1275,6 +1275,7 @@
     "guideHeroHeading": "嗨！我是 GuideBuddy",
     "guideHeroBody": "我是 FreeBuddy 的内置向导助手。无论是熟悉操作界面、安装外部编程助手，还是配置免费大模型，都可以直接问我。",
     "guideBannerText": "你正在与新手向导 GuideBuddy 对话，助你快速跑通首个 Agent",
+    "guideBannerSetup": "装备中心",
     "guideBannerSettings": "打开设置",
     "guideBannerFinish": "完成新手引导",
     "guideGraduated": "新手引导已完成！你可以随时在设置中重新开启。",
@@ -1299,6 +1300,7 @@
       "install": "安装",
       "installing": "安装中…",
       "installed": "已安装",
+      "installStarted": "已启动安装任务，请在下方查看进度",
       "codexDesc": "OpenAI 体系 / 复杂逻辑与项目全自动编写",
       "dshDesc": "DeepSeek 官方驾驭套件 / 国内极速高性价比",
       "claudeDesc": "Claude 旗舰助手 / 超长上下文与复杂工程架构",
@@ -1314,6 +1316,7 @@
       "startFirstTask": "开启首个编程任务",
       "firstTaskTitle": "新手演练：经典贪吃蛇小游戏",
       "firstTaskStarted": "已为你创建演练任务，即将开始！",
+      "firstTaskPrompt": "请帮我用 HTML + CSS + 原生 JavaScript 编写一个经典的网页贪吃蛇小游戏，包含计分板和暂停功能，并生成一个单文件 HTML 供我在浏览器中打开试玩。",
       "noAgentReady": "请先至少安装一个编程助手",
       "exploreOtherAgents": "或在设置中探索全部 10+ 款编程助手"
     }

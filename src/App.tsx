@@ -37,6 +37,7 @@ import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
 import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
+import { useProviderStore } from "./store/providerStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useOnboardingStore } from "./store/onboardingStore";
 import { useSettingsStore } from "./store/settingsStore";
@@ -98,18 +99,19 @@ function App() {
   const platform = window.freebuddy?.platform ?? "";
 
   const loadExecutors = useCliExecutorStore((s) => s.load);
+  const loadProviders = useProviderStore((s) => s.load);
   const loadConversations = useConversationStore((s) => s.load);
   const refreshConversationList = useConversationStore((s) => s.refreshList);
   const refreshProjects = useProjectStore((s) => s.refresh);
   useEffect(() => {
     void (async () => {
-      await loadExecutors();
+      await Promise.all([loadExecutors(), loadProviders()]);
       await Promise.all([loadConversations(), refreshProjects()]);
       // First-run decision needs executor overrides + provider list to be
       // loaded, so it runs after the stores above.
       await useOnboardingStore.getState().evaluate();
     })();
-  }, [loadExecutors, loadConversations, refreshProjects]);
+  }, [loadExecutors, loadProviders, loadConversations, refreshProjects]);
 
   useEffect(() => startScheduledSendRunner(), []);
 
@@ -726,16 +728,27 @@ function App() {
   const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
   const requestNewTask = useNewTaskUiStore((s) => s.requestNewTask);
-  const startNewTask = (options?: { cwd?: string; projectId?: string; agentId?: string }) => {
+  const startNewTask = async (options?: { cwd?: string; projectId?: string; agentId?: string }) => {
     setRequestedTeamId(undefined);
     setNewTaskMode("normal");
+    setSettingsOpen(false);
+    setWorkspaceView("chat");
+    if (options?.agentId) {
+      const convStore = useConversationStore.getState();
+      const member = convStore.members.find((m) => m.id === options.agentId);
+      if (member) {
+        await convStore.newConversation({
+          member,
+          title: member.name
+        });
+        return;
+      }
+    }
     requestNewTask({
       cwd: options?.cwd,
       projectId: options?.projectId,
       agentId: options?.agentId
     });
-    setSettingsOpen(false);
-    setWorkspaceView("chat");
     void setActive(undefined);
   };
   const openScheduledTasks = () => {

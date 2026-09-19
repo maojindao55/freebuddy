@@ -26968,6 +26968,36 @@ button.ghost:focus-visible,
   background: var(--fb-brand);
   color: #ffffff;
 }
+.guide-chat-banner-btn--setup {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--fb-brand) 30%, var(--fb-border-strong));
+  color: var(--fb-text-primary);
+}
+.guide-chat-banner-btn--setup.is-active {
+  background: color-mix(in srgb, var(--fb-brand) 18%, var(--fb-panel-bg));
+  border-color: var(--fb-brand);
+  color: var(--fb-brand);
+}
+.guide-chat-floating-card {
+  margin: 4px 16px 12px;
+  animation: guide-slide-down 0.2s ease;
+}
+.guide-chat-floating-card .onboarding-setup-card {
+  margin: 0 auto;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+@keyframes guide-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 .chat-empty-hero--guide .starter-prompts button {
   border-color: color-mix(in srgb, var(--fb-brand) 25%, var(--fb-border-subtle));
 }
@@ -27028,6 +27058,12 @@ button.ghost:focus-visible,
   color: var(--fb-brand);
   font-size: 11px;
   font-weight: 600;
+}
+.setup-header-subtitle {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--fb-text-secondary);
+  line-height: 1.4;
 }
 .setup-header-headline {
   margin: 2px 0 0;

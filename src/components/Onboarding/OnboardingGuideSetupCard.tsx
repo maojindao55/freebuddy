@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCircle2,
@@ -60,6 +60,7 @@ export function OnboardingGuideSetupCard({
   const { t } = useTranslation();
   const notify = useAgentBridgeStore((s) => s.notify);
   const [authorizing, setAuthorizing] = useState(false);
+  const [installQueue, setInstallQueue] = useState<string[]>([]);
 
   const handleAskGuide = () => {
     onAskGuide?.(t("onboarding.setup.askGuidePrompt"));
@@ -103,7 +104,36 @@ export function OnboardingGuideSetupCard({
 
   const allInstalled = missingAgents.length === 0;
   const anyInstalled = installedAgents.length > 0;
+  const isAllKeysConfigured =
+    anyInstalled && installedAgents.every((a) => a.isKeyConfigured);
   const isAnyKeyConfigured = installedAgents.some((a) => a.isKeyConfigured);
+  const isQueueActive = installQueue.length > 0 || installingAgents.length > 0;
+
+  // Process installation queue sequentially to avoid concurrent npm locks
+  useEffect(() => {
+    if (installQueue.length === 0) return;
+    const currentId = installQueue[0];
+    const isCurrentInstalling = installJobs.some(
+      (j) => j.adapterId === currentId && !j.done
+    );
+    const isCurrentDone = installJobs.some(
+      (j) => j.adapterId === currentId && j.done
+    );
+
+    if (!isCurrentInstalling && !isCurrentDone) {
+      const def = CORE_AGENTS.find((a) => a.id === currentId);
+      if (def) {
+        const resolved = useCliExecutorStore.getState().resolve(def.id);
+        startInstall({
+          adapterId: def.id,
+          label: def.name,
+          command: resolved?.installHint || def.defaultCommand
+        });
+      }
+    } else if (isCurrentDone) {
+      setInstallQueue((prev) => prev.slice(1));
+    }
+  }, [installQueue, installJobs, startInstall]);
 
   // Status headline
   const headline = allInstalled
@@ -128,14 +158,8 @@ export function OnboardingGuideSetupCard({
   };
 
   const handleInstallAllMissing = () => {
-    for (const agent of missingAgents) {
-      const resolved = useCliExecutorStore.getState().resolve(agent.id);
-      startInstall({
-        adapterId: agent.id,
-        label: agent.name,
-        command: resolved?.installHint || agent.defaultCommand
-      });
-    }
+    const queue = missingAgents.map((a) => a.id);
+    setInstallQueue(queue);
     notify(t("onboarding.setup.installStarted"));
   };
 
@@ -245,12 +269,17 @@ export function OnboardingGuideSetupCard({
     }
 
     try {
-      await convStore.newConversation({
+      const conv = await convStore.newConversation({
         member,
         title: t("onboarding.setup.firstTaskTitle")
       });
       void useOnboardingStore.getState().markDone();
       notify(t("onboarding.setup.firstTaskStarted"));
+      void convStore.sendMessage({
+        conversationId: conv.id,
+        prompt: t("onboarding.setup.firstTaskPrompt"),
+        preserveConversationTitle: true
+      });
     } catch (err) {
       notify(String(err));
     }
@@ -270,6 +299,9 @@ export function OnboardingGuideSetupCard({
               {installedAgents.length} / {CORE_AGENTS.length}
             </span>
           </div>
+          <p className="setup-header-subtitle">
+            {t("onboarding.setup.cardSubtitle")}
+          </p>
           <p className="setup-header-headline">{headline}</p>
         </div>
         {missingAgents.length > 0 && (
@@ -288,10 +320,10 @@ export function OnboardingGuideSetupCard({
             <button
               type="button"
               className="step-btn step-btn--primary"
-              disabled={installingAgents.length > 0}
+              disabled={isQueueActive}
               onClick={handleInstallAllMissing}
             >
-              {installingAgents.length > 0 ? (
+              {isQueueActive ? (
                 <>
                   <Loader2 size={13} className="spin" />
                   {t("onboarding.setup.installingAll")}
@@ -353,16 +385,16 @@ export function OnboardingGuideSetupCard({
       {/* Next Step Controls: Authorize and Launch */}
       <div className="onboarding-setup-next-steps">
         {/* Step 2: Authorize Trial Credits */}
-        <div className={`setup-flow-row${isAnyKeyConfigured ? " is-done" : ""}${!anyInstalled ? " is-disabled" : ""}`}>
+        <div className={`setup-flow-row${isAllKeysConfigured ? " is-done" : ""}${!anyInstalled ? " is-disabled" : ""}`}>
           <div className="setup-flow-copy">
             <strong>{t("onboarding.setup.step2Title")}</strong>
             <span>
-              {isAnyKeyConfigured
+              {isAllKeysConfigured
                 ? t("onboarding.setup.step2Done")
                 : t("onboarding.setup.step2Desc")}
             </span>
           </div>
-          {!isAnyKeyConfigured && (
+          {!isAllKeysConfigured && (
             <button
               type="button"
               className="step-btn step-btn--primary"

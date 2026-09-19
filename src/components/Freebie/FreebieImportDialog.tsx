@@ -8,6 +8,7 @@ import {
   buildFreebieOverride,
   defaultEnvKeyForAdapter,
   defaultEnvKeyForProtocol,
+  freebieProviderIdFromOverrideId,
   normalizeFreebieIcon,
   resolveAvailableAgents,
   type FreebieBaseAdapter
@@ -159,9 +160,19 @@ export function FreebieImportDialog({
         ...existingModels.filter((m) => !presetModelIds.has(m.id))
       ];
 
+      const cleanUrl = preset.baseUrl.replace(/\/+$/, "");
+      const currentProviders = useProviderStore.getState().providers;
+      const targetProvider =
+        existingProvider ??
+        currentProviders.find(
+          (p) =>
+            (p.presetId && p.presetId === preset.id) ||
+            p.baseUrl.replace(/\/+$/, "") === cleanUrl
+        );
+
       // 1. Create or update Provider from preset, key encrypted in main process
       const provider = await upsertProvider({
-        id: existingProvider?.id,
+        id: targetProvider?.id,
         presetId: preset.id,
         name: preset.name,
         protocol: preset.protocol,
@@ -175,7 +186,12 @@ export function FreebieImportDialog({
         wireApi: preset.protocol === "openai-responses" ? "responses" : "chat"
       });
 
-      // 2. Create Agent override, BYOK references providerId
+      // 2. Create or update Agent override, BYOK references providerId
+      const currentOverrides = useCliExecutorStore.getState().overrides;
+      const existingOverride = Object.values(currentOverrides).find(
+        (o) => freebieProviderIdFromOverrideId(o.id) === preset.id
+      );
+
       const ordered = preset.models
         .map((model) => model.id)
         .filter((id) => selectedModelIds.includes(id));
@@ -185,7 +201,8 @@ export function FreebieImportDialog({
         modelIds: ordered,
         label: t("freebie.agentLabel", { name: preset.name }),
         baseAdapter: selectedAdapter,
-        icon: avatar || undefined
+        icon: avatar || undefined,
+        overrideId: existingOverride?.id
       });
       await upsertOverride(override);
       refreshMembers();

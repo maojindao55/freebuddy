@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, KeyRound, LoaderCircle, Sparkles, X } from "lucide-react";
+import { ArrowRight, LoaderCircle, Sparkles, X } from "lucide-react";
 
 import piLogoUrl from "../../../assets/pi-logo.svg";
 import { ONBOARDING_GUIDE_AGENT_ID } from "@/config/agentProfiles";
@@ -53,8 +53,12 @@ export function OnboardingWelcomeOverlay({
     setBusy(true);
     setError("");
     try {
+      const existingGuideProvider = useProviderStore
+        .getState()
+        .providers.find((p) => p.presetId === "freebuddy-guide");
       const trial = await activateGuideTrial();
       const provider = await upsertProvider({
+        id: existingGuideProvider?.id,
         presetId: "freebuddy-guide",
         name: t("onboarding.trialProviderName"),
         protocol: "openai-chat",
@@ -84,23 +88,16 @@ export function OnboardingWelcomeOverlay({
         enabled: true
       });
 
-      // Seamlessly switch to or start GuideBuddy conversation
+      // Start fresh GuideBuddy conversation
       const convStore = useConversationStore.getState();
       const guideMember = convStore.members.find(
         (m) => m.id === ONBOARDING_GUIDE_AGENT_ID
       );
       if (guideMember) {
-        const existingConv = convStore.conversations.find(
-          (c) => c.agentId === ONBOARDING_GUIDE_AGENT_ID
-        );
-        if (existingConv) {
-          convStore.setActive(existingConv.id);
-        } else {
-          await convStore.newConversation({
-            member: guideMember,
-            title: guideMember.name
-          });
-        }
+        await convStore.newConversation({
+          member: guideMember,
+          title: guideMember.name
+        });
       }
 
       await markDone();
@@ -153,25 +150,6 @@ export function OnboardingWelcomeOverlay({
             <span className="onboarding-action-copy">
               <strong>{busy ? t("onboarding.trialLoading") : t("onboarding.trial")}</strong>
               <span>{t("onboarding.trialHint")}</span>
-            </span>
-            <ArrowRight size={16} />
-          </button>
-
-          <button
-            type="button"
-            className="onboarding-action"
-            disabled={busy}
-            onClick={() => {
-              void markSkipped();
-              onOpenSettings("providers");
-            }}
-          >
-            <span className="onboarding-action-icon">
-              <KeyRound size={18} />
-            </span>
-            <span className="onboarding-action-copy">
-              <strong>{t("onboarding.byok")}</strong>
-              <span>{t("onboarding.byokHint")}</span>
             </span>
             <ArrowRight size={16} />
           </button>

@@ -26976,3 +26976,190 @@ button.ghost:focus-visible,
   background: color-mix(in srgb, var(--fb-brand) 8%, var(--fb-panel-soft));
 }
 
+/* ── GuideBuddy 3-step setup card ─────────────────────────────────── */
+.onboarding-setup-card {
+  width: min(560px, 100%);
+  margin: 18px auto 22px;
+  padding: 16px 18px 14px;
+  border-radius: var(--fb-rounded-xl);
+  background: var(--fb-panel-soft);
+  border: 1px solid color-mix(in srgb, var(--fb-brand) 20%, var(--fb-border-strong));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  text-align: left;
+}
+.onboarding-setup-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--fb-border-subtle);
+}
+.onboarding-setup-header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fb-brand) 15%, transparent);
+  color: var(--fb-brand);
+  flex: 0 0 auto;
+}
+.onboarding-setup-header-text h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--fb-text-primary);
+}
+.onboarding-setup-header-text p {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--fb-text-secondary);
+}
+.onboarding-setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.onboarding-setup-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--fb-rounded-lg);
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border-subtle);
+  transition: all 0.15s ease;
+}
+.onboarding-setup-step.is-done {
+  border-color: color-mix(in srgb, #10b981 30%, var(--fb-border-subtle));
+  background: color-mix(in srgb, #10b981 5%, var(--fb-panel-bg));
+}
+.onboarding-setup-step.is-ready {
+  border-color: color-mix(in srgb, var(--fb-brand) 45%, var(--fb-border-subtle));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fb-brand) 20%, transparent);
+}
+.onboarding-setup-step.is-locked {
+  opacity: 0.6;
+}
+.onboarding-setup-step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+.step-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--fb-hover);
+  color: var(--fb-text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.step-icon--done {
+  color: #10b981;
+}
+.step-icon--spin {
+  color: var(--fb-brand);
+  animation: spin 1s linear infinite;
+}
+.onboarding-setup-step-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.step-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.step-title strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+.step-desc {
+  font-size: 11px;
+  color: var(--fb-text-secondary);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.step-action {
+  flex: 0 0 auto;
+}
+.step-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--fb-rounded-md);
+  border: 1px solid var(--fb-border-strong);
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.step-btn:hover:not(:disabled) {
+  border-color: var(--fb-brand);
+  background: var(--fb-hover);
+}
+.step-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.step-btn--primary {
+  background: color-mix(in srgb, var(--fb-brand) 12%, var(--fb-panel-bg));
+  border-color: color-mix(in srgb, var(--fb-brand) 40%, var(--fb-border-strong));
+  color: var(--fb-brand);
+}
+.step-btn--primary:hover:not(:disabled) {
+  background: var(--fb-brand);
+  color: #ffffff;
+}
+.step-btn--launch {
+  background: var(--fb-brand-gradient, var(--fb-brand));
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--fb-brand) 40%, transparent);
+}
+.step-btn--launch:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+.onboarding-setup-footer {
+  margin-top: 12px;
+  padding-top: 8px;
+  text-align: center;
+}
+.onboarding-setup-settings-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.onboarding-setup-settings-link:hover {
+  color: var(--fb-brand);
+  text-decoration: underline;
+}
+
+

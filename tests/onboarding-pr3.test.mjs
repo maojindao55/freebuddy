@@ -81,9 +81,59 @@ test("onboarding-guide skill exists as a builtin with proper frontmatter and ins
   assert.match(content, /Graduation/);
 });
 
-test("guide chat elements have styling in styles.css", () => {
+test("ChatView renders OnboardingGuideSetupCard for guide onboarding", () => {
+  const chatView = read("src/components/CLI/ChatView.tsx");
+  assert.match(chatView, /<OnboardingGuideSetupCard/);
+  assert.match(chatView, /import \{ OnboardingGuideSetupCard \}/);
+
+  const card = read("src/components/Onboarding/OnboardingGuideSetupCard.tsx");
+  assert.match(card, /useCliExecutorStore/);
+  assert.match(card, /useCliInstallStore/);
+  assert.match(card, /useProviderStore/);
+  assert.match(card, /codex-acp/);
+  assert.match(card, /codexByok/);
+  assert.match(card, /handleInstall/);
+  assert.match(card, /handleAuthorize/);
+  assert.match(card, /handleStartTask/);
+});
+
+test("onboarding.setup locale keys are fully mirrored", () => {
+  const zh = JSON.parse(read("src/locales/zh-CN.json"));
+  const en = JSON.parse(read("src/locales/en.json"));
+
+  assert.ok(zh.onboarding.setup, "zh onboarding.setup missing");
+  assert.ok(en.onboarding.setup, "en onboarding.setup missing");
+
+  const setupKeys = [
+    "cardTitle",
+    "cardSubtitle",
+    "step1Title",
+    "step1Desc",
+    "step1Done",
+    "installCodex",
+    "step2Title",
+    "step2Desc",
+    "step2Done",
+    "authorizeTrial",
+    "step3Title",
+    "step3Desc",
+    "startFirstTask",
+    "firstTaskTitle",
+    "exploreOtherAgents"
+  ];
+
+  for (const key of setupKeys) {
+    assert.ok(zh.onboarding.setup[key], `zh onboarding.setup missing: ${key}`);
+    assert.ok(en.onboarding.setup[key], `en onboarding.setup missing: ${key}`);
+  }
+});
+
+test("guide chat elements and setup card have styling in styles.css", () => {
   const styles = read("styles.css");
   assert.match(styles, /\.guide-chat-banner/);
   assert.match(styles, /\.guide-chat-banner-btn--finish/);
   assert.match(styles, /\.chat-empty-hero--guide/);
+  assert.match(styles, /\.onboarding-setup-card/);
+  assert.match(styles, /\.step-btn--launch/);
 });
+

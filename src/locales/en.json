@@ -1296,6 +1296,31 @@
       "installAgent": "🛠️ How do I install my first AI coding agent (e.g. Claude / Codex)?",
       "freebie": "🎁 How do I import free models from the Freebie page?",
       "tryCoding": "💡 Walk me through generating code with an agent"
+    },
+    "setup": {
+      "cardTitle": "Quick Setup Guide",
+      "cardSubtitle": "Follow 3 quick steps to get your first coding agent up and running locally",
+      "step1Title": "Install Core Coding Agent (Codex)",
+      "step1Desc": "FreeBuddy's flagship coding agent for autonomous writing and debugging",
+      "step1Installing": "Installing Codex in the background… feel free to look around",
+      "step1Done": "Codex is installed locally",
+      "installCodex": "Install Codex",
+      "installing": "Installing…",
+      "installStarted": "Started background install of Codex, please wait…",
+      "step2Title": "Authorize Trial Credits",
+      "step2Desc": "Link the trial credits directly to Codex without typing an API Key",
+      "step2Done": "Trial credits linked successfully",
+      "authorizeTrial": "Link Trial Credits",
+      "authorizing": "Linking…",
+      "noProviderFound": "No trial channel found, configure in Settings",
+      "authorizedSuccess": "Trial credits successfully authorized for Codex!",
+      "step3Title": "Run First Coding Task",
+      "step3Desc": "Launch a sample task and watch Codex build a browser mini-game",
+      "startFirstTask": "Start First Task",
+      "firstTaskTitle": "Sample: Classic Snake Game",
+      "firstTaskStarted": "Created sample task, enjoy!",
+      "codexMemberNotFound": "Codex agent not found, please complete installation first",
+      "exploreOtherAgents": "Or explore other agents in Settings (Claude / Qoder)"
     }
   },
   "scheduledTasks": {

@@ -1283,6 +1283,31 @@
       "installAgent": "🛠️ 如何安装我的第一个 AI 编程助手（如 Claude / Codex）",
       "freebie": "🎁 如何导入免费可用的模型（白嫖专区）",
       "tryCoding": "💡 带我体验让 Agent 帮我写一段代码"
+    },
+    "setup": {
+      "cardTitle": "新手快速通关向导",
+      "cardSubtitle": "完成以下 3 步，即可在本地跑通你的第一个 AI 编程助手",
+      "step1Title": "安装核心编程助手 (Codex)",
+      "step1Desc": "FreeBuddy 的主力编程助手，支持项目理解、自动化编写与调试",
+      "step1Installing": "正在后台安装 Codex… 你可以继续使用其他功能",
+      "step1Done": "Codex 已成功安装至本地",
+      "installCodex": "一键安装 Codex",
+      "installing": "正在安装…",
+      "installStarted": "已开始后台安装 Codex，请稍候…",
+      "step2Title": "授权体验模型额度",
+      "step2Desc": "将刚刚领取的体验额度一键授权给 Codex，免去手动配置 Key",
+      "step2Done": "已成功绑定体验模型额度",
+      "authorizeTrial": "一键授权额度",
+      "authorizing": "正在授权…",
+      "noProviderFound": "未找到可用体验通道，请在设置中配置",
+      "authorizedSuccess": "已成功将体验通道额度授权给 Codex！",
+      "step3Title": "开启首个编程演练",
+      "step3Desc": "创建演练任务，让 Codex 自动为你生成一个网页小游戏",
+      "startFirstTask": "开启首个编程任务",
+      "firstTaskTitle": "新手演练：经典贪吃蛇小游戏",
+      "firstTaskStarted": "已为你创建演练任务，即将开始！",
+      "codexMemberNotFound": "未找到 Codex 助手，请先完成安装",
+      "exploreOtherAgents": "或在设置中探索更多编程助手 (Claude / Qoder)"
     }
   },
   "scheduledTasks": {

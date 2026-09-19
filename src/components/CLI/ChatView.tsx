@@ -29,6 +29,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { ONBOARDING_GUIDE_AGENT_ID } from "@/config/agentProfiles";
+import { OnboardingGuideSetupCard } from "@/components/Onboarding/OnboardingGuideSetupCard";
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useOnboardingStore } from "@/store/onboardingStore";
@@ -2877,6 +2878,9 @@ export function ChatView({
             <p className="muted">
               {isGuide ? t("onboarding.guideHeroBody") : t("chat.emptyHeroBody")}
             </p>
+            {isGuide && (
+              <OnboardingGuideSetupCard onOpenSettings={onOpenAgentSettings} />
+            )}
             <div className="starter-prompts">
               {starterPrompts.map((prompt) => (
                 <button key={prompt} onClick={() => {

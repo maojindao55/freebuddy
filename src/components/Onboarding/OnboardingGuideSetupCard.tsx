@@ -19,21 +19,20 @@ export function OnboardingGuideSetupCard({
 
   const [authorizing, setAuthorizing] = useState(false);
 
-  // 1. Check Codex adapter install status
-  const codexEx = useCliExecutorStore((s) => s.resolve("codex-acp"));
-  const isInstalled = Boolean(codexEx?.runtime?.installed);
-  const installJob = useCliInstallStore((s) =>
-    s.jobs.find((j) => j.adapterId === "codex-acp")
+  // 1. Subscribe to atomic state to avoid unstable object references from s.resolve()
+  const codexRuntime = useCliExecutorStore((s) => s.runtimes["codex-acp"]);
+  const codexOverride = useCliExecutorStore((s) => s.overrides["codex-acp"]);
+  const isInstalled = Boolean(codexRuntime?.installed);
+
+  const isInstalling = useCliInstallStore((s) =>
+    s.jobs.some((j) => j.adapterId === "codex-acp" && !j.done)
   );
-  const isInstalling = Boolean(installJob && !installJob.done);
   const startInstall = useCliInstallStore((s) => s.startJob);
 
   // 2. Check model/byok status
-  const providers = useProviderStore((s) => s.providers);
-  const guideProvider = providers.find((p) => p.presetId === "freebuddy-guide" || p.enabled);
   const isKeyConfigured = Boolean(
-    codexEx?.codexByok?.enabled &&
-    (codexEx.codexByok.providerId || codexEx.codexByok.apiKey)
+    codexOverride?.codexByok?.enabled &&
+    (codexOverride.codexByok.providerId || codexOverride.codexByok.apiKey)
   );
 
   // Step state
@@ -42,6 +41,7 @@ export function OnboardingGuideSetupCard({
   const allReady = step1Done && step2Done;
 
   const handleInstall = () => {
+    const codexEx = useCliExecutorStore.getState().resolve("codex-acp");
     const installHint =
       codexEx?.installHint ||
       "npm install -g --force @agentclientprotocol/codex-acp";
@@ -54,6 +54,10 @@ export function OnboardingGuideSetupCard({
   };
 
   const handleAuthorize = async () => {
+    const guideProvider = useProviderStore
+      .getState()
+      .providers.find((p) => p.presetId === "freebuddy-guide" || p.enabled);
+
     if (!guideProvider) {
       notify(t("onboarding.setup.noProviderFound"));
       return;

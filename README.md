@@ -76,6 +76,7 @@ FreeBuddy is compatible with **all CLI-based AI coding tools** — if it runs in
 | **Qoder** | `qodercli` | `curl -fsSL https://qoder.com/install \| bash` | ✅ |
 | **CodeBuddy** | `codebuddy` | `npm install -g @tencent-ai/codebuddy-code` | 🆕 |
 | **DeepSeek** | `dsh-acp-demo` | Settings → Coding Agents → **Install** (`@deepseek-ai/dsh-acp-demo@next` plus the official ACP plugin tree) | 🆕 |
+| **Pi** | `pi-acp` | Bundled with FreeBuddy — no install needed. Minimal runtime that powers the GuideBuddy onboarding agent (设置 → CLI Agent 管理 → 官方). | 🆕 |
 
 FreeBuddy starts DeepSeek with a bundled `cordis.yml` (`--config`). A `cordis.yml` in the workspace root wins if present. The published ACP demo has no runtime dependencies, so Install pulls `@deepseek-ai/dsh-llm-deepseek` and the rest of that plugin tree into FreeBuddy's own runtime directory (not a bin-only global install). Set `DEEPSEEK_API_KEY` under **Settings → Coding Agents**.
 

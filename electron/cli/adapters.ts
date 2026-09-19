@@ -10,6 +10,8 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolvePiAcpSpawnPlan } from "./piRuntime.js";
+
 const DSH_ACP_NPM_TAG = "next";
 
 /** Node 22+ emits this for `node:sqlite`; DeepSeek ACP uses it via session-query-sqlite. */
@@ -32,6 +34,7 @@ export type CLIAdapterId =
   | "dsh-acp"
   | "zcode-acp"
   | "cline-acp"
+  | "pi-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -305,6 +308,27 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g cline",
     docsUrl: "https://docs.cline.bot/usage/acp",
+    protocol: "acp"
+  },
+  {
+    // Bundled minimal runtime (pi + pi-acp bridge) shipped as an extraResource;
+    // see electron/cli/piRuntime.ts. Kept last so butler-profile members fall
+    // back to it only when no other ACP agent is installed.
+    id: "pi-acp",
+    label: "Pi",
+    defaultBinary: "pi-acp",
+    checkProbe: { args: [], versionOptional: true, skipSpawn: true },
+    streamMode: "raw",
+    commandGroup: "pi",
+    capabilities: {
+      toolSession: true,
+      // pi natively reads Agent Skills from <cwd>/.agents/skills (and .pi/skills).
+      skills: { mode: "native", nativeDirs: [".agents/skills"], reloadPolicy: "new-session" }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g pi-acp @earendil-works/pi-coding-agent",
+    docsUrl: "https://github.com/svkozak/pi-acp",
     protocol: "acp"
   }
 ];
@@ -1232,6 +1256,8 @@ export interface BuildCommandInput {
   workspaceRoots?: string[];
   /** FreeBuddy-managed `runtimes/dsh-acp` prefix; used when no custom binary. */
   dshAcpRuntimeRoot?: string;
+  /** FreeBuddy data dir; the bundled pi runtime generates its launcher there. */
+  piDataDir?: string;
 }
 
 export interface BuiltCommand {
@@ -1570,6 +1596,25 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
         promptViaStdin: false,
         protocol: "acp"
       });
+    }
+    case "pi-acp": {
+      const plan = resolvePiAcpSpawnPlan(input.piDataDir);
+      if (plan) {
+        return {
+          bin: plan.bin,
+          args: [plan.piAcpEntry, ...extra],
+          env: plan.env,
+          promptViaStdin: false,
+          protocol: "acp"
+        };
+      }
+      // No bundled runtime (broken install): fall back to a PATH pi-acp.
+      return {
+        bin,
+        args: [...extra],
+        promptViaStdin: false,
+        protocol: "acp"
+      };
     }
     case "claude": {
       const args: string[] = [

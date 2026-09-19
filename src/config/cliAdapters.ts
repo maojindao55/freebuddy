@@ -16,6 +16,7 @@ export type CLIAdapterId =
   | "dsh-acp"
   | "zcode-acp"
   | "cline-acp"
+  | "pi-acp"
   | (string & {});
 
 export type { CLIStreamMode } from "@freebuddy/protocol/cli";
@@ -200,6 +201,25 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g cline",
     docsUrl: "https://docs.cline.bot/usage/acp",
+    protocol: "acp"
+  },
+  {
+    // Bundled minimal runtime (pi + pi-acp bridge); see electron/cli/piRuntime.ts.
+    // Kept last so butler-profile members only fall back to it when no other
+    // ACP agent is installed.
+    id: "pi-acp",
+    label: "Pi",
+    defaultBinary: "pi-acp",
+    streamMode: "raw",
+    commandGroup: "pi",
+    capabilities: {
+      toolSession: true,
+      skills: { mode: "native", nativeDirs: [".agents/skills"], reloadPolicy: "new-session" }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g pi-acp @earendil-works/pi-coding-agent",
+    docsUrl: "https://github.com/svkozak/pi-acp",
     protocol: "acp"
   }
 ];

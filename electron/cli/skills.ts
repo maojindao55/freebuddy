@@ -25,7 +25,7 @@ import type {
   SkillSnapshot,
   SkillSource
 } from "./skillTypes.js";
-import { BUTLERBUDDY_SKILL_ID } from "./agentProfiles.js";
+import { isProtectedCoreSkill } from "./agentProfiles.js";
 
 export { nextSkillEnabledFlag } from "./skillEnabled.js";
 
@@ -640,7 +640,7 @@ export function importSkills(sourcePath: string): SkillImportResult {
 }
 
 export function setSkillEnabled(id: string, enabled: boolean): SkillRecord | undefined {
-  if (id === BUTLERBUDDY_SKILL_ID && !enabled) {
+  if (isProtectedCoreSkill(id) && !enabled) {
     return getSkill(id);
   }
   getDb().prepare("UPDATE skills SET enabled = ?, updated_at = ? WHERE id = ?")
@@ -652,7 +652,7 @@ export function setSkillEnabled(id: string, enabled: boolean): SkillRecord | und
 
 /** Explicit user trust after reviewing an untrusted market/imported skill. */
 export function setSkillTrusted(id: string, trusted: boolean): SkillRecord | undefined {
-  if (id === BUTLERBUDDY_SKILL_ID && !trusted) {
+  if (isProtectedCoreSkill(id) && !trusted) {
     return getSkill(id);
   }
   const skill = getSkill(id);

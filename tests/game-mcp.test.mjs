@@ -269,7 +269,8 @@ test("Game mode architecture and spectator support in multi-agent and engine mod
   assert.match(gameSetup, /modeAgentVsAgent/);
   assert.match(gameSetup, /modeAgentVsEngine/);
   assert.match(gameSetup, /isPlayableGameAgent/);
-  assert.match(gameSetup, /profile !== "butler"/);
+  // Official-profile members (butler/guide) never play games.
+  assert.match(gameSetup, /!m.profile/);
 
   // BrowserCanvas supports multi-agent and engine turn loops
   assert.match(canvas, /mode === "agent_vs_agent"/);

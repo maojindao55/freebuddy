@@ -83,8 +83,7 @@ export function GameSetupModal({ open, onClose }: GameSetupModalProps) {
 
   const convStore = useConversationStore();
   const isPlayableGameAgent = useCallback(
-    (m: CLIMember) =>
-      m.enabled !== false && m.profile !== "butler" && m.id !== "cli-butlerbuddy",
+    (m: CLIMember) => m.enabled !== false && !m.profile,
     []
   );
 

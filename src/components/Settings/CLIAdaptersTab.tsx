@@ -191,8 +191,9 @@ export function CLIAdaptersTab() {
   const setMemberRuntimeOverride = useConversationStore(
     (s) => s.setMemberRuntimeOverride
   );
+  // Official built-in members carry a profile ("butler" | "guide").
   const officialMembers = useMemo(
-    () => members.filter((member) => member.profile === "butler"),
+    () => members.filter((member) => member.profile),
     [members]
   );
   const runtimeOptions = useMemo(

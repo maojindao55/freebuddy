@@ -33,6 +33,28 @@ interface AvatarPickerProps {
   defaultLabel: string;
 }
 
+const PI_AVATAR_ITEM: IconToc = {
+  id: "Pi",
+  title: "Pi",
+  fullTitle: "Pi Coding Agent",
+  desc: "Pi Coding Agent",
+  color: "#F09082",
+  docsUrl: "https://pi.dev",
+  group: "application",
+  param: {
+    hasAvatar: true,
+    hasBrand: true,
+    hasBrandColor: true,
+    hasColor: true,
+    hasCombine: false,
+    hasText: true,
+    hasTextCn: false,
+    hasTextColor: false
+  }
+};
+
+const ALL_ICONS: IconToc[] = [PI_AVATAR_ITEM, ...toc];
+
 export function AvatarPicker({
   value,
   onChange,
@@ -46,7 +68,7 @@ export function AvatarPicker({
 
   const filtered = useMemo(
     () =>
-      toc.filter((item) => {
+      ALL_ICONS.filter((item) => {
         if (group !== "all" && item.group !== group) return false;
         return matches(item, query);
       }),
@@ -56,7 +78,7 @@ export function AvatarPicker({
   const selectedId = parseLobehubAvatar(value);
   const defaultIconId = getAgentIconId(defaultAdapter);
   const selectedItem = useMemo(
-    () => (selectedId ? toc.find((item) => item.id === selectedId) : undefined),
+    () => (selectedId ? ALL_ICONS.find((item) => item.id === selectedId) : undefined),
     [selectedId]
   );
   const previewIconId = selectedId || defaultIconId;

@@ -1,7 +1,9 @@
 export interface CLIMember {
   id: string;
   name: string;
-  profile?: "butler";
+  /** Official built-in profiles: "butler" (ButlerBuddy) / "guide" (onboarding). */
+  profile?: "butler" | "guide";
+  description?: string;
   runtimeKey?: string;
   requiredSkillIds?: string[];
   enabled?: boolean;
@@ -29,6 +31,20 @@ export const builtinCliMembers: CLIMember[] = [
       approvalMode: "auto",
       showStderr: true,
       skillIds: ["butlerbuddy"]
+    }
+  },
+  {
+    id: "cli-onboarding-guide",
+    name: "GuideBuddy",
+    profile: "guide",
+    runtimeKey: "pi-acp",
+    requiredSkillIds: ["onboarding-guide"],
+    enabled: true,
+    cli: {
+      adapter: "pi-acp",
+      approvalMode: "auto",
+      showStderr: true,
+      skillIds: ["onboarding-guide"]
     }
   },
   {
@@ -102,5 +118,11 @@ export const builtinCliMembers: CLIMember[] = [
     name: "Cline",
     enabled: true,
     cli: { adapter: "cline-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-pi-acp",
+    name: "Pi",
+    enabled: true,
+    cli: { adapter: "pi-acp", approvalMode: "auto", showStderr: true }
   }
 ];

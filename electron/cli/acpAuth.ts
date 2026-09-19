@@ -60,7 +60,8 @@ async function withAcpAgent<T>(
     prompt: "",
     cwd,
     dshAcpRuntimeRoot:
-      args.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined
+      args.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined,
+    piDataDir: args.adapter === "pi-acp" ? getDataDir() : undefined
   });
   if (args.adapter === "dsh-acp") patchDshAcpRuntimeFromCommand(built);
   if (built.protocol !== "acp") {

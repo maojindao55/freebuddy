@@ -169,7 +169,8 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "agy-acp", label: "Antigravity", protocol: "acp" },
       { id: "dsh-acp", label: "DeepSeek Harness", protocol: "acp" },
       { id: "zcode-acp", label: "ZCode", protocol: "acp" },
-      { id: "cline-acp", label: "Cline", protocol: "acp" }
+      { id: "cline-acp", label: "Cline", protocol: "acp" },
+      { id: "pi-acp", label: "Pi", protocol: "acp" }
     ]
   );
 });

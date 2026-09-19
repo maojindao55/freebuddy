@@ -1,4 +1,5 @@
 import { getLobeIconCDN } from "@lobehub/icons";
+import piLogoUrl from "../../assets/pi-logo.svg";
 
 const LOBEHUB_AVATAR_PREFIX = "lobehub:";
 
@@ -17,6 +18,10 @@ export function parseLobehubAvatar(value?: string | null): string | null {
 }
 
 export function lobehubAvatarUrl(iconId: string): string {
+  const normalized = iconId.toLowerCase();
+  if (normalized === "pi" || normalized === "pi-acp") {
+    return piLogoUrl;
+  }
   return getLobeIconCDN(iconId, { format: "avatar", cdn: "aliyun" });
 }
 

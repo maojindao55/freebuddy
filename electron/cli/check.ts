@@ -18,6 +18,7 @@ import {
   patchDshAcpManagedRuntime,
   syncDshAcpManagedConfig
 } from "./adapters.js";
+import { resolvePiAcpRuntime } from "./piRuntime.js";
 import { getDataDir, getDb } from "./db.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { compareSemver, extractSemver } from "./version.js";
@@ -422,6 +423,22 @@ export async function cliCheck(
     upsertRuntime(runtimeKey, true, resolved);
     trackAgentSetup(adapter, "check", "detected");
     return result;
+  }
+  if (adapter === "pi-acp") {
+    // Bundled runtime (pi + pi-acp bridge) shipped as an extraResource takes
+    // precedence over a PATH-installed pi-acp; see electron/cli/piRuntime.ts.
+    const status = resolvePiAcpRuntime();
+    if (status.ready && status.piAcpEntry) {
+      const version = status.piAcpVersion ?? status.piVersion;
+      upsertRuntime(runtimeKey, true, status.piAcpEntry, version);
+      trackAgentSetup(adapter, "check", "detected");
+      return {
+        installed: true,
+        path: status.piAcpEntry,
+        ...(version ? { version } : {})
+      };
+    }
+    // Fall through: a user-installed global pi-acp still works via PATH.
   }
   if (!resolved) {
     const nativeCli =

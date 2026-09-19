@@ -449,10 +449,11 @@ function buildConversationMembers(
     const overrideAdapter = member.runtimeKey
       ? runtimeOverrides[member.id]
       : undefined;
-    const resolvedAdapter =
-      overrideAdapter ??
-      (member.runtimeKey ? dynamicDefaultAdapter : undefined) ??
-      member.cli.adapter;
+    const defaultAdapter =
+      member.profile === "butler"
+        ? (dynamicDefaultAdapter ?? member.cli.adapter)
+        : member.cli.adapter;
+    const resolvedAdapter = overrideAdapter ?? defaultAdapter;
     const executor = executorStore.resolve(resolvedAdapter);
     return {
       ...member,

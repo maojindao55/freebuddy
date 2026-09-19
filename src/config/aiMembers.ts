@@ -4,11 +4,12 @@ export interface CLIMember {
   id: string;
   kind: "cli";
   name: string;
-  profile?: "butler";
+  /** Official built-in profiles: "butler" (ButlerBuddy) / "guide" (onboarding). */
+  profile?: "butler" | "guide";
+  description?: string;
   runtimeKey?: CLIAdapterId;
   requiredSkillIds?: string[];
   avatar?: string;
-  description?: string;
   source: "builtin" | "user";
   enabled?: boolean;
   cli: {
@@ -38,6 +39,24 @@ export const builtinCliMembers: CLIMember[] = [
       approvalMode: "auto",
       showStderr: true,
       skillIds: ["butlerbuddy"]
+    }
+  },
+  {
+    id: "cli-onboarding-guide",
+    kind: "cli",
+    name: "GuideBuddy",
+    profile: "guide",
+    runtimeKey: "pi-acp",
+    requiredSkillIds: ["onboarding-guide"],
+    description:
+      "FreeBuddy's built-in onboarding guide. Runs on the bundled pi runtime, so it works on a brand-new install before any CLI agent is set up.",
+    source: "builtin",
+    enabled: true,
+    cli: {
+      adapter: "pi-acp",
+      approvalMode: "auto",
+      showStderr: true,
+      skillIds: ["onboarding-guide"]
     }
   },
   {
@@ -147,5 +166,15 @@ export const builtinCliMembers: CLIMember[] = [
     source: "builtin",
     enabled: true,
     cli: { adapter: "cline-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
+    id: "cli-pi-acp",
+    kind: "cli",
+    name: "Pi",
+    description:
+      "Minimal local coding agent bundled with FreeBuddy. Configure a provider key via env overrides or log in from its first conversation.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "pi-acp", approvalMode: "auto", showStderr: true }
   }
 ];

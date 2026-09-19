@@ -154,7 +154,8 @@ export async function inspectSessionConfigOptions(
     prompt: "",
     cwd,
     dshAcpRuntimeRoot:
-      input.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined
+      input.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined,
+    piDataDir: input.adapter === "pi-acp" ? getDataDir() : undefined
   });
   if (input.adapter === "dsh-acp") patchDshAcpRuntimeFromCommand(built);
   if (built.protocol !== "acp") return [];

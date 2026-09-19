@@ -19,6 +19,7 @@ import {
   sanitizeCliAgentEnv,
   syncDshAcpManagedConfig
 } from "./adapters.js";
+import { piLauncherDir, resolvePiAcpRuntime } from "./piRuntime.js";
 import { runAcpAgent } from "./acpRuntime.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getDataDir, getLogDir } from "./db.js";
@@ -164,7 +165,15 @@ export function mergeBuiltEnv(
           ? mergeNodeOptions(next[key], value)
           : value;
   }
-  return sanitizeCliAgentEnv(next);
+  const sanitized = sanitizeCliAgentEnv(next);
+  // Built commands may explicitly opt into Electron-as-Node (the bundled pi
+  // runtime does when no user node is available). sanitize strips the
+  // *inherited* value so Electron children of CLI agents never misbehave; an
+  // explicit patch from buildCommand must still win.
+  if (typeof patch.ELECTRON_RUN_AS_NODE === "string") {
+    sanitized.ELECTRON_RUN_AS_NODE = patch.ELECTRON_RUN_AS_NODE;
+  }
+  return sanitized;
 }
 
 export async function cliRun(
@@ -290,7 +299,9 @@ export async function cliRun(
       dshAcpRuntimeRoot:
         executionArgs.adapter === "dsh-acp"
           ? dshAcpManagedRoot(getDataDir())
-          : undefined
+          : undefined,
+      piDataDir:
+        executionArgs.adapter === "pi-acp" ? getDataDir() : undefined
     });
     if (executionArgs.adapter === "dsh-acp") {
       patchDshAcpRuntimeFromCommand(built);
@@ -367,6 +378,13 @@ export async function cliRun(
                 dshAcpManagedRoot(getDataDir()),
                 dshAcpKoffiGuardPath(),
                 dshAcpWindowsResiduePath() ?? ""
+              ].filter(Boolean)
+            : []),
+          ...(executionArgs.adapter === "pi-acp"
+            ? [
+                resolvePiAcpRuntime().root ?? "",
+                piLauncherDir(getDataDir()),
+                path.join(getDataDir(), "pi-agent")
               ].filter(Boolean)
             : [])
         ]

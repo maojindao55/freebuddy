@@ -31,6 +31,8 @@ extraResources:
     to: dsh
   - from: third_party/deepseek-harness/overlays
     to: dsh-harness-overlays
+  - from: .build/pi-runtime
+    to: pi-runtime
   - from: assets/app-icon.png
     to: app-icon.png
   - from: assets/sidebar-logo.png

@@ -148,6 +148,12 @@ export function isProviderCompatibleWithAdapter(
   if (id === "dsh-acp") {
     return protocols.some((p) => p === "deepseek" || p === "openai-chat");
   }
+  // pi speaks openai-completions / openai-responses / anthropic-messages natively.
+  if (id === "pi-acp") {
+    return protocols.some(
+      (p) => p === "openai-chat" || p === "openai-responses" || p === "anthropic" || p === "deepseek"
+    );
+  }
   // Other agents: only openai-chat compatible relays by default
   return protocols.some((p) => p === "openai-chat" || p === "openai-responses");
 }

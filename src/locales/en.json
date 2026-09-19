@@ -1133,6 +1133,7 @@
         "baseUrlHintCodex": "For example, https://api.openai.com/v1 or an OpenAI-compatible proxy.",
         "baseUrlHintClaude": "For example, https://api.anthropic.com or an Anthropic-compatible proxy.",
         "baseUrlHintDeepSeek": "For example, https://api.deepseek.com or a DeepSeek-compatible proxy.",
+        "baseUrlHintPi": "For example, https://api.openai.com/v1 or an OpenAI-compatible relay. Pi speaks OpenAI, Anthropic, and Responses protocols.",
         "envKey": "Key environment variable",
         "contextHandling": "Context handling",
         "contextHandlingHintCodex": "Tell the Codex adapter how much context this model can use.",
@@ -1241,7 +1242,10 @@
         "runtimeHint": "Pick the installed adapter this official agent runs on. Existing conversations keep the adapter they started with.",
         "requiredSkills": "Required skills",
         "requiredSkillsHint": "These skills are always active for this agent and cannot be disabled.",
-        "noRequiredSkills": "No required skills."
+        "noRequiredSkills": "No required skills.",
+        "onboarding": "Onboarding",
+        "restartOnboarding": "Restart onboarding",
+        "onboardingHint": "Show the first-run welcome guide again (trial credits / configure your own key)."
       },
       "loading": "Loading…",
       "runInBackground": "Run in background",
@@ -1266,6 +1270,20 @@
       "data": "Data & Insights",
       "system": "System"
     }
+  },
+  "onboarding": {
+    "title": "Welcome to FreeBuddy",
+    "subtitle": "Get a model running first, then let the built-in agent show you the rest.",
+    "trial": "Try it free — no API key needed",
+    "trialHint": "Claim trial credits and start chatting with the built-in agent",
+    "trialLoading": "Claiming trial credits…",
+    "trialProviderName": "FreeBuddy Trial Channel",
+    "trialFailed": "Could not claim trial credits: {{error}}",
+    "trialFallback": "You can still configure your own API key and keep going.",
+    "byok": "I have my own API key",
+    "byokHint": "Enter a provider key, or import a free tier from the Freebie page",
+    "skip": "Skip onboarding",
+    "gatewayNote": "Trial credits are provided by {{url}} with a usage quota. For regular use, configure your own key."
   },
   "scheduledTasks": {
     "title": "Scheduled Tasks",

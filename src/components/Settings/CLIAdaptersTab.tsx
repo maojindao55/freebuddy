@@ -19,6 +19,7 @@ import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { getAgentIconId } from "@/config/agentIcon";
 import { SkillPicker } from "@/components/CLI/SkillPicker";
 import { useSkillStore } from "@/store/skillStore";
+import { useOnboardingStore } from "@/store/onboardingStore";
 import { useProviderStore } from "@/store/providerStore";
 import { ProviderSelect } from "./ProviderSelect";
 import { cliAdapterDefinitions, type CLIAdapterDefinition } from "@/config/cliAdapters";
@@ -708,6 +709,26 @@ function OfficialPersonaPanel({
             </span>
           </div>
         </div>
+
+        {member.profile === "guide" ? (
+          <div className="adapter-editor-section">
+            <div className="adapter-editor-field">
+              <span className="adapter-editor-field-label">
+                {t("settings.cli.official.onboarding")}
+              </span>
+              <button
+                type="button"
+                className="adapter-editor-upgrade"
+                onClick={() => useOnboardingStore.getState().restart()}
+              >
+                {t("settings.cli.official.restartOnboarding")}
+              </button>
+              <span className="settings-field-hint">
+                {t("settings.cli.official.onboardingHint")}
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -957,16 +978,20 @@ function EditOverridePanel({
   const isClaude =
     adapterForConfig === "claude-agent-acp" || adapterForConfig === "claude";
   const isDeepSeek = adapterForConfig === "dsh-acp";
+  const isPi = adapterForConfig === "pi-acp";
   const savedCodexByok = ex?.override?.codexByok;
   const savedClaudeByok = ex?.override?.claudeByok;
   const savedDeepSeekByok = ex?.override?.deepseekByok;
+  const savedPiByok = ex?.override?.piByok;
   const savedByok = isCodex
     ? savedCodexByok
     : isClaude
       ? savedClaudeByok
       : isDeepSeek
         ? savedDeepSeekByok
-        : undefined;
+        : isPi
+          ? savedPiByok
+          : undefined;
   const [codexByokEnabled, setCodexByokEnabled] = useState(
     savedByok?.enabled === true
   );
@@ -1082,7 +1107,7 @@ function EditOverridePanel({
   if (!ex) return null;
 
   const isClone = Boolean(ex.isClone);
-  const supportsByok = isCodex || isClaude || isDeepSeek;
+  const supportsByok = isCodex || isClaude || isDeepSeek || isPi;
   const byokBaseUrlPlaceholder = isClaude
     ? "https://api.anthropic.com"
     : isDeepSeek
@@ -1216,6 +1241,28 @@ function EditOverridePanel({
           }
       : undefined;
 
+    const piByokConfig =
+      isPi && codexByokEnabled
+        ? selectedProviderId
+          ? {
+              // Provider-reference mode: store providerId with current models snapshot
+              enabled: true,
+              providerId: selectedProviderId,
+              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "OPENAI_API_KEY",
+              models: effectiveByokModels
+            }
+          : {
+              enabled: true,
+              providerId: "custom",
+              baseUrl: codexBaseUrl.trim() || undefined,
+              envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
+              apiKey: codexApiKey.trim() || undefined,
+              apiKeyPreview: savedPiByok?.apiKeyPreview,
+              models: normalizedByokModels,
+              contextWindow: parseByokContextWindow(byokContextWindow)
+            }
+        : undefined;
+
     const override: CLIExecutorOverride = {
       id: ex.id,
       baseAdapter: ex.baseAdapter,
@@ -1230,6 +1277,7 @@ function EditOverridePanel({
       codexByok: codexByokConfig,
       claudeByok: claudeByokConfig,
       deepseekByok: deepseekByokConfig,
+      piByok: piByokConfig,
       skillIds,
       enabled: true
     };
@@ -1507,7 +1555,9 @@ function EditOverridePanel({
                         ? "settings.cli.byok.baseUrlHintClaude"
                         : isDeepSeek
                           ? "settings.cli.byok.baseUrlHintDeepSeek"
-                          : "settings.cli.byok.baseUrlHintCodex"
+                          : isPi
+                            ? "settings.cli.byok.baseUrlHintPi"
+                            : "settings.cli.byok.baseUrlHintCodex"
                     )}
                   </span>
                 </label>

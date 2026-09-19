@@ -21,6 +21,7 @@ import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { AuthenticationDialog } from "./components/CLI/AuthenticationDialog";
 import { TaskReceiptDialog } from "./components/ButlerBuddy/TaskReceiptDialog";
+import { OnboardingWelcomeOverlay } from "./components/Onboarding/OnboardingWelcomeOverlay";
 import { ExportDebugLogsDialog } from "./components/Settings/ExportDebugLogsDialog";
 import { DetailColumn } from "./components/CLI/DetailColumn";
 import { AgentBridgeListener } from "./components/AgentBridge/AgentBridgeListener";
@@ -37,6 +38,7 @@ import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
 import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useConversationStore } from "./store/conversationStore";
+import { useOnboardingStore } from "./store/onboardingStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useSkillStore } from "./store/skillStore";
 import { useUpdaterStore } from "./store/updaterStore";
@@ -103,6 +105,9 @@ function App() {
     void (async () => {
       await loadExecutors();
       await Promise.all([loadConversations(), refreshProjects()]);
+      // First-run decision needs executor overrides + provider list to be
+      // loaded, so it runs after the stores above.
+      await useOnboardingStore.getState().evaluate();
     })();
   }, [loadExecutors, loadConversations, refreshProjects]);
 
@@ -1061,6 +1066,7 @@ function App() {
       <ExportDebugLogsDialog />
       <AuthenticationDialog />
       <TaskReceiptDialog />
+      <OnboardingWelcomeOverlay onOpenSettings={openSettings} />
       <ConversationCommandPalette
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}

@@ -26778,3 +26778,140 @@ button.ghost:focus-visible,
   }
 }
 
+
+/* ── First-run onboarding welcome overlay ─────────────────────────────── */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(3px);
+}
+.onboarding-card {
+  position: relative;
+  width: min(520px, 100%);
+  border-radius: var(--fb-rounded-xl);
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border-strong);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  padding: 28px 26px 20px;
+  outline: none;
+}
+.onboarding-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--fb-rounded-md);
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+}
+.onboarding-close:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+.onboarding-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  margin-bottom: 22px;
+}
+.onboarding-hero-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+}
+.onboarding-hero h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--fb-text-primary);
+}
+.onboarding-subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fb-text-secondary);
+}
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.onboarding-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 15px;
+  border-radius: var(--fb-rounded-lg);
+  border: 1px solid var(--fb-border-strong);
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.onboarding-action:hover:not(:disabled) {
+  border-color: var(--fb-brand);
+}
+.onboarding-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.onboarding-action--primary {
+  background: var(--fb-brand-gradient);
+  border-color: transparent;
+  color: #ffffff;
+}
+.onboarding-action-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.onboarding-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.onboarding-action-copy strong {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+.onboarding-action-copy span {
+  font-size: 12px;
+  opacity: 0.82;
+}
+.onboarding-error {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--fb-rounded-md);
+  background: rgba(225, 29, 72, 0.08);
+  color: var(--fb-danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.onboarding-error-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--fb-text-secondary);
+}
+.onboarding-footnote {
+  margin: 14px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fb-text-tertiary);
+  text-align: center;
+}

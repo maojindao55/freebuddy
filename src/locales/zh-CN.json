@@ -1120,6 +1120,7 @@
         "baseUrlHintCodex": "例如 https://api.openai.com/v1，或兼容 OpenAI 的代理地址。",
         "baseUrlHintClaude": "例如 https://api.anthropic.com，或兼容 Anthropic 的代理地址。",
         "baseUrlHintDeepSeek": "例如 https://api.deepseek.com，或兼容 DeepSeek 的代理地址。",
+        "baseUrlHintPi": "例如 https://api.openai.com/v1，或兼容 OpenAI 的中转地址。Pi 支持 OpenAI / Anthropic / Responses 三种协议。",
         "envKey": "密钥环境变量名",
         "contextHandling": "上下文处理",
         "contextHandlingHintCodex": "告诉 Codex 适配器该模型可使用的上下文大小。",
@@ -1228,7 +1229,10 @@
         "runtimeHint": "选择此官方 Agent 所使用的已安装适配器。已有会话会保留其启动时的适配器。",
         "requiredSkills": "必选 Skills",
         "requiredSkillsHint": "这些 Skills 对该 Agent 始终启用，无法关闭。",
-        "noRequiredSkills": "无必选 Skills。"
+        "noRequiredSkills": "无必选 Skills。",
+        "onboarding": "新手引导",
+        "restartOnboarding": "重新开始引导",
+        "onboardingHint": "重新显示首次安装时的欢迎引导（试用额度 / 配置自己的 Key）。"
       },
       "loading": "加载中…",
       "runInBackground": "后台运行",
@@ -1253,6 +1257,20 @@
       "data": "数据与洞察",
       "system": "系统"
     }
+  },
+  "onboarding": {
+    "title": "欢迎使用 FreeBuddy",
+    "subtitle": "先把模型跑通，再让 Agent 带你熟悉其他功能。",
+    "trial": "免费体验，无需 API Key",
+    "trialHint": "一键领取试用额度，直接和内置 Agent 对话",
+    "trialLoading": "正在领取试用额度…",
+    "trialProviderName": "FreeBuddy 体验通道",
+    "trialFailed": "领取试用额度失败：{{error}}",
+    "trialFallback": "你仍然可以配置自己的 API Key 继续使用。",
+    "byok": "我有自己的 API Key",
+    "byokHint": "填入已有的服务商 Key，或从白嫖专区导入免费额度",
+    "skip": "跳过引导",
+    "gatewayNote": "试用额度由 {{url}} 提供，有配额限制；正式使用建议配置自己的 Key。"
   },
   "scheduledTasks": {
     "title": "定时任务",

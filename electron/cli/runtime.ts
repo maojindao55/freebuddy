@@ -19,7 +19,11 @@ import {
   sanitizeCliAgentEnv,
   syncDshAcpManagedConfig
 } from "./adapters.js";
-import { piLauncherDir, resolvePiAcpRuntime } from "./piRuntime.js";
+import {
+  ensurePiSettings,
+  piLauncherDir,
+  resolvePiAcpRuntime
+} from "./piRuntime.js";
 import { runAcpAgent } from "./acpRuntime.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getDataDir, getLogDir } from "./db.js";
@@ -40,7 +44,8 @@ import { killProcessTree } from "./process-kill.js";
 import {
   ensureCodexChatBridge,
   resolveClaudeByokSessionOptions,
-  resolveCliByokEnv
+  resolveCliByokEnv,
+  resolvePiByokDefaultModel
 } from "./store.js";
 import { getSkillOwnershipRoots } from "./skills.js";
 import {
@@ -342,16 +347,26 @@ export async function cliRun(
   }
 
   await ensureCodexChatBridge();
+  const byokEnv = resolveCliByokEnv(
+    args.agentId,
+    args.adapter,
+    args.configOptionOverrides?.model ?? built.env?.ANTHROPIC_MODEL
+  );
+  if (args.adapter === "pi-acp") {
+    const defaultModel = resolvePiByokDefaultModel(args.agentId, args.adapter);
+    if (defaultModel) {
+      ensurePiSettings(getDataDir(), {
+        defaultProvider: "freebuddy-relay",
+        defaultModel: defaultModel.replace(/^freebuddy-relay\//, "")
+      });
+    }
+  }
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
       { ...process.env, ...(effectiveArgs.env || {}) },
       built.env
     ),
-    resolveCliByokEnv(
-      args.agentId,
-      args.adapter,
-      args.configOptionOverrides?.model ?? built.env?.ANTHROPIC_MODEL
-    )
+    byokEnv
   );
 
   let spawnCommand: SandboxedSpawn = {

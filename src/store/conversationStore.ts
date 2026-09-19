@@ -957,8 +957,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       member.cli.adapter === "codex-acp" && resolvedExecutor?.codexByok?.enabled
         ? resolvedExecutor.codexByok.models?.[0]?.id?.trim()
         : undefined;
+    const defaultPiByokModel =
+      member.cli.adapter === "pi-acp" && resolvedExecutor?.piByok?.enabled
+        ? `freebuddy-relay/${resolvedExecutor.piByok.models?.[0]?.id?.trim()}`
+        : undefined;
     const persistedConfigOptionOverrides = {
       ...(defaultCodexByokModel ? { model: defaultCodexByokModel } : {}),
+      ...(defaultPiByokModel ? { model: defaultPiByokModel } : {}),
       ...(configOptionOverrides ?? {})
     };
     const conv = await cliClient.createConversation({

@@ -128,6 +128,9 @@ test("onboarding.setup locale keys are fully mirrored", () => {
     "authorizing",
     "noProviderFound",
     "authorizedSuccess",
+    "askGuideBtn",
+    "askGuidePrompt",
+    "askGuideTooltip",
     "step3Title",
     "step3Desc",
     "startFirstTask",
@@ -150,8 +153,10 @@ test("guide chat elements and setup card have styling in styles.css", () => {
   assert.match(styles, /\.chat-empty-hero--guide/);
   assert.match(styles, /\.onboarding-setup-card/);
   assert.match(styles, /\.step-btn--launch/);
+  assert.match(styles, /\.step-btn--guide-auto/);
   assert.match(styles, /\.onboarding-core-agents-list/);
 });
+
 
 
 

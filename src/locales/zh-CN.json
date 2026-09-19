@@ -1280,7 +1280,7 @@
     "guideGraduated": "新手引导已完成！你可以随时在设置中重新开启。",
     "starter": {
       "tour": "👋 带我快速了解 FreeBuddy 的核心功能",
-      "installAgent": "🛠️ 如何安装我的第一个 AI 编程助手（如 Claude / Codex）",
+      "installAgent": "🛠️ 让 GuideBuddy 检测并自动安装常用 Agent（Codex / DeepSeek / ClaudeCode）",
       "freebie": "🎁 如何导入免费可用的模型（白嫖专区）",
       "tryCoding": "💡 带我体验让 Agent 帮我写一段代码"
     },
@@ -1293,6 +1293,9 @@
       "installAll": "一键装齐剩余 {{count}} 项",
       "installAllNone": "一键装齐核心三件套",
       "installingAll": "正在安装推荐助手…",
+      "askGuideBtn": "让 GuideBuddy 自动安装",
+      "askGuidePrompt": "请帮我检测本机环境，并自动安装缺失的常用核心编程助手（Codex、DeepSeek、ClaudeCode）！",
+      "askGuideTooltip": "呼叫 GuideBuddy 在会话中自动运行检测并执行安装",
       "install": "安装",
       "installing": "安装中…",
       "installed": "已安装",

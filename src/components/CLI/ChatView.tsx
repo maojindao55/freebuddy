@@ -2879,7 +2879,15 @@ export function ChatView({
               {isGuide ? t("onboarding.guideHeroBody") : t("chat.emptyHeroBody")}
             </p>
             {isGuide && (
-              <OnboardingGuideSetupCard onOpenSettings={onOpenAgentSettings} />
+              <OnboardingGuideSetupCard
+                onOpenSettings={onOpenAgentSettings}
+                onAskGuide={(prompt) => {
+                  setDraft(prompt);
+                  setTimeout(() => {
+                    chatTextareaRef.current?.focus();
+                  }, 50);
+                }}
+              />
             )}
             <div className="starter-prompts">
               {starterPrompts.map((prompt) => (

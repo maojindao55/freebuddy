@@ -51,13 +51,19 @@ const CORE_AGENTS: CoreAgentMeta[] = [
 ];
 
 export function OnboardingGuideSetupCard({
-  onOpenSettings
+  onOpenSettings,
+  onAskGuide
 }: {
   onOpenSettings?: () => void;
+  onAskGuide?: (prompt: string) => void;
 }) {
   const { t } = useTranslation();
   const notify = useAgentBridgeStore((s) => s.notify);
   const [authorizing, setAuthorizing] = useState(false);
+
+  const handleAskGuide = () => {
+    onAskGuide?.(t("onboarding.setup.askGuidePrompt"));
+  };
 
   // 1. Subscribe to atomic state
   const runtimes = useCliExecutorStore((s) => s.runtimes);
@@ -268,6 +274,17 @@ export function OnboardingGuideSetupCard({
         </div>
         {missingAgents.length > 0 && (
           <div className="setup-header-action">
+            {onAskGuide && (
+              <button
+                type="button"
+                className="step-btn step-btn--guide-auto"
+                onClick={handleAskGuide}
+                title={t("onboarding.setup.askGuideTooltip")}
+              >
+                <Sparkles size={13} />
+                {t("onboarding.setup.askGuideBtn")}
+              </button>
+            )}
             <button
               type="button"
               className="step-btn step-btn--primary"

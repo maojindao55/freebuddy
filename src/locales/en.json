@@ -1293,7 +1293,7 @@
     "guideGraduated": "Onboarding completed! You can restart it anytime in Settings.",
     "starter": {
       "tour": "👋 Give me a quick tour of FreeBuddy's core features",
-      "installAgent": "🛠️ How do I install my first AI coding agent (e.g. Claude / Codex)?",
+      "installAgent": "🛠️ Let GuideBuddy detect & auto-install core agents (Codex / DeepSeek / ClaudeCode)",
       "freebie": "🎁 How do I import free models from the Freebie page?",
       "tryCoding": "💡 Walk me through generating code with an agent"
     },
@@ -1306,6 +1306,9 @@
       "installAll": "Install Remaining ({{count}})",
       "installAllNone": "Install All 3 Core Agents",
       "installingAll": "Installing agents…",
+      "askGuideBtn": "Ask GuideBuddy to Install",
+      "askGuidePrompt": "Please inspect my environment and automatically install all missing core coding agents (Codex, DeepSeek, ClaudeCode)!",
+      "askGuideTooltip": "Call GuideBuddy in chat to detect and auto-install agents",
       "install": "Install",
       "installing": "Installing…",
       "installed": "Installed",

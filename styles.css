@@ -27036,6 +27036,9 @@ button.ghost:focus-visible,
 }
 .setup-header-action {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* 3 Core Agents List */
@@ -27179,6 +27182,15 @@ button.ghost:focus-visible,
 }
 .step-btn--primary:hover:not(:disabled) {
   background: var(--fb-brand);
+  color: #ffffff;
+}
+.step-btn--guide-auto {
+  background: color-mix(in srgb, #8b5cf6 15%, var(--fb-panel-bg));
+  border-color: color-mix(in srgb, #8b5cf6 45%, var(--fb-border-strong));
+  color: #8b5cf6;
+}
+.step-btn--guide-auto:hover:not(:disabled) {
+  background: #8b5cf6;
   color: #ffffff;
 }
 .step-btn--launch {

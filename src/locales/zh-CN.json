@@ -1270,7 +1270,20 @@
     "byok": "我有自己的 API Key",
     "byokHint": "填入已有的服务商 Key，或从白嫖专区导入免费额度",
     "skip": "跳过引导",
-    "gatewayNote": "试用额度由 {{url}} 提供，有配额限制；正式使用建议配置自己的 Key。"
+    "gatewayNote": "试用额度由 {{url}} 提供，有配额限制；正式使用建议配置自己的 Key。",
+    "guideEyebrow": "官方新手向导",
+    "guideHeroHeading": "嗨！我是 GuideBuddy",
+    "guideHeroBody": "我是 FreeBuddy 的内置向导助手。无论是熟悉操作界面、安装外部编程助手，还是配置免费大模型，都可以直接问我。",
+    "guideBannerText": "你正在与新手向导 GuideBuddy 对话，助你快速跑通首个 Agent",
+    "guideBannerSettings": "打开设置",
+    "guideBannerFinish": "完成新手引导",
+    "guideGraduated": "新手引导已完成！你可以随时在设置中重新开启。",
+    "starter": {
+      "tour": "👋 带我快速了解 FreeBuddy 的核心功能",
+      "installAgent": "🛠️ 如何安装我的第一个 AI 编程助手（如 Claude / Codex）",
+      "freebie": "🎁 如何导入免费可用的模型（白嫖专区）",
+      "tryCoding": "💡 带我体验让 Agent 帮我写一段代码"
+    }
   },
   "scheduledTasks": {
     "title": "定时任务",

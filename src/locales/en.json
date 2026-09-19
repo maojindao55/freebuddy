@@ -1283,7 +1283,20 @@
     "byok": "I have my own API key",
     "byokHint": "Enter a provider key, or import a free tier from the Freebie page",
     "skip": "Skip onboarding",
-    "gatewayNote": "Trial credits are provided by {{url}} with a usage quota. For regular use, configure your own key."
+    "gatewayNote": "Trial credits are provided by {{url}} with a usage quota. For regular use, configure your own key.",
+    "guideEyebrow": "Official Onboarding Guide",
+    "guideHeroHeading": "Hi! I'm GuideBuddy",
+    "guideHeroBody": "I'm your built-in onboarding guide for FreeBuddy. Whether getting familiar with features, installing coding agents, or configuring free models, ask me anything.",
+    "guideBannerText": "You are chatting with GuideBuddy to help you run your first agent",
+    "guideBannerSettings": "Open Settings",
+    "guideBannerFinish": "Complete Guide",
+    "guideGraduated": "Onboarding completed! You can restart it anytime in Settings.",
+    "starter": {
+      "tour": "👋 Give me a quick tour of FreeBuddy's core features",
+      "installAgent": "🛠️ How do I install my first AI coding agent (e.g. Claude / Codex)?",
+      "freebie": "🎁 How do I import free models from the Freebie page?",
+      "tryCoding": "💡 Walk me through generating code with an agent"
+    }
   },
   "scheduledTasks": {
     "title": "Scheduled Tasks",

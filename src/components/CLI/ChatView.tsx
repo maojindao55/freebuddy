@@ -23,12 +23,15 @@ import {
   Laptop,
   Plus,
   Search,
+  Sparkles,
   X
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ONBOARDING_GUIDE_AGENT_ID } from "@/config/agentProfiles";
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useOnboardingStore } from "@/store/onboardingStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useDelegationTeamStore } from "@/store/delegationStore";
@@ -1107,11 +1110,22 @@ export function ChatView({
   const replayIndex = useReplayStore((s) => s.index);
   const stopReplay = useReplayStore((s) => s.stop);
   const replaying = replayConvId === conv?.id && replayConvId !== null;
-  const starterPrompts = [
-    t("chat.starter.one"),
-    t("chat.starter.two"),
-    t("chat.starter.three")
-  ];
+  const isGuide =
+    member?.profile === "guide" ||
+    conv?.agentId === ONBOARDING_GUIDE_AGENT_ID ||
+    member?.id === ONBOARDING_GUIDE_AGENT_ID;
+  const starterPrompts = isGuide
+    ? [
+        t("onboarding.starter.tour"),
+        t("onboarding.starter.installAgent"),
+        t("onboarding.starter.freebie"),
+        t("onboarding.starter.tryCoding")
+      ]
+    : [
+        t("chat.starter.one"),
+        t("chat.starter.two"),
+        t("chat.starter.three")
+      ];
 
   const sessionMeta = useMemo(() => {
     if (!conv) {
@@ -2821,12 +2835,47 @@ export function ChatView({
     <div className="chat-view">
       <CodeWhipOverlay />
       <div className={`chat-scroll${replaying ? " replay-active" : ""}`} ref={scrollRef} onScroll={handleScroll}>
+        {isGuide && (
+          <div className="guide-chat-banner" role="status">
+            <div className="guide-chat-banner-info">
+              <Sparkles size={15} className="guide-chat-banner-icon" />
+              <span>{t("onboarding.guideBannerText")}</span>
+            </div>
+            <div className="guide-chat-banner-actions">
+              {onOpenAgentSettings && (
+                <button
+                  type="button"
+                  className="guide-chat-banner-btn"
+                  onClick={onOpenAgentSettings}
+                >
+                  {t("onboarding.guideBannerSettings")}
+                </button>
+              )}
+              <button
+                type="button"
+                className="guide-chat-banner-btn guide-chat-banner-btn--finish"
+                onClick={() => {
+                  void useOnboardingStore.getState().markDone();
+                  notify(t("onboarding.guideGraduated"));
+                }}
+              >
+                {t("onboarding.guideBannerFinish")}
+              </button>
+            </div>
+          </div>
+        )}
         {messages.length === 0 && !conv?.sourceConversationId && (
-          <div className="chat-empty chat-empty-hero">
-            <p className="eyebrow">{t("chat.newAgentChat")}</p>
-            <h2>{t("chat.emptyHeroHeading", { name: member?.name ?? "" })}</h2>
+          <div className={`chat-empty chat-empty-hero${isGuide ? " chat-empty-hero--guide" : ""}`}>
+            <p className="eyebrow">
+              {isGuide ? t("onboarding.guideEyebrow") : t("chat.newAgentChat")}
+            </p>
+            <h2>
+              {isGuide
+                ? t("onboarding.guideHeroHeading")
+                : t("chat.emptyHeroHeading", { name: member?.name ?? "" })}
+            </h2>
             <p className="muted">
-              {t("chat.emptyHeroBody")}
+              {isGuide ? t("onboarding.guideHeroBody") : t("chat.emptyHeroBody")}
             </p>
             <div className="starter-prompts">
               {starterPrompts.map((prompt) => (

@@ -91,8 +91,10 @@ test("ChatView renders OnboardingGuideSetupCard for guide onboarding", () => {
   assert.match(card, /useCliInstallStore/);
   assert.match(card, /useProviderStore/);
   assert.match(card, /codex-acp/);
-  assert.match(card, /codexByok/);
+  assert.match(card, /dsh-acp/);
+  assert.match(card, /claude-agent-acp/);
   assert.match(card, /handleInstall/);
+  assert.match(card, /handleInstallAll/);
   assert.match(card, /handleAuthorize/);
   assert.match(card, /handleStartTask/);
 });
@@ -107,18 +109,31 @@ test("onboarding.setup locale keys are fully mirrored", () => {
   const setupKeys = [
     "cardTitle",
     "cardSubtitle",
-    "step1Title",
-    "step1Desc",
-    "step1Done",
-    "installCodex",
+    "allInstalled",
+    "partiallyInstalled",
+    "noneInstalled",
+    "installAll",
+    "installAllNone",
+    "installingAll",
+    "install",
+    "installing",
+    "installed",
+    "codexDesc",
+    "dshDesc",
+    "claudeDesc",
     "step2Title",
     "step2Desc",
     "step2Done",
     "authorizeTrial",
+    "authorizing",
+    "noProviderFound",
+    "authorizedSuccess",
     "step3Title",
     "step3Desc",
     "startFirstTask",
     "firstTaskTitle",
+    "firstTaskStarted",
+    "noAgentReady",
     "exploreOtherAgents"
   ];
 
@@ -135,5 +150,8 @@ test("guide chat elements and setup card have styling in styles.css", () => {
   assert.match(styles, /\.chat-empty-hero--guide/);
   assert.match(styles, /\.onboarding-setup-card/);
   assert.match(styles, /\.step-btn--launch/);
+  assert.match(styles, /\.onboarding-core-agents-list/);
 });
+
+
 

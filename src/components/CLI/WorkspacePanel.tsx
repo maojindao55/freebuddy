@@ -30,6 +30,7 @@ import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 import { DelegationTeamCard } from "../Workflows/DelegationTeamCard";
 import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
+import { displayConfigOptionLabel } from "@/utils/sessionConfigOptions";
 import { conversationDisplayCwd, conversationWorktreePath } from "./conversationProjectGrouping";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
@@ -314,12 +315,17 @@ export function WorkspacePanel({
 
   const sessionConfigSummary = useMemo(() => {
     const sessionConfigValues = latestConfigOptions
-      .map((option) => option.currentLabel ?? option.currentValue)
+      .map(
+        (option) =>
+          displayConfigOptionLabel(option, active?.configOptionOverrides) ??
+          option.currentLabel ??
+          option.currentValue
+      )
       .filter((value): value is string => Boolean(value));
     return sessionConfigValues.length > 0
       ? sessionConfigValues.join(" / ")
       : t("workspace.localAgent");
-  }, [latestConfigOptions, t]);
+  }, [active?.configOptionOverrides, latestConfigOptions, t]);
 
   useEffect(() => {
     if (!isCodexAgent) {

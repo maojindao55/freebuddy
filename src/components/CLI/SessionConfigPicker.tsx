@@ -255,7 +255,7 @@ export function SessionConfigPicker({
     if (option.id === "provider" || option.category === "provider") {
       delete next.model;
     }
-    if (selected === option.currentValue || selected === "") {
+    if (selected === "") {
       delete next[option.id];
     } else {
       next[option.id] = selected;

@@ -16,6 +16,7 @@ export interface CLIExecutorOverride {
   codexByok?: CLICodexByokConfig;
   claudeByok?: CLIClaudeByokConfig;
   deepseekByok?: CLIDeepSeekByokConfig;
+  piByok?: CLIPiByokConfig;
   skillIds?: string[];
 }
 
@@ -56,6 +57,19 @@ export interface CLIDeepSeekByokConfig {
   apiKeyPreview?: string;
   officialApiKey?: string;
   officialApiKeyPreview?: string;
+  models?: CLIByokModel[];
+  /** Provider model context window in tokens. */
+  contextWindow?: number;
+}
+
+export interface CLIPiByokConfig {
+  enabled?: boolean;
+  /** Referenced provider id (provider-xxx); when set, baseUrl/key/models come from that provider. */
+  providerId?: string;
+  baseUrl?: string;
+  envKey?: string;
+  apiKey?: string;
+  apiKeyPreview?: string;
   models?: CLIByokModel[];
   /** Provider model context window in tokens. */
   contextWindow?: number;

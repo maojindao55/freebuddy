@@ -720,6 +720,9 @@ export function migrate(db: DB) {
   if (!overrideCols.some((c) => c.name === "deepseek_byok")) {
     db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN deepseek_byok TEXT");
   }
+  if (!overrideCols.some((c) => c.name === "pi_byok")) {
+    db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN pi_byok TEXT");
+  }
   if (!overrideCols.some((c) => c.name === "skill_ids")) {
     db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN skill_ids TEXT");
   }

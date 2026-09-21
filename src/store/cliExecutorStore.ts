@@ -22,6 +22,7 @@ export interface ResolvedExecutor extends CLIAdapterDefinition {
   codexByok?: CLIExecutorOverride["codexByok"];
   claudeByok?: CLIExecutorOverride["claudeByok"];
   deepseekByok?: CLIExecutorOverride["deepseekByok"];
+  piByok?: CLIExecutorOverride["piByok"];
   skillIds?: string[];
   runtime?: CliRuntime;
   override?: CLIExecutorOverride;

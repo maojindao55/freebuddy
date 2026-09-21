@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import {
+  buildDelegationForest,
   eventsForRosterRole,
   resolveActiveDelegationRoleId
 } from "@freebuddy/delegation-core";
@@ -19,26 +20,17 @@ import {
 } from "@/services/delegation/client";
 import type { DelegationTeam } from "@/services/workflowTeams/types";
 import { useConversationStore } from "@/store/conversationStore";
+import {
+  eventFailureReason,
+  formatEventDuration
+} from "@/utils/delegationEventFormat";
 import { AgentAvatar } from "../CLI/AgentAvatar";
+import { DelegationEventDetails } from "./DelegationEventDetails";
+import { DelegationTree } from "./DelegationTree";
 
 const POLL_MS = 1500;
 
-function formatClock(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function formatDuration(event: DelegationEventRow): string | null {
-  const from = event.startedAt ?? event.acceptedAt;
-  if (!from) return null;
-  const start = new Date(from).getTime();
-  const end = event.endedAt ? new Date(event.endedAt).getTime() : Date.now();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
-  const seconds = Math.round((end - start) / 100) / 10;
-  return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-}
+type DelegationView = "roster" | "tree";
 
 export function DelegationTeamCard({
   conversationId
@@ -63,12 +55,40 @@ export function DelegationTeamCard({
   const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [view, setView] = useState<DelegationView>("roster");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setExpandedMemberIds(new Set());
     setExpandedEventIds(new Set());
+    setCollapsedNodeIds(new Set());
+    setView("roster");
   }, [conversationId]);
+
+  const forest = useMemo(() => buildDelegationForest(events), [events]);
+
+  // Declared above the `if (!team) return null` guard on purpose: a hook after
+  // an early return changes the hook count between renders.
+  const toggleEvent = useCallback((eventId: string) => {
+    setExpandedEventIds((current) => {
+      const next = new Set(current);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+  }, []);
+
+  const toggleNode = useCallback((nodeId: string) => {
+    setCollapsedNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }, []);
 
   // Extract model per agent from already-loaded conversation messages —
   // same mechanism as WorkspacePanel's sessionConfigSummary. Do not call
@@ -253,15 +273,6 @@ export function DelegationTeamCard({
     });
   };
 
-  const toggleEvent = (eventId: string) => {
-    setExpandedEventIds((current) => {
-      const next = new Set(current);
-      if (next.has(eventId)) next.delete(eventId);
-      else next.add(eventId);
-      return next;
-    });
-  };
-
   return (
     <div className="delegation-roster-stack">
       {showRunControls ? (
@@ -306,6 +317,39 @@ export function DelegationTeamCard({
           })}
         </strong>
       </div>
+      <div
+        className="delegation-view-tabs"
+        role="tablist"
+        aria-label={t("workflow.delegation.viewsLabel")}
+      >
+        <button
+          type="button"
+          role="tab"
+          className={view === "roster" ? "active" : ""}
+          aria-selected={view === "roster"}
+          onClick={() => setView("roster")}
+        >
+          {t("workflow.delegation.viewRoster")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={view === "tree" ? "active" : ""}
+          aria-selected={view === "tree"}
+          onClick={() => setView("tree")}
+        >
+          {t("workflow.delegation.viewTree")}
+        </button>
+      </div>
+      {view === "tree" ? (
+        <DelegationTree
+          forest={forest}
+          collapsedNodeIds={collapsedNodeIds}
+          onToggleNode={toggleNode}
+          expandedEventIds={expandedEventIds}
+          onToggleEvent={toggleEvent}
+        />
+      ) : (
       <div className="delegation-member-list" aria-live="polite">
       {team.roster.map((r) => {
         const isEntry = r.id === team.entryRoleId;
@@ -391,13 +435,9 @@ export function DelegationTeamCard({
                 </div>
               ) : (
                 visibleEvents.map((event) => {
-                  const duration = formatDuration(event);
+                  const duration = formatEventDuration(event);
                   const eventExpanded = expandedEventIds.has(event.id);
-                  const failureReason =
-                    (event.status === "failed" || event.status === "timeout") &&
-                    event.resultSummary?.trim()
-                      ? event.resultSummary.trim()
-                      : undefined;
+                  const failureReason = eventFailureReason(event);
                   return (
                     <article
                       key={event.id}
@@ -444,34 +484,7 @@ export function DelegationTeamCard({
                         </div>
                       ) : null}
                       {eventExpanded ? (
-                        <div
-                          id={`delegation-event-${event.id}`}
-                          className="delegation-activity-details"
-                        >
-                          <div className="delegation-event-timing">
-                            {t("workflow.delegation.acceptedAt", { defaultValue: "Accepted" })} {formatClock(event.acceptedAt)}
-                            {event.startedAt
-                              ? ` · ${t("workflow.delegation.startedAt", { defaultValue: "Started" })} ${formatClock(event.startedAt)}`
-                              : ""}
-                            {event.endedAt
-                              ? ` · ${t("workflow.delegation.endedAt", { defaultValue: "Ended" })} ${formatClock(event.endedAt)}`
-                              : ""}
-                          </div>
-                          {event.verdict ? (
-                            <div className={`delegation-activity-verdict ${event.verdict}`}>
-                              {event.verdict}
-                              {event.verdictSummary ? ` · ${event.verdictSummary}` : ""}
-                            </div>
-                          ) : null}
-                          {event.resultSummary && !failureReason ? (
-                            <div className="delegation-event-result">
-                              <strong>
-                                {t("workflow.delegation.result", { defaultValue: "Result" })}
-                              </strong>
-                              <p>{event.resultSummary}</p>
-                            </div>
-                          ) : null}
-                        </div>
+                        <DelegationEventDetails event={event} />
                       ) : null}
                     </article>
                   );
@@ -501,6 +514,7 @@ export function DelegationTeamCard({
         );
       })}
       </div>
+      )}
     </div>
   );
 }

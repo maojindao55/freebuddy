@@ -27,7 +27,7 @@ export function OnboardingWelcomeOverlay({
 }) {
   const { t } = useTranslation();
   const open = useOnboardingStore((s) => s.open);
-  const markDone = useOnboardingStore((s) => s.markDone);
+  const markStarted = useOnboardingStore((s) => s.markStarted);
   const markSkipped = useOnboardingStore((s) => s.markSkipped);
   const upsertProvider = useProviderStore((s) => s.upsert);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -100,7 +100,7 @@ export function OnboardingWelcomeOverlay({
         });
       }
 
-      await markDone();
+      await markStarted();
     } catch (err) {
       setError(
         t("onboarding.trialFailed", {

@@ -22,13 +22,13 @@ test("ChatView tailors hero and starter prompts for GuideBuddy", () => {
   assert.match(chatView, /chat-empty-hero--guide/);
 });
 
-test("ChatView renders guide notice banner with finish and settings triggers", () => {
+test("ChatView renders guide notice banner with settings and installation triggers", () => {
   const chatView = read("src/components/CLI/ChatView.tsx");
   assert.match(chatView, /guide-chat-banner/);
   assert.match(chatView, /guideBannerText/);
   assert.match(chatView, /guideBannerSettings/);
-  assert.match(chatView, /guideBannerFinish/);
-  assert.match(chatView, /useOnboardingStore\.getState\(\)\.markDone\(\)/);
+  assert.match(chatView, /guideBannerSetup/);
+  assert.doesNotMatch(chatView, /getState\(\)\.markDone\(\)/);
 });
 
 test("onboarding locale strings are fully mirrored across zh-CN and en", () => {
@@ -89,14 +89,11 @@ test("ChatView renders OnboardingGuideSetupCard for guide onboarding", () => {
   const card = read("src/components/Onboarding/OnboardingGuideSetupCard.tsx");
   assert.match(card, /useCliExecutorStore/);
   assert.match(card, /useCliInstallStore/);
-  assert.match(card, /useProviderStore/);
-  assert.match(card, /codex-acp/);
-  assert.match(card, /dsh-acp/);
-  assert.match(card, /claude-agent-acp/);
-  assert.match(card, /handleInstall/);
-  assert.match(card, /handleInstallAll/);
-  assert.match(card, /handleAuthorize/);
-  assert.match(card, /handleStartTask/);
+  assert.match(card, /buildOnboardingInstallPlan/);
+  assert.match(card, /useOnboardingDetectionStore/);
+  assert.match(card, /handleInstallSelected/);
+  assert.match(card, /enqueueJobs/);
+  assert.doesNotMatch(card, /handleAuthorize|handleStartTask/);
 });
 
 test("onboarding.setup locale keys are fully mirrored", () => {

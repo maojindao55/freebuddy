@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   ensurePiAcpLauncher,
@@ -30,7 +31,7 @@ function makeFixtureRoot() {
 test("piRuntimeRoots prefers packaged resources, then staging, then repo", () => {
   const roots = piRuntimeRoots();
   assert.ok(roots.length >= 2);
-  assert.match(roots[roots.length - 1], /freebuddy$/);
+  assert.equal(roots[roots.length - 1], path.resolve(fileURLToPath(new URL("..", import.meta.url))));
   assert.ok(roots.some((root) => root.endsWith(".build/pi-runtime")));
 });
 

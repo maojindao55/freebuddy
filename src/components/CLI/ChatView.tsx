@@ -34,7 +34,6 @@ import { ONBOARDING_GUIDE_AGENT_ID } from "@/config/agentProfiles";
 import { OnboardingGuideSetupCard } from "@/components/Onboarding/OnboardingGuideSetupCard";
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
-import { useOnboardingStore } from "@/store/onboardingStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useDelegationTeamStore } from "@/store/delegationStore";
@@ -2886,16 +2885,7 @@ export function ChatView({
                   {t("onboarding.guideBannerSettings")}
                 </button>
               )}
-              <button
-                type="button"
-                className="guide-chat-banner-btn guide-chat-banner-btn--finish"
-                onClick={() => {
-                  void useOnboardingStore.getState().markDone();
-                  notify(t("onboarding.guideGraduated"));
-                }}
-              >
-                {t("onboarding.guideBannerFinish")}
-              </button>
+
             </div>
           </div>
         )}
@@ -2929,6 +2919,11 @@ export function ChatView({
             <div className="starter-prompts">
               {starterPrompts.map((prompt) => (
                 <button key={prompt} onClick={() => {
+                  if (isGuide && prompt === t("onboarding.starter.installAgent")) {
+                    setSetupCardExpanded(true);
+                    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                    return;
+                  }
                   setDraft(prompt);
                   chatTextareaRef.current?.focus();
                 }}>

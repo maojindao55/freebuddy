@@ -1,451 +1,148 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  CheckCircle2,
-  Download,
-  ExternalLink,
-  Layers,
-  Loader2,
-  Play,
-  Sparkles,
-  Wrench
-} from "lucide-react";
-
+import { CheckCircle2, Download, ExternalLink, Layers, Loader2, RefreshCw } from "lucide-react";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useCliInstallStore } from "@/store/cliInstallStore";
-import { useProviderStore } from "@/store/providerStore";
-import { useConversationStore } from "@/store/conversationStore";
-import { useAgentBridgeStore } from "@/store/agentBridgeStore";
+import { useOnboardingDetectionStore } from "@/store/onboardingDetectionStore";
 import { useOnboardingStore } from "@/store/onboardingStore";
+import { buildOnboardingInstallPlan, type OnboardingInstallItem } from "@/utils/onboardingInstallPlan";
 
-interface CoreAgentMeta {
-  id: string;
-  name: string;
-  tag: string;
-  descKey: string;
-  defaultCommand: string;
-}
-
-const CORE_AGENTS: CoreAgentMeta[] = [
-  {
-    id: "codex-acp",
-    name: "Codex",
-    tag: "OpenAI / Reasoning",
-    descKey: "onboarding.setup.codexDesc",
-    defaultCommand: "npm install -g --force @agentclientprotocol/codex-acp"
-  },
-  {
-    id: "dsh-acp",
-    name: "DeepSeek (DSH)",
-    tag: "DeepSeek / Cost-effective",
-    descKey: "onboarding.setup.dshDesc",
-    defaultCommand: "npm install -g deepseek-harness-acp"
-  },
-  {
-    id: "claude-agent-acp",
-    name: "ClaudeCode",
-    tag: "Claude / Full Stack",
-    descKey: "onboarding.setup.claudeDesc",
-    defaultCommand: "npm install -g --include=optional @agentclientprotocol/claude-agent-acp"
-  }
-];
-
-export function OnboardingGuideSetupCard({
-  onOpenSettings,
-  onAskGuide
-}: {
+export function OnboardingGuideSetupCard({ onOpenSettings, onAskGuide }: {
   onOpenSettings?: () => void;
   onAskGuide?: (prompt: string) => void;
 }) {
   const { t } = useTranslation();
-  const notify = useAgentBridgeStore((s) => s.notify);
-  const [authorizing, setAuthorizing] = useState(false);
-  const [installQueue, setInstallQueue] = useState<string[]>([]);
-
-  const handleAskGuide = () => {
-    onAskGuide?.(t("onboarding.setup.askGuidePrompt"));
-  };
-
-  // 1. Subscribe to atomic state
+  const adapters = useCliExecutorStore((s) => s.adapters);
   const runtimes = useCliExecutorStore((s) => s.runtimes);
-  const overrides = useCliExecutorStore((s) => s.overrides);
-  const installJobs = useCliInstallStore((s) => s.jobs);
-  const startInstall = useCliInstallStore((s) => s.startJob);
+  const jobs = useCliInstallStore((s) => s.jobs);
+  const queue = useCliInstallStore((s) => s.queue);
+  const enqueueJobs = useCliInstallStore((s) => s.enqueueJobs);
+  const clearQueue = useCliInstallStore((s) => s.clearQueue);
+  const phase = useOnboardingDetectionStore((s) => s.phase);
+  const discoveryRuntimes = useOnboardingDetectionStore((s) => s.discoveryRuntimes);
+  const detect = useOnboardingDetectionStore((s) => s.detect);
+  const resolved = useOnboardingStore((s) => s.resolved);
+  const [excluded, setExcluded] = useState<string[]>([]);
+  const [batchIds, setBatchIds] = useState<string[]>([]);
 
-  // 2. Derive agent status safely
-  const agentsStatus = CORE_AGENTS.map((agent) => {
-    const isInstalled = Boolean(runtimes[agent.id]?.installed);
-    const isInstalling = Boolean(
-      installJobs.some((j) => j.adapterId === agent.id && !j.done)
-    );
-    const override = overrides[agent.id];
-    const isKeyConfigured = Boolean(
-      (agent.id === "codex-acp" &&
-        override?.codexByok?.enabled &&
-        (override.codexByok.providerId || override.codexByok.apiKey)) ||
-      (agent.id === "dsh-acp" &&
-        override?.deepseekByok?.enabled &&
-        (override.deepseekByok.providerId || override.deepseekByok.apiKey)) ||
-      (agent.id === "claude-agent-acp" &&
-        override?.claudeByok?.enabled &&
-        (override.claudeByok.providerId || override.claudeByok.apiKey))
-    );
-    return {
-      ...agent,
-      isInstalled,
-      isInstalling,
-      isKeyConfigured
-    };
-  });
+  useEffect(() => { if (phase === "idle") void detect(); }, [phase, detect]);
 
-  const installedAgents = agentsStatus.filter((a) => a.isInstalled);
-  const missingAgents = agentsStatus.filter((a) => !a.isInstalled);
-  const installingAgents = agentsStatus.filter((a) => a.isInstalling);
+  const plan = buildOnboardingInstallPlan(adapters, runtimes, discoveryRuntimes);
+  const busy = jobs.some((job) => !job.done) || queue.length > 0;
+  const checking = phase === "idle" || phase === "checking";
+  const canInstall = phase === "done" && !busy;
+  const missing = plan.filter((item) => !item.installed && item.command);
+  const selected = missing.filter((item) => !excluded.includes(item.id));
+  const installed = plan.filter((item) => item.installed);
+  const allSelected = missing.length > 0 && selected.length === missing.length;
+  const failed = jobs.filter((job) => plan.some((item) => item.id === job.adapterId) &&
+    job.done && job.phase !== "succeeded");
+  const batchDone = batchIds.length > 0 && !busy && batchIds.every((id) => runtimes[id]?.installed);
 
-  const allInstalled = missingAgents.length === 0;
-  const anyInstalled = installedAgents.length > 0;
-  const isAllKeysConfigured =
-    anyInstalled && installedAgents.every((a) => a.isKeyConfigured);
-  const isAnyKeyConfigured = installedAgents.some((a) => a.isKeyConfigured);
-  const isQueueActive = installQueue.length > 0 || installingAgents.length > 0;
-
-  // Process installation queue sequentially to avoid concurrent npm locks
-  useEffect(() => {
-    if (installQueue.length === 0) return;
-    const currentId = installQueue[0];
-    const isCurrentInstalling = installJobs.some(
-      (j) => j.adapterId === currentId && !j.done
-    );
-    const isCurrentDone = installJobs.some(
-      (j) => j.adapterId === currentId && j.done
-    );
-
-    if (!isCurrentInstalling && !isCurrentDone) {
-      const def = CORE_AGENTS.find((a) => a.id === currentId);
-      if (def) {
-        const resolved = useCliExecutorStore.getState().resolve(def.id);
-        startInstall({
-          adapterId: def.id,
-          label: def.name,
-          command: resolved?.installHint || def.defaultCommand
-        });
-      }
-    } else if (isCurrentDone) {
-      setInstallQueue((prev) => prev.slice(1));
-    }
-  }, [installQueue, installJobs, startInstall]);
-
-  // Status headline
-  const headline = allInstalled
-    ? t("onboarding.setup.allInstalled")
-    : anyInstalled
-      ? t("onboarding.setup.partiallyInstalled", {
-          installedNames: installedAgents.map((a) => a.name).join(", "),
-          count: missingAgents.length
-        })
-      : t("onboarding.setup.noneInstalled");
-
-  const handleInstallOne = (agentId: string) => {
-    const def = CORE_AGENTS.find((a) => a.id === agentId);
-    if (!def) return;
-    const resolved = useCliExecutorStore.getState().resolve(agentId);
-    startInstall({
-      adapterId: agentId,
-      label: def.name,
-      command: resolved?.installHint || def.defaultCommand
-    });
-    notify(t("onboarding.setup.installStarted"));
+  const handleInstallSelected = () => {
+    if (!canInstall || !selected.length) return;
+    if (resolved === "done" || resolved === "skipped") void useOnboardingStore.getState().markStarted();
+    setBatchIds(selected.map((item) => item.id));
+    enqueueJobs(selected.map((item) => ({ adapterId: item.id, label: item.name, command: item.command! })));
   };
 
-  const handleInstallAllMissing = () => {
-    const queue = missingAgents.map((a) => a.id);
-    setInstallQueue(queue);
-    notify(t("onboarding.setup.installStarted"));
+  const renderItem = (item: OnboardingInstallItem) => {
+    const job = jobs.find((entry) => entry.adapterId === item.id);
+    const queued = queue.some((entry) => entry.adapterId === item.id);
+    const status = checking ? "checking" : queued ? "queued" : job && !job.done
+      ? job.phase === "verifying" ? "verifying" : "installing"
+      : item.installed ? "installed" : job && job.phase !== "succeeded" ? "failed"
+        : item.needsRepair ? "repair" : item.detected ? "needsConnection" : "missing";
+    return <div className={`core-agent-item${item.installed ? " is-installed" : ""}`} key={item.id}>
+      <label className="onboarding-agent-choice">
+        <input type="checkbox" aria-label={t("onboarding.setup.selectAgent", { name: item.name })}
+          checked={item.installed || !excluded.includes(item.id)}
+          disabled={!canInstall || item.installed || !item.command}
+          onChange={(event) => setExcluded((previous) => event.target.checked
+            ? previous.filter((id) => id !== item.id) : [...previous, item.id])} />
+        <span className="core-agent-info">
+          <span className="core-agent-name-row"><strong>{item.name}</strong>
+            {item.recommended && <span className="core-agent-tag">{t("onboarding.setup.recommendedTag")}</span>}
+          </span>
+          <span className="core-agent-desc">{item.installed
+            ? t("onboarding.setup.installedHint")
+            : t(item.detected ? "onboarding.setup.connectionHint" : "onboarding.setup.packageHint", { binary: item.binary })}</span>
+        </span>
+      </label>
+      <span className={`core-agent-status${item.installed ? " core-agent-status--installed" : ""}`}>
+        {["checking", "installing", "verifying"].includes(status) && <Loader2 size={14} className="spin" />}
+        {status === "installed" && <CheckCircle2 size={14} />}
+        {t(`onboarding.setup.status.${status}`)}
+      </span>
+    </div>;
   };
 
-  const handleAuthorizeAll = async () => {
-    const guideProvider = useProviderStore
-      .getState()
-      .providers.find((p) => p.presetId === "freebuddy-guide" || p.enabled);
-
-    if (!guideProvider) {
-      notify(t("onboarding.setup.noProviderFound"));
-      return;
-    }
-
-    if (installedAgents.length === 0) {
-      notify(t("onboarding.setup.noAgentReady"));
-      return;
-    }
-
-    setAuthorizing(true);
-    try {
-      const executorStore = useCliExecutorStore.getState();
-
-      for (const agent of installedAgents) {
-        const existingOverride = executorStore.overrides[agent.id] || {
-          id: agent.id,
-          baseAdapter: agent.id
-        };
-
-        if (agent.id === "codex-acp") {
-          await executorStore.upsertOverride({
-            ...existingOverride,
-            id: "codex-acp",
-            baseAdapter: "codex-acp",
-            codexByok: {
-              enabled: true,
-              providerId: guideProvider.id,
-              wireApi: "chat",
-              envKey: guideProvider.envKey || "OPENAI_API_KEY",
-              models: guideProvider.models.length
-                ? guideProvider.models
-                : [{ id: "auto", name: "Auto (Trial)" }]
-            },
-            enabled: true
-          });
-        } else if (agent.id === "dsh-acp") {
-          await executorStore.upsertOverride({
-            ...existingOverride,
-            id: "dsh-acp",
-            baseAdapter: "dsh-acp",
-            deepseekByok: {
-              enabled: true,
-              providerId: guideProvider.id,
-              wireApi: "chat",
-              envKey: guideProvider.envKey || "DEEPSEEK_API_KEY",
-              models: guideProvider.models.length
-                ? guideProvider.models
-                : [{ id: "auto", name: "Auto (Trial)" }]
-            },
-            enabled: true
-          });
-        } else if (agent.id === "claude-agent-acp") {
-          await executorStore.upsertOverride({
-            ...existingOverride,
-            id: "claude-agent-acp",
-            baseAdapter: "claude-agent-acp",
-            claudeByok: {
-              enabled: true,
-              providerId: guideProvider.id,
-              envKey: guideProvider.envKey || "ANTHROPIC_API_KEY",
-              models: guideProvider.models.length
-                ? guideProvider.models
-                : [{ id: "auto", name: "Auto (Trial)" }]
-            },
-            enabled: true
-          });
-        }
-      }
-
-      notify(t("onboarding.setup.authorizedSuccess"));
-    } catch (err) {
-      notify(String(err));
-    } finally {
-      setAuthorizing(false);
-    }
-  };
-
-  const handleStartTask = async () => {
-    const convStore = useConversationStore.getState();
-    // Pick the first ready installed agent (prefer codex, then dsh, then claude)
-    const preferredId =
-      installedAgents.find((a) => a.id === "codex-acp")?.id ||
-      installedAgents.find((a) => a.id === "dsh-acp")?.id ||
-      installedAgents[0]?.id;
-
-    if (!preferredId) {
-      notify(t("onboarding.setup.noAgentReady"));
-      return;
-    }
-
-    const member = convStore.members.find(
-      (m) => m.cli.adapter === preferredId || m.id.includes(preferredId)
-    );
-
-    if (!member) {
-      notify(t("onboarding.setup.noAgentReady"));
-      return;
-    }
-
-    try {
-      const conv = await convStore.newConversation({
-        member,
-        title: t("onboarding.setup.firstTaskTitle")
-      });
-      void useOnboardingStore.getState().markDone();
-      notify(t("onboarding.setup.firstTaskStarted"));
-      void convStore.sendMessage({
-        conversationId: conv.id,
-        prompt: t("onboarding.setup.firstTaskPrompt"),
-        preserveConversationTitle: true
-      });
-    } catch (err) {
-      notify(String(err));
-    }
-  };
-
-  return (
-    <div className="onboarding-setup-card">
-      {/* Header with detection summary */}
-      <div className="onboarding-setup-header">
-        <div className="onboarding-setup-header-icon">
-          <Layers size={18} />
-        </div>
-        <div className="onboarding-setup-header-text">
-          <div className="setup-header-title-row">
-            <h3>{t("onboarding.setup.cardTitle")}</h3>
-            <span className="setup-header-badge">
-              {installedAgents.length} / {CORE_AGENTS.length}
-            </span>
-          </div>
-          <p className="setup-header-subtitle">
-            {t("onboarding.setup.cardSubtitle")}
-          </p>
-          <p className="setup-header-headline">{headline}</p>
-        </div>
-        {missingAgents.length > 0 && (
-          <div className="setup-header-action">
-            {onAskGuide && (
-              <button
-                type="button"
-                className="step-btn step-btn--guide-auto"
-                onClick={handleAskGuide}
-                title={t("onboarding.setup.askGuideTooltip")}
-              >
-                <Sparkles size={13} />
-                {t("onboarding.setup.askGuideBtn")}
-              </button>
-            )}
-            <button
-              type="button"
-              className="step-btn step-btn--primary"
-              disabled={isQueueActive}
-              onClick={handleInstallAllMissing}
-            >
-              {isQueueActive ? (
-                <>
-                  <Loader2 size={13} className="spin" />
-                  {t("onboarding.setup.installingAll")}
-                </>
-              ) : (
-                <>
-                  <Download size={13} />
-                  {anyInstalled
-                    ? t("onboarding.setup.installAll", { count: missingAgents.length })
-                    : t("onboarding.setup.installAllNone")}
-                </>
-              )}
-            </button>
-          </div>
-        )}
+  return <section className="onboarding-setup-card" aria-label={t("onboarding.setup.cardTitle")}>
+    <div className="onboarding-setup-header">
+      <div className="onboarding-setup-header-icon"><Layers size={18} /></div>
+      <div className="onboarding-setup-header-text">
+        <div className="setup-header-title-row"><h3>{t("onboarding.setup.cardTitle")}</h3></div>
+        <p className="setup-header-subtitle">{t("onboarding.setup.cardSubtitle")}</p>
       </div>
-
-      {/* 3 Core Agents List */}
-      <div className="onboarding-core-agents-list">
-        {agentsStatus.map((agent) => (
-          <div
-            key={agent.id}
-            className={`core-agent-item${agent.isInstalled ? " is-installed" : ""}`}
-          >
-            <div className="core-agent-info">
-              <div className="core-agent-name-row">
-                <strong>{agent.name}</strong>
-                <span className="core-agent-tag">{agent.tag}</span>
-              </div>
-              <span className="core-agent-desc">{t(agent.descKey)}</span>
-            </div>
-
-            <div className="core-agent-action">
-              {agent.isInstalled ? (
-                <span className="core-agent-status core-agent-status--installed">
-                  <CheckCircle2 size={15} />
-                  {t("onboarding.setup.installed")}
-                </span>
-              ) : agent.isInstalling ? (
-                <span className="core-agent-status core-agent-status--installing">
-                  <Loader2 size={15} className="spin" />
-                  {t("onboarding.setup.installing")}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="step-btn"
-                  onClick={() => handleInstallOne(agent.id)}
-                >
-                  <Wrench size={12} />
-                  {t("onboarding.setup.install")}
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Next Step Controls: Authorize and Launch */}
-      <div className="onboarding-setup-next-steps">
-        {/* Step 2: Authorize Trial Credits */}
-        <div className={`setup-flow-row${isAllKeysConfigured ? " is-done" : ""}${!anyInstalled ? " is-disabled" : ""}`}>
-          <div className="setup-flow-copy">
-            <strong>{t("onboarding.setup.step2Title")}</strong>
-            <span>
-              {isAllKeysConfigured
-                ? t("onboarding.setup.step2Done")
-                : t("onboarding.setup.step2Desc")}
-            </span>
-          </div>
-          {!isAllKeysConfigured && (
-            <button
-              type="button"
-              className="step-btn step-btn--primary"
-              disabled={!anyInstalled || authorizing}
-              onClick={() => void handleAuthorizeAll()}
-            >
-              {authorizing ? (
-                <>
-                  <Loader2 size={13} className="spin" />
-                  {t("onboarding.setup.authorizing")}
-                </>
-              ) : (
-                <>
-                  <Sparkles size={13} />
-                  {t("onboarding.setup.authorizeTrial")}
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Step 3: Run First Coding Task */}
-        <div className={`setup-flow-row${anyInstalled && isAnyKeyConfigured ? " is-ready" : " is-disabled"}`}>
-          <div className="setup-flow-copy">
-            <strong>{t("onboarding.setup.step3Title")}</strong>
-            <span>{t("onboarding.setup.step3Desc")}</span>
-          </div>
-          <button
-            type="button"
-            className="step-btn step-btn--launch"
-            disabled={!anyInstalled || !isAnyKeyConfigured}
-            onClick={() => void handleStartTask()}
-          >
-            <Play size={13} />
-            {t("onboarding.setup.startFirstTask")}
-          </button>
-        </div>
-      </div>
-
-      {onOpenSettings && (
-        <div className="onboarding-setup-footer">
-          <button
-            type="button"
-            className="onboarding-setup-settings-link"
-            onClick={onOpenSettings}
-          >
-            <span>{t("onboarding.setup.exploreOtherAgents")}</span>
-            <ExternalLink size={12} />
-          </button>
-        </div>
-      )}
+      <button className="step-btn" type="button" onClick={() => void detect()} disabled={checking || busy}>
+        <RefreshCw size={13} />{t("onboarding.setup.rescan")}
+      </button>
     </div>
-  );
+    <p className="setup-header-headline" role="status" aria-live="polite">
+      {checking ? t("onboarding.setup.detecting") : phase === "error" ? t("onboarding.setup.detectionFailed")
+        : t("onboarding.setup.detectedSummary", { count: plan.filter((item) => item.detected).length })}
+    </p>
+    {!checking && phase === "done" && <>
+      <div className="onboarding-install-group">
+        <h4>{t("onboarding.setup.existingTitle")}</h4>
+        <p>{t("onboarding.setup.existingHint")}</p>
+        <div className="onboarding-core-agents-list">
+          {plan.filter((item) => item.detected).map(renderItem)}
+          {!plan.some((item) => item.detected) && <p>{t("onboarding.setup.noExisting")}</p>}
+        </div>
+      </div>
+      <div className="onboarding-install-group">
+        <h4>{t("onboarding.setup.recommendedTitle")}</h4>
+        <p>{t("onboarding.setup.recommendedHint")}</p>
+        <div className="onboarding-core-agents-list">
+          {plan.filter((item) => !item.detected).map(renderItem)}
+          {!plan.some((item) => !item.detected) && <p>{t("onboarding.setup.recommendationsCovered")}</p>}
+        </div>
+      </div>
+      {missing.length > 0 && <div className="onboarding-install-controls">
+        <label className="onboarding-select-all"><input type="checkbox" checked={allSelected} disabled={!canInstall}
+          onChange={() => setExcluded(allSelected ? missing.map((item) => item.id) : [])} />
+          {t("onboarding.setup.selectAll")}</label>
+        <button type="button" className="step-btn step-btn--primary" disabled={!canInstall || !selected.length}
+          onClick={handleInstallSelected}><Download size={14} />
+          {t("onboarding.setup.installSelected", { count: selected.length })}</button>
+      </div>}
+    </>}
+    {busy && <div className="onboarding-install-progress" role="status" aria-live="polite">
+      <p>{t("onboarding.setup.queueProgress", { name: jobs.find((job) => !job.done)?.label ?? "", count: queue.length })}</p>
+      {queue.length > 0 && <button type="button" className="step-btn" onClick={clearQueue}>{t("onboarding.setup.cancelWaiting")}</button>}
+    </div>}
+    {!busy && failed.length > 0 && <p role="alert" className="onboarding-install-error">
+      {t("onboarding.setup.failureHint", { names: failed.map((job) => job.label).join("、") })}
+      {onAskGuide && <button type="button" className="step-btn" onClick={() => onAskGuide(t("onboarding.setup.helpPrompt", {
+        names: failed.map((job) => `${job.label} (${job.phase})`).join(", ")
+      }))}>{t("onboarding.setup.askForHelp")}</button>}
+    </p>}
+    {batchDone && <p role="status">{t("onboarding.setup.batchComplete")}</p>}
+    {phase === "done" && installed.length > 0 && !busy && <div className="onboarding-setup-next-steps">
+      <p className="setup-header-subtitle">{t("onboarding.setup.nextHint")}</p>
+      <div className="onboarding-install-controls">
+        {onOpenSettings && <button className="step-btn" type="button" onClick={onOpenSettings}>{t("onboarding.setup.configureNext")}</button>}
+        <button className="step-btn step-btn--primary" type="button" disabled={resolved === "done" || resolved === "skipped"}
+          onClick={() => void (failed.length ? useOnboardingStore.getState().markSkipped() : useOnboardingStore.getState().markDone())}>
+          {t(resolved === "done" ? "onboarding.setup.finished" : resolved === "skipped" ? "onboarding.setup.postponed" : failed.length ? "onboarding.setup.finishLater" : "onboarding.setup.finishInstallation")}
+        </button>
+      </div>
+    </div>}
+    {onOpenSettings && <div className="onboarding-setup-footer">
+      <button type="button" className="onboarding-setup-settings-link" onClick={onOpenSettings}>
+        {t("onboarding.setup.exploreOtherAgents")}<ExternalLink size={12} />
+      </button>
+    </div>}
+  </section>;
 }

@@ -27,8 +27,17 @@ export interface CliInstallJob {
   panelState: CliInstallPanelState;
 }
 
+export interface CliInstallRequest {
+  adapterId: string;
+  label: string;
+  command: string;
+}
+
 interface State {
   jobs: CliInstallJob[];
+  queue: CliInstallRequest[];
+  enqueueJobs(requests: CliInstallRequest[]): void;
+  clearQueue(): void;
   startJob(args: { adapterId: string; label: string; command: string }): void;
   setPanelState(id: string, panelState: CliInstallPanelState): void;
   dismissJob(id: string): void;
@@ -152,9 +161,25 @@ async function finishJob(
 
 export const useCliInstallStore = create<State>((set, get) => ({
   jobs: [],
+  queue: [],
+
+  enqueueJobs(requests) {
+    if (!cliClient.isAvailable()) return;
+    const seen = new Set([...get().queue.map((job) => job.adapterId),
+      ...get().jobs.filter((job) => !job.done).map((job) => job.adapterId)]);
+    const added = requests.filter((request) => {
+      if (seen.has(request.adapterId)) return false;
+      seen.add(request.adapterId);
+      return true;
+    });
+    set({ queue: [...get().queue, ...added] });
+  },
+
+  clearQueue() { set({ queue: [] }); },
 
   startJob({ adapterId, label, command }) {
     if (!cliClient.isAvailable()) return;
+    if (get().isInstalling(adapterId)) return;
 
     unsubscribers.get(adapterId)?.();
     unsubscribers.delete(adapterId);
@@ -179,24 +204,32 @@ export const useCliInstallStore = create<State>((set, get) => ({
       jobs: [...s.jobs.filter((j) => j.adapterId !== adapterId), job]
     }));
 
-    const off = cliClient.installStream(adapterId, command, (event) => {
-      if (event.type === "stdout" || event.type === "stderr") {
-        pendingOutput.set(adapterId, (pendingOutput.get(adapterId) ?? "") + event.content);
-        scheduleFlush(adapterId, set);
-      } else if (event.type === "done") {
-        off();
-        unsubscribers.delete(adapterId);
-        void finishJob(
-          adapterId,
-          event.exitCode,
-          event.failureCode,
-          event.failureDetail,
-          set
-        );
-      }
-    });
-
-    unsubscribers.set(adapterId, off);
+    let off = () => {};
+    let ended = false;
+    try {
+      off = cliClient.installStream(adapterId, command, (event) => {
+        if (event.type === "stdout" || event.type === "stderr") {
+          pendingOutput.set(adapterId, (pendingOutput.get(adapterId) ?? "") + event.content);
+          scheduleFlush(adapterId, set);
+        } else if (event.type === "done") {
+          ended = true;
+          off();
+          unsubscribers.delete(adapterId);
+          void finishJob(
+            adapterId,
+            event.exitCode,
+            event.failureCode,
+            event.failureDetail,
+            set
+          );
+        }
+      });
+      if (ended) off();
+      else unsubscribers.set(adapterId, off);
+    } catch (error) {
+      off();
+      void finishJob(adapterId, 1, "spawn_error", String(error), set);
+    }
   },
 
   setPanelState(id, panelState) {
@@ -225,3 +258,19 @@ export const useCliInstallStore = create<State>((set, get) => ({
     return get().jobs.some((j) => j.adapterId === adapterId && !j.done);
   }
 }));
+
+// The queue belongs to the store, so it survives navigation and card collapse.
+// Wait for verification too, and start fresh jobs even after earlier failures.
+let pumpScheduled = false;
+useCliInstallStore.subscribe(() => {
+  if (pumpScheduled) return;
+  pumpScheduled = true;
+  queueMicrotask(() => {
+    pumpScheduled = false;
+    const state = useCliInstallStore.getState();
+    if (state.jobs.some((job) => !job.done) || !state.queue.length) return;
+    const [next, ...remaining] = state.queue;
+    useCliInstallStore.setState({ queue: remaining });
+    state.startJob(next);
+  });
+});

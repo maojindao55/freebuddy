@@ -34,6 +34,7 @@ import {
   windowsInstallInvocation
 } from "./windowsEnv.js";
 import { findMacAppCliBinary } from "./macAppCli.js";
+import { hasLocalAgentApp } from "./localAgentApps.js";
 import { logMain } from "../debugLog.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
@@ -376,6 +377,15 @@ export async function cliCheck(
     ...(env || {})
   });
   let resolved = await which(bin, effectiveEnv as Record<string, string>);
+  // New Qoder CLI releases use `qoder`; do not confuse the IDE launcher
+  // with the ACP CLI. Respect explicit custom binaries.
+  if (adapter === "qoder-acp" && !resolved && bin === "qodercli") {
+    const candidate = await which("qoder", effectiveEnv as Record<string, string>);
+    if (candidate) {
+      const help = await runCheckProbe(candidate, ["--help"], effectiveEnv as Record<string, string>);
+      if (help.ok && /--acp\b/.test(`${help.stdout}\n${help.stderr}`)) resolved = candidate;
+    }
+  }
   if (adapter === "dsh-acp" && !resolved && (!binary?.trim() || isDefaultDshAcpBinary(binary))) {
     for (const alt of ["deepseek-harness-acp", "dsh-acp", "dsh-acp-demo"]) {
       if (alt === bin) continue;
@@ -454,7 +464,11 @@ export async function cliCheck(
       ? adapter === "codex-acp"
         ? CODEX_CLI_FOUND_ACP_MISSING
         : CLAUDE_CLI_FOUND_ACP_MISSING
-      : "binary not found";
+      : adapter === "codex-acp" && hasLocalAgentApp("Codex")
+        ? "codex app found; acp adapter missing"
+        : adapter === "qoder-acp" && hasLocalAgentApp("Qoder")
+          ? "qoder app found; cli missing"
+          : "binary not found";
     upsertRuntime(runtimeKey, false, undefined, undefined, error);
     trackAgentSetup(adapter, "check", "missing", error);
     return { installed: false };

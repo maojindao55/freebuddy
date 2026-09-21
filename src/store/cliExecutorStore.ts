@@ -103,7 +103,7 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     }
     await cliClient.check(
       resolved.baseAdapter ?? resolved.id,
-      resolved.binary,
+      resolved.id === "qoder-acp" && !resolved.override?.binary?.trim() ? resolved.defaultBinary : resolved.binary,
       resolved.env,
       resolved.id
     );
@@ -121,7 +121,9 @@ export const useCliExecutorStore = create<State>((set, get) => ({
         continue;
       }
       const targetId = adapter.baseAdapter ?? adapter.id;
-      await cliClient.check(targetId, adapter.binary, adapter.env, adapter.id);
+      await cliClient.check(targetId,
+        adapter.id === "qoder-acp" && !adapter.override?.binary?.trim() ? adapter.defaultBinary : adapter.binary,
+        adapter.env, adapter.id);
     }
     await get().refreshRuntimes();
   },
@@ -158,7 +160,7 @@ export const useCliExecutorStore = create<State>((set, get) => ({
       baseAdapter: isClone ? def.id : undefined,
       isClone,
       label: o?.label?.trim() || def.label,
-      binary: (o?.binary?.trim() || def.defaultBinary) ?? def.id,
+      binary: (o?.binary?.trim() || (def.id === "qoder-acp" && runtimes[id]?.installed ? runtimes[id]?.binaryPath : undefined) || def.defaultBinary) ?? def.id,
       extraArgs: o?.extraArgs?.filter(Boolean) ?? [],
       env: o?.env,
       icon: o?.icon,

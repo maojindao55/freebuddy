@@ -27261,3 +27261,23 @@ button.ghost:focus-visible,
 
 
 
+
+/* Installation onboarding: existing tools first, recommendations second. */
+.onboarding-install-group { margin-top: 18px; }
+.onboarding-install-group h4 { margin: 0 0 4px; font-size: 13px; color: var(--fb-text-primary); }
+.onboarding-install-group > p, .onboarding-install-group .onboarding-core-agents-list > p {
+  margin: 0 0 10px; font-size: 12px; line-height: 1.5; color: var(--fb-text-secondary);
+}
+.onboarding-agent-choice { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; cursor: pointer; }
+.onboarding-agent-choice input, .onboarding-select-all input { width: 16px; height: 16px; accent-color: var(--fb-brand); flex-shrink: 0; }
+.onboarding-install-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; }
+.onboarding-select-all { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+.onboarding-install-progress, .onboarding-install-error { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.onboarding-install-error .step-btn { margin: 8px 0; display: flex; }
+.onboarding-setup-card .core-agent-item { flex-wrap: wrap; gap: 10px; }
+.onboarding-setup-card .core-agent-name-row { flex-wrap: wrap; }
+.onboarding-setup-card .step-btn { min-height: 32px; }
+.onboarding-setup-card :is(button, input):focus-visible { outline: 2px solid var(--fb-brand); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .guide-chat-floating-card { animation: none; }
+}

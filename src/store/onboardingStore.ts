@@ -6,7 +6,8 @@
  *   2. state already resolved (done/skipped) → never show
  *   3. otherwise                            → show the welcome overlay
  *
- * "done"  = user activated the trial token, or finished the DIY path
+ * "pending" = trial activated; installation guide is still in progress
+ * "done"  = user finished the installation guide
  * "skipped" = user dismissed the overlay
  */
 
@@ -30,6 +31,7 @@ interface OnboardingStoreState {
   /** Show the overlay again (Settings -> Agent management -> restart). */
   restart(): void;
   close(): void;
+  markStarted(): Promise<void>;
   markDone(): Promise<void>;
   markSkipped(): Promise<void>;
 }
@@ -38,7 +40,7 @@ async function readStoredState(): Promise<OnboardingState | null> {
   if (!cliClient.isAvailable()) return null;
   try {
     const raw = await cliClient.getSetting(ONBOARDING_STATE_SETTING_KEY);
-    return raw === "done" || raw === "skipped" ? raw : null;
+    return raw === "pending" || raw === "done" || raw === "skipped" ? raw : null;
   } catch {
     return null;
   }
@@ -102,6 +104,11 @@ export const useOnboardingStore = create<OnboardingStoreState>((set, get) => ({
 
   close() {
     set({ open: false });
+  },
+
+  async markStarted() {
+    await writeStoredState("pending");
+    set({ resolved: "pending", open: false });
   },
 
   async markDone() {

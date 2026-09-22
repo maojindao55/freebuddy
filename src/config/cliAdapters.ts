@@ -16,6 +16,7 @@ export type CLIAdapterId =
   | "dsh-acp"
   | "zcode-acp"
   | "cline-acp"
+  | "devin-acp"
   | "pi-acp"
   | (string & {});
 
@@ -201,6 +202,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g cline",
     docsUrl: "https://docs.cline.bot/usage/acp",
+    protocol: "acp"
+  },
+  {
+    id: "devin-acp",
+    label: "Devin",
+    defaultBinary: "devin",
+    streamMode: "raw",
+    commandGroup: "devin",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "curl -fsSL https://cli.devin.ai/install.sh | bash",
+    docsUrl: "https://docs.devin.ai/cli",
     protocol: "acp"
   },
   {

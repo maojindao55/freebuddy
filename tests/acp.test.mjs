@@ -12,6 +12,7 @@ import {
   resolveDshAcpConfigPath,
   DSH_ACP_NODE_DISABLE_WARNING,
   isClineAcpStartupBannerLine,
+  isDevinAcpDiagnosticLine,
   isDshAcpExperimentalWarningLine,
   mergeNodeOptions,
   sanitizeCliAgentEnv,
@@ -171,6 +172,7 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "dsh-acp", label: "DeepSeek Harness", protocol: "acp" },
       { id: "zcode-acp", label: "ZCode", protocol: "acp" },
       { id: "cline-acp", label: "Cline", protocol: "acp" },
+      { id: "devin-acp", label: "Devin", protocol: "acp" },
       { id: "pi-acp", label: "Pi", protocol: "acp" }
     ]
   );
@@ -232,6 +234,22 @@ test("buildCommand translates Cline model shorthand for cline-acp", () => {
       bin: "cline",
       args: ["--acp"],
       env: { CLINE_MODEL: "claude-3-7-sonnet" },
+      promptViaStdin: false,
+      protocol: "acp"
+    }
+  );
+});
+
+test("buildCommand starts Devin through its ACP subcommand", () => {
+  assert.deepEqual(
+    buildCommand({
+      adapter: "devin-acp",
+      prompt: "hello",
+      extraArgs: ["--model", "opus"]
+    }),
+    {
+      bin: "devin",
+      args: ["acp", "--model", "opus"],
       promptViaStdin: false,
       protocol: "acp"
     }
@@ -681,6 +699,35 @@ test("isClineAcpStartupBannerLine matches Cline ACP startup banner stderr", () =
   assert.equal(
     isClineAcpStartupBannerLine("Error: failed to connect"),
     false
+  );
+});
+
+test("isDevinAcpDiagnosticLine filters timestamped Devin diagnostics", () => {
+  assert.equal(
+    isDevinAcpDiagnosticLine(
+      "2026-09-22T12:43:40.818047Z  INFO chisel: elapsed_since_main_ms=24 logging initialized"
+    ),
+    true
+  );
+  assert.equal(
+    isDevinAcpDiagnosticLine(
+      "2026-09-22T12:43:41.195112Z  WARN message_forest: MessageChain tree duplication"
+    ),
+    true
+  );
+  assert.equal(
+    isDevinAcpDiagnosticLine(
+      "2026-09-22T12:43:41.195112Z  ERROR run_acp_server: session failed"
+    ),
+    false
+  );
+  assert.equal(
+    isDevinAcpDiagnosticLine("Error: failed to connect"),
+    false
+  );
+  assert.match(
+    acpRuntimeSource,
+    /args\.adapter === "devin-acp" && isDevinAcpDiagnosticLine\(line\)/
   );
 });
 

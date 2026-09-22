@@ -34,6 +34,7 @@ export type CLIAdapterId =
   | "dsh-acp"
   | "zcode-acp"
   | "cline-acp"
+  | "devin-acp"
   | "pi-acp"
   | (string & {});
 
@@ -311,6 +312,26 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     protocol: "acp"
   },
   {
+    id: "devin-acp",
+    label: "Devin",
+    defaultBinary: "devin",
+    checkProbe: { args: ["--version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "devin",
+    capabilities: {
+      toolSession: true,
+      skills: { mode: "mcp", reloadPolicy: "new-session" }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint:
+      process.platform === "win32"
+        ? "irm https://static.devin.ai/cli/setup.ps1 | iex"
+        : "curl -fsSL https://cli.devin.ai/install.sh | bash",
+    docsUrl: "https://docs.devin.ai/cli",
+    protocol: "acp"
+  },
+  {
     // Bundled minimal runtime (pi + pi-acp bridge) shipped as an extraResource;
     // see electron/cli/piRuntime.ts. Kept last so butler-profile members fall
     // back to it only when no other ACP agent is installed.
@@ -393,6 +414,12 @@ export function isDshAcpExperimentalWarningLine(line: string): boolean {
 
 export function isClineAcpStartupBannerLine(line: string): boolean {
   return /^\[acp\]\s+starting\s+acp\s+mode/i.test(line.trim());
+}
+
+export function isDevinAcpDiagnosticLine(line: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+(?:TRACE|DEBUG|INFO|WARN)\b/i.test(
+    line.trim()
+  );
 }
 
 function dshAcpBinaryBaseName(binary: string): string {
@@ -1632,6 +1659,14 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
         promptViaStdin: false,
         protocol: "acp"
       });
+    }
+    case "devin-acp": {
+      return {
+        bin,
+        args: ["acp", ...extra],
+        promptViaStdin: false,
+        protocol: "acp"
+      };
     }
     case "pi-acp": {
       const plan = resolvePiAcpSpawnPlan(input.piDataDir);

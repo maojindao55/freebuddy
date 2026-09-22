@@ -650,6 +650,20 @@ function adapterConfigPaths(adapter: string): string[] {
   if (adapter.includes("dsh") || adapter.includes("deepseek")) {
     paths.push(path.join(home, ".dsh"), path.join(home, ".config", "dsh"));
   }
+  if (adapter.includes("devin")) {
+    paths.push(
+      path.join(home, ".config", "devin"),
+      path.join(home, ".local", "share", "devin")
+    );
+    if (process.platform === "win32") {
+      paths.push(
+        path.join(
+          process.env.APPDATA ?? path.join(home, "AppData", "Roaming"),
+          "devin"
+        )
+      );
+    }
+  }
   return existing(paths);
 }
 

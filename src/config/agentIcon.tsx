@@ -17,6 +17,7 @@ const defaultAgentIcon: Partial<Record<CLIAdapterId, string>> = {
   "dsh-acp": "DeepSeek",
   "zcode-acp": "Zhipu",
   "cline-acp": "Cline",
+  "devin-acp": "Devin",
   "pi-acp": "Pi",
   pi: "Pi"
 };

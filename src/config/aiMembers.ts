@@ -168,6 +168,15 @@ export const builtinCliMembers: CLIMember[] = [
     cli: { adapter: "cline-acp", approvalMode: "auto", showStderr: true }
   },
   {
+    id: "cli-devin-acp",
+    kind: "cli",
+    name: "Devin",
+    description: "Local Devin coding agent via ACP.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "devin-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
     id: "cli-pi-acp",
     kind: "cli",
     name: "Pi",

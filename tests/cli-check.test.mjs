@@ -83,6 +83,20 @@ test("Cline ACP install hint matches official package", () => {
   );
 });
 
+test("devin-acp checks the Devin CLI and uses the official installer", () => {
+  assert.deepEqual(getCliCheckProbe("devin-acp"), {
+    args: ["--version"],
+    versionOptional: false
+  });
+  assert.equal(getAdapterDefinition("devin-acp")?.defaultBinary, "devin");
+  assert.equal(
+    getAdapterDefinition("devin-acp")?.installHint,
+    process.platform === "win32"
+      ? "irm https://static.devin.ai/cli/setup.ps1 | iex"
+      : "curl -fsSL https://cli.devin.ai/install.sh | bash"
+  );
+});
+
 test("Windows fallback search includes the native Claude installer directory", () => {
   const source = fs.readFileSync(
     new URL("../electron/cli/check.ts", import.meta.url),

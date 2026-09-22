@@ -16,11 +16,12 @@ test("Pi logo SVG asset exists and has valid XML structure", () => {
   assert.match(content, /#F1BE58/);
 });
 
-test("agentIcon config maps pi-acp and pi to Pi", () => {
+test("agentIcon config maps built-in adapter icons", () => {
   const agentIconTs = fs.readFileSync(
     path.join(rootDir, "src", "config", "agentIcon.tsx"),
     "utf8"
   );
+  assert.match(agentIconTs, /"devin-acp":\s*"Devin"/);
   assert.match(agentIconTs, /"pi-acp":\s*"Pi"/);
   assert.match(agentIconTs, /pi:\s*"Pi"/);
 });

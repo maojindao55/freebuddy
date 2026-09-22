@@ -78,6 +78,8 @@ test("renderer types declare the FreebuddyWorkflow interface", () => {
 
 test("builtin members module exports the ACP agents", () => {
   const members = read("../electron/cli/cliMemberBuiltins.ts");
+  const rendererMembers = read("../src/config/aiMembers.ts");
+  assert.match(rendererMembers, /cli-devin-acp/);
   assert.match(members, /cli-codex-acp/);
   assert.match(members, /cli-claude-agent-acp/);
   assert.match(members, /cli-opencode-acp/);
@@ -90,4 +92,5 @@ test("builtin members module exports the ACP agents", () => {
   assert.match(members, /cli-dsh-acp/);
   assert.match(members, /cli-zcode-acp/);
   assert.match(members, /cli-cline-acp/);
+  assert.match(members, /cli-devin-acp/);
 });

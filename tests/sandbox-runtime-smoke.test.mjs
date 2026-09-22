@@ -27,6 +27,12 @@ test("Windows ACP inner runner spawns .cmd shims through cmd.exe", () => {
   );
 });
 
+test("Devin sandbox config keeps the CLI profile directory available", () => {
+  const source = fs.readFileSync(new URL("../electron/cli/sandboxRuntime.ts", import.meta.url), "utf8");
+  assert.match(source, /adapter\.includes\("devin"\)[\s\S]*"devin"/);
+  assert.match(source, /process\.env\.APPDATA[\s\S]*"devin"/);
+});
+
 function connectToProxy(host, port) {
   return new Promise((resolve, reject) => {
     const socket = net.connect({ host, port });

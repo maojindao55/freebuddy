@@ -121,6 +121,7 @@ import {
   adapterAcceptsClientMcpServers,
   formatAcpAgentExitMessage,
   isClineAcpStartupBannerLine,
+  isDevinAcpDiagnosticLine,
   isDshAcpExperimentalWarningLine
 } from "./adapters.js";
 
@@ -1018,7 +1019,8 @@ export async function runAcpAgent({
       appendLog(logStream, "stderr", line);
       if (
         (args.adapter === "dsh-acp" && isDshAcpExperimentalWarningLine(line)) ||
-        (args.adapter === "cline-acp" && isClineAcpStartupBannerLine(line))
+        (args.adapter === "cline-acp" && isClineAcpStartupBannerLine(line)) ||
+        (args.adapter === "devin-acp" && isDevinAcpDiagnosticLine(line))
       ) {
         return;
       }

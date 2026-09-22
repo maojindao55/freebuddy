@@ -58,6 +58,7 @@ verified", prioritizing their existing tools, then hand off gracefully.
    - Antigravity: `npm install -g agy-acp-bridge`  (binary `agy-acp`)
    - ZCode:       `npm install -g zcode-acp-server`  (binary `zcode-acp-server`)
    - Cline:       `npm install -g cline`  (binary `cline`)
+   - Devin:       `curl -fsSL https://cli.devin.ai/install.sh | bash`  (binary `devin`)
    - Pi:          `npm install -g pi-acp @earendil-works/pi-coding-agent`  (binary `pi-acp`)
 
    Before running anything:

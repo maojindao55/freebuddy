@@ -556,6 +556,32 @@ export function cliKill(sessionId: string): boolean {
   }
 }
 
+function waitForCliProcessExit(
+  child: Running["child"],
+  timeoutMs: number
+): Promise<void> {
+  if (child.exitCode != null || child.signalCode != null) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      child.off("close", done);
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    child.once("close", done);
+  });
+}
+
+export async function shutdownCliProcesses(timeoutMs = 2000): Promise<void> {
+  const entries = [...running.entries()];
+  for (const [sessionId] of entries) cliKill(sessionId);
+  await Promise.all(
+    entries.map(([, entry]) => waitForCliProcessExit(entry.child, timeoutMs))
+  );
+}
+
 /** Ask an ACP-backed agent to end its current turn successfully. */
 export function cliYield(sessionId: string): boolean {
   const current = running.get(sessionId);

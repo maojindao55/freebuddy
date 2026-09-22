@@ -10,6 +10,7 @@ import { shellEnv } from "shell-env";
 import AdmZip from "adm-zip";
 
 import { registerCliIpc } from "./cli/ipc.js";
+import { shutdownCliProcesses } from "./cli/runtime.js";
 import { logAllCliRuntimes, startCodexToolchainAutoUpdate } from "./cli/check.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
@@ -1669,6 +1670,31 @@ function revealMainWindow() {
   } catch {}
 }
 
+let appServicesShutdownPromise: Promise<void> | null = null;
+
+function shutdownAppServices(): Promise<void> {
+  if (!appServicesShutdownPromise) {
+    appServicesShutdownPromise = (async () => {
+      if (!telemetryShutdownStarted) {
+        telemetryShutdownStarted = true;
+        await shutdownTelemetry().catch(() => {});
+      }
+      try {
+        await shutdownCliProcesses();
+      } catch {
+        /* agent runtime may not have started */
+      }
+      try {
+        const { shutdownRuntimeProcesses } = await import("./runtime/runtimeIpc.js");
+        await shutdownRuntimeProcesses();
+      } catch {
+        /* runtime manager may not have started */
+      }
+    })();
+  }
+  return appServicesShutdownPromise;
+}
+
 function quitApp() {
   isQuittingApp = true;
   app.quit();
@@ -2041,16 +2067,7 @@ app.whenReady().then(async () => {
       trayController?.destroy();
       trayController = null;
       closeButlerBuddyWindows();
-      if (!telemetryShutdownStarted) {
-        telemetryShutdownStarted = true;
-        await shutdownTelemetry().catch(() => {});
-      }
-      try {
-        const { shutdownRuntimeProcesses } = await import("./runtime/runtimeIpc.js");
-        await shutdownRuntimeProcesses();
-      } catch {
-        /* runtime manager may not have started */
-      }
+      await shutdownAppServices();
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
           win.removeAllListeners("close");
@@ -2132,8 +2149,7 @@ app.on("before-quit", (event) => {
   butlerBuddyStateCoordinator.dispose();
   trayController?.destroy();
   trayController = null;
-  if (telemetryShutdownStarted) return;
-  telemetryShutdownStarted = true;
+  if (appServicesShutdownPromise) return;
   event.preventDefault();
-  void shutdownTelemetry().finally(() => app.quit());
+  void shutdownAppServices().finally(() => app.quit());
 });

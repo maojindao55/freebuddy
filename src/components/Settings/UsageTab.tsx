@@ -1,5 +1,9 @@
 import { AgentUsagePage } from "../Usage/AgentUsagePage";
 
 export function UsageTab() {
-  return <AgentUsagePage />;
+  return (
+    <div className="settings-usage-scroll">
+      <AgentUsagePage />
+    </div>
+  );
 }

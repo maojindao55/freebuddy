@@ -11637,6 +11637,13 @@ button.new-task-context-control {
   padding-top: 2px;
 }
 
+.settings-usage-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .usage-page {
   display: flex;
   width: 100%;

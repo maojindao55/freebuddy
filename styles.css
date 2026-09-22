@@ -27317,6 +27317,7 @@ button.ghost:focus-visible,
    read as distinct from the green native-install buttons beside them. */
 .adapter-guide-install-banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin: 0 0 10px;
@@ -27329,6 +27330,17 @@ button.ghost:focus-visible,
   color: var(--fb-workflow);
   flex: 0 0 auto;
 }
+label.adapter-guide-install-select-all {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fb-text);
+  cursor: pointer;
+}
 .adapter-guide-install-banner-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -27337,6 +27349,71 @@ button.ghost:focus-visible,
 }
 .adapter-guide-install-banner .step-btn {
   flex: 0 0 auto;
+}
+/* One polished checkbox shared by the banner select-all and every selectable
+   row card: appearance:none + an inline SVG tick renders identically on every
+   platform instead of falling back to the OS default control. */
+input.guide-install-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--fb-border-strong);
+  border-radius: 5px;
+  background: var(--fb-panel-bg);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, background 0.15s ease,
+    box-shadow 0.15s ease, transform 0.12s ease;
+}
+input.guide-install-checkbox:hover {
+  border-color: color-mix(in srgb, var(--fb-brand) 55%, var(--fb-border-strong));
+}
+input.guide-install-checkbox:checked {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.6 4.8 8.8 9.4 3.4' fill='none' stroke='%23fff' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 11px 11px no-repeat;
+}
+input.guide-install-checkbox:indeterminate {
+  border-color: var(--fb-brand);
+  background: var(--fb-brand)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' stroke='%23fff' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E")
+    center / 11px 11px no-repeat;
+}
+input.guide-install-checkbox:active {
+  transform: scale(0.9);
+}
+input.guide-install-checkbox:focus {
+  box-shadow: none;
+}
+input.guide-install-checkbox:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 2px;
+}
+/* Row-level selection for the GuideBuddy batch install: candidate rows gain
+   a leading grid column for the checkbox. */
+.adapter-row--guide-choice {
+  grid-template-columns: 18px 44px minmax(0, 1fr) auto;
+}
+label.adapter-row-guide-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 36px;
+  margin: -9px -7px;
+  cursor: pointer;
+}
+.adapter-row.adapter-row--guide-selected {
+  border-color: color-mix(in srgb, var(--fb-brand) 38%, var(--fb-border));
+}
+.adapter-row.adapter-row--guide-selected:hover {
+  border-color: color-mix(in srgb, var(--fb-brand) 55%, var(--fb-border));
 }
 .adapter-row-guide-install {
   display: inline-grid;

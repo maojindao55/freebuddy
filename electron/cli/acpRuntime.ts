@@ -27,6 +27,7 @@ import {
   selectAcpSessionStartMode,
   selectAcpAuthMethod,
   shouldDropReplayPhaseAgentChunk,
+  shouldSuppressAcpReplayByPhase,
   shouldEmitAcpUpdate,
   shouldWriteAcpStdoutLog,
   compactAcpStdoutLine,
@@ -251,13 +252,11 @@ export async function runAcpAgent({
     args.knownStreamContentSignatures ?? []
   );
   // Qoder-style adapters stream live agent chunks WITHOUT a messageId and only
-  // attach messageIds when replaying history on resume. When resuming such an
-  // adapter (or when prior turns persisted zero agent messageIds), drop
-  // messageId-carrying chunks until the first live chunk signals real generation.
+  // attach messageIds when replaying history on resume. Keep this heuristic
+  // adapter-specific: Codex includes messageIds on live chunks too, and team
+  // runners may not supply historical IDs at all.
   const suppressReplayByPhase = () =>
-    sessionWasResumed &&
-    (args.adapter.includes("qoder") ||
-      (args.knownAgentStreamMessageIds ?? []).length === 0);
+    shouldSuppressAcpReplayByPhase(args.adapter, sessionWasResumed);
   const terminalManager = createAcpTerminalManager({
     defaultCwd: args.cwd,
     // Grok ACP and CodeBuddy ACP both send a complete command line in

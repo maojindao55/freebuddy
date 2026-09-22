@@ -1237,6 +1237,12 @@
       "guideInstall": {
         "bannerHint": "还有 {{count}} 个内置助手未安装，可以让官方向导 GuideBuddy 代为安装。",
         "bannerAction": "让 GuideBuddy 安装",
+        "bannerActionCount": "让 GuideBuddy 安装所选 {{count}} 项",
+        "selectAll": "全选",
+        "selectAllScope": "全选包含搜索结果以外的未安装助手。",
+        "pickHint": "勾选下方需要安装的助手，再交给 GuideBuddy 安装。",
+        "selectionHint": "已选 {{count}} / {{total}} 项。点击右侧按钮进入 GuideBuddy 安装会话。",
+        "selectAgent": "选择 {{name}}",
         "rowAction": "让 GuideBuddy 安装 {{name}}",
         "requested": "已打开 GuideBuddy 会话，安装请求已发送。",
         "prompt": "请帮我安装以下编程助手，逐个执行给出的官方安装命令（不要修改命令）：\n{{items}}\n安装完成后请逐个验证对应命令是否可用，并汇报安装与验证结果。",

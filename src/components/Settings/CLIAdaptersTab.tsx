@@ -273,6 +273,35 @@ export function CLIAdaptersTab() {
     [list]
   );
 
+  const [guideSelectedIds, setGuideSelectedIds] = useState<string[]>([]);
+  const [guideSelectionActive, setGuideSelectionActive] = useState(false);
+  const missingAgentIds = useMemo(
+    () => missingBuiltinAgents.map((ex) => ex.id),
+    [missingBuiltinAgents]
+  );
+  useEffect(() => {
+    setGuideSelectedIds((prev) => {
+      const next = prev.filter((id) => missingAgentIds.includes(id));
+      return next.length === prev.length && next.every((id, index) => id === prev[index])
+        ? prev
+        : next;
+    });
+  }, [missingAgentIds]);
+  const selectedGuideAgents = useMemo(
+    () => missingBuiltinAgents.filter((ex) => guideSelectedIds.includes(ex.id)),
+    [missingBuiltinAgents, guideSelectedIds]
+  );
+  const allGuideSelected =
+    missingAgentIds.length > 0 &&
+    selectedGuideAgents.length === missingAgentIds.length;
+  const toggleGuideAgent = useCallback((id: string, checked: boolean) => {
+    setGuideSelectedIds((prev) =>
+      checked
+        ? prev.includes(id) ? prev : [...prev, id]
+        : prev.filter((existing) => existing !== id)
+    );
+  }, []);
+
   const handleCheck = useCallback(
     async (id: string) => {
       setCheckingIds((prev) => new Set(prev).add(id));
@@ -468,6 +497,9 @@ export function CLIAdaptersTab() {
           ? () => useGuideInstallStore.getState().requestGuideInstall([ex.id])
           : undefined
       }
+      guideSelectable={guideSelectionActive && missingAgentIds.includes(ex.id)}
+      guideSelected={guideSelectionActive && guideSelectedIds.includes(ex.id)}
+      onGuideSelectChange={(checked) => toggleGuideAgent(ex.id, checked)}
       onInstall={() => {
         if (!ex.installHint) return;
         startInstall({
@@ -569,28 +601,83 @@ export function CLIAdaptersTab() {
       <div className="adapter-settings-workspace">
         <div className="adapter-list-panel">
           {category === "builtin" && loaded && missingBuiltinAgents.length > 0 && (
-            <div className="adapter-guide-install-banner" role="status">
+            <div className="adapter-guide-install-banner">
               <Sparkles
                 size={14}
                 className="adapter-guide-install-banner-icon"
                 aria-hidden="true"
               />
-              <span className="adapter-guide-install-banner-text">
-                {t("settings.cli.guideInstall.bannerHint", {
-                  count: missingBuiltinAgents.length
-                })}
+              {guideSelectionActive && <label
+                className="adapter-guide-install-select-all"
+                title={t("settings.cli.guideInstall.selectAllScope")}
+              >
+                <input
+                  type="checkbox"
+                  className="guide-install-checkbox"
+                  checked={allGuideSelected}
+                  aria-describedby="guide-install-selection-hint"
+                  ref={(input) => {
+                    if (input) input.indeterminate = selectedGuideAgents.length > 0 && !allGuideSelected;
+                  }}
+                  onChange={() =>
+                    setGuideSelectedIds(allGuideSelected ? [] : missingAgentIds)
+                  }
+                />
+                {t("settings.cli.guideInstall.selectAll")}
+              </label>}
+              <span
+                id="guide-install-selection-hint"
+                className="adapter-guide-install-banner-text"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                title={selectedGuideAgents.map((ex) => ex.label).join(", ")}
+              >
+                {!guideSelectionActive
+                  ? t("settings.cli.guideInstall.bannerHint", { count: missingBuiltinAgents.length })
+                  : selectedGuideAgents.length
+                  ? t("settings.cli.guideInstall.selectionHint", {
+                      count: selectedGuideAgents.length,
+                      total: missingBuiltinAgents.length
+                    })
+                  : t("settings.cli.guideInstall.pickHint")}
+                {guideSelectionActive && query.trim() && ` ${t("settings.cli.guideInstall.selectAllScope")}`}
               </span>
+              {guideSelectionActive && (
+                <button
+                  type="button"
+                  className="step-btn"
+                  onClick={() => {
+                    setGuideSelectionActive(false);
+                    setGuideSelectedIds([]);
+                  }}
+                >
+                  {t("common.cancel")}
+                </button>
+              )}
               <button
                 type="button"
                 className="step-btn step-btn--guide-auto"
-                onClick={() =>
+                disabled={guideSelectionActive && !selectedGuideAgents.length}
+                onClick={() => {
+                  if (!guideSelectionActive) {
+                    setGuideSelectedIds([]);
+                    setGuideSelectionActive(true);
+                    return;
+                  }
                   useGuideInstallStore
                     .getState()
-                    .requestGuideInstall(missingBuiltinAgents.map((ex) => ex.id))
-                }
+                    .requestGuideInstall(selectedGuideAgents.map((ex) => ex.id));
+                  setGuideSelectionActive(false);
+                  setGuideSelectedIds([]);
+                }}
               >
                 <Sparkles size={13} aria-hidden="true" />
-                {t("settings.cli.guideInstall.bannerAction")}
+                {guideSelectionActive
+                  ? t("settings.cli.guideInstall.bannerActionCount", {
+                      count: selectedGuideAgents.length
+                    })
+                  : t("settings.cli.guideInstall.bannerAction")}
               </button>
             </div>
           )}
@@ -796,6 +883,9 @@ function AdapterRow({
   onEdit,
   onInstall,
   onAskGuideInstall,
+  guideSelectable,
+  guideSelected,
+  onGuideSelectChange,
   authProbe,
   authBusy,
   authMessage,
@@ -811,6 +901,9 @@ function AdapterRow({
   onEdit: () => void;
   onInstall: () => void;
   onAskGuideInstall?: () => void;
+  guideSelectable?: boolean;
+  guideSelected?: boolean;
+  onGuideSelectChange?: (checked: boolean) => void;
   authProbe?: CliAuthProbeResult;
   authBusy: boolean;
   authMessage?: string;
@@ -832,7 +925,24 @@ function AdapterRow({
         : "unchecked";
   const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
   return (
-    <div className={`adapter-row${selected ? " selected" : ""}`}>
+    <div
+      className={`adapter-row${selected ? " selected" : ""}${
+        guideSelectable ? " adapter-row--guide-choice" : ""
+      }${guideSelected ? " adapter-row--guide-selected" : ""}`}
+    >
+      {guideSelectable && (
+        <label className="adapter-row-guide-choice">
+          <input
+            type="checkbox"
+            className="guide-install-checkbox"
+            aria-label={t("settings.cli.guideInstall.selectAgent", {
+              name: ex.label
+            })}
+            checked={Boolean(guideSelected)}
+            onChange={(event) => onGuideSelectChange?.(event.target.checked)}
+          />
+        </label>
+      )}
       <AgentAvatar
         adapter={ex.id}
         className="adapter-avatar"

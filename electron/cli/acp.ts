@@ -1614,6 +1614,11 @@ export function shouldSkipUserMessageChunk(
   return false;
 }
 
+/** Only Qoder distinguishes replay from live text by the presence of messageId. */
+export function shouldSuppressAcpReplayByPhase(adapter: string, resumed: boolean): boolean {
+  return resumed && adapter.includes("qoder");
+}
+
 export function shouldDropReplayPhaseAgentChunk(
   update: any,
   state: { suppressReplayByPhase: boolean; turnHadLiveAgentChunk: boolean }

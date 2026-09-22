@@ -388,8 +388,7 @@ test("built-in agent list can hand missing installs to GuideBuddy", () => {
   for (const key of ["bannerHint", "bannerAction", "rowAction", "requested", "prompt"]) {
     assert.ok(zhLocale.settings.cli.guideInstall?.[key], `zh missing guideInstall.${key}`);
     assert.ok(enLocale.settings.cli.guideInstall?.[key], `en missing guideInstall.${key}`);
-  }
-  for (const key of [
+  }  for (const key of [
     "no_member",
     "runtime_missing",
     "model_missing",
@@ -418,6 +417,68 @@ test("built-in agent list can hand missing installs to GuideBuddy", () => {
   assert.match(
     settingsSource,
     /useGuideInstallStore\s*\.\s*getState\(\)\s*\.\s*settleGuideTurn\(\)/
+  );
+});
+
+test("GuideBuddy batch install asks the user to pick which missing agents to install", () => {
+  assert.match(settingsSource, /guideSelectedIds/);
+  assert.match(settingsSource, /missingAgentIds/);
+  assert.match(settingsSource, /toggleGuideAgent/);
+  assert.match(
+    settingsSource,
+    /const toggleGuideAgent = useCallback\(\(id: string, checked: boolean\) => \{[\s\S]*?checked[\s\S]*?\[\.\.\.prev, id\][\s\S]*?prev\.filter\(\(existing\) => existing !== id\)/
+  );
+  assert.match(
+    settingsSource,
+    /requestGuideInstall\(selectedGuideAgents\.map\(\(ex\) => ex\.id\)\)/
+  );
+  // Banner action is disabled while the selection is empty.
+  assert.match(settingsSource, /disabled=\{guideSelectionActive && !selectedGuideAgents\.length\}/);
+  assert.match(settingsSource, /\[guideSelectionActive, setGuideSelectionActive\] = useState\(false\)/);
+  assert.match(settingsSource, /if \(!guideSelectionActive\) \{\s*setGuideSelectedIds\(\[\]\);\s*setGuideSelectionActive\(true\);\s*return;/);
+  assert.match(settingsSource, /guideSelectionActive && <label/);
+  // Per-agent checkbox on the list row cards, wired to the selection.
+  assert.match(settingsSource, /adapter-row-guide-choice/);
+  assert.match(settingsSource, /guideSelectable=\{guideSelectionActive && missingAgentIds\.includes\(ex\.id\)\}/);
+  assert.match(settingsSource, /guideSelected=\{guideSelectionActive && guideSelectedIds\.includes\(ex\.id\)\}/);
+  assert.match(
+    settingsSource,
+    /onGuideSelectChange=\{\(checked\) => toggleGuideAgent\(ex\.id, checked\)\}/
+  );
+  // Select-all lives in the banner; per-item aria-labels are localized.
+  assert.match(
+    settingsSource,
+    /checked=\{allGuideSelected\}[\s\S]*?setGuideSelectedIds\(allGuideSelected \? \[\] : missingAgentIds\)/
+  );
+  assert.match(settingsSource, /guideInstall\.selectAgent/);
+
+  // One polished custom checkbox (appearance:none + SVG tick) shared by the
+  // banner select-all and the row cards; selected rows get a brand outline.
+  assert.equal(
+    (settingsSource.match(/guide-install-checkbox/g) || []).length >= 2,
+    true
+  );
+  assert.match(settingsSource, /adapter-row--guide-selected/);
+  const stylesSource = fs.readFileSync(
+    new URL("../styles.css", import.meta.url),
+    "utf8"
+  );
+  assert.match(stylesSource, /\.guide-install-checkbox\s*\{[^}]*appearance:\s*none/s);
+  assert.match(stylesSource, /\.guide-install-checkbox:checked\s*\{[^}]*var\(--fb-brand\)/s);
+  assert.match(stylesSource, /\.adapter-row\.adapter-row--guide-selected/);
+  assert.match(
+    stylesSource,
+    /\.adapter-row--guide-choice\s*\{\s*grid-template-columns:\s*18px 44px/
+  );
+
+  // Selection strings mirrored across zh-CN and en.
+  for (const key of ["selectAll", "selectAgent", "bannerActionCount", "selectAllScope", "pickHint", "selectionHint"]) {
+    assert.ok(zhLocale.settings.cli.guideInstall?.[key], `zh missing guideInstall.${key}`);
+    assert.ok(enLocale.settings.cli.guideInstall?.[key], `en missing guideInstall.${key}`);
+  }
+  assert.match(
+    zhLocale.settings.cli.guideInstall.bannerActionCount,
+    /\{\{count\}\}/
   );
 });
 

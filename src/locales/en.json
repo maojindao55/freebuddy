@@ -1250,6 +1250,12 @@
       "guideInstall": {
         "bannerHint": "{{count}} built-in agents are not installed yet — let GuideBuddy, the official guide, install them for you.",
         "bannerAction": "Ask GuideBuddy to install",
+        "bannerActionCount": "Ask GuideBuddy to install {{count}} selected",
+        "selectAll": "Select all",
+        "selectAllScope": "Select all includes uninstalled agents outside the search results.",
+        "pickHint": "Choose agents below, then ask GuideBuddy to install them.",
+        "selectionHint": "{{count}} of {{total}} selected. Use the button to open the GuideBuddy installation chat.",
+        "selectAgent": "Select {{name}}",
         "rowAction": "Ask GuideBuddy to install {{name}}",
         "requested": "GuideBuddy conversation opened — install request sent.",
         "prompt": "Please install the following coding agents, running each official install command exactly as given (do not modify the commands):\n{{items}}\nAfterwards verify each binary responds and report the install and verification results.",

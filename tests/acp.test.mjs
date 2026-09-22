@@ -54,6 +54,7 @@ import {
   shouldRetryEmptyResumedDshTurn,
   shouldSkipUserMessageChunk,
   shouldDropReplayPhaseAgentChunk,
+  shouldSuppressAcpReplayByPhase,
   isAcpMetadataSessionUpdate,
   compactAcpStdoutLine,
   shouldWriteAcpStdoutLog,
@@ -2368,6 +2369,34 @@ test("shouldEmitAcpUpdate suppresses replayed chunks by content signature", () =
   );
 });
 
+test("resumed Codex without historical IDs keeps live text in output and logs", () => {
+  const state = {
+    promptStarted: false,
+    replaySuppressionEnabled: true,
+    replayMessageIds: new Set(),
+    suppressReplayByPhase: shouldSuppressAcpReplayByPhase("codex-acp", true),
+    turnHadLiveAgentChunk: false
+  };
+  const chunk = (text) => ({
+    sessionUpdate: "agent_message_chunk",
+    messageId: "new-codex-message-id",
+    content: { type: "text", text }
+  });
+  assert.equal(shouldEmitAcpUpdate(chunk("old answer during load"), state), false);
+  state.promptStarted = true;
+  const text = [];
+  for (const part of ["ACP", "_DIAGNOSTIC", "_OK"]) {
+    const update = chunk(part);
+    assert.equal(shouldDropReplayPhaseAgentChunk(update, state), false);
+    assert.equal(shouldEmitAcpUpdate(update, state), true);
+    assert.equal(shouldWriteAcpStdoutLog({ method: "session/update", params: { update } }, state), true);
+    text.push(update.content.text);
+  }
+  assert.equal(text.join(""), "ACP_DIAGNOSTIC_OK");
+  assert.equal(shouldSuppressAcpReplayByPhase("qoder-acp", true), true);
+  assert.equal(shouldSuppressAcpReplayByPhase("qoder-acp", false), false);
+});
+
 test("shouldDropReplayPhaseAgentChunk drops messageId chunks before any live chunk", () => {
   const state = { suppressReplayByPhase: true, turnHadLiveAgentChunk: false };
   assert.equal(
@@ -2765,12 +2794,8 @@ test("Qoder ACP resume sequence cleanly drops historical replay and emits live g
   let sessionWasResumed = true;
   let turnHadLiveAgentChunk = false;
   const promptStarted = true;
-  const knownAgentStreamMessageIds = ["polluted-old-mid"]; // Even if polluted by an earlier run
-  const isQoder = true;
-
   const suppressReplayByPhase = () =>
-    sessionWasResumed &&
-    (isQoder || knownAgentStreamMessageIds.length === 0);
+    shouldSuppressAcpReplayByPhase("qoder-acp", sessionWasResumed);
 
   const emitted = [];
 
@@ -2841,4 +2866,3 @@ test("Qoder ACP resume sequence cleanly drops historical replay and emits live g
   assert.equal(emitted[2].content.text, "这是当前轮次的live回答");
   assert.equal(emitted[3].toolCallId, "call-live-1");
 });
-

@@ -1,23 +1,17 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useUpdaterStore, type UpdateStatus } from "@/store/updaterStore";
 import { useDebugLogsDialogStore } from "@/store/debugLogsDialogStore";
+import {
+  formatReleaseNotes,
+  isReleaseNotesHtml,
+  sanitizeReleaseNotesHtml
+} from "@/utils/releaseNotes";
 import appIconUrl from "../../../assets/app-icon.png";
 
 const RELEASES_URL = "https://github.com/maojindao55/freebuddy/releases";
-
-function formatReleaseNotes(notes: unknown): string | null {
-  if (!notes) return null;
-  if (typeof notes === "string") return notes.trim() || null;
-  if (Array.isArray(notes)) {
-    const text = notes
-      .map((n) => (typeof n === "string" ? n : (n as { note?: string })?.note ?? ""))
-      .filter(Boolean)
-      .join("\n\n");
-    return text.trim() || null;
-  }
-  return null;
-}
 
 type RuntimeSnapshot = {
   activeVersion: string | null;
@@ -166,6 +160,10 @@ export function AboutTab() {
   const canInstall = status === "downloaded";
 
   const notesText = formatReleaseNotes(releaseNotes);
+  const notesHtml =
+    notesText && isReleaseNotesHtml(notesText)
+      ? sanitizeReleaseNotesHtml(notesText)
+      : null;
 
   const platformLabel = platform
     ? [
@@ -262,7 +260,18 @@ export function AboutTab() {
             {notesText && (
               <details className="about-notes">
                 <summary>{t("updater.releaseNotes")}</summary>
-                <pre>{notesText}</pre>
+                {notesHtml ? (
+                  <div
+                    className="about-notes-content"
+                    dangerouslySetInnerHTML={{ __html: notesHtml }}
+                  />
+                ) : (
+                  <div className="about-notes-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {notesText}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </details>
             )}
 

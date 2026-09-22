@@ -33,14 +33,24 @@ export type GuideInstallOutcome =
 interface GuideInstallState {
   /** Latest unconsumed request; null once App has picked it up. */
   pending: { token: number; agentIds: string[] } | null;
+  /** Agents a hand-off asked GuideBuddy to install, awaiting a real probe. */
+  awaitingVerification: { conversationId: string; agentIds: string[] } | null;
   requestGuideInstall(agentIds: readonly string[]): void;
   clearRequest(): void;
+  /**
+   * Re-probe the hand-off's requested agents through FreeBuddy's own check
+   * pipeline. Called when a guide turn completes (and when the settings list
+   * opens) so every surface shows the verified runtime state, not whatever
+   * the assistant reported in chat.
+   */
+  settleGuideTurn(conversationId?: string): Promise<void>;
 }
 
 let requestToken = 0;
 
-export const useGuideInstallStore = create<GuideInstallState>((set) => ({
+export const useGuideInstallStore = create<GuideInstallState>((set, get) => ({
   pending: null,
+  awaitingVerification: null,
   requestGuideInstall(agentIds) {
     const ids = [...new Set(agentIds)];
     if (!ids.length) return;
@@ -49,6 +59,18 @@ export const useGuideInstallStore = create<GuideInstallState>((set) => ({
   },
   clearRequest() {
     set({ pending: null });
+  },
+  async settleGuideTurn(conversationId) {
+    const awaiting = get().awaitingVerification;
+    if (!awaiting) return;
+    if (conversationId && awaiting.conversationId !== conversationId) return;
+    // Clear first so a turn-end settle and a settings-mount settle cannot
+    // double-probe the same hand-off.
+    set({ awaitingVerification: null });
+    const executorStore = useCliExecutorStore.getState();
+    await Promise.allSettled(
+      awaiting.agentIds.map((id) => executorStore.check(id))
+    );
   }
 }));
 
@@ -123,5 +145,15 @@ export async function executeGuideInstall(
   } catch {
     return { ok: false, reason: "send_failed" };
   }
+  // Remember what this hand-off asked for: when the guide turn completes
+  // (and when the settings list next opens) the ids are re-probed through
+  // FreeBuddy's own check pipeline, so the CLI agent list reflects verified
+  // state instead of the assistant's chat claim.
+  useGuideInstallStore.setState({
+    awaitingVerification: {
+      conversationId,
+      agentIds: requested.map((d) => d.id)
+    }
+  });
   return { ok: true };
 }

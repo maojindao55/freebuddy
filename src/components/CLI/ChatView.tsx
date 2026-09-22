@@ -34,6 +34,7 @@ import { ONBOARDING_GUIDE_AGENT_ID } from "@/config/agentProfiles";
 import { OnboardingGuideSetupCard } from "@/components/Onboarding/OnboardingGuideSetupCard";
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useGuideInstallStore } from "@/store/guideInstallStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useDelegationTeamStore } from "@/store/delegationStore";
@@ -1164,6 +1165,12 @@ export function ChatView({
     }
     if (prevGuideSendingRef.current && !sending) {
       setGuideTurnCount((count) => count + 1);
+      // A completed guide turn may have installed agents via bash. Settle any
+      // pending hand-off through FreeBuddy's own check pipeline so the CLI
+      // agent list shows verified state, not the assistant's claim.
+      void useGuideInstallStore
+        .getState()
+        .settleGuideTurn(useConversationStore.getState().activeId);
     }
     prevGuideSendingRef.current = sending;
   }, [isGuide, sending]);

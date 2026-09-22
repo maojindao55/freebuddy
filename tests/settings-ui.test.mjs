@@ -400,6 +400,25 @@ test("built-in agent list can hand missing installs to GuideBuddy", () => {
     assert.ok(zhLocale.settings.cli.guideInstall?.error?.[key]);
     assert.ok(enLocale.settings.cli.guideInstall?.error?.[key]);
   }
+
+  // Verification loop: pending hand-off ids are re-probed through the real
+  // check pipeline (on guide turn completion + settings list mount), so the
+  // agent list reflects verified state instead of the assistant's claim.
+  assert.match(guideStoreSource, /awaitingVerification/);
+  assert.match(guideStoreSource, /settleGuideTurn/);
+  assert.match(guideStoreSource, /Promise\.allSettled/);
+  const chatViewSource = fs.readFileSync(
+    new URL("../src/components/CLI/ChatView.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(
+    chatViewSource,
+    /settleGuideTurn\(useConversationStore\.getState\(\)\.activeId\)/
+  );
+  assert.match(
+    settingsSource,
+    /useGuideInstallStore\s*\.\s*getState\(\)\s*\.\s*settleGuideTurn\(\)/
+  );
 });
 
 test("Codex CLI and ACP updates run in the background and surface runtime status", () => {

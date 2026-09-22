@@ -420,6 +420,13 @@ export function CLIAdaptersTab() {
     void checkAll();
   }, [loaded, checkAll]);
 
+  // A GuideBuddy hand-off may have finished installing while the user was
+  // away from the chat view; re-probe its requested agents when the list
+  // opens so rows never show stale "not installed".
+  useEffect(() => {
+    void useGuideInstallStore.getState().settleGuideTurn();
+  }, []);
+
   useEffect(() => {
     if (!loaded) return;
     if (

@@ -112,7 +112,8 @@ test("ChatView plays back at block granularity with typing text and locks the co
   assert.match(src, /replayPartial && replayPartial\.messageId === m\.id/);
   assert.match(src, /blockLimit=\{partial\?\.blockLimit\}/);
   assert.match(src, /typingChars=\{partial\?\.typingChars\}/);
-  assert.match(src, /useLayoutEffect\(\(\) => \{[\s\S]*?el\.scrollTop = el\.scrollHeight/);
+  assert.match(src, /useLayoutEffect\(\(\) => \{[\s\S]*?pinToBottom\(el\)/);
+  assert.match(src, /snapTargetRef\.current = el\.scrollHeight - el\.clientHeight;\s*el\.scrollTop = el\.scrollHeight/);
   assert.doesNotMatch(src, /const replayFull/);
   assert.doesNotMatch(src, /\{replayPartial && \(/);
   assert.match(src, /disabled=\{sending \|\| replaying\}/);

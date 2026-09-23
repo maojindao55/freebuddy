@@ -109,6 +109,23 @@ test("sending a message restores auto-follow to the latest output", () => {
   );
 });
 
+test("programmatic snaps stay pinned when content grows asynchronously", () => {
+  // A scroll event matching our own snap target must not clear the
+  // near-bottom flag, otherwise a running task strands the view mid-history.
+  assert.match(
+    chatViewSource,
+    /el\.scrollTop === snapTargetRef\.current[\s\S]*?isNearBottomRef\.current = true;/
+  );
+  // Async growth (streamed chunks, lazy blocks, media) re-pins via observers.
+  assert.match(chatViewSource, /new ResizeObserver\(/);
+  assert.match(chatViewSource, /new MutationObserver\(/);
+  // Switching conversations snaps to the latest output on entry.
+  assert.match(
+    chatViewSource,
+    /isNearBottomRef\.current = true;\s*const el = scrollRef\.current;\s*if \(el\) pinToBottom\(el\);\s*\}, \[activeId, pinToBottom\]\);/
+  );
+});
+
 test("sidebar conversation list scrolls instead of being clipped", () => {
   assert.match(stylesSource, /\.sidebar\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;/m);
   assert.match(

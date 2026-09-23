@@ -1049,6 +1049,11 @@ export function ChatView({
   const newTaskPendingAttachmentsRef = useRef(newTaskPendingAttachments);
   const attachmentImportGenerationRef = useRef(0);
   const isNearBottomRef = useRef(true);
+  const snapTargetRef = useRef<number | null>(null);
+  const pinToBottom = useCallback((el: HTMLDivElement) => {
+    snapTargetRef.current = el.scrollHeight - el.clientHeight;
+    el.scrollTop = el.scrollHeight;
+  }, []);
   const [slashIndex, setSlashIndex] = useState(0);
   const conv = conversations.find((c) => c.id === activeId);
   useEffect(() => {
@@ -1498,6 +1503,17 @@ export function ChatView({
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
+    // Scroll events fired by our own snap-to-bottom must not unpin the view:
+    // content can grow asynchronously below the snap point before the event
+    // is dispatched, which would otherwise leave the user stranded mid-history.
+    if (
+      snapTargetRef.current !== null &&
+      el.scrollTop === snapTargetRef.current
+    ) {
+      isNearBottomRef.current = true;
+      return;
+    }
+    snapTargetRef.current = null;
     const offset = el.scrollHeight - el.scrollTop - el.clientHeight;
     isNearBottomRef.current = offset < 120;
   };
@@ -1744,9 +1760,11 @@ export function ChatView({
     providers
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     isNearBottomRef.current = true;
-  }, [activeId]);
+    const el = scrollRef.current;
+    if (el) pinToBottom(el);
+  }, [activeId, pinToBottom]);
 
   // Keep active conversation composer options in sync when providers or agent config changes
   useEffect(() => {
@@ -1925,10 +1943,40 @@ export function ChatView({
     }
   }, [activeId, conv?.approvalMode, member?.cli.approvalMode]);
 
+  // Keep the view pinned while content grows without a messages/live change:
+  // streamed chunks inside the last message, lazily-rendered blocks, workflow
+  // step panels and media can all increase scrollHeight after the last snap.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const seen = new WeakSet<Element>();
+    const resizeObserver = new ResizeObserver(() => {
+      if (isNearBottomRef.current) pinToBottom(el);
+    });
+    const observeChildren = () => {
+      for (const child of el.children) {
+        if (!seen.has(child)) {
+          seen.add(child);
+          resizeObserver.observe(child);
+        }
+      }
+    };
+    const mutationObserver = new MutationObserver(() => {
+      observeChildren();
+      if (isNearBottomRef.current) pinToBottom(el);
+    });
+    mutationObserver.observe(el, { childList: true });
+    observeChildren();
+    return () => {
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [activeId, pinToBottom]);
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && (replaying || isNearBottomRef.current)) {
-      el.scrollTop = el.scrollHeight;
+      pinToBottom(el);
     }
   }, [
     messages,

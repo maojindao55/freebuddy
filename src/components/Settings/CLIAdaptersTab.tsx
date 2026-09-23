@@ -1,7 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from "react";
 import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
-import { Info, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  Copy,
+  Info,
+  KeyRound,
+  LogOut,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Trash2
+} from "lucide-react";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -378,6 +396,39 @@ export function CLIAdaptersTab() {
     [list, refreshMembers, upsertOverride]
   );
 
+  const handleToggleEnabled = useCallback(
+    async (ex: ResolvedExecutor, enabled: boolean) => {
+      try {
+        await upsertOverride({
+          ...(ex.override ?? {}),
+          id: ex.id,
+          baseAdapter: ex.baseAdapter,
+          enabled
+        });
+        refreshMembers();
+      } catch (error) {
+        notify(
+          t("settings.cli.toggleFailed", {
+            label: ex.label,
+            error: (error as Error)?.message || String(error)
+          })
+        );
+      }
+    },
+    [notify, refreshMembers, t, upsertOverride]
+  );
+
+  const availabilitySummary = useMemo(() => {
+    if (!loaded || category === "official") return null;
+    const scoped = list.filter((ex) => categoryOf(ex) === category);
+    if (!scoped.length) return null;
+    let installed = 0;
+    for (const ex of scoped) {
+      if (ex.runtime?.installed) installed += 1;
+    }
+    return { installed, total: scoped.length };
+  }, [list, loaded, category]);
+
   const authControlArgs = useCallback((ex: ResolvedExecutor) => ({
     agentId: `cli-${ex.id}`,
     adapter: ex.baseAdapter ?? ex.id,
@@ -492,6 +543,7 @@ export function CLIAdaptersTab() {
       onCheck={() => void handleCheck(ex.id)}
       onClone={() => void handleClone(ex)}
       onEdit={() => setEditingId(ex.id)}
+      onToggleEnabled={(enabled) => void handleToggleEnabled(ex, enabled)}
       onAskGuideInstall={
         ex.id !== "pi-acp" && ex.installHint && !ex.runtime?.installed
           ? () => useGuideInstallStore.getState().requestGuideInstall([ex.id])
@@ -596,6 +648,11 @@ export function CLIAdaptersTab() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        {availabilitySummary ? (
+          <span className="adapter-availability-summary muted">
+            {t("settings.cli.summary", availabilitySummary)}
+          </span>
+        ) : null}
       </div>
 
       <div className="adapter-settings-workspace">
@@ -739,11 +796,6 @@ function OfficialRow({
           {member.description && <span className="muted">{member.description}</span>}
         </div>
       </button>
-      <div className="adapter-row-actions">
-        <button type="button" className="adapter-row-edit-btn" onClick={onEdit}>
-          ›
-        </button>
-      </div>
     </div>
   );
 }
@@ -786,7 +838,11 @@ function OfficialPersonaPanel({
             className="adapter-editor-back"
             onClick={onBackToList}
           >
-            <span className="adapter-editor-back-chevron">‹</span>
+            <ChevronLeft
+              size={15}
+              className="adapter-editor-back-chevron"
+              aria-hidden="true"
+            />
             {t("settings.cli.backToList")}
           </button>
           <div className="adapter-editor-heading">
@@ -891,7 +947,8 @@ function AdapterRow({
   authMessage,
   onAuthProbe,
   onLogout,
-  installing
+  installing,
+  onToggleEnabled
 }: {
   ex: ResolvedExecutor;
   checking: boolean;
@@ -900,6 +957,7 @@ function AdapterRow({
   onClone: () => void;
   onEdit: () => void;
   onInstall: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
   onAskGuideInstall?: () => void;
   guideSelectable?: boolean;
   guideSelected?: boolean;
@@ -916,19 +974,77 @@ function AdapterRow({
   const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
   const parsedExtraArgs = extractModelArg(ex.extraArgs);
   const model = parsedExtraArgs.model;
-  const statusKind = checking
-    ? "checking"
-    : rt?.installed
-      ? "available"
-      : rt
-        ? "unavailable"
-        : "unchecked";
+  const statusKind = !ex.enabled
+    ? "disabled"
+    : checking
+      ? "checking"
+      : rt?.installed
+        ? "available"
+        : rt
+          ? "unavailable"
+          : "unchecked";
   const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
+  const menuItems: AdapterRowMenuItem[] = [
+    {
+      key: "check",
+      label: checking ? t("settings.cli.checking") : t("common.check"),
+      icon: <RefreshCw size={14} aria-hidden="true" />,
+      disabled: checking || installing,
+      onSelect: onCheck
+    },
+    ...(rt?.installed && !authProbe
+      ? [
+          {
+            key: "auth",
+            label: authBusy
+              ? t("settings.cli.authChecking")
+              : t("settings.cli.checkAuthentication"),
+            icon: <KeyRound size={14} aria-hidden="true" />,
+            disabled: authBusy,
+            onSelect: onAuthProbe
+          }
+        ]
+      : []),
+    ...(rt?.installed && authProbe?.logoutSupported
+      ? [
+          {
+            key: "logout",
+            label: authBusy
+              ? t("settings.cli.loggingOut")
+              : t("settings.cli.logout"),
+            icon: <LogOut size={14} aria-hidden="true" />,
+            danger: true,
+            disabled: authBusy,
+            onSelect: onLogout
+          }
+        ]
+      : []),
+    {
+      key: "clone",
+      label: t("common.clone"),
+      icon: <Copy size={14} aria-hidden="true" />,
+      disabled: checking || installing,
+      onSelect: onClone
+    },
+    ...(onAskGuideInstall
+      ? [
+          {
+            key: "guide-install",
+            label: t("settings.cli.guideInstall.bannerAction"),
+            icon: <Sparkles size={14} aria-hidden="true" />,
+            disabled: installing || checking,
+            onSelect: onAskGuideInstall
+          }
+        ]
+      : [])
+  ];
   return (
     <div
       className={`adapter-row${selected ? " selected" : ""}${
         guideSelectable ? " adapter-row--guide-choice" : ""
-      }${guideSelected ? " adapter-row--guide-selected" : ""}`}
+      }${guideSelected ? " adapter-row--guide-selected" : ""}${
+        ex.enabled ? "" : " adapter-row--disabled"
+      }`}
     >
       {guideSelectable && (
         <label className="adapter-row-guide-choice">
@@ -952,13 +1068,15 @@ function AdapterRow({
         <div className="adapter-row-title">
           <strong>{ex.label}</strong>
           <span className={`adapter-availability ${statusKind}`}>
-            {checking
-              ? t("settings.cli.checking")
-              : rt?.installed
-                ? t("settings.cli.installed")
-                : rt
-                  ? t("settings.cli.notInstalled")
-                  : t("settings.cli.notChecked")}
+            {!ex.enabled
+              ? t("settings.cli.disabled")
+              : checking
+                ? t("settings.cli.checking")
+                : rt?.installed
+                  ? t("settings.cli.installed")
+                  : rt
+                    ? t("settings.cli.notInstalled")
+                    : t("settings.cli.notChecked")}
           </span>
         </div>
         <div className="adapter-row-meta">
@@ -1008,18 +1126,25 @@ function AdapterRow({
         </div>
       </button>
       <div className="adapter-row-actions">
-        {onAskGuideInstall && (
-          <button
-            type="button"
-            className="adapter-row-guide-install"
-            title={t("settings.cli.guideInstall.rowAction", { name: ex.label })}
-            aria-label={t("settings.cli.guideInstall.rowAction", { name: ex.label })}
-            disabled={installing || checking}
-            onClick={onAskGuideInstall}
-          >
-            <Sparkles size={13} aria-hidden="true" />
-          </button>
-        )}
+        <label
+          className="adapter-switch"
+          title={
+            ex.enabled
+              ? t("settings.cli.enabled")
+              : t("settings.cli.disabled")
+          }
+        >
+          <input
+            type="checkbox"
+            checked={ex.enabled}
+            disabled={checking || installing}
+            aria-label={t("settings.cli.toggleAria", { name: ex.label })}
+            onChange={(event) =>
+              onToggleEnabled(event.currentTarget.checked)
+            }
+          />
+          <span aria-hidden="true" />
+        </label>
         {!rt?.installed && ex.installHint && (
           <button
             type="button"
@@ -1030,33 +1155,84 @@ function AdapterRow({
             {installing ? t("common.installing") : t("common.install")}
           </button>
         )}
-        <button type="button" onClick={onCheck} disabled={checking || installing}>
-          {checking ? t("settings.cli.checking") : t("common.check")}
-        </button>
-        {rt?.installed && !authProbe && (
-          <button type="button" onClick={onAuthProbe} disabled={authBusy}>
-            {authBusy
-              ? t("settings.cli.authChecking")
-              : t("settings.cli.checkAuthentication")}
-          </button>
-        )}
-        {rt?.installed && authProbe?.logoutSupported && (
-          <button
-            type="button"
-            className="danger"
-            onClick={onLogout}
-            disabled={authBusy}
-          >
-            {authBusy ? t("settings.cli.loggingOut") : t("settings.cli.logout")}
-          </button>
-        )}
-        <button type="button" onClick={onClone} disabled={checking || installing}>
-          {t("common.clone")}
-        </button>
-        <button type="button" className="adapter-row-edit-btn" onClick={onEdit} disabled={checking || selected}>
-          ›
-        </button>
+        <AdapterRowMenu
+          label={t("settings.cli.moreActions")}
+          items={menuItems}
+        />
       </div>
+    </div>
+  );
+}
+
+interface AdapterRowMenuItem {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}
+
+function AdapterRowMenu({
+  label,
+  items
+}: {
+  label: string;
+  items: AdapterRowMenuItem[];
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  if (!items.length) return null;
+  return (
+    <div className="adapter-row-menu" ref={rootRef}>
+      <button
+        type="button"
+        className="icon-btn adapter-row-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <MoreHorizontal size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="adapter-row-menu-popover" role="menu">
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              className={item.danger ? "danger" : undefined}
+              disabled={item.disabled}
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1232,6 +1408,8 @@ function EditOverridePanel({
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const [saveError, setSaveError] = useState("");
+  const baselineRef = useRef<string | null>(null);
+  const latestDirtyRef = useRef(false);
 
   useEffect(() => {
     setSaveStatus("idle");
@@ -1272,6 +1450,9 @@ function EditOverridePanel({
       if (!model.trim() && active[0]?.id) {
         setModel(active[0].id);
       }
+      // Provider-driven normalization rewrites draft fields without user
+      // edits; re-baseline so the unsaved indicator doesn't self-trigger.
+      if (!latestDirtyRef.current) baselineRef.current = null;
     }
   }, [selectedProvider]);
 
@@ -1285,16 +1466,16 @@ function EditOverridePanel({
 
   const isClone = Boolean(ex.isClone);
   const supportsByok = isCodex || isClaude || isDeepSeek || isPi;
+  const byokContextWindowInvalid =
+    byokContextWindow.trim() !== "" &&
+    parseByokContextWindow(byokContextWindow) === undefined;
   const byokBaseUrlPlaceholder = isClaude
     ? "https://api.anthropic.com"
     : isDeepSeek
       ? "https://api.deepseek.com"
       : "https://api.openai.com/v1";
 
-  const onSave = async () => {
-    if (saveStatus === "saving") return;
-    setSaveStatus("saving");
-    setSaveError("");
+  const buildOverride = (): CLIExecutorOverride => {
     const cleanedExtraArgs = extraArgs
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -1440,7 +1621,7 @@ function EditOverridePanel({
             }
         : undefined;
 
-    const override: CLIExecutorOverride = {
+    return {
       id: ex.id,
       baseAdapter: ex.baseAdapter,
       label: isClone ? label.trim() || ex.label : undefined,
@@ -1456,15 +1637,29 @@ function EditOverridePanel({
       deepseekByok: deepseekByokConfig,
       piByok: piByokConfig,
       skillIds,
-      enabled: true
+      enabled: ex.enabled
     };
+  };
+
+  if (baselineRef.current === null) {
+    baselineRef.current = JSON.stringify(buildOverride());
+  }
+  const dirty = JSON.stringify(buildOverride()) !== baselineRef.current;
+  latestDirtyRef.current = dirty;
+
+  const onSave = async () => {
+    if (saveStatus === "saving" || !dirty) return;
+    setSaveStatus("saving");
+    setSaveError("");
+    const override = buildOverride();
     try {
       await upsert(override);
       refreshMembers();
-      setModel(effectiveModel);
-      setExtraArgs(extractModelArg(cleanedExtraArgs).args.join("\n"));
+      setModel(extractModelArg(override.extraArgs ?? []).model);
+      setExtraArgs(extractModelArg(override.extraArgs ?? []).args.join("\n"));
       setCodexApiKey("");
       setDeepseekOfficialApiKey("");
+      baselineRef.current = JSON.stringify(override);
       setSaveStatus("saved");
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -1477,8 +1672,9 @@ function EditOverridePanel({
     setSaveStatus("idle");
     setSaveError("");
     if (
-      isClone &&
-      !window.confirm(t("settings.cli.deleteAgentConfirm", { label: ex.label }))
+      isClone
+        ? !window.confirm(t("settings.cli.deleteAgentConfirm", { label: ex.label }))
+        : dirty && !window.confirm(t("settings.cli.unsavedConfirm"))
     ) {
       return;
     }
@@ -1499,9 +1695,18 @@ function EditOverridePanel({
           <button
             type="button"
             className="adapter-editor-back"
-            onClick={onBackToList}
+            onClick={() => {
+              if (dirty && !window.confirm(t("settings.cli.unsavedConfirm"))) {
+                return;
+              }
+              onBackToList();
+            }}
           >
-            <span className="adapter-editor-back-chevron">‹</span>
+            <ChevronLeft
+              size={15}
+              className="adapter-editor-back-chevron"
+              aria-hidden="true"
+            />
             {t("settings.cli.backToList")}
           </button>
           <div className="adapter-editor-heading">
@@ -1555,12 +1760,23 @@ function EditOverridePanel({
               {installing ? t("common.upgrading") : t("common.upgrade")}
             </button>
           )}
+          {ex.runtime && !ex.runtime.installed && ex.runtime.lastError ? (
+            <span
+              className="adapter-editor-status-detail"
+              title={ex.runtime.lastError}
+            >
+              {ex.runtime.lastError}
+            </span>
+          ) : null}
         </div>
       </header>
 
       <div className="adapter-editor-scroll">
         {/* ── Identity section ── */}
         <div className="adapter-editor-section">
+          <h4 className="adapter-editor-section-title">
+            {t("settings.cli.section.identity")}
+          </h4>
           <div className="icon-picker-field">
             <span className="icon-picker-label">{t("settings.cli.avatar")}</span>
             <AvatarPicker
@@ -1585,6 +1801,9 @@ function EditOverridePanel({
 
         {/* ── Command Configuration section ── */}
         <div className="adapter-editor-section">
+          <h4 className="adapter-editor-section-title">
+            {t("settings.cli.section.command")}
+          </h4>
           <label className="adapter-editor-field">
             <span className="adapter-editor-field-label">{t("settings.cli.commandOverride")}</span>
             <input
@@ -1843,6 +2062,15 @@ function EditOverridePanel({
                             aria-label={t(
                               "settings.cli.byok.modelContextWindowPlaceholder"
                             )}
+                            aria-invalid={
+                              String(byokModel.contextWindow ?? "").trim() !==
+                                "" &&
+                              parseByokContextWindow(
+                                byokModel.contextWindow
+                              ) === undefined
+                                ? true
+                                : undefined
+                            }
                             disabled={Boolean(selectedProvider)}
                             onChange={(event) =>
                               setByokModels((models) =>
@@ -1976,6 +2204,7 @@ function EditOverridePanel({
                             : "settings.cli.byok.contextWindowPlaceholderCodex"
                         )}
                         aria-describedby="byok-context-window-hint"
+                        aria-invalid={byokContextWindowInvalid || undefined}
                         onChange={(e) => setByokContextWindow(e.target.value)}
                       />
                       <span className="byok-context-input-unit">
@@ -1984,13 +2213,20 @@ function EditOverridePanel({
                     </span>
                     <span
                       id="byok-context-window-hint"
-                      className="settings-field-hint"
+                      className={`settings-field-hint${
+                        byokContextWindowInvalid ? " error" : ""
+                      }`}
                     >
-                      {t(
-                        isClaude
-                          ? "settings.cli.byok.contextWindowHintClaude"
-                          : "settings.cli.byok.contextWindowHintCodex"
-                      )}
+                      {byokContextWindowInvalid
+                        ? t("settings.cli.byok.contextWindowInvalid", {
+                            min: BYOK_CONTEXT_WINDOW_MIN.toLocaleString(),
+                            max: BYOK_CONTEXT_WINDOW_MAX.toLocaleString()
+                          })
+                        : t(
+                            isClaude
+                              ? "settings.cli.byok.contextWindowHintClaude"
+                              : "settings.cli.byok.contextWindowHintCodex"
+                          )}
                     </span>
                   </label>
 
@@ -2104,6 +2340,9 @@ function EditOverridePanel({
 
         {/* ── Advanced section ── */}
         <div className="adapter-editor-section">
+          <h4 className="adapter-editor-section-title">
+            {t("settings.cli.section.advanced")}
+          </h4>
           <label className="adapter-editor-field">
             <span className="adapter-editor-field-label">{t("settings.cli.extraArgs")}</span>
             <textarea
@@ -2136,6 +2375,11 @@ function EditOverridePanel({
               {t("settings.cli.saveFailed", { err: saveError })}
             </span>
           )}
+          {dirty && saveStatus === "idle" && (
+            <span className="adapter-save-message warn" role="status">
+              {t("settings.cli.unsavedChanges")}
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -2149,7 +2393,7 @@ function EditOverridePanel({
           type="button"
           className="primary adapter-save-btn"
           onClick={onSave}
-          disabled={saveStatus === "saving"}
+          disabled={saveStatus === "saving" || !dirty}
         >
           {saveStatus === "saving"
             ? t("common.saving")

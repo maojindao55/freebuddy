@@ -1105,6 +1105,13 @@
       "logoutSuccess": "已退出登录",
       "logoutFailed": "退出登录失败：{{error}}",
       "saveFailed": "保存失败：{{err}}",
+      "unsavedChanges": "有未保存的更改",
+      "unsavedConfirm": "有未保存的更改，确定离开吗？",
+      "section": {
+        "identity": "基本信息",
+        "command": "启动命令",
+        "advanced": "高级"
+      },
       "byok": {
         "title": "API Key",
         "description": "选择这个 Agent 使用默认配置，还是在启动时临时注入你自己的模型服务。",
@@ -1133,6 +1140,7 @@
         "tokensUnit": "tokens",
         "contextWindowHintCodex": "未单独设置上下文窗口的模型的默认值，默认 272,000 token。可在模型列表中为单个模型单独设置以覆盖该值。",
         "contextWindowHintClaude": "可选，单位为 token（100,000–1,000,000）。这是压缩边界，不会改变服务商的真实上限。",
+        "contextWindowInvalid": "请输入 {{min}}–{{max}} 之间的整数",
         "compactionEnabled": "开启自动压缩",
         "compactionEnabledHint": "在达到上方自动压缩窗口前，自动总结并压缩上下文；关闭后，长对话可能因上下文过长而失败。",
         "contextNoteTitle": "说明：",
@@ -1216,6 +1224,11 @@
       "checkAll": "全部检查",
       "checking": "检查中…",
       "checkingAll": "正在检查…",
+      "enabled": "已启用",
+      "disabled": "已停用",
+      "toggleAria": "启用或停用 {{name}}",
+      "toggleFailed": "更新 {{name}} 的启用状态失败：{{error}}",
+      "moreActions": "更多操作",
       "summary": "{{installed}}/{{total}} 已安装",
       "searchAgents": "搜索 Agent（名称或 ID）",
       "noResults": "没有匹配的 Agent",
@@ -1243,7 +1256,6 @@
         "pickHint": "勾选下方需要安装的助手，再交给 GuideBuddy 安装。",
         "selectionHint": "已选 {{count}} / {{total}} 项。点击右侧按钮进入 GuideBuddy 安装会话。",
         "selectAgent": "选择 {{name}}",
-        "rowAction": "让 GuideBuddy 安装 {{name}}",
         "requested": "已打开 GuideBuddy 会话，安装请求已发送。",
         "prompt": "请帮我安装以下编程助手，逐个执行给出的官方安装命令（不要修改命令）：\n{{items}}\n安装完成后请逐个验证对应命令是否可用，并汇报安装与验证结果。",
         "error": {

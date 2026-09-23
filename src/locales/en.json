@@ -1118,6 +1118,13 @@
       "logoutSuccess": "Signed out",
       "logoutFailed": "Sign-out failed: {{error}}",
       "saveFailed": "Save failed: {{err}}",
+      "unsavedChanges": "Unsaved changes",
+      "unsavedConfirm": "You have unsaved changes. Leave anyway?",
+      "section": {
+        "identity": "Identity",
+        "command": "Command",
+        "advanced": "Advanced"
+      },
       "byok": {
         "title": "API Key",
         "description": "Choose whether this agent uses the default setup or injects your own model service when it starts.",
@@ -1146,6 +1153,7 @@
         "tokensUnit": "tokens",
         "contextWindowHintCodex": "Default for models without their own value; defaults to 272,000 tokens. Set a per-model value in the model list to override it.",
         "contextWindowHintClaude": "Optional, in tokens (100,000–1,000,000). This is the compaction boundary, not the provider's actual limit.",
+        "contextWindowInvalid": "Enter an integer between {{min}} and {{max}}",
         "compactionEnabled": "Enable automatic compaction",
         "compactionEnabledHint": "Automatically summarize the conversation before it reaches the window above; disabling it may cause long conversations to exceed the context limit.",
         "contextNoteTitle": "Note:",
@@ -1229,6 +1237,11 @@
       "checkAll": "Check all",
       "checking": "Checking…",
       "checkingAll": "Checking…",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "toggleAria": "Enable or disable {{name}}",
+      "toggleFailed": "Failed to update {{name}} status: {{error}}",
+      "moreActions": "More actions",
       "summary": "{{installed}}/{{total}} installed",
       "searchAgents": "Search agents (name or id)",
       "noResults": "No matching agents",
@@ -1256,7 +1269,6 @@
         "pickHint": "Choose agents below, then ask GuideBuddy to install them.",
         "selectionHint": "{{count}} of {{total}} selected. Use the button to open the GuideBuddy installation chat.",
         "selectAgent": "Select {{name}}",
-        "rowAction": "Ask GuideBuddy to install {{name}}",
         "requested": "GuideBuddy conversation opened — install request sent.",
         "prompt": "Please install the following coding agents, running each official install command exactly as given (do not modify the commands):\n{{items}}\nAfterwards verify each binary responds and report the install and verification results.",
         "error": {

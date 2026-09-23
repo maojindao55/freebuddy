@@ -385,7 +385,7 @@ test("built-in agent list can hand missing installs to GuideBuddy", () => {
   }
 
   // Locale strings mirrored across zh-CN and en.
-  for (const key of ["bannerHint", "bannerAction", "rowAction", "requested", "prompt"]) {
+  for (const key of ["bannerHint", "bannerAction", "requested", "prompt"]) {
     assert.ok(zhLocale.settings.cli.guideInstall?.[key], `zh missing guideInstall.${key}`);
     assert.ok(enLocale.settings.cli.guideInstall?.[key], `en missing guideInstall.${key}`);
   }  for (const key of [

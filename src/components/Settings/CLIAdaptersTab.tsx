@@ -746,6 +746,12 @@ export function CLIAdaptersTab() {
         key={`${selectedExecutor.id}:${editorNonce}`}
         executorId={selectedExecutor.id}
         dirtyRef={editorDirtyRef}
+        headerBadge={
+          <AdapterStatusBadge
+            kind={adapterStatusKind(selectedExecutor, checkingIds.has(selectedExecutor.id))}
+            title={selectedExecutor.runtime?.lastError}
+          />
+        }
         headerMeta={
           <AdapterHeaderMeta
             ex={selectedExecutor}
@@ -1163,33 +1169,58 @@ function AdapterHeaderActions({
         ]
       : [])
   ];
+  const toggleId = `adapter-enabled-${ex.id}`;
   return (
     <>
-      {!rt?.installed && ex.installHint && (
-        <button
-          type="button"
-          className="adapter-editor-install"
-          onClick={onInstall}
-          disabled={installing || checking}
-        >
-          {installing ? t("common.installing") : t("common.install")}
-        </button>
-      )}
-      <label
-        className="adapter-switch"
-        title={ex.enabled ? t("settings.cli.enabled") : t("settings.cli.disabled")}
-      >
-        <input
-          type="checkbox"
-          checked={ex.enabled}
-          disabled={checking || installing}
-          aria-label={t("settings.cli.toggleAria", { name: ex.label })}
-          onChange={(event) => onToggleEnabled(event.currentTarget.checked)}
-        />
-        <span aria-hidden="true" />
-      </label>
+      <div className="adapter-editor-toggle">
+        <label htmlFor={toggleId} className="adapter-editor-toggle-text">
+          {ex.enabled ? t("settings.cli.enabled") : t("settings.cli.disabled")}
+        </label>
+        <label className="adapter-switch">
+          <input
+            id={toggleId}
+            type="checkbox"
+            checked={ex.enabled}
+            disabled={checking || installing}
+            aria-label={t("settings.cli.toggleAria", { name: ex.label })}
+            onChange={(event) => onToggleEnabled(event.currentTarget.checked)}
+          />
+          <span aria-hidden="true" />
+        </label>
+      </div>
+      <span className="adapter-editor-actions-divider" aria-hidden="true" />
+      {ex.installHint &&
+        (rt?.installed ? (
+          <button
+            type="button"
+            className="adapter-editor-action"
+            onClick={onInstall}
+            disabled={installing || checking}
+            title={t("settings.cli.upgradeHint")}
+          >
+            {installing ? t("common.upgrading") : t("common.upgrade")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="adapter-editor-action primary"
+            onClick={onInstall}
+            disabled={installing || checking}
+          >
+            {installing ? t("common.installing") : t("common.install")}
+          </button>
+        ))}
       <AdapterRowMenu label={t("settings.cli.moreActions")} items={menuItems} />
     </>
+  );
+}
+
+function AdapterStatusBadge({ kind, title }: { kind: AdapterStatusKind; title?: string }) {
+  const { t } = useTranslation();
+  return (
+    <span className={`adapter-editor-badge ${kind}`} title={title}>
+      {t(`settings.cli.status.${kind}`)}
+    </span>
   );
 }
 
@@ -1355,6 +1386,7 @@ function RuntimeAutoUpdateStatus({
 function EditOverridePanel({
   executorId,
   dirtyRef,
+  headerBadge,
   headerMeta,
   headerActions,
   onBackToList,
@@ -1362,6 +1394,7 @@ function EditOverridePanel({
 }: {
   executorId: string;
   dirtyRef?: { current: boolean };
+  headerBadge?: ReactNode;
   headerMeta?: ReactNode;
   headerActions?: ReactNode;
   onBackToList: () => void;
@@ -1377,10 +1410,6 @@ function EditOverridePanel({
   const skills = useSkillStore((s) => s.skills);
   const skillsLoaded = useSkillStore((s) => s.loaded);
   const loadSkills = useSkillStore((s) => s.load);
-  const startInstall = useCliInstallStore((s) => s.startJob);
-  const installing = useCliInstallStore((s) =>
-    s.jobs.some((j) => j.adapterId === executorId && !j.done)
-  );
   const providers = useProviderStore((s) => s.providers);
   const providersLoaded = useProviderStore((s) => s.loaded);
   const loadProviders = useProviderStore((s) => s.load);
@@ -1790,7 +1819,10 @@ function EditOverridePanel({
               fallback={<span>{ex.label.slice(0, 2).toUpperCase()}</span>}
             />
             <div className="adapter-editor-heading-text">
-              <h3>{ex.label}</h3>
+              <div className="adapter-editor-title-row">
+                <h3>{ex.label}</h3>
+                {headerBadge}
+              </div>
               <div className="adapter-editor-meta">
                 {headerMeta}
                 {ex.docsUrl && (
@@ -1802,42 +1834,7 @@ function EditOverridePanel({
             </div>
           </div>
         </div>
-        <div className="adapter-editor-status-group">
-          {ex.runtime?.installed ? (
-            <span className="adapter-status adapter-editor-status ok">
-              {t("settings.cli.installed")}
-            </span>
-          ) : ex.runtime ? (
-            <span
-              className="adapter-status adapter-editor-status warn"
-              title={ex.runtime.lastError}
-            >
-              {t("settings.cli.notInstalled")}
-            </span>
-          ) : (
-            <span className="adapter-status adapter-editor-status muted">
-              {t("settings.cli.notChecked")}
-            </span>
-          )}
-          {ex.runtime?.installed && ex.installHint && (
-            <button
-              type="button"
-              className="adapter-editor-upgrade"
-              disabled={installing}
-              title={t("settings.cli.upgradeHint")}
-              onClick={() =>
-                startInstall({
-                  adapterId: ex.id,
-                  label: ex.label,
-                  command: ex.installHint!
-                })
-              }
-            >
-              {installing ? t("common.upgrading") : t("common.upgrade")}
-            </button>
-          )}
-          {headerActions}
-        </div>
+        <div className="adapter-editor-status-group">{headerActions}</div>
       </header>
 
       <div className="adapter-editor-scroll">

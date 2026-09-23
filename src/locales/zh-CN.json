@@ -1107,6 +1107,13 @@
       "saveFailed": "保存失败：{{err}}",
       "unsavedChanges": "有未保存的更改",
       "unsavedConfirm": "有未保存的更改，确定离开吗？",
+      "status": {
+        "available": "已安装",
+        "unavailable": "未安装",
+        "unchecked": "未检查",
+        "checking": "检查中…",
+        "disabled": "已停用"
+      },
       "section": {
         "identity": "基本信息",
         "command": "启动命令",

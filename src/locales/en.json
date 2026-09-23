@@ -1120,6 +1120,13 @@
       "saveFailed": "Save failed: {{err}}",
       "unsavedChanges": "Unsaved changes",
       "unsavedConfirm": "You have unsaved changes. Leave anyway?",
+      "status": {
+        "available": "Installed",
+        "unavailable": "Not installed",
+        "unchecked": "Not checked",
+        "checking": "Checking…",
+        "disabled": "Disabled"
+      },
       "section": {
         "identity": "Identity",
         "command": "Command",

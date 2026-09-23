@@ -25,7 +25,12 @@ class SettingsCredentialStore implements HostCredentialStore {
  * token supplied by the developer's process environment. D7 owns persistent
  * settings, pairing, and production enablement.
  */
-export function startReadOnlyRemoteDevelopment(): ReadOnlyRemoteService | undefined {
+export interface ReadOnlyRemoteDevelopmentOptions {
+  isPackaged: boolean;
+}
+
+export function startReadOnlyRemoteDevelopment(options: ReadOnlyRemoteDevelopmentOptions = { isPackaged: true }): ReadOnlyRemoteService | undefined {
+  if (options.isPackaged) return undefined;
   if (process.env.FB_REMOTE_READONLY_DEV !== "1") return undefined;
   const endpoint = process.env.FB_REMOTE_DEV_ENDPOINT;
   const token = process.env.FB_REMOTE_DEV_HOST_TOKEN;
@@ -40,6 +45,7 @@ export function startReadOnlyRemoteDevelopment(): ReadOnlyRemoteService | undefi
   let relayState = false;
   const service = new ReadOnlyRemoteService({
     hostId: credentials.hostId,
+    allowEmptyDatabaseReadOnly: true,
     status: () => ({
       hostId: credentials.hostId, online: relayState, appVersion: process.env.FB_APP_VERSION || "0.9.10",
       protocolVersion: 1, remoteEnabled: true, activeRunCount: 0, pendingDecisionCount: 0, activeTerminalCount: 0

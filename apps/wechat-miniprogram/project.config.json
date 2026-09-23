@@ -1,7 +1,7 @@
 {
   "description": "FreeBuddy remote admin mini program",
   "miniprogramRoot": "miniprogram/",
-  "appid": "touristappid",
+  "appid": "wx8bef453ebd05bdd5",
   "projectname": "freebuddy-remote-admin",
   "compileType": "miniprogram",
   "libVersion": "3.5.0",

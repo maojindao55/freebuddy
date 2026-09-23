@@ -6,8 +6,9 @@
 //   - the devtools must be installed (this script only locates the CLI, it never installs one);
 //   - the devtools service port must be enabled (Settings -> Security), otherwise the CLI exits
 //     with its own error and that error is shown verbatim;
-//   - a real AppID is needed for preview/upload (see README). `cli open` works with the current
-//     `touristappid` placeholder, which is enough to prove the project imports and compiles.
+//   - the real AppID in project.config.json is needed for preview/upload (see README). `cli open`
+//     only imports/opens the project; it does *not* prove compilation. Check the devtools console
+//     for boot errors (e.g. an unregistered page) instead of treating a successful open as success.
 //
 // Override the CLI location with WECHAT_DEVTOOLS_CLI=/path/to/cli.
 

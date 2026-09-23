@@ -29,8 +29,22 @@ const require = createRequire(import.meta.url);
 const electronBinary = require("electron");
 const HARNESS_MESSAGE_LIMIT = 4 * 1024;
 
-function readHarnessMessage(line, secrets) {
-  if (Buffer.byteLength(line) > HARNESS_MESSAGE_LIMIT || secrets.some(secret => secret && line.includes(secret))) return undefined;
+function createSecretOutputObserver(secrets) {
+  const longestSecretLength = Math.max(...secrets.map(secret => secret.length));
+  let suffix = "";
+  let secretOutputSeen = false;
+  return {
+    observe(chunk) {
+      const output = `${suffix}${chunk}`;
+      secretOutputSeen ||= secrets.some(secret => output.includes(secret));
+      suffix = output.slice(-(longestSecretLength - 1));
+    },
+    seen() { return secretOutputSeen; }
+  };
+}
+
+function readHarnessMessage(line) {
+  if (Buffer.byteLength(line) > HARNESS_MESSAGE_LIMIT) return undefined;
   try {
     const message = JSON.parse(line);
     if (!message || typeof message !== "object" || typeof message.type !== "string" || message.type.length > 64) return undefined;
@@ -71,17 +85,25 @@ test("M3 real Electron safeStorage host serves reads while a BrowserWindow is hi
     const build = spawnSync("go", ["build", "-o", relayBinary, "./cmd/relay"], { cwd: "services/remote-relay", encoding: "utf8" }); assert.equal(build.status, 0, build.stderr || build.stdout);
     relay = spawn(relayBinary, [], { env: { ...process.env, LISTEN_ADDR: `127.0.0.1:${port}`, SQLITE_PATH: path.join(temp, "relay.sqlite"), DEV_AUTH_MODE: "true", DEV_AUTH_ADMIN_TOKEN: adminToken, DEV_AUTH_HOST_TOKEN: hostToken, DEV_AUTH_HOST_ID: hostId, LOG_FORMAT: "json" }, stdio: ["ignore", "pipe", "pipe"] });
     electron = spawn(electronBinary, ["electron/remote/electron-hidden-window-harness.mjs"], { cwd: process.cwd(), env: { ...electronEnvironment, FB_REMOTE_READONLY_DEV: "1", FB_REMOTE_DEV_ENDPOINT: `ws://127.0.0.1:${port}/v1/ws/host`, FB_REMOTE_DEV_HOST_TOKEN: hostToken, FB_REMOTE_DEV_HOST_ID: hostId, FB_REMOTE_TEST_USER_DATA: path.join(temp, "userData") }, stdio: ["pipe", "pipe", "pipe"] });
-    const messages = []; let remainder = ""; const electronStderr = createBoundedRedactedOutput([adminToken, hostToken]); const relayOutput = createBoundedRedactedOutput([adminToken, hostToken]);
-    electron.stdout.on("data", chunk => { remainder = `${remainder}${chunk}`.slice(-16 * 1024); const lines = remainder.split("\n"); remainder = lines.pop(); for (const line of lines) { const message = readHarnessMessage(line, [adminToken, hostToken]); if (message) { messages.push(message); if (messages.length > 128) messages.shift(); } } });
-    relay.stdout.on("data", chunk => relayOutput.append(chunk)); relay.stderr.on("data", chunk => relayOutput.append(chunk));
-    electron.stderr.on("data", chunk => electronStderr.append(chunk));
+    const secrets = [adminToken, hostToken]; const secretOutput = createSecretOutputObserver(secrets);
+    const messages = []; let remainder = ""; const electronStderr = createBoundedRedactedOutput(secrets); const relayOutput = createBoundedRedactedOutput(secrets);
+    electron.stdout.on("data", chunk => { secretOutput.observe(chunk); remainder = `${remainder}${chunk}`.slice(-16 * 1024); const lines = remainder.split("\n"); remainder = lines.pop(); for (const line of lines) { const message = readHarnessMessage(line); if (message) { messages.push(message); if (messages.length > 128) messages.shift(); } } });
+    relay.stdout.on("data", chunk => { secretOutput.observe(chunk); relayOutput.append(chunk); }); relay.stderr.on("data", chunk => { secretOutput.observe(chunk); relayOutput.append(chunk); });
+    electron.stderr.on("data", chunk => { secretOutput.observe(chunk); electronStderr.append(chunk); });
     await waitFor(() => messages.some(message => message.type === "ready" || message.type === "error" || message.type === "blocked_safe_storage") || electron.exitCode !== null)
       .catch(error => { throw new Error(`${error.message}; Electron stderr: ${electronStderr.read() || "(none)"}; relay output: ${relayOutput.read() || "(none)"}; stdout stages: ${JSON.stringify(messages.filter(message => message.type === "stage").map(message => message.stage))}`); });
     assert.equal(messages.some(message => message.type === "blocked_safe_storage"), false, `actual OS safeStorage was unavailable; Electron stderr: ${electronStderr.read()}`);
     assert.equal(messages.some(message => message.type === "error"), false, `Electron harness returned an error; Electron stderr: ${electronStderr.read()}`);
-    assert.deepEqual(messages.filter(message => message.type === "stage").map(message => message.stage).slice(0, 3), ["module_loaded", "ready", "imports_start"], `Electron lifecycle stages did not distinguish entry and ready: ${electronStderr.read()}`);
+    assert.equal(secretOutput.seen(), false, "a child process wrote a test token to captured output");
+    const stages = messages.filter(message => message.type === "stage").map(message => message.stage);
+    assert.deepEqual(stages.slice(0, 3), ["module_loaded", "ready", "imports_start"], `Electron lifecycle stages did not distinguish entry and ready: ${electronStderr.read()}`);
     assert.equal(messages.some(message => message.type === "stage" && message.stage === "window_created"), true, `Electron did not create the real window: ${electronStderr.read()}`);
-    assert.equal(messages.some(message => message.type === "stage" && message.stage === "remote_starting"), true, `Electron did not begin actual safeStorage-backed remote initialization: ${electronStderr.read()}`);
+    const windowCreatedStage = stages.indexOf("window_created");
+    const safeStorageStage = stages.indexOf("safe_storage_checking");
+    assert.deepEqual(stages.slice(safeStorageStage, safeStorageStage + 4), ["safe_storage_checking", "safe_storage_available", "safe_storage_encrypted", "safe_storage_ready"], `Electron did not complete the actual OS safeStorage round trip: ${electronStderr.read()}`);
+    const remoteStartingStage = stages.indexOf("remote_starting");
+    assert.equal(windowCreatedStage < safeStorageStage && safeStorageStage + 4 <= remoteStartingStage, true, `Electron did not complete actual safeStorage after creating its window and before remote initialization: ${electronStderr.read()}`);
+    assert.equal(remoteStartingStage >= 0, true, `Electron did not begin actual safeStorage-backed remote initialization: ${electronStderr.read()}`);
     assert.equal(messages.some(message => message.type === "stage" && message.stage === "remote_started"), true, `Electron did not start the headless remote service: ${electronStderr.read()}`);
     assert.equal(messages.find(message => message.type === "ready")?.visible, true, `Electron harness never became ready: ${electronStderr.read()}`);
     admin = new WebSocket(`ws://127.0.0.1:${port}/v1/ws/admin`, { headers: { Authorization: `Bearer ${adminToken}` } }); const firstAuth = nextFrame(admin); await once(admin, "open"); assert.equal((await firstAuth).type, "auth.ok");

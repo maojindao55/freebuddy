@@ -7,7 +7,7 @@ export class ReadOnlyRemoteService {
   private relay: RelayClient | undefined;
   private detachEvents: (() => void) | undefined;
   private readonly host;
-  constructor(private readonly input: { hostId: string; status: () => HostStatusSource }) { this.host = createReadonlyRemoteHost(input); }
+  constructor(private readonly input: { hostId: string; status: () => HostStatusSource; allowEmptyDatabaseReadOnly?: boolean }) { this.host = createReadonlyRemoteHost(input); }
   get enabled(): boolean { return !!this.relay; }
   enable(options: Omit<RelayClientOptions, "enabled" | "onFrame">): void {
     if (this.relay) return;

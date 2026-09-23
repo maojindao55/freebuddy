@@ -18,7 +18,10 @@
 
 import { ENVIRONMENTS } from "./config/environments";
 import { assertEnvironmentTable, getActiveEnvironment } from "./config/runtimeConfig";
-import { assertProtocolBinding, REMOTE_PROTOCOL_VERSION } from "./protocol";
+// Explicit `/index`: the WeChat loader appends `.js` and does **not** resolve a directory to its
+// `index.js` the way Node does, so `import ... from "./protocol"` emits `require("./protocol")`
+// and fails at runtime with `module 'protocol.js' is not defined`. `emit:check` guards this.
+import { assertProtocolBinding, REMOTE_PROTOCOL_VERSION } from "./protocol/index";
 import { getAppSession } from "./services/appSession";
 import { createAppErrorBoundary } from "./utils/errorBoundary";
 

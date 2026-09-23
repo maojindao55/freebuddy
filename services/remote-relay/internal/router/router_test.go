@@ -674,3 +674,300 @@ func TestRouter_HostReplacement_OldDisconnectCleansOldPendingAndKeepsNewPending(
 		t.Fatal("expected pending RPC reqNew to be deleted after host2 response")
 	}
 }
+
+func TestRouter_HandleHostPing_Success(t *testing.T) {
+	rtr, reg := setupTestRouter(t)
+	hostID := "host_ping_001"
+	hostConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	hostConn.SetRole(protocol.RoleHost)
+	hostConn.SetHostID(hostID)
+	reg.RegisterHost(hostID, hostConn)
+
+	nonce := "nonce_host_12345"
+	pingEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePing,
+		ID:      "msg_ping_001",
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(fmt.Sprintf(`{"nonce":%q}`, nonce)),
+	}
+
+	err := rtr.HandleHostFrame(hostConn, pingEnv)
+	if err != nil {
+		t.Fatalf("expected host ping to succeed, got %v", err)
+	}
+
+	// Verify pong frame received by hostConn
+	select {
+	case rawPong := <-hostConn.SendQueue():
+		pongEnv, err := protocol.DecodeEnvelope(rawPong)
+		if err != nil {
+			t.Fatalf("failed to decode pong envelope: %v", err)
+		}
+		if pongEnv.Type != protocol.FrameTypePong {
+			t.Fatalf("expected frame type pong, got %s", pongEnv.Type)
+		}
+		if pongEnv.HostID != "" {
+			t.Fatalf("expected pong to have no hostId per protocol, got %q", pongEnv.HostID)
+		}
+		var payload protocol.PongPayload
+		if err := json.Unmarshal(pongEnv.Payload, &payload); err != nil {
+			t.Fatalf("failed to unmarshal pong payload: %v", err)
+		}
+		if payload.Nonce != nonce {
+			t.Fatalf("expected pong nonce %s, got %s", nonce, payload.Nonce)
+		}
+		if payload.ServerTime == "" {
+			t.Fatal("expected non-empty serverTime in pong payload")
+		}
+	default:
+		t.Fatal("expected pong envelope in host send queue")
+	}
+}
+
+func TestRouter_HandleHostPong_Success(t *testing.T) {
+	rtr, reg := setupTestRouter(t)
+	hostID := "host_pong_001"
+	hostConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	hostConn.SetRole(protocol.RoleHost)
+	hostConn.SetHostID(hostID)
+	reg.RegisterHost(hostID, hostConn)
+
+	pongEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePong,
+		ID:      "msg_pong_001",
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"nonce":"n1","serverTime":"2026-09-01T10:00:00.000Z"}`),
+	}
+
+	err := rtr.HandleHostFrame(hostConn, pongEnv)
+	if err != nil {
+		t.Fatalf("expected host pong to succeed without error, got %v", err)
+	}
+}
+
+func TestRouter_HandleHostFrame_Unauthenticated_Rejected(t *testing.T) {
+	rtr, _ := setupTestRouter(t)
+	unauthConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	// conn.Role is "unauthenticated", hostID is ""
+
+	pingEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePing,
+		ID:      "msg_unauth_ping",
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"nonce":"n1"}`),
+	}
+
+	err := rtr.HandleHostFrame(unauthConn, pingEnv)
+	if err == nil {
+		t.Fatal("expected error for unauthenticated host connection")
+	}
+
+	// Verify unauthorized error envelope was sent
+	select {
+	case rawErr := <-unauthConn.SendQueue():
+		errEnv, err := protocol.DecodeEnvelope(rawErr)
+		if err != nil {
+			t.Fatalf("failed to decode error envelope: %v", err)
+		}
+		if errEnv.Type != protocol.FrameTypeError {
+			t.Fatalf("expected error frame, got %s", errEnv.Type)
+		}
+		var errPayload protocol.StructuredError
+		if err := json.Unmarshal(errEnv.Payload, &errPayload); err != nil {
+			t.Fatalf("failed to unmarshal structured error: %v", err)
+		}
+		if errPayload.Code != protocol.ErrCodeUnauthorized {
+			t.Fatalf("expected unauthorized error code, got %s", errPayload.Code)
+		}
+	default:
+		t.Fatal("expected error envelope in send queue")
+	}
+}
+
+func TestRouter_HandleHostFrame_StaleConnectionPing_Discarded(t *testing.T) {
+	rtr, reg := setupTestRouter(t)
+	hostID := "host_stale_ping_01"
+
+	oldConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	oldConn.SetRole(protocol.RoleHost)
+	oldConn.SetHostID(hostID)
+	reg.RegisterHost(hostID, oldConn)
+
+	newConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	newConn.SetRole(protocol.RoleHost)
+	newConn.SetHostID(hostID)
+	reg.RegisterHost(hostID, newConn)
+
+	pingEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePing,
+		ID:      "msg_stale_ping",
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"nonce":"stale_nonce"}`),
+	}
+
+	err := rtr.HandleHostFrame(oldConn, pingEnv)
+	if err != nil {
+		t.Fatalf("expected stale frame to be discarded cleanly without error, got %v", err)
+	}
+
+	// Old connection must NOT have received any pong
+	select {
+	case rawPong := <-oldConn.SendQueue():
+		t.Fatalf("expected no pong on stale connection, got %s", string(rawPong))
+	default:
+		// Clean discard confirmed
+	}
+}
+
+func TestRouter_HandleHostFrame_HostBoundFrames_MissingHostID_Rejected(t *testing.T) {
+	rtr, reg := setupTestRouter(t)
+	hostID := "host_bound_01"
+	hostConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	hostConn.SetRole(protocol.RoleHost)
+	hostConn.SetHostID(hostID)
+	reg.RegisterHost(hostID, hostConn)
+
+	testCases := []struct {
+		name      string
+		frameType string
+		payload   string
+	}{
+		{
+			name:      "rpc.response missing hostId",
+			frameType: protocol.FrameTypeRpcResponse,
+			payload:   `{"requestId":"req_1","ok":true}`,
+		},
+		{
+			name:      "event missing hostId",
+			frameType: protocol.FrameTypeEvent,
+			payload:   `{"name":"message.created","data":{"messageId":"m1"}}`,
+		},
+		{
+			name:      "snapshot missing hostId",
+			frameType: protocol.FrameTypeSnapshot,
+			payload:   `{"host":{"hostId":"host_bound_01","displayName":"Desktop"},"conversations":[],"tasks":[],"workflows":[],"activeRuns":[]}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			seq := int64(1)
+			env := &protocol.Envelope{
+				V:       1,
+				Type:    tc.frameType,
+				ID:      "msg_test",
+				HostID:  "", // missing hostId on host-bound frame
+				SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+				Payload: json.RawMessage(tc.payload),
+			}
+			if tc.frameType == protocol.FrameTypeEvent || tc.frameType == protocol.FrameTypeSnapshot {
+				env.Seq = &seq
+			}
+
+			err := rtr.HandleHostFrame(hostConn, env)
+			if err == nil {
+				t.Fatalf("expected error for %s with missing hostId, got nil", tc.frameType)
+			}
+		})
+	}
+}
+
+func TestRouter_HandleHostFrame_HostBoundFrames_SpoofedHostID_Rejected(t *testing.T) {
+	rtr, reg := setupTestRouter(t)
+	hostID := "host_bound_02"
+	hostConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	hostConn.SetRole(protocol.RoleHost)
+	hostConn.SetHostID(hostID)
+	reg.RegisterHost(hostID, hostConn)
+
+	testCases := []struct {
+		name      string
+		frameType string
+		payload   string
+	}{
+		{
+			name:      "rpc.response spoofed hostId",
+			frameType: protocol.FrameTypeRpcResponse,
+			payload:   `{"requestId":"req_1","ok":true}`,
+		},
+		{
+			name:      "event spoofed hostId",
+			frameType: protocol.FrameTypeEvent,
+			payload:   `{"name":"message.created","data":{"messageId":"m1"}}`,
+		},
+		{
+			name:      "snapshot spoofed hostId",
+			frameType: protocol.FrameTypeSnapshot,
+			payload:   `{"host":{"hostId":"host_spoofed","displayName":"Desktop"},"conversations":[],"tasks":[],"workflows":[],"activeRuns":[]}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			seq := int64(1)
+			env := &protocol.Envelope{
+				V:       1,
+				Type:    tc.frameType,
+				ID:      "msg_test",
+				HostID:  "host_attacker_999", // spoofed hostId
+				SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+				Payload: json.RawMessage(tc.payload),
+			}
+			if tc.frameType == protocol.FrameTypeEvent || tc.frameType == protocol.FrameTypeSnapshot {
+				env.Seq = &seq
+			}
+
+			err := rtr.HandleHostFrame(hostConn, env)
+			if err == nil {
+				t.Fatalf("expected error for %s with spoofed hostId, got nil", tc.frameType)
+			}
+		})
+	}
+}
+
+func TestRouter_HandleHostFrame_PingWithProhibitedHostID_Rejected(t *testing.T) {
+	rtr, reg := setupTestRouter(t)
+	hostID := "host_prohibited_ping"
+	hostConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	hostConn.SetRole(protocol.RoleHost)
+	hostConn.SetHostID(hostID)
+	reg.RegisterHost(hostID, hostConn)
+
+	// Ping with self hostId (prohibited by protocol)
+	pingEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePing,
+		ID:      "msg_ping_with_hostid",
+		HostID:  hostID,
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"nonce":"n1"}`),
+	}
+
+	err := rtr.HandleHostFrame(hostConn, pingEnv)
+	if err == nil {
+		t.Fatal("expected error for ping carrying prohibited hostId, got nil")
+	}
+}
+
+func TestRouter_HandleAdminFrame_Unauthenticated_Rejected(t *testing.T) {
+	rtr, _ := setupTestRouter(t)
+	unauthConn := wsconn.NewWSConn(nil, wsconn.Config{MaxSendQueueSize: 10})
+	// conn.Role is "unauthenticated"
+
+	pingEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePing,
+		ID:      "msg_unauth_admin_ping",
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(`{"nonce":"n1"}`),
+	}
+
+	err := rtr.HandleAdminFrame(unauthConn, pingEnv)
+	if err == nil {
+		t.Fatal("expected error for unauthenticated admin connection")
+	}
+}

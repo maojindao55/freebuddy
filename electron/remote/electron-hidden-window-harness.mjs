@@ -1,5 +1,5 @@
 import readline from "node:readline";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, safeStorage } from "electron";
 
 const required = ["FB_REMOTE_TEST_USER_DATA", "FB_REMOTE_DEV_ENDPOINT", "FB_REMOTE_DEV_HOST_TOKEN", "FB_REMOTE_DEV_HOST_ID"];
 if (required.some(key => !process.env[key])) throw new Error("missing required remote Electron test configuration");
@@ -29,8 +29,16 @@ app.whenReady().then(async () => {
   write({ type: "stage", stage: "window_created" });
   await window.loadURL("data:text/html,<title>FreeBuddy remote M3 test</title>");
   write({ type: "stage", stage: "window_loaded" });
+  write({ type: "stage", stage: "safe_storage_checking" });
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("OS credential encryption is unavailable");
+  write({ type: "stage", stage: "safe_storage_available" });
+  const encryptedSafeStorageProbe = safeStorage.encryptString("freebuddy-m3-safe-storage-probe");
+  write({ type: "stage", stage: "safe_storage_encrypted" });
+  const safeStorageProbe = safeStorage.decryptString(encryptedSafeStorageProbe);
+  if (safeStorageProbe !== "freebuddy-m3-safe-storage-probe") throw new Error("OS credential encryption round trip failed");
+  write({ type: "stage", stage: "safe_storage_ready" });
   write({ type: "stage", stage: "remote_starting" });
-  remote = startReadOnlyRemoteDevelopment();
+  remote = startReadOnlyRemoteDevelopment({ isPackaged: app.isPackaged });
   write({ type: "stage", stage: "remote_started" });
   if (!remote) throw new Error("explicit read-only development entry point did not start");
   write({ type: "ready", visible: window.isVisible() });

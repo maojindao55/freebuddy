@@ -24,10 +24,10 @@ function mapEvent(channel: string, payload: unknown, snapshots: SnapshotService)
 }
 
 /** Explicit opt-in D4 bridge. Call only after the user enables Remote in settings. */
-export function attachReadonlyRemoteHost(input: { relay: RelayClient; hostId: string; status: () => HostStatusSource }): () => void {
+export function attachReadonlyRemoteHost(input: { relay: RelayClient; hostId: string; status: () => HostStatusSource; allowEmptyDatabaseReadOnly?: boolean }): () => void {
   const ring = new EventRingBuffer(input.hostId);
   const snapshots = new SnapshotService(input.status, () => ring.baseSeq());
-  const dispatcher = new AdminDispatcher(input.hostId, snapshots);
+  const dispatcher = new AdminDispatcher(input.hostId, snapshots, Date.now, { allowEmptyDatabaseReadOnly: input.allowEmptyDatabaseReadOnly });
   const original = (input.relay as any).options?.onFrame;
   // RelayClient options are intentionally private; the public attachment below
   // is installed by constructing RelayClient with this callback in main wiring.
@@ -40,10 +40,10 @@ export function attachReadonlyRemoteHost(input: { relay: RelayClient; hostId: st
 }
 
 /** Build this before RelayClient and pass `onFrame` to its constructor. */
-export function createReadonlyRemoteHost(input: { hostId: string; status: () => HostStatusSource }) {
+export function createReadonlyRemoteHost(input: { hostId: string; status: () => HostStatusSource; allowEmptyDatabaseReadOnly?: boolean }) {
   const ring = new EventRingBuffer(input.hostId);
   const snapshots = new SnapshotService(input.status, () => ring.baseSeq());
-  const dispatcher = new AdminDispatcher(input.hostId, snapshots);
+  const dispatcher = new AdminDispatcher(input.hostId, snapshots, Date.now, { allowEmptyDatabaseReadOnly: input.allowEmptyDatabaseReadOnly });
   return {
     onFrame: (frame: RemoteFrame, relay: RelayClient) => handleReadonlyRemoteFrame(frame, relay, dispatcher, ring, snapshots),
     attachEvents: (relay: RelayClient) => {

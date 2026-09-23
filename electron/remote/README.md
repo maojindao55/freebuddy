@@ -46,7 +46,7 @@ The Go Relay already forwards `rpc.request`, `resume`, `snapshot`, and events;
 no Relay or wire-contract changes were made. Headless turns, write methods,
 pairing UI, and terminal controls remain later milestones.
 
-### D4 runner evidence (2026-09-11)
+### D4 runner evidence (2026-09-16)
 
 The required Electron Node-mode runner is the reproducible D4 command:
 
@@ -54,16 +54,14 @@ The required Electron Node-mode runner is the reproducible D4 command:
 npm run build:electron && node scripts/run-electron-node-test.mjs electron/remote/d4.integration.test.mjs
 ```
 
-Its observed exit code is **1** before any D4 subtest starts. The exact
-blocker is `dist-electron/debugLog.js:6`: `import { app } from "electron"`
-fails because `ELECTRON_RUN_AS_NODE=1` exposes Electron's CommonJS facade,
-which has no named `app` export. `debugLog.ts` and the root runner are outside
-the `electron/remote` ownership boundary, so this directory does not mask,
-skip, or replace that execution path. Once the owning component fixes that
-interop boundary, rerun the command above; the D4 test exercises all 13 read
-RPCs through a temporary SQLite domain store and Go Relay, validates every
-response against the protocol v1 schema, checks resume snapshot fallback's
-host-generated `serverTime`, and rejects every protocol-defined write method.
+The command passes: all three D4 subtests succeed, including the temporary
+SQLite domain store and Go Relay integration. The prior Node-mode named
+`electron` `app` export failure no longer reproduces; its fix is outside this
+directory's ownership, and the D4 runner has not been bypassed or replaced.
+The integration test exercises all 13 read RPCs through the actual runner,
+validates every response against the protocol v1 schema, checks resume snapshot
+fallback's host-generated `serverTime`, and rejects every protocol-defined
+write method.
 
 ### M3 real Electron hidden-window acceptance
 
@@ -95,8 +93,26 @@ env -u ELECTRON_RUN_AS_NODE node_modules/electron/dist/Electron.app/Contents/Mac
 The acceptance test performs the same probe before starting its Relay or host
 child. A missing `gui_ready` fails with `real Electron GUI runtime prerequisite
 unavailable`; it is an environment/runtime result, not evidence that the
-Remote Host lifecycle is stuck. M3 remains unmet until this probe and the full
-hidden-window flow both pass.
+Remote Host lifecycle is stuck.
+
+One historical bounded run on 2026-09-16 completed the direct GUI probe,
+module evaluation, `app.whenReady()`, real `BrowserWindow` creation, temporary
+SQLite setup, and full hidden-window read-only flow. Its acceptance assertion
+checks the sequential completion of actual OS-backed `safeStorage`
+availability, encryption, and decryption before remote initialization; it uses
+no fake `safeStorage`.
+
+An earlier system rerun returned `NSOSStatusErrorDomain Code=-128
+(userCanceledErr)` during Keychain lookup. That is evidence of a canceled
+Keychain authorization request, not a proven cause for the earlier 23-second
+stop at `safe_storage_checking`. The most recent bounded system rerun passed
+the full M3 test, including the real safeStorage round-trip and hidden-window
+flow. The test launches Electron's adhoc-signed development bundle
+(`Identifier=Electron`), not a release-signed FreeBuddy application. Electron
+documents that synchronous `safeStorage` calls may block for macOS Keychain
+input and that unsigned builds can trigger inconsistent Keychain recognition;
+retain the checkpointed test and validate the release build separately with a
+consistently signed app.
 
 ## Local Relay POC
 

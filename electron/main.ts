@@ -82,11 +82,27 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const readOnlyRemoteDevelopment = !app.isPackaged && process.env.FB_REMOTE_READONLY_DEV === "1";
+
+function readOnlyRemoteDevelopmentUserDataPath(): string {
+  const repositoryRoot = fs.realpathSync(path.resolve(process.cwd()));
+  if (!fs.existsSync(path.join(repositoryRoot, "package.json"))) {
+    throw new Error("Read-only remote development must start from a repository root");
+  }
+  const userDataPath = path.resolve(repositoryRoot, ".local", "readonly-remote-desktop-user-data");
+  const relativePath = path.relative(repositoryRoot, userDataPath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error("Read-only remote development userData path is outside the repository");
+  }
+  return userDataPath;
+}
 
 if (!app.isPackaged) {
-  app.setName("FreeBuddy Dev");
-  app.setPath("userData", path.join(app.getPath("appData"), "freebuddy-dev"));
-  app.setAppUserModelId("dev.freebuddy.app.dev");
+  app.setName(readOnlyRemoteDevelopment ? "FreeBuddy Read-only Remote Dev" : "FreeBuddy Dev");
+  app.setPath("userData", readOnlyRemoteDevelopment
+    ? readOnlyRemoteDevelopmentUserDataPath()
+    : path.join(app.getPath("appData"), "freebuddy-dev"));
+  app.setAppUserModelId(readOnlyRemoteDevelopment ? "dev.freebuddy.app.readonly-remote" : "dev.freebuddy.app.dev");
 } else {
   app.setName(APP_NAME);
   app.setAppUserModelId("dev.freebuddy.app");
@@ -1657,7 +1673,7 @@ app.whenReady().then(async () => {
   getDb();
   // D4's only startup path is an explicit local-development opt-in. It is
   // independent from the legacy LAN WebUI switch and remains disabled by default.
-  const readOnlyRemoteDevelopment = startReadOnlyRemoteDevelopment();
+  const readOnlyRemoteDevelopment = startReadOnlyRemoteDevelopment({ isPackaged: app.isPackaged });
   logAllCliRuntimes();
   const existingOwner = getOwnerUser();
   if (existingOwner) {

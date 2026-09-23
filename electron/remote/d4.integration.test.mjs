@@ -208,6 +208,37 @@ test("D4 Host rejects writes, unknown methods, and invalid parameters before any
   } finally { database.close(); setDbForTest(null); }
 });
 
+test("D4 empty isolated development database serves reads only with explicit opt-in", async () => {
+  const database = new Database(":memory:"); migrate(database); setDbForTest(database);
+  try {
+    const hostId = "host_empty_dev";
+    const snapshots = new SnapshotService(
+      () => ({ hostId, online: true, appVersion: "test", protocolVersion: 1, remoteEnabled: true, activeRunCount: 0, pendingDecisionCount: 0, activeTerminalCount: 0 }),
+      () => 3
+    );
+    const request = { v: 1, type: "rpc.request", id: "msg_empty_dev", hostId, sentAt: new Date().toISOString(), payload: { method: "conversation.list", params: {} } };
+    const defaultDispatcher = new AdminDispatcher(hostId, snapshots);
+    assert.equal((await defaultDispatcher.dispatch(request)).payload.ok, false);
+
+    const dispatcher = new AdminDispatcher(hostId, snapshots, Date.now, { allowEmptyDatabaseReadOnly: true });
+    const response = await dispatcher.dispatch(request);
+    assert.equal(response.payload.ok, true);
+    assert.deepEqual(response.payload.result.items, []);
+
+    const statusResponse = await dispatcher.dispatch({ ...request, id: "msg_empty_status", payload: { method: "host.status", params: {} } });
+    assert.equal(statusResponse.payload.ok, true);
+    assert.equal(statusResponse.payload.result.hostId, hostId);
+    assert.equal(statusResponse.payload.result.online, true);
+
+    const snapshotResponse = await dispatcher.dispatch({ ...request, id: "msg_empty_snapshot", payload: { method: "sync.snapshot", params: {} } });
+    assert.equal(snapshotResponse.payload.ok, true);
+    assert.equal(snapshotResponse.payload.result.baseSeq, 3);
+
+    createUser({ username: "viewer", password: "password123", isOwner: false });
+    assert.equal((await dispatcher.dispatch({ ...request, id: "msg_nonowner" })).payload.ok, false);
+  } finally { database.close(); setDbForTest(null); }
+});
+
 test("D4 ring buffer evicts by capacity, age, and cleans no subscriptions", () => {
   let now = 0; const ring = new EventRingBuffer("host_ring", 2, 10, () => now);
   ring.publish({ name: "conversation.updated", data: { conversationId: "a" } }); now = 1;

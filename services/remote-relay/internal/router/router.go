@@ -59,10 +59,32 @@ func New(cfg config.Config, reg *registry.Registry, logger *slog.Logger, auditLo
 
 // HandleAdminFrame handles incoming protocol frames from an authenticated Admin connection.
 func (r *Router) HandleAdminFrame(conn *wsconn.WSConn, env *protocol.Envelope) error {
+	if env == nil {
+		return errors.New("nil envelope")
+	}
+
+	if conn == nil || conn.Role() != protocol.RoleAdmin {
+		r.logger.Warn("unauthenticated connection attempted to send admin frame",
+			slog.String("conn_id", func() string {
+				if conn != nil {
+					return conn.ID()
+				}
+				return ""
+			}()),
+		)
+		if conn != nil {
+			errEnv := protocol.NewErrorEnvelope(env.ID, env.HostID, protocol.ErrCodeUnauthorized, "connection is not an authenticated admin", false, nil)
+			_ = conn.SendEnvelope(errEnv)
+		}
+		return errors.New("unauthenticated admin connection")
+	}
+
 	switch env.Type {
 	case protocol.FrameTypePing:
 		var p protocol.PingPayload
-		_ = json.Unmarshal(env.Payload, &p)
+		if len(env.Payload) > 0 {
+			_ = json.Unmarshal(env.Payload, &p)
+		}
 		pong := protocol.NewPongEnvelope(protocol.GenerateConnectionID(), p.Nonce)
 		return conn.SendEnvelope(pong)
 
@@ -237,18 +259,67 @@ func (r *Router) handleAdminResume(conn *wsconn.WSConn, env *protocol.Envelope) 
 
 // HandleHostFrame handles incoming protocol frames from an authenticated Host connection.
 func (r *Router) HandleHostFrame(conn *wsconn.WSConn, env *protocol.Envelope) error {
-	// Invariant: enforce hostId matches connection-bound hostId
-	if env.HostID != conn.HostID() {
+	if env == nil {
+		return errors.New("nil envelope")
+	}
+
+	// 1. Connection authentication invariant: connection must be an authenticated host
+	if conn == nil || conn.Role() != protocol.RoleHost || conn.HostID() == "" {
+		r.logger.Warn("unauthenticated connection attempted to send host frame",
+			slog.String("conn_id", func() string {
+				if conn != nil {
+					return conn.ID()
+				}
+				return ""
+			}()),
+		)
+		if conn != nil {
+			errEnv := protocol.NewErrorEnvelope(env.ID, "", protocol.ErrCodeUnauthorized, "connection is not an authenticated host", false, nil)
+			_ = conn.SendEnvelope(errEnv)
+		}
+		return errors.New("unauthenticated host connection")
+	}
+
+	// 2. Identity anti-spoofing invariant: if envelope specifies a hostId, it MUST match the bound hostId
+	if env.HostID != "" && env.HostID != conn.HostID() {
 		r.logger.Warn("host attempted to send frame with spoofed hostId",
 			slog.String("bound_host_id", conn.HostID()),
 			slog.String("envelope_host_id", env.HostID),
+			slog.String("frame_type", env.Type),
 		)
 		errEnv := protocol.NewErrorEnvelope(env.ID, conn.HostID(), protocol.ErrCodeForbidden, "hostId in envelope does not match authenticated host", false, nil)
 		_ = conn.SendEnvelope(errEnv)
 		return errors.New("hostId in envelope does not match authenticated host")
 	}
 
-	// Invariant: verify connection is the active host in registry.
+	// 3. Schema conformity invariant: ping and pong frames must NOT carry hostId per protocol/remote/v1
+	if (env.Type == protocol.FrameTypePing || env.Type == protocol.FrameTypePong) && env.HostID != "" {
+		r.logger.Warn("host attempted to send ping/pong frame with prohibited hostId",
+			slog.String("bound_host_id", conn.HostID()),
+			slog.String("envelope_host_id", env.HostID),
+			slog.String("frame_type", env.Type),
+		)
+		errEnv := protocol.NewErrorEnvelope(env.ID, conn.HostID(), protocol.ErrCodeInvalidRequest, "hostId is not permitted on ping/pong frame", false, nil)
+		_ = conn.SendEnvelope(errEnv)
+		return errors.New("hostId is not permitted on ping/pong frame")
+	}
+
+	// 4. Host-bound frame invariant: rpc.response, event, and snapshot MUST carry matching hostId
+	switch env.Type {
+	case protocol.FrameTypeRpcResponse, protocol.FrameTypeEvent, protocol.FrameTypeSnapshot:
+		if env.HostID != conn.HostID() {
+			r.logger.Warn("host-bound frame missing or mismatched hostId",
+				slog.String("bound_host_id", conn.HostID()),
+				slog.String("envelope_host_id", env.HostID),
+				slog.String("frame_type", env.Type),
+			)
+			errEnv := protocol.NewErrorEnvelope(env.ID, conn.HostID(), protocol.ErrCodeForbidden, "hostId in envelope does not match authenticated host", false, nil)
+			_ = conn.SendEnvelope(errEnv)
+			return errors.New("hostId in envelope does not match authenticated host")
+		}
+	}
+
+	// 5. Invariant: verify connection is the active host in registry.
 	// Stale/replaced host connection frames must be safely discarded.
 	curHost, online := r.registry.GetHost(conn.HostID())
 	if !online || curHost != conn {
@@ -263,7 +334,9 @@ func (r *Router) HandleHostFrame(conn *wsconn.WSConn, env *protocol.Envelope) er
 	switch env.Type {
 	case protocol.FrameTypePing:
 		var p protocol.PingPayload
-		_ = json.Unmarshal(env.Payload, &p)
+		if len(env.Payload) > 0 {
+			_ = json.Unmarshal(env.Payload, &p)
+		}
 		pong := protocol.NewPongEnvelope(protocol.GenerateConnectionID(), p.Nonce)
 		return conn.SendEnvelope(pong)
 

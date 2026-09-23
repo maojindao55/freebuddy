@@ -1119,6 +1119,72 @@ func TestE2E_ApplicationPingPong(t *testing.T) {
 	}
 }
 
+func TestE2E_HostApplicationPingPong(t *testing.T) {
+	ts, _, _ := setupE2ETLSServer(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	hostWS := connectAndAuthHost(t, ctx, ts, testDevHostID, testDevHostToken)
+	defer hostWS.Close(websocket.StatusNormalClosure, "done")
+
+	// Host sends legal application-level ping frame (no hostId in envelope, matching protocol/remote/v1)
+	nonce := "host_nonce_heartbeat_123"
+	pingEnv := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePing,
+		ID:      protocol.GenerateMessageID(),
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(fmt.Sprintf(`{"nonce":%q}`, nonce)),
+	}
+
+	if err := sendJSONEnvelope(ctx, hostWS, pingEnv); err != nil {
+		t.Fatalf("failed to send host ping: %v", err)
+	}
+
+	pongEnv, err := readJSONEnvelope(ctx, hostWS)
+	if err != nil {
+		t.Fatalf("failed to read pong on host connection: %v", err)
+	}
+	if pongEnv.Type != protocol.FrameTypePong {
+		t.Fatalf("expected pong frame, got %s", pongEnv.Type)
+	}
+	if pongEnv.HostID != "" {
+		t.Fatalf("expected pong to have no hostId per protocol, got %q", pongEnv.HostID)
+	}
+
+	var pongPayload protocol.PongPayload
+	if err := json.Unmarshal(pongEnv.Payload, &pongPayload); err != nil {
+		t.Fatalf("failed to unmarshal pong payload: %v", err)
+	}
+	if pongPayload.Nonce != nonce {
+		t.Fatalf("expected pong nonce %s, got %s", nonce, pongPayload.Nonce)
+	}
+	if pongPayload.ServerTime == "" {
+		t.Fatal("expected serverTime in pong payload")
+	}
+
+	// Host sends legal pong frame back
+	pongBack := &protocol.Envelope{
+		V:       1,
+		Type:    protocol.FrameTypePong,
+		ID:      protocol.GenerateMessageID(),
+		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		Payload: json.RawMessage(fmt.Sprintf(`{"nonce":%q,"serverTime":%q}`, nonce, pongPayload.ServerTime)),
+	}
+	if err := sendJSONEnvelope(ctx, hostWS, pongBack); err != nil {
+		t.Fatalf("failed to send host pong: %v", err)
+	}
+
+	// Connection must remain healthy and not disconnected
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-ctx.Done():
+		t.Fatal("context expired")
+	default:
+		// Healthy
+	}
+}
+
 func TestE2E_ServerDraining_GracefulShutdown(t *testing.T) {
 	ts, srv, _ := setupE2ETLSServer(t, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -135,6 +135,11 @@ func (c *WSConn) Context() context.Context {
 	return c.ctx
 }
 
+// SendQueue returns the receive-only channel of the send queue for testing and monitoring.
+func (c *WSConn) SendQueue() <-chan []byte {
+	return c.sendQueue
+}
+
 // SendEnvelope encodes and enqueues an envelope for sending.
 // If the send queue is full, the slow consumer connection is immediately isolated and closed.
 func (c *WSConn) SendEnvelope(env *protocol.Envelope) error {

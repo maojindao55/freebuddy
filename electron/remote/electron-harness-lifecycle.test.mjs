@@ -53,3 +53,13 @@ test("Electron GUI entries finish module evaluation before registering app readi
     assert.match(source, /write\(\{ type: "stage", stage: "module_loaded" \}\);\s*app\.whenReady\(\)\.then\(async \(\) =>/, entry);
   }
 });
+
+test("hidden-window harness checkpoints each real safeStorage operation", async () => {
+  const source = await readFile(new URL("./electron-hidden-window-harness.mjs", import.meta.url), "utf8");
+  for (const stage of ["safe_storage_checking", "safe_storage_available", "safe_storage_encrypted", "safe_storage_ready"]) {
+    assert.match(source, new RegExp(`stage: "${stage}"`));
+  }
+  assert.match(source, /safeStorage\.isEncryptionAvailable\(\)/);
+  assert.match(source, /safeStorage\.encryptString\(/);
+  assert.match(source, /safeStorage\.decryptString\(/);
+});

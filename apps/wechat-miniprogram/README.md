@@ -144,7 +144,9 @@ npm run build             # sync:protocol + typecheck + emit:check + test
 **`npm run build` 不是小程序产物。** 它保证协议一致性、类型、JS 可输出性与单测；
 真正被打包/预览/上传的 JS 由微信开发者工具的 `typescript` 编译插件生成。
 `emit:check` 是两者之间的桥：它把同一批 `miniprogram/**` 源码 emit 到 `.tmp-js/`，
-断言 `app.js` 注册了 `App(`、四个页面各自注册了 `Page(`，然后**删除**输出。
+断言 `app.js` 注册了 `App(`、四个页面各自注册了 `Page(`，并断言 emit 出的每个相对 `require` 都指向
+**显式文件**（按微信加载器只追加 `.js`、不做目录 `index` 回退的规则严格解析，因此
+`import ... from "./protocol"` 这类目录导入会在这里失败），然后**删除**输出。
 因此 `miniprogramRoot` 内永远不会出现手工构建的陈旧 JS。
 
 首次克隆必须先 `npm run prepare:devtools`（或 `npm install`）：协议绑定
@@ -165,8 +167,9 @@ npm run devtools          # 等价于 cli open --project <本目录>
 
 1. 开发者工具需开启「设置 → 安全设置 → 服务端口」。CLI 会提示 `Enable IDE Service (y/N)`，
    是否开启由操作者决定，本仓库不会代为修改该安全设置。
-2. `preview` / `upload` 需要真实 AppID 与登录；`project.config.json` 当前是
-   `touristappid` 占位，因此本阶段只验证「可导入 + 可编译」，不做预览/上传。
+2. `project.config.json` 的 `appid` 已由协调者填入用户授权的真实小程序 AppID
+   `wx8bef453ebd05bdd5`（AppSecret 只在 Relay，永远不进小程序），因此工程可导入、可编译。
+   `preview` / `upload` 属于 W8 的范围（合法域名、登录、发布加固），本轮不做。
 
 
 ## 协议消费方式
@@ -189,7 +192,11 @@ npm run devtools          # 等价于 cli open --project <本目录>
 
 3. 生成文件被 `.gitignore` 忽略，只能通过脚本重新生成；脚本会拒绝带 import / require 的源文件，
    保证副本自包含，并断言头部恰为四行。
-4. 业务代码只从 `miniprogram/protocol`（`index.ts`）导入。该模块只做两件事：`export *` 转发绑定，
+4. 业务代码只从 `miniprogram/protocol/index.ts` 导入，且**必须写成 `./protocol/index`，不能写成
+   `./protocol`**：微信加载器只给相对路径追加 `.js`，不会像 Node 那样把目录回退到 `index.js`；
+   写成 `./protocol` 会 emit 出 `require("./protocol")`，启动即报
+   `module 'protocol.js' is not defined`。`npm run emit:check` 会拦住这类目录导入。
+   该模块只做两件事：`export *` 转发绑定，
    以及 `assertProtocolBinding()`（版本 + 禁用方法校验，App 启动时调用）。
 5. 升级协议时：协议负责人改 `protocol/remote/v1` 与 `packages/protocol`，小程序只重跑
    `npm run sync:protocol` 并修类型错误，不手工改生成文件。
@@ -279,18 +286,135 @@ Relay 自己的 DEV 操作令牌。为了不让这件事被误当成登录，入
    也可手动「导入项目」打开 `apps/wechat-miniprogram`（即 `project.config.json` 所在目录）。
 2. CLI 需要开发者工具开启「设置 → 安全设置 → 服务端口」；未开启时 CLI 会交互式询问是否开启，
    本仓库不代为修改该设置，会在 README/交付说明中如实记录。
-3. `appid` 当前为 `touristappid` 占位，需替换为真实小程序 AppID 才能 preview/upload；
-   AppSecret 只在 Relay 环境变量中。
+3. `appid` 已是用户授权的真实小程序 AppID `wx8bef453ebd05bdd5`（由协调者写入 `project.config.json`）；
+   AppSecret 只在 Relay 环境变量中，永不进小程序包。
 4. `setting.urlCheck` 保持 `true`，不要依赖「不校验合法域名」。
 5. `project.private.config.json` 属于个人配置，已在 `.gitignore` 中忽略。
 6. TODO（W8）：在微信公众平台配置 request / socket 合法域名，并把 `config/environments.ts` 中
    `dev`、`prod` 的示例主机名替换为已备案域名。
 
 
+## 本机运行与联调现状（2026-09-16 实测）
+
+本节只记录**当场跑过**的事实与仍然阻塞的项；没有跑过的不会写成功。
+
+**Relay（本机可用，已启动）**
+
+```bash
+sh services/remote-relay/scripts/local-dev.sh start    # 后台启动，绑定 127.0.0.1:8080
+sh services/remote-relay/scripts/local-dev.sh status   # PID + /readyz 探针
+sh services/remote-relay/scripts/local-dev.sh smoke    # 真实 WSS/RPC/1000 事件自检
+sh services/remote-relay/scripts/local-dev.sh stop     # SIGTERM 优雅停止（校验 PID 身份后才发信号）
+```
+
+- 进程/文件归属：二进制 `services/remote-relay/.local/relay`，PID 文件 `.local/relay.pid`，
+  日志 `.local/relay.log`，SQLite `.local/relay.db`（均在 git-ignored 的 `.local/`，权限 600/700）。
+- 实测结果：`/healthz` 与 `/readyz` 返回 Relay 自身 JSON（`database: ok`），
+  `smoke` 输出 `relay smoke passed: health=ok ready=ready rpc=1 events=1000`。
+- **8080 端口共存**：本机另一个 nginx 以 `*:8080` 监听，但 Relay 绑定的是更具体的
+  `127.0.0.1:8080`，loobpack 流量由 Relay 接管（实测 `/readyz` 返回 Relay JSON 而不是 nginx 404），
+  因此**不需要**停掉 nginx，也不需要改 `config/environments.ts` 里的 local 端口。
+- `stop` 只按 PID 文件里的 (PID, LSTART, BIN) 身份校验后发 SIGTERM，不会误杀 nginx 等无关进程。
+
+**Desktop（隔离入口已由 Host 补齐；读数据仍被 Desktop 侧缺口挡住）**
+
+Host 已新增 `npm run dev:readonly-remote`（`scripts/dev-readonly-remote-electron.mjs`）作为**产品形态**的
+只读远程主机入口，不再需要手工拼环境变量。它从 `services/remote-relay/.local/dev.env` 读取
+`DEV_AUTH_HOST_ID` / `DEV_AUTH_HOST_TOKEN` 与 `LISTEN_ADDR`（令牌只进子进程 env，不打印），
+校验 Relay PID 身份后启动 Electron，并把 `userData` 隔离到
+`.local/readonly-remote-desktop-user-data`（`electron/main.ts` 只在 `FB_REMOTE_READONLY_DEV=1` 且非打包时启用），
+因此不会与另一工作副本（`/Users/hongbin9/www/freebuddy-main`）共用户数据或单实例锁，也不需要占用 5173。
+
+2026-09-16 21:00–21:12 实测（本机）：
+
+- 该入口启动成功（Electron PID 1647，`build/electron-dev/FreeBuddy.app` + `dist-electron/main.js`），
+  Relay 审计日志出现 `host_connect` / `auth_success`（`host_dev`）。
+- **Relay 的 ping-误判-spoofing 修复在真实进程上得到验证**：Relay 重启（PID 93608，20:55:27）之后
+  `host attempted to send frame with spoofed hostId` 计数为 **0**，主机连续在线 11 分钟以上无重连。
+  修复前同一主机每 **30.0 秒**被判 spoofing 断连一次（`duration≈30007xxxxx ns`），这正是心跳周期。
+- 隔离 DB（`.local/readonly-remote-desktop-user-data/freebuddy/freebuddy.db`）确为空工作区：
+  `conversations`/`conversation_messages`/`projects`/`cli_tasks`/`workflow_runs`/`delegation_events` 均为 0 行
+  （只有内置 `skills` 6 行），符合「不含用户另一副本会话」。
+
+**仍然阻塞（Desktop 侧，已回报 Host，小程序不越权修改）**
+
+小程序用生产 `createAppSession` 连上后，所有读 RPC 都被 Desktop 拒绝：
+
+```text
+host.status → internal_error: "Local owner administrator is unavailable"
+conversation.list → rpc_error（页面显示「主机内部错误」）
+resume 基线 sync.snapshot 未 materialize
+```
+
+根因：`electron/remote/adminDispatcher.ts:22` 在每次请求前调用 `getOwnerUser()`
+（`electron/cli/users.ts:85`，`SELECT ... FROM remote_users WHERE is_owner = 1`），
+而隔离 DB 的 `remote_users` 为 0 行且 `app_settings['remote.password']` 不存在，
+因此 `bootstrapOwnerFromLegacyPassword()` 也不会创建 owner → 请求在到达 `SnapshotService` 之前就被拒。
+即：**传输层通了，数据层因为「本地 owner 管理员不存在」整体不可用**。
+需要 Desktop 负责人在隔离只读实例下提供/引导 owner（或让 dispatcher 对空 DB 有明确降级），
+这属于 `electron/remote/` 范围。
+
+**小程序**
+
+- `npm run prepare:devtools`：实测通过（协议绑定生成 + 页面文件齐全 + typecheck，
+  4 个页面 `pages/index|home|conversations|chat`）。
+- 生产 `createAppSession` 对真实 Relay 实测（2026-09-16 21:09–21:11，探针在 `/tmp`，不落仓库）：
+  `setHostId`/`setToken`/`connect` 均受理，状态 `online`、`violations=0`、
+  limits `maxFrameBytes=262144`；**持续 75 030 ms（≥2 个 30 s 心跳周期，15 次采样）状态恒为 `online`**，
+  `heartbeatMissed` 最大 0，无重连；报告序列化后不含令牌原文（`containedToken=false`）。
+  也就是说 transport / 心跳 / 关联 / 准入在这条链路上是好的，**失败点不在小程序**。
+- 由于上面的 Desktop owner 缺口，本次 snapshot 未 materialize，因此页面呈现的是
+  「连接在线 + 无主机卡 / 无会话」，属于**诚实的空/错误态**，没有伪造任何历史数据。
+- （2026-09-16 当天）开发者工具 GUI 未能完成导入：当时开发者工具数据目录内检索不到
+  `freebuddy` 或本工程路径。两条独立阻塞（均为操作者环境，本仓库不代为更改）：
+  1. **屏幕处于锁定状态**（`ioreg` 实测 `CGSSessionScreenIsLocked=True`、`IOConsoleLocked=True`，
+     锁定于 20:51:42），`screencapture` 只能得到全黑图，因此无法进行任何 GUI 点击；
+  2. **工具「服务端口」处于关闭**：`cli open --project` 输出
+     `IDE service port disabled ... ? Enable IDE Service (y/N)` 并等待输入。
+     该开关属工具安全设置，本仓库不代为开启（`npm run devtools` 仍会如实失败）。
+- （2026-09-16 当天）未跑：开发者工具内的导入/编译/页面操作。另注：本机 `osascript` 的
+  `UI elements enabled = false`（无辅助功能授权），但 `screencapture` 本身可用——**当时 GUI 受阻的
+  直接原因是屏幕锁定与服务端口关闭，不是「所有 UI 工具都不可用」**。
+
+### 2026-09-23：真实开发者工具已导入，暴露并修复一个模块解析缺陷
+
+两条 09-16 阻塞均已解除：服务端口已开启，`project.config.json` 的 `appid` 已由协调者填入用户授权的
+真实 AppID `wx8bef453ebd05bdd5`。`npm run prepare:devtools` 实测通过（协议绑定生成 + 4 个页面文件齐全 +
+typecheck），`npm run devtools`（`cli open --project`）返回成功，开发者工具里出现真实工程窗口
+`freebuddy-remote-admin`。
+
+该窗口的控制台报出**真实运行期失败**——这正是 Node 端 `npm test` / `emit:check` 过去没能发现的部分：
+
+```text
+module 'protocol.js' is not defined, require args is './protocol'
+app.js 加载失败
+Page pages/index/index has not been registered yet
+```
+
+**根因：** `miniprogram/app.ts` 原本写 `import ... from "./protocol"`（`protocol` 是含 `index.ts` 的
+目录）。tsc 按 `moduleResolution: node` 把它 emit 成 `require("./protocol")`；Node 会把该目录解析到
+`protocol/index.js`，**但微信加载器只追加 `.js`、不做目录→`index.js` 回退**，于是只找 `protocol.js`
+并失败，`app.js` 停止执行、所有页面都未注册。这是小程序自身的缺陷：README 之前把「Node 侧测试通过」
+当成了「开发者工具可编译」，属于过度断言。
+
+**修复（只改 `apps/wechat-miniprogram/`，协议 binding 未动）：**
+
+1. `miniprogram/app.ts`：`"./protocol"` → `"./protocol/index"`。这是生产目录导入的最小修根因；
+   全量扫描确认这是生产代码里**唯一**一处目录导入，其余相对 require 都指向显式文件。
+2. `scripts/check-ts-emit.mjs`：新增构建回归——用 TypeScript parser 读取 emit 出的每个 `.js`，
+   对所有相对 `require` / import specifier 按「`<dir>/<spec>.js` 必须存在」**严格解析（不使用 Node
+   的隐式 index 解析）**，出现目录导入即失败并给出 `./protocol/index` 式提示。
+   回归验证：把 `app.ts` 改回 `./protocol` 时 `emit:check` 退出码 1 并精确指向
+   `app.js requires "./protocol" but protocol.js does not exist`；改回 `./protocol/index` 后通过
+   （回归经 AST 分析，不受注释/字符串里出现的 `require(...)` 文本干扰）。
+
+**仍未做的诚实边界：** 本轮没有点过开发者工具 GUI、没有 preview/upload、没有真机验证，也未改真实
+认证 / TLS / 合法域名设置。上面的证据仅是 Node/脚本侧的 typecheck / emit / 单测结论；
+**真实 GUI 复验由协调者随后进行——不能把 Node 通过当成 GUI 通过**。
+
 ## 测试
 
-`npm test` 当前为 **314 个测试 / 60 个 suite**（W1–W3 原有的 231 个全部保留，新增 83 个覆盖
-只读页面、App 单例接线、DEV 入口闸门与静态边界）。覆盖内容：
+`npm test` 当前为 **317 个测试 / 61 个 suite**。覆盖内容：
 
 - 协议帧：21 个 valid fixture 全部解析通过；12 个 invalid fixture 按 `schema` / `parse` /
   `runtime` 分类断言（10 个被 `parseRemoteFrame` 拒绝、1 个由主机在运行时拒绝、
@@ -384,3 +508,10 @@ pending 立即以 `unknownOutcome` 清理、注销后凭证不可复用、临时
 缺口不落缓存并触发新的 `sync.snapshot`、主机 `snapshot` 帧（序号回退）以快照为准重置游标、
 断线重连后发出携带 `lastSeq` 的 `resume` 且不再取初始快照、消息实体入缓存且诊断与 Relay
 日志都不含令牌。
+
+`tests/remote-desktop.integration.test.ts` 是**三端只读验收**：小程序生产 `createAppSession`
+→ 真实 Go Relay → 临时 Electron Node 进程里的真实 `ReadOnlyRemoteService`（读真实文件型
+SQLite），并断言操作员看到的 home/conversations/chat 数据就是 Desktop 数据库里的数据、
+分页由 Desktop 的 `AdminDispatcher` 提供、实时事件与 resume/snapshot 回退走完整条链路。
+它需要 `dist-electron/`、本地 `electron` 包和 `go`，缺任一项时整组 skip（不会静默降低断言）。
+**它不是开发者工具或真机 GUI 验收**：`wx.login`/`code2Session` 管理员会话与已备案域名仍属未验证项。

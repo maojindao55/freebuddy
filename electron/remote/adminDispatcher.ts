@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { getOwnerUser } from "../cli/users.js";
+import { getOwnerUser, listUsers } from "../cli/users.js";
 import { runAsCaller } from "../cli/callerContext.js";
 import { REMOTE_PROTOCOL_VERSION, READ_REMOTE_METHODS, isRemoteMethod, type RemoteFrame, type RpcRequestFrame, type RpcResponseFrame, type RemoteMethod, type RemoteMethodResultMap } from "@freebuddy/protocol/remote";
 import { SnapshotService } from "./snapshotService.js";
@@ -13,18 +13,30 @@ const id = (value: unknown): value is string => typeof value === "string" && /^[
 
 /** D4 has no write descriptors. The protocol's terminal.snapshot is deliberately rejected as write. */
 export class AdminDispatcher {
-  constructor(private readonly hostId: string, private readonly snapshots: SnapshotService, private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly hostId: string,
+    private readonly snapshots: SnapshotService,
+    private readonly now: () => number = Date.now,
+    private readonly options: { allowEmptyDatabaseReadOnly?: boolean } = {}
+  ) {}
   async dispatch(frame: RemoteFrame): Promise<RpcResponseFrame | undefined> {
     if (frame.type !== "rpc.request") return undefined;
     const request = frame as RpcRequestFrame;
     if (request.hostId !== this.hostId || !isRemoteMethod(request.payload.method) || !allowed.has(request.payload.method)) return this.fail(request, "method_not_allowed", "This host permits read methods only");
     if (!this.validParams(request.payload.method, request.payload.params)) return this.fail(request, "invalid_request", "Parameters do not match protocol/remote/v1");
     const owner = getOwnerUser();
-    if (!owner || owner.disabled || !owner.isOwner) return this.fail(request, "internal_error", "Local owner administrator is unavailable");
+    const hasEnabledOwner = !!owner && !owner.disabled && owner.isOwner;
+    if (!hasEnabledOwner && !this.canReadEmptyDevelopmentDatabase()) {
+      return this.fail(request, "internal_error", "Local owner administrator is unavailable");
+    }
     try {
-      const result = await runAsCaller(owner.id, () => this.invoke(request.payload.method, request.payload.params as Record<string, unknown>), true);
+      const invoke = () => this.invoke(request.payload.method, request.payload.params as Record<string, unknown>);
+      const result = hasEnabledOwner ? await runAsCaller(owner!.id, invoke, true) : await invoke();
       return this.ok(request, result);
     } catch (error) { return this.fail(request, error instanceof NotFound ? "not_found" : "internal_error", error instanceof NotFound ? "Resource was not found" : "Read request failed"); }
+  }
+  private canReadEmptyDevelopmentDatabase(): boolean {
+    return this.options.allowEmptyDatabaseReadOnly === true && listUsers().length === 0;
   }
   private validParams(method: RemoteMethod, params: unknown): boolean {
     if (!object(params)) return false;

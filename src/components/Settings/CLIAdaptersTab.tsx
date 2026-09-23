@@ -48,6 +48,31 @@ const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/code
 const BYOK_CONTEXT_WINDOW_MIN = 100000;
 const BYOK_CONTEXT_WINDOW_MAX = 1000000;
 
+type AdapterStatusKind =
+  | "disabled"
+  | "checking"
+  | "available"
+  | "unavailable"
+  | "unchecked";
+
+const ADAPTER_STATUS_LABEL_KEY: Record<AdapterStatusKind, string> = {
+  disabled: "settings.cli.disabled",
+  checking: "settings.cli.checking",
+  available: "settings.cli.installed",
+  unavailable: "settings.cli.notInstalled",
+  unchecked: "settings.cli.notChecked"
+};
+
+function adapterStatusKind(
+  ex: ResolvedExecutor,
+  checking: boolean
+): AdapterStatusKind {
+  if (!ex.enabled) return "disabled";
+  if (checking) return "checking";
+  if (ex.runtime?.installed) return "available";
+  return ex.runtime ? "unavailable" : "unchecked";
+}
+
 interface ByokModelDraft {
   id: string;
   name?: string;
@@ -534,6 +559,45 @@ export function CLIAdaptersTab() {
     }
   }, [installingIdSet, list, loaded, startInstall]);
 
+  const editorDirtyRef = useRef(false);
+  const selectAgent = (id: string | null) => {
+    if (id === editingId) return;
+    if (editorDirtyRef.current && !window.confirm(t("settings.cli.unsavedConfirm"))) {
+      return;
+    }
+    editorDirtyRef.current = false;
+    setEditingId(id);
+  };
+
+  const categoryTabs = (
+    <div className="adapter-filter-tabs" role="tablist">
+      {(["builtin", "custom", "official"] as AgentCategory[]).map((c) => (
+        <button
+          key={c}
+          type="button"
+          role="tab"
+          aria-selected={category === c}
+          className={category === c ? "active" : undefined}
+          onClick={() => setCategory(c)}
+          disabled={c !== "official" && !loaded}
+        >
+          {t(`settings.cli.category.${c}`)}{" "}
+          <span>{categoryCounts[c]}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const searchInput = (
+    <input
+      type="search"
+      className="adapter-search"
+      placeholder={t("settings.cli.searchAgents")}
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+    />
+  );
+
   const renderRow = (ex: ResolvedExecutor) => (
     <AdapterRow
       key={ex.id}
@@ -542,7 +606,7 @@ export function CLIAdaptersTab() {
       selected={false}
       onCheck={() => void handleCheck(ex.id)}
       onClone={() => void handleClone(ex)}
-      onEdit={() => setEditingId(ex.id)}
+      onEdit={() => selectAgent(ex.id)}
       onToggleEnabled={(enabled) => void handleToggleEnabled(ex, enabled)}
       onAskGuideInstall={
         ex.id !== "pi-acp" && ex.installHint && !ex.runtime?.installed
@@ -582,34 +646,82 @@ export function CLIAdaptersTab() {
     );
   }
 
-  if (editingId && selectedOfficialMember) {
-    return (
-      <div className="settings-tab">
-        <div className="adapter-edit-workspace">
-          <OfficialPersonaPanel
-            key={selectedOfficialMember.id}
-            memberId={selectedOfficialMember.id}
-            runtimeOptions={runtimeOptions}
-            onChangeRuntime={(runtimeKey) =>
-              void setMemberRuntimeOverride(selectedOfficialMember.id, runtimeKey)
-            }
-            onBackToList={() => setEditingId(null)}
-          />
-        </div>
-      </div>
-    );
-  }
+  const detailPanel =
+    editingId && selectedOfficialMember ? (
+      <OfficialPersonaPanel
+        key={selectedOfficialMember.id}
+        memberId={selectedOfficialMember.id}
+        runtimeOptions={runtimeOptions}
+        onChangeRuntime={(runtimeKey) =>
+          void setMemberRuntimeOverride(selectedOfficialMember.id, runtimeKey)
+        }
+        onBackToList={() => selectAgent(null)}
+      />
+    ) : editingId && selectedExecutor ? (
+      <EditOverridePanel
+        key={selectedExecutor.id}
+        executorId={selectedExecutor.id}
+        dirtyRef={editorDirtyRef}
+        onBackToList={() => selectAgent(null)}
+        onResetSelection={() => {
+          editorDirtyRef.current = false;
+          setEditingId(null);
+        }}
+      />
+    ) : null;
 
-  if (editingId && selectedExecutor) {
+  if (detailPanel) {
+    const masterEmpty =
+      category === "official"
+        ? filteredOfficialMembers.length === 0
+        : !loaded || filteredList.length === 0;
     return (
       <div className="settings-tab">
-        <div className="adapter-edit-workspace">
-          <EditOverridePanel
-            key={selectedExecutor.id}
-            executorId={selectedExecutor.id}
-            onBackToList={() => setEditingId(null)}
-            onResetSelection={() => setEditingId(null)}
-          />
+        <div className="adapter-master-detail">
+          <aside
+            className="adapter-master-list"
+            aria-label={t("settings.cli.title")}
+          >
+            {categoryTabs}
+            {searchInput}
+            <div className="adapter-master-items">
+              {masterEmpty ? (
+                <p className="muted adapter-empty">
+                  {loaded ? t("settings.cli.noResults") : t("settings.cli.loading")}
+                </p>
+              ) : category === "official" ? (
+                filteredOfficialMembers.map((member) => (
+                  <AdapterListItem
+                    key={member.id}
+                    adapter={member.cli.adapter}
+                    agentId={member.id}
+                    label={member.name}
+                    statusKind="available"
+                    statusLabel={t("settings.cli.category.official")}
+                    selected={member.id === editingId}
+                    onSelect={() => selectAgent(member.id)}
+                  />
+                ))
+              ) : (
+                filteredList.map((ex) => {
+                  const kind = adapterStatusKind(ex, checkingIds.has(ex.id));
+                  return (
+                    <AdapterListItem
+                      key={ex.id}
+                      adapter={ex.baseAdapter ?? ex.id}
+                      agentId={`cli-${ex.id}`}
+                      label={ex.label}
+                      statusKind={kind}
+                      statusLabel={t(ADAPTER_STATUS_LABEL_KEY[kind])}
+                      selected={ex.id === editingId}
+                      onSelect={() => selectAgent(ex.id)}
+                    />
+                  );
+                })
+              )}
+            </div>
+          </aside>
+          <div className="adapter-edit-workspace">{detailPanel}</div>
         </div>
       </div>
     );
@@ -625,29 +737,8 @@ export function CLIAdaptersTab() {
       </div>
 
       <div className="adapter-list-toolbar">
-        <div className="adapter-filter-tabs" role="tablist">
-          {(["builtin", "custom", "official"] as AgentCategory[]).map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="tab"
-              aria-selected={category === c}
-              className={category === c ? "active" : undefined}
-              onClick={() => setCategory(c)}
-              disabled={c !== "official" && !loaded}
-            >
-              {t(`settings.cli.category.${c}`)}{" "}
-              <span>{categoryCounts[c]}</span>
-            </button>
-          ))}
-        </div>
-        <input
-          type="search"
-          className="adapter-search"
-          placeholder={t("settings.cli.searchAgents")}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        {categoryTabs}
+        {searchInput}
         {availabilitySummary ? (
           <span className="adapter-availability-summary muted">
             {t("settings.cli.summary", availabilitySummary)}
@@ -747,7 +838,7 @@ export function CLIAdaptersTab() {
                   <OfficialRow
                     key={member.id}
                     member={member}
-                    onEdit={() => setEditingId(member.id)}
+                    onEdit={() => selectAgent(member.id)}
                   />
                 ))
               )
@@ -762,6 +853,49 @@ export function CLIAdaptersTab() {
         </div>
       </div>
     </div>
+  );
+}
+
+function AdapterListItem({
+  adapter,
+  agentId,
+  label,
+  statusKind,
+  statusLabel,
+  selected,
+  onSelect
+}: {
+  adapter: string;
+  agentId: string;
+  label: string;
+  statusKind: AdapterStatusKind;
+  statusLabel: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`adapter-master-item${selected ? " selected" : ""}${
+        statusKind === "disabled" ? " disabled" : ""
+      }`}
+      aria-current={selected ? "true" : undefined}
+      title={`${label} · ${statusLabel}`}
+      onClick={onSelect}
+    >
+      <AgentAvatar
+        adapter={adapter}
+        agentId={agentId}
+        className="adapter-master-avatar"
+        fallback={<span>{label.slice(0, 2).toUpperCase()}</span>}
+      />
+      <span className="adapter-master-item-label">{label}</span>
+      <span
+        className={`adapter-master-dot ${statusKind}`}
+        role="img"
+        aria-label={statusLabel}
+      />
+    </button>
   );
 }
 
@@ -974,15 +1108,7 @@ function AdapterRow({
   const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
   const parsedExtraArgs = extractModelArg(ex.extraArgs);
   const model = parsedExtraArgs.model;
-  const statusKind = !ex.enabled
-    ? "disabled"
-    : checking
-      ? "checking"
-      : rt?.installed
-        ? "available"
-        : rt
-          ? "unavailable"
-          : "unchecked";
+  const statusKind = adapterStatusKind(ex, checking);
   const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
   const menuItems: AdapterRowMenuItem[] = [
     {
@@ -1068,15 +1194,7 @@ function AdapterRow({
         <div className="adapter-row-title">
           <strong>{ex.label}</strong>
           <span className={`adapter-availability ${statusKind}`}>
-            {!ex.enabled
-              ? t("settings.cli.disabled")
-              : checking
-                ? t("settings.cli.checking")
-                : rt?.installed
-                  ? t("settings.cli.installed")
-                  : rt
-                    ? t("settings.cli.notInstalled")
-                    : t("settings.cli.notChecked")}
+            {t(ADAPTER_STATUS_LABEL_KEY[statusKind])}
           </span>
         </div>
         <div className="adapter-row-meta">
@@ -1283,10 +1401,12 @@ function RuntimeAutoUpdateStatus({
 
 function EditOverridePanel({
   executorId,
+  dirtyRef,
   onBackToList,
   onResetSelection
 }: {
   executorId: string;
+  dirtyRef?: { current: boolean };
   onBackToList: () => void;
   onResetSelection: () => void;
 }) {
@@ -1646,6 +1766,7 @@ function EditOverridePanel({
   }
   const dirty = JSON.stringify(buildOverride()) !== baselineRef.current;
   latestDirtyRef.current = dirty;
+  if (dirtyRef) dirtyRef.current = dirty;
 
   const onSave = async () => {
     if (saveStatus === "saving" || !dirty) return;
@@ -1695,12 +1816,7 @@ function EditOverridePanel({
           <button
             type="button"
             className="adapter-editor-back"
-            onClick={() => {
-              if (dirty && !window.confirm(t("settings.cli.unsavedConfirm"))) {
-                return;
-              }
-              onBackToList();
-            }}
+            onClick={onBackToList}
           >
             <ChevronLeft
               size={15}

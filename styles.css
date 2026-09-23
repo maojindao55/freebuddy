@@ -6274,32 +6274,6 @@ html[data-surface="butler-screen-ball"] #root {
 .workflow-team-role-skills { display: flex; align-items: center; gap: 8px; }
 .workflow-team-role-skills > span { color: var(--fb-text-secondary); font-size: 11px; }
 
-.adapter-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.adapter-settings-workspace {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 14px;
-  border-radius: 18px;
-  background: var(--fb-panel-soft);
-}
-
-.adapter-list-panel {
-  flex: 1;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding-right: 0;
-  overscroll-behavior: contain;
-}
-
 .adapter-master-detail {
   display: grid;
   flex: 1;
@@ -6375,6 +6349,14 @@ html[data-surface="butler-screen-ball"] #root {
 .adapter-master-item:hover {
   background: var(--fb-hover);
   color: var(--fb-text-primary);
+}
+
+/* Beats `.settings-surface label`, which stacks labels vertically. */
+label.adapter-master-item {
+  flex-direction: row;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .adapter-master-item.selected {
@@ -6593,15 +6575,6 @@ html[data-surface="butler-screen-ball"] #root {
   color: var(--fb-text-secondary);
 }
 
-.adapter-editor-status-detail {
-  max-width: 280px;
-  overflow: hidden;
-  color: var(--fb-text-tertiary);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .adapter-editor-upgrade {
   flex: 0 0 auto;
   padding: 3px 10px;
@@ -6623,6 +6596,82 @@ html[data-surface="butler-screen-ball"] #root {
 .adapter-editor-upgrade:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.adapter-editor-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
+.adapter-editor-meta code {
+  color: var(--fb-text-secondary);
+  font-family: var(--fb-mono);
+  font-size: 11px;
+}
+
+.adapter-editor-install {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fb-brand-gradient);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.adapter-editor-install:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.adapter-editor-install:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The docked list replaces "back" on wide layouts; see the 920px query. */
+.adapter-editor-back {
+  display: none;
+}
+
+.adapter-editor-heading {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.adapter-detail-empty {
+  margin: auto;
+}
+
+@media (max-width: 920px) {
+  .adapter-master-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adapter-master-detail--selected .adapter-master-list,
+  .adapter-master-detail:not(.adapter-master-detail--selected) .adapter-edit-workspace {
+    display: none;
+  }
+
+  .adapter-editor-header {
+    flex-wrap: wrap;
+  }
+
+  .adapter-editor-back {
+    display: inline-flex;
+  }
+
+  .adapter-editor-heading {
+    padding-left: 12px;
+    border-left: 1px solid var(--fb-border-strong);
+  }
 }
 
 /* ── Editor sections (grouped card) ── */
@@ -6784,13 +6833,6 @@ html[data-surface="butler-screen-ball"] #root {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.adapter-list-toolbar {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
 .adapter-search {
   width: 200px;
   max-width: 40%;
@@ -6862,200 +6904,13 @@ html[data-surface="butler-screen-ball"] #root {
   padding: 16px 4px;
 }
 
-.adapter-row-actions button.primary {
-  border: none;
-  background: var(--fb-brand-gradient);
-  color: #fff;
-}
-
-.adapter-row-actions button.primary:hover:not(:disabled) {
-  opacity: 0.9;
-  border-color: transparent;
-  color: #fff;
-  background: var(--fb-brand-gradient);
-}
-
-.adapter-row {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  min-height: 72px;
-  padding: 12px 16px;
-  border: 1px solid transparent;
-  border-radius: var(--fb-rounded-lg);
-  background: var(--fb-panel-bg);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.adapter-row:hover {
-  border-color: var(--fb-border-strong);
-  box-shadow: var(--fb-shadow-sm);
-}
-
-.adapter-row.selected {
-  border-color: var(--fb-brand);
-  background: var(--fb-panel-bg);
-  box-shadow: 0 0 0 3px var(--fb-brand-glow);
-}
-
-.adapter-row-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.adapter-row-title strong {
-  font-size: 14px;
-  font-weight: 650;
-  color: var(--fb-text-primary);
-}
-
-.adapter-row-title code {
-  font-size: 11px;
-  font-family: var(--fb-mono);
-  color: var(--fb-text-tertiary);
-  background: var(--fb-panel-bg);
-  padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--fb-border);
-}
-
-.adapter-row-meta {
-  font-size: 12px;
-  margin-top: 5px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--fb-text-tertiary);
-}
-
-.adapter-row-meta .ok {
-  color: var(--fb-brand);
-  font-weight: 500;
-}
-
-.adapter-row-meta .warn {
-  color: var(--fb-warning);
-  font-weight: 500;
-}
-
-.adapter-row-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: 0;
-}
-
-.adapter-row-actions button {
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--fb-border-strong);
-  border-radius: var(--fb-rounded-sm);
-  background: var(--fb-panel-bg);
-  color: var(--fb-text-secondary);
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 600;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.adapter-row-actions button:hover {
-  border-color: var(--fb-brand);
-  color: var(--fb-brand);
-  background: var(--fb-brand-glow);
-}
-
-.adapter-row-actions button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.adapter-row-main {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  box-shadow: none;
-}
-
-.adapter-row-main:hover {
-  background: transparent;
-  box-shadow: none;
-}
-
-.adapter-avatar {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 10px;
-  background: var(--fb-brand-gradient);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.adapter-action-avatar {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 2px solid var(--fb-panel-bg);
-  border-radius: 999px;
-  background: var(--fb-panel-soft);
-  box-shadow: var(--fb-shadow-sm);
-  color: var(--fb-text-primary);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.adapter-availability {
-  display: inline-flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 2px 8px;
-  border-radius: var(--fb-rounded-sm);
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1;
-}
-
-.adapter-availability.available {
-  background: var(--fb-brand-glow);
-  color: var(--fb-brand);
-}
-
-.adapter-availability.unavailable {
-  background: rgba(244, 63, 94, 0.08);
-  color: var(--fb-danger);
-}
-
-.adapter-availability.unchecked,
-.adapter-availability.checking {
-  background: var(--fb-hover);
-  color: var(--fb-text-secondary);
-}
-
-.adapter-availability.disabled {
-  background: var(--fb-hover);
-  color: var(--fb-text-tertiary);
-}
-
-.adapter-row--disabled .adapter-avatar,
-.adapter-row--disabled .adapter-row-main {
-  opacity: 0.55;
-}
-
 .adapter-availability-summary {
-  align-self: center;
-  font-size: 12px;
+  margin: -2px 0 -4px;
+  padding: 0 10px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  opacity: 0.8;
   white-space: nowrap;
 }
 
@@ -7238,39 +7093,6 @@ html[data-surface="butler-screen-ball"] #root {
 
   .settings-nav-sidebar .settings-nav-item {
     flex: 0 0 auto;
-  }
-
-  .adapter-list-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .adapter-search {
-    width: 100%;
-    max-width: none;
-    margin-left: 0;
-  }
-
-  .adapter-row {
-    grid-template-columns: 44px minmax(0, 1fr);
-    padding: 16px;
-  }
-
-  .adapter-row-actions {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-  }
-
-  .adapter-master-detail {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .adapter-master-list {
-    display: none;
-  }
-
-  .adapter-action-avatar {
-    display: none;
   }
 
 }
@@ -16528,7 +16350,6 @@ button.ghost:disabled {
 .icon-btn:focus-visible,
 button.ghost:focus-visible,
   .starter-prompts button:focus-visible,
-  .adapter-row-actions button:focus-visible,
 .scene-pill:focus-visible {
   outline: 2px solid var(--fb-brand);
   outline-offset: 2px;
@@ -27681,18 +27502,32 @@ button.ghost:focus-visible,
    read as distinct from the green native-install buttons beside them. */
 .adapter-guide-install-banner {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 10px;
-  padding: 10px 12px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid color-mix(in srgb, var(--fb-workflow) 25%, var(--fb-border-strong));
   border-radius: 10px;
-  background: color-mix(in srgb, var(--fb-workflow) 8%, var(--fb-panel-soft));
+  background: color-mix(in srgb, var(--fb-workflow) 8%, var(--fb-panel-bg));
+}
+.adapter-guide-install-banner-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.adapter-guide-install-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.adapter-guide-install-banner-actions label.adapter-guide-install-select-all {
+  margin-right: auto;
 }
 .adapter-guide-install-banner-icon {
   color: var(--fb-workflow);
   flex: 0 0 auto;
+  margin-top: 2px;
 }
 label.adapter-guide-install-select-all {
   display: inline-flex;
@@ -27708,8 +27543,13 @@ label.adapter-guide-install-select-all {
 .adapter-guide-install-banner-text {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--fb-text-secondary);
+}
+.adapter-master-item.adapter-master-item--guide-selected {
+  border-color: color-mix(in srgb, var(--fb-brand) 38%, var(--fb-border));
+  background: color-mix(in srgb, var(--fb-brand) 6%, var(--fb-panel-bg));
 }
 .adapter-guide-install-banner .step-btn {
   flex: 0 0 auto;
@@ -27758,24 +27598,4 @@ input.guide-install-checkbox:focus {
 input.guide-install-checkbox:focus-visible {
   outline: 2px solid var(--fb-brand);
   outline-offset: 2px;
-}
-/* Row-level selection for the GuideBuddy batch install: candidate rows gain
-   a leading grid column for the checkbox. */
-.adapter-row--guide-choice {
-  grid-template-columns: 18px 44px minmax(0, 1fr) auto;
-}
-label.adapter-row-guide-choice {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 36px;
-  margin: -9px -7px;
-  cursor: pointer;
-}
-.adapter-row.adapter-row--guide-selected {
-  border-color: color-mix(in srgb, var(--fb-brand) 38%, var(--fb-border));
-}
-.adapter-row.adapter-row--guide-selected:hover {
-  border-color: color-mix(in srgb, var(--fb-brand) 55%, var(--fb-border));
 }

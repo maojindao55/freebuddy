@@ -42,7 +42,6 @@ import { useOnboardingStore } from "@/store/onboardingStore";
 import { useProviderStore } from "@/store/providerStore";
 import { ProviderSelect } from "./ProviderSelect";
 import { cliAdapterDefinitions, type CLIAdapterDefinition } from "@/config/cliAdapters";
-import type { CLIMember } from "@/config/aiMembers";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const BYOK_CONTEXT_WINDOW_MIN = 100000;
@@ -202,6 +201,21 @@ function nextCloneLabel(source: ResolvedExecutor, list: ResolvedExecutor[]): str
     if (!existing.has(candidate)) return candidate;
   }
   return `${base} ${nanoid(4)}`;
+}
+
+const NARROW_LAYOUT_QUERY = "(max-width: 920px)";
+
+function useNarrowLayout(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => window.matchMedia(NARROW_LAYOUT_QUERY).matches
+  );
+  useEffect(() => {
+    const media = window.matchMedia(NARROW_LAYOUT_QUERY);
+    const onChange = () => setNarrow(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
 }
 
 export function CLIAdaptersTab() {
@@ -451,6 +465,7 @@ export function CLIAdaptersTab() {
     for (const ex of scoped) {
       if (ex.runtime?.installed) installed += 1;
     }
+    if (installed === scoped.length) return null;
     return { installed, total: scoped.length };
   }, [list, loaded, category]);
 
@@ -559,7 +574,9 @@ export function CLIAdaptersTab() {
     }
   }, [installingIdSet, list, loaded, startInstall]);
 
+  const isNarrow = useNarrowLayout();
   const editorDirtyRef = useRef(false);
+  const [editorNonce, setEditorNonce] = useState(0);
   const selectAgent = (id: string | null) => {
     if (id === editingId) return;
     if (editorDirtyRef.current && !window.confirm(t("settings.cli.unsavedConfirm"))) {
@@ -568,6 +585,15 @@ export function CLIAdaptersTab() {
     editorDirtyRef.current = false;
     setEditingId(id);
   };
+
+  // Wide layouts always show a detail pane, so fall back to the first visible
+  // agent. Narrow layouts keep "nothing selected" to show the list alone.
+  const defaultAgentId =
+    category === "official" ? filteredOfficialMembers[0]?.id : filteredList[0]?.id;
+  useEffect(() => {
+    if (isNarrow || editingId || !defaultAgentId) return;
+    setEditingId(defaultAgentId);
+  }, [defaultAgentId, editingId, isNarrow]);
 
   const categoryTabs = (
     <div className="adapter-filter-tabs" role="tablist">
@@ -598,41 +624,6 @@ export function CLIAdaptersTab() {
     />
   );
 
-  const renderRow = (ex: ResolvedExecutor) => (
-    <AdapterRow
-      key={ex.id}
-      ex={ex}
-      checking={checkingIds.has(ex.id)}
-      selected={false}
-      onCheck={() => void handleCheck(ex.id)}
-      onClone={() => void handleClone(ex)}
-      onEdit={() => selectAgent(ex.id)}
-      onToggleEnabled={(enabled) => void handleToggleEnabled(ex, enabled)}
-      onAskGuideInstall={
-        ex.id !== "pi-acp" && ex.installHint && !ex.runtime?.installed
-          ? () => useGuideInstallStore.getState().requestGuideInstall([ex.id])
-          : undefined
-      }
-      guideSelectable={guideSelectionActive && missingAgentIds.includes(ex.id)}
-      guideSelected={guideSelectionActive && guideSelectedIds.includes(ex.id)}
-      onGuideSelectChange={(checked) => toggleGuideAgent(ex.id, checked)}
-      onInstall={() => {
-        if (!ex.installHint) return;
-        startInstall({
-          adapterId: ex.id,
-          label: ex.label,
-          command: ex.installHint
-        });
-      }}
-      authProbe={authProbes[ex.id]}
-      authBusy={authBusyIds.has(ex.id)}
-      authMessage={authMessages[ex.id]}
-      onAuthProbe={() => void handleAuthProbe(ex)}
-      onLogout={() => void handleLogout(ex)}
-      installing={installingIdSet.has(ex.id)}
-    />
-  );
-
   if (!cliClient.isAvailable()) {
     return (
       <div className="settings-tab">
@@ -645,6 +636,99 @@ export function CLIAdaptersTab() {
       </div>
     );
   }
+
+  const selectedGuideLabels = selectedGuideAgents.map((ex) => ex.label).join(", ");
+  const guideBanner =
+    category === "builtin" && loaded && missingBuiltinAgents.length > 0 ? (
+      <div className="adapter-guide-install-banner">
+        <div className="adapter-guide-install-banner-head">
+          <Sparkles
+            size={14}
+            className="adapter-guide-install-banner-icon"
+            aria-hidden="true"
+          />
+          <span
+            id="guide-install-selection-hint"
+            className="adapter-guide-install-banner-text"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            title={selectedGuideLabels}
+          >
+            {!guideSelectionActive
+              ? t("settings.cli.guideInstall.bannerHint", { count: missingBuiltinAgents.length })
+              : selectedGuideAgents.length
+              ? t("settings.cli.guideInstall.selectionHint", {
+                  count: selectedGuideAgents.length,
+                  total: missingBuiltinAgents.length
+                })
+              : t("settings.cli.guideInstall.pickHint")}
+            {guideSelectionActive && query.trim() && ` ${t("settings.cli.guideInstall.selectAllScope")}`}
+          </span>
+        </div>
+        <div className="adapter-guide-install-banner-actions">
+          {guideSelectionActive && <label
+            className="adapter-guide-install-select-all"
+            title={t("settings.cli.guideInstall.selectAllScope")}
+          >
+            <input
+              type="checkbox"
+              className="guide-install-checkbox"
+              checked={allGuideSelected}
+              aria-describedby="guide-install-selection-hint"
+              ref={(input) => {
+                if (input) input.indeterminate = selectedGuideAgents.length > 0 && !allGuideSelected;
+              }}
+              onChange={() =>
+                setGuideSelectedIds(allGuideSelected ? [] : missingAgentIds)
+              }
+            />
+            {t("settings.cli.guideInstall.selectAll")}
+          </label>}
+          {guideSelectionActive && (
+            <button
+              type="button"
+              className="step-btn"
+              onClick={() => {
+                setGuideSelectionActive(false);
+                setGuideSelectedIds([]);
+              }}
+            >
+              {t("common.cancel")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="step-btn step-btn--guide-auto"
+            disabled={guideSelectionActive && !selectedGuideAgents.length}
+            onClick={() => {
+              if (!guideSelectionActive) {
+                setGuideSelectedIds([]);
+                setGuideSelectionActive(true);
+                return;
+              }
+              useGuideInstallStore
+                .getState()
+                .requestGuideInstall(selectedGuideAgents.map((ex) => ex.id));
+              setGuideSelectionActive(false);
+              setGuideSelectedIds([]);
+            }}
+          >
+            <Sparkles size={13} aria-hidden="true" />
+            {guideSelectionActive
+              ? t("settings.cli.guideInstall.bannerActionCount", {
+                  count: selectedGuideAgents.length
+                })
+              : t("settings.cli.guideInstall.bannerAction")}
+          </button>
+        </div>
+      </div>
+    ) : null;
+
+  const masterEmpty =
+    category === "official"
+      ? filteredOfficialMembers.length === 0
+      : !loaded || filteredList.length === 0;
 
   const detailPanel =
     editingId && selectedOfficialMember ? (
@@ -659,197 +743,131 @@ export function CLIAdaptersTab() {
       />
     ) : editingId && selectedExecutor ? (
       <EditOverridePanel
-        key={selectedExecutor.id}
+        key={`${selectedExecutor.id}:${editorNonce}`}
         executorId={selectedExecutor.id}
         dirtyRef={editorDirtyRef}
+        headerMeta={
+          <AdapterHeaderMeta
+            ex={selectedExecutor}
+            checking={checkingIds.has(selectedExecutor.id)}
+            authMessage={authMessages[selectedExecutor.id]}
+          />
+        }
+        headerActions={
+          <AdapterHeaderActions
+            ex={selectedExecutor}
+            checking={checkingIds.has(selectedExecutor.id)}
+            installing={installingIdSet.has(selectedExecutor.id)}
+            authProbe={authProbes[selectedExecutor.id]}
+            authBusy={authBusyIds.has(selectedExecutor.id)}
+            onCheck={() => void handleCheck(selectedExecutor.id)}
+            onClone={() => {
+              if (editorDirtyRef.current && !window.confirm(t("settings.cli.unsavedConfirm"))) {
+                return;
+              }
+              editorDirtyRef.current = false;
+              void handleClone(selectedExecutor);
+            }}
+            onToggleEnabled={(enabled) =>
+              void handleToggleEnabled(selectedExecutor, enabled)
+            }
+            onAuthProbe={() => void handleAuthProbe(selectedExecutor)}
+            onLogout={() => void handleLogout(selectedExecutor)}
+            onInstall={() => {
+              if (!selectedExecutor.installHint) return;
+              startInstall({
+                adapterId: selectedExecutor.id,
+                label: selectedExecutor.label,
+                command: selectedExecutor.installHint
+              });
+            }}
+            onAskGuideInstall={
+              selectedExecutor.id !== "pi-acp" &&
+              selectedExecutor.installHint &&
+              !selectedExecutor.runtime?.installed
+                ? () =>
+                    useGuideInstallStore
+                      .getState()
+                      .requestGuideInstall([selectedExecutor.id])
+                : undefined
+            }
+          />
+        }
         onBackToList={() => selectAgent(null)}
         onResetSelection={() => {
           editorDirtyRef.current = false;
-          setEditingId(null);
+          setEditorNonce((nonce) => nonce + 1);
         }}
       />
     ) : null;
 
-  if (detailPanel) {
-    const masterEmpty =
-      category === "official"
-        ? filteredOfficialMembers.length === 0
-        : !loaded || filteredList.length === 0;
-    return (
-      <div className="settings-tab">
-        <div className="adapter-master-detail">
-          <aside
-            className="adapter-master-list"
-            aria-label={t("settings.cli.title")}
-          >
-            {categoryTabs}
-            {searchInput}
-            <div className="adapter-master-items">
-              {masterEmpty ? (
-                <p className="muted adapter-empty">
-                  {loaded ? t("settings.cli.noResults") : t("settings.cli.loading")}
-                </p>
-              ) : category === "official" ? (
-                filteredOfficialMembers.map((member) => (
-                  <AdapterListItem
-                    key={member.id}
-                    adapter={member.cli.adapter}
-                    agentId={member.id}
-                    label={member.name}
-                    statusKind="available"
-                    statusLabel={t("settings.cli.category.official")}
-                    selected={member.id === editingId}
-                    onSelect={() => selectAgent(member.id)}
-                  />
-                ))
-              ) : (
-                filteredList.map((ex) => {
-                  const kind = adapterStatusKind(ex, checkingIds.has(ex.id));
-                  return (
-                    <AdapterListItem
-                      key={ex.id}
-                      adapter={ex.baseAdapter ?? ex.id}
-                      agentId={`cli-${ex.id}`}
-                      label={ex.label}
-                      statusKind={kind}
-                      statusLabel={t(ADAPTER_STATUS_LABEL_KEY[kind])}
-                      selected={ex.id === editingId}
-                      onSelect={() => selectAgent(ex.id)}
-                    />
-                  );
-                })
-              )}
-            </div>
-          </aside>
-          <div className="adapter-edit-workspace">{detailPanel}</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="settings-tab">
-      <div className="settings-section-heading">
-        <h3 className="settings-section-title">{t("settings.cli.title")}</h3>
-        <span className="settings-section-desc">
-          {t("settings.cli.description")}
-        </span>
-      </div>
-
-      <div className="adapter-list-toolbar">
-        {categoryTabs}
-        {searchInput}
-        {availabilitySummary ? (
-          <span className="adapter-availability-summary muted">
-            {t("settings.cli.summary", availabilitySummary)}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="adapter-settings-workspace">
-        <div className="adapter-list-panel">
-          {category === "builtin" && loaded && missingBuiltinAgents.length > 0 && (
-            <div className="adapter-guide-install-banner">
-              <Sparkles
-                size={14}
-                className="adapter-guide-install-banner-icon"
-                aria-hidden="true"
-              />
-              {guideSelectionActive && <label
-                className="adapter-guide-install-select-all"
-                title={t("settings.cli.guideInstall.selectAllScope")}
-              >
-                <input
-                  type="checkbox"
-                  className="guide-install-checkbox"
-                  checked={allGuideSelected}
-                  aria-describedby="guide-install-selection-hint"
-                  ref={(input) => {
-                    if (input) input.indeterminate = selectedGuideAgents.length > 0 && !allGuideSelected;
-                  }}
-                  onChange={() =>
-                    setGuideSelectedIds(allGuideSelected ? [] : missingAgentIds)
-                  }
+      <div
+        className={`adapter-master-detail${
+          detailPanel ? " adapter-master-detail--selected" : ""
+        }`}
+      >
+        <aside
+          className="adapter-master-list"
+          aria-label={t("settings.cli.title")}
+        >
+          {categoryTabs}
+          {searchInput}
+          {availabilitySummary ? (
+            <span className="adapter-availability-summary muted">
+              {t("settings.cli.summary", availabilitySummary)}
+            </span>
+          ) : null}
+          {guideBanner}
+          <div className="adapter-master-items">
+            {masterEmpty ? (
+              <p className="muted adapter-empty">
+                {category === "official" || loaded
+                  ? t("settings.cli.noResults")
+                  : t("settings.cli.loading")}
+              </p>
+            ) : category === "official" ? (
+              filteredOfficialMembers.map((member) => (
+                <AdapterListItem
+                  key={member.id}
+                  adapter={member.cli.adapter}
+                  agentId={member.id}
+                  label={member.name}
+                  statusKind="available"
+                  statusLabel={t("settings.cli.category.official")}
+                  selected={member.id === editingId}
+                  onSelect={() => selectAgent(member.id)}
                 />
-                {t("settings.cli.guideInstall.selectAll")}
-              </label>}
-              <span
-                id="guide-install-selection-hint"
-                className="adapter-guide-install-banner-text"
-                role="status"
-                aria-live="polite"
-                aria-atomic="true"
-                title={selectedGuideAgents.map((ex) => ex.label).join(", ")}
-              >
-                {!guideSelectionActive
-                  ? t("settings.cli.guideInstall.bannerHint", { count: missingBuiltinAgents.length })
-                  : selectedGuideAgents.length
-                  ? t("settings.cli.guideInstall.selectionHint", {
-                      count: selectedGuideAgents.length,
-                      total: missingBuiltinAgents.length
-                    })
-                  : t("settings.cli.guideInstall.pickHint")}
-                {guideSelectionActive && query.trim() && ` ${t("settings.cli.guideInstall.selectAllScope")}`}
-              </span>
-              {guideSelectionActive && (
-                <button
-                  type="button"
-                  className="step-btn"
-                  onClick={() => {
-                    setGuideSelectionActive(false);
-                    setGuideSelectedIds([]);
-                  }}
-                >
-                  {t("common.cancel")}
-                </button>
-              )}
-              <button
-                type="button"
-                className="step-btn step-btn--guide-auto"
-                disabled={guideSelectionActive && !selectedGuideAgents.length}
-                onClick={() => {
-                  if (!guideSelectionActive) {
-                    setGuideSelectedIds([]);
-                    setGuideSelectionActive(true);
-                    return;
-                  }
-                  useGuideInstallStore
-                    .getState()
-                    .requestGuideInstall(selectedGuideAgents.map((ex) => ex.id));
-                  setGuideSelectionActive(false);
-                  setGuideSelectedIds([]);
-                }}
-              >
-                <Sparkles size={13} aria-hidden="true" />
-                {guideSelectionActive
-                  ? t("settings.cli.guideInstall.bannerActionCount", {
-                      count: selectedGuideAgents.length
-                    })
-                  : t("settings.cli.guideInstall.bannerAction")}
-              </button>
-            </div>
-          )}
-          <div className="adapter-list">
-            {category === "official" ? (
-              filteredOfficialMembers.length === 0 ? (
-                <p className="muted adapter-empty">{t("settings.cli.noResults")}</p>
-              ) : (
-                filteredOfficialMembers.map((member) => (
-                  <OfficialRow
-                    key={member.id}
-                    member={member}
-                    onEdit={() => selectAgent(member.id)}
-                  />
-                ))
-              )
-            ) : !loaded ? (
-              <p className="muted">{t("settings.cli.loading")}</p>
-            ) : filteredList.length === 0 ? (
-              <p className="muted adapter-empty">{t("settings.cli.noResults")}</p>
+              ))
             ) : (
-              filteredList.map((ex) => renderRow(ex))
+              filteredList.map((ex) => {
+                const kind = adapterStatusKind(ex, checkingIds.has(ex.id));
+                return (
+                  <AdapterListItem
+                    key={ex.id}
+                    adapter={ex.baseAdapter ?? ex.id}
+                    agentId={`cli-${ex.id}`}
+                    label={ex.label}
+                    statusKind={kind}
+                    statusLabel={t(ADAPTER_STATUS_LABEL_KEY[kind])}
+                    selected={ex.id === editingId}
+                    onSelect={() => selectAgent(ex.id)}
+                    guideSelectable={guideSelectionActive && missingAgentIds.includes(ex.id)}
+                    guideSelected={guideSelectionActive && guideSelectedIds.includes(ex.id)}
+                    onGuideSelectChange={(checked) => toggleGuideAgent(ex.id, checked)}
+                  />
+                );
+              })
             )}
           </div>
+        </aside>
+        <div className="adapter-edit-workspace">
+          {detailPanel ?? (
+            <p className="muted adapter-empty adapter-detail-empty">
+              {loaded ? t("settings.cli.noResults") : t("settings.cli.loading")}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -863,7 +881,10 @@ function AdapterListItem({
   statusKind,
   statusLabel,
   selected,
-  onSelect
+  onSelect,
+  guideSelectable,
+  guideSelected,
+  onGuideSelectChange
 }: {
   adapter: string;
   agentId: string;
@@ -872,17 +893,13 @@ function AdapterListItem({
   statusLabel: string;
   selected: boolean;
   onSelect: () => void;
+  guideSelectable?: boolean;
+  guideSelected?: boolean;
+  onGuideSelectChange?: (checked: boolean) => void;
 }) {
-  return (
-    <button
-      type="button"
-      className={`adapter-master-item${selected ? " selected" : ""}${
-        statusKind === "disabled" ? " disabled" : ""
-      }`}
-      aria-current={selected ? "true" : undefined}
-      title={`${label} · ${statusLabel}`}
-      onClick={onSelect}
-    >
+  const { t } = useTranslation();
+  const body = (
+    <>
       <AgentAvatar
         adapter={adapter}
         agentId={agentId}
@@ -895,42 +912,41 @@ function AdapterListItem({
         role="img"
         aria-label={statusLabel}
       />
-    </button>
+    </>
   );
-}
-
-function OfficialRow({
-  member,
-  onEdit
-}: {
-  member: CLIMember;
-  onEdit: () => void;
-}) {
-  const { t } = useTranslation();
-  const runtimeLabel = member.runtimeKey ?? member.cli.adapter;
+  const className = `adapter-master-item${selected ? " selected" : ""}${
+    statusKind === "disabled" ? " disabled" : ""
+  }`;
+  // During GuideBuddy batch selection, candidate rows become checkbox labels
+  // so the whole row toggles the pick instead of opening the editor.
+  if (guideSelectable) {
+    return (
+      <label
+        className={`${className} adapter-master-item--guide-choice${
+          guideSelected ? " adapter-master-item--guide-selected" : ""
+        }`}
+      >
+        <input
+          type="checkbox"
+          className="guide-install-checkbox"
+          aria-label={t("settings.cli.guideInstall.selectAgent", { name: label })}
+          checked={Boolean(guideSelected)}
+          onChange={(event) => onGuideSelectChange?.(event.target.checked)}
+        />
+        {body}
+      </label>
+    );
+  }
   return (
-    <div className="adapter-row">
-      <AgentAvatar
-        adapter={member.cli.adapter}
-        agentId={member.id}
-        className="adapter-avatar"
-        fallback={<span>{member.name.slice(0, 2).toUpperCase()}</span>}
-      />
-      <button type="button" className="adapter-row-main" onClick={onEdit}>
-        <div className="adapter-row-title">
-          <strong>{member.name}</strong>
-          <span className="adapter-availability available">
-            {t("settings.cli.category.official")}
-          </span>
-        </div>
-        <div className="adapter-row-meta">
-          <span className="adapter-status muted">
-            {t("settings.cli.official.runtime")}: <code>{runtimeLabel}</code>
-          </span>
-          {member.description && <span className="muted">{member.description}</span>}
-        </div>
-      </button>
-    </div>
+    <button
+      type="button"
+      className={className}
+      aria-current={selected ? "true" : undefined}
+      title={`${label} · ${statusLabel}`}
+      onClick={onSelect}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -1064,52 +1080,35 @@ function OfficialPersonaPanel({
   );
 }
 
-function AdapterRow({
+function AdapterHeaderActions({
   ex,
   checking,
-  selected,
-  onCheck,
-  onClone,
-  onEdit,
-  onInstall,
-  onAskGuideInstall,
-  guideSelectable,
-  guideSelected,
-  onGuideSelectChange,
+  installing,
   authProbe,
   authBusy,
-  authMessage,
+  onCheck,
+  onClone,
+  onInstall,
+  onToggleEnabled,
   onAuthProbe,
   onLogout,
-  installing,
-  onToggleEnabled
+  onAskGuideInstall
 }: {
   ex: ResolvedExecutor;
   checking: boolean;
-  selected: boolean;
-  onCheck: () => void;
-  onClone: () => void;
-  onEdit: () => void;
-  onInstall: () => void;
-  onToggleEnabled: (enabled: boolean) => void;
-  onAskGuideInstall?: () => void;
-  guideSelectable?: boolean;
-  guideSelected?: boolean;
-  onGuideSelectChange?: (checked: boolean) => void;
+  installing: boolean;
   authProbe?: CliAuthProbeResult;
   authBusy: boolean;
-  authMessage?: string;
+  onCheck: () => void;
+  onClone: () => void;
+  onInstall: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
   onAuthProbe: () => void;
   onLogout: () => void;
-  installing: boolean;
+  onAskGuideInstall?: () => void;
 }) {
   const { t } = useTranslation();
   const rt = ex.runtime;
-  const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
-  const parsedExtraArgs = extractModelArg(ex.extraArgs);
-  const model = parsedExtraArgs.model;
-  const statusKind = adapterStatusKind(ex, checking);
-  const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
   const menuItems: AdapterRowMenuItem[] = [
     {
       key: "check",
@@ -1165,120 +1164,74 @@ function AdapterRow({
       : [])
   ];
   return (
-    <div
-      className={`adapter-row${selected ? " selected" : ""}${
-        guideSelectable ? " adapter-row--guide-choice" : ""
-      }${guideSelected ? " adapter-row--guide-selected" : ""}${
-        ex.enabled ? "" : " adapter-row--disabled"
-      }`}
-    >
-      {guideSelectable && (
-        <label className="adapter-row-guide-choice">
-          <input
-            type="checkbox"
-            className="guide-install-checkbox"
-            aria-label={t("settings.cli.guideInstall.selectAgent", {
-              name: ex.label
-            })}
-            checked={Boolean(guideSelected)}
-            onChange={(event) => onGuideSelectChange?.(event.target.checked)}
-          />
-        </label>
-      )}
-      <AgentAvatar
-        adapter={ex.id}
-        className="adapter-avatar"
-        fallback={<span>{ex.label.slice(0, 2).toUpperCase()}</span>}
-      />
-      <button type="button" className="adapter-row-main" onClick={onEdit}>
-        <div className="adapter-row-title">
-          <strong>{ex.label}</strong>
-          <span className={`adapter-availability ${statusKind}`}>
-            {t(ADAPTER_STATUS_LABEL_KEY[statusKind])}
-          </span>
-        </div>
-        <div className="adapter-row-meta">
-          {checking ? (
-            <span className="adapter-status muted">{t("settings.cli.checking")}</span>
-          ) : rt?.installed ? (
-            <span className="adapter-status ok">
-              {t("settings.cli.installed")} {rt.version ? `(${rt.version})` : ""}
-            </span>
-          ) : rt ? (
-            <span className="adapter-status warn" title={rt.lastError}>
-              {t("settings.cli.notInstalled")}
-            </span>
-          ) : (
-            <span className="adapter-status muted">{t("settings.cli.notChecked")}</span>
-          )}
-          {!checking && rt?.lastError && !rt.installed && (
-            <span className="adapter-status error" title={rt.lastError}>
-              {t(cliRuntimeErrorKey(rt.lastError))}
-            </span>
-          )}
-          {ex.id === "codex-acp" && codexCliRuntime?.installed && (
-            <span className="muted">
-              Codex CLI: <code>{codexCliRuntime.version}</code>
-            </span>
-          )}
-          <RuntimeAutoUpdateStatus
-            runtime={codexUpdateStatus ? rt : undefined}
-            label="Codex ACP"
-          />
-          {ex.id === "codex-acp" && (
-            <RuntimeAutoUpdateStatus
-              runtime={codexCliRuntime}
-              label="Codex CLI"
-            />
-          )}
-          {model && (
-            <span className="muted">
-              {t("settings.cli.modelLabel")}: <code>{model}</code>
-            </span>
-          )}
-          {authMessage && (
-            <span className="adapter-status muted" title={authMessage}>
-              {authMessage}
-            </span>
-          )}
-        </div>
-      </button>
-      <div className="adapter-row-actions">
-        <label
-          className="adapter-switch"
-          title={
-            ex.enabled
-              ? t("settings.cli.enabled")
-              : t("settings.cli.disabled")
-          }
+    <>
+      {!rt?.installed && ex.installHint && (
+        <button
+          type="button"
+          className="adapter-editor-install"
+          onClick={onInstall}
+          disabled={installing || checking}
         >
-          <input
-            type="checkbox"
-            checked={ex.enabled}
-            disabled={checking || installing}
-            aria-label={t("settings.cli.toggleAria", { name: ex.label })}
-            onChange={(event) =>
-              onToggleEnabled(event.currentTarget.checked)
-            }
-          />
-          <span aria-hidden="true" />
-        </label>
-        {!rt?.installed && ex.installHint && (
-          <button
-            type="button"
-            className="primary"
-            onClick={onInstall}
-            disabled={installing || checking}
-          >
-            {installing ? t("common.installing") : t("common.install")}
-          </button>
-        )}
-        <AdapterRowMenu
-          label={t("settings.cli.moreActions")}
-          items={menuItems}
+          {installing ? t("common.installing") : t("common.install")}
+        </button>
+      )}
+      <label
+        className="adapter-switch"
+        title={ex.enabled ? t("settings.cli.enabled") : t("settings.cli.disabled")}
+      >
+        <input
+          type="checkbox"
+          checked={ex.enabled}
+          disabled={checking || installing}
+          aria-label={t("settings.cli.toggleAria", { name: ex.label })}
+          onChange={(event) => onToggleEnabled(event.currentTarget.checked)}
         />
-      </div>
-    </div>
+        <span aria-hidden="true" />
+      </label>
+      <AdapterRowMenu label={t("settings.cli.moreActions")} items={menuItems} />
+    </>
+  );
+}
+
+function AdapterHeaderMeta({
+  ex,
+  checking,
+  authMessage
+}: {
+  ex: ResolvedExecutor;
+  checking: boolean;
+  authMessage?: string;
+}) {
+  const { t } = useTranslation();
+  const rt = ex.runtime;
+  const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
+  const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
+  return (
+    <>
+      {!checking && rt?.installed && rt.version && (
+        <span>
+          {t("settings.cli.versionLabel")} <code>{rt.version}</code>
+        </span>
+      )}
+      {!checking && rt?.lastError && !rt.installed && (
+        <span className="adapter-status error" title={rt.lastError}>
+          {t(cliRuntimeErrorKey(rt.lastError))}
+        </span>
+      )}
+      {ex.id === "codex-acp" && codexCliRuntime?.installed && (
+        <span>
+          Codex CLI: <code>{codexCliRuntime.version}</code>
+        </span>
+      )}
+      <RuntimeAutoUpdateStatus
+        runtime={codexUpdateStatus ? rt : undefined}
+        label="Codex ACP"
+      />
+      {ex.id === "codex-acp" && (
+        <RuntimeAutoUpdateStatus runtime={codexCliRuntime} label="Codex CLI" />
+      )}
+      {authMessage && <span title={authMessage}>{authMessage}</span>}
+    </>
   );
 }
 
@@ -1402,11 +1355,15 @@ function RuntimeAutoUpdateStatus({
 function EditOverridePanel({
   executorId,
   dirtyRef,
+  headerMeta,
+  headerActions,
   onBackToList,
   onResetSelection
 }: {
   executorId: string;
   dirtyRef?: { current: boolean };
+  headerMeta?: ReactNode;
+  headerActions?: ReactNode;
   onBackToList: () => void;
   onResetSelection: () => void;
 }) {
@@ -1834,11 +1791,14 @@ function EditOverridePanel({
             />
             <div className="adapter-editor-heading-text">
               <h3>{ex.label}</h3>
-              {ex.docsUrl && (
-                <a className="adapter-editor-docs-link" href={ex.docsUrl} target="_blank" rel="noreferrer">
-                  {t("settings.cli.setupGuide")} ↗
-                </a>
-              )}
+              <div className="adapter-editor-meta">
+                {headerMeta}
+                {ex.docsUrl && (
+                  <a className="adapter-editor-docs-link" href={ex.docsUrl} target="_blank" rel="noreferrer">
+                    {t("settings.cli.setupGuide")} ↗
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1876,14 +1836,7 @@ function EditOverridePanel({
               {installing ? t("common.upgrading") : t("common.upgrade")}
             </button>
           )}
-          {ex.runtime && !ex.runtime.installed && ex.runtime.lastError ? (
-            <span
-              className="adapter-editor-status-detail"
-              title={ex.runtime.lastError}
-            >
-              {ex.runtime.lastError}
-            </span>
-          ) : null}
+          {headerActions}
         </div>
       </header>
 

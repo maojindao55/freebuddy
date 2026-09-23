@@ -100,9 +100,14 @@ test("coding agent settings expose Codex BYOK without echoing saved keys", () =>
   assert.equal(enLocale.settings.cli.byok.modeCustom, "Use my own API key");
 });
 
-test("coding agent settings open editor from the list view", () => {
-  assert.equal(settingsSource.includes("adapter-settings-workspace"), true);
+test("coding agent settings pair a docked agent list with the editor", () => {
+  assert.equal(settingsSource.includes("adapter-master-detail"), true);
+  assert.equal(settingsSource.includes("adapter-master-list"), true);
   assert.equal(settingsSource.includes("adapter-edit-workspace"), true);
+  // Wide layouts auto-select an agent; narrow layouts keep list-only mode.
+  assert.match(settingsSource, /if \(isNarrow \|\| editingId \|\| !defaultAgentId\) return;/);
+  // Switching agents with unsaved edits asks before discarding them.
+  assert.match(settingsSource, /editorDirtyRef\.current && !window\.confirm\(t\("settings\.cli\.unsavedConfirm"\)\)/);
   assert.equal(settingsSource.includes("onBackToList"), true);
   assert.equal(settingsSource.includes("settings.cli.backToList"), true);
   assert.equal(settingsSource.includes("EditOverridePanel"), true);
@@ -437,8 +442,8 @@ test("GuideBuddy batch install asks the user to pick which missing agents to ins
   assert.match(settingsSource, /\[guideSelectionActive, setGuideSelectionActive\] = useState\(false\)/);
   assert.match(settingsSource, /if \(!guideSelectionActive\) \{\s*setGuideSelectedIds\(\[\]\);\s*setGuideSelectionActive\(true\);\s*return;/);
   assert.match(settingsSource, /guideSelectionActive && <label/);
-  // Per-agent checkbox on the list row cards, wired to the selection.
-  assert.match(settingsSource, /adapter-row-guide-choice/);
+  // Per-agent checkbox on the docked list items, wired to the selection.
+  assert.match(settingsSource, /adapter-master-item--guide-choice/);
   assert.match(settingsSource, /guideSelectable=\{guideSelectionActive && missingAgentIds\.includes\(ex\.id\)\}/);
   assert.match(settingsSource, /guideSelected=\{guideSelectionActive && guideSelectedIds\.includes\(ex\.id\)\}/);
   assert.match(
@@ -453,23 +458,22 @@ test("GuideBuddy batch install asks the user to pick which missing agents to ins
   assert.match(settingsSource, /guideInstall\.selectAgent/);
 
   // One polished custom checkbox (appearance:none + SVG tick) shared by the
-  // banner select-all and the row cards; selected rows get a brand outline.
+  // banner select-all and the list items; selected items get a brand outline.
   assert.equal(
     (settingsSource.match(/guide-install-checkbox/g) || []).length >= 2,
     true
   );
-  assert.match(settingsSource, /adapter-row--guide-selected/);
+  assert.match(settingsSource, /adapter-master-item--guide-selected/);
   const stylesSource = fs.readFileSync(
     new URL("../styles.css", import.meta.url),
     "utf8"
   );
   assert.match(stylesSource, /\.guide-install-checkbox\s*\{[^}]*appearance:\s*none/s);
   assert.match(stylesSource, /\.guide-install-checkbox:checked\s*\{[^}]*var\(--fb-brand\)/s);
-  assert.match(stylesSource, /\.adapter-row\.adapter-row--guide-selected/);
-  assert.match(
-    stylesSource,
-    /\.adapter-row--guide-choice\s*\{\s*grid-template-columns:\s*18px 44px/
-  );
+  assert.match(stylesSource, /\.adapter-master-item\.adapter-master-item--guide-selected/);
+  // Checkbox rows are <label>s; keep them horizontal despite the generic
+  // `.settings-surface label { flex-direction: column }` rule.
+  assert.match(stylesSource, /label\.adapter-master-item\s*\{[^}]*flex-direction:\s*row/s);
 
   // Selection strings mirrored across zh-CN and en.
   for (const key of ["selectAll", "selectAgent", "bannerActionCount", "selectAllScope", "pickHint", "selectionHint"]) {

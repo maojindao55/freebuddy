@@ -1084,7 +1084,10 @@
   },
   "lightbox": {
     "preview": "Image preview",
-    "close": "Close preview"
+    "close": "Close preview",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomReset": "Reset zoom"
   },
   "settings": {
     "backToApp": "Back to app",

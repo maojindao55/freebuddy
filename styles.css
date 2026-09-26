@@ -17069,6 +17069,41 @@ button.ghost:focus-visible,
   background: transparent;
 }
 
+.markdown-code-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mermaid-diagram-button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.mermaid-diagram-button:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: -2px;
+}
+
+.mermaid-diagram {
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: transparent;
+  pointer-events: none;
+}
+
+.mermaid-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
 .markdown-image-figure {
   margin: 10px 0 12px;
   padding: 0;
@@ -17923,6 +17958,53 @@ button.ghost:focus-visible,
   line-height: 1.5;
   text-align: center;
   word-break: break-all;
+}
+
+.image-lightbox-toolbar {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1;
+}
+
+.image-lightbox-toolbar button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #f5f5f5;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.image-lightbox-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.image-lightbox-zoom-value {
+  min-width: 48px;
+  text-align: center;
+  color: rgba(245, 245, 245, 0.9);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.image-lightbox-img {
+  touch-action: none;
+  transition: none;
 }
 
 .image-lightbox-close {

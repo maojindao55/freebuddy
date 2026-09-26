@@ -1072,7 +1072,10 @@
   },
   "lightbox": {
     "preview": "图片预览",
-    "close": "关闭预览"
+    "close": "关闭预览",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "zoomReset": "重置缩放"
   },
   "settings": {
     "backToApp": "返回应用",

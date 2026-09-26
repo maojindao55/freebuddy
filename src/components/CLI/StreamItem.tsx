@@ -2,6 +2,7 @@ import type { TFunction } from "i18next";
 import {
   Brain,
   Check,
+  Code,
   Copy,
   Download,
   FileText,
@@ -14,11 +15,12 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import { useDebugLogsDialogStore } from "@/store/debugLogsDialogStore";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
@@ -332,7 +334,7 @@ function tableCells(line: string) {
     .map((cell) => cell.trim());
 }
 
-function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
+function CodeCopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -343,31 +345,196 @@ function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
   }, [code]);
 
   return (
+    <button
+      type="button"
+      className="markdown-code-copy-btn"
+      onClick={handleCopy}
+      title="Copy code"
+    >
+      {copied ? (
+        <>
+          <Check className="code-copy-icon" />
+          <span>Copied</span>
+        </>
+      ) : (
+        <>
+          <Copy className="code-copy-icon" />
+          <span>Copy</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
+  return (
     <div className="markdown-code-card">
       <div className="markdown-code-header">
         <span className="markdown-code-lang">{lang || "code"}</span>
-        <button
-          type="button"
-          className="markdown-code-copy-btn"
-          onClick={handleCopy}
-          title="Copy code"
-        >
-          {copied ? (
-            <>
-              <Check className="code-copy-icon" />
-              <span>Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="code-copy-icon" />
-              <span>Copy</span>
-            </>
-          )}
-        </button>
+        <CodeCopyButton code={code} />
       </div>
       <pre className="markdown-code">
         <code>{code}</code>
       </pre>
+    </div>
+  );
+}
+
+let mermaidLoader: Promise<typeof import("mermaid")> | null = null;
+
+function loadMermaid() {
+  mermaidLoader ??= import("mermaid");
+  return mermaidLoader;
+}
+
+function removeMermaidTempNode(id: string) {
+  document.getElementById(`d${id}`)?.remove();
+  document.getElementById(id)?.remove();
+}
+
+function normalizeMermaidSource(code: string): string {
+  const lines = code.split("\n");
+  const firstMeaningful = lines.find((line) => line.trim());
+  const isFlowchart = Boolean(
+    firstMeaningful && /^(flowchart|graph)\b/i.test(firstMeaningful.trim())
+  );
+
+  let subgraphDepth = 0;
+  const out: string[] = [];
+  for (const line of lines) {
+    const subgraphMatch = line.match(/^(\s*subgraph\s+)(\S.*)$/i);
+    if (subgraphMatch) {
+      subgraphDepth += 1;
+      const title = subgraphMatch[2].trim();
+      if (
+        !title ||
+        title.startsWith('"') ||
+        title.includes("[") ||
+        /^[\w.-]+$/.test(title)
+      ) {
+        out.push(line);
+      } else {
+        out.push(`${subgraphMatch[1]}"${title.replace(/"/g, "'")}"`);
+      }
+      continue;
+    }
+    if (isFlowchart && /^\s*end\s*$/.test(line)) {
+      if (subgraphDepth === 0) continue;
+      subgraphDepth -= 1;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+function mermaidSvgToDataUrl(svg: string, background: string): string {
+  const sized = svg.replace(/<svg\b([^>]*)>/, (match, attrs: string) => {
+    const viewBox = attrs.match(/viewBox="([^"]+)"/);
+    if (!viewBox) return match;
+    const parts = viewBox[1].trim().split(/[\s,]+/).map(Number);
+    if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return match;
+    const cleaned = attrs
+      .replace(/\swidth="[^"]*"/, "")
+      .replace(/\sheight="[^"]*"/, "")
+      .replace(/\sstyle="[^"]*"/, "");
+    return (
+      `<svg${cleaned} width="${parts[2]}" height="${parts[3]}">` +
+      `<rect x="${parts[0]}" y="${parts[1]}" width="100%" height="100%" fill="${background}"/>`
+    );
+  });
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sized)}`;
+}
+
+function MermaidBlock({ code }: { code: string }) {
+  const resolvedTheme = useSettingsStore((s) => s.resolvedTheme);
+  const { open } = useImageLightbox();
+  const [svg, setSvg] = useState("");
+  const [showSource, setShowSource] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const renderId = `fb-mermaid-${Math.random().toString(36).slice(2, 10)}`;
+
+    const timer = window.setTimeout(() => {
+      void loadMermaid()
+        .then(async (mod) => {
+          const mermaid = mod.default;
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: "strict",
+            suppressErrorRendering: true,
+            theme: resolvedTheme === "dark" ? "dark" : "default"
+          });
+          let result;
+          try {
+            result = await mermaid.render(renderId, code);
+          } catch (rawError) {
+            removeMermaidTempNode(renderId);
+            const normalized = normalizeMermaidSource(code);
+            if (normalized === code) throw rawError;
+            result = await mermaid.render(`${renderId}-n`, normalized);
+          }
+          if (!cancelled) setSvg(result.svg);
+        })
+        .catch((error) => {
+          removeMermaidTempNode(renderId);
+          removeMermaidTempNode(`${renderId}-n`);
+          console.warn("Mermaid render failed:", error);
+          if (!cancelled) setSvg("");
+        });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      removeMermaidTempNode(renderId);
+    };
+  }, [code, resolvedTheme]);
+
+  return (
+    <div className="markdown-code-card">
+      <div className="markdown-code-header">
+        <span className="markdown-code-lang">mermaid</span>
+        <div className="markdown-code-actions">
+          {svg ? (
+            <button
+              type="button"
+              className="markdown-code-copy-btn"
+              onClick={() => setShowSource((value) => !value)}
+              title={showSource ? "Show diagram" : "Show source"}
+            >
+              <Code className="code-copy-icon" />
+              <span>{showSource ? "Diagram" : "Source"}</span>
+            </button>
+          ) : null}
+          <CodeCopyButton code={code} />
+        </div>
+      </div>
+      {svg && !showSource ? (
+        <button
+          type="button"
+          className="mermaid-diagram-button"
+          onClick={() =>
+            open({
+              src: mermaidSvgToDataUrl(
+                svg,
+                resolvedTheme === "dark" ? "#0f172a" : "#ffffff"
+              ),
+              alt: "mermaid"
+            })
+          }
+          title="Click to enlarge"
+        >
+          <div
+            className="mermaid-diagram"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        </button>
+      ) : (
+        <pre className="markdown-code">
+          <code>{code}</code>
+        </pre>
+      )}
     </div>
   );
 }
@@ -546,7 +713,11 @@ export function MarkdownText({
       }
       if (i < lines.length) i += 1;
       blocks.push(
-        <CodeBlockCard key={`code-${i}`} lang={lang} code={code.join("\n")} />
+        /^mermaid$/i.test(lang) ? (
+          <MermaidBlock key={`code-${i}`} code={code.join("\n")} />
+        ) : (
+          <CodeBlockCard key={`code-${i}`} lang={lang} code={code.join("\n")} />
+        )
       );
       continue;
     }

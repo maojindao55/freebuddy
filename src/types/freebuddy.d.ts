@@ -16,6 +16,7 @@ import type {
   CliTaskLogPage,
   CliTaskListArgs,
   CodexUsageResult,
+  AntigravityUsageResult,
   AgentUsagePeriod,
   AgentUsageSummary,
   CursorUsageConnectInput,
@@ -142,6 +143,7 @@ declare global {
     onConversationsChanged(cb: () => void): () => void;
     onMessagesChanged(cb: (conversationId: string) => void): () => void;
     codexUsage(): Promise<CodexUsageResult>;
+    antigravityUsage(): Promise<AntigravityUsageResult>;
     usageSummary(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     refreshUsage(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     cursorUsageStatus(): Promise<CursorUsageStatus>;

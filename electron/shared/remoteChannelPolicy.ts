@@ -76,6 +76,7 @@ const ALLOW = [
 
   // Usage reporting.
   "cli:codexUsage",
+  "cli:antigravityUsage",
   "cli:cursorUsageStatus",
   "cli:refreshUsage",
   "cli:usageSummary",

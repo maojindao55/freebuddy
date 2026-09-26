@@ -58,6 +58,7 @@ const cli = {
     return () => ipcRenderer.off(channel, handler);
   },
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
+  antigravityUsage: () => ipcRenderer.invoke("cli:antigravityUsage"),
   usageSummary: (period?: unknown) => ipcRenderer.invoke("cli:usageSummary", period),
   refreshUsage: (period?: unknown) => ipcRenderer.invoke("cli:refreshUsage", period),
   cursorUsageStatus: () => ipcRenderer.invoke("cli:cursorUsageStatus"),

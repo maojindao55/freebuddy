@@ -15872,6 +15872,43 @@ button.ghost:disabled {
   height: 100%;
   border-radius: inherit;
   background: var(--fb-brand-gradient);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.codex-limit-fill.limit-warning {
+  background: var(--fb-warning, #f59e0b);
+}
+
+.codex-limit-fill.limit-danger {
+  background: var(--fb-danger, #ef4444);
+}
+
+.antigravity-limit-badge.limit-warning {
+  color: var(--fb-warning, #f59e0b);
+}
+
+.antigravity-limit-badge.limit-danger {
+  color: var(--fb-danger, #ef4444);
+  font-weight: 700;
+}
+
+.antigravity-quota-group {
+  display: grid;
+  gap: 8px;
+}
+
+.antigravity-quota-group + .antigravity-quota-group {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fb-border);
+}
+
+.antigravity-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fb-text-tertiary);
 }
 
 .codex-reset-credits small,

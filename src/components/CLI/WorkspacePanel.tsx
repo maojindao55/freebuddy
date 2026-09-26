@@ -10,6 +10,8 @@ import type {
   CodexResetCredit,
   CodexUsageResult,
   CodexUsageWindow,
+  AntigravityQuotaBucket,
+  AntigravityUsageResult,
   ConversationMessage
 } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
@@ -60,6 +62,8 @@ export function WorkspacePanel({
   const [now, setNow] = useState(() => Date.now());
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
+  const [antigravityUsage, setAntigravityUsage] = useState<AntigravityUsageResult | undefined>();
+  const [antigravityUsageLoading, setAntigravityUsageLoading] = useState(false);
   const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
   const [copiedSession, setCopiedSession] = useState(false);
   const [copiedWorktree, setCopiedWorktree] = useState(false);
@@ -119,6 +123,10 @@ export function WorkspacePanel({
     mountedFolders[0];
   const isCodexAgent =
     active?.adapter === "codex-acp" || active?.agentId === "cli-codex-acp";
+  const isAntigravityAgent =
+    active?.adapter === "agy-acp" ||
+    active?.adapter === "antigravity" ||
+    active?.agentId === "cli-agy-acp";
   const isDshAgent =
     active?.adapter === "dsh-acp" ||
     active?.adapter === "dsh" ||
@@ -361,6 +369,41 @@ export function WorkspacePanel({
       window.clearInterval(id);
     };
   }, [isCodexAgent, status]);
+
+  useEffect(() => {
+    if (!isAntigravityAgent) {
+      setAntigravityUsage(undefined);
+      setAntigravityUsageLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      setAntigravityUsageLoading(true);
+      try {
+        const result = await cliClient.antigravityUsage();
+        if (!cancelled) setAntigravityUsage(result);
+      } catch (error) {
+        if (!cancelled) {
+          setAntigravityUsage({
+            ok: false,
+            reason: "request_failed",
+            error: error instanceof Error ? error.message : String(error),
+            fetchedAt: new Date().toISOString()
+          });
+        }
+      } finally {
+        if (!cancelled) setAntigravityUsageLoading(false);
+      }
+    };
+
+    void refresh();
+    const id = window.setInterval(refresh, 2 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [isAntigravityAgent, status]);
 
   return (
     <div className="workspace-cards" aria-label={t("workspace.panelAria")}>
@@ -727,6 +770,82 @@ export function WorkspacePanel({
         </section>
       )}
 
+      {isAntigravityAgent && (
+        <section className="side-card codex-usage-card antigravity-usage-card">
+          <div className="side-card-header">
+            <span title={antigravityUsage?.ok && antigravityUsage.email ? antigravityUsage.email : undefined}>
+              {t("workspace.antigravityUsage")}
+            </span>
+            <button
+              className="codex-usage-refresh"
+              type="button"
+              disabled={antigravityUsageLoading}
+              onClick={() => {
+                setAntigravityUsageLoading(true);
+                void cliClient
+                  .antigravityUsage()
+                  .then(setAntigravityUsage)
+                  .catch((error) =>
+                    setAntigravityUsage({
+                      ok: false,
+                      reason: "request_failed",
+                      error: error instanceof Error ? error.message : String(error),
+                      fetchedAt: new Date().toISOString()
+                    })
+                  )
+                  .finally(() => setAntigravityUsageLoading(false));
+              }}
+            >
+              {antigravityUsageLoading
+                ? t("workspace.antigravityUsageLoading")
+                : t("workspace.antigravityUsageRefresh")}
+            </button>
+          </div>
+          {antigravityUsage?.ok ? (
+            <div className="codex-limit-list antigravity-limit-list">
+              {antigravityUsage.groups.map((group, gIdx) => (
+                <div key={group.displayName || gIdx} className="antigravity-quota-group">
+                  <div className="antigravity-group-title">
+                    {group.displayName === "Gemini Models"
+                      ? t("workspace.antigravityGeminiGroup")
+                      : group.displayName === "Claude and GPT models"
+                        ? t("workspace.antigravityThirdPartyGroup")
+                        : group.displayName}
+                  </div>
+                  {group.buckets.map((bucket) => (
+                    <AntigravityLimitRow
+                      key={bucket.bucketId}
+                      label={antigravityUsageWindowLabel(bucket, t)}
+                      bucket={bucket}
+                      leftLabel={t("workspace.antigravityLeft", {
+                        percent: bucket.leftPercent
+                      })}
+                      resetLabel={
+                        bucket.resetAt
+                          ? t("workspace.antigravityResetAt", {
+                              time: formatCodexResetAt(
+                                bucket.resetAt,
+                                i18n.language,
+                                bucket.windowSeconds < 86_400 ? "time" : "dateTime"
+                              )
+                            })
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="codex-usage-empty">
+              {antigravityUsageLoading
+                ? t("workspace.antigravityUsageLoading")
+                : t("workspace.antigravityUsageUnavailable")}
+            </p>
+          )}
+        </section>
+      )}
+
       <InfoCardHost />
     </div>
   );
@@ -771,16 +890,22 @@ function CodexLimitRow({
   leftLabel: string;
   resetLabel: string;
 }) {
+  const isWarning = usage.leftPercent <= 20 && usage.leftPercent > 0;
+  const isDanger = usage.leftPercent === 0;
+  const barClass = isDanger ? "limit-danger" : isWarning ? "limit-warning" : "";
+
   return (
     <div className="codex-limit-row">
       <div className="codex-limit-meta">
         <strong>{label}</strong>
-        <span>{leftLabel}</span>
+        <span className={barClass ? `antigravity-limit-badge ${barClass}` : undefined}>
+          {leftLabel}
+        </span>
       </div>
       <div className="codex-limit-track" aria-hidden="true">
         <span
-          className="codex-limit-fill"
-          style={{ width: `${usage.usedPercent}%` }}
+          className={`codex-limit-fill ${barClass}`}
+          style={{ width: `${usage.leftPercent}%` }}
         />
       </div>
       <small>{resetLabel}</small>
@@ -798,6 +923,54 @@ function codexUsageWindowLabel(
     return t("workspace.codexUsageHours", { hours: windowSeconds / 3_600 });
   }
   return t("workspace.codexUsageWindow");
+}
+
+function AntigravityLimitRow({
+  label,
+  bucket,
+  leftLabel,
+  resetLabel
+}: {
+  label: string;
+  bucket: AntigravityQuotaBucket;
+  leftLabel: string;
+  resetLabel?: string;
+}) {
+  const isWarning = bucket.leftPercent <= 20 && bucket.leftPercent > 0;
+  const isDanger = bucket.leftPercent === 0;
+  const barClass = isDanger ? "limit-danger" : isWarning ? "limit-warning" : "";
+
+  return (
+    <div className="codex-limit-row">
+      <div className="codex-limit-meta">
+        <strong>{label}</strong>
+        <span className={barClass ? `antigravity-limit-badge ${barClass}` : undefined}>
+          {leftLabel}
+        </span>
+      </div>
+      <div className="codex-limit-track" aria-hidden="true">
+        <span
+          className={`codex-limit-fill ${barClass}`}
+          style={{ width: `${bucket.leftPercent}%` }}
+        />
+      </div>
+      {resetLabel && <small>{resetLabel}</small>}
+    </div>
+  );
+}
+
+function antigravityUsageWindowLabel(
+  bucket: AntigravityQuotaBucket,
+  t: TFunction
+): string {
+  if (bucket.window === "5h") return t("workspace.antigravityLimit5h");
+  if (bucket.window === "weekly" || bucket.windowSeconds === 604_800) {
+    return t("workspace.antigravityLimitWeekly");
+  }
+  if (bucket.window === "daily" || bucket.windowSeconds === 86_400) {
+    return t("workspace.antigravityLimitDaily");
+  }
+  return bucket.displayName || t("workspace.antigravityUsageWindow");
 }
 
 function codexResetCreditStatusKey(status: string): "available" | "used" | "unknown" {

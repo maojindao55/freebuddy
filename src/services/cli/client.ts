@@ -15,6 +15,7 @@ import type {
   CliTaskLogPage,
   CliTaskRow,
   CodexUsageResult,
+  AntigravityUsageResult,
   AgentUsagePeriod,
   AgentUsageSummary,
   CursorUsageConnectInput,
@@ -95,6 +96,9 @@ export const cliClient = {
   },
   codexUsage(): Promise<CodexUsageResult> {
     return api().codexUsage();
+  },
+  antigravityUsage(): Promise<AntigravityUsageResult> {
+    return api().antigravityUsage();
   },
   usageSummary(period: AgentUsagePeriod = "all"): Promise<AgentUsageSummary> {
     return api().usageSummary(period);

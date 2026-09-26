@@ -496,6 +496,46 @@ export type CodexUsageResult =
       fetchedAt: string;
     };
 
+export interface AntigravityQuotaBucket {
+  bucketId: string;
+  displayName: string;
+  window: string;
+  windowSeconds: number;
+  remainingFraction: number;
+  usedPercent: number;
+  leftPercent: number;
+  resetTime?: string;
+  resetAt?: number;
+  description?: string;
+}
+
+export interface AntigravityQuotaGroup {
+  displayName: string;
+  description?: string;
+  buckets: AntigravityQuotaBucket[];
+}
+
+export type AntigravityUsageResult =
+  | {
+      ok: true;
+      email?: string;
+      planType?: string;
+      groups: AntigravityQuotaGroup[];
+      fetchedAt: string;
+    }
+  | {
+      ok: false;
+      reason:
+        | "missing_auth"
+        | "invalid_auth"
+        | "expired_token"
+        | "request_failed"
+        | "invalid_response"
+        | "unsupported_platform";
+      error?: string;
+      fetchedAt: string;
+    };
+
 export interface CliTaskRow {
   id: string;
   agentId: string;

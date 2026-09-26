@@ -170,6 +170,7 @@ import { registerWorkflowIpc } from "./workflowIpc.js";
 import { registerDelegationIpc } from "./delegationIpc.js";
 import { registerDelegationTeamIpc } from "./delegationTeamIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
+import { readAntigravityUsage } from "./antigravityUsage.js";
 import {
   deleteSkill,
   importSkills,
@@ -910,6 +911,7 @@ export function registerCliIpc() {
 
   registerHandler("cli:listRuntimes", () => listRuntimes());
   registerHandler("cli:codexUsage", () => readCodexUsage());
+  registerHandler("cli:antigravityUsage", () => readAntigravityUsage());
   registerHandler("cli:probeAuthentication", (_e, args: CliAuthControlArgs) =>
     probeAcpAuthentication(args)
   );

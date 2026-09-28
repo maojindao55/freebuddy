@@ -27,10 +27,11 @@ type Config struct {
 	SQLitePath string
 
 	// Authentication (Production)
-	WeChatAppID     string
-	WeChatAppSecret string
-	AdminOpenID     string
-	TokenHashPepper string
+	WeChatAPIBaseURL string
+	WeChatAppID      string
+	WeChatAppSecret  string
+	AdminOpenID      string
+	TokenHashPepper  string
 
 	// Development / POC Mode
 	DevAuthMode       bool
@@ -68,6 +69,7 @@ func DefaultConfig() Config {
 		PublicBaseURL:         "",
 		TrustProxy:            false,
 		SQLitePath:            ":memory:",
+		WeChatAPIBaseURL:      "https://api.weixin.qq.com",
 		WeChatAppID:           "",
 		WeChatAppSecret:       "",
 		AdminOpenID:           "",
@@ -110,6 +112,9 @@ func LoadFromEnv() (Config, error) {
 	}
 	if v := os.Getenv("SQLITE_PATH"); v != "" {
 		cfg.SQLitePath = v
+	}
+	if v := os.Getenv("WECHAT_API_BASE_URL"); v != "" {
+		cfg.WeChatAPIBaseURL = strings.TrimRight(v, "/")
 	}
 	if v := os.Getenv("WECHAT_APP_ID"); v != "" {
 		cfg.WeChatAppID = v
@@ -286,6 +291,16 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Sprintf("LOG_FORMAT %q is invalid (expected: json, text)", c.LogFormat))
 	}
 
+	// WeChat API Base URL validation (if set)
+	if c.WeChatAPIBaseURL == "" {
+		c.WeChatAPIBaseURL = "https://api.weixin.qq.com"
+	} else {
+		parsed, err := url.Parse(c.WeChatAPIBaseURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			errs = append(errs, "WECHAT_API_BASE_URL must be a valid HTTP or HTTPS URL")
+		}
+	}
+
 	// Production vs Dev mode validation
 	if !c.DevAuthMode {
 		// In production mode, dev tokens must not be set
@@ -306,6 +321,11 @@ func (c *Config) Validate() error {
 			errs = append(errs, "TOKEN_HASH_PEPPER is required in production mode (DEV_AUTH_MODE=false)")
 		} else if len(c.TokenHashPepper) < 16 {
 			errs = append(errs, "TOKEN_HASH_PEPPER must be at least 16 characters long for cryptographic security")
+		}
+		// In production mode, WeChat API Base URL must remain fixed to the official HTTPS endpoint.
+		// Arbitrary production override of WECHAT_API_BASE_URL is strictly prohibited.
+		if c.WeChatAPIBaseURL != "" && c.WeChatAPIBaseURL != "https://api.weixin.qq.com" {
+			errs = append(errs, "arbitrary WECHAT_API_BASE_URL override is prohibited in production mode; must use official HTTPS (https://api.weixin.qq.com)")
 		}
 	} else {
 		// In dev auth mode, dev tokens must be provided and have high entropy (>= 32 characters, OpaqueToken character set, non-weak)
@@ -478,4 +498,12 @@ func validateDevToken(name, token string) []string {
 		errs = append(errs, fmt.Sprintf("%s rejected due to insufficient entropy or weak repetitive pattern", name))
 	}
 	return errs
+}
+
+// EffectivePepper returns TokenHashPepper if set, or a non-empty fallback pepper for dev/test mode.
+func (c Config) EffectivePepper() string {
+	if c.TokenHashPepper != "" {
+		return c.TokenHashPepper
+	}
+	return "dev_fallback_token_pepper_value_32_chars"
 }

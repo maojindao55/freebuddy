@@ -48,6 +48,10 @@ func setupE2ETLSServer(t *testing.T, modifyCfg func(c *config.Config)) (*httptes
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	if err := store.RunMigrations(context.Background(), db.DB); err != nil {
+		t.Fatalf("failed to run migrations in test: %v", err)
+	}
+
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	srv := NewServer(cfg, db, logger)
 

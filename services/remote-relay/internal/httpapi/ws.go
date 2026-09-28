@@ -11,17 +11,19 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/audit"
+	"github.com/freebuddy/freebuddy/services/remote-relay/internal/auth"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/config"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/protocol"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/registry"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/router"
+	"github.com/freebuddy/freebuddy/services/remote-relay/internal/store"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/wsconn"
 )
 
 const defaultAuthTimeout = 5 * time.Second
 
 // AdminWSHandler handles WebSocket connections from the Admin client (/v1/ws/admin).
-func AdminWSHandler(rtr *router.Router, reg *registry.Registry, cfg config.Config, logger *slog.Logger, auditLogger *audit.Logger) http.HandlerFunc {
+func AdminWSHandler(rtr *router.Router, reg *registry.Registry, sessionStore store.SessionStore, cfg config.Config, logger *slog.Logger, auditLogger *audit.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if reg.IsDraining() {
 			http.Error(w, "Server is draining", http.StatusServiceUnavailable)
@@ -88,9 +90,17 @@ func AdminWSHandler(rtr *router.Router, reg *registry.Registry, cfg config.Confi
 
 		// Verify token
 		authenticated := false
-		if cfg.DevAuthMode {
-			if accessToken == cfg.DevAuthAdminToken {
+		adminSessionID := "admin_primary"
+		if cfg.DevAuthMode && accessToken == cfg.DevAuthAdminToken {
+			authenticated = true
+			adminSessionID = "dev_admin_session"
+		} else if accessToken != "" && sessionStore != nil {
+			tokenHash := auth.HashToken(accessToken, cfg.EffectivePepper())
+			sess, err := sessionStore.GetActiveSessionByTokenHash(authCtx, tokenHash)
+			if err == nil && sess != nil {
 				authenticated = true
+				adminSessionID = sess.ID
+				_ = sessionStore.TouchSession(authCtx, sess.ID, time.Now().UTC())
 			}
 		}
 
@@ -112,7 +122,7 @@ func AdminWSHandler(rtr *router.Router, reg *registry.Registry, cfg config.Confi
 
 		// Authentication successful
 		conn.SetRole(protocol.RoleAdmin)
-		conn.SetAdminID("admin_primary")
+		conn.SetAdminID(adminSessionID)
 
 		limits := protocol.NewConnectionLimits(cfg.HeartbeatInterval, cfg.ChallengeTTL, cfg.RPCTimeout)
 

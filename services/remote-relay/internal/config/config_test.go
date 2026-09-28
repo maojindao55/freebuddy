@@ -155,6 +155,44 @@ func TestValidate_ProductionMode_WeakPepper(t *testing.T) {
 	}
 }
 
+func TestValidate_ProductionMode_WeChatAPIBaseURLOverrideProhibited(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.DevAuthMode = false
+	cfg.WeChatAppID = "wx123456"
+	cfg.WeChatAppSecret = "secret1234567890"
+	cfg.AdminOpenID = "openid_admin"
+	cfg.TokenHashPepper = "super-secret-pepper-with-sufficient-entropy-12345"
+
+	// Valid with default official endpoint
+	cfg.WeChatAPIBaseURL = "https://api.weixin.qq.com"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected valid config with official wechat endpoint, got: %v", err)
+	}
+
+	// Prohibited override in production mode
+	cfg.WeChatAPIBaseURL = "http://evil.com"
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "arbitrary WECHAT_API_BASE_URL override is prohibited in production mode") {
+		t.Fatalf("expected error rejecting wechat base url override in production mode, got: %v", err)
+	}
+
+	cfg.WeChatAPIBaseURL = "https://custom-gateway.example.com"
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "arbitrary WECHAT_API_BASE_URL override is prohibited in production mode") {
+		t.Fatalf("expected error rejecting custom gateway in production mode, got: %v", err)
+	}
+
+	// Allowed in dev mode
+	cfg.DevAuthMode = true
+	cfg.DevAuthAdminToken = "dev-admin-token-with-sufficient-entropy-32"
+	cfg.DevAuthHostToken = "dev-host-token-with-sufficient-entropy-32"
+	cfg.DevAuthHostID = "host_1"
+	cfg.WeChatAPIBaseURL = "http://127.0.0.1:9090"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected valid config in dev mode with custom wechat url, got: %v", err)
+	}
+}
+
 func TestValidate_ValidPublicBaseURL(t *testing.T) {
 	validURLs := []string{
 		"https://remote.example.com",

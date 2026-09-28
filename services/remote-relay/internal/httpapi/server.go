@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/audit"
+	"github.com/freebuddy/freebuddy/services/remote-relay/internal/auth"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/config"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/protocol"
 	"github.com/freebuddy/freebuddy/services/remote-relay/internal/registry"
@@ -18,15 +19,17 @@ import (
 
 // Server encapsulates the HTTP server and API routing.
 type Server struct {
-	cfg         config.Config
-	db          *store.DB
-	logger      *slog.Logger
-	auditLogger *audit.Logger
-	registry    *registry.Registry
-	router      *router.Router
-	httpServer  *http.Server
-	mux         *http.ServeMux
-	handler     http.Handler
+	cfg          config.Config
+	db           *store.DB
+	logger       *slog.Logger
+	auditLogger  *audit.Logger
+	registry     *registry.Registry
+	router       *router.Router
+	sessionStore store.SessionStore
+	authService  *auth.Service
+	httpServer   *http.Server
+	mux          *http.ServeMux
+	handler      http.Handler
 }
 
 // NewServer creates and initializes a new HTTP API Server.
@@ -39,14 +42,25 @@ func NewServer(cfg config.Config, db *store.DB, logger *slog.Logger) *Server {
 	reg := registry.New(logger, auditLogger)
 	rtr := router.New(cfg, reg, logger, auditLogger)
 
+	var sessionStore store.SessionStore
+	if db != nil && db.DB != nil {
+		sessionStore = store.NewSessionStore(db.DB)
+	}
+	authService := auth.NewService(cfg, sessionStore, nil, logger, auditLogger)
+
 	mux := http.NewServeMux()
 
 	// Register core health endpoints
 	mux.HandleFunc("/healthz", HealthzHandler())
 	mux.HandleFunc("/readyz", ReadyzHandler(db))
 
+	// Register HTTP Auth endpoints (protocol/remote/v1/http.schema.json)
+	mux.HandleFunc("/v1/auth/wechat", WeChatAuthHandler(authService, cfg, logger, auditLogger))
+	mux.HandleFunc("/v1/auth/refresh", RefreshAuthHandler(authService, cfg, logger, auditLogger))
+	mux.HandleFunc("/v1/sessions/logout", LogoutHandler(authService, reg, cfg, logger, auditLogger))
+
 	// Register WebSocket endpoints
-	mux.HandleFunc("/v1/ws/admin", AdminWSHandler(rtr, reg, cfg, logger, auditLogger))
+	mux.HandleFunc("/v1/ws/admin", AdminWSHandler(rtr, reg, sessionStore, cfg, logger, auditLogger))
 	mux.HandleFunc("/v1/ws/host", HostWSHandler(rtr, reg, cfg, logger, auditLogger))
 
 	// Compose middleware chain
@@ -66,15 +80,34 @@ func NewServer(cfg config.Config, db *store.DB, logger *slog.Logger) *Server {
 	}
 
 	return &Server{
-		cfg:         cfg,
-		db:          db,
-		logger:      logger,
-		auditLogger: auditLogger,
-		registry:    reg,
-		router:      rtr,
-		httpServer:  httpServer,
-		mux:         mux,
-		handler:     handler,
+		cfg:          cfg,
+		db:           db,
+		logger:       logger,
+		auditLogger:  auditLogger,
+		registry:     reg,
+		router:       rtr,
+		sessionStore: sessionStore,
+		authService:  authService,
+		httpServer:   httpServer,
+		mux:          mux,
+		handler:      handler,
+	}
+}
+
+// AuthService returns the authentication service.
+func (s *Server) AuthService() *auth.Service {
+	return s.authService
+}
+
+// SessionStore returns the session store.
+func (s *Server) SessionStore() store.SessionStore {
+	return s.sessionStore
+}
+
+// SetWeChatClient allows injecting a custom WeChatClient (e.g. for testing with fake WeChat server).
+func (s *Server) SetWeChatClient(client *auth.WeChatClient) {
+	if s.authService != nil {
+		s.authService.SetWeChatClient(client)
 	}
 }
 

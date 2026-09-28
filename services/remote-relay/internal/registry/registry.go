@@ -202,3 +202,28 @@ func (r *Registry) CloseAll(reason string) {
 		delete(r.admins, id)
 	}
 }
+
+// CloseAdminSession closes any active admin WebSocket connections associated with sessionID.
+func (r *Registry) CloseAdminSession(sessionID string, reason string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, conn := range r.admins {
+		if conn.AdminID() == sessionID {
+			conn.Close(websocket.StatusNormalClosure, reason)
+			delete(r.admins, id)
+			r.logger.Info("admin connection closed by session revocation",
+				slog.String("session_id", sessionID),
+				slog.String("conn_id", conn.ID()),
+			)
+			r.auditLogger.Log(audit.Event{
+				ActorType:  audit.ActorTypeAdmin,
+				ActorID:    conn.ID(),
+				Action:     audit.ActionAdminDisconnect,
+				TargetType: "relay",
+				TargetID:   "admin_session",
+				Outcome:    "ok",
+			})
+		}
+	}
+}

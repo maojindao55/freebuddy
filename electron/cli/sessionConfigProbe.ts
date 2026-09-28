@@ -16,6 +16,7 @@ import {
 } from "./acp.js";
 import { buildCommand, dshAcpManagedRoot, ensureDshAcpCwd, getAdapterDefinition, patchDshAcpRuntimeFromCommand, syncDshAcpManagedConfig } from "./adapters.js";
 import { getDataDir } from "./db.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { waitForCodexToolchainAutoUpdate } from "./check.js";
 import { killProcessTree } from "./process-kill.js";
 import { mergeBuiltEnv } from "./runtime.js";
@@ -147,6 +148,7 @@ export async function inspectSessionConfigOptions(
       ? ensureDshAcpCwd(input.cwd, getDataDir())
       : input.cwd;
   if (input.adapter === "dsh-acp") syncDshAcpManagedConfig(getDataDir());
+  if (input.adapter === "pi-acp") await ensurePackagedPiRuntime(getDataDir());
   const built = buildCommand({
     adapter: input.adapter,
     binary: input.binary,

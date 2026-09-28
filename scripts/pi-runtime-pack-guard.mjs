@@ -14,11 +14,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import AdmZip from "adm-zip";
 
 import {
   PI_CLI_ENTRY_REL,
   PI_ACP_ENTRY_REL,
-  PI_RUNTIME_STAGING_SUBDIR,
+  PI_RUNTIME_ARCHIVE_FILE,
+  PI_RUNTIME_PACKAGE_MANIFEST_FILE,
   PI_RUNTIME_ROOT_DIR
 } from "./pi-runtime-layout.mjs";
 
@@ -78,10 +81,22 @@ export function verifyPackagedPiRuntime(appOutDir) {
 
   const missing = [];
   for (const dir of candidates) {
-    const runtimeDir = path.join(dir, PI_RUNTIME_STAGING_SUBDIR);
-    for (const rel of [PI_ACP_ENTRY_REL, PI_CLI_ENTRY_REL]) {
-      const target = path.join(runtimeDir, rel);
-      if (!fs.existsSync(target)) missing.push(target);
+    const archivePath = path.join(dir, PI_RUNTIME_ARCHIVE_FILE);
+    const manifestPath = path.join(dir, PI_RUNTIME_PACKAGE_MANIFEST_FILE);
+    if (!fs.existsSync(archivePath) || !fs.existsSync(manifestPath)) {
+      missing.push(archivePath, manifestPath);
+      continue;
+    }
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    const sha256 = createHash("sha256").update(fs.readFileSync(archivePath)).digest("hex");
+    if (manifest.schemaVersion !== 1 || !manifest.piVersion || !manifest.piAcpVersion ||
+        manifest.sha256 !== sha256) {
+      missing.push(`valid checksum and versions in ${manifestPath}`);
+      continue;
+    }
+    const zip = new AdmZip(archivePath);
+    for (const rel of [PI_ACP_ENTRY_REL, PI_CLI_ENTRY_REL, "pi-runtime.json"]) {
+      if (!zip.getEntry(rel.split(path.sep).join("/"))) missing.push(`${archivePath}:${rel}`);
     }
   }
 
@@ -89,8 +104,7 @@ export function verifyPackagedPiRuntime(appOutDir) {
     throw new Error(
       `[pi-runtime] pack guard: packaged app is missing the bundled pi runtime:\n  ` +
         `${missing.join("\n  ")}\n` +
-        `The extraResources copy likely dropped node_modules — the staged tree must live under ` +
-        `${path.basename(PI_RUNTIME_ROOT_DIR)}/${PI_RUNTIME_STAGING_SUBDIR}/ (see scripts/pi-runtime-layout.mjs).`
+        `The packaged archive or manifest is incomplete (see scripts/ensure-pi-runtime.mjs).`
     );
   }
 

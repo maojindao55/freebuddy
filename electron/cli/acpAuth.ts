@@ -12,6 +12,7 @@ import {
   type CLIAdapterId
 } from "./adapters.js";
 import { getDataDir } from "./db.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import {
   buildInitializeRequest,
   buildLogoutRequest,
@@ -53,6 +54,7 @@ async function withAcpAgent<T>(
       ? ensureDshAcpCwd(args.cwd, getDataDir())
       : args.cwd;
   if (args.adapter === "dsh-acp") syncDshAcpManagedConfig(getDataDir());
+  if (args.adapter === "pi-acp") await ensurePackagedPiRuntime(getDataDir());
   const built = buildCommand({
     adapter: args.adapter,
     binary: args.binary,

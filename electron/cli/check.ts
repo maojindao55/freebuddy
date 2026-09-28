@@ -19,6 +19,7 @@ import {
   syncDshAcpManagedConfig
 } from "./adapters.js";
 import { resolvePiAcpRuntime } from "./piRuntime.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { getDataDir, getDb } from "./db.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { compareSemver, extractSemver } from "./version.js";
@@ -435,6 +436,7 @@ export async function cliCheck(
     return result;
   }
   if (adapter === "pi-acp") {
+    await ensurePackagedPiRuntime(getDataDir());
     // Bundled runtime (pi + pi-acp bridge) shipped as an extraResource takes
     // precedence over a PATH-installed pi-acp; see electron/cli/piRuntime.ts.
     const status = resolvePiAcpRuntime();

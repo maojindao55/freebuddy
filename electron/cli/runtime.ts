@@ -24,6 +24,7 @@ import {
   piLauncherDir,
   resolvePiAcpRuntime
 } from "./piRuntime.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { runAcpAgent } from "./acpRuntime.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getDataDir, getLogDir } from "./db.js";
@@ -293,6 +294,9 @@ export async function cliRun(
 
   let built;
   try {
+    if (executionArgs.adapter === "pi-acp") {
+      await ensurePackagedPiRuntime(getDataDir());
+    }
     built = buildCommand({
       adapter: executionArgs.adapter,
       binary: executionArgs.binary,

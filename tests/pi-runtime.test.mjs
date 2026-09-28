@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,8 +19,14 @@ import {
   resolvePiNodeRuntime
 } from "../dist-electron/cli/piRuntime.js";
 import {
+  ensurePackagedPiRuntime,
+  piRuntimeCacheRoot
+} from "../dist-electron/cli/piRuntimePackage.js";
+import {
   PI_ACP_ENTRY_REL,
   PI_CLI_ENTRY_REL,
+  PI_RUNTIME_ARCHIVE_FILE,
+  PI_RUNTIME_PACKAGE_MANIFEST_FILE,
   PI_RUNTIME_ROOT_DIR,
   PI_RUNTIME_STAGING_SUBDIR,
   piRuntimeStagingDir
@@ -38,15 +45,15 @@ function makeFixtureRoot() {
   return { root, piAcpEntry, piCliEntry };
 }
 
-test("piRuntimeRoots prefers packaged resources, then staging, then repo", () => {
+test("piRuntimeRoots includes local staging and repo fallback", () => {
   const roots = piRuntimeRoots();
   assert.ok(roots.length >= 2);
   assert.equal(roots[roots.length - 1], path.resolve(fileURLToPath(new URL("..", import.meta.url))));
   assert.ok(
     roots.some((root) => root.endsWith(path.join(".build", "pi-runtime", PI_RUNTIME_STAGING_SUBDIR)))
   );
-  // The packaged root must point at the nested staging subdir, never at
-  // <resources>/pi-runtime itself (that layout lost node_modules at pack time).
+  // Packaged runtime is added after the archive is extracted. The source
+  // resource directory itself must never be treated as a ready runtime.
   assert.ok(
     roots.every((root) => !root.endsWith(path.join("pi-runtime"))),
     `packaged root must include the ${PI_RUNTIME_STAGING_SUBDIR} subdir: ${roots.join(", ")}`
@@ -59,6 +66,11 @@ test("piRuntimeRoots staging root matches the staging script layout", () => {
   const roots = piRuntimeRoots();
   assert.ok(roots.includes(piRuntimeStagingDir(PI_RUNTIME_ROOT_DIR)));
   assert.ok(PI_RUNTIME_STAGING_SUBDIR !== "node_modules");
+});
+
+test("ensurePackagedPiRuntime is a no-op without a packaged resource", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-pi-no-package-"));
+  assert.equal(await ensurePackagedPiRuntime(dataDir, path.join(dataDir, "missing")), undefined);
 });
 
 test("resolvePiAcpRuntime finds the first ready root and its manifest", () => {
@@ -170,18 +182,15 @@ test("resolvePiAcpSpawnPlan returns a node spawn plan with bridge env", () => {
   assert.equal(none, undefined);
 });
 
-test("staged pi-runtime layout survives electron-builder's extraResources copy", async () => {
-  // Regression guard for the v0.10.5 packaging bug: electron-builder's copy
-  // filter drops a root-level `node_modules` directory (and its walker never
-  // descends into filtered dirs), which silently shipped apps without the pi
-  // runtime — Pi showed "binary not found" and GuideBuddy could not start.
-  // The staged tree must live under <root>/runtime so node_modules is not at
-  // the copy root. This test drives the real app-builder-lib copy path.
+test("packaged Pi archive copies, extracts once, and is reused by version", async () => {
   const { FileMatcher, copyFiles } = require("app-builder-lib/out/fileMatcher.js");
+  const AdmZip = require("adm-zip");
+  const builderConfig = fs.readFileSync(new URL("../electron-builder.yml", import.meta.url), "utf8");
+  assert.match(builderConfig, /from: \.build\/pi-runtime-package\s+to: pi-runtime/);
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-pi-pack-"));
   const from = path.join(workDir, path.basename(PI_RUNTIME_ROOT_DIR)); // .build/pi-runtime
-  const stagingDir = path.join(from, PI_RUNTIME_STAGING_SUBDIR);
+  const stagingDir = path.join(workDir, "staged-runtime");
   const to = path.join(workDir, "resources", path.basename(PI_RUNTIME_ROOT_DIR));
 
   // Reproduce the layout scripts/ensure-pi-runtime.mjs produces.
@@ -195,30 +204,53 @@ test("staged pi-runtime layout survives electron-builder's extraResources copy",
     JSON.stringify({ schemaVersion: 1, piVersion: "0.85.1", piAcpVersion: "0.0.33" })
   );
 
-  // Same construction electron-builder uses for an object-form extraResources
-  // entry ({from, to} with no filter), including copyFiles' "**/*" default.
+  fs.mkdirSync(from, { recursive: true });
+  const archivePath = path.join(from, PI_RUNTIME_ARCHIVE_FILE);
+  const zip = new AdmZip();
+  zip.addLocalFolder(stagingDir);
+  zip.writeZip(archivePath);
+  const manifest = {
+    schemaVersion: 1,
+    piVersion: "0.85.1",
+    piAcpVersion: "0.0.33",
+    sha256: createHash("sha256").update(fs.readFileSync(archivePath)).digest("hex")
+  };
+  fs.writeFileSync(path.join(from, PI_RUNTIME_PACKAGE_MANIFEST_FILE), JSON.stringify(manifest));
+
+  // Exercise electron-builder's real extraResources copy path.
   const matcher = new FileMatcher(from, to, (it) => it, []);
   await copyFiles([matcher], null, false);
 
-  const packagedRoot = path.join(to, PI_RUNTIME_STAGING_SUBDIR);
-  assert.ok(
-    fs.existsSync(path.join(packagedRoot, PI_ACP_ENTRY_REL)),
-    `missing ${PI_ACP_ENTRY_REL} after copy — electron-builder dropped the staged tree`
-  );
-  assert.ok(fs.existsSync(path.join(packagedRoot, PI_CLI_ENTRY_REL)));
+  assert.ok(fs.existsSync(path.join(to, PI_RUNTIME_ARCHIVE_FILE)));
+  assert.equal(fs.existsSync(path.join(to, PI_RUNTIME_STAGING_SUBDIR)), false);
+  const { verifyPackagedPiRuntime } = await import("../scripts/pi-runtime-pack-guard.mjs");
+  assert.equal(verifyPackagedPiRuntime(path.join(workDir, "resources")), 1);
 
-  // The runtime resolver must accept the copied (packaged) layout as ready.
+  const dataDir = path.join(workDir, "user-data");
+  const packagedRoot = await ensurePackagedPiRuntime(dataDir, to);
+  assert.equal(packagedRoot, piRuntimeCacheRoot(dataDir, manifest));
   const status = resolvePiAcpRuntime([packagedRoot]);
   assert.equal(status.ready, true);
   assert.equal(status.root, packagedRoot);
   assert.equal(status.piAcpVersion, "0.0.33");
+  assert.equal(resolvePiAcpRuntime().root, packagedRoot);
+  assert.equal(resolvePiAcpSpawnPlan(dataDir)?.piAcpEntry, path.join(packagedRoot, PI_ACP_ENTRY_REL));
+  const marker = path.join(packagedRoot, "cache-ready.json");
+  const before = fs.statSync(marker).mtimeMs;
+  const nextAppResources = path.join(workDir, "next-app", "pi-runtime");
+  fs.cpSync(to, nextAppResources, { recursive: true });
+  assert.equal(await ensurePackagedPiRuntime(dataDir, nextAppResources), packagedRoot);
+  assert.equal(fs.statSync(marker).mtimeMs, before);
 
-  // The pack guard must pass on the copied tree and fail when it is gutted.
-  // Remove the staging tree first so only the packaged copy remains.
-  const { verifyPackagedPiRuntime } = await import("../scripts/pi-runtime-pack-guard.mjs");
-  const appOutDir = path.join(workDir, "resources");
-  fs.rmSync(from, { recursive: true, force: true });
-  assert.equal(verifyPackagedPiRuntime(appOutDir), 1);
   fs.rmSync(path.join(packagedRoot, PI_CLI_ENTRY_REL));
-  assert.throws(() => verifyPackagedPiRuntime(appOutDir), /missing the bundled pi runtime/);
+  assert.equal(await ensurePackagedPiRuntime(dataDir, to), packagedRoot);
+  assert.ok(fs.existsSync(path.join(packagedRoot, PI_CLI_ENTRY_REL)));
+
+  fs.writeFileSync(path.join(to, PI_RUNTIME_ARCHIVE_FILE), "corrupt");
+  fs.rmSync(packagedRoot, { recursive: true });
+  await assert.rejects(() => ensurePackagedPiRuntime(dataDir, to), /checksum mismatch/);
+  assert.throws(
+    () => verifyPackagedPiRuntime(path.join(workDir, "resources")),
+    /missing the bundled pi runtime/
+  );
 });

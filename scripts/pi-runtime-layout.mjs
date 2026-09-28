@@ -1,16 +1,10 @@
 /**
  * Shared layout constants for the bundled pi runtime.
  *
- * WHY the nested `runtime/` subdir — do not "simplify" it away:
- * electron-builder's extraResources copy filter (app-builder-lib/out/util/
- * filter.js) hard-excludes a *root-level* `node_modules` directory in the
- * `from` tree, and its walker never descends into a filtered directory.
- * Staging the dependency tree directly at `.build/pi-runtime/node_modules`
- * therefore shipped `package.json` + `pi-runtime.json` only: the packaged app
- * silently had no pi runtime, `resolvePiAcpRuntime()` found no ready root, and
- * the Pi adapter fell back to a PATH lookup reporting "binary not found"
- * (v0.10.5 shipped exactly this way). Nesting the tree one level down keeps
- * `node_modules` off the copy root.
+ * The local dependency tree is staged under `runtime/`. Packaged apps ship an
+ * archive instead of this tree. The nested layout remains compatible with
+ * local runtime resolution and avoids the old extraResources filter trap if
+ * a loose resource is ever needed again (v0.10.5 lost root-level node_modules).
  *
  * Keep in sync with electron/cli/piRuntime.ts (PI_RUNTIME_STAGING_SUBDIR and
  * piRuntimeRoots) — tests/pi-runtime.test.mjs asserts the two stay aligned.
@@ -24,17 +18,19 @@ const repoRoot = path.resolve(
   ".."
 );
 
-/** extraResources `from` dir; packaged to <resourcesPath>/pi-runtime. */
+/** Local runtime staging dir; the archive below is the extraResource. */
 export const PI_RUNTIME_ROOT_DIR = path.join(
   repoRoot,
   ".build",
   "pi-runtime"
 );
 
-/**
- * Subdir of PI_RUNTIME_ROOT_DIR that holds `node_modules` and the manifest.
- * MUST NOT be named `node_modules` (see the header comment).
- */
+/** The packaged resource contains one archive rather than a node_modules tree. */
+export const PI_RUNTIME_PACKAGE_DIR = path.join(repoRoot, ".build", "pi-runtime-package");
+export const PI_RUNTIME_ARCHIVE_FILE = "runtime.zip";
+export const PI_RUNTIME_PACKAGE_MANIFEST_FILE = "package-manifest.json";
+
+/** Subdir of PI_RUNTIME_ROOT_DIR that holds node_modules and its manifest. */
 export const PI_RUNTIME_STAGING_SUBDIR = "runtime";
 
 /** Version manifest written next to the staged node_modules. */

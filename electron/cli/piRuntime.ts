@@ -1,10 +1,9 @@
 /**
  * Bundled pi runtime resolution for the `pi-acp` adapter.
  *
- * FreeBuddy ships `@earendil-works/pi-coding-agent` (pi) plus the community
- * `pi-acp` ACP bridge as an extraResource, so the onboarding guide member can
- * run on a brand-new install with zero user-side setup (no global node, no
- * globally installed CLI agent).
+ * FreeBuddy ships `@earendil-works/pi-coding-agent` (pi) plus `pi-acp` in an
+ * extraResource archive. piRuntimePackage extracts it into a versioned user
+ * data cache on first use, then reuses it across application upgrades.
  *
  * Layout (staged by scripts/ensure-pi-runtime.mjs):
  *   <root>/runtime/node_modules/pi-acp/dist/index.js                    ACP bridge
@@ -12,16 +11,12 @@
  *   <root>/runtime/pi-runtime.json                                     version manifest
  *
  * Roots, in priority order:
- *   1. <resourcesPath>/pi-runtime/runtime — packaged extraResources
- *   2. <repo>/.build/pi-runtime/runtime   — locally staged for packaging
- *   3. <repo>                             — dev: packages installed as devDependencies
+ *   1. <userData>/freebuddy/pi-runtime-cache/<version> — packaged runtime
+ *   2. <repo>/.build/pi-runtime/runtime — locally staged for packaging
+ *   3. <repo> — dev: packages installed as devDependencies
  *
- * The nested `runtime/` subdir is required: electron-builder's extraResources
- * copy filter drops a root-level `node_modules` directory, so a flat
- * `<root>/node_modules` layout ships without the pi runtime and the adapter
- * silently falls back to a PATH lookup ("binary not found"). See
- * scripts/pi-runtime-layout.mjs; tests/pi-runtime.test.mjs guards the layout
- * against electron-builder's copy filter.
+ * The local staging tree retains its nested `runtime/` layout. Packaged apps
+ * only ship runtime.zip, avoiding thousands of loose install-directory files.
  *
  * Spawning model:
  *   FreeBuddy spawns `node <pi-acp>/dist/index.js` directly (mirrors how
@@ -44,13 +39,13 @@ import { fileURLToPath } from "node:url";
 import { resolveNodeBinaryHint } from "./codexBinaryHint.js";
 
 export const PI_ACP_ADAPTER_ID = "pi-acp";
+let packagedCacheRoot: string | undefined;
 
-/**
- * Subdir under the packaged/staged pi-runtime root that holds node_modules.
- * Must not be named `node_modules` — electron-builder drops a root-level
- * node_modules when copying extraResources (see the header comment and
- * scripts/pi-runtime-layout.mjs).
- */
+export function setPiRuntimeCacheRoot(root: string): void {
+  packagedCacheRoot = root;
+}
+
+/** Local staging subdir that holds node_modules before archiving. */
 const PI_RUNTIME_STAGING_SUBDIR = "runtime";
 
 const PI_PACKAGE = "@earendil-works/pi-coding-agent";
@@ -112,11 +107,7 @@ function repoRoot(): string {
 /** Candidate runtime roots, highest priority first. */
 export function piRuntimeRoots(): string[] {
   const roots: string[] = [];
-  const packaged =
-    typeof process.resourcesPath === "string"
-      ? path.join(process.resourcesPath, "pi-runtime", PI_RUNTIME_STAGING_SUBDIR)
-      : "";
-  if (packaged) roots.push(packaged);
+  if (packagedCacheRoot) roots.push(packagedCacheRoot);
   roots.push(path.join(repoRoot(), ".build", "pi-runtime", PI_RUNTIME_STAGING_SUBDIR));
   roots.push(repoRoot());
   return roots;

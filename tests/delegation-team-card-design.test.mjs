@@ -6,6 +6,17 @@ const source = fs.readFileSync(
   new URL("../src/components/Workflows/DelegationTeamCard.tsx", import.meta.url),
   "utf8"
 );
+// The event detail body and the failure-reason derivation moved out of the card
+// so the roster view and the tree view share one implementation. The guards for
+// that behaviour follow the code.
+const detailsSource = fs.readFileSync(
+  new URL("../src/components/Workflows/DelegationEventDetails.tsx", import.meta.url),
+  "utf8"
+);
+const formatSource = fs.readFileSync(
+  new URL("../src/utils/delegationEventFormat.ts", import.meta.url),
+  "utf8"
+);
 const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 test("delegation activity is grouped into member cards instead of a separate timeline", () => {
@@ -32,7 +43,7 @@ test("task prompts stay compact until their details are expanded", () => {
   assert.match(source, /aria-expanded=\{eventExpanded\}/);
   assert.match(source, /aria-controls=\{`delegation-event-\$\{event\.id\}`\}/);
   assert.match(source, /workflow\.delegation\.details/);
-  assert.match(source, /workflow\.delegation\.result/);
+  assert.match(detailsSource, /workflow\.delegation\.result/);
   assert.match(
     styles,
     /\.delegation-activity-task\s*\{[^}]*-webkit-line-clamp:\s*2/s
@@ -65,9 +76,12 @@ test("member model lookup uses loaded store messages instead of refetching histo
 });
 
 test("failed delegation events show their upstream error without expanding details", () => {
-  assert.match(source, /event\.status === "failed" \|\| event\.status === "timeout"/);
+  assert.match(
+    formatSource,
+    /event\.status !== "failed" && event\.status !== "timeout"/
+  );
   assert.match(source, /className="delegation-event-failure"/);
   assert.match(source, /workflow\.failureReason/);
-  assert.match(source, /event\.resultSummary && !failureReason/);
+  assert.match(detailsSource, /event\.resultSummary && !failureReason/);
   assert.match(styles, /\.delegation-event-failure/);
 });

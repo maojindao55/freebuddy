@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { evaluateDevAccess, isLiteralLoopbackEndpoint, WECHAT_AUTH_LIMITATION } from "../miniprogram/config/devAccess";
+import { evaluateDevAccess, isLiteralLoopbackEndpoint, WECHAT_AUTH_NOTICE } from "../miniprogram/config/devAccess";
 import { ENVIRONMENTS } from "../miniprogram/config/environments";
 import {
   createOperatorTokenSession,
@@ -118,7 +118,7 @@ describe("operator token session", () => {
 });
 
 describe("credential source view", () => {
-  test("wechat login is described as unavailable, not faked", () => {
+  test("wechat login is offered as the real path, with its remaining deployment caveats", () => {
     const views = describeCredentialSources({
       envName: "local",
       httpBaseUrl: LOCAL_LOOPBACK.httpBaseUrl,
@@ -129,10 +129,11 @@ describe("credential source view", () => {
     });
     const wechat = views[0];
     assert.equal(wechat.source, "wechat_code");
-    assert.equal(wechat.available, false);
-    assert.equal(wechat.actionEnabled, false);
-    assert.equal(wechat.detail, WECHAT_AUTH_LIMITATION);
+    assert.equal(wechat.available, true);
+    assert.equal(wechat.actionEnabled, true);
+    assert.equal(wechat.detail, WECHAT_AUTH_NOTICE);
     assert.match(wechat.detail, /\/v1\/auth\/wechat/);
+    assert.doesNotMatch(wechat.detail, /token|secret|openid/i, "文案不得出现凭据字段名");
   });
 
   test("the DEV source is labelled as what it is and leaks nothing", () => {

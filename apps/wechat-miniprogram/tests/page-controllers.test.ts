@@ -12,8 +12,11 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import type { EnvironmentName } from "../miniprogram/config/environments";
+import { resolveEnvironment } from "../miniprogram/config/runtimeConfig";
 import type { MiniProgramEnvVersion } from "../miniprogram/platform/wechatApi";
+import { createAuthSession, type AuthSession } from "../miniprogram/services/authSession";
 import { createDevConnectController } from "../miniprogram/services/devConnect";
+import { createWechatAuthTokenStore } from "../miniprogram/services/tokenStore";
 import { ROUTES, chatRoute } from "../miniprogram/services/pageViews";
 import { SECRET_MASK } from "../miniprogram/utils/view";
 import { createLoginController, type LoginPageData } from "../miniprogram/pages/index/controller";
@@ -24,6 +27,8 @@ import {
 } from "../miniprogram/pages/conversations/controller";
 import { createChatController, type ChatPageData } from "../miniprogram/pages/chat/controller";
 import { createRecordingPageRuntime } from "./helpers/fakePageRuntime";
+import { createOperatorTokenSession } from "../miniprogram/services/adminSession";
+import { AUTH_PATHS, authResponse, createFakeAuthApi, tokenPair } from "./helpers/fakeAuthApi";
 import {
   PAGE_HOST,
   PAGE_HOST_2,
@@ -78,18 +83,33 @@ function devFor(
 }
 
 function loginFixture(envVersion: MiniProgramEnvVersion = "develop", envName: EnvironmentName = "local") {
-  const h = createPageHarness();
+  // Production wiring: one shared DEV credential, and the connection consuming the auth session's
+  // credential (so a WeChat login really does reach the socket).
+  const devSession = createOperatorTokenSession();
+  const authApi = createFakeAuthApi();
+  const auth: AuthSession = createAuthSession({
+    api: authApi,
+    environment: resolveEnvironment({
+      envVersion: envVersion === "release" ? "release" : "develop",
+      override: envName
+    }),
+    clientVersion: "0.0.0",
+    tokenStore: createWechatAuthTokenStore(authApi),
+    devSession
+  });
+  const h = createPageHarness({ credential: auth.credential, devSession });
   const dev = devFor(h, envVersion, envName);
   const runtime = createRecordingPageRuntime();
   const renders = recorder<LoginPageData>();
   const controller = createLoginController({
     connection: h.connection,
     dev,
+    auth,
     runtime,
     environmentName: envName,
     setData: (data) => renders.all.push(data)
   });
-  return { h, dev, runtime, controller, renders };
+  return { h, dev, auth, authApi, runtime, controller, renders };
 }
 
 async function connectedConversations(): Promise<PageHarness> {
@@ -103,15 +123,62 @@ async function connectedConversations(): Promise<PageHarness> {
 }
 
 describe("connect page controller", () => {
-  test("the WeChat login button stays disabled and inert", () => {
-    const { controller, renders, runtime, h } = loginFixture();
+  test("the WeChat login button starts the real login and enables the console", async () => {
+    const { controller, renders, runtime, h, authApi } = loginFixture();
     controller.start();
-    assert.equal(renders.last().wechatActionEnabled, false);
-    assert.ok(renders.last().wechatActionLabel.length > 0);
+    assert.equal(renders.last().wechatActionEnabled, true);
+    assert.equal(renders.last().wechatTone, "neutral");
+    assert.equal(renders.last().hasCredential, false);
+
+    authApi.route(AUTH_PATHS.wechat, { statusCode: 200, data: authResponse("login", 600, 3_600) });
+    controller.wechatLogin();
+    await settle();
+
+    assert.equal(renders.last().hasCredential, true);
+    assert.equal(renders.last().credentialMode, "wechat");
+    assert.equal(renders.last().wechatActionEnabled, false, "登录后按钮显示已登录");
+    assert.ok(runtime.toasts.some((toast) => /成功/.test(toast)));
+    assert.equal(h.hub.tasks.length, 1, "登录成功后必须建连");
+    assert.equal(
+      h.hub.last().url,
+      "ws://127.0.0.1:8080/v1/ws/admin",
+      "端点仍来自环境表，登录不改变它"
+    );
+    assert.ok(
+      !JSON.stringify(renders.all).includes(tokenPair("login").accessToken),
+      "页面数据不得出现令牌"
+    );
+  });
+
+  test("a non-administrator is refused, and nothing connects", async () => {
+    const { controller, renders, runtime, h, authApi } = loginFixture();
+    controller.start();
+    authApi.route(AUTH_PATHS.wechat, {
+      statusCode: 403,
+      data: { code: "forbidden", message: "admin authentication forbidden", retryable: false }
+    });
 
     controller.wechatLogin();
-    assert.deepEqual(runtime.navigations, [], "占位按钮不得导航或登录");
-    assert.equal(h.connection.hasToken(), false);
+    await settle();
+
+    assert.equal(renders.last().wechatTone, "error");
+    assert.match(renders.last().message, /管理员/);
+    assert.equal(renders.last().hasCredential, false);
+    assert.equal(h.hub.tasks.length, 0, "非管理员不得建连");
+    assert.ok(runtime.toasts.some((toast) => /管理员/.test(toast)));
+  });
+
+  test("a network failure is shown as retryable and opens no socket", async () => {
+    const { controller, renders, h, authApi } = loginFixture();
+    controller.start();
+    authApi.route(AUTH_PATHS.wechat, { networkError: "request:fail offline" });
+
+    controller.wechatLogin();
+    await settle();
+
+    assert.equal(renders.last().wechatTone, "warn");
+    assert.match(renders.last().message, /网络/);
+    assert.equal(h.hub.tasks.length, 0);
   });
 
   test("a release build hides the DEV entry and refuses to accept a token", () => {
@@ -212,16 +279,25 @@ describe("home page controller", () => {
   async function homeFixture() {
     const h = await connectedConversations();
     const dev = devFor(h);
+    const authApi = createFakeAuthApi();
+    const auth: AuthSession = createAuthSession({
+      api: authApi,
+      environment: resolveEnvironment({ envVersion: "develop", override: "local" }),
+      clientVersion: "0.0.0",
+      tokenStore: createWechatAuthTokenStore(authApi),
+      devSession: h.tokenSession
+    });
     const runtime = createRecordingPageRuntime();
     const renders = recorder<HomePageData>();
     const controller = createHomeController({
       connection: h.connection,
       dev,
+      auth,
       runtime,
       environmentName: "local",
       setData: (data) => renders.all.push(data)
     });
-    return { h, dev, runtime, controller, renders };
+    return { h, dev, auth, runtime, controller, renders };
   }
 
   test("the snapshot fills the host card and a host.status read refreshes the counters", async () => {

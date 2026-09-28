@@ -2,8 +2,8 @@
  * Home page controller (route `pages/home/home`).
  *
  * Renders the single-host overview: connection state, host status, run/decision/terminal counters
- * and the read-only project/decision/task summaries. It is the page that makes "this is a DEV
- * connection, not a WeChat administrator login" impossible to miss.
+ * and the read-only project/decision/task summaries. It names which credential is in force, so a
+ * local DEV connection is never presented as a WeChat administrator login.
  *
  * Lifecycle: `start()` on `onShow`, `stop()` on `onHide` and `onUnload`. Recovery state lives in
  * the App session, so leaving this page never loses a cursor or a connection; only the page's
@@ -11,6 +11,7 @@
  */
 
 import type { AdminConnection } from "../../services/adminConnection";
+import type { AuthSession } from "../../services/authSession";
 import type { DevConnectController } from "../../services/devConnect";
 import { ROUTES, buildHomeView, type HomeView } from "../../services/pageViews";
 import type { PageRuntime } from "../../platform/pageRuntime";
@@ -24,6 +25,7 @@ export interface HomePageData extends HomeView {
 export interface HomeControllerOptions {
   readonly connection: AdminConnection;
   readonly dev: DevConnectController;
+  readonly auth: AuthSession;
   readonly runtime: PageRuntime;
   readonly environmentName: string;
   readonly setData: (data: HomePageData) => void;
@@ -40,22 +42,30 @@ export interface HomeController {
 }
 
 export function createHomeController(options: HomeControllerOptions): HomeController {
-  const { connection, dev, runtime } = options;
+  const { connection, dev, auth, runtime } = options;
   let started = false;
   let hostStatusError: string | null = null;
   let lastStatus: string | null = null;
   let statusReadInFlight = false;
   let unsubscribeConnection: (() => void) | null = null;
   let unsubscribeHost: (() => void) | null = null;
+  let unsubscribeAuth: (() => void) | null = null;
+
+  function credentialSource(): "wechat_code" | "dev_operator_token" | "none" {
+    const mode = auth.getState().mode;
+    if (mode === "dev") {
+      return "dev_operator_token";
+    }
+    return mode === "wechat" ? "wechat_code" : "none";
+  }
 
   function build(): HomePageData {
     const view = buildHomeView({
       connection: connection.stores.connection.getState(),
       host: connection.stores.host.getState(),
       environmentName: options.environmentName,
-      // The only credential this stage can hold is the DEV operator token; saying otherwise
-      // would present a DEV session as an administrator login.
-      credentialSource: dev.getState().hasToken ? "dev_operator_token" : "none"
+      // Exactly which credential is in force; a DEV session is never presented as a WeChat login.
+      credentialSource: credentialSource()
     });
     return { ...view, hostStatusError };
   }
@@ -105,6 +115,7 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       lastStatus = connection.stores.connection.getState().status;
       unsubscribeConnection = connection.stores.connection.subscribe(handleConnectionChange);
       unsubscribeHost = connection.stores.host.subscribe(render);
+      unsubscribeAuth = auth.subscribe(render);
       render();
       void loadStatus();
     },
@@ -115,6 +126,8 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       unsubscribeConnection = null;
       unsubscribeHost?.();
       unsubscribeHost = null;
+      unsubscribeAuth?.();
+      unsubscribeAuth = null;
     },
 
     render,
@@ -137,16 +150,20 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     logout() {
       void runtime
         .showConfirm({
-          title: "断开并清除凭证",
-          content: "将断开连接并清除内存中的 DEV 令牌、主机标识与本地缓存，返回连接页。",
-          confirmText: "清除"
+          title: "退出并清除凭证",
+          content: "将断开连接、尽力撤销服务端会话，并清除本机登录状态、主机标识与本地缓存，返回连接页。",
+          confirmText: "退出"
         })
         .then((confirmed) => {
           if (!confirmed) {
             return;
           }
-          dev.signOut();
-          runtime.reLaunch(ROUTES.login);
+          // Best-effort server revocation first (a network failure must not block the local
+          // cleanup), then the isolation pass, then back to the connect page.
+          void auth.logout().then(() => {
+            dev.signOut();
+            runtime.reLaunch(ROUTES.login);
+          });
         });
     }
   };

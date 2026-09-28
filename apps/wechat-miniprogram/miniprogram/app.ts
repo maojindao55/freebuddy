@@ -12,8 +12,10 @@
  * 3. Contain failures: `onError`, `onUnhandledRejection` and `onPageNotFound` are routed to the
  *    error boundary, which never rethrows and always redacts.
  *
- * Nothing here authenticates: there is no `wx.login`, no code exchange and no token. The only
- * credential this stage can hold is the DEV operator token entered on the connect page.
+ * Nothing here authenticates directly: `wx.login`, the `/v1/auth/wechat` exchange, token rotation
+ * and logout all live in the App-scoped `services/authSession.ts`, reached through the pages. This
+ * file only guarantees that whatever credential exists is wired to the single socket before the
+ * first page renders.
  */
 
 import { ENVIRONMENTS } from "./config/environments";

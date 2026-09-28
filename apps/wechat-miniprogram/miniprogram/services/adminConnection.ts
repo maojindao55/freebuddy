@@ -27,7 +27,7 @@
 import { getHostTargetRegistry, type HostTargetRegistry, type HostTargetState } from "../config/hostTarget";
 import { getAdminStores, type AdminStores } from "../stores/adminStores";
 import { buildResumeFrame } from "../protocol/frameRules";
-import type { EventFrame, RemoteId, SnapshotFrame } from "../protocol/remote.generated";
+import type { EventFrame, RemoteErrorCode, RemoteId, SnapshotFrame } from "../protocol/remote.generated";
 import type { SocketTaskLike } from "../platform/wechatApi";
 import type { IdFactory, Scheduler } from "../utils/scheduler";
 import { nextIdFactory } from "../utils/scheduler";
@@ -47,6 +47,35 @@ const DISCONNECTED_FAILURE: RpcFailure = {
   unknownOutcome: true
 };
 
+/**
+ * The credential seam of the transport.
+ *
+ * The socket only ever asks for a token and reports a refusal; it never learns where a token came
+ * from. That is what lets an in-memory DEV operator token (local builds only) and a persisted
+ * WeChat-issued session (`services/authSession.ts`) be swapped without touching the transport, and
+ * it keeps "which token is in force" in exactly one place.
+ */
+export interface AdminCredential {
+  /** Current usable credential, or null when there is none (or it is already expired). */
+  getAccessToken(): string | null;
+  /**
+   * The Relay refused the credential (`unauthorized`/`forbidden`). Resolves true when a usable
+   * credential is available again, in which case the caller may reconnect.
+   */
+  handleAuthRejected(code: RemoteErrorCode | null): Promise<boolean>;
+  /** Explicit sign-out: no persisted or in-memory credential may survive it. */
+  clear(): void;
+}
+
+/** Credential adapter used when the caller supplies nothing: DEV in-memory token only. */
+function defaultCredential(tokenSession: OperatorTokenSession): AdminCredential {
+  return {
+    getAccessToken: () => tokenSession.readToken(),
+    handleAuthRejected: () => Promise.resolve(false),
+    clear: () => tokenSession.clear()
+  };
+}
+
 export interface AdminConnectionOptions {
   /** Full admin endpoint, e.g. `${wsBaseUrl}/v1/ws/admin`. */
   readonly adminSocketUrl: string;
@@ -57,6 +86,11 @@ export interface AdminConnectionOptions {
   readonly nextId?: IdFactory;
   readonly random?: () => number;
   readonly tokenSession?: OperatorTokenSession;
+  /**
+   * Where the transport gets its credential. Defaults to an adapter over `tokenSession` (DEV
+   * in-memory token only), so existing callers keep their exact behaviour.
+   */
+  readonly credential?: AdminCredential;
   readonly hostTarget?: HostTargetRegistry;
   /** App-scoped caches. Defaults to the App singleton. */
   readonly stores?: AdminStores;
@@ -72,7 +106,10 @@ export interface AdminConnection {
   /** Validates and stores the DEV operator token **in memory only**. */
   setToken(raw: string | null | undefined): SetTokenResult;
   clearToken(): void;
+  /** True when the DEV operator token is present (drives the DEV panel). */
   hasToken(): boolean;
+  /** True when *any* credential — DEV or WeChat-issued — is currently usable. */
+  hasCredential(): boolean;
   setHostId(hostId: RemoteId | null): HostTargetState;
   getHostId(): RemoteId | null;
   connect(reason: string): void;
@@ -100,6 +137,7 @@ export function createAdminConnection(options: AdminConnectionOptions): AdminCon
   const nextId = options.nextId ?? nextIdFactory;
   const random = options.random ?? (() => Math.random());
   const tokenSession = options.tokenSession ?? getOperatorTokenSession();
+  const credential = options.credential ?? defaultCredential(tokenSession);
   const hostTarget = options.hostTarget ?? getHostTargetRegistry();
   const stores = options.stores ?? getAdminStores();
   const resume = options.resume ?? createResumeManager({ storage: options.resumeStorage });
@@ -119,7 +157,7 @@ export function createAdminConnection(options: AdminConnectionOptions): AdminCon
   const socket = createRelaySocket({
     adminSocketUrl: options.adminSocketUrl,
     clientVersion: options.clientVersion,
-    getAccessToken: () => tokenSession.readToken(),
+    getAccessToken: () => credential.getAccessToken(),
     createSocket: options.createSocket,
     scheduler: options.scheduler,
     isoNow: options.isoNow,
@@ -144,6 +182,13 @@ export function createAdminConnection(options: AdminConnectionOptions): AdminCon
         // request_expired, backpressure, ...). Settle it here; a frame that matches no pending
         // request is a connection-level error and is left to the transport layer.
         rpcClient.settleError(frame, hostTarget.getHostId());
+      },
+      onTerminalError(frame) {
+        options.handlers?.onTerminalError?.(frame);
+        // The Relay refused this credential. `unauthorized` may be recoverable by rotating the
+        // access token; `forbidden` never is. The socket treats these as terminal and only leaves
+        // that state through an explicit reconnect, so a successful recovery closes and reopens.
+        recoverFromRejection(frame.payload.code);
       },
       onAuthOk(frame) {
         options.handlers?.onAuthOk?.(frame);
@@ -178,6 +223,39 @@ export function createAdminConnection(options: AdminConnectionOptions): AdminCon
 
   const reads = createReadRpcApi(rpcClient, () => hostTarget.getHostId());
 
+  let recoveryInFlight = false;
+
+  /**
+   * Reacts to a credential the Relay rejected. Recovery is attempted once at a time: two
+   * concurrent recoveries would spend a one-time refresh token twice and the second attempt would
+   * be (correctly) rejected as a replay. A failed recovery leaves the socket terminal, which is
+   * what the UI reports.
+   */
+  function recoverFromRejection(code: RemoteErrorCode | null): void {
+    if (recoveryInFlight) {
+      return;
+    }
+    recoveryInFlight = true;
+    void credential
+      .handleAuthRejected(code)
+      .then((recovered) => {
+        if (!recovered) {
+          return;
+        }
+        // `forbidden` is sticky by design, so the only way back to a usable socket is a fresh
+        // attempt with the new credential.
+        socket.close("凭证已刷新");
+        socket.connect("凭证刷新后重连");
+      })
+      .catch(() => {
+        // A recovery path that throws must not take down the transport; the socket already
+        // reported the refusal and will keep reporting it.
+      })
+      .finally(() => {
+        recoveryInFlight = false;
+      });
+  }
+
   const state: AdminState = createAdminState({
     stores,
     resume,
@@ -209,6 +287,10 @@ export function createAdminConnection(options: AdminConnectionOptions): AdminCon
 
     hasToken() {
       return tokenSession.hasToken();
+    },
+
+    hasCredential() {
+      return credential.getAccessToken() !== null;
     },
 
     setHostId(hostId) {
@@ -246,6 +328,9 @@ export function createAdminConnection(options: AdminConnectionOptions): AdminCon
 
     signOut(reason) {
       socket.close(reason);
+      // Both layers: the credential owner drops a persisted WeChat session, and the transport's
+      // own DEV session is cleared as well, so no combination can survive an explicit sign-out.
+      credential.clear();
       tokenSession.clear();
       rpcClient.rejectAll(DISCONNECTED_FAILURE);
       // Sign-out is isolation: no cache, no cursor and no credential may survive it.

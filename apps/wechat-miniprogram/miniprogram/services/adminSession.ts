@@ -1,26 +1,20 @@
 /**
- * Administrator credential sources for this read-only substage.
+ * The DEV operator-token credential (local builds only).
  *
- * Two sources are conceivable; only one exists today.
+ * The production administrator credential is the WeChat-issued session in
+ * `services/authSession.ts`: `wx.login` code -> `POST /v1/auth/wechat` -> opaque access/refresh
+ * tokens, persisted by `services/tokenStore.ts`. This module is the *other*, narrower source:
+ * the Relay's operator-supplied DEV token (`DEV_AUTH_ADMIN_TOKEN`), sent verbatim in the existing
+ * `admin.auth` frame. It proves nothing about WeChat identity, and the client labels it as what
+ * it is.
  *
- * 1. `wechat_code`: `wx.login` code → Relay `/v1/auth/wechat` → server compares `ADMIN_OPENID`.
- *    **Unavailable.** The Relay ships no such HTTP route, so there is nothing to call. This
- *    client therefore never calls `wx.login`, never exchanges a code and never stores a
- *    server-issued token — inventing the exchange locally would fake an identity the server
- *    never vouched for.
- *
- * 2. `dev_operator_token`: a token the operator already possesses from the Relay's own DEV
- *    configuration, sent verbatim in the existing `admin.auth` frame. It proves nothing about
- *    WeChat identity; the client labels it as what it is.
- *
- * The token is held **in memory for the process lifetime only**. There is no `tokenStore` write
- * yet precisely because the only available credential is a local DEV one: persisting it would
- * put relay-admin material in WeChat storage. Production previously must obtain tokens from
- * `/v1/auth/wechat`, which does not exist yet.
+ * The DEV token is held **in memory for the process lifetime only** and is never written to
+ * WeChat storage — the Relay's admin material must not be persisted, and the WeChat session store
+ * is deliberately the only persisted credential.
  */
 
 import type { MiniProgramEnvVersion } from "../platform/wechatApi";
-import { evaluateDevAccess, WECHAT_AUTH_LIMITATION } from "../config/devAccess";
+import { evaluateDevAccess, WECHAT_AUTH_NOTICE } from "../config/devAccess";
 import type { EnvironmentName } from "../config/environments";
 import { maskSecret } from "../utils/view";
 
@@ -127,10 +121,10 @@ export interface CredentialAvailabilityInput {
 const WECHAT_VIEW: CredentialSourceView = {
   source: "wechat_code",
   title: "微信管理员登录",
-  detail: WECHAT_AUTH_LIMITATION,
-  available: false,
-  actionLabel: "尚未开放",
-  actionEnabled: false
+  detail: WECHAT_AUTH_NOTICE,
+  available: true,
+  actionLabel: "使用微信登录",
+  actionEnabled: true
 };
 
 export function describeCredentialSources(input: CredentialAvailabilityInput): readonly CredentialSourceView[] {

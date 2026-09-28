@@ -43,6 +43,7 @@ Page({
     this.controller = createHomeController({
       connection: session.connection,
       dev: session.dev,
+      auth: session.auth,
       runtime: getPageRuntime(),
       environmentName: session.environment.name,
       setData: (data) => this.setData(data)

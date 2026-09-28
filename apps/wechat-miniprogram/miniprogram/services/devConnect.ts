@@ -1,10 +1,10 @@
 /**
  * Local DEV connection controller.
  *
- * This is the *only* way a read-only admin session can be established today, and it exists
- * because the Relay implements no `POST /v1/auth/wechat`: there is no `code2Session` exchange, so
- * no WeChat-derived administrator credential exists. The operator supplies the Relay's own DEV
- * operator token.
+ * This is a *fallback* path, not the administrator login. WeChat login lives in
+ * `services/authSession.ts`; the DEV panel exists for the case where no WeChat session can be
+ * obtained (no Relay deployment, no filed legal domain, offline device) and the operator supplies
+ * the Relay's own DEV operator token instead.
  *
  * What this controller guarantees, and why it is a controller rather than page code:
  *
@@ -26,7 +26,7 @@
  * says so.
  */
 
-import { WECHAT_AUTH_LIMITATION, evaluateDevAccess, type DevAccessBlockedReason } from "../config/devAccess";
+import { WECHAT_AUTH_NOTICE, evaluateDevAccess, type DevAccessBlockedReason } from "../config/devAccess";
 import type { EnvironmentName } from "../config/environments";
 import type { MiniProgramEnvVersion } from "../platform/wechatApi";
 import type { RemoteId } from "../protocol/remote.generated";
@@ -108,7 +108,7 @@ export interface DevConnectOptions {
 export const DEV_CONNECTION_NOTICE =
   "当前为本地 DEV 直连：使用的是 Relay 的 DEV 操作令牌，不是微信管理员登录，也不代表真实管理员身份。" +
   "断开后令牌、主机标识与本地缓存全部清空。" +
-  WECHAT_AUTH_LIMITATION;
+  WECHAT_AUTH_NOTICE;
 
 export function createDevConnectController(options: DevConnectOptions): DevConnectController {
   const { target } = options;

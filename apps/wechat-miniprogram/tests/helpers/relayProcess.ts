@@ -9,6 +9,12 @@
  *
  * Everything secret lives only in this process's memory and in the child's environment block:
  * no token is written to a file, a fixture, a log file or the repository.
+ *
+ * `extraEnv` lets a caller add the Relay's own production-auth variables (random AppID/AppSecret/
+ * ADMIN_OPENID/pepper and a loopback `WECHAT_API_BASE_URL`) for the M4 auth integration test. They
+ * take the same route as every other secret here: the child's environment block only. The Relay
+ * config loader rejects an arbitrary `WECHAT_API_BASE_URL` while `DEV_AUTH_MODE=false`, so the only
+ * external seam for a fake `code2Session` is the DEV loopback the harness already runs.
  */
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
@@ -112,7 +118,12 @@ function probePort(port: number): Promise<boolean> {
   });
 }
 
-export async function startRelay(): Promise<RelayInstance> {
+export interface StartRelayOptions {
+  /** Extra environment for the Relay child; overrides the defaults above. Never written to disk. */
+  readonly extraEnv?: Readonly<Record<string, string>>;
+}
+
+export async function startRelay(options: StartRelayOptions = {}): Promise<RelayInstance> {
   const binary = ensureBinary();
   const tempDir = mkdtempSync(join(tmpdir(), "fb-relay-w2-"));
   const port = await reserveLoopbackPort();
@@ -138,7 +149,8 @@ export async function startRelay(): Promise<RelayInstance> {
       LOG_FORMAT: "text",
       // Short enough that a missed heartbeat is observable, still inside protocol bounds.
       HEARTBEAT_INTERVAL: "5s",
-      HEARTBEAT_TIMEOUT: "2s"
+      HEARTBEAT_TIMEOUT: "2s",
+      ...options.extraEnv
     }
   });
 

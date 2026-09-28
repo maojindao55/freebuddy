@@ -6,8 +6,8 @@
 import type {
   ClientInfo,
   NetworkStatus,
-  SocketTaskLike,
-  WechatLike
+  WechatLike,
+  WechatSocketTask
 } from "../../miniprogram/platform/wechatApi";
 
 export interface HostCall {
@@ -28,7 +28,10 @@ export interface FakeWechatHost extends WechatLike {
   readonly calls: HostCall[];
   readonly storage: Map<string, unknown>;
   readonly sockets: Array<{ url: string; protocols?: readonly string[] }>;
+  /** Frame text the adapter passed through, matching the business `send(string)` seam. */
   readonly sent: string[];
+  /** Object-form close arguments as the raw `wx` `SocketTask.close` receives them. */
+  readonly closeCalls: Array<{ code?: number; reason?: string }>;
   emitNetworkStatus(status: NetworkStatus): void;
   listenerCount(): number;
 }
@@ -38,6 +41,7 @@ export function createFakeWechatHost(options: FakeWechatHostOptions = {}): FakeW
   const storage = new Map<string, unknown>(Object.entries(options.storage ?? {}));
   const sockets: Array<{ url: string; protocols?: readonly string[] }> = [];
   const sent: string[] = [];
+  const closeCalls: Array<{ code?: number; reason?: string }> = [];
   let listeners: Array<(status: NetworkStatus) => void> = [];
 
   const record = (method: string, args: readonly unknown[]): void => {
@@ -49,6 +53,7 @@ export function createFakeWechatHost(options: FakeWechatHostOptions = {}): FakeW
     storage,
     sockets,
     sent,
+    closeCalls,
 
     login(option) {
       record("login", [option]);
@@ -86,9 +91,19 @@ export function createFakeWechatHost(options: FakeWechatHostOptions = {}): FakeW
     connectSocket(option) {
       record("connectSocket", [option]);
       sockets.push({ url: option.url, protocols: option.protocols });
-      const task: SocketTaskLike = {
-        send: (data) => sent.push(data),
-        close: () => undefined,
+      // Faithful to the real `wx` `SocketTask`: object-form arguments only. A primitive argument is
+      // a parameter error, exactly as on device — this is what makes the adapter's translation
+      // observable instead of being masked by a lenient fake.
+      const task: WechatSocketTask = {
+        send(sendOptions) {
+          if (!sendOptions || typeof sendOptions.data !== "string") {
+            throw new Error("SocketTask.send:fail parameter error");
+          }
+          sent.push(sendOptions.data);
+        },
+        close(closeOptions) {
+          closeCalls.push({ code: closeOptions?.code, reason: closeOptions?.reason });
+        },
         onOpen: () => undefined,
         onMessage: () => undefined,
         onError: () => undefined,

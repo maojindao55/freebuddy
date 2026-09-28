@@ -6,10 +6,10 @@
  * an administrator (there is no `/v1/hosts`, and pairing claim is W4+), so the client cannot
  * discover a host id and must not invent a discovery endpoint.
  *
- * Until such an interface exists the operator types the host id explicitly, which matches the
- * DEV operator token of this read-only substage. It is kept in memory for the session only:
- * nothing here is persisted, and nothing here is a secret (it is an identifier, not a
- * credential). When pairing ships the same slot is filled by the claim result.
+ * Until such an interface exists the operator types the host id explicitly, for the DEV token and
+ * for a WeChat login alike. It is kept in memory for the session only: nothing here is persisted,
+ * and nothing here is a secret (it is an identifier, not a credential). When pairing ships the
+ * same slot is filled by the claim result.
  */
 
 import type { RemoteId } from "../protocol/remote.generated";
@@ -23,7 +23,6 @@ export interface HostTargetState {
 
 /** Server-side interfaces this client would need but that do not exist yet. */
 export const MISSING_SERVER_INTERFACES: readonly string[] = [
-  "POST /v1/auth/wechat — Relay 未实现管理员登录（无 code2Session 交换）",
   "GET /v1/hosts — Relay 未实现主机列表/发现接口，主机标识无法由服务端下发",
   "GET /v1/pairings — 配对列表尚未落地（W4）"
 ];

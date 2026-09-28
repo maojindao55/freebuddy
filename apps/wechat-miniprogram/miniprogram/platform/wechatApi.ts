@@ -53,6 +53,41 @@ export interface SocketTaskLike {
   onClose(listener: (event: SocketCloseEvent) => void): void;
 }
 
+/** Object-form argument the real `wx` `SocketTask.send` requires. */
+export interface WechatSocketTaskSendOptions {
+  readonly data: string | ArrayBuffer;
+  readonly success?: () => void;
+  readonly fail?: (error: SocketErrorEvent) => void;
+  readonly complete?: () => void;
+}
+
+export interface WechatSocketTaskCloseOptions {
+  readonly code?: number;
+  readonly reason?: string;
+  readonly success?: () => void;
+  readonly fail?: (error: SocketErrorEvent) => void;
+  readonly complete?: () => void;
+}
+
+/**
+ * The raw `SocketTask` returned by `wx.connectSocket`.
+ *
+ * Real WeChat is object-form: `send({ data })` and `close({ code, reason })`. This is deliberately
+ * declared separately from `SocketTaskLike` (primitive-form `send(string)` / `close(code, reason)`):
+ * treating the raw task as if it already spoke the business interface is what let the DEV
+ * `admin.auth` frame fail to leave the device while every Node fake — which implemented
+ * `SocketTaskLike` — kept passing. The adapter below is the single place that bridges the two.
+ */
+export interface WechatSocketTask {
+  send(options: WechatSocketTaskSendOptions): void;
+  /** The real `wx` signature requires the options object (it is not optional). */
+  close(options: WechatSocketTaskCloseOptions): void;
+  onOpen(listener: () => void): void;
+  onMessage(listener: (event: SocketMessageEvent) => void): void;
+  onError(listener: (event: SocketErrorEvent) => void): void;
+  onClose(listener: (event: SocketCloseEvent) => void): void;
+}
+
 export interface NetworkStatus {
   readonly isConnected: boolean;
   readonly networkType: string;
@@ -98,7 +133,7 @@ export interface WechatLike {
     success?: (result: { statusCode: number; data: unknown }) => void;
     fail?: (error: { errMsg: string }) => void;
   }): void;
-  connectSocket(option: { url: string; protocols?: readonly string[] }): SocketTaskLike;
+  connectSocket(option: { url: string; protocols?: readonly string[] }): WechatSocketTask;
   onNetworkStatusChange(listener: (status: NetworkStatus) => void): void;
   offNetworkStatusChange(listener: (status: NetworkStatus) => void): void;
   getAppBaseInfo(): ClientInfo;
@@ -107,6 +142,80 @@ export interface WechatLike {
 
 function toError(cause: unknown): Error {
   return new Error(safeMessage(cause));
+}
+
+/** Fixed prefix so a failure message can never carry the (token-bearing) frame itself. */
+const SEND_FAILURE_PREFIX = "socket send failed";
+
+/**
+ * Normalises the real object-form `wx` `SocketTask` into the business `SocketTaskLike`.
+ *
+ * Both failure channels are preserved:
+ * - a *raw* socket error (network drop, handshake failure) is forwarded to the business `onError`
+ *   that `relaySocket.ts` registered — without this the state machine would never learn about the
+ *   error and never reconnect;
+ * - a *send* failure, which real `wx` reports asynchronously through `send`'s `fail` callback, is
+ *   surfaced through the same `onError` listener because `SocketTaskLike.send` returns `void`.
+ *
+ * Either channel reports at most once per connection. Every message is a fixed prefix plus
+ * `safeMessage(cause)` — never the frame — so the access token inside the outbound `admin.auth`
+ * payload cannot leak through the failure path.
+ */
+export function adaptWechatSocketTask(task: WechatSocketTask): SocketTaskLike {
+  let errorListener: ((event: SocketErrorEvent) => void) | null = null;
+  let errorReported = false;
+
+  const reportError = (message: string): void => {
+    if (errorReported || errorListener === null) {
+      return;
+    }
+    errorReported = true;
+    errorListener({ errMsg: message });
+  };
+
+  // The business listener is registered later (relaySocket wires it after createSocket returns),
+  // so the raw error is forwarded through the stored reference rather than directly.
+  task.onError((event) => {
+    reportError(`socket error: ${safeMessage(event)}`);
+  });
+
+  return {
+    send(data) {
+      try {
+        task.send({
+          data,
+          fail: (cause) => reportError(`${SEND_FAILURE_PREFIX}: ${safeMessage(cause)}`)
+        });
+      } catch (error) {
+        // A synchronous parameter error must reach the caller's try/catch, still redacted.
+        throw toError(error);
+      }
+    },
+
+    close(code, reason) {
+      try {
+        task.close({ code: code ?? 1000, reason: reason ?? "client_close" });
+      } catch {
+        // Mirror the previous contract: a socket that refuses to close must not take down the caller.
+      }
+    },
+
+    onOpen(listener) {
+      task.onOpen(listener);
+    },
+
+    onMessage(listener) {
+      task.onMessage(listener);
+    },
+
+    onError(listener) {
+      errorListener = listener;
+    },
+
+    onClose(listener) {
+      task.onClose(listener);
+    }
+  };
 }
 
 export function createWechatApi(host: WechatLike): WechatApi {
@@ -161,7 +270,7 @@ export function createWechatApi(host: WechatLike): WechatApi {
     },
 
     connectSocket(options) {
-      return host.connectSocket({ url: options.url, protocols: options.protocols });
+      return adaptWechatSocketTask(host.connectSocket({ url: options.url, protocols: options.protocols }));
     },
 
     onNetworkStatusChange(listener) {

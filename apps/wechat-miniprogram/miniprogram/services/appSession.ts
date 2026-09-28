@@ -13,8 +13,9 @@
  *   session, so registration is idempotent.
  * - `onShow` re-evaluates the connection (a backgrounded mini program must not assume its socket
  *   survived) and `onHide` persists the cursor before WeChat may freeze the process.
- * - the DEV gate from `services/devConnect.ts`, which is the only way to obtain a credential in
- *   this read-only stage.
+ * - the administrator credential (`services/authSession.ts`): a WeChat-issued, persisted session
+ *   refreshed on foreground, plus the local-only DEV operator token. The pages never hold either;
+ *   they ask this session, which is also what the transport's credential seam reads.
  *
  * This file decides *nothing* about what the wire means — that is `services/adminState.ts` — and
  * it exposes no write surface.
@@ -28,6 +29,9 @@ import { getWechatApi } from "../platform/wechatApiProvider";
 import { createWechatResumeCursorStorage } from "./resumeCursorStorage";
 import { createDefaultScheduler, nextIdFactory, type IdFactory, type Scheduler } from "../utils/scheduler";
 import { createDevConnectController, type DevConnectController } from "./devConnect";
+import { createAuthSession, type AuthSession } from "./authSession";
+import { getOperatorTokenSession, type OperatorTokenSession } from "./adminSession";
+import type { AuthTokenStore } from "./tokenStore";
 
 /** The admin endpoint is derived from the environment table; it is never operator input. */
 export function adminSocketUrlFor(wsBaseUrl: string): string {
@@ -42,12 +46,19 @@ export interface AppSessionOptions {
   readonly nextId?: IdFactory;
   /** Injection point for tests; production always builds one connection. */
   readonly connection?: AdminConnection;
+  /** Injection point for tests; production always builds one auth session. */
+  readonly auth?: AuthSession;
+  readonly tokenStore?: AuthTokenStore;
+  /** In-memory DEV credential, shared by the DEV controller and the auth session. */
+  readonly devTokenSession?: OperatorTokenSession;
 }
 
 export interface AppSession {
   readonly environment: ResolvedEnvironment;
   readonly connection: AdminConnection;
   readonly dev: DevConnectController;
+  /** Administrator authentication (WeChat login, rotation, logout). */
+  readonly auth: AuthSession;
   /** Registers the single network listener. Idempotent. */
   start(): void;
   onShow(): void;
@@ -61,6 +72,21 @@ export function createAppSession(options: AppSessionOptions): AppSession {
   const envVersion = api.getEnvVersion();
   const clientVersion = options.clientVersion ?? api.getClientInfo().version ?? "0.0.0";
 
+  // One DEV credential instance for the whole process: the DEV controller writes through the
+  // connection, and the auth session reads the same object, so both always agree on whether a DEV
+  // token is in force.
+  const devTokenSession = options.devTokenSession ?? getOperatorTokenSession();
+
+  const auth =
+    options.auth ??
+    createAuthSession({
+      api,
+      environment,
+      clientVersion,
+      tokenStore: options.tokenStore,
+      devSession: devTokenSession
+    });
+
   const connection: AdminConnection =
     options.connection ??
     createAdminConnection({
@@ -70,6 +96,9 @@ export function createAppSession(options: AppSessionOptions): AppSession {
       scheduler: options.scheduler ?? createDefaultScheduler(),
       isoNow: () => new Date().toISOString(),
       nextId: options.nextId ?? nextIdFactory,
+      tokenSession: devTokenSession,
+      // The transport never learns where a token came from: it asks this credential.
+      credential: auth.credential,
       // Cursors are the only thing persisted; see `services/resumeCursorStorage.ts`.
       resumeStorage: createWechatResumeCursorStorage(api)
     });
@@ -97,12 +126,20 @@ export function createAppSession(options: AppSessionOptions): AppSession {
     environment,
     connection,
     dev,
+    auth,
 
     start,
 
     onShow() {
       start();
-      // Returns to the foreground: prove the socket is alive, or reconnect.
+      // Returns to the foreground: prove the socket is alive, or reconnect. A WeChat access token
+      // may have expired while the process was frozen, and presenting an expired token would only
+      // earn a `forbidden`, so the token is rotated *before* the reconnect. The DEV path has
+      // nothing to rotate and therefore stays synchronous.
+      if (auth.needsRefresh()) {
+        void auth.refreshNow().then(() => connection.notifyForeground());
+        return;
+      }
       connection.notifyForeground();
     },
 
@@ -121,6 +158,7 @@ export function createAppSession(options: AppSessionOptions): AppSession {
         networkUnsubscribe = null;
       }
       connection.dispose();
+      auth.dispose();
       dev.disarm();
     }
   };

@@ -1,1 +1,18 @@
-/* The connect page relies entirely on the shared classes in app.wxss. */
+/* The connect page relies on the shared classes in app.wxss; only the login message needs a tone,
+   using the same palette as the connection banner so "refused" and "retryable" are distinguishable. */
+
+.message--ok {
+  color: #7ddb9a;
+}
+
+.message--warn {
+  color: #e6c26a;
+}
+
+.message--error {
+  color: #f08c8c;
+}
+
+.message--neutral {
+  color: #a8adb5;
+}

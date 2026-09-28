@@ -655,6 +655,7 @@ describe("three-end acceptance: mini program against a real Relay and a real des
         const home = createHomeController({
           connection,
           dev: session.dev,
+          auth: session.auth,
           runtime,
           environmentName: "local",
           setData: (data) => homeRenders.push(data)
@@ -1058,6 +1059,7 @@ describe("three-end acceptance: mini program against a real Relay and a real des
         const home = createHomeController({
           connection,
           dev: session.dev,
+          auth: session.auth,
           runtime,
           environmentName: "local",
           setData: (data) => homeRenders.push(data)

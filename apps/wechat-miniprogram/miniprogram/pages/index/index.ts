@@ -4,6 +4,9 @@
  * Thin adapter: it owns the WeChat input events and forwards everything else to
  * `./controller`. The token field is `password`-masked, is never re-read after being committed,
  * and is explicitly emptied on `onHide`/`onUnload` so the value does not linger in page data.
+ *
+ * The WeChat login button starts the real flow (`wx.login` -> `/v1/auth/wechat`) through the
+ * App-scoped auth session; this page never calls `wx.login` or `wx.request` itself.
  */
 
 import { getPageRuntime, type DatasetEventLike, type InputEventLike } from "../../platform/pageRuntime";
@@ -23,6 +26,10 @@ Page({
     message: "",
     wechatActionLabel: "",
     wechatActionEnabled: false,
+    wechatTone: "neutral",
+    canRefreshSession: false,
+    hasCredential: false,
+    credentialMode: "none",
     environment: "",
     banner: {
       status: "signedOut",
@@ -58,6 +65,7 @@ Page({
     this.controller = createLoginController({
       connection: session.connection,
       dev: session.dev,
+      auth: session.auth,
       runtime: getPageRuntime(),
       environmentName: session.environment.name,
       setData: (data) => this.setData(data)
@@ -113,5 +121,9 @@ Page({
 
   onWechatLogin(_event: DatasetEventLike) {
     this.controller?.wechatLogin();
+  },
+
+  onRefreshSession(_event: DatasetEventLike) {
+    this.controller?.refreshSession();
   }
 });

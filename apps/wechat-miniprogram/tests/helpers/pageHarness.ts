@@ -8,8 +8,8 @@
  */
 
 import { createHostTargetRegistry } from "../../miniprogram/config/hostTarget";
-import { createAdminConnection, type AdminConnection } from "../../miniprogram/services/adminConnection";
-import { createOperatorTokenSession } from "../../miniprogram/services/adminSession";
+import { createAdminConnection, type AdminConnection, type AdminCredential } from "../../miniprogram/services/adminConnection";
+import { createOperatorTokenSession, type OperatorTokenSession } from "../../miniprogram/services/adminSession";
 import { createMemoryResumeCursorStorage } from "../../miniprogram/services/resumeCursorStorage";
 import { createAdminStores, type AdminStores } from "../../miniprogram/stores/adminStores";
 
@@ -47,6 +47,8 @@ export interface PageHarness {
   readonly hub: SocketHub;
   readonly scheduler: ManualScheduler;
   readonly storage: ReturnType<typeof createMemoryResumeCursorStorage>;
+  /** The DEV in-memory credential, shared with an injected credential when a test wants one. */
+  readonly tokenSession: OperatorTokenSession;
   /** Mutable so a test can change pagination behaviour between actions. */
   readonly responders: Responders;
   /** `baseSeq` used by the default `sync.snapshot` responder. */
@@ -72,11 +74,19 @@ export async function settle(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-export function createPageHarness(): PageHarness {
+export interface PageHarnessOptions {
+  /** Injected credential, mirroring how the App session wires a WeChat session to the socket. */
+  readonly credential?: AdminCredential;
+  /** Shared DEV credential; defaults to a fresh in-memory session. */
+  readonly devSession?: OperatorTokenSession;
+}
+
+export function createPageHarness(options: PageHarnessOptions = {}): PageHarness {
   const hub = createSocketHub();
   const scheduler = createManualScheduler();
   const storage = createMemoryResumeCursorStorage();
   const stores = createAdminStores();
+  const tokenSession = options.devSession ?? createOperatorTokenSession();
   const connection = createAdminConnection({
     adminSocketUrl: PAGE_ADMIN_URL,
     clientVersion: "0.0.0",
@@ -85,7 +95,8 @@ export function createPageHarness(): PageHarness {
     isoNow: () => ISOTIME,
     nextId: createTestIdFactory(),
     random: () => 0.5,
-    tokenSession: createOperatorTokenSession(),
+    tokenSession,
+    credential: options.credential,
     hostTarget: createHostTargetRegistry(),
     stores,
     resumeStorage: storage
@@ -127,6 +138,7 @@ export function createPageHarness(): PageHarness {
     hub,
     scheduler,
     storage,
+    tokenSession,
     responders,
     baseSeq: 7,
 

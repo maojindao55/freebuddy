@@ -5,8 +5,13 @@
 的 M4 方向（[小程序实施方案](../../../docs/plans/2026-09-01-005-remote-admin-wechat-miniprogram-plan.md)
 的 W1/W2/W3 纯 TS 基础层 + 只读页面单元）。
 
-**当前是只读阶段**：不发送消息、不停止运行、不响应决策、不开终端、不做真实微信登录。
-它消费已冻结的 `protocol/remote/v1`，可以连本机 DEV Relay 读取主机快照、会话与消息。
+**当前是只读阶段**：不发送消息、不停止运行、不响应决策、不开终端。它消费已冻结的
+`protocol/remote/v1`，可以连本机 DEV Relay 读取主机快照、会话与消息；微信管理员登录
+（`wx.login` → `POST /v1/auth/wechat` → access/refresh 轮换）已在客户端实现、单测覆盖，
+并已通过**本机正式认证跨端联调**（真实 Relay 的正式 HTTP/WS handler + 临时 SQLite + 注入的本地假
+`code2Session`，见「微信管理员登录」与「M4 正式认证跨端联调」）。仍未验证的是**部署后的
+Relay / 合法域名 / 真实 TLS 证书链 / 真机**，详见「微信管理员登录」。默认主机仍是 Relay 的
+DEV 直连令牌，UI 明确标注「不是微信管理员登录」。
 
 ## 当前范围（W1 + W2 transport + W3 resume/stores + W3 页面单元，仍为只读）
 
@@ -16,8 +21,8 @@ W1 已实现（脚手架与环境）：
 - 环境配置与安全约束：`local` / `dev` / `prod` 三套命名环境，按 `wx.getAccountInfoSync().miniProgram.envVersion` 选择。
 - 可注入的微信 API adapter：`login` / 存储 / `request` / `connectSocket` / 网络状态 / 客户端信息的薄层封装。
 - App 级错误边界：统一处理 `onError`、`onUnhandledRejection`、`onPageNotFound`，输出前强制脱敏与截断。
-- 登录占位视图：只展示状态，不调用 `wx.login`、不交换 code、不写存储、不持有令牌
-  （`services/loginPlaceholder.ts`；连接页在 W3 第二单元把它扩展为同时渲染 DEV 入口）。
+- 登录视图：连接页按 `AuthState` 渲染微信登录状态（未登录 / 登录中 / 非管理员被拒 / 网络失败 /
+  已过期 / 已登录），DEV 会话单独标注为不是微信登录（`services/loginView.ts`）。
 - Node 单测环境：`typecheck` / `test` / `emit:check` / `prepare:devtools` 脚本，覆盖配置约束、
   adapter、错误边界、占位页和协议 fixture。
 
@@ -40,10 +45,8 @@ W2 纯 TS transport 已实现并单测覆盖（**没有新增 page**）：
 
 W2 明确未做：
 
-- **没有** `wx.login` / `code2Session` / 服务端颁发的 admin 会话：Relay 当前没有
-  `POST /v1/auth/wechat`，因此不存在微信派生凭证；DEV 令牌是 Relay 的操作令牌，
-  **不是管理员登录**，UI 必须照实标注。
 - 没有 host 发现：Relay 没有 `/v1/hosts`，`hostId` 只能显式配置到 claim 结果产出为止。
+- 微信管理员登录的**服务端联调与真机验证**尚未进行（客户端已实现，见下节）。
 
 W3 第一单元（resume + stores 接线，**仍然没有新增 page**）：
 
@@ -94,8 +97,8 @@ W3 明确未做：
 
 - **没有写方法**：不提供 `conversation.send` / `run.stop` / 决策响应 / 终端；chat 页面没有
   输入框、发送或停止按钮。
-- **没有真实微信登录**：不调用 `wx.login`、不交换 code、不存服务端会话；连接页的微信按钮
-  永久禁用，DEV 直连在页面上明确标注「不是微信管理员登录」。
+- 微信登录已接入客户端（见「微信管理员登录」），但 DEV 直连仍是本机联调的默认凭证，且页面上
+  始终明确标注「不是微信管理员登录」。
 - 增量 `run.*`、`permission.*`、`task.*`、`workflow.*`、`delegation.*`、`terminal.*` 实体尚无
   对应 store，快照会接收它们的数组但增量事件只记录为「已忽略」，等 W5–W7 各自的 store 落地。
 - home 的待处理决策只做只读展示，没有响应按钮。
@@ -261,18 +264,44 @@ npm run devtools          # 等价于 cli open --project <本目录>
 
 存储覆盖键：`freebuddy.environment.override`（仅用于本地与 dev 调试）。
 
-## 本地 DEV 直连入口（唯一的取凭证方式）
+## 微信管理员登录（客户端已实现，本机正式认证跨端联调已通过）
 
-Relay 没有 `POST /v1/auth/wechat`，所以**不存在**微信派生的管理员凭证。当前唯一可用的凭证是
-Relay 自己的 DEV 操作令牌。为了不让这件事被误当成登录，入口被限制得很窄（`config/devAccess.ts` +
+按 `protocol/remote/v1/http.schema.json` 的伴随 HTTP 契约实现（路径与请求体都不在本仓库内另行发明）：
+
+- `services/authClient.ts`：`POST /v1/auth/wechat`（`code` + `clientVersion` [+ 可选非敏感
+  `deviceLabel`]）、`POST /v1/auth/refresh`、`POST /v1/sessions/logout`。基地址**只能**来自环境表
+  （无 setter，`<scheme>://<host>` 无路径/查询/用户信息），`prod` 拒绝明文 http；响应用生成绑定
+  的 `parseHttpBody` 校验，未知字段/越界 TTL/非法令牌一律拒绝，失败按
+  `non_admin / unauthorized / network / invalid_response / server_error` 分类，错误文案全部脱敏。
+- `services/authSession.ts`：唯一凭证权威。`wx.login` → 交换 → 持久化 → 轮换 → 撤销；
+  刷新**单飞**（一次性刷新令牌不会被并发花两次）、到期前 `60s` 提前轮换、前台回来自动先轮换再重连；
+  `forbidden` 终止并清理、`unauthorized` 尝试轮换、**网络失败保留会话**；`logout` 先尽力撤销服务端，
+  再**无条件**清理本地。
+- `services/tokenStore.ts`：`freebuddy.remote.authSession.v1` 下只存 access/refresh 与绝对过期时间（原子写入，
+  写失败即视为无会话），不存 `session_key`/OpenID/code；令牌语法直接复用协议绑定的 `OpaqueToken` 规则。
+- AppSecret 只存在 Relay；客户端从不上报 OpenID，也无法自证管理员身份。
+- 传输层通过 `AdminCredential` seam 取凭证（`services/adminConnection.ts`），页面不接触任何令牌。
+
+**本机正式认证跨端联调已通过**（`tests/auth-e2e.integration.test.ts`，见文末「真实 Go Relay 联调」）：
+真实 Relay 的正式 `/v1/auth/wechat`、`/v1/auth/refresh`、`/v1/sessions/logout` handler 与
+`/v1/ws/admin` 正式 token 路径、真实 SQLite 会话存储，客户端是生产 `createAuthSession` /
+`createAuthClient` / `tokenStore` 与生产 transport。**仍未验证（不计入通过）**：部署到 CVM 后的
+Relay、微信公众平台 request/socket 合法域名、真实 TLS 证书链、真机登录与非管理员拒绝、
+前后台/弱网真机回归。本次验证范围不含这些外部环境项。
+
+## 本地 DEV 直连入口（本地联调用凭证）
+
+微信管理员登录需要部署后的 Relay 与合法域名；在本机只读联调时，实际可用的是 Relay 自己的 DEV
+操作令牌。为了不让它被误当成登录，入口被限制得很窄（`config/devAccess.ts` +
 `services/devConnect.ts`，两层都断言，逐条有单测）：
 
 - 只在 `local` 命名环境 + `develop` / `trial` 构建出现；`release` 构建既不渲染入口，也不接受令牌，
   更不会建连。
 - 端点不是输入项：取自环境表（`local` = `ws://127.0.0.1:8080`），并再次断言是**字面回路地址**
   （`127.0.0.1` / `[::1]`）。接口里没有 `setEndpoint`，页面也无法把连接指向别处。
-- 令牌只进内存（`services/adminSession.ts`），不写 `wx.setStorageSync`、不进日志、不进页面数据；
+- DEV 令牌只进内存（`services/adminSession.ts`），不写 `wx.setStorageSync`、不进日志、不进页面数据；
   页面只渲染固定掩码 `••••••••`。输入框是 `password`，提交后立即清空。
+  （微信会话是另一条路径：它是服务端签发的，持久化在 `services/tokenStore.ts`，两者互斥。）
 - `hostId` 由操作员显式填写，因为 Relay 没有主机发现接口；`config/hostTarget.ts` 明确列出缺口，
   不臆造 `/v1/hosts`，也不发任何 HTTP 发现请求（有单测断言 fake `wx` 的 `request` 零调用）。
 - 断开/退出会清空令牌、主机标识、实体缓存与持久化游标，并回到需要重新 `arm` 的状态。
@@ -414,7 +443,7 @@ Page pages/index/index has not been registered yet
 
 ## 测试
 
-`npm test` 当前为 **317 个测试 / 61 个 suite**。覆盖内容：
+`npm test` 当前为 **401 个测试 / 79 个 suite**。覆盖内容：
 
 - 协议帧：21 个 valid fixture 全部解析通过；12 个 invalid fixture 按 `schema` / `parse` /
   `runtime` 分类断言（10 个被 `parseRemoteFrame` 拒绝、1 个由主机在运行时拒绝、
@@ -514,4 +543,39 @@ pending 立即以 `unknownOutcome` 清理、注销后凭证不可复用、临时
 SQLite），并断言操作员看到的 home/conversations/chat 数据就是 Desktop 数据库里的数据、
 分页由 Desktop 的 `AdminDispatcher` 提供、实时事件与 resume/snapshot 回退走完整条链路。
 它需要 `dist-electron/`、本地 `electron` 包和 `go`，缺任一项时整组 skip（不会静默降低断言）。
-**它不是开发者工具或真机 GUI 验收**：`wx.login`/`code2Session` 管理员会话与已备案域名仍属未验证项。
+它走的是 DEV 操作令牌，**不是** `wx.login`/`code2Session` 管理员会话；后者见下一节。
+
+`tests/auth-e2e.integration.test.ts` 是 **M4 正式认证跨端联调**（`go` 可用时；否则整组 skip）：
+
+- 真实 `services/remote-relay` 二进制跑在随机 loopback 端口 + 临时 SQLite；`WECHAT_APP_ID`、
+  `WECHAT_APP_SECRET`、`ADMIN_OPENID`、`TOKEN_HASH_PEPPER` 与 DEV 令牌全部 `crypto.randomBytes`
+  生成，只进子进程 env，不落盘、不进日志（测试断言 Relay 输出与 SQLite 文件都不含它们）。
+- `WECHAT_API_BASE_URL` 指向测试进程内的本地假 `code2Session`（`helpers/fakeCode2Session.ts`）——
+  它只冒充微信上游，校验 appid/secret 并按 `js_code` 返回 OpenID 或微信错误；Relay 的
+  `WeChatAuthHandler` / `auth.Service` / `WeChatClient` / 会话存储与小程序的生产
+  `createAuthSession` / `createAuthClient` / `tokenStore` / transport 全部是生产代码。
+- 覆盖：`wx.login` → `POST /v1/auth/wechat` → 正式 access token 经 `/v1/ws/admin` `admin.auth`
+  上线（断言上线的就是服务端签发的 access token，**不是** DEV 令牌）→ 经真实 Relay 的
+  `host.status` 只读 RPC；非管理员 403 被拒且不落任何凭证；refresh 轮换两枚令牌、重放旧
+  refresh 令牌触发整个 token family 撤销、客户端据 `unauthorized` 清理会话；logout 撤销
+  family 且 Relay 主动断开在用 admin WS，客户端不再重连。
+- 明确边界：Relay 跑在 **DEV loopback**（见下），主机侧是协议最小 stand-in（真实 desktop
+  主机需要 `dist-electron`，属三端验收那条链路）。未验证项仍是部署后的 Relay、已备案域名、
+  真实 TLS 与真机。
+
+### 与 Relay 的精确接口差异（本轮实测，未改 Go/协议）
+
+1. **生产配置下无法注入 `WECHAT_API_BASE_URL`。** `internal/config` 在 `DEV_AUTH_MODE=false`
+   时禁止把 `WECHAT_API_BASE_URL` 指向官方 HTTPS 之外的地址，且 `cmd/relay` 走
+   `LoadFromEnv`→`Validate`。Relay 自己的 Go 单测是直接构造 `config.Config`（不调用
+   `Validate`）才得以注入 `httptest` 地址。因此**黑盒跨端**的假 `code2Session` 只能用
+   `DEV_AUTH_MODE=true`（即任务允许的 DEV loopback）；要跑生产配置的黑盒认证测试，Relay 需要
+   一个自有的 test-only seam（属 Relay/协议决策，本轮未改）。
+2. **`/v1/ws/host` 仅 DEV 可用。** 非 `DEV_AUTH_MODE` 或 host 令牌缺失一律 fail-closed，所以
+   跨端测试里的“真实只读 RPC”由 DEV 主机 stand-in 应答 `host.status`，并非生产主机配对链路。
+3. **DEV 模式下正式令牌与 DEV 令牌共用 `/v1/ws/admin`。** handler 先比 DEV 令牌、否则查会话表；
+   测试因此额外断言上线的 access token 与 `DEV_AUTH_ADMIN_TOKEN` 不同、与签发的 access token 相同。
+4. **refresh 重放无独立错误码。** `/v1/auth/refresh` 对重放统一返回 HTTP 401 +
+   `StructuredError.code=unauthorized`；family 撤销只能通过“随后用被轮换的 refresh 令牌同样 401”
+   观测（测试已断言）。
+5. **admin `auth.ok` 仍不带 `hostId`**（与 W2 结论一致），`hostId` 仍只能由操作员显式配置。

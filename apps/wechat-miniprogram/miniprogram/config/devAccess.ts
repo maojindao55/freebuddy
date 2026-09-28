@@ -1,10 +1,11 @@
 /**
  * Local-only DEV access gate.
  *
- * The Relay does not implement `POST /v1/auth/wechat`: there is no `code2Session` exchange and
- * no server-side admin session yet, so *no WeChat-derived admin credential exists*. For this
- * read-only substage the only usable credential is the Relay's operator-supplied DEV token
- * (`DEV_AUTH_ADMIN_TOKEN`), which Relay compares to its own config value.
+ * WeChat administrator login is implemented in `services/authSession.ts` and needs no local gate:
+ * it is the production path. What does need a gate is the *fallback* used when no WeChat session
+ * can be obtained (no Relay deployment, no filed domain, offline device): the Relay's own
+ * operator-supplied DEV token (`DEV_AUTH_ADMIN_TOKEN`), which Relay compares to its own config
+ * value. That token is not a WeChat identity and must never be reachable in a release build.
  *
  * Therefore this gate exists to make the compromise explicit and narrow:
  *
@@ -93,9 +94,11 @@ export function evaluateDevAccess(input: DevAccessInput): DevAccessAvailability 
 }
 
 /**
- * Human-readable statement of why real WeChat login is unavailable. Rendered on the home page
- * so nobody mistakes a DEV connection for an administrator session.
+ * Statement of what real WeChat login still depends on. Rendered alongside the login entry so a
+ * successful DEV connection is never mistaken for a WeChat administrator session, and so nobody
+ * reads "the client implements login" as "login has been verified end to end".
  */
-export const WECHAT_AUTH_LIMITATION =
-  "服务端尚未提供 /v1/auth/wechat：Relay 只暴露 /v1/ws/admin、/v1/ws/host 与健康检查，" +
-  "没有 code2Session 交换，因此当前不存在微信派生的管理员凭证。";
+export const WECHAT_AUTH_NOTICE =
+  "微信管理员登录按 protocol/remote/v1 的 POST /v1/auth/wechat 完成，客户端只提交 wx.login 的短时 code，" +
+  "身份由 Relay 服务端判定。真实联调还需要 Relay 部署、已备案的 HTTPS/WSS 合法域名与真机验证；" +
+  "本构建未包含这些验证，DEV 直连令牌也不是微信身份。";

@@ -184,6 +184,10 @@ const cli = {
     ipcRenderer.invoke("cli:listMessage", id),
   readMessageDetails: (messageId: string, offset?: number) =>
     ipcRenderer.invoke("cli:readMessageDetails", messageId, offset),
+  listMessageFileEdits: (messageId: string, cursor?: number) =>
+    ipcRenderer.invoke("cli:listMessageFileEdits", messageId, cursor),
+  readFileEditBlob: (conversationId: string, blobKey: string, offset?: number) =>
+    ipcRenderer.invoke("cli:readFileEditBlob", conversationId, blobKey, offset),
   listFollowupMessages: (conversationId: string, excludeMessageIds: string[]) =>
     ipcRenderer.invoke("cli:listFollowupMessages", conversationId, excludeMessageIds),
   appendMessage: (input: unknown) =>

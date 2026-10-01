@@ -47,6 +47,7 @@ import {
 import { createAcpTerminalManager } from "./acpTerminal.js";
 import { updateRuntimeRun } from "./check.js";
 import { getDataDir } from "./db.js";
+import { persistFileEditItems } from "./fileEditBlobs.js";
 import { findLastPiSessionErrorMessage } from "./piRuntime.js";
 import {
   hasCliByokModels,
@@ -692,7 +693,15 @@ export async function runAcpAgent({
         turnHadTerminalError = true;
         turnTerminalErrorMessage = terminalError.message;
       }
-      if (items.length) emit({ type: "items", items });
+      if (items.length) {
+        let storedItems = items;
+        try {
+          storedItems = persistFileEditItems(args, items);
+        } catch {
+          appendLog(logStream, "system", "File edit storage failed; retaining inline changes");
+        }
+        emit({ type: "items", items: storedItems });
+      }
       return;
     }
 

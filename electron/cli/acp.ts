@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import type { CliStreamItem } from "@freebuddy/protocol";
 import type {
   AuthenticateRequest,
   InitializeRequest,
@@ -174,14 +175,7 @@ export type AcpStreamItem =
       content: string;
       stream?: "stdout" | "stderr";
     }
-  | {
-      kind: "file-edit";
-      path: string;
-      action: "create" | "update" | "delete";
-      patch?: string;
-      oldText?: string;
-      newText?: string;
-    }
+  | Extract<CliStreamItem, { kind: "file-edit" }>
   | {
       kind: "terminal-embed";
       terminalId: string;

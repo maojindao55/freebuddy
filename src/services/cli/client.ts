@@ -1,4 +1,5 @@
 import i18next from "i18next";
+import type { FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
 import type {
   CLIExecutorOverride,
   CliCheckResult,
@@ -332,6 +333,12 @@ export const cliClient = {
   },
   readMessageDetails(messageId: string, offset?: number): Promise<MessageDetailsPage> {
     return api().readMessageDetails(messageId, offset);
+  },
+  listMessageFileEdits(messageId: string, cursor?: number): Promise<FileEditPage> {
+    return api().listMessageFileEdits(messageId, cursor);
+  },
+  readFileEditBlob(conversationId: string, blobKey: string, offset?: number): Promise<FileEditBlobChunk | undefined> {
+    return api().readFileEditBlob(conversationId, blobKey, offset);
   },
   listFollowupMessages(
     conversationId: string,

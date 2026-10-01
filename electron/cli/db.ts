@@ -320,6 +320,26 @@ export function migrate(db: DB) {
     CREATE INDEX IF NOT EXISTS idx_messages_conv_time
       ON conversation_messages(conversation_id, created_at);
 
+    CREATE TABLE IF NOT EXISTS file_edit_blobs (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      blob_key TEXT NOT NULL UNIQUE,
+      conversation_id TEXT NOT NULL,
+      task_id TEXT NOT NULL,
+      tool_call_id TEXT NOT NULL,
+      entry_index INTEGER NOT NULL,
+      path TEXT NOT NULL,
+      action TEXT NOT NULL,
+      partial INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      payload BLOB NOT NULL,
+      FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_file_edits_task
+      ON file_edit_blobs(conversation_id, task_id, active, status, sequence);
+    CREATE INDEX IF NOT EXISTS idx_file_edits_tool
+      ON file_edit_blobs(conversation_id, task_id, tool_call_id, active);
+
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL

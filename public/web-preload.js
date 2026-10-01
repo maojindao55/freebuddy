@@ -219,6 +219,8 @@
       setConversationSkills: function (id, skillIds) { return invoke("cli:setConversationSkills", { id: id, skillIds: skillIds }); },
       listMessages: function (conversationId, options) { return invoke("cli:listMessages", conversationId, options); },
       listMessage: function (id) { return invoke("cli:listMessage", id); },
+      listMessageFileEdits: function (messageId, cursor) { return invoke("cli:listMessageFileEdits", messageId, cursor); },
+      readFileEditBlob: function (conversationId, blobKey, offset) { return invoke("cli:readFileEditBlob", conversationId, blobKey, offset); },
       appendMessage: function (input) { return invoke("cli:appendMessage", input); },
       updateMessage: function (input) { return invoke("cli:updateMessage", input); },
 

@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 
 import { cliAdapterDefinitions } from "./adapters.js";
 import { readMessageDetails } from "./messageDetails.js";
+import { listMessageFileEdits, readFileEditBlob, readFileEditSnapshot } from "./fileEditBlobs.js";
 import { cliCheck, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
 import {
   listOverrides,
@@ -1376,7 +1377,8 @@ export function registerCliIpc() {
           transcript = createHandoffTranscriptSnapshot(
             getDataDir(),
             briefId,
-            messages
+            messages,
+            readFileEditSnapshot
           );
         } catch {
           transcript = undefined;
@@ -1458,7 +1460,8 @@ export function registerCliIpc() {
         transcript = createHandoffTranscriptSnapshot(
           getDataDir(),
           snapshotId,
-          messages
+          messages,
+          readFileEditSnapshot
         );
       } catch {
         transcript = undefined;
@@ -1610,6 +1613,12 @@ export function registerCliIpc() {
   });
   registerHandler("cli:readMessageDetails", (_e, messageId: string, offset?: number) =>
     readMessageDetails(messageId, offset)
+  );
+  registerHandler("cli:listMessageFileEdits", (_e, messageId: string, cursor?: number) =>
+    listMessageFileEdits(messageId, cursor)
+  );
+  registerHandler("cli:readFileEditBlob", (_e, conversationId: string, blobKey: string, offset?: number) =>
+    readFileEditBlob(conversationId, blobKey, offset)
   );
   registerHandler(
     "cli:listFollowupMessages",

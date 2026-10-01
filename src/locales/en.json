@@ -1,5 +1,10 @@
 {
   "fileDiff": {
+    "loading": "Loading the complete diff…",
+    "loadError": "Could not load the diff. Please retry.",
+    "indexError": "Could not load the file changes.",
+    "unavailable": "The complete content of this change is no longer available.",
+    "retry": "Retry",
     "close": "Close file changes and return to overview",
     "showMore": "Show {{count}} more files",
     "showLess": "Show fewer files",

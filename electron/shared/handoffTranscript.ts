@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { FileEditContent } from "@freebuddy/protocol";
 
 import type { ConversationMessage } from "../cli/conversations.js";
 import type {
@@ -16,6 +17,9 @@ const MAX_OBJECT_KEYS = 100;
 const MAX_DEPTH = 8;
 const DATA_URL_RE = /data:[^;,\s]+;base64,[a-z0-9+/=]+/gi;
 const SENSITIVE_KEY_RE = /(?:api[_-]?key|authorization|cookie|credential|password|secret|token|\benv\b)/i;
+
+export type HandoffFileEditReader = (conversationId: string, blobKey: string, maxChars: number) => (FileEditContent & { truncated?: boolean }) | undefined;
+type RestoreFileEdit = (item: Record<string, unknown>) => Record<string, unknown>;
 
 function truncateUtf8(value: string, maxBytes: number): string {
   if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
@@ -54,7 +58,7 @@ function sanitizeString(value: string): string {
     : `${withoutData.slice(0, MAX_STRING_CHARS)}\n[truncated]`;
 }
 
-function sanitizeValue(value: unknown, key = "", depth = 0): unknown {
+function sanitizeValue(value: unknown, key = "", depth = 0, restoreFileEdit?: RestoreFileEdit): unknown {
   if (SENSITIVE_KEY_RE.test(key)) return "[redacted]";
   if (typeof value === "string") return sanitizeString(value);
   if (
@@ -68,46 +72,66 @@ function sanitizeValue(value: unknown, key = "", depth = 0): unknown {
   if (Array.isArray(value)) {
     return value
       .slice(0, MAX_ARRAY_ITEMS)
-      .map((entry) => sanitizeValue(entry, "", depth + 1));
+      .map((entry) => sanitizeValue(entry, "", depth + 1, restoreFileEdit));
   }
   if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
+    const item = value as Record<string, unknown>;
+    const restored = restoreFileEdit && item.kind === "file-edit" && typeof item.blobKey === "string" ? restoreFileEdit(item) : item;
+    const entries = Object.entries(restored)
       .filter(([, entry]) => typeof entry !== "function")
       .slice(0, MAX_OBJECT_KEYS);
     return Object.fromEntries(
       entries.map(([entryKey, entry]) => [
         entryKey,
-        sanitizeValue(entry, entryKey, depth + 1)
+        sanitizeValue(entry, entryKey, depth + 1, restoreFileEdit)
       ])
     );
   }
   return String(value);
 }
 
-function sanitizeAssistantContent(content: string): unknown {
+function sanitizeAssistantContent(content: string, restoreFileEdit: RestoreFileEdit): unknown {
   try {
     const parsed = JSON.parse(content);
-    if (!Array.isArray(parsed)) return sanitizeValue(parsed);
+    if (!Array.isArray(parsed)) return sanitizeValue(parsed, "", 0, restoreFileEdit);
     return parsed
       .filter((item) => {
         if (!item || typeof item !== "object") return true;
         const kind = (item as { kind?: unknown }).kind;
         return kind !== "thinking" && kind !== "usage";
       })
-      .map((item) => sanitizeValue(item));
+      .map((item) => sanitizeValue(item, "", 0, restoreFileEdit));
   } catch {
     return sanitizeString(content);
   }
 }
 
-function toSnapshotMessage(message: ConversationMessage): HandoffTranscriptMessage {
+function toSnapshotMessage(message: ConversationMessage, readFileEdit?: HandoffFileEditReader): HandoffTranscriptMessage {
+  let remainingChars = MAX_MESSAGE_BYTES;
+  let fileEditsTruncated = false;
+  const restoreFileEdit: RestoreFileEdit = item => {
+    const { blobKey, ...metadata } = item;
+    const maxChars = Math.min(MAX_STRING_CHARS, Math.floor(remainingChars / 3));
+    try {
+      const content = maxChars > 0 ? readFileEdit?.(message.conversationId, blobKey as string, maxChars) : undefined;
+      if (content) {
+        remainingChars = Math.max(0, remainingChars - [content.oldText, content.newText, content.patch].reduce<number>((total, value) => total + (value?.length ?? 0), 0));
+        fileEditsTruncated ||= !!content.truncated;
+        return { ...metadata, ...content };
+      }
+    } catch {
+      fileEditsTruncated = true;
+    }
+    fileEditsTruncated = true;
+    return { ...metadata, contentUnavailable: true, truncated: true };
+  };
   const snapshot: HandoffTranscriptMessage = {
     id: message.id,
     role: message.role,
     status: message.status,
     content:
       message.role === "assistant"
-        ? sanitizeAssistantContent(message.content)
+        ? sanitizeAssistantContent(message.content, restoreFileEdit)
         : sanitizeString(message.content),
     attachments: message.attachments?.map((attachment) => ({
       name: attachment.name,
@@ -120,7 +144,8 @@ function toSnapshotMessage(message: ConversationMessage): HandoffTranscriptMessa
     agentName: message.agentName,
     adapter: message.adapter,
     roleLabel: message.roleLabel,
-    createdAt: message.createdAt
+    createdAt: message.createdAt,
+    ...(fileEditsTruncated ? { truncated: true } : {})
   };
 
   if (Buffer.byteLength(JSON.stringify(snapshot), "utf8") <= MAX_MESSAGE_BYTES) {
@@ -167,14 +192,15 @@ function selectWithinLimit(
 export function createHandoffTranscriptSnapshot(
   dataDir: string,
   briefId: string,
-  messages: ConversationMessage[]
+  messages: ConversationMessage[],
+  readFileEdit?: HandoffFileEditReader
 ): HandoffTranscriptRef {
   const root = snapshotRoot(dataDir);
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const safeId = briefId.replace(/[^a-zA-Z0-9_-]/g, "_");
   const snapshotPath = path.join(root, `${safeId}.jsonl`);
   const temporaryPath = `${snapshotPath}.tmp`;
-  const selected = selectWithinLimit(messages.map(toSnapshotMessage));
+  const selected = selectWithinLimit(messages.map(message => toSnapshotMessage(message, readFileEdit)));
   const contents = selected.messages.map((message) => JSON.stringify(message)).join("\n");
   const serialized = contents ? `${contents}\n` : "";
   try {

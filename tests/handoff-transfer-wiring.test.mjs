@@ -74,6 +74,7 @@ test("IPC exposes preview/transfer and resolves handoff briefs inside the main p
   assert.match(ipc, /cli:createConversationShare/);
   assert.match(ipc, /cli:attachConversationShares/);
   assert.match(ipc, /createHandoffTranscriptSnapshot/);
+  assert.equal([...ipc.matchAll(/createHandoffTranscriptSnapshot\([\s\S]*?messages,\s*readFileEditSnapshot\s*\)/g)].length, 2);
   assert.match(ipc, /deleteHandoffTranscriptSnapshot/);
   assert.match(ipc, /cwd: source\.cwd/);
   assert.doesNotMatch(ipc, /input\.cwd \?\? source\.cwd/);

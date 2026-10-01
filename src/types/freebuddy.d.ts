@@ -1,3 +1,4 @@
+import type { FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
 import type {
   CLIAdapterDefinition,
   CLIAdapterId
@@ -283,6 +284,8 @@ declare global {
       }
     ): Promise<{ messages: ConversationMessage[]; hasMore: boolean }>;
     listMessage(id: string): Promise<ConversationMessage | undefined>;
+    listMessageFileEdits(messageId: string, cursor?: number): Promise<FileEditPage>;
+    readFileEditBlob(conversationId: string, blobKey: string, offset?: number): Promise<FileEditBlobChunk | undefined>;
     readMessageDetails(messageId: string, offset?: number): Promise<{
       items?: CliStreamItem[];
       available: boolean; text: string; nextOffset: number; hasMore: boolean;

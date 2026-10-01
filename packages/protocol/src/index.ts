@@ -52,6 +52,9 @@ export {
 export type {
   CLIStreamMode,
   CliStreamItem,
+  FileEditContent,
+  FileEditBlobChunk,
+  FileEditPage,
   ParseContext,
   ToolCallStatus,
   ToolKind,

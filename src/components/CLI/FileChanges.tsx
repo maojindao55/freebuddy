@@ -4,7 +4,8 @@ import { Check, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Copy, File
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useFileDiffStore } from "@/store/fileDiffStore";
 import { useConversationStore } from "@/store/conversationStore";
-import { collectFileEdits, foldDiffRows, getFileDiff, inlineHighlights, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
+import { cliClient } from "@/services/cli/client";
+import { collectFileEdits, foldDiffRows, getFileDiff, inlineHighlights, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
 import { conversationWorktreePath } from "./conversationProjectGrouping";
 import { copyToClipboard } from "@/utils/clipboard";
 
@@ -17,16 +18,47 @@ function Counts({ added, removed, className, title }: { added: number; removed: 
   return <span className={className} title={title}><span className="is-add">+{added}</span><span className="is-delete">−{removed}</span></span>;
 }
 
-export function FileChangesCard({ items, conversationId, messageId }: { items: CliStreamItem[]; conversationId: string; messageId: string }) {
+export function FileChangesCard({ items, conversationId, messageId, storedTaskId, isRunning = false }: {
+  items: CliStreamItem[]; conversationId: string; messageId: string; storedTaskId?: string; isRunning?: boolean;
+}) {
   const { t } = useTranslation();
   const roots = useWorkspaceRoots(conversationId);
-  const edits = useMemo(() => collectFileEdits(items), [items]);
+  const storedKey = JSON.stringify([conversationId, messageId, storedTaskId]);
+  const [stored, setStored] = useState<{ key: string; edits: FileEdit[] }>();
+  const [indexError, setIndexError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const counts = useFileDiffStore(state => state.counts);
+  const edits = useMemo(() => mergeStoredFileEdits(collectFileEdits(items), stored?.key === storedKey ? stored.edits : undefined), [items, stored, storedKey]);
+  useEffect(() => {
+    let cancelled = false;
+    setIndexError(false);
+    if (!storedTaskId || isRunning) return;
+    void (async () => {
+      try {
+        const collected: FileEdit[] = [];
+        let cursor = 0;
+        while (!cancelled) {
+          const page = await cliClient.listMessageFileEdits(messageId, cursor);
+          if (cancelled) return;
+          collected.push(...page.edits);
+          if (!page.hasMore) break;
+          if (page.nextCursor <= cursor) throw new Error("Invalid file edit cursor");
+          cursor = page.nextCursor;
+        }
+        if (!cancelled) setStored({ key: storedKey, edits: collected });
+      } catch {
+        if (!cancelled) setIndexError(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [messageId, storedTaskId, storedKey, isRunning, attempt]);
   const [expanded, setExpanded] = useState(false);
   const files = useMemo(() => {
     const grouped = new Map<string, { path: string; index: number; edits: number; added: number; removed: number; unknown: boolean }>();
     edits.forEach((edit, index) => {
       const file = grouped.get(edit.path) ?? { path: edit.path, index, edits: 0, added: 0, removed: 0, unknown: false };
-      const diff = getFileDiff(edit);
+      const summary = edit.blobKey ? counts[edit.blobKey] : undefined;
+      const diff = summary ? { ...summary, notice: undefined } : getFileDiff(edit);
       file.edits++;
       file.added += diff.added;
       file.removed += diff.removed;
@@ -34,12 +66,13 @@ export function FileChangesCard({ items, conversationId, messageId }: { items: C
       grouped.set(edit.path, file);
     });
     return [...grouped.values()];
-  }, [edits]);
+  }, [edits, counts]);
   useEffect(() => setExpanded(false), [conversationId, messageId]);
   useEffect(() => { useFileDiffStore.getState().refresh(conversationId, messageId, edits); }, [conversationId, messageId, edits]);
-  if (!edits.length) return null;
+  if (!edits.length && !indexError) return null;
   const open = (index: number) => useFileDiffStore.getState().open({ conversationId, messageId, edits, index });
   return <section className="file-changes-card" aria-label={t("fileDiff.title")}>
+    {indexError && <p className="file-diff-notice" role="status">{t("fileDiff.indexError")} <button type="button" onClick={() => setAttempt(value => value + 1)}>{t("fileDiff.retry")}</button></p>}
     {(expanded ? files : files.slice(0, 3)).map((file) => {
       const { name, dir } = splitPath(relativePath(file.path, roots));
       return <button type="button" className="file-change-entry" key={file.path} title={file.path} aria-label={`${t("fileDiff.view")}: ${file.path}`} onClick={() => open(file.index)}>
@@ -115,8 +148,10 @@ export function FileDiffPanel() {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const selection = useFileDiffStore((s) => s.selection);
+  const content = useFileDiffStore((s) => s.content);
   const current = selection?.conversationId === activeId ? selection : undefined;
   const edit = current?.edits[current.index];
+  const loaded = edit?.blobKey && content?.key === JSON.stringify([current?.conversationId, edit.blobKey]) ? content : undefined;
   const total = current?.edits.length ?? 0;
   const roots = useWorkspaceRoots(current?.conversationId);
   const labels = useMemo(() => pickerLabels(current?.edits.map((item) => item.path) ?? [], roots), [current?.edits, roots]);
@@ -140,7 +175,10 @@ export function FileDiffPanel() {
           <button type="button" className="detail-panel-collapse-btn" disabled={current.index === total - 1} onClick={() => go(1)} title={t("fileDiff.next")} aria-label={t("fileDiff.next")}><ChevronDown size={15} /></button>
         </div>}
       </div>
-      <DiffContent key={`${current.conversationId}:${current.messageId}:${current.index}:${edit.path}`} edit={edit} path={relativePath(edit.path, roots)} />
+      {edit.blobKey && loaded?.status !== "ready" ? <p className="file-diff-notice" role="status">
+        {t(`fileDiff.${!loaded || loaded.status === "loading" ? "loading" : loaded.status === "error" ? "loadError" : loaded.status === "missing" ? "unavailable" : "large"}`)}
+        {(loaded?.status === "error" || loaded?.status === "missing") && <button type="button" onClick={() => void useFileDiffStore.getState().loadSelected(true)}>{t("fileDiff.retry")}</button>}
+      </p> : <DiffContent key={`${current.conversationId}:${current.messageId}:${current.index}:${edit.blobKey ?? edit.path}`} edit={loaded?.edit ?? edit} path={relativePath(edit.path, roots)} />}
     </> : <p className="file-diff-empty"><FileDiffIcon size={30} />{t("fileDiff.empty")}</p>}
   </section>;
 }

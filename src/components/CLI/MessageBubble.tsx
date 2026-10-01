@@ -1111,7 +1111,7 @@ export const MessageBubble = memo(function MessageBubble({
             <span>{t("message.thinking")}</span>
           </div>
         )}
-        <FileChangesCard items={displayItems} conversationId={message.conversationId} messageId={message.id} />
+        <FileChangesCard items={displayItems} conversationId={message.conversationId} messageId={message.id} storedTaskId={message.taskId} isRunning={message.status === "running" || message.status === "starting"} />
         {actionBarNode}
       </div>
     </div>

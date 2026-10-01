@@ -3,6 +3,7 @@ import { getDb } from "./db.js";
 import { requireOwnedConversation } from "./conversations.js";
 import { acpUpdateToItems, type AcpStreamItem } from "./acp.js";
 import { getTask } from "./tasks.js";
+import { restoreFileEditReferences } from "./fileEditBlobs.js";
 
 export interface MessageDetailsPage {
   items?: AcpStreamItem[];
@@ -62,7 +63,10 @@ export async function readMessageDetails(messageId: string, offset = 0): Promise
   const task = row.task_id ? getTask(row.task_id) : undefined;
   if (!task?.logPath) return { available: false, text: "", nextOffset: 0, hasMore: false };
   const page = await readLogDetailsPage(task.logPath, offset);
-  return { ...page, text: "", items: restoreLogItems(page.text) };
+  const items = restoreLogItems(page.text);
+  return { ...page, text: "", items: row.task_id
+    ? restoreFileEditReferences({ conversationId: row.conversation_id, sessionId: row.task_id }, items)
+    : items };
 }
 
 export function restoreLogItems(text: string): AcpStreamItem[] {

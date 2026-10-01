@@ -18,6 +18,25 @@ export type ToolKind =
 
 export type ToolCallStatus = "pending" | "running" | "completed" | "failed";
 
+export interface FileEditContent {
+  oldText?: string;
+  newText?: string;
+  patch?: string;
+}
+
+export interface FileEditBlobChunk {
+  data: string;
+  nextOffset: number;
+  totalBytes: number;
+  hasMore: boolean;
+}
+
+export interface FileEditPage {
+  edits: Extract<CliStreamItem, { kind: "file-edit" }>[];
+  nextCursor: number;
+  hasMore: boolean;
+}
+
 export type CliStreamItem =
   | {
       kind: "text";
@@ -61,6 +80,7 @@ export type CliStreamItem =
       patch?: string;
       oldText?: string;
       newText?: string;
+      blobKey?: string;
       /** Content is a snippet rather than a complete file. */
       partial?: boolean;
       /** Content was shortened while saving or sanitizing the stream. */

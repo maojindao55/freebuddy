@@ -1,5 +1,10 @@
 {
   "fileDiff": {
+    "loading": "正在读取完整差异…",
+    "loadError": "读取差异失败，请重试。",
+    "indexError": "读取文件变更列表失败。",
+    "unavailable": "这条修改的完整内容已不可用。",
+    "retry": "重试",
     "close": "关闭文件变更，返回概览",
     "showMore": "再显示 {{count}} 个文件",
     "showLess": "收起文件列表",

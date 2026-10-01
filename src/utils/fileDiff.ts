@@ -47,7 +47,7 @@ export function collectFileEdits(items: CliStreamItem[]): FileEdit[] {
     if (item.toolOutputs?.length) {
       const nested = collectFileEdits(item.toolOutputs);
       if (nested.length > 0) {
-        const hasContent = nested.some((e) => e.patch || e.oldText !== undefined || e.newText !== undefined);
+        const hasContent = nested.some((e) => e.blobKey || e.patch || e.oldText !== undefined || e.newText !== undefined);
         if (hasContent) {
           edits.push(...nested);
           continue;
@@ -115,7 +115,22 @@ export function collectFileEdits(items: CliStreamItem[]): FileEdit[] {
       edits.push(...hollowNested);
     }
   }
-  return edits;
+  const seen = new Set<string>();
+  return edits.filter(edit => {
+    if (!edit.blobKey) return true;
+    if (seen.has(edit.blobKey)) return false;
+    seen.add(edit.blobKey);
+    return true;
+  });
+}
+
+export function mergeStoredFileEdits(inline: FileEdit[], stored?: FileEdit[]): FileEdit[] {
+  if (!stored) return inline;
+  const paths = new Set(stored.map(edit => edit.path));
+  return [
+    ...inline.filter(edit => !edit.blobKey && (!paths.has(edit.path) || edit.patch !== undefined || edit.oldText !== undefined || edit.newText !== undefined)),
+    ...stored
+  ];
 }
 
 function lines(text: string): string[] {
@@ -127,7 +142,7 @@ function lines(text: string): string[] {
 
 export function buildFileDiff(edit: FileEdit): FileDiff {
   const result: FileDiff = { rows: [], added: 0, removed: 0, partial: edit.partial };
-  if (edit.truncated || [edit.patch, edit.oldText, edit.newText].some((s) => s?.includes("[truncated]"))) {
+  if (edit.truncated || (!edit.blobKey && [edit.patch, edit.oldText, edit.newText].some((s) => s?.includes("[truncated]")))) {
     return { ...result, notice: "truncated" };
   }
   const before = edit.oldText ?? (edit.action === "create" ? "" : undefined);

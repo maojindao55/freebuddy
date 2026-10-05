@@ -9,8 +9,10 @@
 export const ONBOARDING_STATE_SETTING_KEY = "onboarding.state.v1";
 export type OnboardingState = "pending" | "done" | "skipped";
 
+// The legacy https://freebuddy-freebie.binbinzhaili.workers.dev hostname serves
+// the same API routes, so older builds that still point there keep working.
 export const GUIDE_GATEWAY_URL =
-  "https://freebuddy-freebie.binbinzhaili.workers.dev";
+  "https://freebuddy.si";
 
 /** Path on the gateway that exchanges a device id for a trial token. */
 export const GUIDE_GATEWAY_ACTIVATE_PATH = "/api/v1/auth/device";

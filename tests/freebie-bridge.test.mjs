@@ -32,7 +32,7 @@ async function loadPresetToOverride() {
 async function loadCommunityClient() {
   const source = read("../src/services/freebie/communityClient.ts").replace(
     /import \{ FREEBIE_PAGE_URL \} from "@\/config\/freebie";/,
-    'const FREEBIE_PAGE_URL = new URL("https://freebuddy-freebie.binbinzhaili.workers.dev/");'
+    'const FREEBIE_PAGE_URL = new URL("https://freebuddy.si/freebie/");'
   );
   return importInline(transpile(source));
 }

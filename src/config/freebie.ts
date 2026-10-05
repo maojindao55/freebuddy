@@ -6,11 +6,15 @@ import {
 } from "@/services/freebie/protocol";
 
 /**
- * Public URL of the externally hosted freebie page (Cloudflare Pages). Override
- * with `VITE_FREEBIE_PAGE_URL` (e.g. `http://localhost:8788/`) while developing
- * the page locally; only https and loopback http origins are accepted.
+ * Public URL of the externally hosted freebie page (Cloudflare Worker static
+ * assets, served as /freebie/ under the freebuddy.si custom domain). Override
+ * with `VITE_FREEBIE_PAGE_URL` (e.g. `http://localhost:8788/freebie/`) while
+ * developing the page locally; only https and loopback http origins are
+ * accepted. Older builds embedded the page at
+ * https://freebuddy-freebie.binbinzhaili.workers.dev/ — the worker rewrites
+ * those legacy root URLs to /freebie/ internally so old clients keep working.
  */
-const DEFAULT_FREEBIE_PAGE_URL = "https://freebuddy-freebie.binbinzhaili.workers.dev/";
+const DEFAULT_FREEBIE_PAGE_URL = "https://freebuddy.si/freebie/";
 
 function resolvePageUrl(): URL {
   const configured = import.meta.env?.VITE_FREEBIE_PAGE_URL as string | undefined;

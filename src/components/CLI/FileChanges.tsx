@@ -5,7 +5,7 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { useFileDiffStore } from "@/store/fileDiffStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { cliClient } from "@/services/cli/client";
-import { collectFileEdits, foldDiffRows, getFileDiff, inlineHighlights, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
+import { collectFileEdits, foldDiffRows, getFileDiff, getFileEditCounts, inlineHighlights, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
 import { conversationWorktreePath } from "./conversationProjectGrouping";
 import { copyToClipboard } from "@/utils/clipboard";
 
@@ -58,11 +58,11 @@ export function FileChangesCard({ items, conversationId, messageId, storedTaskId
     edits.forEach((edit, index) => {
       const file = grouped.get(edit.path) ?? { path: edit.path, index, edits: 0, added: 0, removed: 0, unknown: false };
       const summary = edit.blobKey ? counts[edit.blobKey] : undefined;
-      const diff = summary ? { ...summary, notice: undefined } : getFileDiff(edit);
+      const diff = summary ?? getFileEditCounts(edit);
       file.edits++;
-      file.added += diff.added;
-      file.removed += diff.removed;
-      file.unknown ||= !!diff.notice;
+      file.added += diff?.added ?? 0;
+      file.removed += diff?.removed ?? 0;
+      file.unknown ||= !diff;
       grouped.set(edit.path, file);
     });
     return [...grouped.values()];

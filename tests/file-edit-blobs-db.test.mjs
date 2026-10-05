@@ -27,7 +27,7 @@ async function loadSource(relativePath) {
   const source = fs.readFileSync(new URL(relativePath, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 }
-  }).outputText;
+  }).outputText.replaceAll('"@freebuddy/cli-stream"', JSON.stringify(new URL("../packages/cli-stream/dist/index.js", import.meta.url).href));
   return import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 }
 
@@ -57,6 +57,59 @@ function persist(content, status, toolCallId) {
   return persistFileEditItems(context, update(content, status, toolCallId));
 }
 
+test("stream and stored metadata include counts for every edit before any body is opened", { skip: !bindingAvailable }, testContext => {
+  setup(testContext);
+  const changes = [
+    { type: "diff", path: "file.ts", oldText: "a\nb\n", newText: "a\nc\nd\n" },
+    { type: "diff", path: "file.ts", oldText: "c\n", newText: "e\n" },
+    { type: "diff", path: "empty.ts", oldText: null, newText: "" },
+    { type: "diff", path: "removed.ts", oldText: "one\ntwo\n", newText: null }
+  ];
+  const stream = collectFileEdits(persist(changes));
+  assert.equal(stream.length, 4);
+  assert.deepEqual(stream.map(edit => edit.counts), [
+    { added: 2, removed: 1 }, { added: 1, removed: 1 }, { added: 0, removed: 0 }, { added: 0, removed: 2 }
+  ]);
+  const saved = collectFileEdits(JSON.parse(serializeStreamItemsForPersist(sanitizeStreamItems(persist(changes)))));
+  assert.deepEqual(saved.map(edit => edit.counts), stream.map(edit => edit.counts));
+  const page = runAsCaller("alice", () => listMessageFileEdits("message"));
+  assert.deepEqual(page.edits.map(edit => edit.counts), stream.map(edit => edit.counts));
+  assert.ok(page.edits.every(edit => edit.oldText === undefined && edit.newText === undefined && edit.patch === undefined));
+});
+
+test("legacy blob schema migrates and summaries are backfilled for indexes and restored references", { skip: !bindingAvailable }, testContext => {
+  const db = setup(testContext);
+  const refs = collectFileEdits(persist([
+    { type: "diff", path: "first.ts", oldText: "before", newText: "after" },
+    { type: "diff", path: "second.ts", oldText: "a\nb", newText: "a\nc\nd" }
+  ]));
+  const payloads = db.prepare("SELECT blob_key, payload FROM file_edit_blobs ORDER BY sequence").all();
+  db.exec("ALTER TABLE file_edit_blobs DROP COLUMN counts");
+  migrate(db);
+  migrate(db);
+  assert.equal(db.prepare("SELECT count(*) AS total FROM file_edit_blobs WHERE counts IS NULL").get().total, 2);
+  const restored = restoreFileEditReferences(context, [{ ...refs[0], counts: undefined }]);
+  assert.deepEqual(restored[0].counts, { added: 1, removed: 1 });
+  const page = runAsCaller("alice", () => listMessageFileEdits("message"));
+  assert.deepEqual(page.edits.map(edit => edit.counts), [{ added: 1, removed: 1 }, { added: 2, removed: 1 }]);
+  assert.equal(db.prepare("SELECT count(*) AS total FROM file_edit_blobs WHERE counts IS NULL").get().total, 0);
+  assert.deepEqual(db.prepare("SELECT blob_key, payload FROM file_edit_blobs ORDER BY sequence").all(), payloads);
+  assert.deepEqual(listMessageFileEdits("message"), page);
+});
+
+test("unavailable summaries remain unknown rather than reporting zero", { skip: !bindingAvailable }, testContext => {
+  const db = setup(testContext);
+  const refs = collectFileEdits(persist([
+    { type: "diff", path: "missing-baseline.ts", action: "update", newText: "after" },
+    { type: "diff", path: "large.ts", oldText: "a\n".repeat(1500), newText: "b\n".repeat(1500) }
+  ]));
+  assert.ok(refs.every(edit => edit.counts === undefined));
+  db.exec("UPDATE file_edit_blobs SET counts = NULL");
+  const page = listMessageFileEdits("message");
+  assert.ok(page.edits.every(edit => edit.counts === undefined));
+  assert.ok(db.prepare("SELECT counts FROM file_edit_blobs").all().every(row => row.counts === "null"));
+});
+
 test("full ACP diffs survive sanitization, budget eviction, UTF-8 paging and database reopen", { skip: !bindingAvailable }, async testContext => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-diff-"));
   let db;
@@ -77,6 +130,7 @@ test("full ACP diffs survive sanitization, budget eviction, UTF-8 paging and dat
   const emitted = persist([{ type: "diff", path: "file.ts", oldText, newText }]);
   const [reference] = collectFileEdits(sanitizeStreamItems(emitted));
   assert.ok(reference.blobKey);
+  assert.deepEqual(reference.counts, { added: 1, removed: 1 });
   assert.equal(reference.oldText, undefined);
   assert.equal(reference.truncated, false);
   assert.equal(JSON.stringify(emitted).includes(baseline), false);
@@ -94,6 +148,7 @@ test("full ACP diffs survive sanitization, budget eviction, UTF-8 paging and dat
   migrate(reopened);
   const page = runAsCaller("alice", () => listMessageFileEdits("message"));
   assert.equal(page.edits.length, 1);
+  assert.deepEqual(page.edits[0].counts, { added: 1, removed: 1 });
   const merged = mergeStoredFileEdits(collectFileEdits(JSON.parse(snapshot)), page.edits);
   assert.equal(merged[0].blobKey, reference.blobKey);
   let calls = 0;

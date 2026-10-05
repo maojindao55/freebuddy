@@ -8,7 +8,7 @@ import ts from "typescript";
 async function loadSource(relativePath) {
   const compiled = ts.transpileModule(fs.readFileSync(new URL(relativePath, import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 }
-  }).outputText;
+  }).outputText.replaceAll('"@freebuddy/cli-stream"', JSON.stringify(new URL("../packages/cli-stream/dist/index.js", import.meta.url).href));
   return import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 }
 const { createFileEditContentLoader } = await loadSource("../src/services/cli/fileEditContent.ts");
@@ -118,4 +118,24 @@ test("stored metadata replaces stale references and preserves legacy inline edit
   const stored = [{ ...base, blobKey: "new" }];
   assert.deepEqual(diffModule.mergeStoredFileEdits([{ ...base, blobKey: "old" }, base, legacy], stored), [legacy, ...stored]);
   assert.equal(diffModule.collectFileEdits([{ ...base, blobKey: "same" }, { ...base, blobKey: "same" }]).length, 1);
+});
+
+test("cards can total reference counts before selecting or fetching any diff body", () => {
+  let reads = 0;
+  const store = makeStore(async () => { reads++; throw new Error("Body should stay lazy"); });
+  const edits = [
+    { kind: "file-edit", path: "file.ts", action: "update", blobKey: "first", counts: { added: 2, removed: 1 } },
+    { kind: "file-edit", path: "file.ts", action: "update", blobKey: "second", counts: { added: 1, removed: 3 } },
+    { kind: "file-edit", path: "empty.ts", action: "create", blobKey: "empty", counts: { added: 0, removed: 0 } }
+  ];
+  store.getState().refresh("conversation", "message", edits);
+  assert.equal(reads, 0);
+  assert.equal(store.getState().selection, undefined);
+  assert.deepEqual(edits.slice(0, 2).map(diffModule.getFileEditCounts)
+    .reduce((total, counts) => ({ added: total.added + counts.added, removed: total.removed + counts.removed }), { added: 0, removed: 0 }),
+    { added: 3, removed: 4 });
+  assert.deepEqual(diffModule.getFileEditCounts(edits[2]), { added: 0, removed: 0 });
+  assert.equal(edits[0].newText, undefined);
+  assert.equal(diffModule.getFileEditCounts({ ...edits[0], counts: undefined }), undefined);
+  assert.deepEqual(diffModule.getFileEditCounts({ kind: "file-edit", path: "legacy.ts", action: "update", oldText: "old", newText: "new" }), { added: 1, removed: 1 });
 });

@@ -2,6 +2,8 @@ import "./parsers/codex.js";
 import "./parsers/claude.js";
 import "./parsers/opencode.js";
 
+export { buildFileDiff, type DiffRow, type FileDiff } from "./fileDiff.js";
+
 export {
   getParser,
   rawParser,

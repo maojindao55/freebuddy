@@ -340,6 +340,7 @@ export function migrate(db: DB) {
       partial INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 1,
+      counts TEXT,
       payload BLOB NOT NULL,
       FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
@@ -611,6 +612,11 @@ export function migrate(db: DB) {
     CREATE INDEX IF NOT EXISTS idx_remote_audit_created
       ON remote_audit_log(created_at DESC);
   `);
+
+  const fileEditCols = db.prepare("PRAGMA table_info(file_edit_blobs)").all() as Array<{ name: string }>;
+  if (!fileEditCols.some((c) => c.name === "counts")) {
+    db.exec("ALTER TABLE file_edit_blobs ADD COLUMN counts TEXT");
+  }
 
   const remoteUserCols = db
     .prepare("PRAGMA table_info(remote_users)")

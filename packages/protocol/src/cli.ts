@@ -81,6 +81,8 @@ export type CliStreamItem =
       oldText?: string;
       newText?: string;
       blobKey?: string;
+      /** Line counts remain available when full content is loaded on demand. */
+      counts?: { added: number; removed: number };
       /** Content is a snippet rather than a complete file. */
       partial?: boolean;
       /** Content was shortened while saving or sanitizing the stream. */

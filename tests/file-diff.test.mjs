@@ -6,7 +6,7 @@ import { getParser, serializeStreamItemsForPersist } from "@freebuddy/cli-stream
 
 const output = ts.transpileModule(fs.readFileSync(new URL("../src/utils/fileDiff.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 }
-}).outputText;
+}).outputText.replaceAll('"@freebuddy/cli-stream"', JSON.stringify(new URL("../packages/cli-stream/dist/index.js", import.meta.url).href));
 const { buildFileDiff, collectFileEdits, foldDiffRows, inlineHighlights } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 const edit = (fields) => ({ kind: "file-edit", path: "src/a.ts", action: "update", ...fields });
 

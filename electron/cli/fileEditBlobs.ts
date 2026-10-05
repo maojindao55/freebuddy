@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { buildFileDiff } from "@freebuddy/cli-stream";
 import type { FileEditBlobChunk, FileEditContent, FileEditPage, ToolCallStatus } from "@freebuddy/protocol";
 import type { AcpStreamItem } from "./acp.js";
 import { getDb } from "./db.js";
@@ -12,11 +13,28 @@ interface FileEditRow {
   path: string;
   action: FileEdit["action"];
   partial: number;
+  counts: string | null;
+}
+
+function countsJson(edit: FileEdit): string {
+  const diff = buildFileDiff(edit);
+  return JSON.stringify(diff.notice ? null : { added: diff.added, removed: diff.removed });
 }
 
 function reference(row: FileEditRow): FileEdit {
+  // Older blobs have no summary. Backfill once, without sending their body over IPC.
+  if (row.counts === null) {
+    const db = getDb();
+    const content = db.prepare("SELECT payload FROM file_edit_blobs WHERE blob_key = ? AND length(payload) <= ?")
+      .get(row.blob_key, 8 * 1024 * 1024) as { payload: Buffer } | undefined;
+    row.counts = content ? countsJson({ kind: "file-edit", path: row.path, action: row.action,
+      blobKey: row.blob_key, partial: !!row.partial, ...JSON.parse(content.payload.toString("utf8")) }) : "null";
+    db.prepare("UPDATE file_edit_blobs SET counts = ? WHERE blob_key = ?").run(row.counts, row.blob_key);
+  }
+  const counts = JSON.parse(row.counts) as FileEdit["counts"] | null;
   return {
     kind: "file-edit", path: row.path, action: row.action, blobKey: row.blob_key,
+    ...(counts ? { counts } : {}),
     ...(row.partial ? { partial: true } : {})
   };
 }
@@ -60,7 +78,7 @@ export function persistFileEditItems(
       if (edit.blobKey || edit.truncated) return edit;
       if (edit.oldText === undefined && edit.newText === undefined && edit.patch === undefined) {
         const previous = db.prepare(
-          `SELECT sequence, blob_key, path, action, partial FROM file_edit_blobs WHERE conversation_id = ? AND task_id = ?
+          `SELECT sequence, blob_key, path, action, partial, counts FROM file_edit_blobs WHERE conversation_id = ? AND task_id = ?
            AND tool_call_id = ? AND entry_index = ? AND path = ? ORDER BY sequence DESC LIMIT 1`
         ).get(conversationId, sessionId, toolCallId, entryIndex, edit.path) as FileEditRow | undefined;
         if (previous) db.prepare("UPDATE file_edit_blobs SET active = 1 WHERE blob_key = ?").run(previous.blob_key);
@@ -68,17 +86,18 @@ export function persistFileEditItems(
       }
       const payload = contentPayload(edit);
       const blobKey = contentKey({ conversationId, sessionId }, edit, toolCallId, entryIndex, payload);
+      const counts = countsJson({ ...edit, blobKey });
       db.prepare(
         `UPDATE file_edit_blobs SET active = 0 WHERE conversation_id = ? AND task_id = ?
          AND tool_call_id = ? AND entry_index = ?`
       ).run(conversationId, sessionId, toolCallId, entryIndex);
       db.prepare(
         `INSERT INTO file_edit_blobs
-         (blob_key, conversation_id, task_id, tool_call_id, entry_index, path, action, partial, status, payload)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(blob_key) DO UPDATE SET active = 1, status = excluded.status`
-      ).run(blobKey, conversationId, sessionId, toolCallId, entryIndex, edit.path, edit.action, edit.partial ? 1 : 0, status, payload);
-      return { kind: "file-edit", path: edit.path, action: edit.action, blobKey, ...(edit.partial ? { partial: true } : {}) };
+         (blob_key, conversation_id, task_id, tool_call_id, entry_index, path, action, partial, status, counts, payload)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(blob_key) DO UPDATE SET active = 1, status = excluded.status, counts = excluded.counts`
+      ).run(blobKey, conversationId, sessionId, toolCallId, entryIndex, edit.path, edit.action, edit.partial ? 1 : 0, status, counts, payload);
+      return reference({ sequence: 0, blob_key: blobKey, path: edit.path, action: edit.action, partial: edit.partial ? 1 : 0, counts });
     };
     return items.map((item) => {
       if (item.kind === "file-edit") {
@@ -110,10 +129,11 @@ export function persistFileEditItems(
 
 export function restoreFileEditReferences(context: FileEditContext, items: AcpStreamItem[]): AcpStreamItem[] {
   const restore = (edit: FileEdit, toolCallId: string, entryIndex: number): FileEdit => {
-    if (edit.blobKey || edit.truncated || (edit.oldText === undefined && edit.newText === undefined && edit.patch === undefined)) return edit;
-    const blobKey = contentKey(context, edit, toolCallId, entryIndex, contentPayload(edit));
+    if (edit.truncated || (edit.blobKey && edit.counts)) return edit;
+    if (!edit.blobKey && edit.oldText === undefined && edit.newText === undefined && edit.patch === undefined) return edit;
+    const blobKey = edit.blobKey ?? contentKey(context, edit, toolCallId, entryIndex, contentPayload(edit));
     const row = getDb().prepare(
-      "SELECT sequence, blob_key, path, action, partial FROM file_edit_blobs WHERE conversation_id = ? AND task_id = ? AND blob_key = ?"
+      "SELECT sequence, blob_key, path, action, partial, counts FROM file_edit_blobs WHERE conversation_id = ? AND task_id = ? AND blob_key = ?"
     ).get(context.conversationId, context.sessionId, blobKey) as FileEditRow | undefined;
     return row ? { ...reference(row), ...(edit.status ? { status: edit.status } : {}) } : edit;
   };
@@ -156,7 +176,7 @@ export function listMessageFileEdits(messageId: string, cursor = 0): FileEditPag
     .get(messageId) as { conversation_id: string; task_id: string | null } | undefined;
   if (!message || !requireOwnedConversation(message.conversation_id)) throw new Error("Message not available");
   const rows = db.prepare(
-    `SELECT sequence, blob_key, path, action, partial FROM file_edit_blobs
+    `SELECT sequence, blob_key, path, action, partial, counts FROM file_edit_blobs
      WHERE conversation_id = ? AND task_id = ? AND active = 1 AND status = 'completed'
      AND sequence > ? ORDER BY sequence LIMIT 101`
   ).all(message.conversation_id, message.task_id, cursor) as FileEditRow[];

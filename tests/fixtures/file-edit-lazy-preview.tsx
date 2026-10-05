@@ -10,8 +10,8 @@ import type { CliStreamItem } from "../../src/services/cli/parsers";
 void i18next.changeLanguage("zh-CN");
 useConversationStore.setState({ activeId: "lazy-preview" });
 const edits: Extract<CliStreamItem, { kind: "file-edit" }>[] = [
-  { kind: "file-edit", path: "src/long-file.ts", action: "update", blobKey: "full" },
-  { kind: "file-edit", path: "src/retry.ts", action: "create", blobKey: "retry" },
+  { kind: "file-edit", path: "src/long-file.ts", action: "update", blobKey: "full", counts: { added: 1, removed: 1 } },
+  { kind: "file-edit", path: "src/retry.ts", action: "create", blobKey: "retry", counts: { added: 1, removed: 0 } },
   { kind: "file-edit", path: "src/missing.ts", action: "update", blobKey: "missing" }
 ];
 const baseline = 'const value = "完整的历史内容🙂";\n'.repeat(1200);

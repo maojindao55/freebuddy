@@ -97,7 +97,8 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
         agentId: args.agentId,
         agentName: args.agentName,
         adapter: args.adapter,
-        roleLabel: args.roleLabel
+        roleLabel: args.roleLabel,
+        workflowRunId: args.delegation?.runId
       });
       broadcastMsg("appended");
     }

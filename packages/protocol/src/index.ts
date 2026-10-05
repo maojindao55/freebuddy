@@ -1,6 +1,12 @@
 export const PROTOCOL_PACKAGE = "@freebuddy/protocol";
 
 export type {
+  ConversationActivity,
+  ConversationOverview,
+  ConversationOverviewStatus
+} from "./conversationOverview.js";
+
+export type {
   WorkflowAgentRef,
   WorkflowEdgeCondition,
   WorkflowGate,

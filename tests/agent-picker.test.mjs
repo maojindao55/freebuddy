@@ -28,7 +28,7 @@ test("new task uses the availability-aware AgentPicker and opens agent settings"
   assert.match(chatViewSource, /groups=\{agentAvailability\}/);
   assert.match(chatViewSource, /onOpen=\{onRefreshAgents\}/);
   assert.match(chatViewSource, /onManage=\{onManageAgents\}/);
-  assert.match(appSource, /<ChatView onOpenAgentSettings=\{\(\) => openSettings\("cli"\)\}/);
+  assert.match(appSource, /<ChatView\s+onOpenAgentSettings=\{\(\) => openSettings\("cli"\)\}/);
   assert.match(conversationStoreSource, /enabled: executor\?\.enabled \?\? member\.enabled/);
 });
 

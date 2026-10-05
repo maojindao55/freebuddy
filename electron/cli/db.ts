@@ -319,6 +319,14 @@ export function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conv_time
       ON conversation_messages(conversation_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_conv_role_time
+      ON conversation_messages(conversation_id, role, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_messages_conv_task_time
+      ON conversation_messages(conversation_id, created_at DESC)
+      WHERE role = 'assistant' AND task_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_messages_task_conv
+      ON conversation_messages(task_id, conversation_id)
+      WHERE task_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS file_edit_blobs (
       sequence INTEGER PRIMARY KEY AUTOINCREMENT,

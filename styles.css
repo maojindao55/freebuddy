@@ -1502,6 +1502,55 @@ html[data-surface="butler-screen-ball"] #root {
   grid-template-columns: 272px minmax(0, 1fr);
 }
 
+.app-shell.conversation-panel-fullscreen {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.conversation-panel-fullscreen > .sidebar,
+.conversation-panel-fullscreen > .workspace > .titlebar {
+  display: none;
+}
+
+.conversation-panel-mode > .workspace > .chat-section {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.conv-view-switch {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: auto;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+}
+
+.conv-view-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+}
+
+.conv-view-button:hover,
+.conv-view-button.active {
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  box-shadow: var(--fb-shadow-sm);
+}
+
+.conv-view-button:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 2px;
+}
+
 .app-shell.sidebar-collapsed {
   grid-template-columns: minmax(420px, 1fr) var(--fb-detail-width, 440px);
 }

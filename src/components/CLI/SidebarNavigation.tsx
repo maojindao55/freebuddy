@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export type WorkspaceView = "chat" | "scheduledTasks" | "workflowTeams" | "freebie";
+export type WorkspaceView = "chat" | "conversationBoard" | "scheduledTasks" | "workflowTeams" | "freebie";
 
 export function SidebarNavigation({
   workspaceView,

@@ -1,10 +1,12 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Stethoscope, Sun } from "lucide-react";
+import { LayoutGrid, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Stethoscope, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
 import { ConversationList } from "./components/CLI/ConversationList";
+import { ConversationTaskPanel } from "./components/CLI/ConversationTaskPanel";
+import { useConversationOverviewUpdates } from "./components/CLI/useConversationOverviewUpdates";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
 import {
   conversationVisibleTitle,
@@ -38,6 +40,10 @@ import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
 import { useProviderStore } from "./store/providerStore";
 import { useConversationStore } from "./store/conversationStore";
+import { useConversationPanelUiStore } from "./store/conversationPanelUiStore";
+import { isConversationReadingVisible, setConversationReadingVisible } from "./store/conversationReading";
+import { useFileDiffStore } from "./store/fileDiffStore";
+import { cliClient } from "./services/cli/client";
 import { useDebugLogsDialogStore } from "./store/debugLogsDialogStore";
 import { useOnboardingStore } from "./store/onboardingStore";
 import { useSettingsStore } from "./store/settingsStore";
@@ -60,6 +66,7 @@ import {
   playTaskSuccess
 } from "./utils/soundEffects";
 import { isAppInBackground } from "./utils/appFocus";
+import { shouldFollowConversationSelection } from "./utils/conversationPanelNavigation";
 import { startScheduledSendRunner } from "./services/scheduledSend/runner";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
@@ -88,7 +95,16 @@ function App() {
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("cli");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(() =>
+    useConversationPanelUiStore.getState().preferredView === "panel" ? "conversationBoard" : "chat"
+  );
+  const [panelFullscreen, setPanelFullscreen] = useState(false);
+  const [messageFocus, setMessageFocus] = useState<{ conversationId: string; messageId: string } | null>(null);
+  const fullscreenSnapshot = useRef<{ native: boolean | null; browser: boolean } | null>(null);
+  const fullscreenTransition = useRef(false);
+  const fullscreenRevision = useRef(0);
+  const preferredConversationView = useConversationPanelUiStore((s) => s.preferredView);
+  useConversationOverviewUpdates(!settingsOpen && (workspaceView === "chat" || workspaceView === "conversationBoard"));
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [contextSourceId, setContextSourceId] = useState<string>();
   const [codexImportOpen, setCodexImportOpen] = useState(false);
@@ -218,10 +234,10 @@ function App() {
   useEffect(() => {
     const off = window.freebuddy?.cli?.onMessagesChanged?.((conversationId) => {
       const state = useConversationStore.getState();
-      if (conversationId !== state.activeId || isAppInBackground()) {
+      if (conversationId !== state.activeId || !isConversationReadingVisible() || isAppInBackground()) {
         state.markConversationUnread(conversationId);
         void state.refreshList();
-        if (conversationId !== state.activeId) return;
+        if (conversationId !== state.activeId || !isConversationReadingVisible()) return;
       }
       // Skip conversations this client is already live-streaming (e.g. the
       // current user's own active run) — live streaming owns those updates.
@@ -238,7 +254,7 @@ function App() {
   useEffect(() => {
     const handleFocus = () => {
       const state = useConversationStore.getState();
-      if (state.activeId && state.unreadConversations[state.activeId]) {
+      if (isConversationReadingVisible() && state.activeId && state.unreadConversations[state.activeId]) {
         state.markConversationRead(state.activeId);
       }
     };
@@ -249,6 +265,10 @@ function App() {
   useEffect(() => {
     const off = window.freebuddy?.window?.onChromeVisible?.((visible) => {
       setChromeVisible(visible);
+      if (visible && fullscreenSnapshot.current?.native === false && !fullscreenTransition.current) {
+        fullscreenSnapshot.current = null;
+        setPanelFullscreen(false);
+      }
     });
     return () => {
       off?.();
@@ -638,6 +658,14 @@ function App() {
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
+  useLayoutEffect(() => {
+    const reading = workspaceView === "chat" && !settingsOpen;
+    setConversationReadingVisible(reading);
+    if (reading && activeId && !isAppInBackground()) {
+      useConversationStore.getState().markConversationRead(activeId);
+    }
+    return () => setConversationReadingVisible(false);
+  }, [workspaceView, settingsOpen, activeId]);
   const contextSource = conversations.find((c) => c.id === contextSourceId);
   const activeConversationRunning = useConversationStore((s) => {
     if (!activeId) return false;
@@ -675,7 +703,7 @@ function App() {
     ? runningConversationIds.split("\u001f").length
     : 0;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const member = members.find((m) => m.id === activeConversation?.agentId);
     const runningIds = new Set(
       runningConversationIds ? runningConversationIds.split("\u001f") : []
@@ -717,10 +745,8 @@ function App() {
       unreadCount,
       updatedAt: new Date().toISOString()
     };
-    const timer = window.setTimeout(() => {
-      window.freebuddy?.window?.setUiPresence?.(snapshot);
-    }, 250);
-    return () => window.clearTimeout(timer);
+    // View changes also control native Escape handling, so publish before paint.
+    window.freebuddy?.window?.setUiPresence?.(snapshot);
   }, [
     workspaceView,
     settingsOpen,
@@ -829,12 +855,147 @@ function App() {
     };
   }, []);
 
+  const previousActiveId = useRef(activeId);
   useEffect(() => {
-    if (activeId) setWorkspaceView("chat");
-  }, [activeId]);
+    const previous = previousActiveId.current;
+    previousActiveId.current = activeId;
+    // Restoring the previous selection at startup must not replace a saved
+    // panel preference. Explicit conversation navigation still opens chat.
+    if (shouldFollowConversationSelection(previous, activeId, conversations.map((entry) => entry.id),
+      useConversationPanelUiStore.getState().preferredView)) {
+      setWorkspaceView("chat");
+    }
+  }, [activeId, conversations]);
+
+  const exitPanelFullscreen = useCallback(async () => {
+    fullscreenRevision.current++;
+    const snapshot = fullscreenSnapshot.current;
+    fullscreenSnapshot.current = null;
+    setPanelFullscreen(false);
+    if (!snapshot) return;
+    try {
+      if (window.freebuddy?.window?.setFullscreen && snapshot.native === false) {
+        await window.freebuddy.window.setFullscreen(false);
+      } else if (!snapshot.browser && document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // The presentation can always return to its previous layout even when
+      // a browser or native window refuses the full-screen transition.
+    }
+  }, []);
+
+  const togglePanelFullscreen = useCallback(async () => {
+    if (fullscreenTransition.current) return;
+    fullscreenTransition.current = true;
+    const revision = ++fullscreenRevision.current;
+    try {
+      if (fullscreenSnapshot.current) {
+        await exitPanelFullscreen();
+        return;
+      }
+      const bridge = window.freebuddy?.window;
+      const native = bridge?.getFullscreenState ? await bridge.getFullscreenState() : false;
+      if (revision !== fullscreenRevision.current) return;
+      const snapshot = { native, browser: Boolean(document.fullscreenElement) };
+      fullscreenSnapshot.current = snapshot;
+      setPanelFullscreen(true);
+      if (bridge?.setFullscreen) {
+        await bridge.setFullscreen(true);
+      } else if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+      // List/navigation can cancel while the OS or browser is still entering.
+      // Restore after that transition finishes as well as at cancellation time.
+      if (revision !== fullscreenRevision.current) {
+        if (bridge?.setFullscreen && snapshot.native === false) await bridge.setFullscreen(false);
+        else if (!snapshot.browser && document.fullscreenElement) await document.exitFullscreen();
+      }
+    } catch {
+      // Keep the board expanded inside the application if OS full-screen is
+      // unavailable (for example an embedded preview browser).
+      if (revision === fullscreenRevision.current) {
+        if (!fullscreenSnapshot.current) fullscreenSnapshot.current = { native: null, browser: Boolean(document.fullscreenElement) };
+        setPanelFullscreen(true);
+      }
+    } finally {
+      fullscreenTransition.current = false;
+    }
+  }, [exitPanelFullscreen]);
+
+  useEffect(() => {
+    if (workspaceView !== "conversationBoard" || settingsOpen) void exitPanelFullscreen();
+  }, [workspaceView, settingsOpen, exitPanelFullscreen]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement && fullscreenSnapshot.current && !window.freebuddy?.window?.setFullscreen) {
+        fullscreenSnapshot.current = null;
+        setPanelFullscreen(false);
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || workspaceView !== "conversationBoard") return;
+      const hasOverlay = [...document.querySelectorAll('[role="dialog"], [role="menu"], .ant-select-dropdown')]
+        .some((element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden");
+      if (hasOverlay) return;
+      if (fullscreenSnapshot.current) {
+        event.preventDefault();
+        void exitPanelFullscreen();
+      } else if (!chromeVisible) {
+        void window.freebuddy?.window?.setFullscreen?.(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [workspaceView, chromeVisible, exitPanelFullscreen]);
+
+  const openConversationPanel = () => {
+    useConversationPanelUiStore.getState().setPreferredView("panel");
+    setSettingsOpen(false);
+    setWorkspaceView("conversationBoard");
+  };
+  const openConversationList = () => {
+    useConversationPanelUiStore.getState().setPreferredView("list");
+    void exitPanelFullscreen();
+    setWorkspaceView("chat");
+  };
+  const openPanelConversation = async (id: string) => {
+    void exitPanelFullscreen();
+    setMessageFocus(null);
+    setWorkspaceView("chat");
+    await setActive(id);
+  };
+  const openPanelFile = async (conversationId: string, messageId: string, path: string) => {
+    await openPanelConversation(conversationId);
+    try {
+      let cursor: number | undefined;
+      for (let count = 0; count < 20; count++) {
+        const page = await cliClient.listMessageFileEdits(messageId, cursor);
+        const index = page.edits.findIndex((edit) => edit.path === path);
+        if (useConversationStore.getState().activeId !== conversationId) return;
+        if (index >= 0) {
+          useFileDiffStore.getState().open({ conversationId, messageId, edits: page.edits, index });
+          return;
+        }
+        if (!page.hasMore || page.nextCursor === cursor) break;
+        cursor = page.nextCursor;
+      }
+    } catch {
+      // Opening the original conversation remains a useful fallback when
+      // an older file-edit payload is unavailable.
+    }
+    if (useConversationStore.getState().activeId === conversationId) setMessageFocus({ conversationId, messageId });
+  };
 
   const workspaceTitle = settingsOpen
     ? t("common.settings")
+    : workspaceView === "conversationBoard"
+      ? t("conversationPanel.title")
     : workspaceView === "scheduledTasks"
       ? t("scheduledTasks.title")
       : workspaceView === "workflowTeams"
@@ -882,7 +1043,7 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" ? " conversation-panel-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" && panelFullscreen ? " conversation-panel-fullscreen" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
       style={{ "--fb-detail-width": `${effectiveDetailWidth}px` } as CSSProperties}
     >
@@ -943,6 +1104,10 @@ function App() {
               onOpenFreebie={openFreebie}
             />
             <ConversationList
+              panelActive={workspaceView === "conversationBoard"}
+              onOpenPanel={openConversationPanel}
+              onOpenList={openConversationList}
+              onOpenConversation={(id) => void openPanelConversation(id)}
               onNewTaskInProject={({ cwd, projectId }) =>
                 startNewTask({ cwd, projectId })
               }
@@ -1023,6 +1188,12 @@ function App() {
             </div>
           ) : workspaceView === "chat" && activeConversation && (
             <div className="titlebar-actions titlebar-actions-plain">
+              {preferredConversationView === "panel" && (
+                <button type="button" className="titlebar-icon-button" onClick={openConversationPanel}
+                  title={t("conversationPanel.backToPanel")} aria-label={t("conversationPanel.backToPanel")}>
+                  <LayoutGrid size={16} aria-hidden="true" />
+                </button>
+              )}
               {activeConversationHasContent && (
                 <button
                   type="button"
@@ -1083,6 +1254,15 @@ function App() {
               onTabChange={setSettingsInitialTab}
               onClose={() => setSettingsOpen(false)}
             />
+          ) : workspaceView === "conversationBoard" ? (
+            <ConversationTaskPanel
+              fullscreen={panelFullscreen}
+              onToggleFullscreen={() => void togglePanelFullscreen()}
+              onList={openConversationList}
+              onOpenConversation={(id) => void openPanelConversation(id)}
+              onOpenFile={(conversationId, messageId, path) => void openPanelFile(conversationId, messageId, path)}
+              onNewConversation={() => startNewTask()}
+            />
           ) : workspaceView === "scheduledTasks" ? (
             <section className="workspace-tool-page">
               <div className="workspace-tool-page-inner">
@@ -1112,7 +1292,11 @@ function App() {
               />
             </section>
           ) : (
-            <ChatView onOpenAgentSettings={() => openSettings("cli")} />
+            <ChatView
+              onOpenAgentSettings={() => openSettings("cli")}
+              messageFocus={messageFocus}
+              onMessageFocused={() => setMessageFocus(null)}
+            />
           )}
         </section>
       </main>
@@ -1150,7 +1334,10 @@ function App() {
         />
       )}
       {codexImportOpen && (
-        <ImportCodexSessionDialog onClose={() => setCodexImportOpen(false)} />
+        <ImportCodexSessionDialog
+          onClose={() => setCodexImportOpen(false)}
+          onImported={(id) => { void openPanelConversation(id); }}
+        />
       )}
       <AgentBridgeListener />
       <AgentBridgeToasts />

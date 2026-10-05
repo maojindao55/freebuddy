@@ -30,6 +30,7 @@ const ALLOW = [
   "cli:getConversation",
   "cli:listConversationContextReferences",
   "cli:listConversations",
+  "cli:listConversationOverviews",
   "cli:listFollowupMessages",
   "cli:listMessage",
   "cli:listMessages",

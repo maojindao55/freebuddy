@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isConversationReadingVisible } from "./conversationReading";
 import { nanoid } from "nanoid";
 
 import type { CLIMember } from "@/config/aiMembers";
@@ -697,7 +698,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       activeId: matchedCur
     });
     const active = get().activeId;
-    if (active) get().markConversationRead(active);
+    if (active && isConversationReadingVisible()) get().markConversationRead(active);
     if (active && !get().messages[active]) {
       await get().loadMessages(active);
     }
@@ -798,7 +799,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   markConversationUnread(id) {
-    if ((get().activeId === id && !isAppInBackground()) || get().unreadConversations[id]) return;
+    if ((get().activeId === id && !isAppInBackground() && isConversationReadingVisible()) || get().unreadConversations[id]) return;
     const unreadConversations: UnreadConversationMap = {
       ...get().unreadConversations,
       [id]: { kind: "message", at: new Date().toISOString() }
@@ -808,7 +809,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   markConversationCompletedUnread(id, result) {
-    if (get().activeId === id && !isAppInBackground()) return;
+    if (get().activeId === id && !isAppInBackground() && isConversationReadingVisible()) return;
     const current = get().unreadConversations[id];
     if (current?.kind === result) return;
     const unreadConversations: UnreadConversationMap = {

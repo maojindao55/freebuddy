@@ -1,0 +1,23 @@
+{
+  "startedAt": "2026-10-05T13:25:00.935Z",
+  "logs": [],
+  "viewport": {
+    "width": 1488,
+    "height": 1056,
+    "density": 1
+  },
+  "interactionChecks": [
+    "List restores sidebar and retained conversation",
+    "card back navigation preserves search",
+    "project and running filters",
+    "rename save",
+    "busy deletion disabled",
+    "Escape closes menu before leaving fullscreen",
+    "read activity focuses source message",
+    "edit activity opens actual Diff",
+    "new conversation opens original composer",
+    "800px two columns",
+    "390px one column with no horizontal overflow",
+    "dark theme"
+  ]
+}

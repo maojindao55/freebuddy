@@ -731,3 +731,193 @@ No actionable P0, P1, or P2 crowding, overlap, or hierarchy issue remains in the
 3. The final same-size comparison confirms the characters no longer collide and moving targets no longer obscure the Boss face.
 
 final result: passed
+
+---
+
+# 会话任务面板视觉与交互验收
+
+日期：2026-10-05
+
+final result: passed
+
+当前没有未解决的 P0 / P1 / P2 视觉或核心交互问题。残余差异为既有产品约束和 P3 样式细节，列于下文。
+
+## 比较目标与证据
+
+- 原始需求参考：`/var/folders/5t/jv509wn1335b48c6gfk67f4w0000gn/T/codex-clipboard-e41af522-3e5f-4d1d-837f-9f1fa55e3221.png`。采用用户修正后的范围：一张卡片对应一个会话，支持列表切换与全屏。
+- 选定视觉目标：`artifacts/product-design/multi-agent-activity-view/conversation-task-panel-fullscreen.png`。
+- 最终实现截图：`artifacts/product-design/multi-agent-activity-view/implementation-final.jpg`。
+- 全屏合并比较：`artifacts/product-design/multi-agent-activity-view/comparison-final.jpg`。源图与最终实现放在同一张图中比较，左侧为参考，右侧为实现。
+- 首张卡片合并比较：`artifacts/product-design/multi-agent-activity-view/comparison-card-final.jpg`。检查标题、身份行、状态、活动与页脚的字号、位置和清晰度。
+- 交互预览：<http://127.0.0.1:5173/artifacts/product-design/multi-agent-activity-view/preview.html>。预览导入实际 App 和生产组件；桥接层使用内存演示数据，不启动真实 Agent，不写真实会话数据库。
+
+源图像素为 1487 × 1058，最终实现为 1488 × 1056。比较图将源图轻微缩放到 1488 × 1056，未裁切内容；两侧各加 36px 标题区，合并图为 2976 × 1092。浏览器 CSS 视口为 1488 × 1056，density / deviceScaleFactor 为 1。以上像素归一化不会改变布局判断。
+
+比较状态：浅色、任务面板全屏、全部项目、空搜索、全部筛选、六个会话、两个执行中、一个需关注、两个未读。参考以示意文案表达状态，实现使用真实状态语义；例如正在执行的未读消息显示“未读”，本轮结束显示“本轮完成”。
+
+## 五项视觉检查
+
+| 检查面 | 观察与结论 |
+| --- | --- |
+| 字体与层级 | 沿用现有 `--fb-font` 字体栈。最终桌面标题 26px / 750，活动 18px / 1.5，身份 16px，模型与项目 14px，状态 13px，页脚 14px。较参考约 28px / 20px 略小、较轻，标题仍优先于身份与活动，中文行高清楚。长标题最多两行、活动单行省略，模型与项目不会挤占状态。残余字重差异记为 P3。 |
+| 间距与布局 | 24px 页面与卡片留白、16px 网格间距、16px 圆角。桌面三列，身份行右侧显示状态；窄卡将状态换至下一行。卡片统一最小高度 426px，参考第二行约 389px；统一高度使页脚位置稳定，内容区可纵向滚动，全部操作可达。800px 两列、390px 一列，没有横向溢出或工具栏遮挡。 |
+| 颜色与变量 | 复用 FreeBuddy 品牌绿、背景、文字、边框和语义色。运行蓝、待确认黄、完成绿、未读红，状态同时包含图标和文字。实际主题的颜色比示意图更柔和，遵循现有产品变量，深色截图中卡片背景为 rgb(17, 27, 45)。 |
+| 图像与图标 | 复用现有 FreeBuddy、Codex、Claude、Kimi 品牌图像和 AgentAvatar，无占位头像或手绘品牌替代。图像比例、裁切与边缘清楚。通用操作和状态使用项目现有图标库；轮廓状态图标与参考实心图标有 P3 差异。 |
+| 文案与内容 | 会话标题为首要信息，Agent / 实际模型 / 项目为身份信息。保留生产适配器名称 ClaudeCode、Kimi；无证据时不伪造模型。完成为“本轮完成”，避免暗示整个会话永久结束。活动取结构化工具记录；没有工具活动则显示最后回复摘要。待确认提供“查看请求”，文件编辑可进入真实 Diff。 |
+
+## 比较与修正历史
+
+1. 首轮 `comparison-01.jpg` 暴露卡片正文与身份文字偏小、状态独立占行的问题。该实现截图只有 1488 × 931，不作为完整全屏验收证据；另一次 `implementation-fullpage-01.jpg` 捕获到了恢复侧栏状态，也不作为全屏证据。修正截图方法后取得 `implementation-fullscreen-02.jpg`。
+2. 第二轮修正标题、活动、身份、状态和页脚字号，将桌面状态移至身份行右侧，调整卡片高度为 426px，统一筛选控件高度和内容间距。修正后的完整证据为 `implementation-fullscreen-03.jpg`、`comparison-03.jpg`、`comparison-card-03.jpg`，前述 P2 层级和布局差异消除。
+3. 最终浏览器验收确认列表返回、消息定位和 Diff 跳转；补齐演示桥接层需要的设置接口。重新采集 `implementation-final.jpg`，将其与源图并排查看，并检查 `comparison-card-final.jpg` 的细节。最终没有需要继续修正的 P0 / P1 / P2。
+
+## 交互与状态验证
+
+- 点击“列表”：退出面板全屏，恢复原侧边栏及上次 README 会话；只清除进入正文的会话未读，其他未读保留。
+- 侧栏再次进入面板；卡片打开会话后返回，README 搜索条件保留。项目筛选得到三条 freebuddy 会话，执行中筛选得到两条。
+- 卡片重命名保存后标题更新；正在执行和待处理会话的归档 / 删除禁用。
+- Escape 先关闭卡片菜单，再退出面板全屏，恢复侧栏。全屏保存和恢复进入前状态，异步进入 / 退出竞争由原生控制器测试覆盖。
+- 点击读取活动 `site/main.js` 定位并聚焦来源消息 `release-reply`；点击编辑活动 `electron-builder.yml` 打开实际 FileDiff，展示 +1 变更。
+- 新会话入口打开原有新会话编辑器。
+- `implementation-list-return.jpg`、`implementation-file-diff.jpg` 保存上述关键返回和文件操作状态。
+- `implementation-800.jpg`：800 × 900，两列；`implementation-390.jpg`：390 × 844，一列。390px 工具栏控件右边界均在视口内，无横向滚动。
+- `implementation-dark.jpg` 验证深色变量与状态可辨识。
+- 控件使用语义按钮 / 输入 / 选择框、可见焦点样式；动画遵循 reduced-motion。源码和组件测试覆盖加载、未知、失败后重试、无工具活动、批量摘要和事件更新。没有对这些所有状态逐一截图，亦未执行完整屏幕阅读器审计。
+
+最后一次干净浏览器检查从 `2026-10-05T13:25:00.935Z` 开始，记录见 `artifacts/product-design/multi-agent-activity-view/browser-qa.json`：0 个控制台错误、0 个警告。
+
+## 工程验证与边界
+
+- `npm run typecheck`：通过。
+- `npm run build:renderer`：通过，保留既有大 chunk 提示。
+- `npm test`：通过。Node 1492 条、Electron 数据库 173 条、文件编辑数据库 9 条，共 1674 条通过、175 条条件跳过、0 条失败。跳过包括 Node 原生 ABI 与平台限制；Electron 单独执行了数据库用例。
+- 42 条面板、导航、未读、窗口存在状态等定向检查通过；原生全屏队列包含 6 条事件与竞态测试。
+- `git diff --check`：通过。
+- 真实 Electron/macOS 全屏动画没有人工界面验收。浏览器使用模拟原生桥接验证 App 流程，原生事件、恢复队列、超时和迟到事件以测试覆盖。真实 Agent 执行未在演示预览中启动；摘要权限、数据库和远程入口由测试验证。
+
+## P3 后续细节
+
+- `.ctp-status` 与活动图标可进一步接近参考的实心光学重量；目前沿用现有图标族，保持跨页面一致。
+- `.ctp-card-title`、活动与页脚可按用户偏好增加 1–2px 或略加字重；当前大小已保持清晰层级和窄屏可用性。
+- 空闲卡片摘要保持一个回复区，卡片高度统一；若希望增加首屏密度，可另行调整空闲卡片留白。
+
+## 实施核对
+
+- [x] 一张卡片对应一个会话，共享现有标题、可见性与操作规则。
+- [x] 列表 / 面板切换，返回原侧边栏与上次对话。
+- [x] 全屏、Escape 层级、进入前窗口状态恢复。
+- [x] 搜索、项目 / 状态 / 未读筛选及返回状态保持。
+- [x] 轻量概览、实际模型、真实活动和问题入口。
+- [x] 面板浏览保留未读，正文阅读才按原规则处理。
+- [x] 文件 Diff 与来源消息定位。
+- [x] 桌面 / 窄屏 / 深色及控制台检查。
+- [x] 修正后完整与局部视觉比较通过。
+
+---
+
+# 会话任务面板：按 ChatView 对齐字体
+
+日期：2026-10-05。此补充依据用户最新反馈，替代上一轮以生成示意图的大字号为目标的排版与字号 P3 建议；其余功能和既有验收记录保留。
+
+final result: passed
+
+## 本轮问题与修正
+
+- [P2，已修复] 面板正文与 ChatView 字体体系不一致。原桌面活动为 18px、窄卡 16px，标题为 26px、窄卡 23px / 750；用户要求采用现有 ChatView 的日常阅读尺度。活动、回复摘要、待确认文案和空状态现采用 `--fb-chat-font / 14px / 22px / 400`，与实际 ChatView 的 `.markdown-body`、`.stream-text` 浏览器计算样式完全一致。
+- [P2，已修复] 缩小字号后需要同步修正空间比例。卡片标题采用 15px / 600 / 22px，主标题 16px / 600；身份与控件 13px，模型、项目、状态和页脚 12px。卡片留白改为 18px / 20px，活动间距 8px，最小高度 310px。品牌名称与现有侧栏一致，为 Outfit / 18px / 700 / 22px；头像缩为 28px，品牌图标缩为 36px。操作保留 32–36px 点击区域。
+- [P2，已修复] 原字体 reset 的选择器优先级会覆盖标题的显式行高。改为 `.conversation-task-panel :where(button, input, select)`，标题的 22px 行高现正常生效；窄卡和窄窗口不再额外放大文字。
+
+仅修改 `src/components/CLI/ConversationTaskPanel.css` 中的字体、配套间距、图像显示尺寸和控件尺寸。
+
+## 视觉目标与比较证据
+
+- 本轮字体真值：现有 `styles.css` 中 ChatView `.markdown-body` / `.stream-text`、标题栏与侧栏品牌字体；实际截图 `artifacts/product-design/multi-agent-activity-view/typography-chatview-reference.jpg`，计算样式 `typography-chatview-styles.json`。
+- 改前截图：`artifacts/product-design/multi-agent-activity-view/typography-before.jpg`。
+- 改后截图：`artifacts/product-design/multi-agent-activity-view/typography-after.jpg`。普通模式截图 `typography-inline-panel.jpg` 为恢复默认视口后的 980 × 823 像素，展示与既有侧栏共同出现时的排版尺度；等待卡片可见后重新采集，已确认内容为面板。
+- 全视图并排比较：`typography-comparison-full.jpg`，左侧改前、右侧改后，均为 1280 × 720 CSS px、浅色、全屏、全部项目、空搜索、六个会话、两个执行中、一个需关注、两个未读。相对更新时间自然前进约一分钟，不影响排版比较。
+- 卡片局部并排比较：`typography-comparison-card.jpg`，两侧以相同像素尺度展示第一张卡片，检查标题、身份行、活动、未读和页脚。
+- 字体局部并排比较：`typography-comparison-body.jpg`，将实际 ChatView 正文与改后活动正文放在同一张图中，以 1:1 截图尺度检查字体与字号；不同页面内容和行间分组不作为逐像素布局匹配目标。
+
+ChatView 真值、改前与改后完整截图均为 1280 × 720 像素。浏览器报告 devicePixelRatio 为 2，截图 API 输出为每 CSS px 一像素；比较时未额外放大或缩小。全视图合并加入 24px 间隔和 28px 标签区。聚焦比较保持原像素尺寸，只裁切对应内容。
+
+## 五项视觉检查
+
+- 字体：ChatView 与面板正文计算出的 family、14px、22px、400 完全一致；UI 控件和标题继续使用产品 `--fb-font`，对应 ChatView 标题栏的 UI 字体。标题保持一至两行，活动单行省略。默认、800px 和 390px 宽度都采用 15px 卡片标题、14px 正文。
+- 间距：字号缩小后卡片内容与身份区域同步收紧；页脚位置保持稳定。三列、两列、一列网格切换正常，窄屏无横向溢出，搜索、筛选、全屏及列表操作均可见。
+- 颜色：现有文字、品牌、背景和状态变量保留。活动的次要文字颜色、运行蓝、待确认黄、完成绿仍可辨识；文字层级调整未引入新色板。
+- 图像：保留现有 FreeBuddy 与 Agent 原始资产，无新绘制或替代图像；缩小显示尺寸后边缘清晰，比例与裁切正常。活动图标统一为 16px，与正文尺度相配。
+- 文案：标题、实际模型、项目、状态、活动和操作文案未变，卡片仍优先呈现任务标题；所有操作含义保持清楚。
+
+## 验证与最终结果
+
+- `typography-800.jpg`：800 × 900，双列，无横向溢出。
+- `typography-390.jpg`：390 × 844，单列，无横向溢出；顶部按钮右边界最大 374px，全部在视口内，点击区域高 32–36px。
+- 点击“列表”恢复上次 README 会话与原侧栏；再次点击侧栏“任务面板”正常返回。
+- 浏览器错误和警告为 0，记录于 `typography-browser-qa.json`；最终计算样式见 `typography-after-styles.json` 与 `typography-narrow-styles.json`。
+- `npm run build:renderer` 通过；保留既有大 chunk 构建提示。此次为纯 CSS 修改，未重复运行上一轮完整功能测试。
+- `git diff --check` 通过。没有剩余 P0 / P1 / P2。原生全屏动画的上一轮验证边界仍适用；本次未改动原生窗口实现。
+- 可保留的 P3：更紧凑的卡片高度可按用户偏好进一步调整；本次已将字号和空间比例对齐现有 ChatView，不再建议向原生成示意图放大文字。
+
+## 实施核对
+
+- [x] ChatView 与面板正文使用相同 family / size / line-height / weight。
+- [x] 标题、控件、辅助信息采用现有应用的字体尺度。
+- [x] 移除窄屏放大覆盖，修复 reset 行高优先级。
+- [x] 截图的完整与局部并排比较通过。
+- [x] 800px / 390px 响应式与原列表返回验证通过。
+- [x] 浏览器控制台和 renderer 构建检查通过。
+
+---
+
+# 会话任务面板：真实内容密度与层级整理
+
+日期：2026-10-05。依据用户最新截图“怎么感觉乱糟糟的”，本轮检查和修正总览、需关注筛选、原对话详情三个步骤。此前演示图和字号记录保留；本轮以真实内容压力场景的可扫读性为目标。
+
+final result: passed
+
+## 问题与结果
+
+- [P1，已修复] 完整命令、cwd、MCP 工具名挤占活动正文。识别有依据的文件 / 搜索 / 脚本 / 构建 / 协作动作；未知执行使用中性名称，已有简短自然描述保留。文件显示相对路径，原始 filePath、messageId 和调用对象仍用于导航。完成动作去重，最多显示三条；不同运行 / 待执行 / 失败调用不因同名被合并。
+- [P2，已修复] 五行灰色回复、Mermaid 与 Markdown 源码抢占视线。正文改为两行纯文本摘要，移除气泡与装饰图标；代码结果只有中性提示，不编造任务成果。长普通回复保留最近内容，长代码保留 opening fence，避免完成后数据库投影截掉 fence 而再次显示中部源码。数学比较符及普通图表名称说明不会被误删。
+- [P2，已修复] 长标题 / 身份 / 状态位置和卡片高度不一致。标题统一单行，状态移至首行；完成 / 空闲 / 停止为轻量文字，执行 / 待确认 / 失败保留语义颜色和图标。身份统一 24px 头像和一行信息，卡片最小高度 244px，移除内部横线和阴影，页脚为轻量文本入口。1470px 压力场景首行实际高 256px，由三条活动决定，同一行对齐。
+
+## 来源、尺寸与完整 / 局部比较
+
+- 用户原图 `clarity-user-before.png` 为 2940 × 1912 像素；按 2× 缩小为 `clarity-user-normalized.jpg` 的 1470 × 956，用于对照同一 CSS 尺度。没有重新生成用户截图。
+- 本轮在实际 App 和生产组件上使用内存桥接，构造 42 会话 / 0 执行中 / 13 需关注 / 0 未读的压力场景，包含长自然回复、六条 shell 命令、五个 MCP 动作、Mermaid、附件哈希标题。它复现同类内容，未读取或更改用户真实数据库；项目标签与第三行会话内容不要求与用户数据逐字一致。
+- `clarity-before.jpg` 和 `clarity-after.jpg` 均为 1470 × 956 CSS px、浅色、全屏、全部项目、空搜索、首批 24 张卡片，使用相同 fixture 输入。浏览器报告 devicePixelRatio 2，截图 API 每 CSS px 输出一像素，未额外缩放。
+- `clarity-comparison-full.jpg` 同图并排检查改前 / 改后；`clarity-comparison-user.jpg` 同图检查归一化用户截图 / 实现。比较画布增加 24px 间隔与 32px 标签区。
+- `clarity-comparison-card.jpg` 与 `clarity-comparison-actions.jpg` 以 1:1 像素裁切对应卡片：宽 464px，改前高 372px，改后高 256px；改后下方填比较画布背景，不引入下一张卡片。已逐一查看完整与局部合并图，确认标题 / 身份对齐、两行摘要、三条活动、轻量状态和页脚；无需要继续修正的 P0 / P1 / P2。
+
+## 五项视觉检查
+
+- 字体：正文继续 `--fb-chat-font / 14px / 22px / 400`，标题 15px / 600 / 22px，UI 与辅助信息采用既有 12–13px 尺度。800px / 390px 未额外放大字体，摘要计算出的 clamp 为 2。
+- 间距：同一行标题和身份起点一致，移除聊天气泡、卡内横线和大按钮。首屏可见第三行待确认卡片；短回复仍保留适量留白，让网格保持稳定。
+- 颜色：完成 / 空闲文字使用既有 secondary 变量，无胶囊背景；执行蓝、待确认黄、失败红、未读点保留。深色正文和安静状态为 rgb(203,213,225)，卡片为 rgb(17,27,45)，截图已检查。
+- 图像：沿用 FreeBuddy 与 Agent 原始资产，24px 头像比例和边缘正常；没有新绘制或替代图像。
+- 文案：真实标题、模型、项目和状态保留；长标题有完整 title 提示和可访问名称。命令按已知动作取短名称，不推断执行成果；详情仍保留原内容。
+
+## 交互、工程检查和边界
+
+- 三步骤审计见 `artifacts/product-design/multi-agent-activity-view/clarity-audit.zh-CN.md`，各步骤已记录原始截图、具体问题与修复后状态。
+- 浏览器：需关注筛选 13 张；返回后筛选保持；加载更多由 24 到 42 张；搜索 Markdown 得到两张；work 项目得到 19 张。精简“运行脚本”打开正确对话，可展开六条原始命令；文件编辑打开 electron-builder.yml 的实际 +1 Diff；列表恢复原侧栏与最近签名会话。
+- `clarity-800.jpg` 为 800 × 900 双列，`clarity-390.jpg` 为 390 × 844 单列，均无横向溢出，390px 顶部操作右边界最大 374px。`clarity-running.jpg`、`clarity-dark.jpg` 验证自然动作、执行 / 待确认 / 未读与深色。已恢复默认视口并保存 `clarity-default-viewport.jpg`，尺寸 980 × 823，无横向溢出。
+- 浏览器干净检查从 2026-10-05T14:47:37.006Z 开始，0 错误、0 警告，见 `clarity-browser-qa.json`。
+- 前端 helper / store / 导航 26 条测试通过；Electron 数据库投影 9 条通过，共 35 条通过，0 跳过 / 失败。包含长分块图表完成后投影与显示、普通 prose 最后结果、原始数据库内容不变、路径 / 真实调用对象导航、数学比较和自然语言说明等回归。
+- `npm run typecheck`、`npm run build:renderer`、Electron TypeScript 编译与 `git diff --check` 通过。既有 npm sass 配置 / 大 chunk 提示与 Electron 测试 runner 的 macOS codesign 诊断保留，测试退出码为 0。本轮没有重复上一轮全量 1674 条测试。
+- 真实 Agent、真实审批处理和 macOS 全屏动画未在内存 fixture 中执行；本轮未修改原生窗口与审批实现。截图与语义控件检查不代表完整屏幕阅读器合规审计。
+- P3：用户真实标题中的附件哈希仍保留，只做单行截断；如需自动清理标题，属于另一项标题生成规则调整。辅助时间 / 模型沿用既有三级文字颜色，可后续随全局 token 一并改善。
+
+## 实施核对
+
+- [x] 长命令、MCP、代码和五行回复不再铺满卡片。
+- [x] 标题 / 状态 / 身份统一位置，正文三条活动或两行摘要。
+- [x] 真实短描述、最新 prose 结果和各调用的导航对象保留。
+- [x] 完整与局部比较、深色 / 窄屏 / 详情入口复核通过。
+- [x] 35 条定向回归、类型检查、构建和控制台检查通过。
+
+## 发布前完整回归补充
+
+用户已授权提交所有改动并发布新版。发布前完整回归发现摘要语义匹配正则含中文字面量，与仓库的 src 国际化检查冲突；已将匹配字符改为等价 Unicode 正则转义，未改变文案或识别行为。摘要与国际化 21 条定向检查通过。
+
+2026-10-05 的 `npm test` 在系统权限环境中完整通过：Node 1502 条、Electron 数据库 174 条、文件编辑数据库 9 条，共 1685 条通过、176 条条件跳过、0 条失败。沙箱首次运行的本地端口用例失败以系统权限复跑解决；日志保存在 `/private/tmp/freebuddy-release-tests.log`。宣传目录 9 个 JavaScript 文件语法检查及 `git diff --check` 通过。GitHub 系统权限预检确认当前账号和仓库 API 权限有效。

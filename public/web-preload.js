@@ -202,6 +202,7 @@
       importCodexSession: function () { return Promise.resolve({ created: false, turns: 0, messages: 0 }); },
 
       listConversations: function (args) { return invoke("cli:listConversations", args); },
+      listConversationOverviews: function (conversationIds) { return invoke("cli:listConversationOverviews", conversationIds); },
       getConversation: function (id) { return invoke("cli:getConversation", id); },
       createConversation: function (input) { return invoke("cli:createConversation", input); },
       previewHandoffBrief: function (input) { return invoke("cli:previewHandoffBrief", input); },

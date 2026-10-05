@@ -1,0 +1,14 @@
+{
+  "name": "freebuddy-promo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "node export.mjs",
+    "build": "esbuild src/gl.src.js --bundle --minify --format=iife --target=es2020 --outfile=gl.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright": "^1.63.0",
+    "three": "^0.186.1"
+  }
+}

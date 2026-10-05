@@ -133,6 +133,8 @@ const cli = {
 
   listConversations: (args?: unknown) =>
     ipcRenderer.invoke("cli:listConversations", args),
+  listConversationOverviews: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:listConversationOverviews", conversationIds),
   getConversation: (id: string) => ipcRenderer.invoke("cli:getConversation", id),
   createConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversation", input),
@@ -337,6 +339,8 @@ const cli = {
 };
 
 const window = {
+  getFullscreenState: (): Promise<boolean> => ipcRenderer.invoke("window:get-fullscreen"),
+  setFullscreen: (fullscreen: boolean): Promise<boolean> => ipcRenderer.invoke("window:set-fullscreen", fullscreen),
   onChromeVisible(cb: (visible: boolean) => void): () => void {
     const handler = (_e: IpcRendererEvent, visible: boolean) => cb(visible);
     ipcRenderer.on("window:chrome", handler);

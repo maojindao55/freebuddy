@@ -135,6 +135,12 @@ async function loadConversationStoreHarness() {
     };
   `;
   const mockUrl = toDataUrl(mockSource);
+  const readingUrl = toDataUrl(
+    ts.transpileModule(
+      fs.readFileSync(new URL("../src/store/conversationReading.ts", import.meta.url), "utf8"),
+      { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }
+    ).outputText
+  );
   const conversationUtilsSource = fs.readFileSync(
     new URL("../src/store/conversationUtils.ts", import.meta.url),
     "utf8"
@@ -165,6 +171,8 @@ async function loadConversationStoreHarness() {
       `from "${
         specifier === "./conversationUtils"
           ? conversationUtilsUrl
+          : specifier === "./conversationReading"
+            ? readingUrl
           : mockUrl
       }"`
   );

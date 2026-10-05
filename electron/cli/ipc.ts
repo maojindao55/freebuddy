@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 
 import { cliAdapterDefinitions } from "./adapters.js";
 import { readMessageDetails } from "./messageDetails.js";
+import { listConversationOverviews } from "./conversationOverview.js";
 import { listMessageFileEdits, readFileEditBlob, readFileEditSnapshot } from "./fileEditBlobs.js";
 import { cliCheck, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
 import {
@@ -1292,6 +1293,9 @@ export function registerCliIpc() {
 
   registerHandler("cli:listConversations", (_e, args: ListConversationsArgs = {}) =>
     listConversations(args)
+  );
+  registerHandler("cli:listConversationOverviews", (_e, conversationIds: string[]) =>
+    listConversationOverviews(conversationIds)
   );
   registerHandler("cli:getConversation", (_e, id: string) =>
     requireOwnedConversation(id)

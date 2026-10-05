@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+<meta charset='utf-8' />
+<title>FreeBuddy v0.10 · Promo</title>
+<link rel='stylesheet' href='styles.css' />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+<div id='stage'>
+  <div class='blob b1'></div><div class='blob b2'></div><div class='grid-bg'></div>
+
+  <section class='scene' data-shape='sphere' data-start='0' data-end='2.8'>
+    <img class='logo' src='assets/icon-256.png' alt='' data-in='0.1' data-fx='zoom' data-dur='0.8' />
+    <h1 data-in='0.5'>FreeBuddy</h1>
+    <span class='pill' data-in='0.9'><span class='dot'></span>v0.10 新版发布 · 免费开源</span>
+  </section>
+
+  <section class='scene' data-shape='ring' data-start='2.8' data-end='6.4'>
+    <h2 data-in='0.1'><span class='grad' data-count='14' data-in='0.2' data-dur='1.3' data-fx='none'>0</span> 款 Agent，开箱即用</h2>
+    <div class='icons' id='icons'></div>
+    <p class='sub' data-in='2.0'>能在终端里跑的 CLI Agent，都能在 FreeBuddy 里用</p>
+  </section>
+
+  <section class='scene' data-shape='stream' data-start='6.4' data-end='9.6'>
+    <h2 data-in='0.1'>改动 <span class='grad'>逐行审阅</span></h2>
+    <div class='win' data-in='0.3'>
+      <div class='win-bar'><i></i><i></i><i></i><span>src/agent/run.ts</span><span class='stat'><span class='add'>+3</span>  <span class='del'>-2</span></span></div>
+      <div class='code'>
+        <div class='ln' data-in='0.6' data-fx='left'><span class='no'>12</span><span class='sg'> </span>export async function runAgent(task: Task) {</div>
+        <div class='ln d' data-in='0.75' data-fx='left'><span class='no'>13</span><span class='sg'>-</span>  const agent = getAgent('codex');</div>
+        <div class='ln a' data-in='0.9' data-fx='left'><span class='no'>13</span><span class='sg'>+</span>  const agent = pickAgent(task, registry);</div>
+        <div class='ln a' data-in='1.05' data-fx='left'><span class='no'>14</span><span class='sg'>+</span>  const ws = await createWorkspace(task.id);</div>
+        <div class='ln' data-in='1.2' data-fx='left'><span class='no'>15</span><span class='sg'> </span>  const result = await agent.run(task, { ws });</div>
+        <div class='fold' data-in='1.35' data-fx='left'>⋯  展开 12 行上下文</div>
+        <div class='ln d' data-in='1.5' data-fx='left'><span class='no'>28</span><span class='sg'>-</span>  console.log(result);</div>
+        <div class='ln a' data-in='1.65' data-fx='left'><span class='no'>28</span><span class='sg'>+</span>  await diffPanel.review(result);</div>
+        <div class='ln' data-in='1.8' data-fx='left'><span class='no'>29</span><span class='sg'> </span>  return result;</div>
+        <div class='ln' data-in='1.95' data-fx='left'><span class='no'>30</span><span class='sg'> </span>}</div>
+      </div>
+    </div>
+    <p class='sub' data-in='2.2'>行号 · 增删高亮 · 上下文折叠 · 一键复制</p>
+  </section>
+
+  <section class='scene' data-shape='nodes' data-start='9.6' data-end='12.8'>
+    <h2 data-in='0.1'>多 Agent <span class='grad'>组队协作</span></h2>
+    <div class='flow team-flow'>
+      <div class='team-glow' data-in='0' data-fx='glow'></div>
+      <div class='node' data-in='0.25' data-dur='0.6' data-fx='rise' data-run='0.7' data-done='1.15'><span class='ok'>✓</span><img src='assets/agents/openai.webp' alt='' /><b>Codex</b><span class='role'>实现</span><div class='bar'><span></span></div></div>
+      <div class='link'><span data-in='1.15' data-dur='0.25' data-fx='grow'></span><i class='pkt' data-in='1.15' data-dur='0.3' data-fx='pkt'></i></div>
+      <div class='node' data-in='0.35' data-dur='0.6' data-fx='rise' data-run='1.4' data-done='1.8'><span class='ok'>✓</span><img src='assets/agents/claude.webp' alt='' /><b>ClaudeCode</b><span class='role'>Review</span><div class='bar'><span></span></div></div>
+      <div class='link'><span data-in='1.8' data-dur='0.25' data-fx='grow'></span><i class='pkt' data-in='1.8' data-dur='0.3' data-fx='pkt'></i></div>
+      <div class='node' data-in='0.45' data-dur='0.6' data-fx='rise' data-run='2.05' data-done='2.45'><span class='ok'>✓</span><img src='assets/agents/kimi.webp' alt='' /><b>Kimi</b><span class='role'>测试</span><div class='bar'><span></span></div></div>
+    </div>
+    <p class='sub' data-in='1.6'>Workflow Teams：团队模板编排，多 Agent 并行推进</p>
+  </section>
+
+  <section class='scene' data-shape='sphere' data-start='12.8' data-end='16'>
+    <img class='logo sm' src='assets/icon-256.png' alt='' data-in='0.85' data-fx='zoom' />
+    <h1 data-in='1.25'>所有 Coding Agent，<br /><span class='grad'>一个工作台搞定</span></h1>
+    <div class='row' data-in='1.6'><span class='pill'><span class='dot'></span>免费开源 · MIT</span><span class='pill ghost'>macOS · Windows · Linux</span></div>
+    <p class='url' data-in='1.85'>github.com/maojindao55/freebuddy</p>
+  </section>
+
+  <div class='prog'><span id='prog'></span></div>
+</div>
+<script src='gl.js'></script>
+<script src='anim.js'></script>
+</body>
+</html>

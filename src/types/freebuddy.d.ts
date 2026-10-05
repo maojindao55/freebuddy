@@ -1,4 +1,4 @@
-import type { FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
+import type { ConversationOverview, FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
 import type {
   CLIAdapterDefinition,
   CLIAdapterId
@@ -225,6 +225,7 @@ declare global {
     deleteProject(id: string): Promise<{ ok: true }>;
 
     listConversations(args?: ListConversationsArgs): Promise<Conversation[]>;
+    listConversationOverviews(conversationIds: string[]): Promise<ConversationOverview[]>;
     getConversation(id: string): Promise<Conversation | undefined>;
     createConversation(
       input: CreateConversationInput
@@ -369,6 +370,8 @@ declare global {
   }
 
   interface FreebuddyWindow {
+    getFullscreenState?(): Promise<boolean>;
+    setFullscreen?(fullscreen: boolean): Promise<boolean>;
     onChromeVisible(cb: (visible: boolean) => void): () => void;
     onBridge(
       cb: (event: { action: string; params: Record<string, string> }) => void
@@ -390,7 +393,7 @@ declare global {
     onOpenSettings(cb: (tab: string) => void): () => void;
     onAppearanceChanged(cb: (theme: string) => void): () => void;
     setUiPresence(snapshot: {
-      workspaceView: "chat" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
+      workspaceView: "chat" | "conversationBoard" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
       settingsOpen: boolean;
       settingsTab:
         | "general"

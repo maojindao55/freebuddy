@@ -1,5 +1,5 @@
 import i18next from "i18next";
-import type { FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
+import type { ConversationOverview, FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
 import type {
   CLIExecutorOverride,
   CliCheckResult,
@@ -247,6 +247,9 @@ export const cliClient = {
 
   listConversations(args?: ListConversationsArgs): Promise<Conversation[]> {
     return api().listConversations(args);
+  },
+  listConversationOverviews(conversationIds: string[]): Promise<ConversationOverview[]> {
+    return api().listConversationOverviews(conversationIds);
   },
   getConversation(id: string): Promise<Conversation | undefined> {
     return api().getConversation(id);

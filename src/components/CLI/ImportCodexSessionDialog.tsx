@@ -13,11 +13,13 @@ import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 interface ImportCodexSessionDialogProps {
   initialSessionId?: string;
   onClose(): void;
+  onImported?(conversationId: string): void;
 }
 
 export function ImportCodexSessionDialog({
   initialSessionId = "",
-  onClose
+  onClose,
+  onImported
 }: ImportCodexSessionDialogProps) {
   const { t } = useTranslation();
   const importCodexSession = useConversationStore((s) => s.importCodexSession);
@@ -61,6 +63,7 @@ export function ImportCodexSessionDialog({
       } else {
         notify(t("importCodex.alreadyImported"));
       }
+      onImported?.(result.conversation.id);
       onClose();
     } catch (e) {
       setError((e as Error).message || String(e));

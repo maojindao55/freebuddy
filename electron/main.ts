@@ -17,6 +17,7 @@ import {
   startDshAcpAutoUpdate
 } from "./cli/check.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
+import { getWindowFullscreenState, setWindowFullscreen } from "./shared/windowFullscreen.js";
 import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
 import { handleBrowserRequest } from "./browserProtocol.js";
 import { startPreviewServer } from "./previewServer.js";
@@ -1833,7 +1834,11 @@ function createWindow() {
       !input.shift &&
       mainWindow?.isFullScreen()
     ) {
-      mainWindow.setFullScreen(false);
+      // The board handles Escape in the renderer so an open menu or dialog
+      // closes first. Other views keep the existing native shortcut.
+      if (getMainWindowPresence()?.workspaceView !== "conversationBoard") {
+        void setWindowFullscreen(mainWindow, false);
+      }
     }
   });
 
@@ -1873,6 +1878,16 @@ type SaveReceiptImagePayload = {
 };
 
 function registerTaskNotificationIpc(): void {
+  ipcMain.handle("window:get-fullscreen", (event) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return false;
+    return getWindowFullscreenState(win);
+  });
+  ipcMain.handle("window:set-fullscreen", (event, fullscreen: unknown) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents || typeof fullscreen !== "boolean") return false;
+    return setWindowFullscreen(win, fullscreen);
+  });
   ipcMain.handle(
     "window:save-image",
     async (event, payload: SaveReceiptImagePayload) => {

@@ -865,9 +865,13 @@ function SharedConversationReferences({
 }
 
 export function ChatView({
-  onOpenAgentSettings
+  onOpenAgentSettings,
+  messageFocus,
+  onMessageFocused
 }: {
   onOpenAgentSettings?: () => void;
+  messageFocus?: { conversationId: string; messageId: string } | null;
+  onMessageFocused?: () => void;
 }) {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
@@ -1950,6 +1954,21 @@ export function ChatView({
     scheduledSend?.createdAt,
     gatingPhaseId
   ]);
+
+  useLayoutEffect(() => {
+    if (!messageFocus || messageFocus.conversationId !== activeId) return;
+    const index = displayMessages.findIndex((message) => message.id === messageFocus.messageId);
+    if (index < 0) return;
+    const reveal = displayMessages.length - index;
+    if (reveal > historyReveal) { setHistoryReveal(reveal); return; }
+    const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageFocus.messageId)}"]`);
+    if (!target) return;
+    isNearBottomRef.current = false;
+    snapTargetRef.current = null;
+    target.scrollIntoView({ block: "center", behavior: "instant" });
+    target.focus({ preventScroll: true });
+    onMessageFocused?.();
+  }, [messageFocus, activeId, displayMessages, historyReveal, onMessageFocused]);
 
   useEffect(() => {
     if (!pendingWorkflowAction) return;

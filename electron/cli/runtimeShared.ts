@@ -18,6 +18,8 @@ import { scheduleAgentUsageReconciliation } from "./usageReconciler.js";
 import { linkAgentUsageSessionForTask } from "./usageStore.js";
 import { redactsecrets } from "../shared/logSanitize.js";
 import { formatLocalTimestamp } from "../shared/debugLogCore.js";
+import { authenticationTerminalPendingCount, authenticationTerminalPendingSessionIds } from "./authenticationTerminalPending.js";
+export { setAuthenticationTerminalPending } from "./authenticationTerminalPending.js";
 
 export interface CliPromptAttachment {
   path: string;
@@ -443,4 +445,19 @@ export function clearAuthenticationResolversForSession(sessionId: string) {
     }
   }
   authenticationRegistry.delete(sessionId);
+}
+
+/** Read-only counts; the overview must never consume or resolve a request. */
+export function pendingSessionInputCount(sessionId: string): number {
+  return (permissionRegistry.get(sessionId)?.size ?? 0) +
+    (authenticationRegistry.get(sessionId)?.size ?? 0) +
+    authenticationTerminalPendingCount(sessionId);
+}
+
+/** Main-process overview aggregation; callers never receive registry contents. */
+export function pendingSessionInputCounts(): ReadonlyMap<string, number> {
+  const sessions = new Set([
+    ...permissionRegistry.keys(), ...authenticationRegistry.keys(), ...authenticationTerminalPendingSessionIds()
+  ]);
+  return new Map([...sessions].map((sessionId) => [sessionId, pendingSessionInputCount(sessionId)]));
 }

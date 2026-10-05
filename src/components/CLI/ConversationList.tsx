@@ -11,6 +11,10 @@ import { useConversationStore } from "@/store/conversationStore";
 import { usePinnedProjectsStore } from "@/store/pinnedProjectsStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useWorkflowStore } from "@/store/workflowStore";
+import { useConversationOverviewStore } from "@/store/conversationOverviewStore";
+import { usePermissionStore } from "@/store/permissionStore";
+import { useAuthenticationStore } from "@/store/authenticationStore";
+import { RUNNING_PANEL_STATUSES, selectConversationPanelStatus } from "./conversationPanelData";
 import type { Conversation, Project } from "@/services/cli/types";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
@@ -22,6 +26,8 @@ import {
   FolderOpen,
   Gamepad2,
   LoaderCircle,
+  LayoutGrid,
+  List,
   MessageSquare,
   MoreHorizontal,
   Pencil,
@@ -52,6 +58,7 @@ const ConversationRow = memo(function ConversationRow({
   isRunning,
   isWorkflowRunning,
   isUnread,
+  deletionBlocked,
   compact,
   onSelect,
   onDelete
@@ -61,6 +68,7 @@ const ConversationRow = memo(function ConversationRow({
   isRunning: boolean;
   isWorkflowRunning: boolean;
   isUnread: boolean;
+  deletionBlocked: boolean;
   compact?: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string, title: string) => void;
@@ -133,7 +141,7 @@ const ConversationRow = memo(function ConversationRow({
                 title={t("conversations.unread")}
               />
             )}
-            <button
+            {!deletionBlocked && <button
               className="conv-delete-button icon-btn danger"
               title={t("common.delete")}
               aria-label={t("common.delete")}
@@ -143,7 +151,7 @@ const ConversationRow = memo(function ConversationRow({
               }}
             >
               <X aria-hidden="true" />
-            </button>
+            </button>}
           </>
         )}
       </div>
@@ -412,9 +420,17 @@ function ProjectOverflowMenu({
 }
 
 export function ConversationList({
-  onNewTaskInProject
+  onNewTaskInProject,
+  panelActive = false,
+  onOpenPanel,
+  onOpenList,
+  onOpenConversation
 }: {
   onNewTaskInProject?: (args: { cwd: string; projectId: string }) => void;
+  panelActive?: boolean;
+  onOpenPanel?: () => void;
+  onOpenList?: () => void;
+  onOpenConversation?: (id: string) => void;
 }) {
   const conversations = useConversationStore((s) => s.conversations);
   const activeId = useConversationStore((s) => s.activeId);
@@ -422,14 +438,11 @@ export function ConversationList({
   const setActive = useConversationStore((s) => s.setActive);
   const deleteConversation = useConversationStore((s) => s.deleteConversation);
   const refreshConversations = useConversationStore((s) => s.refreshList);
-  const runningSignature = useConversationStore((s) => {
-    const ids: string[] = [];
-    for (const c of s.conversations) {
-      const st = s.live[c.id]?.status;
-      if (st === "running" || st === "starting") ids.push(c.id);
-    }
-    return ids.join("\n");
-  });
+  const live = useConversationStore((s) => s.live);
+  const overviews = useConversationOverviewStore((s) => s.overviews);
+  const permissions = usePermissionStore((s) => s.queue);
+  const authentications = useAuthenticationStore((s) => s.queue);
+  const authTerminals = useAuthenticationStore((s) => s.terminalQueue);
   const workflowActiveRuns = useWorkflowStore((s) => s.activeRuns);
   const loadWorkflowActiveRuns = useWorkflowStore((s) => s.loadActiveRuns);
   const apiProjects = useProjectStore((s) => s.projects);
@@ -495,12 +508,25 @@ export function ConversationList({
     return () => clearHoverCloseTimer();
   }, [clearHoverCloseTimer]);
 
-  const runningSet = new Set(runningSignature ? runningSignature.split("\n") : []);
-  const workflowRunningSet = new Set(
-    workflowActiveRuns
-      .map((run) => run.conversationId)
-      .filter((id): id is string => Boolean(id))
-  );
+  const attentionIds = new Set([...permissions, ...authentications, ...authTerminals].map((request) => request.conversationId));
+  const runningSet = new Set(conversations.filter((conversation) => RUNNING_PANEL_STATUSES.has(
+    selectConversationPanelStatus(overviews[conversation.id], {
+      live: live[conversation.id],
+      attentionCount: attentionIds.has(conversation.id) ? 1 : 0,
+      workflowStatus: workflowActiveRuns.find((run) => run.conversationId === conversation.id)?.status
+    })
+  )).map((conversation) => conversation.id));
+  const workflowRunningSet = new Set(workflowActiveRuns
+    .filter((run) => run.conversationId && runningSet.has(run.conversationId))
+    .map((run) => run.conversationId));
+  const deletionBlockedSet = new Set(conversations.filter((conversation) => {
+    const status = selectConversationPanelStatus(overviews[conversation.id], {
+      live: live[conversation.id],
+      attentionCount: attentionIds.has(conversation.id) ? 1 : 0,
+      workflowStatus: workflowActiveRuns.find((run) => run.conversationId === conversation.id)?.status
+    });
+    return RUNNING_PANEL_STATUSES.has(status) || status === "needs-input" || status === "waiting" || status === "paused";
+  }).map((conversation) => conversation.id));
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -508,14 +534,15 @@ export function ConversationList({
       if (unreadOnly && document.activeElement?.matches(".conv-item")) {
         unreadFilterRef.current?.focus();
       }
-      void setActive(id);
+      if (onOpenConversation) onOpenConversation(id);
+      else void setActive(id);
       const conv = conversations.find((c) => c.id === id);
       if (conv?.kind === "game") {
         useDetailLayoutStore.getState().setActiveTab("preview");
         useDetailLayoutStore.getState().setDetailCollapsed(false);
       }
     },
-    [setActive, conversations, unreadOnly]
+    [setActive, conversations, unreadOnly, onOpenConversation]
   );
   const handleDelete = useCallback(
     (id: string, title: string) => {
@@ -707,6 +734,7 @@ export function ConversationList({
       isRunning={runningSet.has(c.id)}
       isWorkflowRunning={workflowRunningSet.has(c.id)}
       isUnread={Boolean(unreadConversations[c.id])}
+      deletionBlocked={deletionBlockedSet.has(c.id)}
       compact={compact}
       onSelect={handleSelect}
       onDelete={handleDelete}
@@ -730,6 +758,16 @@ export function ConversationList({
   return (
     <div className="conv-list">
       <div className="conv-filter" role="group" aria-label={t("conversations.filterLabel")}>
+        {onOpenPanel && <div className="conv-view-switch" role="group" aria-label={t("conversationPanel.viewLabel")}>
+          <button type="button" className={`conv-view-button${!panelActive ? " active" : ""}`}
+            title={t("conversationPanel.list")} aria-label={t("conversationPanel.list")} aria-pressed={!panelActive} onClick={onOpenList}>
+            <List size={15} aria-hidden="true" />
+          </button>
+          <button type="button" className={`conv-view-button${panelActive ? " active" : ""}`}
+            title={t("conversationPanel.panel")} aria-label={t("conversationPanel.panel")} aria-pressed={panelActive} onClick={onOpenPanel}>
+            <LayoutGrid size={15} aria-hidden="true" />
+          </button>
+        </div>}
         <button
           ref={allFilterRef}
           type="button"

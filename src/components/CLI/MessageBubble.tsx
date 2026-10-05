@@ -1054,7 +1054,7 @@ export const MessageBubble = memo(function MessageBubble({
     message.status !== "ready" ? t(`status.${message.status}`) : null;
 
   return (
-    <div className="msg msg-assistant">
+    <div className="msg msg-assistant" data-message-id={message.id} tabIndex={-1}>
       <button
         type="button"
         ref={avatarRef}

@@ -796,6 +796,7 @@ function App() {
           member,
           title: member.name
         });
+        useNewTaskUiStore.getState().setPreferredAgentId(member.id);
         return;
       }
     }

@@ -141,6 +141,7 @@ import {
   agentEntriesNeedingRefresh,
   agentRuntimeKey,
   buildAgentAvailabilityGroups,
+  preferredAvailableAgentId,
   type AgentAvailabilityEntry,
   type AgentAvailabilityGroups
 } from "@/utils/agentAvailability";
@@ -915,6 +916,8 @@ export function ChatView({
   const loadSkills = useSkillStore((s) => s.load);
 
   const taskMode = useNewTaskUiStore((s) => s.taskMode);
+  const preferredAgentId = useNewTaskUiStore((s) => s.preferredAgentId);
+  const setPreferredAgentId = useNewTaskUiStore((s) => s.setPreferredAgentId);
   const setTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const requestedTeamId = useNewTaskUiStore((s) => s.requestedTeamId);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
@@ -1560,7 +1563,7 @@ export function ChatView({
     if (activeId || taskMode !== "normal" || memberSelectionTouchedRef.current) {
       return;
     }
-    const preferred = agentAvailability.available[0]?.member.id ?? "";
+    const preferred = preferredAvailableAgentId(agentAvailability, preferredAgentId);
     if (preferred !== selectedMemberId) {
       setSelectedMemberId(preferred);
       const preferredMember = members.find((entry) => entry.id === preferred);
@@ -1572,6 +1575,7 @@ export function ChatView({
     activeId,
     agentAvailability.available,
     members,
+    preferredAgentId,
     selectedMemberId,
     taskMode
   ]);
@@ -2439,6 +2443,7 @@ export function ChatView({
         configOptionOverrides: newTaskConfigOptionOverrides,
         skillIds: newTaskSkillIds
       });
+      setPreferredAgentId(selectedMember.id);
       const attached = await cliClient.attachConversationShares({
         targetConversationId: newConv.id,
         text: prompt
@@ -2813,6 +2818,7 @@ export function ChatView({
         onMember={(id) => {
           memberSelectionTouchedRef.current = true;
           setSelectedMemberId(id);
+          setPreferredAgentId(id);
           const selectedMember = members.find((entry) => entry.id === id);
           if (selectedMember?.cli.approvalMode) {
             setPermissionMode(selectedMember.cli.approvalMode);

@@ -19,6 +19,15 @@ export type AgentAvailabilityGroups = {
   unavailable: AgentAvailabilityEntry[];
 };
 
+export function preferredAvailableAgentId(
+  groups: AgentAvailabilityGroups,
+  preferredAgentId?: string
+): string {
+  return groups.available.find((entry) => entry.member.id === preferredAgentId)?.member.id
+    ?? groups.available[0]?.member.id
+    ?? "";
+}
+
 export function agentRuntimeKey(member: CLIMember): string {
   if (member.runtimeKey) return member.runtimeKey;
   return member.id.startsWith("cli-")

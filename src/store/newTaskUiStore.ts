@@ -3,8 +3,21 @@ import type { ChatAttachment } from "@/services/cli/types";
 
 export type NewTaskMode = "normal" | "team";
 
+const PREFERRED_AGENT_KEY = "freebuddy.newTask.preferredAgent.v1";
+
+function loadPreferredAgentId(): string | undefined {
+  try {
+    return globalThis.localStorage?.getItem(PREFERRED_AGENT_KEY)?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface NewTaskUiState {
   taskMode: NewTaskMode;
+  /** Last explicitly selected agent; automatic fallback never overwrites it. */
+  preferredAgentId?: string;
+  setPreferredAgentId(agentId: string): void;
   requestedTeamId?: string;
   /** Bumped whenever a new-task cwd/project should be applied (including clear). */
   cwdRequestToken: number;
@@ -33,6 +46,15 @@ interface NewTaskUiState {
 
 export const useNewTaskUiStore = create<NewTaskUiState>((set) => ({
   taskMode: "normal",
+  preferredAgentId: loadPreferredAgentId(),
+  setPreferredAgentId(agentId) {
+    try {
+      globalThis.localStorage?.setItem(PREFERRED_AGENT_KEY, agentId);
+    } catch {
+      // Keep the preference for this app session if persistent storage is blocked.
+    }
+    set({ preferredAgentId: agentId });
+  },
   requestedTeamId: undefined,
   cwdRequestToken: 0,
   requestedCwd: undefined,

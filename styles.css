@@ -3965,6 +3965,11 @@ html[data-surface="butler-screen-ball"] #root {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(120px, 0.7fr) minmax(92px, 0.45fr) 32px;
 }
 
+.byok-model-row--with-vision,
+.byok-model-header--with-vision {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(92px, 0.45fr) 32px;
+}
+
 .byok-model-header span {
   padding-left: 2px;
   overflow: hidden;
@@ -3976,9 +3981,11 @@ html[data-surface="butler-screen-ball"] #root {
   min-width: 0;
 }
 
-.byok-model-vision {
+.settings-surface .byok-model-vision,
+.modal .byok-model-vision {
   display: inline-flex;
   min-width: 0;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   color: var(--fb-text-secondary);
@@ -3987,9 +3994,11 @@ html[data-surface="butler-screen-ball"] #root {
 }
 
 .byok-model-vision input {
+  flex-shrink: 0;
   width: 16px;
   height: 16px;
   margin: 0;
+  padding: 0;
 }
 
 .byok-model-remove,

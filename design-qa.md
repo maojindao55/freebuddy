@@ -921,3 +921,58 @@ final result: passed
 用户已授权提交所有改动并发布新版。发布前完整回归发现摘要语义匹配正则含中文字面量，与仓库的 src 国际化检查冲突；已将匹配字符改为等价 Unicode 正则转义，未改变文案或识别行为。摘要与国际化 21 条定向检查通过。
 
 2026-10-05 的 `npm test` 在系统权限环境中完整通过：Node 1502 条、Electron 数据库 174 条、文件编辑数据库 9 条，共 1685 条通过、176 条条件跳过、0 条失败。沙箱首次运行的本地端口用例失败以系统权限复跑解决；日志保存在 `/private/tmp/freebuddy-release-tests.log`。宣传目录 9 个 JavaScript 文件语法检查及 `git diff --check` 通过。GitHub 系统权限预检确认当前账号和仓库 API 权限有效。
+
+
+---
+
+# Pi BYOK 图片开关对齐修复（2026-10-07）
+
+## 来源、预览与状态
+
+- Source visual truth: /var/folders/5t/jv509wn1335b48c6gfk67f4w0000gn/T/codex-clipboard-1256912a-2398-4bb6-a1d2-44e62e9fffe4.png；原样副本 artifacts/product-design/pi-byok-alignment/source.png。
+- 任务：修复截图中复选框位于“图片”文字上方的错位，沿用现有表单、网格、文案和图标；用户截图作为缺陷证据，不把竖排作为需要保留的设计目标。
+- 实现：tests/fixtures/pi-byok-preview.html 使用生产 CLIAdaptersTab 和完整 SettingsPage 外层类名，内存中的单模型自定义 Pi BYOK，API 地址与 Key 后缀均为固定样例，不读写用户真实配置。
+- Browser-rendered implementation: artifacts/product-design/pi-byok-alignment/final.jpg；局部截图 final-widget.jpg。
+- 源图 1296 × 280 px，按 2× 归一化为 source-normalized.png 的 648 × 140 px。浏览器报告 devicePixelRatio 2；截图 API 每 CSS px 输出一像素，未再放大浏览器截图。
+- 同状态全图：before.jpg / after.jpg 均为 1280 × 720 CSS px 与截图像素，浅色、图片未勾选、模型 ID 输入框聚焦。
+- 源图同宽对照：1090 × 720 CSS px 视口，source-match-widget.jpg 为 648 × 141 px；源图没有聚焦描边，且裁剪边界没有包含全部说明文字，这些状态/裁剪差异不作为设计偏差。
+- 响应式：narrow-dark.jpg 为 800 × 900 CSS px；最终可见预览 final.jpg 为 734 × 823 CSS px，局部截图为 608 × 141 px，图片已勾选并保存。已清除临时视口覆盖。
+
+## 全图和局部比较证据
+
+- comparison-full.jpg 把同视口、同状态的实际设置页改前/改后并排放在同一张图中；页面层级、网格宽度、输入框、删除按钮和其他区块保留，视觉控件不再撑高模型行。
+- comparison-source.jpg 把用户截图归一化副本与 648 CSS px 宽的实际模型区放在同一张图中；明确看到复选框从文字上方回到文字左侧，且与输入框、删除按钮垂直居中。
+- final-metrics.json：最终窗口中输入框、复选框、图片文字、删除按钮的中心 Y 均为 364.3359375 CSS px，复选框 16 × 16，输入框/删除按钮高 32，无横向溢出。
+- narrow-metrics.json：800px 深色窗口中复选框与文字中心 Y 也完全一致，无横向溢出。
+
+## Findings 与比较历史
+
+1. [P2，已修复] 全局 .settings-surface label / .modal label 的选择器优先级高于原 .byok-model-vision，把控件改为 column，同时覆盖局部字号。生产页面复现的 computed flex-direction 为 column；此前只预览模型列表、未包含 SettingsPage 外层，因此遗漏了冲突。
+2. 修复：在真实设置页和模态容器下限定 .byok-model-vision 样式，明确 row 和 center；复选框清除通用输入框内边距，并禁止在窄列内压缩。
+3. 修复后重新截图并进行上述同图对照：computed flex-direction 为 row，四个控件中心一致；全图与局部比较均无剩余 P0/P1/P2 问题。
+
+## 五项视觉核对
+
+- 字体与排版：保留产品字体和原模型 ID 等宽字体；“图片”恢复原组件 12px 字号与单行显示，未改动全局标签排版。源图和浏览器截图的聚焦描边/光标差异为测试状态差异。
+- 间距与布局：保留模型表格列宽、8px 行间距和表单卡片；标签内部 6px 间距，复选框 16px、文字和两侧控件居中。800px 深色及最终 734px 浅色窗口无溢出。
+- 颜色与 tokens：沿用现有浅/深色表单、文字、边框和选中颜色，没有新增色值或改变色彩层级。
+- 图片与图标：沿用生产 Agent 图标、Lucide 删除/添加图标及原生复选框，无替代图形、图标重画或新增位图资产。
+- 文案与内容：模型 ID、显示名称、视觉、图片、添加/删除与说明文案保持不变；演示 API 地址和 Key 后缀只属于隔离 fixture。
+
+## 交互与验证
+
+- 点击“图片”文字切换勾选；出现未保存状态，点击保存后显示“已保存”，按钮恢复不可操作。预览保存仅更新内存。
+- Pi、Codex 和 DeepSeek 的同类控件均为横排，文字/复选框中心差为 0。
+- 预览浏览器控制台检查无 error/warn；真实生产数据、网络模型能力与原生 Electron 窗口没有在此隔离预览中执行。
+- scripts/run-electron-node-test.mjs tests/pi-byok.test.mjs：4 项通过，0 失败，0 跳过，包含保存、重新加载、数据库与运行时能力转换回归。现有 macOS codesign 诊断不影响测试退出码 0。
+
+## Implementation Checklist
+
+- [x] 在完整设置页样式下复现，不再使用缺少外层样式的静态列表作为验证。
+- [x] 修复标签层叠冲突并保留原表单结构。
+- [x] 完整/局部同图比较、深浅色、窄窗口和实际点击/保存复核。
+- [x] 4 项相关回归通过，临时视口已恢复，用户预览保持打开。
+
+无需要阻塞交付的后续视觉问题。
+
+final result: passed

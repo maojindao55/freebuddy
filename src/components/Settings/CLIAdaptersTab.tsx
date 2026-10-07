@@ -1497,7 +1497,9 @@ function EditOverridePanel({
                     entry.supportsVision ??
                     (id.toLowerCase().includes("flash") || id.toLowerCase().includes("vision"))
                 }
-              : {})
+              : isPi
+                ? { supportsVision: entry.supportsVision === true }
+                : {})
         };
         return model;
       })
@@ -1518,7 +1520,9 @@ function EditOverridePanel({
                       m.supportsVision ??
                       (m.id.toLowerCase().includes("flash") || m.id.toLowerCase().includes("vision"))
                   }
-                : {})
+                : isPi
+                  ? { supportsVision: m.supportsVision === true }
+                  : {})
           }))
       : normalizedByokModels;
 
@@ -1955,7 +1959,11 @@ function EditOverridePanel({
                   <div className="byok-model-list">
                     <div
                       className={`byok-model-header${
-                        isCodex ? " byok-model-header--with-context" : ""
+                        isCodex
+                          ? " byok-model-header--with-context"
+                          : isDeepSeek || isPi
+                            ? " byok-model-header--with-vision"
+                            : ""
                       }`}
                       aria-hidden="true"
                     >
@@ -1966,14 +1974,18 @@ function EditOverridePanel({
                           {t("settings.cli.byok.modelContextWindowHeader")}
                         </span>
                       )}
-                      {isCodex && (
+                      {(isCodex || isDeepSeek || isPi) && (
                         <span>{t("settings.cli.byok.modelVisionHeader")}</span>
                       )}
                     </div>
                     {byokModels.map((byokModel, index) => (
                       <div
                         className={`byok-model-row${
-                          isCodex ? " byok-model-row--with-context" : ""
+                          isCodex
+                            ? " byok-model-row--with-context"
+                            : isDeepSeek || isPi
+                              ? " byok-model-row--with-vision"
+                              : ""
                         }`}
                         key={index}
                       >
@@ -2048,7 +2060,7 @@ function EditOverridePanel({
                             }
                           />
                         )}
-                        {(isCodex || isDeepSeek) && (
+                        {(isCodex || isDeepSeek || isPi) && (
                           <label
                             className="byok-model-vision"
                             title={t("settings.cli.byok.modelVisionHint")}
@@ -2058,8 +2070,10 @@ function EditOverridePanel({
                               checked={
                                 isCodex
                                   ? byokModel.supportsVision !== false
-                                  : (byokModel.supportsVision ??
-                                     (byokModel.id.toLowerCase().includes("flash") || byokModel.id.toLowerCase().includes("vision")))
+                                  : isPi
+                                    ? byokModel.supportsVision === true
+                                    : (byokModel.supportsVision ??
+                                       (byokModel.id.toLowerCase().includes("flash") || byokModel.id.toLowerCase().includes("vision")))
                               }
                               aria-label={t(
                                 "settings.cli.byok.modelVisionEnabled"

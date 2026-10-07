@@ -53,7 +53,7 @@ test("a cloned agent upgrades its base package and verifies before reporting suc
   assert.equal(job.phase, "succeeded");
   assert.equal(job.verifiedVersion, "0.3.8");
   assert.deepEqual(calls[0], ["prepare", "agy-acp", "custom-agy"]);
-  assert.equal(calls[1][1], "agy-acp");
+  assert.deepEqual(calls[1], ["install", "agy-acp", "npm install -g agy-acp-bridge@0.3.8"]);
   assert.ok(calls.indexOf("verify") > calls.indexOf("check"));
 });
 

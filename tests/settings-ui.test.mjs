@@ -467,19 +467,28 @@ test("Codex CLI and ACP updates run in the background and surface runtime status
     true
   );
   assert.match(cliCheckSource, /NPM_CONFIG_OFFLINE:\s*"false"/);
-  assert.match(cliCheckSource, /"npm",\s*\["view", packageName/);
+  assert.match(cliCheckSource, /const npm = await which\("npm", env as Record<string, string>\)/);
+  assert.match(cliCheckSource, /runProcess\(\s*npm,\s*\["view", packageName, "version", "--json", "--offline=false"\]/);
   assert.match(cliCheckSource, /"install",\s*"-g",\s*"--force"/);
   assert.equal(settingsSource.includes("Codex CLI:"), true);
   assert.equal(settingsSource.includes("settings.cli.autoUpdating"), true);
-  assert.equal(settingsSource.includes("settings.cli.autoUpdated"), true);
-  assert.equal(settingsSource.includes("settings.cli.autoUpdateFailed"), true);
+  assert.match(settingsSource, /case "updated":[\s\S]*?t\("settings\.cli\.updateVerified"/);
+  assert.match(settingsSource, /case "error":[\s\S]*?t\("settings\.cli\.updateCheckFailed"/);
   assert.equal(
-    enLocale.settings.cli.autoUpdateFailed,
-    "{{target}} automatic update failed"
+    enLocale.settings.cli.updateVerified,
+    "{{target}} {{version}} verified and ready"
   );
   assert.equal(
-    zhLocale.settings.cli.autoUpdateFailed,
-    "{{target}} 自动更新失败"
+    zhLocale.settings.cli.updateVerified,
+    "{{target}} {{version}} 已验证可正常启动"
+  );
+  assert.equal(
+    enLocale.settings.cli.updateCheckFailed,
+    "{{target}} update check or verification failed"
+  );
+  assert.equal(
+    zhLocale.settings.cli.updateCheckFailed,
+    "{{target}} 更新检查或验证未通过"
   );
 });
 

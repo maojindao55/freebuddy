@@ -53,7 +53,9 @@ test("agent setup keeps adapter context across the install bridge", () => {
   assert.match(check, /"agent_setup_completed"/);
   assert.match(preload, /installStream:\s*\(\s*adapter:\s*string,\s*command:\s*string/);
   assert.match(client, /installStream\(\s*adapter:\s*string,\s*command:\s*string/);
-  assert.match(installStore, /cliClient\.installStream\(adapterId,\s*command/);
+  assert.match(installStore, /adapter:\s*resolved\?\.baseAdapter\s*\?\?\s*adapterId/);
+  assert.match(installStore, /runtimeAdapter:\s*adapterId/);
+  assert.match(installStore, /cliClient\.installStream\(\s*request\.adapter,\s*plan\.command/);
   assert.match(ipc, /cliInstallStream\(\s*args\.command,[\s\S]*args\.adapter/);
 });
 

@@ -96,6 +96,8 @@ export interface LiveAssistant {
   errorMessage?: string;
   resumedFromSessionId?: string;
   capturedSessionId?: string;
+  /** Renderer monotonic receipt time for extrapolating the Host's elapsed sample. */
+  runMetricsReceivedAt?: number;
   preserveConversationTitle?: boolean;
 }
 

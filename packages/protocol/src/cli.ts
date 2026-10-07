@@ -18,6 +18,31 @@ export type ToolKind =
 
 export type ToolCallStatus = "pending" | "running" | "completed" | "failed";
 
+/** Matched output tokens and monotonic streaming time for this execution. */
+export interface GenerationMeasurement {
+  outputTokens: number;
+  durationMs: number;
+  complete: boolean;
+}
+
+/** Host observations for one execution, independent of the native agent session. */
+export interface AgentRunMetrics {
+  runId: string;
+  status: "preparing" | "running" | "done" | "failed" | "cancelled" | "timed-out" | "yielded";
+  elapsedMs: number;
+  promptSubmitted: boolean;
+  firstTextLatencyMs?: number;
+  firstTextUnavailable?: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  reportedTtftMs?: number;
+  tokensPerSecond?: number;
+  speedSource?: "measured" | "observed" | "call-average" | "reported";
+  automaticSpeed?: boolean;
+  generationDurationMs?: number;
+  modelCallDurationMs?: number;
+}
+
 export interface FileEditContent {
   oldText?: string;
   newText?: string;
@@ -129,6 +154,10 @@ export type CliStreamItem =
     }
   | {
       kind: "usage";
+      runId?: string;
+      usageScope?: "turn" | "session" | "unknown";
+      runMetrics?: AgentRunMetrics;
+      generationMeasurement?: GenerationMeasurement;
       inputTokens?: number;
       outputTokens?: number;
       totalCost?: number;
@@ -144,6 +173,7 @@ export type CliStreamItem =
         turns?: number;
         steps?: number;
         llmDurationMs?: number;
+        modelCallDurationMs?: number;
         avgTtftMs?: number;
         tokensPerSecond?: number;
         cacheHitRate?: number;
@@ -185,4 +215,5 @@ export type ToolOutputItem = Extract<
 export interface ParseContext {
   sessionId?: string;
   diagnosticLogs?: string[];
+  streamMessageId?: string;
 }

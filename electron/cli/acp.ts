@@ -217,6 +217,10 @@ export type AcpStreamItem =
     }
   | {
       kind: "usage";
+      runId?: string;
+      usageScope?: "turn" | "session" | "unknown";
+      runMetrics?: import("@freebuddy/protocol/cli").AgentRunMetrics;
+      generationMeasurement?: import("@freebuddy/protocol/cli").GenerationMeasurement;
       inputTokens?: number;
       outputTokens?: number;
       totalCost?: number;
@@ -232,6 +236,7 @@ export type AcpStreamItem =
         turns?: number;
         steps?: number;
         llmDurationMs?: number;
+        modelCallDurationMs?: number;
         avgTtftMs?: number;
         tokensPerSecond?: number;
         cacheHitRate?: number;
@@ -1355,8 +1360,11 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
   if (usage || metrics) {
     items.push({
       kind: "usage",
-      inputTokens: usage?.inputTokens ?? metrics?.totalInputTokens ?? metrics?.inputTokens,
-      outputTokens: usage?.outputTokens ?? metrics?.outputTokens,
+      // PromptResponse.usage is turn-scoped. Vendor metadata needs an
+      // explicit scope before its token counters can represent this run.
+      usageScope: usage || metrics?.usageScope === "turn" ? "turn" : "unknown",
+      inputTokens: usage ? usage.inputTokens : metrics?.totalInputTokens ?? metrics?.inputTokens,
+      outputTokens: usage ? usage.outputTokens : metrics?.outputTokens,
       cachedReadTokens: usage?.cachedReadTokens ?? metrics?.cachedReadTokens,
       cachedWriteTokens: usage?.cachedWriteTokens ?? metrics?.cachedWriteTokens,
       thoughtTokens: usage?.thoughtTokens ?? metrics?.thoughtTokens,
@@ -1367,6 +1375,7 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
               turns: metrics.turns,
               steps: metrics.steps,
               llmDurationMs: metrics.llmDurationMs,
+              modelCallDurationMs: metrics.modelCallDurationMs,
               avgTtftMs: metrics.avgTtftMs,
               tokensPerSecond: metrics.tokensPerSecond,
               cacheHitRate: metrics.cacheHitRate,
@@ -1659,6 +1668,10 @@ export function acpUpdateToItems(
       return [
         {
           kind: "usage",
+          ...(update.usageScope === "turn" || update.usageScope === "session"
+            ? { usageScope: update.usageScope }
+            : update?._meta?.metrics?.usageScope === "turn" || update?._meta?.metrics?.usageScope === "session"
+              ? { usageScope: update._meta.metrics.usageScope } : {}),
           ...(num(update, "used") != null
             ? { contextUsed: num(update, "used") }
             : {}),

@@ -15634,6 +15634,57 @@ button.ghost:disabled {
   font-weight: 700;
 }
 
+.run-metrics {
+  margin: 2px 12px 12px;
+  padding: 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-md, 8px);
+}
+
+.run-metrics-caption {
+  margin: 0 0 10px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
+.run-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 8px;
+  margin: 0;
+}
+
+.run-metrics-grid > div {
+  min-width: 0;
+}
+
+.run-metrics-grid dt {
+  margin-bottom: 4px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
+.run-metrics-grid dd {
+  margin: 0;
+  color: var(--fb-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.run-metrics-grid dd span,
+.run-metrics-grid small {
+  color: var(--fb-text-tertiary);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.run-metrics-grid small {
+  display: block;
+  margin-top: 4px;
+}
+
 .active-agent-card {
   border-radius: var(--fb-rounded-lg);
   border-left: 3px solid var(--fb-brand);

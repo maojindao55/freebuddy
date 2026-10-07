@@ -1721,6 +1721,7 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
         "--print",
         "--output-format",
         "stream-json",
+        "--include-partial-messages",
         "--verbose"
       ];
       if (input.toolSessionId && !hasExplicitToolSessionArg("claude", extra)) {

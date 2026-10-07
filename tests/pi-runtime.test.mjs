@@ -173,6 +173,7 @@ test("resolvePiAcpSpawnPlan returns a node spawn plan with bridge env", () => {
   assert.equal(plan.env.PI_ACP_PI_COMMAND, path.join(piLauncherDir(dataDir), process.platform === "win32" ? "pi-fb.cmd" : "pi-fb"));
   assert.equal(plan.env.PI_SKIP_VERSION_CHECK, "1");
   assert.equal(plan.env.PI_CODING_AGENT_DIR, path.join(dataDir, "pi-agent"));
+  assert.ok(fs.existsSync(path.join(dataDir, "pi-agent", "extensions", "freebuddy-run-metrics.js")));
 
   const none = resolvePiAcpSpawnPlan(
     dataDir,

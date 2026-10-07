@@ -17,6 +17,10 @@ import {
 } from "./runtimeShared.js";
 import { killProcessTree } from "./process-kill.js";
 import { clearSessionOwner } from "./sessionOwners.js";
+import { getParser, tryJson } from "@freebuddy/cli-stream";
+import { getAdapterDefinition } from "./adapters.js";
+import type { ParseContext } from "@freebuddy/protocol/cli";
+import type { RunMetricsCollector } from "./runMetricsCollector.js";
 
 export interface LegacyRuntimeInput {
   child: ChildProcessByStdio<Writable, Readable, Readable>;
@@ -28,6 +32,8 @@ export interface LegacyRuntimeInput {
   running: Map<string, Running>;
   capturedSessions: Map<string, string>;
   emit: (e: CliEvent) => void;
+  metrics?: RunMetricsCollector;
+  resumed?: boolean;
 }
 
 export function runLegacyCliAgent({
@@ -39,9 +45,18 @@ export function runLegacyCliAgent({
   toolSessionScope,
   running,
   capturedSessions,
-  emit
+  emit,
+  metrics,
+  resumed
 }: LegacyRuntimeInput): void {
-  running.set(args.sessionId, { child, pid });
+  running.set(args.sessionId, { child, pid, cancel: () => metrics?.requestOutcome("cancelled") });
+  const mode = getAdapterDefinition(args.adapter)?.streamMode ?? "raw";
+  const parser = getParser(mode);
+  const parseContext: ParseContext = {};
+  if (mode === "raw" || resumed) metrics?.unavailableFirstText();
+  metrics?.enableAutomaticSpeed("stream");
+  metrics?.promptSubmitted();
+  metrics?.beginGeneration();
 
   if (built.promptViaStdin) {
     child.stdin.write(args.prompt);
@@ -50,6 +65,21 @@ export function runLegacyCliAgent({
 
   const rlOut = readline.createInterface({ input: child.stdout });
   rlOut.on("line", (line) => {
+    const arrivedAt = metrics?.now();
+    try {
+      const items = parser.parseStdoutLine(line, parseContext);
+      if (mode === "claude-json") {
+        const event = tryJson(line)?.event;
+        if (event?.type === "content_block_delta" && event.delta?.type === "input_json_delta" &&
+            typeof event.delta.partial_json === "string" && event.delta.partial_json.length) {
+          // Tool argument deltas are generated tokens, but are not chat text.
+          metrics?.observe([{ kind: "generation-delta" }], arrivedAt);
+        }
+      }
+      if (items.some(item => item.kind === "usage" && item.usageScope === "turn" && !item.runMetrics)) metrics?.completeGeneration(arrivedAt);
+      metrics?.observe(items, arrivedAt);
+    }
+    catch { /* A metrics parser must not interfere with stdout delivery. */ }
     appendLog(logStream, "stdout", line);
     emit({ type: "stdout", content: line });
     maybeCaptureSessionId(capturedSessions, args, line);
@@ -64,6 +94,7 @@ export function runLegacyCliAgent({
   let timer: NodeJS.Timeout | undefined;
   if (args.timeoutMs && args.timeoutMs > 0) {
     timer = setTimeout(() => {
+      metrics?.requestOutcome("timed-out");
       try {
         killProcessTree(child, "force");
       } catch {

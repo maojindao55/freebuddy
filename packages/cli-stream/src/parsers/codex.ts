@@ -118,6 +118,7 @@ const codexParser: AdapterStreamParser = {
         if (Object.keys(usage).length > 0) {
           out.push({
             kind: "usage",
+            usageScope: "turn",
             inputTokens: usage.input_tokens ?? usage.inputTokens,
             outputTokens: usage.output_tokens ?? usage.outputTokens,
             totalCost: usage.total_cost ?? usage.totalCost

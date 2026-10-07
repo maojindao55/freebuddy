@@ -37,6 +37,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveNodeBinaryHint } from "./codexBinaryHint.js";
+import { ensurePiRunMetricsExtension } from "./piRunMetricsExtension.js";
 
 export const PI_ACP_ADAPTER_ID = "pi-acp";
 let packagedCacheRoot: string | undefined;
@@ -390,6 +391,7 @@ export function resolvePiAcpSpawnPlan(
   const agentDir = dataDir ? path.join(dataDir, "pi-agent") : undefined;
   if (dataDir) {
     ensurePiByokExtension(dataDir);
+    try { ensurePiRunMetricsExtension(dataDir); } catch { /* Metrics cannot block a model run. */ }
     if (env.FREEBUDDY_PI_BYOK) {
       try {
         const byok = JSON.parse(env.FREEBUDDY_PI_BYOK);

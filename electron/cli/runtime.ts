@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WebContents } from "electron";
 import type { Readable, Writable } from "node:stream";
+import { createHash } from "node:crypto";
 
 import {
   buildCommand,
@@ -26,6 +27,9 @@ import {
 } from "./piRuntime.js";
 import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { runAcpAgent } from "./acpRuntime.js";
+import { acpProcessPool, type AcpWarmConnection } from "./acpProcessPool.js";
+import { unregisterBrowserToolSession } from "../browserToolService.js";
+import { getCallerUserId } from "./callerContext.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getDataDir, getLogDir } from "./db.js";
 import { updateRuntimeRun, waitForCodexToolchainAutoUpdate } from "./check.js";
@@ -64,6 +68,7 @@ import {
 } from "./sandboxRuntime.js";
 import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
 import { clearSessionOwner } from "./sessionOwners.js";
+import { RunMetricsCollector } from "./runMetricsCollector.js";
 
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
@@ -84,13 +89,14 @@ type StreamItemEntry = Extract<CliEvent, { type: "items" }>["items"][number];
  */
 function createItemsBatchingEmit(
   send: (e: CliEvent) => void
-): (e: CliEvent) => void {
+): ((e: CliEvent) => void) & { flush: () => void } {
   const FLUSH_MS = 80;
   const MAX_BUFFER = 200;
   let buffer: StreamItemEntry[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const flush = () => {
+    if (timer) clearTimeout(timer);
     timer = null;
     if (buffer.length === 0) return;
     const items = buffer;
@@ -98,7 +104,7 @@ function createItemsBatchingEmit(
     send({ type: "items", items });
   };
 
-  return (e: CliEvent) => {
+  const emit = (e: CliEvent) => {
     if (e.type === "items" && e.items.length) {
       for (const it of e.items) buffer.push(it);
       if (buffer.length >= MAX_BUFFER) {
@@ -122,6 +128,7 @@ function createItemsBatchingEmit(
     if (buffer.length > 0) flush();
     send(e);
   };
+  return Object.assign(emit, { flush });
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -188,10 +195,39 @@ export async function cliRun(
   onEvent?: (e: CliEvent) => void
 ): Promise<void> {
   const channel = channelName(args.sessionId);
-  const emit = createItemsBatchingEmit((e) => {
+  const send = createItemsBatchingEmit((e) => {
     if (onEvent) onEvent(e);
     safeSendToWebContents(webContents, channel, e);
   });
+  const metrics = new RunMetricsCollector(args.sessionId, (runMetrics) => {
+    send({ type: "items", items: [{ kind: "usage", runId: args.sessionId, runMetrics }] });
+  });
+  const emit = (event: CliEvent) => {
+    if (event.type === "error") metrics.error();
+    if (event.type === "done") metrics.finish(event.exitCode === 0 ? "done" : "failed");
+    if (event.type === "items") {
+      event = { ...event, items: event.items.map(item => item.kind === "usage"
+        ? { ...item, runId: args.sessionId } : item) };
+    }
+    send(event);
+  };
+  metrics.emit();
+  try {
+    await runCliAgent(webContents, args, emit, metrics);
+  } catch (error) {
+    metrics.error();
+    metrics.finish("failed");
+    send.flush();
+    throw error;
+  }
+}
+
+async function runCliAgent(
+  webContents: WebContents,
+  args: CliRunArgs,
+  emit: (event: CliEvent) => void,
+  metrics: RunMetricsCollector
+): Promise<void> {
 
   const logFile = path.join(getLogDir(), `${args.sessionId}.jsonl`);
   let logStream: fs.WriteStream | null = null;
@@ -423,7 +459,17 @@ export async function cliRun(
     }
   }
 
-  const child = spawn(spawnCommand.bin, spawnCommand.args, {
+  if (built.protocol !== "acp" && !built.promptViaStdin) metrics.promptSubmitted();
+  const warmKey = built.protocol === "acp" && args.adapter === "agy-acp" && args.conversationId &&
+      !processSandboxed && !remoteIsolated && !args.delegation && !userControlsResume
+    ? JSON.stringify([getCallerUserId(), webContents.id, args.conversationId, args.agentId, toolSessionScope]) : undefined;
+  const warmFingerprint = createHash("sha256").update(JSON.stringify({
+    bin: spawnCommand.bin, args: spawnCommand.args, cwd: executionArgs.cwd,
+    env: Object.entries(spawnCommand.env).sort(([a], [b]) => a.localeCompare(b)),
+    access: executionArgs.workspaceAccess, approval: executionArgs.approvalMode,
+  })).digest("hex");
+  const reused = warmKey ? acpProcessPool.take(warmKey, warmFingerprint, toolSessionId) : undefined;
+  const child = reused?.child ?? spawn(spawnCommand.bin, spawnCommand.args, {
     cwd: executionArgs.cwd,
     env: spawnCommand.env,
     stdio: ["pipe", "pipe", "pipe"]
@@ -439,8 +485,7 @@ export async function cliRun(
     target.once("close", () => stdin.end());
   };
 
-  attachSandboxStdin(child);
-
+  if (!reused) attachSandboxStdin(child);
 
   let resolved = false;
   await new Promise<void>((resolve) => {
@@ -450,8 +495,8 @@ export async function cliRun(
         resolve();
       }
     };
-    child.once("spawn", done);
-    child.once("error", (err) => {
+    if (reused) { done(); return; }
+    const spawnError = (err: Error) => {
       const msg = `spawn failed: ${err.message}`;
       appendLog(logStream, "system", msg);
       emit({ type: "error", message: msg });
@@ -461,7 +506,9 @@ export async function cliRun(
       updateRuntimeRun(args.adapter, msg);
       logStream?.end();
       done();
-    });
+    };
+    child.once("spawn", () => { child.off("error", spawnError); done(); });
+    child.once("error", spawnError);
   });
 
   const pid = child.pid ?? 0;
@@ -473,6 +520,14 @@ export async function cliRun(
   emit({ type: "started", pid });
 
   if (built.protocol === "acp") {
+    const connection: AcpWarmConnection | undefined = warmKey ? reused ?? {
+      child, fingerprint: warmFingerprint, conversationId: args.conversationId!, requestId: 0,
+      dispose: () => {
+        if (connection?.previousRunId) unregisterBrowserToolSession(connection.previousRunId);
+        try { killProcessTree(connection?.child ?? child, "term"); } catch { /* already closed */ }
+      },
+    } : undefined;
+    let parked = false;
     try {
       await runAcpAgent({
         child,
@@ -485,6 +540,12 @@ export async function cliRun(
         running,
         capturedSessions,
         emit,
+        metrics,
+        warmConnection: connection,
+        parkConnection: connection && warmKey ? () => {
+          parked = true;
+          acpProcessPool.put(warmKey, connection);
+        } : undefined,
         agentCommand: {
           bin: spawnCommand.bin,
           args: spawnCommand.args,
@@ -516,6 +577,7 @@ export async function cliRun(
         }
       });
     } finally {
+      if (connection && !parked) connection.dispose();
       if (processSandboxed) cleanupSandboxCommand();
     }
     return;
@@ -531,7 +593,9 @@ export async function cliRun(
     toolSessionScope,
     running,
     capturedSessions,
-    emit
+    emit,
+    metrics,
+    resumed: Boolean(toolSessionId) || userControlsResume
   });
 }
 
@@ -579,6 +643,7 @@ function waitForCliProcessExit(
 }
 
 export async function shutdownCliProcesses(timeoutMs = 2000): Promise<void> {
+  acpProcessPool.dispose();
   const entries = [...running.entries()];
   for (const [sessionId] of entries) cliKill(sessionId);
   await Promise.all(

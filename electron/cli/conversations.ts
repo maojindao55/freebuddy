@@ -1,4 +1,5 @@
 import { getDb } from "./db.js";
+import { acpProcessPool } from "./acpProcessPool.js";
 import { BrowserWindow } from "electron";
 import {
   discardManagedAttachmentIfUnreferenced,
@@ -561,6 +562,7 @@ export function deleteConversation(id: string): void {
   }
 
   getDb().prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
+  acpProcessPool.closeConversation(id);
   for (const filePath of managedPaths) {
     discardManagedAttachmentIfUnreferenced(filePath);
   }

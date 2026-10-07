@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { delegationClient } from "@/services/delegation/client";
+import { delegationClient, type DelegationRunRow } from "@/services/delegation/client";
 
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -19,7 +19,6 @@ import { useConversationStore } from "@/store/conversationStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useProjectStore } from "@/store/projectStore";
 import { copyToClipboard } from "@/utils/clipboard";
-import { formatDuration } from "@/utils/duration";
 import {
   folderBaseName,
   formatDisplayPath,
@@ -27,6 +26,8 @@ import {
   shortPath
 } from "@/utils/projectPaths";
 import { AgentAvatar } from "./AgentAvatar";
+import { RunMetricsSection } from "./RunMetricsSection";
+import { runCardElapsedMs, selectRunCardMetrics } from "./runCardMetrics";
 import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 import { DelegationTeamCard } from "../Workflows/DelegationTeamCard";
@@ -41,11 +42,7 @@ type PlanEntry = PlanItem["entries"][number];
 // reference when there is no active conversation (avoids re-renders).
 const EMPTY_MESSAGES: ConversationMessage[] = [];
 
-export function WorkspacePanel({
-  runningCount
-}: {
-  runningCount: number;
-}) {
+export function WorkspacePanel(_props: { runningCount: number }) {
   const { t, i18n } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
@@ -59,6 +56,7 @@ export function WorkspacePanel({
     s.activeId ? s.live[s.activeId] : undefined
   );
   const [now, setNow] = useState(() => Date.now());
+  const [monotonicNow, setMonotonicNow] = useState(() => performance.now());
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
   const [antigravityUsage, setAntigravityUsage] = useState<AntigravityUsageResult | undefined>();
@@ -124,29 +122,34 @@ export function WorkspacePanel({
   const status = displayLive?.status ?? "ready";
   const isLive = status === "running" || status === "starting";
 
-  const [isDelegationConv, setIsDelegationConv] = useState(false);
+  const [delegationRun, setDelegationRun] = useState<DelegationRunRow>();
   useEffect(() => {
-    if (!activeId || !delegationClient.isAvailable()) {
-      setIsDelegationConv(false);
-      return;
-    }
-    delegationClient
-      .getRunByConversation(activeId)
-      .then((r) => setIsDelegationConv(!!r))
-      .catch(() => setIsDelegationConv(false));
-  }, [activeId]);
+    let cancelled = false;
+    let revision = 0;
+    if (!activeId || !delegationClient.isAvailable()) return;
+    const refresh = () => {
+      const requestedRevision = ++revision;
+      void delegationClient.getRunByConversation(activeId)
+        .then(run => { if (!cancelled && requestedRevision === revision) setDelegationRun(run); })
+        .catch(() => { /* Preserve the last verified team result. */ });
+    };
+    refresh();
+    const offChanged = delegationClient.onChanged(refresh);
+    const offFinished = delegationClient.onRunFinished(refresh);
+    return () => { cancelled = true; offChanged?.(); offFinished?.(); };
+  }, [activeId, displayLive?.taskSessionId, displayLive?.status]);
 
-  const isTeamRun = (!!displayRun && displayRun.conversationId === activeId) || isDelegationConv;
-  const isTeamLive =
-    !!displayRun &&
-    isTeamRun &&
-    (displayRun.status === "running" ||
-      displayRun.status === "paused" ||
-      displayRun.status === "blocked");
+  const currentDelegationRun = delegationRun?.conversationId === activeId ? delegationRun : undefined;
+  const teamRun = displayRun ?? currentDelegationRun;
+  const isTeamRun = Boolean(teamRun) || active?.kind === "workflow" || active?.kind === "delegation";
+  const isTeamLive = !!teamRun && ["running", "paused", "blocked", "pending", "pending_approval"].includes(teamRun.status);
 
   useEffect(() => {
     if (!isLive && !isTeamLive) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+      setMonotonicNow(performance.now());
+    }, 1000);
     return () => window.clearInterval(id);
   }, [isLive, isTeamLive]);
 
@@ -187,66 +190,11 @@ export function WorkspacePanel({
     return undefined;
   }, [isTeamRun, displayLive?.capturedSessionId, displayLive?.resumedFromSessionId, displayMessages]);
 
-  const latestUsage = useMemo(() => {
-    type UsageItem = {
-      kind?: string;
-      contextUsed?: number;
-      contextSize?: number;
-      costAmount?: number;
-      costCurrency?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      totalCost?: number;
-      cachedReadTokens?: number;
-      cachedWriteTokens?: number;
-      thoughtTokens?: number;
-      totalTokens?: number;
-      metrics?: {
-        turns?: number;
-        steps?: number;
-        llmDurationMs?: number;
-        avgTtftMs?: number;
-        tokensPerSecond?: number;
-        cacheHitRate?: number;
-        uncachedInputTokens?: number;
-        cachedReadTokens?: number;
-        cachedWriteTokens?: number;
-        outputTokens?: number;
-        thoughtTokens?: number;
-        totalTokens?: number;
-        rawSummary?: string;
-      };
-    };
-    // Prefer billable main-turn usage or rich metrics-bearing usage.
-    let fallback: UsageItem | undefined;
-
-    if (displayLive?.items) {
-      for (let j = displayLive.items.length - 1; j >= 0; j -= 1) {
-        const item = displayLive.items[j] as UsageItem;
-        if (item?.kind !== "usage") continue;
-        if (item.metrics != null || item.costAmount != null) return item;
-        if (!fallback) fallback = item;
-      }
-    }
-
-    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
-      const message = displayMessages[i];
-      if (message.role !== "assistant") continue;
-      try {
-        const items = JSON.parse(message.content) as unknown[];
-        if (!Array.isArray(items)) continue;
-        for (let j = items.length - 1; j >= 0; j -= 1) {
-          const item = items[j] as UsageItem;
-          if (item?.kind !== "usage") continue;
-          if (item.metrics != null || item.costAmount != null) return item;
-          if (!fallback) fallback = item;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return fallback;
-  }, [displayLive?.items, displayMessages]);
+  const runCard = useMemo(
+    () => selectRunCardMetrics(displayMessages, displayLive),
+    [displayMessages, displayLive]
+  );
+  const latestUsage = isTeamRun ? undefined : runCard.usage;
 
   const latestPlan = useMemo(
     () => (isTeamRun ? undefined : latestPlanFromMessages(displayMessages)),
@@ -269,31 +217,19 @@ export function WorkspacePanel({
   }, [isTeamRun, displayLive, displayMessages]);
 
   const durationMs = useMemo(() => {
-    if (isTeamRun && displayRun?.createdAt) {
-      const start = Date.parse(displayRun.createdAt);
-      const end = displayRun.endedAt ? Date.parse(displayRun.endedAt) : now;
-      if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
-      const ms = end - start;
-      return Math.max(ms, 0);
+    if (isTeamRun) {
+      if (!teamRun) return undefined;
+      const start = Date.parse(teamRun.createdAt);
+      const end = teamRun.endedAt ? Date.parse(teamRun.endedAt) : isTeamLive ? now : NaN;
+      return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : undefined;
     }
-    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
-      const message = displayMessages[i];
-      if (message.role !== "assistant") continue;
-      const start = Date.parse(message.createdAt);
-      const end = isLive ? now : Date.parse(message.updatedAt);
-      if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
-      const ms = end - start;
-      return Math.max(ms, 0);
-    }
-    return undefined;
-  }, [
-    isTeamRun,
-    displayRun?.createdAt,
-    displayRun?.endedAt,
-    displayMessages,
-    isLive,
-    now
-  ]);
+    return runCardElapsedMs(runCard.summary, runCard.running, runCard.receivedAt, monotonicNow);
+  }, [isTeamRun, teamRun, isTeamLive, now, runCard, monotonicNow]);
+  const teamStatus = teamRun?.status === "completed" ? "done" :
+    teamRun?.status === "stopped" || teamRun?.status === "killed" ? "cancelled" :
+    teamRun?.status === "pending_approval" ? "pending" :
+    teamRun?.status === "timeout" ? "timed-out" : teamRun?.status ?? "unknown";
+  const runStatus = isTeamRun ? teamStatus : runCard.exists ? runCard.status : "idle";
 
   const sessionConfigSummary = useMemo(() => {
     const sessionConfigValues = latestConfigOptions
@@ -382,7 +318,7 @@ export function WorkspacePanel({
   return (
     <div className="workspace-cards" aria-label={t("workspace.panelAria")}>
       <WorkflowRunPanel />
-      {activeId && isDelegationConv ? (
+      {activeId && currentDelegationRun ? (
         <DelegationTeamCard conversationId={activeId} />
       ) : null}
 
@@ -415,11 +351,10 @@ export function WorkspacePanel({
         <div className="side-card-header">
           <span>{t("workspace.runState")}</span>
           <strong>
-            {runningCount > 0
-              ? t("workspace.liveCount", { count: runningCount })
-              : t("status.idle")}
+            {t(`workspace.runMetrics.status.${runStatus}`, { defaultValue: t("workspace.runMetrics.status.unknown") })}
           </strong>
         </div>
+        <RunMetricsSection metrics={runCard} elapsedMs={durationMs} team={isTeamRun} teamRunning={isTeamLive} />
         <dl className="compact-dl">
           {activeProject && mountedFolders.length > 0 ? (
             <>
@@ -521,28 +456,10 @@ export function WorkspacePanel({
             <dt>{t("workspace.agentTurns")}</dt>
             <dd>{assistantTurns}</dd>
           </div>
-          {durationMs != null && (
-            <div>
-              <dt>{t("workspace.duration")}</dt>
-              <dd>{formatDuration(durationMs)}</dd>
-            </div>
-          )}
           {latestUsage?.metrics?.llmDurationMs != null && (
             <div>
               <dt>{t("workspace.llmDuration")}</dt>
               <dd>{(latestUsage.metrics.llmDurationMs / 1000).toFixed(1)}s</dd>
-            </div>
-          )}
-          {latestUsage?.metrics?.avgTtftMs != null && latestUsage.metrics.avgTtftMs > 0 && (
-            <div>
-              <dt>{t("workspace.ttft")}</dt>
-              <dd>{(latestUsage.metrics.avgTtftMs / 1000).toFixed(1)}s</dd>
-            </div>
-          )}
-          {latestUsage?.metrics?.tokensPerSecond != null && latestUsage.metrics.tokensPerSecond > 0 && (
-            <div>
-              <dt>{t("workspace.speed")}</dt>
-              <dd>{latestUsage.metrics.tokensPerSecond} tok/s</dd>
             </div>
           )}
           {(latestUsage?.metrics?.cacheHitRate != null || latestUsage?.cachedReadTokens != null) && (
@@ -585,20 +502,6 @@ export function WorkspacePanel({
               <dd>{formatCost(latestUsage.costAmount, latestUsage.costCurrency)}</dd>
             </div>
           )}
-          {latestUsage?.contextUsed == null &&
-            latestUsage?.costAmount == null &&
-            (latestUsage?.inputTokens != null ||
-              latestUsage?.outputTokens != null) && (
-              <div>
-                <dt>{t("workspace.tokens")}</dt>
-                <dd>
-                  {t("workspace.tokenBreakdown", {
-                    input: latestUsage.inputTokens != null ? formatTokens(latestUsage.inputTokens) : "\u2013",
-                    output: latestUsage.outputTokens != null ? formatTokens(latestUsage.outputTokens) : "\u2013"
-                  })}
-                </dd>
-              </div>
-            )}
         </dl>
       </section>
 

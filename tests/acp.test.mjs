@@ -622,6 +622,12 @@ test("buildCommand keeps extra DeepSeek args after the bundled config", () => {
   ]);
 });
 
+test("legacy Claude enables actual partial output for host measurement", () => {
+  const built = buildCommand({ adapter: "claude", prompt: "hello" });
+  assert.ok(built.args.includes("--include-partial-messages"));
+  assert.ok(built.args.includes("stream-json"));
+});
+
 test("buildCommand forwards DeepSeek Harness extra args including cordis config", () => {
   const built = buildCommand({
     adapter: "dsh-acp",

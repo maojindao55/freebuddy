@@ -75,7 +75,9 @@ import { isInactivitySuppressed, removeInactivitySuppression } from "./inactivit
 import { killProcessTree } from "./process-kill.js";
 import {
   registerBrowserToolSession,
-  unregisterBrowserToolSession
+  unregisterBrowserToolSession,
+  rebindBrowserToolSession,
+  suspendBrowserToolSession
 } from "../browserToolService.js";
 import {
   registerGameToolSession,
@@ -126,6 +128,9 @@ import {
   isDevinAcpDiagnosticLine,
   isDshAcpExperimentalWarningLine
 } from "./adapters.js";
+import type { RunMetricsCollector } from "./runMetricsCollector.js";
+import { PiRunUsageReader } from "./piRunUsage.js";
+import type { AcpWarmConnection } from "./acpProcessPool.js";
 
 const PERMISSION_REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
 // An ACP turn blocks on a single session/prompt request that only resolves
@@ -186,6 +191,9 @@ export interface AcpRuntimeInput {
   running: Map<string, Running>;
   capturedSessions: Map<string, string>;
   emit: (e: CliEvent) => void;
+  metrics?: RunMetricsCollector;
+  warmConnection?: AcpWarmConnection;
+  parkConnection?: () => void;
   agentCommand: {
     bin: string;
     args: string[];
@@ -215,6 +223,9 @@ export async function runAcpAgent({
   running,
   capturedSessions,
   emit,
+  metrics,
+  warmConnection,
+  parkConnection,
   agentCommand,
   claudeAcpSessionOptions,
   restartAgent
@@ -222,8 +233,27 @@ export async function runAcpAgent({
   let child = initialChild;
   let pid = initialPid;
   let requestedToolSessionId = toolSessionId;
-  let requestId = 0;
+  let requestId = warmConnection?.requestId ?? 0;
+  let keepWarm = false;
+  let cancellationRequested = false;
   let activeAcpSessionId: string | undefined;
+  let piUsageReader: PiRunUsageReader | undefined;
+  let hasPromptUsage = false;
+  let piUsageFinalized = false;
+  const collectPiUsage = () => {
+    if (piUsageFinalized) return;
+    try {
+      const usage = piUsageReader?.read();
+      if (usage) {
+        // Native timing remains useful when a newer bridge supplies prompt usage.
+        const item = hasPromptUsage ? { kind: "usage" as const, usageScope: "turn" as const,
+          generationMeasurement: usage.generationMeasurement } : usage;
+        metrics?.observe([item]);
+        emit({ type: "items", items: [item] });
+      }
+    } catch { /* Usage recovery cannot stop the agent. */ }
+  };
+  metrics?.enableAutomaticSpeed(args.adapter === "pi-acp" ? "native" : "stream");
   let finished = false;
   let yieldRequested = false;
   let promptStarted = false;
@@ -318,7 +348,7 @@ export async function runAcpAgent({
   const pending = new Map<
     string,
     {
-      resolve: (value: any) => void;
+      resolve: (value: any, at?: number) => void;
       reject: (reason: Error) => void;
     }
   >();
@@ -343,7 +373,10 @@ export async function runAcpAgent({
         complete();
       };
       const waiter = {
-        resolve: (value: any) => settle(() => resolve(value)),
+        resolve: (value: any, at?: number) => settle(() => {
+          if (msg.method === "session/prompt") metrics?.completeGeneration(at);
+          resolve(value);
+        }),
         reject: (error: Error) => settle(() => reject(error))
       };
       pending.set(id, waiter);
@@ -357,6 +390,16 @@ export async function runAcpAgent({
       }
       try {
         appendLog(logStream, "stdin", JSON.stringify(msg));
+        if (msg.method === "session/prompt") {
+          if (args.adapter === "pi-acp") {
+            try {
+              piUsageReader ??= new PiRunUsageReader(getDataDir());
+              piUsageReader.begin(String(msg.params.sessionId));
+            } catch { /* Usage recovery cannot stop prompt submission. */ }
+          }
+          metrics?.promptSubmitted();
+          metrics?.beginGeneration();
+        }
         child.stdin.write(JSON.stringify(msg) + "\n", (error) => {
           if (error) waiter.reject(error);
         });
@@ -470,6 +513,12 @@ export async function runAcpAgent({
   ) => {
     if (finished) return;
     finished = true;
+    collectPiUsage();
+    piUsageFinalized = true;
+    if (yieldRequested) metrics?.requestOutcome("yielded");
+    else if (inactivityFired) metrics?.requestOutcome("timed-out");
+    else if (status === "killed") metrics?.requestOutcome("cancelled");
+    metrics?.finish(status === "failed" ? "failed" : "done");
     for (const waiter of pending.values()) {
       waiter.reject(new Error("ACP turn finished."));
     }
@@ -478,7 +527,8 @@ export async function runAcpAgent({
     removeInactivitySuppression(args.sessionId);
     terminalManager.dispose();
     running.delete(args.sessionId);
-    unregisterBrowserToolSession(args.sessionId);
+    if (keepWarm) suspendBrowserToolSession(args.sessionId);
+    else unregisterBrowserToolSession(args.sessionId);
     unregisterGameToolSession(args.sessionId);
     unregisterSkillToolSession(args.sessionId);
     unregisterButlerToolSession(args.sessionId);
@@ -526,6 +576,10 @@ export async function runAcpAgent({
   };
 
   const cancelRun = () => {
+    cancellationRequested = true;
+    if (yieldRequested) metrics?.requestOutcome("yielded");
+    else if (inactivityFired) metrics?.requestOutcome("timed-out");
+    else metrics?.requestOutcome("cancelled");
     const cancellingChild = child;
     clearAuthenticationTerminalsForSession(args.sessionId);
     if (activeAcpSessionId) {
@@ -558,6 +612,7 @@ export async function runAcpAgent({
   updateRunningProcess();
 
   const handleAcpLine = (line: string) => {
+    const arrivedAt = metrics?.now();
     const msg = parseAcpLine(line);
     const replayPhaseSuppressionEnabled = suppressReplayByPhase();
     const logState = {
@@ -587,7 +642,7 @@ export async function runAcpAgent({
           (err as Error & { code?: number; data?: unknown }).data = msg.error.data;
           waiter.reject(err);
         } else {
-          waiter.resolve(msg.result);
+          waiter.resolve(msg.result, arrivedAt);
         }
         pending.delete(String(msg.id));
       }
@@ -686,6 +741,14 @@ export async function runAcpAgent({
         sessionWasResumed = false;
       }
       const items = acpUpdateToItems(msg.params?.update, sessionId, args.adapter);
+      metrics?.observe(items, arrivedAt);
+      // Some tool calls render as plans / edits instead of tool-call items.
+      // Their actual protocol boundaries still matter for generation timing.
+      if (/^tool_call(?:_update)?$/.test(updateType) && !items.some(item => item.kind === "tool-call")) {
+        const update = msg.params.update;
+        metrics?.observe([{ kind: "tool-call", id: update.toolCallId,
+          status: update.status ?? "pending" }], arrivedAt);
+      }
       const terminalError = items.find(
         (item) => item.kind === "error" && item.terminal === true
       );
@@ -766,6 +829,7 @@ export async function runAcpAgent({
     requestRpcId: AcpRequestId,
     decision: CliPermissionDecision
   ) {
+    metrics?.resumeGeneration();
     if (decision.outcome === "selected") {
       writeAcp(child, {
         jsonrpc: "2.0",
@@ -784,6 +848,7 @@ export async function runAcpAgent({
   }
 
   function handlePermissionRequest(msg: AcpMessage) {
+    metrics?.pauseGeneration();
     const params = (msg.params ?? {}) as Record<string, unknown>;
     const options = normalizePermissionOptions(params.options);
     const requestRpcId = msg.id!;
@@ -1011,6 +1076,15 @@ export async function runAcpAgent({
   let connectionEpoch = 0;
   let rlOut: readline.Interface | undefined;
   let rlErr: readline.Interface | undefined;
+  let connectionCloseHandler: ((code: number | null) => void) | undefined;
+  let connectionErrorHandler: ((error: Error) => void) | undefined;
+  const detachConnection = () => {
+    connectionEpoch += 1;
+    rlOut?.close();
+    rlErr?.close();
+    if (connectionCloseHandler) child.off("close", connectionCloseHandler);
+    if (connectionErrorHandler) child.off("error", connectionErrorHandler);
+  };
   let recentStderr: string[] = [];
   let lastAgentText = "";
   let lastToolCommand = "";
@@ -1039,7 +1113,7 @@ export async function runAcpAgent({
       if (recentStderr.length > 50) recentStderr.shift();
       if (args.showStderr !== false) emit({ type: "stderr", content: line });
     });
-    child.on("close", (code) => {
+    connectionCloseHandler = (code) => {
       if (epoch !== connectionEpoch) return;
       const exitCode = code ?? -1;
       for (const waiter of pending.values()) {
@@ -1068,7 +1142,13 @@ export async function runAcpAgent({
             formatAcpAgentExitMessage(exitCode, getLanguage(), args.adapter)
           : undefined;
       finish(status, exitCode, crashMessage);
-    });
+    };
+    connectionErrorHandler = error => {
+      if (epoch !== connectionEpoch || finished) return;
+      finish("failed", -1, error.message);
+    };
+    child.on("close", connectionCloseHandler);
+    child.on("error", connectionErrorHandler);
   };
   attachConnection();
 
@@ -1110,9 +1190,7 @@ export async function runAcpAgent({
 
   const stopAcpConnectionForAuthentication = async () => {
     const stoppingChild = child;
-    connectionEpoch += 1;
-    rlOut?.close();
-    rlErr?.close();
+    detachConnection();
     for (const waiter of pending.values()) {
       waiter.reject(new Error("ACP connection restarting for authentication."));
     }
@@ -1137,6 +1215,7 @@ export async function runAcpAgent({
   const restartAndInitialize = async () => {
     const restarted = await restartAgent();
     child = restarted.child;
+    if (warmConnection) { warmConnection.child = child; warmConnection.initialize = undefined; }
     pid = restarted.pid;
     activeAcpSessionId = undefined;
     promptStarted = false;
@@ -1146,6 +1225,7 @@ export async function runAcpAgent({
     updateRunningProcess();
     attachConnection();
     const init = await request(buildInitializeRequest(nextId()));
+    if (warmConnection) warmConnection.initialize = init;
     if (init?.protocolVersion !== 1) {
       throw new Error(
         `Unsupported ACP protocol version ${String(init?.protocolVersion ?? "missing")}; FreeBuddy supports version 1.`
@@ -1249,6 +1329,13 @@ export async function runAcpAgent({
         )
       );
       const resultItems = acpPromptResultToItems(promptResult);
+      hasPromptUsage ||= resultItems.some(item => item.kind === "usage" && item.usageScope === "turn" &&
+        item.inputTokens !== undefined && item.outputTokens !== undefined);
+      if (promptResult?.stopReason === "cancelled") {
+        cancellationRequested = true;
+        metrics?.requestOutcome("cancelled");
+      }
+      metrics?.observe(resultItems);
       const terminalError = resultItems.find(
         (item) => item.kind === "error" && item.terminal === true
       );
@@ -1260,6 +1347,7 @@ export async function runAcpAgent({
         emit({ type: "items", items: resultItems });
       }
     } finally {
+      collectPiUsage();
       disarmInactivityTimer();
     }
   };
@@ -1407,7 +1495,8 @@ export async function runAcpAgent({
   };
 
   try {
-    const init = await request(buildInitializeRequest(nextId()));
+    const init = warmConnection?.initialize ?? await request(buildInitializeRequest(nextId()));
+    if (warmConnection) warmConnection.initialize = init;
     if (init?.protocolVersion !== 1) {
       throw new Error(
         `Unsupported ACP protocol version ${String(init?.protocolVersion ?? "missing")}; FreeBuddy supports version 1.`
@@ -1422,17 +1511,17 @@ export async function runAcpAgent({
     // Pass client tools to adapters that accept session-scoped MCP servers.
     if (adapterAcceptsClientMcpServers(args.adapter)) {
       if (args.conversationId && !remoteIsolated) {
-        mcpServers.push(
-          await registerBrowserToolSession({
-            taskSessionId: args.sessionId,
-            conversationId: args.conversationId,
-            // Keep an unscoped conversation unscoped. ACP itself requires a cwd
-            // and falls back to process.cwd(), but Browser must not treat the app's
-            // launch directory as a user-selected workspace.
-            cwd: args.cwd ?? "",
-            webContents
-          })
-        );
+        const browserInput = {
+          taskSessionId: args.sessionId, conversationId: args.conversationId,
+          // Preserve the user's explicit workspace boundary.
+          cwd: args.cwd ?? "", webContents,
+        };
+        const previousRunId = warmConnection?.previousRunId;
+        const rebound = warmConnection?.browserServer && previousRunId &&
+          rebindBrowserToolSession(previousRunId, browserInput);
+        const browserServer = rebound ? warmConnection!.browserServer! : await registerBrowserToolSession(browserInput);
+        if (warmConnection) warmConnection.browserServer = browserServer;
+        mcpServers.push(browserServer);
       }
       if (args.conversationId) {
         const conv = getConversation(args.conversationId);
@@ -1795,14 +1884,27 @@ export async function runAcpAgent({
       }
     }
 
-    if (agentCaps?.sessionCapabilities?.close) {
+    keepWarm = Boolean(warmConnection && parkConnection && activeAcpSessionId &&
+      warmConnection.initialize?._meta?.freebuddy?.persistentSession === true && !cancellationRequested &&
+      !inactivityFired && !turnHadTerminalError);
+    if (!keepWarm && agentCaps?.sessionCapabilities?.close) {
       try {
         await request(buildSessionCloseRequest(nextId(), activeAcpSessionId!), CLEANUP_REQUEST_TIMEOUT_MS);
       } catch {
         /* best-effort */
       }
     }
-    appendLog(logStream, "system", "prompt complete; finalizing ACP turn");
+    appendLog(logStream, "system", keepWarm ? "prompt complete; retaining ACP connection" : "prompt complete; finalizing ACP turn");
+    if (keepWarm && warmConnection && parkConnection) {
+      detachConnection();
+      warmConnection.child = child;
+      warmConnection.requestId = requestId;
+      warmConnection.sessionId = activeAcpSessionId;
+      warmConnection.previousRunId = args.sessionId;
+      finish("done", 0);
+      parkConnection();
+      return;
+    }
     finish("done", 0);
     try {
       child.stdin.end();

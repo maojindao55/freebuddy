@@ -26,6 +26,8 @@ interface BrowserToolBinding {
   conversationId?: string;
   cwd?: string;
   webContents?: WebContents;
+  suspended?: boolean;
+  epoch?: number;
 }
 
 interface PendingBrowserToolRequest {
@@ -331,6 +333,31 @@ export function unregisterBrowserToolSession(taskSessionId: string): void {
     .catch(() => {});
 }
 
+/** Keep a native MCP connection's credential while rebinding it to the next run. */
+export function rebindBrowserToolSession(previousRunId: string, input: {
+  taskSessionId: string; conversationId?: string; cwd?: string; webContents?: WebContents;
+}): boolean {
+  const token = tokensByTaskSession.get(previousRunId);
+  const binding = token ? bindingsByToken.get(token) : undefined;
+  if (!token || !binding || !binding.suspended || binding.conversationId !== input.conversationId ||
+      binding.cwd !== input.cwd || binding.webContents !== input.webContents) return false;
+  rejectPendingForToken(token, "Browser tool run changed.");
+  tokensByTaskSession.delete(previousRunId);
+  Object.assign(binding, input, { suspended: false, epoch: (binding.epoch ?? 0) + 1 });
+  tokensByTaskSession.set(input.taskSessionId, token);
+  void import("./browserCollector.js").then(c => c.closeBrowserSession(previousRunId)).catch(() => {});
+  return true;
+}
+
+export function suspendBrowserToolSession(taskSessionId: string): void {
+  const token = tokensByTaskSession.get(taskSessionId);
+  const binding = token ? bindingsByToken.get(token) : undefined;
+  if (!token || !binding) return;
+  binding.suspended = true;
+  binding.epoch = (binding.epoch ?? 0) + 1;
+  rejectPendingForToken(token, "Browser tool turn completed.");
+}
+
 export function resolveBrowserToolRequest(
   sender: WebContents | null | undefined,
   resolution: BrowserToolResolution
@@ -399,7 +426,8 @@ export async function handleBrowserToolHttpRequest(
   const match = typeof auth === "string" ? /^Bearer\s+(\S+)$/i.exec(auth) : null;
   const token = match?.[1]?.trim();
   const binding = token ? bindingsByToken.get(token) : undefined;
-  if (!token || !binding) {
+  const epoch = binding?.epoch;
+  if (!token || !binding || binding.suspended) {
     sendJson(res, 401, { ok: false, error: "invalid_capability_token" });
     return true;
   }
@@ -414,7 +442,7 @@ export async function handleBrowserToolHttpRequest(
       return true;
     }
     const params = body.params && typeof body.params === "object" ? body.params : {};
-    if (!token || bindingsByToken.get(token) !== binding) {
+    if (!token || bindingsByToken.get(token) !== binding || binding.suspended || binding.epoch !== epoch) {
       sendJson(res, 410, { ok: false, error: "browser_tool_session_ended" });
       return true;
     }

@@ -1168,7 +1168,8 @@
         "unavailable": "Not installed",
         "unchecked": "Not checked",
         "checking": "Checking…",
-        "disabled": "Disabled"
+        "disabled": "Disabled",
+        "update-available": "Update available"
       },
       "section": {
         "identity": "Identity",
@@ -1254,7 +1255,7 @@
       "installVerifiedSuccess": "Installed and verified successfully. The agent is ready to use.",
       "installVerifying": "Installation completed. Verifying that the agent can run…",
       "installVerifyingShort": "Verifying {{label}}…",
-      "installVerificationFailed": "Installation completed, but the agent is not usable yet: {{reason}}",
+      "installVerificationFailed": "The installer finished, but verification failed: {{reason}}",
       "installToolMissing": "Required install tool {{tool}} was not found. Install Node.js/npm or fix the desktop app PATH.",
       "installTimedOut": "Installation timed out. Check the network and try again.",
       "installSpawnFailed": "Could not start the installer: {{error}}",
@@ -1332,7 +1333,33 @@
       "installExpand": "Show install progress",
       "installSuccessShort": "{{label}} installed",
       "installFailedShort": "{{label}} install failed",
-      "tabError": "Failed to load CLI Agents: {{err}}"
+      "tabError": "Failed to load CLI Agents: {{err}}",
+      "versionUnknown": "Unknown",
+      "checkUpdates": "Check for updates",
+      "updateAvailableShort": "Update available",
+      "updateAvailable": "Update available: {{version}}",
+      "upToDate": "Up to date",
+      "minimumVersionWarning": "Update to {{version}} or later for compatibility.",
+      "managedByApp": "Updated with FreeBuddy",
+      "updateCheckFailed": "{{target}} update check or verification failed",
+      "updateVerified": "{{target}} {{version}} verified and ready",
+      "installPreparing": "Checking versions and preparing installation…",
+      "upgradeTarget": "Upgrade target: {{from}} → {{to}}",
+      "installTarget": "Installing version {{version}}",
+      "upgradeVerified": "{{from}} → {{to}}, verified and active",
+      "runtimeErrors": {
+        "runtime_not_installed": "No working agent was detected after installation. Check the installation log.",
+        "runtime_path_changed": "The launch path changed. Check again and confirm which installation to use.",
+        "runtime_version_unknown": "The installed agent version could not be verified. Check again.",
+        "runtime_target_not_active": "The target version is not active. Check for multiple installations.",
+        "runtime_version_regressed": "The installed version is older than the previous version. Verification failed.",
+        "runtime_in_use": "This agent is running a task. Retry the upgrade after it finishes.",
+        "runtime_install_in_progress": "An installation or upgrade for this agent is already running.",
+        "runtime_update_check_failed": "Could not obtain the target version. Check your connection and retry.",
+        "runtime_install_source_unknown": "This agent is not a recognized global npm installation. Update it using its original installer, then check again.",
+        "runtime_update_managed_by_app": "This agent is updated with FreeBuddy. Update the app."
+      },
+      "installPreparationFailed": "Could not start installation or upgrade: {{reason}}"
     },
     "avatar": {
       "groups": {

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 
 import { collectPreparedAttachmentsUntilLimit, managedPathsToDiscardAfterPrepare } from "./shared/collectPreparedAttachmentsUntilLimit.js";
+import type { CliRuntimeUpdateRequest, CliUpgradePlan } from "./shared/cliRuntimeUpdate.js";
 import type {
   BrowserToolAction,
   BrowserToolEvent,
@@ -37,6 +38,9 @@ const cli = {
   upsertOverride: (o: unknown) => ipcRenderer.invoke("cli:upsertOverride", o),
   resetOverride: (id: string) => ipcRenderer.invoke("cli:resetOverride", id),
   listRuntimes: () => ipcRenderer.invoke("cli:listRuntimes"),
+  checkUpdates: (args: CliRuntimeUpdateRequest) => ipcRenderer.invoke("cli:checkUpdates", args),
+  prepareUpgrade: (args: CliRuntimeUpdateRequest) => ipcRenderer.invoke("cli:prepareUpgrade", args),
+  verifyUpgrade: (request: CliRuntimeUpdateRequest, plan: CliUpgradePlan) => ipcRenderer.invoke("cli:verifyUpgrade", { request, plan }),
   onRuntimeUpdated: (cb: (runtime: unknown) => void): (() => void) => {
     const channel = "cli://runtime";
     const handler = (_e: IpcRendererEvent, runtime: unknown) => cb(runtime);
@@ -92,7 +96,7 @@ const cli = {
     ipcRenderer.on(channel, handler);
     ipcRenderer.invoke("cli:installStream", { adapter, command, requestId }).catch((err) => {
       cb({ type: "stderr", content: String(err) });
-      cb({ type: "done", exitCode: 1 });
+      cb({ type: "done", exitCode: 1, failureCode: "spawn_error", failureDetail: String(err) });
     });
     return () => ipcRenderer.off(channel, handler);
   },

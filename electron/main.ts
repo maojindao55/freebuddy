@@ -14,7 +14,8 @@ import { shutdownCliProcesses } from "./cli/runtime.js";
 import {
   logAllCliRuntimes,
   startCodexToolchainAutoUpdate,
-  startDshAcpAutoUpdate
+  startDshAcpAutoUpdate,
+  startRuntimeUpdateChecks
 } from "./cli/check.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { getWindowFullscreenState, setWindowFullscreen } from "./shared/windowFullscreen.js";
@@ -2160,6 +2161,10 @@ app.whenReady().then(async () => {
   );
   void startCodexToolchainAutoUpdate();
   void startDshAcpAutoUpdate();
+  void startRuntimeUpdateChecks();
+  const runtimeUpdateTimer = setInterval(() => { void startRuntimeUpdateChecks(); }, 24 * 60 * 60 * 1000);
+  runtimeUpdateTimer.unref();
+  app.once("will-quit", () => clearInterval(runtimeUpdateTimer));
   initAutoUpdater();
 
   app.on("activate", () => {

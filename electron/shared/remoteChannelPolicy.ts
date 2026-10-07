@@ -216,6 +216,8 @@ const ADMIN_ONLY = [
   // Host-level credentials for the coding CLIs.
   "cli:logout",
   "cli:probeAuthentication",
+  "cli:checkUpdates",
+  "cli:verifyUpgrade",
   "cli:connectCursorUsage",
   "cli:disconnectCursorUsage",
 
@@ -267,6 +269,7 @@ const DENY = [
   // Anything that installs or updates code on the host.
   "cli:install",
   "cli:installStream",
+  "cli:prepareUpgrade",
   "skills:import",
   "skills:installFromMarket",
   "plugins:install",

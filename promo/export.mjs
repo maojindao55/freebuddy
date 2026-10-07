@@ -31,7 +31,7 @@ rmSync(FRAMES, { recursive: true, force: true });
 mkdirSync(FRAMES, { recursive: true });
 
 const { browser, page } = await openPage();
-const url = pathToFileURL(path.join(DIR, 'index.html')).href + '?export';
+const url = pathToFileURL(path.join(DIR, process.env.PAGE || 'index.html')).href + '?export';
 await page.goto(url, { waitUntil: 'networkidle' }).catch(() => page.goto(url));
 await page.evaluate(() => window.__ready);
 const T = await page.evaluate(() => window.PROMO.T);
@@ -59,8 +59,14 @@ await browser.close();
 console.log(`\r帧 ${total}/${total} 完成`);
 
 const input = ['-y', '-framerate', String(FPS), '-i', path.join(FRAMES, '%04d.png')];
-execFileSync('ffmpeg', [...input, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-movflags', '+faststart', path.join(OUT, 'promo.mp4')], { stdio: 'inherit' });
-execFileSync('ffmpeg', [...input, '-vf', 'fps=15,scale=800:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4', path.join(OUT, 'promo.gif')], { stdio: 'inherit' });
+const SFX = process.env.SFX;
+const audio = [];
+if (SFX) {
+  const wav = path.join(OUT, (process.env.NAME || 'promo') + '.wav');
+  execFileSync('python3', [path.join(DIR, SFX), wav], { stdio: 'inherit' });
+  audio.push('-i', wav, '-c:a', 'aac', '-b:a', '192k', '-shortest');
+}
+execFileSync('ffmpeg', [...input, ...audio, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-movflags', '+faststart', path.join(OUT, (process.env.NAME || 'promo') + '.mp4')], { stdio: 'inherit' });
 
 if (!process.env.KEEP_FRAMES) rmSync(FRAMES, { recursive: true, force: true });
-console.log('输出：', path.join(OUT, 'promo.mp4'), path.join(OUT, 'promo.gif'));
+console.log('输出：', path.join(OUT, (process.env.NAME || 'promo') + '.mp4'));

@@ -20,11 +20,11 @@ function box(r) {
   const x = (r.left + r.width / 2 - sr.left) / k, y = (r.top + r.height / 2 - sr.top) / k;
   return { x: (x / X.W - 0.5) * X.VW, y: (0.5 - y / X.H) * X.VH, w: (r.width / k / X.W) * X.VW };
 }
-const toWorld = (el) => box(el.getBoundingClientRect());
+const toWorld = (el) => (el ? box(el.getBoundingClientRect()) : null);
 
 export function init(ctx) {
   X = ctx; const secs = [...X.stage.querySelectorAll('.scene')]; sec0 = secs[0]; secN = secs[secs.length - 1];
-  h1 = sec0.querySelector('h1'); h1.classList.add('x3d-text');
+  h1 = sec0.querySelector('h1'); if (h1) h1.classList.add('x3d-text');
   const font = new FontLoader().parse(fontJson);
   const mat = (c) => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.2, metalness: 0.28, clearcoat: 1, clearcoatRoughness: 0.07, transparent: true });
   const ink = mat(0x16151a), grn = mat(0x10b981);
@@ -47,7 +47,7 @@ export function init(ctx) {
 
 export function render(t) {
   if (!X) return;
-  const on0 = sec0.style.visibility !== 'hidden';
+  const on0 = !!h1 && sec0.style.visibility !== 'hidden';
   word.visible = on0;
   if (on0) {
     const rg = document.createRange(); rg.selectNodeContents(h1);
@@ -65,8 +65,10 @@ export function render(t) {
   const fi = Math.max(bell(t, 0.05, 0.35, 1.1), bell(t, 13.4, 13.62, 14.5) * 1.2);
   const intro = t < 6; flare.material.uniforms.uI.value = intro ? fi * 0.6 : fi; flare.material.uniforms.uL.value = intro ? 1 : 0; flare.visible = fi > 0.01;
   flare.material.depthTest = intro; flare.renderOrder = intro ? -1 : 10;
+  const FL = flare.visible ? toWorld(t < 6 ? sec0.querySelector('.logo') : logoN) : null;
+  if (!FL) flare.visible = false;
   if (flare.visible) {
-    const L = toWorld(t < 6 ? sec0.querySelector('.logo') : logoN);
+    const L = FL;
     flare.position.set(L.x, L.y, intro ? word.position.z - 0.6 : 2); flare.scale.set(intro ? 0.3 + 0.35 * eo(clamp(t / 0.6)) : 0.4 + 0.8 * eo(clamp((t - 13.4) / 0.35)), 1, 1);
   }
   const local = t - 12.8, L = secN.style.visibility !== 'hidden' ? toWorld(logoN) : null;

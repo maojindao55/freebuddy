@@ -53,6 +53,17 @@ function alphaOf(el) {
   return o;
 }
 
+let drawn = true;
+function anyVisible(o) {
+  if (!o.visible) return false;
+  if (o.isMesh || o.isPoints || o.isSprite || o.isLine) {
+    const m = o.material;
+    if (Array.isArray(m) ? m.some((x) => x.visible !== false && x.opacity > 0.001) : (m && m.visible !== false && m.opacity > 0.001)) return true;
+  }
+  for (const c of o.children) if (anyVisible(c)) return true;
+  return false;
+}
+
 function render(t) {
   if (!R) return;
   const sr = stage.getBoundingClientRect(), k = sr.width / W;
@@ -73,7 +84,8 @@ function render(t) {
     T.m.material.forEach((mt) => { mt.transparent = a < 0.999; mt.opacity = a; });
   }
   CINE.render(t);
-  R.render(S, C);
+  if (!anyVisible(S)) { if (drawn) { R.clear(); drawn = false; } return; }
+  R.render(S, C); drawn = true;
 }
 
 export const FG = { init, render };

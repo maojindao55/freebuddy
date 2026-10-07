@@ -6707,7 +6707,8 @@ html[data-surface="butler-screen-ball"] #root {
   color: var(--fb-brand);
 }
 
-.adapter-editor-badge.unavailable {
+.adapter-editor-badge.unavailable,
+.adapter-editor-badge.update-available {
   background: color-mix(in srgb, var(--fb-warning) 14%, transparent);
   color: color-mix(in srgb, var(--fb-warning) 80%, var(--fb-text-primary));
 }

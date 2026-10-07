@@ -12,6 +12,8 @@ import type {
   SessionConfigOption,
   SessionConfigProbeInput,
   CliRuntime,
+  CliRuntimeUpdateRequest,
+  CliUpgradePlan,
   CliTaskListArgs,
   CliTaskLogPage,
   CliTaskRow,
@@ -94,6 +96,15 @@ export const cliClient = {
 
   listRuntimes(): Promise<CliRuntime[]> {
     return api().listRuntimes();
+  },
+  checkUpdates(args: CliRuntimeUpdateRequest): Promise<CliRuntime | undefined> {
+    return api().checkUpdates(args);
+  },
+  prepareUpgrade(args: CliRuntimeUpdateRequest): Promise<CliUpgradePlan> {
+    return api().prepareUpgrade(args);
+  },
+  verifyUpgrade(request: CliRuntimeUpdateRequest, plan: CliUpgradePlan): Promise<CliCheckResult> {
+    return api().verifyUpgrade(request, plan);
   },
   codexUsage(): Promise<CodexUsageResult> {
     return api().codexUsage();

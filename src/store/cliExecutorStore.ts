@@ -37,6 +37,7 @@ interface State {
   load(): Promise<void>;
   refreshRuntimes(): Promise<void>;
   check(adapter: CLIAdapterId): Promise<void>;
+  checkUpdates(adapter: CLIAdapterId, force?: boolean): Promise<void>;
   checkAll(): Promise<void>;
   upsertOverride(o: CLIExecutorOverride): Promise<void>;
   resetOverride(id: string): Promise<void>;
@@ -96,17 +97,26 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     const resolved = get().resolve(adapter);
     if (!resolved) return;
     if (
-      resolved.id === "codex-acp" &&
       resolved.runtime?.updateStatus === "updating"
     ) {
       return;
     }
     await cliClient.check(
       resolved.baseAdapter ?? resolved.id,
-      resolved.id === "qoder-acp" && !resolved.override?.binary?.trim() ? resolved.defaultBinary : resolved.binary,
+      resolved.override?.binary?.trim() || resolved.defaultBinary,
       resolved.env,
       resolved.id
     );
+    await get().refreshRuntimes();
+  },
+
+  async checkUpdates(adapter, force = false) {
+    if (!cliClient.isAvailable() || window.freebuddy?.platform === "web") return;
+    const resolved = get().resolve(adapter);
+    if (!resolved?.runtime?.installed || !resolved.runtime.updateCheckSupported) return;
+    await cliClient.checkUpdates({ adapter: resolved.baseAdapter ?? resolved.id,
+      runtimeAdapter: resolved.id, binary: resolved.binary,
+      env: resolved.env, force });
     await get().refreshRuntimes();
   },
 
@@ -115,17 +125,22 @@ export const useCliExecutorStore = create<State>((set, get) => ({
     const acpAdapters = get().listResolved().filter((a) => a.protocol === "acp");
     for (const adapter of acpAdapters) {
       if (
-        adapter.id === "codex-acp" &&
         adapter.runtime?.updateStatus === "updating"
       ) {
         continue;
       }
       const targetId = adapter.baseAdapter ?? adapter.id;
       await cliClient.check(targetId,
-        adapter.id === "qoder-acp" && !adapter.override?.binary?.trim() ? adapter.defaultBinary : adapter.binary,
+        adapter.override?.binary?.trim() || adapter.defaultBinary,
         adapter.env, adapter.id);
     }
     await get().refreshRuntimes();
+    // Registry access runs after local detection and cannot delay the list.
+    void (async () => {
+      for (const adapter of get().listResolved()) {
+        try { await get().checkUpdates(adapter.id); } catch { /* Update status remains separate from availability. */ }
+      }
+    })();
   },
 
   async upsertOverride(o) {
@@ -160,7 +175,7 @@ export const useCliExecutorStore = create<State>((set, get) => ({
       baseAdapter: isClone ? def.id : undefined,
       isClone,
       label: o?.label?.trim() || def.label,
-      binary: (o?.binary?.trim() || (def.id === "qoder-acp" && runtimes[id]?.installed ? runtimes[id]?.binaryPath : undefined) || def.defaultBinary) ?? def.id,
+      binary: (o?.binary?.trim() || (runtimes[id]?.installed ? runtimes[id]?.binaryPath : undefined) || def.defaultBinary) ?? def.id,
       extraArgs: o?.extraArgs?.filter(Boolean) ?? [],
       env: o?.env,
       icon: o?.icon,

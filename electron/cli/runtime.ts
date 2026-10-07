@@ -247,7 +247,7 @@ export async function cliRun(
     `start adapter=${args.adapter} approvalMode=${args.approvalMode ?? "default"} cwd=${args.cwd ?? "."} resume=${toolSessionId ?? "-"}`
   );
 
-  // Avoid spawning codex-acp while npm is replacing its global package files.
+  // Wait until any installation replacing this agent's files has finished.
   // A failed background update is non-fatal and resolves this wait normally.
   await waitForCodexToolchainAutoUpdate(args.adapter);
 

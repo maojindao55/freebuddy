@@ -15,7 +15,8 @@ import { cliAdapterDefinitions } from "./adapters.js";
 import { readMessageDetails } from "./messageDetails.js";
 import { listConversationOverviews } from "./conversationOverview.js";
 import { listMessageFileEdits, readFileEditBlob, readFileEditSnapshot } from "./fileEditBlobs.js";
-import { cliCheck, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
+import { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
+import type { CliRuntimeUpdateRequest, CliUpgradePlan } from "../shared/cliRuntimeUpdate.js";
 import {
   listOverrides,
   upsertOverride,
@@ -912,6 +913,9 @@ export function registerCliIpc() {
   registerHandler("providers:getApiKey", (_e, id: string) => getProviderApiKey(id));
 
   registerHandler("cli:listRuntimes", () => listRuntimes());
+  registerHandler("cli:checkUpdates", (_e, args: CliRuntimeUpdateRequest) => cliCheckUpdates(args));
+  registerHandler("cli:prepareUpgrade", (_e, args: CliRuntimeUpdateRequest) => prepareCliUpgrade(args));
+  registerHandler("cli:verifyUpgrade", (_e, args: { request: CliRuntimeUpdateRequest; plan: CliUpgradePlan }) => verifyCliUpgrade(args.request, args.plan));
   registerHandler("cli:codexUsage", () => readCodexUsage());
   registerHandler("cli:antigravityUsage", () => readAntigravityUsage());
   registerHandler("cli:probeAuthentication", (_e, args: CliAuthControlArgs) =>

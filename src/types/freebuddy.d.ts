@@ -11,6 +11,8 @@ import type {
   CliEvent,
   CliRuntime,
   CliCheckResult,
+  CliRuntimeUpdateRequest,
+  CliUpgradePlan,
   CliInstallResult,
   CliInstallEvent,
   CliTaskRow,
@@ -140,6 +142,9 @@ declare global {
     resetOverride(id: string): Promise<void>;
 
     listRuntimes(): Promise<CliRuntime[]>;
+    checkUpdates(args: CliRuntimeUpdateRequest): Promise<CliRuntime | undefined>;
+    prepareUpgrade(args: CliRuntimeUpdateRequest): Promise<CliUpgradePlan>;
+    verifyUpgrade(request: CliRuntimeUpdateRequest, plan: CliUpgradePlan): Promise<CliCheckResult>;
     onRuntimeUpdated(cb: (runtime: CliRuntime) => void): () => void;
     onConversationsChanged(cb: () => void): () => void;
     onMessagesChanged(cb: (conversationId: string) => void): () => void;

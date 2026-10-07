@@ -42,6 +42,7 @@ import { useOnboardingStore } from "@/store/onboardingStore";
 import { useProviderStore } from "@/store/providerStore";
 import { ProviderSelect } from "./ProviderSelect";
 import { cliAdapterDefinitions, type CLIAdapterDefinition } from "@/config/cliAdapters";
+import { runtimeVersionBelow } from "../../../electron/shared/cliRuntimeUpdate";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const BYOK_CONTEXT_WINDOW_MIN = 100000;
@@ -51,6 +52,7 @@ type AdapterStatusKind =
   | "disabled"
   | "checking"
   | "available"
+  | "update-available"
   | "unavailable"
   | "unchecked";
 
@@ -58,6 +60,7 @@ const ADAPTER_STATUS_LABEL_KEY: Record<AdapterStatusKind, string> = {
   disabled: "settings.cli.disabled",
   checking: "settings.cli.checking",
   available: "settings.cli.installed",
+  "update-available": "settings.cli.updateAvailableShort",
   unavailable: "settings.cli.notInstalled",
   unchecked: "settings.cli.notChecked"
 };
@@ -68,6 +71,7 @@ function adapterStatusKind(
 ): AdapterStatusKind {
   if (!ex.enabled) return "disabled";
   if (checking) return "checking";
+  if (ex.runtime?.installed && (ex.runtime.updateStatus === "available" || runtimeVersionBelow(ex.runtime.version, ex.runtime.minimumVersion))) return "update-available";
   if (ex.runtime?.installed) return "available";
   return ex.runtime ? "unavailable" : "unchecked";
 }
@@ -324,6 +328,7 @@ export function CLIAdaptersTab() {
         const checked = useCliExecutorStore.getState().resolve(id);
         const runtime = checked?.runtime;
         if (runtime?.installed) {
+          void useCliExecutorStore.getState().checkUpdates(id).catch(() => {});
           notify(t("settings.cli.checkInstalled", {
             label: checked?.label ?? id,
             version: runtime.version ? ` (${runtime.version})` : ""
@@ -352,6 +357,17 @@ export function CLIAdaptersTab() {
     },
     [check, notify, t]
   );
+
+  const handleCheckUpdates = useCallback(async (id: string) => {
+    setCheckingIds(previous => new Set(previous).add(id));
+    try {
+      await useCliExecutorStore.getState().checkUpdates(id, true);
+    } catch (error) {
+      notify(t("settings.cli.checkFailed", { label: id, error: String(error) }));
+    } finally {
+      setCheckingIds(previous => { const next = new Set(previous); next.delete(id); return next; });
+    }
+  }, [notify, t]);
 
   const handleCheckAll = useCallback(async () => {
     setCheckingAll(true);
@@ -636,6 +652,7 @@ export function CLIAdaptersTab() {
             authProbe={authProbes[selectedExecutor.id]}
             authBusy={authBusyIds.has(selectedExecutor.id)}
             onCheck={() => void handleCheck(selectedExecutor.id)}
+            onCheckUpdates={() => void handleCheckUpdates(selectedExecutor.id)}
             onClone={() => {
               if (editorDirtyRef.current && !window.confirm(t("settings.cli.unsavedConfirm"))) {
                 return;
@@ -933,6 +950,7 @@ function AdapterHeaderActions({
   authProbe,
   authBusy,
   onCheck,
+  onCheckUpdates,
   onClone,
   onInstall,
   onToggleEnabled,
@@ -946,6 +964,7 @@ function AdapterHeaderActions({
   authProbe?: CliAuthProbeResult;
   authBusy: boolean;
   onCheck: () => void;
+  onCheckUpdates: () => void;
   onClone: () => void;
   onInstall: () => void;
   onToggleEnabled: (enabled: boolean) => void;
@@ -963,6 +982,13 @@ function AdapterHeaderActions({
       disabled: checking || installing,
       onSelect: onCheck
     },
+    ...(rt?.installed && rt.updateCheckSupported ? [{
+      key: "check-updates",
+      label: t("settings.cli.checkUpdates"),
+      icon: <RefreshCw size={14} aria-hidden="true" />,
+      disabled: checking || installing || rt.updateStatus === "updating",
+      onSelect: onCheckUpdates
+    }] : []),
     ...(rt?.installed && !authProbe
       ? [
           {
@@ -1018,13 +1044,13 @@ function AdapterHeaderActions({
         </label>
       </div>
       <span className="adapter-editor-actions-divider" aria-hidden="true" />
-      {ex.installHint &&
+      {ex.installHint && !(ex.id === "pi-acp" && rt?.installed) &&
         (rt?.installed ? (
           <button
             type="button"
             className="adapter-editor-action"
             onClick={onInstall}
-            disabled={installing || checking}
+            disabled={installing || checking || rt?.updateStatus === "updating"}
             title={t("settings.cli.upgradeHint")}
           >
             {installing ? t("common.upgrading") : t("common.upgrade")}
@@ -1077,14 +1103,17 @@ function AdapterHeaderMeta({
   const { t } = useTranslation();
   const rt = ex.runtime;
   const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
-  const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
   return (
     <>
-      {!checking && rt?.installed && rt.version && (
+      {!checking && rt?.installed && (
         <span>
-          {t("settings.cli.versionLabel")} <code>{rt.version}</code>
+          {t("settings.cli.versionLabel")} <code>{rt.version || t("settings.cli.versionUnknown")}</code>
         </span>
       )}
+      {rt?.installed && runtimeVersionBelow(rt.version, rt.minimumVersion) && <span className="adapter-status error">
+        {t("settings.cli.minimumVersionWarning", { version: rt.minimumVersion })}
+      </span>}
+      {rt?.installed && ex.id === "pi-acp" && <span>{t("settings.cli.managedByApp")}</span>}
       {!checking && rt?.lastError && !rt.installed && (
         <span className="adapter-status error" title={rt.lastError}>
           {t(cliRuntimeErrorKey(rt.lastError))}
@@ -1096,8 +1125,8 @@ function AdapterHeaderMeta({
         </span>
       )}
       <RuntimeAutoUpdateStatus
-        runtime={codexUpdateStatus ? rt : undefined}
-        label="Codex ACP"
+        runtime={rt}
+        label={ex.label}
       />
       {ex.id === "codex-acp" && (
         <RuntimeAutoUpdateStatus runtime={codexCliRuntime} label="Codex CLI" />
@@ -1207,18 +1236,22 @@ function RuntimeAutoUpdateStatus({
     case "updated":
       return (
         <span className="adapter-status ok">
-          {t("settings.cli.autoUpdated", {
+          {t("settings.cli.updateVerified", {
             target: label,
-            version: runtime.latestVersion ?? ""
+            version: runtime.version ?? runtime.latestVersion ?? t("settings.cli.versionUnknown")
           })}
         </span>
       );
     case "error":
       return (
         <span className="adapter-status error" title={runtime.lastUpdateError}>
-          {t("settings.cli.autoUpdateFailed", { target: label })}
+          {t("settings.cli.updateCheckFailed", { target: label })}
         </span>
       );
+    case "available":
+      return <span className="adapter-status muted">{t("settings.cli.updateAvailable", { version: runtime.latestVersion })}</span>;
+    case "current":
+      return <span className="adapter-status ok">{t("settings.cli.upToDate")}</span>;
     default:
       return null;
   }

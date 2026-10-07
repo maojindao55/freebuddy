@@ -45,7 +45,7 @@ import {
   type AcpRequestId
 } from "./acp.js";
 import { createAcpTerminalManager } from "./acpTerminal.js";
-import { updateRuntimeRun } from "./check.js";
+import { updateRuntimeRun, recordRuntimeAgentVersion } from "./check.js";
 import { getDataDir } from "./db.js";
 import { persistFileEditItems } from "./fileEditBlobs.js";
 import { findLastPiSessionErrorMessage } from "./piRuntime.js";
@@ -1099,6 +1099,7 @@ export async function runAcpAgent({
           : undefined;
     agentInfo =
       agentName || agentVersion ? { name: agentName, version: agentVersion } : undefined;
+    recordRuntimeAgentVersion(args.adapter, agentVersion, args.binary);
     logMain().info("acp", "agent initialized", {
       adapter: args.adapter,
       sessionId: args.sessionId,

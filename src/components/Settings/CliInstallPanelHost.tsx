@@ -28,8 +28,13 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
   const minimized = job.panelState === "minimized";
   const success = job.phase === "succeeded";
   const verifying = job.phase === "verifying";
+  const preparing = job.phase === "preparing";
 
   const runtimeFailureText = (error: string | undefined) => {
+    const code = error?.match(/runtime_[a-z_]+/)?.[0];
+    if (code && ["runtime_not_installed", "runtime_path_changed", "runtime_version_unknown", "runtime_target_not_active", "runtime_version_regressed", "runtime_in_use", "runtime_install_in_progress", "runtime_update_check_failed", "runtime_install_source_unknown", "runtime_update_managed_by_app"].includes(code)) {
+      return t(`settings.cli.runtimeErrors.${code}`);
+    }
     if (error === "claude runtime architecture mismatch") {
       return t("settings.cli.claudeArchitectureMismatch");
     }
@@ -56,7 +61,7 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
     }
     if (job.failureCode === "spawn_error") {
       return t("settings.cli.installSpawnFailed", {
-        error: job.failureDetail || ""
+        error: runtimeFailureText(job.failureDetail)
       });
     }
     return t("settings.cli.installFailed", {
@@ -86,7 +91,7 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
               : t("settings.cli.installFailedShort", { label: job.label })
             : verifying
               ? t("settings.cli.installVerifyingShort", { label: job.label })
-              : t("settings.cli.installRunning", { label: job.label })}
+              : preparing ? t("settings.cli.installPreparing") : t("settings.cli.installRunning", { label: job.label })}
         </span>
         {!job.done && <span className="install-panel-spinner" aria-hidden="true" />}
       </button>
@@ -124,15 +129,20 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
         <p className="install-panel-hint muted">
           {verifying
             ? t("settings.cli.installVerifying")
-            : t("settings.cli.installBackgroundHint")}
+            : preparing ? t("settings.cli.installPreparing") : t("settings.cli.installBackgroundHint")}
         </p>
       )}
+      {job.plan?.targetVersion && !job.plan.alreadyCurrent && !job.done && <p className="install-panel-hint muted">
+        {job.plan.previousVersion
+          ? t("settings.cli.upgradeTarget", { from: job.plan.previousVersion, to: job.plan.targetVersion })
+          : t("settings.cli.installTarget", { version: job.plan.targetVersion })}
+      </p>}
 
       <div className="install-output install-panel-output" ref={scrollRef}>
         {job.output || (!job.done
           ? verifying
             ? t("settings.cli.installVerifying")
-            : t("settings.cli.installStarting")
+            : preparing ? t("settings.cli.installPreparing") : t("settings.cli.installStarting")
           : "")}
         {!job.done && <span className="install-cursor">▌</span>}
       </div>
@@ -140,7 +150,12 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
       {job.done && (
         <div className={`install-result ${success ? "ok" : "warn"}`}>
           {success
-            ? t("settings.cli.installVerifiedSuccess")
+            ? job.plan?.alreadyCurrent ? t("settings.cli.upToDate")
+              : job.plan?.previousVersion && job.verifiedVersion
+                ? t("settings.cli.upgradeVerified", { from: job.plan.previousVersion, to: job.verifiedVersion })
+                : t("settings.cli.installVerifiedSuccess")
+            : job.phase === "preparation_failed"
+              ? t("settings.cli.installPreparationFailed", { reason: runtimeFailureText(job.verificationError) })
             : job.phase === "verification_failed"
               ? t("settings.cli.installVerificationFailed", {
                   reason: runtimeFailureText(job.verificationError)

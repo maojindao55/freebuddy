@@ -1155,7 +1155,8 @@
         "unavailable": "未安装",
         "unchecked": "未检查",
         "checking": "检查中…",
-        "disabled": "已停用"
+        "disabled": "已停用",
+        "update-available": "有可用更新"
       },
       "section": {
         "identity": "基本信息",
@@ -1241,7 +1242,7 @@
       "installVerifiedSuccess": "安装并验证成功，可以正常使用。",
       "installVerifying": "安装完成，正在验证 Agent 是否可用…",
       "installVerifyingShort": "正在验证 {{label}}…",
-      "installVerificationFailed": "安装已完成，但 Agent 当前不可用：{{reason}}",
+      "installVerificationFailed": "安装命令已结束，但验证未通过：{{reason}}",
       "installToolMissing": "未找到安装所需的 {{tool}}。请先安装 Node.js/npm，或检查桌面应用的 PATH。",
       "installTimedOut": "安装超时，请检查网络后重试。",
       "installSpawnFailed": "无法启动安装程序：{{error}}",
@@ -1319,7 +1320,33 @@
       "installExpand": "展开安装进度",
       "installSuccessShort": "{{label}} 安装完成",
       "installFailedShort": "{{label}} 安装失败",
-      "tabError": "CLI Agent 页面加载失败：{{err}}"
+      "tabError": "CLI Agent 页面加载失败：{{err}}",
+      "versionUnknown": "未知",
+      "checkUpdates": "检查更新",
+      "updateAvailableShort": "有可用更新",
+      "updateAvailable": "可升级到 {{version}}",
+      "upToDate": "已是最新版本",
+      "minimumVersionWarning": "建议升级到 {{version}} 或更高版本，以确保兼容性。",
+      "managedByApp": "随 FreeBuddy 更新",
+      "updateCheckFailed": "{{target}} 更新检查或验证未通过",
+      "updateVerified": "{{target}} {{version}} 已验证可正常启动",
+      "installPreparing": "正在检测版本并准备安装…",
+      "upgradeTarget": "升级目标：{{from}} → {{to}}",
+      "installTarget": "安装版本：{{version}}",
+      "upgradeVerified": "{{from}} → {{to}}，已验证生效",
+      "runtimeErrors": {
+        "runtime_not_installed": "安装后仍未找到可用代理，请查看安装日志。",
+        "runtime_path_changed": "实际启动路径发生变化，请重新检测并确认使用的安装目录。",
+        "runtime_version_unknown": "无法确认安装后的代理版本，请重新检测。",
+        "runtime_target_not_active": "目标版本尚未生效，当前仍在使用旧版本。请检查是否存在多份安装。",
+        "runtime_version_regressed": "安装后的版本低于原版本，升级验证未通过。",
+        "runtime_in_use": "此代理正在执行任务，请待任务结束后重试升级。",
+        "runtime_install_in_progress": "此代理的安装或升级正在进行，请等待完成。",
+        "runtime_update_check_failed": "无法获取目标版本，请检查网络后重试。",
+        "runtime_install_source_unknown": "当前代理不属于可识别的全局 npm 安装，请使用原安装方式升级后重新检测。",
+        "runtime_update_managed_by_app": "此代理随 FreeBuddy 更新，请更新应用。"
+      },
+      "installPreparationFailed": "无法开始安装或升级：{{reason}}"
     },
     "avatar": {
       "groups": {

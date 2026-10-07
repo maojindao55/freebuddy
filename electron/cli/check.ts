@@ -15,6 +15,9 @@ import {
   dshAcpWindowsResiduePath,
   DSH_ACP_PLUGIN_TREE_MISSING,
   getCliCheckProbe,
+  getAdapterDefinition,
+  cliAdapterDefinitions,
+  quoteForShell,
   isDefaultDshAcpBinary,
   patchDshAcpManagedRuntime,
   syncDshAcpManagedConfig
@@ -38,6 +41,8 @@ import {
 import { findMacAppCliBinary } from "./macAppCli.js";
 import { hasLocalAgentApp } from "./localAgentApps.js";
 import { logMain } from "../debugLog.js";
+import { getRuntimePackagePolicy, readRuntimePackage } from "./runtimePackages.js";
+import { checkRuntimeUpdate, upgradeVerificationError, versionFromProbe, type CliRuntimeUpdateRequest, type CliUpgradePlan, type RuntimeUpdateStatus } from "../shared/cliRuntimeUpdate.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const CODEX_ACP_ADAPTER = "codex-acp";
@@ -62,13 +67,7 @@ const CODEX_UPDATE_TARGETS: CodexUpdateTarget[] = [
   { adapter: CODEX_ACP_ADAPTER, packageName: CODEX_ACP_PACKAGE }
 ];
 
-export type CliRuntimeUpdateStatus =
-  | "idle"
-  | "checking"
-  | "current"
-  | "updating"
-  | "updated"
-  | "error";
+export type CliRuntimeUpdateStatus = RuntimeUpdateStatus;
 
 export interface CliCheckResult {
   installed: boolean;
@@ -318,7 +317,7 @@ function upsertRuntime(
        ON CONFLICT(adapter) DO UPDATE SET
          installed=excluded.installed,
          binary_path=excluded.binary_path,
-         version=excluded.version,
+         version=COALESCE(excluded.version, CASE WHEN cli_runtimes.binary_path=excluded.binary_path THEN cli_runtimes.version END),
          last_check_at=excluded.last_check_at,
          last_error=excluded.last_error,
          updated_at=excluded.updated_at`
@@ -375,6 +374,7 @@ export async function cliCheck(
   env?: Record<string, string>,
   runtimeAdapter?: string
 ): Promise<CliCheckResult> {
+  await waitForRuntimeInstall(adapter);
   const runtimeKey = runtimeAdapter?.trim() || adapter;
   const bin = binary?.trim() || adapterBinary(adapter) || adapter;
   const effectiveEnv = await getFreshWindowsEnvironment({
@@ -404,9 +404,10 @@ export async function cliCheck(
   if (adapter === "dsh-acp") {
     const cfgPath = bundledDshAcpConfigPath();
     const managedBin = dshAcpManagedDemoBin(getDataDir());
-    if (fs.existsSync(managedBin) && dshAcpCompositionReady(managedBin, cfgPath)) {
-      const result: CliCheckResult = { installed: true, path: managedBin };
-      upsertRuntime(runtimeKey, true, managedBin);
+    if ((!binary?.trim() || isDefaultDshAcpBinary(binary)) && fs.existsSync(managedBin) && dshAcpCompositionReady(managedBin, cfgPath)) {
+      const version = readRuntimePackage(managedBin, DSH_ACP_PACKAGE)?.version;
+      const result: CliCheckResult = { installed: true, path: managedBin, version };
+      upsertRuntime(runtimeKey, true, managedBin, version);
       trackAgentSetup(adapter, "check", "detected");
       return result;
     }
@@ -434,8 +435,9 @@ export async function cliCheck(
       trackAgentSetup(adapter, "check", "probe_failed", DSH_ACP_PLUGIN_TREE_MISSING);
       return { installed: false };
     }
-    const result: CliCheckResult = { installed: true, path: resolved };
-    upsertRuntime(runtimeKey, true, resolved);
+    const version = readRuntimePackage(resolved, DSH_ACP_PACKAGE)?.version;
+    const result: CliCheckResult = { installed: true, path: resolved, version };
+    upsertRuntime(runtimeKey, true, resolved, version);
     trackAgentSetup(adapter, "check", "detected");
     return result;
   }
@@ -503,12 +505,17 @@ export async function cliCheck(
     trackAgentSetup(adapter, "check", "probe_failed", error);
     return { installed: false };
   }
+  const policy = getRuntimePackagePolicy(adapter);
+  const packageVersion = policy ? readRuntimePackage(resolved, policy.packageName)?.version : undefined;
   const result: CliCheckResult = {
     installed: true,
     path: resolved,
-    version: probe.versionOptional ? undefined : probeResult.output
+    version: packageVersion ?? (policy?.packageVersionOnly ? undefined : versionFromProbe(probeResult.output, probe.versionOptional))
   };
   upsertRuntime(runtimeKey, true, resolved, result.version);
+  if (policy?.packageVersionOnly && !packageVersion) {
+    getDb().prepare("UPDATE cli_runtimes SET version = NULL WHERE adapter = ?").run(runtimeKey);
+  }
   trackAgentSetup(adapter, "check", "detected");
   return result;
 }
@@ -519,6 +526,8 @@ export interface CliRuntime {
   binaryPath?: string;
   version?: string;
   latestVersion?: string;
+  minimumVersion?: string;
+  updateCheckSupported?: boolean;
   updateStatus?: CliRuntimeUpdateStatus;
   lastUpdateCheckAt?: string;
   lastUpdateError?: string;
@@ -529,6 +538,7 @@ export interface CliRuntime {
 }
 
 export function listRuntimes(): CliRuntime[] {
+  const aliases = new Map((getDb().prepare("SELECT id, base_adapter FROM cli_executor_overrides").all() as Array<{ id: string; base_adapter: string | null }>).map(row => [row.id, row.base_adapter]));
   const rows = getDb()
     .prepare(
       `SELECT adapter, installed, binary_path, version, latest_version, update_status,
@@ -556,6 +566,8 @@ export function listRuntimes(): CliRuntime[] {
     binaryPath: r.binary_path ?? undefined,
     version: r.version ?? undefined,
     latestVersion: r.latest_version ?? undefined,
+    minimumVersion: getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter)?.minimumVersion,
+    updateCheckSupported: !!getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter),
     updateStatus: (r.update_status as CliRuntimeUpdateStatus | null) ?? undefined,
     lastUpdateCheckAt: r.last_update_check_at ?? undefined,
     lastUpdateError: r.last_update_error ?? undefined,
@@ -612,6 +624,144 @@ function setRuntimeUpdateState(
   broadcastRuntime(adapter);
 }
 
+/** Persist initialize metadata for agents whose version probe cannot report it. */
+export function recordRuntimeAgentVersion(adapter: string, version: string | undefined, binary?: string): void {
+  const parsed = extractSemver(version);
+  const runtime = runtimeFor(adapter);
+  if (!parsed || !runtime || runtime.updateStatus === "updating" || getRuntimePackagePolicy(adapter)?.packageVersionOnly) return;
+  if (binary && path.isAbsolute(binary) && runtime.binaryPath !== binary) return;
+  // Package/probe versions identify the detected executable. Do not replace
+  // them with a protocol implementation's unrelated SDK or engine version.
+  if (extractSemver(runtime.version)) return;
+  getDb().prepare("UPDATE cli_runtimes SET version = ?, updated_at = ? WHERE adapter = ?")
+    .run(parsed.raw, new Date().toISOString(), adapter);
+  broadcastRuntime(adapter);
+}
+
+const pendingUpdateChecks = new Map<string, Promise<CliRuntime | undefined>>();
+
+export function cliCheckUpdates(args: CliRuntimeUpdateRequest): Promise<CliRuntime | undefined> {
+  const key = args.runtimeAdapter?.trim() || args.adapter;
+  const pending = pendingUpdateChecks.get(key);
+  if (pending) return args.force ? pending.then(() => cliCheckUpdates(args)) : pending;
+  const promise = (async () => {
+    const previous = runtimeFor(key);
+    if (previous?.updateStatus === "updating" || runtimeInstallationPromises.has(runtimeInstallKey(args.adapter))) return previous;
+    const installed = await cliCheck(args.adapter, args.binary, args.env, key);
+    const policy = getRuntimePackagePolicy(args.adapter);
+    if (!installed.installed || !policy) return runtimeFor(key);
+    const snapshot = { ...previous, version: runtimeFor(key)?.version };
+    setRuntimeUpdateState(key, "checking");
+    const state = await checkRuntimeUpdate(snapshot, () => latestPackageVersion(policy.packageName, args.env), {
+      force: args.force || previous?.binaryPath !== installed.path
+    });
+    if (runtimeInstallationPromises.has(runtimeInstallKey(args.adapter))) return runtimeFor(key);
+    const actual = extractSemver(runtimeFor(key)?.version), latest = extractSemver(state.latestVersion);
+    if (latest && state.updateStatus !== "error") state.updateStatus = actual && compareSemver(actual, latest) >= 0 ? "current" : "available";
+    setRuntimeUpdateState(key, state.updateStatus ?? "idle", {
+      latestVersion: state.latestVersion, checkedAt: state.lastUpdateCheckAt, error: state.lastUpdateError
+    });
+    return runtimeFor(key);
+  })().finally(() => pendingUpdateChecks.delete(key));
+  pendingUpdateChecks.set(key, promise);
+  return promise;
+}
+
+/** Passive checks complement existing Codex/DeepSeek update policies. */
+export async function startRuntimeUpdateChecks(): Promise<void> {
+  await Promise.allSettled([codexToolchainAutoUpdatePromise, dshAcpAutoUpdatePromise]);
+  for (const runtime of listRuntimes()) {
+    if (!runtime.installed || !getRuntimePackagePolicy(runtime.adapter)) continue;
+    try { await cliCheckUpdates({ adapter: runtime.adapter, binary: runtime.binaryPath }); }
+    catch (error) { logMain().warn("runtime", "agent update check failed", { adapter: runtime.adapter, error: String(error) }); }
+  }
+}
+
+function assertRuntimeIdle(adapter: string): void {
+  const group = getAdapterDefinition(adapter)?.commandGroup;
+  const related = [...new Set([adapter, ...cliAdapterDefinitions.filter(definition => group && definition.commandGroup === group).map(definition => definition.id), ...(group ? [group] : [])])];
+  const active = getDb().prepare(`SELECT 1 FROM cli_tasks WHERE status = 'running' AND adapter IN (${related.map(() => "?").join(",")}) LIMIT 1`).get(...related);
+  if (active) throw new Error("runtime_in_use");
+}
+
+const runtimeInstallationPromises = new Map<string, Promise<void>>();
+
+function runtimeInstallKey(adapter: string): string {
+  return getRuntimePackagePolicy(adapter)?.packageName ?? getAdapterDefinition(adapter)?.commandGroup ?? adapter;
+}
+
+export async function waitForRuntimeInstall(adapter: string): Promise<void> {
+  await runtimeInstallationPromises.get(runtimeInstallKey(adapter));
+}
+
+function acquireRuntimeInstall(adapter: string): () => void {
+  assertRuntimeIdle(adapter);
+  const key = runtimeInstallKey(adapter);
+  if (runtimeInstallationPromises.has(key)) throw new Error("runtime_install_in_progress");
+  let finish = () => {};
+  runtimeInstallationPromises.set(key, new Promise(resolve => { finish = resolve; }));
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    runtimeInstallationPromises.delete(key);
+    finish();
+  };
+}
+
+export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<CliUpgradePlan> {
+  assertRuntimeIdle(args.adapter);
+  const definition = getAdapterDefinition(args.adapter);
+  if (!definition?.installHint || args.adapter === "pi-acp") throw new Error("runtime_update_managed_by_app");
+  const policy = getRuntimePackagePolicy(args.adapter);
+  const runtime = await cliCheckUpdates({ ...args, force: true });
+  const plan: CliUpgradePlan = { command: definition.installHint,
+    previousVersion: runtime?.installed ? runtime.version : undefined,
+    expectedBinaryPath: runtime?.installed ? runtime.binaryPath : undefined };
+  if (!policy) return plan;
+  if (runtime?.installed && (runtime.updateStatus === "error" || !runtime.latestVersion)) throw new Error("runtime_update_check_failed");
+  plan.targetVersion = runtime?.installed ? runtime.latestVersion : await latestPackageVersion(policy.packageName, args.env);
+  const current = extractSemver(runtime?.version), target = extractSemver(plan.targetVersion)!;
+  if (current && compareSemver(current, target) >= 0) return { ...plan, alreadyCurrent: true };
+  if (policy.managed) {
+    // The DeepSeek installer also migrates legacy/global installs into the
+    // application-managed standalone runtime. Verify that destination.
+    plan.expectedBinaryPath = path.join(dshAcpManagedRoot(getDataDir()), "node_modules", policy.packageName, "lib", "bin.js");
+  } else {
+    const pkg = readRuntimePackage(runtime?.binaryPath, policy.packageName);
+    if (runtime?.installed && !pkg?.prefix) throw new Error("runtime_install_source_unknown");
+    plan.command = definition.installHint.replace(policy.packageName, `${policy.packageName}@${plan.targetVersion}`)
+      + (pkg?.prefix ? ` --prefix ${quoteForShell(pkg.prefix)}` : "") + " --no-audit --no-fund";
+  }
+  return plan;
+}
+
+export async function verifyCliUpgrade(args: CliRuntimeUpdateRequest, plan: CliUpgradePlan): Promise<CliCheckResult> {
+  await waitForRuntimeInstall(args.adapter);
+  const key = args.runtimeAdapter?.trim() || args.adapter;
+  const actual = await cliCheck(args.adapter, plan.expectedBinaryPath ?? args.binary, args.env, key);
+  const error = upgradeVerificationError(actual, plan, process.platform);
+  if (error) {
+    setRuntimeUpdateState(key, "error", { error });
+    throw new Error(error);
+  }
+  if (getAdapterDefinition(args.adapter)?.protocol === "acp") {
+    const { probeAcpAuthentication } = await import("./acpAuth.js");
+    try {
+      await probeAcpAuthentication({ agentId: key, adapter: args.adapter, binary: actual.path,
+        extraArgs: args.extraArgs, cwd: args.cwd,
+        env: await getFreshWindowsEnvironment({ ...process.env, ...args.env }) as Record<string, string> });
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : String(failure);
+      upsertRuntime(key, false, actual.path, actual.version, message);
+      setRuntimeUpdateState(key, "error", { error: message });
+      throw failure;
+    }
+  }
+  setRuntimeUpdateState(key, plan.alreadyCurrent ? "current" : "updated", { latestVersion: plan.targetVersion, checkedAt: new Date().toISOString() });
+  return actual;
+}
+
 interface ProcessResult {
   code: number | null;
   stdout: string;
@@ -621,10 +771,11 @@ interface ProcessResult {
 function runProcess(
   bin: string,
   args: string[],
-  timeoutMs: number
+  timeoutMs: number,
+  extraEnv?: Record<string, string>
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, NPM_CONFIG_OFFLINE: "false" };
+    const env = { ...process.env, ...extraEnv, NPM_CONFIG_OFFLINE: "false" };
     const child = spawn(bin, args, { env });
     let stdout = "";
     let stderr = "";
@@ -675,29 +826,18 @@ function isNpmManagedBinary(
   binaryPath: string | undefined,
   packageName: string
 ): boolean {
-  if (!binaryPath) return false;
-  const candidates = [binaryPath];
-  try {
-    candidates.push(fs.realpathSync(binaryPath));
-  } catch {
-    /* Windows npm shims are regular command files, not symlinks. */
-  }
-  const packagePath = `/node_modules/${packageName.toLowerCase()}/`;
-  return candidates.some((candidate) => {
-    const normalized = candidate.replace(/\\/g, "/").toLowerCase();
-    return (
-      normalized.includes(packagePath) ||
-      (process.platform === "win32" &&
-        normalized.includes("/appdata/roaming/npm/"))
-    );
-  });
+  return !!readRuntimePackage(binaryPath, packageName)?.prefix;
 }
 
-async function latestPackageVersion(packageName: string): Promise<string> {
+async function latestPackageVersion(packageName: string, extraEnv?: Record<string, string>): Promise<string> {
+  const env = await getFreshWindowsEnvironment({ ...process.env, ...extraEnv });
+  const npm = await which("npm", env as Record<string, string>);
+  if (!npm) throw new Error("Required install tool not found: npm");
   const result = await runProcess(
-    "npm",
+    npm,
     ["view", packageName, "version", "--json", "--offline=false"],
-    30_000
+    30_000,
+    env as Record<string, string>
   );
   if (result.code !== 0) {
     throw new Error(firstNonEmptyLine(result.stderr) ?? "npm version check failed");
@@ -709,27 +849,29 @@ async function latestPackageVersion(packageName: string): Promise<string> {
 
 async function installPackageVersion(
   packageName: string,
-  version: string
+  version: string,
+  binaryPath?: string
 ): Promise<void> {
-  const result = await runProcess(
-    "npm",
-    [
-      "install",
-      "-g",
-      "--force",
-      `${packageName}@${version}`,
-      "--offline=false",
-      "--no-audit",
-      "--no-fund"
-    ],
-    2 * 60 * 1000
-  );
-  if (result.code !== 0) {
-    throw new Error(
-      firstNonEmptyLine(result.stderr) ??
-        firstNonEmptyLine(result.stdout) ??
-        `${packageName} update failed`
+  const pkg = readRuntimePackage(binaryPath, packageName);
+  if (!pkg?.prefix) throw new Error("runtime_install_source_unknown");
+  const env = await getFreshWindowsEnvironment(process.env);
+  const npm = await which("npm", env as Record<string, string>);
+  if (!npm) throw new Error("Required install tool not found: npm");
+  const adapter = CODEX_UPDATE_TARGETS.find(target => target.packageName === packageName)?.adapter ?? packageName;
+  const release = acquireRuntimeInstall(adapter);
+  try {
+    const result = await runProcess(
+      npm,
+      ["install", "-g", "--force", `${packageName}@${version}`, "--prefix", pkg.prefix,
+        "--offline=false", "--no-audit", "--no-fund"],
+      2 * 60 * 1000,
+      env as Record<string, string>
     );
+    if (result.code !== 0) {
+      throw new Error(firstNonEmptyLine(result.stderr) ?? firstNonEmptyLine(result.stdout) ?? `${packageName} update failed`);
+    }
+  } finally {
+    release();
   }
 }
 
@@ -769,19 +911,13 @@ async function runCodexPackageAutoUpdate(
       return;
     }
 
+    assertRuntimeIdle(target.adapter);
     setRuntimeUpdateState(target.adapter, "updating", { latestVersion });
-    await installPackageVersion(target.packageName, latestVersion);
-    const verified = await cliCheck(target.adapter);
-    const verifiedVersion = extractSemver(verified.version);
-    if (
-      !verified.installed ||
-      !verifiedVersion ||
-      compareSemver(verifiedVersion, latest) < 0
-    ) {
-      throw new Error(
-        `${target.packageName} update completed but the new version was not detected`
-      );
-    }
+    await installPackageVersion(target.packageName, latestVersion, installed.path);
+    await verifyCliUpgrade({ adapter: target.adapter, binary: installed.path }, {
+      command: "", previousVersion: installed.version, targetVersion: latestVersion,
+      expectedBinaryPath: installed.path
+    });
     setRuntimeUpdateState(target.adapter, "updated", {
       latestVersion,
       checkedAt
@@ -856,6 +992,7 @@ async function runDshAcpAutoUpdate(): Promise<void> {
       return;
     }
 
+    assertRuntimeIdle(DSH_ACP_ADAPTER);
     setRuntimeUpdateState(DSH_ACP_ADAPTER, "updating", { latestVersion });
     // Reuses the managed-install path used by the manual "install" button in
     // Settings, which now wipes node_modules/lockfile first (see
@@ -870,12 +1007,10 @@ async function runDshAcpAutoUpdate(): Promise<void> {
       );
     }
 
-    const verified = extractSemver(readDshAcpManagedVersion(root));
-    if (!verified || compareSemver(verified, latest) < 0) {
-      throw new Error(
-        `${DSH_ACP_PACKAGE} update completed but the new version was not detected`
-      );
-    }
+    await verifyCliUpgrade({ adapter: DSH_ACP_ADAPTER }, {
+      command: "", previousVersion: current.raw, targetVersion: latestVersion,
+      expectedBinaryPath: dshAcpManagedDemoBin(getDataDir())
+    });
     setRuntimeUpdateState(DSH_ACP_ADAPTER, "updated", {
       latestVersion,
       checkedAt
@@ -902,6 +1037,7 @@ export function startDshAcpAutoUpdate(): Promise<void> {
 export async function waitForCodexToolchainAutoUpdate(
   adapter: string
 ): Promise<void> {
+  await waitForRuntimeInstall(adapter);
   if (adapter === DSH_ACP_ADAPTER) {
     await dshAcpAutoUpdatePromise;
     return;
@@ -1063,12 +1199,13 @@ function prepareDshAcpManagedInstall(): string {
 
 export function cliInstall(command: string, adapter = "custom"): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
+    let release = () => {};
     void (async () => {
+      release = acquireRuntimeInstall(adapter);
       const trimmed =
         adapter === "dsh-acp" ? prepareDshAcpManagedInstall() : command.trim();
       if (!trimmed) {
-        reject(new Error("install command required"));
-        return;
+        throw new Error("install command required");
       }
 
       const isWindows = process.platform === "win32";
@@ -1115,11 +1252,13 @@ export function cliInstall(command: string, adapter = "custom"): Promise<CliInst
       child.stdout!.on("data", (d) => (stdout += d.toString()));
       child.stderr!.on("data", (d) => (stderr += d.toString()));
       child.on("error", (err) => {
+        release();
         clearTimeout(timer);
         reportSetup("failed", err);
         reject(err);
       });
       child.on("close", (code) => {
+        release();
         clearTimeout(timer);
         if (adapter === "dsh-acp" && code === 0) {
           patchDshAcpManagedRuntime(dshAcpManagedRoot(getDataDir()));
@@ -1135,7 +1274,7 @@ export function cliInstall(command: string, adapter = "custom"): Promise<CliInst
           stderr
         });
       });
-    })().catch(reject);
+    })().catch(error => { release(); reject(error); });
   });
 }
 
@@ -1146,6 +1285,7 @@ export function cliInstallStream(
   requestId = adapter
 ): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
+    let release = () => {};
     const channel = "cli://install";
     const send = (payload: Record<string, unknown>) => {
       safeSendToWebContents(webContents, channel, { ...payload, requestId });
@@ -1170,8 +1310,8 @@ export function cliInstallStream(
         return;
       }
 
-      const installCommand =
-        adapter === "dsh-acp" ? prepareDshAcpManagedInstall() : preflight.command;
+      release = acquireRuntimeInstall(adapter);
+      const installCommand = adapter === "dsh-acp" ? prepareDshAcpManagedInstall() : preflight.command;
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =
         preflight.requiresPowerShell ||
@@ -1219,6 +1359,7 @@ export function cliInstallStream(
       ) => {
         if (settled) return;
         settled = true;
+        release();
         clearTimeout(timer);
         send({ type: "done", exitCode, failureCode, failureDetail });
         resolve({ success: exitCode === 0, exitCode, stdout, stderr });
@@ -1260,6 +1401,6 @@ export function cliInstallStream(
         );
         complete(code);
       });
-    })().catch(reject);
+    })().catch(error => { release(); reject(error); });
   });
 }

@@ -19,6 +19,7 @@ import {
   type AcpMessage
 } from "./acp.js";
 import { killProcessTree } from "./process-kill.js";
+import { waitForRuntimeInstall } from "./check.js";
 import { mergeBuiltEnv } from "./runtime.js";
 import {
   clearToolSessionsForAgent,
@@ -49,6 +50,7 @@ async function withAcpAgent<T>(
   args: CliAuthControlArgs,
   operation: (request: (message: AcpMessage) => Promise<any>) => Promise<T>
 ): Promise<T> {
+  await waitForRuntimeInstall(args.adapter);
   const cwd =
     args.adapter === "dsh-acp"
       ? ensureDshAcpCwd(args.cwd, getDataDir())

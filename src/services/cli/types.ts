@@ -418,6 +418,8 @@ export interface CliInstallResult {
   stderr: string;
 }
 
+export type { CliRuntimeUpdateRequest, CliUpgradePlan } from "../../../electron/shared/cliRuntimeUpdate";
+
 export type CliInstallFailureCode =
   | "tool_missing"
   | "node_arch_mismatch"
@@ -439,10 +441,13 @@ export interface CliRuntime {
   binaryPath?: string;
   version?: string;
   latestVersion?: string;
+  minimumVersion?: string;
+  updateCheckSupported?: boolean;
   updateStatus?:
     | "idle"
     | "checking"
     | "current"
+    | "available"
     | "updating"
     | "updated"
     | "error";

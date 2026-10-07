@@ -1,15 +1,17 @@
 import { create } from "zustand";
 
 import { cliClient } from "@/services/cli/client";
-import type { CliInstallFailureCode } from "@/services/cli/types";
+import type { CliInstallFailureCode, CliRuntimeUpdateRequest, CliUpgradePlan } from "@/services/cli/types";
 import type { CLIAdapterId } from "@/config/cliAdapters";
 
 export type CliInstallPanelState = "expanded" | "minimized";
 export type CliInstallPhase =
+  | "preparing"
   | "installing"
   | "verifying"
   | "succeeded"
   | "failed"
+  | "preparation_failed"
   | "verification_failed";
 
 export interface CliInstallJob {
@@ -24,6 +26,9 @@ export interface CliInstallJob {
   failureCode?: CliInstallFailureCode;
   failureDetail?: string;
   verificationError?: string;
+  request?: CliRuntimeUpdateRequest;
+  plan?: CliUpgradePlan;
+  verifiedVersion?: string;
   panelState: CliInstallPanelState;
 }
 
@@ -124,6 +129,9 @@ async function finishJob(
   try {
     const { useCliExecutorStore } = await import("@/store/cliExecutorStore");
     await useCliExecutorStore.getState().check(id as CLIAdapterId);
+    const job = useCliInstallStore.getState().jobs.find(job => job.id === id);
+    if (job?.request && job.plan) await cliClient.verifyUpgrade(job.request, job.plan);
+    await useCliExecutorStore.getState().refreshRuntimes();
     const runtime = useCliExecutorStore
       .getState()
       .resolve(id as CLIAdapterId)?.runtime;
@@ -138,7 +146,8 @@ async function finishJob(
               done: true,
               verificationError: runtime?.installed
                 ? undefined
-                : runtime?.lastError || "verification failed"
+                : runtime?.lastError || "verification failed",
+              verifiedVersion: runtime?.version
             }
           : j
       )
@@ -194,7 +203,7 @@ export const useCliInstallStore = create<State>((set, get) => ({
       label,
       command,
       output: "",
-      phase: "installing",
+      phase: "preparing",
       done: false,
       exitCode: null,
       panelState: "expanded"
@@ -204,32 +213,43 @@ export const useCliInstallStore = create<State>((set, get) => ({
       jobs: [...s.jobs.filter((j) => j.adapterId !== adapterId), job]
     }));
 
-    let off = () => {};
-    let ended = false;
-    try {
-      off = cliClient.installStream(adapterId, command, (event) => {
-        if (event.type === "stdout" || event.type === "stderr") {
-          pendingOutput.set(adapterId, (pendingOutput.get(adapterId) ?? "") + event.content);
-          scheduleFlush(adapterId, set);
-        } else if (event.type === "done") {
-          ended = true;
-          off();
-          unsubscribers.delete(adapterId);
-          void finishJob(
-            adapterId,
-            event.exitCode,
-            event.failureCode,
-            event.failureDetail,
-            set
-          );
-        }
-      });
-      if (ended) off();
-      else unsubscribers.set(adapterId, off);
-    } catch (error) {
-      off();
-      void finishJob(adapterId, 1, "spawn_error", String(error), set);
-    }
+    void (async () => {
+      const { useCliExecutorStore } = await import("@/store/cliExecutorStore");
+      const resolved = useCliExecutorStore.getState().resolve(adapterId as CLIAdapterId);
+      const request: CliRuntimeUpdateRequest = { adapter: resolved?.baseAdapter ?? adapterId, runtimeAdapter: adapterId,
+        binary: resolved?.binary ?? resolved?.defaultBinary,
+        env: resolved?.env, extraArgs: resolved?.extraArgs };
+      const plan: CliUpgradePlan = resolved && command.trim() === resolved.installHint?.trim() && request.adapter !== "pi-acp"
+        ? await cliClient.prepareUpgrade(request)
+        : { command, targetVersion: resolved?.runtime?.minimumVersion };
+      set(s => ({ jobs: s.jobs.map(job => job.id === adapterId ? { ...job, command: plan.command, request, plan, phase: "installing" } : job) }));
+      if (plan.alreadyCurrent) {
+        await finishJob(adapterId, 0, undefined, undefined, set);
+        return;
+      }
+      let off = () => {};
+      let ended = false;
+      try {
+        off = cliClient.installStream(request.adapter, plan.command, (event) => {
+          if (event.type === "stdout" || event.type === "stderr") {
+            pendingOutput.set(adapterId, (pendingOutput.get(adapterId) ?? "") + event.content);
+            scheduleFlush(adapterId, set);
+          } else if (event.type === "done") {
+            ended = true;
+            off();
+            unsubscribers.delete(adapterId);
+            void finishJob(adapterId, event.exitCode, event.failureCode, event.failureDetail, set);
+          }
+        });
+        if (ended) off();
+        else unsubscribers.set(adapterId, off);
+      } catch (error) {
+        off();
+        void finishJob(adapterId, 1, "spawn_error", String(error), set);
+      }
+    })().catch(error => {
+      set(s => ({ jobs: s.jobs.map(job => job.id === adapterId ? { ...job, phase: "preparation_failed", verificationError: String(error), done: true } : job) }));
+    });
   },
 
   setPanelState(id, panelState) {

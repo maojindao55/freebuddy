@@ -32,6 +32,14 @@ export {
   WHOLE_TASK_SIMILARITY_THRESHOLD
 } from "./protocol/guards.js";
 export type { DelegationEventRoleRef } from "./protocol/guards.js";
+export { buildDelegationForest, flattenDelegationForest } from "./protocol/tree.js";
+export type {
+  DelegationForest,
+  DelegationTreeNode,
+  DelegationTreeEventLike,
+  DelegationTreeWarning,
+  FlatDelegationNode
+} from "./protocol/tree.js";
 export {
   buildDelegateFollowUpTask,
   buildDelegateTaskPrompt,

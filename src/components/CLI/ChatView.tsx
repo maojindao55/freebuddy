@@ -19,7 +19,6 @@ import {
   ChevronUp,
   ExternalLink,
   Folder,
-  FolderLock,
   GitBranch,
   Laptop,
   Layers,
@@ -44,11 +43,6 @@ import { useNewTaskUiStore } from "@/store/newTaskUiStore";
 import { useProviderStore } from "@/store/providerStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useProjectStore } from "@/store/projectStore";
-import {
-  folderBaseName,
-  formatDisplayPath,
-  pathsEqual
-} from "@/utils/projectPaths";
 import { cliClient } from "@/services/cli/client";
 import {
   findMainModelConfigOption,
@@ -132,10 +126,8 @@ import {
   unprotectManagedAttachments
 } from "@/utils/managedAttachmentProtection";
 import { WorkspaceFileMentionMenu } from "./WorkspaceFileMentionMenu";
-import {
-  conversationDisplayCwd,
-  projectLabelFromCwd
-} from "./conversationProjectGrouping";
+import { ComposerWorkspaceMeta } from "./ComposerWorkspaceMeta";
+import { useComposerGitInfo } from "@/hooks/useComposerGitInfo";
 import {
   agentEntriesNeedingDetection,
   agentEntriesNeedingRefresh,
@@ -1107,17 +1099,6 @@ export function ChatView({
     [agentAvailability.available]
   );
   const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, member?.cli.adapter ?? conv?.adapter);
-  const conversationWorkspacePath = conv ? conversationDisplayCwd(conv) : "";
-  const conversationWorkspaceName = conversationWorkspacePath
-    ? projectLabelFromCwd(conversationWorkspacePath)
-    : t("chat.noWorkspace");
-  const conversationWorkspaceTitle =
-    conv?.sourceCwd && conv.cwd
-      ? t("chat.isolatedWorkspaceTooltip", {
-          source: conv.sourceCwd,
-          workspace: conv.cwd
-        })
-      : conv?.cwd;
   const hasRunningMessage = useMemo(
     () =>
       messages.some(
@@ -1263,74 +1244,11 @@ export function ChatView({
       .filter(Boolean);
     return folders.length > 0 ? folders : undefined;
   }, [conversationProject]);
-  const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
-  const [workspacePopoverStyle, setWorkspacePopoverStyle] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
-  const workspaceDetailsRef = useRef<HTMLDivElement>(null);
-  const workspaceSummaryRef = useRef<HTMLButtonElement>(null);
-
-  const closeWorkspaceDetails = useCallback(() => {
-    setWorkspaceDetailsOpen(false);
-    setWorkspacePopoverStyle(null);
-  }, []);
-
-  const toggleWorkspaceDetails = useCallback(() => {
-    setWorkspaceDetailsOpen((open) => {
-      if (open) {
-        setWorkspacePopoverStyle(null);
-        return false;
-      }
-      const anchor = workspaceSummaryRef.current;
-      if (anchor) {
-        const rect = anchor.getBoundingClientRect();
-        const width = Math.min(300, window.innerWidth - 24);
-        const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
-        setWorkspacePopoverStyle({
-          top: Math.max(12, rect.top - 8),
-          left
-        });
-      }
-      return true;
-    });
-  }, []);
-
+  const composerGitInfo = useComposerGitInfo(conv?.cwd, `${conv?.id}:${running}`);
   useEffect(() => {
-    if (!workspaceDetailsOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!workspaceDetailsRef.current?.contains(event.target as Node)) {
-        closeWorkspaceDetails();
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWorkspaceDetails();
-    };
-    const onReposition = () => {
-      const anchor = workspaceSummaryRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const width = Math.min(300, window.innerWidth - 24);
-      const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
-      setWorkspacePopoverStyle({
-        top: Math.max(12, rect.top - 8),
-        left
-      });
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", onReposition);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", onReposition);
-    };
-  }, [workspaceDetailsOpen, closeWorkspaceDetails]);
-  useEffect(() => {
-    closeWorkspaceDetails();
     setHistoryReveal(INITIAL_VISIBLE_MESSAGES);
     setLoadingEarlier(false);
-  }, [conv?.id, closeWorkspaceDetails]);
+  }, [conv?.id]);
   const newTaskMentionRoots = useMemo(() => {
     if (!newTaskProjectId) return undefined;
     const project = projects.find((entry) => entry.id === newTaskProjectId);
@@ -1345,25 +1263,6 @@ export function ChatView({
     onChange: setDraft,
     textareaRef: chatTextareaRef
   });
-  const composerWorkspaceLabel = useMemo(() => {
-    const folders = conversationMentionRoots;
-    if (folders && folders.length > 0 && conversationProject) {
-      const name =
-        conversationProject.name?.trim() ||
-        folderBaseName(conversationProject.primaryPath || conv?.cwd || folders[0]);
-      return `${name} · ${t("chat.folderCount", { count: folders.length })}`;
-    }
-    return conversationWorkspaceName;
-  }, [
-    conversationMentionRoots,
-    conversationProject,
-    conversationWorkspaceName,
-    conv?.cwd,
-    t
-  ]);
-  const composerHasProjectWorkspace =
-    (conversationMentionRoots?.length ?? 0) > 0 && !!conversationProject;
-
   const workflowPlan = useMemo<WorkflowPlan | null>(() => {
     if (!activeRun || activeRun.conversationId !== conv?.id) return null;
     try {
@@ -3203,78 +3102,12 @@ export function ChatView({
         ) : null}
         <div className="composer-context-row">
           <span>{agentDisplayName}</span>
-          <div
-            className="composer-workspace-meta"
-            ref={workspaceDetailsRef}
-            title={conversationWorkspaceTitle}
-          >
-            {composerHasProjectWorkspace ? (
-              <button
-                ref={workspaceSummaryRef}
-                type="button"
-                className={`composer-workspace-summary${workspaceDetailsOpen ? " open" : ""}`}
-                aria-expanded={workspaceDetailsOpen}
-                aria-label={t("chat.workspaceDetails")}
-                title={composerWorkspaceLabel}
-                onClick={toggleWorkspaceDetails}
-              >
-                {conv.sourceCwd ? (
-                  <FolderLock aria-hidden="true" size={12} strokeWidth={1.8} />
-                ) : (
-                  <Folder aria-hidden="true" size={12} strokeWidth={1.8} />
-                )}
-                <span>{composerWorkspaceLabel}</span>
-              </button>
-            ) : (
-              <span className="composer-workspace-context">
-                {conv.sourceCwd ? (
-                  <FolderLock size={13} strokeWidth={1.8} aria-hidden="true" />
-                ) : null}
-                <span className="composer-workspace-name">
-                  {composerWorkspaceLabel}
-                </span>
-              </span>
-            )}
-            {conv.sourceCwd ? (
-              <span className="composer-workspace-badge">
-                {t("chat.isolatedWorkspace")}
-              </span>
-            ) : null}
-            {workspaceDetailsOpen &&
-            composerHasProjectWorkspace &&
-            conversationProject &&
-            workspacePopoverStyle ? (
-              <div
-                className="composer-workspace-popover"
-                role="dialog"
-                style={{
-                  top: workspacePopoverStyle.top,
-                  left: workspacePopoverStyle.left,
-                  transform: "translateY(-100%)"
-                }}
-              >
-                <div className="composer-workspace-popover-title">
-                  {conversationProject.name}
-                </div>
-                <ul className="composer-workspace-popover-list">
-                  {conversationProject.folders.map((folder) => {
-                    const showPrimary =
-                      conversationProject.folders.length > 1 &&
-                      pathsEqual(folder, conversationProject.primaryPath);
-                    return (
-                      <li key={folder} title={folder}>
-                        <Folder aria-hidden="true" size={13} strokeWidth={1.7} />
-                        <span>{formatDisplayPath(folder)}</span>
-                        {showPrimary ? (
-                          <em>{t("chat.primaryBadge")}</em>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ) : null}
-          </div>
+          <ComposerWorkspaceMeta
+            key={conv.id}
+            conversation={conv}
+            project={conversationProject}
+            gitInfo={composerGitInfo}
+          />
         </div>
         <AttachmentTray
           attachments={pendingAttachments}

@@ -66,7 +66,7 @@ test("active agent card absorbs session config values", () => {
   assert.match(source, /sessionConfigValues\.join\(" \/ "\)/);
   assert.match(source, /<small title=\{sessionConfigSummary\}>\{sessionConfigSummary\}<\/small>/);
   assert.match(source, /workspace\.localAgent/);
-  assert.match(source, /workspace\.runState/);
+  assert.match(source, /<RunMetricsSection/);
   assert.doesNotMatch(source, /className="side-card session-config-card"/);
 });
 
@@ -91,7 +91,8 @@ test("workspace panel renders the Codex usage card from the CLI bridge", () => {
 test("Codex usage card is rendered after the primary workspace cards", () => {
   const codexCard = source.indexOf('className="side-card codex-usage-card"');
   const activeAgent = source.indexOf('className="side-card active-agent-card"');
-  const runStateCard = source.indexOf('workspace.runState');
+  const runStateCard = source.indexOf('<RunMetricsSection');
+  assert.ok(runStateCard >= 0);
   const planCard = source.indexOf('className="side-card plan-card"');
 
   assert.ok(codexCard > activeAgent);

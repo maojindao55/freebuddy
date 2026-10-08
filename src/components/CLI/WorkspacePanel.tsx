@@ -18,15 +18,9 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useProjectStore } from "@/store/projectStore";
-import { copyToClipboard } from "@/utils/clipboard";
-import {
-  folderBaseName,
-  formatDisplayPath,
-  pathsEqual,
-  shortPath
-} from "@/utils/projectPaths";
 import { AgentAvatar } from "./AgentAvatar";
 import { RunMetricsSection } from "./RunMetricsSection";
+import { SessionInfoCard } from "./SessionInfoCard";
 import { runCardElapsedMs, selectRunCardMetrics } from "./runCardMetrics";
 import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
@@ -62,8 +56,6 @@ export function WorkspacePanel(_props: { runningCount: number }) {
   const [antigravityUsage, setAntigravityUsage] = useState<AntigravityUsageResult | undefined>();
   const [antigravityUsageLoading, setAntigravityUsageLoading] = useState(false);
   const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
-  const [copiedSession, setCopiedSession] = useState(false);
-  const [copiedWorktree, setCopiedWorktree] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const clearActiveWorkflowConversation = useWorkflowStore(
     (s) => s.clearActiveConversation
@@ -103,7 +95,6 @@ export function WorkspacePanel(_props: { runningCount: number }) {
     }
     return activeDisplayCwd ? [activeDisplayCwd] : [];
   }, [activeDisplayCwd, activeProject]);
-  const isMultiRoot = mountedFolders.length > 1;
   const primaryFolder =
     activeProject?.primaryPath?.trim() ||
     activeDisplayCwd ||
@@ -347,163 +338,21 @@ export function WorkspacePanel(_props: { runningCount: number }) {
         </section>
       )}
 
-      <section className="side-card">
-        <div className="side-card-header">
-          <span>{t("workspace.runState")}</span>
-          <strong>
-            {t(`workspace.runMetrics.status.${runStatus}`, { defaultValue: t("workspace.runMetrics.status.unknown") })}
-          </strong>
-        </div>
-        <RunMetricsSection metrics={runCard} elapsedMs={durationMs} team={isTeamRun} teamRunning={isTeamLive} />
-        <dl className="compact-dl">
-          {activeProject && mountedFolders.length > 0 ? (
-            <>
-              <div>
-                <dt>{t("workspace.project")}</dt>
-                <dd title={activeProject.name}>
-                  {activeProject.name || folderBaseName(primaryFolder || "")}
-                </dd>
-              </div>
-              <div className="workspace-mounted-row">
-                <dt>{t("workspace.mountedFolders")}</dt>
-                <dd>
-                  <ul className="workspace-mounted-list">
-                    {mountedFolders.map((folder) => {
-                      const showPrimary =
-                        isMultiRoot &&
-                        primaryFolder != null &&
-                        pathsEqual(folder, primaryFolder);
-                      return (
-                        <li key={folder} title={folder}>
-                          <span>{formatDisplayPath(folder)}</span>
-                          {showPrimary ? (
-                            <em>{t("workspace.primaryFolder")}</em>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </dd>
-              </div>
-            </>
-          ) : (
-            <div>
-              <dt>{t("workspace.workspace")}</dt>
-              <dd title={activeDisplayCwd || undefined}>
-                {activeDisplayCwd
-                  ? shortPath(activeDisplayCwd)
-                  : t("workspace.notSet")}
-              </dd>
-            </div>
-          )}
-          {worktreePath ? (
-            <div className="workspace-worktree-row">
-              <dt>{t("workspace.worktree")}</dt>
-              <dd>
-                <button
-                  className="session-id-copy workspace-worktree-copy"
-                  type="button"
-                  title={t("workspace.copyWorktree", { path: worktreePath })}
-                  onClick={() => {
-                    void copyToClipboard(worktreePath).then(() => {
-                      setCopiedWorktree(true);
-                      window.setTimeout(() => setCopiedWorktree(false), 1200);
-                    });
-                  }}
-                >
-                  {copiedWorktree
-                    ? t("workspace.copied")
-                    : shortPath(worktreePath)}
-                </button>
-              </dd>
-            </div>
-          ) : null}
-          {!isTeamRun && (
-            <div>
-              <dt>{t("workspace.sessionId")}</dt>
-              <dd>
-                <button
-                  className="session-id-copy"
-                  type="button"
-                  disabled={!latestSessionId}
-                  title={
-                    latestSessionId
-                      ? t("workspace.copySession", { id: latestSessionId })
-                      : t("workspace.noSession")
-                  }
-                  onClick={() => {
-                    if (!latestSessionId) return;
-                    void copyToClipboard(latestSessionId).then(() => {
-                      setCopiedSession(true);
-                      window.setTimeout(() => setCopiedSession(false), 1200);
-                    });
-                  }}
-                >
-                  {copiedSession
-                    ? t("workspace.copied")
-                    : latestSessionId
-                      ? shortSessionId(latestSessionId)
-                      : t("workspace.notCaptured")}
-                </button>
-              </dd>
-            </div>
-          )}
-          <div>
-            <dt>{t("workspace.messages")}</dt>
-            <dd>{totalMessages}</dd>
-          </div>
-          <div>
-            <dt>{t("workspace.agentTurns")}</dt>
-            <dd>{assistantTurns}</dd>
-          </div>
-          {latestUsage?.metrics?.llmDurationMs != null && (
-            <div>
-              <dt>{t("workspace.llmDuration")}</dt>
-              <dd>{(latestUsage.metrics.llmDurationMs / 1000).toFixed(1)}s</dd>
-            </div>
-          )}
-          {(latestUsage?.metrics?.cacheHitRate != null || latestUsage?.cachedReadTokens != null) && (
-            <div>
-              <dt>{t("workspace.cacheHitRate")}</dt>
-              <dd>
-                {latestUsage?.metrics?.cacheHitRate != null
-                  ? `${Math.round(latestUsage.metrics.cacheHitRate * 100)}%`
-                  : latestUsage?.inputTokens
-                    ? `${Math.round(((latestUsage.cachedReadTokens ?? 0) / latestUsage.inputTokens) * 100)}%`
-                    : "0%"}
-                {latestUsage?.cachedReadTokens != null && latestUsage.cachedReadTokens > 0 && (
-                  <span style={{ fontSize: "11px", fontWeight: 400, marginLeft: "4px", color: "var(--fb-text-tertiary)" }}>
-                    ({formatTokens(latestUsage.cachedReadTokens)})
-                  </span>
-                )}
-              </dd>
-            </div>
-          )}
-          {latestUsage?.thoughtTokens != null && latestUsage.thoughtTokens > 0 && (
-            <div>
-              <dt>{t("workspace.thoughtTokens")}</dt>
-              <dd>{formatTokens(latestUsage.thoughtTokens)}</dd>
-            </div>
-          )}
-          {latestUsage?.contextUsed != null && (
-            <div>
-              <dt>{t("workspace.context")}</dt>
-              <dd>
-                {formatTokens(latestUsage.contextUsed)}
-                {latestUsage.contextSize != null
-                  ? ` / ${formatTokens(latestUsage.contextSize)}`
-                  : ""}
-              </dd>
-            </div>
-          )}
-          {latestUsage?.costAmount != null && (
-            <div>
-              <dt>{t("workspace.cost")}</dt>
-              <dd>{formatCost(latestUsage.costAmount, latestUsage.costCurrency)}</dd>
-            </div>
-          )}
-        </dl>
-      </section>
+      <RunMetricsSection key={`run:${activeId}`} metrics={runCard} elapsedMs={durationMs} team={isTeamRun} teamRunning={isTeamLive} status={runStatus} />
+      <SessionInfoCard
+        key={`session:${activeId}`}
+        projectName={activeProject?.name}
+        cwd={activeDisplayCwd}
+        folders={mountedFolders}
+        primaryFolder={primaryFolder}
+        worktreePath={worktreePath}
+        sessionId={latestSessionId}
+        messages={totalMessages}
+        turns={assistantTurns}
+        contextUsed={latestUsage?.contextUsed}
+        contextSize={latestUsage?.contextSize}
+        team={isTeamRun}
+      />
 
       {latestPlan &&
         latestPlan.entries.some((entry) => entry.status !== "cancelled") && (
@@ -907,11 +756,6 @@ function isPlanEntry(entry: unknown): entry is PlanEntry {
   );
 }
 
-function shortSessionId(id: string) {
-  if (id.length <= 18) return id;
-  return `${id.slice(0, 8)}\u2026${id.slice(-6)}`;
-}
-
 function formatCodexResetAt(
   resetAt: number,
   lang: string,
@@ -935,13 +779,4 @@ function formatCodexResetAt(
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
-}
-
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
-
-function formatCost(amount: number, currency?: string): string {
-  const value = amount.toFixed(amount < 0.01 ? 4 : 2);
-  return currency === "USD" ? `$${value}` : `${value} ${currency ?? ""}`.trim();
 }

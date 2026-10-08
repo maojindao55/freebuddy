@@ -28,6 +28,7 @@ import { useTerminalStore } from "@/store/terminalStore";
 import { useFileDiffStore } from "@/store/fileDiffStore";
 import { splitAutolinkSegments } from "@/utils/autolink";
 import { copyToClipboard } from "@/utils/clipboard";
+import { formatTokenCount } from "@/utils/tokenCount";
 import { prepareToolResultText } from "@/utils/streamMedia";
 import {
   attachmentPreviewUrl,
@@ -102,10 +103,6 @@ function resolveImageSrc(raw: string, cwd = ""): string {
   }
   const abs = resolveLocalFilePath(value, cwd);
   return abs ? attachmentPreviewUrl(abs) : "";
-}
-
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 function formatCost(amount: number, currency?: string): string {
@@ -1362,8 +1359,8 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
     case "usage": {
       const hasContext =
         item.contextUsed != null || item.contextSize != null;
-      const used = item.contextUsed != null ? formatTokens(item.contextUsed) : "–";
-      const total = item.contextSize != null ? ` / ${formatTokens(item.contextSize)}` : "";
+      const used = item.contextUsed != null ? formatTokenCount(item.contextUsed) : "–";
+      const total = item.contextSize != null ? ` / ${formatTokenCount(item.contextSize)}` : "";
       return (
         <div className="stream-meta">
           <span className="stream-label">{t("stream.usageLabel")}</span>

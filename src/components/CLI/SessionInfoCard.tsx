@@ -3,6 +3,7 @@ import { Check, ChevronDown, Copy, Folder } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { copyToClipboard } from "@/utils/clipboard";
 import { folderBaseName, formatDisplayPath, pathsEqual, shortPath } from "@/utils/projectPaths";
+import { formatTokenCount } from "@/utils/tokenCount";
 import { validMetric } from "./runCardMetrics";
 
 export function SessionInfoCard({ projectName, cwd, folders, primaryFolder, worktreePath, sessionId, messages, turns, contextUsed, contextSize, team = false }: {
@@ -32,19 +33,23 @@ export function SessionInfoCard({ projectName, cwd, folders, primaryFolder, work
     catch { setCopyError(true); }
   };
   const root = primaryFolder || cwd || folders[0];
+  const projectTitle = projectName || (root ? folderBaseName(root) || root : "");
   const used = team ? undefined : validMetric(contextUsed);
   const size = team ? undefined : validMetric(contextSize);
   const percent = used !== undefined && size !== undefined && size > 0 ? used / size * 100 : undefined;
-  const number = new Intl.NumberFormat(i18n.language, { notation: "compact", maximumFractionDigits: 2 });
   const percentLabel = percent === undefined ? "—" : new Intl.NumberFormat(i18n.language, { style: "percent", maximumFractionDigits: 1 }).format(percent / 100);
   const contextLabel = used === undefined && size === undefined ? t("workspace.runMetrics.notReported") :
-    `${used === undefined ? "—" : number.format(used)}${size !== undefined ? ` / ${number.format(size)}` : ""} Token`;
+    `${used === undefined ? "—" : formatTokenCount(used)}${size !== undefined ? ` / ${formatTokenCount(size)}` : ""} Token`;
 
   return <section className="side-card session-info-card" aria-labelledby={titleId}>
     <header className="workspace-overview-heading"><h2 id={titleId}>{t("workspace.sessionInfo")}</h2></header>
-    <div className="workspace-overview-project">
+    <div className={`workspace-overview-project${projectTitle ? "" : " is-empty"}`}>
       <span className="workspace-overview-folder-icon"><Folder size={17} aria-hidden="true" /></span>
-      <div><strong title={projectName || root}>{projectName || folderBaseName(root || "") || t("workspace.notSet")}</strong><p title={root}>{root ? formatDisplayPath(root) : t("workspace.notSet")}</p></div>
+      {projectTitle ? (
+        <div><strong title={projectName || root}>{projectTitle}</strong>{root && <p title={root}>{formatDisplayPath(root)}</p>}</div>
+      ) : (
+        <p>{t("workspace.noWorkingDirectory")}</p>
+      )}
     </div>
     {folders.length > 1 && <div className="workspace-overview-mounts">
       <p>{t("workspace.mountedFolders")}</p>

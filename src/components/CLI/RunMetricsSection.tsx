@@ -1,7 +1,8 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Circle, Info, LoaderCircle, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatDuration } from "@/utils/duration";
+import { formatTokenCount } from "@/utils/tokenCount";
 import { validMetric, type selectRunCardMetrics } from "./runCardMetrics";
 
 type RunCard = ReturnType<typeof selectRunCardMetrics>;
@@ -14,12 +15,13 @@ function DurationValue({ ms }: { ms: number }) {
     )}</>;
 }
 
-export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunning = false, status }: {
+export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunning = false, status, identity }: {
   metrics: RunCard;
   elapsedMs?: number;
   team?: boolean;
   teamRunning?: boolean;
   status?: string;
+  identity?: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
   const [showSpeedHelp, setShowSpeedHelp] = useState(false);
@@ -32,8 +34,7 @@ export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunnin
   const StatusIcon = runStatus === "done" ? Check :
     runStatus === "failed" || runStatus === "timed-out" ? X :
     runStatus === "running" || runStatus === "preparing" ? LoaderCircle : Circle;
-  const tokenCount = (value: number | undefined) => value === undefined ? "—" :
-    new Intl.NumberFormat(i18n.language, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+  const exactCount = (value: number | undefined) => value === undefined ? "—" : new Intl.NumberFormat(i18n.language).format(value);
   const firstTextMs = team ? undefined : metrics.firstTextMs;
   const firstText = team || !exists ? "—" : firstTextMs !== undefined ? <DurationValue ms={firstTextMs} /> :
     metrics.summary?.firstTextUnavailable || metrics.status === "unknown" ? t(`${key}.unavailable`) :
@@ -57,8 +58,12 @@ export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunnin
   const llmDurationMs = validMetric(usage?.metrics?.llmDurationMs);
   const cost = validMetric(usage?.costAmount);
 
+  const hasSpeed = !team && metrics.tokensPerSecond !== undefined;
+  const hasTokens = !team && (metrics.inputTokens !== undefined || metrics.outputTokens !== undefined);
+
   return (
     <section className="side-card run-overview-card" aria-labelledby={titleId}>
+      {identity && <div className="run-overview-identity">{identity}</div>}
       <header className="workspace-overview-heading">
         <h2 id={titleId}>{t(`${key}.${!exists ? "noRun" : team ? "teamRun" : running ? "currentRun" : "lastRun"}`)}</h2>
         <span className={`run-metrics-status is-${runStatus}`}>
@@ -66,42 +71,39 @@ export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunnin
           {t(`${key}.status.${runStatus}`, { defaultValue: t(`${key}.status.unknown`) })}
         </span>
       </header>
-      <dl className="run-metrics-timings">
+      <dl className="run-metrics-grid">
         <div title={t(`${key}.${team ? "teamDurationHint" : "durationHint"}`)}>
-          <dt>{t(`${key}.duration`)}</dt>
-          <dd>{elapsedMs === undefined ? "—" : <DurationValue ms={elapsedMs} />}</dd>
+          <dt><span>{t(`${key}.duration`)}</span></dt>
+          <dd className={`run-metrics-value${elapsedMs === undefined ? " is-unavailable" : ""}`}>{elapsedMs === undefined ? "—" : <DurationValue ms={elapsedMs} />}</dd>
         </div>
         <div title={t(`${key}.${team ? "teamHint" : "firstTextHint"}`)}>
-          <dt>{t(`${key}.firstText`)}</dt>
-          <dd className={firstTextMs === undefined ? "is-unavailable" : undefined}>{firstText}</dd>
+          <dt><span>{t(`${key}.firstText`)}</span></dt>
+          <dd className={`run-metrics-value${firstTextMs === undefined ? " is-unavailable" : ""}`}>{firstText}</dd>
+        </div>
+        <div>
+          <dt>
+            <span>{t(`${key}.${metrics.speedSource === "call-average" && !team ? "throughput" : "speed"}`)}</span>
+            <button type="button" className="run-metrics-info" title={speedHint} aria-label={t(`${key}.speedDetails`)} aria-expanded={showSpeedHelp} aria-controls={helpId} onClick={() => setShowSpeedHelp(!showSpeedHelp)}>
+              <Info size={13} aria-hidden="true" />
+            </button>
+          </dt>
+          <dd className={`run-metrics-value${hasSpeed ? "" : " is-unavailable"}`}>{hasSpeed ? <>{metrics.tokensPerSecond!.toFixed(1)}<span className="run-metrics-unit"> tok/s</span></> : team ? "—" : speedMissing}</dd>
+          {hasSpeed && <dd className="run-metrics-caption" title={speedHint}>{speedBasis}</dd>}
+        </div>
+        <div title={t(`${key}.${team ? "teamHint" : "tokensHint"}`)}>
+          <dt><span>{t("workspace.tokens")}</span></dt>
+          <dd className={`run-metrics-value${hasTokens ? " run-metrics-pair" : " is-unavailable"}`} title={hasTokens ? t("workspace.tokenBreakdown", { input: exactCount(metrics.inputTokens), output: exactCount(metrics.outputTokens) }) : undefined}>{hasTokens ? `${formatTokenCount(metrics.inputTokens)} / ${formatTokenCount(metrics.outputTokens)}` : team ? "—" : missing}</dd>
+          {hasTokens && <dd className="run-metrics-caption">{t(`${key}.input`)} / {t(`${key}.output`)}</dd>}
         </div>
       </dl>
-      <div className="run-metrics-throughput">
-        <div className="run-metrics-label">
-          {t(`${key}.${metrics.speedSource === "call-average" && !team ? "throughput" : "speed"}`)}
-          <button type="button" className="run-metrics-info" title={speedHint} aria-label={t(`${key}.speedDetails`)} aria-expanded={showSpeedHelp} aria-controls={helpId} onClick={() => setShowSpeedHelp(!showSpeedHelp)}>
-            <Info size={13} aria-hidden="true" />
-          </button>
-        </div>
-        <div className="run-metrics-speed-value">
-          {team ? "—" : metrics.tokensPerSecond !== undefined ? <>
-            {metrics.tokensPerSecond.toFixed(1)}<span className="run-metrics-unit"> tok/s</span>
-            <small className="run-metrics-basis" title={speedHint}>{speedBasis}</small>
-          </> : <span className="run-metrics-pending">{speedMissing}</span>}
-        </div>
-      </div>
       <p className="run-metrics-help" id={helpId} hidden={!showSpeedHelp}>{speedHint}</p>
-      <dl className="run-metrics-tokens" aria-label={t(`${key}.tokens`)} title={t(`${key}.${team ? "teamHint" : "tokensHint"}`)}>
-        <div><dt>{t(`${key}.input`)} <span>Token</span></dt><dd>{team ? "—" : tokenCount(metrics.inputTokens)}</dd></div>
-        <div><dt>{t(`${key}.output`)} <span>Token</span></dt><dd>{team ? "—" : tokenCount(metrics.outputTokens)}</dd></div>
-      </dl>
-      {team ? <p className="run-metrics-note">{t(`${key}.teamHint`)}</p> : exists && metrics.inputTokens === undefined && metrics.outputTokens === undefined && <p className="run-metrics-note">{missing}</p>}
+      {team && <p className="run-metrics-note">{t(`${key}.teamHint`)}</p>}
       <details className="workspace-overview-disclosure">
         <summary><span>{t(`${key}.details`)}</span><span className="workspace-overview-disclosure-hint">{t(`${key}.detailsHint`)}</span><ChevronDown size={14} aria-hidden="true" /></summary>
         <div className="workspace-overview-details">
           <dl className="workspace-overview-detail-list">
-            <div><dt>{t("workspace.cacheHitRate")}</dt><dd>{cacheHitRate === undefined ? "—" : `${Math.round(cacheHitRate * 100)}%`}{cachedReadTokens !== undefined && cachedReadTokens > 0 && <span className="run-metrics-cached"> ({tokenCount(cachedReadTokens)})</span>}</dd></div>
-            <div><dt>{t("workspace.thoughtTokens")}</dt><dd>{tokenCount(thoughtTokens)}</dd></div>
+            <div><dt>{t("workspace.cacheHitRate")}</dt><dd>{cacheHitRate === undefined ? "—" : `${Math.round(cacheHitRate * 100)}%`}{cachedReadTokens !== undefined && cachedReadTokens > 0 && <span className="run-metrics-cached"> ({formatTokenCount(cachedReadTokens)})</span>}</dd></div>
+            <div><dt>{t("workspace.thoughtTokens")}</dt><dd>{formatTokenCount(thoughtTokens)}</dd></div>
             {!team && metrics.reportedTtftMs !== undefined && <div title={t(`${key}.reportedTtftHint`)}><dt>{t(`${key}.reportedTtft`)}</dt><dd><DurationValue ms={metrics.reportedTtftMs} /></dd></div>}
             {llmDurationMs !== undefined && <div><dt>{t("workspace.llmDuration")}</dt><dd><DurationValue ms={llmDurationMs} /></dd></div>}
             {cost !== undefined && <div><dt>{t("workspace.cost")}</dt><dd>{new Intl.NumberFormat(i18n.language, { maximumFractionDigits: cost < 0.01 ? 4 : 2, minimumFractionDigits: 2 }).format(cost)}{usage?.costCurrency && ` ${usage.costCurrency}`}</dd></div>}

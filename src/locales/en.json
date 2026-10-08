@@ -969,6 +969,7 @@
     "worktree": "Worktree",
     "copyWorktree": "Copy {{path}}",
     "notSet": "Not set",
+    "noWorkingDirectory": "No working directory",
     "sessionId": "Session ID",
     "copySession": "Copy {{id}}",
     "noSession": "No session captured yet",

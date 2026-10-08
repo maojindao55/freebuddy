@@ -313,32 +313,24 @@ export function WorkspacePanel(_props: { runningCount: number }) {
         <DelegationTeamCard conversationId={activeId} />
       ) : null}
 
-      {isTeamRun ? null : (
-        <section className="side-card active-agent-card">
-          <div className="side-card-header">
-            <span>{t("workspace.activeAgent")}</span>
-            <strong>{t(`status.${status}`)}</strong>
+      <RunMetricsSection key={`run:${activeId}`} metrics={runCard} elapsedMs={durationMs} team={isTeamRun} teamRunning={isTeamLive} status={runStatus} identity={isTeamRun ? undefined : (
+        <div className="agent-lockup">
+          <AgentAvatar
+            adapter={active?.adapter}
+            agentId={active?.agentId}
+            className="agent-avatar"
+            fallback={
+              <span>
+                {(active ? activeAgentName : "FB").slice(0, 2).toUpperCase()}
+              </span>
+            }
+          />
+          <div>
+            <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
+            <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
           </div>
-          <div className="agent-lockup">
-            <AgentAvatar
-              adapter={active?.adapter}
-              agentId={active?.agentId}
-              className="agent-avatar"
-              fallback={
-                <span>
-                  {(active ? activeAgentName : "FB").slice(0, 2).toUpperCase()}
-                </span>
-              }
-            />
-            <div>
-              <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
-              <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <RunMetricsSection key={`run:${activeId}`} metrics={runCard} elapsedMs={durationMs} team={isTeamRun} teamRunning={isTeamLive} status={runStatus} />
+        </div>
+      )} />
       <SessionInfoCard
         key={`session:${activeId}`}
         projectName={activeProject?.name}

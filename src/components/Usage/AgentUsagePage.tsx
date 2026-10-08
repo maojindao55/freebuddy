@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { cliClient } from "@/services/cli/client";
+import { formatTokenCount } from "@/utils/tokenCount";
 import type {
   AgentModelUsage,
   AgentUsagePeriod,
@@ -133,14 +134,6 @@ function sumUsageRows(rows: AgentModelUsage[]): UsageTotals {
     },
     { input: 0, output: 0, cache: 0, reasoning: 0, messages: 0, total: 0 }
   );
-}
-
-function formatTokens(value: number, locale: string): string {
-  if (value < 1_000) return new Intl.NumberFormat(locale).format(value);
-  return new Intl.NumberFormat(locale, {
-    notation: "compact",
-    maximumFractionDigits: value < 100_000 ? 1 : 0
-  }).format(value);
 }
 
 function formatExact(value: number, locale: string): string {
@@ -400,12 +393,12 @@ function UsageTrend({
         <div className="usage-trend-summary">
           <span>
             {t(`usage.trendAverage.${granularity}`)}
-            <strong title={formatExact(average, locale)}>{formatTokens(average, locale)}</strong>
+            <strong title={formatExact(average, locale)}>{formatTokenCount(average)}</strong>
           </span>
           <span>
             {t(`usage.trendPeak.${granularity}`)}
             <strong title={formatExact(peak.totalTokens, locale)}>
-              {formatTokens(peak.totalTokens, locale)}
+              {formatTokenCount(peak.totalTokens)}
             </strong>
           </span>
         </div>
@@ -413,15 +406,15 @@ function UsageTrend({
       <div className="usage-trend-active-detail" aria-live="polite">
         <strong>{formatBucket(activePoint.key)}</strong>
         <span>{t("usage.trendTotal")}</span>
-        <b>{formatTokens(activePoint.totalTokens, locale)}</b>
-        <span>{t("usage.inputShort")} {formatTokens(activePoint.inputTokens, locale)}</span>
-        <span>{t("usage.outputShort")} {formatTokens(activePoint.outputTokens, locale)}</span>
-        <span>{t("usage.cacheShort")} {formatTokens(cacheTokens, locale)}</span>
+        <b>{formatTokenCount(activePoint.totalTokens)}</b>
+        <span>{t("usage.inputShort")} {formatTokenCount(activePoint.inputTokens)}</span>
+        <span>{t("usage.outputShort")} {formatTokenCount(activePoint.outputTokens)}</span>
+        <span>{t("usage.cacheShort")} {formatTokenCount(cacheTokens)}</span>
       </div>
       <div className="usage-trend-chart-shell">
         <div className="usage-trend-y-axis" aria-hidden="true">
-          <span>{formatTokens(maximum, locale)}</span>
-          <span>{formatTokens(Math.round(maximum / 2), locale)}</span>
+          <span>{formatTokenCount(maximum)}</span>
+          <span>{formatTokenCount(Math.round(maximum / 2))}</span>
           <span>0</span>
         </div>
         <div className="usage-trend-scroll">
@@ -891,23 +884,23 @@ export function AgentUsagePage() {
         <article className="usage-metric-card primary">
           <span className="usage-metric-label">{t("usage.totalTokens")}</span>
           <strong title={formatExact(totals.total, locale)}>
-            {formatTokens(totals.total, locale)}
+            {formatTokenCount(totals.total)}
           </strong>
           <small>{t("usage.totalTokensHint")}</small>
         </article>
         <article className="usage-metric-card">
           <span className="usage-metric-label">{t("usage.inputTokens")}</span>
           <strong title={formatExact(totals.input, locale)}>
-            {formatTokens(totals.input, locale)}
+            {formatTokenCount(totals.input)}
           </strong>
           <small>{t("usage.messages", { count: formatExact(totals.messages, locale) })}</small>
         </article>
         <article className="usage-metric-card">
           <span className="usage-metric-label">{t("usage.outputTokens")}</span>
           <strong title={formatExact(totals.output, locale)}>
-            {formatTokens(totals.output, locale)}
+            {formatTokenCount(totals.output)}
           </strong>
-          <small>{t("usage.reasoningTokens", { count: formatTokens(totals.reasoning, locale) })}</small>
+          <small>{t("usage.reasoningTokens", { count: formatTokenCount(totals.reasoning) })}</small>
         </article>
         <article className="usage-metric-card">
           <span className="usage-metric-label">{t("usage.attributedSessions")}</span>
@@ -1067,7 +1060,7 @@ export function AgentUsagePage() {
                         <span className="usage-agent-line">
                           <strong>{displayAgentName(agent)}</strong>
                           <b title={formatExact(agent.totalTokens, locale)}>
-                            {formatTokens(agent.totalTokens, locale)} / {agentViewTotals.total
+                            {formatTokenCount(agent.totalTokens)} / {agentViewTotals.total
                               ? Math.round((agent.totalTokens / agentViewTotals.total) * 100)
                               : 0}%
                           </b>
@@ -1116,7 +1109,7 @@ export function AgentUsagePage() {
                           <div>
                             <span>{item.label}</span>
                             <strong title={formatExact(item.value, locale)}>
-                              {formatTokens(item.value, locale)}
+                              {formatTokenCount(item.value)}
                             </strong>
                           </div>
                           <progress
@@ -1169,7 +1162,7 @@ export function AgentUsagePage() {
                     <span className="usage-model-rollup-line">
                       <strong title={model.modelId}>{model.modelId}</strong>
                       <b title={formatExact(model.totalTokens, locale)}>
-                        {formatTokens(model.totalTokens, locale)} / {modelViewTotal
+                        {formatTokenCount(model.totalTokens)} / {modelViewTotal
                           ? Math.round((model.totalTokens / modelViewTotal) * 100)
                           : 0}%
                       </b>
@@ -1250,16 +1243,16 @@ export function AgentUsagePage() {
                         <td><span className="usage-provider-pill">{row.providerId}</span></td>
                         <td className="numeric">{formatExact(row.sessionCount, locale)}</td>
                         <td className="numeric" title={formatExact(row.inputTokens, locale)}>
-                          {formatTokens(row.inputTokens, locale)}
+                          {formatTokenCount(row.inputTokens)}
                         </td>
                         <td className="numeric" title={formatExact(row.outputTokens, locale)}>
-                          {formatTokens(row.outputTokens, locale)}
+                          {formatTokenCount(row.outputTokens)}
                         </td>
                         <td className="numeric" title={formatExact(row.cacheReadTokens + row.cacheWriteTokens, locale)}>
-                          {formatTokens(row.cacheReadTokens + row.cacheWriteTokens, locale)}
+                          {formatTokenCount(row.cacheReadTokens + row.cacheWriteTokens)}
                         </td>
                         <td className="numeric total" title={formatExact(rowTotal(row), locale)}>
-                          {formatTokens(rowTotal(row), locale)}
+                          {formatTokenCount(rowTotal(row))}
                         </td>
                       </tr>
                     ))}

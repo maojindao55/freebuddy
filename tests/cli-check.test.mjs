@@ -164,6 +164,20 @@ test("dsh-acp install command matches standalone deepseek-harness-acp package", 
   assert.equal(prefixedMac.includes("@deepseek-ai/dsh-bash-local"), false);
 });
 
+test("managed DSH installs pin a checked version and refresh cached registry metadata", () => {
+  for (const platform of ["darwin", "linux", "win32"]) {
+    const command = dshAcpInstallCommand({ prefix: "/tmp/free buddy", platform, version: "0.1.31" });
+    assert.match(command, /deepseek-harness-acp@0\.1\.31(?:\s|$)/);
+    assert.match(command, /--offline=false/);
+    assert.match(command, /--prefer-online/);
+    assert.equal(command.includes(" -g "), false);
+    assert.equal(command.includes("@deepseek-ai/dsh-bash-local@next"), platform === "win32");
+  }
+  assert.match(dshAcpInstallCommand({ prefix: "/tmp/dsh" }), /deepseek-harness-acp@latest/);
+  assert.match(dshAcpInstallCommand({ prefix: "/tmp/dsh", version: "0.2.0-rc.1" }), /deepseek-harness-acp@0\.2\.0-rc\.1/);
+  assert.throws(() => dshAcpInstallCommand({ version: "0.1.31; echo injected" }), /Invalid.*target version/);
+});
+
 test("dsh-acp npm installs skip koffi rebuild scripts", () => {
   const env = applyDshAcpNpmInstallEnv("dsh-acp", { PATH: "/usr/bin" });
   assert.equal(env.npm_config_ignore_scripts, "true");
@@ -291,5 +305,3 @@ test("dshAcpCompositionReady validates required plugins in cordis.yml", () => {
 
   assert.equal(dshAcpCompositionReady(bin, cordisYaml), true);
 });
-
-

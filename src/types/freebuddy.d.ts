@@ -168,7 +168,8 @@ declare global {
     installStream(
       adapter: string,
       command: string,
-      cb: (event: CliInstallEvent) => void
+      cb: (event: CliInstallEvent) => void,
+      targetVersion?: string
     ): () => void;
 
     run(args: CliRunArgs): Promise<{ sessionId: string }>;

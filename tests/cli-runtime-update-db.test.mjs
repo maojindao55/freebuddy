@@ -14,7 +14,8 @@ try {
   new Database(":memory:").close();
 } catch { bindingAvailable = false; }
 const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
-const { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstallStream, listRuntimes, recordRuntimeAgentVersion, waitForRuntimeInstall } = await import("../dist-electron/cli/check.js");
+const { app: testElectronApp } = await import("electron");
+const { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstallStream, startDshAcpAutoUpdate, listRuntimes, recordRuntimeAgentVersion, waitForRuntimeInstall } = await import("../dist-electron/cli/check.js");
 // Process fixtures use executable symlinks. The Windows shim identity is
 // covered separately by cli-runtime-update.test.mjs on every platform.
 const skip = !bindingAvailable || process.platform === "win32";
@@ -132,4 +133,89 @@ test("shared installation blocks a second installer and defers runtime checks an
     fs.writeFileSync(release, "");
     await installation;
   }
+});
+
+// Bare package requests deliberately resolve to the stale cached version.
+// Only an explicit version/latest request can advance this managed runtime.
+function writeDshPackage(root, version) {
+  const directory = path.join(root, "node_modules", "deepseek-harness-acp");
+  fs.mkdirSync(path.join(directory, "lib"), { recursive: true });
+  fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
+    name: "deepseek-harness-acp", type: "module", version,
+    dependencies: { "@deepseek-ai/dsh-base": "0.1.6-alpha.2" }
+  }));
+  fs.writeFileSync(path.join(directory, "lib", "bin.js"), `import fs from 'node:fs';
+import readline from 'node:readline';
+const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url)));
+readline.createInterface({input:process.stdin}).on('line',line=>{
+  const r=JSON.parse(line);
+  if(r.method==='initialize') console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result:{protocolVersion:1,agentInfo:{name:pkg.name,version:pkg.version},agentCapabilities:{}}}));
+});`);
+  for (const name of ["dsh-base", "dsh-acp", "dsh-app-boot"]) {
+    const plugin = path.join(root, "node_modules", "@deepseek-ai", name);
+    fs.mkdirSync(plugin, { recursive: true });
+    fs.writeFileSync(path.join(plugin, "package.json"), "{}");
+  }
+}
+
+function setupDsh(t) {
+  const fixture = setup(t);
+  const previousGetPath = testElectronApp.getPath;
+  testElectronApp.getPath = () => fixture.root;
+  const previousShell = process.env.SHELL;
+  // Keep the mock npm on PATH for the non-streaming automatic installer.
+  const shell = path.join(fixture.root, "test-shell");
+  fs.writeFileSync(shell, '#!/bin/sh\nexec /bin/sh -c "$2"\n', { mode: 0o755 });
+  process.env.SHELL = shell;
+  t.after(() => {
+    testElectronApp.getPath = previousGetPath;
+    if (previousShell === undefined) delete process.env.SHELL;
+    else process.env.SHELL = previousShell;
+  });
+  const managed = path.join(fixture.root, "freebuddy", "runtimes", "dsh-acp");
+  writeDshPackage(managed, "0.1.27");
+  fs.writeFileSync(path.join(managed, "package.json"), JSON.stringify({ dependencies: { "deepseek-harness-acp": "^0.1.27" } }));
+  fs.writeFileSync(path.join(managed, "package-lock.json"), "{}");
+  const captured = path.join(fixture.root, "npm-args.json");
+  fs.writeFileSync(path.join(fixture.root, "npm-bin", "npm.mjs"), `import fs from 'node:fs'; import path from 'node:path';
+${writeDshPackage.toString()}
+const args=process.argv.slice(2);
+if(args[0]==='view') console.log(JSON.stringify('0.1.31'));
+else if(args[0]==='install') {
+  const prefix=args[args.indexOf('--prefix')+1];
+  if(prefix!==${JSON.stringify(managed)}) throw new Error('wrong managed destination');
+  fs.writeFileSync(${JSON.stringify(captured)},JSON.stringify(args));
+  const spec=args.find(value=>value.startsWith('deepseek-harness-acp@'));
+  const version=spec?.split('@')[1];
+  writeDshPackage(prefix,version==='latest'?'0.1.31':version||'0.1.27');
+} else throw new Error('unexpected npm command');`);
+  return { managed, captured, request: { adapter: "dsh-acp", cwd: fixture.root } };
+}
+
+for (const automatic of [false, true]) test(`DSH ${automatic ? "automatic" : "manual streaming"} upgrade installs the checked target despite stale metadata`, { skip }, async t => {
+  const { managed, captured, request } = setupDsh(t);
+  assert.equal((await cliCheck(request.adapter)).version, "0.1.27");
+  if (automatic) {
+    await startDshAcpAutoUpdate();
+  } else {
+    const plan = await prepareCliUpgrade(request);
+    assert.equal(plan.targetVersion, "0.1.31");
+    assert.match(plan.command, /deepseek-harness-acp@0\.1\.31/);
+    assert.ok(plan.command.includes(managed));
+    await assert.rejects(cliInstallStream(plan.command, null, request.adapter, "invalid", "0.1.31; echo unsafe"), /Invalid.*target version/);
+    assert.equal((await cliCheck(request.adapter)).version, "0.1.27", "invalid input must not remove the working install");
+    const installed = await cliInstallStream(plan.command, null, request.adapter, "dsh-upgrade", plan.targetVersion);
+    assert.equal(installed.success, true, installed.stderr);
+    const verified = await verifyCliUpgrade(request, plan);
+    assert.equal(verified.version, "0.1.31");
+    assert.equal(verified.path, plan.expectedBinaryPath);
+  }
+  const args = JSON.parse(fs.readFileSync(captured));
+  assert.ok(args.includes("deepseek-harness-acp@0.1.31"));
+  assert.ok(args.includes("--offline=false"));
+  assert.ok(args.includes("--prefer-online"));
+  const runtime = listRuntimes().find(runtime => runtime.adapter === request.adapter);
+  assert.equal(runtime.version, "0.1.31");
+  assert.equal(runtime.updateStatus, "updated", runtime.lastUpdateError);
+  assert.equal(runtime.binaryPath, path.join(managed, "node_modules", "deepseek-harness-acp", "lib", "bin.js"));
 });

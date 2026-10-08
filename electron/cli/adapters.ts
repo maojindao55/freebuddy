@@ -1299,13 +1299,19 @@ export function dshAcpInstallCommand(options?: {
   yamlText?: string;
   prefix?: string;
   platform?: NodeJS.Platform;
+  version?: string;
 }): string {
+  if (options?.version && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(options.version)) {
+    throw new Error("Invalid DeepSeek Harness target version");
+  }
   const isWin = (options?.platform ?? process.platform) === "win32";
   const target = options?.prefix
     ? `--prefix ${quoteForShell(options.prefix)}`
     : "-g";
   const extra = isWin ? " @deepseek-ai/dsh-bash-local@next" : "";
-  return `npm install ${target} deepseek-harness-acp${extra}`;
+  const version = options?.version || (options?.prefix ? "latest" : undefined);
+  const online = options?.prefix ? " --offline=false --prefer-online" : "";
+  return `npm install ${target} deepseek-harness-acp${version ? `@${version}` : ""}${extra}${online}`;
 }
 
 export function hasExplicitToolSessionArg(

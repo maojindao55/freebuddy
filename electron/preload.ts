@@ -83,7 +83,8 @@ const cli = {
   installStream: (
     adapter: string,
     command: string,
-    cb: (event: CliInstallEvent) => void
+    cb: (event: CliInstallEvent) => void,
+    targetVersion?: string
   ): (() => void) => {
     const channel = "cli://install";
     const requestId = nextCliInstallRequestId();
@@ -94,7 +95,7 @@ const cli = {
       cb(event);
     };
     ipcRenderer.on(channel, handler);
-    ipcRenderer.invoke("cli:installStream", { adapter, command, requestId }).catch((err) => {
+    ipcRenderer.invoke("cli:installStream", { adapter, command, requestId, targetVersion }).catch((err) => {
       cb({ type: "stderr", content: String(err) });
       cb({ type: "done", exitCode: 1, failureCode: "spawn_error", failureDetail: String(err) });
     });

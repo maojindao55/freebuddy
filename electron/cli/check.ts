@@ -727,6 +727,7 @@ export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<
     // The DeepSeek installer also migrates legacy/global installs into the
     // application-managed standalone runtime. Verify that destination.
     plan.expectedBinaryPath = path.join(dshAcpManagedRoot(getDataDir()), "node_modules", policy.packageName, "lib", "bin.js");
+    plan.command = dshAcpInstallCommand({ prefix: dshAcpManagedRoot(getDataDir()), version: plan.targetVersion });
   } else {
     const pkg = readRuntimePackage(runtime?.binaryPath, policy.packageName);
     if (runtime?.installed && !pkg?.prefix) throw new Error("runtime_install_source_unknown");
@@ -998,7 +999,7 @@ async function runDshAcpAutoUpdate(): Promise<void> {
     // Settings, which now wipes node_modules/lockfile first (see
     // cleanDshAcpManagedNodeModules) so sibling packages published under the
     // same floating alpha tag can't drift out of sync with each other.
-    const result = await cliInstall("", DSH_ACP_ADAPTER);
+    const result = await cliInstall("", DSH_ACP_ADAPTER, latestVersion);
     if (!result.success) {
       throw new Error(
         firstNonEmptyLine(result.stderr) ??
@@ -1187,26 +1188,26 @@ async function removeDshAcpWindowsResidue(
     .catch(() => undefined);
 }
 
-function prepareDshAcpManagedInstall(): string {
+function prepareDshAcpManagedInstall(): void {
   // Wipe any existing node_modules/lockfile first so npm re-resolves every
   // package from scratch instead of reusing a stale sibling dependency (see
   // cleanDshAcpManagedNodeModules for why that matters for dsh-acp).
   cleanDshAcpManagedNodeModules(dshAcpManagedRoot(getDataDir()));
   const root = syncDshAcpManagedConfig(getDataDir());
   cleanupLegacyDshAcpManagedFiles(root);
-  return dshAcpInstallCommand({ prefix: root });
 }
 
-export function cliInstall(command: string, adapter = "custom"): Promise<CliInstallResult> {
+export function cliInstall(command: string, adapter = "custom", targetVersion?: string): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
     let release = () => {};
     void (async () => {
-      release = acquireRuntimeInstall(adapter);
       const trimmed =
-        adapter === "dsh-acp" ? prepareDshAcpManagedInstall() : command.trim();
+        adapter === "dsh-acp" ? dshAcpInstallCommand({ prefix: dshAcpManagedRoot(getDataDir()), version: targetVersion }) : command.trim();
       if (!trimmed) {
         throw new Error("install command required");
       }
+      release = acquireRuntimeInstall(adapter);
+      if (adapter === "dsh-acp") prepareDshAcpManagedInstall();
 
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =
@@ -1282,7 +1283,8 @@ export function cliInstallStream(
   command: string,
   webContents?: Electron.WebContents | null,
   adapter = "custom",
-  requestId = adapter
+  requestId = adapter,
+  targetVersion?: string
 ): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
     let release = () => {};
@@ -1291,7 +1293,9 @@ export function cliInstallStream(
       safeSendToWebContents(webContents, channel, { ...payload, requestId });
     };
     void (async () => {
-      const trimmed = command.trim();
+      const trimmed = adapter === "dsh-acp"
+        ? dshAcpInstallCommand({ prefix: dshAcpManagedRoot(getDataDir()), version: targetVersion })
+        : command.trim();
       if (!trimmed) throw new Error("install command required");
 
       const preflight = await prepareInstallEnvironment(trimmed, adapter);
@@ -1311,7 +1315,8 @@ export function cliInstallStream(
       }
 
       release = acquireRuntimeInstall(adapter);
-      const installCommand = adapter === "dsh-acp" ? prepareDshAcpManagedInstall() : preflight.command;
+      if (adapter === "dsh-acp") prepareDshAcpManagedInstall();
+      const installCommand = preflight.command;
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =
         preflight.requiresPowerShell ||

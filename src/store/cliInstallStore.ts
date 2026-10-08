@@ -240,7 +240,7 @@ export const useCliInstallStore = create<State>((set, get) => ({
             unsubscribers.delete(adapterId);
             void finishJob(adapterId, event.exitCode, event.failureCode, event.failureDetail, set);
           }
-        });
+        }, plan.targetVersion);
         if (ended) off();
         else unsubscribers.set(adapterId, off);
       } catch (error) {

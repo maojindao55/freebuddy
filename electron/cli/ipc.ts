@@ -943,12 +943,14 @@ export function registerCliIpc() {
     adapter: string;
     command: string;
     requestId: string;
+    targetVersion?: string;
   }) =>
     cliInstallStream(
       args.command,
       event.sender,
       args.adapter,
-      args.requestId
+      args.requestId,
+      args.targetVersion
     )
   );
 

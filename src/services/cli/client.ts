@@ -150,9 +150,10 @@ export const cliClient = {
   installStream(
     adapter: string,
     command: string,
-    cb: (event: CliInstallEvent) => void
+    cb: (event: CliInstallEvent) => void,
+    targetVersion?: string
   ): () => void {
-    return api().installStream(adapter, command, cb);
+    return api().installStream(adapter, command, cb, targetVersion);
   },
 
   run(args: CliRunArgs): Promise<{ sessionId: string }> {

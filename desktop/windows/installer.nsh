@@ -7,6 +7,14 @@ Var /GLOBAL fbLegacyUninstallString
 Var /GLOBAL fbLegacyUninstallerFileName
 !endif
 
+!macro customInit
+  ; electron-builder starts in $INSTDIR. Release that directory before it
+  ; launches an older uninstaller, whose final RMDir would otherwise fail
+  ; even after all application processes and files are gone.
+  InitPluginsDir
+  SetOutPath $PLUGINSDIR
+!macroend
+
 !macro FreeBuddyCleanExplorerIntegration DIR
   DeleteRegKey HKCU "Software\Classes\Directory\shell\FreeBuddy"
   DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\FreeBuddy"
@@ -29,11 +37,47 @@ Var /GLOBAL fbLegacyUninstallerFileName
     ClearErrors
     nsExec::ExecToLog '"$SYSDIR\robocopy.exe" "$PLUGINSDIR\freebuddy-empty-dir" "${DIR}" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP'
     Pop $0
-    ${if} $0 <= 7
-      RMDir "${DIR}"
-    ${else}
+    ${if} $0 == "error"
+    ${orIf} $0 == "timeout"
+    ${orIf} $0 > 7
       DetailPrint "Failed to remove ${DIR}: robocopy exit code $0"
       SetErrors
+    ${else}
+      ${if} ${isUpdated}
+        ; The replacement files will reuse this directory. Older installers
+        ; (or a terminal) may still hold its current-directory handle, so an
+        ; empty root must not turn a successful file cleanup into a failure.
+        ; Robocopy can return < 8 even when an extra file could not be purged.
+        ; Verify that no files or subdirectories remain before proceeding.
+        Push $1
+        Push $2
+        StrCpy $0 0
+        FindFirst $1 $2 "${DIR}\*"
+        ${if} ${Errors}
+          StrCpy $0 1
+        ${else}
+          ${DoWhile} $2 != ""
+            ${if} $2 != "."
+            ${andIf} $2 != ".."
+              StrCpy $0 1
+              ${ExitDo}
+            ${endif}
+            FindNext $1 $2
+          ${Loop}
+          FindClose $1
+        ${endif}
+        ${if} $0 == 0
+          ClearErrors
+          DetailPrint "Keeping empty installation directory for update: ${DIR}"
+        ${else}
+          DetailPrint "Failed to empty installation directory: ${DIR}\$2"
+          SetErrors
+        ${endif}
+        Pop $2
+        Pop $1
+      ${else}
+        RMDir "${DIR}"
+      ${endif}
     ${endif}
   ${endif}
 !macroend

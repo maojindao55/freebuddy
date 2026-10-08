@@ -256,11 +256,13 @@ test("new-task workspace context renders project, mode, and branch below the com
 });
 
 test("active composer presents the assigned source as an isolated workspace", () => {
-  assert.match(chatViewSource, /conversationDisplayCwd\(conv\)/);
-  assert.match(chatViewSource, /className="composer-workspace-name"/);
-  assert.match(chatViewSource, /className="composer-workspace-badge"/);
-  assert.match(chatViewSource, /t\("chat\.isolatedWorkspace"\)/);
-  assert.match(chatViewSource, /t\("chat\.isolatedWorkspaceTooltip"/);
+  const composerWorkspaceSource = fs.readFileSync(new URL("../src/components/CLI/ComposerWorkspaceMeta.tsx", import.meta.url), "utf8");
+  assert.match(chatViewSource, /conversation=\{conv\}/);
+  assert.match(composerWorkspaceSource, /conversationDisplayCwd\(conversation\)/);
+  assert.match(composerWorkspaceSource, /className="composer-workspace-name"/);
+  assert.match(composerWorkspaceSource, /className="composer-workspace-badge"/);
+  assert.match(composerWorkspaceSource, /t\("chat\.isolatedWorkspace"\)/);
+  assert.match(composerWorkspaceSource, /t\("chat\.isolatedWorkspaceTooltip"/);
   assert.match(
     stylesSource,
     /\.composer-workspace-name\s*\{[^}]*text-overflow:\s*ellipsis;/m

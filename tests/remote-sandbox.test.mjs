@@ -227,7 +227,7 @@ test("remote runs and ACP terminal commands use the lightweight sandbox", () => 
     runtime.indexOf('if (built.protocol === "acp")'),
     runtime.indexOf("runLegacyCliAgent({")
   );
-  assert.match(acpBranch, /finally\s*{\s*if \(processSandboxed\) cleanupSandboxCommand\(\)/);
+  assert.match(acpBranch, /finally\s*{[^}]*if \(processSandboxed\) cleanupSandboxCommand\(\)/);
   assert.doesNotMatch(acpBranch, /restarted\.once\("close", cleanupSandboxCommand\)/);
   assert.match(
     acpRuntime,

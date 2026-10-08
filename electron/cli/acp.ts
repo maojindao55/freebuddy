@@ -217,6 +217,10 @@ export type AcpStreamItem =
     }
   | {
       kind: "usage";
+      runId?: string;
+      usageScope?: "turn" | "session" | "unknown";
+      runMetrics?: import("@freebuddy/protocol/cli").AgentRunMetrics;
+      generationMeasurement?: import("@freebuddy/protocol/cli").GenerationMeasurement;
       inputTokens?: number;
       outputTokens?: number;
       totalCost?: number;
@@ -232,6 +236,7 @@ export type AcpStreamItem =
         turns?: number;
         steps?: number;
         llmDurationMs?: number;
+        modelCallDurationMs?: number;
         avgTtftMs?: number;
         tokensPerSecond?: number;
         cacheHitRate?: number;
@@ -275,7 +280,8 @@ export function buildInitializeRequest(
       protocolVersion: 1,
       clientCapabilities: {
         terminal: true,
-        auth: { terminal: true }
+        auth: { terminal: true },
+        _meta: { freebuddy: { localDiffFiles: 1 } }
       },
       clientInfo: {
         name: "freebuddy",
@@ -860,9 +866,10 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
         const hasOld = typeof entry.oldText === "string";
         const hasNew = typeof entry.newText === "string";
         const patch = typeof entry.patch === "string" && entry.patch.trim() ? entry.patch.trim() : undefined;
+        const explicitAction = entry.action ?? entry._meta?.freebuddy?.action;
         const action: "create" | "update" | "delete" =
-          entry.action === "create" || entry.action === "delete" || entry.action === "update"
-            ? entry.action
+          explicitAction === "create" || explicitAction === "delete" || explicitAction === "update"
+            ? explicitAction
             : !hasOld && !patch
               ? "create"
               : !hasNew && !patch
@@ -874,7 +881,8 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
           action,
           ...(hasOld ? { oldText: entry.oldText } : {}),
           ...(hasNew ? { newText: entry.newText } : {}),
-          ...(patch ? { patch } : {})
+          ...(patch ? { patch } : {}),
+          ...(entry._meta?.freebuddy?.truncated === true ? { truncated: true } : {})
         });
         break;
       }
@@ -1355,8 +1363,11 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
   if (usage || metrics) {
     items.push({
       kind: "usage",
-      inputTokens: usage?.inputTokens ?? metrics?.totalInputTokens ?? metrics?.inputTokens,
-      outputTokens: usage?.outputTokens ?? metrics?.outputTokens,
+      // PromptResponse.usage is turn-scoped. Vendor metadata needs an
+      // explicit scope before its token counters can represent this run.
+      usageScope: usage || metrics?.usageScope === "turn" ? "turn" : "unknown",
+      inputTokens: usage ? usage.inputTokens : metrics?.totalInputTokens ?? metrics?.inputTokens,
+      outputTokens: usage ? usage.outputTokens : metrics?.outputTokens,
       cachedReadTokens: usage?.cachedReadTokens ?? metrics?.cachedReadTokens,
       cachedWriteTokens: usage?.cachedWriteTokens ?? metrics?.cachedWriteTokens,
       thoughtTokens: usage?.thoughtTokens ?? metrics?.thoughtTokens,
@@ -1367,6 +1378,7 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
               turns: metrics.turns,
               steps: metrics.steps,
               llmDurationMs: metrics.llmDurationMs,
+              modelCallDurationMs: metrics.modelCallDurationMs,
               avgTtftMs: metrics.avgTtftMs,
               tokensPerSecond: metrics.tokensPerSecond,
               cacheHitRate: metrics.cacheHitRate,
@@ -1659,6 +1671,10 @@ export function acpUpdateToItems(
       return [
         {
           kind: "usage",
+          ...(update.usageScope === "turn" || update.usageScope === "session"
+            ? { usageScope: update.usageScope }
+            : update?._meta?.metrics?.usageScope === "turn" || update?._meta?.metrics?.usageScope === "session"
+              ? { usageScope: update._meta.metrics.usageScope } : {}),
           ...(num(update, "used") != null
             ? { contextUsed: num(update, "used") }
             : {}),

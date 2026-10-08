@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import ts from "typescript";
 import { serializeStreamItemsForPersist } from "@freebuddy/cli-stream";
+import { localDiffFixture } from "./fixtures/agy-local-diff.mjs";
 
 let Database;
 let bindingAvailable = true;
@@ -21,6 +22,7 @@ const { persistFileEditItems, listMessageFileEdits, readFileEditBlob, restoreFil
 const { readMessageDetails } = await import("../dist-electron/cli/messageDetails.js");
 const { createHandoffTranscriptSnapshot, readHandoffTranscriptSnapshot } = await import("../dist-electron/shared/handoffTranscript.js");
 const { acpUpdateToItems } = await import("../dist-electron/cli/acp.js");
+const { importAgyLocalDiff, withoutInlineFileBodies } = await import("../dist-electron/cli/acpLocalDiff.js");
 const { runAsCaller } = await import("../dist-electron/cli/callerContext.js");
 
 async function loadSource(relativePath) {
@@ -56,6 +58,37 @@ function update(content, status = "completed", toolCallId = "call") {
 function persist(content, status, toolCallId) {
   return persistFileEditItems(context, update(content, status, toolCallId));
 }
+
+test("bounded AGY references persist full bodies before unlinking and load only on demand", { skip: !bindingAvailable }, async t => {
+  setup(t);
+  const newText = "# 中文文档🙂\\n\n".repeat(100000);
+  const fixture = localDiffFixture(t, [{ type: "diff", path: "task.md", oldText: null, newText }]);
+  assert.ok(Buffer.byteLength(JSON.stringify(fixture.update)) < 65536);
+  const imported = importAgyLocalDiff(fixture.update, "agy-acp");
+  assert.equal(imported.imported, true);
+  const items = acpUpdateToItems(imported.update, context.sessionId, "agy-acp");
+  const emitted = withoutInlineFileBodies(persistFileEditItems(context, items));
+  imported.release();
+  assert.equal(fs.existsSync(fixture.filename), false);
+  assert.ok(Buffer.byteLength(JSON.stringify(emitted)) < 65536);
+  assert.equal(JSON.stringify(emitted).includes(newText), false);
+  const [reference] = collectFileEdits(emitted);
+  assert.ok(reference.blobKey);
+  assert.equal(reference.newText, undefined);
+  assert.equal(listMessageFileEdits("message").edits[0].blobKey, reference.blobKey);
+  let reads = 0;
+  const load = createFileEditContentLoader(async (...args) => {
+    reads++;
+    const chunk = runAsCaller("alice", () => readFileEditBlob(...args));
+    assert.ok(Buffer.from(chunk.data, "base64").length <= 65536);
+    return chunk;
+  });
+  assert.equal(reads, 0);
+  const loaded = await load(context.conversationId, reference.blobKey);
+  assert.ok(reads > 1);
+  assert.equal(loaded.status, "ready");
+  assert.equal(loaded.content.newText, newText);
+});
 
 test("stream and stored metadata include counts for every edit before any body is opened", { skip: !bindingAvailable }, testContext => {
   setup(testContext);

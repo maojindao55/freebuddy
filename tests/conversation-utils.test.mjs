@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
+import { getParser } from "@freebuddy/cli-stream";
 
 async function loadConversationUtils() {
   const source = fs.readFileSync(
@@ -18,6 +19,24 @@ async function loadConversationUtils() {
   );
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
+
+test("Claude partial output and final snapshots share block identity without duplicating text or thinking", async () => {
+  const { appendItems } = await loadConversationUtils();
+  const parser = getParser("claude-json");
+  const ctx = {};
+  const events = [
+    { type: "stream_event", event: { type: "message_start", message: { id: "native-message" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "thought" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "hello" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: " world" } } },
+    { type: "assistant", message: { id: "native-message", content: [{ type: "thinking", thinking: "thought" }, { type: "text", text: "hello world" }] } }
+  ];
+  let items = [];
+  for (const event of events) items = appendItems(items, parser.parseStdoutLine(JSON.stringify(event), ctx));
+  assert.equal(items.filter(item => item.kind === "text").length, 1);
+  assert.equal(items.find(item => item.kind === "text").content, "hello world");
+  assert.equal(items.filter(item => item.kind === "thinking").length, 1);
+});
 
 test("appendItems coalesces repeated updates for the same tool result", async () => {
   const { appendItems } = await loadConversationUtils();
@@ -1319,3 +1338,16 @@ test("mergeToolCalls preserves specific tool name when update provides generic f
   assert.equal(merged.status, "completed");
 });
 
+
+test("run metrics upsert one summary per execution without replacing reported usage", async () => {
+  const { appendItems, capPersistedStreamItems } = await loadConversationUtils();
+  const summary = status => ({ kind: "usage", runId: "run", runMetrics: {
+    runId: "run", status, elapsedMs: status === "done" ? 2_000 : 500, promptSubmitted: true
+  } });
+  const reported = { kind: "usage", usageScope: "turn", inputTokens: 0, outputTokens: 100 };
+  const items = appendItems([summary("running"), reported], [summary("running"), summary("done")]);
+  assert.equal(items.filter(item => item.runMetrics).length, 1);
+  assert.equal(items.find(item => item.runMetrics).runMetrics.status, "done");
+  assert.equal(items.includes(reported), true);
+  assert.equal(capPersistedStreamItems(items).find(item => item.runMetrics).runMetrics.status, "done");
+});

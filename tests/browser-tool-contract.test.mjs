@@ -11,7 +11,9 @@ import {
   handleBrowserToolHttpRequest,
   registerBrowserToolSession,
   resolveBrowserToolRequest,
-  unregisterBrowserToolSession
+  unregisterBrowserToolSession,
+  rebindBrowserToolSession,
+  suspendBrowserToolSession
 } from "../dist-electron/browserToolService.js";
 
 function read(relativePath) {
@@ -294,4 +296,45 @@ test("Browser tool capability token routes a request to its bound conversation",
   } finally {
     unregisterBrowserToolSession("task-1");
   }
+});
+
+
+test("warm Browser credentials suspend between runs and rebind only within the same conversation", async () => {
+  setActiveBridgePort(17880);
+  const sent = [];
+  const webContents = { id: 99, isDestroyed: () => false, on: () => {}, once: () => {},
+    mainFrame: { isDestroyed: () => false, send: (_channel, event) => {
+      sent.push(event);
+      setImmediate(() => resolveBrowserToolRequest(webContents, { requestId: event.requestId, result: { ok: true, conversationId: event.conversationId } }));
+    } } };
+  const input = { taskSessionId: "warm-old", conversationId: "warm-chat", cwd: "", webContents };
+  const config = await registerBrowserToolSession(input);
+  const token = config.env.find(e => e.name === "FREEBUDDY_BROWSER_TOKEN").value;
+  const call = async () => {
+    const req = Readable.from([JSON.stringify({ action: "navigate", params: { url: "https://example.com" } })]);
+    Object.assign(req, { url: "/freebuddy/browser-tool", method: "POST", headers: { authorization: `Bearer ${token}` } });
+    let status;
+    await handleBrowserToolHttpRequest(req, { writeHead: code => { status = code; }, end: () => {} });
+    return status;
+  };
+  try {
+    const slowRequest = new Readable({ read() {} });
+    Object.assign(slowRequest, { url: "/freebuddy/browser-tool", method: "POST", headers: { authorization: `Bearer ${token}` } });
+    let slowStatus;
+    const slowResponse = handleBrowserToolHttpRequest(slowRequest, { writeHead: code => { slowStatus = code; }, end: () => {} });
+    suspendBrowserToolSession("warm-old");
+    assert.equal(await call(), 401);
+    assert.equal(rebindBrowserToolSession("warm-old", { ...input, taskSessionId: "warm-new", conversationId: "another-chat" }), false);
+    assert.equal(rebindBrowserToolSession("warm-old", { ...input, taskSessionId: "warm-new", cwd: "/another" }), false);
+    assert.equal(rebindBrowserToolSession("warm-old", { ...input, taskSessionId: "warm-new" }), true);
+    slowRequest.push(JSON.stringify({ action: "navigate", params: { url: "https://example.com" } }));
+    slowRequest.push(null);
+    await slowResponse;
+    assert.equal(slowStatus, 410);
+    unregisterBrowserToolSession("warm-old");
+    assert.equal(await call(), 200);
+    assert.equal(sent.at(-1).conversationId, "warm-chat");
+    unregisterBrowserToolSession("warm-new");
+    assert.equal(await call(), 401);
+  } finally { unregisterBrowserToolSession("warm-old"); unregisterBrowserToolSession("warm-new"); }
 });

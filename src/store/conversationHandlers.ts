@@ -214,6 +214,7 @@ export function handleStreamEvent(
     let exitCode = live.exitCode;
     let errorMessage = live.errorMessage;
     let capturedSessionId = live.capturedSessionId;
+    let runMetricsReceivedAt = live.runMetricsReceivedAt;
 
     if (e.type === "started") {
       status = "running";
@@ -232,6 +233,9 @@ export function handleStreamEvent(
       nextItems = refreshLatestErrorDetails(nextItems, parseCtx);
     } else if (e.type === "items") {
       nextItems = appendItems(nextItems, sanitizeIncomingItems(e.items));
+      if (e.items.some(item => item.kind === "usage" && item.runMetrics?.runId === live.taskSessionId)) {
+        runMetricsReceivedAt = performance.now();
+      }
       const sessionItem = [...e.items]
         .reverse()
         .find((item) => item.kind === "session");
@@ -319,7 +323,8 @@ export function handleStreamEvent(
           pid,
           exitCode,
           errorMessage,
-          capturedSessionId
+          capturedSessionId,
+          runMetricsReceivedAt
         }
       },
       conversations

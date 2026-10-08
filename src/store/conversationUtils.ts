@@ -463,6 +463,14 @@ export function appendItems(
   for (const rawItem of coalesceIncomingItems(next)) {
     const item = legacyTodoPlan(rawItem) ?? rawItem;
     const last = out[out.length - 1];
+    if (item.kind === "usage" && item.runMetrics) {
+      const runId = item.runMetrics.runId;
+      const index = out.findIndex(previous => previous.kind === "usage" && previous.runMetrics?.runId === runId);
+      if (index >= 0) {
+        out[index] = item;
+        continue;
+      }
+    }
     if (item.kind === "text" && item.messageId) {
       const index = out.findIndex(
         (previous) =>

@@ -13,7 +13,12 @@ function lines(text: string): string[] {
 
 export function buildFileDiff(edit: FileEdit): FileDiff {
   const result: FileDiff = { rows: [], added: 0, removed: 0, partial: edit.partial };
-  if (edit.truncated || (!edit.blobKey && [edit.patch, edit.oldText, edit.newText].some((s) => s?.includes("[truncated]")))) {
+  // Native Antigravity transcript arguments can already be shortened before
+  // ACP receives them. A blob preserves that text; it does not make it complete.
+  const upstreamTruncated = [edit.patch, edit.oldText, edit.newText].some((text) =>
+    text && /(?:^|\r?\n)[ \t]*<truncated \d+ (?:bytes|lines)>[ \t]*(?:\r?\n)?$/.test(text)
+  );
+  if (edit.truncated || upstreamTruncated || (!edit.blobKey && [edit.patch, edit.oldText, edit.newText].some((s) => s?.includes("[truncated]")))) {
     return { ...result, notice: "truncated" };
   }
   const before = edit.oldText ?? (edit.action === "create" ? "" : undefined);
@@ -65,4 +70,3 @@ export function buildFileDiff(edit: FileEdit): FileDiff {
   if (!result.rows.some((r) => r.kind !== "meta")) result.notice = "raw";
   return result;
 }
-

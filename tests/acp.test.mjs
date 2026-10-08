@@ -622,6 +622,12 @@ test("buildCommand keeps extra DeepSeek args after the bundled config", () => {
   ]);
 });
 
+test("legacy Claude enables actual partial output for host measurement", () => {
+  const built = buildCommand({ adapter: "claude", prompt: "hello" });
+  assert.ok(built.args.includes("--include-partial-messages"));
+  assert.ok(built.args.includes("stream-json"));
+});
+
 test("buildCommand forwards DeepSeek Harness extra args including cordis config", () => {
   const built = buildCommand({
     adapter: "dsh-acp",
@@ -1024,7 +1030,7 @@ test("buildCommand keeps Grok global flags before the ACP subcommand", () => {
   assert.equal(built.protocol, "acp");
 });
 
-test("buildInitializeRequest advertises only implemented stable capabilities", () => {
+test("buildInitializeRequest advertises stable capabilities and local diff import", () => {
   assert.deepEqual(buildInitializeRequest(7, "0.4.9-test"), {
     jsonrpc: "2.0",
     id: 7,
@@ -1033,7 +1039,8 @@ test("buildInitializeRequest advertises only implemented stable capabilities", (
       protocolVersion: 1,
       clientCapabilities: {
         terminal: true,
-        auth: { terminal: true }
+        auth: { terminal: true },
+        _meta: { freebuddy: { localDiffFiles: 1 } }
       },
       clientInfo: {
         name: "freebuddy",

@@ -966,6 +966,7 @@
     "worktree": "Worktree",
     "copyWorktree": "复制 {{path}}",
     "notSet": "未设置",
+    "noWorkingDirectory": "未设置工作目录",
     "sessionId": "会话 ID",
     "copySession": "复制 {{id}}",
     "noSession": "尚未捕获会话",

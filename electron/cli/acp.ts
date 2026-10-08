@@ -280,7 +280,8 @@ export function buildInitializeRequest(
       protocolVersion: 1,
       clientCapabilities: {
         terminal: true,
-        auth: { terminal: true }
+        auth: { terminal: true },
+        _meta: { freebuddy: { localDiffFiles: 1 } }
       },
       clientInfo: {
         name: "freebuddy",
@@ -865,9 +866,10 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
         const hasOld = typeof entry.oldText === "string";
         const hasNew = typeof entry.newText === "string";
         const patch = typeof entry.patch === "string" && entry.patch.trim() ? entry.patch.trim() : undefined;
+        const explicitAction = entry.action ?? entry._meta?.freebuddy?.action;
         const action: "create" | "update" | "delete" =
-          entry.action === "create" || entry.action === "delete" || entry.action === "update"
-            ? entry.action
+          explicitAction === "create" || explicitAction === "delete" || explicitAction === "update"
+            ? explicitAction
             : !hasOld && !patch
               ? "create"
               : !hasNew && !patch
@@ -879,7 +881,8 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
           action,
           ...(hasOld ? { oldText: entry.oldText } : {}),
           ...(hasNew ? { newText: entry.newText } : {}),
-          ...(patch ? { patch } : {})
+          ...(patch ? { patch } : {}),
+          ...(entry._meta?.freebuddy?.truncated === true ? { truncated: true } : {})
         });
         break;
       }

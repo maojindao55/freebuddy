@@ -84,6 +84,17 @@ test("failed and missing content can be retried without modifying message refere
   assert.equal(edits[0].newText, undefined);
 });
 
+test("hydrated upstream truncation invalidates stale line counts from old metadata", async () => {
+  const store = makeStore(async () => chunk({ newText: '"# Tasks\\n\n<truncated 1127 bytes>' }));
+  const edits = [{ kind: "file-edit", path: "task.md", action: "create", blobKey: "saved", counts: { added: 2, removed: 0 } }];
+  store.getState().open({ conversationId: "conversation", edits, index: 0 });
+  await tick();
+  assert.equal(store.getState().content.status, "ready");
+  assert.equal(store.getState().counts.saved, null);
+  assert.equal(diffModule.getFileDiff(store.getState().content.edit).notice, "truncated");
+  assert.equal(edits[0].counts.added, 2);
+});
+
 test("refreshing unchanged references does not repeatedly publish selection updates", async () => {
   const store = makeStore(async () => chunk({ oldText: "before", newText: "after" }));
   const edits = [{ kind: "file-edit", path: "file.ts", action: "update", blobKey: "key" }];

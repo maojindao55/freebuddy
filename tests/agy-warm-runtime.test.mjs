@@ -9,8 +9,10 @@ import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import ts from "typescript";
 import * as acp from "../dist-electron/cli/acp.js";
+import * as acpLocalDiff from "../dist-electron/cli/acpLocalDiff.js";
 import { AcpProcessPool } from "../dist-electron/cli/acpProcessPool.js";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
+import { localDiffFixture } from "./fixtures/agy-local-diff.mjs";
 
 const require = createRequire(import.meta.url);
 function load(file, services) {
@@ -22,6 +24,7 @@ function load(file, services) {
     require: name => {
       if (name.startsWith("node:")) return require(name);
       if (name === "./acp.js") return acp;
+      if (name === "./acpLocalDiff.js") return acpLocalDiff;
       if (name === "cross-spawn") return { __esModule: true, default: services.spawn };
       return new Proxy(services, { get: (object, key) => key === "__esModule" ? true : object[key] ?? (() => {}) });
     }
@@ -34,6 +37,9 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   const pool = new AcpProcessPool();
   t.after(() => { pool.dispose(); fs.rmSync(root, { recursive: true, force: true }); });
   const children = [], events = [], requests = [], browser = new Map();
+  const fullText = "# 中文🙂\n".repeat(100000);
+  const fixture = localDiffFixture(t, [{ type: "diff", path: "task.md", newText: fullText }]);
+  let persistedText;
   let saved, owner = "owner", registrations = 0, rebindings = 0;
   const noop = () => {};
   const services = {
@@ -45,7 +51,15 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
     resolveCliByokEnv: () => ({}), sanitizeCliAgentEnv: env => env,
     getToolSession: () => saved,
     saveToolSession: (_agent, _scope, adapter, sessionId) => { saved = { adapter, sessionId }; },
-    persistFileEditItems: (_session, items) => items,
+    persistFileEditItems: (_session, items) => items.map(item => item.kind === "tool-call" ? {
+      ...item, toolOutputs: item.toolOutputs?.map(output => {
+        if (output.kind !== "file-edit") return output;
+        // Storage receives the full body while the artifact still exists.
+        assert.ok(fs.existsSync(fixture.filename));
+        persistedText = output.newText;
+        return { kind: output.kind, path: output.path, action: output.action, blobKey: "saved-diff" };
+      })
+    } : item),
     logMain: () => ({ info: noop, warn: noop, error: noop }),
     safeSendToWebContents: (_contents, _channel, event) => events.push(event),
     adapterAcceptsClientMcpServers: () => true,
@@ -77,6 +91,11 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
             child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
               sessionId: `native-${child.pid}`, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "new reply" } }
             } }) + "\n");
+            if (children.length === 1 && turn === 1) {
+              child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+                sessionId: `native-${child.pid}`, update: fixture.update
+              } }) + "\n");
+            }
             reply(request, { stopReason: "end_turn", usage: { inputTokens: 100, outputTokens: turn * 10, thoughtTokens: 2 },
               _meta: { metrics: { usageScope: "turn", modelCallDurationMs: 1000 } } });
           } else if (request.method === "session/list") reply(request, { sessions: [] });
@@ -96,6 +115,11 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   const wc = { id: 1 };
   const args = { adapter: "agy-acp", agentId: "agent", agentName: "AGY", conversationId: "chat", cwd: root, prompt: "hello" };
   await runtime.cliRun(wc, { ...args, sessionId: "one" });
+  assert.equal(persistedText, fullText);
+  assert.equal(fs.existsSync(fixture.filename), false);
+  const editEvent = events.find(event => event.items?.some(item => item.toolOutputs?.some(output => output.blobKey === "saved-diff")));
+  assert.ok(editEvent);
+  assert.ok(JSON.stringify(editEvent).length < 4096);
   await runtime.cliRun(wc, { ...args, sessionId: "two" });
   assert.equal(children.length, 1);
   assert.equal(registrations, 1); assert.equal(rebindings, 1);

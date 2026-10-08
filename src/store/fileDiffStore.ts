@@ -10,7 +10,7 @@ let loadRevision = 0;
 interface DiffSelection { conversationId: string; messageId?: string; edits: FileEdit[]; index: number }
 interface FileDiffState {
   selection?: DiffSelection;
-  counts: Record<string, { added: number; removed: number }>;
+  counts: Record<string, { added: number; removed: number } | null>;
   content?: { key: string; status: "loading" | "ready" | "missing" | "large" | "error"; edit?: FileEdit };
   loadSelected(retry?: boolean): Promise<void>;
   open(selection: DiffSelection): void;
@@ -62,8 +62,8 @@ export const useFileDiffStore = create<FileDiffState>((set, get) => ({
       if (result.status === "ready") {
         const hydrated: FileEdit = { ...edit, ...result.content, truncated: false };
         const diff = getFileDiff(hydrated);
-        const counts = diff.notice ? get().counts : Object.fromEntries(Object.entries({
-          ...get().counts, [edit.blobKey]: { added: diff.added, removed: diff.removed }
+        const counts = diff.notice && diff.notice !== "truncated" ? get().counts : Object.fromEntries(Object.entries({
+          ...get().counts, [edit.blobKey]: diff.notice === "truncated" ? null : { added: diff.added, removed: diff.removed }
         }).slice(-256));
         set({ content: { key, status: "ready", edit: hydrated }, counts });
       } else {

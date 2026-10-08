@@ -4,6 +4,30 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 export type FileEdit = Extract<CliStreamItem, { kind: "file-edit" }>;
 export { buildFileDiff, type DiffRow, type FileDiff } from "@freebuddy/cli-stream";
 
+export function isMarkdownFile(path: string): boolean {
+  return /\.(?:md|markdown|mdown|mkd)$/i.test(path);
+}
+
+/** Preview only captured documents, never infer a full file from a patch/snippet. */
+export function markdownVersions(edit: FileEdit): { before?: string; after?: string } {
+  if (!isMarkdownFile(edit.path) || edit.partial || getFileDiff(edit).notice) return {};
+  return {
+    ...(edit.action !== "create" && edit.oldText !== undefined ? { before: edit.oldText } : {}),
+    ...(edit.action !== "delete" && edit.newText !== undefined ? { after: edit.newText } : {})
+  };
+}
+
+/** Retain original selection indices so lazy loading and refresh keep their identities. */
+export function groupFileEditRecords(edits: FileEdit[]): { path: string; indices: number[] }[] {
+  const groups = new Map<string, { path: string; indices: number[] }>();
+  edits.forEach((edit, index) => {
+    const group = groups.get(edit.path) ?? { path: edit.path, indices: [] };
+    group.indices.push(index);
+    groups.set(edit.path, group);
+  });
+  return [...groups.values()];
+}
+
 function extractToolOutputText(
   item: Extract<CliStreamItem, { kind: "tool-call" }>,
   result?: Extract<CliStreamItem, { kind: "tool-result" }>

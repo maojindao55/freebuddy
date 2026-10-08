@@ -7,8 +7,45 @@ import { getParser, serializeStreamItemsForPersist } from "@freebuddy/cli-stream
 const output = ts.transpileModule(fs.readFileSync(new URL("../src/utils/fileDiff.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 }
 }).outputText.replaceAll('"@freebuddy/cli-stream"', JSON.stringify(new URL("../packages/cli-stream/dist/index.js", import.meta.url).href));
-const { buildFileDiff, collectFileEdits, foldDiffRows, inlineHighlights } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+const { buildFileDiff, collectFileEdits, foldDiffRows, inlineHighlights, groupFileEditRecords, isMarkdownFile, markdownVersions } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 const edit = (fields) => ({ kind: "file-edit", path: "src/a.ts", action: "update", ...fields });
+
+test("native transcript truncation cannot become a two-line diff even after blob hydration", () => {
+  const newText = '"# Tasks\\n\\n- [ ] Check parameters\\n\n<truncated 1127 bytes>';
+  for (const blobKey of [undefined, "saved"]) {
+    const diff = buildFileDiff(edit({ action: "create", newText, blobKey }));
+    assert.equal(diff.notice, "truncated");
+    assert.equal(diff.added, 0);
+    assert.equal(diff.rows.length, 0);
+  }
+  assert.equal(buildFileDiff(edit({ oldText: "before\r\n<truncated 3 lines>\r\n", newText: "after" })).notice, "truncated");
+  assert.equal(buildFileDiff(edit({ action: "create", newText: "Explain <truncated 12 bytes> here.\n" })).notice, undefined);
+  assert.equal(buildFileDiff(edit({ action: "create", newText: "```\n<truncated 12 bytes>\n```\n" })).notice, undefined);
+});
+
+test("Markdown previews use captured versions and refuse snippets, patches, and truncated text", () => {
+  const markdown = edit({ path: "docs/task.MD", oldText: "# Before", newText: "# After" });
+  assert.equal(isMarkdownFile(markdown.path), true);
+  assert.equal(isMarkdownFile("task.markdown"), true);
+  assert.equal(isMarkdownFile("task.md.ts"), false);
+  assert.deepEqual(markdownVersions(markdown), { before: "# Before", after: "# After" });
+  assert.deepEqual(markdownVersions({ ...markdown, action: "create", oldText: undefined, newText: "" }), { after: "" });
+  assert.deepEqual(markdownVersions({ ...markdown, action: "delete", newText: undefined }), { before: "# Before" });
+  assert.deepEqual(markdownVersions({ ...markdown, partial: true }), {});
+  assert.deepEqual(markdownVersions({ ...markdown, truncated: true }), {});
+  assert.deepEqual(markdownVersions({ ...markdown, newText: '"# After\\n\n<truncated 20 bytes>', blobKey: "saved" }), {});
+  assert.deepEqual(markdownVersions(edit({ path: "task.md", patch: "@@ -1 +1 @@\n-before\n+after\n" })), {});
+  assert.deepEqual(markdownVersions({ ...markdown, path: "code.ts" }), {});
+});
+
+test("file-local history retains original indices across interleaved files and duplicate names", () => {
+  const edits = ["docs/task.md", "src/a.ts", "docs/task.md", "other/task.md"].map(path => edit({ path }));
+  assert.deepEqual(groupFileEditRecords(edits), [
+    { path: "docs/task.md", indices: [0, 2] },
+    { path: "src/a.ts", indices: [1] },
+    { path: "other/task.md", indices: [3] }
+  ]);
+});
 
 test("diff preserves context, exact line numbers, and added/removed counts", () => {
   const diff = buildFileDiff(edit({ oldText: "first\nold\nlast\n", newText: "first\nnew\nextra\nlast\n" }));

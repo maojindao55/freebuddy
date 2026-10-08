@@ -1030,7 +1030,7 @@ test("buildCommand keeps Grok global flags before the ACP subcommand", () => {
   assert.equal(built.protocol, "acp");
 });
 
-test("buildInitializeRequest advertises only implemented stable capabilities", () => {
+test("buildInitializeRequest advertises stable capabilities and local diff import", () => {
   assert.deepEqual(buildInitializeRequest(7, "0.4.9-test"), {
     jsonrpc: "2.0",
     id: 7,
@@ -1039,7 +1039,8 @@ test("buildInitializeRequest advertises only implemented stable capabilities", (
       protocolVersion: 1,
       clientCapabilities: {
         terminal: true,
-        auth: { terminal: true }
+        auth: { terminal: true },
+        _meta: { freebuddy: { localDiffFiles: 1 } }
       },
       clientInfo: {
         name: "freebuddy",

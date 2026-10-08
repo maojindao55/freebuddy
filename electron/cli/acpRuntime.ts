@@ -48,6 +48,7 @@ import { createAcpTerminalManager } from "./acpTerminal.js";
 import { updateRuntimeRun, recordRuntimeAgentVersion } from "./check.js";
 import { getDataDir } from "./db.js";
 import { persistFileEditItems } from "./fileEditBlobs.js";
+import { importAgyLocalDiff, withoutInlineFileBodies } from "./acpLocalDiff.js";
 import { findLastPiSessionErrorMessage } from "./piRuntime.js";
 import {
   hasCliByokModels,
@@ -740,7 +741,8 @@ export async function runAcpAgent({
         turnHadLiveAgentChunk = true;
         sessionWasResumed = false;
       }
-      const items = acpUpdateToItems(msg.params?.update, sessionId, args.adapter);
+      const localDiff = importAgyLocalDiff(msg.params?.update, args.adapter);
+      const items = acpUpdateToItems(localDiff.update, sessionId, args.adapter);
       metrics?.observe(items, arrivedAt);
       // Some tool calls render as plans / edits instead of tool-call items.
       // Their actual protocol boundaries still matter for generation timing.
@@ -760,8 +762,16 @@ export async function runAcpAgent({
         let storedItems = items;
         try {
           storedItems = persistFileEditItems(args, items);
+          if (localDiff.imported) {
+            // A missing conversation can leave bodies inline without throwing.
+            storedItems = withoutInlineFileBodies(storedItems);
+            localDiff.release();
+          }
         } catch {
-          appendLog(logStream, "system", "File edit storage failed; retaining inline changes");
+          appendLog(logStream, "system", localDiff.imported
+            ? "File edit storage failed; imported diff unavailable"
+            : "File edit storage failed; retaining inline changes");
+          if (localDiff.imported) storedItems = withoutInlineFileBodies(items);
         }
         emit({ type: "items", items: storedItems });
       }

@@ -9,6 +9,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import ts from "typescript";
 import * as acp from "../dist-electron/cli/acp.js";
+import * as acpLocalDiff from "../dist-electron/cli/acpLocalDiff.js";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
 import { PiRunUsageReader } from "../dist-electron/cli/piRunUsage.js";
 import { DelegationOrchestrator, createMemoryDelegationRepository } from "../packages/delegation-runtime/dist/index.js";
@@ -147,6 +148,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
     require: (name) => {
       if (name.startsWith("node:")) return require(name);
       if (name === "./acp.js") return acp;
+      if (name === "./acpLocalDiff.js") return acpLocalDiff;
       return new Proxy(services, { get: (obj, key) => key === "__esModule" ? true : obj[key] ?? noop });
     }
   };

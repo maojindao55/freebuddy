@@ -255,6 +255,9 @@ class ExplorerCommand final : public IExplorerCommand, public IObjectWithSite {
     *icon = nullptr;
     wchar_t exe[32768];
     if (!GetFreeBuddyExePath(exe, ARRAYSIZE(exe))) return E_FAIL;
+    // Explorer expects an icon resource string ("path,index"); a bare path
+    // shows no icon in the first-level Win11 context menu.
+    if (!AppendText(exe, ARRAYSIZE(exe), L",0")) return E_OUTOFMEMORY;
     return SHStrDupW(exe, icon);
   }
 

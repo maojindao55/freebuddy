@@ -48,6 +48,9 @@ test("explorer-command identity is shared across cpp, def, and TS constants", ()
   assert.match(cpp, /--open/);
   assert.match(cpp, /使用 FreeBuddy 打开/);
   assert.match(cpp, /FreeBuddy\.exe/);
+  // GetIcon must return a resource string ("path,index") or the first-level
+  // Win11 context menu shows no icon at all.
+  assert.match(cpp, /L",0"/);
 
   const def = read("desktop/windows/explorer-command/ExplorerCommand.def");
   assert.match(def, /DllGetClassObject/);

@@ -203,7 +203,6 @@ export async function packWindowsExplorerCommand(context) {
       publisher: WINDOWS_EXPLORER_COMMAND.publisher,
       thumbprint: cert.thumbprint,
       clsid: WINDOWS_EXPLORER_COMMAND.clsid,
-      docStudioClsid: WINDOWS_EXPLORER_COMMAND.docStudioClsid,
       dllName: WINDOWS_EXPLORER_COMMAND.dllName,
       msixName: WINDOWS_EXPLORER_COMMAND.msixName,
       cerName: WINDOWS_EXPLORER_COMMAND.cerName

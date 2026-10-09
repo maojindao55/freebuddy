@@ -24,8 +24,6 @@ Var /GLOBAL fbLegacyUninstallerFileName
   DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\FreeBuddyDev"
   DeleteRegKey HKCU "Software\Classes\Drive\shell\FreeBuddyDev"
   DeleteRegKey HKCU "Software\Classes\*\shell\FreeBuddyDev"
-  DeleteRegKey HKCU "Software\Classes\*\shell\FreeBuddyDocStudio"
-  DeleteRegKey HKCU "Software\Classes\*\shell\FreeBuddyDevDocStudio"
   IfFileExists "${DIR}\uninstall-explorer-command.ps1" 0 +2
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "${DIR}\uninstall-explorer-command.ps1"'
 !macroend

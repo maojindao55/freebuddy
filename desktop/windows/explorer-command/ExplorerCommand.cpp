@@ -36,23 +36,7 @@ static const CLSID CLSID_FreeBuddyExplorerCommand = {
     0x4a16,
     {0x8f, 0x3c, 0x6e, 0x2d, 0x91, 0xb0, 0x48, 0x7a}};
 
-// Keep in sync with identity.json — tests assert the same CLSID.
-// {6B8E4C1F-9A2D-4F73-B5E8-1D0C7A9F3E42}
-static const CLSID CLSID_FreeBuddyDocStudioCommand = {
-    0x6b8e4c1f,
-    0x9a2d,
-    0x4f73,
-    {0xb5, 0xe8, 0x1d, 0x0c, 0x7a, 0x9f, 0x3e, 0x42}};
-
-enum class CommandMode {
-  Chat,
-  DocStudio
-};
-
 static const wchar_t kOpenFlag[] = L"--open";
-static const wchar_t kDocStudioFlag[] = L"--docstudio";
-static const wchar_t* const kDocStudioExtensions[] = {
-    L".csv", L".tsv", L".xlsx", L".xls", L".md", L".txt", L".json"};
 static const int kMaxOpenPaths = 32;
 static const int kMaxPathChars = 1024;
 static const int kMaxCommandChars = 32768;
@@ -142,20 +126,6 @@ static HRESULT DupTitle(LPWSTR* value) {
   return SHStrDupW(IsChineseUi() ? L"使用 FreeBuddy 打开" : L"Open with FreeBuddy", value);
 }
 
-static HRESULT DupDocStudioTitle(LPWSTR* value) {
-  return SHStrDupW(
-      IsChineseUi() ? L"用 FreeBuddy DocStudio 打开" : L"Open with FreeBuddy DocStudio", value);
-}
-
-static bool IsDocStudioPath(const wchar_t* filePath) {
-  const wchar_t* dot = StrRChrIW(filePath, nullptr, L'.');
-  if (!dot) return false;
-  for (const wchar_t* ext : kDocStudioExtensions) {
-    if (lstrcmpiW(dot, ext) == 0) return true;
-  }
-  return false;
-}
-
 static HRESULT AddShellItemPath(
     IShellItem* item,
     wchar_t paths[][kMaxPathChars],
@@ -211,7 +181,7 @@ static HRESULT CollectPaths(
   return hr;
 }
 
-static HRESULT LaunchFreeBuddy(wchar_t paths[][kMaxPathChars], int count, const wchar_t* flag) {
+static HRESULT LaunchFreeBuddy(wchar_t paths[][kMaxPathChars], int count) {
   if (count <= 0) return S_OK;
   wchar_t exe[32768];
   if (!GetFreeBuddyExePath(exe, ARRAYSIZE(exe))) return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
@@ -221,7 +191,7 @@ static HRESULT LaunchFreeBuddy(wchar_t paths[][kMaxPathChars], int count, const 
   if (!AppendQuoted(command, kMaxCommandChars, exe)) return E_OUTOFMEMORY;
   for (int i = 0; i < count; ++i) {
     if (!AppendText(command, kMaxCommandChars, L" ") ||
-        !AppendText(command, kMaxCommandChars, flag) ||
+        !AppendText(command, kMaxCommandChars, kOpenFlag) ||
         !AppendText(command, kMaxCommandChars, L" ") ||
         !AppendQuoted(command, kMaxCommandChars, paths[i])) {
       return E_OUTOFMEMORY;
@@ -242,7 +212,7 @@ static HRESULT LaunchFreeBuddy(wchar_t paths[][kMaxPathChars], int count, const 
 
 class ExplorerCommand final : public IExplorerCommand, public IObjectWithSite {
  public:
-  explicit ExplorerCommand(CommandMode mode) : mode_(mode) { AddModuleLock(); }
+  ExplorerCommand() { AddModuleLock(); }
 
   void Destroy() {
     SetSite(nullptr);
@@ -277,7 +247,6 @@ class ExplorerCommand final : public IExplorerCommand, public IObjectWithSite {
 
   IFACEMETHODIMP GetTitle(IShellItemArray*, LPWSTR* name) override {
     if (!name) return E_POINTER;
-    if (mode_ == CommandMode::DocStudio) return DupDocStudioTitle(name);
     return DupTitle(name);
   }
 
@@ -297,36 +266,13 @@ class ExplorerCommand final : public IExplorerCommand, public IObjectWithSite {
 
   IFACEMETHODIMP GetCanonicalName(GUID* commandName) override {
     if (!commandName) return E_POINTER;
-    *commandName =
-        mode_ == CommandMode::DocStudio ? CLSID_FreeBuddyDocStudioCommand
-                                        : CLSID_FreeBuddyExplorerCommand;
+    *commandName = CLSID_FreeBuddyExplorerCommand;
     return S_OK;
   }
 
-  IFACEMETHODIMP GetState(IShellItemArray* items, BOOL, EXPCMDSTATE* state) override {
+  IFACEMETHODIMP GetState(IShellItemArray*, BOOL, EXPCMDSTATE* state) override {
     if (!state) return E_POINTER;
     *state = ECS_ENABLED;
-    if (mode_ != CommandMode::DocStudio) return S_OK;
-    // Hide the DocStudio verb for files the studio cannot open.
-    *state = ECS_HIDDEN;
-    if (!items) return S_OK;
-    DWORD itemCount = 0;
-    if (FAILED(items->GetCount(&itemCount))) return S_OK;
-    for (DWORD i = 0; i < itemCount; ++i) {
-      IShellItem* item = nullptr;
-      if (FAILED(items->GetItemAt(i, &item)) || !item) continue;
-      LPWSTR filePath = nullptr;
-      bool supported = false;
-      if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &filePath)) && filePath) {
-        supported = IsDocStudioPath(filePath);
-        CoTaskMemFree(filePath);
-      }
-      item->Release();
-      if (supported) {
-        *state = ECS_ENABLED;
-        return S_OK;
-      }
-    }
     return S_OK;
   }
 
@@ -335,8 +281,7 @@ class ExplorerCommand final : public IExplorerCommand, public IObjectWithSite {
     int count = 0;
     const HRESULT hr = CollectPaths(items, site_, paths, &count);
     if (FAILED(hr)) return hr;
-    return LaunchFreeBuddy(
-        paths, count, mode_ == CommandMode::DocStudio ? kDocStudioFlag : kOpenFlag);
+    return LaunchFreeBuddy(paths, count);
   }
 
   IFACEMETHODIMP GetFlags(EXPCMDFLAGS* flags) override {
@@ -374,12 +319,11 @@ class ExplorerCommand final : public IExplorerCommand, public IObjectWithSite {
   ~ExplorerCommand() = default;
   LONG ref_ = 1;
   IUnknown* site_ = nullptr;
-  CommandMode mode_;
 };
 
 class ClassFactory final : public IClassFactory {
  public:
-  explicit ClassFactory(CommandMode mode) : mode_(mode) { AddModuleLock(); }
+  ClassFactory() { AddModuleLock(); }
 
   void Destroy() {
     ReleaseModuleLock();
@@ -414,7 +358,7 @@ class ClassFactory final : public IClassFactory {
     if (outer) return CLASS_E_NOAGGREGATION;
     void* memory = AllocObject(sizeof(ExplorerCommand));
     if (!memory) return E_OUTOFMEMORY;
-    ExplorerCommand* command = new (memory) ExplorerCommand(mode_);
+    ExplorerCommand* command = new (memory) ExplorerCommand();
     const HRESULT hr = command->QueryInterface(riid, ppv);
     command->Release();
     return hr;
@@ -429,23 +373,15 @@ class ClassFactory final : public IClassFactory {
  private:
   ~ClassFactory() = default;
   LONG ref_ = 1;
-  CommandMode mode_;
 };
 
 FB_DLLEXPORT HRESULT STDAPICALLTYPE DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
   if (!ppv) return E_POINTER;
   *ppv = nullptr;
-  CommandMode mode;
-  if (IsEqualCLSID(clsid, CLSID_FreeBuddyExplorerCommand)) {
-    mode = CommandMode::Chat;
-  } else if (IsEqualCLSID(clsid, CLSID_FreeBuddyDocStudioCommand)) {
-    mode = CommandMode::DocStudio;
-  } else {
-    return CLASS_E_CLASSNOTAVAILABLE;
-  }
+  if (!IsEqualCLSID(clsid, CLSID_FreeBuddyExplorerCommand)) return CLASS_E_CLASSNOTAVAILABLE;
   void* memory = AllocObject(sizeof(ClassFactory));
   if (!memory) return E_OUTOFMEMORY;
-  ClassFactory* factory = new (memory) ClassFactory(mode);
+  ClassFactory* factory = new (memory) ClassFactory();
   const HRESULT hr = factory->QueryInterface(riid, ppv);
   factory->Release();
   return hr;

@@ -53,9 +53,6 @@ export const SHELL_OPEN_FILE_EXTENSIONS = new Set([
 ]);
 
 export const SHELL_OPEN_FLAG = "--open";
-export const SHELL_OPEN_DOCSTUDIO_FLAG = "--docstudio";
-
-const SHELL_OPEN_KNOWN_FLAGS = [SHELL_OPEN_FLAG, SHELL_OPEN_DOCSTUDIO_FLAG] as const;
 
 const PROTOCOL_PREFIXES = ["freebuddy://", "freebuddy-dev://"];
 
@@ -107,10 +104,9 @@ export function isSupportedShellOpenFile(filePath: string): boolean {
   return ext.length > 0 && SHELL_OPEN_FILE_EXTENSIONS.has(ext);
 }
 
-function collectFlagPaths(
+export function collectShellOpenPaths(
   argv: readonly string[],
-  options: ShellOpenCollectOptions,
-  collectedFlag: string
+  options: ShellOpenCollectOptions
 ): string[] {
   const out: string[] = [];
   const skip = new Set<string>();
@@ -138,29 +134,16 @@ function collectFlagPaths(
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? "";
-    let flag: string | null = null;
-    let inlineValue: string | null = null;
-    for (const known of SHELL_OPEN_KNOWN_FLAGS) {
-      if (arg === known) {
-        flag = known;
-        break;
+    if (arg === SHELL_OPEN_FLAG) {
+      const next = argv[i + 1];
+      if (next) {
+        pushPath(next);
+        i += 1;
       }
-      if (arg.startsWith(`${known}=`)) {
-        flag = known;
-        inlineValue = arg.slice(known.length + 1);
-        break;
-      }
+      continue;
     }
-    if (flag) {
-      let value = inlineValue;
-      if (value === null) {
-        const next = argv[i + 1];
-        if (next) {
-          value = next;
-          i += 1;
-        }
-      }
-      if (value && flag === collectedFlag) pushPath(value);
+    if (arg.startsWith(`${SHELL_OPEN_FLAG}=`)) {
+      pushPath(arg.slice(SHELL_OPEN_FLAG.length + 1));
       continue;
     }
     if (arg === "--" || arg.startsWith("-")) continue;
@@ -169,25 +152,6 @@ function collectFlagPaths(
   }
 
   return out;
-}
-
-export function collectShellOpenPaths(
-  argv: readonly string[],
-  options: ShellOpenCollectOptions
-): string[] {
-  return collectFlagPaths(argv, options, SHELL_OPEN_FLAG);
-}
-
-/**
- * Paths passed via `--docstudio` (Windows Explorer "Open with FreeBuddy
- * DocStudio"). Both flags are parsed by the same collector so `--docstudio`
- * values never leak into the generic `--open` flow and vice versa.
- */
-export function collectDocStudioPaths(
-  argv: readonly string[],
-  options: ShellOpenCollectOptions
-): string[] {
-  return collectFlagPaths(argv, options, SHELL_OPEN_DOCSTUDIO_FLAG);
 }
 
 export function classifyShellOpenPaths(
@@ -274,50 +238,12 @@ export function windowsContextMenuKeys(verb: string): string[] {
   ];
 }
 
-const DOC_STUDIO_FILE_EXTENSIONS = [".csv", ".tsv", ".xlsx", ".xls", ".md", ".txt", ".json"];
-
-export function windowsContextMenuDocStudioVerb(isDevInstance: boolean): string {
-  return `${windowsContextMenuVerb(isDevInstance)}DocStudio`;
-}
-
-export function windowsContextMenuDocStudioLabel(locale: string, productName: string): string {
-  const language = locale.toLowerCase();
-  if (language.startsWith("zh")) return `用 ${productName} DocStudio 打开`;
-  return `Open with ${productName} DocStudio`;
-}
-
-export function windowsContextMenuDocStudioCommand(
-  spec: Pick<WindowsContextMenuSpec, "exePath" | "appPath" | "packaged">
-): string {
-  const args = spec.packaged
-    ? [quoteForCommand(spec.exePath), SHELL_OPEN_DOCSTUDIO_FLAG, `"%1"`]
-    : [
-        quoteForCommand(spec.exePath),
-        quoteForCommand(spec.appPath || ""),
-        SHELL_OPEN_DOCSTUDIO_FLAG,
-        `"%1"`
-      ];
-  return args.filter((part) => part.length > 0).join(" ");
-}
-
-/** Restricts the Win10 legacy verb to files DocStudio can actually open. */
-export function windowsContextMenuDocStudioAppliesTo(): string {
-  return DOC_STUDIO_FILE_EXTENSIONS.map((ext) => `System.FileExtension:"${ext}"`).join(" OR ");
-}
-
-export function windowsContextMenuDocStudioKeys(verb: string): string[] {
-  return [`HKCU\\Software\\Classes\\*\\shell\\${verb}`];
-}
-
 export function buildWindowsContextMenuReg(spec: WindowsContextMenuSpec): string {
   const verb = windowsContextMenuVerb(spec.isDevInstance);
   const label = windowsContextMenuLabel(spec.locale, spec.productName);
   const icon = spec.exePath;
   const fileCommand = windowsContextMenuCommand(spec, "%1");
   const backgroundCommand = windowsContextMenuCommand(spec, "%V");
-  const docStudioVerb = windowsContextMenuDocStudioVerb(spec.isDevInstance);
-  const docStudioLabel = windowsContextMenuDocStudioLabel(spec.locale, spec.productName);
-  const docStudioCommand = windowsContextMenuDocStudioCommand(spec);
   const entries: Array<{ key: string; values: Array<[string, string]> }> = [
     {
       key: `HKEY_CURRENT_USER\\Software\\Classes\\Directory\\shell\\${verb}`,
@@ -362,18 +288,6 @@ export function buildWindowsContextMenuReg(spec: WindowsContextMenuSpec): string
     {
       key: `HKEY_CURRENT_USER\\Software\\Classes\\*\\shell\\${verb}\\command`,
       values: [["", fileCommand]]
-    },
-    {
-      key: `HKEY_CURRENT_USER\\Software\\Classes\\*\\shell\\${docStudioVerb}`,
-      values: [
-        ["", docStudioLabel],
-        ["Icon", icon],
-        ["AppliesTo", windowsContextMenuDocStudioAppliesTo()]
-      ]
-    },
-    {
-      key: `HKEY_CURRENT_USER\\Software\\Classes\\*\\shell\\${docStudioVerb}\\command`,
-      values: [["", docStudioCommand]]
     }
   ];
 

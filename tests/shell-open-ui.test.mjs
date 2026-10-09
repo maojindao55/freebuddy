@@ -17,8 +17,6 @@ test("Electron main registers Windows Explorer verbs and --open handling", () =>
   assert.match(mainTs, /app\.on\("open-file"/);
   assert.match(mainTs, /app\.on\("second-instance"/);
   assert.match(mainTs, /prepareAttachmentFiles/);
-  assert.match(mainTs, /collectLaunchDocStudioPaths/);
-  assert.match(mainTs, /routeDocStudioLaunchPaths/);
 });
 
 test("Preload exposes onShellOpen listener", () => {
@@ -47,8 +45,6 @@ test("NSIS uninstall removes Explorer context-menu keys", () => {
   assert.match(nsh, /customUnInstall/);
   assert.match(nsh, /Directory\\shell\\FreeBuddy/);
   assert.match(nsh, /Classes\\\*\\shell\\FreeBuddy/);
-  assert.match(nsh, /Classes\\\*\\shell\\FreeBuddyDocStudio/);
-  assert.match(nsh, /Classes\\\*\\shell\\FreeBuddyDevDocStudio/);
   assert.match(nsh, /uninstall-explorer-command\.ps1/);
   assert.match(nsh, /Remove-AppxPackage|uninstall-explorer-command/);
 });

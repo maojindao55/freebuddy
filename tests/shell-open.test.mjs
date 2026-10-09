@@ -8,17 +8,11 @@ import { fileURLToPath } from "node:url";
 const {
   SHELL_OPEN_FILE_EXTENSIONS,
   collectShellOpenPaths,
-  collectDocStudioPaths,
   classifyShellOpenPaths,
   windowsContextMenuVerb,
   windowsContextMenuLabel,
   windowsContextMenuCommand,
   windowsContextMenuKeys,
-  windowsContextMenuDocStudioVerb,
-  windowsContextMenuDocStudioLabel,
-  windowsContextMenuDocStudioCommand,
-  windowsContextMenuDocStudioAppliesTo,
-  windowsContextMenuDocStudioKeys,
   buildWindowsContextMenuReg,
   macOpenWithServiceLabel,
   macOpenWithServiceFileName,
@@ -136,67 +130,6 @@ test("Windows context menu registry uses Open with FreeBuddy and --open", () => 
   assert.match(reg, /--open \\"%1\\"/);
   assert.match(reg, /--open \\"%V\\"/);
   assert.equal(reg.includes("C:\\\\Program Files\\\\FreeBuddy\\\\FreeBuddy.exe"), true);
-});
-
-test("collectDocStudioPaths reads --docstudio and never crosses --open", () => {
-  const exe = "C:\\Program Files\\FreeBuddy\\FreeBuddy.exe";
-  assert.deepEqual(
-    collectDocStudioPaths([exe, "--docstudio", "D:\\work\\data.csv"], { execPath: exe }),
-    ["D:\\work\\data.csv"]
-  );
-  assert.deepEqual(
-    collectDocStudioPaths([exe, "--docstudio=D:\\work\\数据.xlsx"], { execPath: exe }),
-    ["D:\\work\\数据.xlsx"]
-  );
-  // --open values must not leak into the doc-studio list.
-  assert.deepEqual(
-    collectDocStudioPaths(
-      [exe, "--open", "D:\\work\\project", "--docstudio", "D:\\work\\a.md"],
-      { execPath: exe }
-    ),
-    ["D:\\work\\a.md"]
-  );
-  // --docstudio values must not leak into the generic open list.
-  assert.deepEqual(
-    collectShellOpenPaths(
-      [exe, "--open", "D:\\work\\project", "--docstudio", "D:\\work\\a.md"],
-      { execPath: exe }
-    ),
-    ["D:\\work\\project"]
-  );
-});
-
-test("Windows context menu adds a DocStudio verb gated to doc extensions", () => {
-  const spec = {
-    exePath: "C:\\Program Files\\FreeBuddy\\FreeBuddy.exe",
-    packaged: true,
-    locale: "zh-CN",
-    productName: "FreeBuddy",
-    isDevInstance: false
-  };
-  assert.equal(windowsContextMenuDocStudioVerb(false), "FreeBuddyDocStudio");
-  assert.equal(windowsContextMenuDocStudioVerb(true), "FreeBuddyDevDocStudio");
-  assert.equal(windowsContextMenuDocStudioLabel("zh-CN", "FreeBuddy"), "用 FreeBuddy DocStudio 打开");
-  assert.equal(windowsContextMenuDocStudioLabel("en-US", "FreeBuddy"), "Open with FreeBuddy DocStudio");
-  assert.equal(
-    windowsContextMenuDocStudioCommand(spec),
-    '"C:\\Program Files\\FreeBuddy\\FreeBuddy.exe" --docstudio "%1"'
-  );
-  assert.deepEqual(windowsContextMenuDocStudioKeys("FreeBuddyDocStudio"), [
-    "HKCU\\Software\\Classes\\*\\shell\\FreeBuddyDocStudio"
-  ]);
-  assert.match(windowsContextMenuDocStudioAppliesTo(), /^System\.FileExtension:"\.csv"/);
-  assert.match(windowsContextMenuDocStudioAppliesTo(), /System\.FileExtension:"\.json"$/);
-  assert.equal(
-    windowsContextMenuDocStudioAppliesTo().includes("System.FileExtension:\".png\""),
-    false
-  );
-
-  const reg = buildWindowsContextMenuReg(spec);
-  assert.match(reg, /Classes\\\*\\shell\\FreeBuddyDocStudio/);
-  assert.match(reg, /用 FreeBuddy DocStudio 打开/);
-  assert.match(reg, /--docstudio \\"%1\\"/);
-  assert.match(reg, /AppliesTo/);
 });
 
 test("shell-open file extensions stay aligned with attachment allowlist", () => {

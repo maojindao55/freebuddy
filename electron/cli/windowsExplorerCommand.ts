@@ -9,7 +9,6 @@ const execFileAsync = promisify(execFile);
 /** Keep in sync with desktop/windows/explorer-command/identity.json */
 export const WINDOWS_EXPLORER_COMMAND = {
   clsid: "{5C8A1E2D-9B74-4A16-8F3C-6E2D91B0487A}",
-  docStudioClsid: "{6B8E4C1F-9A2D-4F73-B5E8-1D0C7A9F3E42}",
   packageName: "dev.freebuddy.app.shell",
   devPackageName: "dev.freebuddy.app.dev.shell",
   publisher: "CN=FreeBuddy",
@@ -57,7 +56,6 @@ export interface WindowsExplorerCommandManifestSpec {
   executable: string;
   dllName?: string;
   clsid?: string;
-  docStudioClsid?: string;
   architecture?: "x64" | "x86" | "arm64" | "neutral";
   displayName?: string;
 }
@@ -66,9 +64,6 @@ export function buildWindowsExplorerCommandAppxManifest(
   spec: WindowsExplorerCommandManifestSpec
 ): string {
   const clsid = clsidWithoutBraces(spec.clsid || WINDOWS_EXPLORER_COMMAND.clsid);
-  const docStudioClsid = clsidWithoutBraces(
-    spec.docStudioClsid || WINDOWS_EXPLORER_COMMAND.docStudioClsid
-  );
   const publisher = spec.publisher || WINDOWS_EXPLORER_COMMAND.publisher;
   const publisherDisplayName =
     spec.publisherDisplayName || WINDOWS_EXPLORER_COMMAND.publisherDisplayName;
@@ -135,7 +130,6 @@ export function buildWindowsExplorerCommandAppxManifest(
             </desktop5:ItemType>
             <desktop5:ItemType Type="*">
               <desktop5:Verb Id="OpenWithFreeBuddy" Clsid="${clsid}" />
-              <desktop5:Verb Id="OpenWithFreeBuddyDocStudio" Clsid="${docStudioClsid}" />
             </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>
@@ -143,7 +137,6 @@ export function buildWindowsExplorerCommandAppxManifest(
           <com:ComServer>
             <com:SurrogateServer DisplayName="FreeBuddy Explorer Command">
               <com:Class Id="${clsid}" Path="${escapeXml(dllName)}" ThreadingModel="STA" />
-              <com:Class Id="${docStudioClsid}" Path="${escapeXml(dllName)}" ThreadingModel="STA" />
             </com:SurrogateServer>
           </com:ComServer>
         </com:Extension>
@@ -160,7 +153,6 @@ export interface WindowsExplorerCommandPayload {
   publisher: string;
   thumbprint: string;
   clsid: string;
-  docStudioClsid: string;
   dllName: string;
   msixName: string;
   cerName: string;
@@ -204,7 +196,6 @@ export function readWindowsExplorerCommandPayload(
       publisher: parsed.publisher,
       thumbprint: parsed.thumbprint,
       clsid: parsed.clsid || WINDOWS_EXPLORER_COMMAND.clsid,
-      docStudioClsid: parsed.docStudioClsid || WINDOWS_EXPLORER_COMMAND.docStudioClsid,
       dllName: parsed.dllName || WINDOWS_EXPLORER_COMMAND.dllName,
       msixName: parsed.msixName,
       cerName: parsed.cerName

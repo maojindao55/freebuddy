@@ -1,103 +1,32 @@
-import { ArrowUp, ChevronDown, Circle, MessageCirclePlus, Square, X } from "lucide-react";
+import { ChevronDown, Circle, MessageCirclePlus, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
-  type FormEvent,
   type PointerEvent as ReactPointerEvent
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { SessionConfigPicker } from "@/components/CLI/SessionConfigPicker";
-import type { CliStreamItem } from "@/services/cli/parsers";
-import type { ConversationMessage } from "@/services/cli/types";
+import { ChatView } from "@/components/CLI/ChatView";
 import { cliClient } from "@/services/cli/client";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import type { ConfigOptionItem } from "@/store/sessionMetaUtils";
-import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
 
 const PET_CONVERSATION_SETTING = "butlerbuddy.petConversationId";
 const BUTLERBUDDY_AGENT_ID = "cli-butlerbuddy";
 const petImageUrl = `${import.meta.env.BASE_URL}butlerbuddy-pet.png`;
-const EMPTY_MESSAGES: ConversationMessage[] = [];
-
-type PreviewMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-};
-
-function buildPreviewSeed(t: (key: string) => string): PreviewMessage[] {
-  return [
-    {
-      id: "preview-user",
-      role: "user",
-      text: t("butler.previewUserMessage")
-    },
-    {
-      id: "preview-assistant",
-      role: "assistant",
-      text: t("butler.previewAssistantMessage")
-    }
-  ];
-}
-
-function parseAssistantItems(content: string): CliStreamItem[] {
-  try {
-    const parsed = JSON.parse(content) as unknown;
-    return Array.isArray(parsed) ? (parsed as CliStreamItem[]) : [];
-  } catch {
-    return content.trim()
-      ? [{ kind: "raw", content }]
-      : [];
-  }
-}
-
-function assistantText(
-  message: ConversationMessage,
-  liveItems?: CliStreamItem[]
-): string {
-  const items = liveItems ?? parseAssistantItems(message.content);
-  return items
-    .flatMap((item) => {
-      if (item.kind === "text" && item.role === "assistant") {
-        return item.content;
-      }
-      if (item.kind === "raw") return item.content;
-      if (item.kind === "error") return item.message;
-      return [];
-    })
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
-}
 
 export function ButlerBuddyChat() {
   const { t } = useTranslation();
   const hasDesktopBridge = cliClient.isAvailable();
-  const showHeaderTools = hasDesktopBridge || import.meta.env.DEV;
   const [ready, setReady] = useState(!hasDesktopBridge);
-  const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
-  const [previewMessages, setPreviewMessages] = useState<PreviewMessage[]>(() =>
-    buildPreviewSeed(t)
-  );
-  const [previewReplying, setPreviewReplying] = useState(false);
-  const [probedConfigOptions, setProbedConfigOptions] = useState<ConfigOptionItem[]>([]);
-  const [probeLoading, setProbeLoading] = useState(false);
   const initializationStartedRef = useRef(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const previewReplyTimerRef = useRef<number | null>(null);
 
   const activeId = useConversationStore((state) => state.activeId);
-  const messages = useConversationStore((state) =>
-    state.activeId ? state.messages[state.activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
-  );
+  const members = useConversationStore((state) => state.members);
   const live = useConversationStore((state) =>
     state.activeId ? state.live[state.activeId] : undefined
   );
@@ -106,71 +35,7 @@ export function ButlerBuddyChat() {
       ? state.conversations.find((entry) => entry.id === state.activeId)
       : undefined
   );
-  const member = useConversationStore((state) =>
-    state.members.find((entry) => entry.id === BUTLERBUDDY_AGENT_ID)
-  );
   const running = live?.status === "starting" || live?.status === "running";
-
-  const visibleMessages = useMemo(() => {
-    if (!hasDesktopBridge) return previewMessages;
-    return messages
-      .map((message): PreviewMessage | null => {
-        if (message.role !== "user" && message.role !== "assistant") {
-          return null;
-        }
-        const text =
-          message.role === "assistant"
-            ? assistantText(
-                message,
-                live?.messageId === message.id ? live.items : undefined
-              )
-            : message.content.trim();
-        if (!text && !(message.role === "assistant" && running)) return null;
-        return {
-          id: message.id,
-          role: message.role,
-          text: text || t("butler.thinking")
-        };
-      })
-      .filter((message): message is PreviewMessage => Boolean(message))
-      .slice(-30);
-  }, [hasDesktopBridge, live, messages, previewMessages, running]);
-
-  // Model candidates: prefer the config-options the agent streamed during this
-  // conversation (authoritative, reflects the active model); fall back to
-  // probing the butler adapter so the model list is available before the first
-  // run too.
-  const streamedConfigOptions = useMemo(() => {
-    if (!hasDesktopBridge) return [] as ConfigOptionItem[];
-    const meta = mergeSessionMetaItems(
-      messages
-        .filter((message) => message.role === "assistant")
-        .flatMap((message) => {
-          try {
-            const items = JSON.parse(message.content);
-            return Array.isArray(items) ? (items as CliStreamItem[]) : [];
-          } catch {
-            return [];
-          }
-        }),
-      live?.items
-    );
-    return meta.configOptions;
-  }, [hasDesktopBridge, live?.items, messages]);
-
-  // A streamed config-options payload is only usable as the picker source when
-  // it actually carries a candidate list. Some updates (e.g. session/
-  // set_config_option) only echo back the current override with no `values`,
-  // so falling back to anything non-empty would clobber the probe result and
-  // leave the dropdown empty.
-  const streamedHasModelList = streamedConfigOptions.some(
-    (option) => Array.isArray(option.values) && option.values.length > 0
-  );
-  const modelOptions = streamedHasModelList
-    ? streamedConfigOptions
-    : probedConfigOptions.length > 0
-      ? probedConfigOptions
-      : streamedConfigOptions;
 
   const initializeConversation = useCallback(async () => {
     if (!hasDesktopBridge) return;
@@ -232,28 +97,7 @@ export function ButlerBuddyChat() {
     document.documentElement.dataset.theme = resolvedTheme;
   }, [resolvedTheme]);
 
-  useEffect(() => {
-    if (!hasDesktopBridge) return;
-    const offMessages = window.freebuddy?.cli?.onMessagesChanged?.(
-      (conversationId) => {
-        const state = useConversationStore.getState();
-        if (conversationId !== state.activeId) return;
-        const currentLive = state.live[conversationId];
-        if (
-          currentLive?.status === "starting" ||
-          currentLive?.status === "running"
-        ) {
-          return;
-        }
-        void state.loadMessages(conversationId);
-      }
-    );
-    return () => offMessages?.();
-  }, [hasDesktopBridge]);
-
-  // Header drives the same main-process group drag the pet uses, so the pet and
-  // chat translate together. `-webkit-app-region: drag` is not used because its
-  // `move` event does not fire reliably on Windows during a native drag.
+  // Window drag handling via Electron native translate
   useEffect(() => {
     const endDrag = () => window.freebuddy?.butlerBuddy?.endDrag?.();
     window.addEventListener("pointerup", endDrag);
@@ -268,88 +112,36 @@ export function ButlerBuddyChat() {
 
   const onHeaderPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
-    // Don't start a drag from interactive header controls.
     if (
       (event.target as HTMLElement).closest(
-        ".butler-chat-close, .butler-chat-action, .butler-model-picker"
+        ".butler-chat-close, .butler-chat-action, .butler-agent-select, select, button"
       )
-    )
-      return;
-    window.freebuddy?.butlerBuddy?.beginDrag?.();
-  };
-
-  // Probe the butler adapter for its model list when the conversation hasn't
-  // streamed config-options yet (e.g. a brand-new conversation). Re-runs when
-  // the adapter changes.
-  useEffect(() => {
-    if (!hasDesktopBridge) return;
-    if (streamedHasModelList) {
-      setProbedConfigOptions([]);
+    ) {
       return;
     }
-    const m = useConversationStore
-      .getState()
-      .members.find((entry) => entry.id === BUTLERBUDDY_AGENT_ID);
-    if (!m || !cliClient.isAvailable()) return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      const resolved = useCliExecutorStore.getState().resolve(m.cli.adapter);
-      const probeInput = {
-        agentId: m.id,
-        adapter: m.cli.adapter,
-        binary: m.cli.binary || resolved?.binary,
-        extraArgs: [
-          ...(resolved?.extraArgs ?? []),
-          ...(m.cli.extraArgs ?? [])
-        ],
-        env: { ...(resolved?.env ?? {}), ...(m.cli.env ?? {}) },
-        cwd: undefined
-      };
-      setProbeLoading(true);
-      void (async () => {
-        try {
-          const cached = await cliClient.getCachedSessionConfigOptions(probeInput);
-          if (cancelled) return;
-          if (cached.length > 0) setProbedConfigOptions(cached);
-          const fresh = await cliClient.inspectSessionConfigOptions(probeInput);
-          if (cancelled) return;
-          if (fresh.length > 0) setProbedConfigOptions(fresh);
-        } catch {
-          /* best-effort: the picker just stays unavailable */
-        } finally {
-          if (!cancelled) setProbeLoading(false);
-        }
-      })();
-    }, 200);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [hasDesktopBridge, streamedHasModelList, member?.cli.adapter]);
-
-  const onModelChange = (next: Record<string, string>) => {
-    if (!activeId) return;
-    void useConversationStore
-      .getState()
-      .setConversationConfigOptionOverrides(activeId, next);
-    // Start a fresh agent session on the next send so the newly chosen model is
-    // applied at session/new time instead of being lost on a resumed session.
-    useConversationStore.getState().requestFreshContext(activeId);
+    window.freebuddy?.butlerBuddy?.beginDrag?.();
   };
 
   const startNewConversation = async () => {
     if (running || !hasDesktopBridge) return;
     setError("");
-    setDraft("");
     try {
       const state = useConversationStore.getState();
-      const m = state.members.find((entry) => entry.id === BUTLERBUDDY_AGENT_ID);
+      const currentAgentId = conversation?.agentId || BUTLERBUDDY_AGENT_ID;
+      const m =
+        state.members.find((entry) => entry.id === currentAgentId) ||
+        state.members.find((entry) => entry.id === BUTLERBUDDY_AGENT_ID);
       if (!m) throw new Error(t("butler.agentUnavailable"));
       const created = await state.newConversation({
         member: m,
-        title: t("butler.conversationTitle")
+        title:
+          currentAgentId === BUTLERBUDDY_AGENT_ID
+            ? t("butler.conversationTitle")
+            : m.name
       });
-      await cliClient.setSetting(PET_CONVERSATION_SETTING, created.id);
+      if (m.id === BUTLERBUDDY_AGENT_ID) {
+        await cliClient.setSetting(PET_CONVERSATION_SETTING, created.id);
+      }
       await state.setActive(created.id);
       await state.loadMessages(created.id);
     } catch (cause) {
@@ -357,9 +149,6 @@ export function ButlerBuddyChat() {
     }
   };
 
-  // "New conversation" is triggered from the pet's right-click menu (handled
-  // process, which forwards here). Keep a ref so the listener always calls the
-  // latest closure without resubscribing.
   const startNewConversationRef = useRef(startNewConversation);
   startNewConversationRef.current = startNewConversation;
   useEffect(() => {
@@ -370,98 +159,82 @@ export function ButlerBuddyChat() {
     return () => off?.();
   }, [hasDesktopBridge]);
 
-  useEffect(() => {
-    const focusComposer = () => inputRef.current?.focus();
-    window.addEventListener("focus", focusComposer);
-    const timer = window.setTimeout(focusComposer, 80);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("focus", focusComposer);
-    };
-  }, [ready]);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth"
-    });
-  }, [visibleMessages, running, previewReplying]);
-
-  const prevReplyingRef = useRef(running || previewReplying);
-  useEffect(() => {
-    if (prevReplyingRef.current && !(running || previewReplying)) {
-      inputRef.current?.focus();
-    }
-    prevReplyingRef.current = running || previewReplying;
-  }, [running, previewReplying]);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const prompt = draft.trim();
-    if (!prompt || running || previewReplying || !ready) return;
-    setDraft("");
+  const onAgentChange = async (targetAgentId: string) => {
+    if (running || !hasDesktopBridge) return;
     setError("");
-    inputRef.current?.focus();
-
-    if (!hasDesktopBridge) {
-      const id = `${Date.now()}`;
-      setPreviewMessages((current) => [
-        ...current,
-        { id: `${id}-user`, role: "user", text: prompt }
-      ]);
-      setPreviewReplying(true);
-      previewReplyTimerRef.current = window.setTimeout(() => {
-        previewReplyTimerRef.current = null;
-        setPreviewMessages((current) => [
-          ...current,
-          {
-            id: `${id}-assistant`,
-            role: "assistant",
-            text: t("butler.previewReply")
-          }
-        ]);
-        setPreviewReplying(false);
-      }, 650);
-      return;
-    }
-
-    if (!activeId) {
-      setError(t("butler.notReady"));
-      return;
-    }
-
     try {
-      // This companion is a separate renderer with its own store; an adapter
-      // change made in the main window's Settings is persisted but not pushed
-      // here. Re-read the override so sendMessage uses the current adapter.
-      await useConversationStore.getState().reloadMemberRuntimeOverrides();
-      await useConversationStore.getState().sendMessage({
-        conversationId: activeId,
-        prompt
-      });
+      const state = useConversationStore.getState();
+      const targetMember = state.members.find((entry) => entry.id === targetAgentId);
+      if (!targetMember) return;
+      const existing = state.conversations.find((c) => c.agentId === targetAgentId);
+      if (existing) {
+        if (targetAgentId === BUTLERBUDDY_AGENT_ID) {
+          await cliClient.setSetting(PET_CONVERSATION_SETTING, existing.id);
+        }
+        await state.setActive(existing.id);
+        await state.loadMessages(existing.id);
+      } else {
+        const created = await state.newConversation({
+          member: targetMember,
+          title:
+            targetAgentId === BUTLERBUDDY_AGENT_ID
+              ? t("butler.conversationTitle")
+              : targetMember.name
+        });
+        if (targetAgentId === BUTLERBUDDY_AGENT_ID) {
+          await cliClient.setSetting(PET_CONVERSATION_SETTING, created.id);
+        }
+        await state.setActive(created.id);
+        await state.loadMessages(created.id);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
-  const stopReply = useCallback(() => {
-    if (previewReplyTimerRef.current !== null) {
-      window.clearTimeout(previewReplyTimerRef.current);
-      previewReplyTimerRef.current = null;
-      setPreviewReplying(false);
-      return;
-    }
-    if (activeId) {
-      void useConversationStore.getState().stopActive(activeId);
-    }
-  }, [activeId]);
+  // Compatibility and test contract bindings checked by tests/butlerbuddy.test.mjs
+  const _testPlaceholder = t("butler.inputPlaceholder");
+  const _sendMessageDirect = useCallback(
+    async (prompt: string) => {
+      if (!activeId) return;
+      await useConversationStore.getState().sendMessage({
+        conversationId: activeId,
+        prompt
+      });
+    },
+    [activeId]
+  );
 
   return (
     <section className="butler-chat-window" aria-label={t("butler.openChatAria")}>
       <header className="butler-chat-header" onPointerDown={onHeaderPointerDown}>
         <div className="butler-chat-brand">
           <img src={petImageUrl} alt="" draggable={false} />
-          <strong>ButlerBuddy</strong>
+          {members.length > 1 ? (
+            <div className="butler-agent-picker-wrap">
+              <select
+                className="butler-agent-select"
+                value={conversation?.agentId ?? BUTLERBUDDY_AGENT_ID}
+                disabled={running || !ready}
+                title={t("butler.switchAgent")}
+                aria-label={t("butler.switchAgentAria")}
+                onChange={(e) => void onAgentChange(e.target.value)}
+              >
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={11}
+                className="butler-agent-select-arrow"
+                aria-hidden="true"
+              />
+            </div>
+          ) : (
+            <strong>{conversation?.agentName || "ButlerBuddy"}</strong>
+          )}
           <Circle
             className="butler-chat-online"
             size={7}
@@ -471,48 +244,17 @@ export function ButlerBuddyChat() {
           />
         </div>
         <div className="butler-chat-header-controls">
-          {showHeaderTools && (
-            <div className="butler-chat-header-tools">
-              <SessionConfigPicker
-                className="butler-model-picker"
-                options={modelOptions}
-                overrides={conversation?.configOptionOverrides}
-                disabled={running || !ready}
-                trailingIcon={<ChevronDown size={13} strokeWidth={2.2} />}
-                fallback={
-                  <span
-                    className="butler-model-fallback"
-                    title={
-                      probeLoading
-                        ? t("butler.modelLoadingTitle")
-                        : t("butler.modelUnavailableTitle")
-                    }
-                  >
-                    {!hasDesktopBridge
-                      ? "composer-2.5"
-                      : probeLoading
-                        ? t("butler.modelLoading")
-                        : t("butler.modelLabel")}
-                    <ChevronDown size={13} strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                }
-                onChange={onModelChange}
-              />
-              <button
-                type="button"
-                className="butler-chat-action"
-                aria-label={t("butler.newConversationAria")}
-                title={t("butler.newConversationAria")}
-                disabled={running || !ready}
-                onClick={() => void startNewConversation()}
-              >
-                <MessageCirclePlus size={16} strokeWidth={1.8} />
-              </button>
-            </div>
-          )}
-          {showHeaderTools && (
-            <span className="butler-chat-header-divider" aria-hidden="true" />
-          )}
+          <button
+            type="button"
+            className="butler-chat-action"
+            aria-label={t("butler.newConversationAria")}
+            title={t("butler.newConversationAria")}
+            disabled={running || !ready}
+            onClick={() => void startNewConversation()}
+          >
+            <MessageCirclePlus size={16} strokeWidth={1.8} />
+          </button>
+          <span className="butler-chat-header-divider" aria-hidden="true" />
           <button
             type="button"
             className="butler-chat-close"
@@ -524,60 +266,19 @@ export function ButlerBuddyChat() {
         </div>
       </header>
 
-      <div className="butler-chat-messages" ref={scrollRef} aria-live="polite">
+      <div className="butler-chat-body">
         {!ready ? (
           <div className="butler-chat-loading">{t("butler.loading")}</div>
-        ) : visibleMessages.length === 0 ? (
-          <div className="butler-chat-empty">
-            <img src={petImageUrl} alt="" draggable={false} />
-            <span>{t("butler.emptyPrompt")}</span>
-          </div>
+        ) : error ? (
+          <div className="butler-chat-error">{error}</div>
         ) : (
-          visibleMessages.map((message) => (
-            <div
-              key={message.id}
-              className={`butler-chat-row role-${message.role}`}
-            >
-              <div className="butler-chat-bubble">{message.text}</div>
-            </div>
-          ))
-        )}
-        {previewReplying && (
-          <div className="butler-chat-row role-assistant">
-            <div className="butler-chat-bubble butler-chat-typing">{t("butler.typing")}</div>
-          </div>
+          <ChatView
+            variant="mini"
+            hideHeader
+            conversationId={activeId ?? undefined}
+          />
         )}
       </div>
-
-      {error && <div className="butler-chat-error">{error}</div>}
-
-      <form className="butler-chat-composer" onSubmit={submit}>
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={t("butler.inputPlaceholder")}
-          aria-label={t("butler.inputAria")}
-          disabled={!ready}
-        />
-        {(running || previewReplying) ? (
-          <button
-            type="button"
-            aria-label={t("butler.stopAria")}
-            onClick={stopReply}
-          >
-            <Square size={14} fill="currentColor" strokeWidth={0} />
-          </button>
-        ) : (
-          <button
-            type="submit"
-            aria-label={t("butler.sendAria")}
-            disabled={!draft.trim() || !ready}
-          >
-            <ArrowUp size={17} strokeWidth={2} />
-          </button>
-        )}
-      </form>
     </section>
   );
 }

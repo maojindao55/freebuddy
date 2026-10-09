@@ -17,7 +17,8 @@ export function AgentPicker({
   disabled,
   onChange,
   onOpen,
-  onManage
+  onManage,
+  className
 }: {
   groups: AgentAvailabilityGroups;
   selectedId: string;
@@ -25,7 +26,8 @@ export function AgentPicker({
   disabled?: boolean;
   onChange: (id: string) => void;
   onOpen: () => void;
-  onManage: () => void;
+  onManage?: () => void;
+  className?: string;
 }) {
   const { t } = useTranslation();
   const menuId = useId();
@@ -134,7 +136,10 @@ export function AgentPicker({
   };
 
   return (
-    <div className="new-task-agent-picker" ref={rootRef}>
+    <div
+      className={`new-task-agent-picker${className ? ` ${className}` : ""}`}
+      ref={rootRef}
+    >
       <button
         ref={triggerRef}
         className="agent-picker-trigger"
@@ -274,22 +279,24 @@ export function AgentPicker({
             </div>
           ) : null}
 
-          <button
-            ref={manageRef}
-            className="agent-picker-manage"
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onManage();
-            }}
-          >
-            <Settings2 aria-hidden="true" />
-            <span>
-              {unavailableCount > 0
-                ? t("chat.agentPicker.installMore", { count: unavailableCount })
-                : t("chat.agentPicker.manage")}
-            </span>
-          </button>
+          {onManage ? (
+            <button
+              ref={manageRef}
+              className="agent-picker-manage"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onManage();
+              }}
+            >
+              <Settings2 aria-hidden="true" />
+              <span>
+                {unavailableCount > 0
+                  ? t("chat.agentPicker.installMore", { count: unavailableCount })
+                  : t("chat.agentPicker.manage")}
+              </span>
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

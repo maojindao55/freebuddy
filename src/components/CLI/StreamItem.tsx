@@ -5,6 +5,7 @@ import {
   Code,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   MoveRight,
   Search,
@@ -15,8 +16,17 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode
+} from "react";
 import { useTranslation } from "react-i18next";
+import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
@@ -654,6 +664,10 @@ function renderMarkdownListTree(
 }
 
 
+export const MarkdownCodeBlockContext = createContext<
+  ((lang: string, code: string, closed: boolean) => ReactNode | null) | null
+>(null);
+
 export function MarkdownText({
   content,
   cwd: cwdProp
@@ -667,6 +681,7 @@ export function MarkdownText({
     return s.conversations.find((conv) => conv.id === id)?.cwd ?? "";
   });
   const cwd = cwdProp ?? activeCwd ?? "";
+  const renderCodeBlock = useContext(MarkdownCodeBlockContext);
   const blocks: ReactNode[] = [];
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   let i = 0;
@@ -715,7 +730,13 @@ export function MarkdownText({
         code.push(lines[i]);
         i += 1;
       }
-      if (i < lines.length) i += 1;
+      const closed = i < lines.length;
+      if (closed) i += 1;
+      const custom = renderCodeBlock?.(lang, code.join("\n"), closed);
+      if (custom != null) {
+        blocks.push(<Fragment key={`code-${i}`}>{custom}</Fragment>);
+        continue;
+      }
       blocks.push(
         /^mermaid$/i.test(lang) ? (
           <MermaidBlock key={`code-${i}`} code={code.join("\n")} />
@@ -1337,15 +1358,40 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
           {item.content}
         </pre>
       );
-    case "file-edit":
+    case "file-edit": {
+      const isDoc = isOfficeOrDocFile(item.path);
       return (
-        <button type="button" className="file-change-entry stream-file-edit" onClick={() => {
-          const conversationId = useConversationStore.getState().activeId;
-          if (conversationId) useFileDiffStore.getState().open({ conversationId, edits: [item], index: 0 });
-        }}>
-          <FileText size={15} /><span className="file-change-path">{item.path}</span><span>{t("fileDiff.view")}</span>
-        </button>
+        <div className="stream-file-edit-group" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <button type="button" className="file-change-entry stream-file-edit" onClick={() => {
+            const conversationId = useConversationStore.getState().activeId;
+            if (conversationId) useFileDiffStore.getState().open({ conversationId, edits: [item], index: 0 });
+          }}>
+            <FileText size={15} /><span className="file-change-path">{item.path}</span><span>{t("fileDiff.view")}</span>
+          </button>
+          {isDoc && window.freebuddy?.docStudio?.openWindow && (
+            <button
+              type="button"
+              className="file-change-entry stream-file-edit"
+              title={t("docStudio.openInStudio", "Open in DocStudio")}
+              onClick={() => void window.freebuddy?.docStudio?.openWindow({ filePath: item.path })}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                background: "rgba(59, 130, 246, 0.12)",
+                color: "#2563eb",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
+                fontSize: 12
+              }}
+            >
+              <ExternalLink size={12} />
+              <span>DocStudio</span>
+            </button>
+          )}
+        </div>
       );
+    }
     case "terminal-embed":
       return <TerminalEmbed item={item} />;
     case "session":

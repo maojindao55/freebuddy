@@ -2,6 +2,7 @@ import {
   Brain,
   Check,
   Copy,
+  ExternalLink,
   FileText,
   LoaderCircle,
   Package,
@@ -19,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { isTruncatedStreamNotice } from "@freebuddy/cli-stream";
 import { HistoryDetails } from "./HistoryDetails";
 import { FileChangesCard } from "./FileChanges";
+import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
 
 import { displayAgentName } from "@/config/agentDisplay";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
@@ -654,7 +656,13 @@ function MessageAttachments({
     <div className="message-attachments attachment-list" aria-label={t("attachments.listAria")}>
       {attachments.map((attachment) => {
         const isImage = attachment.kind === "image";
+        const isDoc = isOfficeOrDocFile(attachment.path);
         const previewSrc = isImage ? attachmentPreviewUrl(attachment.path) : null;
+        const handleOpenDoc = () => {
+          if (isDoc && window.freebuddy?.docStudio?.openWindow) {
+            void window.freebuddy.docStudio.openWindow({ filePath: attachment.path });
+          }
+        };
         const thumb = (
           <span className="message-attachment-thumb" aria-hidden={!isImage}>
             {isImage && previewSrc ? (
@@ -684,7 +692,15 @@ function MessageAttachments({
           </span>
         );
         return (
-          <div className="message-attachment" key={attachment.id} title={attachment.path}>
+          <div
+            className={`message-attachment${isDoc ? " is-doc-clickable" : ""}`}
+            key={attachment.id}
+            title={isDoc ? `${attachment.path} (${t("docStudio.openInStudio", "Open in DocStudio")})` : attachment.path}
+            onClick={isDoc ? handleOpenDoc : undefined}
+            role={isDoc ? "button" : undefined}
+            tabIndex={isDoc ? 0 : undefined}
+            onKeyDown={isDoc ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenDoc(); } } : undefined}
+          >
             {isImage && previewSrc ? (
               <button
                 type="button"
@@ -698,7 +714,15 @@ function MessageAttachments({
               thumb
             )}
             <span className="message-attachment-main">
-              <span className="message-attachment-name">{attachment.name}</span>
+              <span className="message-attachment-name">
+                {attachment.name}
+                {isDoc && (
+                  <span className="doc-studio-badge">
+                    <ExternalLink size={10} />
+                    <span>DocStudio</span>
+                  </span>
+                )}
+              </span>
               <span className="message-attachment-meta">
                 {attachmentSummary(attachment)}
               </span>
@@ -1113,6 +1137,7 @@ export const MessageBubble = memo(function MessageBubble({
         )}
         <FileChangesCard items={displayItems} conversationId={message.conversationId} messageId={message.id} storedTaskId={message.taskId} isRunning={message.status === "running" || message.status === "starting"} />
         {actionBarNode}
+        {afterContent}
       </div>
     </div>
   );

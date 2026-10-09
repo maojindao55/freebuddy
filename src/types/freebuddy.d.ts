@@ -1012,6 +1012,32 @@ declare global {
     remote: FreebuddyRemote;
     butlerBuddy: FreebuddyButlerBuddy;
     game: FreebuddyGame;
+    docStudio: FreebuddyDocStudio;
+  }
+
+  interface FreebuddyDocStudio {
+    openWindow(target?: string | { filePath?: string }): Promise<boolean>;
+    readFile(filePath: string): Promise<{
+      success: boolean;
+      name?: string;
+      path?: string;
+      size?: number;
+      ext?: string;
+      content?: string;
+      bufferBase64?: string;
+      error?: string;
+    }>;
+    writeFile(filePath: string, payload: { content?: string; bufferBase64?: string }): Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+    showSaveDialog(defaultName: string, filters?: Array<{ name: string; extensions: string[] }>): Promise<string | null>;
+    showOpenDialog(defaultPath?: string): Promise<string[] | null>;
+    showItemInFolder(filePath: string): Promise<boolean>;
+    openConversationInMain(conversationId: string): Promise<boolean>;
+    watchFile(filePath: string): Promise<boolean>;
+    unwatchFile(filePath: string): Promise<boolean>;
+    onFileChanged(cb: (filePath: string) => void): () => void;
   }
 
   interface FreebuddyGame {

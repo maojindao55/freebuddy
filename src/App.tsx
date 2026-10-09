@@ -279,7 +279,15 @@ function App() {
     const off = window.freebuddy?.window?.onOpenConversation?.((conversationId) => {
       setSettingsOpen(false);
       setWorkspaceView("chat");
-      void useConversationStore.getState().setActive(conversationId);
+      void (async () => {
+        const state = useConversationStore.getState();
+        // Conversations created in other renderer processes (e.g. DocStudio)
+        // may not be in this window's list yet — refresh before activating.
+        if (!state.conversations.some((c) => c.id === conversationId)) {
+          await state.refreshList();
+        }
+        void useConversationStore.getState().setActive(conversationId);
+      })();
     });
     return () => {
       off?.();

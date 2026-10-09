@@ -1131,8 +1131,8 @@ html[data-surface="butler-screen-ball"] #root {
   display: flex;
   width: calc(100% - 16px);
   height: calc(100% - 16px);
-  max-width: 344px;
-  max-height: 404px;
+  max-width: 100%;
+  max-height: 100%;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
@@ -1155,6 +1155,53 @@ html[data-surface="butler-screen-ball"] #root {
 
 [data-theme="dark"] .butler-chat-header {
   border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.butler-chat-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.butler-agent-picker-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+}
+
+.butler-agent-select {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 2px 14px 2px 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fb-text-primary);
+  cursor: pointer;
+  border-radius: 6px;
+  outline: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.butler-agent-select:hover:not(:disabled) {
+  background: var(--fb-hover);
+}
+
+.butler-agent-select:focus-visible {
+  box-shadow: 0 0 0 2px var(--fb-brand-glow);
+}
+
+.butler-agent-select-arrow {
+  position: absolute;
+  right: 2px;
+  pointer-events: none;
+  color: var(--fb-text-tertiary);
 }
 
 [data-theme="dark"] .butler-chat-bubble {
@@ -1477,6 +1524,200 @@ html[data-surface="butler-screen-ball"] #root {
   background: #e2e8f0;
 }
 
+/* ==========================================================================
+   Mini ChatView & Mini Composer (Companion & Floating window)
+   ========================================================================== */
+
+.chat-view.chat-view-mini {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.chat-view-mini .chat-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  grid-row: auto;
+  padding: 12px 10px 6px;
+  gap: 12px;
+  scroll-padding-bottom: 12px;
+  overscroll-behavior: contain;
+}
+
+.chat-view-mini .chat-scroll .msg-content-wrapper {
+  max-width: calc(100% - 36px);
+}
+
+.chat-view-mini .chat-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: auto 0;
+  padding: 24px 16px;
+  text-align: center;
+  gap: 8px;
+}
+
+.chat-view-mini .chat-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+
+.chat-view-mini .chat-empty-desc {
+  font-size: 12px;
+  color: var(--fb-text-tertiary);
+  max-width: 240px;
+  line-height: 1.45;
+}
+
+.chat-composer.chat-composer-mini {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 10;
+  width: calc(100% - 16px);
+  margin: 0 8px 8px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  border: 1px solid var(--fb-border);
+  background: var(--fb-panel-bg);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .chat-composer.chat-composer-mini {
+  background: rgba(22, 33, 54, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+.chat-composer.chat-composer-mini:focus-within {
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 2px var(--fb-brand-glow);
+}
+
+.chat-composer-mini .composer-input-wrap {
+  width: 100%;
+}
+
+.chat-composer-mini textarea,
+.chat-composer.chat-composer-mini textarea {
+  min-height: 42px;
+  max-height: 120px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--fb-text-primary);
+  resize: none;
+}
+
+.chat-composer-mini .chat-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 6px;
+  gap: 6px;
+  min-height: 32px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+[data-theme="dark"] .chat-composer-mini .chat-composer-actions {
+  border-top-color: rgba(255, 255, 255, 0.06);
+}
+
+.chat-composer-mini .composer-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-composer-mini .composer-session-config .session-config-picker-trigger {
+  max-width: 140px;
+  height: 26px;
+  padding: 0 6px 0 8px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.chat-composer-mini .composer-session-config .session-config-picker-value {
+  max-width: 104px;
+}
+
+.chat-view-mini .markdown-table-wrap {
+  margin: 8px 0 10px;
+  border-radius: 8px;
+}
+
+.chat-view-mini .markdown-table-wrap table {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.chat-view-mini .markdown-table-wrap th,
+.chat-view-mini .markdown-table-wrap td {
+  padding: 6px 8px;
+}
+
+.chat-composer-mini .send-icon-button,
+.chat-composer-mini .stop-icon-button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  font-size: 13px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-task-view-mini {
+  padding: 12px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.new-task-view-mini .new-task-title {
+  display: none;
+}
+
+.new-task-view-mini .new-task-mode-tabs {
+  display: none;
+}
+
+.new-task-view-mini [data-testid="new-task-context-bar"] {
+  display: none;
+}
+
+.new-task-view-mini .new-task-stack {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  gap: 10px;
+}
+
+.new-task-view-mini .composer-permission {
+  display: none;
+}
+
+
+
 .app-shell {
   position: fixed;
   inset: 0;
@@ -1746,8 +1987,8 @@ html[data-surface="butler-screen-ball"] #root {
   -webkit-app-region: no-drag;
 }
 
-/* Keep navigation reachable when the new-task page hides its titlebar.
-   Anchor the floating toggle to the workspace, outside that hidden header. */
+/* Anchor the restore toggle inside the titlebar's no-drag region, or to the
+   workspace when the new-task page hides its titlebar. */
 .sidebar-toggle.floating {
   position: absolute;
   top: 8px;
@@ -9925,6 +10166,25 @@ button.new-task-context-control {
 .message-attachment-name {
   font-size: 12px;
   font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message-attachment.is-doc-clickable {
+  cursor: pointer;
+}
+
+.message-attachment .doc-studio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fb-link);
+  background: var(--fb-brand-glow);
 }
 
 .message-attachment-meta,
@@ -10650,6 +10910,11 @@ button.new-task-context-control {
   min-width: 0;
   flex-direction: column;
   gap: 1px;
+  cursor: pointer;
+}
+
+.attachment-chip-main:hover {
+  opacity: 0.85;
 }
 
 .attachment-chip-name,
@@ -17831,6 +18096,17 @@ button.ghost:focus-visible,
   border-radius: 0;
   font-style: normal;
   line-height: 24px;
+}
+
+.markdown-body blockquote {
+  margin: 0 0 11px;
+  padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--fb-border-strong);
+  color: var(--fb-text-secondary);
+}
+
+.markdown-body blockquote p:last-child {
+  margin-bottom: 0;
 }
 
 .stream-content-block {

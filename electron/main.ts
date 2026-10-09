@@ -35,6 +35,12 @@ import {
 import { bindDelegationRunFinishedNotifier } from "./cli/delegationRuns.js";
 import { applyOwnerBackfill } from "./cli/ownerBackfill.js";
 import { initFileBridge } from "./fileBridge.js";
+import {
+  initDocStudioBridge,
+  openDocStudioWindow,
+  isOfficeOrDocFile,
+  isDocStudioWindowSender
+} from "./docStudioBridge.js";
 import { getDb } from "./cli/db.js";
 import { getSetting, setSetting } from "./cli/settings.js";
 import {
@@ -64,6 +70,7 @@ import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
 import {
   applyWindowsContextMenu,
   classifyShellOpenPaths,
+  collectDocStudioPaths,
   collectShellOpenPaths
 } from "./cli/shellOpen.js";
 import { applyWindowsExplorerCommandPackage } from "./cli/windowsExplorerCommand.js";
@@ -228,6 +235,28 @@ function collectLaunchShellOpenPaths(argv: readonly string[]): string[] {
   });
 }
 
+function collectLaunchDocStudioPaths(argv: readonly string[]): string[] {
+  return collectDocStudioPaths(argv, {
+    execPath: process.execPath,
+    appPath: app.isPackaged ? undefined : app.getAppPath()
+  });
+}
+
+/**
+ * Routes `--docstudio` launch paths (Windows Explorer "Open with FreeBuddy
+ * DocStudio") into the standalone DocStudio window. Unsupported files fall
+ * back to the regular shell-open flow so the entry never dead-ends.
+ */
+function routeDocStudioLaunchPaths(paths: readonly string[]): void {
+  if (paths.length === 0) return;
+  for (const doc of paths) {
+    if (isOfficeOrDocFile(doc)) {
+      openDocStudioWindow(doc);
+    }
+  }
+  enqueueShellOpenPaths(paths.filter((p) => !isOfficeOrDocFile(p)));
+}
+
 function handleExternalShare(shareId: string | null, payloadPath: string | null) {
   try {
     let jsonFile = payloadPath && fs.existsSync(payloadPath) ? payloadPath : null;
@@ -382,13 +411,26 @@ app.on("open-url", (event, url) => {
 
 app.on("open-file", (event, filePath) => {
   event.preventDefault();
+  if (isOfficeOrDocFile(filePath)) {
+    openDocStudioWindow(filePath);
+    return;
+  }
   enqueueShellOpenPaths([filePath]);
 });
 
 app.on("second-instance", (_event, argv) => {
   const url = argv.find((arg) => arg.startsWith("freebuddy://") || arg.startsWith("freebuddy-dev://"));
   if (url) handleSchemeUrl(url);
-  enqueueShellOpenPaths(collectLaunchShellOpenPaths(argv));
+  const launchPaths = collectLaunchShellOpenPaths(argv);
+  const docPaths = launchPaths.filter(isOfficeOrDocFile);
+  const otherPaths = launchPaths.filter((p) => !isOfficeOrDocFile(p));
+  for (const doc of docPaths) {
+    openDocStudioWindow(doc);
+  }
+  if (otherPaths.length > 0) {
+    enqueueShellOpenPaths(otherPaths);
+  }
+  routeDocStudioLaunchPaths(collectLaunchDocStudioPaths(argv));
   revealMainWindow();
 });
 
@@ -628,8 +670,8 @@ function recoverMainRenderer(win: BrowserWindow, reason: string): void {
   }, 250);
 }
 
-const BUTLER_CHAT_WIDTH = 360;
-const BUTLER_CHAT_HEIGHT = 420;
+const BUTLER_CHAT_WIDTH = 380;
+const BUTLER_CHAT_HEIGHT = 540;
 const BUTLER_PET_SIZE = 108;
 const BUTLER_WINDOW_GAP = 6;
 const BUTLER_VISIBLE_SETTING = "butlerbuddy.visible";
@@ -960,16 +1002,17 @@ function syncButlerChatPosition() {
   const chat = butlerChatWindow;
   if (!pet || pet.isDestroyed() || !chat || chat.isDestroyed()) return;
 
+  const chatBounds = chat.getBounds();
   const petBounds = pet.getBounds();
   const workArea = screen.getDisplayMatching(petBounds).workArea;
-  let x = petBounds.x - BUTLER_CHAT_WIDTH - BUTLER_WINDOW_GAP;
+  let x = petBounds.x - chatBounds.width - BUTLER_WINDOW_GAP;
   if (x < workArea.x + 8) {
     x = petBounds.x + petBounds.width + BUTLER_WINDOW_GAP;
   }
-  const idealY = petBounds.y - Math.round((BUTLER_CHAT_HEIGHT - petBounds.height) / 2);
+  const idealY = petBounds.y - Math.round((chatBounds.height - petBounds.height) / 2);
   const y = Math.max(
     workArea.y + 8,
-    Math.min(idealY, workArea.y + workArea.height - BUTLER_CHAT_HEIGHT - 8)
+    Math.min(idealY, workArea.y + workArea.height - chatBounds.height - 8)
   );
   chat.setPosition(Math.round(x), Math.round(y), false);
 }
@@ -1245,11 +1288,13 @@ function ensureButlerChatWindow(): BrowserWindow {
   const chat = new BrowserWindow({
     width: BUTLER_CHAT_WIDTH,
     height: BUTLER_CHAT_HEIGHT,
+    minWidth: 320,
+    minHeight: 400,
     type: process.platform === "darwin" ? "panel" : undefined,
     show: false,
     frame: false,
     transparent: true,
-    resizable: false,
+    resizable: true,
     maximizable: false,
     minimizable: false,
     fullscreenable: false,
@@ -1514,6 +1559,22 @@ function registerButlerBuddyWindowIpc() {
       conversationId
     );
   });
+  registerHandler(
+    "docStudio:openConversationInMain",
+    (event, conversationId: unknown) => {
+      if (!isDocStudioWindowSender(event.sender)) return false;
+      if (typeof conversationId !== "string" || !conversationId) return false;
+      revealMainWindow();
+      const win = mainWindow;
+      if (!win || win.isDestroyed()) return false;
+      safeSendToWebContents(
+        win.webContents,
+        "window:open-conversation",
+        conversationId
+      );
+      return true;
+    }
+  );
   ipcMain.on("freebuddy:uiPresence", (event, payload) => {
     const win = mainWindow;
     if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
@@ -2010,8 +2071,16 @@ app.whenReady().then(async () => {
   initFileBridge(() =>
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
+  initDocStudioBridge();
   getDb();
-  enqueueShellOpenPaths(collectLaunchShellOpenPaths(process.argv));
+  const initialLaunchPaths = collectLaunchShellOpenPaths(process.argv);
+  const initialDocPaths = initialLaunchPaths.filter(isOfficeOrDocFile);
+  const initialOtherPaths = initialLaunchPaths.filter((p) => !isOfficeOrDocFile(p));
+  for (const doc of initialDocPaths) {
+    openDocStudioWindow(doc);
+  }
+  enqueueShellOpenPaths(initialOtherPaths);
+  routeDocStudioLaunchPaths(collectLaunchDocStudioPaths(process.argv));
   shellOpenListenerReady = true;
   scheduleShellOpenFlush();
   void applyWindowsContextMenu({

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Copy, FileDiff as FileDiffIcon, Maximize2, Minimize2, WrapText } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Copy, ExternalLink, FileDiff as FileDiffIcon, Maximize2, Minimize2, WrapText } from "lucide-react";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useFileDiffStore } from "@/store/fileDiffStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -10,6 +10,7 @@ import { cliClient } from "@/services/cli/client";
 import { collectFileEdits, foldDiffRows, getFileDiff, getFileEditCounts, groupFileEditRecords, inlineHighlights, isMarkdownFile, markdownVersions, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
 import { conversationWorktreePath } from "./conversationProjectGrouping";
 import { copyToClipboard } from "@/utils/clipboard";
+import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
 
 function useWorkspaceRoots(conversationId?: string) {
   const conversation = useConversationStore((s) => (conversationId ? s.conversations.find((c) => c.id === conversationId) : undefined));
@@ -232,6 +233,29 @@ export function FileDiffPanel() {
           <button type="button" className="detail-panel-collapse-btn" disabled={recordIndex === 0} onClick={() => go(-1)} title={t("fileDiff.prev")} aria-label={t("fileDiff.prev")}><ChevronUp size={15} /></button>
           <button type="button" className="detail-panel-collapse-btn" disabled={recordIndex === total - 1} onClick={() => go(1)} title={t("fileDiff.next")} aria-label={t("fileDiff.next")}><ChevronDown size={15} /></button>
         </div>}
+        {isOfficeOrDocFile(edit.path) && window.freebuddy?.docStudio?.openWindow && (
+          <button
+            type="button"
+            className="detail-panel-collapse-btn"
+            title={t("docStudio.openInStudio", "Open in DocStudio")}
+            aria-label={t("docStudio.openInStudio", "Open in DocStudio")}
+            onClick={() => void window.freebuddy?.docStudio?.openWindow({ filePath: edit.path })}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "3px 8px",
+              fontSize: 12,
+              borderRadius: 6,
+              background: "rgba(59, 130, 246, 0.12)",
+              color: "#2563eb",
+              border: "1px solid rgba(59, 130, 246, 0.25)"
+            }}
+          >
+            <ExternalLink size={14} />
+            <span>DocStudio</span>
+          </button>
+        )}
         <button type="button" className="detail-panel-collapse-btn file-diff-expand" aria-expanded={expanded} onClick={() => setExpanded(!expanded)} title={t(expanded ? "fileDiff.exitExpanded" : "fileDiff.fullWidth")} aria-label={t(expanded ? "fileDiff.exitExpanded" : "fileDiff.fullWidth")}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
       </div>
       {edit.blobKey && loaded?.status !== "ready" ? <p className="file-diff-notice" role="status">

@@ -180,6 +180,7 @@ export interface ConversationState {
     internalPrompt?: boolean;
     memberOverride?: CLIMember;
     configOptionOverrides?: Record<string, string>;
+    hiddenContext?: string;
   }): Promise<void>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
@@ -1207,7 +1208,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     preserveConversationTitle,
     internalPrompt = false,
     memberOverride,
-    configOptionOverrides
+    configOptionOverrides,
+    hiddenContext
   }) {
     const trimmed = prompt.trim();
     if (!trimmed && attachments.length === 0) return;
@@ -1365,6 +1367,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       }
     }
     const userPrompt = composeMessageWithAttachments(trimmed, attachments);
+    const userPromptWithContext = hiddenContext?.trim()
+      ? `${hiddenContext.trim()}\n\n${userPrompt}`
+      : userPrompt;
     const workflowFollowupContext =
       workflowRun && (wantFresh || !resumedFromSessionId)
         ? await workflowFollowupContextForRun(workflowRun)
@@ -1378,8 +1383,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           )
         : undefined;
     const promptWithWorkflowContext = workflowFollowupContext
-      ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPrompt}`
-      : composeOrphanFollowupPrompt(userPrompt, orphanFollowupContext);
+      ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPromptWithContext}`
+      : composeOrphanFollowupPrompt(userPromptWithContext, orphanFollowupContext);
 
     const msgs = get().messages[conversationId] ?? [];
     const liveItems = get().live[conversationId]?.items;

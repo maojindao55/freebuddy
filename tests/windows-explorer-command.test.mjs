@@ -33,6 +33,7 @@ const identity = JSON.parse(read("desktop/windows/explorer-command/identity.json
 
 test("explorer-command identity is shared across cpp, def, and TS constants", () => {
   assert.equal(WINDOWS_EXPLORER_COMMAND.clsid, identity.clsid);
+  assert.equal(WINDOWS_EXPLORER_COMMAND.docStudioClsid, identity.docStudioClsid);
   assert.equal(WINDOWS_EXPLORER_COMMAND.packageName, identity.packageName);
   assert.equal(WINDOWS_EXPLORER_COMMAND.devPackageName, identity.devPackageName);
   assert.equal(WINDOWS_EXPLORER_COMMAND.publisher, identity.publisher);
@@ -48,6 +49,13 @@ test("explorer-command identity is shared across cpp, def, and TS constants", ()
   assert.match(cpp, /--open/);
   assert.match(cpp, /使用 FreeBuddy 打开/);
   assert.match(cpp, /FreeBuddy\.exe/);
+  // DocStudio command: second CLSID, second flag, extension-gated state.
+  assert.match(cpp, /6B8E4C1F-9A2D-4F73-B5E8-1D0C7A9F3E42/i);
+  assert.match(cpp, /0x6b8e4c1f/i);
+  assert.match(cpp, /--docstudio/);
+  assert.match(cpp, /用 FreeBuddy DocStudio 打开/);
+  assert.match(cpp, /ECS_HIDDEN/);
+  assert.match(cpp, /IsDocStudioPath/);
 
   const def = read("desktop/windows/explorer-command/ExplorerCommand.def");
   assert.match(def, /DllGetClassObject/);
@@ -74,6 +82,8 @@ test("MSIX version padding and AppxManifest wire COM + Explorer menus", () => {
   assert.match(xml, /desktop5:ItemType Type="Directory\\Background"/);
   assert.match(xml, /desktop5:ItemType Type="\*"/);
   assert.match(xml, /desktop5:Verb Id="OpenWithFreeBuddy"/);
+  assert.match(xml, /desktop5:Verb Id="OpenWithFreeBuddyDocStudio"/);
+  assert.match(xml, /com:Class Id="6B8E4C1F-9A2D-4F73-B5E8-1D0C7A9F3E42"/);
   assert.doesNotMatch(xml, /OpenWithFreeBuddyBg|OpenWithFreeBuddyFile/);
   assert.doesNotMatch(xml, /desktop4:ItemType/);
   assert.match(xml, /windows\.comServer/);

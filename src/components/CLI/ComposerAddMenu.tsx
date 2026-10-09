@@ -1,4 +1,4 @@
-import { ChevronRight, Package, Plus, Search, Sparkles, UploadCloud } from "lucide-react";
+import { ChevronRight, FileSpreadsheet, Package, Plus, Search, Sparkles, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -209,6 +209,29 @@ export function ComposerAddMenu({
               <UploadCloud className="composer-add-menu-icon" aria-hidden="true" />
               <span>{t("chat.addFile")}</span>
             </button>
+            {/* DocStudio entry is desktop-dev only until the feature ships broadly. */}
+            {import.meta.env.DEV ? (
+              <button
+                className="composer-add-menu-item"
+                type="button"
+                role="menuitem"
+                onClick={async () => {
+                  setOpen(false);
+                  setActivePanel(undefined);
+                  if (window.freebuddy?.docStudio?.showOpenDialog) {
+                    const paths = await window.freebuddy.docStudio.showOpenDialog();
+                    if (paths && paths[0]) {
+                      void window.freebuddy.docStudio.openWindow({ filePath: paths[0] });
+                    }
+                  } else if (window.freebuddy?.docStudio?.openWindow) {
+                    void window.freebuddy.docStudio.openWindow({});
+                  }
+                }}
+              >
+                <FileSpreadsheet className="composer-add-menu-icon" aria-hidden="true" />
+                <span>{t("docStudio.openInStudio", "Open in DocStudio")}</span>
+              </button>
+            ) : null}
             <button
               className={`composer-add-menu-item composer-add-skills-item${activePanel === "skills" ? " active" : ""}`}
               type="button"

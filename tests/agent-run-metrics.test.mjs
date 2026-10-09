@@ -4,7 +4,7 @@ import fs from "node:fs";
 import ts from "typescript";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
 import { serializeStreamItemsForPersist } from "@freebuddy/cli-stream";
-import { acpPromptResultToItems } from "../dist-electron/cli/acp.js";
+import { acpPromptResultToItems, acpUpdateToItems } from "../dist-electron/cli/acp.js";
 
 const source = fs.readFileSync(new URL("../src/components/CLI/runCardMetrics.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -37,8 +37,61 @@ test("first text starts at prompt submission, excludes non-body events and uses 
   metrics.promptSubmitted(); // Internal retries must retain the first prompt origin.
   metrics.observe([{ kind: "text", role: "assistant", content: "next" }]);
   assert.equal(metrics.snapshot().firstTextLatencyMs, 300);
-  assert.equal(snapshots.length, 2);
+  assert.equal(snapshots.length, 3); // Prompt, first thinking, then first body.
   assert.equal(JSON.stringify(snapshots).includes("replay"), false);
+});
+
+test("first output includes thinking before body and preserves its arrival across retries and completion", () => {
+  const { metrics, time } = collector();
+  metrics.observe([{ kind: "thinking", content: "historical thinking" }]);
+  assert.equal(metrics.snapshot().firstOutputLatencyMs, undefined);
+  time(500);
+  metrics.promptSubmitted();
+  time(800);
+  metrics.observe(acpUpdateToItems({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "thought" } }));
+  assert.equal(metrics.snapshot().firstOutputLatencyMs, 300);
+  assert.equal(metrics.snapshot().firstOutputKind, "thinking");
+  assert.equal(metrics.snapshot().firstTextLatencyMs, undefined);
+  time(2_000);
+  metrics.promptSubmitted();
+  metrics.beginGeneration();
+  metrics.observe([{ kind: "text", role: "assistant", content: "body" }]);
+  assert.equal(metrics.snapshot().firstTextLatencyMs, 1_500);
+  metrics.finish();
+  time(20_000);
+  metrics.observe([{ kind: "generation-delta" }]);
+  assert.equal(metrics.snapshot().firstOutputLatencyMs, 300);
+  assert.equal(metrics.snapshot().firstOutputKind, "thinking");
+});
+
+test("tool requests and streamed arguments count as first output; results and terminal updates do not", () => {
+  for (const first of [
+    ...acpUpdateToItems({ sessionUpdate: "tool_call", toolCallId: "read", title: "Read", status: "in_progress", rawInput: { path: "file" } }),
+    { kind: "generation-delta" },
+  ]) {
+    const { metrics, time } = collector();
+    metrics.promptSubmitted();
+    time(300);
+    metrics.observe([
+      { kind: "usage", outputTokens: 100 },
+      { kind: "thinking", content: " \n" },
+      { kind: "text", role: "user", content: "echo" },
+      { kind: "tool-call" },
+      { kind: "tool-call", id: "old", status: "completed" },
+      { kind: "tool-call", id: "failed", status: "failed" },
+      { kind: "tool-result", id: "old", content: "result" },
+      { kind: "raw", content: "log" },
+    ]);
+    assert.equal(metrics.snapshot().firstOutputLatencyMs, undefined);
+    time(600);
+    metrics.observe([first]);
+    assert.equal(metrics.snapshot().firstOutputLatencyMs, 500);
+    assert.equal(metrics.snapshot().firstOutputKind, "tool-call");
+    time(9_000);
+    metrics.observe([{ kind: "text", role: "assistant", content: "after tool execution" }]);
+    assert.equal(metrics.snapshot().firstOutputLatencyMs, 500);
+    assert.equal(metrics.snapshot().firstTextLatencyMs, 8_900);
+  }
 });
 
 test("retry without any body retains the original wait and unmeasurable transports stay unknown", () => {
@@ -55,6 +108,8 @@ test("retry without any body retains the original wait and unmeasurable transpor
   unsupported.observe([{ kind: "text", role: "assistant", content: "ambiguous replay" }]);
   assert.equal(unsupported.snapshot().firstTextUnavailable, true);
   assert.equal(unsupported.snapshot().firstTextLatencyMs, undefined);
+  assert.equal(unsupported.snapshot().firstOutputUnavailable, true);
+  assert.equal(unsupported.snapshot().firstOutputLatencyMs, undefined);
 });
 
 test("turn usage overwrites rather than adds; cumulative, invalid and context-only values are excluded", () => {
@@ -172,6 +227,7 @@ test("final summaries survive the existing persistence cap and reload with their
   const { metrics } = collector();
   metrics.promptSubmitted();
   metrics.enableAutomaticSpeed();
+  metrics.observe([{ kind: "thinking", content: "first thinking" }]);
   metrics.observe([{ kind: "usage", usageScope: "turn", inputTokens: 0, outputTokens: 100,
     generationMeasurement: { outputTokens: 100, durationMs: 2_000, complete: true } }]);
   metrics.finish();
@@ -185,6 +241,9 @@ test("final summaries survive the existing persistence cap and reload with their
   assert.equal(result.tokensPerSecond, 50);
   assert.equal(result.speedSource, "measured");
   assert.equal(result.automaticSpeed, true);
+  assert.equal(result.firstOutputTracked, true);
+  assert.equal(result.firstOutputMs, 0);
+  assert.equal(result.firstOutputKind, "thinking");
 });
 
 test("vendor metrics token counters require explicit turn scope, unlike ACP prompt usage", () => {

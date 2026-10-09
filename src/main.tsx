@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./i18n";
 import "../styles.css";
+import "./components/DocStudio/docStudio.css";
 import { installDebugLogClient } from "./services/debugLog";
 
 installDebugLogClient();
@@ -29,6 +30,13 @@ async function renderSurface() {
         "./components/ButlerBuddy/ButlerBuddyChat"
       );
       return <ButlerBuddyChat />;
+    }
+    if (surface === "doc-studio") {
+      const { DocStudioApp } = await import(
+        "./components/DocStudio/DocStudioApp"
+      );
+      const file = new URLSearchParams(window.location.search).get("file");
+      return <DocStudioApp initialFilePath={file ?? undefined} />;
     }
     const { default: App } = await import("./App");
     return <App />;

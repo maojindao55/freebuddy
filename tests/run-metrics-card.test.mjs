@@ -52,8 +52,37 @@ test("card separates empty, preparing, waiting, and missing reported metrics in 
   assert.match(preparing, /准备中/);
   assert.match(preparing, /待上报/);
   const waiting = select([], live([{ kind: "usage", runMetrics: { runId: "run", status: "running", elapsedMs: 1_000, promptSubmitted: true } }]));
-  assert.match(await render(waiting), /等待首字/);
+  assert.match(await render(waiting), /等待正文/);
   assert.match(await render(waiting, {}, "en"), /Waiting for text/);
+});
+
+test("first output displays thinking and tools, survives reload and keeps historical body waits distinct", async () => {
+  const base = { runId: "run", status: "done", elapsedMs: 20_000, promptSubmitted: true, firstOutputTracked: true,
+    firstOutputLatencyMs: 500, firstTextLatencyMs: 19_000 };
+  for (const [kind, chinese, english] of [["thinking", "思考", "Thinking"], ["tool-call", "工具请求", "Tool request"], ["text", "正文", "Text"]]) {
+    const metrics = select([{ role: "assistant", taskId: "run", content: JSON.stringify([
+      { kind: "usage", runMetrics: { ...base, firstOutputKind: kind } }
+    ]) }]);
+    const chineseHtml = await render(metrics);
+    assert.match(chineseHtml, new RegExp(`首次输出 0\\.5 s ${chinese}`));
+    assert.doesNotMatch(chineseHtml, /19\.0 s/);
+    assert.match(await render(metrics, {}, "en"), new RegExp(`First output wait 0\\.5 s ${english}`));
+    assert.match(chineseHtml, /工具请求通知可能晚于参数的首个 Token/);
+  }
+  const historical = select([{ role: "assistant", taskId: "run", content: JSON.stringify([
+    { kind: "usage", runMetrics: { runId: "run", status: "done", elapsedMs: 20_000, firstTextLatencyMs: 19_000 } }
+  ]) }]);
+  assert.match(await render(historical), /正文等待 19\.0 s/);
+  assert.match(await render(historical, {}, "en"), /Body text wait 19\.0 s/);
+  const waiting = select([], live([{ kind: "usage", runMetrics: { ...base, status: "running", firstOutputLatencyMs: undefined } }]));
+  assert.match(await render(waiting), /等待输出/);
+  assert.match(await render(waiting, {}, "en"), /Waiting for output/);
+  const absent = select([{ role: "assistant", content: JSON.stringify([
+    { kind: "usage", runMetrics: { ...base, firstOutputLatencyMs: undefined } }
+  ]) }]);
+  assert.match(await render(absent), /未观察到输出/);
+  const unavailable = { ...waiting, summary: { ...waiting.summary, firstOutputUnavailable: true } };
+  assert.match(await render(unavailable), /首次输出 不可测/);
 });
 
 test("card renders measured and reported TTFT separately and preserves reported zero", async () => {

@@ -88,6 +88,7 @@ import {
   shouldDiscardCreatedManagedCandidate
 } from "@/utils/mergeSelectedAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { MarkdownCodeBlockContext } from "./StreamItem";
 import { AgentAvatar } from "./AgentAvatar";
 import { CodeWhipOverlay } from "./CodeWhipOverlay";
 import { DelegationTeamPreviewCard } from "../Workflows/DelegationTeamPreviewCard";
@@ -134,9 +135,9 @@ import {
   agentRuntimeKey,
   buildAgentAvailabilityGroups,
   preferredAvailableAgentId,
-  type AgentAvailabilityEntry,
   type AgentAvailabilityGroups
 } from "@/utils/agentAvailability";
+import { useAgentAvailabilityChecks } from "./useAgentAvailabilityChecks";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -634,7 +635,15 @@ function AttachmentTray({
               "FILE"
             )}
           </span>
-          <span className="attachment-chip-main">
+          <span
+            className="attachment-chip-main"
+            title={t("docStudio.openInStudio", "Open in DocStudio")}
+            onClick={() => {
+              if (attachment.path && window.freebuddy?.docStudio) {
+                void window.freebuddy.docStudio.openWindow(attachment.path);
+              }
+            }}
+          >
             <span className="attachment-chip-name">{attachment.name}</span>
             <span className="attachment-chip-meta">{attachmentSummary(attachment)}</span>
           </span>
@@ -860,27 +869,46 @@ function SharedConversationReferences({
 export function ChatView({
   onOpenAgentSettings,
   messageFocus,
-  onMessageFocused
+  onMessageFocused,
+  variant = "default",
+  hideHeader = false,
+  conversationId,
+  getPromptContext,
+  composerAccessory,
+  renderMessageFooter,
+  renderCodeBlock,
+  emptyState,
+  placeholder
 }: {
   onOpenAgentSettings?: () => void;
   messageFocus?: { conversationId: string; messageId: string } | null;
   onMessageFocused?: () => void;
+  variant?: "default" | "mini";
+  hideHeader?: boolean;
+  conversationId?: string;
+  getPromptContext?: () => string | undefined;
+  composerAccessory?: ReactNode;
+  renderMessageFooter?: (m: ConversationMessage) => ReactNode;
+  renderCodeBlock?: (lang: string, code: string, closed: boolean) => ReactNode | null;
+  emptyState?: ReactNode;
+  placeholder?: string;
 }) {
   const { t } = useTranslation();
-  const activeId = useConversationStore((s) => s.activeId);
+  const storeActiveId = useConversationStore((s) => s.activeId);
+  const activeId = conversationId ?? storeActiveId;
   const conversations = useConversationStore((s) => s.conversations);
   const members = useConversationStore((s) => s.members);
   // Select only the active conversation's slices so a background conversation
   // streaming events (which always rebuilds the messages/live maps) does not
   // re-render this component.
   const messages = useConversationStore((s) =>
-    s.activeId ? s.messages[s.activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+    activeId ? s.messages[activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
   );
   const olderMessagesAvailable = useConversationStore((s) =>
-    s.activeId ? Boolean(s.olderMessagesAvailable[s.activeId]) : false
+    activeId ? Boolean(s.olderMessagesAvailable[activeId]) : false
   );
   const live = useConversationStore((s) =>
-    s.activeId ? s.live[s.activeId] : undefined
+    activeId ? s.live[activeId] : undefined
   );
   const createConversation = useConversationStore((s) => s.newConversation);
   const sendMessage = useConversationStore((s) => s.sendMessage);
@@ -963,10 +991,7 @@ export function ChatView({
   const sendInFlightRef = useRef(false);
   const newTaskSendInFlightRef = useRef(false);
   const [selectedMemberId, setSelectedMemberId] = useState("");
-  const [checkingAgentIds, setCheckingAgentIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  const checkingAgentIdsRef = useRef<Set<string>>(new Set());
+  const { checkingAgentIds, checkAgentEntries } = useAgentAvailabilityChecks();
   const initialAgentDetectionStartedRef = useRef(false);
   const memberSelectionTouchedRef = useRef(false);
   const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
@@ -1048,7 +1073,15 @@ export function ChatView({
   const attachmentImportGenerationRef = useRef(0);
   const isNearBottomRef = useRef(true);
   const snapTargetRef = useRef<number | null>(null);
+  const emptyStateVisibleRef = useRef(false);
   const pinToBottom = useCallback((el: HTMLDivElement) => {
+    // When the custom empty state is showing there is no history to pin to:
+    // keep the scroll origin at the top so the block isn't clipped upward.
+    if (emptyStateVisibleRef.current) {
+      snapTargetRef.current = 0;
+      el.scrollTop = 0;
+      return;
+    }
     snapTargetRef.current = el.scrollHeight - el.clientHeight;
     el.scrollTop = el.scrollHeight;
   }, []);
@@ -1369,6 +1402,8 @@ export function ChatView({
     [displayMessages, historyReveal]
   );
   const renderedMessages = historyWindow.items;
+  emptyStateVisibleRef.current =
+    renderedMessages.length === 0 && variant === "mini" && emptyState != null;
   const hiddenHistoryCount = historyWindow.hiddenCount;
   const shareReferencesByMessageId = useMemo(
     () => assignShareReferencesToMessages(displayMessages, contextReferences),
@@ -1392,56 +1427,6 @@ export function ChatView({
     const offset = el.scrollHeight - el.scrollTop - el.clientHeight;
     isNearBottomRef.current = offset < 120;
   };
-
-  const checkAgentEntries = useCallback(
-    async (entries: AgentAvailabilityEntry[]) => {
-      if (!cliClient.isAvailable()) return;
-      const targets = entries.filter(
-        (entry) => !checkingAgentIdsRef.current.has(entry.member.id)
-      );
-      if (targets.length === 0) return;
-
-      const nextChecking = new Set(checkingAgentIdsRef.current);
-      targets.forEach((entry) => nextChecking.add(entry.member.id));
-      checkingAgentIdsRef.current = nextChecking;
-      setCheckingAgentIds(new Set(nextChecking));
-
-      let cursor = 0;
-      const worker = async () => {
-        while (cursor < targets.length) {
-          const entry = targets[cursor];
-          cursor += 1;
-          const member = entry.member;
-          const resolved = useCliExecutorStore
-            .getState()
-            .resolve(member.cli.adapter);
-          try {
-            await cliClient.check(
-              member.cli.adapter,
-              member.cli.binary || resolved?.binary,
-              { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
-              entry.runtimeKey
-            );
-          } catch {
-            // Background availability checks are reflected by runtime state.
-          }
-        }
-      };
-
-      try {
-        await Promise.all(
-          Array.from({ length: Math.min(2, targets.length) }, () => worker())
-        );
-        await refreshRuntimes();
-      } finally {
-        const remaining = new Set(checkingAgentIdsRef.current);
-        targets.forEach((entry) => remaining.delete(entry.member.id));
-        checkingAgentIdsRef.current = remaining;
-        setCheckingAgentIds(new Set(remaining));
-      }
-    },
-    [refreshRuntimes]
-  );
 
   useEffect(() => {
     if (activeId || taskMode !== "normal" || !executorsLoaded) return;
@@ -2545,7 +2530,8 @@ export function ChatView({
         attachments: attachmentsToSend,
         userMessageId,
         assistantMessageId,
-        approvalModeOverride: permissionMode
+        approvalModeOverride: permissionMode,
+        hiddenContext: getPromptContext?.()
       });
       setSubmitPreview(null);
     } catch (e) {
@@ -2838,6 +2824,7 @@ export function ChatView({
         }}
         sendLocked={newTaskSendLock}
         onSubmit={() => void onCreateAndSend()}
+        variant={variant}
       />
     );
   }
@@ -2845,10 +2832,10 @@ export function ChatView({
 
 
   return (
-    <div className="chat-view">
-      <CodeWhipOverlay />
+    <div className={`chat-view${variant === "mini" ? " chat-view-mini" : ""}`}>
+      {variant !== "mini" && <CodeWhipOverlay />}
       <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
-        {isGuide && (
+        {isGuide && variant !== "mini" && (
           <div className="guide-chat-banner" role="status">
             <div className="guide-chat-banner-info">
               <Sparkles size={15} className="guide-chat-banner-icon" />
@@ -2889,7 +2876,7 @@ export function ChatView({
             />
           </div>
         )}
-        {messages.length === 0 && !conv?.sourceConversationId && (
+        {messages.length === 0 && !conv?.sourceConversationId && variant !== "mini" && (
           <div className={`chat-empty chat-empty-hero${isGuide ? " chat-empty-hero--guide" : ""}`}>
             <p className="eyebrow">
               {isGuide ? t("onboarding.guideEyebrow") : t("chat.newAgentChat")}
@@ -2982,6 +2969,24 @@ export function ChatView({
             })}
           </button>
         ) : null}
+        {renderedMessages.length === 0 &&
+          variant === "mini" &&
+          (emptyState ?? (
+          <div className="chat-empty-state">
+            <AgentAvatar
+              agentId={conv.agentId ?? member?.id}
+              adapter={conv.adapter ?? member?.cli.adapter}
+              iconKey={member?.avatar}
+            />
+            <strong className="chat-empty-title">
+              {conv.agentName ?? member?.name ?? "FreeBuddy"}
+            </strong>
+            <span className="chat-empty-desc">
+              {t("butler.emptyPrompt")}
+            </span>
+          </div>
+          ))}
+        <MarkdownCodeBlockContext.Provider value={renderCodeBlock ?? null}>
         {renderedMessages.map((m, idx) => {
           const messageMember =
             (m.agentId ? membersById.get(m.agentId) : undefined) ??
@@ -3013,17 +3018,24 @@ export function ChatView({
                 agentIconKey={messageMember?.avatar}
                 cwd={conv?.cwd || conv?.sourceCwd}
                 afterContent={
-                  shareReferences && shareReferences.length > 0 ? (
-                    <SharedConversationReferences
-                      references={shareReferences}
-                      conversations={conversations}
-                    />
+                  (shareReferences && shareReferences.length > 0) ||
+                  (m.role === "assistant" && renderMessageFooter) ? (
+                    <>
+                      {shareReferences && shareReferences.length > 0 ? (
+                        <SharedConversationReferences
+                          references={shareReferences}
+                          conversations={conversations}
+                        />
+                      ) : null}
+                      {m.role === "assistant" ? renderMessageFooter?.(m) : null}
+                    </>
                   ) : undefined
                 }
               />
             </Fragment>
           );
         })}
+        </MarkdownCodeBlockContext.Provider>
         {scheduledSend && scheduledSend.conversationId === conv.id ? (
           <div
             className={`scheduled-send-bubble scheduled-send-bubble-${scheduledSend.status}`}
@@ -3089,7 +3101,7 @@ export function ChatView({
       {conv && <DelegationApprovalCard conversationId={conv.id} />}
 
       <div
-        className={`chat-composer${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}`}
+        className={`chat-composer${variant === "mini" ? " chat-composer-mini" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}`}
         onDragEnter={chatAttachmentImport.handleDragEnter}
         onDragLeave={chatAttachmentImport.handleDragLeave}
         onDragOver={chatAttachmentImport.handleDragOver}
@@ -3100,15 +3112,18 @@ export function ChatView({
             {t("chat.dropAttachmentsHint")}
           </div>
         ) : null}
-        <div className="composer-context-row">
-          <span>{agentDisplayName}</span>
-          <ComposerWorkspaceMeta
-            key={conv.id}
-            conversation={conv}
-            project={conversationProject}
-            gitInfo={composerGitInfo}
-          />
-        </div>
+        {variant !== "mini" && (
+          <div className="composer-context-row">
+            <span>{agentDisplayName}</span>
+            <ComposerWorkspaceMeta
+              key={conv.id}
+              conversation={conv}
+              project={conversationProject}
+              gitInfo={composerGitInfo}
+            />
+          </div>
+        )}
+        {composerAccessory}
         <AttachmentTray
           attachments={pendingAttachments}
           onRemove={handleRemovePendingAttachment}
@@ -3132,17 +3147,18 @@ export function ChatView({
           ) : null}
           <textarea
             ref={chatTextareaRef}
-            rows={3}
+            rows={variant === "mini" ? 2 : 3}
             value={draft}
             disabled={attachmentBusy}
             placeholder={
-              pendingWorkflowAction
+              placeholder ??
+              (pendingWorkflowAction
                 ? t("workflow.requestChangesPlaceholder")
                 : sending
                 ? t("chat.agentRunning")
                 : availableCommands.length > 0
                   ? t("chat.inputPlaceholderWithSlash")
-                  : t("chat.inputPlaceholder")
+                  : t("chat.inputPlaceholder"))
             }
             onChange={chatFileMentions.handleChange}
             onClick={chatFileMentions.handleCaretChange}
@@ -3206,25 +3222,27 @@ export function ChatView({
                 if (conv?.id) void setConversationSkills(conv.id, ids);
               }}
             />
-            <label
-              className="composer-permission"
-              title={t("chat.permissionHint")}
-            >
-              <span className="composer-permission-label">{t("chat.permission")}</span>
-              <select
-                className="composer-permission-select"
-                value={permissionMode}
-                disabled={sending}
-                onChange={(event) => {
-                  const next = event.target.value as "auto" | "ask";
-                  setPermissionMode(next);
-                  if (conv?.id) void setApprovalMode(conv.id, next);
-                }}
+            {variant !== "mini" && (
+              <label
+                className="composer-permission"
+                title={t("chat.permissionHint")}
               >
-                <option value="auto">{t("chat.approvalAuto")}</option>
-                <option value="ask">{t("chat.approvalAsk")}</option>
-              </select>
-            </label>
+                <span className="composer-permission-label">{t("chat.permission")}</span>
+                <select
+                  className="composer-permission-select"
+                  value={permissionMode}
+                  disabled={sending}
+                  onChange={(event) => {
+                    const next = event.target.value as "auto" | "ask";
+                    setPermissionMode(next);
+                    if (conv?.id) void setApprovalMode(conv.id, next);
+                  }}
+                >
+                  <option value="auto">{t("chat.approvalAuto")}</option>
+                  <option value="ask">{t("chat.approvalAsk")}</option>
+                </select>
+              </label>
+            )}
           </div>
           <div className="composer-tail">
             <SessionConfigPicker
@@ -3284,10 +3302,13 @@ export function ChatView({
                     /* best-effort live refresh on provider switch */
                   }
                 }
-                if (conv?.id) void setConfigOptionOverrides(conv.id, next);
+                if (conv?.id) {
+                  void setConfigOptionOverrides(conv.id, next);
+                  useConversationStore.getState().requestFreshContext(conv.id);
+                }
               }}
             />
-            {!sending && !pendingWorkflowAction ? (
+            {variant !== "mini" && !sending && !pendingWorkflowAction ? (
               <ScheduledSendControl
                 adapter={member?.cli.adapter ?? conv.adapter}
                 disabled={attachmentBusy || sendLock}
@@ -3375,7 +3396,8 @@ function NewTaskHome({
   onAttachmentPaste,
   onTaskMode,
   onTeam,
-  onSubmit
+  onSubmit,
+  variant = "default"
 }: {
   draft: string;
   agentAvailability: AgentAvailabilityGroups;
@@ -3423,6 +3445,7 @@ function NewTaskHome({
   onTaskMode: (value: "normal" | "team") => void;
   onTeam: (id: string) => void;
   onSubmit: () => void;
+  variant?: "default" | "mini";
 }) {
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -3467,7 +3490,7 @@ function NewTaskHome({
   };
 
   return (
-    <div className="new-task-view">
+    <div className={`new-task-view${variant === "mini" ? " new-task-view-mini" : ""}`}>
       <div className="new-task-stack">
         <h1 className="new-task-title">{t("chat.heroTitle")}</h1>
         <div

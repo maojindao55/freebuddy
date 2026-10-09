@@ -1,5 +1,6 @@
 {
   "clsid": "{5C8A1E2D-9B74-4A16-8F3C-6E2D91B0487A}",
+  "docStudioClsid": "{6B8E4C1F-9A2D-4F73-B5E8-1D0C7A9F3E42}",
   "packageName": "dev.freebuddy.app.shell",
   "devPackageName": "dev.freebuddy.app.dev.shell",
   "publisher": "CN=FreeBuddy",

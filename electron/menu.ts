@@ -1,7 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Menu, MenuItem, BrowserWindow } from "electron";
 import { tMain } from "./cli/i18n.js";
 import { getLanguage } from "./cli/settings.js";
 import { APP_NAME } from "./app-meta.js";
+import { isOfficeOrDocFile, openDocStudioWindow, showDocStudioOpenDialog } from "./docStudioBridge.js";
 
 export function buildAppMenu(lang: "en" | "zh-CN") {
   return Menu.buildFromTemplate([
@@ -15,6 +18,30 @@ export function buildAppMenu(lang: "en" | "zh-CN") {
         { role: "unhide", label: tMain("menu.app.unhide", lang) },
         { type: "separator" },
         { role: "quit", label: `${tMain("menu.app.quit", lang)} ${APP_NAME}` }
+      ]
+    },
+    {
+      label: tMain("menu.file", lang),
+      submenu: [
+        {
+          label: tMain("menu.file.openDocument", lang),
+          accelerator: "CmdOrCtrl+O",
+          click: async () => {
+            const files = await showDocStudioOpenDialog();
+            if (files && files[0]) {
+              openDocStudioWindow(files[0]);
+            }
+          }
+        },
+        {
+          label: tMain("menu.file.newSpreadsheet", lang),
+          accelerator: "CmdOrCtrl+Shift+N",
+          click: () => {
+            openDocStudioWindow();
+          }
+        },
+        { type: "separator" },
+        { role: "close", label: tMain("menu.file.closeWindow", lang) }
       ]
     },
     {
@@ -54,6 +81,44 @@ export function setupContextMenu(window: BrowserWindow, isDev: boolean) {
     const menu = new Menu();
     const hasSelection = Boolean(params.selectionText && params.selectionText.trim());
     const isEditable = params.isEditable;
+
+    // Detect if right clicked on a doc link or path
+    let targetDocPath: string | null = null;
+    const linkUrl = params.linkURL;
+    if (linkUrl) {
+      if (linkUrl.startsWith("freebuddy-file://")) {
+        try {
+          const parsed = new URL(linkUrl);
+          targetDocPath = parsed.searchParams.get("path");
+        } catch {}
+      } else if (linkUrl.startsWith("file://")) {
+        try {
+          targetDocPath = fileURLToPath(linkUrl);
+        } catch {}
+      } else if (linkUrl.includes("/api/attachment?path=")) {
+        try {
+          const parsed = new URL(linkUrl, "http://127.0.0.1");
+          targetDocPath = parsed.searchParams.get("path");
+        } catch {}
+      }
+    }
+
+    if (!targetDocPath && hasSelection) {
+      const selected = params.selectionText.trim();
+      if ((selected.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(selected)) && isOfficeOrDocFile(selected)) {
+        targetDocPath = selected;
+      }
+    }
+
+    if (targetDocPath && isOfficeOrDocFile(targetDocPath)) {
+      menu.append(new MenuItem({
+        label: tMain("contextMenu.openInDocStudio", lang, { name: path.basename(targetDocPath) }),
+        click: () => {
+          if (targetDocPath) openDocStudioWindow(targetDocPath);
+        }
+      }));
+      menu.append(new MenuItem({ type: "separator" }));
+    }
 
     if (isEditable) {
       if (params.editFlags.canUndo) {

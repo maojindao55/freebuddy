@@ -279,7 +279,15 @@ function App() {
     const off = window.freebuddy?.window?.onOpenConversation?.((conversationId) => {
       setSettingsOpen(false);
       setWorkspaceView("chat");
-      void useConversationStore.getState().setActive(conversationId);
+      void (async () => {
+        const state = useConversationStore.getState();
+        // Conversations created in other renderer processes (e.g. DocStudio)
+        // may not be in this window's list yet — refresh before activating.
+        if (!state.conversations.some((c) => c.id === conversationId)) {
+          await state.refreshList();
+        }
+        void useConversationStore.getState().setActive(conversationId);
+      })();
     });
     return () => {
       off?.();
@@ -1009,6 +1017,8 @@ function App() {
               t("workflow.delegation.sessionTitleFallback")
             )
         : t("app.chat");
+  const titlebarHidden = !settingsOpen && workspaceView === "chat" && isNewTask;
+  const showSidebarRestore = sidebarCollapsed && !settingsOpen && !panelFullscreen;
   const renderToggleButton = (extraClass = "") => (
     <button
       type="button"
@@ -1156,7 +1166,7 @@ function App() {
       </aside>
 
       <main className={`workspace${settingsOpen ? " settings-workspace" : ""}`}>
-        {sidebarCollapsed && !settingsOpen && !panelFullscreen && renderToggleButton("floating")}
+        {showSidebarRestore && titlebarHidden && renderToggleButton("floating")}
         <header
           className={`titlebar${
             workspaceView === "chat" && activeConversation && !settingsOpen
@@ -1164,6 +1174,9 @@ function App() {
               : ""
           }`}
         >
+          {/* Keep the restore control inside the Electron drag region;
+              an earlier sibling overlay can have its click area overwritten. */}
+          {showSidebarRestore && !titlebarHidden && renderToggleButton("floating")}
           {!settingsOpen && workspaceView === "chat" && activeConversation ? (
             <EditableConversationTitle
               conversation={activeConversation}

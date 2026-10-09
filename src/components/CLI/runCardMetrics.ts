@@ -65,6 +65,9 @@ export function selectRunCardMetrics(messages: readonly Message[], live?: Live) 
   return {
     exists, running, status, summary, usage,
     receivedAt: live?.runMetricsReceivedAt,
+    firstOutputTracked: summary?.firstOutputTracked === true || !summary,
+    firstOutputMs: validMetric(summary?.firstOutputLatencyMs),
+    firstOutputKind: summary?.firstOutputKind,
     firstTextMs: validMetric(summary?.firstTextLatencyMs),
     reportedTtftMs: validMetric(summary?.reportedTtftMs ?? usage?.metrics?.avgTtftMs),
     tokensPerSecond: validMetric(summary?.tokensPerSecond ?? usage?.metrics?.tokensPerSecond),

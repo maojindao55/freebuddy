@@ -103,6 +103,16 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
             metricClock = 2_000;
             reply(msg, { stopReason: mode === "warm-cancel" ? "cancelled" : "end_turn", usage: { inputTokens: 100, outputTokens: 20, thoughtTokens: 10 },
               _meta: { metrics: { usageScope: "turn", modelCallDurationMs: 500 } } });
+          } else if (mode.startsWith("first-tool")) {
+            metricClock = 800;
+            notify({ sessionUpdate: "tool_call", toolCallId: "first-tool", title: "Tool", status: "in_progress",
+              ...(mode === "first-tool-plan" ? { rawInput: { todos: [{ content: "Plan", status: "in_progress" }] } } : {}) });
+            metricClock = 10_000;
+            notify({ sessionUpdate: "tool_call_update", toolCallId: "first-tool", status: "completed" });
+            metricClock = 12_000;
+            notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "body after tool" } });
+            metricClock = 13_000;
+            reply(msg, { stopReason: "end_turn" });
           } else if (mode === "metrics") {
             metricClock = 700;
             notify({ sessionUpdate: "agent_message_chunk", messageId: "historical", content: { type: "text", text: "historical reply" } });
@@ -193,6 +203,8 @@ test("ACP metrics exclude initialization and resumed replay, measure before UI d
   const final = result.metricSnapshots.at(-1);
   assert.equal(final.status, "done");
   assert.equal(final.firstTextLatencyMs, 780);
+  assert.equal(final.firstOutputLatencyMs, 300);
+  assert.equal(final.firstOutputKind, "thinking");
   assert.equal(final.elapsedMs, 1_400);
   assert.equal(final.inputTokens, 0);
   assert.equal(final.outputTokens, 40);
@@ -200,6 +212,17 @@ test("ACP metrics exclude initialization and resumed replay, measure before UI d
   assert.equal(final.tokensPerSecond, 40 * 1000 / 700);
   assert.equal(result.events.some(event => event.type === "items" && event.items.some(item => item.content === "historical reply")), false);
 });
+
+for (const mode of ["first-tool", "first-tool-plan"]) {
+  test(`${mode} ends first-output waiting before tool execution, including requests rendered as plans`, async t => {
+    const result = await runScenario(t, mode, "agy-acp");
+    const final = result.metricSnapshots.at(-1);
+    assert.equal(final.firstOutputLatencyMs, 300);
+    assert.equal(final.firstOutputKind, "tool-call");
+    assert.equal(final.firstTextLatencyMs, 11_500);
+    assert.equal(final.status, "done");
+  });
+}
 
 for (const adapter of ["codex-acp", "claude-agent-acp", "opencode-acp", "gemini-acp", "qoder-acp", "dsh-acp"]) {
   test(`${adapter} automatically derives stream speed from real prompt usage without a reported rate`, async t => {
@@ -328,6 +351,9 @@ test("AGY warm turns retain ACP transport, skip repeated initialize, and keep pe
   assert.equal(second.metricSnapshots.at(-1).tokensPerSecond, 40);
   assert.equal(second.metricSnapshots.at(-1).outputTokens, 20);
   assert.equal(second.metricSnapshots.at(-1).speedSource, "call-average");
+  assert.equal(first.metricSnapshots.at(-1).firstOutputLatencyMs, 500);
+  assert.equal(second.metricSnapshots.at(-1).firstOutputLatencyMs, 900);
+  assert.equal(second.metricSnapshots.at(-1).firstOutputKind, "text");
   assert.equal(second.child.listenerCount("close"), 0);
   assert.equal(second.child.stdout.listenerCount("data"), 0);
   assert.equal(second.child.stderr.listenerCount("data"), 0);

@@ -31,6 +31,11 @@ export interface AgentRunMetrics {
   status: "preparing" | "running" | "done" | "failed" | "cancelled" | "timed-out" | "yielded";
   elapsedMs: number;
   promptSubmitted: boolean;
+  /** Distinguishes first-output observations from historical body-only metrics. */
+  firstOutputTracked?: boolean;
+  firstOutputLatencyMs?: number;
+  firstOutputKind?: "text" | "thinking" | "tool-call";
+  firstOutputUnavailable?: boolean;
   firstTextLatencyMs?: number;
   firstTextUnavailable?: boolean;
   inputTokens?: number;

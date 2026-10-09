@@ -69,6 +69,8 @@ test("actual legacy Claude host includes streamed tool arguments and excludes to
   assert.equal(f.metrics.snapshot().tokensPerSecond, 40);
   assert.equal(f.metrics.snapshot().generationDurationMs, 3_000);
   assert.equal(f.metrics.snapshot().firstTextLatencyMs, 12_000);
+  assert.equal(f.metrics.snapshot().firstOutputLatencyMs, 2_000);
+  assert.equal(f.metrics.snapshot().firstOutputKind, "tool-call");
   assert.equal(f.events.some(event => event.type === "stdout"), true);
 });
 

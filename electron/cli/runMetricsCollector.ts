@@ -12,6 +12,16 @@ function nonNegative(value: unknown): number | undefined {
     ? value : undefined;
 }
 
+function outputKind(item: MetricInput): AgentRunMetrics["firstOutputKind"] {
+  if (item.kind === "text" && item.role === "assistant" && item.content?.trim()) return "text";
+  if (item.kind === "thinking" && item.content?.trim()) return "thinking";
+  if (item.kind === "generation-delta") return "tool-call";
+  // A tool request is observable output, although its notification may arrive
+  // after parameter generation. Results and terminal execution updates are not.
+  if (item.kind === "tool-call" && item.id && item.status !== "completed" && item.status !== "failed") return "tool-call";
+  return undefined;
+}
+
 /** No content is retained. All timing is taken before renderer batching. */
 export class RunMetricsCollector {
   private readonly started: number;
@@ -19,7 +29,7 @@ export class RunMetricsCollector {
   private terminal?: AgentRunMetrics;
   private requestedOutcome?: RunMetricsStatus;
   private failed = false;
-  private values: Partial<AgentRunMetrics> = {};
+  private values: Partial<AgentRunMetrics> = { firstOutputTracked: true };
   private reportedSpeed?: number;
   private streamGeneration?: StreamGenerationTracker;
   private observeStream = false;
@@ -58,8 +68,10 @@ export class RunMetricsCollector {
     this.emit();
   }
 
+  /** Ambiguous replay makes both body and first-output observations unavailable. */
   unavailableFirstText(): void {
     this.values.firstTextUnavailable = true;
+    this.values.firstOutputUnavailable = true;
   }
 
   enableAutomaticSpeed(mode: "native" | "stream" = "native"): void {
@@ -102,6 +114,15 @@ export class RunMetricsCollector {
     for (const item of items) {
       if (this.promptSent !== undefined && !this.values.firstTextUnavailable) this.streamGeneration?.observe(item, at);
       if (item.kind === "error" && item.terminal) this.failed = true;
+      if (this.promptSent !== undefined && !this.values.firstOutputUnavailable &&
+          this.values.firstOutputLatencyMs === undefined) {
+        const kind = outputKind(item);
+        if (kind) {
+          this.values.firstOutputLatencyMs = Math.max(0, at - this.promptSent);
+          this.values.firstOutputKind = kind;
+          changed = true;
+        }
+      }
       if (this.promptSent !== undefined && !this.values.firstTextUnavailable &&
           this.values.firstTextLatencyMs === undefined && item.kind === "text" &&
           item.role === "assistant" && item.content?.trim()) {

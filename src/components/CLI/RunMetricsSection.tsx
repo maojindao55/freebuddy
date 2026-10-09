@@ -35,11 +35,15 @@ export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunnin
     runStatus === "failed" || runStatus === "timed-out" ? X :
     runStatus === "running" || runStatus === "preparing" ? LoaderCircle : Circle;
   const exactCount = (value: number | undefined) => value === undefined ? "—" : new Intl.NumberFormat(i18n.language).format(value);
-  const firstTextMs = team ? undefined : metrics.firstTextMs;
-  const firstText = team || !exists ? "—" : firstTextMs !== undefined ? <DurationValue ms={firstTextMs} /> :
-    metrics.summary?.firstTextUnavailable || metrics.status === "unknown" ? t(`${key}.unavailable`) :
-    running ? t(`${key}.${metrics.summary?.promptSubmitted ? "waitingText" : "preparing"}`) :
-    metrics.summary ? t(`${key}.noText`) : t(`${key}.unavailable`);
+  const outputTracked = team || metrics.firstOutputTracked;
+  const firstWaitMs = team ? undefined : outputTracked ? metrics.firstOutputMs : metrics.firstTextMs;
+  const firstWaitUnavailable = outputTracked ? metrics.summary?.firstOutputUnavailable : metrics.summary?.firstTextUnavailable;
+  const firstWaitHint = team ? "teamHint" : outputTracked ? "firstOutputHint" : "firstTextHint";
+  const waitingKey = metrics.summary?.promptSubmitted ? outputTracked ? "waitingOutput" : "waitingText" : "preparing";
+  const noOutputKey = metrics.summary ? outputTracked ? "noOutput" : "noText" : "unavailable";
+  const firstWait = team || !exists ? "—" : firstWaitMs !== undefined ? <DurationValue ms={firstWaitMs} /> :
+    firstWaitUnavailable || metrics.status === "unknown" ? t(`${key}.unavailable`) :
+    t(`${key}.${running ? waitingKey : noOutputKey}`);
   const missing = exists ? t(`${key}.${running ? "pending" : "notReported"}`) : "—";
   const speedMissing = metrics.automaticSpeed && exists ? t(`${key}.${running ? "measuring" : "unavailable"}`) : missing;
   const speedHint = t(`${key}.${team ? "teamHint" : metrics.speedSource === "measured" ? "measuredSpeedHint" :
@@ -76,9 +80,11 @@ export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunnin
           <dt><span>{t(`${key}.duration`)}</span></dt>
           <dd className={`run-metrics-value${elapsedMs === undefined ? " is-unavailable" : ""}`}>{elapsedMs === undefined ? "—" : <DurationValue ms={elapsedMs} />}</dd>
         </div>
-        <div title={t(`${key}.${team ? "teamHint" : "firstTextHint"}`)}>
-          <dt><span>{t(`${key}.firstText`)}</span></dt>
-          <dd className={`run-metrics-value${firstTextMs === undefined ? " is-unavailable" : ""}`}>{firstText}</dd>
+        <div title={t(`${key}.${firstWaitHint}`)}>
+          <dt><span>{t(`${key}.${outputTracked ? "firstOutput" : "firstText"}`)}</span></dt>
+          <dd className={`run-metrics-value${firstWaitMs === undefined ? " is-unavailable" : ""}`}>{firstWait}</dd>
+          {!team && outputTracked && firstWaitMs !== undefined && metrics.firstOutputKind &&
+            <dd className="run-metrics-caption">{t(`${key}.firstOutputKind.${metrics.firstOutputKind}`)}</dd>}
         </div>
         <div>
           <dt>
@@ -108,7 +114,7 @@ export function RunMetricsSection({ metrics, elapsedMs, team = false, teamRunnin
             {llmDurationMs !== undefined && <div><dt>{t("workspace.llmDuration")}</dt><dd><DurationValue ms={llmDurationMs} /></dd></div>}
             {cost !== undefined && <div><dt>{t("workspace.cost")}</dt><dd>{new Intl.NumberFormat(i18n.language, { maximumFractionDigits: cost < 0.01 ? 4 : 2, minimumFractionDigits: 2 }).format(cost)}{usage?.costCurrency && ` ${usage.costCurrency}`}</dd></div>}
           </dl>
-          <p className="workspace-overview-detail-note">{t(`${key}.${team ? "teamDurationHint" : "firstTextHint"}`)}</p>
+          <p className="workspace-overview-detail-note">{t(`${key}.${team ? "teamDurationHint" : firstWaitHint}`)}</p>
           {!team && <p className="workspace-overview-detail-note">{t(`${key}.durationHint`)} {t(`${key}.tokensHint`)}</p>}
         </div>
       </details>

@@ -2,6 +2,16 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.35] - 2026-10-09
+
+### 新功能
+
+- Revert "feat(windows): add Explorer verb to open files in DocStudio"
+
+### 问题修复
+
+- show Explorer menu icon via resource string index
+
 ## [0.10.34] - 2026-10-09
 
 ### 新功能

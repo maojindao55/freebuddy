@@ -70,6 +70,7 @@ import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
 import {
   applyWindowsContextMenu,
   classifyShellOpenPaths,
+  collectDocStudioPaths,
   collectShellOpenPaths
 } from "./cli/shellOpen.js";
 import { applyWindowsExplorerCommandPackage } from "./cli/windowsExplorerCommand.js";
@@ -232,6 +233,28 @@ function collectLaunchShellOpenPaths(argv: readonly string[]): string[] {
     execPath: process.execPath,
     appPath: app.isPackaged ? undefined : app.getAppPath()
   });
+}
+
+function collectLaunchDocStudioPaths(argv: readonly string[]): string[] {
+  return collectDocStudioPaths(argv, {
+    execPath: process.execPath,
+    appPath: app.isPackaged ? undefined : app.getAppPath()
+  });
+}
+
+/**
+ * Routes `--docstudio` launch paths (Windows Explorer "Open with FreeBuddy
+ * DocStudio") into the standalone DocStudio window. Unsupported files fall
+ * back to the regular shell-open flow so the entry never dead-ends.
+ */
+function routeDocStudioLaunchPaths(paths: readonly string[]): void {
+  if (paths.length === 0) return;
+  for (const doc of paths) {
+    if (isOfficeOrDocFile(doc)) {
+      openDocStudioWindow(doc);
+    }
+  }
+  enqueueShellOpenPaths(paths.filter((p) => !isOfficeOrDocFile(p)));
 }
 
 function handleExternalShare(shareId: string | null, payloadPath: string | null) {
@@ -407,6 +430,7 @@ app.on("second-instance", (_event, argv) => {
   if (otherPaths.length > 0) {
     enqueueShellOpenPaths(otherPaths);
   }
+  routeDocStudioLaunchPaths(collectLaunchDocStudioPaths(argv));
   revealMainWindow();
 });
 
@@ -2056,6 +2080,7 @@ app.whenReady().then(async () => {
     openDocStudioWindow(doc);
   }
   enqueueShellOpenPaths(initialOtherPaths);
+  routeDocStudioLaunchPaths(collectLaunchDocStudioPaths(process.argv));
   shellOpenListenerReady = true;
   scheduleShellOpenFlush();
   void applyWindowsContextMenu({

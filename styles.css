@@ -1746,8 +1746,8 @@ html[data-surface="butler-screen-ball"] #root {
   -webkit-app-region: no-drag;
 }
 
-/* Keep navigation reachable when the new-task page hides its titlebar.
-   Anchor the floating toggle to the workspace, outside that hidden header. */
+/* Anchor the restore toggle inside the titlebar's no-drag region, or to the
+   workspace when the new-task page hides its titlebar. */
 .sidebar-toggle.floating {
   position: absolute;
   top: 8px;

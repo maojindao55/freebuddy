@@ -1009,6 +1009,8 @@ function App() {
               t("workflow.delegation.sessionTitleFallback")
             )
         : t("app.chat");
+  const titlebarHidden = !settingsOpen && workspaceView === "chat" && isNewTask;
+  const showSidebarRestore = sidebarCollapsed && !settingsOpen && !panelFullscreen;
   const renderToggleButton = (extraClass = "") => (
     <button
       type="button"
@@ -1156,7 +1158,7 @@ function App() {
       </aside>
 
       <main className={`workspace${settingsOpen ? " settings-workspace" : ""}`}>
-        {sidebarCollapsed && !settingsOpen && !panelFullscreen && renderToggleButton("floating")}
+        {showSidebarRestore && titlebarHidden && renderToggleButton("floating")}
         <header
           className={`titlebar${
             workspaceView === "chat" && activeConversation && !settingsOpen
@@ -1164,6 +1166,9 @@ function App() {
               : ""
           }`}
         >
+          {/* Keep the restore control inside the Electron drag region;
+              an earlier sibling overlay can have its click area overwritten. */}
+          {showSidebarRestore && !titlebarHidden && renderToggleButton("floating")}
           {!settingsOpen && workspaceView === "chat" && activeConversation ? (
             <EditableConversationTitle
               conversation={activeConversation}

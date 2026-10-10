@@ -9961,9 +9961,11 @@ button.new-task-context-control {
 }
 
 .msg-actions {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px 0 0;
   margin-left: -3px;
@@ -10009,10 +10011,147 @@ button.new-task-context-control {
 }
 
 .msg-action-time {
+  flex: 0 0 auto;
   margin-left: 4px;
   font-size: 11px;
   color: var(--fb-text-tertiary);
   white-space: nowrap;
+}
+
+.msg-action-time + .msg-run-metrics::before {
+  content: "·";
+  margin-right: 2px;
+  opacity: 0.55;
+}
+
+.msg-run-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.msg-run-metrics:hover,
+.msg-run-metrics[aria-expanded="true"] {
+  color: var(--fb-text-primary);
+}
+
+.msg-run-metric {
+  white-space: nowrap;
+}
+
+.msg-run-metric + .msg-run-metric::before {
+  content: "·";
+  margin-right: 6px;
+  opacity: 0.55;
+}
+
+.msg-run-metrics .run-metrics-unit {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+.msg-run-metrics-info-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  opacity: 0.65;
+}
+
+.msg-run-metrics-panel {
+  position: absolute;
+  left: 0;
+  z-index: 30;
+  width: min(320px, calc(100cqw - 44px));
+  max-height: min(420px, 70vh);
+  padding: 12px 14px 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-panel-bg, #ffffff);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+  overflow: auto;
+}
+
+.msg-run-metrics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.msg-run-metrics-title {
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.msg-run-metrics-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.msg-run-metrics-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.msg-run-metrics-list dt {
+  color: var(--fb-text-secondary);
+  font-size: 11px;
+}
+
+.msg-run-metrics-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  text-align: end;
+}
+
+.msg-run-metrics-basis {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--fb-border);
+}
+
+.msg-run-metrics-basis summary {
+  color: var(--fb-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.msg-run-metrics-basis p {
+  margin: 8px 0 0;
+  color: var(--fb-text-secondary);
+  font-size: 11px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.status-pill-elapsed {
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .msg-user .msg-bubble {
@@ -16035,67 +16174,55 @@ button.ghost:disabled {
   animation: run-metrics-spin 1.4s linear infinite;
 }
 
-.run-overview-identity {
-  padding: 16px 16px 0;
+.agent-session-heading {
+  gap: 12px;
 }
 
-.run-overview-identity + .workspace-overview-heading {
-  padding-top: 20px;
-}
-
-.run-overview-identity .agent-avatar {
-  box-shadow: none;
-}
-
-.run-metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin: 12px 16px 16px;
-  container-type: inline-size;
-}
-
-.run-metrics-grid > div {
+.agent-session-heading > .agent-lockup {
   min-width: 0;
+  flex: 1 1 auto;
 }
 
-.run-metrics-grid dt {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  margin: 0 0 4px;
+.agent-session-heading h2 {
+  margin: 0;
   color: var(--fb-text-secondary);
-  font-size: 11px;
-  line-height: 17px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
 }
 
-.run-metrics-grid dt > span {
-  min-width: 0;
+.agent-session-card:hover {
+  box-shadow: var(--fb-shadow-sm);
+}
+
+.agent-session-heading + .workspace-overview-context {
+  margin-top: 14px;
+}
+
+.agent-session-live {
+  margin: 8px 16px 14px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.run-metrics-grid dd {
-  margin: 0;
-}
-
-.run-metrics-value {
-  color: var(--fb-text-primary);
-  font-size: min(20px, calc((100cqi - 16px) / 14));
-  font-weight: 600;
-  line-height: 28px;
-  letter-spacing: -.02em;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
-.run-metrics-value.is-unavailable {
-  font-size: 13px;
-  font-weight: 400;
-  letter-spacing: 0;
+.agent-session-live-label {
   color: var(--fb-text-secondary);
+}
+
+.agent-session-live-value {
+  color: var(--fb-text-primary);
+  font-weight: 500;
+}
+
+.agent-session-live .run-metrics-unit {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  color: inherit;
 }
 
 .run-metrics-unit {
@@ -16103,68 +16230,6 @@ button.ghost:disabled {
   font-weight: 400;
   letter-spacing: 0;
   color: var(--fb-text-secondary);
-}
-
-.run-metrics-pair {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.run-metrics-caption {
-  margin-top: 2px;
-  color: var(--fb-text-secondary);
-  font-size: 11px;
-  line-height: 16px;
-}
-
-.run-metrics-grid .run-metrics-info {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  margin: -3px 0;
-}
-
-.run-overview-card:hover,
-.session-info-card:hover {
-  box-shadow: var(--fb-shadow-sm);
-}
-
-.run-metrics-info {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  color: var(--fb-text-secondary);
-  background: transparent;
-  cursor: pointer;
-}
-
-.run-metrics-info:hover, .run-metrics-info[aria-expanded="true"] {
-  color: var(--fb-link);
-  background: var(--fb-panel-soft);
-}
-
-.run-metrics-help {
-  margin: 0 16px 16px;
-  padding-left: 10px;
-  border-left: 2px solid var(--fb-border-strong);
-  color: var(--fb-text-secondary);
-  font-size: 11px;
-  line-height: 1.8;
-  overflow-wrap: anywhere;
-}
-
-.run-metrics-note {
-  margin: 0 16px 16px;
-  color: var(--fb-text-secondary);
-  font-size: 11px;
-  line-height: 1.7;
 }
 
 .workspace-overview-disclosure {
@@ -16197,8 +16262,17 @@ button.ghost:disabled {
   transform: rotate(180deg);
 }
 
+.workspace-overview-disclosure summary > span:first-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .workspace-overview-disclosure-hint {
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--fb-text-tertiary);
   font-size: 11px;
 }
@@ -16379,12 +16453,12 @@ button.ghost:disabled {
   border: 0;
 }
 
-.workspace-overview-disclosure summary:focus-visible, .run-metrics-info:focus-visible, .session-info-card button:focus-visible {
+.workspace-overview-disclosure summary:focus-visible, .agent-session-card button:focus-visible, .msg-run-metrics:focus-visible, .msg-run-metrics-basis summary:focus-visible {
   outline: 2px solid var(--fb-link);
   outline-offset: 3px;
 }
 
-.session-info-card .session-id-copy {
+.agent-session-card .session-id-copy {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -16395,17 +16469,17 @@ button.ghost:disabled {
   font-size: 11px;
 }
 
-.session-info-card .session-id-copy span {
+.agent-session-card .session-id-copy span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.session-info-card .session-id-copy svg {
+.agent-session-card .session-id-copy svg {
   flex-shrink: 0;
 }
 
-.session-info-card .session-id-copy:not(:disabled):hover {
+.agent-session-card .session-id-copy:not(:disabled):hover {
   color: var(--fb-link);
   background: transparent;
 }
@@ -17384,6 +17458,24 @@ button.ghost:focus-visible,
 /* ===== WorkBuddy-style flowing chat output ===== */
 .msg-assistant {
   gap: 10px;
+  container-type: inline-size;
+}
+
+.msg-assistant:has(.msg-run-metrics-panel) {
+  position: relative;
+  z-index: 2;
+}
+
+@container (max-width: 620px) {
+  .msg-assistant .msg-run-metric.is-tokens {
+    display: none;
+  }
+}
+
+@container (max-width: 470px) {
+  .msg-assistant .msg-run-metric.is-first-output {
+    display: none;
+  }
 }
 
 .msg-user + .msg-assistant {

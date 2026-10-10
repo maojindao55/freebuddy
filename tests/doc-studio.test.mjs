@@ -222,7 +222,11 @@ test("DocStudio IPC handlers are sender- and path-guarded", () => {
     assert.ok(idx >= 0, `${channel} handler missing`);
     const body = src.slice(idx, idx + 700);
     assert.match(body, /isDocStudioWindowSender\(event\.sender\)/, `${channel} lacks sender check`);
-    assert.match(body, /isAllowedDocPath|isOfficeOrDocFile/, `${channel} lacks path check`);
+    assert.match(
+      body,
+      /isAllowedDocPath|isOfficeOrDocFile|isDocStudioOpenableFile/,
+      `${channel} lacks path check`
+    );
   }
 
   // unwatchFile: sender check only.
@@ -233,7 +237,7 @@ test("DocStudio IPC handlers are sender- and path-guarded", () => {
   // openWindow: path must be empty or absolute doc file.
   const openIdx = src.indexOf('"docStudio:openWindow"');
   const openBody = src.slice(openIdx, openIdx + 500);
-  assert.match(openBody, /isAllowedDocPath|isOfficeOrDocFile/);
+  assert.match(openBody, /isAllowedDocPath|isOfficeOrDocFile|isDocStudioOpenableFile/);
 });
 
 test("electron/menu.ts labels come from tMain with no hardcoded CJK", () => {

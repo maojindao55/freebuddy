@@ -1037,6 +1037,17 @@ declare global {
     openConversationInMain(conversationId: string): Promise<boolean>;
     watchFile(filePath: string): Promise<boolean>;
     unwatchFile(filePath: string): Promise<boolean>;
+    getEnginePreview(filePath: string): Promise<{
+      success: boolean;
+      url?: string;
+      error?: string;
+    }>;
+    getEngineEditorStatus(filePath: string): Promise<{
+      success: boolean;
+      isDirty?: boolean;
+      lastSavedMs?: number;
+      error?: string;
+    }>;
     onFileChanged(cb: (filePath: string) => void): () => void;
   }
 

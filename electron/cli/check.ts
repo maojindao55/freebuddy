@@ -7,7 +7,6 @@ import {
   applyDshAcpNpmInstallEnv,
   bundledDshAcpConfigPath,
   cleanDshAcpManagedNodeModules,
-  cleanupLegacyDshAcpManagedFiles,
   dshAcpCompositionReady,
   dshAcpInstallCommand,
   dshAcpManagedDemoBin,
@@ -20,7 +19,8 @@ import {
   quoteForShell,
   isDefaultDshAcpBinary,
   patchDshAcpManagedRuntime,
-  syncDshAcpManagedConfig
+  syncDshAcpManagedConfig,
+  windowsExtendedPath
 } from "./adapters.js";
 import { resolvePiAcpRuntime } from "./piRuntime.js";
 import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
@@ -1167,12 +1167,6 @@ async function prepareInstallEnvironment(
   return { env, ...absoluteInstallCommand(command, executable) };
 }
 
-function windowsExtendedPath(target: string): string {
-  if (process.platform !== "win32") return target;
-  if (target.startsWith("\\\\?\\")) return target;
-  return `\\\\?\\${path.resolve(target)}`;
-}
-
 async function removeDshAcpWindowsResidue(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
@@ -1188,13 +1182,19 @@ async function removeDshAcpWindowsResidue(
     .catch(() => undefined);
 }
 
-function prepareDshAcpManagedInstall(): void {
-  // Wipe any existing node_modules/lockfile first so npm re-resolves every
-  // package from scratch instead of reusing a stale sibling dependency (see
-  // cleanDshAcpManagedNodeModules for why that matters for dsh-acp).
-  cleanDshAcpManagedNodeModules(dshAcpManagedRoot(getDataDir()));
-  const root = syncDshAcpManagedConfig(getDataDir());
-  cleanupLegacyDshAcpManagedFiles(root);
+async function prepareDshAcpManagedInstall(): Promise<void> {
+  const root = dshAcpManagedRoot(getDataDir());
+  // `@deepseek-ai/*` shims beside the managed prefix resolve upward from the tree and
+  // reintroduce the version conflict that demotes the harness plugin subtree.
+  await removeDshAcpWindowsResidue();
+  // Wipe any existing node_modules/lockfile first so npm re-resolves every package from
+  // scratch instead of reusing a stale sibling dependency (see cleanDshAcpManagedNodeModules).
+  if (!cleanDshAcpManagedNodeModules(root)) {
+    throw new Error(
+      `DeepSeek Harness runtime directory is still in use: ${root}. Quit FreeBuddy and retry.`
+    );
+  }
+  syncDshAcpManagedConfig(getDataDir());
 }
 
 export function cliInstall(command: string, adapter = "custom", targetVersion?: string): Promise<CliInstallResult> {
@@ -1207,7 +1207,7 @@ export function cliInstall(command: string, adapter = "custom", targetVersion?: 
         throw new Error("install command required");
       }
       release = acquireRuntimeInstall(adapter);
-      if (adapter === "dsh-acp") prepareDshAcpManagedInstall();
+      if (adapter === "dsh-acp") await prepareDshAcpManagedInstall();
 
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =
@@ -1315,7 +1315,7 @@ export function cliInstallStream(
       }
 
       release = acquireRuntimeInstall(adapter);
-      if (adapter === "dsh-acp") prepareDshAcpManagedInstall();
+      if (adapter === "dsh-acp") await prepareDshAcpManagedInstall();
       const installCommand = preflight.command;
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =

@@ -39,6 +39,8 @@ import { AgentAvatar } from "./AgentAvatar";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
 import { isVisibleItem, visibleBlocks } from "./messageBlocks";
+import { selectRunMetrics } from "./runCardMetrics";
+import { hasMessageRunMetrics, LiveRunElapsed, MessageRunMetrics } from "./MessageRunMetrics";
 import { useWhipEffectStore, type WhipTargetPoint } from "@/store/whipEffectStore";
 
 type MessageBlock = ReturnType<typeof visibleBlocks>[number];
@@ -973,6 +975,16 @@ export const MessageBubble = memo(function MessageBubble({
   );
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
+  const runMetrics = useMemo(
+    () => (message.role === "assistant" ? selectRunMetrics(items, message.taskId) : undefined),
+    [message.role, message.taskId, items]
+  );
+  const liveRunMetricsReceivedAt = useConversationStore((s) => {
+    const l = s.live[message.conversationId];
+    return l?.messageId === message.id ? l.runMetricsReceivedAt : undefined;
+  });
+  const runActive = message.status === "running" || message.status === "starting";
+  const showRunMetrics = message.role === "assistant" && !runActive && !!runMetrics && hasMessageRunMetrics(runMetrics);
   const doCopy = (text: string) => {
     if (!text) return;
     void copyToClipboard(text).then(() => {
@@ -981,40 +993,45 @@ export const MessageBubble = memo(function MessageBubble({
     });
   };
 
-  const actionBarNode = showActionBar ? (
+  const actionBarNode = showActionBar || showRunMetrics ? (
     <div className="msg-actions">
-      <button
-        type="button"
-        className={`msg-action-btn${copied ? " copied" : ""}`}
-        onClick={() => doCopy(copyText)}
-        title={t("message.copy")}
-        aria-label={t("message.copy")}
-      >
-        {copied ? (
-          <Check className="msg-action-icon" aria-hidden="true" />
-        ) : (
-          <Copy className="msg-action-icon" aria-hidden="true" />
-        )}
-      </button>
-      <button
-        type="button"
-        className={`msg-action-btn${vote === "up" ? " active up" : ""}`}
-        onClick={() => setVote((v) => (v === "up" ? null : "up"))}
-        title={t("message.upvote")}
-        aria-label={t("message.upvote")}
-      >
-        <ThumbsUp className="msg-action-icon" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className={`msg-action-btn${vote === "down" ? " active down" : ""}`}
-        onClick={() => setVote((v) => (v === "down" ? null : "down"))}
-        title={t("message.downvote")}
-        aria-label={t("message.downvote")}
-      >
-        <ThumbsDown className="msg-action-icon" aria-hidden="true" />
-      </button>
+      {showActionBar && (
+        <>
+          <button
+            type="button"
+            className={`msg-action-btn${copied ? " copied" : ""}`}
+            onClick={() => doCopy(copyText)}
+            title={t("message.copy")}
+            aria-label={t("message.copy")}
+          >
+            {copied ? (
+              <Check className="msg-action-icon" aria-hidden="true" />
+            ) : (
+              <Copy className="msg-action-icon" aria-hidden="true" />
+            )}
+          </button>
+          <button
+            type="button"
+            className={`msg-action-btn${vote === "up" ? " active up" : ""}`}
+            onClick={() => setVote((v) => (v === "up" ? null : "up"))}
+            title={t("message.upvote")}
+            aria-label={t("message.upvote")}
+          >
+            <ThumbsUp className="msg-action-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={`msg-action-btn${vote === "down" ? " active down" : ""}`}
+            onClick={() => setVote((v) => (v === "down" ? null : "down"))}
+            title={t("message.downvote")}
+            aria-label={t("message.downvote")}
+          >
+            <ThumbsDown className="msg-action-icon" aria-hidden="true" />
+          </button>
+        </>
+      )}
       {timeStr && <span className="msg-action-time">{timeStr}</span>}
+      {showRunMetrics && runMetrics && <MessageRunMetrics metrics={runMetrics} />}
     </div>
   ) : null;
 
@@ -1109,6 +1126,9 @@ export const MessageBubble = memo(function MessageBubble({
                 <span className="status-pill-role">{roleLabel}</span>
               )}
               {statusText && <span>{statusText}</span>}
+              {runActive && runMetrics?.summary && liveRunMetricsReceivedAt !== undefined && (
+                <LiveRunElapsed summary={runMetrics.summary} receivedAt={liveRunMetricsReceivedAt} />
+              )}
             </span>
           )}
         </div>

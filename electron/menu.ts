@@ -4,7 +4,7 @@ import { Menu, MenuItem, BrowserWindow } from "electron";
 import { tMain } from "./cli/i18n.js";
 import { getLanguage } from "./cli/settings.js";
 import { APP_NAME } from "./app-meta.js";
-import { isOfficeOrDocFile, openDocStudioWindow, showDocStudioOpenDialog } from "./docStudioBridge.js";
+import { isDocStudioOpenableFile, openDocStudioWindow, showDocStudioOpenDialog } from "./docStudioBridge.js";
 
 export function buildAppMenu(lang: "en" | "zh-CN") {
   return Menu.buildFromTemplate([
@@ -105,12 +105,12 @@ export function setupContextMenu(window: BrowserWindow, isDev: boolean) {
 
     if (!targetDocPath && hasSelection) {
       const selected = params.selectionText.trim();
-      if ((selected.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(selected)) && isOfficeOrDocFile(selected)) {
+      if ((selected.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(selected)) && isDocStudioOpenableFile(selected)) {
         targetDocPath = selected;
       }
     }
 
-    if (targetDocPath && isOfficeOrDocFile(targetDocPath)) {
+    if (targetDocPath && isDocStudioOpenableFile(targetDocPath)) {
       menu.append(new MenuItem({
         label: tMain("contextMenu.openInDocStudio", lang, { name: path.basename(targetDocPath) }),
         click: () => {

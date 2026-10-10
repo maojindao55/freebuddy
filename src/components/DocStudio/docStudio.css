@@ -376,6 +376,16 @@ html[data-surface="doc-studio"] .ds-editor {
   background: var(--fb-panel-bg);
 }
 
+/* Embedded office engine preview (doc/slide/pdf via the local WorkBuddy engine). */
+.ds-office-frame {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
 /* ---------- Empty state ---------- */
 html[data-surface="doc-studio"] .ds-empty {
   flex: 1;

@@ -18,7 +18,6 @@ import {
 import type { DocTab, DocKind, SheetWorkbookData, SelectionContext } from "./types";
 import {
   parseCsvToWorkbook,
-  parseXlsxToWorkbook,
   exportWorkbookToCsv,
   exportWorkbookToXlsx,
   a1ToRowCol,
@@ -47,12 +46,32 @@ function parseDocResult(
   if (ext === ".csv" || ext === ".tsv") {
     return { fileName, ext, kind: "sheet", sheetData: parseCsvToWorkbook(res.content || "", fileName) };
   }
-  if (ext === ".xlsx" || ext === ".xls") {
-    return { fileName, ext, kind: "sheet", sheetData: parseXlsxToWorkbook(res.bufferBase64 || "") };
-  }
   if (ext === ".md") return { fileName, ext, kind: "markdown", content: res.content || "" };
   if (ext === ".json") return { fileName, ext, kind: "json", content: res.content || "" };
   return { fileName, ext, kind: "text", content: res.content || "" };
+}
+
+// Engine-rendered office files (doc/slide/pdf families plus the binary Excel
+// family) reuse the locally installed WorkBuddy Tencent Docs engine via an
+// embedded preview (see electron/officeEngineCore.ts). The engine edits and
+// saves the file itself; DocStudio only hosts the view. .csv/.tsv keep the
+// lightweight built-in sheet editor.
+const ENGINE_EXTS = new Set([
+  ".doc", ".docx", ".dot", ".dotx", ".wps", ".wpt", ".docm", ".dotm",
+  ".xls", ".xlsx", ".xlt", ".xltx", ".xlsm", ".xltm",
+  ".pptx", ".ppt", ".pps", ".pot", ".pptm", ".ppsx", ".ppsm", ".potx", ".potm",
+  ".pdf"
+]);
+
+function splitFileName(filePath: string): { fileName: string; ext: string } {
+  const fileName = filePath.split(/[\\/]/).pop() || "Untitled";
+  const dot = fileName.lastIndexOf(".");
+  const ext = dot >= 0 ? fileName.slice(dot).toLowerCase() : "";
+  return { fileName, ext };
+}
+
+function isEngineFileExt(ext: string): boolean {
+  return ENGINE_EXTS.has(ext.toLowerCase());
 }
 
 interface DocStudioAppProps {
@@ -144,26 +163,10 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
   const openFileIntoTab = useCallback(async (filePath: string) => {
     if (!window.freebuddy?.docStudio) return;
 
-    try {
-      const res = await window.freebuddy.docStudio.readFile(filePath);
-      if (!res.success) {
-        showToast("error", t("docStudio.openFailed", { err: res.error || "Unknown error" }));
-        return;
-      }
+    const { fileName, ext } = splitFileName(filePath);
+    const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-      const { fileName, ext, kind, sheetData, content } = parseDocResult(res, filePath);
-
-      const newTab: DocTab = {
-        id: `tab-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        filePath,
-        fileName,
-        ext,
-        kind,
-        isDirty: false,
-        content,
-        sheetData
-      };
-
+    const activateTab = (newTab: DocTab) => {
       setTabs((prev) => {
         // If file is already open, activate it
         const existing = prev.find((t) => t.filePath === filePath);
@@ -173,8 +176,45 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
         }
         return [...prev, newTab];
       });
-
       setActiveTabId(newTab.id);
+    };
+
+    try {
+      if (isEngineFileExt(ext)) {
+        const res = await window.freebuddy.docStudio.getEnginePreview(filePath);
+        if (!res.success || !res.url) {
+          showToast("error", t("docStudio.openFailed", { err: res.error || "engineUnavailable" }));
+          return;
+        }
+        activateTab({
+          id: tabId,
+          filePath,
+          fileName,
+          ext,
+          kind: "office",
+          isDirty: false,
+          previewUrl: res.url
+        });
+        return;
+      }
+
+      const res = await window.freebuddy.docStudio.readFile(filePath);
+      if (!res.success) {
+        showToast("error", t("docStudio.openFailed", { err: res.error || "Unknown error" }));
+        return;
+      }
+
+      const { kind, sheetData, content } = parseDocResult(res, filePath);
+      activateTab({
+        id: tabId,
+        filePath,
+        fileName,
+        ext,
+        kind,
+        isDirty: false,
+        content,
+        sheetData
+      });
     } catch (err) {
       console.error("[DocStudioApp] Open file failed:", err);
       showToast("error", t("docStudio.openFailed", { err: err instanceof Error ? err.message : String(err) }));
@@ -247,6 +287,8 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
   // Save current active tab
   const handleSaveActiveTab = useCallback(async () => {
     if (!activeTab || !window.freebuddy?.docStudio || saving) return;
+    // Engine tabs persist through the engine's own editor chrome.
+    if (activeTab.kind === "office") return;
 
     try {
       let payload: { content?: string; bufferBase64?: string } = {};
@@ -283,6 +325,8 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
   // Save As
   const handleSaveAs = async () => {
     if (!activeTab || !window.freebuddy?.docStudio) return;
+    // Engine tabs persist through the engine's own editor chrome.
+    if (activeTab.kind === "office") return;
 
     const filterExt = activeTab.ext.replace(/^\./, "");
     const targetPath = await window.freebuddy.docStudio.showSaveDialog(activeTab.fileName, [
@@ -503,6 +547,12 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
     (filePath: string) => {
       const tab = tabsRef.current.find((tb) => tb.filePath === filePath);
       if (!tab) return;
+      // Office-engine tabs host the engine's own editor; an on-disk change
+      // (typically an agent save through the engine MCP) reloads the preview.
+      if (tab.kind === "office") {
+        setOfficeReloads((prev) => ({ ...prev, [filePath]: (prev[filePath] ?? 0) + 1 }));
+        return;
+      }
       if (tab.isDirty) {
         showToast("info", t("docStudio.fileChangedDirty"), {
           label: t("docStudio.reload"),
@@ -521,10 +571,17 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
     return ds.onFileChanged(handleFileChanged);
   }, [handleFileChanged]);
 
+  // Office-engine tab reload counters: bumping a counter remounts the embedded
+  // engine preview (iframe key), which re-imports the freshly saved document.
+  const [officeReloads, setOfficeReloads] = useState<Record<string, number>>({});
+
   const watchedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const ds = window.freebuddy?.docStudio;
     if (!ds?.watchFile || !ds?.unwatchFile) return;
+    // Watch every open file, including office-engine tabs: an agent that saves
+    // the file through the engine MCP changes it on disk, and the watcher
+    // reloads the embedded preview from the saved content.
     const paths = new Set(tabs.map((tb) => tb.filePath));
     paths.forEach((p) => {
       if (!watchedRef.current.has(p)) void ds.watchFile(p);
@@ -621,7 +678,7 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
               onClick={handleSaveActiveTab}
               className={`ds-icon-btn ${activeTab.isDirty ? "ds-icon-btn-brand" : ""}`}
               title={t("docStudio.saveShortcut")}
-              disabled={saving}
+              disabled={saving || activeTab.kind === "office"}
             >
               <Save size={15} />
             </button>
@@ -629,6 +686,7 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
               onClick={handleSaveAs}
               className="ds-icon-btn"
               title={t("docStudio.saveAs")}
+              disabled={activeTab.kind === "office"}
             >
               <FolderDown size={15} />
             </button>
@@ -661,7 +719,15 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
       <div className="ds-workspace">
         <div className="ds-editor">
           {activeTab ? (
-            activeTab.kind === "sheet" && activeTab.sheetData ? (
+            activeTab.kind === "office" && activeTab.previewUrl ? (
+              <iframe
+                key={`${activeTab.filePath}-${officeReloads[activeTab.filePath] ?? 0}`}
+                src={activeTab.previewUrl}
+                className="ds-office-frame"
+                title={activeTab.fileName}
+                allow="clipboard-read; clipboard-write"
+              />
+            ) : activeTab.kind === "sheet" && activeTab.sheetData ? (
               <SpreadsheetEditor
                 workbook={activeTab.sheetData}
                 onChange={(updated) => handleSheetChange(activeTab.id, activeTab.sheetData, updated)}

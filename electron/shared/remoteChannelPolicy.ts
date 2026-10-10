@@ -276,6 +276,8 @@ const DENY = [
   "docStudio:openConversationInMain",
   "docStudio:watchFile",
   "docStudio:unwatchFile",
+  "docStudio:officePreview",
+  "docStudio:engineEditorStatus",
 
   // Anything that installs or updates code on the host.
   "cli:install",

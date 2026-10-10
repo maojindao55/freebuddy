@@ -105,6 +105,10 @@ import {
   registerWorkspaceFsToolSession,
   unregisterWorkspaceFsToolSession
 } from "../workspaceFsToolService.js";
+import {
+  registerOfficeEngineToolSession,
+  resolveDocStudioOfficeFile
+} from "../officeEngineToolService.js";
 import { getConversation } from "./conversations.js";
 import type { AcpStdioMcpServer } from "../shared/browserToolProtocol.js";
 import {
@@ -1594,6 +1598,15 @@ export async function runAcpAgent({
             primary
           })
         );
+      }
+      // DocStudio copilot conversations for office-engine files (doc/slide/pdf)
+      // get the engine's document tools (open_file, doc_*, slide_*, save_file).
+      if (args.conversationId && !remoteIsolated) {
+        const officeFile = resolveDocStudioOfficeFile(args.conversationId);
+        if (officeFile) {
+          const officeServer = await registerOfficeEngineToolSession(args.sessionId, officeFile);
+          if (officeServer) mcpServers.push(officeServer);
+        }
       }
     }
     if (mcpServers.length) {

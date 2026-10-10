@@ -1,4 +1,4 @@
-export type DocKind = "sheet" | "markdown" | "text" | "json";
+export type DocKind = "sheet" | "markdown" | "text" | "json" | "office";
 
 export interface CellValue {
   value: string | number | boolean | null;
@@ -54,6 +54,7 @@ export interface DocTab {
   isDirty: boolean;
   content?: string; // For text/markdown/json
   sheetData?: SheetWorkbookData; // For spreadsheet
+  previewUrl?: string; // For engine-rendered office files (kind: "office")
 }
 
 export interface CellUpdateProposal {

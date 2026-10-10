@@ -246,6 +246,49 @@ test("final summaries survive the existing persistence cap and reload with their
   assert.equal(result.firstOutputKind, "thinking");
 });
 
+test("truncation pins the terminal run-metrics summary instead of dropping the earliest item", () => {
+  const { metrics } = collector();
+  metrics.promptSubmitted();
+  metrics.observe([{ kind: "usage", usageScope: "turn", inputTokens: 1_000, outputTokens: 200 }]);
+  metrics.finish();
+  const items = [usage(metrics.snapshot())];
+  for (let i = 0; i < 60; i += 1) items.push({ kind: "text", role: "assistant", content: `${i}:${"x".repeat(10_000)}` });
+  const serialized = serializeStreamItemsForPersist(items);
+  const parsed = JSON.parse(serialized);
+  assert.equal(parsed[0].kind, "raw"); // Truncation notice leads the persisted stream.
+  const summaries = parsed.filter(item => item.kind === "usage" && item.runMetrics?.runId === "run");
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].runMetrics.status, "done");
+  const lastText = parsed.filter(item => item.kind === "text").at(-1);
+  assert.ok(lastText.content.startsWith("59:"));
+  const result = select([{ role: "assistant", taskId: "run", content: serialized }]);
+  assert.equal(result.status, "done");
+  assert.equal(result.summary.elapsedMs, metrics.snapshot().elapsedMs);
+});
+
+test("repeated snapshots of the same run keep only the terminal summary under truncation", () => {
+  const { metrics, time } = collector();
+  metrics.promptSubmitted();
+  time(300);
+  const first = metrics.snapshot();
+  time(700);
+  const second = metrics.snapshot();
+  metrics.finish();
+  const terminal = metrics.snapshot();
+  const items = [
+    usage(first),
+    usage(second),
+    usage(terminal),
+    ...Array.from({ length: 60 }, (_, i) => ({ kind: "text", role: "assistant", content: `${i}:${"y".repeat(10_000)}` }))
+  ];
+  const serialized = serializeStreamItemsForPersist(items);
+  const parsed = JSON.parse(serialized);
+  const summaries = parsed.filter(item => item.kind === "usage" && item.runMetrics?.runId === "run");
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].runMetrics.status, "done");
+  assert.equal(summaries[0].runMetrics.elapsedMs, terminal.elapsedMs);
+});
+
 test("vendor metrics token counters require explicit turn scope, unlike ACP prompt usage", () => {
   const metadata = { metrics: { totalInputTokens: 99_000, outputTokens: 900, tokensPerSecond: 20 } };
   assert.equal(select([message(acpPromptResultToItems(metadata))]).inputTokens, undefined);

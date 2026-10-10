@@ -316,7 +316,14 @@ export const DocStudioCopilot: React.FC<DocStudioCopilotProps> = ({
   const buildHiddenContext = useCallback((): string | undefined => {
     if (!activeTab) return undefined;
     let ctx = "";
-    if (selectionContext) {
+    if (activeTab.kind === "office") {
+      ctx += `[Current Document]: ${activeTab.fileName}\nFile path: ${activeTab.filePath}\n`;
+      ctx +=
+        "Note: This document is open in the embedded office editor and the office-engine MCP server is connected. " +
+        "Call the open_file tool with the file path first, then use the doc_* / slide_* / sheet_* tools " +
+        "(doc_get_outline, doc_find, doc_insert_text, save_file, ...) to read and edit the document. " +
+        "Use save_file only when the user asks to persist changes.\n\n";
+    } else if (selectionContext) {
       ctx += `[Selected Range]: ${selectionContext.rangeLabel}\n`;
       if (selectionContext.headers) {
         ctx += `[Headers]: ${selectionContext.headers.join(", ")}\n`;

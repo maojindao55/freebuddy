@@ -6,14 +6,13 @@ import {
   readFileSync,
   realpathSync as fsRealpath,
   rmSync,
+  statSync,
   unlinkSync
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolvePiAcpSpawnPlan } from "./piRuntime.js";
-
-const DSH_ACP_NPM_TAG = "next";
 
 /** Node 22+ emits this for `node:sqlite`; DeepSeek ACP uses it via session-query-sqlite. */
 export const DSH_ACP_NODE_DISABLE_WARNING =
@@ -1110,6 +1109,16 @@ export function patchDshAcpRuntimeFromCommand(command: {
 }
 
 /**
+ * Bypass `MAX_PATH` and literal-path parsing for deep deletions. A demoted npm dependency
+ * subtree routinely exceeds 260 characters, where Windows reports ENOENT instead of ENAMETOOLONG.
+ */
+export function windowsExtendedPath(target: string): string {
+  if (process.platform !== "win32") return target;
+  if (target.startsWith("\\\\?\\")) return target;
+  return `\\\\?\\${path.resolve(target)}`;
+}
+
+/**
  * Wipe the managed install's `node_modules`/lockfile before a reinstall.
  *
  * DeepSeek republishes some sibling packages (e.g. `@deepseek-ai/dsh-session-persistence`
@@ -1119,35 +1128,58 @@ export function patchDshAcpRuntimeFromCommand(command: {
  * producing mismatched exports at import time (silent plugin activation
  * failures inside the harness). Forcing npm to re-resolve everything from
  * scratch avoids that drift.
+ *
+ * Returns false when the tree is still present afterwards. A running agent, an editor or
+ * antivirus can hold files open on Windows, and installing into a half-deleted directory
+ * reproduces exactly the demotion this wipe exists to prevent.
  */
-export function cleanDshAcpManagedNodeModules(root: string): void {
+export function cleanDshAcpManagedNodeModules(root: string): boolean {
+  const modules = windowsExtendedPath(path.join(root, "node_modules"));
   try {
-    rmSync(path.join(root, "node_modules"), { recursive: true, force: true });
+    rmSync(modules, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 });
   } catch {
-    /* best-effort; a failed cleanup just falls back to an incremental install */
+    /* reported by the existence check below */
   }
   try {
-    unlinkSync(path.join(root, "package-lock.json"));
+    unlinkSync(windowsExtendedPath(path.join(root, "package-lock.json")));
   } catch {
     /* ignore a missing lockfile */
   }
+  return !existsSync(modules);
 }
 
-/** Clean up legacy package.json and lockfile in the managed runtime if they hold stale granular dependencies. */
+/**
+ * Drop a managed manifest that npm cannot resolve into a bootable tree.
+ *
+ * Only a single-package manifest is safe. Any extra root dependency competes with the
+ * harness's own `@deepseek-ai/dsh-base` plugin subtree, and npm resolves that conflict by
+ * demoting the whole subtree into `dsh-base/node_modules`, where the harness cannot reach
+ * it — dozens of "failed to import" entries and exit 1 at startup. A `file:` specifier is
+ * equally unusable since it points at a checkout that may no longer exist. Removing the
+ * manifest and its lockfile makes npm re-resolve from scratch.
+ */
 export function cleanupLegacyDshAcpManagedFiles(root: string): void {
   const pkgJsonPath = path.join(root, "package.json");
-  if (existsSync(pkgJsonPath)) {
-    try {
-      const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
-      const deps = { ...parsed.dependencies, ...parsed.devDependencies };
-      if (deps["@deepseek-ai/dsh-acp-demo"] || !deps["deepseek-harness-acp"]) {
-        unlinkSync(pkgJsonPath);
-        const lockPath = path.join(root, "package-lock.json");
-        if (existsSync(lockPath)) unlinkSync(lockPath);
-      }
-    } catch {
-      /* ignore */
-    }
+  if (!existsSync(pkgJsonPath)) return;
+  let stale = true;
+  try {
+    const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+    const deps = { ...parsed.dependencies, ...parsed.devDependencies };
+    const harness = deps["deepseek-harness-acp"];
+    stale =
+      Object.keys(deps).length !== 1 ||
+      typeof harness !== "string" ||
+      !/^[\^~]?\d/.test(harness);
+  } catch {
+    /* an unparsable manifest is of no use to npm either */
+  }
+  if (!stale) return;
+  try {
+    unlinkSync(pkgJsonPath);
+    const lockPath = path.join(root, "package-lock.json");
+    if (existsSync(lockPath)) unlinkSync(lockPath);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -1203,15 +1235,7 @@ export function nodeModulesHasPackage(
   startDir: string,
   packageName: string
 ): boolean {
-  let dir = path.resolve(startDir);
-  for (;;) {
-    if (existsSync(path.join(dir, "node_modules", packageName, "package.json"))) {
-      return true;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return false;
-    dir = parent;
-  }
+  return Boolean(nodeModulesPackageDir(startDir, packageName));
 }
 
 export function resolveDshAcpDemoDirFromBinary(
@@ -1255,14 +1279,71 @@ export function isStandaloneDshAcpBinary(binary?: string): boolean {
   return base.startsWith("deepseek-harness-acp") || base.startsWith("dsh-acp");
 }
 
+/** Walk up from `startDir` to the installed directory for `packageName`. */
+function nodeModulesPackageDir(
+  startDir: string,
+  packageName: string
+): string | undefined {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    const candidate = path.join(dir, "node_modules", packageName);
+    if (existsSync(path.join(candidate, "package.json"))) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+const DSH_ACP_BASE_PACKAGE = "@deepseek-ai/dsh-base";
+const DSH_ACP_CORE_PACKAGES = [
+  DSH_ACP_BASE_PACKAGE,
+  "@deepseek-ai/dsh-acp",
+  "@deepseek-ai/dsh-app-boot"
+];
+
+const dshBaseCompositionCache = new Map<string, string[]>();
+
+/**
+ * Plugin rows a standalone harness mounts by itself. `boot()` resolves bare specifiers
+ * relative to `lib/bin.js`, so a row npm demoted into `dsh-base/node_modules` is invisible
+ * to the loader and aborts startup with an aggregate of "failed to import" entries.
+ * An unreadable patch yields an empty list, degrading readiness to the core-package verdict.
+ */
+function dshBaseCompositionPackages(pkgDir: string): string[] {
+  const baseDir = nodeModulesPackageDir(pkgDir, DSH_ACP_BASE_PACKAGE);
+  if (!baseDir) return [];
+  const patchPath = path.join(baseDir, "cordis.patch.yml");
+  let key: string;
+  try {
+    const stat = statSync(patchPath);
+    key = `${patchPath}:${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return [];
+  }
+  const cached = dshBaseCompositionCache.get(key);
+  if (cached) return cached;
+  let names: string[] = [];
+  try {
+    names = parseDshAcpCompositionPackages(readFileSync(patchPath, "utf8"));
+  } catch {
+    /* ignore unreadable composition */
+  }
+  dshBaseCompositionCache.set(key, names);
+  return names;
+}
+
 export function dshAcpCompositionReady(
   binPath: string,
   configPath?: string
 ): boolean {
   const pkgDir = resolveDshAcpDemoDirFromBinary(binPath) ?? path.dirname(binPath);
   if (isModernDshAcpBinary(binPath)) {
-    return ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-acp", "@deepseek-ai/dsh-app-boot"]
-      .every((pkg) => nodeModulesHasPackage(pkgDir, pkg));
+    if (!DSH_ACP_CORE_PACKAGES.every((pkg) => nodeModulesHasPackage(pkgDir, pkg))) {
+      return false;
+    }
+    return dshBaseCompositionPackages(pkgDir).every((pkg) =>
+      nodeModulesHasPackage(pkgDir, pkg)
+    );
   }
   if (!nodeModulesHasPackage(pkgDir, DSH_ACP_PROBE_PACKAGE)) {
     return false;
@@ -1291,27 +1372,26 @@ export function parseDshAcpCompositionPackages(yamlText: string): string[] {
 }
 
 /**
- * `dsh-acp-demo` ships with `deps: none`. Installing only the bin leaves
- * cordis unable to import `@deepseek-ai/dsh-llm-deepseek` and the rest of
- * the official ACP plugin tree (`ERR_MODULE_NOT_FOUND`).
+ * Installs the standalone harness only. `@deepseek-ai/dsh-bash-local` must not
+ * be added here: `@next` floats ahead of the harness core line, and that
+ * same-name conflict makes npm demote `@deepseek-ai/dsh-base`'s plugin subtree
+ * into its private `node_modules`, where the boot module cannot resolve it
+ * (dozens of "failed to import" entries at startup). It already arrives transitively
+ * at the matching version.
  */
 export function dshAcpInstallCommand(options?: {
-  yamlText?: string;
   prefix?: string;
-  platform?: NodeJS.Platform;
   version?: string;
 }): string {
   if (options?.version && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(options.version)) {
     throw new Error("Invalid DeepSeek Harness target version");
   }
-  const isWin = (options?.platform ?? process.platform) === "win32";
   const target = options?.prefix
     ? `--prefix ${quoteForShell(options.prefix)}`
     : "-g";
-  const extra = isWin ? " @deepseek-ai/dsh-bash-local@next" : "";
   const version = options?.version || (options?.prefix ? "latest" : undefined);
   const online = options?.prefix ? " --offline=false --prefer-online" : "";
-  return `npm install ${target} deepseek-harness-acp${version ? `@${version}` : ""}${extra}${online}`;
+  return `npm install ${target} deepseek-harness-acp${version ? `@${version}` : ""}${online}`;
 }
 
 export function hasExplicitToolSessionArg(

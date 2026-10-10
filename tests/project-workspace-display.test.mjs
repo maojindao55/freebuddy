@@ -40,7 +40,7 @@ test("composer and workspace panel surface multi-root project mounts", () => {
   const chat = read("src/components/CLI/ChatView.tsx");
   const composer = read("src/components/CLI/ComposerWorkspaceMeta.tsx");
   const panel = read("src/components/CLI/WorkspacePanel.tsx");
-  const session = read("src/components/CLI/SessionInfoCard.tsx");
+  const session = read("src/components/CLI/AgentSessionCard.tsx");
   const styles = read("styles.css");
   const en = JSON.parse(read("src/locales/en.json"));
   const zh = JSON.parse(read("src/locales/zh-CN.json"));
@@ -65,7 +65,7 @@ test("composer and workspace panel surface multi-root project mounts", () => {
 
 test("workspace panel passes the real worktree directory to session details", () => {
   const panel = read("src/components/CLI/WorkspacePanel.tsx");
-  const session = read("src/components/CLI/SessionInfoCard.tsx");
+  const session = read("src/components/CLI/AgentSessionCard.tsx");
   const chat = read("src/components/CLI/ChatView.tsx");
   const grouping = read("src/components/CLI/conversationProjectGrouping.ts");
   const styles = read("styles.css");

@@ -341,6 +341,15 @@ window.freebuddy = {
       watchedFiles.delete(p);
       return true;
     },
+    getEnginePreview: async () => ({
+      success: true,
+      url: "http://127.0.0.1:39100/static/doc/pc.html?localFilePath=fixture"
+    }),
+    getEngineEditorStatus: async () => ({
+      success: true,
+      isDirty: false,
+      lastSavedMs: 0
+    }),
     onFileChanged: (cb: (filePath: string) => void) => {
       fileChangedCb = cb;
       return () => {

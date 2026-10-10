@@ -1002,6 +1002,19 @@ const docStudio = {
     ipcRenderer.invoke("docStudio:watchFile", filePath) as Promise<boolean>,
   unwatchFile: (filePath: string) =>
     ipcRenderer.invoke("docStudio:unwatchFile", filePath) as Promise<boolean>,
+  getEnginePreview: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:officePreview", filePath) as Promise<{
+      success: boolean;
+      url?: string;
+      error?: string;
+    }>,
+  getEngineEditorStatus: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:engineEditorStatus", filePath) as Promise<{
+      success: boolean;
+      isDirty?: boolean;
+      lastSavedMs?: number;
+      error?: string;
+    }>,
   onFileChanged: (cb: (filePath: string) => void): (() => void) => {
     const handler = (_e: IpcRendererEvent, payload: { filePath?: string }) => {
       if (payload?.filePath) cb(payload.filePath);

@@ -2,6 +2,13 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.36] - 2026-10-11
+
+### 新功能
+
+- show per-turn metrics in the message action row and merge the session card (#201)
+- office engine preview, message run metrics, and managed DSH install hardening (#202)
+
 ## [0.10.35] - 2026-10-09
 
 ### 新功能

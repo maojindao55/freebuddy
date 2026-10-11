@@ -1,5 +1,8 @@
 import * as readline from "node:readline";
 import path from "node:path";
+import fs from "node:fs";
+
+import { savedAsOfficeFilePath } from "./officeEngineSaveEvent.js";
 
 /**
  * stdio → streamable-HTTP MCP relay for the office engine.
@@ -15,6 +18,7 @@ import path from "node:path";
 
 const mcpUrl = process.env.FREEBUDDY_OFFICE_MCP_URL || "";
 const currentOfficeFile = process.env.FREEBUDDY_OFFICE_FILE || "";
+const savedFilesEventPath = process.env.FREEBUDDY_OFFICE_SAVED_FILES_EVENT_PATH || "";
 if (!mcpUrl) {
   process.exit(1);
 }
@@ -129,6 +133,14 @@ rl.on("line", (line) => {
   }
   void post(usePreviewEditor(message))
     .then((responses) => {
+      const savedPath = savedAsOfficeFilePath(message, responses, currentOfficeFile);
+      if (savedPath && savedFilesEventPath) {
+        try {
+          fs.appendFileSync(savedFilesEventPath, `${JSON.stringify({ filePath: savedPath })}\n`);
+        } catch {
+          /* The save succeeded; notification failure must not break the MCP reply. */
+        }
+      }
       for (const response of responses) {
         process.stdout.write(`${JSON.stringify(response)}\n`);
       }

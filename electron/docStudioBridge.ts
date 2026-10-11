@@ -4,6 +4,14 @@ import { watch } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { registerHandler } from "./invokeRegistry.js";
+import { getConversation } from "./cli/conversations.js";
+import { resolveDocStudioOfficeFile } from "./officeEngineToolService.js";
+import {
+  isDocStudioWindowSender,
+  registerDocStudioWindow,
+  unregisterDocStudioWindow
+} from "./docStudioWindowRegistry.js";
+export { isDocStudioWindowSender } from "./docStudioWindowRegistry.js";
 import {
   isOfficeEngineFile,
   buildOfficeEnginePreviewUrl,
@@ -19,8 +27,8 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
-const docStudioWindows = new Map<number, BrowserWindow>();
 let officeEngineAddonBusy = false;
+const docStudioActiveConversations = new Map<number, string>();
 
 // Per-webContents file watchers for the DocStudio live-reload feature.
 interface DocStudioWatchEntry {
@@ -107,7 +115,7 @@ function companionWebPreferences() {
   };
 }
 
-export function openDocStudioWindow(initialFilePath?: string): BrowserWindow {
+export function openDocStudioWindow(initialFilePath?: string, initialConversationId?: string): BrowserWindow {
   const display = screen.getPrimaryDisplay();
   const width = Math.min(1440, Math.floor(display.workArea.width * 0.9));
   const height = Math.min(880, Math.floor(display.workArea.height * 0.9));
@@ -125,16 +133,20 @@ export function openDocStudioWindow(initialFilePath?: string): BrowserWindow {
     webPreferences: companionWebPreferences()
   });
 
-  docStudioWindows.set(win.id, win);
+  const webContentsId = win.webContents.id;
+  registerDocStudioWindow(webContentsId);
+  if (initialConversationId) docStudioActiveConversations.set(win.id, initialConversationId);
 
   win.on("closed", () => {
-    docStudioWindows.delete(win.id);
+    unregisterDocStudioWindow(webContentsId);
+    docStudioActiveConversations.delete(win.id);
   });
 
   const query: Record<string, string> = { surface: "doc-studio" };
   if (initialFilePath) {
     query.file = initialFilePath;
   }
+  if (initialConversationId) query.conversation = initialConversationId;
 
   if (isDev) {
     const url = new URL(process.env.VITE_DEV_SERVER_URL as string);
@@ -142,6 +154,7 @@ export function openDocStudioWindow(initialFilePath?: string): BrowserWindow {
     if (initialFilePath) {
       url.searchParams.set("file", initialFilePath);
     }
+    if (initialConversationId) url.searchParams.set("conversation", initialConversationId);
     void win.loadURL(url.toString());
   } else {
     void win.loadFile(path.join(__dirname, "../dist/index.html"), { query });
@@ -153,11 +166,6 @@ export function openDocStudioWindow(initialFilePath?: string): BrowserWindow {
   });
 
   return win;
-}
-
-export function isDocStudioWindowSender(sender: Electron.WebContents): boolean {
-  const win = BrowserWindow.fromWebContents(sender);
-  return !!win && docStudioWindows.has(win.id);
 }
 
 function isAllowedOfficeEnginePath(p: unknown): p is string {
@@ -218,6 +226,48 @@ export function initDocStudioBridge(): void {
     if (filePath && !isAllowedOfficeEnginePath(filePath)) return false;
     openDocStudioWindow(filePath);
     return true;
+  });
+
+  registerHandler("docStudio:openConversation", async (_event, conversationId: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId) return false;
+    const conversation = getConversation(conversationId);
+    if (conversation?.kind !== "doc-studio") return false;
+    for (const [windowId, activeId] of docStudioActiveConversations) {
+      if (activeId !== conversationId) continue;
+      const existing = BrowserWindow.fromId(windowId);
+      if (existing && !existing.isDestroyed()) {
+        if (existing.isMinimized()) existing.restore();
+        existing.show();
+        existing.focus();
+        return true;
+      }
+      docStudioActiveConversations.delete(windowId);
+    }
+    const attachedPath = resolveDocStudioOfficeFile(conversationId);
+    const filePath = attachedPath && await fs.stat(attachedPath).then(
+      (stat) => stat.isFile() ? attachedPath : undefined,
+      () => undefined
+    );
+    openDocStudioWindow(filePath || undefined, conversationId);
+    return true;
+  });
+
+  registerHandler("docStudio:setActiveConversation", (event, conversationId: unknown) => {
+    if (!isDocStudioWindowSender(event.sender)) return false;
+    if (conversationId !== null &&
+      (typeof conversationId !== "string" || getConversation(conversationId)?.kind !== "doc-studio")) {
+      return false;
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return false;
+    if (conversationId) docStudioActiveConversations.set(win.id, conversationId);
+    else docStudioActiveConversations.delete(win.id);
+    return true;
+  });
+
+  registerHandler("docStudio:defaultDirectory", async (event) => {
+    if (!isDocStudioWindowSender(event.sender)) return null;
+    return app.getPath("documents");
   });
 
   // Office engine preview URL (personal-learning integration; see officeEngineCore.ts)

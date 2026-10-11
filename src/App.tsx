@@ -277,8 +277,6 @@ function App() {
 
   useEffect(() => {
     const off = window.freebuddy?.window?.onOpenConversation?.((conversationId) => {
-      setSettingsOpen(false);
-      setWorkspaceView("chat");
       void (async () => {
         const state = useConversationStore.getState();
         // Conversations created in other renderer processes (e.g. DocStudio)
@@ -286,7 +284,19 @@ function App() {
         if (!state.conversations.some((c) => c.id === conversationId)) {
           await state.refreshList();
         }
-        void useConversationStore.getState().setActive(conversationId);
+        if (useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
+          try {
+            if (await window.freebuddy?.docStudio?.openConversation(conversationId)) {
+              useConversationStore.getState().markConversationRead(conversationId);
+              return;
+            }
+          } catch {
+            // Fall back to the main conversation view.
+          }
+        }
+        setSettingsOpen(false);
+        setWorkspaceView("chat");
+        await useConversationStore.getState().setActive(conversationId);
       })();
     });
     return () => {
@@ -974,12 +984,27 @@ function App() {
     setWorkspaceView("chat");
   };
   const openPanelConversation = async (id: string) => {
+    const conversation = useConversationStore.getState().conversations.find((item) => item.id === id);
+    if (conversation?.kind === "doc-studio") {
+      try {
+        if (await window.freebuddy?.docStudio?.openConversation(id)) {
+          useConversationStore.getState().markConversationRead(id);
+          return;
+        }
+      } catch {
+        // Show the conversation in the main window if DocStudio cannot open.
+      }
+    }
     void exitPanelFullscreen();
     setMessageFocus(null);
     setWorkspaceView("chat");
     await setActive(id);
   };
   const openPanelFile = async (conversationId: string, messageId: string, path: string) => {
+    if (useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
+      await openPanelConversation(conversationId);
+      return;
+    }
     await openPanelConversation(conversationId);
     try {
       let cursor: number | undefined;
@@ -1335,10 +1360,7 @@ function App() {
           setCommandPaletteOpen(false);
           setCodexImportOpen(true);
         }}
-        onSelectConversation={() => {
-          setSettingsOpen(false);
-          setWorkspaceView("chat");
-        }}
+        onSelectConversation={(id) => { void openPanelConversation(id); }}
       />
       {contextSource && (
         <ConversationContextDialog

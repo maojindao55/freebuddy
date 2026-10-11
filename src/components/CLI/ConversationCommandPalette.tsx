@@ -47,7 +47,7 @@ export function ConversationCommandPalette({
   onOpenScheduledTasks: () => void;
   onOpenSettings: () => void;
   onImportCodexSession: () => void;
-  onSelectConversation?: () => void;
+  onSelectConversation?: (conversationId: string) => void;
 }) {
   const { t } = useTranslation();
   const titleId = useId();
@@ -182,8 +182,8 @@ export function ConversationCommandPalette({
   if (!open) return null;
 
   const selectConversation = (conversation: Conversation) => {
-    void setActive(conversation.id);
-    onSelectConversation?.();
+    if (onSelectConversation) onSelectConversation(conversation.id);
+    else void setActive(conversation.id);
     onClose();
   };
 

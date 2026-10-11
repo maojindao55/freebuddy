@@ -974,6 +974,12 @@ const providers = {
 const docStudio = {
   openWindow: (target?: string | { filePath?: string }) =>
     ipcRenderer.invoke("docStudio:openWindow", target) as Promise<boolean>,
+  openConversation: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:openConversation", conversationId) as Promise<boolean>,
+  setActiveConversation: (conversationId: string | null) =>
+    ipcRenderer.invoke("docStudio:setActiveConversation", conversationId) as Promise<boolean>,
+  getDefaultDirectory: () =>
+    ipcRenderer.invoke("docStudio:defaultDirectory") as Promise<string | null>,
   showOpenDialog: (defaultPath?: string) =>
     ipcRenderer.invoke("docStudio:showOpenDialog", defaultPath) as Promise<string[] | null>,
   showItemInFolder: (filePath: string) =>
@@ -1019,6 +1025,13 @@ const docStudio = {
     };
     ipcRenderer.on("docStudio:fileChanged", handler);
     return () => ipcRenderer.off("docStudio:fileChanged", handler);
+  },
+  onFileSavedAs: (cb: (filePath: string) => void): (() => void) => {
+    const handler = (_e: IpcRendererEvent, payload: { filePath?: string }) => {
+      if (payload?.filePath) cb(payload.filePath);
+    };
+    ipcRenderer.on("docStudio:fileSavedAs", handler);
+    return () => ipcRenderer.off("docStudio:fileSavedAs", handler);
   }
 };
 

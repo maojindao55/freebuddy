@@ -29,6 +29,39 @@ const {
   downloadOfficeEngine,
   downloadConfiguredOfficeEngine
 } = await import("../dist-electron/officeEngineAddon.js");
+const { savedAsOfficeFilePath } = await import("../dist-electron/mcp/officeEngineSaveEvent.js");
+const {
+  registerDocStudioWindow,
+  unregisterDocStudioWindow,
+  isDocStudioWindowSender
+} = await import("../dist-electron/docStudioWindowRegistry.js");
+
+test("DocStudio window identity is registered and cleared without Electron runtime imports", () => {
+  const sender = { id: 987654321 };
+  assert.equal(isDocStudioWindowSender(sender), false);
+  registerDocStudioWindow(sender.id);
+  assert.equal(isDocStudioWindowSender(sender), true);
+  unregisterDocStudioWindow(sender.id);
+  assert.equal(isDocStudioWindowSender(sender), false);
+});
+
+test("only a successful save to a separate Office path can open a new tab", () => {
+  const current = path.join(rootDir, "current.docx");
+  const created = path.join(rootDir, "created.docx");
+  const request = (filePath) => ({
+    id: 7,
+    method: "tools/call",
+    params: { name: "save_file", arguments: { file_id: "new_doc", file_path: filePath } }
+  });
+  const success = [{ id: 7, result: { content: [{ type: "text", text: "saved" }] } }];
+  assert.equal(savedAsOfficeFilePath(request(created), success, current), created);
+  assert.equal(savedAsOfficeFilePath(request(current), success, current), null);
+  assert.equal(savedAsOfficeFilePath(request(path.join(rootDir, "export.csv")), success, current), null);
+  assert.equal(savedAsOfficeFilePath(request("relative.docx"), success, current), null);
+  assert.equal(savedAsOfficeFilePath(request(created), [{ id: 7, error: { message: "failed" } }], current), null);
+  assert.equal(savedAsOfficeFilePath(request(created), [{ id: 7, result: { isError: true } }], current), null);
+  assert.equal(savedAsOfficeFilePath(request(created), [{ id: 8, result: {} }], current), null);
+});
 
 test("office engine addon requires HTTPS and a pinned SHA-256", () => {
   const validHash = "a".repeat(64);
@@ -161,6 +194,10 @@ test("chat-side doc clickability includes engine extensions", () => {
 test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoint", async () => {
   const seen = [];
   const officeFile = path.join(rootDir, "preview.xlsx");
+  const newFile = path.join(rootDir, "created.xlsx");
+  const eventDir = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-office-relay-test-"));
+  const eventFile = path.join(eventDir, "saved-files.jsonl");
+  fs.writeFileSync(eventFile, "");
   const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", (chunk) => {
@@ -206,6 +243,13 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
         );
         return;
       }
+      if (message?.method === "tools/call" && message.params?.name === "save_file") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(message.id === 6
+          ? { jsonrpc: "2.0", id: message.id, error: { code: -32603, message: "save failed" } }
+          : { jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "saved" }] } }));
+        return;
+      }
       res.writeHead(202, { "content-type": "text/plain" });
       res.end();
     });
@@ -218,7 +262,8 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
       ...process.env,
       ELECTRON_RUN_AS_NODE: "",
       FREEBUDDY_OFFICE_MCP_URL: `http://127.0.0.1:${port}/mcp`,
-      FREEBUDDY_OFFICE_FILE: officeFile
+      FREEBUDDY_OFFICE_FILE: officeFile,
+      FREEBUDDY_OFFICE_SAVED_FILES_EVENT_PATH: eventFile
     },
     stdio: ["pipe", "pipe", "ignore"]
   });
@@ -269,15 +314,25 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
       arguments: { file_path: path.join(rootDir, "other.xlsx"), open_with_existing: false, wait: false }
     }
   });
+  await send({ jsonrpc: "2.0", id: 5, method: "tools/call",
+    params: { name: "save_file", arguments: { file_id: "new_sheet", file_path: newFile } } });
+  await send({ jsonrpc: "2.0", id: 6, method: "tools/call",
+    params: { name: "save_file", arguments: { file_id: "new_sheet", file_path: path.join(rootDir, "failed.xlsx") } } });
+  await send({ jsonrpc: "2.0", id: 7, method: "tools/call",
+    params: { name: "save_file", arguments: { file_id: "current_sheet", file_path: officeFile } } });
   await new Promise((resolve) => setTimeout(resolve, 300));
   child.kill();
   await new Promise((resolve) => server.close(() => resolve()));
+  const savedEvents = fs.readFileSync(eventFile, "utf8").trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+  fs.unlinkSync(eventFile);
+  fs.rmdirSync(eventDir);
+  assert.deepEqual(savedEvents, [{ filePath: newFile }]);
 
   assert.ok(stdout.length >= 2, `expected >= 2 relayed responses, got: ${stdout.join(" | ")}`);
   const init = JSON.parse(stdout[0]);
   assert.equal(init.id, 1);
   assert.equal(init.result.protocolVersion, "2024-11-05");
-  const tools = JSON.parse(stdout[stdout.length - 1]);
+  const tools = stdout.map((line) => JSON.parse(line)).find((message) => message.id === 2);
   assert.equal(tools.id, 2);
   assert.deepEqual(
     tools.result.tools.map((t) => t.name),
@@ -291,7 +346,7 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
   assert.equal(toolsCall.session, "sess-1");
   const openCalls = seen
     .map((entry) => JSON.parse(entry.body))
-    .filter((message) => message.method === "tools/call");
+    .filter((message) => message.method === "tools/call" && message.params?.name === "open_file");
   assert.equal(openCalls.length, 2);
   assert.deepEqual(openCalls.find((call) => call.id === 3)?.params.arguments, {
     file_path: officeFile,

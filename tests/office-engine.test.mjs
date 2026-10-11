@@ -238,7 +238,33 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
             `data: ${JSON.stringify({
               jsonrpc: "2.0",
               id: message.id,
-              result: { tools: [{ name: "open_file" }, { name: "doc_get_outline" }] }
+              result: { tools: [
+                { name: "open_file" },
+                { name: "doc_get_outline" },
+                {
+                  name: "doc_insert_footer",
+                  inputSchema: {
+                    type: "object",
+                    required: ["text"],
+                    properties: {
+                      text: { type: "string" },
+                      text_format: [
+                        ["type", "object"],
+                        ["description", "Footer text format"],
+                        ["properties", { bold: { type: "boolean" } },
+                          ["highlight", { type: "string" }],
+                          ["vertical_align", { type: "string", enum: ["baseline", "superscript"] }]]
+                      ],
+                      parts: {
+                        type: "array",
+                        items: { type: "object", properties: { text_format: [
+                          ["type", "object"], ["properties", { italic: { type: "boolean" } }]
+                        ] } }
+                      }
+                    }
+                  }
+                }
+              ] }
             })}\n\n`
         );
         return;
@@ -336,8 +362,15 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
   assert.equal(tools.id, 2);
   assert.deepEqual(
     tools.result.tools.map((t) => t.name),
-    ["open_file", "doc_get_outline"]
+    ["open_file", "doc_get_outline", "doc_insert_footer"]
   );
+  const footerSchema = tools.result.tools.find((tool) => tool.name === "doc_insert_footer").inputSchema;
+  assert.deepEqual(footerSchema.required, ["text"]);
+  assert.equal(footerSchema.properties.text_format.type, "object");
+  assert.equal(footerSchema.properties.text_format.properties.bold.type, "boolean");
+  assert.equal(footerSchema.properties.text_format.properties.highlight.type, "string");
+  assert.deepEqual(footerSchema.properties.text_format.properties.vertical_align.enum, ["baseline", "superscript"]);
+  assert.equal(footerSchema.properties.parts.items.properties.text_format.properties.italic.type, "boolean");
   // The session id from the initialize response must be sent on later requests.
   const initializeCall = seen.find((entry) => entry.body.includes("initialize"));
   const toolsCall = seen.find((entry) => entry.body.includes("tools/list"));

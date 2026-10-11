@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 
 import { savedAsOfficeFilePath } from "./officeEngineSaveEvent.js";
+import { normalizeOfficeToolSchema } from "./officeEngineSchema.js";
 
 /**
  * stdio → streamable-HTTP MCP relay for the office engine.
@@ -76,6 +77,24 @@ function rememberSessionFrom(messages: JsonRpcMessage[]): void {
   }
 }
 
+function normalizeToolList(message: JsonRpcMessage): JsonRpcMessage {
+  const result = message.result as Record<string, unknown> | undefined;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return message;
+  const tools = result.tools;
+  if (!Array.isArray(tools)) return message;
+  return {
+    ...message,
+    result: {
+      ...result,
+      tools: tools.map((tool: unknown) => {
+        if (!tool || typeof tool !== "object" || Array.isArray(tool)) return tool;
+        const entry = tool as Record<string, unknown>;
+        return { ...entry, inputSchema: normalizeOfficeToolSchema(entry.inputSchema) };
+      })
+    }
+  };
+}
+
 async function post(message: JsonRpcMessage): Promise<JsonRpcMessage[]> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -142,7 +161,8 @@ rl.on("line", (line) => {
         }
       }
       for (const response of responses) {
-        process.stdout.write(`${JSON.stringify(response)}\n`);
+        const forwarded = message.method === "tools/list" ? normalizeToolList(response) : response;
+        process.stdout.write(`${JSON.stringify(forwarded)}\n`);
       }
     })
     .catch(() => {

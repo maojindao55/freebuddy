@@ -13,6 +13,9 @@ import appIconUrl from "../../../assets/app-icon.png";
 
 const RELEASES_URL = "https://github.com/maojindao55/freebuddy/releases";
 
+// Runtime Pack 暂时停用；需要恢复时改为 true
+const SHOW_RUNTIME_PACK = false;
+
 type RuntimeSnapshot = {
   activeVersion: string | null;
   pendingVersion: string | null;
@@ -53,20 +56,29 @@ function OfficeEngineAddonPanel() {
     ? Math.min(100, Math.round((progress.receivedBytes / progress.totalBytes) * 100))
     : null;
 
+  const installed = Boolean(status?.installed);
+  const hint = error
+    ? error
+    : busy && progress
+      ? percent !== null
+        ? t("officeEngineAddon.progressPercent", { percent })
+        : t("officeEngineAddon.progressBytes", { mb: (progress.receivedBytes / 1048576).toFixed(1) })
+      : message || t(installed ? "officeEngineAddon.installed" : "officeEngineAddon.notInstalled");
+
   return (
-    <section className="settings-section office-engine-addon-section">
-      <h3>{t("officeEngineAddon.title")}</h3>
-      <p className="about-hint">{t("officeEngineAddon.description")}</p>
-      <p className="about-status">
-        {status?.installed ? t("officeEngineAddon.installed") : t("officeEngineAddon.notInstalled")}
-      </p>
-      {status?.activePath && <p className="about-hint office-engine-addon-path">{t("officeEngineAddon.activePath", { path: status.activePath })}</p>}
-      <div className="about-update-actions">
+    <>
+      <div className="about-row">
+        <div className="about-row-text">
+          <div className="about-row-label">{t("officeEngineAddon.title")}</div>
+          <div className={error ? "about-row-hint about-status-error" : "about-row-hint"}>{hint}</div>
+        </div>
         <button
           type="button"
-          className="primary-btn"
+          className={installed && !busy ? "about-text-btn" : "secondary-btn"}
           disabled={busy || status?.installing}
+          title={installed ? t("officeEngineAddon.reinstallTooltip") : undefined}
           onClick={() => {
+            if (installed && !window.confirm(t("officeEngineAddon.reinstallConfirm"))) return;
             setBusy(true);
             setProgress(null);
             setError("");
@@ -80,22 +92,15 @@ function OfficeEngineAddonPanel() {
               .finally(() => setBusy(false));
           }}
         >
-          {busy ? t("officeEngineAddon.working") : t(status?.installed ? "officeEngineAddon.reinstall" : "officeEngineAddon.download")}
+          {busy ? t("officeEngineAddon.working") : t(installed ? "officeEngineAddon.redownload" : "officeEngineAddon.download")}
         </button>
       </div>
-      {busy && progress && (
-        <>
-          <p className="about-status">
-            {percent !== null
-              ? t("officeEngineAddon.progressPercent", { percent })
-              : t("officeEngineAddon.progressBytes", { mb: (progress.receivedBytes / 1048576).toFixed(1) })}
-          </p>
-          {percent !== null && <div className="about-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><div className="about-progress-bar" style={{ width: percent + "%" }} /></div>}
-        </>
+      {busy && percent !== null && (
+        <div className="about-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+          <div className="about-progress-bar" style={{ width: percent + "%" }} />
+        </div>
       )}
-      {message && <p className="about-status about-status-downloaded">{message}</p>}
-      {error && <p className="about-status about-status-error">{error}</p>}
-    </section>
+    </>
   );
 }
 function RuntimePackPanel() {
@@ -230,6 +235,8 @@ export function AboutTab() {
   const updaterAvailable = Boolean(api?.updater);
   const platform = api?.platform ?? "";
   const arch = api?.arch ?? "";
+  const showOfficeEngine =
+    Boolean(api?.docStudio) && platform === "win32" && arch === "x64";
 
   const isBusy: boolean =
     status === "checking" || status === "downloading";
@@ -270,18 +277,11 @@ export function AboutTab() {
         <div className="about-card-meta">
           <div className="about-card-name">FreeBuddy</div>
           <div className="about-card-version">v{appVersion || "—"}</div>
-          <div className="about-card-platform">
-            {t("runtimePack.label")}: {t("runtimePack.bundled")}
-          </div>
           {platformLabel && (
             <div className="about-card-platform">{platformLabel}</div>
           )}
         </div>
       </section>
-
-      <RuntimePackPanel />
-
-      <OfficeEngineAddonPanel />
 
       <section className="settings-section">
         <h3>{t("updater.updateTitle")}</h3>
@@ -293,7 +293,7 @@ export function AboutTab() {
             <div className="about-update-actions">
               <button
                 type="button"
-                className="primary-btn"
+                className={canInstall ? "secondary-btn" : "primary-btn"}
                 disabled={!canCheck}
                 onClick={() => void checkForUpdates()}
               >
@@ -357,34 +357,45 @@ export function AboutTab() {
             {status === "error" && errorMessage && (
               <p className="about-error">{errorMessage}</p>
             )}
-
-            <p className="about-hint">{t("updater.autoCheckHint")}</p>
           </>
         )}
       </section>
 
-      <section className="settings-section">
-        <h3>{t("updater.linksTitle")}</h3>
-        <button
-          type="button"
-          className="link-btn about-releases-link"
-          onClick={() => window.open(RELEASES_URL, "_blank", "noopener")}
-        >
-          {t("updater.releasesLink")} ↗
-        </button>
-      </section>
+      {(SHOW_RUNTIME_PACK || showOfficeEngine) && (
+        <div className="about-group">
+          <h2 className="about-group-title">{t("updater.componentsTitle")}</h2>
+          {SHOW_RUNTIME_PACK && <RuntimePackPanel />}
+          <OfficeEngineAddonPanel />
+        </div>
+      )}
 
-      <section className="settings-section">
-        <h3>{t("debugLogs.aboutSectionTitle")}</h3>
-        <p className="about-hint">{t("debugLogs.aboutSectionHint")}</p>
-        <button
-          type="button"
-          className="primary-btn"
-          onClick={() => setDebugLogsOpen(true)}
-        >
-          {t("debugLogs.openButton")}
-        </button>
-      </section>
+      <div className="about-group">
+        <h2 className="about-group-title">{t("updater.supportTitle")}</h2>
+        <div className="about-row">
+          <div className="about-row-text">
+            <div className="about-row-label">{t("debugLogs.aboutSectionTitle")}</div>
+          </div>
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => setDebugLogsOpen(true)}
+          >
+            {t("debugLogs.openButton")}
+          </button>
+        </div>
+        <div className="about-row">
+          <div className="about-row-text">
+            <div className="about-row-label">{t("updater.linksTitle")}</div>
+          </div>
+          <button
+            type="button"
+            className="link-btn about-releases-link"
+            onClick={() => window.open(RELEASES_URL, "_blank", "noopener")}
+          >
+            {t("updater.releasesLink")} ↗
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

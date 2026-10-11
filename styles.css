@@ -20180,6 +20180,61 @@ button.ghost:focus-visible,
 .about-card-name { font-size: 16px; font-weight: 600; color: var(--fb-text-primary); }
 .about-card-version { font-size: 13px; color: var(--fb-text-secondary); font-variant-numeric: tabular-nums; }
 .about-card-platform { font-size: 12px; color: var(--fb-text-tertiary); }
+.about-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+.about-group-title {
+  margin: 0 0 2px;
+  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fb-text-tertiary);
+}
+.about-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-panel-bg);
+}
+.about-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.about-row-label { font-size: 13px; font-weight: 500; color: var(--fb-text-primary); }
+.about-row-hint { font-size: 12px; color: var(--fb-text-tertiary); }
+.about-row > button { flex: 0 0 auto; }
+.secondary-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid var(--fb-border);
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-soft);
+  cursor: pointer;
+}
+.secondary-btn:hover:not(:disabled) { filter: brightness(0.97); }
+.secondary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Low-priority text-style action (e.g. "Repair" when the Office engine is already installed) */
+.about-text-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.about-text-btn:hover:not(:disabled) { color: var(--fb-text-primary); text-decoration: underline; }
+.about-text-btn:focus-visible { outline: 2px solid var(--fb-brand, #10b981); outline-offset: 1px; }
+.about-text-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .runtime-pack-status {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -103,6 +103,25 @@ test("cleanDshAcpManagedNodeModules reports whether the managed tree really went
   }
 });
 
+test("a package.json without the harness entry is not a current install", () => {
+  const fn = checkSource.slice(
+    checkSource.indexOf("function readDshAcpManagedVersion"),
+    checkSource.indexOf("let dshAcpAutoUpdatePromise")
+  );
+  assert.match(fn, /lib", "bin\.js"/);
+  assert.match(fn, /existsSync/);
+});
+
+test("install closes a dead task row instead of treating it as an active run", () => {
+  const fn = checkSource.slice(
+    checkSource.indexOf("function assertRuntimeIdle"),
+    checkSource.indexOf("function runtimeInstallKey")
+  );
+  assert.match(fn, /isPidAlive/);
+  assert.match(fn, /status = 'failed'/);
+  assert.match(fn, /rows\.length !== stale\.length/);
+});
+
 test("managed installs abort rather than run npm over a surviving runtime tree", () => {
   assert.match(checkSource, /await prepareDshAcpManagedInstall\(\)/);
   assert.match(checkSource, /await removeDshAcpWindowsResidue\(\)/);

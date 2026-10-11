@@ -33,13 +33,6 @@ export function buildAppMenu(lang: "en" | "zh-CN") {
             }
           }
         },
-        {
-          label: tMain("menu.file.newSpreadsheet", lang),
-          accelerator: "CmdOrCtrl+Shift+N",
-          click: () => {
-            openDocStudioWindow();
-          }
-        },
         { type: "separator" },
         { role: "close", label: tMain("menu.file.closeWindow", lang) }
       ]

@@ -1,9 +1,10 @@
 import * as readline from "node:readline";
+import path from "node:path";
 
 /**
  * stdio → streamable-HTTP MCP relay for the office engine.
  *
- * The locally installed WorkBuddy Tencent Docs engine (`editor_sdk.exe`, see
+ * The separately downloaded Tencent Docs engine (`editor_sdk.exe`, see
  * electron/officeEngineCore.ts) exposes a streamable-HTTP MCP endpoint at
  * http://127.0.0.1:<port>/mcp with ~200 document tools (open_file, doc_*,
  * sheet_*, slide_*, save_file, ...). ACP agents only speak stdio MCP, so this
@@ -13,6 +14,7 @@ import * as readline from "node:readline";
  */
 
 const mcpUrl = process.env.FREEBUDDY_OFFICE_MCP_URL || "";
+const currentOfficeFile = process.env.FREEBUDDY_OFFICE_FILE || "";
 if (!mcpUrl) {
   process.exit(1);
 }
@@ -25,6 +27,40 @@ interface JsonRpcMessage {
 }
 
 let sessionId: string | null = null;
+
+function isCurrentOfficeFile(filePath: unknown): boolean {
+  if (typeof filePath !== "string" || !currentOfficeFile) return false;
+  const actual = path.normalize(filePath);
+  const expected = path.normalize(currentOfficeFile);
+  return process.platform === "win32"
+    ? actual.toLowerCase() === expected.toLowerCase()
+    : actual === expected;
+}
+
+/** Reuse the preview's model so MCP edits appear before save_file is called. */
+function usePreviewEditor(message: JsonRpcMessage): JsonRpcMessage {
+  if (message.method !== "tools/call") return message;
+  const params = message.params;
+  if (!params || typeof params !== "object" || Array.isArray(params)) return message;
+  const call = params as Record<string, unknown>;
+  if (call.name !== "open_file") return message;
+  const args = call.arguments;
+  if (!args || typeof args !== "object" || Array.isArray(args)) return message;
+  const input = args as Record<string, unknown>;
+  if (!isCurrentOfficeFile(input.file_path)) return message;
+  return {
+    ...message,
+    params: {
+      ...call,
+      arguments: {
+        ...input,
+        file_path: currentOfficeFile,
+        open_with_existing: true,
+        wait: true
+      }
+    }
+  };
+}
 
 function rememberSessionFrom(messages: JsonRpcMessage[]): void {
   for (const message of messages) {
@@ -91,7 +127,7 @@ rl.on("line", (line) => {
   } catch {
     return;
   }
-  void post(message)
+  void post(usePreviewEditor(message))
     .then((responses) => {
       for (const response of responses) {
         process.stdout.write(`${JSON.stringify(response)}\n`);

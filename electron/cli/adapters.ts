@@ -594,6 +594,57 @@ export function ensureDshAcpCwd(
   return fallback;
 }
 
+/**
+ * Standalone 0.1.31 persists with `compression: none` unless
+ * `DSH_PERSISTENCE_COMPRESSION` overrides it. One `.jsonl.zstd` file anywhere
+ * under the root makes every later `session/new` fail. An explicit sessions
+ * root or zstd mode is left alone; otherwise use a sibling directory.
+ */
+function dshAcpPlaintextSessionsRoot(
+  cwd: string | undefined,
+  runtimeRoot?: string
+): string | undefined {
+  if (process.env.DSH_SESSIONS_ROOT?.trim()) return undefined;
+  if (process.env.DSH_PERSISTENCE_COMPRESSION?.trim() === "zstd") return undefined;
+  const base = cwd?.trim();
+  if (!base || !sessionsDirectoryHasZstd(path.join(base, ".sessions"))) return undefined;
+  return path.join(runtimeRoot?.trim() || base, "sessions");
+}
+
+function sessionsDirectoryHasZstd(root: string): boolean {
+  let projects;
+  try {
+    projects = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const project of projects) {
+    if (project.name.endsWith(".jsonl.zstd")) return true;
+    if (!project.isDirectory()) continue;
+    const projectPath = path.join(root, project.name);
+    let sessions;
+    try {
+      sessions = readdirSync(projectPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const session of sessions) {
+      if (session.name.endsWith(".jsonl.zstd")) return true;
+      if (!session.isDirectory()) continue;
+      let files;
+      try {
+        files = readdirSync(path.join(projectPath, session.name), { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      if (files.some((file) => file.isFile() && file.name.endsWith(".jsonl.zstd"))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function formatAcpAgentExitMessage(
   code: number,
   language?: string,
@@ -1744,11 +1795,18 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
           model && model.trim().toLowerCase() !== "auto"
             ? model.trim()
             : undefined;
+        const sessionsRoot = dshAcpPlaintextSessionsRoot(
+          input.cwd,
+          input.dshAcpRuntimeRoot
+        );
+        const env: Record<string, string> = {};
+        if (effectiveModel) env.DEEPSEEK_MODEL = effectiveModel;
+        if (sessionsRoot) env.DSH_SESSIONS_ROOT = sessionsRoot;
         // Explicit --config remains supported. Never inject legacy composition or koffi hooks.
         return {
           bin: "node",
           args: [DSH_ACP_NODE_DISABLE_WARNING, nodeEntry, ...acpArgs],
-          ...(effectiveModel ? { env: { DEEPSEEK_MODEL: effectiveModel } } : {}),
+          ...(Object.keys(env).length ? { env } : {}),
           promptViaStdin: false,
           protocol: "acp"
         };

@@ -677,11 +677,37 @@ export async function startRuntimeUpdateChecks(): Promise<void> {
   }
 }
 
+function isPidAlive(pid: unknown): boolean {
+  const value = typeof pid === "number" ? pid : Number(pid);
+  if (!Number.isInteger(value) || value <= 0) return false;
+  try {
+    process.kill(value, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 function assertRuntimeIdle(adapter: string): void {
   const group = getAdapterDefinition(adapter)?.commandGroup;
   const related = [...new Set([adapter, ...cliAdapterDefinitions.filter(definition => group && definition.commandGroup === group).map(definition => definition.id), ...(group ? [group] : [])])];
-  const active = getDb().prepare(`SELECT 1 FROM cli_tasks WHERE status = 'running' AND adapter IN (${related.map(() => "?").join(",")}) LIMIT 1`).get(...related);
-  if (active) throw new Error("runtime_in_use");
+  const rows = getDb().prepare(
+    `SELECT id, pid FROM cli_tasks WHERE status = 'running' AND adapter IN (${related.map(() => "?").join(",")})`
+  ).all(...related) as Array<{ id: string; pid: number | null }>;
+  const stale = rows.filter((row) => !isPidAlive(row.pid));
+  if (stale.length) {
+    const now = new Date().toISOString();
+    const closeStale = getDb().prepare(
+      `UPDATE cli_tasks
+       SET status = 'failed',
+           error_message = COALESCE(error_message, 'Interrupted because the agent process is no longer running'),
+           ended_at = COALESCE(ended_at, ?),
+           updated_at = ?
+       WHERE id = ? AND status = 'running'`
+    );
+    for (const row of stale) closeStale.run(now, now, row.id);
+  }
+  if (rows.length !== stale.length) throw new Error("runtime_in_use");
 }
 
 const runtimeInstallationPromises = new Map<string, Promise<void>>();
@@ -721,8 +747,9 @@ export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<
   if (!policy) return plan;
   if (runtime?.installed && (runtime.updateStatus === "error" || !runtime.latestVersion)) throw new Error("runtime_update_check_failed");
   plan.targetVersion = runtime?.installed ? runtime.latestVersion : await latestPackageVersion(policy.packageName, args.env);
-  const current = extractSemver(runtime?.version), target = extractSemver(plan.targetVersion)!;
-  if (current && compareSemver(current, target) >= 0) return { ...plan, alreadyCurrent: true };
+  const current = runtime?.installed ? extractSemver(runtime.version) : undefined;
+  const target = extractSemver(plan.targetVersion);
+  if (current && target && compareSemver(current, target) >= 0) return { ...plan, alreadyCurrent: true };
   if (policy.managed) {
     // The DeepSeek installer also migrates legacy/global installs into the
     // application-managed standalone runtime. Verify that destination.
@@ -951,12 +978,11 @@ export function startCodexToolchainAutoUpdate(): Promise<void> {
 /** Read the version FreeBuddy's managed dsh-acp install currently has on disk. */
 function readDshAcpManagedVersion(root: string): string | undefined {
   try {
-    const pkgPath = path.join(
-      root,
-      "node_modules",
-      DSH_ACP_PACKAGE,
-      "package.json"
-    );
+    const pkgDir = path.join(root, "node_modules", DSH_ACP_PACKAGE);
+    // A source checkout or file: junction can carry a package.json version
+    // without lib/bin.js. That is not an install we can call current.
+    if (!fs.existsSync(path.join(pkgDir, "lib", "bin.js"))) return undefined;
+    const pkgPath = path.join(pkgDir, "package.json");
     if (!fs.existsSync(pkgPath)) return undefined;
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
       version?: unknown;

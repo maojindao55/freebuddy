@@ -1,19 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { app } from "electron";
 
-import {
-  buildOfficeEngineCandidatePaths,
-  findOfficeEngineBinary
-} from "./officeEngineCore.js";
+import { getManagedOfficeEnginePath } from "./officeEngineAddon.js";
 
 /**
- * Spawn-and-supervise wrapper around a locally installed WorkBuddy
- * `editor_sdk.exe` (personal-learning integration; see officeEngineCore.ts).
- * WorkBuddy itself defaults to port 39099, so this engine prefers 39100.
+ * Spawn-and-supervise wrapper around FreeBuddy's downloaded `editor_sdk.exe`.
+ * Prefer port 39100 to avoid other local editor services using 39099.
  */
 const DEFAULT_PORT = 39100;
 const PORT_ATTEMPTS = 5;
@@ -27,12 +22,8 @@ let enginePort: number | null = null;
 let engineStarting: Promise<number | null> | null = null;
 
 export function findLocalOfficeEngineBinary(): string | null {
-  const candidates = buildOfficeEngineCandidatePaths({
-    envOverride: process.env.FB_OFFICE_ENGINE,
-    userDataDir: app.getPath("userData"),
-    localProgramsDir: path.join(os.homedir(), "AppData", "Local", "Programs")
-  });
-  return findOfficeEngineBinary(candidates, (candidate) => fs.existsSync(candidate));
+  const managedPath = getManagedOfficeEnginePath(app.getPath("userData"));
+  return fs.existsSync(managedPath) ? managedPath : null;
 }
 
 async function probeHealth(port: number): Promise<boolean> {

@@ -21,6 +21,83 @@ type RuntimeSnapshot = {
   lastError?: string | null;
 };
 
+type OfficeEngineAddonStatus = {
+  installed: boolean;
+  installing: boolean;
+  managedPath: string;
+  activePath: string | null;
+};
+
+function OfficeEngineAddonPanel() {
+  const { t } = useTranslation();
+  const api = window.freebuddy?.docStudio;
+  const supported = window.freebuddy?.platform === "win32" && window.freebuddy?.arch === "x64";
+  const [status, setStatus] = useState<OfficeEngineAddonStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ receivedBytes: number; totalBytes: number | null } | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const reload = async () => {
+    if (api) setStatus(await api.getOfficeEngineAddonStatus());
+  };
+
+  useEffect(() => {
+    if (!api || !supported) return;
+    void reload();
+    return api.onOfficeEngineDownloadProgress(setProgress);
+  }, [api, supported]);
+
+  if (!api || !supported) return null;
+  const percent = progress?.totalBytes
+    ? Math.min(100, Math.round((progress.receivedBytes / progress.totalBytes) * 100))
+    : null;
+
+  return (
+    <section className="settings-section office-engine-addon-section">
+      <h3>{t("officeEngineAddon.title")}</h3>
+      <p className="about-hint">{t("officeEngineAddon.description")}</p>
+      <p className="about-status">
+        {status?.installed ? t("officeEngineAddon.installed") : t("officeEngineAddon.notInstalled")}
+      </p>
+      {status?.activePath && <p className="about-hint office-engine-addon-path">{t("officeEngineAddon.activePath", { path: status.activePath })}</p>}
+      <div className="about-update-actions">
+        <button
+          type="button"
+          className="primary-btn"
+          disabled={busy || status?.installing}
+          onClick={() => {
+            setBusy(true);
+            setProgress(null);
+            setError("");
+            setMessage("");
+            void api.downloadOfficeEngineAddon()
+              .then(async () => {
+                setMessage(t("officeEngineAddon.downloadSuccess"));
+                await reload();
+              })
+              .catch((cause: Error) => setError(cause.message))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {busy ? t("officeEngineAddon.working") : t(status?.installed ? "officeEngineAddon.reinstall" : "officeEngineAddon.download")}
+        </button>
+      </div>
+      {busy && progress && (
+        <>
+          <p className="about-status">
+            {percent !== null
+              ? t("officeEngineAddon.progressPercent", { percent })
+              : t("officeEngineAddon.progressBytes", { mb: (progress.receivedBytes / 1048576).toFixed(1) })}
+          </p>
+          {percent !== null && <div className="about-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><div className="about-progress-bar" style={{ width: percent + "%" }} /></div>}
+        </>
+      )}
+      {message && <p className="about-status about-status-downloaded">{message}</p>}
+      {error && <p className="about-status about-status-error">{error}</p>}
+    </section>
+  );
+}
 function RuntimePackPanel() {
   const { t } = useTranslation();
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot | null>(null);
@@ -203,6 +280,8 @@ export function AboutTab() {
       </section>
 
       <RuntimePackPanel />
+
+      <OfficeEngineAddonPanel />
 
       <section className="settings-section">
         <h3>{t("updater.updateTitle")}</h3>

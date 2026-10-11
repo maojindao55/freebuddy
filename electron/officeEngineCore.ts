@@ -2,12 +2,11 @@ import crypto from "node:crypto";
 import path from "node:path";
 
 /**
- * Experimental personal-learning integration with the locally installed
- * WorkBuddy "Tencent Docs AI engine" (`editor_sdk.exe`).
+ * Experimental personal-learning integration with the Tencent Docs AI engine
+ * (`editor_sdk.exe`).
  *
- * FreeBuddy ships NOTHING and downloads NOTHING: it only spawns a binary that
- * already exists on this machine (a local WorkBuddy installation). Keep this
- * module Electron-free so plain `node --test` can import it.
+ * FreeBuddy installs the separately downloaded binary in its application data
+ * directory. Keep this module Electron-free so plain `node --test` can import it.
  */
 
 export interface OfficeEngineFileType {
@@ -15,8 +14,8 @@ export interface OfficeEngineFileType {
   extensions: readonly string[];
 }
 
-// The engine also handles .csv, but DocStudio keeps its lightweight built-in
-// editor for .csv/.tsv; the binary Excel family goes to the engine instead.
+// DocStudio exposes only the document formats supported by this integration.
+// The engine can also handle .csv, but the integration does not expose it.
 export const OFFICE_ENGINE_FILE_TYPES: readonly OfficeEngineFileType[] = [
   {
     engineType: "doc",
@@ -103,50 +102,30 @@ export function buildOfficeEnginePreviewUrl(port: number, filePath: string): str
   return `http://127.0.0.1:${port}/static/${engineType}/pc.html?${params.toString()}`;
 }
 
-export interface OfficeEnginePathInputs {
-  envOverride?: string | undefined;
-  userDataDir: string;
-  localProgramsDir: string;
+// The SDK does not decode file_path in this endpoint's query string. Fetch the
+// whole pool and match file_path on the host instead (including Unicode paths).
+export function buildOfficeEngineEditorStatusUrl(port: number): string {
+  return `http://127.0.0.1:${port}/localapi/editor/status`;
 }
 
-/**
- * Candidate engine binary locations, in priority order:
- * 1. `FB_OFFICE_ENGINE` env override;
- * 2. a copy the user dropped into `<userData>/office-engine/`;
- * 3. a locally installed WorkBuddy / WorkBuddyAI (unpacked engine directory).
- */
-export function buildOfficeEngineEditorStatusUrl(port: number, filePath: string): string {
-  const params = new URLSearchParams({ file_path: filePath });
-  return `http://127.0.0.1:${port}/localapi/editor/status?${params.toString()}`;
+export interface OfficeEnginePoolEditor {
+  file_path: string;
+  is_dirty?: boolean;
+  last_saved_ms?: number;
 }
 
-export function buildOfficeEngineCandidatePaths(inputs: OfficeEnginePathInputs): string[] {
-  const binaryName = process.platform === "win32" ? "editor_sdk.exe" : "editor_sdk";
-  const candidates: string[] = [];
-  if (inputs.envOverride) candidates.push(inputs.envOverride);
-  candidates.push(path.join(inputs.userDataDir, "office-engine", binaryName));
-  const engineSubpath = path.join(
-    "resources",
-    "app.asar.unpacked",
-    "node_modules",
-    "@tencent",
-    "tencent-docs-ai-engine",
-    "bin",
-    "win32-x64",
-    binaryName
-  );
-  for (const productName of ["WorkBuddy", "WorkBuddyAI"]) {
-    candidates.push(path.join(inputs.localProgramsDir, productName, engineSubpath));
-  }
-  return candidates;
-}
-
-export function findOfficeEngineBinary(
-  candidates: readonly string[],
-  exists: (candidate: string) => boolean
-): string | null {
-  for (const candidate of candidates) {
-    if (exists(candidate)) return candidate;
+export function findOfficeEngineEditorStatus(editors: unknown, filePath: string): OfficeEnginePoolEditor | null {
+  if (!Array.isArray(editors)) return null;
+  const target = path.normalize(filePath);
+  for (const candidate of editors) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const editor = candidate as Record<string, unknown>;
+    if (typeof editor.file_path !== "string") continue;
+    const current = path.normalize(editor.file_path);
+    const matches = process.platform === "win32"
+      ? current.toLowerCase() === target.toLowerCase()
+      : current === target;
+    if (matches) return editor as unknown as OfficeEnginePoolEditor;
   }
   return null;
 }

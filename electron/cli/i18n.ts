@@ -9,7 +9,6 @@ const DICT: Record<string, Record<AppLocale, string>> = {
   "menu.edit": { en: "Edit", "zh-CN": "编辑" },
   "menu.file": { en: "File", "zh-CN": "文件" },
   "menu.file.openDocument": { en: "Open Document (DocStudio)...", "zh-CN": "打开文档 (DocStudio)..." },
-  "menu.file.newSpreadsheet": { en: "New Spreadsheet (DocStudio)", "zh-CN": "新建表格 (DocStudio)" },
   "menu.file.closeWindow": { en: "Close Window", "zh-CN": "关闭窗口" },
   "contextMenu.openInDocStudio": { en: 'Open "{{name}}" in DocStudio', "zh-CN": '在独立窗口打开 "{{name}}" (DocStudio)' },
   "dialog.supportedAttachments": { en: "Supported attachments", "zh-CN": "支持的附件" },

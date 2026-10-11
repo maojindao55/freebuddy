@@ -30,6 +30,7 @@ function isEngineFileExt(ext: string): boolean {
 
 interface DocStudioAppProps {
   initialFilePath?: string;
+  initialConversationId?: string;
 }
 
 const COPILOT_WIDTH_KEY = "docStudio.copilotWidth";
@@ -37,11 +38,13 @@ const COPILOT_MIN = 320;
 const COPILOT_MAX = 640;
 const COPILOT_DEFAULT = 400;
 
-export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) => {
+export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, initialConversationId }) => {
   const { t } = useTranslation();
   const [tabs, setTabs] = useState<DocTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [showCopilot, setShowCopilot] = useState(true);
+  const [blankConversationId, setBlankConversationId] = useState<string | null>(initialConversationId ?? null);
+  const [initialFilePending, setInitialFilePending] = useState(Boolean(initialFilePath));
   const [toast, setToast] = useState<string | null>(null);
   const [copilotWidth, setCopilotWidth] = useState(() => {
     const raw = Number(localStorage.getItem(COPILOT_WIDTH_KEY));
@@ -143,7 +146,7 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
   // Load initial file on mount if provided
   useEffect(() => {
     if (initialFilePath) {
-      void openFileIntoTab(initialFilePath);
+      void openFileIntoTab(initialFilePath).finally(() => setInitialFilePending(false));
     }
   }, [initialFilePath, openFileIntoTab]);
 
@@ -158,6 +161,12 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
       delete (window as unknown as { onOpenDocStudioFile?: (p: string) => void }).onOpenDocStudioFile;
     };
   }, [onOpenDocStudioFile]);
+
+  useEffect(() => {
+    const ds = window.freebuddy?.docStudio;
+    if (!ds?.onFileSavedAs) return;
+    return ds.onFileSavedAs((filePath) => { void openFileIntoTab(filePath); });
+  }, [openFileIntoTab]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
@@ -373,6 +382,16 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
                 <Plus size={14} />
                 <span>{t("docStudio.selectLocalFile")}</span>
               </button>
+              {!showCopilot && (
+                <button
+                  type="button"
+                  onClick={() => setShowCopilot(true)}
+                  className="ds-btn ds-btn-secondary"
+                >
+                  <Bot size={14} />
+                  <span>{t("docStudio.aiChat")}</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -388,6 +407,11 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath }) =
             />
             <DocStudioCopilot
               activeTab={activeTab}
+              initialConversationId={initialConversationId}
+              initialFilePath={initialFilePath}
+              initialFilePending={initialFilePending}
+              blankConversationId={blankConversationId}
+              onBlankConversationChange={setBlankConversationId}
               onCollapse={() => setShowCopilot(false)}
             />
           </div>

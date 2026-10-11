@@ -268,6 +268,9 @@ const DENY = [
 
   // Standalone DocStudio window and office-engine operations
   "docStudio:openWindow",
+  "docStudio:openConversation",
+  "docStudio:setActiveConversation",
+  "docStudio:defaultDirectory",
   "docStudio:showOpenDialog",
   "docStudio:showItemInFolder",
   "docStudio:openConversationInMain",

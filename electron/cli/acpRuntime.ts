@@ -106,9 +106,12 @@ import {
   unregisterWorkspaceFsToolSession
 } from "../workspaceFsToolService.js";
 import {
+  associateDocStudioOfficeFile,
   registerOfficeEngineToolSession,
-  resolveDocStudioOfficeFile
+  resolveDocStudioOfficeFile,
+  takeSavedOfficeFiles
 } from "../officeEngineToolService.js";
+import { isDocStudioWindowSender } from "../docStudioWindowRegistry.js";
 import { getConversation } from "./conversations.js";
 import type { AcpStdioMcpServer } from "../shared/browserToolProtocol.js";
 import {
@@ -271,6 +274,8 @@ export async function runAcpAgent({
   let turnHadLiveAgentChunk = false;
   let sessionWasResumed = false;
   let mcpServers: AcpStdioMcpServer[] = [];
+  let officeFileForSession: string | null = null;
+  const standaloneDocStudio = isDocStudioWindowSender(webContents);
   let contextResetAttempted = false;
   let emptySessionResetAttempted = false;
   let nonRetryableUpstreamError: string | undefined;
@@ -553,6 +558,23 @@ export async function runAcpAgent({
     });
     if (errorMessage) emit({ type: "error", message: errorMessage });
     emit({ type: "done", exitCode });
+    const savedOfficeFiles = args.conversationId ? takeSavedOfficeFiles(args.conversationId) : [];
+    if (standaloneDocStudio && args.conversationId && !webContents.isDestroyed()) {
+      if (!officeFileForSession && savedOfficeFiles[0]) {
+        try {
+          associateDocStudioOfficeFile(args.conversationId, savedOfficeFiles[0]);
+        } catch {
+          /* Opening the file is still useful if conversation mapping fails. */
+        }
+      }
+      for (const filePath of savedOfficeFiles) {
+        try {
+          webContents.send("docStudio:fileSavedAs", { filePath });
+        } catch {
+          break;
+        }
+      }
+    }
     // WebUI session events are routed through the in-memory owner mapping.
     // Keep it alive until the terminal events have been broadcast, otherwise
     // remote clients see streamed content but never receive done/error.
@@ -1599,13 +1621,20 @@ export async function runAcpAgent({
           })
         );
       }
-      // DocStudio copilot conversations for office-engine files (doc/slide/pdf)
-      // get the engine's document tools (open_file, doc_*, slide_*, save_file).
+      // All standalone DocStudio conversations, including its empty state, get
+      // the office engine's create/edit/save tools.
       if (args.conversationId && !remoteIsolated) {
         const officeFile = resolveDocStudioOfficeFile(args.conversationId);
-        if (officeFile) {
-          const officeServer = await registerOfficeEngineToolSession(args.sessionId, officeFile);
-          if (officeServer) mcpServers.push(officeServer);
+        if (officeFile || standaloneDocStudio) {
+          const officeServer = await registerOfficeEngineToolSession(
+            args.sessionId, args.conversationId, officeFile ?? ""
+          );
+          if (officeServer) {
+            officeFileForSession = officeFile;
+            mcpServers.push(officeServer);
+          } else if (standaloneDocStudio) {
+            throw new Error("Office engine is unavailable. Download it in Settings > About before using DocStudio AI.");
+          }
         }
       }
     }

@@ -42,6 +42,9 @@ export function ConversationKindBadge({
   conversation: Pick<Conversation, "kind" | "title">;
 }) {
   const { t } = useTranslation();
+  if (conversation.kind === "doc-studio") {
+    return <span className="conversation-kind-badge">{t("docStudio.kindBadge")}</span>;
+  }
   if (!isDelegationConversation(conversation)) return null;
   return (
     <span className="conversation-kind-badge">

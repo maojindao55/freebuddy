@@ -1017,6 +1017,9 @@ declare global {
 
   interface FreebuddyDocStudio {
     openWindow(target?: string | { filePath?: string }): Promise<boolean>;
+    openConversation(conversationId: string): Promise<boolean>;
+    setActiveConversation(conversationId: string | null): Promise<boolean>;
+    getDefaultDirectory(): Promise<string | null>;
     showOpenDialog(defaultPath?: string): Promise<string[] | null>;
     showItemInFolder(filePath: string): Promise<boolean>;
     openConversationInMain(conversationId: string): Promise<boolean>;
@@ -1042,6 +1045,7 @@ declare global {
     downloadOfficeEngineAddon(): Promise<{ installedPath: string }>;
     onOfficeEngineDownloadProgress(cb: (progress: { receivedBytes: number; totalBytes: number | null }) => void): () => void;
     onFileChanged(cb: (filePath: string) => void): () => void;
+    onFileSavedAs(cb: (filePath: string) => void): () => void;
   }
 
   interface FreebuddyGame {

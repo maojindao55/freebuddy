@@ -36,7 +36,8 @@ async function renderSurface() {
         "./components/DocStudio/DocStudioApp"
       );
       const file = new URLSearchParams(window.location.search).get("file");
-      return <DocStudioApp initialFilePath={file ?? undefined} />;
+      const conversation = new URLSearchParams(window.location.search).get("conversation");
+      return <DocStudioApp initialFilePath={file ?? undefined} initialConversationId={conversation ?? undefined} />;
     }
     const { default: App } = await import("./App");
     return <App />;

@@ -386,6 +386,23 @@ export function updateConversationMetadata(
     .run(JSON.stringify(merged), new Date().toISOString(), id);
 }
 
+/** Mark a local conversation as belonging to DocStudio and attach its file. */
+export function markDocStudioConversation(id: string, filePath?: string): boolean {
+  const conv = getConversation(id);
+  if (!conv || (conv.kind !== "default" && conv.kind !== "doc-studio")) return false;
+  const metadata = filePath
+    ? { ...(conv.metadata ?? {}), docStudioFilePath: filePath }
+    : conv.metadata ?? {};
+  if (conv.kind === "doc-studio" && (!filePath || conv.metadata?.docStudioFilePath === filePath)) {
+    return true;
+  }
+  getDb()
+    .prepare("UPDATE conversations SET kind = ?, metadata = ? WHERE id = ?")
+    .run("doc-studio", JSON.stringify(metadata), id);
+  notifyConversationsChanged();
+  return true;
+}
+
 export function setConversationApprovalMode(
   id: string,
   approvalMode: "auto" | "ask" | null

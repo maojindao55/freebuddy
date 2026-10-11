@@ -327,6 +327,7 @@ window.freebuddy = {
   },
   docStudio: {
     openWindow: async () => true,
+    getDefaultDirectory: async () => "C:\\Users\\demo\\Documents",
     readFile,
     writeFile: async () => ({ success: true }),
     showSaveDialog: async () => null,
@@ -350,12 +351,21 @@ window.freebuddy = {
       isDirty: false,
       lastSavedMs: 0
     }),
+    getOfficeEngineAddonStatus: async () => ({
+      installed: true,
+      installing: false,
+      managedPath: "/fixture/editor_sdk",
+      activePath: "/fixture/editor_sdk"
+    }),
+    downloadOfficeEngineAddon: async () => ({ installedPath: "/fixture/editor_sdk" }),
+    onOfficeEngineDownloadProgress: () => () => {},
     onFileChanged: (cb: (filePath: string) => void) => {
       fileChangedCb = cb;
       return () => {
         fileChangedCb = null;
       };
-    }
+    },
+    onFileSavedAs: () => () => {}
   },
   butlerBuddy: {
     beginDrag: () => {},

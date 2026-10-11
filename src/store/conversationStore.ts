@@ -694,11 +694,15 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const cur = get().activeId || stored;
     const matchedCur =
       cur && synced.conversations.some((c) => c.id === cur) ? cur : undefined;
+    const restored = synced.conversations.find((c) => c.id === matchedCur);
+    const activeId = restored?.kind === "doc-studio" &&
+      (typeof document === "undefined" || document.documentElement.dataset.surface !== "doc-studio")
+      ? undefined : matchedCur;
     set({
       members,
       memberRuntimeOverrides,
       conversations: synced.conversations,
-      activeId: matchedCur
+      activeId
     });
     const active = get().activeId;
     if (active && isConversationReadingVisible()) get().markConversationRead(active);
@@ -765,6 +769,20 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async setActive(id) {
+    if (id && typeof window !== "undefined" &&
+      (typeof document === "undefined" || document.documentElement.dataset.surface !== "doc-studio")) {
+      const conversation = get().conversations.find((item) => item.id === id);
+      if (conversation?.kind === "doc-studio" && window.freebuddy?.platform !== "web") {
+        try {
+          if (await window.freebuddy?.docStudio?.openConversation(id)) {
+            get().markConversationRead(id);
+            return;
+          }
+        } catch {
+          /* Fall back to the conversation when a standalone window cannot open. */
+        }
+      }
+    }
     setStoredActiveId(id);
     if (id && get().unreadConversations[id]) {
       const unreadConversations = { ...get().unreadConversations };

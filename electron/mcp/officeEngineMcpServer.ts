@@ -1,5 +1,9 @@
 import * as readline from "node:readline";
 import path from "node:path";
+import fs from "node:fs";
+
+import { savedAsOfficeFilePath } from "./officeEngineSaveEvent.js";
+import { normalizeOfficeToolSchema } from "./officeEngineSchema.js";
 
 /**
  * stdio → streamable-HTTP MCP relay for the office engine.
@@ -15,6 +19,7 @@ import path from "node:path";
 
 const mcpUrl = process.env.FREEBUDDY_OFFICE_MCP_URL || "";
 const currentOfficeFile = process.env.FREEBUDDY_OFFICE_FILE || "";
+const savedFilesEventPath = process.env.FREEBUDDY_OFFICE_SAVED_FILES_EVENT_PATH || "";
 if (!mcpUrl) {
   process.exit(1);
 }
@@ -70,6 +75,24 @@ function rememberSessionFrom(messages: JsonRpcMessage[]): void {
       return;
     }
   }
+}
+
+function normalizeToolList(message: JsonRpcMessage): JsonRpcMessage {
+  const result = message.result as Record<string, unknown> | undefined;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return message;
+  const tools = result.tools;
+  if (!Array.isArray(tools)) return message;
+  return {
+    ...message,
+    result: {
+      ...result,
+      tools: tools.map((tool: unknown) => {
+        if (!tool || typeof tool !== "object" || Array.isArray(tool)) return tool;
+        const entry = tool as Record<string, unknown>;
+        return { ...entry, inputSchema: normalizeOfficeToolSchema(entry.inputSchema) };
+      })
+    }
+  };
 }
 
 async function post(message: JsonRpcMessage): Promise<JsonRpcMessage[]> {
@@ -129,8 +152,17 @@ rl.on("line", (line) => {
   }
   void post(usePreviewEditor(message))
     .then((responses) => {
+      const savedPath = savedAsOfficeFilePath(message, responses, currentOfficeFile);
+      if (savedPath && savedFilesEventPath) {
+        try {
+          fs.appendFileSync(savedFilesEventPath, `${JSON.stringify({ filePath: savedPath })}\n`);
+        } catch {
+          /* The save succeeded; notification failure must not break the MCP reply. */
+        }
+      }
       for (const response of responses) {
-        process.stdout.write(`${JSON.stringify(response)}\n`);
+        const forwarded = message.method === "tools/list" ? normalizeToolList(response) : response;
+        process.stdout.write(`${JSON.stringify(forwarded)}\n`);
       }
     })
     .catch(() => {

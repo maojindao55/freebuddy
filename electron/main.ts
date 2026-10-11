@@ -43,6 +43,7 @@ import {
 } from "./docStudioBridge.js";
 import { getDb } from "./cli/db.js";
 import { getSetting, setSetting } from "./cli/settings.js";
+import { migrateLegacyDocStudioConversations } from "./officeEngineToolService.js";
 import {
   handleGetGameState,
   handlePlayerMove,
@@ -2055,6 +2056,7 @@ app.whenReady().then(async () => {
   );
   initDocStudioBridge();
   getDb();
+  migrateLegacyDocStudioConversations();
   const initialLaunchPaths = collectLaunchShellOpenPaths(process.argv);
   const initialDocPaths = initialLaunchPaths.filter(isDocStudioOpenableFile);
   const initialOtherPaths = initialLaunchPaths.filter((p) => !isDocStudioOpenableFile(p));

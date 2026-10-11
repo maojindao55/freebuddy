@@ -2058,7 +2058,7 @@
   },
   "officeEngineAddon": {
     "title": "Office engine",
-    "description": "Download the approximately 199 MB Windows x64 Office engine from the configured R2 source. FreeBuddy verifies its SHA-256 before installing it in the app data directory. Install it before first use.",
+    "description": "Install the Office engine for this device to open, edit, and save Office documents. Install it before first use.",
     "installed": "Installed in the FreeBuddy user data directory",
     "notInstalled": "Office engine is not installed",
     "activePath": "Current engine: {{path}}",
@@ -2662,6 +2662,7 @@
     "codeResult": "Code or diagram result"
   },
   "docStudio": {
+    "documentMode": "Document mode",
     "kindBadge": "Doc",
     "engineChecking": "Checking the Office engine...",
     "engineRequired": "Install the Office engine to create and edit documents with AI in DocStudio.",

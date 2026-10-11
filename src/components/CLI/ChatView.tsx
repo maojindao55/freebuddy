@@ -3493,29 +3493,40 @@ function NewTaskHome({
     <div className={`new-task-view${variant === "mini" ? " new-task-view-mini" : ""}`}>
       <div className="new-task-stack">
         <h1 className="new-task-title">{t("chat.heroTitle")}</h1>
-        <div
-          className="new-task-mode-tabs"
-          role="tablist"
-          aria-label={t("workflow.modeTabsAria")}
-        >
-          <button
-            className={`new-task-mode-tab${taskMode === "normal" ? " active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={taskMode === "normal"}
-            onClick={() => onTaskMode("normal")}
+        <div className="new-task-mode-tabs">
+          <div
+            className="new-task-mode-choices"
+            role="tablist"
+            aria-label={t("workflow.modeTabsAria")}
           >
-            {t("workflow.normalMode")}
-          </button>
-          <button
-            className={`new-task-mode-tab${taskMode === "team" ? " active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={taskMode === "team"}
-            onClick={() => onTaskMode("team")}
-          >
-            {t("workflow.teamExecution")}
-          </button>
+            <button
+              className={`new-task-mode-tab${taskMode === "normal" ? " active" : ""}`}
+              type="button"
+              role="tab"
+              aria-selected={taskMode === "normal"}
+              onClick={() => onTaskMode("normal")}
+            >
+              {t("workflow.normalMode")}
+            </button>
+            <button
+              className={`new-task-mode-tab${taskMode === "team" ? " active" : ""}`}
+              type="button"
+              role="tab"
+              aria-selected={taskMode === "team"}
+              onClick={() => onTaskMode("team")}
+            >
+              {t("workflow.teamExecution")}
+            </button>
+          </div>
+          {!isWebPlatform && window.freebuddy?.docStudio?.openWindow && (
+            <button
+              className="new-task-mode-tab"
+              type="button"
+              onClick={() => void window.freebuddy?.docStudio?.openWindow()}
+            >
+              {t("docStudio.documentMode")}
+            </button>
+          )}
         </div>
 
         <section

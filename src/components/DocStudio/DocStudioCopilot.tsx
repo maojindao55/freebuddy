@@ -58,6 +58,7 @@ export const DocStudioCopilot: React.FC<DocStudioCopilotProps> = ({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [defaultDirectory, setDefaultDirectory] = useState<string | null | undefined>(undefined);
   const [officeEngineInstalled, setOfficeEngineInstalled] = useState<boolean | null>(null);
+  const [officeEngineSupported, setOfficeEngineSupported] = useState(false);
   const [officeEngineInstalling, setOfficeEngineInstalling] = useState(false);
   const [officeEngineProgress, setOfficeEngineProgress] = useState<{ receivedBytes: number; totalBytes: number | null } | null>(null);
   const [officeEngineError, setOfficeEngineError] = useState("");
@@ -106,6 +107,7 @@ export const DocStudioCopilot: React.FC<DocStudioCopilotProps> = ({
       void ds.getOfficeEngineAddonStatus().then(
         (status) => {
           if (cancelled) return;
+          setOfficeEngineSupported(status.supported);
           setOfficeEngineInstalled(status.installed);
           setOfficeEngineInstalling(status.installing);
         },
@@ -551,7 +553,7 @@ export const DocStudioCopilot: React.FC<DocStudioCopilotProps> = ({
           <div className="ds-copilot-empty-icon"><FileText size={20} /></div>
           <h4>{t("officeEngineAddon.title")}</h4>
           <p>{t(officeEngineInstalled === null ? "docStudio.engineChecking" : "docStudio.engineRequired")}</p>
-          {officeEngineInstalled === false && window.freebuddy?.platform === "win32" && window.freebuddy?.arch === "x64" && (
+          {officeEngineInstalled === false && officeEngineSupported && (
             <button
               type="button"
               className="ds-btn ds-btn-primary"

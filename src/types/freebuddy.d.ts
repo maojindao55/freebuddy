@@ -1037,6 +1037,7 @@ declare global {
       error?: string;
     }>;
     getOfficeEngineAddonStatus(): Promise<{
+      supported: boolean;
       installed: boolean;
       installing: boolean;
       managedPath: string;

@@ -22,6 +22,7 @@ import {
 import { ensureOfficeEnginePort, findLocalOfficeEngineBinary } from "./officeEngine.js";
 import {
   downloadConfiguredOfficeEngine,
+  getOfficeEngineDownloadConfig,
   getManagedOfficeEnginePath
 } from "./officeEngineAddon.js";
 
@@ -200,6 +201,7 @@ export function initDocStudioBridge(): void {
     const managedPath = getManagedOfficeEnginePath(app.getPath("userData"));
     const installed = await fs.stat(managedPath).then((stat) => stat.isFile(), () => false);
     return {
+      supported: getOfficeEngineDownloadConfig() !== null,
       installed,
       installing: officeEngineAddonBusy,
       managedPath,

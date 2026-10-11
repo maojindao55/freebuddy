@@ -51,7 +51,12 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
     return raw >= COPILOT_MIN && raw <= COPILOT_MAX ? raw : COPILOT_DEFAULT;
   });
   const toastTimerRef = useRef<number | null>(null);
-  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const resizeRef = useRef<{
+    startX: number;
+    startWidth: number;
+    pointerId: number;
+    handle: HTMLDivElement;
+  } | null>(null);
 
   const isMac = window.freebuddy?.platform === "darwin";
 
@@ -76,29 +81,22 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3000);
   }, []);
 
-  // Copilot panel resize
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const r = resizeRef.current;
-      if (!r) return;
-      const next = Math.min(
-        COPILOT_MAX,
-        Math.max(COPILOT_MIN, r.startWidth + (r.startX - e.clientX))
-      );
-      setCopilotWidth(next);
-      localStorage.setItem(COPILOT_WIDTH_KEY, String(next));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      document.body.classList.remove("ds-resizing");
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
+  const finishResize = useCallback(() => {
+    const r = resizeRef.current;
+    resizeRef.current = null;
+    document.body.classList.remove("ds-resizing");
+    if (r?.handle.hasPointerCapture(r.pointerId)) {
+      r.handle.releasePointerCapture(r.pointerId);
+    }
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("blur", finishResize);
+    return () => {
+      window.removeEventListener("blur", finishResize);
+      finishResize();
+    };
+  }, [finishResize, showCopilot]);
 
   // Helper to load file path into tab (engine only)
   const openFileIntoTab = useCallback(async (filePath: string) => {
@@ -399,11 +397,32 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
           <div className="ds-copilot-panel" style={{ width: copilotWidth }}>
             <div
               className="ds-resize-handle"
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
+                if (e.button !== 0 || !e.isPrimary) return;
                 e.preventDefault();
-                resizeRef.current = { startX: e.clientX, startWidth: copilotWidth };
+                // Keep receiving movement and release events over the engine's iframe.
+                e.currentTarget.setPointerCapture(e.pointerId);
+                resizeRef.current = {
+                  startX: e.clientX,
+                  startWidth: copilotWidth,
+                  pointerId: e.pointerId,
+                  handle: e.currentTarget
+                };
                 document.body.classList.add("ds-resizing");
               }}
+              onPointerMove={(e) => {
+                const r = resizeRef.current;
+                if (!r || r.pointerId !== e.pointerId) return;
+                const next = Math.min(
+                  COPILOT_MAX,
+                  Math.max(COPILOT_MIN, r.startWidth + (r.startX - e.clientX))
+                );
+                setCopilotWidth(next);
+                localStorage.setItem(COPILOT_WIDTH_KEY, String(next));
+              }}
+              onPointerUp={finishResize}
+              onPointerCancel={finishResize}
+              onLostPointerCapture={finishResize}
             />
             <DocStudioCopilot
               activeTab={activeTab}

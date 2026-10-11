@@ -2043,7 +2043,7 @@
   },
   "officeEngineAddon": {
     "title": "Office 引擎",
-    "description": "从预设的 R2 地址下载约 199 MB 的 Windows x64 Office 引擎，校验 SHA-256 后安装到 FreeBuddy 用户数据目录。首次使用前请先安装。",
+    "description": "安装适用于这台设备的 Office 引擎，以便打开、编辑和保存 Office 文档。首次使用前请先安装。",
     "installed": "已安装到 FreeBuddy 用户数据目录",
     "notInstalled": "尚未安装 Office 引擎",
     "activePath": "当前引擎：{{path}}",
@@ -2647,6 +2647,7 @@
     "codeResult": "代码或图表结果"
   },
   "docStudio": {
+    "documentMode": "文档模式",
     "kindBadge": "文档",
     "engineChecking": "正在检查 Office 引擎…",
     "engineRequired": "请先安装 Office 引擎，再让 AI 在 DocStudio 中新建或编辑文档。",

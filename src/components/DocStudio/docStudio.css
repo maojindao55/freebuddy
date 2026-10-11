@@ -85,6 +85,11 @@ body.ds-resizing {
   user-select: none;
 }
 
+/* Iframe mouse events do not bubble to the host during a panel drag. */
+body.ds-resizing .ds-office-frame {
+  pointer-events: none;
+}
+
 /* ---------- Root layout ---------- */
 html[data-surface="doc-studio"] .ds-root {
   display: flex;
@@ -407,9 +412,12 @@ html[data-surface="doc-studio"] .ds-resize-handle {
   bottom: 0;
   width: 6px;
   cursor: col-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
   z-index: 30;
 }
-html[data-surface="doc-studio"] .ds-resize-handle:hover {
+html[data-surface="doc-studio"] .ds-resize-handle:hover,
+html[data-surface="doc-studio"] body.ds-resizing .ds-resize-handle {
   background: var(--fb-brand-glow);
 }
 html[data-surface="doc-studio"] .ds-copilot {

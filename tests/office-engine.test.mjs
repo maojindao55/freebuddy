@@ -26,6 +26,8 @@ const {
   validateOfficeEngineDownload,
   OFFICE_ENGINE_DOWNLOAD_URL,
   OFFICE_ENGINE_DOWNLOAD_SHA256,
+  getOfficeEngineDownloadConfig,
+  validateOfficeEngineExecutableHeader,
   downloadOfficeEngine,
   downloadConfiguredOfficeEngine
 } = await import("../dist-electron/officeEngineAddon.js");
@@ -68,6 +70,44 @@ test("office engine addon requires HTTPS and a pinned SHA-256", () => {
   assert.equal(validateOfficeEngineDownload("https://example.com/editor_sdk.exe", validHash).sha256, validHash);
   assert.throws(() => validateOfficeEngineDownload("http://example.com/editor_sdk.exe", validHash), /HTTPS/);
   assert.throws(() => validateOfficeEngineDownload("https://example.com/editor_sdk.exe", "short"), /SHA-256/);
+});
+
+test("office engine downloads select pinned Windows, Apple Silicon and Intel resources", () => {
+  const base = "https://pub-7b39e9aa06a94f8fa4d856f47eb7b9a4.r2.dev/";
+  assert.deepEqual(getOfficeEngineDownloadConfig("win32", "x64"), {
+    url: base + "editor_sdk.exe",
+    sha256: "aed4b6845a835e1b54f4af9615958d478a9a6cfa689fca107627c3539f4e11f9"
+  });
+  assert.deepEqual(getOfficeEngineDownloadConfig("darwin", "arm64"), {
+    url: base + "editor_sdk-darwin-arm64",
+    sha256: "59014a38bb4463167f57a6ecd8cce40fc190bb128a7fd1dabec6933fe03ae83b"
+  });
+  assert.deepEqual(getOfficeEngineDownloadConfig("darwin", "x64"), {
+    url: base + "editor_sdk-darwin-x64",
+    sha256: "754a227af47a3bd278aa9efd9af5a38adcb667495c63ec9d76d32a68ad16f47b"
+  });
+  for (const [platform, arch] of [["linux", "x64"], ["win32", "arm64"], ["darwin", "ia32"]]) {
+    assert.equal(getOfficeEngineDownloadConfig(platform, arch), null);
+  }
+});
+
+test("Mac engine validation rejects non-executables, truncated headers and the wrong architecture", () => {
+  const header = (cpuType) => {
+    const bytes = Buffer.alloc(8);
+    bytes.writeUInt32LE(0xfeedfacf, 0);
+    bytes.writeUInt32LE(cpuType, 4);
+    return bytes;
+  };
+  const arm64 = header(0x0100000c);
+  const x64 = header(0x01000007);
+  assert.doesNotThrow(() => validateOfficeEngineExecutableHeader(arm64, "darwin", "arm64"));
+  assert.doesNotThrow(() => validateOfficeEngineExecutableHeader(x64, "darwin", "x64"));
+  assert.throws(() => validateOfficeEngineExecutableHeader(x64, "darwin", "arm64"), /architecture/);
+  assert.throws(() => validateOfficeEngineExecutableHeader(arm64, "darwin", "x64"), /architecture/);
+  assert.throws(() => validateOfficeEngineExecutableHeader(arm64.subarray(0, 4), "darwin", "arm64"), /macOS executable/);
+  assert.throws(() => validateOfficeEngineExecutableHeader(Buffer.from("MZfake binary"), "darwin", "arm64"), /macOS executable/);
+  assert.doesNotThrow(() => validateOfficeEngineExecutableHeader(Buffer.from("MZ"), "win32", "x64"));
+  assert.throws(() => validateOfficeEngineExecutableHeader(arm64, "win32", "x64"), /Windows executable/);
 });
 
 test("the configured download is pinned and cannot replace the managed engine with different bytes", async () => {
@@ -445,4 +485,3 @@ test("office engine MCP wiring reaches agent runs and the copilot prompt", () =>
   assert.match(copilot, /office-engine MCP/);
   assert.match(copilot, /open_file/);
 });
-

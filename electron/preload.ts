@@ -1005,6 +1005,7 @@ const docStudio = {
     }>,
   getOfficeEngineAddonStatus: () =>
     ipcRenderer.invoke("docStudio:officeEngineAddonStatus") as Promise<{
+      supported: boolean;
       installed: boolean;
       installing: boolean;
       managedPath: string;

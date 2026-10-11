@@ -7783,6 +7783,11 @@ html[data-surface="butler-screen-ball"] #root {
   background: var(--fb-panel-soft);
 }
 
+.new-task-mode-choices {
+  display: flex;
+  gap: 4px;
+}
+
 .new-task-mode-tab {
   height: 32px;
   padding: 0 16px;

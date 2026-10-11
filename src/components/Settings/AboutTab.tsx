@@ -25,33 +25,30 @@ type RuntimeSnapshot = {
 };
 
 type OfficeEngineAddonStatus = {
+  supported: boolean;
   installed: boolean;
   installing: boolean;
   managedPath: string;
   activePath: string | null;
 };
 
-function OfficeEngineAddonPanel() {
+function OfficeEngineAddonPanel({ status, onReload }: {
+  status: OfficeEngineAddonStatus;
+  onReload: () => Promise<void>;
+}) {
   const { t } = useTranslation();
   const api = window.freebuddy?.docStudio;
-  const supported = window.freebuddy?.platform === "win32" && window.freebuddy?.arch === "x64";
-  const [status, setStatus] = useState<OfficeEngineAddonStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ receivedBytes: number; totalBytes: number | null } | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const reload = async () => {
-    if (api) setStatus(await api.getOfficeEngineAddonStatus());
-  };
-
   useEffect(() => {
-    if (!api || !supported) return;
-    void reload();
+    if (!api) return;
     return api.onOfficeEngineDownloadProgress(setProgress);
-  }, [api, supported]);
+  }, [api]);
 
-  if (!api || !supported) return null;
+  if (!api || !status.supported) return null;
   const percent = progress?.totalBytes
     ? Math.min(100, Math.round((progress.receivedBytes / progress.totalBytes) * 100))
     : null;
@@ -86,7 +83,7 @@ function OfficeEngineAddonPanel() {
             void api.downloadOfficeEngineAddon()
               .then(async () => {
                 setMessage(t("officeEngineAddon.downloadSuccess"));
-                await reload();
+                await onReload();
               })
               .catch((cause: Error) => setError(cause.message))
               .finally(() => setBusy(false));
@@ -215,6 +212,9 @@ function RuntimePackPanel() {
 
 export function AboutTab() {
   const { t } = useTranslation();
+  const api = window.freebuddy;
+  const docStudioApi = api?.docStudio;
+  const [officeEngineStatus, setOfficeEngineStatus] = useState<OfficeEngineAddonStatus | null>(null);
   const appVersion = useUpdaterStore((s) => s.appVersion);
   const status = useUpdaterStore((s) => s.status);
   const latestVersion = useUpdaterStore((s) => s.latestVersion);
@@ -231,12 +231,24 @@ export function AboutTab() {
     void load();
   }, [load]);
 
-  const api = window.freebuddy;
+  useEffect(() => {
+    if (!docStudioApi) return;
+    let cancelled = false;
+    void docStudioApi.getOfficeEngineAddonStatus().then(
+      (snapshot) => { if (!cancelled) setOfficeEngineStatus(snapshot); },
+      () => { if (!cancelled) setOfficeEngineStatus(null); }
+    );
+    return () => { cancelled = true; };
+  }, [docStudioApi]);
+
+  const reloadOfficeEngineStatus = async () => {
+    if (docStudioApi) setOfficeEngineStatus(await docStudioApi.getOfficeEngineAddonStatus());
+  };
+
   const updaterAvailable = Boolean(api?.updater);
   const platform = api?.platform ?? "";
   const arch = api?.arch ?? "";
-  const showOfficeEngine =
-    Boolean(api?.docStudio) && platform === "win32" && arch === "x64";
+  const showOfficeEngine = Boolean(officeEngineStatus?.supported);
 
   const isBusy: boolean =
     status === "checking" || status === "downloading";
@@ -365,7 +377,9 @@ export function AboutTab() {
         <div className="about-group">
           <h2 className="about-group-title">{t("updater.componentsTitle")}</h2>
           {SHOW_RUNTIME_PACK && <RuntimePackPanel />}
-          <OfficeEngineAddonPanel />
+          {officeEngineStatus?.supported && (
+            <OfficeEngineAddonPanel status={officeEngineStatus} onReload={reloadOfficeEngineStatus} />
+          )}
         </div>
       )}
 

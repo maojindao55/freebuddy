@@ -352,6 +352,7 @@ window.freebuddy = {
       lastSavedMs: 0
     }),
     getOfficeEngineAddonStatus: async () => ({
+      supported: true,
       installed: true,
       installing: false,
       managedPath: "/fixture/editor_sdk",

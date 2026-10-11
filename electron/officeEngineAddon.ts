@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import net from "node:net";
@@ -8,12 +8,36 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 const MAX_ENGINE_BYTES = 1024 * 1024 * 1024;
-const PROBE_TIMEOUT_MS = 15000;
+export const OFFICE_ENGINE_READY_TIMEOUT_MS = 60000;
 
-// Windows x64 Office engine hosted separately from the FreeBuddy installer.
-// Keep the URL and checksum together so a changed object cannot be executed.
+// Engine files are hosted separately from the FreeBuddy installer. Keep each
+// platform's URL and checksum together so a changed object cannot be executed.
 export const OFFICE_ENGINE_DOWNLOAD_URL = "https://pub-7b39e9aa06a94f8fa4d856f47eb7b9a4.r2.dev/editor_sdk.exe";
 export const OFFICE_ENGINE_DOWNLOAD_SHA256 = "aed4b6845a835e1b54f4af9615958d478a9a6cfa689fca107627c3539f4e11f9";
+
+interface OfficeEngineDownloadConfig {
+  url: string;
+  sha256: string;
+}
+
+const OFFICE_ENGINE_DOWNLOADS: Readonly<Record<string, OfficeEngineDownloadConfig>> = {
+  "win32-x64": { url: OFFICE_ENGINE_DOWNLOAD_URL, sha256: OFFICE_ENGINE_DOWNLOAD_SHA256 },
+  "darwin-arm64": {
+    url: "https://pub-7b39e9aa06a94f8fa4d856f47eb7b9a4.r2.dev/editor_sdk-darwin-arm64",
+    sha256: "59014a38bb4463167f57a6ecd8cce40fc190bb128a7fd1dabec6933fe03ae83b"
+  },
+  "darwin-x64": {
+    url: "https://pub-7b39e9aa06a94f8fa4d856f47eb7b9a4.r2.dev/editor_sdk-darwin-x64",
+    sha256: "754a227af47a3bd278aa9efd9af5a38adcb667495c63ec9d76d32a68ad16f47b"
+  }
+};
+
+export function getOfficeEngineDownloadConfig(
+  platform: string = process.platform,
+  arch: string = process.arch
+): OfficeEngineDownloadConfig | null {
+  return OFFICE_ENGINE_DOWNLOADS[`${platform}-${arch}`] ?? null;
+}
 
 export interface OfficeEngineDownloadProgress {
   receivedBytes: number;
@@ -36,18 +60,51 @@ export function validateOfficeEngineDownload(url: string, sha256: string): { url
   return { url: parsed, sha256: normalizedHash };
 }
 
-async function assertWindowsExecutable(filePath: string): Promise<void> {
-  if (process.platform !== "win32") return;
+export function validateOfficeEngineExecutableHeader(
+  header: Buffer,
+  platform: string = process.platform,
+  arch: string = process.arch
+): void {
+  if (platform === "win32" && header.subarray(0, 2).toString("ascii") !== "MZ") {
+    throw new Error("The selected file is not a Windows executable");
+  }
+  if (platform === "darwin") {
+    // The configured Mac downloads are separate little-endian 64-bit Mach-O
+    // executables, with CPU_TYPE_ARM64 or CPU_TYPE_X86_64 in the header.
+    if (header.length < 8 || header.readUInt32LE(0) !== 0xfeedfacf) {
+      throw new Error("The selected file is not a macOS executable");
+    }
+    const expectedCpuType = arch === "arm64" ? 0x0100000c : arch === "x64" ? 0x01000007 : null;
+    if (expectedCpuType === null || header.readUInt32LE(4) !== expectedCpuType) {
+      throw new Error(`The Office engine architecture does not match this Mac (${arch})`);
+    }
+  }
+}
+
+async function assertOfficeEngineExecutable(filePath: string): Promise<void> {
   const file = await fs.open(filePath, "r");
   try {
-    const header = Buffer.alloc(2);
+    const header = Buffer.alloc(8);
     const { bytesRead } = await file.read(header, 0, header.length, 0);
-    if (bytesRead !== 2 || header.toString("ascii") !== "MZ") {
-      throw new Error("The selected file is not a Windows executable");
-    }
+    validateOfficeEngineExecutableHeader(header.subarray(0, bytesRead));
   } finally {
     await file.close();
   }
+}
+
+export async function stopOfficeEngineProcess(child: ChildProcess): Promise<void> {
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve();
+    }, 5000);
+    child.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    child.kill();
+  });
 }
 
 async function reserveProbePort(): Promise<number> {
@@ -75,10 +132,10 @@ async function probeOfficeEngine(binaryPath: string): Promise<void> {
   let launchError: Error | null = null;
   child.once("error", (error) => { launchError = error; });
   try {
-    const deadline = Date.now() + PROBE_TIMEOUT_MS;
+    const deadline = Date.now() + OFFICE_ENGINE_READY_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
-      if (child.exitCode !== null) throw new Error("The engine exited during its startup check");
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error("The engine exited during its startup check");
       try {
         const response = await fetch(`http://127.0.0.1:${port}/health`, {
           signal: AbortSignal.timeout(500)
@@ -91,16 +148,7 @@ async function probeOfficeEngine(binaryPath: string): Promise<void> {
     }
     throw new Error("The engine did not pass its startup check");
   } finally {
-    if (child.exitCode === null && child.signalCode === null) {
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(resolve, 5000);
-        child.once("exit", () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-        child.kill();
-      });
-    }
+    await stopOfficeEngineProcess(child);
   }
 }
 
@@ -131,7 +179,8 @@ async function installStagedEngine(stagedPath: string, targetPath: string): Prom
   if (!stat.isFile() || stat.size === 0 || stat.size > MAX_ENGINE_BYTES) {
     throw new Error("The Office engine file has an invalid size");
   }
-  await assertWindowsExecutable(stagedPath);
+  await assertOfficeEngineExecutable(stagedPath);
+  if (process.platform !== "win32") await fs.chmod(stagedPath, 0o755);
   await probeOfficeEngine(stagedPath);
   await activateStagedEngine(stagedPath, targetPath);
 }
@@ -189,12 +238,13 @@ export function downloadConfiguredOfficeEngine(
   onProgress: (progress: OfficeEngineDownloadProgress) => void,
   fetchSource: typeof fetch = fetch
 ): Promise<string> {
-  if (process.platform !== "win32" || process.arch !== "x64") {
-    throw new Error("The configured Office engine is available only on Windows x64");
+  const config = getOfficeEngineDownloadConfig();
+  if (!config) {
+    throw new Error(`The configured Office engine is not available on ${process.platform} ${process.arch}`);
   }
   return downloadOfficeEngine(
-    OFFICE_ENGINE_DOWNLOAD_URL,
-    OFFICE_ENGINE_DOWNLOAD_SHA256,
+    config.url,
+    config.sha256,
     userDataDir,
     onProgress,
     fetchSource

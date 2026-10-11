@@ -75,6 +75,7 @@ import {
   setConversationConfigOptionOverrides,
   setConversationSkills,
   recoverInterruptedMessages,
+  recoverInterruptedTasks,
   updateConversationAgentName,
   updateMessage,
   type AppendMessageInput,
@@ -411,6 +412,7 @@ function attachmentCandidate(filePath: string) {
 
 export function registerCliIpc() {
   recoverInterruptedMessages();
+  recoverInterruptedTasks();
   registerHandler("plugins:list", (_event, agent: unknown) =>
     listNativePlugins(nativePluginAgent(agent))
   );

@@ -1249,8 +1249,10 @@ function RuntimeAutoUpdateStatus({
         </span>
       );
     case "available":
+      if (!runtime.installed) return null;
       return <span className="adapter-status muted">{t("settings.cli.updateAvailable", { version: runtime.latestVersion })}</span>;
     case "current":
+      if (!runtime.installed) return null;
       return <span className="adapter-status ok">{t("settings.cli.upToDate")}</span>;
     default:
       return null;

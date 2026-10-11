@@ -684,6 +684,24 @@ export function recoverInterruptedMessages(): number {
   return result.changes;
 }
 
+// Force-quit leaves cli_tasks at 'running' with no live process. Install and
+// upgrade refuse to start while any related row is running, so those orphans
+// would block the agent forever.
+export function recoverInterruptedTasks(): number {
+  const now = new Date().toISOString();
+  const result = getDb()
+    .prepare(
+      `UPDATE cli_tasks
+       SET status = 'failed',
+           error_message = COALESCE(error_message, 'Interrupted by app restart'),
+           ended_at = COALESCE(ended_at, ?),
+           updated_at = ?
+       WHERE status = 'running'`
+    )
+    .run(now, now);
+  return result.changes;
+}
+
 export function getMessage(id: string): ConversationMessage | undefined {
   const row = getDb()
     .prepare(`SELECT *, rowid AS message_sequence FROM conversation_messages WHERE id = ?`)

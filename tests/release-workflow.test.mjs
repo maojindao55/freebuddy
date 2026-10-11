@@ -157,6 +157,10 @@ test("macOS cert import is a no-op off Darwin", async () => {
   if (process.platform === "darwin") {
     return;
   }
+  // Windows bash may be WSL, which cannot open a C:/ path without translation.
+  if (process.platform === "win32") {
+    return;
+  }
   const { spawnSync } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");
   const scriptPath = fileURLToPath(

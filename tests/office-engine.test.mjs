@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-// Personal-learning integration: reuses the locally installed WorkBuddy
-// Tencent Docs engine. See electron/officeEngineCore.ts for the design notes.
+// Personal-learning integration with a separately downloaded Office engine.
 const {
   OFFICE_ENGINE_FILE_TYPES,
   fileExtensionOf,
@@ -16,12 +16,55 @@ const {
   isOfficeEngineFile,
   buildOfficeEnginePreviewUrl,
   buildOfficeEngineEditorStatusUrl,
-  buildOfficeEngineCandidatePaths,
-  findOfficeEngineBinary
+  findOfficeEngineEditorStatus
 } = await import("../dist-electron/officeEngineCore.js");
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(rootDir, rel), "utf8");
+const {
+  getManagedOfficeEnginePath,
+  validateOfficeEngineDownload,
+  OFFICE_ENGINE_DOWNLOAD_URL,
+  OFFICE_ENGINE_DOWNLOAD_SHA256,
+  downloadConfiguredOfficeEngine
+} = await import("../dist-electron/officeEngineAddon.js");
+
+test("office engine addon requires HTTPS and a pinned SHA-256", () => {
+  const validHash = "a".repeat(64);
+  assert.equal(validateOfficeEngineDownload("https://example.com/editor_sdk.exe", validHash).sha256, validHash);
+  assert.throws(() => validateOfficeEngineDownload("http://example.com/editor_sdk.exe", validHash), /HTTPS/);
+  assert.throws(() => validateOfficeEngineDownload("https://example.com/editor_sdk.exe", "short"), /SHA-256/);
+});
+
+test("the configured download is pinned and cannot replace the managed engine with different bytes", async () => {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-office-addon-hash-"));
+  try {
+    assert.equal(OFFICE_ENGINE_DOWNLOAD_URL, "https://pub-7b39e9aa06a94f8fa4d856f47eb7b9a4.r2.dev/editor_sdk.exe");
+    assert.equal(OFFICE_ENGINE_DOWNLOAD_SHA256, "aed4b6845a835e1b54f4af9615958d478a9a6cfa689fca107627c3539f4e11f9");
+    const managedPath = getManagedOfficeEnginePath(userDataDir);
+    fs.mkdirSync(path.dirname(managedPath), { recursive: true });
+    fs.writeFileSync(managedPath, "previous engine");
+    const response = new Response("different binary", { status: 200 });
+    Object.defineProperty(response, "url", { value: OFFICE_ENGINE_DOWNLOAD_URL });
+    let requestedUrl = null;
+    await assert.rejects(
+      downloadConfiguredOfficeEngine(
+        userDataDir,
+        () => {},
+        async (url) => {
+          requestedUrl = String(url);
+          return response;
+        }
+      ),
+      /SHA-256 checksum does not match/
+    );
+    assert.equal(requestedUrl, OFFICE_ENGINE_DOWNLOAD_URL);
+    assert.equal(fs.readFileSync(managedPath, "utf8"), "previous engine");
+    assert.equal(fs.readdirSync(path.dirname(managedPath)).filter((name) => name.startsWith(".install-")).length, 0);
+  } finally {
+    fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
 
 test("office engine file types map doc/sheet/slide/pdf families", () => {
   assert.equal(getOfficeEngineDocType("C:\\work\\报告.docx"), "doc");
@@ -29,9 +72,12 @@ test("office engine file types map doc/sheet/slide/pdf families", () => {
   assert.equal(getOfficeEngineDocType("/tmp/manual.pdf"), "pdf");
   assert.equal(getOfficeEngineDocType("C:\\work\\data.xlsx"), "sheet");
   assert.equal(getOfficeEngineDocType("C:\\work\\预算.xlsm"), "sheet");
-  // .csv/.tsv keep the built-in lightweight editor.
+  // These formats are outside DocStudio's engine integration.
   assert.equal(getOfficeEngineDocType("C:\\work\\data.csv"), null);
   assert.equal(getOfficeEngineDocType("C:\\work\\data.tsv"), null);
+  assert.equal(getOfficeEngineDocType("C:\\work\\notes.md"), null);
+  assert.equal(getOfficeEngineDocType("C:\\work\\notes.txt"), null);
+  assert.equal(getOfficeEngineDocType("C:\\work\\config.json"), null);
   assert.equal(isOfficeEngineFile("C:\\work\\a.wps"), true);
   assert.equal(isOfficeEngineFile("C:\\work\\a.png"), false);
   assert.equal(fileExtensionOf("C:\\a.b\\合同_#7#8.docx"), ".docx");
@@ -72,27 +118,6 @@ test("office engine preview URL mirrors the WorkBuddy recipe", () => {
   assert.throws(() => buildOfficeEnginePreviewUrl(port, "C:\\a.png"), /Unsupported office engine file/);
 });
 
-test("office engine binary candidates prefer override, then userData, then WorkBuddy", () => {
-  const candidates = buildOfficeEngineCandidatePaths({
-    envOverride: "D:\\custom\\editor_sdk.exe",
-    userDataDir: "C:\\Users\\demo\\AppData\\Roaming\\freebuddy-dev",
-    localProgramsDir: "C:\\Users\\demo\\AppData\\Local\\Programs"
-  });
-  assert.equal(candidates[0], "D:\\custom\\editor_sdk.exe");
-  assert.ok(
-    candidates[1].includes(path.join("office-engine", "editor_sdk.exe")),
-    "userData candidate missing"
-  );
-  assert.ok(
-    candidates.some((c) => c.includes("WorkBuddy") && c.includes(path.join("@tencent", "tencent-docs-ai-engine"))),
-    "WorkBuddy unpacked candidate missing"
-  );
-  assert.ok(candidates.some((c) => c.includes("WorkBuddyAI")));
-
-  assert.equal(findOfficeEngineBinary(["a", "b", "c"], (c) => c === "b"), "b");
-  assert.equal(findOfficeEngineBinary(["a"], () => false), null);
-});
-
 test("office engine preview IPC is sender- and path-guarded", () => {
   const bridge = read("electron/docStudioBridge.ts");
   const idx = bridge.indexOf('"docStudio:officePreview"');
@@ -105,18 +130,17 @@ test("office engine preview IPC is sender- and path-guarded", () => {
   const openBody = bridge.slice(openIdx, openIdx + 400);
   assert.match(openBody, /isAllowedOfficeEnginePath/);
 
-  // Routing uses the combined openable check.
+  // Routing uses the engine-only openable check.
   const mainTs = read("electron/main.ts");
   assert.ok(mainTs.includes("isDocStudioOpenableFile"));
   const menuTs = read("electron/menu.ts");
   assert.ok(menuTs.includes("isDocStudioOpenableFile"));
 
-  // Renderer hosts engine tabs in an iframe and skips its own save flow.
+  // Renderer hosts engine tabs in an iframe.
   const app = read("src/components/DocStudio/DocStudioApp.tsx");
   assert.match(app, /getEnginePreview/);
   assert.match(app, /kind: "office"/);
   assert.match(app, /ds-office-frame/);
-  assert.match(app, /activeTab\.kind === "office"/);
 
   const preload = read("electron/preload.ts");
   assert.match(preload, /getEnginePreview/);
@@ -135,6 +159,7 @@ test("chat-side doc clickability includes engine extensions", () => {
 
 test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoint", async () => {
   const seen = [];
+  const officeFile = path.join(rootDir, "preview.xlsx");
   const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", (chunk) => {
@@ -144,7 +169,7 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
       seen.push({
         url: req.url,
         session: req.headers["mcp-session-id"] || null,
-        body: body.slice(0, 400)
+        body
       });
       let message = null;
       try {
@@ -191,7 +216,8 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "",
-      FREEBUDDY_OFFICE_MCP_URL: `http://127.0.0.1:${port}/mcp`
+      FREEBUDDY_OFFICE_MCP_URL: `http://127.0.0.1:${port}/mcp`,
+      FREEBUDDY_OFFICE_FILE: officeFile
     },
     stdio: ["pipe", "pipe", "ignore"]
   });
@@ -224,6 +250,25 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
   await new Promise((resolve) => setTimeout(resolve, 200));
   await send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
   await new Promise((resolve) => setTimeout(resolve, 300));
+  await send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: {
+      name: "open_file",
+      arguments: { file_path: officeFile.replaceAll(path.sep, "/"), open_with_existing: false, wait: false }
+    }
+  });
+  await send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: {
+      name: "open_file",
+      arguments: { file_path: path.join(rootDir, "other.xlsx"), open_with_existing: false, wait: false }
+    }
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
   child.kill();
   await new Promise((resolve) => server.close(() => resolve()));
 
@@ -243,25 +288,37 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
   assert.ok(initializeCall && toolsCall, "bridge did not forward both requests");
   assert.equal(initializeCall.session, null);
   assert.equal(toolsCall.session, "sess-1");
+  const openCalls = seen
+    .map((entry) => JSON.parse(entry.body))
+    .filter((message) => message.method === "tools/call");
+  assert.equal(openCalls.length, 2);
+  assert.deepEqual(openCalls[0].params.arguments, {
+    file_path: officeFile,
+    open_with_existing: true,
+    wait: true
+  });
+  assert.equal(openCalls[1].params.arguments.open_with_existing, false);
+  assert.equal(openCalls[1].params.arguments.wait, false);
 });
 
 test("office engine preview reloads via the file watcher after agent saves", () => {
-  assert.match(
-    buildOfficeEngineEditorStatusUrl(39100, "C:\\Users\\demo\\a.docx"),
-    /^http:\/\/127\.0\.0\.1:39100\/localapi\/editor\/status\?file_path=/
+  assert.equal(
+    buildOfficeEngineEditorStatusUrl(39100),
+    "http://127.0.0.1:39100/localapi/editor/status"
   );
 
   const bridge = read("electron/docStudioBridge.ts");
   assert.match(bridge, /docStudio:engineEditorStatus/);
+  assert.match(bridge, /open_editors/);
+  assert.match(bridge, /findOfficeEngineEditorStatus/);
   assert.match(bridge, /isAllowedOfficeEnginePath/);
   // The file watcher must cover office-engine files so agent saves reload the preview.
   const watchIdx = bridge.indexOf('"docStudio:watchFile"');
   const watchBody = bridge.slice(watchIdx, watchIdx + 500);
-  assert.match(watchBody, /isDocStudioOpenableFile/);
+  assert.match(watchBody, /isAllowedOfficeEnginePath/);
 
   const app = read("src/components/DocStudio/DocStudioApp.tsx");
   assert.match(app, /officeReloads/);
-  assert.match(app, /kind === "office"\) \{\s*setOfficeReloads/);
   // Every open file is watched, including office-engine tabs.
   assert.match(app, /const paths = new Set\(tabs\.map\(\(tb\) => tb\.filePath\)\)/);
 
@@ -269,6 +326,15 @@ test("office engine preview reloads via the file watcher after agent saves", () 
   assert.match(preload, /getEngineEditorStatus/);
   const fixture = read("tests/fixtures/doc-studio-preview.tsx");
   assert.match(fixture, /getEngineEditorStatus/);
+});
+
+test("office engine status matches Unicode paths from the unfiltered editor pool", () => {
+  const filePath = path.join(rootDir, "测试预览.docx");
+  const editor = { file_path: filePath, is_dirty: true, last_saved_ms: 123 };
+  const pool = [null, { file_path: path.join(rootDir, "other.docx") }, editor];
+  assert.equal(findOfficeEngineEditorStatus(pool, filePath.replaceAll(path.sep, "/")), editor);
+  assert.equal(findOfficeEngineEditorStatus(pool, path.join(rootDir, "missing.docx")), null);
+  assert.equal(findOfficeEngineEditorStatus({ open_editors: pool }, filePath), null);
 });
 
 test("office engine MCP wiring reaches agent runs and the copilot prompt", () => {

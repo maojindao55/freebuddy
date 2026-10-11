@@ -20204,6 +20204,7 @@ button.ghost:focus-visible,
   font-size: 12px;
   color: var(--fb-text-secondary);
 }
+.office-engine-addon-path { overflow-wrap: anywhere; }
 .about-releases-link { padding: 0; }
 .about-update-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .about-update-actions .primary-btn,

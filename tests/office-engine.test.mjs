@@ -26,6 +26,7 @@ const {
   validateOfficeEngineDownload,
   OFFICE_ENGINE_DOWNLOAD_URL,
   OFFICE_ENGINE_DOWNLOAD_SHA256,
+  downloadOfficeEngine,
   downloadConfiguredOfficeEngine
 } = await import("../dist-electron/officeEngineAddon.js");
 
@@ -47,15 +48,15 @@ test("the configured download is pinned and cannot replace the managed engine wi
     const response = new Response("different binary", { status: 200 });
     Object.defineProperty(response, "url", { value: OFFICE_ENGINE_DOWNLOAD_URL });
     let requestedUrl = null;
+    const fetchSource = async (url) => {
+      requestedUrl = String(url);
+      return response;
+    };
+    const download = process.platform === "win32" && process.arch === "x64"
+      ? downloadConfiguredOfficeEngine(userDataDir, () => {}, fetchSource)
+      : downloadOfficeEngine(OFFICE_ENGINE_DOWNLOAD_URL, OFFICE_ENGINE_DOWNLOAD_SHA256, userDataDir, () => {}, fetchSource);
     await assert.rejects(
-      downloadConfiguredOfficeEngine(
-        userDataDir,
-        () => {},
-        async (url) => {
-          requestedUrl = String(url);
-          return response;
-        }
-      ),
+      download,
       /SHA-256 checksum does not match/
     );
     assert.equal(requestedUrl, OFFICE_ENGINE_DOWNLOAD_URL);
@@ -292,13 +293,13 @@ test("office engine MCP bridge relays stdio JSON-RPC to a streamable HTTP endpoi
     .map((entry) => JSON.parse(entry.body))
     .filter((message) => message.method === "tools/call");
   assert.equal(openCalls.length, 2);
-  assert.deepEqual(openCalls[0].params.arguments, {
+  assert.deepEqual(openCalls.find((call) => call.id === 3)?.params.arguments, {
     file_path: officeFile,
     open_with_existing: true,
     wait: true
   });
-  assert.equal(openCalls[1].params.arguments.open_with_existing, false);
-  assert.equal(openCalls[1].params.arguments.wait, false);
+  assert.equal(openCalls.find((call) => call.id === 4)?.params.arguments.open_with_existing, false);
+  assert.equal(openCalls.find((call) => call.id === 4)?.params.arguments.wait, false);
 });
 
 test("office engine preview reloads via the file watcher after agent saves", () => {

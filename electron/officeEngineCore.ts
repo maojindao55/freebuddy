@@ -93,7 +93,7 @@ export function buildOfficeEnginePreviewUrl(port: number, filePath: string): str
   // The engine identifies one local document by the md5 of its absolute path.
   const globalPadId = crypto.createHash("md5").update(filePath).digest("hex");
   const params = new URLSearchParams({
-    title: path.basename(filePath),
+    title: path.win32.basename(filePath),
     localFilePath: filePath,
     globalPadId,
     ...OFFICE_ENGINE_PREVIEW_PARAMS[engineType],

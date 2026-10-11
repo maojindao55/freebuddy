@@ -37,6 +37,18 @@ import {
 
 const SEARCH_OPTS = { maxDepth: 4, timeBudgetMs: 400 };
 
+async function waitForEngineMove(conversationId, expectedSteps) {
+  const game = getOrCreateGame(conversationId);
+  const deadline = Date.now() + 5_000;
+  // Worker startup and the engine's safety fallback can outlast the search
+  // budget on busy CI runners. Wait for the completed move with a fixed limit.
+  while (game.moveHistory.length < expectedSteps && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(game.moveHistory.length, expectedSteps, `Engine move did not complete for ${conversationId}`);
+  return game.getSnapshot();
+}
+
 function emptyGomokuBoard() {
   return createEmptyBoard();
 }
@@ -263,9 +275,7 @@ test("hard difficulty triggers automatic engine reply after player move", async 
   assert.equal(res.ok, true);
   assert.equal(res.agentAutoPlayScheduled, true, "hard mode should flag auto reply");
 
-  await new Promise((resolve) => setTimeout(resolve, ENGINE_AUTO_MOVE_DELAY_MS + 1_100));
-
-  const state = getOrCreateGame(conversationId).getSnapshot();
+  const state = await waitForEngineMove(conversationId, 2);
   const whiteStones = state.board.flat().filter((v) => v === PLAYER_WHITE).length;
   assert.equal(whiteStones, 1, "engine should have replied with one white stone");
   assert.equal(state.turn, PLAYER_BLACK);
@@ -282,9 +292,7 @@ test("hard difficulty also triggers Xiangqi engine reply", async () => {
   assert.equal(res.ok, true);
   assert.equal(res.agentAutoPlayScheduled, true);
 
-  await new Promise((resolve) => setTimeout(resolve, ENGINE_AUTO_MOVE_DELAY_MS + 950));
-
-  const state = getOrCreateGame(conversationId).getSnapshot();
+  const state = await waitForEngineMove(conversationId, 2);
   assert.equal(state.stepCount, 2, "the Xiangqi engine should have replied once");
   assert.equal(state.turn, 1);
 });
@@ -391,9 +399,7 @@ test("hard Agent-first game starts its opening move from initial state sync", as
 
   const initial = handleGetGameState(conversationId);
   assert.equal(initial.turn, initial.agentSide);
-  await new Promise((resolve) => setTimeout(resolve, ENGINE_AUTO_MOVE_DELAY_MS + 1_100));
-
-  const state = getOrCreateGame(conversationId).getSnapshot();
+  const state = await waitForEngineMove(conversationId, 1);
   assert.equal(state.stepCount, 1);
   assert.equal(state.lastMove?.player, state.agentSide);
   assert.equal(state.turn, state.playerSide);
@@ -414,7 +420,7 @@ test("hard engine search runs outside the main event loop", async () => {
     "the 700ms search budget must not block a main-thread timer"
   );
   // Let the worker finish so it cannot leak into later tests.
-  await new Promise((resolve) => setTimeout(resolve, 900));
+  await waitForEngineMove(conversationId, 2);
 });
 
 test("state polling does not postpone an already scheduled hard-mode reply", async () => {

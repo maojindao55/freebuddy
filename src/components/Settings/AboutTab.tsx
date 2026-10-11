@@ -13,7 +13,7 @@ import appIconUrl from "../../../assets/app-icon.png";
 
 const RELEASES_URL = "https://github.com/maojindao55/freebuddy/releases";
 
-// Runtime Pack 暂时停用；需要恢复时改为 true
+// Runtime Pack is temporarily disabled; set to true to restore it.
 const SHOW_RUNTIME_PACK = false;
 
 type RuntimeSnapshot = {

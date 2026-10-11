@@ -40,11 +40,14 @@ dsh-sandbox-windows-acl/lib/types-*.js:82  … koffi.struct(…)
 
 `electron/cli/adapters.ts` 中 `bundledDshAcpConfigPath()` 在 `process.platform === 'win32'` 时返回 `cordis.win32.yml`，否则原 `cordis.yml`（带"平台变体缺失则回退"的兜底）。
 
-由于**安装列表、spawn config、UI installHint 全部从此函数派生**（`parseDshAcpCompositionPackages` 解析该文件），切换后：
+由于**托管安装的 `cordis.yml` 副本与 UI installHint 从此函数派生**（`parseDshAcpCompositionPackages` 解析该文件），切换后：
 
-- `dshAcpInstallCommand()` 自动包含 `@deepseek-ai/dsh-bash-local@next`、剔除 `dsh-bash-sandbox` / `dsh-sandbox-local`
 - `resolveDshAcpConfigPath()` / `syncDshAcpManagedConfig()` 在 Windows 落到 win32 配置
 - 打包：`electron-builder.yml` 的 `extraResources` 整目录拷贝 `assets/dsh`，新文件自动带上
+
+现代 standalone harness（`deepseek-harness-acp` + `@deepseek-ai/dsh-base`）自带 composition，FreeBuddy **不再**给它传 `--config`，win32 配置只服务于旧的 `@deepseek-ai/dsh-acp-demo`。
+
+`dshAcpInstallCommand()` 只安装 `deepseek-harness-acp` 一个包，**不要**再追加 `@deepseek-ai/dsh-bash-local@next`：`@next` 领先于 harness 核心的 `0.1.x` 版本线，两个根依赖的同名冲突会让 npm 把 `@deepseek-ai/dsh-base` 的整棵插件子树降级到其私有 `node_modules`，而 `boot()` 的裸包名解析锚定在 harness 的 `lib/bin.js`，无法命中那棵子树 → 启动即数十条 `failed to import` 并以 exit 1 结束。`dsh-bash-local` 已由 harness 按匹配版本传递引入，Windows 上并不需要额外的 `@next`。
 
 ### 3. koffi 桩按需注入：`withDshAcpSqliteWarningSuppressed()`
 
@@ -73,7 +76,7 @@ macOS/Linux 不 import koffi，koffi 桩的 resolve hook 永不命中（空操�
 
 ## 安装
 
-Windows 已全局补装 `@deepseek-ai/dsh-bash-local@next`。新用户点「安装」时，`prepareDshAcpManagedInstall()` 派生出的命令在 Windows 上自动包含 `dsh-bash-local`、不含原生沙箱包。
+无需任何 Windows 专属补装包。点「安装/升级」时 `prepareDshAcpManagedInstall()` 先清掉 `%APPDATA%\npm\node_modules\@deepseek-ai` 残留、整棵删除托管 `node_modules` 与 lockfile（删除失败即报错中止，不允许 npm 装进半删除的目录），再由 `cleanupLegacyDshAcpManagedFiles()` 丢弃任何不是「单一 `deepseek-harness-acp` 范围依赖」的 `package.json`，保证 npm 从零解析；随后 `dshAcpCompositionReady()` 按 `@deepseek-ai/dsh-base/cordis.patch.yml` 的每一行插件校验依赖树是否真的可解析，被降级的子树会直接报「未安装」而不是启动崩溃。
 
 ## 取舍
 

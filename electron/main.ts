@@ -38,7 +38,7 @@ import { initFileBridge } from "./fileBridge.js";
 import {
   initDocStudioBridge,
   openDocStudioWindow,
-  isOfficeOrDocFile,
+  isDocStudioOpenableFile,
   isDocStudioWindowSender
 } from "./docStudioBridge.js";
 import { getDb } from "./cli/db.js";
@@ -388,7 +388,7 @@ app.on("open-url", (event, url) => {
 
 app.on("open-file", (event, filePath) => {
   event.preventDefault();
-  if (isOfficeOrDocFile(filePath)) {
+  if (isDocStudioOpenableFile(filePath)) {
     openDocStudioWindow(filePath);
     return;
   }
@@ -399,8 +399,8 @@ app.on("second-instance", (_event, argv) => {
   const url = argv.find((arg) => arg.startsWith("freebuddy://") || arg.startsWith("freebuddy-dev://"));
   if (url) handleSchemeUrl(url);
   const launchPaths = collectLaunchShellOpenPaths(argv);
-  const docPaths = launchPaths.filter(isOfficeOrDocFile);
-  const otherPaths = launchPaths.filter((p) => !isOfficeOrDocFile(p));
+  const docPaths = launchPaths.filter(isDocStudioOpenableFile);
+  const otherPaths = launchPaths.filter((p) => !isDocStudioOpenableFile(p));
   for (const doc of docPaths) {
     openDocStudioWindow(doc);
   }
@@ -1741,6 +1741,12 @@ function shutdownAppServices(): Promise<void> {
       } catch {
         /* runtime manager may not have started */
       }
+      try {
+        const { stopOfficeEngine } = await import("./officeEngine.js");
+        stopOfficeEngine();
+      } catch {
+        /* office engine may not have started */
+      }
     })();
   }
   return appServicesShutdownPromise;
@@ -2050,8 +2056,8 @@ app.whenReady().then(async () => {
   initDocStudioBridge();
   getDb();
   const initialLaunchPaths = collectLaunchShellOpenPaths(process.argv);
-  const initialDocPaths = initialLaunchPaths.filter(isOfficeOrDocFile);
-  const initialOtherPaths = initialLaunchPaths.filter((p) => !isOfficeOrDocFile(p));
+  const initialDocPaths = initialLaunchPaths.filter(isDocStudioOpenableFile);
+  const initialOtherPaths = initialLaunchPaths.filter((p) => !isDocStudioOpenableFile(p));
   for (const doc of initialDocPaths) {
     openDocStudioWindow(doc);
   }

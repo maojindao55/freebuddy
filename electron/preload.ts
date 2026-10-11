@@ -974,24 +974,6 @@ const providers = {
 const docStudio = {
   openWindow: (target?: string | { filePath?: string }) =>
     ipcRenderer.invoke("docStudio:openWindow", target) as Promise<boolean>,
-  readFile: (filePath: string) =>
-    ipcRenderer.invoke("docStudio:readFile", filePath) as Promise<{
-      success: boolean;
-      name?: string;
-      path?: string;
-      size?: number;
-      ext?: string;
-      content?: string;
-      bufferBase64?: string;
-      error?: string;
-    }>,
-  writeFile: (filePath: string, payload: { content?: string; bufferBase64?: string }) =>
-    ipcRenderer.invoke("docStudio:writeFile", filePath, payload) as Promise<{
-      success: boolean;
-      error?: string;
-    }>,
-  showSaveDialog: (defaultName: string, filters?: Array<{ name: string; extensions: string[] }>) =>
-    ipcRenderer.invoke("docStudio:showSaveDialog", defaultName, filters) as Promise<string | null>,
   showOpenDialog: (defaultPath?: string) =>
     ipcRenderer.invoke("docStudio:showOpenDialog", defaultPath) as Promise<string[] | null>,
   showItemInFolder: (filePath: string) =>
@@ -1002,6 +984,35 @@ const docStudio = {
     ipcRenderer.invoke("docStudio:watchFile", filePath) as Promise<boolean>,
   unwatchFile: (filePath: string) =>
     ipcRenderer.invoke("docStudio:unwatchFile", filePath) as Promise<boolean>,
+  getEnginePreview: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:officePreview", filePath) as Promise<{
+      success: boolean;
+      url?: string;
+      error?: string;
+    }>,
+  getEngineEditorStatus: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:engineEditorStatus", filePath) as Promise<{
+      success: boolean;
+      isDirty?: boolean;
+      lastSavedMs?: number;
+      error?: string;
+    }>,
+  getOfficeEngineAddonStatus: () =>
+    ipcRenderer.invoke("docStudio:officeEngineAddonStatus") as Promise<{
+      installed: boolean;
+      installing: boolean;
+      managedPath: string;
+      activePath: string | null;
+    }>,
+  downloadOfficeEngineAddon: () =>
+    ipcRenderer.invoke("docStudio:officeEngineAddonDownload") as Promise<{
+      installedPath: string;
+    }>,
+  onOfficeEngineDownloadProgress: (cb: (progress: { receivedBytes: number; totalBytes: number | null }) => void): (() => void) => {
+    const handler = (_e: IpcRendererEvent, progress: { receivedBytes: number; totalBytes: number | null }) => cb(progress);
+    ipcRenderer.on("docStudio:officeEngineDownloadProgress", handler);
+    return () => ipcRenderer.off("docStudio:officeEngineDownloadProgress", handler);
+  },
   onFileChanged: (cb: (filePath: string) => void): (() => void) => {
     const handler = (_e: IpcRendererEvent, payload: { filePath?: string }) => {
       if (payload?.filePath) cb(payload.filePath);

@@ -4,10 +4,23 @@ import { watch } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { registerHandler } from "./invokeRegistry.js";
+import {
+  isOfficeEngineFile,
+  buildOfficeEnginePreviewUrl,
+  buildOfficeEngineEditorStatusUrl,
+  findOfficeEngineEditorStatus,
+  OFFICE_ENGINE_FILE_TYPES
+} from "./officeEngineCore.js";
+import { ensureOfficeEnginePort, findLocalOfficeEngineBinary } from "./officeEngine.js";
+import {
+  downloadConfiguredOfficeEngine,
+  getManagedOfficeEnginePath
+} from "./officeEngineAddon.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const docStudioWindows = new Map<number, BrowserWindow>();
+let officeEngineAddonBusy = false;
 
 // Per-webContents file watchers for the DocStudio live-reload feature.
 interface DocStudioWatchEntry {
@@ -16,9 +29,6 @@ interface DocStudioWatchEntry {
   needsRearm: boolean;
 }
 const docStudioWatchers = new Map<number, Map<string, DocStudioWatchEntry>>();
-// Stat snapshots recorded right after our own writeFile, so the watcher can
-// ignore change events we caused ourselves.
-const docStudioOwnWrites = new Map<string, { size: number; mtimeMs: number }>();
 const DOCSTUDIO_WATCH_DEBOUNCE_MS = 300;
 
 function docStudioUnwatch(wcId: number, filePath: string): void {
@@ -59,9 +69,7 @@ function docStudioWatchFile(event: Electron.IpcMainInvokeEvent, filePath: string
         live.timer = setTimeout(() => {
           void (async () => {
             try {
-              const st = await fs.stat(filePath);
-              const own = docStudioOwnWrites.get(filePath);
-              if (own && own.size === st.size && own.mtimeMs === st.mtimeMs) return;
+              await fs.stat(filePath);
               if (!event.sender.isDestroyed()) {
                 event.sender.send("docStudio:fileChanged", { filePath });
               }
@@ -152,22 +160,24 @@ export function isDocStudioWindowSender(sender: Electron.WebContents): boolean {
   return !!win && docStudioWindows.has(win.id);
 }
 
-export function isOfficeOrDocFile(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  return [".csv", ".tsv", ".xlsx", ".xls", ".md", ".txt", ".json"].includes(ext);
+function isAllowedOfficeEnginePath(p: unknown): p is string {
+  return typeof p === "string" && path.isAbsolute(p) && isOfficeEngineFile(p);
 }
 
-function isAllowedDocPath(p: unknown): p is string {
-  return typeof p === "string" && path.isAbsolute(p) && isOfficeOrDocFile(p);
+/** Files supported by the embedded office engine. */
+export function isDocStudioOpenableFile(filePath: string): boolean {
+  return isOfficeEngineFile(filePath);
 }
 
 export async function showDocStudioOpenDialog(parentWin?: BrowserWindow, defaultPath?: string): Promise<string[] | null> {
+  const officeExtensions = OFFICE_ENGINE_FILE_TYPES.flatMap((t) => t.extensions).map((ext) =>
+    ext.replace(/^\./, "")
+  );
   const options = {
     defaultPath,
     properties: ["openFile" as const],
     filters: [
-      { name: "Documents & Tables", extensions: ["csv", "tsv", "xlsx", "xls", "md", "txt", "json"] },
-      { name: "All Files", extensions: ["*"] }
+      { name: "Office & PDF", extensions: officeExtensions }
     ]
   };
   const result = parentWin && !parentWin.isDestroyed()
@@ -178,83 +188,81 @@ export async function showDocStudioOpenDialog(parentWin?: BrowserWindow, default
 }
 
 export function initDocStudioBridge(): void {
+  registerHandler("docStudio:officeEngineAddonStatus", async () => {
+    const managedPath = getManagedOfficeEnginePath(app.getPath("userData"));
+    const installed = await fs.stat(managedPath).then((stat) => stat.isFile(), () => false);
+    return {
+      installed,
+      installing: officeEngineAddonBusy,
+      managedPath,
+      activePath: findLocalOfficeEngineBinary()
+    };
+  });
+
+  registerHandler("docStudio:officeEngineAddonDownload", async (event) => {
+    if (officeEngineAddonBusy) throw new Error("An Office engine installation is already in progress");
+    officeEngineAddonBusy = true;
+    try {
+      const installedPath = await downloadConfiguredOfficeEngine(app.getPath("userData"), (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send("docStudio:officeEngineDownloadProgress", progress);
+      });
+      return { installedPath };
+    } finally {
+      officeEngineAddonBusy = false;
+    }
+  });
+
   // IPC to open a doc studio window
   registerHandler("docStudio:openWindow", async (_event, target?: string | { filePath?: string }) => {
     const filePath = typeof target === "object" && target !== null ? target.filePath : target;
-    if (filePath && !isAllowedDocPath(filePath)) return false;
+    if (filePath && !isAllowedOfficeEnginePath(filePath)) return false;
     openDocStudioWindow(filePath);
     return true;
   });
 
-  // Read file as text or binary (base64)
-  registerHandler("docStudio:readFile", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedDocPath(targetPath)) {
-      return { success: false, error: "forbidden", path: targetPath };
-    }
-    try {
-      const stat = await fs.stat(targetPath);
-      const ext = path.extname(targetPath).toLowerCase();
-      const isBinary = [".xlsx", ".xls"].includes(ext);
-
-      if (isBinary) {
-        const buffer = await fs.readFile(targetPath);
-        return {
-          success: true,
-          name: path.basename(targetPath),
-          path: targetPath,
-          size: stat.size,
-          ext,
-          bufferBase64: buffer.toString("base64")
-        };
-      } else {
-        const content = await fs.readFile(targetPath, "utf-8");
-        return {
-          success: true,
-          name: path.basename(targetPath),
-          path: targetPath,
-          size: stat.size,
-          ext,
-          content
-        };
-      }
-    } catch (err: any) {
-      return {
-        success: false,
-        error: err?.message || String(err),
-        path: targetPath
-      };
-    }
-  });
-
-  // Write file from text or base64
-  registerHandler("docStudio:writeFile", async (event, targetPath: string, payload: { content?: string; bufferBase64?: string }) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedDocPath(targetPath)) {
+  // Office engine preview URL (personal-learning integration; see officeEngineCore.ts)
+  registerHandler("docStudio:officePreview", async (event, targetPath: string) => {
+    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return { success: false, error: "forbidden" };
     }
+    const port = await ensureOfficeEnginePort();
+    if (!port) return { success: false, error: "engineUnavailable" };
+    return { success: true, url: buildOfficeEnginePreviewUrl(port, targetPath) };
+  });
+
+  // Office engine editor status (is_dirty / last_saved_ms). The SDK's
+  // file_path query parameter is not URL-decoded, so match the pool locally.
+  registerHandler("docStudio:engineEditorStatus", async (event, targetPath: string) => {
+    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
+      return { success: false, error: "forbidden" };
+    }
+    const port = await ensureOfficeEnginePort();
+    if (!port) return { success: false, error: "engineUnavailable" };
     try {
-      if (payload.bufferBase64) {
-        const buffer = Buffer.from(payload.bufferBase64, "base64");
-        await fs.writeFile(targetPath, buffer);
-      } else if (typeof payload.content === "string") {
-        await fs.writeFile(targetPath, payload.content, "utf-8");
-      } else {
-        throw new Error("No content or buffer provided");
-      }
-      try {
-        const st = await fs.stat(targetPath);
-        docStudioOwnWrites.set(targetPath, { size: st.size, mtimeMs: st.mtimeMs });
-      } catch {
-        /* non-fatal */
-      }
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message || String(err) };
+      const response = await fetch(buildOfficeEngineEditorStatusUrl(port), {
+        signal: AbortSignal.timeout(2000)
+      });
+      if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
+      const body = (await response.json()) as {
+        open_editors?: unknown;
+      };
+      const editor = findOfficeEngineEditorStatus(body.open_editors, targetPath);
+      if (!editor) return { success: false, error: "notOpen" };
+      return {
+        success: true,
+        isDirty: editor.is_dirty === true,
+        lastSavedMs: typeof editor.last_saved_ms === "number" ? editor.last_saved_ms : 0
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
-  // Live file watching for external changes (per-window, cleaned up on destroy)
+  // Live file watching for external changes (per-window, cleaned up on destroy).
+  // Covers office-engine files too: when an agent saves the file through the
+  // engine MCP, the on-disk change reloads the embedded preview.
   registerHandler("docStudio:watchFile", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedDocPath(targetPath)) {
+    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return false;
     }
     return docStudioWatchFile(event, targetPath);
@@ -266,20 +274,6 @@ export function initDocStudioBridge(): void {
     return true;
   });
 
-  // Save dialog
-  registerHandler("docStudio:showSaveDialog", async (event, defaultName: string, filters: Array<{ name: string; extensions: string[] }>) => {
-    const parentWin = BrowserWindow.fromWebContents(event.sender);
-    const options = {
-      defaultPath: defaultName,
-      filters: filters?.length ? filters : [{ name: "All Files", extensions: ["*"] }]
-    };
-    const result = parentWin && !parentWin.isDestroyed()
-      ? await dialog.showSaveDialog(parentWin, options)
-      : await dialog.showSaveDialog(options);
-    if (result.canceled || !result.filePath) return null;
-    return result.filePath;
-  });
-
   // Open dialog
   registerHandler("docStudio:showOpenDialog", async (event, defaultPath?: string) => {
     const parentWin = BrowserWindow.fromWebContents(event.sender);
@@ -288,7 +282,7 @@ export function initDocStudioBridge(): void {
 
   // Show in Finder / Explorer
   registerHandler("docStudio:showItemInFolder", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedDocPath(targetPath)) {
+    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return false;
     }
     try {

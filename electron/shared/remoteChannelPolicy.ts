@@ -266,16 +266,17 @@ const DENY = [
   "skills:reveal",
   "skills:openMarketUrl",
 
-  // Standalone DocStudio window and local document operations
+  // Standalone DocStudio window and office-engine operations
   "docStudio:openWindow",
-  "docStudio:readFile",
-  "docStudio:writeFile",
-  "docStudio:showSaveDialog",
   "docStudio:showOpenDialog",
   "docStudio:showItemInFolder",
   "docStudio:openConversationInMain",
   "docStudio:watchFile",
   "docStudio:unwatchFile",
+  "docStudio:officePreview",
+  "docStudio:engineEditorStatus",
+  "docStudio:officeEngineAddonStatus",
+  "docStudio:officeEngineAddonDownload",
 
   // Anything that installs or updates code on the host.
   "cli:install",

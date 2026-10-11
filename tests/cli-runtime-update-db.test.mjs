@@ -102,8 +102,16 @@ test("matching version alone is insufficient when ACP initialization fails", { s
 
 test("a running task prevents upgrading its shared adapter", { skip }, async t => {
   const { db, request } = setup(t, { packageVersion: "0.3.6" });
-  db.prepare("INSERT INTO cli_tasks (id,agent_id,agent_name,adapter,status,prompt,created_at,updated_at) VALUES ('run','clone','Clone','agy-acp','running','','0','0')").run();
+  db.prepare("INSERT INTO cli_tasks (id,agent_id,agent_name,adapter,status,prompt,pid,created_at,updated_at) VALUES ('run','clone','Clone','agy-acp','running','',?,'0','0')").run(process.pid);
   await assert.rejects(prepareCliUpgrade(request), /runtime_in_use/);
+});
+
+test("a dead task row is closed and does not block upgrade", { skip }, async t => {
+  const { db, request } = setup(t, { packageVersion: "0.3.6" });
+  db.prepare("INSERT INTO cli_tasks (id,agent_id,agent_name,adapter,status,prompt,pid,created_at,updated_at) VALUES ('dead','clone','Clone','agy-acp','running','',2147483646,'0','0')").run();
+  const plan = await prepareCliUpgrade(request);
+  assert.equal(plan.targetVersion, "0.3.8");
+  assert.equal(db.prepare("SELECT status FROM cli_tasks WHERE id = 'dead'").get().status, "failed");
 });
 
 test("shared installation blocks a second installer and defers runtime checks and launches", { skip }, async t => {

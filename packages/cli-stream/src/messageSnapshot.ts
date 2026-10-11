@@ -201,16 +201,37 @@ function capStreamJson(items: unknown[], max = MAX_IPC_MESSAGE_CONTENT_CHARS): s
   // An unusually small caller budget may not have room for the notice.
   const withNotice = max >= noticeCost + 2;
   const budget = max - (withNotice ? noticeCost : 0);
-  const retained = new Set<SnapshotEntry>();
-  let size = 2;
+  // The run-metrics usage item is replaced in place while streaming, so it sits
+  // at the very start of the stream and would be the first casualty of the
+  // newest-first retention below. Pin the terminal snapshot of every run.
+  const lastRunMetrics = new Map<string, SnapshotEntry>();
+  for (const entry of entries) {
+    const rec = entry.item as { kind?: unknown; runMetrics?: { runId?: unknown } } | undefined;
+    if (rec?.kind !== "usage" || !rec.runMetrics || typeof rec.runMetrics !== "object") continue;
+    const runId = typeof rec.runMetrics.runId === "string" ? rec.runMetrics.runId : "";
+    lastRunMetrics.set(runId, entry);
+  }
+  const pinned = new Set<SnapshotEntry>();
+  let pinnedSize = 2;
+  for (const entry of lastRunMetrics.values()) {
+    pinnedSize += entry.json.length + (pinned.size ? 1 : 0);
+    pinned.add(entry);
+  }
+  // If even the pinned summaries exceed the budget, keep the old behavior.
+  if (pinnedSize > budget) pinned.clear();
+  const retained = new Set<SnapshotEntry>(pinned);
+  let size = pinned.size ? pinnedSize : 2;
+  let nonPinnedRetained = 0;
   for (let index = essential.length - 1; index >= 0; index -= 1) {
     const entry = essential[index]!;
+    if (pinned.has(entry)) continue;
     const cost = entry.json.length + (retained.size ? 1 : 0);
     if (size + cost > budget) {
-      if (retained.size === 0) return fitLastItemToBudget(entry.item, max);
+      if (nonPinnedRetained === 0) return fitLastItemToBudget(entry.item, max);
       break;
     }
     retained.add(entry);
+    nonPinnedRetained += 1;
     size += cost;
   }
   // Fill the remaining space with recent tool activity, retaining chronology.

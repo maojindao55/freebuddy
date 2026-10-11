@@ -19,8 +19,7 @@ import { useConversationStore } from "@/store/conversationStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useProjectStore } from "@/store/projectStore";
 import { AgentAvatar } from "./AgentAvatar";
-import { RunMetricsSection } from "./RunMetricsSection";
-import { SessionInfoCard } from "./SessionInfoCard";
+import { AgentSessionCard } from "./AgentSessionCard";
 import { runCardElapsedMs, selectRunCardMetrics } from "./runCardMetrics";
 import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
@@ -313,26 +312,31 @@ export function WorkspacePanel(_props: { runningCount: number }) {
         <DelegationTeamCard conversationId={activeId} />
       ) : null}
 
-      <RunMetricsSection key={`run:${activeId}`} metrics={runCard} elapsedMs={durationMs} team={isTeamRun} teamRunning={isTeamLive} status={runStatus} identity={isTeamRun ? undefined : (
-        <div className="agent-lockup">
-          <AgentAvatar
-            adapter={active?.adapter}
-            agentId={active?.agentId}
-            className="agent-avatar"
-            fallback={
-              <span>
-                {(active ? activeAgentName : "FB").slice(0, 2).toUpperCase()}
-              </span>
-            }
-          />
-          <div>
-            <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
-            <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
-          </div>
-        </div>
-      )} />
-      <SessionInfoCard
+      <AgentSessionCard
         key={`session:${activeId}`}
+        metrics={runCard}
+        elapsedMs={durationMs}
+        status={runStatus}
+        team={isTeamRun}
+        teamRunning={isTeamLive}
+        identity={isTeamRun ? undefined : (
+          <div className="agent-lockup">
+            <AgentAvatar
+              adapter={active?.adapter}
+              agentId={active?.agentId}
+              className="agent-avatar"
+              fallback={
+                <span>
+                  {(active ? activeAgentName : "FB").slice(0, 2).toUpperCase()}
+                </span>
+              }
+            />
+            <div>
+              <strong>{active ? activeAgentName : t("workspace.noConversation")}</strong>
+              <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
+            </div>
+          </div>
+        )}
         projectName={activeProject?.name}
         cwd={activeDisplayCwd}
         folders={mountedFolders}
@@ -343,7 +347,6 @@ export function WorkspacePanel(_props: { runningCount: number }) {
         turns={assistantTurns}
         contextUsed={latestUsage?.contextUsed}
         contextSize={latestUsage?.contextSize}
-        team={isTeamRun}
       />
 
       {latestPlan &&

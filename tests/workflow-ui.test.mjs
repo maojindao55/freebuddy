@@ -281,6 +281,9 @@ test("MessageBubble supports inline copy button", () => {
   assert.match(css, /\.msg-action-btn\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*26px;/);
   assert.match(css, /\.msg-action-icon\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;[\s\S]*?flex:\s*0 0 16px;/);
   assert.doesNotMatch(css, /msg-content-wrapper:hover \.msg-actions/);
+  assert.match(src, /<MessageRunMetrics/);
+  assert.match(src, /showRunMetrics/);
+  assert.match(src, /<LiveRunElapsed/);
 });
 
 test("ChatView resolves agent avatars per message", () => {

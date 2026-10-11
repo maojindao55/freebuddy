@@ -13,27 +13,11 @@ export function validMetric(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-/** A new live execution always wins, including before it has any usage. */
-export function selectRunCardMetrics(messages: readonly Message[], live?: Live) {
-  let items: CliStreamItem[] = [];
-  let runId = live?.taskSessionId;
-  let exists = Boolean(live);
-  if (live) {
-    items = live.items;
-  } else {
-    for (let index = messages.length - 1; index >= 0; index--) {
-      const message = messages[index];
-      if (message.role === "user") break;
-      if (message.role !== "assistant") continue;
-      exists = true;
-      runId = message.taskId;
-      try {
-        const parsed = JSON.parse(message.content);
-        if (Array.isArray(parsed)) items = parsed.filter(item => item && typeof item === "object");
-      } catch { /* Legacy plain text has no measured metrics. */ }
-      break;
-    }
-  }
+export function selectRunMetrics(
+  items: readonly CliStreamItem[],
+  runId?: string,
+  live?: { status: string; runMetricsReceivedAt?: number }
+) {
   let summary: AgentRunMetrics | undefined;
   let usage: Usage | undefined;
   let inputTokens: number | undefined;
@@ -63,7 +47,7 @@ export function selectRunCardMetrics(messages: readonly Message[], live?: Live) 
   else if (live?.status === "failed" || items.some(item => item.kind === "error" && item.terminal)) status = "failed";
   else if (done?.kind === "done") status = (done.exitCode ?? 0) === 0 ? "done" : "failed";
   return {
-    exists, running, status, summary, usage,
+    running, status, summary, usage,
     receivedAt: live?.runMetricsReceivedAt,
     firstOutputTracked: summary?.firstOutputTracked === true || !summary,
     firstOutputMs: validMetric(summary?.firstOutputLatencyMs),
@@ -77,6 +61,34 @@ export function selectRunCardMetrics(messages: readonly Message[], live?: Live) 
     outputTokens: validMetric(summary?.outputTokens ?? outputTokens)
   };
 }
+
+export type RunMetrics = ReturnType<typeof selectRunMetrics>;
+
+/** A new live execution always wins, including before it has any usage. */
+export function selectRunCardMetrics(messages: readonly Message[], live?: Live) {
+  let items: CliStreamItem[] = [];
+  let runId = live?.taskSessionId;
+  let exists = Boolean(live);
+  if (live) {
+    items = live.items;
+  } else {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index];
+      if (message.role === "user") break;
+      if (message.role !== "assistant") continue;
+      exists = true;
+      runId = message.taskId;
+      try {
+        const parsed = JSON.parse(message.content);
+        if (Array.isArray(parsed)) items = parsed.filter(item => item && typeof item === "object");
+      } catch { /* Legacy plain text has no measured metrics. */ }
+      break;
+    }
+  }
+  return { exists, ...selectRunMetrics(items, runId, live) };
+}
+
+export type RunCardMetrics = ReturnType<typeof selectRunCardMetrics>;
 
 export function runCardElapsedMs(
   summary: AgentRunMetrics | undefined,

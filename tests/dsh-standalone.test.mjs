@@ -28,6 +28,42 @@ test("modern standalone owns configuration and is protected from legacy overlays
     assert.equal(built.bin, "node");
     assert.deepEqual(built.args, ["--disable-warning=ExperimentalWarning", entry]);
     assert.equal(built.env?.NODE_OPTIONS, undefined);
+    assert.equal(built.env?.DSH_SESSIONS_ROOT, undefined);
+    const workspace = path.join(root, "workspace");
+    const stale = path.join(workspace, ".sessions", "project", "session-id");
+    fs.mkdirSync(stale, { recursive: true });
+    fs.writeFileSync(path.join(stale, "session.v3.jsonl.zstd"), "");
+    const previousSessions = process.env.DSH_SESSIONS_ROOT;
+    const previousCompression = process.env.DSH_PERSISTENCE_COMPRESSION;
+    delete process.env.DSH_SESSIONS_ROOT;
+    delete process.env.DSH_PERSISTENCE_COMPRESSION;
+    try {
+      const redirected = buildCommand({
+        adapter: "dsh-acp",
+        prompt: "hello",
+        binary: entry,
+        cwd: workspace,
+        dshAcpRuntimeRoot: root
+      });
+      assert.equal(redirected.env.DSH_SESSIONS_ROOT, path.join(root, "sessions"));
+      const clean = path.join(root, "clean");
+      fs.mkdirSync(clean);
+      const plain = buildCommand({
+        adapter: "dsh-acp",
+        prompt: "hello",
+        binary: entry,
+        cwd: clean,
+        dshAcpRuntimeRoot: root,
+        extraArgs: ["--model", "vendor/custom"]
+      });
+      assert.equal(plain.env.DSH_SESSIONS_ROOT, undefined);
+      assert.equal(plain.env.DEEPSEEK_MODEL, "vendor/custom");
+    } finally {
+      if (previousSessions === undefined) delete process.env.DSH_SESSIONS_ROOT;
+      else process.env.DSH_SESSIONS_ROOT = previousSessions;
+      if (previousCompression === undefined) delete process.env.DSH_PERSISTENCE_COMPRESSION;
+      else process.env.DSH_PERSISTENCE_COMPRESSION = previousCompression;
+    }
     const custom = buildCommand({ adapter: "dsh-acp", prompt: "hello", binary: entry, extraArgs: ["--config", "custom.yml"] });
     assert.deepEqual(custom.args, ["--disable-warning=ExperimentalWarning", entry, "--config", "custom.yml"]);
     for (const extraArgs of [["--model", "vendor/custom"], ["--model=vendor/custom"], ["-m", "vendor/custom"]]) {

@@ -1017,26 +1017,30 @@ declare global {
 
   interface FreebuddyDocStudio {
     openWindow(target?: string | { filePath?: string }): Promise<boolean>;
-    readFile(filePath: string): Promise<{
-      success: boolean;
-      name?: string;
-      path?: string;
-      size?: number;
-      ext?: string;
-      content?: string;
-      bufferBase64?: string;
-      error?: string;
-    }>;
-    writeFile(filePath: string, payload: { content?: string; bufferBase64?: string }): Promise<{
-      success: boolean;
-      error?: string;
-    }>;
-    showSaveDialog(defaultName: string, filters?: Array<{ name: string; extensions: string[] }>): Promise<string | null>;
     showOpenDialog(defaultPath?: string): Promise<string[] | null>;
     showItemInFolder(filePath: string): Promise<boolean>;
     openConversationInMain(conversationId: string): Promise<boolean>;
     watchFile(filePath: string): Promise<boolean>;
     unwatchFile(filePath: string): Promise<boolean>;
+    getEnginePreview(filePath: string): Promise<{
+      success: boolean;
+      url?: string;
+      error?: string;
+    }>;
+    getEngineEditorStatus(filePath: string): Promise<{
+      success: boolean;
+      isDirty?: boolean;
+      lastSavedMs?: number;
+      error?: string;
+    }>;
+    getOfficeEngineAddonStatus(): Promise<{
+      installed: boolean;
+      installing: boolean;
+      managedPath: string;
+      activePath: string | null;
+    }>;
+    downloadOfficeEngineAddon(): Promise<{ installedPath: string }>;
+    onOfficeEngineDownloadProgress(cb: (progress: { receivedBytes: number; totalBytes: number | null }) => void): () => void;
     onFileChanged(cb: (filePath: string) => void): () => void;
   }
 

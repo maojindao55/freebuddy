@@ -7,7 +7,7 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { useFileDiffStore } from "@/store/fileDiffStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { cliClient } from "@/services/cli/client";
-import { collectFileEdits, foldDiffRows, getFileDiff, getFileEditCounts, groupFileEditRecords, inlineHighlights, isMarkdownFile, markdownVersions, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
+import { collectFileEdits, fileEditContentKey, foldDiffRows, getFileDiff, indexFileEdits, inlineHighlights, isMarkdownFile, markdownVersions, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
 import { conversationWorktreePath } from "./conversationProjectGrouping";
 import { copyToClipboard } from "@/utils/clipboard";
 import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
@@ -27,28 +27,35 @@ export function FileChangesCard({ items, conversationId, messageId, storedTaskId
   const { t } = useTranslation();
   const roots = useWorkspaceRoots(conversationId);
   const storedKey = JSON.stringify([conversationId, messageId, storedTaskId]);
-  const [stored, setStored] = useState<{ key: string; edits: FileEdit[] }>();
+  const [stored, setStored] = useState<{ key: string; edits: FileEdit[]; coveredPaths: string[] }>();
   const [indexError, setIndexError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const counts = useFileDiffStore(state => state.counts);
-  const edits = useMemo(() => mergeStoredFileEdits(collectFileEdits(items), stored?.key === storedKey ? stored.edits : undefined), [items, stored, storedKey]);
+  const edits = useMemo(() => {
+    if (isRunning || (storedTaskId && stored?.key !== storedKey)) return [];
+    const saved = stored?.key === storedKey ? stored : undefined;
+    return indexFileEdits(mergeStoredFileEdits(collectFileEdits(items), saved?.edits, saved?.coveredPaths));
+  }, [items, stored, storedKey, storedTaskId, isRunning]);
   useEffect(() => {
     let cancelled = false;
     setIndexError(false);
-    if (!storedTaskId || isRunning) return;
+    if (isRunning) { setStored(undefined); return; }
+    if (!storedTaskId) return;
     void (async () => {
       try {
         const collected: FileEdit[] = [];
+        const coveredPaths: string[] = [];
         let cursor = 0;
         while (!cancelled) {
-          const page = await cliClient.listMessageFileEdits(messageId, cursor);
+          const page = await cliClient.listMessageFileEdits(messageId, cursor, true);
           if (cancelled) return;
           collected.push(...page.edits);
+          coveredPaths.push(...(page.coveredPaths ?? page.edits.map(edit => edit.path)));
           if (!page.hasMore) break;
           if (page.nextCursor <= cursor) throw new Error("Invalid file edit cursor");
           cursor = page.nextCursor;
         }
-        if (!cancelled) setStored({ key: storedKey, edits: collected });
+        if (!cancelled) setStored({ key: storedKey, edits: collected, coveredPaths });
       } catch {
         if (!cancelled) setIndexError(true);
       }
@@ -57,22 +64,16 @@ export function FileChangesCard({ items, conversationId, messageId, storedTaskId
   }, [messageId, storedTaskId, storedKey, isRunning, attempt]);
   const [expanded, setExpanded] = useState(false);
   const files = useMemo(() => {
-    const grouped = new Map<string, { path: string; index: number; edits: number; added: number; removed: number; unknown: boolean }>();
-    edits.forEach((edit, index) => {
-      const file = grouped.get(edit.path) ?? { path: edit.path, index, edits: 0, added: 0, removed: 0, unknown: false };
-      const summary = edit.blobKey ? counts[edit.blobKey] : undefined;
-      const diff = summary === null ? undefined : summary ?? getFileEditCounts(edit);
-      file.edits++;
-      file.added += diff?.added ?? 0;
-      file.removed += diff?.removed ?? 0;
-      file.unknown ||= !diff;
-      grouped.set(edit.path, file);
+    return edits.flatMap((edit, index) => {
+      const summary = counts[edit.turnKey ?? edit.blobKey ?? fileEditContentKey(conversationId, messageId, edit)];
+      if (summary?.unchanged) return [];
+      return [{ path: edit.path, index, added: summary?.added ?? 0, removed: summary?.removed ?? 0,
+        unknown: !summary, calculated: summary !== undefined }];
     });
-    return [...grouped.values()];
-  }, [edits, counts]);
+  }, [edits, counts, conversationId, messageId]);
   useEffect(() => setExpanded(false), [conversationId, messageId]);
   useEffect(() => { useFileDiffStore.getState().refresh(conversationId, messageId, edits); }, [conversationId, messageId, edits]);
-  if (!edits.length && !indexError) return null;
+  if (isRunning || (!files.length && !indexError)) return null;
   const open = (index: number) => useFileDiffStore.getState().open({ conversationId, messageId, edits, index });
   return <section className="file-changes-card" aria-label={t("fileDiff.title")}>
     {indexError && <p className="file-diff-notice" role="status">{t("fileDiff.indexError")} <button type="button" onClick={() => setAttempt(value => value + 1)}>{t("fileDiff.retry")}</button></p>}
@@ -81,8 +82,7 @@ export function FileChangesCard({ items, conversationId, messageId, storedTaskId
       return <button type="button" className="file-change-entry" key={file.path} title={file.path} aria-label={`${t("fileDiff.view")}: ${file.path}`} onClick={() => open(file.index)}>
         <FileDiffIcon size={18} className="file-change-icon" aria-hidden="true" />
         <span className="file-change-path"><span className="file-change-name">{name}</span>{dir && <span className="file-change-dir">{dir}</span>}</span>
-        {file.edits > 1 && <span className="file-change-edits">{t("fileDiff.editCount", { count: file.edits })}</span>}
-        {file.unknown ? <span className="file-change-unavailable">{t("fileDiff.countsUnavailable")}</span> : <Counts className="file-change-counts" added={file.added} removed={file.removed} title={file.edits > 1 ? t("fileDiff.countsHint") : undefined} />}
+        {file.unknown ? <span className="file-change-unavailable">{t(file.calculated ? "fileDiff.countsUnavailable" : "fileDiff.view")}</span> : <Counts className="file-change-counts" added={file.added} removed={file.removed} title={t("fileDiff.countsHint")} />}
         <ChevronRight size={16} className="file-change-chevron" aria-hidden="true" />
       </button>;
     })}
@@ -182,11 +182,9 @@ export function FileDiffPanel() {
   const content = useFileDiffStore((s) => s.content);
   const current = selection?.conversationId === activeId ? selection : undefined;
   const edit = current?.edits[current.index];
-  const loaded = edit?.blobKey && content?.key === JSON.stringify([current?.conversationId, edit.blobKey]) ? content : undefined;
-  const files = useMemo(() => groupFileEditRecords(current?.edits ?? []), [current?.edits]);
-  const records = files.find(file => file.path === edit?.path)?.indices ?? [];
-  const recordIndex = current ? records.indexOf(current.index) : -1;
-  const total = records.length;
+  const loaded = edit && current && content?.key === fileEditContentKey(current.conversationId, current.messageId, edit) ? content : undefined;
+  const files = current?.edits ?? [];
+  const total = files.length;
   const roots = useWorkspaceRoots(current?.conversationId);
   const labels = useMemo(() => pickerLabels(files.map(file => file.path), roots), [files, roots]);
   const [expanded, setExpanded] = useState(false);
@@ -204,8 +202,7 @@ export function FileDiffPanel() {
     focused?.focus({ preventScroll: true });
   }, [expanded]);
   const go = (delta: number) => {
-    const index = records[recordIndex + delta];
-    if (index !== undefined) useFileDiffStore.getState().select(index);
+    if (current) useFileDiffStore.getState().select(current.index + delta);
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
@@ -217,21 +214,16 @@ export function FileDiffPanel() {
     {current && edit ? <>
       <div className="file-diff-toolbar">
         <label className="file-diff-picker">{t("fileDiff.file")}
-          <select value={edit.path} title={edit.path} onChange={(event) => {
-            const file = files.find(item => item.path === event.target.value);
-            if (file) useFileDiffStore.getState().select(file.indices[0]);
+          <select value={current.index} title={edit.path} onChange={(event) => {
+            useFileDiffStore.getState().select(Number(event.target.value));
           }}>
-            {files.map((file, index) => <option key={file.path} value={file.path}>{labels[index]}</option>)}
+            {files.map((file, index) => <option key={file.path} value={index}>{labels[index]}</option>)}
           </select>
         </label>
         {total > 1 && <div className="file-diff-nav">
-          <label className="file-diff-record-label">{t("fileDiff.record")}
-            <select aria-label={t("fileDiff.record")} value={current.index} onChange={(event) => useFileDiffStore.getState().select(Number(event.target.value))}>
-              {records.map((index, ordinal) => <option key={index} value={index}>{ordinal + 1}/{total} · {t(`fileDiff.${current.edits[index].action}`)}</option>)}
-            </select>
-          </label>
-          <button type="button" className="detail-panel-collapse-btn" disabled={recordIndex === 0} onClick={() => go(-1)} title={t("fileDiff.prev")} aria-label={t("fileDiff.prev")}><ChevronUp size={15} /></button>
-          <button type="button" className="detail-panel-collapse-btn" disabled={recordIndex === total - 1} onClick={() => go(1)} title={t("fileDiff.next")} aria-label={t("fileDiff.next")}><ChevronDown size={15} /></button>
+          <span>{current.index + 1}/{total}</span>
+          <button type="button" className="detail-panel-collapse-btn" disabled={current.index === 0} onClick={() => go(-1)} title={t("fileDiff.prev")} aria-label={t("fileDiff.prev")}><ChevronUp size={15} /></button>
+          <button type="button" className="detail-panel-collapse-btn" disabled={current.index === total - 1} onClick={() => go(1)} title={t("fileDiff.next")} aria-label={t("fileDiff.next")}><ChevronDown size={15} /></button>
         </div>}
         {isOfficeOrDocFile(edit.path) && window.freebuddy?.docStudio?.openWindow && (
           <button
@@ -258,10 +250,10 @@ export function FileDiffPanel() {
         )}
         <button type="button" className="detail-panel-collapse-btn file-diff-expand" aria-expanded={expanded} onClick={() => setExpanded(!expanded)} title={t(expanded ? "fileDiff.exitExpanded" : "fileDiff.fullWidth")} aria-label={t(expanded ? "fileDiff.exitExpanded" : "fileDiff.fullWidth")}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
       </div>
-      {edit.blobKey && loaded?.status !== "ready" ? <p className="file-diff-notice" role="status">
+      {(edit.turnKey || edit.blobKey || edit.sources) && loaded?.status !== "ready" ? <p className="file-diff-notice" role="status">
         {t(`fileDiff.${!loaded || loaded.status === "loading" ? "loading" : loaded.status === "error" ? "loadError" : loaded.status === "missing" ? "unavailable" : "large"}`)}
         {(loaded?.status === "error" || loaded?.status === "missing") && <button type="button" onClick={() => void useFileDiffStore.getState().loadSelected(true)}>{t("fileDiff.retry")}</button>}
-      </p> : <DiffContent key={`${current.conversationId}:${current.messageId}:${current.index}:${edit.blobKey ?? edit.path}`} edit={loaded?.edit ?? edit} path={relativePath(edit.path, roots)} />}
+      </p> : <DiffContent key={`${current.conversationId}:${current.messageId}:${current.index}:${edit.turnKey ?? edit.blobKey ?? edit.path}`} edit={loaded?.edit ?? edit} path={relativePath(edit.path, roots)} />}
     </> : <p className="file-diff-empty"><FileDiffIcon size={30} />{t("fileDiff.empty")}</p>}
     </section>
   </dialog>;

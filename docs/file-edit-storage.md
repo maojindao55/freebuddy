@@ -8,26 +8,37 @@ ACP 文件变更在 `acpRuntime.ts` 发出流事件前写入 SQLite 的 `file_ed
 
 `cli:listMessageFileEdits` 按消息关联的运行读取轻量索引，每页最多 100 条，即使流消息中的文件变更已被总预算淘汰，仍可恢复卡片。`cli:readFileEditBlob` 校验会话归属，按最多 64 KiB 的字节块返回 UTF-8 JSON，正文不会重新写回会话消息。
 
+对话中的文件变更卡片仅在本轮运行结束后显示，包括正常结束、失败和手动停止时已经成功完成的文件修改。`cli:listMessageFileEdits(messageId, cursor, true)` 仅按文件读取元数据索引，每页最多 100 个文件，不读取正文、不计算整体差异、不写入汇总。索引中的 `turnKey` 标识本轮该文件的原始记录版本，`coveredPaths` 防止消息中的旧引用重复生成卡片。卡片先显示文件列表，点击后才更新净增删统计；没有净变化的文件在计算后从卡片隐藏。
+
+点击文件时调用 `cli:readMessageFileEdit(messageId, path, turnKey, offset)`。主进程校验会话归属、运行结束状态及原始记录版本，按顺序读取该文件成功执行的修改，调用公共算法合成本轮整体差异。完整版本以首次修改前内容和最终内容比较；补丁按原行号合成；缺少完整基准的片段抵消中间版本，互不包含的片段保留片段内行号，不推测文件位置。改后恢复及新建后删除返回无净变化标记。默认不传索引的第三个参数时仍返回逐次修改记录，原始正文、索引和既有引用保持不变。
+
+整体差异仅保存在有容量限制的内存缓存中，不再保存 `turn-summary` 或 `turn-snapshot` 记录，也不在运行期间读取工作区文件建立快照。主进程缓存最多 32 个结果、合计 8 MiB，计算所需原始正文总量最多 8 MiB。正文仍按最多 64 KiB 的 UTF-8 JSON 字节块传输；再次打开复用缓存，重启后可从原记录重新计算。
+
+已有的数据正确性修复继续保留。CodeBuddy 的文本完成通知保留已经上报的 diff；旧版本误停用的预览仅在工具状态和成功文本均确认时纳入读取，正文匹配替换参数时标记为片段，不重新激活旧条目。Claude Edit 的结果可能只是补丁上下文，解析使用元数据中的原文及经过验证的实际补丁重建完整版本，正确处理文件末尾换行；未能重建的输出标记为片段。旧 Claude 历史只在点击时尝试从本轮保留的日志恢复，日志最多 8 MiB，工具调用、路径及已存正文均匹配才采用；不读取当前工作区文件。
+
+AGY 的 `replace_file_content` 可同时返回文件行号补丁和局部 `oldText/newText`。只有补丁能准确应用于这两个版本时，才把它们当作完整文件；否则按补丁合成本轮净变化。解析保留末尾空白上下文，结构化补丁丢失这部分时，优先使用匹配的原始 `diff_block`。对于已经保存的旧补丁，仅在缺失数量相等、末尾为上下文且增删内容与两个替换片段完全一致时，允许省略丢失的末尾上下文，不补造文本。计算缓存键包含算法版本与原始记录身份，旧数据库汇总不参与读取。
+
 加载历史详情时，日志中的文件变更先按原会话、运行、工具条目及内容恢复为已保存的引用，再交给前端合并。恢复只读数据库，不会重新激活旧版本或覆盖索引；无法匹配的旧内嵌记录仍保留，不按文件路径粗暴去重。
 
 转接或分享会话时，在生成独立历史快照的过程中读取引用对应的正文，再应用原有脱敏和容量限制，不把正文写回聊天消息。每个正文字段最多截取 16K 字符，每条消息补回正文的总量也有限制；超限或缺失会标记快照不完整。生成后的快照不依赖源会话的正文表，因此删除源会话不会使已生成的快照失效。旧快照不会自动补全，需重新转接或分享。
 
-卡片加载时仅查询索引。点击文件后才读取正文，前端合并分块、计算差异并缓存结果，统计在读取后更新。快速切换文件时忽略过期响应；读取失败或内容缺失可以重试。正文缓存最多 32 项，并受 8 MiB 内存预算约束；单次预览最多读取 8 MiB 的序列化内容，超限会显示大文件提示。数据库保存正文不受这一预览限制影响。
+卡片加载时前端仅接收文件索引。点击文件后才向前端传输本轮整体正文，前端合并分块、计算展示行及净增删统计并缓存结果。快速切换文件时忽略过期响应；读取失败或内容缺失可以重试。正文缓存最多 32 项，并受 8 MiB 内存预算约束；单次预览最多读取 8 MiB 的序列化内容，超限会显示大文件提示。数据库保存正文不受这一预览限制影响。
 
-此实现覆盖 ACP 已上报的结构化文件变更。旧会话中已经截断且没有独立存储的正文无法自动恢复。现有差异算法对字符数、行数和计算规模的限制继续生效；超大文件展示和其他适配器的快照采集不包含在本次变更中。
+此实现复用已入库的 ACP 文件变更及旧 CLI 的内嵌记录。旧会话中已经截断且没有完整存储或日志的正文无法自动恢复。现有差异算法对字符数、行数和计算规模的限制继续生效。
 
-Markdown 差异默认以 14px 字号自动换行，可切换为横向滚动。文件选择与该文件的修改记录分别展示，上一条/下一条及 Alt+↑/↓ 只在当前文件内切换。全宽阅读使用原生 dialog，Esc 返回侧栏，保留当前预览版本及展开状态。
+Markdown 差异默认以 14px 字号自动换行，可切换为横向滚动。每个文件只展示本轮整体差异，取消修改次数选择，上一项/下一项及 Alt+↑/↓ 在文件之间切换。全宽阅读使用原生 dialog，Esc 返回侧栏，保留当前预览版本及展开状态。
 
 完整的 Markdown 正文可切换源码差异与修改前/修改后预览；局部片段、仅有补丁、截断或超限的记录不提供完整文档预览。Antigravity 上游文本末尾的 `<truncated N bytes>` / `<truncated N lines>` 也会识别为不完整内容，即使正文已独立存储；此类记录不显示增删统计，可展开查看已捕获的原始内容，不尝试补造丢失的文本。
 
-Markdown 阅读手动验证页面为 `http://127.0.0.1:5189/tests/fixtures/markdown-diff-preview.html`，使用模拟记录检查文件内历史切换、按需正文读取、任务列表及表格预览、窄面板换行、全宽/Esc、深浅主题与截断提示。
+Markdown 阅读手动验证页面为 `http://127.0.0.1:5189/tests/fixtures/markdown-diff-preview.html`，使用模拟记录检查同一文件的多次修改汇总、任务列表及表格预览、窄面板换行、全宽/Esc、深浅主题与截断提示。`file-diff-preview.html` 可模拟运行中与结束状态，检查卡片出现时机、打开前无计算、打开后净增删统计及无净变化文件的隐藏。
 
 验证命令：
 
 ```sh
 npm run typecheck
 npm run build:electron
-node --test tests/file-edit-content.test.mjs tests/file-diff.test.mjs tests/stream-media.test.mjs tests/remote-channel-policy.test.mjs
+node --test tests/turn-file-diff.test.mjs tests/turn-file-diff-ui.test.mjs tests/file-edit-content.test.mjs tests/file-diff.test.mjs tests/stream-media.test.mjs tests/remote-channel-policy.test.mjs
+node --test tests/acp-yield-lifecycle.test.mjs
 node --test tests/acp-local-diff.test.mjs tests/acp.test.mjs
 node --test tests/message-details.test.mjs tests/handoff-transcript.test.mjs tests/handoff-context-mcp.test.mjs tests/handoff-transfer-wiring.test.mjs
 npm run test:file-edit-db

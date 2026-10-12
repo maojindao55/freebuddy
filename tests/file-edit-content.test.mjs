@@ -21,7 +21,7 @@ function chunk(content) {
   return { data: buffer.toString("base64"), nextOffset: buffer.length, totalBytes: buffer.length, hasMore: false };
 }
 
-function makeStore(readFileEditBlob) {
+function makeStore(readFileEditBlob, readMessageFileEdit) {
   const compiled = ts.transpileModule(fs.readFileSync(new URL("../src/store/fileDiffStore.ts", import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   }).outputText;
@@ -29,7 +29,7 @@ function makeStore(readFileEditBlob) {
   vm.runInNewContext(compiled, { exports, require: name => {
     if (name === "zustand") return require(name);
     if (name === "@/utils/fileDiff") return diffModule;
-    if (name === "@/services/cli/client") return { cliClient: { readFileEditBlob } };
+    if (name === "@/services/cli/client") return { cliClient: { readFileEditBlob, readMessageFileEdit } };
     if (name === "@/services/cli/fileEditContent") return { createFileEditContentLoader };
     if (name === "./detailLayoutStore") return { useDetailLayoutStore: { getState: () => ({ setActiveTab() {}, setDetailCollapsed() {} }) } };
     throw new Error(name);
@@ -63,6 +63,46 @@ test("content loads only on selection and late responses cannot replace another 
   assert.equal(edits[0].oldText, undefined);
   assert.equal(store.getState().counts.first.added, 1);
   assert.equal(store.getState().counts.second.removed, 1);
+});
+
+test("turn indexes read and compose only the clicked file; cached results keep partial metadata and net counts", async () => {
+  const calls = [];
+  const store = makeStore(async () => { throw new Error("A turn index must use its scoped reader"); }, async (messageId, path, turnKey) => {
+    calls.push({ messageId, path, turnKey });
+    return chunk({ oldText: "original", newText: "final", partial: true, action: "update" });
+  });
+  const edits = ["first", "second"].map(turnKey => ({ kind: "file-edit", path: `${turnKey}.ts`, action: "update", turnKey }));
+  store.getState().refresh("conversation", "message", edits);
+  assert.equal(calls.length, 0);
+  store.getState().open({ conversationId: "conversation", messageId: "message", edits, index: 0 });
+  await tick();
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { messageId: "message", path: "first.ts", turnKey: "first" });
+  assert.equal(store.getState().content.edit.partial, true);
+  assert.equal(store.getState().counts.first.added, 1);
+  assert.equal(store.getState().counts.second, undefined);
+  store.getState().select(1);
+  await tick();
+  store.getState().select(0);
+  await tick();
+  assert.equal(calls.length, 2);
+});
+
+test("legacy inline edits compose only when selected and preserve restored files as unchanged", async () => {
+  const store = makeStore(async () => { throw new Error("Inline edits do not need IPC"); });
+  const raw = [
+    { kind: "file-edit", path: "file.ts", action: "update", oldText: "before", newText: "middle" },
+    { kind: "file-edit", path: "file.ts", action: "update", oldText: "middle", newText: "before" }
+  ];
+  const edits = diffModule.indexFileEdits(raw);
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0].oldText, undefined);
+  store.getState().refresh("conversation", "message", edits);
+  assert.equal(store.getState().content, undefined);
+  store.getState().open({ conversationId: "conversation", messageId: "message", edits, index: 0 });
+  await tick();
+  assert.equal(store.getState().content.edit.unchanged, true);
+  assert.equal(Object.values(store.getState().counts)[0].unchanged, true);
 });
 
 test("failed and missing content can be retried without modifying message references", async () => {
@@ -107,6 +147,22 @@ test("refreshing unchanged references does not repeatedly publish selection upda
   assert.equal(store.getState().selection, selection);
   assert.equal(updates, 0);
   unsubscribe();
+});
+
+test("refresh retains the selected file when turn summaries get new blob identities or order", async () => {
+  const store = makeStore(async () => chunk({ oldText: "before", newText: "after" }));
+  store.getState().open({ conversationId: "conversation", messageId: "message", edits: [
+    { kind: "file-edit", path: "first.ts", action: "update", blobKey: "first" },
+    { kind: "file-edit", path: "selected.ts", action: "update", blobKey: "old" }
+  ], index: 1 });
+  await tick();
+  store.getState().refresh("conversation", "message", [
+    { kind: "file-edit", path: "selected.ts", action: "update", blobKey: "summary" },
+    { kind: "file-edit", path: "first.ts", action: "update", blobKey: "first" }
+  ]);
+  await tick();
+  assert.equal(store.getState().selection.index, 0);
+  assert.equal(store.getState().content.key, JSON.stringify(["conversation", "summary"]));
 });
 
 test("loader deduplicates requests, bounds previews and evicts cached contents", async () => {

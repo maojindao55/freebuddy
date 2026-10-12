@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { agyTurnChanges, agyTurnUpdate } from "./fixtures/agy-turn-diff.mjs";
+import { codebuddyTurnUpdate } from "./fixtures/codebuddy-turn-diff.mjs";
+import { claudeTurnBefore, claudeTurnAfter, claudeTurnUpdates } from "./fixtures/claude-turn-diff.mjs";
+import { aggregateFileEdits, buildFileDiff } from "@freebuddy/cli-stream";
 
 import {
   buildCommand,
@@ -62,6 +66,59 @@ import {
   shouldWriteAcpStdoutLog,
   updateActiveAcpToolCalls
 } from "../dist-electron/cli/acp.js";
+
+test("ACP preserves a trailing blank patch context line in structured diffs", () => {
+  const patch = "@@ -1,2 +1,2 @@\n-old\n+new\n \n";
+  const [call] = acpUpdateToItems({
+    sessionUpdate: "tool_call_update", toolCallId: "preserve", status: "completed",
+    content: [{ type: "diff", path: "file.ts", patch }]
+  });
+  assert.equal(call.toolOutputs[0].patch, patch);
+});
+
+test("ACP recovers AGY's untrimmed context from the matching raw diff block", () => {
+  for (let index = 0; index < agyTurnChanges.length; index++) {
+    const [call] = acpUpdateToItems(agyTurnUpdate(index));
+    const diff = call.toolOutputs.find(item => item.kind === "file-edit");
+    assert.equal(diff.patch, agyTurnChanges[index].patch + "\n ");
+  }
+});
+
+test("ACP marks CodeBuddy old_string/new_string diff previews as snippets", () => {
+  const [call] = acpUpdateToItems(codebuddyTurnUpdate(0));
+  assert.equal(call.toolOutputs[0].partial, true);
+});
+
+test("Claude contextual diffs use the captured original document and retain its EOF state", () => {
+  const edits = [];
+  for (let index = 0; index < 3; index++) {
+    const updates = claudeTurnUpdates(index);
+    assert.equal(acpUpdateToItems(updates[1])[0].toolOutputs[0].partial, true);
+    const [edit] = acpUpdateToItems(updates[2])[0].toolOutputs;
+    assert.equal(edit.partial, undefined);
+    assert.equal(edit.oldText, updates[2]._meta.claudeCode.toolResponse.originalFile);
+    assert.equal(edit.newText.endsWith("\n"), false);
+    assert.equal(edit.newText.includes("No newline at end of file"), false);
+    edits.push(edit);
+  }
+  const [summary] = aggregateFileEdits(edits);
+  assert.equal(summary.oldText, claudeTurnBefore);
+  assert.equal(summary.newText, claudeTurnAfter);
+  assert.deepEqual([buildFileDiff(summary).added, buildFileDiff(summary).removed], [3, 3]);
+  assert.deepEqual(buildFileDiff(summary).rows.filter(row => row.kind === "delete").map(row => row.oldLine), [1, 7, 50]);
+});
+
+test("invalid Claude metadata stays partial; validated patches take precedence over requested replacements", () => {
+  const update = structuredClone(claudeTurnUpdates(0)[2]);
+  update._meta.claudeCode.toolResponse.structuredPatch[0].oldLines++;
+  assert.equal(acpUpdateToItems(update)[0].toolOutputs[0].partial, true);
+  const modified = structuredClone(claudeTurnUpdates(1)[2]);
+  modified._meta.claudeCode.toolResponse.userModified = true;
+  modified._meta.claudeCode.toolResponse.newString = "different user request";
+  const [edit] = acpUpdateToItems(modified)[0].toolOutputs;
+  assert.equal(edit.newText.includes("different user request"), false);
+  assert.ok(edit.newText.includes("Chrome / Safari / Edge / Firefox"));
+});
 
 const acpRuntimeSource = fs.readFileSync(
   new URL("../electron/cli/acpRuntime.ts", import.meta.url),

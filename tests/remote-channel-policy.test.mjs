@@ -133,6 +133,8 @@ test("the chat surface the web client depends on stays callable", async () => {
     "cli:check",
     "cli:listConversations",
     "cli:listMessages",
+    "cli:listMessageFileEdits",
+    "cli:readMessageFileEdit",
     "cli:appendMessage",
     "cli:listOverrides",
     "cli:listAdapters",

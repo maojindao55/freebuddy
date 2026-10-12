@@ -37,6 +37,7 @@ const ALLOW = [
   "cli:readMessageDetails",
   "cli:listMessageFileEdits",
   "cli:readFileEditBlob",
+  "cli:readMessageFileEdit",
   "cli:removeConversationContextReference",
   "cli:renameConversation",
   "cli:setConversationApprovalMode",

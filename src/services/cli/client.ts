@@ -349,11 +349,14 @@ export const cliClient = {
   readMessageDetails(messageId: string, offset?: number): Promise<MessageDetailsPage> {
     return api().readMessageDetails(messageId, offset);
   },
-  listMessageFileEdits(messageId: string, cursor?: number): Promise<FileEditPage> {
-    return api().listMessageFileEdits(messageId, cursor);
+  listMessageFileEdits(messageId: string, cursor?: number, groupFiles?: boolean): Promise<FileEditPage> {
+    return api().listMessageFileEdits(messageId, cursor, groupFiles);
   },
   readFileEditBlob(conversationId: string, blobKey: string, offset?: number): Promise<FileEditBlobChunk | undefined> {
     return api().readFileEditBlob(conversationId, blobKey, offset);
+  },
+  readMessageFileEdit(messageId: string, path: string, turnKey: string, offset?: number): Promise<FileEditBlobChunk | undefined> {
+    return api().readMessageFileEdit(messageId, path, turnKey, offset);
   },
   listFollowupMessages(
     conversationId: string,

@@ -1,20 +1,22 @@
 import type { FileEditBlobChunk, FileEditContent } from "@freebuddy/protocol";
 
 type ContentResult = { status: "ready"; content: FileEditContent } | { status: "missing" | "large" };
-type ReadChunk = (conversationId: string, blobKey: string, offset: number) => Promise<FileEditBlobChunk | undefined>;
+type TurnSource = { messageId: string; path: string };
+type ReadChunk = (conversationId: string, blobKey: string, offset: number, turn?: TurnSource) => Promise<FileEditBlobChunk | undefined>;
 
 export function createFileEditContentLoader(readChunk: ReadChunk, maxBytes = 8 * 1024 * 1024) {
   const cache = new Map<string, { result: ContentResult; bytes: number }>();
   const pending = new Map<string, Promise<ContentResult>>();
   let cacheBytes = 0;
-  const read = async (conversationId: string, blobKey: string, key: string): Promise<ContentResult> => {
+  const read = async (conversationId: string, blobKey: string, key: string, turn?: TurnSource): Promise<ContentResult> => {
     let offset = 0;
     let totalBytes: number | undefined;
     let text = "";
     const decoder = new TextDecoder("utf-8", { fatal: true });
     while (true) {
-      const page = await readChunk(conversationId, blobKey, offset);
+      const page = await readChunk(conversationId, blobKey, offset, turn);
       if (!page) return { status: "missing" };
+      if (page.notice === "large") return { status: "large" };
       if (page.totalBytes > maxBytes) return { status: "large" };
       if (totalBytes !== undefined && totalBytes !== page.totalBytes) throw new Error("File edit changed while loading");
       totalBytes = page.totalBytes;
@@ -28,7 +30,9 @@ export function createFileEditContentLoader(readChunk: ReadChunk, maxBytes = 8 *
     }
     const content = JSON.parse(text) as FileEditContent;
     if (!content || typeof content !== "object" || Array.isArray(content)
-      || [content.oldText, content.newText, content.patch].some(value => value !== undefined && typeof value !== "string")) {
+      || [content.oldText, content.newText, content.patch].some(value => value !== undefined && typeof value !== "string")
+      || [content.partial, content.unchanged].some(value => value !== undefined && typeof value !== "boolean")
+      || (content.action !== undefined && !["create", "update", "delete"].includes(content.action))) {
       throw new Error("Invalid file edit content");
     }
     const result: ContentResult = { status: "ready", content };
@@ -44,8 +48,8 @@ export function createFileEditContentLoader(readChunk: ReadChunk, maxBytes = 8 *
     }
     return result;
   };
-  return (conversationId: string, blobKey: string): Promise<ContentResult> => {
-    const key = JSON.stringify([conversationId, blobKey]);
+  return (conversationId: string, blobKey: string, turn?: TurnSource): Promise<ContentResult> => {
+    const key = JSON.stringify([conversationId, blobKey, turn]);
     const cached = cache.get(key);
     if (cached) {
       cache.delete(key);
@@ -54,7 +58,7 @@ export function createFileEditContentLoader(readChunk: ReadChunk, maxBytes = 8 *
     }
     const existing = pending.get(key);
     if (existing) return existing;
-    const request = read(conversationId, blobKey, key).finally(() => pending.delete(key));
+    const request = read(conversationId, blobKey, key, turn).finally(() => pending.delete(key));
     pending.set(key, request);
     return request;
   };

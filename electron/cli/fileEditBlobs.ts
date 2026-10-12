@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { buildFileDiff } from "@freebuddy/cli-stream";
+import { aggregateFileEdits, buildFileDiff } from "@freebuddy/cli-stream";
 import type { FileEditBlobChunk, FileEditContent, FileEditPage, ToolCallStatus } from "@freebuddy/protocol";
 import type { AcpStreamItem } from "./acp.js";
 import { getDb } from "./db.js";
 import { requireOwnedConversation } from "./conversations.js";
+import { readFileEditLogVersions } from "./fileEditLogRecovery.js";
 
 type FileEdit = Extract<AcpStreamItem, { kind: "file-edit" }>;
 type FileEditContext = { conversationId: string; sessionId: string };
@@ -14,6 +15,35 @@ interface FileEditRow {
   action: FileEdit["action"];
   partial: number;
   counts: string | null;
+  tool_call_id?: string;
+}
+type SnippetInput = { oldText: string; newText: string; recover: boolean };
+
+function messageSnippetInputs(content: string): Map<string, SnippetInput> {
+  const inputs = new Map<string, SnippetInput>();
+  try {
+    const items = JSON.parse(content);
+    if (!Array.isArray(items)) return inputs;
+    for (const item of items) {
+      if (item?.kind !== "tool-call" || !item.id || item.status !== "completed" || item.isError ||
+        typeof item.input?.old_string !== "string" || typeof item.input.new_string !== "string") continue;
+      const text = [item.output, ...(item.toolOutputs ?? []).map((output: any) => output.text ?? output.content)]
+        .filter(value => typeof value === "string").join("\n");
+      inputs.set(item.id, { oldText: item.input.old_string, newText: item.input.new_string,
+        recover: /Successfully edited file:/i.test(text) && !(item.toolOutputs ?? []).some((output: any) => output.kind === "file-edit") });
+    }
+  } catch { /* historical content may be unavailable */ }
+  return inputs;
+}
+
+function turnSourcePredicate(recoverIds: string[]): string {
+  if (!recoverIds.length) return "e.active = 1";
+  // Old text-only completion notifications deactivated previews. Recover only
+  // the latest entry confirmed successful by the persisted message; do not
+  // reactivate old rows or resurrect failed/pending tools.
+  return `(e.active = 1 OR (e.tool_call_id IN (${recoverIds.map(() => "?").join(",")}) AND NOT EXISTS (
+    SELECT 1 FROM file_edit_blobs newer WHERE newer.conversation_id = e.conversation_id AND newer.task_id = e.task_id
+    AND newer.tool_call_id = e.tool_call_id AND newer.entry_index = e.entry_index AND newer.sequence > e.sequence)))`;
 }
 
 function countsJson(edit: FileEdit): string {
@@ -113,6 +143,15 @@ export function persistFileEditItems(
         `UPDATE file_edit_blobs SET status = ? WHERE conversation_id = ? AND task_id = ? AND tool_call_id = ?`
       ).run(status, conversationId, sessionId, item.id);
       if (!item.toolOutputs) return item;
+      if (status !== "failed" && item.toolOutputs.length && !item.toolOutputs.some(output => output.kind === "file-edit")) {
+        // CodeBuddy/Claude send diff previews before permission, then only text
+        // on progress/success. Keep previews until their execution status settles.
+        const previousEdits = db.prepare(
+          `SELECT sequence, blob_key, path, action, partial, counts FROM file_edit_blobs
+           WHERE conversation_id = ? AND task_id = ? AND tool_call_id = ? AND active = 1 ORDER BY sequence`
+        ).all(conversationId, sessionId, item.id) as FileEditRow[];
+        if (previousEdits.length) return replaceOutputs(item, [...item.toolOutputs, ...previousEdits.map(reference)]);
+      }
       if (item.replaceToolOutputs) {
         db.prepare(
           `UPDATE file_edit_blobs SET active = 0 WHERE conversation_id = ? AND task_id = ? AND tool_call_id = ?`
@@ -169,19 +208,115 @@ export function readFileEditSnapshot(conversationId: string, blobKey: string, ma
   return content;
 }
 
-export function listMessageFileEdits(messageId: string, cursor = 0): FileEditPage {
-  if (typeof messageId !== "string" || !Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Invalid file edit query");
-  const db = getDb();
-  const message = db.prepare("SELECT conversation_id, task_id FROM conversation_messages WHERE id = ?")
-    .get(messageId) as { conversation_id: string; task_id: string | null } | undefined;
+type MessageEditContext = { id: string; conversation_id: string; task_id: string | null; status: string; content: string };
+type TurnSourceRow = FileEditRow & { bytes: number };
+const MAX_CONTENT_BYTES = 8 * 1024 * 1024;
+const turnCache = new Map<string, { messageId: string; conversationId: string; taskId: string; path: string; payload: Buffer }>();
+let turnCacheBytes = 0;
+let turnCacheDb: ReturnType<typeof getDb> | undefined;
+
+function messageEditContext(messageId: string): MessageEditContext {
+  if (typeof messageId !== "string") throw new Error("Invalid file edit query");
+  const message = getDb().prepare("SELECT id, conversation_id, task_id, status, content FROM conversation_messages WHERE id = ?")
+    .get(messageId) as MessageEditContext | undefined;
   if (!message || !requireOwnedConversation(message.conversation_id)) throw new Error("Message not available");
-  const rows = db.prepare(
-    `SELECT sequence, blob_key, path, action, partial, counts FROM file_edit_blobs
-     WHERE conversation_id = ? AND task_id = ? AND active = 1 AND status = 'completed'
-     AND sequence > ? ORDER BY sequence LIMIT 101`
-  ).all(message.conversation_id, message.task_id, cursor) as FileEditRow[];
+  return message;
+}
+
+function turnSources(message: MessageEditContext, filePath: string, inputs: Map<string, SnippetInput>): TurnSourceRow[] {
+  const recoverIds = [...inputs].filter(([, input]) => input.recover).map(([id]) => id);
+  return getDb().prepare(`SELECT e.sequence, e.blob_key, e.path, e.action, e.partial, e.counts, e.tool_call_id, length(e.payload) AS bytes
+    FROM file_edit_blobs e WHERE e.conversation_id = ? AND e.task_id = ? AND e.path = ? AND e.status = 'completed'
+    AND ${turnSourcePredicate(recoverIds)} ORDER BY e.sequence`)
+    .all(message.conversation_id, message.task_id, filePath, ...recoverIds) as TurnSourceRow[];
+}
+
+function turnSourceKey(message: MessageEditContext, filePath: string, rows: TurnSourceRow[], inputs: Map<string, SnippetInput>): string {
+  return createHash("sha256").update(JSON.stringify(["turn-diff-v1", message.id, message.conversation_id, message.task_id, filePath,
+    rows.map(row => [row.blob_key, inputs.get(row.tool_call_id ?? "")])])).digest("hex");
+}
+
+/** Group only metadata for cards. No payload reads, composition, or summary writes. */
+export function listMessageFileEdits(messageId: string, cursor = 0, groupFiles = false): FileEditPage {
+  if (!Number.isSafeInteger(cursor) || cursor < 0 || typeof groupFiles !== "boolean") throw new Error("Invalid file edit query");
+  const message = messageEditContext(messageId);
+  const db = getDb();
+  if (groupFiles) {
+    if (message.status === "running" || message.status === "starting" || !message.task_id) return { edits: [], coveredPaths: [], nextCursor: cursor, hasMore: false };
+    const inputs = messageSnippetInputs(message.content);
+    const recoverIds = [...inputs].filter(([, input]) => input.recover).map(([id]) => id);
+    const files = db.prepare(`SELECT e.path, MIN(e.sequence) AS sequence FROM file_edit_blobs e
+      WHERE e.conversation_id = ? AND e.task_id = ? AND e.status = 'completed' AND ${turnSourcePredicate(recoverIds)}
+      GROUP BY e.path HAVING MIN(e.sequence) > ? ORDER BY sequence LIMIT 101`)
+      .all(message.conversation_id, message.task_id, ...recoverIds, cursor) as { path: string; sequence: number }[];
+    const page = files.slice(0, 100);
+    const edits: FileEdit[] = page.map(file => {
+      const rows = turnSources(message, file.path, inputs);
+      return { kind: "file-edit", path: file.path,
+        action: rows[0].action === "create" ? "create" : rows.at(-1)!.action === "delete" ? "delete" : "update",
+        turnKey: turnSourceKey(message, file.path, rows, inputs) };
+    });
+    return { edits, coveredPaths: page.map(file => file.path), nextCursor: page.at(-1)?.sequence ?? cursor, hasMore: files.length > page.length };
+  }
+  const rows = db.prepare(`SELECT sequence, blob_key, path, action, partial, counts FROM file_edit_blobs
+    WHERE conversation_id = ? AND task_id = ? AND active = 1 AND status = 'completed'
+    AND sequence > ? ORDER BY sequence LIMIT 101`).all(message.conversation_id, message.task_id, cursor) as FileEditRow[];
   const page = rows.slice(0, 100);
   return { edits: page.map(reference), nextCursor: page.at(-1)?.sequence ?? cursor, hasMore: rows.length > page.length };
+}
+
+/** Read the selected file's saved edits and calculate its turn diff only on demand. */
+export function readMessageFileEdit(messageId: string, filePath: string, turnKey: string, offset = 0): FileEditBlobChunk | undefined {
+  if (typeof filePath !== "string" || !filePath || typeof turnKey !== "string" || !/^[a-f0-9]{64}$/.test(turnKey) ||
+    !Number.isSafeInteger(offset) || offset < 0) throw new Error("Invalid file edit query");
+  const message = messageEditContext(messageId);
+  if (!message.task_id || message.status === "running" || message.status === "starting") return;
+  const db = getDb();
+  if (turnCacheDb !== db) { turnCache.clear(); turnCacheBytes = 0; turnCacheDb = db; }
+  let cached = turnCache.get(turnKey);
+  if (cached && (cached.messageId !== messageId || cached.conversationId !== message.conversation_id ||
+    cached.taskId !== message.task_id || cached.path !== filePath)) return;
+  if (!cached) {
+    const inputs = messageSnippetInputs(message.content);
+    const rows = turnSources(message, filePath, inputs);
+    if (!rows.length || turnSourceKey(message, filePath, rows, inputs) !== turnKey) return;
+    let content: FileEditContent;
+    if (rows.reduce((total, row) => total + row.bytes, 0) > MAX_CONTENT_BYTES) {
+      return { data: "", nextOffset: 0, totalBytes: 0, hasMore: false, notice: "large" };
+    }
+    const task = db.prepare("SELECT adapter, log_path FROM cli_tasks WHERE id = ?").get(message.task_id) as
+      { adapter: string; log_path: string | null } | undefined;
+    const versions = task?.adapter === "claude-agent-acp" && task.log_path ? readFileEditLogVersions(task.log_path) : undefined;
+    const edits = rows.map(row => {
+      const body = db.prepare("SELECT payload FROM file_edit_blobs WHERE blob_key = ?").get(row.blob_key) as { payload: Buffer };
+      const captured = JSON.parse(body.payload.toString("utf8")) as FileEditContent;
+      const recovered = versions?.get(row.tool_call_id ?? "")?.find(({ source }) => source.path === row.path &&
+        source.oldText === captured.oldText && source.newText === captured.newText && source.patch === captured.patch);
+      if (recovered) return recovered.edit;
+      const input = inputs.get(row.tool_call_id ?? "");
+      return { kind: "file-edit" as const, path: row.path, action: row.action, blobKey: row.blob_key, ...captured,
+        partial: !!row.partial || !!(input && input.oldText === captured.oldText && input.newText === captured.newText) };
+    });
+    if (edits.reduce((total, edit) => total + contentPayload(edit).length, 0) > MAX_CONTENT_BYTES) {
+      return { data: "", nextOffset: 0, totalBytes: 0, hasMore: false, notice: "large" };
+    }
+    const summary = aggregateFileEdits(edits)[0];
+    content = summary ? { oldText: summary.oldText, newText: summary.newText, patch: summary.patch, action: summary.action, partial: !!summary.partial }
+      : { action: "update", oldText: "", newText: "", partial: false, unchanged: true };
+    cached = { messageId, conversationId: message.conversation_id, taskId: message.task_id, path: filePath, payload: Buffer.from(JSON.stringify(content), "utf8") };
+    if (cached.payload.length <= MAX_CONTENT_BYTES) {
+      while (turnCache.size && (turnCacheBytes + cached.payload.length > MAX_CONTENT_BYTES || turnCache.size >= 32)) {
+        const oldest = turnCache.keys().next().value!;
+        turnCacheBytes -= turnCache.get(oldest)!.payload.length;
+        turnCache.delete(oldest);
+      }
+      turnCache.set(turnKey, cached);
+      turnCacheBytes += cached.payload.length;
+    }
+  } else { turnCache.delete(turnKey); turnCache.set(turnKey, cached); }
+  const chunk = cached.payload.subarray(offset, offset + 65536);
+  const nextOffset = Math.min(offset + chunk.length, cached.payload.length);
+  return { data: chunk.toString("base64"), nextOffset, totalBytes: cached.payload.length, hasMore: nextOffset < cached.payload.length };
 }
 
 export function readFileEditBlob(conversationId: string, blobKey: string, offset = 0): FileEditBlobChunk | undefined {

@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  FileSpreadsheet,
   FileText,
   Languages,
   ListTree,
   MessageSquarePlus,
+  Presentation,
   PenLine,
   ScrollText,
   Sparkles,
@@ -474,26 +476,43 @@ export const DocStudioCopilot: React.FC<DocStudioCopilotProps> = ({
       </div>
     </div>
   ) : (
-    <div className="ds-copilot-empty">
+    <div className="ds-copilot-empty ds-copilot-empty-create">
       <div className="ds-copilot-hero">
-        <h4>{t("docStudio.createTitle")}</h4>
+        {headerMember && (
+          <AgentAvatar
+            adapter={headerMember.cli.adapter}
+            agentId={headerMember.id}
+            className="ds-copilot-hero-avatar"
+          />
+        )}
+        <h4>
+          {headerMember?.name
+            ? t("docStudio.createHelloTitle", { name: headerMember.name })
+            : t("docStudio.createTitle")}
+        </h4>
         <p>{t("docStudio.copilotNoDocHint")}</p>
       </div>
       <div className="ds-copilot-try">{t("docStudio.tryAsking")}</div>
-      <div className="ds-copilot-actions">
+      <div className="ds-copilot-actions ds-copilot-actions-create">
         {([
-          { kind: "doc", labelKey: "docStudio.createDocLabel", promptKey: "docStudio.createDocPrompt" },
-          { kind: "sheet", labelKey: "docStudio.createSheetLabel", promptKey: "docStudio.createSheetPrompt" },
-          { kind: "slide", labelKey: "docStudio.createSlideLabel", promptKey: "docStudio.createSlidePrompt" }
-        ] as const).map(({ kind, labelKey, promptKey }) => (
+          { kind: "doc", icon: FileText, labelKey: "docStudio.createDocLabel", descKey: "docStudio.createDocDesc", promptKey: "docStudio.createDocPrompt" },
+          { kind: "sheet", icon: FileSpreadsheet, labelKey: "docStudio.createSheetLabel", descKey: "docStudio.createSheetDesc", promptKey: "docStudio.createSheetPrompt" },
+          { kind: "slide", icon: Presentation, labelKey: "docStudio.createSlideLabel", descKey: "docStudio.createSlideDesc", promptKey: "docStudio.createSlidePrompt" }
+        ] as const).map(({ kind, icon: Icon, labelKey, descKey, promptKey }) => (
           <button
             key={kind}
             type="button"
-            className="ds-copilot-action"
+            data-kind={kind}
+            className="ds-copilot-action ds-copilot-action-create"
             onClick={() => void sendQuickPrompt(t(promptKey))}
           >
-            <FileText size={16} className="ds-copilot-action-icon" />
-            <span className="ds-copilot-action-title">{t(labelKey)}</span>
+            <span className="ds-copilot-action-badge">
+              <Icon size={16} className="ds-copilot-action-icon" />
+            </span>
+            <span className="ds-copilot-action-text">
+              <span className="ds-copilot-action-title">{t(labelKey)}</span>
+              <span className="ds-copilot-action-desc">{t(descKey)}</span>
+            </span>
           </button>
         ))}
       </div>

@@ -4,6 +4,7 @@ import type { DocTab } from "./types";
 import { DocStudioCopilot } from "./DocStudioCopilot";
 import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "../../store/settingsStore";
+import type { ResolvedTheme } from "../../utils/detectTheme";
 import "./docStudio.css";
 
 // DocStudio is an engine-only document workspace: every openable file is
@@ -37,6 +38,43 @@ const COPILOT_WIDTH_KEY = "docStudio.copilotWidth";
 const COPILOT_MIN = 320;
 const COPILOT_MAX = 640;
 const COPILOT_DEFAULT = 400;
+
+function OfficeEngineFrame({ tab, active, theme }: {
+  tab: DocTab;
+  active: boolean;
+  theme: ResolvedTheme;
+}) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  // Set the query once to enable the engine's theme message listener. Changing
+  // the iframe URL on later theme changes would reload unsaved document edits.
+  const [preview] = useState(() => {
+    const url = new URL(tab.previewUrl);
+    if (url.origin !== "null") url.searchParams.set("dark_mode", theme);
+    return { url: url.toString(), origin: url.origin };
+  });
+  const syncTheme = useCallback(() => {
+    if (preview.origin === "null") return;
+    frameRef.current?.contentWindow?.postMessage(
+      { name: "dark_mode_setting", content: theme },
+      preview.origin
+    );
+  }, [preview.origin, theme]);
+  useEffect(syncTheme, [syncTheme]);
+
+  return (
+    <iframe
+      ref={frameRef}
+      src={preview.url}
+      onLoad={syncTheme}
+      className="ds-office-frame"
+      data-active={active}
+      aria-hidden={!active}
+      tabIndex={active ? 0 : -1}
+      title={tab.fileName}
+      allow="clipboard-read; clipboard-write"
+    />
+  );
+}
 
 export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, initialConversationId }) => {
   const { t } = useTranslation();
@@ -74,6 +112,12 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
   }, [resolvedTheme]);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => useSettingsStore.getState().refreshSystemTheme();
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, []);
 
   const showToast = useCallback((text: string) => {
     setToast(text);
@@ -355,41 +399,63 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
         <div className="ds-editor">
           {tabs.length > 0 ? (
             tabs.map((tab) => (
-              <iframe
+              <OfficeEngineFrame
                 key={`${tab.filePath}-${officeReloads[tab.filePath] ?? 0}`}
-                src={tab.previewUrl}
-                className="ds-office-frame"
-                data-active={tab.id === activeTabId}
-                aria-hidden={tab.id !== activeTabId}
-                tabIndex={tab.id === activeTabId ? 0 : -1}
-                title={tab.fileName}
-                allow="clipboard-read; clipboard-write"
+                tab={tab}
+                active={tab.id === activeTabId}
+                theme={resolvedTheme}
               />
             ))
           ) : (
             <div className="ds-empty">
-              <div className="ds-empty-icon">
-                <FolderOpen size={28} />
+              <div className="ds-empty-card">
+              <div className="ds-empty-hero">
+                <div className="ds-empty-icon">
+                  <FolderOpen size={22} />
+                </div>
+                <div className="ds-empty-text">
+                  <h3>{t("docStudio.noDocument")}</h3>
+                  <p>{t("docStudio.noDocumentHint")}</p>
+                </div>
               </div>
-              <h3>{t("docStudio.noDocument")}</h3>
-              <p>{t("docStudio.noDocumentHint")}</p>
-              <button
-                onClick={handleOpenFileDialog}
-                className="ds-btn ds-btn-primary"
-              >
-                <Plus size={14} />
-                <span>{t("docStudio.selectLocalFile")}</span>
-              </button>
-              {!showCopilot && (
+              <div className="ds-empty-actions">
                 <button
                   type="button"
-                  onClick={() => setShowCopilot(true)}
-                  className="ds-btn ds-btn-secondary"
+                  onClick={handleOpenFileDialog}
+                  className="ds-empty-action"
+                  data-kind="open"
                 >
-                  <Bot size={14} />
-                  <span>{t("docStudio.aiChat")}</span>
+                  <span className="ds-empty-action-badge">
+                    <Plus size={16} />
+                  </span>
+                  <span className="ds-empty-action-text">
+                    <span className="ds-empty-action-label">{t("docStudio.selectLocalFile")}</span>
+                    <span className="ds-empty-action-desc">{t("docStudio.selectLocalFileDesc")}</span>
+                  </span>
                 </button>
-              )}
+                {!showCopilot && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCopilot(true)}
+                    className="ds-empty-action"
+                    data-kind="ai"
+                  >
+                    <span className="ds-empty-action-badge">
+                      <Bot size={16} />
+                    </span>
+                    <span className="ds-empty-action-text">
+                      <span className="ds-empty-action-label">{t("docStudio.aiChat")}</span>
+                      <span className="ds-empty-action-desc">{t("docStudio.aiChatDesc")}</span>
+                    </span>
+                  </button>
+                )}
+              </div>
+              <div className="ds-empty-formats">
+                {["DOCX", "XLSX", "PPTX", "PDF"].map((ext) => (
+                  <span key={ext} className="ds-empty-format">{ext}</span>
+                ))}
+              </div>
+              </div>
             </div>
           )}
         </div>

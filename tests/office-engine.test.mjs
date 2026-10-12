@@ -208,7 +208,9 @@ test("office engine preview IPC is sender- and path-guarded", () => {
   const mainTs = read("electron/main.ts");
   assert.ok(mainTs.includes("isDocStudioOpenableFile"));
   const menuTs = read("electron/menu.ts");
-  assert.ok(menuTs.includes("isDocStudioOpenableFile"));
+  assert.ok(menuTs.includes("setupWindowContextMenu"));
+  const contextMenuTs = read("electron/contextMenu.ts");
+  assert.ok(contextMenuTs.includes("isOfficeEngineFile"));
 
   // Renderer hosts engine tabs in an iframe.
   const app = read("src/components/DocStudio/DocStudioApp.tsx");

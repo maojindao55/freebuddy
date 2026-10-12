@@ -20,6 +20,7 @@ import {
   OFFICE_ENGINE_FILE_TYPES
 } from "./officeEngineCore.js";
 import { ensureOfficeEnginePort, findLocalOfficeEngineBinary } from "./officeEngine.js";
+import { setupContextMenu } from "./contextMenu.js";
 import {
   downloadConfiguredOfficeEngine,
   getOfficeEngineDownloadConfig,
@@ -136,6 +137,7 @@ export function openDocStudioWindow(initialFilePath?: string, initialConversatio
 
   const webContentsId = win.webContents.id;
   registerDocStudioWindow(webContentsId);
+  setupContextMenu(win, isDev, openDocStudioWindow);
   if (initialConversationId) docStudioActiveConversations.set(win.id, initialConversationId);
 
   win.on("closed", () => {

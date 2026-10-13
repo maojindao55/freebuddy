@@ -1078,8 +1078,7 @@
     "copyAll": "Copy all",
     "runMetrics": {
       "title": "Run metrics",
-      "open": "View run metrics",
-      "basis": "Measurement basis"
+      "open": "View run metrics"
     }
   },
   "stream": {

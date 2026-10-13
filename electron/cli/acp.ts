@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { CliStreamItem } from "@freebuddy/protocol";
-import { extractFileDiffPatch } from "@freebuddy/cli-stream";
+import { extractFileDiffPatch, inputTokensIncludingCache } from "@freebuddy/cli-stream";
 import type {
   AuthenticateRequest,
   InitializeRequest,
@@ -1382,7 +1382,7 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
       // PromptResponse.usage is turn-scoped. Vendor metadata needs an
       // explicit scope before its token counters can represent this run.
       usageScope: usage || metrics?.usageScope === "turn" ? "turn" : "unknown",
-      inputTokens: usage ? usage.inputTokens : metrics?.totalInputTokens ?? metrics?.inputTokens,
+      inputTokens: usage ? inputTokensIncludingCache(usage) : metrics?.totalInputTokens ?? metrics?.inputTokens,
       outputTokens: usage ? usage.outputTokens : metrics?.outputTokens,
       cachedReadTokens: usage?.cachedReadTokens ?? metrics?.cachedReadTokens,
       cachedWriteTokens: usage?.cachedWriteTokens ?? metrics?.cachedWriteTokens,

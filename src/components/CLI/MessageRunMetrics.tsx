@@ -43,8 +43,9 @@ export function RunMetricsDetails({ metrics }: { metrics: RunMetrics }) {
   const usage = m.usage;
   const cachedReadTokens = validMetric(usage?.cachedReadTokens);
   const usageInput = validMetric(usage?.inputTokens);
-  const cacheHitRate = validMetric(usage?.metrics?.cacheHitRate) ??
-    (cachedReadTokens !== undefined && usageInput !== undefined && usageInput > 0 ? cachedReadTokens / usageInput : undefined);
+  const reportedCacheHitRate = validMetric(usage?.metrics?.cacheHitRate);
+  const cacheHitRate = reportedCacheHitRate !== undefined && reportedCacheHitRate <= 1 ? reportedCacheHitRate :
+    (cachedReadTokens !== undefined && usageInput !== undefined && usageInput > 0 && cachedReadTokens <= usageInput ? cachedReadTokens / usageInput : undefined);
   const thoughtTokens = validMetric(usage?.thoughtTokens ?? usage?.metrics?.thoughtTokens);
   const llmDurationMs = validMetric(usage?.metrics?.llmDurationMs);
   const cost = validMetric(usage?.costAmount);
@@ -104,12 +105,6 @@ export function RunMetricsDetails({ metrics }: { metrics: RunMetrics }) {
           <dd>{new Intl.NumberFormat(i18n.language, { maximumFractionDigits: cost < 0.01 ? 4 : 2, minimumFractionDigits: 2 }).format(cost)}{usage?.costCurrency && ` ${usage.costCurrency}`}</dd>
         </div>}
       </dl>
-      <details className="msg-run-metrics-basis">
-        <summary>{t("message.runMetrics.basis")}</summary>
-        <p>{t(`${KEY}.${speedHintKey(m)}`)}</p>
-        <p>{t(`${KEY}.${firstWait.hintKey}`)}</p>
-        <p>{t(`${KEY}.durationHint`)} {t(`${KEY}.tokensHint`)}</p>
-      </details>
     </>
   );
 }

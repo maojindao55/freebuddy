@@ -4,6 +4,7 @@ import "./parsers/opencode.js";
 
 export { buildFileDiff, extractFileDiffPatch, type DiffRow, type FileDiff } from "./fileDiff.js";
 export { aggregateFileEdits, applyFileEditPatch } from "./turnFileDiff.js";
+export { inputTokensIncludingCache } from "./usageTokens.js";
 
 export {
   getParser,

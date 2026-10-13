@@ -1075,8 +1075,7 @@
     "copyAll": "复制全部",
     "runMetrics": {
       "title": "本轮指标",
-      "open": "查看本轮指标",
-      "basis": "统计口径"
+      "open": "查看本轮指标"
     }
   },
   "stream": {

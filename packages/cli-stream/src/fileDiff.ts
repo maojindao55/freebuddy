@@ -2,7 +2,7 @@ import type { CliStreamItem } from "@freebuddy/protocol";
 
 type FileEdit = Extract<CliStreamItem, { kind: "file-edit" }>;
 export type DiffRow = { kind: "context" | "add" | "delete" | "meta"; text: string; oldLine?: number; newLine?: number };
-export type FileDiff = { rows: DiffRow[]; added: number; removed: number; notice?: "missing" | "truncated" | "large" | "raw"; partial?: boolean };
+export type FileDiff = { rows: DiffRow[]; added: number; removed: number; notice?: "missing" | "truncated" | "large" | "raw" | "binary" | "unavailable"; partial?: boolean };
 
 function lines(text: string): string[] {
   if (!text) return [];
@@ -11,14 +11,21 @@ function lines(text: string): string[] {
   return result;
 }
 
+/** Preserve diff line prefixes, especially a trailing blank context line. */
+export function extractFileDiffPatch(text: string): string | undefined {
+  const match = /\[diff_block_start\]([\s\S]*?)\[diff_block_end\]/.exec(text);
+  return match ? match[1].trimStart().replace(/\r?\n$/, "") : undefined;
+}
+
 export function buildFileDiff(edit: FileEdit): FileDiff {
   const result: FileDiff = { rows: [], added: 0, removed: 0, partial: edit.partial };
+  if (edit.notice) return { ...result, notice: edit.notice };
   // Native Antigravity transcript arguments can already be shortened before
   // ACP receives them. A blob preserves that text; it does not make it complete.
   const upstreamTruncated = [edit.patch, edit.oldText, edit.newText].some((text) =>
     text && /(?:^|\r?\n)[ \t]*<truncated \d+ (?:bytes|lines)>[ \t]*(?:\r?\n)?$/.test(text)
   );
-  if (edit.truncated || upstreamTruncated || (!edit.blobKey && [edit.patch, edit.oldText, edit.newText].some((s) => s?.includes("[truncated]")))) {
+  if (edit.truncated || edit.source !== "snapshot" && (upstreamTruncated || (!edit.blobKey && !edit.turnKey && [edit.patch, edit.oldText, edit.newText].some((s) => s?.includes("[truncated]"))))) {
     return { ...result, notice: "truncated" };
   }
   const before = edit.oldText ?? (edit.action === "create" ? "" : undefined);

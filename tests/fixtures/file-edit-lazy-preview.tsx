@@ -10,16 +10,16 @@ import type { CliStreamItem } from "../../src/services/cli/parsers";
 void i18next.changeLanguage("zh-CN");
 useConversationStore.setState({ activeId: "lazy-preview" });
 const edits: Extract<CliStreamItem, { kind: "file-edit" }>[] = [
-  { kind: "file-edit", path: "src/long-file.ts", action: "update", blobKey: "full", counts: { added: 1, removed: 1 } },
-  { kind: "file-edit", path: "src/retry.ts", action: "create", blobKey: "retry", counts: { added: 1, removed: 0 } },
-  { kind: "file-edit", path: "src/missing.ts", action: "update", blobKey: "missing" }
+  { kind: "file-edit", path: "src/long-file.ts", action: "update", turnKey: "full" },
+  { kind: "file-edit", path: "src/retry.ts", action: "create", turnKey: "retry" },
+  { kind: "file-edit", path: "src/missing.ts", action: "update", turnKey: "missing" }
 ];
 const baseline = 'const value = "完整的历史内容🙂";\n'.repeat(1200);
 let requests = 0;
 let failOnce = true;
 const bridge = {
   async listMessageFileEdits() { return { edits, nextCursor: 3, hasMore: false }; },
-  async readFileEditBlob(_conversationId: string, blobKey: string, offset = 0) {
+  async readMessageFileEdit(_messageId: string, _path: string, blobKey: string, offset = 0) {
     requests++;
     document.getElementById("request-count")!.textContent = String(requests);
     await new Promise(resolve => setTimeout(resolve, 350));
@@ -28,7 +28,7 @@ const bridge = {
     const content = blobKey === "full"
       ? { oldText: baseline + 'export const label = "旧文案";\n', newText: baseline + 'export const label = "新文案";\n' }
       : { newText: 'export const retry = "读取成功";\n' };
-    const bytes = new TextEncoder().encode(JSON.stringify(content));
+    const bytes = new TextEncoder().encode(JSON.stringify({ ...content, partial: false, action: blobKey === "retry" ? "create" : "update" }));
     const page = bytes.slice(offset, offset + 65536);
     return { data: btoa(Array.from(page, byte => String.fromCharCode(byte)).join("")), nextOffset: offset + page.length, totalBytes: bytes.length, hasMore: offset + page.length < bytes.length };
   }

@@ -7,7 +7,8 @@ import { serializeStreamItemsForPersist } from "@freebuddy/cli-stream";
 import { acpPromptResultToItems, acpUpdateToItems } from "../dist-electron/cli/acp.js";
 
 const source = fs.readFileSync(new URL("../src/components/CLI/runCardMetrics.ts", import.meta.url), "utf8");
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText
+  .replaceAll('"@freebuddy/cli-stream"', JSON.stringify(import.meta.resolve("@freebuddy/cli-stream")));
 const { selectRunCardMetrics: select, runCardElapsedMs: elapsed } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 const usage = runMetrics => ({ kind: "usage", runId: runMetrics.runId, runMetrics });
 const message = items => ({ role: "assistant", taskId: "run", content: JSON.stringify(items) });

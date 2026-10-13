@@ -1,4 +1,5 @@
 import type { AgentRunMetrics, CliStreamItem } from "@freebuddy/protocol/cli";
+import { inputTokensIncludingCache } from "@freebuddy/cli-stream";
 
 type Usage = Extract<CliStreamItem, { kind: "usage" }>;
 type Message = { role: string; content: string; taskId?: string };
@@ -46,6 +47,12 @@ export function selectRunMetrics(
   else if (activeSummary) status = "unknown";
   else if (live?.status === "failed" || items.some(item => item.kind === "error" && item.terminal)) status = "failed";
   else if (done?.kind === "done") status = (done.exitCode ?? 0) === 0 ? "done" : "failed";
+  const correctedInput = usage?.usageScope === "turn" ? inputTokensIncludingCache(usage) : usage?.inputTokens;
+  const selectedInput = validMetric(summary?.inputTokens ?? inputTokens);
+  // Old summaries retained the split input counter. Repair their display only
+  // when the original usage total proves the same correction.
+  const displayInput = selectedInput === usage?.inputTokens ? correctedInput : selectedInput;
+  if (usage && correctedInput !== usage.inputTokens) usage = { ...usage, inputTokens: correctedInput };
   return {
     running, status, summary, usage,
     receivedAt: live?.runMetricsReceivedAt,
@@ -57,7 +64,7 @@ export function selectRunMetrics(
     tokensPerSecond: validMetric(summary?.tokensPerSecond ?? usage?.metrics?.tokensPerSecond),
     speedSource: summary?.speedSource ?? "reported",
     automaticSpeed: summary?.automaticSpeed ?? false,
-    inputTokens: validMetric(summary?.inputTokens ?? inputTokens),
+    inputTokens: validMetric(displayInput),
     outputTokens: validMetric(summary?.outputTokens ?? outputTokens)
   };
 }

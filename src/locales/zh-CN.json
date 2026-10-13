@@ -1,5 +1,20 @@
 {
   "fileDiff": {
+    "turnTitle": "本轮文件变化",
+    "running": "正在修改文件，结束后可查看本轮变化",
+    "finalizing": "正在整理本轮变化…",
+    "noChanges": "本轮没有留下文件变化",
+    "incomplete": "文件采集范围不完整；部分文件仅有操作记录或无法查看完整差异。",
+    "overlapping": "可能包含其他任务的修改。",
+    "snapshot": "本轮差异：比较已保存的轮次起点与结束版本。",
+    "records": "操作记录：仅汇总已记录的修改。",
+    "recordCountsHint": "已记录修改范围内的增删行数",
+    "turnBefore": "本轮修改前",
+    "turnAfter": "本轮修改后",
+    "openCurrent": "打开当前文件",
+    "binary": "二进制或非 UTF-8 文件，无法预览文本差异。",
+    "emptyCreated": "本轮新建了空文件。",
+    "emptyDeleted": "本轮删除了空文件。",
     "loading": "正在读取完整差异…",
     "loadError": "读取差异失败，请重试。",
     "indexError": "读取文件变更列表失败。",
@@ -9,7 +24,7 @@
     "showMore": "再显示 {{count}} 个文件",
     "showLess": "收起文件列表",
     "countsUnavailable": "统计不可用",
-    "countsHint": "各次修改的增删行数合计",
+    "countsHint": "本轮对话结束后的净增删行数",
     "title": "文件变更",
     "overview": "概览",
     "editCount": "{{count}} 次修改",
@@ -35,16 +50,16 @@
     "copy": "复制差异",
     "copied": "已复制",
     "copyError": "复制差异失败。",
-    "partial": "这是局部修改，行号相对于记录中的文本片段。",
-    "missing": "代理记录了文件变更，但未提供差异内容。",
+    "partial": "仅局部操作记录：行号相对于文本片段，无法预览完整文档。",
+    "missing": "已记录文件变更，但现有内容不足以还原本轮的整体差异。",
     "truncated": "这条修改记录已被截断，无法展示完整差异。",
     "large": "这条修改内容过大，暂不支持内联展示差异。",
     "raw": "当前展示原始补丁，无法提供行号和增删统计。",
-    "identical": "这条记录没有内容变化。",
+    "identical": "本轮对话没有留下内容变化。",
     "expand": "展开 {{count}} 行未修改内容",
     "expandAll": "展开全部未修改内容",
-    "prev": "上一条修改（Alt+↑）",
-    "next": "下一条修改（Alt+↓）",
+    "prev": "上一个文件（Alt+↑）",
+    "next": "下一个文件（Alt+↓）",
     "empty": "点击对话中「文件变更」卡片里的文件，即可查看差异。"
   },
   "common": {
@@ -1060,8 +1075,7 @@
     "copyAll": "复制全部",
     "runMetrics": {
       "title": "本轮指标",
-      "open": "查看本轮指标",
-      "basis": "统计口径"
+      "open": "查看本轮指标"
     }
   },
   "stream": {

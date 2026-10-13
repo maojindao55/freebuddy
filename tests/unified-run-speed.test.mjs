@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
-import { acpPromptResultToItems } from "../dist-electron/cli/acp.js";
+import { acpPromptResultToItems, acpUpdateToItems } from "../dist-electron/cli/acp.js";
+import { codexSpeedUpdates, codexSpeedResult } from "./fixtures/codex-run-speed-turn.mjs";
 
 const delta = content => ({ kind: "text", role: "assistant", content, append: true });
 const usage = outputTokens => ({ kind: "usage", usageScope: "turn", outputTokens });
@@ -18,6 +19,18 @@ function fixture() {
     now: value => { at = value; }
   };
 }
+
+test("Codex tool-only calls cannot measure full-turn generation from partial streams and token totals", () => {
+  const f = fixture();
+  for (const [at, update] of codexSpeedUpdates) f.observe(at, acpUpdateToItems(update));
+  f.metrics.completeGeneration(21945);
+  f.observe(21945, acpPromptResultToItems(codexSpeedResult));
+  f.metrics.finish();
+  const summary = f.metrics.snapshot();
+  assert.equal(summary.firstOutputLatencyMs, 4651); assert.equal(summary.firstOutputKind, "thinking");
+  assert.equal(summary.inputTokens, 148453); assert.equal(summary.outputTokens, 1011);
+  assert.equal(summary.tokensPerSecond, undefined); assert.equal(summary.speedSource, undefined);
+});
 
 test("uniform host measurement uses actual turn tokens, excludes first wait and freezes before cleanup", () => {
   const f = fixture();

@@ -36,7 +36,7 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-warm-runtime-"));
   const pool = new AcpProcessPool();
   t.after(() => { pool.dispose(); fs.rmSync(root, { recursive: true, force: true }); });
-  const children = [], events = [], requests = [], browser = new Map();
+  const children = [], events = [], requests = [], captures = [], browser = new Map();
   const fullText = "# 中文🙂\n".repeat(100000);
   const fixture = localDiffFixture(t, [{ type: "diff", path: "task.md", newText: fullText }]);
   let persistedText;
@@ -51,6 +51,11 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
     resolveCliByokEnv: () => ({}), sanitizeCliAgentEnv: env => env,
     getToolSession: () => saved,
     saveToolSession: (_agent, _scope, adapter, sessionId) => { saved = { adapter, sessionId }; },
+    prepareTurnFileCapture: async input => {
+      captures.push(["prepare", input.taskId]);
+      return { taskId: input.taskId };
+    },
+    finalizeTurnFileCapture: async capture => { captures.push(["seal", capture.taskId]); },
     persistFileEditItems: (_session, items) => items.map(item => item.kind === "tool-call" ? {
       ...item, toolOutputs: item.toolOutputs?.map(output => {
         if (output.kind !== "file-edit") return output;
@@ -137,6 +142,7 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   await runtime.cliRun(wc, { ...args, sessionId: "owner" });
   assert.equal(children.length, 3);
   await runtime.shutdownCliProcesses();
+  assert.deepEqual(captures, ["one", "two", "config", "owner"].flatMap(id => [["prepare", id], ["seal", id]]));
   assert.ok(children.every(child => child.exitCode === 0));
   assert.equal(browser.size, 0);
 });

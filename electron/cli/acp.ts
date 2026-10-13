@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { CliStreamItem } from "@freebuddy/protocol";
+import { extractFileDiffPatch, inputTokensIncludingCache } from "@freebuddy/cli-stream";
 import type {
   AuthenticateRequest,
   InitializeRequest,
@@ -10,6 +11,7 @@ import type {
 } from "@agentclientprotocol/sdk";
 
 import type { AcpStdioMcpServer } from "../shared/browserToolProtocol.js";
+import { fileEditFromToolResponse } from "./acpFileEditVersions.js";
 
 export type AcpRequestId = number | string | null;
 
@@ -852,7 +854,7 @@ export function contentBlockToItems(
   }
 }
 
-function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
+function toolCallContentToItems(entries: any[], input?: any, snippet = false): AcpStreamItem[] {
   const out: AcpStreamItem[] = [];
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
@@ -865,7 +867,7 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
         if (!path) break;
         const hasOld = typeof entry.oldText === "string";
         const hasNew = typeof entry.newText === "string";
-        const patch = typeof entry.patch === "string" && entry.patch.trim() ? entry.patch.trim() : undefined;
+        const patch = typeof entry.patch === "string" && entry.patch.trim() ? entry.patch : undefined;
         const explicitAction = entry.action ?? entry._meta?.freebuddy?.action;
         const action: "create" | "update" | "delete" =
           explicitAction === "create" || explicitAction === "delete" || explicitAction === "update"
@@ -882,6 +884,9 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
           ...(hasOld ? { oldText: entry.oldText } : {}),
           ...(hasNew ? { newText: entry.newText } : {}),
           ...(patch ? { patch } : {}),
+          ...(snippet || entry._meta?.freebuddy?.partial === true ||
+            (typeof input?.old_string === "string" && typeof input?.new_string === "string" &&
+              entry.oldText === input.old_string && entry.newText === input.new_string) ? { partial: true } : {}),
           ...(entry._meta?.freebuddy?.truncated === true ? { truncated: true } : {})
         });
         break;
@@ -979,7 +984,16 @@ function buildToolCallItem(
   if (locations) item.locations = locations;
 
   if (Array.isArray(update.content)) {
-    item.toolOutputs = toolCallContentToItems(update.content);
+    item.toolOutputs = toolCallContentToItems(update.content, update.rawInput, update._meta?.claudeCode?.toolName === "Edit");
+    item.replaceToolOutputs = true;
+  }
+
+  const completeEdit = fileEditFromToolResponse(update);
+  if (completeEdit) {
+    const outputs = item.toolOutputs ?? [];
+    item.toolOutputs = outputs.some(output => output.kind === "file-edit")
+      ? outputs.map(output => output.kind === "file-edit" && output.path === completeEdit.path ? completeEdit : output)
+      : [...outputs, completeEdit];
     item.replaceToolOutputs = true;
   }
 
@@ -991,11 +1005,13 @@ function buildToolCallItem(
   if (item.toolOutputs?.length) {
     if (update.rawOutput != null) {
       const rawText = stringifyValue(update.rawOutput);
-      const diffMatch = rawText.match(/\[diff_block_start\]\s*([\s\S]*?)\s*\[diff_block_end\]/);
-      const patchVal = diffMatch ? diffMatch[1].trim() : rawText;
+      const blockPatch = extractFileDiffPatch(rawText);
+      const patchVal = blockPatch ?? rawText;
       if (patchVal) {
         for (const outItem of item.toolOutputs) {
-          if (outItem.kind === "file-edit" && !outItem.patch && !outItem.oldText && !outItem.newText) {
+          if (outItem.kind === "file-edit" && (
+            (!outItem.patch && !outItem.oldText && !outItem.newText) ||
+            (blockPatch && outItem.patch?.trim() === blockPatch.trim()))) {
             outItem.patch = patchVal;
           }
         }
@@ -1366,7 +1382,7 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
       // PromptResponse.usage is turn-scoped. Vendor metadata needs an
       // explicit scope before its token counters can represent this run.
       usageScope: usage || metrics?.usageScope === "turn" ? "turn" : "unknown",
-      inputTokens: usage ? usage.inputTokens : metrics?.totalInputTokens ?? metrics?.inputTokens,
+      inputTokens: usage ? inputTokensIncludingCache(usage) : metrics?.totalInputTokens ?? metrics?.inputTokens,
       outputTokens: usage ? usage.outputTokens : metrics?.outputTokens,
       cachedReadTokens: usage?.cachedReadTokens ?? metrics?.cachedReadTokens,
       cachedWriteTokens: usage?.cachedWriteTokens ?? metrics?.cachedWriteTokens,

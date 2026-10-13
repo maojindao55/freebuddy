@@ -1009,7 +1009,7 @@ function App() {
     try {
       let cursor: number | undefined;
       for (let count = 0; count < 20; count++) {
-        const page = await cliClient.listMessageFileEdits(messageId, cursor);
+        const page = await cliClient.listMessageFileEdits(messageId, cursor, true);
         const index = page.edits.findIndex((edit) => edit.path === path);
         if (useConversationStore.getState().activeId !== conversationId) return;
         if (index >= 0) {

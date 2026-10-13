@@ -1,8 +1,8 @@
-import { buildFileDiff, type DiffRow, type FileDiff } from "@freebuddy/cli-stream";
+import { buildFileDiff, extractFileDiffPatch, type DiffRow, type FileDiff } from "@freebuddy/cli-stream";
 import type { CliStreamItem } from "@/services/cli/parsers";
 
-export type FileEdit = Extract<CliStreamItem, { kind: "file-edit" }>;
-export { buildFileDiff, type DiffRow, type FileDiff } from "@freebuddy/cli-stream";
+export type FileEdit = Extract<CliStreamItem, { kind: "file-edit" }> & { sources?: FileEdit[] };
+export { aggregateFileEdits, buildFileDiff, type DiffRow, type FileDiff } from "@freebuddy/cli-stream";
 
 export function isMarkdownFile(path: string): boolean {
   return /\.(?:md|markdown|mdown|mkd)$/i.test(path);
@@ -26,6 +26,20 @@ export function groupFileEditRecords(edits: FileEdit[]): { path: string; indices
     groups.set(edit.path, group);
   });
   return [...groups.values()];
+}
+
+/** Build card rows without computing diffs; inline histories are composed on opening. */
+export function indexFileEdits(edits: FileEdit[]): FileEdit[] {
+  return groupFileEditRecords(edits).map(({ path, indices }) => {
+    const sources = indices.map(index => edits[index]);
+    if (sources.length === 1 && sources[0].turnKey) return sources[0];
+    return { kind: "file-edit", path, sources,
+      action: sources[0].action === "create" ? "create" : sources.at(-1)!.action === "delete" ? "delete" : "update" };
+  });
+}
+
+export function fileEditContentKey(conversationId: string, messageId: string | undefined, edit: FileEdit): string {
+  return JSON.stringify([conversationId, edit.turnKey ?? edit.blobKey ?? `${messageId}:${edit.path}`]);
 }
 
 function extractToolOutputText(
@@ -85,12 +99,12 @@ export function collectFileEdits(items: CliStreamItem[]): FileEdit[] {
     const startCount = edits.length;
     // Check if tool output contains unified diff patch (e.g. Antigravity replace_file_content output)
     const outputText = extractToolOutputText(item, result);
-    const diffBlockMatch = outputText.match(/\[diff_block_start\]\s*([\s\S]*?)\s*\[diff_block_end\]/);
+    const outputPatch = extractFileDiffPatch(outputText);
     const input = item.input as Record<string, unknown> | undefined;
     const targetPath = item.locations?.[0]?.path || hollowNested?.[0]?.path || extractFilePath(input);
 
-    if (diffBlockMatch && targetPath) {
-      edits.push({ kind: "file-edit", path: targetPath, action: "update", patch: diffBlockMatch[1].trim() });
+    if (outputPatch && targetPath) {
+      edits.push({ kind: "file-edit", path: targetPath, action: "update", patch: outputPatch });
       continue;
     }
 
@@ -148,11 +162,12 @@ export function collectFileEdits(items: CliStreamItem[]): FileEdit[] {
   });
 }
 
-export function mergeStoredFileEdits(inline: FileEdit[], stored?: FileEdit[]): FileEdit[] {
+export function mergeStoredFileEdits(inline: FileEdit[], stored?: FileEdit[], coveredPaths?: string[]): FileEdit[] {
   if (!stored) return inline;
-  const paths = new Set(stored.map(edit => edit.path));
+  const paths = new Set(coveredPaths ?? stored.map(edit => edit.path));
   return [
-    ...inline.filter(edit => !edit.blobKey && (!paths.has(edit.path) || edit.patch !== undefined || edit.oldText !== undefined || edit.newText !== undefined)),
+    ...inline.filter(edit => !edit.blobKey && (!paths.has(edit.path) ||
+      (coveredPaths === undefined && (edit.patch !== undefined || edit.oldText !== undefined || edit.newText !== undefined)))),
     ...stored
   ];
 }

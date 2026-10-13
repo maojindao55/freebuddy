@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 import { cliAdapterDefinitions } from "./adapters.js";
 import { readMessageDetails } from "./messageDetails.js";
 import { listConversationOverviews } from "./conversationOverview.js";
-import { listMessageFileEdits, readFileEditBlob, readFileEditSnapshot } from "./fileEditBlobs.js";
+import { listMessageFileEdits, readMessageFileEdit, readFileEditBlob, readFileEditSnapshot, readTurnFileSnapshotForHandoff } from "./fileEditBlobs.js";
 import { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
 import type { CliRuntimeUpdateRequest, CliUpgradePlan } from "../shared/cliRuntimeUpdate.js";
 import {
@@ -1390,7 +1390,8 @@ export function registerCliIpc() {
             getDataDir(),
             briefId,
             messages,
-            readFileEditSnapshot
+            readFileEditSnapshot,
+            readTurnFileSnapshotForHandoff
           );
         } catch {
           transcript = undefined;
@@ -1473,7 +1474,8 @@ export function registerCliIpc() {
           getDataDir(),
           snapshotId,
           messages,
-          readFileEditSnapshot
+          readFileEditSnapshot,
+          readTurnFileSnapshotForHandoff
         );
       } catch {
         transcript = undefined;
@@ -1626,11 +1628,14 @@ export function registerCliIpc() {
   registerHandler("cli:readMessageDetails", (_e, messageId: string, offset?: number) =>
     readMessageDetails(messageId, offset)
   );
-  registerHandler("cli:listMessageFileEdits", (_e, messageId: string, cursor?: number) =>
-    listMessageFileEdits(messageId, cursor)
+  registerHandler("cli:listMessageFileEdits", (_e, messageId: string, cursor?: number, groupFiles?: boolean) =>
+    listMessageFileEdits(messageId, cursor, groupFiles)
   );
   registerHandler("cli:readFileEditBlob", (_e, conversationId: string, blobKey: string, offset?: number) =>
     readFileEditBlob(conversationId, blobKey, offset)
+  );
+  registerHandler("cli:readMessageFileEdit", (_e, messageId: string, path: string, turnKey: string, offset?: number) =>
+    readMessageFileEdit(messageId, path, turnKey, offset)
   );
   registerHandler(
     "cli:listFollowupMessages",

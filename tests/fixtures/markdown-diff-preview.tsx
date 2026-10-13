@@ -36,7 +36,7 @@ const after = before.replace("- [ ] 补充分页范围约束", "- [x] 补充分�
 const final = after.replace("- [ ] 完成 PHP 语法检查", "- [x] 完成 PHP 语法检查，全部 9 个 Controller 文件通过。")
   + "\n这是较长的一段验证说明，用于检查中文段落在窄面板中的自动换行。".repeat(9) + "\n";
 const edits: Extract<CliStreamItem, { kind: "file-edit" }>[] = [
-  { kind: "file-edit", path: "docs/task.md", action: "update", blobKey: "markdown-full", counts: { added: 5, removed: 2 } },
+  { kind: "file-edit", path: "docs/task.md", action: "update", oldText: before, newText: after },
   { kind: "file-edit", path: "application/Answer.php", action: "update", oldText: "$page = $input;\n", newText: "$page = max(1, min(100, intval($input)));\n" },
   { kind: "file-edit", path: "docs/task.md", action: "update", oldText: after, newText: final },
   { kind: "file-edit", path: "docs/truncated.md", action: "create", blobKey: "truncated", counts: { added: 2, removed: 0 } },

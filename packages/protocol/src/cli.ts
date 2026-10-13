@@ -52,6 +52,12 @@ export interface FileEditContent {
   oldText?: string;
   newText?: string;
   patch?: string;
+  action?: "create" | "update" | "delete";
+  partial?: boolean;
+  unchanged?: boolean;
+  source?: "snapshot" | "records";
+  overlapping?: boolean;
+  notice?: "binary" | "large" | "unavailable";
 }
 
 export interface FileEditBlobChunk {
@@ -59,10 +65,18 @@ export interface FileEditBlobChunk {
   nextOffset: number;
   totalBytes: number;
   hasMore: boolean;
+  notice?: "large";
 }
 
 export interface FileEditPage {
   edits: Extract<CliStreamItem, { kind: "file-edit" }>[];
+  /** Paths covered by the file index, including files awaiting calculation. */
+  coveredPaths?: string[];
+  capture?: {
+    state: "ready" | "incomplete" | "finalizing";
+    complete: boolean;
+    overlapping: boolean;
+  };
   nextCursor: number;
   hasMore: boolean;
 }
@@ -111,6 +125,12 @@ export type CliStreamItem =
       oldText?: string;
       newText?: string;
       blobKey?: string;
+      /** Version of a file's turn records; content is computed only when opened. */
+      turnKey?: string;
+      source?: "snapshot" | "records";
+      overlapping?: boolean;
+      notice?: "binary" | "large" | "unavailable";
+      unchanged?: boolean;
       /** Line counts remain available when full content is loaded on demand. */
       counts?: { added: number; removed: number };
       /** Content is a snippet rather than a complete file. */

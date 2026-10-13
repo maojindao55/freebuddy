@@ -11,7 +11,8 @@ const asModule = output => `data:text/javascript;base64,${Buffer.from(output).to
 const compile = path => ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX }
 }).outputText;
-const metricUrl = asModule(compile("../src/components/CLI/runCardMetrics.ts"));
+const metricUrl = asModule(compile("../src/components/CLI/runCardMetrics.ts")
+  .replaceAll('"@freebuddy/cli-stream"', JSON.stringify(import.meta.resolve("@freebuddy/cli-stream"))));
 const staticUrls = {
   "@/utils/duration": asModule(compile("../src/utils/duration.ts")),
   "@/utils/clipboard": asModule(compile("../src/utils/clipboard.ts")),
@@ -170,7 +171,7 @@ test("hasMessageRunMetrics gates the row on a persisted summary", async () => {
   assert.equal(hasMessageRunMetrics(summaryOnly), false);
 });
 
-test("popover body renders first output kinds, waits and basis notes in both languages", async () => {
+test("popover body renders first output kinds and waits without the basis disclosure in both languages", async () => {
   const base = { status: "done", elapsedMs: 20_000, promptSubmitted: true, firstOutputTracked: true, firstOutputLatencyMs: 500, firstTextLatencyMs: 19_000 };
   for (const [kind, chinese, english] of [["thinking", "思考", "Thinking"], ["tool-call", "工具请求", "Tool request"], ["text", "正文", "Text"]]) {
     const metrics = selectCard([message(run({ ...base, firstOutputKind: kind }))]);
@@ -179,6 +180,8 @@ test("popover body renders first output kinds, waits and basis notes in both lan
     assert.match(await details(metrics, "en"), new RegExp(`First output wait 0\\.5 s · ${english}`));
     const html = await renderComponent(RunMetricsDetails, { metrics });
     assert.match(html, /工具请求通知可能晚于参数的首个 Token/);
+    assert.doesNotMatch(html, /<details|统计口径/);
+    assert.doesNotMatch(await details(metrics, "en"), /Measurement basis/);
   }
   const historical = selectCard([message(run({ status: "done", elapsedMs: 20_000, firstTextLatencyMs: 19_000 }))]);
   assert.match(await details(historical), /正文等待 19\.0 s/);
@@ -195,15 +198,12 @@ test("popover body lists measured, reported, call-average and automatic speed in
   const measured = selectCard([message(run({ ...base, tokensPerSecond: 40, speedSource: "measured" }))]);
   const measuredHtml = await details(measured);
   assert.match(measuredHtml, /40\.0 tok\/s · 实测/);
-  assert.match(measuredHtml, /排除首包等待、工具执行和人工等待/);
   const observed = selectCard([message(run({ ...base, tokensPerSecond: 40, speedSource: "observed" }))]);
   const observedHtml = await details(observed);
   assert.match(observedHtml, /流式观测/);
-  assert.match(observedHtml, /本轮真实输出 Token/);
   const callAverage = selectCard([message(run({ ...base, elapsedMs: 25_950, outputTokens: 339, tokensPerSecond: 57.72114862020914, speedSource: "call-average" }))]);
   const avgHtml = await details(callAverage);
   assert.match(avgHtml, /平均吞吐 57\.7 tok\/s · 含首包/);
-  assert.match(avgHtml, /包含首包等待、思考和正文生成/);
   const avgEn = await details(callAverage, "en");
   assert.match(avgEn, /Average throughput 57\.7 tok\/s · Incl\. first packet/);
   const automatic = selectCard([message(run(base))]);
@@ -211,6 +211,20 @@ test("popover body lists measured, reported, call-average and automatic speed in
   const missing = selectCard([message(run({ status: "done", elapsedMs: 2_000 }))]);
   assert.match(await details(missing), /未上报/);
   assert.doesNotMatch(await details(measured), /char\/s|字符\/s/);
+});
+
+test("historical Codex split input counters display inclusive input and an 87 percent cache hit rate", async () => {
+  const metrics = selectCard([message([
+    { kind: "usage", usageScope: "turn", inputTokens: 19173, cachedReadTokens: 129280, cachedWriteTokens: 0,
+      outputTokens: 1011, totalTokens: 149464, thoughtTokens: 431 },
+    ...run({ status: "done", elapsedMs: 25000, inputTokens: 19173, outputTokens: 1011, automaticSpeed: true })
+  ])]);
+  assert.equal(metrics.inputTokens, 148453); assert.equal(metrics.usage.inputTokens, 148453);
+  const html = await details(metrics);
+  assert.match(html, /148K \/ 1\.01K/); assert.match(html, /缓存命中率 87% \(129K\)/);
+  assert.doesNotMatch(html, /674%/);
+  const invalid = { ...metrics, usage: { kind: "usage", inputTokens: 100, cachedReadTokens: 200, metrics: { cacheHitRate: 2 } } };
+  assert.match(await details(invalid), /缓存命中率 —/);
 });
 
 test("popover body keeps reported TTFT, cache rate, thought tokens, LLM time and cost", async () => {

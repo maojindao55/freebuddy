@@ -7,6 +7,9 @@ import path from "node:path";
 import ts from "typescript";
 import { serializeStreamItemsForPersist } from "@freebuddy/cli-stream";
 import { localDiffFixture } from "./fixtures/agy-local-diff.mjs";
+import { agyTurnChanges, agyTurnUpdate } from "./fixtures/agy-turn-diff.mjs";
+import { codebuddyTurnUpdate } from "./fixtures/codebuddy-turn-diff.mjs";
+import { claudeTurnBefore, claudeTurnAfter, claudeTurnUpdates } from "./fixtures/claude-turn-diff.mjs";
 
 let Database;
 let bindingAvailable = true;
@@ -18,7 +21,7 @@ try {
 }
 
 const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
-const { persistFileEditItems, listMessageFileEdits, readFileEditBlob, restoreFileEditReferences, readFileEditSnapshot } = await import("../dist-electron/cli/fileEditBlobs.js");
+const { persistFileEditItems, listMessageFileEdits, readMessageFileEdit, readFileEditBlob, restoreFileEditReferences, readFileEditSnapshot } = await import("../dist-electron/cli/fileEditBlobs.js");
 const { readMessageDetails } = await import("../dist-electron/cli/messageDetails.js");
 const { createHandoffTranscriptSnapshot, readHandoffTranscriptSnapshot } = await import("../dist-electron/shared/handoffTranscript.js");
 const { acpUpdateToItems } = await import("../dist-electron/cli/acp.js");
@@ -338,6 +341,215 @@ test("restored initial inputs and standalone changes reuse the same keys", { ski
   const saved = persistFileEditItems(context, items);
   assert.deepEqual(restoreFileEditReferences(context, items), saved);
   assert.equal(items[0].input[0].oldText, "before");
+});
+
+function loadTurn(edit, messageId = "message") {
+  return createFileEditContentLoader(async (_conversationId, key, offset) => readMessageFileEdit(messageId, edit.path, key, offset))
+    ("conversation", edit.turnKey);
+}
+
+function bodyQueries(db) {
+  const queries = [];
+  const prepare = db.prepare;
+  db.prepare = function(sql) { queries.push(sql); return prepare.call(this, sql); };
+  return () => queries.filter(sql => /SELECT payload|substr\(payload|json_extract/.test(sql));
+}
+
+test("file indexes read no bodies or write summaries; selecting one file computes only its saved records", { skip: !bindingAvailable }, async t => {
+  const db = setup(t);
+  persist([{ type: "diff", path: "file.ts", oldText: "original\n", newText: "middle\nextra\n" }], "completed", "first");
+  persist([{ type: "diff", path: "other.ts", newText: "created\n" }], "completed", "other");
+  persist([{ type: "diff", path: "file.ts", oldText: "middle\nextra\n", newText: "final\n" }], "completed", "last");
+  db.exec("UPDATE file_edit_blobs SET counts = NULL");
+  const before = db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all();
+  const reads = bodyQueries(db);
+  const page = runAsCaller("alice", () => listMessageFileEdits("message", 0, true));
+  assert.deepEqual(page.edits.map(edit => edit.path), ["file.ts", "other.ts"]);
+  assert.equal(reads().length, 0);
+  assert.ok(page.edits.every(edit => edit.turnKey && !edit.blobKey && !edit.counts && edit.oldText === undefined));
+  assert.deepEqual(page.coveredPaths, ["file.ts", "other.ts"]);
+  const loaded = await loadTurn(page.edits[0]);
+  assert.deepEqual(loaded.content, { source: "records", oldText: "original\n", newText: "final\n", action: "update", partial: false });
+  assert.equal(reads().length, 2);
+  assert.deepEqual(db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all(), before);
+  await loadTurn(page.edits[0]);
+  assert.equal(reads().length, 2);
+  assert.deepEqual(db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all(), before);
+  const old = page.edits[0];
+  persist([{ type: "diff", path: "file.ts", oldText: "middle\nextra\n", newText: "new final\n" }], "completed", "last");
+  const next = listMessageFileEdits("message", 0, true).edits[0];
+  assert.notEqual(next.turnKey, old.turnKey);
+  assert.equal((await loadTurn(old)).content.newText, "final\n");
+  assert.equal((await loadTurn(next)).content.newText, "new final\n");
+});
+
+test("reverts and transient files become unchanged only when opened; EOF changes and new empty files remain", { skip: !bindingAvailable }, async t => {
+  setup(t);
+  persist([{ type: "diff", path: "reverted.ts", oldText: "original", newText: "middle" }], "completed", "first");
+  persist([{ type: "diff", path: "reverted.ts", oldText: "middle", newText: "original" }], "completed", "last");
+  persist([{ type: "diff", path: "temporary.ts", newText: "created" }], "completed", "create");
+  persist([{ type: "diff", path: "temporary.ts", oldText: "created", newText: null }], "completed", "delete");
+  persist([{ type: "diff", path: "newline.ts", oldText: "same", newText: "same\n" },
+    { type: "diff", path: "empty.ts", newText: "" }], "completed", "eof");
+  const page = listMessageFileEdits("message", 0, true);
+  assert.equal(page.edits.length, 4);
+  assert.equal((await loadTurn(page.edits[0])).content.unchanged, true);
+  assert.equal((await loadTurn(page.edits[1])).content.unchanged, true);
+  assert.equal((await loadTurn(page.edits[2])).content.unchanged, undefined);
+  assert.equal((await loadTurn(page.edits[3])).content.unchanged, undefined);
+});
+
+test("file index paging groups interleaved modifications without calculating their contents", { skip: !bindingAvailable }, t => {
+  const db = setup(t);
+  const initial = Array.from({ length: 105 }, (_, index) => ({ type: "diff", path: `${index}.ts`, oldText: "before", newText: "middle" }));
+  persist(initial, "completed", "first");
+  persist(initial.map(change => ({ ...change, oldText: "middle", newText: "final" })), "completed", "last");
+  const reads = bodyQueries(db);
+  const first = listMessageFileEdits("message", 0, true);
+  const second = listMessageFileEdits("message", first.nextCursor, true);
+  assert.equal(first.edits.length, 100);
+  assert.equal(second.edits.length, 5);
+  assert.equal(first.hasMore, true);
+  assert.equal(second.hasMore, false);
+  assert.equal(new Set([...first.coveredPaths, ...second.coveredPaths]).size, 105);
+  assert.equal(reads().length, 0);
+});
+
+test("turn reads enforce completion, file identity, source version, task scope and ownership, including cached reads", { skip: !bindingAvailable }, async t => {
+  const db = setup(t);
+  persist([{ type: "diff", path: "file.ts", oldText: "before", newText: "after" }]);
+  persistFileEditItems({ ...context, sessionId: "other-run" }, update([{ type: "diff", path: "other.ts", newText: "other" }], "completed", "other"));
+  const [edit] = listMessageFileEdits("message", 0, true).edits;
+  assert.equal(readMessageFileEdit("message", "other.ts", edit.turnKey), undefined);
+  assert.equal(readMessageFileEdit("message", edit.path, "a".repeat(64)), undefined);
+  for (const status of ["starting", "running"]) {
+    db.prepare("UPDATE conversation_messages SET status = ? WHERE id = 'message'").run(status);
+    assert.equal(listMessageFileEdits("message", 0, true).edits.length, 0);
+    assert.equal(readMessageFileEdit("message", edit.path, edit.turnKey), undefined);
+  }
+  db.exec("UPDATE conversation_messages SET status = 'done' WHERE id = 'message'");
+  assert.equal((await loadTurn(edit)).status, "ready");
+  assert.throws(() => runAsCaller("bob", () => readMessageFileEdit("message", edit.path, edit.turnKey)), /not available/);
+  assert.throws(() => runAsCaller("bob", () => listMessageFileEdits("message", 0, true)), /not available/);
+  assert.throws(() => readMessageFileEdit("message", edit.path, edit.turnKey, -1), /Invalid/);
+  db.exec("UPDATE conversation_messages SET task_id = 'other-run' WHERE id = 'message'");
+  assert.equal(readMessageFileEdit("message", edit.path, edit.turnKey), undefined);
+  db.prepare("DELETE FROM conversations WHERE id = 'conversation'").run();
+  assert.throws(() => readMessageFileEdit("message", edit.path, edit.turnKey), /not available/);
+});
+
+test("oversized selected files return a bounded size notice without reading their bodies", { skip: !bindingAvailable }, async t => {
+  const db = setup(t);
+  persist([{ type: "diff", path: "large.ts", newText: "small" }]);
+  db.prepare("UPDATE file_edit_blobs SET payload = ?").run(Buffer.alloc(8 * 1024 * 1024 + 1));
+  const [edit] = listMessageFileEdits("message", 0, true).edits;
+  const reads = bodyQueries(db);
+  assert.equal((await loadTurn(edit)).status, "large");
+  assert.equal(reads().length, 0);
+});
+
+test("selected AGY stored patches cancel intermediate changes and retain original file line numbers", { skip: !bindingAvailable }, async t => {
+  const db = setup(t);
+  for (let index = 0; index < agyTurnChanges.length; index++) persist([agyTurnChanges[index]], "completed", `edit-${index}`);
+  const before = db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all();
+  const [edit] = listMessageFileEdits("message", 0, true).edits;
+  const diff = buildFileDiff({ ...edit, ...(await loadTurn(edit)).content });
+  assert.equal(diff.notice, undefined);
+  assert.deepEqual([diff.added, diff.removed], [3, 3]);
+  assert.deepEqual(diff.rows.filter(row => row.kind === "delete").map(row => row.oldLine), [1, 3, 7]);
+  assert.deepEqual(db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all(), before);
+});
+
+test("new AGY, CodeBuddy and Claude events remain compatible with on-click composition", { skip: !bindingAvailable }, async t => {
+  for (const adapter of ["agy", "codebuddy", "claude"]) {
+    await t.test(adapter, async t => {
+      setup(t);
+      for (let index = 0; index < 3; index++) {
+        const updates = adapter === "agy" ? [agyTurnUpdate(index)] : adapter === "codebuddy"
+          ? [codebuddyTurnUpdate(index), codebuddyTurnUpdate(index, "completed")] : claudeTurnUpdates(index);
+        for (const update of updates) persistFileEditItems(context, acpUpdateToItems(update));
+      }
+      const [edit] = listMessageFileEdits("message", 0, true).edits;
+      assert.equal(edit.counts, undefined);
+      const loaded = await loadTurn(edit);
+      const diff = buildFileDiff({ ...edit, ...loaded.content });
+      assert.equal(diff.notice, undefined);
+      assert.deepEqual([diff.added, diff.removed], [3, 3]);
+      if (adapter === "claude") assert.deepEqual([loaded.content.oldText, loaded.content.newText], [claudeTurnBefore, claudeTurnAfter]);
+      if (adapter === "codebuddy") assert.equal(loaded.content.partial, true);
+    });
+  }
+});
+
+function legacyClaudeLog(t, db, indices = [0, 1, 2], transform = update => update) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-claude-history-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const logPath = path.join(directory, "run.jsonl");
+  const updates = indices.flatMap(index => claudeTurnUpdates(index));
+  for (const update of updates) persistFileEditItems(context, acpUpdateToItems({ ...update, _meta: undefined }));
+  fs.writeFileSync(logPath, updates.map(transform).map(update => JSON.stringify({ type: "stdout",
+    content: JSON.stringify({ method: "session/update", params: { update } }) })).join("\n") + "\n");
+  db.prepare(`INSERT INTO cli_tasks (id, agent_id, agent_name, adapter, status, prompt, log_path, owner_id, created_at, updated_at)
+    VALUES ('run', 'agent', 'Agent', 'claude-agent-acp', 'done', 'test', ?, 'alice', '0', '0')`).run(logPath);
+  return logPath;
+}
+
+test("Claude historical hunks, including synthetic EOF text, recover only on opening the selected file", { skip: !bindingAvailable }, async t => {
+  for (const indices of [[0, 1, 2], [2]]) {
+    await t.test(String(indices), async t => {
+      const db = setup(t);
+      const logPath = legacyClaudeLog(t, db, indices);
+      const before = db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all();
+      const [edit] = listMessageFileEdits("message", 0, true).edits;
+      const { content } = await loadTurn(edit);
+      assert.equal(content.newText, claudeTurnAfter);
+      assert.equal(content.newText.includes("No newline at end of file"), false);
+      const diff = buildFileDiff({ ...edit, ...content });
+      assert.deepEqual([diff.added, diff.removed], [indices.length, indices.length]);
+      if (indices.length === 3) assert.equal(content.oldText, claudeTurnBefore);
+      fs.unlinkSync(logPath);
+      assert.equal((await loadTurn(edit)).content.newText, claudeTurnAfter);
+      assert.deepEqual(db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all(), before);
+    });
+  }
+});
+
+for (const mismatch of ["tool", "path", "body", "missing", "oversized"]) {
+  test(`Claude log recovery cannot replace uncorroborated stored sources: ${mismatch}`, { skip: !bindingAvailable }, async t => {
+    const db = setup(t);
+    const logPath = legacyClaudeLog(t, db, [0, 1, 2], update => {
+      const copy = structuredClone(update);
+      if (mismatch === "tool") copy.toolCallId += "-unrelated";
+      if (mismatch === "path" && copy._meta.claudeCode.toolResponse) copy._meta.claudeCode.toolResponse.filePath = "other.md";
+      if (mismatch === "body" && copy._meta.claudeCode.toolResponse) copy.content[0].oldText += "different source";
+      return copy;
+    });
+    if (mismatch === "missing") fs.unlinkSync(logPath);
+    if (mismatch === "oversized") fs.truncateSync(logPath, 8 * 1024 * 1024 + 1);
+    const [edit] = listMessageFileEdits("message", 0, true).edits;
+    assert.equal(buildFileDiff({ ...edit, ...(await loadTurn(edit)).content }).notice, "missing");
+  });
+}
+
+test("legacy CodeBuddy inactive previews recover on opening without reactivating original rows", { skip: !bindingAvailable }, async t => {
+  const db = setup(t);
+  const messages = [];
+  for (let index = 0; index < 3; index++) {
+    const [preview] = acpUpdateToItems(codebuddyTurnUpdate(index));
+    preview.toolOutputs[0].partial = false;
+    persistFileEditItems(context, [preview]);
+    const [success] = acpUpdateToItems(codebuddyTurnUpdate(index, "completed"));
+    messages.push({ ...preview, ...success });
+  }
+  db.exec("UPDATE file_edit_blobs SET active = 0, status = 'completed'");
+  db.prepare("UPDATE conversation_messages SET content = ? WHERE id = 'message'").run(JSON.stringify(messages));
+  const [edit] = listMessageFileEdits("message", 0, true).edits;
+  const { content } = await loadTurn(edit);
+  const diff = buildFileDiff({ ...edit, ...content });
+  assert.equal(content.partial, true);
+  assert.equal(diff.notice, undefined);
+  assert.deepEqual([diff.added, diff.removed], [3, 3]);
+  assert.equal(db.prepare("SELECT count(*) AS total FROM file_edit_blobs WHERE active = 1").get().total, 0);
 });
 
 test("handoff snapshots contain bounded owned diff text and survive deletion of the source", { skip: !bindingAvailable }, testContext => {

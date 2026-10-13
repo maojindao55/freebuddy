@@ -48,6 +48,7 @@ import { createAcpTerminalManager } from "./acpTerminal.js";
 import { updateRuntimeRun, recordRuntimeAgentVersion } from "./check.js";
 import { getDataDir } from "./db.js";
 import { persistFileEditItems } from "./fileEditBlobs.js";
+import { prepareTurnFileCapture, finalizeTurnFileCapture, type TurnFileCapture } from "./turnFileSnapshots.js";
 import { importAgyLocalDiff, withoutInlineFileBodies } from "./acpLocalDiff.js";
 import { findLastPiSessionErrorMessage } from "./piRuntime.js";
 import {
@@ -285,6 +286,8 @@ export async function runAcpAgent({
     ? { claudeCode: { options: claudeAcpSessionOptions } }
     : undefined;
   const remoteIsolated = isRemoteIsolatedCaller();
+  let fileCapture: Promise<TurnFileCapture | undefined> | undefined;
+  let captureCompletion: Promise<void> | undefined;
   const readOnlyWorkspace = args.workspaceAccess === "read-only";
   // OS process sandbox follows the shared remote strictIsolation flag only.
   // Local read-only reviewers must not enter srt-win / seatbelt just because
@@ -556,50 +559,71 @@ export async function runAcpAgent({
       ...(agentInfo?.name ? { agentName: agentInfo.name } : {}),
       ...(agentInfo?.version ? { agentVersion: agentInfo.version } : {})
     });
-    if (errorMessage) emit({ type: "error", message: errorMessage });
-    emit({ type: "done", exitCode });
-    const savedOfficeFiles = args.conversationId ? takeSavedOfficeFiles(args.conversationId) : [];
-    if (standaloneDocStudio && args.conversationId && !webContents.isDestroyed()) {
-      if (!officeFileForSession && savedOfficeFiles[0]) {
-        try {
-          associateDocStudioOfficeFile(args.conversationId, savedOfficeFiles[0]);
-        } catch {
-          /* Opening the file is still useful if conversation mapping fails. */
+    const publishFinished = () => {
+      if (errorMessage) emit({ type: "error", message: errorMessage });
+      emit({ type: "done", exitCode });
+      const savedOfficeFiles = args.conversationId ? takeSavedOfficeFiles(args.conversationId) : [];
+      if (standaloneDocStudio && args.conversationId && !webContents.isDestroyed()) {
+        if (!officeFileForSession && savedOfficeFiles[0]) {
+          try {
+            associateDocStudioOfficeFile(args.conversationId, savedOfficeFiles[0]);
+          } catch {
+            /* Opening the file is still useful if conversation mapping fails. */
+          }
+        }
+        for (const filePath of savedOfficeFiles) {
+          try {
+            webContents.send("docStudio:fileSavedAs", { filePath });
+          } catch {
+            break;
+          }
         }
       }
-      for (const filePath of savedOfficeFiles) {
+      // WebUI session events are routed through the in-memory owner mapping.
+      // Keep it alive until the terminal events have been broadcast, otherwise
+      // remote clients see streamed content but never receive done/error.
+      clearSessionOwner(args.sessionId);
+      updateTaskStatus(args.sessionId, status, exitCode, errorMessage);
+      updateRuntimeRun(args.adapter, status === "failed" ? errorMessage : undefined);
+      const discardToolSession = shouldDiscardAcpToolSession({
+        adapter: args.adapter,
+        status,
+        promptStarted,
+        promptHadContent,
+        turnHadTerminalError
+      });
+      if (discardToolSession && toolSessionScope) {
         try {
-          webContents.send("docStudio:fileSavedAs", { filePath });
+          clearToolSession(args.agentId, toolSessionScope);
         } catch {
-          break;
+          /* best-effort */
         }
+      } else if (activeAcpSessionId && toolSessionScope) {
+        saveToolSession(args.agentId, toolSessionScope, args.adapter, activeAcpSessionId);
+        setTaskToolSessionId(args.sessionId, activeAcpSessionId);
       }
-    }
-    // WebUI session events are routed through the in-memory owner mapping.
-    // Keep it alive until the terminal events have been broadcast, otherwise
-    // remote clients see streamed content but never receive done/error.
-    clearSessionOwner(args.sessionId);
-    updateTaskStatus(args.sessionId, status, exitCode, errorMessage);
-    updateRuntimeRun(args.adapter, status === "failed" ? errorMessage : undefined);
-    const discardToolSession = shouldDiscardAcpToolSession({
-      adapter: args.adapter,
-      status,
-      promptStarted,
-      promptHadContent,
-      turnHadTerminalError
-    });
-    if (discardToolSession && toolSessionScope) {
-      try {
-        clearToolSession(args.agentId, toolSessionScope);
-      } catch {
-        /* best-effort */
-      }
-    } else if (activeAcpSessionId && toolSessionScope) {
-      saveToolSession(args.agentId, toolSessionScope, args.adapter, activeAcpSessionId);
-      setTaskToolSessionId(args.sessionId, activeAcpSessionId);
-    }
-    capturedSessions.delete(args.sessionId);
-    logStream?.end();
+      capturedSessions.delete(args.sessionId);
+      logStream?.end();
+    };
+    if (fileCapture) {
+      captureCompletion = (async () => {
+        const capture = await fileCapture;
+        if (capture) {
+          // Non-persistent processes may still be writing after cancel/response.
+          // Bound the wait and explicitly degrade if teardown cannot be observed.
+          if (!keepWarm && child.exitCode == null && child.signalCode == null) {
+            await new Promise<void>(resolve => {
+              const onClose = () => { clearTimeout(timer); resolve(); };
+              const timer = setTimeout(() => { child.removeListener("close", onClose); resolve(); }, 750);
+              child.once("close", onClose);
+            });
+          }
+          await finalizeTurnFileCapture(capture, !keepWarm && child.exitCode == null && child.signalCode == null);
+        }
+      })().catch(error => {
+        logMain().warn("acp", "file version capture failed", { sessionId: args.sessionId, error: String(error) });
+      }).finally(publishFinished);
+    } else publishFinished();
   };
 
   const cancelRun = () => {
@@ -1341,6 +1365,15 @@ export async function runAcpAgent({
   };
 
   const runPromptOnSession = async () => {
+    if (!fileCapture && !remoteIsolated && args.conversationId && args.cwd) {
+      fileCapture = prepareTurnFileCapture({ conversationId: args.conversationId, taskId: args.sessionId,
+        roots: [args.cwd, ...(args.workspaceRoots ?? [])] }).catch(error => {
+        logMain().warn("acp", "file baseline capture failed", { sessionId: args.sessionId, error: String(error) });
+        return undefined;
+      });
+    }
+    await fileCapture;
+    if (finished || cancellationRequested) return;
     emit({
       type: "items",
       items: [{ kind: "session", sessionId: activeAcpSessionId! }]
@@ -1954,6 +1987,7 @@ export async function runAcpAgent({
       warmConnection.sessionId = activeAcpSessionId;
       warmConnection.previousRunId = args.sessionId;
       finish("done", 0);
+      await captureCompletion;
       parkConnection();
       return;
     }
@@ -1985,5 +2019,7 @@ export async function runAcpAgent({
       /* noop */
     }
     finish("failed", -1, msg);
+  } finally {
+    await captureCompletion;
   }
 }

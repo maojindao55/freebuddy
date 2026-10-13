@@ -19,6 +19,7 @@ const DATA_URL_RE = /data:[^;,\s]+;base64,[a-z0-9+/=]+/gi;
 const SENSITIVE_KEY_RE = /(?:api[_-]?key|authorization|cookie|credential|password|secret|token|\benv\b)/i;
 
 export type HandoffFileEditReader = (conversationId: string, blobKey: string, maxChars: number) => (FileEditContent & { truncated?: boolean }) | undefined;
+export type HandoffTurnFileReader = (messageId: string, maxChars: number) => { edits: unknown[]; truncated: boolean } | undefined;
 type RestoreFileEdit = (item: Record<string, unknown>) => Record<string, unknown>;
 
 function truncateUtf8(value: string, maxBytes: number): string {
@@ -106,7 +107,7 @@ function sanitizeAssistantContent(content: string, restoreFileEdit: RestoreFileE
   }
 }
 
-function toSnapshotMessage(message: ConversationMessage, readFileEdit?: HandoffFileEditReader): HandoffTranscriptMessage {
+function toSnapshotMessage(message: ConversationMessage, readFileEdit?: HandoffFileEditReader, readTurnFiles?: HandoffTurnFileReader): HandoffTranscriptMessage {
   let remainingChars = MAX_MESSAGE_BYTES;
   let fileEditsTruncated = false;
   const restoreFileEdit: RestoreFileEdit = item => {
@@ -147,6 +148,17 @@ function toSnapshotMessage(message: ConversationMessage, readFileEdit?: HandoffF
     createdAt: message.createdAt,
     ...(fileEditsTruncated ? { truncated: true } : {})
   };
+
+  if (message.role === "assistant" && readTurnFiles) {
+    try {
+      const turn = readTurnFiles(message.id, remainingChars);
+      if (turn?.edits.length) {
+        const original = Array.isArray(snapshot.content) ? snapshot.content : [{ kind: "text", role: "assistant", content: snapshot.content }];
+        snapshot.content = [...original, ...turn.edits.map(edit => sanitizeValue(edit))];
+      }
+      if (turn?.truncated) snapshot.truncated = true;
+    } catch { snapshot.truncated = true; }
+  }
 
   if (Buffer.byteLength(JSON.stringify(snapshot), "utf8") <= MAX_MESSAGE_BYTES) {
     return snapshot;
@@ -193,14 +205,15 @@ export function createHandoffTranscriptSnapshot(
   dataDir: string,
   briefId: string,
   messages: ConversationMessage[],
-  readFileEdit?: HandoffFileEditReader
+  readFileEdit?: HandoffFileEditReader,
+  readTurnFiles?: HandoffTurnFileReader
 ): HandoffTranscriptRef {
   const root = snapshotRoot(dataDir);
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const safeId = briefId.replace(/[^a-zA-Z0-9_-]/g, "_");
   const snapshotPath = path.join(root, `${safeId}.jsonl`);
   const temporaryPath = `${snapshotPath}.tmp`;
-  const selected = selectWithinLimit(messages.map(message => toSnapshotMessage(message, readFileEdit)));
+  const selected = selectWithinLimit(messages.map(message => toSnapshotMessage(message, readFileEdit, readTurnFiles)));
   const contents = selected.messages.map((message) => JSON.stringify(message)).join("\n");
   const serialized = contents ? `${contents}\n` : "";
   try {

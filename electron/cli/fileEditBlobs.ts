@@ -5,6 +5,8 @@ import type { AcpStreamItem } from "./acp.js";
 import { getDb } from "./db.js";
 import { requireOwnedConversation } from "./conversations.js";
 import { readFileEditLogVersions } from "./fileEditLogRecovery.js";
+import path from "node:path";
+import { snapshotIndex, snapshotPathIdentity, readSnapshotPair } from "./turnFileSnapshots.js";
 
 type FileEdit = Extract<AcpStreamItem, { kind: "file-edit" }>;
 type FileEditContext = { conversationId: string; sessionId: string };
@@ -214,6 +216,16 @@ const MAX_CONTENT_BYTES = 8 * 1024 * 1024;
 const turnCache = new Map<string, { messageId: string; conversationId: string; taskId: string; path: string; payload: Buffer }>();
 let turnCacheBytes = 0;
 let turnCacheDb: ReturnType<typeof getDb> | undefined;
+type SnapshotEntries = Array<{ edit?: FileEdit; covered: string[] }>;
+const indexCache = new Map<string, { entries: SnapshotEntries; capture: FileEditPage["capture"]; bytes: number }>();
+let indexCacheBytes = 0;
+let indexCacheDb: ReturnType<typeof getDb> | undefined;
+const MAX_INDEX_BYTES = 16 * 1024 * 1024;
+function snapshotPage(entries: SnapshotEntries, capture: FileEditPage["capture"], cursor: number): FileEditPage {
+  const page = entries.slice(cursor, cursor + 100);
+  return { edits: page.flatMap(entry => entry.edit ? [entry.edit] : []), coveredPaths: page.flatMap(entry => entry.covered),
+    nextCursor: cursor + page.length, hasMore: cursor + page.length < entries.length, capture };
+}
 
 function messageEditContext(messageId: string): MessageEditContext {
   if (typeof messageId !== "string") throw new Error("Invalid file edit query");
@@ -243,8 +255,76 @@ export function listMessageFileEdits(messageId: string, cursor = 0, groupFiles =
   const db = getDb();
   if (groupFiles) {
     if (message.status === "running" || message.status === "starting" || !message.task_id) return { edits: [], coveredPaths: [], nextCursor: cursor, hasMore: false };
+    if (indexCacheDb !== db) { indexCache.clear(); indexCacheBytes = 0; indexCacheDb = db; }
+    const run = db.prepare("SELECT state, sealed_at, overlapping FROM turn_file_capture_runs WHERE conversation_id = ? AND task_id = ?")
+      .get(message.conversation_id, message.task_id) as { state: string; sealed_at: number | null; overlapping: number } | undefined;
+    const indexKey = createHash("sha256").update(JSON.stringify([messageId, message.task_id, message.content, run])).digest("hex");
+    const indexed = indexCache.get(indexKey);
+    if (indexed) { indexCache.delete(indexKey); indexCache.set(indexKey, indexed); return snapshotPage(indexed.entries, indexed.capture, cursor); }
     const inputs = messageSnippetInputs(message.content);
     const recoverIds = [...inputs].filter(([, input]) => input.recover).map(([id]) => id);
+    const snapshot = snapshotIndex(messageId, message.conversation_id, message.task_id);
+    if (snapshot) {
+      if (snapshot.capture.state === "finalizing") return { edits: [], coveredPaths: [], nextCursor: cursor, hasMore: false, capture: snapshot.capture };
+      const records = db.prepare(`SELECT e.path, MIN(e.sequence) AS sequence FROM file_edit_blobs e
+        WHERE e.conversation_id = ? AND e.task_id = ? AND e.status = 'completed' AND ${turnSourcePredicate(recoverIds)}
+        GROUP BY e.path ORDER BY sequence`).all(message.conversation_id, message.task_id, ...recoverIds) as { path: string; sequence: number }[];
+      const identities = (filePath: string) => path.isAbsolute(filePath) ? [snapshotPathIdentity(filePath)]
+        : snapshot.roots.map(root => snapshotPathIdentity(path.resolve(root.path, filePath)));
+      const entries: Array<{ edit?: FileEdit; covered: string[] }> = snapshot.edits.map(edit => ({ edit, covered: [edit.path] }));
+      const byIdentity = new Map(entries.map(entry => [snapshotPathIdentity(entry.edit!.path), entry]));
+      // Unchanged snapshots also suppress old inline records, without exposing bodies.
+      for (const identity of snapshot.identities) if (!byIdentity.has(identity)) {
+        const entry = { covered: [identity] };
+        entries.push(entry);
+        byIdentity.set(identity, entry);
+      }
+      for (const file of records) {
+        const ids = identities(file.path);
+        if (ids.some(id => snapshot.identities.has(id))) {
+          const matching = ids.map(id => byIdentity.get(id)).find(Boolean);
+          matching?.covered.push(file.path);
+          continue;
+        }
+        const rows = turnSources(message, file.path, inputs);
+        // An incomplete version pair yields to saved operation evidence for that path.
+        const uncertain = ids.map(id => byIdentity.get(id)).find(Boolean);
+        const record: FileEdit = { kind: "file-edit", path: file.path, source: "records",
+          action: rows[0].action === "create" ? "create" : rows.at(-1)!.action === "delete" ? "delete" : "update",
+          turnKey: turnSourceKey(message, file.path, rows, inputs) };
+        const entry = uncertain ?? { covered: [file.path] };
+        entry.edit = record;
+        if (uncertain) entry.covered.push(file.path);
+        else entries.push(entry);
+        ids.forEach(id => byIdentity.set(id, entry));
+      }
+      // Inline histories may use a different case, slash style or relative path.
+      const aliases = new Set<string>();
+      const visit = (value: unknown) => {
+        if (!value || typeof value !== "object") return;
+        for (const [key, child] of Object.entries(value)) {
+          if (["path", "file_path", "filePath", "TargetFile"].includes(key) && typeof child === "string") aliases.add(child);
+          else if (child && typeof child === "object") visit(child);
+        }
+      };
+      try { visit(JSON.parse(message.content)); } catch { /* historical text message */ }
+      for (const alias of aliases) {
+        const ids = identities(alias);
+        const entry = ids.map(id => byIdentity.get(id)).find(Boolean);
+        if (entry) entry.covered.push(alias);
+      }
+      const bytes = JSON.stringify(entries).length * 2;
+      if (run?.sealed_at && bytes <= MAX_INDEX_BYTES) {
+        while (indexCache.size && (indexCacheBytes + bytes > MAX_INDEX_BYTES || indexCache.size >= 32)) {
+          const oldest = indexCache.keys().next().value!;
+          indexCacheBytes -= indexCache.get(oldest)!.bytes;
+          indexCache.delete(oldest);
+        }
+        indexCache.set(indexKey, { entries, capture: snapshot.capture, bytes });
+        indexCacheBytes += bytes;
+      }
+      return snapshotPage(entries, snapshot.capture, cursor);
+    }
     const files = db.prepare(`SELECT e.path, MIN(e.sequence) AS sequence FROM file_edit_blobs e
       WHERE e.conversation_id = ? AND e.task_id = ? AND e.status = 'completed' AND ${turnSourcePredicate(recoverIds)}
       GROUP BY e.path HAVING MIN(e.sequence) > ? ORDER BY sequence LIMIT 101`)
@@ -254,7 +334,7 @@ export function listMessageFileEdits(messageId: string, cursor = 0, groupFiles =
       const rows = turnSources(message, file.path, inputs);
       return { kind: "file-edit", path: file.path,
         action: rows[0].action === "create" ? "create" : rows.at(-1)!.action === "delete" ? "delete" : "update",
-        turnKey: turnSourceKey(message, file.path, rows, inputs) };
+        turnKey: turnSourceKey(message, file.path, rows, inputs), source: "records" };
     });
     return { edits, coveredPaths: page.map(file => file.path), nextCursor: page.at(-1)?.sequence ?? cursor, hasMore: files.length > page.length };
   }
@@ -276,6 +356,10 @@ export function readMessageFileEdit(messageId: string, filePath: string, turnKey
   let cached = turnCache.get(turnKey);
   if (cached && (cached.messageId !== messageId || cached.conversationId !== message.conversation_id ||
     cached.taskId !== message.task_id || cached.path !== filePath)) return;
+  if (!cached) {
+    const snapshot = readSnapshotPair(messageId, message.conversation_id, message.task_id, filePath, turnKey);
+    if (snapshot) cached = { messageId, conversationId: message.conversation_id, taskId: message.task_id, path: filePath, payload: Buffer.from(JSON.stringify(snapshot), "utf8") };
+  }
   if (!cached) {
     const inputs = messageSnippetInputs(message.content);
     const rows = turnSources(message, filePath, inputs);
@@ -301,9 +385,12 @@ export function readMessageFileEdit(messageId: string, filePath: string, turnKey
       return { data: "", nextOffset: 0, totalBytes: 0, hasMore: false, notice: "large" };
     }
     const summary = aggregateFileEdits(edits)[0];
-    content = summary ? { oldText: summary.oldText, newText: summary.newText, patch: summary.patch, action: summary.action, partial: !!summary.partial }
-      : { action: "update", oldText: "", newText: "", partial: false, unchanged: true };
+    content = summary ? { source: "records", oldText: summary.oldText, newText: summary.newText, patch: summary.patch, action: summary.action, partial: !!summary.partial }
+      : { source: "records", action: "update", oldText: "", newText: "", partial: false, unchanged: true };
     cached = { messageId, conversationId: message.conversation_id, taskId: message.task_id, path: filePath, payload: Buffer.from(JSON.stringify(content), "utf8") };
+  }
+  if (cached.payload.length > MAX_CONTENT_BYTES) return { data: "", nextOffset: 0, totalBytes: 0, hasMore: false, notice: "large" };
+  if (!turnCache.has(turnKey)) {
     if (cached.payload.length <= MAX_CONTENT_BYTES) {
       while (turnCache.size && (turnCacheBytes + cached.payload.length > MAX_CONTENT_BYTES || turnCache.size >= 32)) {
         const oldest = turnCache.keys().next().value!;
@@ -317,6 +404,34 @@ export function readMessageFileEdit(messageId: string, filePath: string, turnKey
   const chunk = cached.payload.subarray(offset, offset + 65536);
   const nextOffset = Math.min(offset + chunk.length, cached.payload.length);
   return { data: chunk.toString("base64"), nextOffset, totalBytes: cached.payload.length, hasMore: nextOffset < cached.payload.length };
+}
+
+/** Export bounded, independent text for a handoff; never export database keys. */
+export function readTurnFileSnapshotForHandoff(messageId: string, maxChars: number): { edits: FileEdit[]; truncated: boolean } | undefined {
+  const message = messageEditContext(messageId);
+  if (!message.task_id || message.status === "running" || message.status === "starting") return;
+  const snapshot = snapshotIndex(messageId, message.conversation_id, message.task_id);
+  if (!snapshot || snapshot.capture.state === "finalizing") return;
+  const edits: FileEdit[] = [];
+  let remaining = Math.max(0, Math.min(maxChars, 64 * 1024));
+  let truncated = false;
+  for (const edit of snapshot.edits.slice(0, 100)) {
+    const { turnKey, ...metadata } = edit;
+    const sizes = getDb().prepare(`SELECT before_version, after_version FROM turn_file_versions WHERE task_id = ? AND identity = ?`)
+      .get(message.task_id, snapshotPathIdentity(edit.path)) as { before_version: string; after_version: string };
+    const bytes = (JSON.parse(sizes.before_version).bytes ?? 0) + (JSON.parse(sizes.after_version).bytes ?? 0);
+    if (bytes > remaining || bytes > 16_000) {
+      truncated = true;
+      edits.push({ ...metadata, notice: "large", truncated: true });
+      continue;
+    }
+    const content = readSnapshotPair(messageId, message.conversation_id, message.task_id, edit.path, turnKey!);
+    if (content) {
+      remaining -= (content.oldText?.length ?? 0) + (content.newText?.length ?? 0);
+      edits.push({ ...metadata, ...content });
+    } else { truncated = true; edits.push({ ...metadata, notice: "unavailable", truncated: true }); }
+  }
+  return { edits, truncated: truncated || snapshot.edits.length > 100 };
 }
 
 export function readFileEditBlob(conversationId: string, blobKey: string, offset = 0): FileEditBlobChunk | undefined {

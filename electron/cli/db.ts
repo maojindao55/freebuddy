@@ -26,6 +26,7 @@ export function getDb(): DB {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);
+  recoverInterruptedFileCaptures(db);
   const transcriptRows = db
     .prepare(
       `SELECT transcript_path FROM handoff_briefs WHERE transcript_path IS NOT NULL
@@ -57,6 +58,16 @@ export function getLogDir(): string {
   const dir = path.join(getDataDir(), "cli-logs");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/** An interrupted turn must never acquire an ending version from today's disk. */
+export function recoverInterruptedFileCaptures(db: DB): void {
+  db.transaction(() => {
+    db.prepare(`UPDATE turn_file_versions SET before_blob = NULL, after_blob = NULL, after_version = NULL, changed = 0 WHERE task_id IN
+      (SELECT task_id FROM turn_file_capture_runs WHERE state IN ('preparing', 'running', 'finalizing'))`).run();
+    db.prepare(`UPDATE turn_file_capture_runs SET state = 'incomplete', complete = 0, reason = 'interrupted'
+      WHERE state IN ('preparing', 'running', 'finalizing')`).run();
+  })();
 }
 
 export function migrate(db: DB) {
@@ -348,6 +359,46 @@ export function migrate(db: DB) {
       ON file_edit_blobs(conversation_id, task_id, active, status, sequence);
     CREATE INDEX IF NOT EXISTS idx_file_edits_tool
       ON file_edit_blobs(conversation_id, task_id, tool_call_id, active);
+
+    CREATE TABLE IF NOT EXISTS turn_file_capture_runs (
+      task_id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      owner_key TEXT NOT NULL,
+      roots TEXT NOT NULL,
+      state TEXT NOT NULL,
+      complete INTEGER NOT NULL DEFAULT 0,
+      overlapping INTEGER NOT NULL DEFAULT 0,
+      started_at INTEGER NOT NULL,
+      sealed_at INTEGER,
+      reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_turn_capture_conversation ON turn_file_capture_runs(conversation_id);
+    CREATE TABLE IF NOT EXISTS file_version_blobs (
+      blob_key TEXT PRIMARY KEY,
+      owner_key TEXT NOT NULL,
+      payload BLOB NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS turn_file_versions (
+      task_id TEXT NOT NULL REFERENCES turn_file_capture_runs(task_id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      identity TEXT NOT NULL,
+      before_version TEXT NOT NULL,
+      after_version TEXT,
+      before_blob TEXT REFERENCES file_version_blobs(blob_key),
+      after_blob TEXT REFERENCES file_version_blobs(blob_key),
+      changed INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(task_id, identity)
+    );
+    CREATE INDEX IF NOT EXISTS idx_turn_versions_before_blob ON turn_file_versions(before_blob);
+    CREATE INDEX IF NOT EXISTS idx_turn_versions_after_blob ON turn_file_versions(after_blob);
+    CREATE TRIGGER IF NOT EXISTS turn_versions_gc_delete AFTER DELETE ON turn_file_versions BEGIN
+      DELETE FROM file_version_blobs WHERE blob_key IN (OLD.before_blob, OLD.after_blob)
+        AND NOT EXISTS (SELECT 1 FROM turn_file_versions WHERE before_blob = blob_key OR after_blob = blob_key);
+    END;
+    CREATE TRIGGER IF NOT EXISTS turn_versions_gc_update AFTER UPDATE OF before_blob, after_blob ON turn_file_versions BEGIN
+      DELETE FROM file_version_blobs WHERE blob_key IN (OLD.before_blob, OLD.after_blob)
+        AND NOT EXISTS (SELECT 1 FROM turn_file_versions WHERE before_blob = blob_key OR after_blob = blob_key);
+    END;
 
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,

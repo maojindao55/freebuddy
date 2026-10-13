@@ -1,0 +1,17 @@
+{
+  "agent": "Qoder",
+  "modelId": "qfmodel",
+  "modelName": "Qwen3.8-Flash (default)",
+  "files": 1,
+  "lines": [
+    3,
+    5,
+    7
+  ],
+  "complete": true,
+  "independentEdits": 3,
+  "source": "snapshot",
+  "historicalAfterReopen": true,
+  "before": "# 测试文档\n\n第一行：内容已更改。\n\n第二行：这是第二次追加的内容。\n\n新增行：这是新添加的一行。\n",
+  "after": "# 测试文档\n\n第一行：第一次修改完成（1/3）。\n\n第二行：第二次修改完成（2/3）。\n\n新增行：第三次修改完成（3/3）。\n"
+}

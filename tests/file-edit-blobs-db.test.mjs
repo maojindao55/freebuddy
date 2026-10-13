@@ -369,7 +369,7 @@ test("file indexes read no bodies or write summaries; selecting one file compute
   assert.ok(page.edits.every(edit => edit.turnKey && !edit.blobKey && !edit.counts && edit.oldText === undefined));
   assert.deepEqual(page.coveredPaths, ["file.ts", "other.ts"]);
   const loaded = await loadTurn(page.edits[0]);
-  assert.deepEqual(loaded.content, { oldText: "original\n", newText: "final\n", action: "update", partial: false });
+  assert.deepEqual(loaded.content, { source: "records", oldText: "original\n", newText: "final\n", action: "update", partial: false });
   assert.equal(reads().length, 2);
   assert.deepEqual(db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all(), before);
   await loadTurn(page.edits[0]);

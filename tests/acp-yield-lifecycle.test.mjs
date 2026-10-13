@@ -22,7 +22,7 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const require = createRequire(import.meta.url);
 
-async function runScenario(t, mode, adapter = "codex-acp", warm) {
+async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions) {
   const child = warm?.child ?? new EventEmitter();
   child.exitCode = null;
   child.signalCode = null;
@@ -30,6 +30,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
   child.stderr ??= new PassThrough();
   const running = new Map();
   const events = [], requests = [], traces = [];
+  const captureOrder = [];
   const timers = new Set();
   const isPi = mode.startsWith("pi-");
   const piDataDir = isPi ? fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-pi-acp-metrics-")) : undefined;
@@ -68,6 +69,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
         }
         else if (msg.method === "session/new" || msg.method === "session/load") reply(msg, { sessionId: "fake-session" });
         else if (msg.method === "session/prompt") {
+          if (captureOptions) { assert.ok(captureOrder.includes("prepared")); captureOrder.push("prompt"); }
           if (isPi) {
             fs.appendFileSync(piSessionFile, JSON.stringify({ type: "custom", customType: "freebuddy-generation-metrics", data: { version: 1, outputTokens: 20, durationMs: 500 } }) + "\n");
             fs.appendFileSync(piSessionFile, JSON.stringify({ type: "message", message: { role: "assistant", usage: { input: 50, output: 20, cacheRead: 100, cacheWrite: 5, reasoning: 3 } } }) + "\n");
@@ -75,7 +77,8 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
             if (mode === "pi-cancel") running.get("test-turn").cancel();
             else if (mode === "pi-yield") running.get("test-turn").yield();
             else reply(msg, { stopReason: "end_turn", ...(mode === "pi-upstream" ? { usage: { inputTokens: 250, outputTokens: 40 } } : {}) });
-          } else if (mode.startsWith("yield")) running.get("test-turn").yield();
+          } else if (mode === "failed") child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "fixture prompt failed" } }) + "\n");
+          else if (mode.startsWith("yield")) running.get("test-turn").yield();
           else if (mode === "cancel") running.get("test-turn").cancel();
           else if (mode.startsWith("unified-")) {
             notify({ sessionUpdate: "usage_update", used: 9_000, size: 128_000, outputTokens: 9_999 });
@@ -135,6 +138,20 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
   });
   const noop = () => {};
   const services = {
+    turnFileSnapshotsEnabled: () => !!captureOptions,
+    prepareTurnFileCapture: async input => {
+      captureOrder.push("prepare");
+      assert.equal(input.taskId, "test-turn");
+      await new Promise(resolve => setImmediate(resolve));
+      captureOrder.push("prepared");
+      if (captureOptions.failPrepare) throw new Error("capture failed");
+      return { taskId: input.taskId };
+    },
+    finalizeTurnFileCapture: async () => {
+      captureOrder.push("finalize");
+      await new Promise(resolve => setImmediate(resolve));
+      captureOrder.push("sealed");
+    },
     PiRunUsageReader,
     getDataDir: () => piDataDir,
     persistFileEditItems: (_sessionId, items) => items,
@@ -169,9 +186,10 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
   const turn = exports.runAcpAgent({
     child, pid: 1, webContents: {},
     warmConnection, parkConnection: warmConnection ? () => { parked = true; } : undefined,
-    args: { sessionId: "test-turn", agentId: "test", adapter: isPi ? "pi-acp" : adapter, prompt: "test", knownStreamMessageIds: ["historical"] },
+    args: { sessionId: "test-turn", agentId: "test", adapter: isPi ? "pi-acp" : adapter, prompt: "test", knownStreamMessageIds: ["historical"],
+      ...(captureOptions ? { conversationId: "conversation", cwd: "C:/project" } : {}) },
     toolSessionId: warm?.sessionId ?? (mode === "metrics" ? "fake-session" : undefined),
-    logStream: null, running, capturedSessions: new Map(), emit: event => events.push(event), metrics,
+    logStream: null, running, capturedSessions: new Map(), emit: event => { events.push(event); if (event.type === "done") captureOrder.push("done"); }, metrics,
     agentCommand: { bin: "fake", args: [], env: {} }, restartAgent: async () => { throw new Error("unexpected restart"); }
   });
   let deadline;
@@ -181,8 +199,21 @@ async function runScenario(t, mode, adapter = "codex-acp", warm) {
     })]);
   } finally { clearTimeout(deadline); }
   await new Promise(resolve => setTimeout(resolve, 30));
-  return { events, requests, traces, running, killCount, metricSnapshots, warmConnection, parked, child };
+  return { events, requests, traces, running, killCount, metricSnapshots, warmConnection, parked, child, captureOrder };
 }
+
+for (const mode of ["complete", "cancel", "yield-silent", "warm", "failed"]) {
+  test(`file versions seal before done and scheduler return (${mode})`, async t => {
+    const result = await runScenario(t, mode, "codex-acp", undefined, {});
+    assert.deepEqual(result.captureOrder, ["prepare", "prepared", "prompt", "finalize", "sealed", "done"]);
+    assert.equal(result.events.filter(event => event.type === "done").length, 1);
+  });
+}
+test("baseline failure degrades capture without failing an ACP turn", async t => {
+  const result = await runScenario(t, "complete", "codex-acp", undefined, { failPrepare: true });
+  assert.deepEqual(result.captureOrder, ["prepare", "prepared", "prompt", "done"]);
+  assert.equal(result.events.some(event => event.type === "error"), false);
+});
 
 for (const mode of ["yield-close", "yield-silent"]) {
   test(`delegation ${mode} returns without cleanup RPCs and reaps its process`, async t => {

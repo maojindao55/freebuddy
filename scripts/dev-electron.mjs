@@ -7,6 +7,7 @@ import { resolveElectronCommand } from "./electron-shell.mjs";
 const viteUrl = "http://127.0.0.1:5173";
 const children = new Set();
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const fileSnapshots = process.argv.includes("--file-snapshots");
 
 function run(command, args, options = {}) {
   const child = spawn(command, args, {
@@ -91,6 +92,7 @@ try {
   const electron = run(electronCommand.command, electronCommand.args, {
     env: {
       ...process.env,
+      ...(fileSnapshots ? { FREEBUDDY_FILE_SNAPSHOTS: "1" } : {}),
       VITE_DEV_SERVER_URL: viteUrl
     }
   });

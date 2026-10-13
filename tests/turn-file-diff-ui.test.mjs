@@ -47,10 +47,12 @@ function components(selection, extra = {}) {
   return exports;
 }
 
-test("file changes stay hidden while running and list each file without computing its diff before opening", () => {
+test("running turns show a status; finished turns index files without calculating their diffs", () => {
   const { FileChangesCard } = components();
   const props = { items: edits, conversationId: "conversation", messageId: "message" };
-  assert.equal(renderToStaticMarkup(createElement(FileChangesCard, { ...props, isRunning: true })), "");
+  const running = renderToStaticMarkup(createElement(FileChangesCard, { ...props, isRunning: true }));
+  assert.ok(running.includes("fileDiff.running"));
+  assert.equal(running.includes('class="file-change-entry"'), false);
   assert.equal(renderToStaticMarkup(createElement(FileChangesCard, { ...props, storedTaskId: "task" })), "");
   const markup = renderToStaticMarkup(createElement(FileChangesCard, props));
   assert.equal((markup.match(/class="file-change-entry"/g) ?? []).length, 1);
@@ -74,7 +76,7 @@ test("the panel has one file selector and shows the overall diff without a revis
   const { FileDiffPanel } = components({ conversationId: "conversation", messageId: "message", edits: aggregateFileEdits(edits), index: 0 });
   const markup = renderToStaticMarkup(createElement(FileDiffPanel));
   assert.equal((markup.match(/<select/g) ?? []).length, 1);
-  assert.equal(markup.includes("fileDiff.record"), false);
+  assert.equal(markup.includes(">fileDiff.record<"), false);
   assert.ok(markup.includes("original"));
   assert.ok(markup.includes("final"));
   assert.equal(markup.includes("temporary"), false);

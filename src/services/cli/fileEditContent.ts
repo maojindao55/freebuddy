@@ -31,7 +31,9 @@ export function createFileEditContentLoader(readChunk: ReadChunk, maxBytes = 8 *
     const content = JSON.parse(text) as FileEditContent;
     if (!content || typeof content !== "object" || Array.isArray(content)
       || [content.oldText, content.newText, content.patch].some(value => value !== undefined && typeof value !== "string")
-      || [content.partial, content.unchanged].some(value => value !== undefined && typeof value !== "boolean")
+      || [content.partial, content.unchanged, content.overlapping].some(value => value !== undefined && typeof value !== "boolean")
+      || (content.source !== undefined && !["snapshot", "records"].includes(content.source))
+      || (content.notice !== undefined && !["binary", "large", "unavailable"].includes(content.notice))
       || (content.action !== undefined && !["create", "update", "delete"].includes(content.action))) {
       throw new Error("Invalid file edit content");
     }

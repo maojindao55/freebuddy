@@ -7,7 +7,7 @@ import { getParser, serializeStreamItemsForPersist } from "@freebuddy/cli-stream
 const output = ts.transpileModule(fs.readFileSync(new URL("../src/utils/fileDiff.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 }
 }).outputText.replaceAll('"@freebuddy/cli-stream"', JSON.stringify(new URL("../packages/cli-stream/dist/index.js", import.meta.url).href));
-const { buildFileDiff, collectFileEdits, foldDiffRows, inlineHighlights, groupFileEditRecords, isMarkdownFile, markdownVersions } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+const { buildFileDiff, collectFileEdits, foldDiffRows, inlineHighlights, groupFileEditRecords, indexFileEdits, isMarkdownFile, markdownVersions } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 const edit = (fields) => ({ kind: "file-edit", path: "src/a.ts", action: "update", ...fields });
 
 test("native transcript truncation cannot become a two-line diff even after blob hydration", () => {
@@ -45,6 +45,30 @@ test("file-local history retains original indices across interleaved files and d
     { path: "src/a.ts", indices: [1] },
     { path: "other/task.md", indices: [3] }
   ]);
+});
+
+test("diff indexes exclude resource files across inline, blob, and snapshot records", () => {
+  const paths = ["assets/logo.PNG", "C:\\project\\photo.JpEg", "icon.svg", "font.woff2", "audio.mp3", "video.mp4",
+    "archive.tar.gz", "report.pdf", "report.docx", "data.xlsx", "deck.pptx", "app.exe", "addon.node", "cache.sqlite"];
+  for (const fields of [{}, { blobKey: "saved" }, { turnKey: "snapshot", source: "snapshot" }]) {
+    assert.deepEqual(indexFileEdits(paths.map(path => edit({ path, ...fields }))), []);
+  }
+  const textPaths = ["README.md", "中文文档.txt", "src/app.tsx", "style.css", "package.json", ".env", ".gitignore", "Dockerfile", "Makefile", "data.csv", "package-lock.json", "certificate.key", "custom.extension", "logo.png.ts"];
+  assert.deepEqual(indexFileEdits(textPaths.map(path => edit({ path, turnKey: path }))).map(edit => edit.path), textPaths);
+});
+
+test("binary evidence excludes a whole file without discarding its change records", () => {
+  const records = [
+    edit({ path: "unknown", newText: "binary\0body" }),
+    edit({ path: "unknown", newText: "later content" }),
+    edit({ path: "snapshot.data", turnKey: "saved", notice: "binary" }),
+    edit({ path: "patch.data", patch: "GIT binary patch\nliteral 2\nabc" }),
+    edit({ path: "legacy.data", patch: "Binary files a/legacy.data and b/legacy.data differ" }),
+    edit({ path: "missing.md", notice: "unavailable", turnKey: "missing" }),
+    edit({ path: "large.ts", notice: "large", turnKey: "large" })
+  ];
+  assert.deepEqual(indexFileEdits(records).map(edit => edit.path), ["missing.md", "large.ts"]);
+  assert.deepEqual(collectFileEdits(records), records);
 });
 
 test("diff preserves context, exact line numbers, and added/removed counts", () => {

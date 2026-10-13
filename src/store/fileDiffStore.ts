@@ -39,6 +39,11 @@ export const useFileDiffStore = create<FileDiffState>((set, get) => ({
   refresh(conversationId, messageId, edits) {
     const selection = get().selection;
     if (selection?.conversationId === conversationId && selection.messageId === messageId) {
+      if (!edits.length) {
+        set({ selection: undefined });
+        void get().loadSelected();
+        return;
+      }
       if (selection.edits.length === edits.length && edits.every((edit, index) => edit === selection.edits[index])) return;
       const selected = selection.edits[selection.index];
       const matchingIndex = edits.findIndex(edit => edit.path === selected?.path);

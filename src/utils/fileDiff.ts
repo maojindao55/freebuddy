@@ -4,6 +4,28 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 export type FileEdit = Extract<CliStreamItem, { kind: "file-edit" }> & { sources?: FileEdit[] };
 export { aggregateFileEdits, buildFileDiff, type DiffRow, type FileDiff } from "@freebuddy/cli-stream";
 
+const NON_TEXT_DIFF_EXTENSIONS = new Set([
+  // Media resources, including vector artwork.
+  "png", "jpg", "jpeg", "gif", "webp", "avif", "apng", "bmp", "ico", "icns", "tif", "tiff", "heic", "heif", "svg", "psd", "ai", "eps",
+  "mp3", "wav", "ogg", "flac", "aac", "m4a", "opus", "mp4", "mov", "webm", "avi", "mkv", "m4v", "mpeg", "mpg",
+  "woff", "woff2", "ttf", "otf", "eot",
+  // Archives and document containers need their own readers, not line diffs.
+  "zip", "gz", "bz2", "xz", "7z", "rar", "tar", "tgz", "zst", "br", "epub",
+  "pdf", "doc", "docx", "dot", "dotx", "docm", "dotm", "wps", "wpt",
+  "xls", "xlsx", "xlsm", "xlt", "xltx", "xltm", "ppt", "pptx", "pptm", "pps", "ppsx", "ppsm", "pot", "potx", "potm",
+  "odt", "ods", "odp", "pages", "numbers",
+  "exe", "dll", "so", "dylib", "node", "bin", "wasm", "o", "obj", "a", "lib", "class", "jar", "pyc", "pyo", "db", "sqlite", "sqlite3", "pdb", "dmg", "iso"
+]);
+
+/** Exclude resources using metadata; keep unknown/extensionless text and missing captures. */
+export function isTextDiffFile(edit: FileEdit): boolean {
+  const extension = edit.path.split(/[\\/]/).at(-1)?.match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase();
+  if ((extension && NON_TEXT_DIFF_EXTENSIONS.has(extension)) || edit.notice === "binary") return false;
+  if ([edit.oldText, edit.newText, edit.patch].some(text => text?.includes("\0"))) return false;
+  if (edit.patch && /(?:^|\n)(?:GIT binary patch|Binary files .+ differ)(?:\r?\n|$)/.test(edit.patch)) return false;
+  return !edit.sources || edit.sources.every(isTextDiffFile);
+}
+
 export function isMarkdownFile(path: string): boolean {
   return /\.(?:md|markdown|mdown|mkd)$/i.test(path);
 }
@@ -30,12 +52,12 @@ export function groupFileEditRecords(edits: FileEdit[]): { path: string; indices
 
 /** Build card rows without computing diffs; inline histories are composed on opening. */
 export function indexFileEdits(edits: FileEdit[]): FileEdit[] {
-  return groupFileEditRecords(edits).map(({ path, indices }) => {
+  return groupFileEditRecords(edits).map<FileEdit>(({ path, indices }) => {
     const sources = indices.map(index => edits[index]);
     if (sources.length === 1 && sources[0].turnKey) return sources[0];
     return { kind: "file-edit", path, sources,
       action: sources[0].action === "create" ? "create" : sources.at(-1)!.action === "delete" ? "delete" : "update" };
-  });
+  }).filter(isTextDiffFile);
 }
 
 export function fileEditContentKey(conversationId: string, messageId: string | undefined, edit: FileEdit): string {

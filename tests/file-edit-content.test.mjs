@@ -16,6 +16,21 @@ const diffModule = await loadSource("../src/utils/fileDiff.ts");
 const require = createRequire(import.meta.url);
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test("refreshing to no eligible diff files clears the reader and ignores pending resource content", async () => {
+  let resolve;
+  const store = makeStore(() => new Promise(done => { resolve = done; }));
+  store.getState().open({ conversationId: "conversation", messageId: "message",
+    edits: [{ kind: "file-edit", path: "image.png", action: "update", blobKey: "resource" }], index: 0 });
+  assert.equal(store.getState().content.status, "loading");
+  store.getState().refresh("conversation", "message", []);
+  assert.equal(store.getState().selection, undefined);
+  assert.equal(store.getState().content, undefined);
+  resolve(chunk({ oldText: "binary", newText: "resource" }));
+  await tick();
+  assert.equal(store.getState().content, undefined);
+  assert.equal(store.getState().counts.resource, undefined);
+});
+
 function chunk(content) {
   const buffer = Buffer.from(JSON.stringify(content));
   return { data: buffer.toString("base64"), nextOffset: buffer.length, totalBytes: buffer.length, hasMore: false };

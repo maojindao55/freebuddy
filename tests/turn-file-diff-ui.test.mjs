@@ -24,14 +24,21 @@ const edits = [
   { kind: "file-edit", path: "file.ts", action: "update", oldText: "temporary\nextra\n", newText: "final\n" }
 ];
 
-function components(selection, extra = {}) {
+function components(selection, extra = {}, stored) {
   const exports = {};
   const state = { counts: {}, selection, ...extra };
   const useFileDiffStore = selector => selector(state);
+  let injectedStored = false;
   vm.runInNewContext(compiled, {
     exports,
     window: {},
     require: name => {
+      if (name === "react" && stored) return { ...require(name), useState: initial => {
+        const result = require(name).useState(initial);
+        if (injectedStored) return result;
+        injectedStored = true;
+        return [stored, result[1]];
+      } };
       if (name === "@/utils/fileDiff") return diffUtils;
       if (name === "@/store/fileDiffStore") return { useFileDiffStore };
       if (name === "@/store/conversationStore") return { useConversationStore: selector => selector({ conversations: [], activeId: "conversation" }) };
@@ -58,6 +65,35 @@ test("running turns hide the changes card; finished turns index files without ca
   assert.equal(markup.includes('class="is-add"'), false);
   assert.ok(markup.includes("fileDiff.view"));
   assert.equal(markup.includes("fileDiff.editCount"), false);
+});
+
+test("resources are excluded from card rows, overflow counts, and the diff picker", () => {
+  const items = ["logo.png", "docs/task.md", "video.mp4", "src/a.ts", "font.woff2", "config.json", "icons.svg"].map(path =>
+    ({ kind: "file-edit", path, action: "update", oldText: "before", newText: "after" }));
+  const { FileChangesCard, FileDiffPanel } = components({ conversationId: "conversation", messageId: "message",
+    edits: diffUtils.indexFileEdits(items), index: 1 });
+  const card = renderToStaticMarkup(createElement(FileChangesCard, { items, conversationId: "conversation", messageId: "message" }));
+  assert.equal((card.match(/class="file-change-entry"/g) ?? []).length, 3);
+  assert.equal(card.includes("fileDiff.showMore"), false);
+  const panel = renderToStaticMarkup(createElement(FileDiffPanel));
+  assert.equal((panel.match(/<option/g) ?? []).length, 3);
+  assert.ok(panel.includes("2/3"));
+  for (const resource of ["logo.png", "video.mp4", "font.woff2", "icons.svg"]) {
+    assert.equal(card.includes(resource), false);
+    assert.equal(panel.includes(resource), false);
+  }
+});
+
+test("resource-only snapshots hide the card without claiming the turn made no changes", () => {
+  const items = [{ kind: "file-edit", path: "image.png", action: "create" }];
+  for (const complete of [true, false]) {
+    const { FileChangesCard } = components(undefined, {}, {
+      key: JSON.stringify(["conversation", "message", "task"]),
+      edits: [{ ...items[0], turnKey: "snapshot", source: "snapshot", notice: "binary" }],
+      coveredPaths: ["image.png"], capture: { state: "ready", complete, overlapping: false }
+    });
+    assert.equal(renderToStaticMarkup(createElement(FileChangesCard, { items, conversationId: "conversation", messageId: "message", storedTaskId: "task" })), "");
+  }
 });
 
 test("cards update net counts after opening and hide files calculated as unchanged", () => {

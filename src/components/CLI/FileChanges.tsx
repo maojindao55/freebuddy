@@ -7,7 +7,7 @@ import type { CliStreamItem } from "@/services/cli/parsers";
 import { useFileDiffStore } from "@/store/fileDiffStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { cliClient } from "@/services/cli/client";
-import { collectFileEdits, fileEditContentKey, foldDiffRows, getFileDiff, indexFileEdits, inlineHighlights, isMarkdownFile, markdownVersions, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
+import { collectFileEdits, fileEditContentKey, foldDiffRows, getFileDiff, indexFileEdits, inlineHighlights, isMarkdownFile, isTextDiffFile, markdownVersions, mergeStoredFileEdits, pickerLabels, relativePath, splitPath, type DiffRow, type FileEdit } from "@/utils/fileDiff";
 import { conversationWorktreePath } from "./conversationProjectGrouping";
 import { copyToClipboard } from "@/utils/clipboard";
 import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
@@ -33,10 +33,11 @@ export function FileChangesCard({ items, conversationId, messageId, storedTaskId
   const [indexError, setIndexError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const counts = useFileDiffStore(state => state.counts);
-  const edits = useMemo(() => {
-    if (isRunning || (storedTaskId && stored?.key !== storedKey)) return [];
+  const { edits, hasNonTextChanges } = useMemo(() => {
+    if (isRunning || (storedTaskId && stored?.key !== storedKey)) return { edits: [] as FileEdit[], hasNonTextChanges: false };
     const saved = stored?.key === storedKey ? stored : undefined;
-    return indexFileEdits(mergeStoredFileEdits(collectFileEdits(items), saved?.edits, saved?.coveredPaths));
+    const changes = mergeStoredFileEdits(collectFileEdits(items), saved?.edits, saved?.coveredPaths);
+    return { edits: indexFileEdits(changes), hasNonTextChanges: changes.some(edit => !isTextDiffFile(edit)) };
   }, [items, stored, storedKey, storedTaskId, isRunning]);
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +86,7 @@ export function FileChangesCard({ items, conversationId, messageId, storedTaskId
   useEffect(() => setExpanded(false), [conversationId, messageId]);
   useEffect(() => { useFileDiffStore.getState().refresh(conversationId, messageId, edits); }, [conversationId, messageId, edits]);
   const capture = stored?.key === storedKey ? stored.capture : undefined;
-  if (isRunning || (!files.length && !indexError && !capture && !finalizing)) return null;
+  if (isRunning || (!files.length && !indexError && !finalizing && (hasNonTextChanges || !capture))) return null;
   const open = (index: number) => useFileDiffStore.getState().open({ conversationId, messageId, edits, index });
   return <section className="file-changes-card" aria-label={t("fileDiff.title")}>
     <p className="file-diff-notice" aria-live="polite">{t(finalizing ? "fileDiff.finalizing" : capture && !files.length && capture.complete ? "fileDiff.noChanges" : "fileDiff.turnTitle")}</p>

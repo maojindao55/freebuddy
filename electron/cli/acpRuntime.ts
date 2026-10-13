@@ -159,11 +159,31 @@ const INACTIVITY_PING_TIMEOUT_MS = 15_000;
 const MAX_INACTIVITY_REPRIEVES = 2;
 const CLEANUP_REQUEST_TIMEOUT_MS = 2_000;
 
-function writeAcp(
-  child: ChildProcessByStdio<Writable, Readable, Readable>,
-  msg: AcpMessage
-) {
-  child.stdin.write(JSON.stringify(msg) + "\n");
+interface AcpStdinState {
+  error?: Error;
+  onError?: (error: Error) => void;
+}
+const acpStdinStates = new WeakMap<Writable, AcpStdinState>();
+
+function observeAcpStdin(stdin: Writable, onError: (error: Error) => void) {
+  let state = acpStdinStates.get(stdin);
+  if (!state) {
+    const streamState: AcpStdinState = {};
+    acpStdinStates.set(stdin, streamState);
+    // A failed write calls its callback AND emits a stream error. Keep one
+    // listener for the stream's lifetime, including late errors after yield,
+    // authentication restart or return to the warm pool. Detach the per-turn
+    // callback without removing this listener.
+    stdin.on("error", error => {
+      streamState.error ??= error;
+      streamState.onError?.(error);
+    });
+    state = streamState;
+  }
+  state.onError = onError;
+  return () => {
+    if (state.onError === onError) state.onError = undefined;
+  };
 }
 
 function contextResetInstruction(): string {
@@ -366,12 +386,42 @@ export async function runAcpAgent({
     }
   >();
 
+  const connectionClosed = () => finished || Boolean(acpStdinStates.get(child.stdin)?.error) ||
+    child.exitCode != null || child.signalCode != null ||
+    child.stdin.destroyed || child.stdin.writableEnded;
+  const rejectPendingWrites = (error: Error) => {
+    for (const waiter of pending.values()) waiter.reject(error);
+    pending.clear();
+  };
+  const writeAcp = (msg: AcpMessage, onError?: (error: Error) => void) => {
+    if (connectionClosed()) {
+      onError?.(acpStdinStates.get(child.stdin)?.error ?? new Error("ACP connection is closed."));
+      return;
+    }
+    const writingChild = child;
+    const fail = (error: Error) => {
+      const state = acpStdinStates.get(writingChild.stdin);
+      if (state) {
+        state.error ??= error;
+        // Route to this stream's current owner. A callback from a retired
+        // process must not reject requests on its replacement's stdin.
+        state.onError?.(error);
+      }
+      onError?.(error);
+    };
+    try {
+      child.stdin.write(JSON.stringify(msg) + "\n", error => {
+        if (error) fail(error);
+      });
+    } catch (error) {
+      fail(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
   const nextId = () => ++requestId;
   const request = (msg: AcpMessage, timeoutMs?: number) =>
     new Promise<any>((resolve, reject) => {
-      if (finished || child.exitCode != null || child.signalCode != null ||
-          child.stdin.destroyed || child.stdin.writableEnded) {
-        reject(new Error("ACP connection is closed."));
+      if (connectionClosed() || cancellationRequested) {
+        reject(acpStdinStates.get(child.stdin)?.error ?? new Error("ACP connection is closed."));
         return;
       }
       if (msg.id == null) {
@@ -413,45 +463,25 @@ export async function runAcpAgent({
           metrics?.promptSubmitted();
           metrics?.beginGeneration();
         }
-        child.stdin.write(JSON.stringify(msg) + "\n", (error) => {
-          if (error) waiter.reject(error);
-        });
+        writeAcp(msg, waiter.reject);
       } catch (error) {
         waiter.reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   const notify = (msg: AcpMessage) => {
+    if (connectionClosed()) return;
     appendLog(logStream, "stdin", JSON.stringify(msg));
-    writeAcp(child, msg);
+    writeAcp(msg);
   };
-  const probeAgentLiveness = (): Promise<boolean> =>
-    new Promise<boolean>((resolve) => {
+  const probeAgentLiveness = async (): Promise<boolean> => {
+    try {
       const probeId = nextId();
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        pending.delete(String(probeId));
-        resolve(false);
-      }, INACTIVITY_PING_TIMEOUT_MS);
-      pending.set(String(probeId), {
-        resolve: () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(true);
-        },
-        reject: () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(false);
-        }
-      });
-      const probeMsg = buildSessionListRequest(probeId);
-      appendLog(logStream, "stdin", JSON.stringify(probeMsg));
-      writeAcp(child, probeMsg);
-    });
+      await request(buildSessionListRequest(probeId), INACTIVITY_PING_TIMEOUT_MS);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const onInactivityExpired = async () => {
     if (args.sessionId && isInactivitySuppressed(args.sessionId)) {
@@ -834,7 +864,7 @@ export async function runAcpAgent({
       } else if (msg.method.startsWith("terminal/")) {
         void handleTerminalRequest(msg);
       } else {
-        writeAcp(child, {
+        writeAcp({
           jsonrpc: "2.0",
           id: msg.id,
           error: {
@@ -891,7 +921,7 @@ export async function runAcpAgent({
   ) {
     metrics?.resumeGeneration();
     if (decision.outcome === "selected") {
-      writeAcp(child, {
+      writeAcp({
         jsonrpc: "2.0",
         id: requestRpcId,
         result: {
@@ -899,7 +929,7 @@ export async function runAcpAgent({
         }
       });
     } else {
-      writeAcp(child, {
+      writeAcp({
         jsonrpc: "2.0",
         id: requestRpcId,
         result: { outcome: { outcome: "cancelled" } }
@@ -1024,10 +1054,10 @@ export async function runAcpAgent({
     const params = (msg.params ?? {}) as Record<string, unknown>;
     const requestRpcId = msg.id!;
     const respond = (result: Record<string, unknown>) => {
-      writeAcp(child, { jsonrpc: "2.0", id: requestRpcId, result });
+      writeAcp({ jsonrpc: "2.0", id: requestRpcId, result });
     };
     const respondError = (message: string) => {
-      writeAcp(child, {
+      writeAcp({
         jsonrpc: "2.0",
         id: requestRpcId,
         error: { code: -32603, message }
@@ -1138,12 +1168,14 @@ export async function runAcpAgent({
   let rlErr: readline.Interface | undefined;
   let connectionCloseHandler: ((code: number | null) => void) | undefined;
   let connectionErrorHandler: ((error: Error) => void) | undefined;
+  let detachStdinErrors: (() => void) | undefined;
   const detachConnection = () => {
     connectionEpoch += 1;
     rlOut?.close();
     rlErr?.close();
     if (connectionCloseHandler) child.off("close", connectionCloseHandler);
     if (connectionErrorHandler) child.off("error", connectionErrorHandler);
+    detachStdinErrors?.();
   };
   let recentStderr: string[] = [];
   let lastAgentText = "";
@@ -1151,6 +1183,9 @@ export async function runAcpAgent({
 
   const attachConnection = () => {
     const epoch = ++connectionEpoch;
+    detachStdinErrors = observeAcpStdin(child.stdin, error => {
+      if (epoch === connectionEpoch) rejectPendingWrites(error);
+    });
     recentStderr = [];
     lastAgentText = "";
     lastToolCommand = "";
@@ -1354,7 +1389,8 @@ export async function runAcpAgent({
   };
 
   const syncSessionMetadataFromList = async () => {
-    if (!agentCaps?.sessionCapabilities?.list || !activeAcpSessionId) return;
+    if (cancellationRequested || connectionClosed() ||
+        !agentCaps?.sessionCapabilities?.list || !activeAcpSessionId) return;
     try {
       const listed = await request(buildSessionListRequest(nextId(), args.cwd), CLEANUP_REQUEST_TIMEOUT_MS);
       const items = acpSessionListToItems(activeAcpSessionId, listed);
@@ -1870,6 +1906,7 @@ export async function runAcpAgent({
 
     if (
       !finished &&
+      !cancellationRequested &&
       shouldRetryEmptyResumedDshTurn({
         adapter: args.adapter,
         resumed: initialPromptResumedSession,
@@ -1921,7 +1958,7 @@ export async function runAcpAgent({
     // return an empty turn because the model layer is unauthenticated. If the
     // agent advertised auth methods and produced nothing, treat it as a missing
     // login rather than a silent success.
-    if (!promptHadContent && authMethods.length > 0 && !finished) {
+    if (!promptHadContent && authMethods.length > 0 && !finished && !cancellationRequested) {
       const isPiByok =
         args.adapter === "pi-acp" &&
         hasCliByokModels(args.agentId, args.adapter);
@@ -1971,8 +2008,8 @@ export async function runAcpAgent({
 
     keepWarm = Boolean(warmConnection && parkConnection && activeAcpSessionId &&
       warmConnection.initialize?._meta?.freebuddy?.persistentSession === true && !cancellationRequested &&
-      !inactivityFired && !turnHadTerminalError);
-    if (!keepWarm && agentCaps?.sessionCapabilities?.close) {
+      !connectionClosed() && !inactivityFired && !turnHadTerminalError);
+    if (!keepWarm && !cancellationRequested && !connectionClosed() && agentCaps?.sessionCapabilities?.close) {
       try {
         await request(buildSessionCloseRequest(nextId(), activeAcpSessionId!), CLEANUP_REQUEST_TIMEOUT_MS);
       } catch {
@@ -2020,6 +2057,7 @@ export async function runAcpAgent({
     }
     finish("failed", -1, msg);
   } finally {
+    detachStdinErrors?.();
     await captureCompletion;
   }
 }

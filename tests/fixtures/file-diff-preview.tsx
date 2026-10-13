@@ -21,6 +21,9 @@ const items: CliStreamItem[] = [
   { kind: "file-edit", path: "src/login.css", action: "create", newText: ".login {\n  display: flex;\n  gap: 12px;\n}\n" },
   { kind: "file-edit", path: "src/legacy.ts", action: "delete", oldText: "export const legacy = true;\n" },
   { kind: "file-edit", path: "assets/logo.png", action: "update" },
+  { kind: "file-edit", path: "assets/icon.svg", action: "update", oldText: "<svg />", newText: "<svg viewBox=\"0 0 24 24\" />" },
+  { kind: "file-edit", path: "assets/font.woff2", action: "create" },
+  { kind: "file-edit", path: "assets/video.mp4", action: "create" },
   { kind: "file-edit", path: "src/large.ts", action: "update", truncated: true, oldText: "before", newText: "after" }
 ];
 const loginEdit = items[0] as Extract<CliStreamItem, { kind: "file-edit" }>;
@@ -29,6 +32,7 @@ items.push({ kind: "file-edit", path: "src/reverted.ts", action: "update", oldTe
 items.push({ kind: "file-edit", path: "src/reverted.ts", action: "update", oldText: "temporary", newText: "original" });
 function Preview() {
   const [running, setRunning] = useState(true);
+  const [resourcesOnly, setResourcesOnly] = useState(false);
   const collapsed = useDetailLayoutStore((s) => s.detailCollapsed);
   const width = useDetailLayoutStore(selectDetailWidth);
   const activeId = useConversationStore((s) => s.activeId);
@@ -37,8 +41,9 @@ function Preview() {
       <h2>普通对话 · 文件变更验证</h2>
       <p>登录文件在同一轮修改了两次；点击后显示整体差异。reverted.ts 改后恢复，打开确认后从卡片隐藏。</p>
       <button onClick={() => setRunning(!running)}>{running ? "结束本轮对话" : "模拟新一轮执行"}</button>
+      <button onClick={() => { setRunning(false); setResourcesOnly(value => !value); }}>{resourcesOnly ? "文本与资源混合" : "仅资源变化"}</button>
       <p>状态：{running ? "运行中" : "已结束"}</p>
-      <FileChangesCard items={items} conversationId="diff-fixture" messageId="message-1" isRunning={running} />
+      <FileChangesCard items={resourcesOnly ? items.filter(item => item.kind === "file-edit" && item.path.startsWith("assets/")) : items} conversationId="diff-fixture" messageId="message-1" isRunning={running} />
       <button onClick={() => useConversationStore.setState({ activeId: activeId === "other-fixture" ? "diff-fixture" : "other-fixture" })}>切换测试会话</button>
       <button onClick={() => useDetailLayoutStore.getState().setDetailCollapsed(false)}>打开侧栏</button>
       <p>当前会话：{activeId}</p>

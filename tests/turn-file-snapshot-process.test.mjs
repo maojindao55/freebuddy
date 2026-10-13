@@ -11,9 +11,14 @@ const { SnapshotScanClient } = await import("../dist-electron/cli/turnFileSnapsh
 const { DEFAULT_LIMITS, SNAPSHOT_BATCH_ENTRIES, SNAPSHOT_BATCH_BYTES } = await import("../dist-electron/cli/turnFileSnapshotScan.js");
 const workerEntry = fileURLToPath(new URL("../dist-electron/cli/turnFileSnapshotWorker.js", import.meta.url));
 
-function launchNodeWorker(children) {
-  const child = fork(workerEntry, [], { stdio: ["ignore", "ignore", "ignore", "ipc"], serialization: "advanced", execArgv: [] });
+function launchNodeWorker(children, diagnostics) {
+  const child = fork(workerEntry, [], { stdio: ["ignore", "ignore", "pipe", "ipc"], serialization: "advanced", execArgv: [] });
   children.push(child);
+  const state = { pid: child.pid, messages: 0, lastMessage: undefined, stderr: "" };
+  diagnostics.push(state);
+  child.stderr.on("data", chunk => { state.stderr = (state.stderr + chunk.toString("utf8")).slice(-4096); });
+  child.on("message", message => { state.messages++; state.lastMessage = message?.kind; });
+  child.on("exit", (code, signal) => { state.exitCode = code; state.signal = signal; });
   return {
     send: message => child.send(message),
     onMessage(handler) { child.on("message", handler); return () => child.off("message", handler); },
@@ -38,18 +43,28 @@ function fakeWorker(onSend) {
 const request = (root = "/project") => ({ phase: "before", roots: [{ path: root, complete: false }], owner: "alice", complete: true,
   limits: { ...DEFAULT_LIMITS, milliseconds: 10000 } });
 
-test("a separate process captures bounded UTF-8 batches, waits for persistence and is reused", { timeout: 15000 }, async t => {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-snapshot-process-")));
-  const children = [];
-  const client = new SnapshotScanClient(() => launchNodeWorker(children));
+// Three scans run in sequence, each allowing 10s plus the client's 5s grace.
+// The test's wall-clock timeout must cover all three, setup and worker teardown.
+test("a separate process captures bounded UTF-8 batches, waits for persistence and is reused", { timeout: 60000 }, async t => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-snapshot-process-"));
+  // Windows TEMP may use an 8.3 path. Match the native realpath used by the
+  // production capture preparation and the worker's workspace boundary checks.
+  const root = await fs.promises.realpath(temporaryRoot);
+  const syncRoot = fs.realpathSync(temporaryRoot);
+  if (syncRoot !== root) t.diagnostic(`Canonical test root: sync=${syncRoot}; native=${root}`);
+  const children = [], diagnostics = [];
+  let phase = "fixture setup", finished = false, release;
+  const client = new SnapshotScanClient(() => launchNodeWorker(children, diagnostics));
   t.after(async () => {
+    release?.();
     const exits = children.filter(child => child.exitCode === null && child.signalCode === null).map(child => new Promise(resolve => child.once("exit", resolve)));
     client.dispose(); await Promise.all(exits);
+    if (!finished) t.diagnostic(`Snapshot phase: ${phase}; workers: ${JSON.stringify(diagnostics)}`);
     fs.rmSync(root, { recursive: true, force: true });
   });
   for (let index = 0; index < 80; index++) fs.writeFileSync(path.join(root, `${index}.md`), `# 文件 ${index}\n` + "内容\n".repeat(9000));
   const before = [], packets = [];
-  let capturedRoots, release, announce;
+  let capturedRoots, announce;
   const holding = new Promise(resolve => { release = resolve; });
   const arrived = new Promise(resolve => { announce = resolve; });
   let blocked = false, callbackCount = 0, ticks = 0;
@@ -62,13 +77,16 @@ test("a separate process captures bounded UTF-8 batches, waits for persistence a
     before.push(...event.entries.map(entry => ({ path: entry.path, identity: entry.identity, before_version: JSON.stringify(entry.before) })));
     for (const entry of event.entries) assert.equal(Buffer.from(entry.body).toString("utf8"), fs.readFileSync(entry.path, "utf8"));
   });
-  await arrived;
+  phase = "waiting for first batch";
+  await Promise.race([arrived, first.then(() => { throw new Error("Snapshot scan completed without producing a batch"); })]);
+  phase = "checking persistence backpressure";
   const callbacksWhileBlocked = callbackCount;
   const secondEvents = [];
   const second = client.run(request(root), event => secondEvents.push(event));
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(callbackCount, callbacksWhileBlocked, "worker cannot outrun persistence acknowledgements");
   assert.equal(secondEvents.length, 0, "another job waits for the active scan");
+  phase = "completing initial and queued scans";
   release(); assert.equal(await first, true); assert.equal(await second, true);
   assert.equal(children.length, 1); assert.notEqual(children[0].pid, process.pid);
   assert.equal(before.length, 80); assert.ok(packets.length > 1); assert.ok(ticks > 0);
@@ -78,12 +96,14 @@ test("a separate process captures bounded UTF-8 batches, waits for persistence a
   }
   fs.appendFileSync(path.join(root, "0.md"), "最后修改\n");
   const ending = [];
+  phase = "capturing ending versions";
   const complete = await client.run({ ...request(root), phase: "after", roots: capturedRoots, before }, event => {
     if (event.kind === "batch") ending.push(...event.entries);
   });
   assert.equal(complete, true); assert.equal(ending.filter(entry => !entry.same).length, 1);
   assert.ok(ending.filter(entry => entry.same).every(entry => entry.body === undefined));
   assert.equal(Buffer.from(ending.find(entry => !entry.same).body).toString("utf8"), fs.readFileSync(path.join(root, "0.md"), "utf8"));
+  finished = true;
 });
 
 test("worker exit rejects the scan and the next job starts a fresh process", async t => {

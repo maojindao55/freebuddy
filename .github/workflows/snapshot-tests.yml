@@ -1,0 +1,36 @@
+name: Snapshot regressions
+
+on:
+  push:
+    paths:
+      - 'electron/cli/turnFileSnapshot*.ts'
+      - 'tests/turn-file-snapshot-process.test.mjs'
+      - '.github/workflows/snapshot-tests.yml'
+  pull_request:
+    paths:
+      - 'electron/cli/turnFileSnapshot*.ts'
+      - 'tests/turn-file-snapshot-process.test.mjs'
+      - '.github/workflows/snapshot-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  node-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # The Node suite stubs Electron and skips tests requiring native bindings.
+      # Release still runs the full npm test, including Electron database tests.
+      - run: npm ci --ignore-scripts
+      - run: npm run build:electron
+      - run: node --test --test-force-exit tests/*.mjs

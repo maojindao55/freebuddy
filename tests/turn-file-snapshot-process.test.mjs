@@ -46,7 +46,12 @@ const request = (root = "/project") => ({ phase: "before", roots: [{ path: root,
 // Three scans run in sequence, each allowing 10s plus the client's 5s grace.
 // The test's wall-clock timeout must cover all three, setup and worker teardown.
 test("a separate process captures bounded UTF-8 batches, waits for persistence and is reused", { timeout: 60000 }, async t => {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-snapshot-process-")));
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-snapshot-process-"));
+  // Windows TEMP may use an 8.3 path. Match the native realpath used by the
+  // production capture preparation and the worker's workspace boundary checks.
+  const root = await fs.promises.realpath(temporaryRoot);
+  const syncRoot = fs.realpathSync(temporaryRoot);
+  if (syncRoot !== root) t.diagnostic(`Canonical test root: sync=${syncRoot}; native=${root}`);
   const children = [], diagnostics = [];
   let phase = "fixture setup", finished = false, release;
   const client = new SnapshotScanClient(() => launchNodeWorker(children, diagnostics));

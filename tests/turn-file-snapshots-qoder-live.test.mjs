@@ -32,7 +32,6 @@ test("live Qoder ACP freezes three disjoint edits with complete historical versi
   db.prepare(`INSERT INTO conversation_messages(id, conversation_id, role, status, content, task_id, created_at, updated_at)
     VALUES ('live-message', 'live', 'assistant', 'done', '[]', 'live-run', '0', '0')`).run();
   const model = process.env.FREEBUDDY_QODER_MODEL;
-  assert.equal(snapshots.turnFileSnapshotsEnabled(), true, "Enable FREEBUDDY_FILE_SNAPSHOTS=1 for the live test");
   const child = spawn(process.env.FREEBUDDY_QODER_NODE, [process.env.FREEBUDDY_QODER_ENTRY, "--acp", "--model", model, "--tools", "Read", "Edit"], {
     cwd: root, windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined }
   });

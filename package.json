@@ -11,7 +11,6 @@
   ],
   "scripts": {
     "dev": "node scripts/dev-electron.mjs",
-    "dev:snapshots": "node scripts/dev-electron.mjs --file-snapshots",
     "postinstall": "node scripts/patch-node-pty-spectre.mjs && electron-rebuild -f -w better-sqlite3 -w node-pty && node scripts/fix-node-pty-permissions.mjs",
     "rebuild": "node scripts/patch-node-pty-spectre.mjs && electron-rebuild -f -w better-sqlite3 -w node-pty && node scripts/fix-node-pty-permissions.mjs",
     "clean:packages": "node scripts/clean-packages.mjs",

@@ -124,7 +124,7 @@ Git 工作区通过 `git ls-files` 的 tracked 和 non-ignored untracked 文件�
 ### 聊天卡片
 
 - 标题使用“本轮文件变化”；列表只在结果冻结后稳定展示。
-- 正在写入时可显示轻量状态“正在修改文件，结束后可查看本轮变化”，不展示尚未冻结的整体 diff。
+- 本轮启动和运行期间隐藏文件变化卡片及提示条，结束后才展示本轮文件变化。
 - 冻结过程中显示“正在整理本轮变化”，与 Agent 是否仍在生成区分。
 - 发布索引时排除已确定无净变化的文件，消除当前“点开后条目消失、数量变化”的行为。
 - 未计算增删统计时显示“查看变化”；计算成功后回填准确行数。未计算不显示 0，也不展示虚假的全卡片总行数。
@@ -187,25 +187,15 @@ Git 工作区通过 `git ls-files` 的 tracked 和 non-ignored untracked 文件�
 
 已接入本地 ACP 的 prompt 前采集与结束封存、不可变版本存储、按需读取、稳定索引和 UI 状态。旧 Agent 兼容与历史恢复保留作操作记录回退，暂不增加 ACP 文件接口、远程隔离会话采集或文件回滚。
 
-开发开关为 `FREEBUDDY_FILE_SNAPSHOTS=1`，默认关闭。在本仓库中直接试用：
+文件枚举、读取、UTF-8 校验与哈希计算在独立 Electron utility process 中执行。主进程保留所属校验、并发范围标记和 SQLite 入库；每批最多 32 个版本，正文目标上限 1 MiB，单个较大文件单独传输并受 4 MiB 文件预算限制。主进程在批次之间回到事件循环，并在入库完成后确认，采集进程才发送下一批；结束时相同版本只传元数据。采集进程复用、单进程排队，空闲 30 秒释放，应用退出时终止；异常退出、超时或入库失败降级为不完整，保留已封存版本对，释放没有结束版本的临时基准。准备/结束仍分别等待可靠基准和结束版本保存，后台进程不会消除这两个时点的等待。
+
+本地 ACP 会话默认启用采集，开发环境与正式包使用相同逻辑，无须环境开关。在本仓库中直接试用：
 
 ```powershell
-npm run dev:snapshots
+npm run dev
 ```
 
-该入口仅为启动的 Electron 进程启用采集。普通 `npm run dev` 不会自动开启。也可以在 PowerShell 临时设置开关：
-
-```powershell
-$previousSnapshotFlag = $env:FREEBUDDY_FILE_SNAPSHOTS
-try {
-  $env:FREEBUDDY_FILE_SNAPSHOTS = '1'
-  npm run dev
-} finally {
-  $env:FREEBUDDY_FILE_SNAPSHOTS = $previousSnapshotFlag
-}
-```
-
-退出开发进程后恢复原环境值，不写 shell 配置。开关启用前的历史轮次仍使用已保存操作记录，不能补造文件起点。
+没有采集快照的历史轮次仍使用已保存操作记录，不能补造文件起点。
 
 验证：相关 Node 测试 231 项通过、1 项符号链接测试跳过；文件变化数据库测试 50 项通过、1 项 Windows 文件符号链接测试跳过；真实 Qoder opt-in 测试 1 项通过。Windows 目录 junction 越界验证已通过。typecheck、Electron 构建及真实 React 组件浏览器操作已验证；最终运行结果记录在 [体验报告](../../../artifacts/product-design/turn-file-diff-baseline/audit.md)。
 
@@ -216,7 +206,6 @@ try {
 - `FREEBUDDY_QODER_ENTRY`：已安装的 Qoder CLI JavaScript 入口。
 - `FREEBUDDY_QODER_NODE`：Node 可执行文件。
 - `FREEBUDDY_QODER_MODEL`：ACP 目录中对应的模型 ID，不按显示名称猜测。
-- `FREEBUDDY_FILE_SNAPSHOTS=1`：实际启用采集，测试不覆盖开关函数。
 - 可选 `FREEBUDDY_QODER_EVIDENCE`：写入合成测试文档与结果的证据路径。
 
 运行 `node scripts/run-electron-node-test.mjs tests/turn-file-snapshots-qoder-live.test.mjs`。测试使用独立临时工作区和内存数据库；桌面服务被替换，ACP 运行时、Qoder 进程、文件存储和版本读取使用实际实现，不操作用户项目或会话。

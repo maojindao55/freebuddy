@@ -5,8 +5,7 @@ import type { AcpStreamItem } from "./acp.js";
 import { getDb } from "./db.js";
 import { requireOwnedConversation } from "./conversations.js";
 import { readFileEditLogVersions } from "./fileEditLogRecovery.js";
-import path from "node:path";
-import { snapshotIndex, snapshotPathIdentity, readSnapshotPair } from "./turnFileSnapshots.js";
+import { snapshotIndex, snapshotPathIdentity, snapshotPathIdentities, readSnapshotPair } from "./turnFileSnapshots.js";
 
 type FileEdit = Extract<AcpStreamItem, { kind: "file-edit" }>;
 type FileEditContext = { conversationId: string; sessionId: string };
@@ -269,8 +268,7 @@ export function listMessageFileEdits(messageId: string, cursor = 0, groupFiles =
       const records = db.prepare(`SELECT e.path, MIN(e.sequence) AS sequence FROM file_edit_blobs e
         WHERE e.conversation_id = ? AND e.task_id = ? AND e.status = 'completed' AND ${turnSourcePredicate(recoverIds)}
         GROUP BY e.path ORDER BY sequence`).all(message.conversation_id, message.task_id, ...recoverIds) as { path: string; sequence: number }[];
-      const identities = (filePath: string) => path.isAbsolute(filePath) ? [snapshotPathIdentity(filePath)]
-        : snapshot.roots.map(root => snapshotPathIdentity(path.resolve(root.path, filePath)));
+      const identities = (filePath: string) => snapshotPathIdentities(filePath, snapshot.roots);
       const entries: Array<{ edit?: FileEdit; covered: string[] }> = snapshot.edits.map(edit => ({ edit, covered: [edit.path] }));
       const byIdentity = new Map(entries.map(entry => [snapshotPathIdentity(entry.edit!.path), entry]));
       // Unchanged snapshots also suppress old inline records, without exposing bodies.

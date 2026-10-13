@@ -48,7 +48,7 @@ import { createAcpTerminalManager } from "./acpTerminal.js";
 import { updateRuntimeRun, recordRuntimeAgentVersion } from "./check.js";
 import { getDataDir } from "./db.js";
 import { persistFileEditItems } from "./fileEditBlobs.js";
-import { prepareTurnFileCapture, finalizeTurnFileCapture, turnFileSnapshotsEnabled, type TurnFileCapture } from "./turnFileSnapshots.js";
+import { prepareTurnFileCapture, finalizeTurnFileCapture, type TurnFileCapture } from "./turnFileSnapshots.js";
 import { importAgyLocalDiff, withoutInlineFileBodies } from "./acpLocalDiff.js";
 import { findLastPiSessionErrorMessage } from "./piRuntime.js";
 import {
@@ -1365,7 +1365,7 @@ export async function runAcpAgent({
   };
 
   const runPromptOnSession = async () => {
-    if (!fileCapture && turnFileSnapshotsEnabled() && !remoteIsolated && args.conversationId && args.cwd) {
+    if (!fileCapture && !remoteIsolated && args.conversationId && args.cwd) {
       fileCapture = prepareTurnFileCapture({ conversationId: args.conversationId, taskId: args.sessionId,
         roots: [args.cwd, ...(args.workspaceRoots ?? [])] }).catch(error => {
         logMain().warn("acp", "file baseline capture failed", { sessionId: args.sessionId, error: String(error) });

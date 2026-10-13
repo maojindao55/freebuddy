@@ -44,7 +44,9 @@ test("Browser tool contract stays bound across ACP, preload, and renderer", () =
   assert.match(runtime, /registerBrowserToolSession/);
   assert.match(runtime, /conversationId: args\.conversationId/);
   assert.match(runtime, /if \(args\.conversationId && !remoteIsolated\) \{/);
-  assert.doesNotMatch(runtime, /args\.conversationId && args\.cwd/);
+  const browserSetup = runtime.match(/if \(args\.conversationId && !remoteIsolated\) \{[\s\S]*?mcpServers\.push\(browserServer\);\s*\}/);
+  assert.ok(browserSetup);
+  assert.doesNotMatch(browserSetup[0], /args\.conversationId && args\.cwd/);
   assert.match(runtime, /cwd: args\.cwd \?\? ""/);
   assert.match(runtime, /mcp servers=/);
   assert.match(preload, /freebuddy:\/\/browser-tool/);

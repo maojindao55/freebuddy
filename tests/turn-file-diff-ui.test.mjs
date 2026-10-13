@@ -47,12 +47,11 @@ function components(selection, extra = {}) {
   return exports;
 }
 
-test("running turns show a status; finished turns index files without calculating their diffs", () => {
+test("running turns hide the changes card; finished turns index files without calculating their diffs", () => {
   const { FileChangesCard } = components();
   const props = { items: edits, conversationId: "conversation", messageId: "message" };
   const running = renderToStaticMarkup(createElement(FileChangesCard, { ...props, isRunning: true }));
-  assert.ok(running.includes("fileDiff.running"));
-  assert.equal(running.includes('class="file-change-entry"'), false);
+  assert.equal(running, "");
   assert.equal(renderToStaticMarkup(createElement(FileChangesCard, { ...props, storedTaskId: "task" })), "");
   const markup = renderToStaticMarkup(createElement(FileChangesCard, props));
   assert.equal((markup.match(/class="file-change-entry"/g) ?? []).length, 1);

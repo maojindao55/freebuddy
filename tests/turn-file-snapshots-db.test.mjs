@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { buildFileDiff } from "@freebuddy/cli-stream";
 
@@ -71,6 +72,89 @@ function read(edit, id = "message") {
   return JSON.parse(body);
 }
 const saved = (t, fn) => test(t, { skip: !bindingAvailable }, fn);
+
+saved("failed batch persistence preserves sealed pairs and releases unsealed baselines", async t => {
+  const env = setup(t);
+  for (let index = 0; index < 35; index++) fs.writeFileSync(env.file(`${String(index).padStart(2, "0")}.md`), `before ${index}\n`);
+  const capture = await env.prepare();
+  fs.writeFileSync(env.file("00.md"), "after 0\n"); fs.writeFileSync(env.file("34.md"), "after 34\n");
+  const prepare = env.db.prepare.bind(env.db);
+  let writes = 0;
+  env.db.prepare = sql => {
+    const statement = prepare(sql);
+    if (sql.includes("INSERT INTO turn_file_versions") && sql.includes("after_version")) {
+      const run = statement.run.bind(statement);
+      statement.run = (...args) => { if (++writes === 33) throw new Error("fixture batch write failed"); return run(...args); };
+    }
+    return statement;
+  };
+  try { await finalizeTurnFileCapture(capture); }
+  finally { env.db.prepare = prepare; }
+  const run = env.db.prepare("SELECT state, complete, reason FROM turn_file_capture_runs WHERE task_id = 'run'").get();
+  assert.equal(run.state, "incomplete"); assert.equal(run.complete, 0); assert.match(run.reason, /fixture batch write failed/);
+  const unsealed = env.db.prepare("SELECT before_blob FROM turn_file_versions WHERE task_id = 'run' AND after_version IS NULL").all();
+  assert.equal(unsealed.length, 3); assert.ok(unsealed.every(row => row.before_blob === null));
+  const page = index(); assert.equal(page.edits.length, 1); assert.equal(path.basename(page.edits[0].path), "00.md");
+  assert.equal(read(page.edits[0]).oldText, "before 0\n"); assert.equal(read(page.edits[0]).newText, "after 0\n");
+  assert.equal(env.db.prepare("SELECT count(*) AS n FROM file_version_blobs").get().n, 2);
+});
+
+for (const gitProject of [false, true]) saved(`new files in existing empty directories retain a complete creation baseline (${gitProject ? "Git" : "non-Git"})`, async t => {
+  const env = setup(t);
+  if (gitProject) execFileSync("git", ["init", "--quiet"], { cwd: env.root, windowsHide: true });
+  fs.mkdirSync(env.file("src/generated"), { recursive: true });
+  const capture = await env.prepare();
+  fs.writeFileSync(env.file("src/new.md"), "# new document\n");
+  fs.writeFileSync(env.file("src/generated/empty.md"), "");
+  await finalizeTurnFileCapture(capture);
+  const page = index();
+  assert.equal(page.capture.complete, true);
+  assert.deepEqual(page.edits.map(edit => [path.basename(edit.path), edit.action]), [["empty.md", "create"], ["new.md", "create"]]);
+  for (const edit of page.edits) {
+    const content = read(edit);
+    assert.equal(content.oldText, "");
+    assert.equal(content.newText, edit.path.endsWith("new.md") ? "# new document\n" : "");
+    assert.equal(content.notice, undefined);
+  }
+});
+
+saved("saved workspace aliases deduplicate changes, deletions and reverts after the symlink disappears", async t => {
+  const env = setup(t);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-other-worktree-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const alias = path.join(directory, "workspace");
+  fs.symlinkSync(env.root, alias, process.platform === "win32" ? "junction" : "dir");
+  for (const name of ["changed.md", "deleted.md", "reverted.md"]) fs.writeFileSync(env.file(name), "before\n");
+  const capture = await env.prepare(undefined, "run", [env.root, alias]);
+  fs.writeFileSync(env.file("changed.md"), "after\n");
+  fs.unlinkSync(env.file("deleted.md"));
+  persistFileEditItems({ conversationId: "conversation", sessionId: "run" }, [
+    { kind: "file-edit", path: path.join(alias, "changed.md"), action: "update", status: "completed", oldText: "before\n", newText: "after\n" },
+    { kind: "file-edit", path: path.join(alias, "deleted.md"), action: "delete", status: "completed", oldText: "before\n" },
+    { kind: "file-edit", path: path.join(alias, "reverted.md"), action: "update", status: "completed", oldText: "before\n", newText: "temporary\n" },
+    { kind: "file-edit", path: path.join(alias, "reverted.md"), action: "update", status: "completed", oldText: "temporary\n", newText: "before\n" }
+  ]);
+  await finalizeTurnFileCapture(capture);
+  fs.unlinkSync(alias);
+  const page = index();
+  assert.equal(page.capture.complete, true);
+  assert.deepEqual(page.edits.map(edit => [path.basename(edit.path), edit.source, edit.action]), [["changed.md", "snapshot", "update"], ["deleted.md", "snapshot", "delete"]]);
+  for (const name of ["changed.md", "deleted.md", "reverted.md"]) assert.ok(page.coveredPaths.includes(path.join(alias, name)));
+  assert.equal(read(page.edits[0]).newText, "after\n");
+  assert.equal(read(page.edits[1]).newText, "");
+  // Force a fresh metadata index: historical identity cannot depend on realpath.
+  env.db.prepare("UPDATE conversation_messages SET content = ? WHERE id = 'message'").run(JSON.stringify([{ kind: "text", content: "saved history" }]));
+  assert.deepEqual(index().edits, page.edits);
+});
+
+for (const phase of ["before", "after", "ignore"]) saved(`special files cannot block ${phase === "ignore" ? "ignore scanning" : `${phase}-turn capture`}`, t => {
+  if (process.platform === "win32") { t.skip("POSIX FIFO"); return; }
+  const env = setup(t);
+  const result = execFileSync(process.execPath, [fileURLToPath(new URL("./fixtures/turn-file-snapshots-special-files.mjs", import.meta.url)), env.root, phase], {
+    timeout: 5000, killSignal: "SIGKILL", encoding: "utf8", env: process.env, windowsHide: true
+  });
+  assert.deepEqual(JSON.parse(result), { state: "incomplete", complete: false });
+});
 
 saved("three disjoint direct writes use real lines 3/5/7 and freeze historical versions", async t => {
   const env = setup(t);

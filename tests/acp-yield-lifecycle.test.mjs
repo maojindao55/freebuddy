@@ -138,7 +138,6 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
   });
   const noop = () => {};
   const services = {
-    turnFileSnapshotsEnabled: () => !!captureOptions,
     prepareTurnFileCapture: async input => {
       captureOrder.push("prepare");
       assert.equal(input.taskId, "test-turn");

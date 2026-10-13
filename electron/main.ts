@@ -11,6 +11,7 @@ import AdmZip from "adm-zip";
 
 import { registerCliIpc } from "./cli/ipc.js";
 import { shutdownCliProcesses } from "./cli/runtime.js";
+import { stopSnapshotProcess } from "./cli/turnFileSnapshotProcess.js";
 import {
   logAllCliRuntimes,
   startCodexToolchainAutoUpdate,
@@ -1735,6 +1736,8 @@ function shutdownAppServices(): Promise<void> {
         await shutdownCliProcesses();
       } catch {
         /* agent runtime may not have started */
+      } finally {
+        stopSnapshotProcess();
       }
       try {
         const { shutdownRuntimeProcesses } = await import("./runtime/runtimeIpc.js");

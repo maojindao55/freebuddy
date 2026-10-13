@@ -85,13 +85,12 @@ export function FileChangesCard({ items, conversationId, messageId, storedTaskId
   useEffect(() => setExpanded(false), [conversationId, messageId]);
   useEffect(() => { useFileDiffStore.getState().refresh(conversationId, messageId, edits); }, [conversationId, messageId, edits]);
   const capture = stored?.key === storedKey ? stored.capture : undefined;
-  const runningChanges = isRunning && collectFileEdits(items).length > 0;
-  if (isRunning && !runningChanges || !isRunning && !files.length && !indexError && !capture && !finalizing) return null;
+  if (isRunning || (!files.length && !indexError && !capture && !finalizing)) return null;
   const open = (index: number) => useFileDiffStore.getState().open({ conversationId, messageId, edits, index });
   return <section className="file-changes-card" aria-label={t("fileDiff.title")}>
-    <p className="file-diff-notice" aria-live="polite">{t(runningChanges ? "fileDiff.running" : finalizing ? "fileDiff.finalizing" : capture && !files.length && capture.complete ? "fileDiff.noChanges" : "fileDiff.turnTitle")}</p>
-    {!isRunning && capture?.overlapping && <p className="file-diff-notice" role="status">{t("fileDiff.overlapping")}</p>}
-    {!isRunning && capture && !capture.complete && <p className="file-diff-notice" role="status">{t("fileDiff.incomplete")}</p>}
+    <p className="file-diff-notice" aria-live="polite">{t(finalizing ? "fileDiff.finalizing" : capture && !files.length && capture.complete ? "fileDiff.noChanges" : "fileDiff.turnTitle")}</p>
+    {capture?.overlapping && <p className="file-diff-notice" role="status">{t("fileDiff.overlapping")}</p>}
+    {capture && !capture.complete && <p className="file-diff-notice" role="status">{t("fileDiff.incomplete")}</p>}
     {indexError && <p className="file-diff-notice" role="status">{t("fileDiff.indexError")} <button type="button" onClick={() => setAttempt(value => value + 1)}>{t("fileDiff.retry")}</button></p>}
     {(expanded ? files : files.slice(0, 3)).map((file) => {
       const { name, dir } = splitPath(relativePath(file.path, roots));

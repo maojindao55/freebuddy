@@ -7,6 +7,7 @@ import vm from "node:vm";
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
+import { finished } from "node:stream/promises";
 import ts from "typescript";
 import * as acp from "../dist-electron/cli/acp.js";
 import * as acpLocalDiff from "../dist-electron/cli/acpLocalDiff.js";
@@ -22,6 +23,7 @@ function load(file, services) {
   const exports = {};
   vm.runInNewContext(compiled, { exports, process, console, Buffer, setTimeout, clearTimeout,
     require: name => {
+      if (name === "node:fs" && services.fs) return services.fs;
       if (name.startsWith("node:")) return require(name);
       if (name === "./acp.js") return acp;
       if (name === "./acpLocalDiff.js") return acpLocalDiff;
@@ -35,7 +37,12 @@ function load(file, services) {
 test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP routing and rebuilds changed config", async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-warm-runtime-"));
   const pool = new AcpProcessPool();
-  t.after(() => { pool.dispose(); fs.rmSync(root, { recursive: true, force: true }); });
+  const logCompletions = [];
+  t.after(async () => {
+    pool.dispose();
+    await Promise.all(logCompletions);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
   const children = [], events = [], requests = [], captures = [], browser = new Map();
   const fullText = "# 中文🙂\n".repeat(100000);
   const fixture = localDiffFixture(t, [{ type: "diff", path: "task.md", newText: fullText }]);
@@ -43,6 +50,11 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   let saved, owner = "owner", registrations = 0, rebindings = 0;
   const noop = () => {};
   const services = {
+    fs: { ...fs, createWriteStream: (...args) => {
+      const stream = fs.createWriteStream(...args);
+      logCompletions.push(finished(stream));
+      return stream;
+    } },
     acpProcessPool: pool, RunMetricsCollector,
     getLogDir: () => root, getDataDir: () => root,
     getCallerUserId: () => owner, getLanguage: () => "en-US",
@@ -126,6 +138,7 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   assert.ok(editEvent);
   assert.ok(JSON.stringify(editEvent).length < 4096);
   await runtime.cliRun(wc, { ...args, sessionId: "two" });
+  assert.equal(children[0].stdin.listenerCount("error"), 1);
   assert.equal(children.length, 1);
   assert.equal(registrations, 1); assert.equal(rebindings, 1);
   assert.equal(requests.filter(r => r.method === "initialize").length, 1);

@@ -60,6 +60,23 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
     write(chunk, _encoding, callback) {
       const msg = JSON.parse(chunk.toString());
       requests.push(msg.method);
+      const failingMethod = {
+        "stdin-initialize-error": "initialize",
+        "stdin-prompt-error": "session/prompt",
+        "stdin-list-error": "session/list",
+        "stdin-probe-error": "session/list",
+        "stdin-sync-error": "session/prompt",
+        "stdin-cancel-error": "session/cancel",
+        "yield-stdin-error": "session/cancel"
+      }[mode];
+      if ((failingMethod && msg.method === failingMethod) || msg.id === "server-request") {
+        // Node invokes the write callback AND emits an error on the stream.
+        // The process still looks alive when the write is submitted.
+        const error = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+        if (mode === "stdin-sync-error") throw error;
+        callback(error);
+        return;
+      }
       callback();
       queueMicrotask(() => {
         if (msg.method === "initialize") {
@@ -79,7 +96,16 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
             else reply(msg, { stopReason: "end_turn", ...(mode === "pi-upstream" ? { usage: { inputTokens: 250, outputTokens: 40 } } : {}) });
           } else if (mode === "failed") child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "fixture prompt failed" } }) + "\n");
           else if (mode.startsWith("yield")) running.get("test-turn").yield();
-          else if (mode === "cancel") running.get("test-turn").cancel();
+          else if (mode === "cancel" || mode === "stdin-cancel-error") running.get("test-turn").cancel();
+          else if (mode === "stdin-probe-error") { /* Wait for the inactivity probe. */ }
+          else if (mode === "stdin-stream-error") child.stdin.emit("error", new Error("write EPIPE"));
+          else if (mode === "stdin-permission-error" || mode === "stdin-terminal-error" || mode === "stdin-unsupported-error") {
+            const method = { "stdin-permission-error": "session/request_permission",
+              "stdin-terminal-error": "terminal/output", "stdin-unsupported-error": "unsupported/method" }[mode];
+            child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: "server-request", method,
+              params: { sessionId: "fake-session", options: [{ optionId: "allow-once", kind: "allow_once" }] }
+            }) + "\n");
+          }
           else if (mode.startsWith("unified-")) {
             notify({ sessionUpdate: "usage_update", used: 9_000, size: 128_000, outputTokens: 9_999 });
             metricClock = 1_000;
@@ -165,8 +191,9 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
   const context = {
     exports, process, console, Buffer,
     setTimeout: (fn, delay) => {
-      // Accelerate only teardown timers; preserve the inactivity watchdog.
-      const timer = setTimeout(fn, [250, 500, 2000].includes(delay) ? 10 : delay);
+      // Accelerate teardown, and the watchdog only for the failed-probe case.
+      const timer = setTimeout(fn, [250, 500, 2000].includes(delay) ||
+        (mode === "stdin-probe-error" && delay === 10 * 60 * 1000) ? 10 : delay);
       timers.add(timer);
       return timer;
     },
@@ -185,7 +212,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
   const turn = exports.runAcpAgent({
     child, pid: 1, webContents: {},
     warmConnection, parkConnection: warmConnection ? () => { parked = true; } : undefined,
-    args: { sessionId: "test-turn", agentId: "test", adapter: isPi ? "pi-acp" : adapter, prompt: "test", knownStreamMessageIds: ["historical"],
+    args: { sessionId: "test-turn", agentId: "test", adapter: isPi ? "pi-acp" : adapter, approvalMode: "auto", prompt: "test", knownStreamMessageIds: ["historical"],
       ...(captureOptions ? { conversationId: "conversation", cwd: "C:/project" } : {}) },
     toolSessionId: warm?.sessionId ?? (mode === "metrics" ? "fake-session" : undefined),
     logStream: null, running, capturedSessions: new Map(), emit: event => { events.push(event); if (event.type === "done") captureOrder.push("done"); }, metrics,
@@ -281,6 +308,41 @@ for (const mode of ["cancel", "cancel-result"]) {
     assert.equal(result.metricSnapshots.at(-1).status, "cancelled");
   });
 }
+
+test("cancelled prompt results skip metadata and session-close RPCs", async t => {
+  const result = await runScenario(t, "cancel-result");
+  assert.deepEqual(result.requests, ["initialize", "session/new", "session/prompt"]);
+  assert.equal(result.events.filter(event => event.type === "done").length, 1);
+  assert.equal(result.metricSnapshots.at(-1).status, "cancelled");
+});
+
+for (const mode of ["stdin-initialize-error", "stdin-prompt-error", "stdin-cancel-error", "yield-stdin-error",
+  "stdin-sync-error", "stdin-stream-error", "stdin-permission-error", "stdin-terminal-error", "stdin-unsupported-error", "stdin-probe-error"]) {
+  test(`ACP ${mode} handles stream errors and returns to the scheduler`, async t => {
+    const result = await runScenario(t, mode);
+    assert.equal(result.events.filter(event => event.type === "done").length, 1);
+    assert.equal(result.running.size, 0);
+    assert.equal(result.requests.includes("session/list"), mode === "stdin-probe-error");
+    assert.equal(result.requests.includes("session/close"), false);
+    if (mode === "yield-stdin-error") {
+      assert.equal(result.events.some(event => event.type === "error"), false);
+      assert.equal(result.metricSnapshots.at(-1).status, "yielded");
+    } else {
+      assert.ok(result.events.some(event => event.type === "error" && /EPIPE/.test(event.message)));
+    }
+    // An error can arrive after logical completion/detachment during teardown.
+    assert.doesNotThrow(() => result.child.stdin.emit("error", new Error("late write EPIPE")));
+    assert.equal(result.events.filter(event => event.type === "done").length, 1);
+  });
+}
+
+test("broken stdin during metadata cleanup settles without waiting for the timeout", async t => {
+  const result = await runScenario(t, "stdin-list-error");
+  assert.equal(result.events.find(event => event.type === "done").exitCode, 0);
+  assert.equal(result.events.some(event => event.type === "error"), false);
+  assert.equal(result.requests.includes("session/close"), false);
+  assert.equal(result.traces.some(entry => entry[1] === "cleanup request timed out"), false);
+});
 
 
 for (const [mode, status] of [["pi-usage", "done"], ["pi-cancel", "cancelled"], ["pi-yield", "yielded"], ["pi-upstream", "done"]]) {
@@ -395,5 +457,6 @@ test("cancelled AGY turns are reaped instead of entering the warm pool", async t
   assert.equal(result.parked, false);
   assert.equal(result.child.stdin.writableEnded, true);
   assert.equal(result.metricSnapshots.at(-1).status, "cancelled");
-  assert.ok(result.requests.includes("session/close"));
+  assert.equal(result.requests.includes("session/list"), false);
+  assert.equal(result.requests.includes("session/close"), false);
 });

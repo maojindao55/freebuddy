@@ -96,6 +96,18 @@ test("resource-only snapshots hide the card without claiming the turn made no ch
   }
 });
 
+test("finished turns without indexed changes hide the card even when capture is incomplete", () => {
+  for (const complete of [true, false]) {
+    const { FileChangesCard } = components(undefined, {}, {
+      key: JSON.stringify(["conversation", "message", "task"]), edits: [], coveredPaths: [],
+      capture: { state: complete ? "ready" : "incomplete", complete, overlapping: false }
+    });
+    assert.equal(renderToStaticMarkup(createElement(FileChangesCard, {
+      items: [], conversationId: "conversation", messageId: "message", storedTaskId: "task"
+    })), "");
+  }
+});
+
 test("cards update net counts after opening and hide files calculated as unchanged", () => {
   const item = { kind: "file-edit", path: "file.ts", action: "update", turnKey: "turn" };
   const props = { items: [item], conversationId: "conversation", messageId: "message" };

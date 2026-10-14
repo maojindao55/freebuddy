@@ -40,10 +40,11 @@ function setup(t, { output = "0.3.6", packageVersion, handshake = true } = {}) {
   const npmDir = path.join(root, "npm-bin");
   fs.mkdirSync(npmDir);
   const npm = path.join(npmDir, "npm");
-  fs.writeFileSync(npm, `#!${process.execPath}\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst args=process.argv.slice(2);\nif(args[0]==='view') { if(process.env.FREEBUDDY_TEST_REGISTRY_OFFLINE){ console.error('registry offline');process.exit(1); } console.log(JSON.stringify('0.3.8')); }\nelse if(args[0]==='install') { const prefix=args[args.indexOf('--prefix')+1]; if(!prefix||prefix!==${JSON.stringify(prefix)}){console.error('wrong install prefix');process.exit(1);} const file=path.join(prefix,'lib/node_modules/agy-acp-bridge/package.json'); const pkg=JSON.parse(fs.readFileSync(file)); pkg.version='0.3.8';fs.writeFileSync(file,JSON.stringify(pkg)); }\nelse {console.error('unexpected fake npm command');process.exit(1);}\n`);
+  fs.writeFileSync(npm, `#!${nodeExecutable}\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst args=process.argv.slice(2);\nif(args[0]==='view') { if(process.env.FREEBUDDY_TEST_REGISTRY_OFFLINE){ console.error('registry offline');process.exit(1); } console.log(JSON.stringify('0.3.8')); }\nelse if(args[0]==='install') { const prefix=args[args.indexOf('--prefix')+1]; if(!prefix||prefix!==${JSON.stringify(prefix)}){console.error('wrong install prefix');process.exit(1);} const file=path.join(prefix,'lib/node_modules/agy-acp-bridge/package.json'); const pkg=JSON.parse(fs.readFileSync(file)); pkg.version='0.3.8';fs.writeFileSync(file,JSON.stringify(pkg)); }\nelse {console.error('unexpected fake npm command');process.exit(1);}\n`);
   // This fixture is outside a package scope, so use .mjs via a tiny shell launcher.
   fs.renameSync(npm, npm + ".mjs");
-  fs.writeFileSync(npm, `#!/bin/sh\nexec '${process.execPath.replace(/'/g, `'"'"'`)}' '${(npm + ".mjs").replace(/'/g, `'"'"'`)}' "$@"\n`);
+  // Installers strip Electron flags, so the npm fixture needs standalone Node.
+  fs.writeFileSync(npm, `#!/bin/sh\nexec '${nodeExecutable.replace(/'/g, `'"'"'`)}' '${(npm + ".mjs").replace(/'/g, `'"'"'`)}' "$@"\n`);
   fs.chmodSync(npm, 0o755);
   const previousPath = process.env.PATH;
   process.env.PATH = npmDir + path.delimiter + previousPath;

@@ -346,9 +346,13 @@ saved("Windows directory junctions cannot expose files outside workspace roots",
   fs.symlinkSync(outside, env.file("inside"), "junction"); await finalizeTurnFileCapture(capture);
   assert.equal(index().capture.complete, false);
   assert.deepEqual(index().edits, []);
-  const row = env.db.prepare("SELECT after_version, after_blob FROM turn_file_versions WHERE path = ?").get(env.file("inside/file.md"));
+  // Windows TEMP can use an 8.3 alias; capture preparation saves the native realpath.
+  const identity = snapshotPathIdentity(path.join(capture.roots[0].path, "inside/file.md"));
+  const row = env.db.prepare("SELECT after_version, after_blob, changed FROM turn_file_versions WHERE task_id = ? AND identity = ?").get("run", identity);
+  assert.ok(row, "the replaced file retains its sealed snapshot pair");
   assert.equal(JSON.parse(row.after_version).state, "unavailable");
   assert.equal(row.after_blob, null);
+  assert.equal(row.changed, 0);
 });
 
 saved("BOM, CRLF and EOF bytes survive storage and empty files distinguish existence", async t => {

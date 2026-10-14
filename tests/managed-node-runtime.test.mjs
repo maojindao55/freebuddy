@@ -213,7 +213,8 @@ test("Codex resolves private CLI installations and Node defaults before system b
   const codex = path.join(runtime.prefix, "node_modules", "@openai", "codex", "bin", "codex.js");
   fs.mkdirSync(acp, { recursive: true }); fs.writeFileSync(path.join(acp, "package.json"), "{}");
   fs.mkdirSync(path.dirname(codex), { recursive: true }); fs.writeFileSync(codex, "// bundled codex");
-  assert.equal(resolveCodexBinaryHint({ platform: "win32", env: { PATH: "" } }), codex);
+  // Node's module resolver canonicalizes symlinks, including macOS /var -> /private/var.
+  assert.equal(resolveCodexBinaryHint({ platform: "win32", env: { PATH: "" } }), fs.realpathSync(codex));
 });
 
 const staged = fileURLToPath(new URL("../.build/node-runtime/win32-x64", import.meta.url));

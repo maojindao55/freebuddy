@@ -32,6 +32,7 @@ import { unregisterBrowserToolSession } from "../browserToolService.js";
 import { getCallerUserId } from "./callerContext.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getDataDir, getLogDir } from "./db.js";
+import { applyManagedNodeEnvironment, ensureManagedNodeRuntime } from "./managedNodeRuntime.js";
 import { updateRuntimeRun, waitForCodexToolchainAutoUpdate } from "./check.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { getToolSession } from "./store.js";
@@ -330,6 +331,7 @@ async function runCliAgent(
 
   let built;
   try {
+    await ensureManagedNodeRuntime(getDataDir());
     if (executionArgs.adapter === "pi-acp") {
       await ensurePackagedPiRuntime(getDataDir());
     }
@@ -341,6 +343,7 @@ async function runCliAgent(
       cwd: executionArgs.cwd,
       toolSessionId,
       workspaceRoots: args.workspaceRoots,
+      nodeEnv: process.platform === "win32" ? { ...process.env, ...effectiveArgs.env } : undefined,
       dshAcpRuntimeRoot:
         executionArgs.adapter === "dsh-acp"
           ? dshAcpManagedRoot(getDataDir())
@@ -392,6 +395,7 @@ async function runCliAgent(
     args.adapter,
     args.configOptionOverrides?.model ?? built.env?.ANTHROPIC_MODEL
   );
+  if (byokEnv && effectiveArgs.env?.FREEBUDDY_NODE_BIN) byokEnv.FREEBUDDY_NODE_BIN = effectiveArgs.env.FREEBUDDY_NODE_BIN;
   if (args.adapter === "pi-acp") {
     const defaultModel = resolvePiByokDefaultModel(args.agentId, args.adapter);
     if (defaultModel) {
@@ -403,7 +407,7 @@ async function runCliAgent(
   }
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
-      { ...process.env, ...(effectiveArgs.env || {}) },
+      applyManagedNodeEnvironment({ ...process.env, ...(effectiveArgs.env || {}) }, { install: true }),
       built.env
     ),
     byokEnv

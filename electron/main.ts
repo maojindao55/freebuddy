@@ -42,7 +42,7 @@ import {
   isDocStudioOpenableFile,
   isDocStudioWindowSender
 } from "./docStudioBridge.js";
-import { getDb } from "./cli/db.js";
+import { getDb, getDataDir } from "./cli/db.js";
 import { getSetting, setSetting } from "./cli/settings.js";
 import { migrateLegacyDocStudioConversations } from "./officeEngineToolService.js";
 import {
@@ -69,6 +69,7 @@ import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
 import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
+import { ensureManagedNodeRuntime } from "./cli/managedNodeRuntime.js";
 import {
   applyWindowsContextMenu,
   classifyShellOpenPaths,
@@ -2048,6 +2049,9 @@ app.whenReady().then(async () => {
     arch: process.arch
   });
   await injectShellPath();
+  void ensureManagedNodeRuntime(getDataDir()).catch(error => {
+    logMain().error("managed-node", "Bundled Node preparation failed; tool operations will retry", { error: String(error) });
+  });
   ensureMacShareExtensionRegistered();
   registerLocalFileProtocol();
   registerBrowserProtocol();

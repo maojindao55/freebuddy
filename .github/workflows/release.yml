@@ -110,6 +110,10 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Verify bundled Windows Node without system Node on PATH
+        if: matrix.platform == 'windows-latest'
+        run: npm run test:managed-node
+
       # electron-builder 26.15.3 + macOS 26.6: CSC_LINK makes the builder call
       # `security set-key-partition-list -k <p12 password>`, but that flag
       # needs the temporary keychain password. Import the cert ourselves and

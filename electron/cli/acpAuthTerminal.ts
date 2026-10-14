@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
+import { applyManagedNodeEnvironment } from "./managedNodeRuntime.js";
 
 import type { AcpAuthMethod } from "./acp.js";
 import type { CliEvent } from "./runtimeShared.js";
@@ -88,10 +89,10 @@ export async function runAuthenticationTerminal(options: {
   const requestId = randomUUID();
   const terminalKey = key(sessionId, requestId);
   const env: Record<string, string> = {};
-  for (const [name, value] of Object.entries({
+  for (const [name, value] of Object.entries(applyManagedNodeEnvironment({
     ...command.env,
     ...(method.env ?? {})
-  })) {
+  }, { install: true, preserveElectronRunAsNode: command.bin === process.execPath }))) {
     if (value != null) env[name] = value;
   }
 

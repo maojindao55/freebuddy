@@ -88,6 +88,9 @@ mac:
 
 win:
   icon: assets/app-icon.ico
+  extraResources:
+    - from: .build/node-runtime/win32-x64
+      to: node-runtime
   target:
     - target: nsis
 

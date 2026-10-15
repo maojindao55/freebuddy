@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
-import path from "node:path";
 import { nanoid } from "nanoid";
 import { getDb } from "./db.js";
 import { encryptSecret, decryptSecret, redactApiKey } from "./store.js";
 import { logMain } from "../debugLog.js";
 import { isCallerAdmin, getCallerUserId } from "./callerContext.js";
+import { killProcessTree } from "./process-kill.js";
 
 const MCP_NAME_PREFIX_RESERVED = "freebuddy";
 const MCP_SELF_CHECK_TIMEOUT_MS = 15_000;
@@ -15,6 +15,7 @@ export interface UserMcpServerEnvVar {
   valuePreview?: string;
   valueEncrypted?: string;
   secret?: boolean;
+  hasValue?: boolean;
 }
 
 export interface UserMcpServerInput {
@@ -106,6 +107,27 @@ function rowToServer(r: any): UserMcpServer {
   };
 }
 
+function sanitizeEnvForRenderer(env: UserMcpServerEnvVar[]): UserMcpServerEnvVar[] {
+  return env.map((e) => {
+    if (e.secret) {
+      return {
+        name: e.name,
+        valuePreview: e.valuePreview,
+        secret: true,
+        hasValue: Boolean(e.valueEncrypted || e.value)
+      };
+    }
+    return { name: e.name, value: e.value };
+  });
+}
+
+function serverForRenderer(server: UserMcpServer): UserMcpServer {
+  return {
+    ...server,
+    env: sanitizeEnvForRenderer(server.env)
+  };
+}
+
 function normalizeEnvForStorage(
   env: UserMcpServerEnvVar[] | undefined,
   previousEnv: UserMcpServerEnvVar[] = []
@@ -151,18 +173,27 @@ function validateServerName(name: string): void {
   }
 }
 
-export function listUserMcpServers(): UserMcpServer[] {
+function listUserMcpServersInternal(): UserMcpServer[] {
   const rows = getDb()
     .prepare("SELECT * FROM user_mcp_servers ORDER BY name ASC")
     .all() as any[];
   return rows.map(rowToServer);
 }
 
-export function getUserMcpServer(id: string): UserMcpServer | undefined {
+export function listUserMcpServers(): UserMcpServer[] {
+  return listUserMcpServersInternal().map(serverForRenderer);
+}
+
+function getUserMcpServerInternal(id: string): UserMcpServer | undefined {
   const row = getDb()
     .prepare("SELECT * FROM user_mcp_servers WHERE id = ?")
     .get(id) as any;
   return row ? rowToServer(row) : undefined;
+}
+
+export function getUserMcpServer(id: string): UserMcpServer | undefined {
+  const server = getUserMcpServerInternal(id);
+  return server ? serverForRenderer(server) : undefined;
 }
 
 export function createUserMcpServer(
@@ -195,7 +226,7 @@ export function updateUserMcpServer(
   id: string,
   input: Partial<UserMcpServerInput>
 ): UserMcpServer | undefined {
-  const existing = getUserMcpServer(id);
+  const existing = getUserMcpServerInternal(id);
   if (!existing) return undefined;
   if (input.name !== undefined) {
     validateServerName(input.name);
@@ -290,6 +321,30 @@ export function resolveEnvForRuntime(
   return result;
 }
 
+export function collectSecretValues(env: UserMcpServerEnvVar[]): string[] {
+  const secrets: string[] = [];
+  for (const e of env) {
+    if (!e.secret) continue;
+    if (e.value !== undefined && e.value.trim()) {
+      secrets.push(e.value.trim());
+    } else if (e.valueEncrypted) {
+      const decrypted = decryptSecret(e.valueEncrypted);
+      if (decrypted) secrets.push(decrypted);
+    }
+  }
+  return secrets.filter((s) => s.length >= 4);
+}
+
+export function redactSecrets(text: string, secrets: string[]): string {
+  if (!secrets.length) return text;
+  let result = text;
+  for (const secret of secrets) {
+    if (secret.length < 4) continue;
+    result = result.split(secret).join("<redacted>");
+  }
+  return result;
+}
+
 export function resolveCommandPath(command: string): string {
   const trimmed = command.trim();
   if (trimmed.includes("/") || trimmed.includes("\\")) {
@@ -318,6 +373,8 @@ export function substituteArgs(
   return args.map((arg) => arg.replace(/\$\{cwd\}/g, cwd));
 }
 
+const MAX_STDERR_BYTES = 8 * 1024;
+
 export async function selfCheckUserMcpServer(
   id: string,
   cwd?: string
@@ -330,6 +387,7 @@ export async function selfCheckUserMcpServer(
   const resolvedCommand = resolveCommandPath(server.command);
   const resolvedArgs = substituteArgs(server.args, cwd);
   const resolvedEnv = resolveEnvForRuntime(server.env);
+  const secretValues = collectSecretValues(server.env);
 
   return new Promise((resolve) => {
     let resolved = false;
@@ -340,9 +398,12 @@ export async function selfCheckUserMcpServer(
     const finish = (result: UserMcpServerSelfCheckResult) => {
       if (resolved) return;
       resolved = true;
+      const redactedStderr = stderr.trim()
+        ? redactSecrets(stderr.trim().slice(-MAX_STDERR_BYTES), secretValues)
+        : undefined;
       const finalResult = {
         ...result,
-        stderr: stderr.trim() || undefined
+        stderr: redactedStderr
       };
       updateSelfCheckResult(id, finalResult);
       resolve(finalResult);
@@ -356,7 +417,7 @@ export async function selfCheckUserMcpServer(
       });
 
       const timeout = setTimeout(() => {
-        child.kill("SIGTERM");
+        killProcessTree(child, "force");
         finish({ status: "error", error: "Self-check timed out" });
       }, MCP_SELF_CHECK_TIMEOUT_MS);
 
@@ -375,12 +436,19 @@ export async function selfCheckUserMcpServer(
               status: "error",
               error: `Process exited with code ${code}`
             });
+          } else {
+            finish({
+              status: "error",
+              error: "Process exited without completing MCP handshake"
+            });
           }
         }
       });
 
       child.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString();
+        if (stderr.length < MAX_STDERR_BYTES * 2) {
+          stderr += data.toString();
+        }
       });
 
       child.stdout.on("data", (data: Buffer) => {
@@ -391,7 +459,6 @@ export async function selfCheckUserMcpServer(
           try {
             const msg = JSON.parse(line);
             if (msg.jsonrpc === "2.0" && msg.id === 1 && msg.result) {
-              const initResult = msg.result;
               const listToolsRequest = {
                 jsonrpc: "2.0",
                 id: ++requestId,
@@ -401,7 +468,7 @@ export async function selfCheckUserMcpServer(
               child.stdin.write(JSON.stringify(listToolsRequest) + "\n");
             } else if (msg.jsonrpc === "2.0" && msg.id === 2) {
               clearTimeout(timeout);
-              child.kill("SIGTERM");
+              killProcessTree(child, "term");
               if (msg.error) {
                 finish({
                   status: "error",
@@ -435,8 +502,7 @@ export async function selfCheckUserMcpServer(
 
       logMain().info("mcp-self-check", "started", {
         serverId: id,
-        command: resolvedCommand,
-        args: resolvedArgs
+        command: resolvedCommand
       });
     } catch (err) {
       finish({

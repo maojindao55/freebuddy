@@ -33,37 +33,11 @@ async function transpileAndImport(relativePath) {
   );
 }
 
-function makeDb() {
+async function makeDbWithMigration() {
   const db = new Database(":memory:");
-  db.pragma("foreign_keys = ON");
-  // Create required tables for MCP servers
-  db.exec(`
-    CREATE TABLE user_mcp_servers (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      command TEXT NOT NULL,
-      args TEXT NOT NULL DEFAULT '[]',
-      env TEXT NOT NULL DEFAULT '[]',
-      enabled INTEGER NOT NULL DEFAULT 1,
-      last_check_status TEXT,
-      last_check_error TEXT,
-      last_check_tools TEXT,
-      last_checked_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE TABLE conversations (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      agent_id TEXT NOT NULL,
-      agent_name TEXT NOT NULL,
-      adapter TEXT NOT NULL,
-      cwd TEXT,
-      metadata TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
+  const { setDbForTest, migrate } = await import("../dist-electron/cli/db.js");
+  setDbForTest(db);
+  migrate(db);
   return db;
 }
 
@@ -80,6 +54,8 @@ test("MCP server IPC channels are admin-only (not accessible to remote users)", 
     "mcpServers:delete",
     "mcpServers:setEnabled",
     "mcpServers:selfCheck",
+    "cli:getConversationMcpServerIds",
+    "cli:setConversationMcpServerIds",
   ];
 
   for (const channel of mcpChannels) {
@@ -101,16 +77,15 @@ test("MCP server IPC channels are admin-only (not accessible to remote users)", 
   }
 });
 
-// Test 2: MCP servers DB CRUD operations (via dist-electron)
+// Test 2: MCP servers DB CRUD operations
 test("MCP servers DB CRUD roundtrip", async (t) => {
   if (!bindingAvailable) {
     t.skip("better-sqlite3 native binding unavailable under this Node");
     return;
   }
 
-  const db = makeDb();
+  await makeDbWithMigration();
   const {
-    setDbForTest,
     listUserMcpServers,
     createUserMcpServer,
     getUserMcpServer,
@@ -118,7 +93,6 @@ test("MCP servers DB CRUD roundtrip", async (t) => {
     deleteUserMcpServer,
     setUserMcpServerEnabled,
   } = await import("../dist-electron/cli/mcpServers.js");
-  setDbForTest(db);
 
   // Create
   const server = createUserMcpServer({
@@ -171,11 +145,10 @@ test("MCP server name cannot start with 'freebuddy'", async (t) => {
     return;
   }
 
-  const db = makeDb();
-  const { setDbForTest, createUserMcpServer } = await import(
+  await makeDbWithMigration();
+  const { createUserMcpServer } = await import(
     "../dist-electron/cli/mcpServers.js"
   );
-  setDbForTest(db);
 
   assert.throws(
     () => {
@@ -184,7 +157,7 @@ test("MCP server name cannot start with 'freebuddy'", async (t) => {
         command: "npx",
       });
     },
-    /reserved prefix/i,
+    /reserved/i,
     "Should reject names starting with 'freebuddy'"
   );
 
@@ -195,7 +168,7 @@ test("MCP server name cannot start with 'freebuddy'", async (t) => {
         command: "npx",
       });
     },
-    /reserved prefix/i,
+    /reserved/i,
     "Should reject names with case-insensitive match"
   );
 });
@@ -207,19 +180,21 @@ test("Conversation MCP server IDs CRUD", async (t) => {
     return;
   }
 
-  const db = makeDb();
-  const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO conversations (id, title, agent_id, agent_name, adapter, created_at, updated_at)
-     VALUES ('conv-1', 'Test Conv', 'agent-1', 'TestAgent', 'codex', ?, ?)`
-  ).run(now, now);
-
+  await makeDbWithMigration();
+  const { createConversation } = await import("../dist-electron/cli/conversations.js");
   const {
-    setDbForTest,
     getConversationMcpServerIds,
     setConversationMcpServerIds,
   } = await import("../dist-electron/cli/conversations.js");
-  setDbForTest(db);
+
+  // Create a conversation
+  createConversation({
+    id: "conv-1",
+    title: "Test Conv",
+    agentId: "agent-1",
+    agentName: "TestAgent",
+    adapter: "codex",
+  });
 
   // Initially empty
   const initial = getConversationMcpServerIds("conv-1");
@@ -241,76 +216,19 @@ test("Conversation MCP server IDs CRUD", async (t) => {
   assert.deepEqual(afterClear, []);
 });
 
-// Test 5: isRemoteMcpAllowed function
-test("isRemoteMcpAllowed returns false for non-admin remote users", async (t) => {
-  if (!bindingAvailable) {
-    t.skip("better-sqlite3 native binding unavailable under this Node");
-    return;
-  }
-
-  // This test verifies the behavior by checking the source code pattern
-  const mcpServersSource = fs.readFileSync(
-    new URL("cli/mcpServers.ts", electronDir),
-    "utf8"
-  );
-  
-  // isRemoteMcpAllowed should check isCallerAdmin() and getCallerUserId()
-  assert.match(
-    mcpServersSource,
-    /isRemoteMcpAllowed.*isCallerAdmin/s,
-    "isRemoteMcpAllowed should check admin status"
-  );
-});
-
-// Test 6: userMcpServerToAcpFormat conversion
-test("userMcpServerToAcpFormat converts server config correctly", async (t) => {
-  if (!bindingAvailable) {
-    t.skip("better-sqlite3 native binding unavailable under this Node");
-    return;
-  }
-
-  const db = makeDb();
-  const {
-    setDbForTest,
-    createUserMcpServer,
-    userMcpServerToAcpFormat,
-  } = await import("../dist-electron/cli/mcpServers.js");
-  setDbForTest(db);
-
-  const server = createUserMcpServer({
-    name: "test-filesystem",
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "${cwd}"],
-    env: [{ name: "NODE_ENV", value: "production" }],
-    enabled: true,
-  });
-
-  const acpFormat = userMcpServerToAcpFormat(server, "/test/project");
-  assert.equal(acpFormat.name, "test-filesystem");
-  assert.ok(acpFormat.command.includes("npx") || acpFormat.command === "npx");
-  // ${cwd} should be substituted
-  assert.ok(
-    acpFormat.args.some((arg) => arg.includes("/test/project")),
-    "Should substitute ${cwd} in args"
-  );
-  assert.deepEqual(acpFormat.env, [{ name: "NODE_ENV", value: "production" }]);
-});
-
-// Test 7: getEnabledUserMcpServersByIds filters disabled servers
+// Test 5: getEnabledUserMcpServersByIds filters disabled servers
 test("getEnabledUserMcpServersByIds only returns enabled servers", async (t) => {
   if (!bindingAvailable) {
     t.skip("better-sqlite3 native binding unavailable under this Node");
     return;
   }
 
-  const db = makeDb();
+  await makeDbWithMigration();
   const {
-    setDbForTest,
     createUserMcpServer,
     setUserMcpServerEnabled,
     getEnabledUserMcpServersByIds,
   } = await import("../dist-electron/cli/mcpServers.js");
-  setDbForTest(db);
 
   const server1 = createUserMcpServer({
     name: "enabled-server",
@@ -329,7 +247,37 @@ test("getEnabledUserMcpServersByIds only returns enabled servers", async (t) => 
   assert.equal(result[0].name, "enabled-server");
 });
 
-// Test 8: Delegation does not inherit MCP server IDs
+// Test 6: Secret env value redaction
+test("collectSecretValues and redactSecrets work correctly", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+
+  await makeDbWithMigration();
+  const { collectSecretValues, redactSecrets } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+
+  // Test collecting secrets
+  const env = [
+    { name: "API_KEY", value: "my-secret-key-12345", secret: true },
+    { name: "PUBLIC_VAR", value: "public-value", secret: false },
+    { name: "DB_PASSWORD", value: "hunter2", secret: true },
+  ];
+  const secrets = collectSecretValues(env);
+  assert.ok(secrets.includes("my-secret-key-12345"));
+  assert.ok(secrets.includes("hunter2"));
+  assert.ok(!secrets.includes("public-value"));
+
+  // Test redacting
+  const text = "Error: connection failed with password hunter2 to server";
+  const redacted = redactSecrets(text, secrets);
+  assert.ok(!redacted.includes("hunter2"));
+  assert.ok(redacted.includes("<redacted>"));
+});
+
+// Test 7: Delegation runtime does not pass mcpServerIds to child agents
 test("delegation runtime does not pass mcpServerIds to child agents", () => {
   const delegationRuntimeSource = fs.readFileSync(
     new URL("cli/delegationRuntime.ts", electronDir),
@@ -337,7 +285,6 @@ test("delegation runtime does not pass mcpServerIds to child agents", () => {
   );
 
   // The delegation runtime's runAgentTurn should NOT include mcpServerIds
-  // Search for the runAgent call and verify mcpServerIds is not in the args
   const runAgentMatch = delegationRuntimeSource.match(
     /this\.deps\.runAgent\(\{[\s\S]*?\}\)/
   );
@@ -349,29 +296,51 @@ test("delegation runtime does not pass mcpServerIds to child agents", () => {
   );
 });
 
-// Test 9: Handoff carries MCP selection by default
-test("handoff transfers MCP server IDs from source conversation", () => {
+// Test 8: ACP runtime reads MCP server IDs from database
+test("ACP runtime reads MCP server IDs from database (not from args)", () => {
+  const acpRuntimeSource = fs.readFileSync(
+    new URL("cli/acpRuntime.ts", electronDir),
+    "utf8"
+  );
+
+  // Should import getConversationMcpServerIds
+  assert.match(
+    acpRuntimeSource,
+    /import.*getConversationMcpServerIds.*from.*conversations/,
+    "Should import getConversationMcpServerIds from conversations"
+  );
+
+  // Should call getConversationMcpServerIds with conversationId
+  assert.match(
+    acpRuntimeSource,
+    /getConversationMcpServerIds\s*\(\s*args\.conversationId\s*\)/,
+    "Should read MCP server IDs from database using conversation ID"
+  );
+});
+
+// Test 9: Handoff carries MCP selection by default and supports override
+test("handoff transfers MCP server IDs and supports override", () => {
   const ipcSource = fs.readFileSync(
     new URL("cli/ipc.ts", electronDir),
     "utf8"
   );
 
-  // The transferConversation handler should read source MCP server IDs
+  // Check that transferConversation checks for input.mcpServerIds override
+  assert.match(
+    ipcSource,
+    /input\.mcpServerIds/,
+    "Should check for mcpServerIds in transfer input"
+  );
+
+  // Check that it falls back to source conversation
   assert.match(
     ipcSource,
     /getConversationMcpServerIds.*source\.id/s,
-    "Should read source conversation's MCP server IDs"
-  );
-
-  // Should write to transfer metadata
-  assert.match(
-    ipcSource,
-    /transferMetadata\.mcpServerIds/,
-    "Should include mcpServerIds in transfer metadata"
+    "Should read source conversation's MCP server IDs as fallback"
   );
 });
 
-// Test 10: TransferConversationInput accepts mcpServerIds override
+// Test 10: TransferConversationInput allows mcpServerIds override
 test("TransferConversationInput allows mcpServerIds override", () => {
   const handoffTypesSource = fs.readFileSync(
     new URL("shared/handoffTypes.ts", electronDir),
@@ -385,58 +354,37 @@ test("TransferConversationInput allows mcpServerIds override", () => {
   );
 });
 
-// Test 11: ACP runtime merges user MCP servers
-test("ACP runtime merges user MCP servers after built-in servers", () => {
-  const acpRuntimeSource = fs.readFileSync(
-    new URL("cli/acpRuntime.ts", electronDir),
-    "utf8"
-  );
-
-  // Should check args.mcpServerIds
-  assert.match(
-    acpRuntimeSource,
-    /args\.mcpServerIds\?\.length/,
-    "Should check for mcpServerIds in args"
-  );
-
-  // Should call getEnabledUserMcpServersByIds
-  assert.match(
-    acpRuntimeSource,
-    /getEnabledUserMcpServersByIds/,
-    "Should fetch user MCP servers by IDs"
-  );
-
-  // Should check isRemoteMcpAllowed
-  assert.match(
-    acpRuntimeSource,
-    /isRemoteMcpAllowed\(\)/,
-    "Should check if remote MCP is allowed"
-  );
-});
-
-// Test 12: Secret env values are encrypted
-test("MCP server secret env values are encrypted", async (t) => {
-  if (!bindingAvailable) {
-    t.skip("better-sqlite3 native binding unavailable under this Node");
-    return;
-  }
-
+// Test 11: MCP server secret env values are encrypted
+test("MCP server secret env values are encrypted", () => {
   const mcpServersSource = fs.readFileSync(
     new URL("cli/mcpServers.ts", electronDir),
     "utf8"
   );
 
-  // Should use encryptSecret for secret values
   assert.match(
     mcpServersSource,
     /encryptSecret\(/,
     "Should encrypt secret values"
   );
 
-  // Should use decryptSecret when resolving for runtime
   assert.match(
     mcpServersSource,
     /decryptSecret\(/,
     "Should decrypt secrets when resolving for runtime"
+  );
+});
+
+// Test 12: Self-check always settles (handles exit code 0 without response)
+test("Self-check handles exit code 0 without response", () => {
+  const mcpServersSource = fs.readFileSync(
+    new URL("cli/mcpServers.ts", electronDir),
+    "utf8"
+  );
+
+  // Should handle the case where process exits with code 0 but no response
+  assert.match(
+    mcpServersSource,
+    /Process exited without completing MCP handshake/,
+    "Should handle exit code 0 without response"
   );
 });

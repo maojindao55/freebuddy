@@ -178,7 +178,7 @@ test("transfer conversation carries model and thinking-effort overrides to the t
   assert.match(rendererTypes, /interface TransferConversationInput[\s\S]*?configOptionOverrides\?: Record<string, string>/);
   assert.match(ipc, /input\.configOptionOverrides \?\? \{\}/);
   assert.match(ipc, /configOptionOverrides: overrides/);
-  assert.match(store, /async transferConversation\(\{ sourceConversationId, targetMember, configOptionOverrides \}\)/);
+  assert.match(store, /async transferConversation\(\{ sourceConversationId, targetMember, configOptionOverrides, mcpServerIds \}\)/);
   assert.match(store, /targetAdapter: targetMember\.cli\.adapter,\s*\.\.\.\(configOptionOverrides && Object\.keys\(configOptionOverrides\)\.length > 0/);
   assert.match(dialog, /getCachedSessionConfigOptions\(input\)/);
   assert.match(dialog, /inspectSessionConfigOptions\(input\)/);

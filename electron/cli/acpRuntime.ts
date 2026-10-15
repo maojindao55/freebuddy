@@ -125,6 +125,7 @@ import {
   getEnabledUserMcpServersByIds,
   isRemoteMcpAllowed
 } from "./mcpServers.js";
+import { getConversationMcpServerIds } from "./conversations.js";
 import {
   cleanupSandboxCommand,
   isRemoteIsolatedCaller,
@@ -1713,24 +1714,30 @@ export async function runAcpAgent({
     }
 
     // Merge user-configured MCP servers (after built-in servers for priority)
-    if (
-      adapterAcceptsClientMcpServers(args.adapter) &&
-      args.mcpServerIds?.length &&
-      isRemoteMcpAllowed()
-    ) {
-      const userServers = getEnabledUserMcpServersByIds(
-        args.mcpServerIds,
-        args.cwd
-      );
-      for (const server of userServers) {
-        mcpServers.push(server);
-      }
-      if (userServers.length) {
-        appendLog(
-          logStream,
-          "system",
-          `user mcp servers=${userServers.map((s) => s.name).join(",")}`
-        );
+    // Read directly from database to ensure mid-conversation selection changes take effect
+    if (adapterAcceptsClientMcpServers(args.adapter) && isRemoteMcpAllowed()) {
+      const mcpServerIds = args.conversationId
+        ? getConversationMcpServerIds(args.conversationId)
+        : [];
+      if (mcpServerIds.length > 0) {
+        const userServers = getEnabledUserMcpServersByIds(mcpServerIds, args.cwd);
+        for (const server of userServers) {
+          mcpServers.push(server);
+        }
+        if (userServers.length) {
+          appendLog(
+            logStream,
+            "system",
+            `user mcp servers=${userServers.map((s) => s.name).join(",")}`
+          );
+        }
+        if (userServers.length < mcpServerIds.length) {
+          appendLog(
+            logStream,
+            "system",
+            `mcp servers skipped (disabled/deleted): ${mcpServerIds.length - userServers.length}`
+          );
+        }
       }
     }
 

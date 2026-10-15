@@ -208,6 +208,10 @@ const ADMIN_ONLY = [
   "mcpServers:setEnabled",
   "mcpServers:selfCheck",
 
+  // Per-conversation MCP server selection - remote users cannot use MCP.
+  "cli:getConversationMcpServerIds",
+  "cli:setConversationMcpServerIds",
+
   // 服务商含 API Key：读是脱敏列表，写是 host 配置，均仅桌面端。
   "providers:list",
   "providers:upsert",

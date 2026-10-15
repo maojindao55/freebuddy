@@ -1227,7 +1227,8 @@
       "workflowTeams": "工作流团队",
       "remote": "共享",
       "about": "关于",
-      "providers": "服务商"
+      "providers": "服务商",
+      "mcp": "MCP 服务"
     },
     "cli": {
       "title": "Cli Agents",
@@ -2576,6 +2577,49 @@
     "collapseDetail": "收起详情",
     "troubleshootKey": "前往控制台检查 API Key",
     "dragToReorder": "拖拽排序"
+  },
+  "mcp": {
+    "pickerLabel": "MCP 服务",
+    "selectServers": "选择 MCP 服务器",
+    "selectForSession": "MCP 服务",
+    "noServersConfigured": "未配置 MCP 服务器",
+    "disabledServersHidden": "已禁用的服务器已隐藏"
+  },
+  "mcpServers": {
+    "title": "MCP 服务",
+    "description": "配置第三方 MCP（Model Context Protocol）服务器，扩展 Agent 的工具能力。这些服务器在对话中为 Agent 提供额外的工具。",
+    "add": "添加服务器",
+    "new": "新建 MCP 服务器",
+    "edit": "编辑 MCP 服务器",
+    "empty": "尚未配置 MCP 服务器",
+    "emptyHint": "添加第三方 MCP 服务器以扩展 Agent 的工具能力。",
+    "name": "服务器名称",
+    "namePlaceholder": "例如 filesystem-server",
+    "nameHint": "此服务器的唯一标识符，不能以 'freebuddy' 开头。",
+    "command": "命令",
+    "commandHint": "启动服务器的命令（如 npx、uvx、node、python）。将被解析为绝对路径。",
+    "args": "参数",
+    "argsHint": "命令参数。使用 ${cwd} 代表对话的项目目录。支持引号字符串。",
+    "envVars": "环境变量",
+    "envName": "名称",
+    "envValue": "值",
+    "secret": "机密",
+    "addEnvVar": "添加变量",
+    "selfCheck": "自检",
+    "runSelfCheck": "运行自检",
+    "selfCheckOk": "自检通过（{{count}} 个工具）",
+    "checkAll": "全部检查",
+    "tools": "可用工具",
+    "toolCount": "{{count}} 个工具",
+    "stderr": "错误输出",
+    "enable": "启用服务器",
+    "disable": "禁用服务器",
+    "note": "MCP 服务器仅在本地桌面应用中可用，远程 WebUI 用户无法使用。",
+    "error": {
+      "nameRequired": "服务器名称为必填项",
+      "commandRequired": "命令为必填项",
+      "reservedPrefix": "服务器名称不能以 'freebuddy' 开头（保留前缀）"
+    }
   },
   "conversationPanel": {
     "title": "全部会话",

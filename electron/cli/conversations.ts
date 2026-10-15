@@ -386,6 +386,26 @@ export function updateConversationMetadata(
     .run(JSON.stringify(merged), new Date().toISOString(), id);
 }
 
+export function getConversationMcpServerIds(id: string): string[] {
+  const conv = getConversation(id);
+  if (!conv?.metadata) return [];
+  const mcpServerIds = conv.metadata.mcpServerIds;
+  if (!Array.isArray(mcpServerIds)) return [];
+  return mcpServerIds.filter((id): id is string => typeof id === "string");
+}
+
+export function setConversationMcpServerIds(
+  id: string,
+  mcpServerIds: string[]
+): void {
+  const conv = getConversation(id);
+  if (!conv) return;
+  const metadata = { ...(conv.metadata || {}), mcpServerIds };
+  getDb()
+    .prepare("UPDATE conversations SET metadata = ?, updated_at = ? WHERE id = ?")
+    .run(JSON.stringify(metadata), new Date().toISOString(), id);
+}
+
 /** Mark a local conversation as belonging to DocStudio and attach its file. */
 export function markDocStudioConversation(id: string, filePath?: string): boolean {
   const conv = getConversation(id);

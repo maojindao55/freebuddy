@@ -63,6 +63,7 @@ import {
   createConversation,
   deleteConversation,
   getConversation,
+  getConversationMcpServerIds,
   listConversations,
   getMessageForIpc,
   listMessages,
@@ -73,6 +74,7 @@ import {
   requireOwnedConversation,
   setConversationApprovalMode,
   setConversationConfigOptionOverrides,
+  setConversationMcpServerIds,
   setConversationSkills,
   recoverInterruptedMessages,
   recoverInterruptedTasks,
@@ -271,6 +273,17 @@ import {
   type NativePluginAgent,
   type NativePluginScope
 } from "./nativePlugins.js";
+import {
+  listUserMcpServers,
+  getUserMcpServer,
+  createUserMcpServer,
+  updateUserMcpServer,
+  deleteUserMcpServer,
+  setUserMcpServerEnabled,
+  selfCheckUserMcpServer,
+  isRemoteMcpAllowed,
+  type UserMcpServerInput
+} from "./mcpServers.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -1397,6 +1410,13 @@ export function registerCliIpc() {
           transcript = undefined;
         }
       }
+      // Handoff carries source conversation's MCP selection by default
+      const sourceMcpServerIds = getConversationMcpServerIds(source.id);
+      const transferMetadata: Record<string, unknown> = {};
+      if (sourceMcpServerIds.length > 0) {
+        transferMetadata.mcpServerIds = sourceMcpServerIds;
+      }
+
       let txResult: { conversation: ReturnType<typeof createConversation> };
       try {
         txResult = getDb().transaction(() => {
@@ -1418,6 +1438,10 @@ export function registerCliIpc() {
             // Transfers always inherit the source workspace so referenced
             // files and the target agent's execution directory stay aligned.
             cwd: source.cwd,
+            // Handoff carries MCP selection by default
+            metadata: Object.keys(transferMetadata).length > 0
+              ? transferMetadata
+              : undefined,
             skillIds: [],
             titleSource: "default",
             ...(Object.keys(overrides).length > 0
@@ -1608,6 +1632,25 @@ export function registerCliIpc() {
   );
 
   registerHandler(
+    "cli:getConversationMcpServerIds",
+    (_e, conversationId: string) => {
+      if (!requireOwnedConversation(conversationId)) return [];
+      return getConversationMcpServerIds(conversationId);
+    }
+  );
+
+  registerHandler(
+    "cli:setConversationMcpServerIds",
+    (_e, args: { id: string; mcpServerIds: string[] }) => {
+      if (!requireOwnedConversation(args.id)) return;
+      setConversationMcpServerIds(
+        args.id,
+        Array.isArray(args.mcpServerIds) ? args.mcpServerIds : []
+      );
+    }
+  );
+
+  registerHandler(
     "cli:listMessages",
     (_e, conversationId: string, options?: ListMessagesIpcOptions) => {
       if (!requireOwnedConversation(conversationId)) {
@@ -1711,6 +1754,59 @@ export function registerCliIpc() {
   registerHandler("infoCards:marketProvider", () => getMarketProviderConfig());
   registerHandler("infoCards:searchMarketSymbols", (_e, query: string) =>
     searchMarketSymbols(query)
+  );
+
+  // ---- User MCP Servers ----
+  registerHandler("mcpServers:list", () => {
+    if (!isRemoteMcpAllowed()) {
+      throw new Error("MCP servers are not available for remote users");
+    }
+    return listUserMcpServers();
+  });
+  registerHandler("mcpServers:get", (_e, id: string) => {
+    if (!isRemoteMcpAllowed()) {
+      throw new Error("MCP servers are not available for remote users");
+    }
+    return getUserMcpServer(id);
+  });
+  registerHandler("mcpServers:create", (_e, input: UserMcpServerInput) => {
+    if (!isRemoteMcpAllowed()) {
+      throw new Error("MCP servers are not available for remote users");
+    }
+    return createUserMcpServer(input);
+  });
+  registerHandler(
+    "mcpServers:update",
+    (_e, args: { id: string; input: Partial<UserMcpServerInput> }) => {
+      if (!isRemoteMcpAllowed()) {
+        throw new Error("MCP servers are not available for remote users");
+      }
+      return updateUserMcpServer(args.id, args.input);
+    }
+  );
+  registerHandler("mcpServers:delete", (_e, id: string) => {
+    if (!isRemoteMcpAllowed()) {
+      throw new Error("MCP servers are not available for remote users");
+    }
+    return deleteUserMcpServer(id);
+  });
+  registerHandler(
+    "mcpServers:setEnabled",
+    (_e, args: { id: string; enabled: boolean }) => {
+      if (!isRemoteMcpAllowed()) {
+        throw new Error("MCP servers are not available for remote users");
+      }
+      return setUserMcpServerEnabled(args.id, args.enabled);
+    }
+  );
+  registerHandler(
+    "mcpServers:selfCheck",
+    async (_e, args: { id: string; cwd?: string }) => {
+      if (!isRemoteMcpAllowed()) {
+        throw new Error("MCP servers are not available for remote users");
+      }
+      return selfCheckUserMcpServer(args.id, args.cwd);
+    }
   );
 
   registerWorkflowIpc();

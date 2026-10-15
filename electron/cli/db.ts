@@ -1197,6 +1197,25 @@ export function migrate(db: DB) {
     }
   } catch { /* 老 SQLite 不支持 DROP COLUMN 时保留该列，读取侧已不再依赖它 */ }
 
+  // ---- User MCP Servers (Phase 1: stdio transport only) ----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_mcp_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      command TEXT NOT NULL,
+      args TEXT NOT NULL DEFAULT '[]',
+      env TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_check_status TEXT,
+      last_check_error TEXT,
+      last_check_tools TEXT,
+      last_checked_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_mcp_servers_enabled ON user_mcp_servers(enabled);
+  `);
+
   installHostIdempotencySchema(db);
   pruneHostIdempotencyResults({
     db,

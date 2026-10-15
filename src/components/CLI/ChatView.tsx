@@ -113,6 +113,7 @@ import {
 } from "./ScheduledSendControl";
 import { useScheduledSendStore } from "@/store/scheduledSendStore";
 import { ComposerAddMenu } from "./ComposerAddMenu";
+import { McpServerPicker } from "./McpServerPicker";
 import { AgentPicker } from "./AgentPicker";
 import { NewTaskUnreadConversations } from "./NewTaskUnreadConversations";
 import { conversationVisibleTitle } from "./conversationTitle";
@@ -1087,6 +1088,34 @@ export function ChatView({
   }, []);
   const [slashIndex, setSlashIndex] = useState(0);
   const conv = conversations.find((c) => c.id === activeId);
+
+  const [conversationMcpServerIds, setConversationMcpServerIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!conv?.id) {
+      setConversationMcpServerIds([]);
+      return;
+    }
+    const metadata = conv.metadata;
+    if (metadata && Array.isArray(metadata.mcpServerIds)) {
+      setConversationMcpServerIds(
+        (metadata.mcpServerIds as unknown[]).filter(
+          (id): id is string => typeof id === "string"
+        )
+      );
+    } else {
+      setConversationMcpServerIds([]);
+    }
+  }, [conv?.id, conv?.metadata]);
+
+  const handleMcpServerIdsChange = useCallback(
+    async (ids: string[]) => {
+      if (!conv?.id) return;
+      setConversationMcpServerIds(ids);
+      await cliClient.setConversationMcpServerIds(conv.id, ids);
+    },
+    [conv?.id]
+  );
+
   useEffect(() => {
     let active = true;
     if (!activeId) {
@@ -3222,6 +3251,13 @@ export function ChatView({
                 if (conv?.id) void setConversationSkills(conv.id, ids);
               }}
             />
+            {currentUser?.isOwner !== false && (
+              <McpServerPicker
+                selectedIds={conversationMcpServerIds}
+                onSelectionChange={handleMcpServerIdsChange}
+                disabled={sending}
+              />
+            )}
             {variant !== "mini" && (
               <label
                 className="composer-permission"

@@ -1422,6 +1422,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...(configOptionOverrides ?? {})
     };
 
+    const mcpServerIds = Array.isArray(conv.metadata?.mcpServerIds)
+      ? (conv.metadata.mcpServerIds as string[]).filter(
+          (id): id is string => typeof id === "string"
+        )
+      : undefined;
+
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       conversationId,
@@ -1464,7 +1470,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId
+      announceSkills: wantFresh || !resumedFromSessionId,
+      ...(mcpServerIds?.length ? { mcpServerIds } : {})
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");

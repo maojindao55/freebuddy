@@ -281,6 +281,8 @@ declare global {
       id: string,
       skillIds: string[]
     ): Promise<Conversation | undefined>;
+    getConversationMcpServerIds(conversationId: string): Promise<string[]>;
+    setConversationMcpServerIds(id: string, mcpServerIds: string[]): Promise<void>;
 
     listMessages(
       conversationId: string,
@@ -406,6 +408,7 @@ declare global {
         | "general"
         | "cli"
         | "providers"
+        | "mcp"
         | "skills"
         | "plugins"
         | "feed"
@@ -982,6 +985,24 @@ declare global {
     listAuditLog(limit?: number): Promise<RemoteAuditEntry[]>;
   }
 
+  interface FreebuddyMcpServers {
+    list(): Promise<import("@/services/cli/types").UserMcpServer[]>;
+    get(id: string): Promise<import("@/services/cli/types").UserMcpServer | undefined>;
+    create(
+      input: import("@/services/cli/types").UserMcpServerInput
+    ): Promise<import("@/services/cli/types").UserMcpServer>;
+    update(
+      id: string,
+      input: Partial<import("@/services/cli/types").UserMcpServerInput>
+    ): Promise<import("@/services/cli/types").UserMcpServer | undefined>;
+    delete(id: string): Promise<boolean>;
+    setEnabled(id: string, enabled: boolean): Promise<boolean>;
+    selfCheck(
+      id: string,
+      cwd?: string
+    ): Promise<import("@/services/cli/types").UserMcpServerSelfCheckResult>;
+  }
+
   interface FreebuddyApi {
     platform: string;
     arch: string;
@@ -995,6 +1016,7 @@ declare global {
     sessionToken?: () => string;
     cli: FreebuddyCli;
     providers?: FreebuddyProviders;
+    mcpServers?: FreebuddyMcpServers;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
     delegation: FreebuddyDelegation;

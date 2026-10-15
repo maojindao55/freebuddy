@@ -122,6 +122,10 @@ import {
 import { logMain } from "../debugLog.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import {
+  getEnabledUserMcpServersByIds,
+  isRemoteMcpAllowed
+} from "./mcpServers.js";
+import {
   cleanupSandboxCommand,
   isRemoteIsolatedCaller,
   prepareSandboxedSpawn,
@@ -1707,6 +1711,29 @@ export async function runAcpAgent({
         }
       }
     }
+
+    // Merge user-configured MCP servers (after built-in servers for priority)
+    if (
+      adapterAcceptsClientMcpServers(args.adapter) &&
+      args.mcpServerIds?.length &&
+      isRemoteMcpAllowed()
+    ) {
+      const userServers = getEnabledUserMcpServersByIds(
+        args.mcpServerIds,
+        args.cwd
+      );
+      for (const server of userServers) {
+        mcpServers.push(server);
+      }
+      if (userServers.length) {
+        appendLog(
+          logStream,
+          "system",
+          `user mcp servers=${userServers.map((s) => s.name).join(",")}`
+        );
+      }
+    }
+
     if (mcpServers.length) {
       appendLog(
         logStream,

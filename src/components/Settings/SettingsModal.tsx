@@ -10,6 +10,7 @@ import {
   Newspaper,
   Puzzle,
   Share2,
+  Terminal,
 } from "lucide-react";
 import { AboutTab } from "./AboutTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
@@ -21,12 +22,14 @@ import { SkillsTab } from "./SkillsTab";
 import { PluginsTab } from "./PluginsTab";
 import { RemoteTab } from "./RemoteTab";
 import { UsageTab } from "./UsageTab";
+import { McpServersTab } from "./McpServersTab";
 
-export type SettingsTab = "general" | "cli" | "providers" | "skills" | "plugins" | "feed" | "usage" | "remote" | "about";
+export type SettingsTab = "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "remote" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "providers", labelKey: "settings.tabs.providers" },
+  { key: "mcp", labelKey: "settings.tabs.mcp" },
   { key: "skills", labelKey: "settings.tabs.skills" },
   { key: "plugins", labelKey: "settings.tabs.plugins" },
   { key: "feed", labelKey: "settings.tabs.feed" },
@@ -41,6 +44,7 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
   general: Cog,
   cli: Bot,
   providers: Cpu,
+  mcp: Terminal,
   skills: Layers,
   plugins: Puzzle,
   feed: Newspaper,
@@ -51,7 +55,7 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
 
 /** Grouped sidebar sections; every tab key above appears exactly once. */
 const TAB_GROUPS: { groupKey: string; items: SettingsTab[] }[] = [
-  { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "skills", "plugins"] },
+  { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "mcp", "skills", "plugins"] },
   { groupKey: "settings.navGroup.data", items: ["feed", "usage"] },
   { groupKey: "settings.navGroup.system", items: ["general", "remote", "about"] },
 ];
@@ -139,6 +143,11 @@ function SettingsContent({
       {activeTab === "providers" && (
         <SettingsTabErrorBoundary>
           <ProvidersTab />
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "mcp" && (
+        <SettingsTabErrorBoundary>
+          <McpServersTab />
         </SettingsTabErrorBoundary>
       )}
       {activeTab === "skills" && <SkillsTab />}

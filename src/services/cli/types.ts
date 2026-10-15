@@ -199,6 +199,8 @@ export interface CliRunArgs {
   knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
+  /** User-configured MCP server ids to inject into this session. */
+  mcpServerIds?: string[];
 }
 
 export interface SessionConfigOption {
@@ -918,4 +920,45 @@ export interface AttachConversationSharesInput {
 export interface AttachConversationSharesResult {
   references: ConversationContextReference[];
   attachedCount: number;
+}
+
+// ---- User MCP Servers (Phase 1) ----
+
+export interface UserMcpServerEnvVar {
+  name: string;
+  value?: string;
+  valuePreview?: string;
+  valueEncrypted?: string;
+  secret?: boolean;
+}
+
+export interface UserMcpServerInput {
+  id?: string;
+  name: string;
+  command: string;
+  args?: string[];
+  env?: UserMcpServerEnvVar[];
+  enabled?: boolean;
+}
+
+export interface UserMcpServer {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  env: UserMcpServerEnvVar[];
+  enabled: boolean;
+  lastCheckStatus?: "ok" | "error";
+  lastCheckError?: string;
+  lastCheckTools?: string[];
+  lastCheckedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserMcpServerSelfCheckResult {
+  status: "ok" | "error";
+  error?: string;
+  tools?: string[];
+  stderr?: string;
 }

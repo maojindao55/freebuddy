@@ -199,6 +199,15 @@ const ADMIN_ONLY = [
   "cli:upsertOverride",
   "cli:resetOverride",
 
+  // User MCP servers execute arbitrary commands, host-only configuration.
+  "mcpServers:list",
+  "mcpServers:get",
+  "mcpServers:create",
+  "mcpServers:update",
+  "mcpServers:delete",
+  "mcpServers:setEnabled",
+  "mcpServers:selfCheck",
+
   // 服务商含 API Key：读是脱敏列表，写是 host 配置，均仅桌面端。
   "providers:list",
   "providers:upsert",

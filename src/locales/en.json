@@ -1241,7 +1241,8 @@
       "workflowTeams": "Workflow Teams",
       "remote": "Shared",
       "about": "About",
-      "providers": "Providers"
+      "providers": "Providers",
+      "mcp": "MCP Servers"
     },
     "cli": {
       "title": "Cli Agents",
@@ -2591,6 +2592,49 @@
     "collapseDetail": "Hide details",
     "troubleshootKey": "Open console to check API key",
     "dragToReorder": "Drag to reorder"
+  },
+  "mcp": {
+    "pickerLabel": "MCP Servers",
+    "selectServers": "Select MCP Servers",
+    "selectForSession": "MCP Servers",
+    "noServersConfigured": "No MCP servers configured",
+    "disabledServersHidden": "Disabled servers hidden"
+  },
+  "mcpServers": {
+    "title": "MCP Servers",
+    "description": "Configure third-party MCP (Model Context Protocol) servers to extend your agents' capabilities. These servers provide additional tools that agents can use during conversations.",
+    "add": "Add server",
+    "new": "New MCP Server",
+    "edit": "Edit MCP Server",
+    "empty": "No MCP servers configured",
+    "emptyHint": "Add third-party MCP servers to extend your agents' tool capabilities.",
+    "name": "Server name",
+    "namePlaceholder": "e.g. filesystem-server",
+    "nameHint": "A unique identifier for this server. Cannot start with 'freebuddy'.",
+    "command": "Command",
+    "commandHint": "The command to start the server (e.g. npx, uvx, node, python). Will be resolved to an absolute path.",
+    "args": "Arguments",
+    "argsHint": "Command arguments. Use ${cwd} for the conversation's project directory. Supports quoted strings.",
+    "envVars": "Environment variables",
+    "envName": "Name",
+    "envValue": "Value",
+    "secret": "Secret",
+    "addEnvVar": "Add variable",
+    "selfCheck": "Self-check",
+    "runSelfCheck": "Run self-check",
+    "selfCheckOk": "Self-check passed ({{count}} tools)",
+    "checkAll": "Check all",
+    "tools": "Available tools",
+    "toolCount": "{{count}} tools",
+    "stderr": "Error output",
+    "enable": "Enable server",
+    "disable": "Disable server",
+    "note": "MCP servers are only available when running locally on the desktop app. They are not available for remote WebUI users.",
+    "error": {
+      "nameRequired": "Server name is required",
+      "commandRequired": "Command is required",
+      "reservedPrefix": "Server name cannot start with 'freebuddy' (reserved prefix)"
+    }
   },
   "conversationPanel": {
     "title": "All conversations",

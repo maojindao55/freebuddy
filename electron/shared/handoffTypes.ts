@@ -156,6 +156,8 @@ export interface TransferConversationInput {
   targetAdapter: string;
   /** Optional session config overrides (model, thought level) for the target conversation. */
   configOptionOverrides?: Record<string, string>;
+  /** Optional MCP server IDs override. If not provided, inherits from source conversation. */
+  mcpServerIds?: string[];
 }
 
 export interface TransferConversationResult {

@@ -22,18 +22,25 @@ function McpServerCheckboxItem({
   selected: boolean;
   onChange: (serverId: string, checked: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const isDisabled = !server.enabled;
   const statusOk = server.lastCheckStatus === "ok";
   const statusError = server.lastCheckStatus === "error";
 
+  const statusTitle = isDisabled
+    ? selected
+      ? t("mcp.serverDisabledWillSkip", "Server is disabled and will be skipped")
+      : t("mcp.serverDisabled", "Server is disabled")
+    : statusError
+      ? t("mcp.lastCheckFailed", "Last check failed: {{error}}", { error: server.lastCheckError ?? "unknown" })
+      : statusOk
+        ? t("mcp.lastCheckOk", "Last check succeeded")
+        : undefined;
+
   return (
     <label
-      className={`mcp-picker-item${isDisabled ? " disabled" : ""}`}
-      title={
-        isDisabled
-          ? "Server is disabled"
-          : server.lastCheckError ?? undefined
-      }
+      className={`mcp-picker-item${isDisabled ? " disabled" : ""}${isDisabled && selected ? " skipped" : ""}`}
+      title={statusTitle}
     >
       <input
         type="checkbox"
@@ -43,16 +50,20 @@ function McpServerCheckboxItem({
       />
       <span className="mcp-picker-item-name">{server.name}</span>
       {statusOk && (
-        <span className="mcp-picker-status ok" aria-label="OK">
+        <span className="mcp-picker-status ok" aria-label={t("mcp.statusOk", "OK")} title={statusTitle}>
           ●
         </span>
       )}
       {statusError && (
-        <span className="mcp-picker-status error" aria-label="Error">
+        <span className="mcp-picker-status error" aria-label={t("mcp.statusError", "Error")} title={statusTitle}>
           ●
         </span>
       )}
-      {isDisabled && <small className="mcp-picker-disabled-label">disabled</small>}
+      {isDisabled && (
+        <small className="mcp-picker-disabled-label">
+          {selected ? t("mcp.willSkip", "skipped") : t("mcp.disabled", "disabled")}
+        </small>
+      )}
     </label>
   );
 }
@@ -65,13 +76,46 @@ export function McpServerPicker({
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const { servers, loaded, load } = useMcpServerStore();
+  const { servers, loaded, load, selfCheck } = useMcpServerStore();
+  const prevSelectedRef = useRef<Set<string>>(new Set());
+  const selfCheckInProgressRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!loaded) {
       void load();
     }
   }, [loaded, load]);
+
+  // Auto self-check newly selected servers that haven't been checked recently
+  useEffect(() => {
+    if (!loaded) return;
+    const prevSelected = prevSelectedRef.current;
+    const currentSelected = new Set(selectedIds);
+    
+    // Find newly selected enabled servers that haven't been checked
+    const newlySelected = [...currentSelected].filter(
+      (id) => !prevSelected.has(id)
+    );
+    
+    for (const serverId of newlySelected) {
+      const server = servers.find((s) => s.id === serverId);
+      if (!server || !server.enabled) continue;
+      // Skip if already checked recently (within 5 minutes) or check in progress
+      if (selfCheckInProgressRef.current.has(serverId)) continue;
+      if (server.lastCheckedAt) {
+        const lastChecked = new Date(server.lastCheckedAt).getTime();
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        if (lastChecked > fiveMinutesAgo) continue;
+      }
+      // Trigger self-check for newly selected server
+      selfCheckInProgressRef.current.add(serverId);
+      void selfCheck(serverId).finally(() => {
+        selfCheckInProgressRef.current.delete(serverId);
+      });
+    }
+    
+    prevSelectedRef.current = currentSelected;
+  }, [selectedIds, servers, loaded, selfCheck]);
 
   useEffect(() => {
     if (!open) return;
@@ -97,17 +141,28 @@ export function McpServerPicker({
     };
   }, [open]);
 
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  // Show enabled servers + disabled servers that are selected (greyed)
+  const visibleServers = useMemo(
+    () => servers.filter((s) => s.enabled || selectedSet.has(s.id)),
+    [servers, selectedSet]
+  );
+
   const enabledServers = useMemo(
     () => servers.filter((s) => s.enabled),
     [servers]
   );
 
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-
+  // Count only enabled servers that are selected (disabled ones are skipped at runtime)
   const selectedCount = useMemo(() => {
     return enabledServers.filter((s) => selectedSet.has(s.id)).length;
   }, [enabledServers, selectedSet]);
 
+  // Count disabled-but-selected servers for the warning
+  const disabledSelectedCount = useMemo(() => {
+    return servers.filter((s) => !s.enabled && selectedSet.has(s.id)).length;
+  }, [servers, selectedSet]);
   const handleToggle = (serverId: string, checked: boolean) => {
     const next = new Set(selectedIds);
     if (checked) {
@@ -150,12 +205,12 @@ export function McpServerPicker({
             </span>
           </div>
           <div className="mcp-picker-list">
-            {enabledServers.length === 0 && (
+            {visibleServers.length === 0 && (
               <p className="mcp-picker-empty">
                 {t("mcp.noServersConfigured", "No MCP servers configured")}
               </p>
             )}
-            {enabledServers.map((server) => (
+            {visibleServers.map((server) => (
               <McpServerCheckboxItem
                 key={server.id}
                 server={server}
@@ -163,9 +218,9 @@ export function McpServerPicker({
                 onChange={handleToggle}
               />
             ))}
-            {servers.some((s) => !s.enabled) && (
-              <p className="mcp-picker-hint">
-                {t("mcp.disabledServersHidden", "Disabled servers are hidden")}
+            {disabledSelectedCount > 0 && (
+              <p className="mcp-picker-hint mcp-picker-warning">
+                {t("mcp.disabledServersSkipped", "{{count}} disabled server(s) will be skipped", { count: disabledSelectedCount })}
               </p>
             )}
           </div>

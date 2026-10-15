@@ -33,23 +33,49 @@ interface EnvVarDraft {
 
 function StatusDot({
   status,
-  checking
+  checking,
+  lastCheckedAt,
+  lastError
 }: {
   status: UserMcpServer["lastCheckStatus"];
   checking: boolean;
+  lastCheckedAt?: string;
+  lastError?: string;
 }) {
+  const { t } = useTranslation();
   if (checking) {
     return <Loader2 size={12} className="mcp-status-dot checking" />;
   }
+  const timeLabel = lastCheckedAt
+    ? t("mcpServers.lastCheckedAt", "Last checked: {{time}}", {
+        time: new Date(lastCheckedAt).toLocaleString()
+      })
+    : "";
   if (status === "ok") {
-    return <span className="mcp-status-dot ok" title="Self-check passed" />;
-  }
-  if (status === "error") {
     return (
-      <span className="mcp-status-dot error" title="Self-check failed" />
+      <span
+        className="mcp-status-dot ok"
+        title={t("mcpServers.statusOkTitle", "Latest self-check passed") + (timeLabel ? `\n${timeLabel}` : "")}
+      />
     );
   }
-  return <span className="mcp-status-dot unknown" title="Not checked" />;
+  if (status === "error") {
+    const errorDetail = lastError
+      ? `\n${t("mcpServers.errorDetail", "Error: {{error}}", { error: lastError })}`
+      : "";
+    return (
+      <span
+        className="mcp-status-dot error"
+        title={t("mcpServers.statusErrorTitle", "Latest self-check failed") + errorDetail + (timeLabel ? `\n${timeLabel}` : "")}
+      />
+    );
+  }
+  return (
+    <span
+      className="mcp-status-dot unknown"
+      title={t("mcpServers.statusUnknownTitle", "Not checked yet")}
+    />
+  );
 }
 
 function McpServerEditor({
@@ -601,6 +627,8 @@ export function McpServersTab() {
                 <StatusDot
                   status={server.lastCheckStatus}
                   checking={checkingIds.has(server.id)}
+                  lastCheckedAt={server.lastCheckedAt}
+                  lastError={server.lastCheckError}
                 />
               </div>
               <div

@@ -1410,11 +1410,13 @@ export function registerCliIpc() {
           transcript = undefined;
         }
       }
-      // Handoff carries source conversation's MCP selection by default
-      const sourceMcpServerIds = getConversationMcpServerIds(source.id);
+      // Handoff carries source conversation's MCP selection by default, unless explicitly overridden
+      const mcpServerIds = Array.isArray(input.mcpServerIds)
+        ? input.mcpServerIds.filter((id): id is string => typeof id === "string")
+        : getConversationMcpServerIds(source.id);
       const transferMetadata: Record<string, unknown> = {};
-      if (sourceMcpServerIds.length > 0) {
-        transferMetadata.mcpServerIds = sourceMcpServerIds;
+      if (mcpServerIds.length > 0) {
+        transferMetadata.mcpServerIds = mcpServerIds;
       }
 
       let txResult: { conversation: ReturnType<typeof createConversation> };

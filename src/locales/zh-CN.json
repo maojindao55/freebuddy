@@ -724,7 +724,10 @@
     "sourceUnavailable": "源会话已不存在。",
     "transferFailed": "转接失败",
     "briefExtractionFailed": "转接完成但未携带上下文，请手动告知新 agent。",
-    "autoStartFailed": "新会话已创建，但自动启动失败：{{error}}"
+    "autoStartFailed": "新会话已创建，但自动启动失败：{{error}}",
+    "mcpServers": "MCP 服务",
+    "mcpServersSelected": "已选 {{count}} 个服务器",
+    "mcpServersNone": "未选择"
   },
   "importCodex": {
     "dialogTitle": "导入 Codex 会话",
@@ -2583,7 +2586,17 @@
     "selectServers": "选择 MCP 服务器",
     "selectForSession": "MCP 服务",
     "noServersConfigured": "未配置 MCP 服务器",
-    "disabledServersHidden": "已禁用的服务器已隐藏"
+    "disabledServersHidden": "已禁用的服务器已隐藏",
+    "disabledServersSkipped": "{{count}} 个已禁用的服务器将被跳过",
+    "serverDisabled": "服务器已禁用",
+    "serverDisabledWillSkip": "服务器已禁用，将被跳过",
+    "lastCheckFailed": "上次检查失败：{{error}}",
+    "lastCheckOk": "上次检查成功",
+    "statusOk": "正常",
+    "statusError": "错误",
+    "willSkip": "跳过",
+    "disabled": "禁用",
+    "notAvailableRemote": "远程用户无法使用 MCP 服务器"
   },
   "mcpServers": {
     "title": "MCP 服务",
@@ -2614,6 +2627,11 @@
     "stderr": "错误输出",
     "enable": "启用服务器",
     "disable": "禁用服务器",
+    "statusOkTitle": "最近一次自检通过",
+    "statusErrorTitle": "最近一次自检失败",
+    "statusUnknownTitle": "尚未检查",
+    "lastCheckedAt": "上次检查：{{time}}",
+    "errorDetail": "错误：{{error}}",
     "note": "MCP 服务器仅在本地桌面应用中可用，远程 WebUI 用户无法使用。",
     "error": {
       "nameRequired": "服务器名称为必填项",

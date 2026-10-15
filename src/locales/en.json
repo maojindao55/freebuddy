@@ -725,7 +725,10 @@
     "sourceUnavailable": "The source conversation no longer exists.",
     "transferFailed": "Transfer failed",
     "briefExtractionFailed": "Transfer completed but no context was carried over. Tell the new agent manually.",
-    "autoStartFailed": "The new conversation was created, but automatic startup failed: {{error}}"
+    "autoStartFailed": "The new conversation was created, but automatic startup failed: {{error}}",
+    "mcpServers": "MCP Servers",
+    "mcpServersSelected": "{{count}} server(s) selected",
+    "mcpServersNone": "None selected"
   },
   "importCodex": {
     "dialogTitle": "Import Codex session",
@@ -2598,7 +2601,17 @@
     "selectServers": "Select MCP Servers",
     "selectForSession": "MCP Servers",
     "noServersConfigured": "No MCP servers configured",
-    "disabledServersHidden": "Disabled servers hidden"
+    "disabledServersHidden": "Disabled servers hidden",
+    "disabledServersSkipped": "{{count}} disabled server(s) will be skipped",
+    "serverDisabled": "Server is disabled",
+    "serverDisabledWillSkip": "Server is disabled and will be skipped",
+    "lastCheckFailed": "Last check failed: {{error}}",
+    "lastCheckOk": "Last check succeeded",
+    "statusOk": "OK",
+    "statusError": "Error",
+    "willSkip": "skipped",
+    "disabled": "disabled",
+    "notAvailableRemote": "MCP servers are not available for remote users"
   },
   "mcpServers": {
     "title": "MCP Servers",
@@ -2629,6 +2642,11 @@
     "stderr": "Error output",
     "enable": "Enable server",
     "disable": "Disable server",
+    "statusOkTitle": "Latest self-check passed",
+    "statusErrorTitle": "Latest self-check failed",
+    "statusUnknownTitle": "Not checked yet",
+    "lastCheckedAt": "Last checked: {{time}}",
+    "errorDetail": "Error: {{error}}",
     "note": "MCP servers are only available when running locally on the desktop app. They are not available for remote WebUI users.",
     "error": {
       "nameRequired": "Server name is required",

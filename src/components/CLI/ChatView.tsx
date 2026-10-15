@@ -24,6 +24,7 @@ import {
   Layers,
   Plus,
   Search,
+  Server,
   Sparkles,
   X
 } from "lucide-react";
@@ -3251,13 +3252,21 @@ export function ChatView({
                 if (conv?.id) void setConversationSkills(conv.id, ids);
               }}
             />
-            {currentUser?.isOwner !== false && (
+            {currentUser?.isOwner !== false ? (
               <McpServerPicker
                 selectedIds={conversationMcpServerIds}
                 onSelectionChange={handleMcpServerIdsChange}
                 disabled={sending}
               />
-            )}
+            ) : conversationMcpServerIds.length > 0 ? (
+              <span
+                className="composer-mcp-remote-notice"
+                title={t("mcp.notAvailableRemote")}
+              >
+                <Server size={14} aria-hidden="true" />
+                <span className="mcp-remote-notice-text">{t("mcp.notAvailableRemote")}</span>
+              </span>
+            ) : null}
             {variant !== "mini" && (
               <label
                 className="composer-permission"

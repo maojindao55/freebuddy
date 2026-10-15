@@ -116,6 +116,11 @@
   cursor: not-allowed;
 }
 
+.mcp-picker-item.disabled.skipped {
+  opacity: 0.6;
+  background: var(--bg-warning-subtle, rgba(255, 180, 0, 0.08));
+}
+
 .mcp-picker-item input[type="checkbox"] {
   width: 14px;
   height: 14px;
@@ -163,6 +168,11 @@
   padding: 8px 12px;
   border-top: 1px solid var(--border-subtle);
   font-style: italic;
+}
+
+.mcp-picker-hint.mcp-picker-warning {
+  color: var(--warning, #b8860b);
+  background: var(--bg-warning-subtle, rgba(255, 180, 0, 0.06));
 }
 
 @media (max-width: 640px) {

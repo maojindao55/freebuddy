@@ -154,7 +154,7 @@ test("serializeStreamItemsForPersist caps bulky collected tool payloads", () => 
 });
 
 test("IPC history page size matches the renderer initial window", () => {
-  assert.equal(IPC_LIST_MESSAGES_PAGE_SIZE, 40);
+  assert.equal(IPC_LIST_MESSAGES_PAGE_SIZE, 20);
 });
 
 test("busy delegate saves serialize a bounded amount of history and preserve chronology", () => {

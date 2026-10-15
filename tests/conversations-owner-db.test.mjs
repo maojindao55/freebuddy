@@ -26,6 +26,40 @@ const baseInput = (id) => ({
   adapter: "codex"
 });
 
+test("history pages bound content without dropping messages at size or count boundaries", async t => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const { createConversation, appendMessage, listMessagesForIpc } = await import("../dist-electron/cli/conversations.js");
+  const { IPC_LIST_MESSAGES_PAGE_SIZE, IPC_LIST_MESSAGES_PAGE_CHARS } = await import("@freebuddy/cli-stream");
+  migrate(db); setDbForTest(db);
+  try {
+    for (const [name, count, size] of [["large",9,300_000],["small",45,30]]) {
+      createConversation(baseInput(name));
+      const bodies = new Map();
+      for (let i=0; i<count; i++) {
+        const id = `${name}-${i}`;
+        const content = JSON.stringify([{kind:"text",role:"assistant",content:`${i}:`+"x".repeat(size)}]);
+        bodies.set(id, content);
+        appendMessage({id,conversationId:name,role:"assistant",status:"done",content});
+      }
+      const ids = [];
+      let cursor;
+      for (;;) {
+        const page = listMessagesForIpc(name, cursor);
+        assert.ok(page.messages.length > 0 && page.messages.length <= IPC_LIST_MESSAGES_PAGE_SIZE);
+        assert.ok(page.messages.reduce((sum,m)=>sum+m.content.length,0) <= IPC_LIST_MESSAGES_PAGE_CHARS);
+        for (const message of page.messages) assert.equal(message.content,bodies.get(message.id));
+        ids.unshift(...page.messages.map(m=>m.id));
+        if (!page.hasMore) break;
+        const oldest = page.messages[0];
+        cursor = {beforeCreatedAt:oldest.createdAt,beforeId:oldest.id};
+      }
+      assert.deepEqual(ids,[...bodies.keys()]);
+    }
+  } finally {setDbForTest(null);db.close();}
+});
+
 test("createConversation stamps the caller as owner; listConversations filters by caller", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
   const db = makeDb();

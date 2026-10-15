@@ -1,4 +1,4 @@
-import { serializeStreamItemsForPersist } from "@freebuddy/cli-stream";
+import { IPC_LIST_MESSAGES_PAGE_SIZE, serializeStreamItemsForPersist } from "@freebuddy/cli-stream";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type { CLIMember } from "@/config/aiMembers";
 import type {
@@ -24,8 +24,8 @@ type ToolCallItem = Extract<CliStreamItem, { kind: "tool-call" }>;
 export const MAX_MERGED_ASSISTANT_CHARS = 200_000;
 export const MAX_MERGED_OUTPUT_CHARS = 12_000;
 export const MAX_PERSISTED_STREAM_JSON_CHARS = 400_000;
-export const INITIAL_VISIBLE_MESSAGES = 40;
-export const VISIBLE_MESSAGE_STEP = 40;
+export const INITIAL_VISIBLE_MESSAGES = IPC_LIST_MESSAGES_PAGE_SIZE;
+export const VISIBLE_MESSAGE_STEP = IPC_LIST_MESSAGES_PAGE_SIZE;
 const MERGED_STREAM_TRUNCATION_MARKER = "\n… [stream truncated] …\n";
 
 export function visibleConversationSlice<T>(

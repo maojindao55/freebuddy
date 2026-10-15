@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { parseStoredStreamItems } from "@freebuddy/cli-stream";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -81,14 +82,13 @@ export function DelegationTeamCard({
       if (msg.role !== "assistant" || !msg.agentId) continue;
       if (msg.content.length > 80_000) continue;
       try {
-        const items = JSON.parse(msg.content);
+        const items = parseStoredStreamItems(msg.content, msg.id);
         if (!Array.isArray(items)) continue;
         for (const item of items) {
           if (item.kind === "config-options" && Array.isArray(item.options)) {
             const modelOpt = item.options.find((o: any) => o.id === "model");
-            if (modelOpt?.currentLabel || modelOpt?.currentValue) {
-              map[msg.agentId] = modelOpt.currentLabel ?? modelOpt.currentValue;
-            }
+            const model = modelOpt?.currentLabel ?? modelOpt?.currentValue;
+            if (model) map[msg.agentId] = model;
           }
         }
       } catch {

@@ -13,6 +13,7 @@ import {
   type ReactNode
 } from "react";
 import { nanoid } from "nanoid";
+import { parseStoredStreamItems } from "@freebuddy/cli-stream";
 import {
   Check,
   ChevronDown,
@@ -1226,7 +1227,7 @@ export function ChatView({
         .filter((message) => message.role === "assistant")
         .flatMap((message) => {
           try {
-            const items = JSON.parse(message.content);
+            const items = parseStoredStreamItems(message.content, message.id);
             return Array.isArray(items) ? items : [];
           } catch {
             return [];

@@ -3,7 +3,9 @@ export const MAX_IPC_MESSAGE_CONTENT_CHARS = 400_000;
 /** Keep the full list under Chromium's structured-clone CHECK range. */
 export const MAX_IPC_LIST_MESSAGES_CHARS = 16 * 1024 * 1024;
 /** Opening a conversation only hydrates the newest page over IPC. */
-export const IPC_LIST_MESSAGES_PAGE_SIZE = 40;
+export const IPC_LIST_MESSAGES_PAGE_SIZE = 20;
+/** Bound a history page before cloning and rendering it, without cutting messages. */
+export const IPC_LIST_MESSAGES_PAGE_CHARS = 2_000_000;
 const MAX_STREAM_STRING_CHARS = 12_000;
 const MAX_ASSISTANT_TEXT_CHARS = 200_000;
 const MAX_INLINE_IMAGE_BASE64 = 48 * 1024;

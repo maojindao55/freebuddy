@@ -17,7 +17,7 @@ import {
 import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { useTranslation } from "react-i18next";
-import { isTruncatedStreamNotice } from "@freebuddy/cli-stream";
+import { isTruncatedStreamNotice, prepareStoredStreamItems } from "@freebuddy/cli-stream";
 import { HistoryDetails } from "./HistoryDetails";
 import { FileChangesCard } from "./FileChanges";
 import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
@@ -173,25 +173,22 @@ function normalizeRawItem(item: Extract<CliStreamItem, { kind: "raw" }>): CliStr
 }
 
 export function normalizeStoredItems(items: CliStreamItem[]): CliStreamItem[] {
-  let out: CliStreamItem[] = [];
+  // Coalesce tiny append chunks before rebuilding accumulated text/tool state.
+  return appendItems([], items.flatMap(item =>
+    item.kind === "raw" ? normalizeRawItem(item) : [item]
+  ));
+}
 
-  for (const item of items) {
-    const normalized = item.kind === "raw" ? normalizeRawItem(item) : [item];
-
-    for (const next of normalized) {
-      const last = out[out.length - 1];
-      if (
-        next.kind === "error" &&
-        last?.kind === "error" &&
-        last.message === next.message
-      ) {
-        continue;
-      }
-      out = appendItems(out, [next]);
-    }
+function prepareStoredItems(items: CliStreamItem[] | undefined, content: string): CliStreamItem[] {
+  const raw: CliStreamItem[] = [{ kind: "raw", content }];
+  const sanitize = (value: CliStreamItem[]) => sanitizeStreamItems(value, image =>
+    useImagePreviewStore.getState().register(image)
+  );
+  try {
+    return normalizeStoredItems(sanitize(items ?? raw));
+  } catch {
+    return normalizeStoredItems(sanitize(raw));
   }
-
-  return out;
 }
 
 function copyableItemText(item: CliStreamItem): string {
@@ -808,24 +805,8 @@ export const MessageBubble = memo(function MessageBubble({
   const currentUser = useConversationStore((s) => s.currentUser);
   const items = useMemo<CliStreamItem[]>(() => {
     if (message.role !== "assistant") return [];
-    try {
-      const parsed = JSON.parse(message.content);
-      const base = Array.isArray(parsed)
-        ? parsed
-        : [{ kind: "raw", content: message.content } satisfies CliStreamItem];
-      return normalizeStoredItems(
-        sanitizeStreamItems(base as CliStreamItem[], (image) =>
-          useImagePreviewStore.getState().register(image)
-        )
-      );
-    } catch {
-      return normalizeStoredItems(
-        sanitizeStreamItems([{ kind: "raw", content: message.content }], (image) =>
-          useImagePreviewStore.getState().register(image)
-        )
-      );
-    }
-  }, [message.role, message.content]);
+    return prepareStoredStreamItems(message.content, prepareStoredItems, message.id);
+  }, [message.role, message.content, message.id]);
   const [restoredItems, setRestoredItems] = useState<CliStreamItem[]>([]);
   const historyTruncated = items.some(isTruncatedStreamNotice);
   const displayItems = useMemo(() => {

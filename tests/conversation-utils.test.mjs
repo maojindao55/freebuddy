@@ -504,7 +504,7 @@ test("stored assistant messages reuse appendItems normalization", () => {
   );
 
   assert.match(source, /import \{ appendItems \} from "@\/store\/conversationUtils"/);
-  assert.match(source, /out = appendItems\(out, \[next\]\)/);
+  assert.match(source, /return appendItems\(\[\], items\.flatMap/);
 });
 
 test("appendItems upserts enriched tool calls by toolCallId", async () => {

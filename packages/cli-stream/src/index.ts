@@ -5,6 +5,7 @@ import "./parsers/opencode.js";
 export { buildFileDiff, extractFileDiffPatch, type DiffRow, type FileDiff } from "./fileDiff.js";
 export { aggregateFileEdits, applyFileEditPatch } from "./turnFileDiff.js";
 export { inputTokensIncludingCache } from "./usageTokens.js";
+export { createStoredStreamItemsCache, parseStoredStreamItems, prepareStoredStreamItems } from "./storedStreamItems.js";
 
 export {
   getParser,
@@ -26,6 +27,7 @@ export {
   MAX_IPC_MESSAGE_CONTENT_CHARS,
   MAX_IPC_LIST_MESSAGES_CHARS,
   IPC_LIST_MESSAGES_PAGE_SIZE,
+  IPC_LIST_MESSAGES_PAGE_CHARS,
   OMITTED_ASSISTANT_CONTENT,
   sanitizeMessageContent,
   serializeStreamItemsForPersist,

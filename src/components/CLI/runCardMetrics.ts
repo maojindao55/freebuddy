@@ -1,8 +1,8 @@
 import type { AgentRunMetrics, CliStreamItem } from "@freebuddy/protocol/cli";
-import { inputTokensIncludingCache } from "@freebuddy/cli-stream";
+import { inputTokensIncludingCache, parseStoredStreamItems } from "@freebuddy/cli-stream";
 
 type Usage = Extract<CliStreamItem, { kind: "usage" }>;
-type Message = { role: string; content: string; taskId?: string };
+type Message = { id?: string; role: string; content: string; taskId?: string };
 type Live = {
   taskSessionId: string;
   items: CliStreamItem[];
@@ -86,7 +86,7 @@ export function selectRunCardMetrics(messages: readonly Message[], live?: Live) 
       exists = true;
       runId = message.taskId;
       try {
-        const parsed = JSON.parse(message.content);
+        const parsed = parseStoredStreamItems(message.content, message.id);
         if (Array.isArray(parsed)) items = parsed.filter(item => item && typeof item === "object");
       } catch { /* Legacy plain text has no measured metrics. */ }
       break;

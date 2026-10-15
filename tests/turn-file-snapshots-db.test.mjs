@@ -238,7 +238,44 @@ saved("non-Git nested ignores and dependency exclusion do not fabricate baseline
   assert.equal(read(index().edits[0]).oldText, "");
 });
 
-saved("incomplete enumeration marks newly discovered files unknown rather than created", async t => {
+for (const phase of ["both", "before", "after"]) saved(`read-only turns with exhausted ${phase} body budgets do not list unknown files as changes`, async t => {
+  const env = setup(t);
+  for (let i = 0; i < 40; i++) fs.writeFileSync(env.file(`${i}.ts`), "unchanged contents\n");
+  const capture = await env.prepare({ totalBytes: phase === "after" ? 64 * 1024 : 0 });
+  capture.limits.totalBytes = phase === "before" ? 64 * 1024 : 0;
+  await finalizeTurnFileCapture(capture);
+  const page = index();
+  assert.equal(page.capture.complete, false);
+  assert.deepEqual(page.edits, []);
+  assert.deepEqual(page.coveredPaths, []); // Unknown is not evidence of an unchanged file either.
+  assert.equal(env.db.prepare("SELECT count(*) AS n FROM turn_file_versions WHERE changed = 1").get().n, 0);
+});
+
+saved("read-only turns with an ending scan timeout do not list captured baselines as changes", async t => {
+  const env = setup(t);
+  fs.writeFileSync(env.file("file.ts"), "unchanged contents");
+  const capture = await env.prepare();
+  assert.equal(capture.complete, true);
+  capture.limits.milliseconds = 0;
+  await finalizeTurnFileCapture(capture);
+  const page = index();
+  assert.equal(page.capture.complete, false);
+  assert.deepEqual(page.edits, []);
+  assert.deepEqual(page.coveredPaths, []);
+});
+
+saved("historical captures cannot expose unknown pairs marked changed by older versions", async t => {
+  const env = setup(t);
+  fs.writeFileSync(env.file("file.ts"), "unchanged contents");
+  const capture = await env.prepare({ totalBytes: 0 });
+  await finalizeTurnFileCapture(capture);
+  env.db.prepare("UPDATE turn_file_versions SET changed = 1 WHERE task_id = 'run'").run();
+  const page = index();
+  assert.deepEqual(page.edits, []);
+  assert.deepEqual(page.coveredPaths, []);
+});
+
+saved("incomplete enumeration cannot assert changes for newly discovered files", async t => {
   const env = setup(t);
   fs.writeFileSync(env.file("existing.md"), "before");
   const capture = await env.prepare({ entries: 0 });
@@ -247,10 +284,11 @@ saved("incomplete enumeration marks newly discovered files unknown rather than c
   await finalizeTurnFileCapture(capture);
   const page = index();
   assert.equal(page.capture.complete, false);
-  assert.equal(page.edits.length, 2);
-  for (const edit of page.edits) {
-    assert.equal(edit.action, "update"); assert.equal(read(edit).notice, "unavailable"); assert.equal(read(edit).oldText, undefined);
-  }
+  assert.deepEqual(page.edits, []);
+  assert.deepEqual(page.coveredPaths, []);
+  const versions = env.db.prepare("SELECT before_version FROM turn_file_versions WHERE task_id = 'run'").all();
+  assert.equal(versions.length, 2);
+  assert.ok(versions.every(row => JSON.parse(row.before_version).state === "unavailable"));
 });
 
 saved("changing ignore rules cannot turn an existing ignored file into a new file", async t => {
@@ -259,16 +297,19 @@ saved("changing ignore rules cannot turn an existing ignored file into a new fil
   const capture = await env.prepare();
   fs.writeFileSync(env.file(".gitignore"), ""); fs.writeFileSync(env.file("hidden.md"), "modified");
   await finalizeTurnFileCapture(capture);
-  const edit = index().edits.find(edit => edit.path.endsWith("hidden.md"));
-  assert.equal(edit.action, "update"); assert.equal(read(edit).notice, "unavailable"); assert.equal(read(edit).oldText, undefined);
+  const page = index();
+  assert.equal(page.capture.complete, false);
+  assert.deepEqual(page.edits.map(edit => path.basename(edit.path)), [".gitignore"]);
+  assert.equal(page.coveredPaths.includes(env.file("hidden.md")), false);
 });
 
 saved("binary and body budgets report unknown counts; unchanged binary hashes can be omitted", async t => {
   const env = setup(t);
   fs.writeFileSync(env.file("binary"), Buffer.from([0, 1])); fs.writeFileSync(env.file("same-binary"), Buffer.from([0, 2]));
   fs.writeFileSync(env.file("large"), "x".repeat(80));
+  fs.writeFileSync(env.file("same-large"), "x".repeat(80));
   const capture = await env.prepare({ fileBytes: 32 });
-  fs.writeFileSync(env.file("binary"), Buffer.from([0, 3])); fs.writeFileSync(env.file("large"), "y".repeat(80));
+  fs.writeFileSync(env.file("binary"), Buffer.from([0, 3])); fs.writeFileSync(env.file("large"), "y".repeat(81));
   await finalizeTurnFileCapture(capture);
   const page = index();
   assert.equal(page.capture.complete, false);
@@ -279,7 +320,7 @@ saved("binary and body budgets report unknown counts; unchanged binary hashes ca
 
 saved("total body and elapsed budgets preserve an incomplete state instead of zero changes", async t => {
   const env = setup(t); fs.writeFileSync(env.file("a.md"), "12345"); fs.writeFileSync(env.file("b.md"), "67890");
-  const capture = await env.prepare({ totalBytes: 5 }); fs.writeFileSync(env.file("b.md"), "final");
+  const capture = await env.prepare({ totalBytes: 5 }); fs.writeFileSync(env.file("b.md"), "final contents");
   await finalizeTurnFileCapture(capture);
   assert.equal(index().capture.complete, false); assert.ok(index().edits.some(edit => read(edit).notice === "large"));
   message(env.db, "timeout", "timeout-message");
@@ -303,8 +344,15 @@ saved("Windows directory junctions cannot expose files outside workspace roots",
   fs.mkdirSync(env.file("inside")); fs.writeFileSync(env.file("inside/file.md"), "before"); fs.writeFileSync(path.join(outside, "file.md"), "outside secret");
   const capture = await env.prepare(); fs.unlinkSync(env.file("inside/file.md")); fs.rmdirSync(env.file("inside"));
   fs.symlinkSync(outside, env.file("inside"), "junction"); await finalizeTurnFileCapture(capture);
-  const edit = index().edits.find(edit => edit.path.endsWith("file.md"));
-  assert.equal(read(edit).notice, "unavailable"); assert.equal(JSON.stringify(read(edit)).includes("outside secret"), false);
+  assert.equal(index().capture.complete, false);
+  assert.deepEqual(index().edits, []);
+  // Windows TEMP can use an 8.3 alias; capture preparation saves the native realpath.
+  const identity = snapshotPathIdentity(path.join(capture.roots[0].path, "inside/file.md"));
+  const row = env.db.prepare("SELECT after_version, after_blob, changed FROM turn_file_versions WHERE task_id = ? AND identity = ?").get("run", identity);
+  assert.ok(row, "the replaced file retains its sealed snapshot pair");
+  assert.equal(JSON.parse(row.after_version).state, "unavailable");
+  assert.equal(row.after_blob, null);
+  assert.equal(row.changed, 0);
 });
 
 saved("BOM, CRLF and EOF bytes survive storage and empty files distinguish existence", async t => {
@@ -380,10 +428,12 @@ saved("restart uses persisted pairs and interrupted capture never reads a new en
 
 saved("legacy records remain the fallback when a body was not captured", async t => {
   const env = setup(t); fs.writeFileSync(env.file("file.md"), "before");
-  const capture = await env.prepare({ fileBytes: 1 }); fs.writeFileSync(env.file("file.md"), "after");
-  persistFileEditItems({ conversationId: "conversation", sessionId: "run" }, [{ kind: "file-edit", path: "file.md", action: "update", status: "completed", oldText: "before", newText: "after", partial: true }]);
+  const capture = await env.prepare({ fileBytes: 1 }); fs.writeFileSync(env.file("file.md"), "after!");
+  persistFileEditItems({ conversationId: "conversation", sessionId: "run" }, [{ kind: "file-edit", path: "file.md", action: "update", status: "completed", oldText: "before", newText: "after!", partial: true }]);
   await finalizeTurnFileCapture(capture);
   const page = index(); assert.equal(page.edits.length, 1); assert.equal(page.edits[0].source, "records"); assert.equal(read(page.edits[0]).partial, true);
+  assert.equal(read(page.edits[0]).oldText, "before"); assert.equal(read(page.edits[0]).newText, "after!");
+  assert.equal(env.db.prepare("SELECT changed FROM turn_file_versions WHERE task_id = 'run'").get().changed, 0);
 });
 
 saved("handoff keeps independent saved versions after the source conversation is deleted", async t => {
@@ -406,7 +456,10 @@ saved("symlinks outside roots are excluded and replaced symlinks cannot leak con
   try { fs.symlinkSync(path.join(outside, "secret"), env.file("file")); }
   catch (error) { if (error.code === "EPERM") { t.skip("Windows symlinks require developer mode"); await finalizeTurnFileCapture(capture); return; } throw error; }
   await finalizeTurnFileCapture(capture);
-  const content = read(index().edits[0]); assert.equal(content.notice, "unavailable"); assert.equal(JSON.stringify(content).includes("outside secret"), false);
+  assert.equal(index().capture.complete, false);
+  assert.deepEqual(index().edits, []);
+  const row = env.db.prepare("SELECT after_version, after_blob FROM turn_file_versions WHERE task_id = 'run'").get();
+  assert.equal(JSON.parse(row.after_version).state, "unavailable"); assert.equal(row.after_blob, null);
 });
 
 saved("Windows case and slash variants identify the same file", async t => {

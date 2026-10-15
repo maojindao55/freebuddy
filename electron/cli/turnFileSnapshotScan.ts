@@ -12,6 +12,15 @@ export type Version = { state: "absent" | "captured" | "unavailable"; hash?: str
 export type Root = { path: string; complete: boolean; aliases?: Array<{ path: string; target: string }>; directories?: Record<string, string[]> };
 export type Row = { path: string; identity: string; before_version: string; after_version: string | null; changed: number };
 export const digest = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
+/** Missing contents cannot prove a change or an unchanged file. */
+export function compareSnapshotVersions(before: Version, after: Version): "unchanged" | "changed" | "unknown" {
+  if (before.state === "absent" && after.state === "absent") return "unchanged";
+  const present = (version: Version) => version.state === "captured" || version.hash !== undefined || version.bytes !== undefined;
+  if (before.state === "absent" && present(after) || after.state === "absent" && present(before)) return "changed";
+  if (before.hash && after.hash) return before.hash === after.hash ? "unchanged" : "changed";
+  if (before.bytes !== undefined && after.bytes !== undefined && before.bytes !== after.bytes) return "changed";
+  return "unknown";
+}
 export const snapshotPathIdentity = (filePath: string) => {
   const normalized = path.resolve(filePath).replace(/\\/g, "/");
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
@@ -217,7 +226,7 @@ export async function scanSnapshotVersions(request: SnapshotScanRequest, publish
       const original = saved.get(identity);
       const before: Version = original ? JSON.parse(original.before_version) : absentAtStart(filePath, roots)
         ? { state: "absent" } : { state: "unavailable", reason: "unavailable" };
-      const same = before.state === "absent" && version.state === "absent" || !!before.hash && before.hash === version.hash;
+      const same = compareSnapshotVersions(before, version) === "unchanged";
       if (before.state === "unavailable" && !before.hash || version.state === "unavailable" && !version.hash) complete = false;
       entry = { path: filePath, identity, before, after: version, same, body: same ? undefined : body };
     }

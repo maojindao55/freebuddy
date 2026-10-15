@@ -237,36 +237,39 @@ test("delegate timeout pauses while nested child is active", async (t) => {
   });
 });
 
-test("withActiveTimeTimeout pauses budget while isPaused", async () => {
+test("withActiveTimeTimeout pauses budget while isPaused", async (t) => {
   const { withActiveTimeTimeout, DelegateTimeout } = await import(
     "../dist-electron/cli/delegation/bus/concurrency.js"
   );
+  // Real 80ms deadlines can expire under Windows CI scheduler contention.
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 0 });
   let paused = true;
+  let complete;
   const start = Date.now();
-  const value = await withActiveTimeTimeout(
-    new Promise((resolve) => {
-      setTimeout(() => {
-        paused = false;
-        setTimeout(() => resolve("ok"), 40);
-      }, 120);
-    }),
+  const result = withActiveTimeTimeout(
+    new Promise((resolve) => { complete = resolve; }),
     80,
     () => paused,
     { tickMs: 10 }
   );
-  assert.equal(value, "ok");
-  assert.ok(Date.now() - start >= 120, "wall time includes paused stretch");
+  t.mock.timers.tick(120);
+  paused = false;
+  t.mock.timers.tick(40);
+  complete("ok");
+  assert.equal(await result, "ok");
+  assert.equal(Date.now() - start, 160, "wall time includes paused stretch");
 
-  await assert.rejects(
-    () =>
-      withActiveTimeTimeout(
-        new Promise(() => {}),
-        40,
-        () => false,
-        { tickMs: 10 }
-      ),
-    (err) => err instanceof DelegateTimeout
+  const expired = assert.rejects(
+    withActiveTimeTimeout(
+      new Promise(() => {}),
+      40,
+      () => false,
+      { tickMs: 10 }
+    ),
+    (err) => err instanceof DelegateTimeout && err.timeoutMs === 40
   );
+  t.mock.timers.tick(40);
+  await expired;
 });
 
 test("delegate executor failure -> pending now, poll -> failed", async (t) => {

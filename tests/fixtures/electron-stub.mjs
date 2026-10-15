@@ -22,7 +22,7 @@ const electronStubUrl =
      const noop = function () {};
      const any = new Proxy({}, { get: () => noop });
      export const app = {
-       getPath: () => "/tmp/freebuddy-test",
+       getPath: (name) => globalThis.__freebuddyElectronGetPath?.(name) ?? "/tmp/freebuddy-test",
        getLocale: () => "en-US"
      };
      export const BrowserWindow = Object.assign(function () {}, { getAllWindows: () => [] });

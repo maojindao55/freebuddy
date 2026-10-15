@@ -19,11 +19,13 @@ import {
   quoteForShell,
   isDefaultDshAcpBinary,
   patchDshAcpManagedRuntime,
+  sanitizeCliAgentEnv,
   syncDshAcpManagedConfig,
   windowsExtendedPath
 } from "./adapters.js";
 import { resolvePiAcpRuntime } from "./piRuntime.js";
 import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
+import { applyManagedNodeEnvironment, ensureManagedNodeRuntime } from "./managedNodeRuntime.js";
 import { getDataDir, getDb } from "./db.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { compareSemver, extractSemver } from "./version.js";
@@ -93,7 +95,7 @@ function which(
   bin: string,
   env?: Record<string, string>
 ): Promise<string | undefined> {
-  const mergedEnv = { ...process.env, ...(env || {}) };
+  const mergedEnv = applyManagedNodeEnvironment({ ...process.env, ...(env || {}) });
   const isWindows = process.platform === "win32";
   const isFile = (candidate: string): boolean => {
     try {
@@ -226,7 +228,7 @@ function runCheckProbe(
   timeoutMs = 15_000
 ): Promise<CliProbeResult> {
   return new Promise((resolve) => {
-    const mergedEnv = { ...process.env, ...(env || {}) };
+    const mergedEnv = applyManagedNodeEnvironment({ ...process.env, ...(env || {}) });
     const child = spawn(bin, args, { env: mergedEnv });
     let stdout = "";
     let stderr = "";
@@ -375,6 +377,7 @@ export async function cliCheck(
   runtimeAdapter?: string
 ): Promise<CliCheckResult> {
   await waitForRuntimeInstall(adapter);
+  await ensureManagedNodeRuntime(getDataDir());
   const runtimeKey = runtimeAdapter?.trim() || adapter;
   const bin = binary?.trim() || adapterBinary(adapter) || adapter;
   const effectiveEnv = await getFreshWindowsEnvironment({
@@ -803,7 +806,7 @@ function runProcess(
   extraEnv?: Record<string, string>
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, ...extraEnv, NPM_CONFIG_OFFLINE: "false" };
+    const env = applyManagedNodeEnvironment({ ...process.env, ...extraEnv, NPM_CONFIG_OFFLINE: "false" }, { install: true });
     const child = spawn(bin, args, { env });
     let stdout = "";
     let stderr = "";
@@ -858,6 +861,7 @@ function isNpmManagedBinary(
 }
 
 async function latestPackageVersion(packageName: string, extraEnv?: Record<string, string>): Promise<string> {
+  await ensureManagedNodeRuntime(getDataDir());
   const env = await getFreshWindowsEnvironment({ ...process.env, ...extraEnv });
   const npm = await which("npm", env as Record<string, string>);
   if (!npm) throw new Error("Required install tool not found: npm");
@@ -1140,19 +1144,20 @@ async function prepareInstallEnvironment(
   command: string,
   adapter: string
 ): Promise<InstallPreflightResult> {
+  await ensureManagedNodeRuntime(getDataDir());
   const tool = requiredInstallTool(command);
   if (!tool) {
     return {
-      env: applyDshAcpNpmInstallEnv(adapter, { ...process.env }),
+      env: applyDshAcpNpmInstallEnv(adapter, applyManagedNodeEnvironment(sanitizeCliAgentEnv({ ...process.env }), { install: true })),
       command
     };
   }
 
-  const env = await getFreshWindowsEnvironment(process.env);
+  const env = applyManagedNodeEnvironment(sanitizeCliAgentEnv(await getFreshWindowsEnvironment(process.env)), { install: true });
   const executable = await which(tool, env as Record<string, string>);
   if (!executable) {
     return {
-      env: { ...process.env },
+      env,
       command,
       failureCode: "tool_missing",
       failureDetail: tool,
@@ -1235,12 +1240,19 @@ export function cliInstall(command: string, adapter = "custom", targetVersion?: 
       release = acquireRuntimeInstall(adapter);
       if (adapter === "dsh-acp") await prepareDshAcpManagedInstall();
 
+      const preflight: InstallPreflightResult = process.platform === "win32"
+        ? await prepareInstallEnvironment(trimmed, adapter)
+        : { command: trimmed, env: applyDshAcpNpmInstallEnv(adapter, { ...process.env }) };
+      if (preflight.failureCode) throw new Error(preflight.error || "Install environment check failed");
+      const installCommand = preflight.command;
+
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =
-        /^irm\s/i.test(trimmed) ||
-        /\|\s*iex\b/i.test(trimmed) ||
-        /Invoke-(WebRequest|Expression)/i.test(trimmed) ||
-        (isWindows && /"/.test(trimmed));
+        preflight.requiresPowerShell ||
+        /^irm\s/i.test(installCommand) ||
+        /\|\s*iex\b/i.test(installCommand) ||
+        /Invoke-(WebRequest|Expression)/i.test(installCommand) ||
+        (isWindows && /"/.test(installCommand));
 
       let shell: string;
       let args: string[];
@@ -1251,18 +1263,17 @@ export function cliInstall(command: string, adapter = "custom", targetVersion?: 
           "-OutputFormat", "Text",
           "-Command",
           "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; " +
-            trimmed
+            installCommand
         ];
       } else if (isWindows) {
         shell = "cmd";
-        args = ["/C", trimmed];
+        args = ["/C", installCommand];
       } else {
         shell = process.env.SHELL || "/bin/sh";
-        args = ["-lc", trimmed];
+        args = ["-lc", installCommand];
       }
 
-      const env = applyDshAcpNpmInstallEnv(adapter, { ...process.env });
-      const child = spawn(shell, args, { env });
+      const child = spawn(shell, args, { env: preflight.env });
       let stdout = "";
       let stderr = "";
       let timedOut = false;

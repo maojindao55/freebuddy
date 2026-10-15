@@ -515,67 +515,13 @@ function wellKnownGlobalDshAcpDemoBinJs(
   return undefined;
 }
 
-const ELECTRON_CHILD_ENV_BLOCKLIST = [
-  "ELECTRON_RUN_AS_NODE",
-  "ELECTRON_NO_ASAR",
-  "ELECTRON_NO_ATTACH_CONSOLE",
-  "CHROME_CRASHPAD_PIPE_NAME",
-  "ELECTRON_CRASHPAD_PIPE_NAME"
-] as const;
+export { sanitizeCliAgentEnv } from "./cliAgentEnv.js";
 
 /** NTSTATUS STATUS_ACCESS_VIOLATION; Node reports it as signed or unsigned. */
 export const WINDOWS_STATUS_ACCESS_VIOLATION = 0xc0000005;
 
 export function isWindowsAccessViolationExit(code: number): boolean {
   return (code >>> 0) === WINDOWS_STATUS_ACCESS_VIOLATION;
-}
-
-/**
- * Chromium/Electron env inherited by `spawn("node")` can make native addons
- * (koffi, node:sqlite) abort with 0xC0000005 on Windows.
- */
-export function sanitizeCliAgentEnv(
-  env: Record<string, string | undefined>
-): Record<string, string | undefined> {
-  const next = { ...env };
-  for (const key of ELECTRON_CHILD_ENV_BLOCKLIST) {
-    delete next[key];
-  }
-  if (typeof next.NODE_OPTIONS === "string") {
-    const kept = sanitizeNodeOptions(next.NODE_OPTIONS);
-    if (kept) next.NODE_OPTIONS = kept;
-    else delete next.NODE_OPTIONS;
-  }
-  return next;
-}
-
-const NODE_OPTIONS_PATH_FLAGS = new Set([
-  "--require",
-  "-r",
-  "--import",
-  "--loader",
-  "--experimental-loader"
-]);
-
-function sanitizeNodeOptions(value: string): string | undefined {
-  const tokens = value.split(/\s+/).filter(Boolean);
-  const kept: string[] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
-    if (/electron|asar/i.test(token)) continue;
-    const eq = token.indexOf("=");
-    const flag = eq === -1 ? token : token.slice(0, eq);
-    const inline = eq === -1 ? "" : token.slice(eq + 1);
-    if (NODE_OPTIONS_PATH_FLAGS.has(flag)) {
-      const arg = inline || tokens[i + 1];
-      if (arg && /electron|asar/i.test(arg)) {
-        if (!inline) i += 1;
-        continue;
-      }
-    }
-    kept.push(token);
-  }
-  return kept.length ? kept.join(" ") : undefined;
 }
 
 export function dshAcpFallbackWorkspace(dataDir: string): string {
@@ -1472,6 +1418,8 @@ export interface BuildCommandInput {
   dshAcpRuntimeRoot?: string;
   /** FreeBuddy data dir; the bundled pi runtime generates its launcher there. */
   piDataDir?: string;
+  /** Explicit per-agent Node settings also apply when constructing Pi's launcher. */
+  nodeEnv?: NodeJS.ProcessEnv;
 }
 
 export interface BuiltCommand {
@@ -1842,7 +1790,7 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
       };
     }
     case "pi-acp": {
-      const plan = resolvePiAcpSpawnPlan(input.piDataDir);
+      const plan = resolvePiAcpSpawnPlan(input.piDataDir, undefined, input.nodeEnv);
       if (plan) {
         return {
           bin: plan.bin,

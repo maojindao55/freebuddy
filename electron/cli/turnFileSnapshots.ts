@@ -4,7 +4,7 @@ import type { FileEditContent, FileEditPage } from "@freebuddy/protocol";
 import { getDb } from "./db.js";
 import { requireOwnedConversation } from "./conversations.js";
 import { scanSnapshots } from "./turnFileSnapshotProcess.js";
-import { DEFAULT_LIMITS, digest, within, snapshotPathIdentity, snapshotPathIdentities, type Limits, type Version, type Root, type Row } from "./turnFileSnapshotScan.js";
+import { DEFAULT_LIMITS, compareSnapshotVersions, digest, within, snapshotPathIdentity, snapshotPathIdentities, type Limits, type Version, type Root, type Row } from "./turnFileSnapshotScan.js";
 export { snapshotPathIdentity, snapshotPathIdentities } from "./turnFileSnapshotScan.js";
 
 type Run = { task_id: string; conversation_id: string; owner_key: string; roots: string; state: string; complete: number; overlapping: number };
@@ -99,7 +99,8 @@ export async function finalizeTurnFileCapture(capture: TurnFileCapture, uncertai
             VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(task_id, identity) DO UPDATE SET
             after_version = excluded.after_version, before_blob = excluded.before_blob, after_blob = excluded.after_blob, changed = excluded.changed`)
             .run(taskId, entry.path, entry.identity, JSON.stringify(entry.before), JSON.stringify(entry.after),
-              entry.same ? null : entry.before.blob ?? null, entry.same ? null : entry.after.blob ?? null, Number(!entry.same));
+              entry.same ? null : entry.before.blob ?? null, entry.same ? null : entry.after.blob ?? null,
+              Number(compareSnapshotVersions(entry.before, entry.after) === "changed"));
         }
       })();
     });
@@ -136,8 +137,11 @@ export function snapshotIndex(messageId: string, conversationId: string, taskId:
     const before = JSON.parse(row.before_version) as Version;
     const after = JSON.parse(row.after_version) as Version;
     const reliable = before.state !== "unavailable" && after.state !== "unavailable";
-    if (!row.changed || reliable) identities.add(row.identity);
-    if (!row.changed) continue;
+    // Recheck persisted versions: older captures marked every unknown pair changed.
+    // Unknown pairs also leave operation records eligible for fallback.
+    const comparison = compareSnapshotVersions(before, after);
+    if (comparison === "unchanged" || reliable) identities.add(row.identity);
+    if (comparison !== "changed") continue;
     edits.push({ kind: "file-edit", path: row.path, action: before.state === "absent" ? "create" : after.state === "absent" ? "delete" : "update",
       turnKey: pairKey(messageId, run, row), source: "snapshot", overlapping: !!run.overlapping, notice: reliable ? undefined : before.reason ?? after.reason ?? "unavailable" });
   }
@@ -152,6 +156,7 @@ export function readSnapshotPair(messageId: string, conversationId: string, task
   if (!row?.after_version || row.path !== filePath || !row.changed || pairKey(messageId, run, row) !== key) return;
   const before = JSON.parse(row.before_version) as Version;
   const after = JSON.parse(row.after_version) as Version;
+  if (compareSnapshotVersions(before, after) !== "changed") return;
   const action = before.state === "absent" ? "create" : after.state === "absent" ? "delete" : "update";
   if (before.state === "unavailable" || after.state === "unavailable") return { source: "snapshot", action, overlapping: !!run.overlapping, notice: before.reason ?? after.reason ?? "unavailable" };
   const read = (version: Version) => {

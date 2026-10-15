@@ -61,6 +61,7 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
     getAdapterDefinition: () => ({ capabilities: { toolSession: true } }),
     buildCommand: () => ({ bin: "fake-agy", args: [], protocol: "acp" }),
     resolveCliByokEnv: () => ({}), sanitizeCliAgentEnv: env => env,
+    applyManagedNodeEnvironment: env => env,
     getToolSession: () => saved,
     saveToolSession: (_agent, _scope, adapter, sessionId) => { saved = { adapter, sessionId }; },
     prepareTurnFileCapture: async input => {

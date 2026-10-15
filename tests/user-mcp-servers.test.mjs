@@ -138,8 +138,8 @@ test("MCP servers DB CRUD roundtrip", async (t) => {
   assert.equal(afterDelete, undefined);
 });
 
-// Test 3: Server name validation (reserved prefix)
-test("MCP server name cannot start with 'freebuddy'", async (t) => {
+// Test 3: Server name validation (reserved prefix and builtin names)
+test("MCP server name validation rejects reserved names", async (t) => {
   if (!bindingAvailable) {
     t.skip("better-sqlite3 native binding unavailable under this Node");
     return;
@@ -170,6 +170,68 @@ test("MCP server name cannot start with 'freebuddy'", async (t) => {
     },
     /reserved/i,
     "Should reject names with case-insensitive match"
+  );
+
+  assert.throws(
+    () => {
+      createUserMcpServer({
+        name: "office-engine",
+        command: "npx",
+      });
+    },
+    /reserved/i,
+    "Should reject builtin name 'office-engine'"
+  );
+
+  assert.throws(
+    () => {
+      createUserMcpServer({
+        name: "Office-Engine",
+        command: "npx",
+      });
+    },
+    /reserved/i,
+    "Should reject builtin name case-insensitively"
+  );
+});
+
+// Test 3b: Case-insensitive uniqueness check
+test("MCP server name must be unique (case-insensitive)", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+
+  await makeDbWithMigration();
+  const { createUserMcpServer } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+
+  createUserMcpServer({
+    name: "My Server",
+    command: "npx",
+  });
+
+  assert.throws(
+    () => {
+      createUserMcpServer({
+        name: "my server",
+        command: "npx",
+      });
+    },
+    /already exists/i,
+    "Should reject duplicate names case-insensitively"
+  );
+
+  assert.throws(
+    () => {
+      createUserMcpServer({
+        name: "MY SERVER",
+        command: "npx",
+      });
+    },
+    /already exists/i,
+    "Should reject duplicate names with different case"
   );
 });
 
@@ -386,5 +448,79 @@ test("Self-check handles exit code 0 without response", () => {
     mcpServersSource,
     /Process exited without completing MCP handshake/,
     "Should handle exit code 0 without response"
+  );
+});
+
+// Test 13: Duplicate env vars are deduplicated by name
+test("Duplicate env vars are deduplicated by name", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+
+  await makeDbWithMigration();
+  const { createUserMcpServer, getUserMcpServer } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+
+  const server = createUserMcpServer({
+    name: "dedupe-test",
+    command: "npx",
+    env: [
+      { name: "API_KEY", value: "first", secret: false },
+      { name: "API_KEY", value: "second", secret: false },
+      { name: "OTHER", value: "value", secret: false },
+    ],
+  });
+
+  const fetched = getUserMcpServer(server.id);
+  assert.equal(fetched?.env.length, 2, "Should dedupe to 2 unique env vars");
+  const apiKeyVar = fetched?.env.find((e) => e.name === "API_KEY");
+  assert.equal(apiKeyVar?.value, "first", "Should keep first occurrence");
+});
+
+// Test 14: MCP config is included in warm fingerprint
+test("MCP config is included in warm fingerprint", () => {
+  const runtimeSource = fs.readFileSync(
+    new URL("cli/runtime.ts", electronDir),
+    "utf8"
+  );
+
+  assert.match(
+    runtimeSource,
+    /mcpServerIds.*getConversationMcpServerIds/,
+    "Should retrieve MCP server IDs for fingerprint"
+  );
+
+  assert.match(
+    runtimeSource,
+    /mcpServerIds:.*\.sort\(\)/,
+    "Should include sorted MCP server IDs in fingerprint"
+  );
+});
+
+// Test 15: MCP tab is hidden for non-owner remote users
+test("MCP tab is hidden for non-owner remote users", () => {
+  const settingsModalSource = fs.readFileSync(
+    new URL("../src/components/Settings/SettingsModal.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    settingsModalSource,
+    /currentUser && !currentUser\.isOwner/,
+    "Should check for non-owner remote users"
+  );
+
+  assert.match(
+    settingsModalSource,
+    /hidden\.push\("mcp"\)/,
+    "Should hide MCP tab for non-owner users"
+  );
+
+  assert.match(
+    settingsModalSource,
+    /hiddenTabs.*SettingsTab/,
+    "Should have hiddenTabs prop"
   );
 });

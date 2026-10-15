@@ -81,6 +81,7 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
     safeSendToWebContents: (_contents, _channel, event) => events.push(event),
     adapterAcceptsClientMcpServers: () => true,
     getConversation: () => ({ kind: "chat" }),
+    getConversationMcpServerIds: () => [],
     createAcpTerminalManager: () => ({ dispose: noop }),
     registerBrowserToolSession: async input => {
       const server = { name: "browser", command: "mock", args: [], env: [{ name: "token", value: `cap-${++registrations}` }] };

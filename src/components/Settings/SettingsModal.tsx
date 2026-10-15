@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -23,6 +23,7 @@ import { PluginsTab } from "./PluginsTab";
 import { RemoteTab } from "./RemoteTab";
 import { UsageTab } from "./UsageTab";
 import { McpServersTab } from "./McpServersTab";
+import { useConversationStore } from "@/store/conversationStore";
 
 export type SettingsTab = "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "remote" | "about";
 
@@ -73,35 +74,42 @@ interface ControlledSettingsSurfaceProps extends SettingsSurfaceProps {
 export function SettingsNav({
   activeTab,
   onTabChange,
-  className = ""
+  className = "",
+  hiddenTabs = []
 }: {
   activeTab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
   className?: string;
+  hiddenTabs?: SettingsTab[];
 }) {
   const { t } = useTranslation();
   const labelByKey = new Map(SETTINGS_TABS.map((tab) => [tab.key, tab.labelKey]));
+  const hiddenSet = new Set(hiddenTabs);
   return (
     <nav className={`settings-nav${className ? ` ${className}` : ""}`}>
-      {TAB_GROUPS.map((group) => (
-        <div key={group.groupKey} className="settings-nav-group">
-          <div className="settings-nav-group-title">{t(group.groupKey)}</div>
-          {group.items.map((key) => {
-            const Icon = TAB_ICONS[key];
-            return (
-              <button
-                key={key}
-                type="button"
-                className={`settings-nav-item${activeTab === key ? " active" : ""}`}
-                onClick={() => onTabChange(key)}
-              >
-                <Icon size={14} />
-                <span className="settings-nav-label">{t(labelByKey.get(key)!)}</span>
-              </button>
-            );
-          })}
-        </div>
-      ))}
+      {TAB_GROUPS.map((group) => {
+        const visibleItems = group.items.filter((key) => !hiddenSet.has(key));
+        if (visibleItems.length === 0) return null;
+        return (
+          <div key={group.groupKey} className="settings-nav-group">
+            <div className="settings-nav-group-title">{t(group.groupKey)}</div>
+            {visibleItems.map((key) => {
+              const Icon = TAB_ICONS[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`settings-nav-item${activeTab === key ? " active" : ""}`}
+                  onClick={() => onTabChange(key)}
+                >
+                  <Icon size={14} />
+                  <span className="settings-nav-label">{t(labelByKey.get(key)!)}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
     </nav>
   );
 }
@@ -120,8 +128,17 @@ function SettingsContent({
   showNav?: boolean;
 }) {
   const { t } = useTranslation();
+  const currentUser = useConversationStore((s) => s.currentUser);
   const [internalActiveTab, setInternalActiveTab] = useState<SettingsTab>(initialTab);
   const activeTab = controlledActiveTab ?? internalActiveTab;
+
+  const hiddenTabs = useMemo<SettingsTab[]>(() => {
+    const hidden: SettingsTab[] = [];
+    if (currentUser && !currentUser.isOwner) {
+      hidden.push("mcp");
+    }
+    return hidden;
+  }, [currentUser]);
 
   useEffect(() => {
     if (!controlledActiveTab) setInternalActiveTab(initialTab);
@@ -145,7 +162,7 @@ function SettingsContent({
           <ProvidersTab />
         </SettingsTabErrorBoundary>
       )}
-      {activeTab === "mcp" && (
+      {activeTab === "mcp" && !hiddenTabs.includes("mcp") && (
         <SettingsTabErrorBoundary>
           <McpServersTab />
         </SettingsTabErrorBoundary>
@@ -177,7 +194,7 @@ function SettingsContent({
       )}
       <div className={`settings-layout${showNav ? "" : " settings-layout-content-only"}`}>
         {showNav && (
-          <SettingsNav activeTab={activeTab} onTabChange={handleTabChange} />
+          <SettingsNav activeTab={activeTab} onTabChange={handleTabChange} hiddenTabs={hiddenTabs} />
         )}
         <div className={`settings-panel${showNav ? "" : " settings-panel-full"}`}>
           {activeContent}

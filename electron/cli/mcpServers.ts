@@ -7,6 +7,16 @@ import { isCallerAdmin, getCallerUserId } from "./callerContext.js";
 import { killProcessTree } from "./process-kill.js";
 
 const MCP_NAME_PREFIX_RESERVED = "freebuddy";
+const MCP_RESERVED_NAMES = new Set([
+  "office-engine",
+  "freebuddy-browser",
+  "freebuddy-butler",
+  "freebuddy-context",
+  "freebuddy-delegate",
+  "freebuddy-game",
+  "freebuddy-skills",
+  "freebuddy-workspace-fs"
+]);
 const MCP_SELF_CHECK_TIMEOUT_MS = 15_000;
 
 export interface UserMcpServerEnvVar {
@@ -134,41 +144,60 @@ function normalizeEnvForStorage(
 ): UserMcpServerEnvVar[] {
   if (!env) return previousEnv;
   const previousByName = new Map(previousEnv.map((e) => [e.name, e]));
-  return env.map((e) => {
-    const prev = previousByName.get(e.name);
+  const seenNames = new Set<string>();
+  const result: UserMcpServerEnvVar[] = [];
+  for (const e of env) {
+    const normalizedName = e.name.trim();
+    if (!normalizedName || seenNames.has(normalizedName)) continue;
+    seenNames.add(normalizedName);
+    const prev = previousByName.get(normalizedName);
     const isSecret = e.secret === true;
     if (isSecret && e.value !== undefined && e.value.trim()) {
-      return {
-        name: e.name,
+      result.push({
+        name: normalizedName,
         valueEncrypted: encryptSecret(e.value.trim()),
         valuePreview: redactApiKey(e.value.trim()),
         secret: true
-      };
-    }
-    if (isSecret && !e.value?.trim() && prev?.valueEncrypted) {
-      return {
-        name: e.name,
+      });
+    } else if (isSecret && !e.value?.trim() && prev?.valueEncrypted) {
+      result.push({
+        name: normalizedName,
         valueEncrypted: prev.valueEncrypted,
         valuePreview: prev.valuePreview,
         secret: true
-      };
-    }
-    if (!isSecret && e.value !== undefined) {
-      return {
-        name: e.name,
+      });
+    } else if (!isSecret && e.value !== undefined) {
+      result.push({
+        name: normalizedName,
         value: e.value
-      };
+      });
+    } else if (prev) {
+      result.push(prev);
+    } else {
+      result.push({ name: normalizedName });
     }
-    if (prev) return prev;
-    return { name: e.name };
-  });
+  }
+  return result;
 }
 
-function validateServerName(name: string): void {
+function validateServerName(name: string, existingId?: string): void {
   const trimmed = name.trim().toLowerCase();
   if (trimmed.startsWith(MCP_NAME_PREFIX_RESERVED)) {
     throw new Error(
       `Server name cannot start with reserved prefix "${MCP_NAME_PREFIX_RESERVED}"`
+    );
+  }
+  if (MCP_RESERVED_NAMES.has(trimmed)) {
+    throw new Error(
+      `Server name "${name.trim()}" is reserved for builtin MCP servers`
+    );
+  }
+  const existing = getDb()
+    .prepare("SELECT id FROM user_mcp_servers WHERE LOWER(name) = ?")
+    .get(trimmed) as { id: string } | undefined;
+  if (existing && existing.id !== existingId) {
+    throw new Error(
+      `A server named "${name.trim()}" already exists (case-insensitive)`
     );
   }
 }
@@ -229,7 +258,7 @@ export function updateUserMcpServer(
   const existing = getUserMcpServerInternal(id);
   if (!existing) return undefined;
   if (input.name !== undefined) {
-    validateServerName(input.name);
+    validateServerName(input.name, id);
   }
   const now = new Date().toISOString();
   const env = normalizeEnvForStorage(input.env, existing.env);

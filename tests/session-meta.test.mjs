@@ -13,7 +13,7 @@ async function loadSessionMetaUtils() {
       module: ts.ModuleKind.ES2022,
       target: ts.ScriptTarget.ES2022
     }
-  }).outputText;
+  }).outputText.replaceAll('"@freebuddy/cli-stream"', JSON.stringify(import.meta.resolve("@freebuddy/cli-stream")));
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 

@@ -19,6 +19,7 @@ import {
 import { safeSendToWebContents } from "./ipcSend.js";
 import {
   IPC_LIST_MESSAGES_PAGE_SIZE,
+  IPC_LIST_MESSAGES_PAGE_CHARS,
   MAX_IPC_MESSAGE_CONTENT_CHARS,
   OMITTED_ASSISTANT_CONTENT
 } from "./messagePayloadSanitize.js";
@@ -815,8 +816,14 @@ export function listMessagesForIpc(
        LIMIT ?`
     )
     .all(...params, limit + 1) as any[];
-  const hasMore = rows.length > limit;
-  const page = hasMore ? rows.slice(0, limit) : rows;
+  const page: any[] = [];
+  let chars = 0;
+  for (const row of rows.slice(0, limit)) {
+    if (page.length && chars + row.content.length > IPC_LIST_MESSAGES_PAGE_CHARS) break;
+    page.push(row);
+    chars += row.content.length;
+  }
+  const hasMore = rows.length > page.length;
   page.reverse();
   return { messages: page.map(rowToMessage), hasMore };
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { parseStoredStreamItems } from "@freebuddy/cli-stream";
 import { delegationClient, type DelegationRunRow } from "@/services/delegation/client";
 
 import type { TFunction } from "i18next";
@@ -164,7 +165,7 @@ export function WorkspacePanel(_props: { runningCount: number }) {
       const message = displayMessages[i];
       if (message.role !== "assistant") continue;
       try {
-        const items = JSON.parse(message.content) as unknown[];
+        const items = parseStoredStreamItems(message.content, message.id);
         if (!Array.isArray(items)) continue;
         for (let j = items.length - 1; j >= 0; j -= 1) {
           const item = items[j] as { kind?: string; sessionId?: string };
@@ -197,7 +198,7 @@ export function WorkspacePanel(_props: { runningCount: number }) {
       .filter((message) => message.role === "assistant")
       .flatMap((message) => {
         try {
-          const items = JSON.parse(message.content);
+          const items = parseStoredStreamItems(message.content, message.id);
           return Array.isArray(items) ? items : [];
         } catch {
           return [];

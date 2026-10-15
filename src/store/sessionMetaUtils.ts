@@ -1,4 +1,5 @@
 import type { CliStreamItem } from "@/services/cli/parsers";
+import { parseStoredStreamItems } from "@freebuddy/cli-stream";
 import type { ConversationMessage } from "@/services/cli/types";
 
 export type AvailableCommandItem = Extract<
@@ -13,13 +14,8 @@ export type ConfigOptionItem = Extract<
 
 export type SessionInfoItem = Extract<CliStreamItem, { kind: "session" }>;
 
-function parseMessageItems(content: string): CliStreamItem[] {
-  try {
-    const items = JSON.parse(content);
-    return Array.isArray(items) ? (items as CliStreamItem[]) : [];
-  } catch {
-    return [];
-  }
+function parseMessageItems(content: string, messageId?: string): CliStreamItem[] {
+  return parseStoredStreamItems(content, messageId) ?? [];
 }
 
 function latestItemFromItems<T extends CliStreamItem["kind"]>(
@@ -42,7 +38,7 @@ function latestItemFromMessages<T extends CliStreamItem["kind"]>(
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
     if (message.role !== "assistant") continue;
-    const item = latestItemFromItems(parseMessageItems(message.content), kind);
+    const item = latestItemFromItems(parseMessageItems(message.content, message.id), kind);
     if (item) return item;
   }
   return undefined;

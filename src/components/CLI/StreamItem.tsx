@@ -47,6 +47,7 @@ import {
   withWebMediaAuth
 } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
+import { DeferredDetails } from "./DeferredDetails";
 
 const IMAGE_PATH_EXTENSIONS = "png|jpe?g|webp|gif|bmp|svg|avif|heic|heif";
 const IMAGE_EXTENSIONS_SET = new Set([
@@ -1155,14 +1156,14 @@ export function StreamToolInvocation({
     toolImages.length === 0;
 
   return (
-    <details
+    <DeferredDetails
       className={`stream-tool-invocation${hasBody ? " has-body" : ""}${
         hasError ? " error" : ""
       }${
         statusMeta ? ` status-${statusMeta.className}` : ""
       }`}
       open={call.status === "running" ? true : undefined}
-    >
+      summary={
       <summary>
         <ToolKindIcon toolKind={call.toolKind} />
         <span className="stream-tool-summary-main">{toolGroupLabel(call, t)}</span>
@@ -1208,7 +1209,9 @@ export function StreamToolInvocation({
           </span>
         ) : null}
       </summary>
-      <div className="stream-tool-body">
+      }
+    >
+      {() => <div className="stream-tool-body">
         {input && (
           <div className="stream-tool-section">
             <span className="stream-label">{t("stream.input")}</span>
@@ -1251,8 +1254,8 @@ export function StreamToolInvocation({
             )}
           </div>
         ))}
-      </div>
-    </details>
+      </div>}
+    </DeferredDetails>
   );
 }
 
@@ -1303,13 +1306,14 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
       );
     case "thinking":
       return (
-        <details className="stream-thinking">
+        <DeferredDetails className="stream-thinking" summary={
           <summary>
             <ToolKindIcon toolKind="think" />
             <span>{t("stream.thinking")}</span>
           </summary>
-          <MarkdownText content={item.content} cwd={cwd} />
-        </details>
+        }>
+          {() => <MarkdownText content={item.content} cwd={cwd} />}
+        </DeferredDetails>
       );
     case "content-block":
       return <StreamContentBlock item={item} />;
@@ -1334,15 +1338,16 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
         );
       }
       return (
-        <details className={`stream-tool-result${item.isError ? " error" : ""}`}>
+        <DeferredDetails className={`stream-tool-result${item.isError ? " error" : ""}`} summary={
           <summary>
             <span className="stream-label stream-summary-label">
               {t("stream.result", { tool: item.tool })}
             </span>
             {item.isError && <span className="stream-error-suffix">{t("stream.errorTag")}</span>}
           </summary>
-          <StreamToolResultBody content={item.content} />
-        </details>
+        }>
+          {() => <StreamToolResultBody content={item.content} />}
+        </DeferredDetails>
       );
     case "command":
       return (

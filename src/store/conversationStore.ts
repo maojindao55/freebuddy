@@ -144,6 +144,7 @@ export interface ConversationState {
     sourceConversationId: string;
     targetMember: CLIMember;
     configOptionOverrides?: Record<string, string>;
+    mcpServerIds?: string[];
   }): Promise<{
     conversation: Conversation;
     warning?: "brief_extraction_failed";
@@ -1033,7 +1034,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     return conv;
   },
 
-  async transferConversation({ sourceConversationId, targetMember, configOptionOverrides }) {
+  async transferConversation({ sourceConversationId, targetMember, configOptionOverrides, mcpServerIds }) {
     if (transferInFlight) {
       throw new Error("Another transfer is in progress");
     }
@@ -1048,7 +1049,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         targetAdapter: targetMember.cli.adapter,
         ...(configOptionOverrides && Object.keys(configOptionOverrides).length > 0
           ? { configOptionOverrides }
-          : {})
+          : {}),
+        ...(mcpServerIds !== undefined ? { mcpServerIds } : {})
       });
       set((s) => ({
         conversations: [
@@ -1422,6 +1424,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...(configOptionOverrides ?? {})
     };
 
+    const mcpServerIds = Array.isArray(conv.metadata?.mcpServerIds)
+      ? (conv.metadata.mcpServerIds as string[]).filter(
+          (id): id is string => typeof id === "string"
+        )
+      : undefined;
+
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       conversationId,
@@ -1464,7 +1472,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId
+      announceSkills: wantFresh || !resumedFromSessionId,
+      ...(mcpServerIds?.length ? { mcpServerIds } : {})
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");
@@ -1514,6 +1523,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
 
     try {
+      await cliClient.awaitPendingMcpSelection(conversationId);
       await cliClient.run(runArgs);
     } catch (err) {
       const msg = (err as Error)?.message || String(err);

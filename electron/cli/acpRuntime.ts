@@ -122,6 +122,13 @@ import {
 import { logMain } from "../debugLog.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import {
+  collectLogSecrets,
+  isRemoteMcpAllowed,
+  redactSecrets,
+  resolveConversationUserMcpServers,
+  uniqueUserMcpServerName
+} from "./mcpServers.js";
+import {
   cleanupSandboxCommand,
   isRemoteIsolatedCaller,
   prepareSandboxedSpawn,
@@ -295,6 +302,9 @@ export async function runAcpAgent({
   let turnHadLiveAgentChunk = false;
   let sessionWasResumed = false;
   let mcpServers: AcpStdioMcpServer[] = [];
+  let mcpSecretValues: string[] = [];
+  const redactMcpLog = (text: string) =>
+    mcpSecretValues.length > 0 ? redactSecrets(text, mcpSecretValues) : text;
   let officeFileForSession: string | null = null;
   const standaloneDocStudio = isDocStudioWindowSender(webContents);
   let contextResetAttempted = false;
@@ -452,7 +462,8 @@ export async function runAcpAgent({
         }, timeoutMs);
       }
       try {
-        appendLog(logStream, "stdin", JSON.stringify(msg));
+        const logContent = JSON.stringify(msg);
+        appendLog(logStream, "stdin", redactMcpLog(logContent));
         if (msg.method === "session/prompt") {
           if (args.adapter === "pi-acp") {
             try {
@@ -470,7 +481,8 @@ export async function runAcpAgent({
     });
   const notify = (msg: AcpMessage) => {
     if (connectionClosed()) return;
-    appendLog(logStream, "stdin", JSON.stringify(msg));
+    const logContent = JSON.stringify(msg);
+    appendLog(logStream, "stdin", redactMcpLog(logContent));
     writeAcp(msg);
   };
   const probeAgentLiveness = async (): Promise<boolean> => {
@@ -705,12 +717,13 @@ export async function runAcpAgent({
       turnHadLiveAgentChunk
     };
     if (!msg) {
-      appendLog(logStream, "stdout", line);
-      emit({ type: "stderr", content: line });
+      const safeLine = redactMcpLog(line);
+      appendLog(logStream, "stdout", safeLine);
+      emit({ type: "stderr", content: safeLine });
       return;
     }
     if (shouldWriteAcpStdoutLog(msg, logState)) {
-      appendLog(logStream, "stdout", compactAcpStdoutLine(line));
+      appendLog(logStream, "stdout", redactMcpLog(compactAcpStdoutLine(line)));
     }
 
     if (msg.id != null && (msg.result !== undefined || msg.error)) {
@@ -1196,7 +1209,8 @@ export async function runAcpAgent({
     rlErr = readline.createInterface({ input: child.stderr });
     rlErr.on("line", (line) => {
       if (epoch !== connectionEpoch) return;
-      appendLog(logStream, "stderr", line);
+      const safeLine = redactMcpLog(line);
+      appendLog(logStream, "stderr", safeLine);
       if (
         (args.adapter === "dsh-acp" && isDshAcpExperimentalWarningLine(line)) ||
         (args.adapter === "cline-acp" && isClineAcpStartupBannerLine(line)) ||
@@ -1204,9 +1218,9 @@ export async function runAcpAgent({
       ) {
         return;
       }
-      recentStderr.push(line);
+      recentStderr.push(safeLine);
       if (recentStderr.length > 50) recentStderr.shift();
-      if (args.showStderr !== false) emit({ type: "stderr", content: line });
+      if (args.showStderr !== false) emit({ type: "stderr", content: safeLine });
     });
     connectionCloseHandler = (code) => {
       if (epoch !== connectionEpoch) return;
@@ -1707,6 +1721,50 @@ export async function runAcpAgent({
         }
       }
     }
+
+    // Merge user-configured MCP servers (after built-in servers for priority).
+    // Read directly from the database so a mid-conversation selection change
+    // takes effect on the next message. Delegated sub-agents and workflow
+    // steps keep the parent conversation id but must not inherit that selection.
+    if (adapterAcceptsClientMcpServers(args.adapter) && isRemoteMcpAllowed()) {
+      const resolved = await resolveConversationUserMcpServers({
+        conversationId: args.conversationId,
+        cwd: args.cwd,
+        delegation: args.delegation,
+        toolSessionScope: args.toolSessionScope
+      });
+      if (resolved.servers.length > 0 || resolved.skipped.length > 0) {
+        const takenNames = new Set(mcpServers.map((server) => server.name.toLowerCase()));
+        for (const server of resolved.servers) {
+          const name = uniqueUserMcpServerName(server.name, takenNames);
+          if (name !== server.name) {
+            appendLog(
+              logStream,
+              "system",
+              `mcp server renamed to avoid collision: ${server.name} -> ${name}`
+            );
+          }
+          takenNames.add(name.toLowerCase());
+          mcpServers.push({ ...server, name });
+        }
+        mcpSecretValues.push(...collectLogSecrets(resolved.servers));
+        if (resolved.servers.length) {
+          appendLog(
+            logStream,
+            "system",
+            `user mcp servers=${resolved.servers.map((s) => s.name).join(",")}`
+          );
+        }
+        for (const skipped of resolved.skipped) {
+          appendLog(
+            logStream,
+            "system",
+            `mcp server skipped (${skipped.reason}): ${skipped.name}`
+          );
+        }
+      }
+    }
+
     if (mcpServers.length) {
       appendLog(
         logStream,

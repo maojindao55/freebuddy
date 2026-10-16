@@ -8,13 +8,14 @@ import {
   type KeyboardEvent,
   type ReactNode
 } from "react";
-import { ChevronDown, FolderLock } from "lucide-react";
+import { ChevronDown, FolderLock, Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CLIMember } from "@/config/aiMembers";
 import { useConversationStore } from "@/store/conversationStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useMcpServerStore } from "@/store/mcpServerStore";
 import { cliClient } from "@/services/cli/client";
 import type {
   Conversation,
@@ -75,6 +76,26 @@ export function TransferConversationPanel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // MCP server selection state - initialize from source conversation
+  const { servers: mcpServers, loaded: mcpLoaded, load: loadMcpServers } = useMcpServerStore();
+  const [selectedMcpServerIds, setSelectedMcpServerIds] = useState<string[]>(() => {
+    const metadata = source.metadata;
+    if (metadata && Array.isArray(metadata.mcpServerIds)) {
+      return (metadata.mcpServerIds as unknown[]).filter(
+        (id): id is string => typeof id === "string"
+      );
+    }
+    return [];
+  });
+  const [showMcpPicker, setShowMcpPicker] = useState(false);
+  const enabledSelectedMcpCount = useMemo(
+    () =>
+      mcpServers.filter(
+        (server) => server.enabled && selectedMcpServerIds.includes(server.id)
+      ).length,
+    [mcpServers, selectedMcpServerIds]
+  );
+
   useEffect(() => {
     mountedRef.current = true;
     targetSelectRef.current?.focus();
@@ -82,6 +103,12 @@ export function TransferConversationPanel({
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!mcpLoaded) {
+      void loadMcpServers();
+    }
+  }, [mcpLoaded, loadMcpServers]);
 
   useEffect(() => {
     onBusyChange?.(submitting);
@@ -230,7 +257,8 @@ export function TransferConversationPanel({
         targetMember,
         ...(Object.keys(overrides).length > 0
           ? { configOptionOverrides: overrides }
-          : {})
+          : {}),
+        mcpServerIds: selectedMcpServerIds
       });
       if (result.warning === "brief_extraction_failed") {
         notify(t("handoff.briefExtractionFailed"));
@@ -369,6 +397,78 @@ export function TransferConversationPanel({
           />
         </div>
       </label>
+
+      {mcpServers.length > 0 && (
+        <div className="transfer-dialog-field">
+          <span>{t("handoff.mcpServers", "MCP Servers")}</span>
+          <div className="transfer-dialog-mcp-toggle">
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => setShowMcpPicker((prev) => !prev)}
+              aria-expanded={showMcpPicker}
+              disabled={submitting}
+            >
+              <Server size={14} aria-hidden="true" />
+              <span>
+                {enabledSelectedMcpCount > 0
+                  ? t("handoff.mcpServersSelected", {
+                      count: enabledSelectedMcpCount
+                    })
+                  : t("handoff.mcpServersNone", "None selected")}
+              </span>
+              <ChevronDown
+                className={`transfer-dialog-preview-chevron${showMcpPicker ? " expanded" : ""}`}
+                size={15}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+          {showMcpPicker && (
+            <div className="transfer-dialog-mcp-list">
+              {mcpServers.map((server) => {
+                const isSelected = selectedMcpServerIds.includes(server.id);
+                const isDisabled = !server.enabled;
+                return (
+                  <label
+                    key={server.id}
+                    className={`transfer-dialog-mcp-item${isDisabled ? " disabled" : ""}${isDisabled && isSelected ? " skipped" : ""}`}
+                    title={
+                      isDisabled
+                        ? isSelected
+                          ? t("mcp.serverDisabledWillSkip")
+                          : t("mcp.serverDisabled")
+                        : undefined
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={isDisabled || submitting}
+                      onChange={(e) => {
+                        if (e.currentTarget.checked) {
+                          setSelectedMcpServerIds((prev) => [...prev, server.id]);
+                        } else {
+                          setSelectedMcpServerIds((prev) =>
+                            prev.filter((id) => id !== server.id)
+                          );
+                        }
+                      }}
+                    />
+                    <span>{server.name}</span>
+                    {isDisabled && (
+                      <small className="transfer-dialog-mcp-disabled">
+                        {isSelected ? t("mcp.willSkip") : t("mcp.disabled")}
+                      </small>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="transfer-dialog-preview-toggle">
         <button

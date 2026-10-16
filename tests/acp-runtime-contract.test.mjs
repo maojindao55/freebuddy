@@ -207,10 +207,10 @@ test("ACP runtime hides DeepSeek Node SQLite ExperimentalWarning from UI stderr"
   );
   assert.match(stderrHandler, /args\.adapter === "dsh-acp"/);
   assert.match(stderrHandler, /isDshAcpExperimentalWarningLine\(line\)/);
-  assert.match(stderrHandler, /recentStderr\.push\(line\)/);
+  assert.match(stderrHandler, /recentStderr\.push\(safeLine\)/);
   assert.ok(
     stderrHandler.indexOf("isDshAcpExperimentalWarningLine(line)") <
-      stderrHandler.indexOf("recentStderr.push(line)"),
+      stderrHandler.indexOf("recentStderr.push(safeLine)"),
     "SQLite ExperimentalWarning is skipped before it becomes UI stderr or crash text"
   );
 });
@@ -223,10 +223,10 @@ test("ACP runtime hides Cline startup banner from UI stderr", () => {
   );
   assert.match(stderrHandler, /args\.adapter === "cline-acp"/);
   assert.match(stderrHandler, /isClineAcpStartupBannerLine\(line\)/);
-  assert.match(stderrHandler, /recentStderr\.push\(line\)/);
+  assert.match(stderrHandler, /recentStderr\.push\(safeLine\)/);
   assert.ok(
     stderrHandler.indexOf("isClineAcpStartupBannerLine(line)") <
-      stderrHandler.indexOf("recentStderr.push(line)"),
+      stderrHandler.indexOf("recentStderr.push(safeLine)"),
     "Cline ACP startup banner is skipped before it becomes UI stderr or crash text"
   );
 });

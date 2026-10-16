@@ -46,6 +46,8 @@ import {
   type CliRunArgs,
   type Running
 } from "./runtimeShared.js";
+import { getConversationMcpServerIds } from "./conversations.js";
+import { mcpConfigFingerprint } from "./mcpServers.js";
 import { killProcessTree } from "./process-kill.js";
 import {
   ensureCodexChatBridge,
@@ -467,10 +469,13 @@ async function runCliAgent(
   const warmKey = built.protocol === "acp" && args.adapter === "agy-acp" && args.conversationId &&
       !processSandboxed && !remoteIsolated && !args.delegation && !userControlsResume
     ? JSON.stringify([getCallerUserId(), webContents.id, args.conversationId, args.agentId, toolSessionScope]) : undefined;
+  const mcpServerIds = args.conversationId ? getConversationMcpServerIds(args.conversationId) : [];
   const warmFingerprint = createHash("sha256").update(JSON.stringify({
     bin: spawnCommand.bin, args: spawnCommand.args, cwd: executionArgs.cwd,
     env: Object.entries(spawnCommand.env).sort(([a], [b]) => a.localeCompare(b)),
     access: executionArgs.workspaceAccess, approval: executionArgs.approvalMode,
+    mcpServerIds: mcpServerIds.slice().sort(),
+    mcpConfig: mcpConfigFingerprint(mcpServerIds),
   })).digest("hex");
   const reused = warmKey ? acpProcessPool.take(warmKey, warmFingerprint, toolSessionId) : undefined;
   const child = reused?.child ?? spawn(spawnCommand.bin, spawnCommand.args, {

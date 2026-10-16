@@ -39,6 +39,10 @@
   --fb-brand-gradient: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
   --fb-danger: #e11d48;
   --fb-warning: #f59e0b;
+  --fb-bg-secondary: var(--fb-panel-soft);
+  --fb-bg-hover: var(--fb-hover);
+  --fb-bg-warning-subtle: rgba(245, 158, 11, 0.12);
+  --fb-danger-subtle: rgba(225, 29, 72, 0.1);
   --fb-error: #e11d48;
   --fb-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --fb-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.04), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
@@ -71,6 +75,8 @@
   --fb-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
   --fb-danger: #fb7185;
   --fb-warning: #fbbf24;
+  --fb-bg-warning-subtle: rgba(251, 191, 36, 0.14);
+  --fb-danger-subtle: rgba(251, 113, 133, 0.14);
   --fb-link: #34d399;
   --surface: var(--fb-panel-bg);
   --surface-alt: var(--fb-panel-soft);
@@ -3774,6 +3780,67 @@ html[data-surface="butler-screen-ball"] #root {
 .transfer-dialog-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.transfer-dialog-mcp-toggle {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.transfer-dialog-mcp-toggle .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.transfer-dialog-mcp-list {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-bg-secondary, rgba(0,0,0,0.02));
+}
+
+.transfer-dialog-mcp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.transfer-dialog-mcp-item:hover {
+  background: var(--fb-bg-hover, rgba(0,0,0,0.03));
+}
+
+.transfer-dialog-mcp-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.transfer-dialog-mcp-item.disabled.skipped {
+  opacity: 0.6;
+  background: rgba(255, 180, 0, 0.08);
+}
+
+.transfer-dialog-mcp-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--fb-brand);
+}
+
+.transfer-dialog-mcp-item span {
+  flex: 1;
+  color: var(--fb-text-primary);
+}
+
+.transfer-dialog-mcp-disabled {
+  font-size: 10px;
+  color: var(--fb-text-tertiary);
+  font-style: italic;
 }
 
 .conversation-context-dialog {
@@ -8825,6 +8892,28 @@ button.new-task-context-control {
 .composer-permission-select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.composer-mcp-remote-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+  background: var(--fb-bg-warning-subtle, rgba(255, 180, 0, 0.06));
+  border-radius: 6px;
+}
+
+.composer-mcp-remote-notice svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.mcp-remote-notice-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-session-config,

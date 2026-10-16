@@ -60,6 +60,10 @@ import type {
 } from "./types";
 import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 import { addPluginHostCompatibility } from "@/utils/pluginMentions";
+import {
+  awaitPendingMcpSelection as waitForMcpSelectionWrite,
+  trackMcpSelectionWrite
+} from "./pendingMcpSelection";
 
 function api() {
   const cli = window.freebuddy?.cli;
@@ -337,6 +341,17 @@ export const cliClient = {
   ): Promise<Conversation | undefined> {
     return api().setConversationSkills(id, skillIds);
   },
+  getConversationMcpServerIds(conversationId: string): Promise<string[]> {
+    return api().getConversationMcpServerIds(conversationId);
+  },
+  setConversationMcpServerIds(id: string, mcpServerIds: string[]): Promise<void> {
+    return trackMcpSelectionWrite(id, () =>
+      api().setConversationMcpServerIds(id, mcpServerIds)
+    );
+  },
+  awaitPendingMcpSelection(conversationId: string): Promise<void> {
+    return waitForMcpSelectionWrite(conversationId);
+  },
   listMessages(
     conversationId: string,
     options?: ListMessagesQuery
@@ -473,5 +488,55 @@ export const cliClient = {
 
   onEvent(sessionId: string, cb: (e: CliEvent) => void): () => void {
     return api().onEvent(sessionId, cb as (e: unknown) => void);
+  },
+
+  // ---- User MCP Servers ----
+  listUserMcpServers(): Promise<{
+    servers: import("./types").UserMcpServer[];
+    secretStorageEncrypted: boolean;
+  }> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) {
+      return Promise.resolve({ servers: [], secretStorageEncrypted: true });
+    }
+    return mcpServers.list();
+  },
+  getUserMcpServer(id: string): Promise<import("./types").UserMcpServer | undefined> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(undefined);
+    return mcpServers.get(id);
+  },
+  createUserMcpServer(
+    input: import("./types").UserMcpServerInput
+  ): Promise<import("./types").UserMcpServer> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) throw new Error("MCP servers API unavailable");
+    return mcpServers.create(input);
+  },
+  updateUserMcpServer(
+    id: string,
+    input: Partial<import("./types").UserMcpServerInput>
+  ): Promise<import("./types").UserMcpServer | undefined> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(undefined);
+    return mcpServers.update(id, input);
+  },
+  deleteUserMcpServer(id: string): Promise<boolean> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(false);
+    return mcpServers.delete(id);
+  },
+  setUserMcpServerEnabled(id: string, enabled: boolean): Promise<boolean> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(false);
+    return mcpServers.setEnabled(id, enabled);
+  },
+  selfCheckUserMcpServer(
+    id: string,
+    cwd?: string
+  ): Promise<import("./types").UserMcpServerSelfCheckResult> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve({ status: "error" as const, error: "MCP servers API unavailable" });
+    return mcpServers.selfCheck(id, cwd);
   }
 };

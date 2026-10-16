@@ -1,10 +1,15 @@
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
+import path from "node:path";
+import fs from "node:fs";
 import { nanoid } from "nanoid";
 import { getDb } from "./db.js";
 import { encryptSecret, decryptSecret, redactApiKey } from "./store.js";
 import { logMain } from "../debugLog.js";
 import { isCallerAdmin, getCallerUserId } from "./callerContext.js";
 import { killProcessTree } from "./process-kill.js";
+
+const execFileAsync = promisify(execFile);
 
 const MCP_NAME_PREFIX_RESERVED = "freebuddy";
 const MCP_RESERVED_NAMES = new Set([
@@ -374,24 +379,100 @@ export function redactSecrets(text: string, secrets: string[]): string {
   return result;
 }
 
-export function resolveCommandPath(command: string): string {
-  const trimmed = command.trim();
-  if (trimmed.includes("/") || trimmed.includes("\\")) {
-    return trimmed;
+export interface ResolvedCommand {
+  command: string;
+  error?: "command_not_found" | "relative_path_rejected";
+}
+
+async function whichCommand(cmd: string): Promise<string | null> {
+  try {
+    if (process.platform === "win32") {
+      const { stdout } = await execFileAsync("where", [cmd], {
+        encoding: "utf8",
+        timeout: 5000
+      });
+      return stdout.split("\n")[0]?.trim() || null;
+    } else {
+      const { stdout } = await execFileAsync("which", [cmd], {
+        encoding: "utf8",
+        timeout: 5000
+      });
+      return stdout.trim() || null;
+    }
+  } catch {
+    return null;
   }
-  if (trimmed === "npx" || trimmed === "uvx" || trimmed === "node" || trimmed === "python" || trimmed === "python3") {
-    try {
-      const which = require("node:child_process").execSync(
-        process.platform === "win32" ? `where ${trimmed}` : `which ${trimmed}`,
-        { encoding: "utf8", timeout: 5000 }
-      );
-      const resolved = which.split("\n")[0]?.trim();
-      if (resolved) return resolved;
-    } catch {
-      // Fall back to raw command if resolution fails
+}
+
+function isRelativePath(p: string): boolean {
+  if (p.startsWith("./") || p.startsWith("../")) return true;
+  if (process.platform === "win32") {
+    if (p.startsWith(".\\") || p.startsWith("..\\")) return true;
+  }
+  return false;
+}
+
+function hasPathSeparator(p: string): boolean {
+  return p.includes("/") || p.includes("\\");
+}
+
+export async function resolveCommandPath(
+  command: string,
+  cwd?: string
+): Promise<ResolvedCommand> {
+  const trimmed = command.trim();
+
+  if (isRelativePath(trimmed)) {
+    if (!cwd) {
+      return { command: trimmed, error: "relative_path_rejected" };
+    }
+    const resolved = path.resolve(cwd, trimmed);
+    if (fs.existsSync(resolved)) {
+      return { command: resolved };
+    }
+    if (process.platform === "win32") {
+      const pathext = (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";");
+      for (const ext of pathext) {
+        const withExt = resolved + ext.toLowerCase();
+        if (fs.existsSync(withExt)) {
+          return { command: withExt };
+        }
+      }
+    }
+    return { command: resolved, error: "command_not_found" };
+  }
+
+  if (hasPathSeparator(trimmed)) {
+    if (fs.existsSync(trimmed)) {
+      return { command: trimmed };
+    }
+    if (process.platform === "win32") {
+      const pathext = (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";");
+      for (const ext of pathext) {
+        const withExt = trimmed + ext.toLowerCase();
+        if (fs.existsSync(withExt)) {
+          return { command: withExt };
+        }
+      }
+    }
+    return { command: trimmed, error: "command_not_found" };
+  }
+
+  const resolved = await whichCommand(trimmed);
+  if (resolved) {
+    return { command: resolved };
+  }
+
+  if (process.platform === "win32") {
+    for (const variant of [`${trimmed}.cmd`, `${trimmed}.bat`, `${trimmed}.exe`]) {
+      const variantResolved = await whichCommand(variant);
+      if (variantResolved) {
+        return { command: variantResolved };
+      }
     }
   }
-  return trimmed;
+
+  return { command: trimmed, error: "command_not_found" };
 }
 
 export function substituteArgs(
@@ -408,25 +489,43 @@ export async function selfCheckUserMcpServer(
   id: string,
   cwd?: string
 ): Promise<UserMcpServerSelfCheckResult> {
-  const server = getUserMcpServer(id);
+  const server = getUserMcpServerInternal(id);
   if (!server) {
     return { status: "error", error: "Server not found" };
   }
 
-  const resolvedCommand = resolveCommandPath(server.command);
+  const commandResolution = await resolveCommandPath(server.command, cwd);
+  if (commandResolution.error === "command_not_found") {
+    const result: UserMcpServerSelfCheckResult = {
+      status: "error",
+      error: `Command not found: ${server.command}`
+    };
+    updateSelfCheckResult(id, result);
+    return result;
+  }
+  if (commandResolution.error === "relative_path_rejected") {
+    const result: UserMcpServerSelfCheckResult = {
+      status: "error",
+      error: `Relative path requires workspace: ${server.command}`
+    };
+    updateSelfCheckResult(id, result);
+    return result;
+  }
+
+  const resolvedCommand = commandResolution.command;
   const resolvedArgs = substituteArgs(server.args, cwd);
   const resolvedEnv = resolveEnvForRuntime(server.env);
   const secretValues = collectSecretValues(server.env);
 
   return new Promise((resolve) => {
-    let resolved = false;
+    let finished = false;
     let stdout = "";
     let stderr = "";
     let requestId = 1;
 
     const finish = (result: UserMcpServerSelfCheckResult) => {
-      if (resolved) return;
-      resolved = true;
+      if (finished) return;
+      finished = true;
       const redactedStderr = stderr.trim()
         ? redactSecrets(stderr.trim().slice(-MAX_STDERR_BYTES), secretValues)
         : undefined;
@@ -457,7 +556,7 @@ export async function selfCheckUserMcpServer(
 
       child.on("exit", (code, signal) => {
         clearTimeout(timeout);
-        if (!resolved) {
+        if (!finished) {
           if (signal) {
             finish({ status: "error", error: `Process killed by ${signal}` });
           } else if (code !== 0) {
@@ -579,7 +678,7 @@ export function userMcpServerToAcpFormat(
 ): AcpStdioMcpServerFromUser {
   return {
     name: server.name,
-    command: resolveCommandPath(server.command),
+    command: server.command.trim(),
     args: substituteArgs(server.args, cwd),
     env: Object.entries(resolveEnvForRuntime(server.env)).map(
       ([name, value]) => ({ name, value })

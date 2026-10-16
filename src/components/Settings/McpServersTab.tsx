@@ -25,9 +25,11 @@ import "./McpServersTab.css";
 
 interface EnvVarDraft {
   id: string;
+  originalName?: string;
   name: string;
   value: string;
   valuePreview?: string;
+  hasStoredSecret: boolean;
   secret: boolean;
 }
 
@@ -94,15 +96,17 @@ function McpServerEditor({
   const { t } = useTranslation();
   const [name, setName] = useState(server?.name ?? "");
   const [command, setCommand] = useState(server?.command ?? "");
-  const [argsText, setArgsText] = useState(
-    server?.args?.join(" ") ?? ""
+  const [argsLines, setArgsLines] = useState(
+    server?.args?.join("\n") ?? ""
   );
   const [envVars, setEnvVars] = useState<EnvVarDraft[]>(() =>
     (server?.env ?? []).map((e) => ({
       id: nanoid(6),
+      originalName: e.name,
       name: e.name,
-      value: e.value ?? "",
+      value: "",
       valuePreview: e.valuePreview,
+      hasStoredSecret: e.secret === true && Boolean(e.hasValue),
       secret: e.secret ?? false
     }))
   );
@@ -120,36 +124,15 @@ function McpServerEditor({
     stderr?: string;
   } | null>(null);
 
-  const parseArgs = (text: string): string[] => {
-    const args: string[] = [];
-    let current = "";
-    let inQuote = false;
-    let quoteChar = "";
-    for (const char of text) {
-      if (inQuote) {
-        if (char === quoteChar) {
-          inQuote = false;
-        } else {
-          current += char;
-        }
-      } else if (char === '"' || char === "'") {
-        inQuote = true;
-        quoteChar = char;
-      } else if (char === " " || char === "\t") {
-        if (current) {
-          args.push(current);
-          current = "";
-        }
-      } else {
-        current += char;
-      }
-    }
-    if (current) args.push(current);
-    return args;
+  const parseArgsFromLines = (text: string): string[] => {
+    return text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
   };
 
   const handleAddEnvVar = () => {
-    setEnvVars([...envVars, { id: nanoid(6), name: "", value: "", secret: false }]);
+    setEnvVars([...envVars, { id: nanoid(6), name: "", value: "", hasStoredSecret: false, secret: false }]);
   };
 
   const handleRemoveEnvVar = (id: string) => {
@@ -162,8 +145,23 @@ function McpServerEditor({
     value: string | boolean
   ) => {
     setEnvVars(
+      envVars.map((e) => {
+        if (e.id !== id) return e;
+        if (field === "value" && value !== "") {
+          return { ...e, value: value as string, hasStoredSecret: false };
+        }
+        if (field === "secret" && value === false) {
+          return { ...e, secret: false, hasStoredSecret: false };
+        }
+        return { ...e, [field]: value };
+      })
+    );
+  };
+
+  const handleClearSecretValue = (id: string) => {
+    setEnvVars(
       envVars.map((e) =>
-        e.id === id ? { ...e, [field]: value } : e
+        e.id === id ? { ...e, value: "", hasStoredSecret: false, valuePreview: undefined } : e
       )
     );
   };
@@ -199,18 +197,25 @@ function McpServerEditor({
     try {
       const env: UserMcpServerEnvVar[] = envVars
         .filter((e) => e.name.trim())
-        .map((e) => ({
-          name: e.name.trim(),
-          ...(e.secret
-            ? { value: e.value, secret: true }
-            : { value: e.value })
-        }));
+        .map((e) => {
+          const base = { name: e.name.trim() };
+          if (e.secret) {
+            if (e.value) {
+              return { ...base, value: e.value, secret: true };
+            }
+            if (e.hasStoredSecret && e.originalName === e.name) {
+              return { ...base, secret: true };
+            }
+            return { ...base, value: "", secret: true };
+          }
+          return { ...base, value: e.value };
+        });
 
       await onSave({
         id: server?.id,
         name: name.trim(),
         command: command.trim(),
-        args: parseArgs(argsText),
+        args: parseArgsFromLines(argsLines),
         env,
         enabled: server?.enabled ?? true
       });
@@ -288,13 +293,14 @@ function McpServerEditor({
 
         <div className="mcp-form-group">
           <label>{t("mcpServers.args")}</label>
-          <input
-            type="text"
-            value={argsText}
-            onChange={(e) => setArgsText(e.target.value)}
-            placeholder="-y @modelcontextprotocol/server-filesystem ${cwd}"
+          <textarea
+            value={argsLines}
+            onChange={(e) => setArgsLines(e.target.value)}
+            placeholder={"-y\n@modelcontextprotocol/server-filesystem\n${cwd}"}
+            rows={3}
+            className="mcp-args-textarea"
           />
-          <p className="mcp-form-hint">{t("mcpServers.argsHint")}</p>
+          <p className="mcp-form-hint">{t("mcpServers.argsHintPerLine", "One argument per line. Use ${cwd} for workspace path.")}</p>
         </div>
 
         <div className="mcp-form-group">
@@ -314,29 +320,42 @@ function McpServerEditor({
                 <div className="mcp-env-value-wrapper">
                   <input
                     type={e.secret && !showSecrets.has(e.id) ? "password" : "text"}
-                    value={e.value || (e.secret && e.valuePreview ? e.valuePreview : "")}
+                    value={e.value}
                     onChange={(ev) =>
                       handleEnvVarChange(e.id, "value", ev.target.value)
                     }
                     placeholder={
-                      e.secret && e.valuePreview
-                        ? e.valuePreview
+                      e.secret && e.hasStoredSecret && e.valuePreview
+                        ? `${e.valuePreview} ${t("mcpServers.storedSecret", "(stored)")}`
                         : t("mcpServers.envValue")
                     }
                     className="mcp-env-value"
                   />
                   {e.secret && (
-                    <button
-                      type="button"
-                      className="mcp-env-toggle-secret"
-                      onClick={() => toggleShowSecret(e.id)}
-                    >
-                      {showSecrets.has(e.id) ? (
-                        <EyeOff size={14} />
-                      ) : (
-                        <Eye size={14} />
+                    <>
+                      <button
+                        type="button"
+                        className="mcp-env-toggle-secret"
+                        onClick={() => toggleShowSecret(e.id)}
+                        title={showSecrets.has(e.id) ? t("mcpServers.hideSecret") : t("mcpServers.showSecret")}
+                      >
+                        {showSecrets.has(e.id) ? (
+                          <EyeOff size={14} />
+                        ) : (
+                          <Eye size={14} />
+                        )}
+                      </button>
+                      {e.hasStoredSecret && !e.value && (
+                        <button
+                          type="button"
+                          className="mcp-env-clear-secret"
+                          onClick={() => handleClearSecretValue(e.id)}
+                          title={t("mcpServers.clearSecret", "Clear stored secret")}
+                        >
+                          <X size={14} />
+                        </button>
                       )}
-                    </button>
+                    </>
                   )}
                 </div>
                 <label className="mcp-env-secret-label">

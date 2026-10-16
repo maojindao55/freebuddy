@@ -524,3 +524,125 @@ test("MCP tab is hidden for non-owner remote users", () => {
     "Should have hiddenTabs prop"
   );
 });
+
+// Test 16: Async command resolution with error handling
+test("resolveCommandPath handles command_not_found and relative paths", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+
+  const { resolveCommandPath } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+
+  // Test command_not_found for non-existent command
+  const nonExistent = await resolveCommandPath("definitely-not-a-command-12345");
+  assert.equal(nonExistent.error, "command_not_found");
+
+  // Test relative path rejection without cwd
+  const relativeNoCwd = await resolveCommandPath("./my-script");
+  assert.equal(relativeNoCwd.error, "relative_path_rejected");
+
+  // Test valid command (npx should exist in PATH)
+  const npx = await resolveCommandPath("npx");
+  if (npx.error) {
+    t.skip("npx not found in PATH");
+    return;
+  }
+  assert.ok(npx.command.includes("npx") || npx.command.includes("npm"));
+});
+
+// Test 17: Log redaction in acpRuntime
+test("acpRuntime redacts secrets from log messages", () => {
+  const acpRuntimeSource = fs.readFileSync(
+    new URL("cli/acpRuntime.ts", electronDir),
+    "utf8"
+  );
+
+  // Should import redactSecrets
+  assert.match(
+    acpRuntimeSource,
+    /redactSecrets[\s\S]*from ["']\.\/mcpServers/,
+    "Should import redactSecrets"
+  );
+
+  // Should track MCP secret values
+  assert.match(
+    acpRuntimeSource,
+    /let mcpSecretValues: string\[\]/,
+    "Should track MCP secret values"
+  );
+
+  // Should apply redaction to log messages
+  assert.match(
+    acpRuntimeSource,
+    /redactSecrets\(logContent, mcpSecretValues\)/,
+    "Should apply redaction to stdin log"
+  );
+});
+
+// Test 18: Args editor uses per-line format
+test("MCP editor uses per-line args format", () => {
+  const editorSource = fs.readFileSync(
+    new URL("../src/components/Settings/McpServersTab.tsx", import.meta.url),
+    "utf8"
+  );
+
+  // Should use textarea for args
+  assert.match(
+    editorSource,
+    /<textarea[\s\S]*?argsLines/,
+    "Should use textarea for args"
+  );
+
+  // Should parse args from lines
+  assert.match(
+    editorSource,
+    /parseArgsFromLines/,
+    "Should have parseArgsFromLines function"
+  );
+
+  // Should split by newlines
+  assert.match(
+    editorSource,
+    /split\("\\n"\)/,
+    "Should split args by newlines"
+  );
+});
+
+// Test 19: Secret env var handling preserves stored secrets
+test("MCP editor preserves stored secrets on rename", () => {
+  const editorSource = fs.readFileSync(
+    new URL("../src/components/Settings/McpServersTab.tsx", import.meta.url),
+    "utf8"
+  );
+
+  // Should track original name
+  assert.match(
+    editorSource,
+    /originalName.*e\.name/,
+    "Should track original env var name"
+  );
+
+  // Should track hasStoredSecret
+  assert.match(
+    editorSource,
+    /hasStoredSecret/,
+    "Should track hasStoredSecret flag"
+  );
+
+  // Should preserve secret when name unchanged
+  assert.match(
+    editorSource,
+    /hasStoredSecret && e\.originalName === e\.name/,
+    "Should preserve secret when name unchanged"
+  );
+
+  // Should have clear secret button
+  assert.match(
+    editorSource,
+    /handleClearSecretValue/,
+    "Should have clear secret function"
+  );
+});

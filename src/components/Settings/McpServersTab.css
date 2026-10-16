@@ -309,10 +309,23 @@
   color: var(--text-primary, #333);
 }
 
-.mcp-form-group input:focus {
+.mcp-form-group input:focus,
+.mcp-form-group textarea:focus {
   outline: none;
   border-color: var(--primary, #3b82f6);
   box-shadow: 0 0 0 2px var(--primary-light, rgba(59, 130, 246, 0.2));
+}
+
+.mcp-args-textarea {
+  padding: 8px 12px;
+  border: 1px solid var(--border, #e5e5e5);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: ui-monospace, monospace;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  resize: vertical;
+  min-height: 60px;
 }
 
 .mcp-form-hint {
@@ -347,12 +360,12 @@
 
 .mcp-env-value {
   width: 100%;
-  padding-right: 36px !important;
+  padding-right: 60px !important;
 }
 
-.mcp-env-toggle-secret {
+.mcp-env-toggle-secret,
+.mcp-env-clear-secret {
   position: absolute;
-  right: 4px;
   padding: 4px;
   background: transparent;
   border: none;
@@ -360,8 +373,21 @@
   cursor: pointer;
 }
 
-.mcp-env-toggle-secret:hover {
+.mcp-env-toggle-secret {
+  right: 28px;
+}
+
+.mcp-env-clear-secret {
+  right: 4px;
+}
+
+.mcp-env-toggle-secret:hover,
+.mcp-env-clear-secret:hover {
   color: var(--text-primary, #333);
+}
+
+.mcp-env-clear-secret:hover {
+  color: var(--error, #ef4444);
 }
 
 .mcp-env-secret-label {

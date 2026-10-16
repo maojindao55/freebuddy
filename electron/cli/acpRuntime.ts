@@ -122,8 +122,10 @@ import {
 import { logMain } from "../debugLog.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import {
+  collectSecretValues,
   getEnabledUserMcpServersByIds,
-  isRemoteMcpAllowed
+  isRemoteMcpAllowed,
+  redactSecrets
 } from "./mcpServers.js";
 import { getConversationMcpServerIds } from "./conversations.js";
 import {
@@ -300,6 +302,7 @@ export async function runAcpAgent({
   let turnHadLiveAgentChunk = false;
   let sessionWasResumed = false;
   let mcpServers: AcpStdioMcpServer[] = [];
+  let mcpSecretValues: string[] = [];
   let officeFileForSession: string | null = null;
   const standaloneDocStudio = isDocStudioWindowSender(webContents);
   let contextResetAttempted = false;
@@ -457,7 +460,8 @@ export async function runAcpAgent({
         }, timeoutMs);
       }
       try {
-        appendLog(logStream, "stdin", JSON.stringify(msg));
+        const logContent = JSON.stringify(msg);
+        appendLog(logStream, "stdin", mcpSecretValues.length > 0 ? redactSecrets(logContent, mcpSecretValues) : logContent);
         if (msg.method === "session/prompt") {
           if (args.adapter === "pi-acp") {
             try {
@@ -475,7 +479,8 @@ export async function runAcpAgent({
     });
   const notify = (msg: AcpMessage) => {
     if (connectionClosed()) return;
-    appendLog(logStream, "stdin", JSON.stringify(msg));
+    const logContent = JSON.stringify(msg);
+    appendLog(logStream, "stdin", mcpSecretValues.length > 0 ? redactSecrets(logContent, mcpSecretValues) : logContent);
     writeAcp(msg);
   };
   const probeAgentLiveness = async (): Promise<boolean> => {
@@ -1723,6 +1728,11 @@ export async function runAcpAgent({
         const userServers = getEnabledUserMcpServersByIds(mcpServerIds, args.cwd);
         for (const server of userServers) {
           mcpServers.push(server);
+          for (const envVar of server.env) {
+            if (envVar.value && envVar.value.length >= 4) {
+              mcpSecretValues.push(envVar.value);
+            }
+          }
         }
         if (userServers.length) {
           appendLog(

@@ -829,6 +829,66 @@ process.stdin.on("data", (c) => {
   assert.equal(result.stderr.includes("A".repeat(9 * 1024)), false);
 });
 
+test("self-check parses a tools/list response larger than 8KB", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createUserMcpServer, selfCheckUserMcpServer } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const script = `
+let b = "";
+process.stdin.on("data", (c) => {
+  b += c;
+  let i;
+  while ((i = b.indexOf("\\n")) >= 0) {
+    const l = b.slice(0, i);
+    b = b.slice(i + 1);
+    if (!l.trim()) continue;
+    let m;
+    try { m = JSON.parse(l); } catch { continue; }
+    if (m.method === "initialize") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "t", version: "0" } } }) + "\\n");
+    } else if (m.method === "tools/list") {
+      const payload = JSON.stringify({
+        jsonrpc: "2.0",
+        id: m.id,
+        result: { tools: [{ name: "big-tool", description: "d".repeat(50 * 1024) }] }
+      }) + "\\n";
+      if (payload.length <= 8 * 1024) {
+        process.stderr.write("payload smaller than 8KB");
+        process.exit(1);
+      }
+      const size = 4096;
+      let offset = 0;
+      const writeMore = () => {
+        if (offset >= payload.length) {
+          setTimeout(() => process.exit(0), 30);
+          return;
+        }
+        const ok = process.stdout.write(payload.slice(offset, offset + size));
+        offset += size;
+        if (ok) writeMore();
+        else process.stdout.once("drain", writeMore);
+      };
+      writeMore();
+    }
+  }
+});
+`;
+  const server = createUserMcpServer({
+    name: "large-tools-list",
+    command: process.execPath,
+    args: ["-e", script],
+    enabled: true,
+  });
+  const result = await selfCheckUserMcpServer(server.id);
+  assert.equal(result.status, "ok", result.error);
+  assert.deepEqual(result.tools, ["big-tool"]);
+});
+
 test("a send waits until the in-flight MCP selection write settles", async () => {
   const source = fs.readFileSync(
     new URL("../src/services/cli/pendingMcpSelection.ts", import.meta.url),

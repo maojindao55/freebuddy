@@ -513,8 +513,10 @@ export function substituteArgs(
 }
 
 const MAX_STDERR_BYTES = 8 * 1024;
+/** A single unfinished stdout line. Complete lines are parsed in full. */
+const MAX_PENDING_STDOUT_CHARS = 1024 * 1024;
 
-/** Keep the true tail of a stdio capture. A full chunk larger than the cap replaces the buffer. */
+/** Keep the true tail of a capture. A full chunk larger than the cap replaces the buffer. */
 export function appendCappedTail(buffer: string, chunk: string, maxChars: number): string {
   if (maxChars <= 0) return "";
   if (chunk.length >= maxChars) return chunk.slice(-maxChars);
@@ -560,6 +562,7 @@ export async function selfCheckUserMcpServer(
   return new Promise((resolve) => {
     let finished = false;
     let stdout = "";
+    let stdoutDiscarding = false;
     let stderr = "";
     let requestId = 1;
 
@@ -618,10 +621,26 @@ export async function selfCheckUserMcpServer(
       });
 
       child.stdout.on("data", (data: Buffer) => {
-        stdout = appendCappedTail(stdout, data.toString(), MAX_STDERR_BYTES);
+        let chunk = data.toString();
+        if (stdoutDiscarding) {
+          const newlineAt = chunk.indexOf("\n");
+          if (newlineAt === -1) return;
+          stdoutDiscarding = false;
+          chunk = chunk.slice(newlineAt + 1);
+        } else if (!chunk.includes("\n") && stdout.length + chunk.length > MAX_PENDING_STDOUT_CHARS) {
+          stdout = "";
+          stdoutDiscarding = true;
+          return;
+        }
+        stdout += chunk;
         const lines = stdout.split("\n");
         stdout = lines.pop() ?? "";
+        if (stdout.length > MAX_PENDING_STDOUT_CHARS) {
+          stdout = "";
+          stdoutDiscarding = true;
+        }
         for (const line of lines) {
+          if (line.length > MAX_PENDING_STDOUT_CHARS) continue;
           if (!line.trim()) continue;
           try {
             const msg = JSON.parse(line);
@@ -655,7 +674,7 @@ export async function selfCheckUserMcpServer(
               }
             }
           } catch {
-            // Not a complete JSON line yet
+            // Complete line was not JSON-RPC. The unfinished fragment stays buffered above.
           }
         }
       });

@@ -10,9 +10,9 @@
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--fb-text-tertiary);
   background: transparent;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--fb-border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -21,18 +21,18 @@
 
 .mcp-picker-trigger:hover:not(:disabled),
 .mcp-picker-trigger.active {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
+  color: var(--fb-text-primary);
+  border-color: var(--fb-border-strong);
+  background: var(--fb-hover);
 }
 
 .mcp-picker-trigger.has-selection {
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
+  color: var(--fb-brand);
+  border-color: var(--fb-brand);
 }
 
 .mcp-picker-trigger:focus-visible {
-  outline: 2px solid var(--focus-ring);
+  outline: 2px solid var(--fb-brand);
   outline-offset: 1px;
 }
 
@@ -54,8 +54,8 @@
   padding: 0 4px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-on-accent);
-  background: var(--accent-primary);
+  color: var(--fb-active-fg);
+  background: var(--fb-brand);
   border-radius: 8px;
 }
 
@@ -66,10 +66,10 @@
   z-index: 100;
   min-width: 220px;
   max-width: 320px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border);
   border-radius: 8px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--fb-shadow-lg);
   overflow: hidden;
 }
 
@@ -78,17 +78,17 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--fb-border);
   font-size: 12px;
 }
 
 .mcp-picker-heading strong {
-  color: var(--text-primary);
+  color: var(--fb-text-primary);
   font-weight: 600;
 }
 
 .mcp-picker-heading span {
-  color: var(--text-muted);
+  color: var(--fb-text-tertiary);
 }
 
 .mcp-picker-list {
@@ -108,7 +108,7 @@
 }
 
 .mcp-picker-item:hover {
-  background: var(--bg-hover);
+  background: var(--fb-hover);
 }
 
 .mcp-picker-item.disabled {
@@ -118,20 +118,20 @@
 
 .mcp-picker-item.disabled.skipped {
   opacity: 0.6;
-  background: var(--bg-warning-subtle, rgba(255, 180, 0, 0.08));
+  background: var(--fb-bg-warning-subtle);
 }
 
 .mcp-picker-item input[type="checkbox"] {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  accent-color: var(--accent-primary);
+  accent-color: var(--fb-brand);
 }
 
 .mcp-picker-item-name {
   flex: 1;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--fb-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -143,16 +143,16 @@
 }
 
 .mcp-picker-status.ok {
-  color: var(--success);
+  color: var(--fb-brand);
 }
 
 .mcp-picker-status.error {
-  color: var(--error);
+  color: var(--fb-danger);
 }
 
 .mcp-picker-disabled-label {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--fb-text-tertiary);
   font-style: italic;
 }
 
@@ -160,19 +160,19 @@
 .mcp-picker-hint {
   padding: 12px;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--fb-text-tertiary);
   text-align: center;
 }
 
 .mcp-picker-hint {
   padding: 8px 12px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--fb-border);
   font-style: italic;
 }
 
 .mcp-picker-hint.mcp-picker-warning {
-  color: var(--warning, #b8860b);
-  background: var(--bg-warning-subtle, rgba(255, 180, 0, 0.06));
+  color: var(--fb-warning);
+  background: var(--fb-bg-warning-subtle);
 }
 
 @media (max-width: 640px) {

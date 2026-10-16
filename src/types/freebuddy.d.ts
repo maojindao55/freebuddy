@@ -986,7 +986,10 @@ declare global {
   }
 
   interface FreebuddyMcpServers {
-    list(): Promise<import("@/services/cli/types").UserMcpServer[]>;
+    list(): Promise<{
+      servers: import("@/services/cli/types").UserMcpServer[];
+      secretStorageEncrypted: boolean;
+    }>;
     get(id: string): Promise<import("@/services/cli/types").UserMcpServer | undefined>;
     create(
       input: import("@/services/cli/types").UserMcpServerInput

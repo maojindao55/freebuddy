@@ -113,7 +113,11 @@ function McpServerEditor({
   const [showSecrets, setShowSecrets] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [ackLocalExec, setAckLocalExec] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const commandChanged = command.trim() !== (server?.command ?? "").trim();
+  const needsLocalExecAck = isNew || commandChanged;
 
   const selfCheck = useMcpServerStore((s) => s.selfCheck);
   const [checking, setChecking] = useState(false);
@@ -187,8 +191,16 @@ function McpServerEditor({
       setError(t("mcpServers.error.commandRequired"));
       return;
     }
+    if (!/^[A-Za-z0-9_-]{1,48}$/.test(name.trim())) {
+      setError(t("mcpServers.error.invalidName"));
+      return;
+    }
     if (name.trim().toLowerCase().startsWith("freebuddy")) {
       setError(t("mcpServers.error.reservedPrefix"));
+      return;
+    }
+    if (needsLocalExecAck && !ackLocalExec) {
+      setError(t("mcpServers.error.confirmLocalExec"));
       return;
     }
 
@@ -203,8 +215,8 @@ function McpServerEditor({
             if (e.value) {
               return { ...base, value: e.value, secret: true };
             }
-            if (e.hasStoredSecret && e.originalName === e.name) {
-              return { ...base, secret: true };
+            if (e.hasStoredSecret && e.originalName) {
+              return { ...base, secret: true, previousName: e.originalName };
             }
             return { ...base, value: "", secret: true };
           }
@@ -221,7 +233,16 @@ function McpServerEditor({
       });
       onBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      const message = err instanceof Error ? err.message : "";
+      if (/reserved/i.test(message)) {
+        setError(t("mcpServers.error.reservedPrefix"));
+      } else if (/already exists/i.test(message)) {
+        setError(t("mcpServers.error.duplicateName"));
+      } else if (/must match/i.test(message)) {
+        setError(t("mcpServers.error.invalidName"));
+      } else {
+        setError(message || t("mcpServers.error.saveFailed"));
+      }
     } finally {
       setSaving(false);
     }
@@ -229,12 +250,16 @@ function McpServerEditor({
 
   const handleDelete = async () => {
     if (!server || !onDelete) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
     setDeleting(true);
     try {
       await onDelete(server.id);
       onBack();
     } catch {
-      setError("Failed to delete");
+      setError(t("mcpServers.error.deleteFailed"));
     } finally {
       setDeleting(false);
     }
@@ -248,7 +273,7 @@ function McpServerEditor({
       const result = await selfCheck(server.id);
       setCheckResult(result);
     } catch {
-      setCheckResult({ status: "error", error: "Self-check failed" });
+      setCheckResult({ status: "error", error: t("mcpServers.error.selfCheckFailed") });
     } finally {
       setChecking(false);
     }
@@ -449,6 +474,16 @@ function McpServerEditor({
         {error && <div className="mcp-form-error">{error}</div>}
 
         <div className="mcp-form-actions">
+          {needsLocalExecAck && (
+            <label className="mcp-local-exec-ack">
+              <input
+                type="checkbox"
+                checked={ackLocalExec}
+                onChange={(event) => setAckLocalExec(event.target.checked)}
+              />
+              {t("mcpServers.confirmLocalExec")}
+            </label>
+          )}
           {!isNew && server && onDelete && (
             <button
               type="button"
@@ -461,7 +496,7 @@ function McpServerEditor({
               ) : (
                 <Trash2 size={14} />
               )}
-              {t("common.delete")}
+              {confirmDelete ? t("mcpServers.confirmDelete") : t("common.delete")}
             </button>
           )}
           <div className="mcp-form-actions-right">
@@ -495,6 +530,7 @@ function McpServerEditor({
 export function McpServersTab() {
   const { t } = useTranslation();
   const servers = useMcpServerStore((s) => s.servers);
+  const secretStorageEncrypted = useMcpServerStore((s) => s.secretStorageEncrypted);
   const loaded = useMcpServerStore((s) => s.loaded);
   const loading = useMcpServerStore((s) => s.loading);
   const error = useMcpServerStore((s) => s.error);
@@ -587,6 +623,13 @@ export function McpServersTab() {
           {t("mcpServers.description")}
         </p>
       </div>
+
+      {loaded && !secretStorageEncrypted && (
+        <div className="mcp-storage-warning" role="status">
+          <AlertTriangle size={16} />
+          <span>{t("mcpServers.secretStorageWarning")}</span>
+        </div>
+      )}
 
       <div className="mcp-servers-toolbar">
         <button

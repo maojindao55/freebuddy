@@ -122,7 +122,7 @@ import {
 import { logMain } from "../debugLog.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import {
-  collectSecretValues,
+  collectLogSecrets,
   getEnabledUserMcpServersByIds,
   isRemoteMcpAllowed,
   redactSecrets
@@ -1725,27 +1725,35 @@ export async function runAcpAgent({
         ? getConversationMcpServerIds(args.conversationId)
         : [];
       if (mcpServerIds.length > 0) {
-        const userServers = getEnabledUserMcpServersByIds(mcpServerIds, args.cwd);
-        for (const server of userServers) {
-          mcpServers.push(server);
-          for (const envVar of server.env) {
-            if (envVar.value && envVar.value.length >= 4) {
-              mcpSecretValues.push(envVar.value);
-            }
+        const resolved = await getEnabledUserMcpServersByIds(mcpServerIds, args.cwd);
+        const takenNames = new Set(mcpServers.map((server) => server.name.toLowerCase()));
+        for (const server of resolved.servers) {
+          let name = server.name;
+          if (takenNames.has(name.toLowerCase())) {
+            const renamed = `${name}-user`;
+            appendLog(
+              logStream,
+              "system",
+              `mcp server renamed to avoid collision: ${name} -> ${renamed}`
+            );
+            name = renamed;
           }
+          takenNames.add(name.toLowerCase());
+          mcpServers.push({ ...server, name });
         }
-        if (userServers.length) {
+        mcpSecretValues.push(...collectLogSecrets(resolved.servers));
+        if (resolved.servers.length) {
           appendLog(
             logStream,
             "system",
-            `user mcp servers=${userServers.map((s) => s.name).join(",")}`
+            `user mcp servers=${resolved.servers.map((s) => s.name).join(",")}`
           );
         }
-        if (userServers.length < mcpServerIds.length) {
+        for (const skipped of resolved.skipped) {
           appendLog(
             logStream,
             "system",
-            `mcp servers skipped (disabled/deleted): ${mcpServerIds.length - userServers.length}`
+            `mcp server skipped (${skipped.reason}): ${skipped.name}`
           );
         }
       }

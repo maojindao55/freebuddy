@@ -82,7 +82,10 @@
     "copied": "Copied",
     "copyFailed": "Failed to copy",
     "remove": "Remove",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "back": "Back",
+    "loading": "Loading…",
+    "retry": "Retry"
   },
   "status": {
     "running": "Running",
@@ -727,7 +730,8 @@
     "briefExtractionFailed": "Transfer completed but no context was carried over. Tell the new agent manually.",
     "autoStartFailed": "The new conversation was created, but automatic startup failed: {{error}}",
     "mcpServers": "MCP Servers",
-    "mcpServersSelected": "{{count}} server(s) selected",
+    "mcpServersSelected_one": "{{count}} server selected",
+    "mcpServersSelected_other": "{{count}} servers selected",
     "mcpServersNone": "None selected"
   },
   "importCodex": {
@@ -2602,7 +2606,10 @@
     "selectForSession": "MCP Servers",
     "noServersConfigured": "No MCP servers configured",
     "disabledServersHidden": "Disabled servers hidden",
-    "disabledServersSkipped": "{{count}} disabled server(s) will be skipped",
+    "disabledServersSkipped_one": "{{count}} disabled server will be skipped",
+    "disabledServersSkipped_other": "{{count}} disabled servers will be skipped",
+    "configure": "Set up MCP",
+    "openSettings": "Configure MCP servers",
     "serverDisabled": "Server is disabled",
     "serverDisabledWillSkip": "Server is disabled and will be skipped",
     "lastCheckFailed": "Last check failed: {{error}}",
@@ -2640,10 +2647,12 @@
     "argsHintPerLine": "One argument per line. Use ${cwd} for workspace path.",
     "selfCheck": "Self-check",
     "runSelfCheck": "Run self-check",
-    "selfCheckOk": "Self-check passed ({{count}} tools)",
+    "selfCheckOk_one": "Self-check passed ({{count}} tool)",
+    "selfCheckOk_other": "Self-check passed ({{count}} tools)",
     "checkAll": "Check all",
     "tools": "Available tools",
-    "toolCount": "{{count}} tools",
+    "toolCount_one": "{{count}} tool",
+    "toolCount_other": "{{count}} tools",
     "stderr": "Error output",
     "enable": "Enable server",
     "disable": "Disable server",
@@ -2653,10 +2662,19 @@
     "lastCheckedAt": "Last checked: {{time}}",
     "errorDetail": "Error: {{error}}",
     "note": "MCP servers are only available when running locally on the desktop app. They are not available for remote WebUI users.",
+    "confirmLocalExec": "This command will run on this computer",
+    "confirmDelete": "Confirm delete",
+    "secretStorageWarning": "System encryption is unavailable. Secret values are only encoded, not encrypted.",
     "error": {
       "nameRequired": "Server name is required",
       "commandRequired": "Command is required",
-      "reservedPrefix": "Server name cannot start with 'freebuddy' (reserved prefix)"
+      "reservedPrefix": "Server name cannot start with 'freebuddy' (reserved prefix)",
+      "invalidName": "Use 1–48 letters, numbers, underscores, or hyphens",
+      "duplicateName": "A server with this name already exists",
+      "saveFailed": "Failed to save",
+      "deleteFailed": "Failed to delete",
+      "selfCheckFailed": "Self-check failed",
+      "confirmLocalExec": "Confirm that this command will run on this computer"
     }
   },
   "conversationPanel": {

@@ -39,6 +39,10 @@
   --fb-brand-gradient: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
   --fb-danger: #e11d48;
   --fb-warning: #f59e0b;
+  --fb-bg-secondary: var(--fb-panel-soft);
+  --fb-bg-hover: var(--fb-hover);
+  --fb-bg-warning-subtle: rgba(245, 158, 11, 0.12);
+  --fb-danger-subtle: rgba(225, 29, 72, 0.1);
   --fb-error: #e11d48;
   --fb-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --fb-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.04), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
@@ -71,6 +75,8 @@
   --fb-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
   --fb-danger: #fb7185;
   --fb-warning: #fbbf24;
+  --fb-bg-warning-subtle: rgba(251, 191, 36, 0.14);
+  --fb-danger-subtle: rgba(251, 113, 133, 0.14);
   --fb-link: #34d399;
   --surface: var(--fb-panel-bg);
   --surface-alt: var(--fb-panel-soft);

@@ -88,16 +88,26 @@ export function TransferConversationPanel({
     return [];
   });
   const [showMcpPicker, setShowMcpPicker] = useState(false);
+  const enabledSelectedMcpCount = useMemo(
+    () =>
+      mcpServers.filter(
+        (server) => server.enabled && selectedMcpServerIds.includes(server.id)
+      ).length,
+    [mcpServers, selectedMcpServerIds]
+  );
 
   useEffect(() => {
     mountedRef.current = true;
     targetSelectRef.current?.focus();
-    if (!mcpLoaded) {
-      void loadMcpServers();
-    }
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!mcpLoaded) {
+      void loadMcpServers();
+    }
   }, [mcpLoaded, loadMcpServers]);
 
   useEffect(() => {
@@ -401,9 +411,9 @@ export function TransferConversationPanel({
             >
               <Server size={14} aria-hidden="true" />
               <span>
-                {selectedMcpServerIds.length > 0
-                  ? t("handoff.mcpServersSelected", "{{count}} server(s) selected", {
-                      count: selectedMcpServerIds.length
+                {enabledSelectedMcpCount > 0
+                  ? t("handoff.mcpServersSelected", {
+                      count: enabledSelectedMcpCount
                     })
                   : t("handoff.mcpServersNone", "None selected")}
               </span>

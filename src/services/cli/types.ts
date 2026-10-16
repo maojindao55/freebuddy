@@ -933,6 +933,7 @@ export interface UserMcpServerEnvVar {
   valueEncrypted?: string;
   secret?: boolean;
   hasValue?: boolean;
+  previousName?: string;
 }
 
 export interface UserMcpServerInput {

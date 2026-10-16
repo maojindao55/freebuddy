@@ -1,15 +1,12 @@
-import { spawn, execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
 import { nanoid } from "nanoid";
 import { getDb } from "./db.js";
-import { encryptSecret, decryptSecret, redactApiKey } from "./store.js";
+import { encryptSecret, decryptSecret, redactApiKey, isSecretStorageAvailable } from "./store.js";
 import { logMain } from "../debugLog.js";
 import { isCallerAdmin, getCallerUserId } from "./callerContext.js";
 import { killProcessTree } from "./process-kill.js";
-
-const execFileAsync = promisify(execFile);
 
 const MCP_NAME_PREFIX_RESERVED = "freebuddy";
 const MCP_RESERVED_NAMES = new Set([
@@ -22,7 +19,9 @@ const MCP_RESERVED_NAMES = new Set([
   "freebuddy-skills",
   "freebuddy-workspace-fs"
 ]);
+const MCP_NAME_PATTERN = /^[A-Za-z0-9_-]{1,48}$/;
 const MCP_SELF_CHECK_TIMEOUT_MS = 15_000;
+const SECRET_ARG_PATTERN = /(?:^|.*?)(?:token|key|secret|password|pat)=([^\s]+)$/i;
 
 export interface UserMcpServerEnvVar {
   name: string;
@@ -31,6 +30,7 @@ export interface UserMcpServerEnvVar {
   valueEncrypted?: string;
   secret?: boolean;
   hasValue?: boolean;
+  previousName?: string;
 }
 
 export interface UserMcpServerInput {
@@ -155,7 +155,10 @@ function normalizeEnvForStorage(
     const normalizedName = e.name.trim();
     if (!normalizedName || seenNames.has(normalizedName)) continue;
     seenNames.add(normalizedName);
-    const prev = previousByName.get(normalizedName);
+    const previousName = e.previousName?.trim();
+    const prev =
+      previousByName.get(normalizedName) ??
+      (previousName ? previousByName.get(previousName) : undefined);
     const isSecret = e.secret === true;
     if (isSecret && e.value !== undefined && e.value.trim()) {
       result.push({
@@ -186,7 +189,13 @@ function normalizeEnvForStorage(
 }
 
 function validateServerName(name: string, existingId?: string): void {
-  const trimmed = name.trim().toLowerCase();
+  const raw = name.trim();
+  if (!MCP_NAME_PATTERN.test(raw)) {
+    throw new Error(
+      "Server name must match ^[A-Za-z0-9_-]{1,48}$"
+    );
+  }
+  const trimmed = raw.toLowerCase();
   if (trimmed.startsWith(MCP_NAME_PREFIX_RESERVED)) {
     throw new Error(
       `Server name cannot start with reserved prefix "${MCP_NAME_PREFIX_RESERVED}"`
@@ -326,15 +335,13 @@ function updateSelfCheckResult(
          last_check_status = ?,
          last_check_error = ?,
          last_check_tools = ?,
-         last_checked_at = ?,
-         updated_at = ?
+         last_checked_at = ?
        WHERE id = ?`
     )
     .run(
       result.status,
       result.error ?? null,
       result.tools ? JSON.stringify(result.tools) : null,
-      now,
       now,
       id
     );
@@ -371,12 +378,35 @@ export function collectSecretValues(env: UserMcpServerEnvVar[]): string[] {
 
 export function redactSecrets(text: string, secrets: string[]): string {
   if (!secrets.length) return text;
+  const unique = [...new Set(secrets.filter((s) => s.length >= 4))].sort(
+    (a, b) => b.length - a.length
+  );
   let result = text;
-  for (const secret of secrets) {
-    if (secret.length < 4) continue;
+  for (const secret of unique) {
     result = result.split(secret).join("<redacted>");
   }
   return result;
+}
+
+export function collectLogSecrets(
+  servers: Array<{
+    env?: Array<{ value?: string }>;
+    args?: string[];
+  }>
+): string[] {
+  const secrets: string[] = [];
+  for (const server of servers) {
+    for (const entry of server.env ?? []) {
+      const value = entry.value?.trim();
+      if (value && value.length >= 4) secrets.push(value);
+    }
+    for (const arg of server.args ?? []) {
+      const match = arg.match(SECRET_ARG_PATTERN);
+      const value = match?.[1]?.trim();
+      if (value && value.length >= 4) secrets.push(value);
+    }
+  }
+  return secrets;
 }
 
 export interface ResolvedCommand {
@@ -384,36 +414,53 @@ export interface ResolvedCommand {
   error?: "command_not_found" | "relative_path_rejected";
 }
 
-async function whichCommand(cmd: string): Promise<string | null> {
+function windowsPathExtensions(): string[] {
+  return (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((ext) => ext.trim())
+    .filter(Boolean)
+    .map((ext) => (ext.startsWith(".") ? ext : `.${ext}`));
+}
+
+function isAbsoluteCommand(command: string): boolean {
+  return path.isAbsolute(command) || path.win32.isAbsolute(command);
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
   try {
-    if (process.platform === "win32") {
-      const { stdout } = await execFileAsync("where", [cmd], {
-        encoding: "utf8",
-        timeout: 5000
-      });
-      return stdout.split("\n")[0]?.trim() || null;
-    } else {
-      const { stdout } = await execFileAsync("which", [cmd], {
-        encoding: "utf8",
-        timeout: 5000
-      });
-      return stdout.trim() || null;
-    }
+    await fs.promises.access(filePath, fs.constants.F_OK);
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
-function isRelativePath(p: string): boolean {
-  if (p.startsWith("./") || p.startsWith("../")) return true;
-  if (process.platform === "win32") {
-    if (p.startsWith(".\\") || p.startsWith("..\\")) return true;
+async function resolveExecutableFile(filePath: string): Promise<string | undefined> {
+  if (await fileExists(filePath)) return filePath;
+  if (process.platform !== "win32" || path.extname(filePath)) return undefined;
+  for (const ext of windowsPathExtensions()) {
+    const candidate = filePath + ext;
+    if (await fileExists(candidate)) return candidate;
   }
-  return false;
+  return undefined;
 }
 
-function hasPathSeparator(p: string): boolean {
-  return p.includes("/") || p.includes("\\");
+function findCommandOnPath(command: string): string | undefined {
+  const dirs = (process.env.PATH || process.env.Path || "")
+    .split(path.delimiter)
+    .map((dir) => dir.trim())
+    .filter(Boolean);
+  const suffixes =
+    process.platform === "win32" && !path.extname(command)
+      ? windowsPathExtensions()
+      : [""];
+  for (const dir of dirs) {
+    for (const suffix of suffixes) {
+      const candidate = path.join(dir, `${command}${suffix}`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
 }
 
 export async function resolveCommandPath(
@@ -421,58 +468,29 @@ export async function resolveCommandPath(
   cwd?: string
 ): Promise<ResolvedCommand> {
   const trimmed = command.trim();
+  if (!trimmed) return { command: trimmed, error: "command_not_found" };
 
-  if (isRelativePath(trimmed)) {
-    if (!cwd) {
+  if (!isAbsoluteCommand(trimmed) && (trimmed.startsWith(".") || /[\\/]/.test(trimmed))) {
+    if (!cwd?.trim()) {
       return { command: trimmed, error: "relative_path_rejected" };
     }
-    const resolved = path.resolve(cwd, trimmed);
-    if (fs.existsSync(resolved)) {
-      return { command: resolved };
-    }
-    if (process.platform === "win32") {
-      const pathext = (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";");
-      for (const ext of pathext) {
-        const withExt = resolved + ext.toLowerCase();
-        if (fs.existsSync(withExt)) {
-          return { command: withExt };
-        }
-      }
-    }
-    return { command: resolved, error: "command_not_found" };
+    const resolved = await resolveExecutableFile(path.resolve(cwd, trimmed));
+    return resolved
+      ? { command: resolved }
+      : { command: path.resolve(cwd, trimmed), error: "command_not_found" };
   }
 
-  if (hasPathSeparator(trimmed)) {
-    if (fs.existsSync(trimmed)) {
-      return { command: trimmed };
-    }
-    if (process.platform === "win32") {
-      const pathext = (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";");
-      for (const ext of pathext) {
-        const withExt = trimmed + ext.toLowerCase();
-        if (fs.existsSync(withExt)) {
-          return { command: withExt };
-        }
-      }
-    }
-    return { command: trimmed, error: "command_not_found" };
+  if (isAbsoluteCommand(trimmed)) {
+    const resolved = await resolveExecutableFile(trimmed);
+    return resolved
+      ? { command: resolved }
+      : { command: trimmed, error: "command_not_found" };
   }
 
-  const resolved = await whichCommand(trimmed);
-  if (resolved) {
-    return { command: resolved };
-  }
-
-  if (process.platform === "win32") {
-    for (const variant of [`${trimmed}.cmd`, `${trimmed}.bat`, `${trimmed}.exe`]) {
-      const variantResolved = await whichCommand(variant);
-      if (variantResolved) {
-        return { command: variantResolved };
-      }
-    }
-  }
-
-  return { command: trimmed, error: "command_not_found" };
+  const fromPath = findCommandOnPath(trimmed);
+  return fromPath
+    ? { command: fromPath }
+    : { command: trimmed, error: "command_not_found" };
 }
 
 export function substituteArgs(
@@ -515,7 +533,10 @@ export async function selfCheckUserMcpServer(
   const resolvedCommand = commandResolution.command;
   const resolvedArgs = substituteArgs(server.args, cwd);
   const resolvedEnv = resolveEnvForRuntime(server.env);
-  const secretValues = collectSecretValues(server.env);
+  const secretValues = [
+    ...collectSecretValues(server.env),
+    ...collectLogSecrets([{ args: resolvedArgs, env: Object.entries(resolvedEnv).map(([, value]) => ({ value })) }])
+  ];
 
   return new Promise((resolve) => {
     let finished = false;
@@ -587,6 +608,12 @@ export async function selfCheckUserMcpServer(
           try {
             const msg = JSON.parse(line);
             if (msg.jsonrpc === "2.0" && msg.id === 1 && msg.result) {
+              child.stdin.write(
+                JSON.stringify({
+                  jsonrpc: "2.0",
+                  method: "notifications/initialized"
+                }) + "\n"
+              );
               const listToolsRequest = {
                 jsonrpc: "2.0",
                 id: ++requestId,
@@ -630,7 +657,8 @@ export async function selfCheckUserMcpServer(
 
       logMain().info("mcp-self-check", "started", {
         serverId: id,
-        command: resolvedCommand
+        command: resolvedCommand,
+        args: resolvedArgs.map((arg) => redactSecrets(arg, secretValues))
       });
     } catch (err) {
       finish({
@@ -674,11 +702,12 @@ export interface AcpStdioMcpServerFromUser {
 
 export function userMcpServerToAcpFormat(
   server: UserMcpServer,
+  command: string,
   cwd?: string
 ): AcpStdioMcpServerFromUser {
   return {
     name: server.name,
-    command: server.command.trim(),
+    command,
     args: substituteArgs(server.args, cwd),
     env: Object.entries(resolveEnvForRuntime(server.env)).map(
       ([name, value]) => ({ name, value })
@@ -686,11 +715,55 @@ export function userMcpServerToAcpFormat(
   };
 }
 
-export function getEnabledUserMcpServersByIds(
+export interface ResolvedUserMcpServers {
+  servers: AcpStdioMcpServerFromUser[];
+  skipped: Array<{ id: string; name: string; reason: string }>;
+}
+
+export async function getEnabledUserMcpServersByIds(
   ids: string[],
   cwd?: string
-): AcpStdioMcpServerFromUser[] {
-  if (!ids.length) return [];
+): Promise<ResolvedUserMcpServers> {
+  if (!ids.length) return { servers: [], skipped: [] };
   const servers = getMcpServersByIds(ids).filter((s) => s.enabled);
-  return servers.map((server) => userMcpServerToAcpFormat(server, cwd));
+  const resolved: AcpStdioMcpServerFromUser[] = [];
+  const skipped: ResolvedUserMcpServers["skipped"] = [];
+  for (const server of servers) {
+    if (!cwd?.trim() && server.args.some((arg) => arg.includes("${cwd}"))) {
+      skipped.push({ id: server.id, name: server.name, reason: "cwd_required" });
+      continue;
+    }
+    const command = await resolveCommandPath(server.command, cwd);
+    if (command.error) {
+      skipped.push({
+        id: server.id,
+        name: server.name,
+        reason: command.error
+      });
+      continue;
+    }
+    resolved.push(userMcpServerToAcpFormat(server, command.command, cwd));
+  }
+  return { servers: resolved, skipped };
+}
+
+export function mcpConfigFingerprint(ids: string[]): string {
+  return JSON.stringify(
+    getMcpServersByIds(ids).map((server) => ({
+      id: server.id,
+      name: server.name,
+      command: server.command,
+      args: server.args,
+      enabled: server.enabled,
+      env: server.env.map((entry) => ({
+        name: entry.name,
+        secret: Boolean(entry.secret),
+        value: entry.secret ? entry.valueEncrypted ?? "" : entry.value ?? ""
+      }))
+    }))
+  );
+}
+
+export function isMcpSecretStorageEncrypted(): boolean {
+  return isSecretStorageAvailable();
 }

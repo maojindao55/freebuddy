@@ -11,6 +11,8 @@ export interface McpServerPickerProps {
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
   disabled?: boolean;
+  cwd?: string;
+  onOpenSettings?: () => void;
 }
 
 function McpServerCheckboxItem({
@@ -71,13 +73,14 @@ function McpServerCheckboxItem({
 export function McpServerPicker({
   selectedIds,
   onSelectionChange,
-  disabled = false
+  disabled = false,
+  cwd,
+  onOpenSettings
 }: McpServerPickerProps) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const { servers, loaded, load, selfCheck } = useMcpServerStore();
-  const prevSelectedRef = useRef<Set<string>>(new Set());
   const selfCheckInProgressRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -85,37 +88,6 @@ export function McpServerPicker({
       void load();
     }
   }, [loaded, load]);
-
-  // Auto self-check newly selected servers that haven't been checked recently
-  useEffect(() => {
-    if (!loaded) return;
-    const prevSelected = prevSelectedRef.current;
-    const currentSelected = new Set(selectedIds);
-    
-    // Find newly selected enabled servers that haven't been checked
-    const newlySelected = [...currentSelected].filter(
-      (id) => !prevSelected.has(id)
-    );
-    
-    for (const serverId of newlySelected) {
-      const server = servers.find((s) => s.id === serverId);
-      if (!server || !server.enabled) continue;
-      // Skip if already checked recently (within 5 minutes) or check in progress
-      if (selfCheckInProgressRef.current.has(serverId)) continue;
-      if (server.lastCheckedAt) {
-        const lastChecked = new Date(server.lastCheckedAt).getTime();
-        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-        if (lastChecked > fiveMinutesAgo) continue;
-      }
-      // Trigger self-check for newly selected server
-      selfCheckInProgressRef.current.add(serverId);
-      void selfCheck(serverId).finally(() => {
-        selfCheckInProgressRef.current.delete(serverId);
-      });
-    }
-    
-    prevSelectedRef.current = currentSelected;
-  }, [selectedIds, servers, loaded, selfCheck]);
 
   useEffect(() => {
     if (!open) return;
@@ -171,7 +143,33 @@ export function McpServerPicker({
       next.delete(serverId);
     }
     onSelectionChange([...next]);
+    if (!checked || !cwd?.trim()) return;
+    const server = servers.find((entry) => entry.id === serverId);
+    if (!server?.enabled || selfCheckInProgressRef.current.has(serverId)) return;
+    if (server.lastCheckedAt) {
+      const lastChecked = new Date(server.lastCheckedAt).getTime();
+      if (lastChecked > Date.now() - 5 * 60 * 1000) return;
+    }
+    selfCheckInProgressRef.current.add(serverId);
+    void selfCheck(serverId, cwd).finally(() => {
+      selfCheckInProgressRef.current.delete(serverId);
+    });
   };
+
+  if (loaded && servers.length === 0) {
+    return (
+      <button
+        className="mcp-picker-trigger"
+        type="button"
+        disabled={disabled}
+        onClick={onOpenSettings}
+        title={t("mcp.openSettings", "Configure MCP servers")}
+      >
+        <Server size={14} aria-hidden="true" />
+        <span className="mcp-picker-label">{t("mcp.configure", "MCP")}</span>
+      </button>
+    );
+  }
 
   if (servers.length === 0) {
     return null;
@@ -183,7 +181,7 @@ export function McpServerPicker({
         className={`mcp-picker-trigger${open ? " active" : ""}${selectedCount > 0 ? " has-selection" : ""}`}
         type="button"
         aria-label={t("mcp.pickerLabel", "MCP Servers")}
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         aria-expanded={open}
         title={t("mcp.pickerLabel", "MCP Servers")}
         disabled={disabled}
@@ -197,7 +195,7 @@ export function McpServerPicker({
       </button>
 
       {open && (
-        <div className="mcp-picker-popover" role="listbox" aria-label={t("mcp.selectServers", "Select MCP Servers")}>
+        <div className="mcp-picker-popover" role="group" aria-label={t("mcp.selectServers", "Select MCP Servers")}>
           <div className="mcp-picker-heading">
             <strong>{t("mcp.selectForSession", "MCP Servers")}</strong>
             <span>

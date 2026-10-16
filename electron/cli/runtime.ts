@@ -46,6 +46,7 @@ import {
   type Running
 } from "./runtimeShared.js";
 import { getConversationMcpServerIds } from "./conversations.js";
+import { mcpConfigFingerprint } from "./mcpServers.js";
 import { killProcessTree } from "./process-kill.js";
 import {
   ensureCodexChatBridge,
@@ -470,6 +471,7 @@ async function runCliAgent(
     env: Object.entries(spawnCommand.env).sort(([a], [b]) => a.localeCompare(b)),
     access: executionArgs.workspaceAccess, approval: executionArgs.approvalMode,
     mcpServerIds: mcpServerIds.slice().sort(),
+    mcpConfig: mcpConfigFingerprint(mcpServerIds),
   })).digest("hex");
   const reused = warmKey ? acpProcessPool.take(warmKey, warmFingerprint, toolSessionId) : undefined;
   const child = reused?.child ?? spawn(spawnCommand.bin, spawnCommand.args, {

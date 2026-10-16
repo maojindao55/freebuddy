@@ -282,6 +282,7 @@ import {
   setUserMcpServerEnabled,
   selfCheckUserMcpServer,
   isRemoteMcpAllowed,
+  isMcpSecretStorageEncrypted,
   type UserMcpServerInput
 } from "./mcpServers.js";
 
@@ -1410,10 +1411,12 @@ export function registerCliIpc() {
           transcript = undefined;
         }
       }
-      // Handoff carries source conversation's MCP selection by default, unless explicitly overridden
-      const mcpServerIds = Array.isArray(input.mcpServerIds)
-        ? input.mcpServerIds.filter((id): id is string => typeof id === "string")
-        : getConversationMcpServerIds(source.id);
+      // Remote callers cannot inherit or override host MCP servers.
+      const mcpServerIds = !isRemoteMcpAllowed()
+        ? []
+        : Array.isArray(input.mcpServerIds)
+          ? input.mcpServerIds.filter((id): id is string => typeof id === "string")
+          : getConversationMcpServerIds(source.id);
       const transferMetadata: Record<string, unknown> = {};
       if (mcpServerIds.length > 0) {
         transferMetadata.mcpServerIds = mcpServerIds;
@@ -1763,7 +1766,10 @@ export function registerCliIpc() {
     if (!isRemoteMcpAllowed()) {
       throw new Error("MCP servers are not available for remote users");
     }
-    return listUserMcpServers();
+    return {
+      servers: listUserMcpServers(),
+      secretStorageEncrypted: isMcpSecretStorageEncrypted()
+    };
   });
   registerHandler("mcpServers:get", (_e, id: string) => {
     if (!isRemoteMcpAllowed()) {

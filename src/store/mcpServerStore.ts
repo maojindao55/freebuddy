@@ -8,6 +8,7 @@ import type {
 
 interface McpServerStoreState {
   servers: UserMcpServer[];
+  secretStorageEncrypted: boolean;
   loaded: boolean;
   loading: boolean;
   error: string | null;
@@ -32,6 +33,7 @@ interface McpServerStoreState {
 
 export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
   servers: [],
+  secretStorageEncrypted: true,
   loaded: false,
   loading: false,
   error: null,
@@ -40,8 +42,13 @@ export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
     if (get().loading) return;
     set({ loading: true, error: null });
     try {
-      const servers = await cliClient.listUserMcpServers();
-      set({ servers, loaded: true, loading: false });
+      const result = await cliClient.listUserMcpServers();
+      set({
+        servers: result.servers,
+        secretStorageEncrypted: result.secretStorageEncrypted,
+        loaded: true,
+        loading: false
+      });
     } catch (err) {
       set({
         error: err instanceof Error ? err.message : "Failed to load MCP servers",
@@ -53,8 +60,12 @@ export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
   refresh: async () => {
     set({ error: null });
     try {
-      const servers = await cliClient.listUserMcpServers();
-      set({ servers, loaded: true });
+      const result = await cliClient.listUserMcpServers();
+      set({
+        servers: result.servers,
+        secretStorageEncrypted: result.secretStorageEncrypted,
+        loaded: true
+      });
     } catch (err) {
       set({
         error: err instanceof Error ? err.message : "Failed to refresh MCP servers"

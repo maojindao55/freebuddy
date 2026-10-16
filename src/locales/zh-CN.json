@@ -82,7 +82,10 @@
     "copied": "已复制",
     "copyFailed": "复制失败",
     "remove": "移除",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "back": "返回",
+    "loading": "加载中…",
+    "retry": "重试"
   },
   "remote": {
     "title": "共享访问",
@@ -726,7 +729,8 @@
     "briefExtractionFailed": "转接完成但未携带上下文，请手动告知新 agent。",
     "autoStartFailed": "新会话已创建，但自动启动失败：{{error}}",
     "mcpServers": "MCP 服务",
-    "mcpServersSelected": "已选 {{count}} 个服务器",
+    "mcpServersSelected_one": "已选 {{count}} 个服务器",
+    "mcpServersSelected_other": "已选 {{count}} 个服务器",
     "mcpServersNone": "未选择"
   },
   "importCodex": {
@@ -1231,7 +1235,7 @@
       "remote": "共享",
       "about": "关于",
       "providers": "服务商",
-      "mcp": "MCP 服务"
+      "mcp": "MCP 服务器"
     },
     "cli": {
       "title": "Cli Agents",
@@ -2582,12 +2586,15 @@
     "dragToReorder": "拖拽排序"
   },
   "mcp": {
-    "pickerLabel": "MCP 服务",
+    "pickerLabel": "MCP 服务器",
     "selectServers": "选择 MCP 服务器",
-    "selectForSession": "MCP 服务",
+    "selectForSession": "MCP 服务器",
     "noServersConfigured": "未配置 MCP 服务器",
     "disabledServersHidden": "已禁用的服务器已隐藏",
-    "disabledServersSkipped": "{{count}} 个已禁用的服务器将被跳过",
+    "disabledServersSkipped_one": "{{count}} 个已禁用的服务器将被跳过",
+    "disabledServersSkipped_other": "{{count}} 个已禁用的服务器将被跳过",
+    "configure": "配置 MCP",
+    "openSettings": "前往设置配置 MCP 服务器",
     "serverDisabled": "服务器已禁用",
     "serverDisabledWillSkip": "服务器已禁用，将被跳过",
     "lastCheckFailed": "上次检查失败：{{error}}",
@@ -2599,7 +2606,7 @@
     "notAvailableRemote": "远程用户无法使用 MCP 服务器"
   },
   "mcpServers": {
-    "title": "MCP 服务",
+    "title": "MCP 服务器",
     "description": "配置第三方 MCP（Model Context Protocol）服务器，扩展 Agent 的工具能力。这些服务器在对话中为 Agent 提供额外的工具。",
     "add": "添加服务器",
     "new": "新建 MCP 服务器",
@@ -2625,10 +2632,12 @@
     "argsHintPerLine": "每行一个参数。使用 ${cwd} 代表工作区路径。",
     "selfCheck": "自检",
     "runSelfCheck": "运行自检",
-    "selfCheckOk": "自检通过（{{count}} 个工具）",
+    "selfCheckOk_one": "自检通过（{{count}} 个工具）",
+    "selfCheckOk_other": "自检通过（{{count}} 个工具）",
     "checkAll": "全部检查",
     "tools": "可用工具",
-    "toolCount": "{{count}} 个工具",
+    "toolCount_one": "{{count}} 个工具",
+    "toolCount_other": "{{count}} 个工具",
     "stderr": "错误输出",
     "enable": "启用服务器",
     "disable": "禁用服务器",
@@ -2638,10 +2647,19 @@
     "lastCheckedAt": "上次检查：{{time}}",
     "errorDetail": "错误：{{error}}",
     "note": "MCP 服务器仅在本地桌面应用中可用，远程 WebUI 用户无法使用。",
+    "confirmLocalExec": "此命令将在本机执行",
+    "confirmDelete": "确认删除",
+    "secretStorageWarning": "系统加密不可用。机密值只做编码存储，并未加密。",
     "error": {
       "nameRequired": "服务器名称为必填项",
       "commandRequired": "命令为必填项",
-      "reservedPrefix": "服务器名称不能以 'freebuddy' 开头（保留前缀）"
+      "reservedPrefix": "服务器名称不能以 'freebuddy' 开头（保留前缀）",
+      "invalidName": "请使用 1–48 位字母、数字、下划线或连字符",
+      "duplicateName": "已存在同名服务器",
+      "saveFailed": "保存失败",
+      "deleteFailed": "删除失败",
+      "selfCheckFailed": "自检失败",
+      "confirmLocalExec": "请确认此命令将在本机执行"
     }
   },
   "conversationPanel": {

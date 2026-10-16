@@ -400,7 +400,10 @@ export function setConversationMcpServerIds(
 ): void {
   const conv = getConversation(id);
   if (!conv) return;
-  const metadata = { ...(conv.metadata || {}), mcpServerIds };
+  const cleanIds = mcpServerIds.filter(
+    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+  );
+  const metadata = { ...(conv.metadata || {}), mcpServerIds: cleanIds };
   getDb()
     .prepare("UPDATE conversations SET metadata = ?, updated_at = ? WHERE id = ?")
     .run(JSON.stringify(metadata), new Date().toISOString(), id);

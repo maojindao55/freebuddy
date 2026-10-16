@@ -21,7 +21,7 @@
 }
 
 .mcp-servers-description {
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
   font-size: 14px;
   margin: 0;
 }
@@ -46,23 +46,23 @@
 }
 
 .mcp-add-btn {
-  background: var(--primary, #3b82f6);
+  background: var(--fb-brand);
   color: white;
   border: none;
 }
 
 .mcp-add-btn:hover {
-  background: var(--primary-hover, #2563eb);
+  background: var(--fb-link);
 }
 
 .mcp-check-all-btn {
-  background: var(--bg-secondary, #f5f5f5);
-  color: var(--text-primary, #333);
-  border: 1px solid var(--border, #e5e5e5);
+  background: var(--fb-bg-secondary);
+  color: var(--fb-text-primary);
+  border: 1px solid var(--fb-border);
 }
 
 .mcp-check-all-btn:hover {
-  background: var(--bg-tertiary, #eee);
+  background: var(--fb-bg-hover);
 }
 
 .mcp-check-all-btn:disabled {
@@ -79,7 +79,7 @@
   justify-content: center;
   padding: 48px;
   text-align: center;
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
 }
 
 .mcp-loading {
@@ -90,8 +90,8 @@
 .mcp-error {
   flex-direction: row;
   gap: 8px;
-  color: var(--error, #ef4444);
-  background: var(--error-bg, #fef2f2);
+  color: var(--fb-danger);
+  background: var(--fb-danger-subtle);
   padding: 12px 16px;
   border-radius: 8px;
 }
@@ -100,15 +100,15 @@
   margin-left: auto;
   padding: 4px 12px;
   background: transparent;
-  border: 1px solid var(--error, #ef4444);
+  border: 1px solid var(--fb-danger);
   border-radius: 4px;
-  color: var(--error, #ef4444);
+  color: var(--fb-danger);
   cursor: pointer;
 }
 
 .mcp-empty h3 {
   margin: 16px 0 8px;
-  color: var(--text-primary, #333);
+  color: var(--fb-text-primary);
 }
 
 .mcp-empty p {
@@ -126,14 +126,14 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: var(--bg-secondary, #f9f9f9);
-  border: 1px solid var(--border, #e5e5e5);
+  background: var(--fb-bg-secondary);
+  border: 1px solid var(--fb-border);
   border-radius: 8px;
   transition: all 0.15s ease;
 }
 
 .mcp-server-item:hover {
-  background: var(--bg-tertiary, #f5f5f5);
+  background: var(--fb-bg-hover);
 }
 
 .mcp-server-item.disabled {
@@ -152,20 +152,20 @@
 }
 
 .mcp-status-dot.ok {
-  background: var(--success, #22c55e);
+  background: var(--fb-brand);
 }
 
 .mcp-status-dot.error {
-  background: var(--error, #ef4444);
+  background: var(--fb-danger);
 }
 
 .mcp-status-dot.unknown {
-  background: var(--text-tertiary, #999);
+  background: var(--fb-text-tertiary);
 }
 
 .mcp-status-dot.checking {
   animation: spin 1s linear infinite;
-  color: var(--primary, #3b82f6);
+  color: var(--fb-brand);
 }
 
 .mcp-server-info {
@@ -181,7 +181,7 @@
 
 .mcp-server-command {
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
   font-family: ui-monospace, monospace;
   white-space: nowrap;
   overflow: hidden;
@@ -190,7 +190,7 @@
 
 .mcp-server-tools-count {
   font-size: 11px;
-  color: var(--text-tertiary, #999);
+  color: var(--fb-text-tertiary);
   margin-top: 2px;
 }
 
@@ -210,23 +210,23 @@
   border-radius: 6px;
   border: none;
   background: transparent;
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .mcp-server-check:hover,
 .mcp-server-toggle:hover {
-  background: var(--bg-tertiary, #eee);
-  color: var(--text-primary, #333);
+  background: var(--fb-bg-hover);
+  color: var(--fb-text-primary);
 }
 
 .mcp-server-toggle.on {
-  color: var(--success, #22c55e);
+  color: var(--fb-brand);
 }
 
 .mcp-server-toggle.off {
-  color: var(--text-tertiary, #999);
+  color: var(--fb-text-tertiary);
 }
 
 .mcp-server-check:disabled {
@@ -237,10 +237,10 @@
 .mcp-servers-note {
   margin-top: 24px;
   padding: 12px 16px;
-  background: var(--info-bg, #eff6ff);
+  background: var(--fb-brand-glow);
   border-radius: 8px;
   font-size: 13px;
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
 }
 
 .mcp-servers-note p {
@@ -266,13 +266,13 @@
   padding: 4px 8px;
   background: transparent;
   border: none;
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
   cursor: pointer;
   font-size: 14px;
 }
 
 .mcp-editor-back:hover {
-  color: var(--text-primary, #333);
+  color: var(--fb-text-primary);
 }
 
 .mcp-editor-header h3 {
@@ -296,41 +296,41 @@
 .mcp-form-group label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary, #333);
+  color: var(--fb-text-primary);
 }
 
 .mcp-form-group input[type="text"],
 .mcp-form-group input[type="password"] {
   padding: 8px 12px;
-  border: 1px solid var(--border, #e5e5e5);
+  border: 1px solid var(--fb-border);
   border-radius: 6px;
   font-size: 14px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #333);
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
 }
 
 .mcp-form-group input:focus,
 .mcp-form-group textarea:focus {
   outline: none;
-  border-color: var(--primary, #3b82f6);
-  box-shadow: 0 0 0 2px var(--primary-light, rgba(59, 130, 246, 0.2));
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 2px var(--fb-brand-glow);
 }
 
 .mcp-args-textarea {
   padding: 8px 12px;
-  border: 1px solid var(--border, #e5e5e5);
+  border: 1px solid var(--fb-border);
   border-radius: 6px;
   font-size: 14px;
   font-family: ui-monospace, monospace;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #333);
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
   resize: vertical;
   min-height: 60px;
 }
 
 .mcp-form-hint {
   font-size: 12px;
-  color: var(--text-tertiary, #999);
+  color: var(--fb-text-tertiary);
   margin: 0;
 }
 
@@ -369,7 +369,7 @@
   padding: 4px;
   background: transparent;
   border: none;
-  color: var(--text-tertiary, #999);
+  color: var(--fb-text-tertiary);
   cursor: pointer;
 }
 
@@ -383,11 +383,11 @@
 
 .mcp-env-toggle-secret:hover,
 .mcp-env-clear-secret:hover {
-  color: var(--text-primary, #333);
+  color: var(--fb-text-primary);
 }
 
 .mcp-env-clear-secret:hover {
-  color: var(--error, #ef4444);
+  color: var(--fb-danger);
 }
 
 .mcp-env-secret-label {
@@ -395,7 +395,7 @@
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
   white-space: nowrap;
 }
 
@@ -407,12 +407,12 @@
   padding: 4px;
   background: transparent;
   border: none;
-  color: var(--text-tertiary, #999);
+  color: var(--fb-text-tertiary);
   cursor: pointer;
 }
 
 .mcp-env-remove:hover {
-  color: var(--error, #ef4444);
+  color: var(--fb-danger);
 }
 
 .mcp-env-add {
@@ -421,16 +421,16 @@
   gap: 4px;
   padding: 6px 10px;
   background: transparent;
-  border: 1px dashed var(--border, #e5e5e5);
+  border: 1px dashed var(--fb-border);
   border-radius: 6px;
-  color: var(--text-secondary, #666);
+  color: var(--fb-text-secondary);
   font-size: 13px;
   cursor: pointer;
 }
 
 .mcp-env-add:hover {
-  border-color: var(--primary, #3b82f6);
-  color: var(--primary, #3b82f6);
+  border-color: var(--fb-brand);
+  color: var(--fb-brand);
 }
 
 .mcp-self-check {
@@ -444,8 +444,8 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: var(--bg-secondary, #f5f5f5);
-  border: 1px solid var(--border, #e5e5e5);
+  background: var(--fb-bg-secondary);
+  border: 1px solid var(--fb-border);
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
@@ -453,7 +453,7 @@
 }
 
 .mcp-self-check-btn:hover {
-  background: var(--bg-tertiary, #eee);
+  background: var(--fb-bg-hover);
 }
 
 .mcp-self-check-btn:disabled {
@@ -471,17 +471,17 @@
 }
 
 .mcp-self-check-result.ok {
-  background: var(--success-bg, #f0fdf4);
-  color: var(--success, #22c55e);
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
 }
 
 .mcp-self-check-result.error {
-  background: var(--error-bg, #fef2f2);
-  color: var(--error, #ef4444);
+  background: var(--fb-danger-subtle);
+  color: var(--fb-danger);
 }
 
 .mcp-tools-list {
-  background: var(--bg-secondary, #f5f5f5);
+  background: var(--fb-bg-secondary);
   border-radius: 6px;
   padding: 12px;
 }
@@ -505,7 +505,7 @@
 }
 
 .mcp-stderr {
-  background: var(--bg-secondary, #f5f5f5);
+  background: var(--fb-bg-secondary);
   border-radius: 6px;
   padding: 12px;
 }
@@ -529,8 +529,8 @@
 
 .mcp-form-error {
   padding: 12px;
-  background: var(--error-bg, #fef2f2);
-  color: var(--error, #ef4444);
+  background: var(--fb-danger-subtle);
+  color: var(--fb-danger);
   border-radius: 6px;
   font-size: 13px;
 }
@@ -540,7 +540,7 @@
   align-items: center;
   gap: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--border, #e5e5e5);
+  border-top: 1px solid var(--fb-border);
 }
 
 .mcp-form-actions-right {
@@ -564,38 +564,59 @@
 
 .mcp-delete-btn {
   background: transparent;
-  border: 1px solid var(--error, #ef4444);
-  color: var(--error, #ef4444);
+  border: 1px solid var(--fb-danger);
+  color: var(--fb-danger);
 }
 
 .mcp-delete-btn:hover {
-  background: var(--error-bg, #fef2f2);
+  background: var(--fb-danger-subtle);
 }
 
 .mcp-cancel-btn {
   background: transparent;
-  border: 1px solid var(--border, #e5e5e5);
-  color: var(--text-primary, #333);
+  border: 1px solid var(--fb-border);
+  color: var(--fb-text-primary);
 }
 
 .mcp-cancel-btn:hover {
-  background: var(--bg-secondary, #f5f5f5);
+  background: var(--fb-bg-secondary);
 }
 
 .mcp-save-btn {
-  background: var(--primary, #3b82f6);
+  background: var(--fb-brand);
   border: none;
   color: white;
 }
 
 .mcp-save-btn:hover {
-  background: var(--primary-hover, #2563eb);
+  background: var(--fb-link);
 }
 
 .mcp-save-btn:disabled,
 .mcp-delete-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.mcp-storage-warning,
+.mcp-local-exec-ack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fb-text-secondary);
+}
+
+.mcp-storage-warning {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--fb-bg-warning-subtle);
+  color: var(--fb-warning);
+}
+
+.mcp-local-exec-ack {
+  margin-right: auto;
 }
 
 .spinning {

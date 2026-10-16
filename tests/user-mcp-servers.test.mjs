@@ -2,6 +2,7 @@ import "./fixtures/electron-stub.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import ts from "typescript";
 
 // better-sqlite3 is a native binding compiled for either Electron or Node.
@@ -208,14 +209,14 @@ test("MCP server name must be unique (case-insensitive)", async (t) => {
   );
 
   createUserMcpServer({
-    name: "My Server",
+    name: "MyServer",
     command: "npx",
   });
 
   assert.throws(
     () => {
       createUserMcpServer({
-        name: "my server",
+        name: "myserver",
         command: "npx",
       });
     },
@@ -226,12 +227,21 @@ test("MCP server name must be unique (case-insensitive)", async (t) => {
   assert.throws(
     () => {
       createUserMcpServer({
-        name: "MY SERVER",
+        name: "MYSERVER",
         command: "npx",
       });
     },
     /already exists/i,
     "Should reject duplicate names with different case"
+  );
+
+  assert.throws(
+    () => createUserMcpServer({ name: "has space", command: "npx" }),
+    /must match/i
+  );
+  assert.throws(
+    () => createUserMcpServer({ name: "", command: "npx" }),
+    /must match/i
   );
 });
 
@@ -294,19 +304,21 @@ test("getEnabledUserMcpServersByIds only returns enabled servers", async (t) => 
 
   const server1 = createUserMcpServer({
     name: "enabled-server",
-    command: "npx",
+    command: process.execPath,
     enabled: true,
   });
   const server2 = createUserMcpServer({
     name: "disabled-server",
-    command: "npx",
+    command: process.execPath,
     enabled: true,
   });
   setUserMcpServerEnabled(server2.id, false);
 
-  const result = getEnabledUserMcpServersByIds([server1.id, server2.id]);
-  assert.equal(result.length, 1);
-  assert.equal(result[0].name, "enabled-server");
+  const result = await getEnabledUserMcpServersByIds([server1.id, server2.id]);
+  assert.equal(result.servers.length, 1);
+  assert.equal(result.servers[0].name, "enabled-server");
+  assert.equal(path.isAbsolute(result.servers[0].command), true);
+  assert.equal(result.skipped.length, 0);
 });
 
 // Test 6: Secret env value redaction
@@ -497,6 +509,11 @@ test("MCP config is included in warm fingerprint", () => {
     /mcpServerIds:.*\.sort\(\)/,
     "Should include sorted MCP server IDs in fingerprint"
   );
+  assert.match(
+    runtimeSource,
+    /mcpConfig:\s*mcpConfigFingerprint\(mcpServerIds\)/,
+    "Should include MCP config in the warm fingerprint"
+  );
 });
 
 // Test 15: MCP tab is hidden for non-owner remote users
@@ -635,8 +652,8 @@ test("MCP editor preserves stored secrets on rename", () => {
   // Should preserve secret when name unchanged
   assert.match(
     editorSource,
-    /hasStoredSecret && e\.originalName === e\.name/,
-    "Should preserve secret when name unchanged"
+    /previousName: e\.originalName/,
+    "Should keep the stored secret when the env name changes"
   );
 
   // Should have clear secret button
@@ -645,4 +662,103 @@ test("MCP editor preserves stored secrets on rename", () => {
     /handleClearSecretValue/,
     "Should have clear secret function"
   );
+});
+
+test("session request logs redact decrypted env values and secret-looking args", async () => {
+  const { collectLogSecrets, redactSecrets } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const servers = [
+    {
+      name: "db",
+      command: "/usr/bin/npx",
+      args: ["--token=abcdefgh12345", "serve"],
+      env: [
+        { name: "DATABASE_URL", value: "postgres://u:hunter2@h/db" },
+        { name: "GH_PAT", value: "ghp_supersecretvalue" },
+        { name: "API_KEY", value: "sk-live-secret" }
+      ]
+    }
+  ];
+  const secrets = collectLogSecrets(servers);
+  const payload = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "session/new",
+    params: { mcpServers: servers }
+  });
+  const redacted = redactSecrets(payload, secrets);
+  assert.equal(redacted.includes("hunter2"), false);
+  assert.equal(redacted.includes("ghp_supersecretvalue"), false);
+  assert.equal(redacted.includes("abcdefgh12345"), false);
+  assert.equal(redacted.includes("sk-live-secret"), false);
+  assert.match(redacted, /<redacted>/);
+  assert.match(redacted, /DATABASE_URL/);
+  assert.match(redacted, /session\/new/);
+});
+
+test("renaming a secret env var keeps the stored ciphertext", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createUserMcpServer, updateUserMcpServer, getUserMcpServer } =
+    await import("../dist-electron/cli/mcpServers.js");
+  const { decryptSecret } = await import("../dist-electron/cli/store.js");
+  const created = createUserMcpServer({
+    name: "secret-rename",
+    command: "npx",
+    env: [{ name: "API_KEY", value: "s3cr3t-value-XYZ", secret: true }]
+  });
+  const stored = getUserMcpServer(created.id);
+  assert.equal(stored.env[0].value, undefined);
+  assert.equal(stored.env[0].hasValue, true);
+  const updated = updateUserMcpServer(created.id, {
+    env: [{ name: "API_TOKEN", secret: true, previousName: "API_KEY" }]
+  });
+  assert.equal(updated.env[0].name, "API_TOKEN");
+  assert.equal(updated.env[0].hasValue, true);
+  const row = (await import("../dist-electron/cli/db.js")).getDb()
+    .prepare("SELECT env FROM user_mcp_servers WHERE id = ?")
+    .get(created.id);
+  const env = JSON.parse(row.env);
+  assert.equal(decryptSecret(env[0].valueEncrypted), "s3cr3t-value-XYZ");
+});
+
+test("runtime skips unresolved commands and literal cwd placeholders", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createUserMcpServer, getEnabledUserMcpServersByIds } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const missing = createUserMcpServer({
+    name: "missing-bin",
+    command: "definitely-not-a-command-12345"
+  });
+  const needsCwd = createUserMcpServer({
+    name: "needs-cwd",
+    command: process.execPath,
+    args: ["${cwd}"]
+  });
+  const resolved = await getEnabledUserMcpServersByIds([missing.id, needsCwd.id]);
+  assert.equal(resolved.servers.length, 0);
+  assert.deepEqual(
+    resolved.skipped.map((item) => item.reason).sort(),
+    ["command_not_found", "cwd_required"]
+  );
+});
+
+test("remote guard strips mcpServerIds from run and transfer", () => {
+  const guard = fs.readFileSync(
+    new URL("cli/remoteInvokeGuard.ts", electronDir),
+    "utf8"
+  );
+  assert.match(guard, /channel === "cli:run"\) delete next\.mcpServerIds/);
+  assert.match(guard, /channel === "cli:transferConversation"/);
+  assert.match(guard, /delete next\.mcpServerIds/);
+  const ipc = fs.readFileSync(new URL("cli/ipc.ts", electronDir), "utf8");
+  assert.match(ipc, /!isRemoteMcpAllowed\(\)/);
 });

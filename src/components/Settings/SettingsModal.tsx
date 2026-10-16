@@ -134,7 +134,9 @@ function SettingsContent({
 
   const hiddenTabs = useMemo<SettingsTab[]>(() => {
     const hidden: SettingsTab[] = [];
-    if (currentUser && !currentUser.isOwner) {
+    const remoteWeb =
+      typeof window !== "undefined" && window.freebuddy?.platform === "web";
+    if (remoteWeb || (currentUser && !currentUser.isOwner)) {
       hidden.push("mcp");
     }
     return hidden;

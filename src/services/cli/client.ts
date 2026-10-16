@@ -482,9 +482,14 @@ export const cliClient = {
   },
 
   // ---- User MCP Servers ----
-  listUserMcpServers(): Promise<import("./types").UserMcpServer[]> {
+  listUserMcpServers(): Promise<{
+    servers: import("./types").UserMcpServer[];
+    secretStorageEncrypted: boolean;
+  }> {
     const mcpServers = window.freebuddy?.mcpServers;
-    if (!mcpServers) return Promise.resolve([]);
+    if (!mcpServers) {
+      return Promise.resolve({ servers: [], secretStorageEncrypted: true });
+    }
     return mcpServers.list();
   },
   getUserMcpServer(id: string): Promise<import("./types").UserMcpServer | undefined> {

@@ -351,44 +351,82 @@ test("collectSecretValues and redactSecrets work correctly", async (t) => {
   assert.ok(redacted.includes("<redacted>"));
 });
 
-// Test 7: Delegation runtime does not pass mcpServerIds to child agents
-test("delegation runtime does not pass mcpServerIds to child agents", () => {
-  const delegationRuntimeSource = fs.readFileSync(
-    new URL("cli/delegationRuntime.ts", electronDir),
-    "utf8"
+test("delegated and workflow runs do not inherit conversation user MCP servers", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+
+  await makeDbWithMigration();
+  const { createConversation, setConversationMcpServerIds } = await import(
+    "../dist-electron/cli/conversations.js"
+  );
+  const { createUserMcpServer, resolveConversationUserMcpServers } = await import(
+    "../dist-electron/cli/mcpServers.js"
   );
 
-  // The delegation runtime's runAgentTurn should NOT include mcpServerIds
-  const runAgentMatch = delegationRuntimeSource.match(
-    /this\.deps\.runAgent\(\{[\s\S]*?\}\)/
-  );
-  assert.ok(runAgentMatch, "Should find runAgent call in delegationRuntime");
-  assert.doesNotMatch(
-    runAgentMatch[0],
-    /mcpServerIds/,
-    "runAgent call should not include mcpServerIds - delegation should not inherit MCP selection"
-  );
+  const server = createUserMcpServer({
+    name: "parent-only",
+    command: process.execPath,
+    enabled: true,
+  });
+  createConversation({
+    id: "conv-inherit",
+    title: "Parent",
+    agentId: "agent-1",
+    agentName: "Parent",
+    adapter: "codex",
+  });
+  setConversationMcpServerIds("conv-inherit", [server.id]);
+
+  const normal = await resolveConversationUserMcpServers({
+    conversationId: "conv-inherit",
+    toolSessionScope: "task-cwd",
+  });
+  assert.equal(normal.servers.length, 1);
+  assert.equal(normal.servers[0].name, "parent-only");
+  assert.equal(normal.skipped.length, 0);
+
+  const delegated = await resolveConversationUserMcpServers({
+    conversationId: "conv-inherit",
+    delegation: { runId: "run-1", parentEventId: "ev", depth: 1, selfAgentId: "child", selfLabel: "Child" },
+    toolSessionScope: "delegate:run-1",
+  });
+  assert.deepEqual(delegated.servers, []);
+  assert.deepEqual(delegated.skipped, []);
+
+  const workflow = await resolveConversationUserMcpServers({
+    conversationId: "conv-inherit",
+    toolSessionScope: "workflow:run-1:step-1:agent-1",
+  });
+  assert.deepEqual(workflow.servers, []);
+  assert.deepEqual(workflow.skipped, []);
 });
 
-// Test 8: ACP runtime reads MCP server IDs from database
-test("ACP runtime reads MCP server IDs from database (not from args)", () => {
+test("ACP runtime resolves user MCP through the inheritance gate", () => {
   const acpRuntimeSource = fs.readFileSync(
     new URL("cli/acpRuntime.ts", electronDir),
     "utf8"
   );
-
-  // Should import getConversationMcpServerIds
   assert.match(
     acpRuntimeSource,
-    /import.*getConversationMcpServerIds.*from.*conversations/,
-    "Should import getConversationMcpServerIds from conversations"
+    /resolveConversationUserMcpServers\s*\(/,
+    "Should resolve user MCP through the shared gate"
   );
-
-  // Should call getConversationMcpServerIds with conversationId
   assert.match(
     acpRuntimeSource,
-    /getConversationMcpServerIds\s*\(\s*args\.conversationId\s*\)/,
-    "Should read MCP server IDs from database using conversation ID"
+    /delegation:\s*args\.delegation/,
+    "Should pass delegation into the gate"
+  );
+  assert.match(
+    acpRuntimeSource,
+    /toolSessionScope:\s*args\.toolSessionScope/,
+    "Should pass the tool session scope into the gate"
+  );
+  assert.doesNotMatch(
+    acpRuntimeSource,
+    /args\.mcpServerIds/,
+    "Should not trust renderer-supplied MCP ids"
   );
 });
 
@@ -591,11 +629,30 @@ test("acpRuntime redacts secrets from log messages", () => {
     "Should track MCP secret values"
   );
 
-  // Should apply redaction to log messages
   assert.match(
     acpRuntimeSource,
-    /redactSecrets\(logContent, mcpSecretValues\)/,
-    "Should apply redaction to stdin log"
+    /redactSecrets\(text, mcpSecretValues\)/,
+    "Should redact tracked MCP secret values"
+  );
+  assert.match(
+    acpRuntimeSource,
+    /appendLog\(logStream, "stdin", redactMcpLog\(logContent\)\)/,
+    "Should redact stdin session logs"
+  );
+  assert.match(
+    acpRuntimeSource,
+    /appendLog\(logStream, "stdout", safeLine\)/,
+    "Should redact non-JSON stdout logs"
+  );
+  assert.match(
+    acpRuntimeSource,
+    /appendLog\(logStream, "stdout", redactMcpLog\(compactAcpStdoutLine\(line\)\)\)/,
+    "Should redact ACP stdout logs"
+  );
+  assert.match(
+    acpRuntimeSource,
+    /appendLog\(logStream, "stderr", safeLine\)/,
+    "Should redact stderr logs"
   );
 });
 
@@ -694,6 +751,131 @@ test("session request logs redact decrypted env values and secret-looking args",
   assert.match(redacted, /<redacted>/);
   assert.match(redacted, /DATABASE_URL/);
   assert.match(redacted, /session\/new/);
+});
+
+test("redactSecrets replaces JSON-escaped quotes and backslashes", async () => {
+  const { redactSecrets } = await import("../dist-electron/cli/mcpServers.js");
+  const secret = 'pa"ss\\word\\path';
+  const payload = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "session/new",
+    params: { mcpServers: [{ env: [{ name: "TOKEN", value: secret }] }] },
+  });
+  const escaped = JSON.stringify(secret).slice(1, -1);
+  assert.notEqual(escaped, secret);
+  const combined = `${payload}\nraw ${secret}`;
+  assert.equal(combined.includes(secret), true);
+  assert.equal(combined.includes(escaped), true);
+  const redacted = redactSecrets(combined, [secret]);
+  assert.equal(redacted.includes(secret), false);
+  assert.equal(redacted.includes(escaped), false);
+  assert.match(redacted, /<redacted>/);
+  assert.match(redacted, /session\/new/);
+});
+
+test("user MCP name collisions keep going until the name is unique", async () => {
+  const { uniqueUserMcpServerName } = await import("../dist-electron/cli/mcpServers.js");
+  const taken = new Set(["office-engine", "db", "db-user", "db-user-2"]);
+  assert.equal(uniqueUserMcpServerName("office-engine", taken), "office-engine-user");
+  assert.equal(uniqueUserMcpServerName("db", taken), "db-user-3");
+  assert.equal(uniqueUserMcpServerName("fresh", taken), "fresh");
+  const crowded = new Set(["tool", "tool-user"]);
+  assert.equal(uniqueUserMcpServerName("Tool", crowded), "Tool-user-2");
+});
+
+test("self-check keeps the true stderr tail and still parses a flooded stdout", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createUserMcpServer, selfCheckUserMcpServer } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const script = `
+let b = "";
+process.stderr.write("A".repeat(20 * 1024) + "TAILMARKER");
+process.stdout.write("Y".repeat(200 * 1024) + "\\n");
+process.stdin.on("data", (c) => {
+  b += c;
+  let i;
+  while ((i = b.indexOf("\\n")) >= 0) {
+    const l = b.slice(0, i);
+    b = b.slice(i + 1);
+    if (!l.trim()) continue;
+    let m;
+    try { m = JSON.parse(l); } catch { continue; }
+    if (m.method === "initialize") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "t", version: "0" } } }) + "\\n");
+    } else if (m.method === "tools/list") {
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: m.id, result: { tools: [{ name: "ping" }] } }) + "\\n");
+      setTimeout(() => process.exit(0), 30);
+    }
+  }
+});
+`;
+  const server = createUserMcpServer({
+    name: "stdio-cap",
+    command: process.execPath,
+    args: ["-e", script],
+    enabled: true,
+  });
+  const result = await selfCheckUserMcpServer(server.id);
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.tools, ["ping"]);
+  assert.equal(typeof result.stderr, "string");
+  assert.ok(result.stderr.endsWith("TAILMARKER"));
+  assert.ok(result.stderr.length <= 8 * 1024);
+  assert.equal(result.stderr.includes("A".repeat(9 * 1024)), false);
+});
+
+test("a send waits until the in-flight MCP selection write settles", async () => {
+  const source = fs.readFileSync(
+    new URL("../src/services/cli/pendingMcpSelection.ts", import.meta.url),
+    "utf8"
+  );
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const mod = await import(
+    `data:text/javascript;base64,${Buffer.from(transpiled).toString("base64")}`
+  );
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const order = [];
+  const first = mod.trackMcpSelectionWrite("conv-race", () =>
+    firstGate.then(() => {
+      order.push("first");
+    })
+  );
+  let secondStarted = false;
+  const second = mod.trackMcpSelectionWrite("conv-race", () => {
+    secondStarted = true;
+    order.push("second");
+    return Promise.resolve();
+  });
+  await Promise.resolve();
+  assert.equal(secondStarted, false);
+  let sent = false;
+  const send = mod.awaitPendingMcpSelection("conv-race").then(() => {
+    sent = true;
+  });
+  await Promise.resolve();
+  assert.equal(sent, false);
+  releaseFirst();
+  await first;
+  await second;
+  await send;
+  assert.deepEqual(order, ["first", "second"]);
+  assert.equal(sent, true);
+
+  mod.trackMcpSelectionWrite("conv-fail", () => Promise.reject(new Error("ipc failed")));
+  await mod.awaitPendingMcpSelection("conv-fail");
 });
 
 test("renaming a secret env var keeps the stored ciphertext", async (t) => {

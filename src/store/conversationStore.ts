@@ -1523,6 +1523,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
 
     try {
+      await cliClient.awaitPendingMcpSelection(conversationId);
       await cliClient.run(runArgs);
     } catch (err) {
       const msg = (err as Error)?.message || String(err);

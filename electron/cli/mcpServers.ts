@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { nanoid } from "nanoid";
 import { getDb } from "./db.js";
+import { getConversationMcpServerIds } from "./conversations.js";
 import { encryptSecret, decryptSecret, redactApiKey, isSecretStorageAvailable } from "./store.js";
 import { logMain } from "../debugLog.js";
 import { isCallerAdmin, getCallerUserId } from "./callerContext.js";
@@ -376,13 +377,23 @@ export function collectSecretValues(env: UserMcpServerEnvVar[]): string[] {
   return secrets.filter((s) => s.length >= 4);
 }
 
+function jsonStringContents(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
+}
+
 export function redactSecrets(text: string, secrets: string[]): string {
-  if (!secrets.length) return text;
-  const unique = [...new Set(secrets.filter((s) => s.length >= 4))].sort(
-    (a, b) => b.length - a.length
-  );
+  if (!secrets.length || !text) return text;
+  const needles = new Set<string>();
+  for (const secret of secrets) {
+    if (secret.length < 4) continue;
+    needles.add(secret);
+    const escaped = jsonStringContents(secret);
+    if (escaped.length >= 4) needles.add(escaped);
+  }
+  const unique = [...needles].sort((a, b) => b.length - a.length);
   let result = text;
   for (const secret of unique) {
+    if (!result.includes(secret)) continue;
     result = result.split(secret).join("<redacted>");
   }
   return result;
@@ -503,6 +514,14 @@ export function substituteArgs(
 
 const MAX_STDERR_BYTES = 8 * 1024;
 
+/** Keep the true tail of a stdio capture. A full chunk larger than the cap replaces the buffer. */
+export function appendCappedTail(buffer: string, chunk: string, maxChars: number): string {
+  if (maxChars <= 0) return "";
+  if (chunk.length >= maxChars) return chunk.slice(-maxChars);
+  const next = buffer + chunk;
+  return next.length <= maxChars ? next : next.slice(-maxChars);
+}
+
 export async function selfCheckUserMcpServer(
   id: string,
   cwd?: string
@@ -595,14 +614,13 @@ export async function selfCheckUserMcpServer(
       });
 
       child.stderr.on("data", (data: Buffer) => {
-        if (stderr.length < MAX_STDERR_BYTES * 2) {
-          stderr += data.toString();
-        }
+        stderr = appendCappedTail(stderr, data.toString(), MAX_STDERR_BYTES);
       });
 
       child.stdout.on("data", (data: Buffer) => {
-        stdout += data.toString();
+        stdout = appendCappedTail(stdout, data.toString(), MAX_STDERR_BYTES);
         const lines = stdout.split("\n");
+        stdout = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
@@ -640,7 +658,6 @@ export async function selfCheckUserMcpServer(
             // Not a complete JSON line yet
           }
         }
-        stdout = lines[lines.length - 1] || "";
       });
 
       const initRequest = {
@@ -745,6 +762,42 @@ export async function getEnabledUserMcpServersByIds(
     resolved.push(userMcpServerToAcpFormat(server, command.command, cwd));
   }
   return { servers: resolved, skipped };
+}
+
+/** Delegated sub-agents and workflow steps must not inherit the parent conversation's user MCP servers. */
+export function shouldAttachUserMcpServers(input: {
+  delegation?: unknown;
+  toolSessionScope?: string;
+}): boolean {
+  if (input.delegation) return false;
+  return !input.toolSessionScope?.startsWith("workflow:");
+}
+
+export async function resolveConversationUserMcpServers(input: {
+  conversationId?: string;
+  cwd?: string;
+  delegation?: unknown;
+  toolSessionScope?: string;
+}): Promise<ResolvedUserMcpServers> {
+  if (!shouldAttachUserMcpServers(input) || !input.conversationId) {
+    return { servers: [], skipped: [] };
+  }
+  return getEnabledUserMcpServersByIds(
+    getConversationMcpServerIds(input.conversationId),
+    input.cwd
+  );
+}
+
+/** First collision becomes `name-user`, then `name-user-2`, `name-user-3`, ... */
+export function uniqueUserMcpServerName(name: string, takenNames: ReadonlySet<string>): string {
+  if (!takenNames.has(name.toLowerCase())) return name;
+  let n = 1;
+  let candidate = `${name}-user`;
+  while (takenNames.has(candidate.toLowerCase())) {
+    n += 1;
+    candidate = `${name}-user-${n}`;
+  }
+  return candidate;
 }
 
 export function mcpConfigFingerprint(ids: string[]): string {

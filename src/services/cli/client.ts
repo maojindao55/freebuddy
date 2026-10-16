@@ -60,6 +60,10 @@ import type {
 } from "./types";
 import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 import { addPluginHostCompatibility } from "@/utils/pluginMentions";
+import {
+  awaitPendingMcpSelection as waitForMcpSelectionWrite,
+  trackMcpSelectionWrite
+} from "./pendingMcpSelection";
 
 function api() {
   const cli = window.freebuddy?.cli;
@@ -341,7 +345,12 @@ export const cliClient = {
     return api().getConversationMcpServerIds(conversationId);
   },
   setConversationMcpServerIds(id: string, mcpServerIds: string[]): Promise<void> {
-    return api().setConversationMcpServerIds(id, mcpServerIds);
+    return trackMcpSelectionWrite(id, () =>
+      api().setConversationMcpServerIds(id, mcpServerIds)
+    );
+  },
+  awaitPendingMcpSelection(conversationId: string): Promise<void> {
+    return waitForMcpSelectionWrite(conversationId);
   },
   listMessages(
     conversationId: string,

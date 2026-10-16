@@ -2781,7 +2781,7 @@ test("ACP runtime logs compacted stdout and skips replayed session updates", () 
   assert.match(acpRuntimeSource, /compactAcpStdoutLine/);
   assert.match(
     acpRuntimeSource,
-    /appendLog\(\s*logStream,\s*"stdout",\s*compactAcpStdoutLine\(line\)/
+    /appendLog\(\s*logStream,\s*"stdout",\s*redactMcpLog\(compactAcpStdoutLine\(line\)\)/
   );
   assert.doesNotMatch(
     acpRuntimeSource,

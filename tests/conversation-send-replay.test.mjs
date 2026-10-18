@@ -72,6 +72,7 @@ async function loadConversationStoreHarness() {
       },
       updateMessage: async () => undefined,
       onEvent: () => () => {},
+      awaitPendingMcpSelection: async () => {},
       run: async (args) => {
         capturedRunArgs = args;
       }

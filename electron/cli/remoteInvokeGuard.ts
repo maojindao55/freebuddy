@@ -145,6 +145,7 @@ export function guardRemoteInvokeArgs(
       extraArgs: resolved.extraArgs,
       env: resolved.env
     };
+    if (channel === "cli:run") delete next.mcpServerIds;
     if (CWD_CHANNELS.has(channel)) {
       assertPathAllowed(next.cwd, roots, "cwd");
     }
@@ -157,6 +158,12 @@ export function guardRemoteInvokeArgs(
       return [{ ...payload, roots: filterPathsWithinRoots(payload.roots, roots) }, ...args.slice(1)];
     }
     return args;
+  }
+
+  if (channel === "cli:transferConversation" && payload) {
+    const next = { ...payload };
+    delete next.mcpServerIds;
+    return [next, ...args.slice(1)];
   }
 
   if (channel === "cli:resolveBrowserEntry") {

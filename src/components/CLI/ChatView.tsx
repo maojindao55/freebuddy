@@ -25,6 +25,7 @@ import {
   Layers,
   Plus,
   Search,
+  Server,
   Sparkles,
   X
 } from "lucide-react";
@@ -114,6 +115,7 @@ import {
 } from "./ScheduledSendControl";
 import { useScheduledSendStore } from "@/store/scheduledSendStore";
 import { ComposerAddMenu } from "./ComposerAddMenu";
+import { McpServerPicker } from "./McpServerPicker";
 import { AgentPicker } from "./AgentPicker";
 import { NewTaskUnreadConversations } from "./NewTaskUnreadConversations";
 import { conversationVisibleTitle } from "./conversationTitle";
@@ -477,6 +479,21 @@ function preparedTaskWorkspaceMetadata(
       worktreeRoot: workspace.worktreeRoot
     }
   };
+}
+
+function buildNewTaskMetadata(
+  preparedWorkspace: PreparedTaskWorkspace | null | undefined,
+  mcpServerIds: string[]
+): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {
+    ...(preparedWorkspace
+      ? preparedTaskWorkspaceMetadata(preparedWorkspace)
+      : {})
+  };
+  if (mcpServerIds.length) {
+    metadata.mcpServerIds = mcpServerIds;
+  }
+  return Object.keys(metadata).length ? metadata : undefined;
 }
 
 function pluginAgentForAdapter(adapter?: string): NativePluginAgent | undefined {
@@ -869,6 +886,7 @@ function SharedConversationReferences({
 
 export function ChatView({
   onOpenAgentSettings,
+  onOpenMcpSettings,
   messageFocus,
   onMessageFocused,
   variant = "default",
@@ -882,6 +900,7 @@ export function ChatView({
   placeholder
 }: {
   onOpenAgentSettings?: () => void;
+  onOpenMcpSettings?: () => void;
   messageFocus?: { conversationId: string; messageId: string } | null;
   onMessageFocused?: () => void;
   variant?: "default" | "mini";
@@ -996,6 +1015,7 @@ export function ChatView({
   const initialAgentDetectionStartedRef = useRef(false);
   const memberSelectionTouchedRef = useRef(false);
   const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
+  const [newTaskMcpServerIds, setNewTaskMcpServerIds] = useState<string[]>([]);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState<string | undefined>();
   const applyNewTaskWorkspace = useCallback(async (cwd: string) => {
@@ -1088,6 +1108,33 @@ export function ChatView({
   }, []);
   const [slashIndex, setSlashIndex] = useState(0);
   const conv = conversations.find((c) => c.id === activeId);
+
+  const conversationMcpServerIds = useMemo(() => {
+    const metadata = conv?.metadata;
+    if (metadata && Array.isArray(metadata.mcpServerIds)) {
+      return (metadata.mcpServerIds as unknown[]).filter(
+        (id): id is string => typeof id === "string"
+      );
+    }
+    return [];
+  }, [conv?.metadata]);
+
+  const setConversationMcpServerIds = useConversationStore(
+    (s) => s.setConversationMcpServerIds
+  );
+
+  const handleMcpServerIdsChange = useCallback(
+    async (ids: string[]) => {
+      if (!conv?.id) return;
+      try {
+        await setConversationMcpServerIds(conv.id, ids);
+      } catch {
+        notify(t("mcp.saveSelectionFailed"));
+      }
+    },
+    [conv?.id, setConversationMcpServerIds, notify, t]
+  );
+
   useEffect(() => {
     let active = true;
     if (!activeId) {
@@ -2242,9 +2289,10 @@ export function ChatView({
           member: teamMember,
           cwd,
           projectId: newTaskProjectId,
-          metadata: preparedWorkspace
-            ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-            : undefined,
+          metadata: buildNewTaskMetadata(
+            preparedWorkspace,
+            newTaskMcpServerIds
+          ),
           title: buildConversationTitle({
             prompt,
             attachmentName: attachmentsToSend[0]?.name,
@@ -2316,9 +2364,10 @@ export function ChatView({
         member: selectedMember,
         cwd: preparedWorkspace?.cwd,
         projectId: newTaskProjectId,
-        metadata: preparedWorkspace
-          ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-          : undefined,
+        metadata: buildNewTaskMetadata(
+          preparedWorkspace,
+          newTaskMcpServerIds
+        ),
         title: buildConversationTitle({
           prompt,
           attachmentName: attachmentsToSend[0]?.name,
@@ -2645,9 +2694,10 @@ export function ChatView({
         member: teamMember,
         cwd,
         projectId: newTaskProjectId,
-        metadata: preparedWorkspace
-          ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-          : undefined,
+        metadata: buildNewTaskMetadata(
+          preparedWorkspace,
+          newTaskMcpServerIds
+        ),
         title: buildConversationTitle({
           prompt: pendingTeamPreview.goal,
           fallback: pendingTeamPreview.teamName
@@ -2696,6 +2746,9 @@ export function ChatView({
         configOptionsLoading={newTaskConfigLoading}
         skills={skills}
         selectedSkillIds={newTaskSkillIds}
+        mcpServerIds={newTaskMcpServerIds}
+        onMcpServerIds={setNewTaskMcpServerIds}
+        onOpenMcpSettings={onOpenMcpSettings}
         pluginAgent={pluginAgentForAdapter(
           members.find((entry) => entry.id === selectedMemberId)?.cli.adapter
         )}
@@ -3223,6 +3276,23 @@ export function ChatView({
                 if (conv?.id) void setConversationSkills(conv.id, ids);
               }}
             />
+            {currentUser?.isOwner !== false && window.freebuddy?.platform !== "web" ? (
+              <McpServerPicker
+                selectedIds={conversationMcpServerIds}
+                onSelectionChange={handleMcpServerIdsChange}
+                disabled={sending}
+                cwd={conv?.cwd}
+                onOpenSettings={onOpenMcpSettings}
+              />
+            ) : conversationMcpServerIds.length > 0 ? (
+              <span
+                className="composer-mcp-remote-notice"
+                title={t("mcp.notAvailableRemote")}
+              >
+                <Server size={14} aria-hidden="true" />
+                <span className="mcp-remote-notice-text">{t("mcp.notAvailableRemote")}</span>
+              </span>
+            ) : null}
             {variant !== "mini" && (
               <label
                 className="composer-permission"
@@ -3372,6 +3442,9 @@ function NewTaskHome({
   configOptionsLoading,
   skills,
   selectedSkillIds,
+  mcpServerIds = [],
+  onMcpServerIds,
+  onOpenMcpSettings,
   pluginAgent,
   preflightMsg,
   onDraft,
@@ -3420,6 +3493,9 @@ function NewTaskHome({
   configOptionsLoading: boolean;
   skills: ReturnType<typeof useSkillStore.getState>["skills"];
   selectedSkillIds: string[];
+  mcpServerIds?: string[];
+  onMcpServerIds?: (ids: string[]) => void;
+  onOpenMcpSettings?: () => void;
   pluginAgent?: NativePluginAgent;
   preflightMsg: string | null;
   onDraft: (value: string) => void;
@@ -3449,6 +3525,7 @@ function NewTaskHome({
   variant?: "default" | "mini";
 }) {
   const { t } = useTranslation();
+  const currentUser = useConversationStore((s) => s.currentUser);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -3597,6 +3674,17 @@ function NewTaskHome({
             }
             onSkillsChange={onSkills}
           />
+          {currentUser?.isOwner !== false &&
+          window.freebuddy?.platform !== "web" &&
+          !(teamMode && selectedTeam && isDelegationTeam(selectedTeam)) ? (
+            <McpServerPicker
+              selectedIds={mcpServerIds}
+              onSelectionChange={(ids) => onMcpServerIds?.(ids)}
+              disabled={sendLocked}
+              cwd={cwd}
+              onOpenSettings={onOpenMcpSettings}
+            />
+          ) : null}
           {teamMode ? (
             <label className="new-task-team-picker" title={t("workflow.selectTeam")}>
               {teams.filter((tt) => tt.enabled).length === 0 ? (

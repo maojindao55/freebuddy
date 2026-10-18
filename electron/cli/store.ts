@@ -116,6 +116,14 @@ export function redactApiKey(value: string): string {
   return `${"•".repeat(8)}${suffix}`;
 }
 
+export function isSecretStorageAvailable(): boolean {
+  try {
+    return safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
+}
+
 export function encryptSecret(value: string): string {
   if (safeStorage.isEncryptionAvailable()) {
     return `${SAFE_STORAGE_PREFIX}${safeStorage.encryptString(value).toString("base64")}`;

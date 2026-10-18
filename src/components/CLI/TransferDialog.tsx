@@ -8,13 +8,14 @@ import {
   type KeyboardEvent,
   type ReactNode
 } from "react";
-import { ChevronDown, FolderLock } from "lucide-react";
+import { ChevronDown, FolderLock, Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CLIMember } from "@/config/aiMembers";
 import { useConversationStore } from "@/store/conversationStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useMcpServerStore } from "@/store/mcpServerStore";
 import { cliClient } from "@/services/cli/client";
 import type {
   Conversation,
@@ -24,6 +25,7 @@ import type {
   SessionConfigProbeInput
 } from "@/services/cli/types";
 import { conversationDisplayCwd } from "./conversationProjectGrouping";
+import { McpServerChecklist } from "./McpServerChecklist";
 
 interface TransferConversationPanelProps {
   source: Conversation;
@@ -75,6 +77,29 @@ export function TransferConversationPanel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // MCP server selection state - initialize from source conversation
+  const { servers: mcpServers, loaded: mcpLoaded, load: loadMcpServers } = useMcpServerStore();
+  const [selectedMcpServerIds, setSelectedMcpServerIds] = useState<string[]>(() => {
+    const metadata = source.metadata;
+    if (metadata && Array.isArray(metadata.mcpServerIds)) {
+      return (metadata.mcpServerIds as unknown[]).filter(
+        (id): id is string => typeof id === "string"
+      );
+    }
+    return [];
+  });
+  const [showMcpPicker, setShowMcpPicker] = useState(false);
+  const enabledSelectedMcpNames = useMemo(
+    () =>
+      mcpServers
+        .filter(
+          (server) =>
+            server.enabled && selectedMcpServerIds.includes(server.id)
+        )
+        .map((server) => server.name),
+    [mcpServers, selectedMcpServerIds]
+  );
+
   useEffect(() => {
     mountedRef.current = true;
     targetSelectRef.current?.focus();
@@ -82,6 +107,12 @@ export function TransferConversationPanel({
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!mcpLoaded) {
+      void loadMcpServers();
+    }
+  }, [mcpLoaded, loadMcpServers]);
 
   useEffect(() => {
     onBusyChange?.(submitting);
@@ -230,7 +261,8 @@ export function TransferConversationPanel({
         targetMember,
         ...(Object.keys(overrides).length > 0
           ? { configOptionOverrides: overrides }
-          : {})
+          : {}),
+        mcpServerIds: selectedMcpServerIds
       });
       if (result.warning === "brief_extraction_failed") {
         notify(t("handoff.briefExtractionFailed"));
@@ -369,6 +401,50 @@ export function TransferConversationPanel({
           />
         </div>
       </label>
+
+      {mcpServers.length > 0 && (
+        <div className="transfer-dialog-field">
+          <span>{t("handoff.mcpServers", "MCP Servers")}</span>
+          <div className="transfer-dialog-mcp-toggle">
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => setShowMcpPicker((prev) => !prev)}
+              aria-expanded={showMcpPicker}
+              disabled={submitting}
+            >
+              <Server size={14} aria-hidden="true" />
+              <span className="transfer-dialog-mcp-summary">
+                {enabledSelectedMcpNames.length > 0
+                  ? enabledSelectedMcpNames.join(", ")
+                  : t("handoff.mcpServersNone", "None selected")}
+              </span>
+              <ChevronDown
+                className={`transfer-dialog-preview-chevron${showMcpPicker ? " expanded" : ""}`}
+                size={15}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+          {showMcpPicker && (
+            <div className="transfer-dialog-mcp-list">
+              <McpServerChecklist
+                servers={mcpServers}
+                selectedIds={selectedMcpServerIds}
+                disabled={submitting}
+                onToggle={(serverId, checked) => {
+                  setSelectedMcpServerIds((prev) =>
+                    checked
+                      ? [...prev, serverId]
+                      : prev.filter((id) => id !== serverId)
+                  );
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="transfer-dialog-preview-toggle">
         <button

@@ -183,6 +183,10 @@ const cli = {
     }),
   setConversationSkills: (id: string, skillIds: string[]) =>
     ipcRenderer.invoke("cli:setConversationSkills", { id, skillIds }),
+  getConversationMcpServerIds: (conversationId: string) =>
+    ipcRenderer.invoke("cli:getConversationMcpServerIds", conversationId),
+  setConversationMcpServerIds: (id: string, mcpServerIds: string[]) =>
+    ipcRenderer.invoke("cli:setConversationMcpServerIds", { id, mcpServerIds }),
   listMessages: (
     conversationId: string,
     options?: { limit?: number; beforeCreatedAt?: string; beforeId?: string }
@@ -973,6 +977,19 @@ const providers = {
   getApiKey: (id: string) => ipcRenderer.invoke("providers:getApiKey", id),
 };
 
+const mcpServers = {
+  list: () => ipcRenderer.invoke("mcpServers:list"),
+  get: (id: string) => ipcRenderer.invoke("mcpServers:get", id),
+  create: (input: unknown) => ipcRenderer.invoke("mcpServers:create", input),
+  update: (id: string, input: unknown) =>
+    ipcRenderer.invoke("mcpServers:update", { id, input }),
+  delete: (id: string) => ipcRenderer.invoke("mcpServers:delete", id),
+  setEnabled: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke("mcpServers:setEnabled", { id, enabled }),
+  selfCheck: (id: string, cwd?: string) =>
+    ipcRenderer.invoke("mcpServers:selfCheck", { id, cwd })
+};
+
 const docStudio = {
   openWindow: (target?: string | { filePath?: string }) =>
     ipcRenderer.invoke("docStudio:openWindow", target) as Promise<boolean>,
@@ -1049,6 +1066,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   appVersion: process.env.FB_APP_VERSION ?? "",
   cli,
   providers,
+  mcpServers,
   workflow,
   workflowTeams,
   skills,

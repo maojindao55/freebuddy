@@ -144,6 +144,7 @@ export interface ConversationState {
     sourceConversationId: string;
     targetMember: CLIMember;
     configOptionOverrides?: Record<string, string>;
+    mcpServerIds?: string[];
   }): Promise<{
     conversation: Conversation;
     warning?: "brief_extraction_failed";
@@ -168,6 +169,7 @@ export interface ConversationState {
     overrides: Record<string, string>
   ): Promise<void>;
   setConversationSkills(id: string, skillIds: string[]): Promise<void>;
+  setConversationMcpServerIds(id: string, ids: string[]): Promise<void>;
 
   sendMessage(input: {
     conversationId: string;
@@ -1033,7 +1035,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     return conv;
   },
 
-  async transferConversation({ sourceConversationId, targetMember, configOptionOverrides }) {
+  async transferConversation({ sourceConversationId, targetMember, configOptionOverrides, mcpServerIds }) {
     if (transferInFlight) {
       throw new Error("Another transfer is in progress");
     }
@@ -1048,7 +1050,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         targetAdapter: targetMember.cli.adapter,
         ...(configOptionOverrides && Object.keys(configOptionOverrides).length > 0
           ? { configOptionOverrides }
-          : {})
+          : {}),
+        ...(mcpServerIds !== undefined ? { mcpServerIds } : {})
       });
       set((s) => ({
         conversations: [
@@ -1209,6 +1212,41 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ),
       pendingFreshContext: { ...state.pendingFreshContext, [id]: true }
     }));
+  },
+
+  async setConversationMcpServerIds(id, ids) {
+    const index = get().conversations.findIndex(
+      (conversation) => conversation.id === id
+    );
+    if (index < 0) return;
+    const previousMetadata = get().conversations[index].metadata;
+    set((state) => ({
+      conversations: state.conversations.map((conversation) =>
+        conversation.id === id
+          ? {
+              ...conversation,
+              metadata: { ...conversation.metadata, mcpServerIds: ids }
+            }
+          : conversation
+      )
+    }));
+    try {
+      await cliClient.setConversationMcpServerIds(id, ids);
+    } catch (err) {
+      const current = get().conversations.find(
+        (conversation) => conversation.id === id
+      );
+      if (current?.metadata?.mcpServerIds === ids) {
+        set((state) => ({
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === id
+              ? { ...conversation, metadata: previousMetadata }
+              : conversation
+          )
+        }));
+      }
+      throw err;
+    }
   },
 
   isRunning(id) {
@@ -1514,6 +1552,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
 
     try {
+      await cliClient.awaitPendingMcpSelection(conversationId);
       await cliClient.run(runArgs);
     } catch (err) {
       const msg = (err as Error)?.message || String(err);

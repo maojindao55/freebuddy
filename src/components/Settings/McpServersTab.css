@@ -1,0 +1,670 @@
+.mcp-servers-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+}
+
+/* ---- List header ---- */
+
+.mcp-servers-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mcp-servers-heading-text {
+  min-width: 0;
+}
+
+.mcp-servers-heading h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+
+.mcp-servers-heading p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mcp-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mcp-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ---- Banners ---- */
+
+.mcp-storage-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--fb-bg-warning-subtle);
+  color: var(--fb-warning);
+  font-size: 12px;
+}
+
+.mcp-loading,
+.mcp-error,
+.mcp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  text-align: center;
+  color: var(--fb-text-secondary);
+}
+
+.mcp-loading {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.mcp-error {
+  flex-direction: row;
+  gap: 8px;
+  color: var(--fb-danger);
+  background: var(--fb-danger-subtle);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.mcp-error button {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--fb-danger);
+  border-radius: 4px;
+  color: var(--fb-danger);
+  cursor: pointer;
+}
+
+.mcp-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-tertiary);
+}
+
+.mcp-empty h3 {
+  margin: 16px 0 8px;
+  color: var(--fb-text-primary);
+}
+
+.mcp-empty p {
+  margin: 0 0 16px;
+}
+
+/* ---- Server cards ---- */
+
+.mcp-servers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-server-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-panel-bg);
+  transition: border-color 0.15s ease;
+}
+
+.mcp-server-card:hover {
+  border-color: var(--fb-border-strong);
+}
+
+.mcp-server-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--fb-brand) 14%, var(--fb-border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--fb-brand) 10%, var(--fb-panel-bg));
+  color: var(--fb-brand);
+}
+
+.mcp-server-card.disabled .mcp-server-icon {
+  border-color: var(--fb-border);
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-tertiary);
+}
+
+.mcp-status-dot {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--fb-panel-bg);
+  box-sizing: content-box;
+}
+
+.mcp-status-dot.ok {
+  background: var(--fb-brand);
+}
+
+.mcp-status-dot.error {
+  background: var(--fb-danger);
+}
+
+.mcp-status-dot.unknown {
+  background: var(--fb-text-tertiary);
+}
+
+.mcp-status-dot.checking {
+  animation: spin 1s linear infinite;
+  color: var(--fb-brand);
+  border: none;
+  border-radius: 0;
+}
+
+.mcp-server-info {
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mcp-server-card.disabled .mcp-server-info {
+  opacity: 0.55;
+}
+
+.mcp-server-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 2px;
+}
+
+.mcp-server-row1 strong {
+  font-weight: 500;
+  color: var(--fb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-status-pill {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-tertiary);
+}
+
+.mcp-status-pill.ok {
+  background: color-mix(in srgb, var(--fb-brand) 12%, transparent);
+  color: var(--fb-brand);
+}
+
+.mcp-status-pill.error {
+  background: var(--fb-danger-subtle);
+  color: var(--fb-danger);
+}
+
+.mcp-status-pill.disabled {
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-tertiary);
+}
+
+.mcp-server-command {
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-server-last-error {
+  font-size: 11px;
+  color: var(--fb-danger);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-server-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mcp-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mcp-icon-btn:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+
+.mcp-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.secondary.mcp-danger {
+  color: var(--fb-danger);
+  border-color: color-mix(in srgb, var(--fb-danger) 45%, var(--fb-border));
+}
+
+button.secondary.mcp-danger:hover:not(:disabled) {
+  background: var(--fb-danger-subtle);
+}
+
+/* ---- Editor ---- */
+
+.mcp-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mcp-editor-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+
+.mcp-editor-header h3 .muted {
+  font-weight: 400;
+  font-size: 13px;
+}
+
+.mcp-templates {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mcp-templates-label {
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+}
+
+.mcp-template-chip {
+  padding: 4px 10px;
+  font-size: 12px;
+  font: inherit;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.mcp-template-chip:hover:not(:disabled) {
+  border-color: var(--fb-border-strong);
+  color: var(--fb-text-primary);
+}
+
+.mcp-editor-section {
+  padding: 14px 16px;
+  border: 1px solid var(--fb-border);
+  border-radius: 10px;
+  background: var(--fb-panel-bg);
+}
+
+.mcp-section-title {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+}
+
+.mcp-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 560px) {
+  .mcp-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mcp-form-grid .mcp-form-span {
+    grid-column: 1 / -1;
+  }
+}
+
+.mcp-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mcp-form-group label {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fb-text-secondary);
+}
+
+.mcp-servers-tab input[type="text"],
+.mcp-servers-tab input[type="password"],
+.mcp-servers-tab textarea {
+  height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fb-text-primary);
+  background: var(--fb-panel-bg);
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 8px;
+}
+
+.mcp-servers-tab textarea {
+  height: auto;
+  padding: 8px 10px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.mcp-servers-tab input[type="text"]:focus,
+.mcp-servers-tab input[type="password"]:focus,
+.mcp-servers-tab textarea:focus {
+  outline: none;
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 3px var(--fb-brand-glow);
+}
+
+.mcp-form-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+}
+
+/* ---- Env vars ---- */
+
+.mcp-env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-env-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 1.3fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mcp-env-row {
+  display: contents;
+}
+
+.mcp-env-header {
+  display: contents;
+  font-size: 11px;
+}
+
+.mcp-env-empty {
+  margin: 0;
+  font-size: 12px;
+}
+
+.mcp-env-value-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mcp-env-value-wrapper .mcp-env-value {
+  flex: 1;
+  min-width: 0;
+  padding-right: 56px;
+}
+
+.mcp-env-toggle-secret,
+.mcp-env-clear-secret,
+.mcp-env-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+}
+
+.mcp-env-toggle-secret:hover,
+.mcp-env-clear-secret:hover,
+.mcp-env-remove:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+
+.mcp-env-toggle-secret {
+  position: absolute;
+  right: 28px;
+}
+
+.mcp-env-clear-secret {
+  position: absolute;
+  right: 4px;
+}
+
+.mcp-env-secret-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mcp-env-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 32px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fb-text-secondary);
+  background: var(--fb-panel-bg);
+  border: 1px dashed var(--fb-border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mcp-env-add:hover {
+  color: var(--fb-text-primary);
+  border-color: var(--fb-text-tertiary);
+}
+
+/* ---- Self-check ---- */
+
+.mcp-self-check {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.mcp-self-check-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mcp-self-check-result.ok {
+  background: color-mix(in srgb, var(--fb-brand) 10%, transparent);
+  color: var(--fb-brand);
+}
+
+.mcp-self-check-result.error {
+  background: var(--fb-danger-subtle);
+  color: var(--fb-danger);
+}
+
+.mcp-tools-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mcp-tool-chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  background: var(--fb-panel-soft);
+  border-radius: 6px;
+  color: var(--fb-text-secondary);
+}
+
+.mcp-stderr {
+  width: 100%;
+  font-size: 12px;
+}
+
+.mcp-stderr summary {
+  cursor: pointer;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+}
+
+.mcp-stderr pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  max-height: 200px;
+  overflow: auto;
+  background: var(--fb-panel-soft);
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ---- Footer ---- */
+
+.mcp-form-error {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--fb-danger-subtle);
+  color: var(--fb-danger);
+  font-size: 12px;
+}
+
+.mcp-local-exec-ack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mcp-local-exec-ack input {
+  margin: 0;
+}
+
+.mcp-servers-tab input[type="checkbox"] {
+  accent-color: var(--fb-brand);
+}
+
+.mcp-editor-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--fb-border);
+  background: var(--fb-panel-bg);
+}
+
+.mcp-form-actions-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

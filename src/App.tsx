@@ -1333,6 +1333,7 @@ function App() {
           ) : (
             <ChatView
               onOpenAgentSettings={() => openSettings("cli")}
+              onOpenMcpSettings={() => openSettings("mcp")}
               messageFocus={messageFocus}
               onMessageFocused={() => setMessageFocus(null)}
             />

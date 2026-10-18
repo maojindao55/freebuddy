@@ -39,6 +39,8 @@
   --fb-brand-gradient: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
   --fb-danger: #e11d48;
   --fb-warning: #f59e0b;
+  --fb-bg-warning-subtle: rgba(245, 158, 11, 0.12);
+  --fb-danger-subtle: rgba(225, 29, 72, 0.1);
   --fb-error: #e11d48;
   --fb-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --fb-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.04), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
@@ -71,6 +73,8 @@
   --fb-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
   --fb-danger: #fb7185;
   --fb-warning: #fbbf24;
+  --fb-bg-warning-subtle: rgba(251, 191, 36, 0.14);
+  --fb-danger-subtle: rgba(251, 113, 133, 0.14);
   --fb-link: #34d399;
   --surface: var(--fb-panel-bg);
   --surface-alt: var(--fb-panel-soft);
@@ -3776,6 +3780,33 @@ html[data-surface="butler-screen-ball"] #root {
   opacity: 0.55;
 }
 
+.transfer-dialog-mcp-toggle {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.transfer-dialog-mcp-toggle .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.transfer-dialog-mcp-list {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-soft);
+}
+
+.transfer-dialog-mcp-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
 .conversation-context-dialog {
   width: min(520px, calc(100vw - 32px));
 }
@@ -4908,7 +4939,9 @@ html[data-surface="butler-screen-ball"] #root {
 }
 
 .plugins-tab button.primary,
-.plugins-tab button.secondary {
+.plugins-tab button.secondary,
+.mcp-servers-tab button.primary,
+.mcp-servers-tab button.secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4923,18 +4956,21 @@ html[data-surface="butler-screen-ball"] #root {
   cursor: pointer;
 }
 
-.plugins-tab button.primary {
+.plugins-tab button.primary,
+.mcp-servers-tab button.primary {
   border-color: var(--fb-brand);
   background: var(--fb-brand);
   color: #fff;
 }
 
-.plugins-tab button.secondary {
+.plugins-tab button.secondary,
+.mcp-servers-tab button.secondary {
   background: var(--fb-panel-bg);
   color: var(--fb-text-primary);
 }
 
-.plugins-tab button:disabled {
+.plugins-tab button:disabled,
+.mcp-servers-tab button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -8825,6 +8861,28 @@ button.new-task-context-control {
 .composer-permission-select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.composer-mcp-remote-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+  background: var(--fb-bg-warning-subtle, rgba(255, 180, 0, 0.06));
+  border-radius: 6px;
+}
+
+.composer-mcp-remote-notice svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.mcp-remote-notice-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-session-config,

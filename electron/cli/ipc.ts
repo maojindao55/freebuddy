@@ -63,6 +63,7 @@ import {
   createConversation,
   deleteConversation,
   getConversation,
+  getConversationMcpServerIds,
   listConversations,
   getMessageForIpc,
   listMessages,
@@ -73,6 +74,7 @@ import {
   requireOwnedConversation,
   setConversationApprovalMode,
   setConversationConfigOptionOverrides,
+  setConversationMcpServerIds,
   setConversationSkills,
   recoverInterruptedMessages,
   recoverInterruptedTasks,
@@ -271,6 +273,19 @@ import {
   type NativePluginAgent,
   type NativePluginScope
 } from "./nativePlugins.js";
+import {
+  listUserMcpServers,
+  getUserMcpServer,
+  createUserMcpServer,
+  updateUserMcpServer,
+  deleteUserMcpServer,
+  setUserMcpServerEnabled,
+  selfCheckUserMcpServer,
+  getMcpServersByIds,
+  canUseHostMcp,
+  isMcpSecretStorageEncrypted,
+  type UserMcpServerInput
+} from "./mcpServers.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -1397,6 +1412,24 @@ export function registerCliIpc() {
           transcript = undefined;
         }
       }
+      // Remote callers cannot inherit or override host MCP servers.
+      let mcpServerIds: string[] = [];
+      if (canUseHostMcp()) {
+        const carriedIds = Array.isArray(input.mcpServerIds)
+          ? input.mcpServerIds.filter(
+              (id): id is string => typeof id === "string"
+            )
+          : getConversationMcpServerIds(source.id);
+        const existingIds = new Set(
+          getMcpServersByIds(carriedIds).map((server) => server.id)
+        );
+        mcpServerIds = carriedIds.filter((id) => existingIds.has(id));
+      }
+      const transferMetadata: Record<string, unknown> = {};
+      if (mcpServerIds.length > 0) {
+        transferMetadata.mcpServerIds = mcpServerIds;
+      }
+
       let txResult: { conversation: ReturnType<typeof createConversation> };
       try {
         txResult = getDb().transaction(() => {
@@ -1418,6 +1451,10 @@ export function registerCliIpc() {
             // Transfers always inherit the source workspace so referenced
             // files and the target agent's execution directory stay aligned.
             cwd: source.cwd,
+            // Handoff carries MCP selection by default
+            metadata: Object.keys(transferMetadata).length > 0
+              ? transferMetadata
+              : undefined,
             skillIds: [],
             titleSource: "default",
             ...(Object.keys(overrides).length > 0
@@ -1608,6 +1645,27 @@ export function registerCliIpc() {
   );
 
   registerHandler(
+    "cli:getConversationMcpServerIds",
+    (_e, conversationId: string) => {
+      if (!canUseHostMcp()) return [];
+      if (!requireOwnedConversation(conversationId)) return [];
+      return getConversationMcpServerIds(conversationId);
+    }
+  );
+
+  registerHandler(
+    "cli:setConversationMcpServerIds",
+    (_e, args: { id: string; mcpServerIds: string[] }) => {
+      if (!canUseHostMcp()) return;
+      if (!requireOwnedConversation(args.id)) return;
+      setConversationMcpServerIds(
+        args.id,
+        Array.isArray(args.mcpServerIds) ? args.mcpServerIds : []
+      );
+    }
+  );
+
+  registerHandler(
     "cli:listMessages",
     (_e, conversationId: string, options?: ListMessagesIpcOptions) => {
       if (!requireOwnedConversation(conversationId)) {
@@ -1711,6 +1769,53 @@ export function registerCliIpc() {
   registerHandler("infoCards:marketProvider", () => getMarketProviderConfig());
   registerHandler("infoCards:searchMarketSymbols", (_e, query: string) =>
     searchMarketSymbols(query)
+  );
+
+  // ---- User MCP Servers ----
+  function assertHostMcpAccess(): void {
+    if (!canUseHostMcp()) {
+      throw new Error("MCP servers are not available for remote users");
+    }
+  }
+  registerHandler("mcpServers:list", () => {
+    assertHostMcpAccess();
+    return {
+      servers: listUserMcpServers(),
+      secretStorageEncrypted: isMcpSecretStorageEncrypted()
+    };
+  });
+  registerHandler("mcpServers:get", (_e, id: string) => {
+    assertHostMcpAccess();
+    return getUserMcpServer(id);
+  });
+  registerHandler("mcpServers:create", (_e, input: UserMcpServerInput) => {
+    assertHostMcpAccess();
+    return createUserMcpServer(input);
+  });
+  registerHandler(
+    "mcpServers:update",
+    (_e, args: { id: string; input: Partial<UserMcpServerInput> }) => {
+      assertHostMcpAccess();
+      return updateUserMcpServer(args.id, args.input);
+    }
+  );
+  registerHandler("mcpServers:delete", (_e, id: string) => {
+    assertHostMcpAccess();
+    return deleteUserMcpServer(id);
+  });
+  registerHandler(
+    "mcpServers:setEnabled",
+    (_e, args: { id: string; enabled: boolean }) => {
+      assertHostMcpAccess();
+      return setUserMcpServerEnabled(args.id, args.enabled);
+    }
+  );
+  registerHandler(
+    "mcpServers:selfCheck",
+    async (_e, args: { id: string; cwd?: string }) => {
+      assertHostMcpAccess();
+      return selfCheckUserMcpServer(args.id, args.cwd);
+    }
   );
 
   registerWorkflowIpc();

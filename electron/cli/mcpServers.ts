@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable, Writable } from "node:stream";
 import path from "node:path";
 import fs from "node:fs";
 import { nanoid } from "nanoid";
@@ -22,7 +23,8 @@ const MCP_RESERVED_NAMES = new Set([
 ]);
 const MCP_NAME_PATTERN = /^[A-Za-z0-9_-]{1,48}$/;
 const MCP_SELF_CHECK_TIMEOUT_MS = 15_000;
-const SECRET_ARG_PATTERN = /(?:^|.*?)(?:token|key|secret|password|pat)=([^\s]+)$/i;
+const MCP_PROTOCOL_VERSION = "2024-11-05";
+const SECRET_NAME_PATTERN = /(^|[-_.])(?:token|api[-_]?key|secret|password|passwd|pat|auth|credential)s?$/i;
 
 export interface UserMcpServerEnvVar {
   name: string;
@@ -60,6 +62,7 @@ export interface UserMcpServer {
 
 export interface UserMcpServerSelfCheckResult {
   status: "ok" | "error";
+  code?: string;
   error?: string;
   tools?: string[];
   stderr?: string;
@@ -189,21 +192,28 @@ function normalizeEnvForStorage(
   return result;
 }
 
+function mcpError(code: string, message: string): Error {
+  return new Error(`[mcp:${code}] ${message}`);
+}
+
 function validateServerName(name: string, existingId?: string): void {
   const raw = name.trim();
   if (!MCP_NAME_PATTERN.test(raw)) {
-    throw new Error(
+    throw mcpError(
+      "invalid_name",
       "Server name must match ^[A-Za-z0-9_-]{1,48}$"
     );
   }
   const trimmed = raw.toLowerCase();
   if (trimmed.startsWith(MCP_NAME_PREFIX_RESERVED)) {
-    throw new Error(
+    throw mcpError(
+      "reserved_prefix",
       `Server name cannot start with reserved prefix "${MCP_NAME_PREFIX_RESERVED}"`
     );
   }
   if (MCP_RESERVED_NAMES.has(trimmed)) {
-    throw new Error(
+    throw mcpError(
+      "reserved_name",
       `Server name "${name.trim()}" is reserved for builtin MCP servers`
     );
   }
@@ -211,7 +221,8 @@ function validateServerName(name: string, existingId?: string): void {
     .prepare("SELECT id FROM user_mcp_servers WHERE LOWER(name) = ?")
     .get(trimmed) as { id: string } | undefined;
   if (existing && existing.id !== existingId) {
-    throw new Error(
+    throw mcpError(
+      "duplicate_name",
       `A server named "${name.trim()}" already exists (case-insensitive)`
     );
   }
@@ -244,6 +255,9 @@ export function createUserMcpServer(
   input: UserMcpServerInput
 ): UserMcpServer {
   validateServerName(input.name);
+  if (!input.command?.trim()) {
+    throw mcpError("command_required", "Command is required");
+  }
   const id = input.id || `mcp-${nanoid(8)}`;
   const now = new Date().toISOString();
   const env = normalizeEnvForStorage(input.env);
@@ -274,6 +288,9 @@ export function updateUserMcpServer(
   if (!existing) return undefined;
   if (input.name !== undefined) {
     validateServerName(input.name, id);
+  }
+  if (input.command !== undefined && !input.command.trim()) {
+    throw mcpError("command_required", "Command is required");
   }
   const now = new Date().toISOString();
   const env = normalizeEnvForStorage(input.env, existing.env);
@@ -309,10 +326,37 @@ export function updateUserMcpServer(
 }
 
 export function deleteUserMcpServer(id: string): boolean {
-  const result = getDb()
-    .prepare("DELETE FROM user_mcp_servers WHERE id = ?")
-    .run(id);
-  return result.changes > 0;
+  let deleted = false;
+  getDb().transaction(() => {
+    const result = getDb()
+      .prepare("DELETE FROM user_mcp_servers WHERE id = ?")
+      .run(id);
+    deleted = result.changes > 0;
+    const rows = getDb()
+      .prepare(
+        "SELECT id, metadata FROM conversations WHERE metadata LIKE '%' || ? || '%'"
+      )
+      .all(id) as Array<{ id: string; metadata: string | null }>;
+    const update = getDb().prepare(
+      "UPDATE conversations SET metadata = ? WHERE id = ?"
+    );
+    for (const row of rows) {
+      if (!row.metadata) continue;
+      try {
+        const metadata = JSON.parse(row.metadata);
+        if (!Array.isArray(metadata.mcpServerIds)) continue;
+        const next = metadata.mcpServerIds.filter(
+          (serverId: unknown) => serverId !== id
+        );
+        if (next.length === metadata.mcpServerIds.length) continue;
+        metadata.mcpServerIds = next;
+        update.run(JSON.stringify(metadata), row.id);
+      } catch {
+        // Not JSON metadata; leave it untouched.
+      }
+    }
+  })();
+  return deleted;
 }
 
 export function setUserMcpServerEnabled(id: string, enabled: boolean): boolean {
@@ -399,23 +443,47 @@ export function redactSecrets(text: string, secrets: string[]): string {
   return result;
 }
 
+export function collectArgSecrets(args: string[]): string[] {
+  const secrets: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    const inline = arg.match(/^-{0,2}([A-Za-z0-9_.-]+)=(.+)$/);
+    if (inline && SECRET_NAME_PATTERN.test(inline[1])) {
+      secrets.push(inline[2].trim());
+    }
+    const flag = arg.match(/^-{1,2}([A-Za-z0-9_.-]+)$/);
+    if (
+      flag &&
+      SECRET_NAME_PATTERN.test(flag[1]) &&
+      i + 1 < args.length &&
+      !args[i + 1].startsWith("-")
+    ) {
+      secrets.push(args[i + 1].trim());
+    }
+    const bearer = arg.match(/Bearer\s+(\S+)/i);
+    if (bearer) {
+      secrets.push(bearer[1].trim());
+    }
+  }
+  return secrets.filter((s) => s.length >= 4);
+}
+
 export function collectLogSecrets(
   servers: Array<{
-    env?: Array<{ value?: string }>;
+    env?: Array<{ name?: string; value?: string; secret?: boolean }>;
     args?: string[];
   }>
 ): string[] {
   const secrets: string[] = [];
   for (const server of servers) {
     for (const entry of server.env ?? []) {
+      if (entry.secret !== true && !SECRET_NAME_PATTERN.test(entry.name ?? "")) {
+        continue;
+      }
       const value = entry.value?.trim();
       if (value && value.length >= 4) secrets.push(value);
     }
-    for (const arg of server.args ?? []) {
-      const match = arg.match(SECRET_ARG_PATTERN);
-      const value = match?.[1]?.trim();
-      if (value && value.length >= 4) secrets.push(value);
-    }
+    secrets.push(...collectArgSecrets(server.args ?? []));
   }
   return secrets;
 }
@@ -524,6 +592,29 @@ export function appendCappedTail(buffer: string, chunk: string, maxChars: number
   return next.length <= maxChars ? next : next.slice(-maxChars);
 }
 
+export function buildSelfCheckSpawn(
+  command: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  comSpec = process.env.ComSpec || "cmd.exe"
+): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
+  const ext = path.win32.extname(command).toLowerCase();
+  if (platform === "win32" && (ext === ".cmd" || ext === ".bat")) {
+    const quoteCmdArg = (a: string) => `"${a.replace(/"/g, '""')}"`;
+    return {
+      command: comSpec,
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        `"${[command, ...args].map(quoteCmdArg).join(" ")}"`
+      ],
+      windowsVerbatimArguments: true
+    };
+  }
+  return { command, args };
+}
+
 export async function selfCheckUserMcpServer(
   id: string,
   cwd?: string
@@ -533,10 +624,19 @@ export async function selfCheckUserMcpServer(
     return { status: "error", error: "Server not found" };
   }
 
+  if (!cwd?.trim() && server.args.some((arg) => arg.includes("${cwd}"))) {
+    return {
+      status: "error",
+      code: "cwd_required",
+      error: "Arguments use ${cwd}; a workspace is required for self-check"
+    };
+  }
+
   const commandResolution = await resolveCommandPath(server.command, cwd);
   if (commandResolution.error === "command_not_found") {
     const result: UserMcpServerSelfCheckResult = {
       status: "error",
+      code: "command_not_found",
       error: `Command not found: ${server.command}`
     };
     updateSelfCheckResult(id, result);
@@ -545,6 +645,7 @@ export async function selfCheckUserMcpServer(
   if (commandResolution.error === "relative_path_rejected") {
     const result: UserMcpServerSelfCheckResult = {
       status: "error",
+      code: "relative_path_rejected",
       error: `Relative path requires workspace: ${server.command}`
     };
     updateSelfCheckResult(id, result);
@@ -556,7 +657,16 @@ export async function selfCheckUserMcpServer(
   const resolvedEnv = resolveEnvForRuntime(server.env);
   const secretValues = [
     ...collectSecretValues(server.env),
-    ...collectLogSecrets([{ args: resolvedArgs, env: Object.entries(resolvedEnv).map(([, value]) => ({ value })) }])
+    ...collectLogSecrets([
+      {
+        args: resolvedArgs,
+        env: server.env.map((entry) => ({
+          name: entry.name,
+          secret: entry.secret,
+          value: resolveEnvForRuntime([entry])[entry.name]
+        }))
+      }
+    ])
   ];
 
   return new Promise((resolve) => {
@@ -564,7 +674,9 @@ export async function selfCheckUserMcpServer(
     let stdout = "";
     let stdoutDiscarding = false;
     let stderr = "";
-    let requestId = 1;
+    let nextRequestId = 0;
+    const initRequestId = ++nextRequestId;
+    const listToolsRequestId = ++nextRequestId;
 
     const finish = (result: UserMcpServerSelfCheckResult) => {
       if (finished) return;
@@ -580,12 +692,21 @@ export async function selfCheckUserMcpServer(
       resolve(finalResult);
     };
 
+    let child: ChildProcessByStdio<Writable, Readable, Readable>;
+    const writeToStdin = (data: string) => {
+      if (finished || !child?.stdin?.writable) return;
+      child.stdin.write(data);
+    };
+
     try {
-      const child = spawn(resolvedCommand, resolvedArgs, {
+      const spawnConfig = buildSelfCheckSpawn(resolvedCommand, resolvedArgs);
+      child = spawn(spawnConfig.command, spawnConfig.args, {
         cwd: cwd || process.cwd(),
         env: { ...process.env, ...resolvedEnv },
-        stdio: ["pipe", "pipe", "pipe"]
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments
       });
+      child.stdin.on("error", () => {});
 
       const timeout = setTimeout(() => {
         killProcessTree(child, "force");
@@ -644,8 +765,8 @@ export async function selfCheckUserMcpServer(
           if (!line.trim()) continue;
           try {
             const msg = JSON.parse(line);
-            if (msg.jsonrpc === "2.0" && msg.id === 1 && msg.result) {
-              child.stdin.write(
+            if (msg.jsonrpc === "2.0" && msg.id === initRequestId && msg.result) {
+              writeToStdin(
                 JSON.stringify({
                   jsonrpc: "2.0",
                   method: "notifications/initialized"
@@ -653,12 +774,12 @@ export async function selfCheckUserMcpServer(
               );
               const listToolsRequest = {
                 jsonrpc: "2.0",
-                id: ++requestId,
+                id: listToolsRequestId,
                 method: "tools/list",
                 params: {}
               };
-              child.stdin.write(JSON.stringify(listToolsRequest) + "\n");
-            } else if (msg.jsonrpc === "2.0" && msg.id === 2) {
+              writeToStdin(JSON.stringify(listToolsRequest) + "\n");
+            } else if (msg.jsonrpc === "2.0" && msg.id === listToolsRequestId) {
               clearTimeout(timeout);
               killProcessTree(child, "term");
               if (msg.error) {
@@ -681,15 +802,15 @@ export async function selfCheckUserMcpServer(
 
       const initRequest = {
         jsonrpc: "2.0",
-        id: requestId,
+        id: initRequestId,
         method: "initialize",
         params: {
-          protocolVersion: "2024-11-05",
+          protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: {},
           clientInfo: { name: "freebuddy", version: "1.0.0" }
         }
       };
-      child.stdin.write(JSON.stringify(initRequest) + "\n");
+      writeToStdin(JSON.stringify(initRequest) + "\n");
 
       logMain().info("mcp-self-check", "started", {
         serverId: id,
@@ -725,7 +846,7 @@ export function getMcpServersByIds(ids: string[]): UserMcpServer[] {
   return rows.map(rowToServer);
 }
 
-export function isRemoteMcpAllowed(): boolean {
+export function canUseHostMcp(): boolean {
   return isCallerAdmin() || getCallerUserId() === null;
 }
 
@@ -754,16 +875,18 @@ export function userMcpServerToAcpFormat(
 export interface ResolvedUserMcpServers {
   servers: AcpStdioMcpServerFromUser[];
   skipped: Array<{ id: string; name: string; reason: string }>;
+  secretValues: string[];
 }
 
 export async function getEnabledUserMcpServersByIds(
   ids: string[],
   cwd?: string
 ): Promise<ResolvedUserMcpServers> {
-  if (!ids.length) return { servers: [], skipped: [] };
+  if (!ids.length) return { servers: [], skipped: [], secretValues: [] };
   const servers = getMcpServersByIds(ids).filter((s) => s.enabled);
   const resolved: AcpStdioMcpServerFromUser[] = [];
   const skipped: ResolvedUserMcpServers["skipped"] = [];
+  const secretValues: string[] = [];
   for (const server of servers) {
     if (!cwd?.trim() && server.args.some((arg) => arg.includes("${cwd}"))) {
       skipped.push({ id: server.id, name: server.name, reason: "cwd_required" });
@@ -779,8 +902,22 @@ export async function getEnabledUserMcpServersByIds(
       continue;
     }
     resolved.push(userMcpServerToAcpFormat(server, command.command, cwd));
+    const resolvedEnv = resolveEnvForRuntime(server.env);
+    secretValues.push(
+      ...collectSecretValues(server.env),
+      ...collectLogSecrets([
+        {
+          env: server.env.map((entry) => ({
+            name: entry.name,
+            secret: entry.secret,
+            value: resolvedEnv[entry.name]
+          })),
+          args: substituteArgs(server.args, cwd)
+        }
+      ])
+    );
   }
-  return { servers: resolved, skipped };
+  return { servers: resolved, skipped, secretValues: [...new Set(secretValues)] };
 }
 
 /** Delegated sub-agents and workflow steps must not inherit the parent conversation's user MCP servers. */
@@ -799,7 +936,7 @@ export async function resolveConversationUserMcpServers(input: {
   toolSessionScope?: string;
 }): Promise<ResolvedUserMcpServers> {
   if (!shouldAttachUserMcpServers(input) || !input.conversationId) {
-    return { servers: [], skipped: [] };
+    return { servers: [], skipped: [], secretValues: [] };
   }
   return getEnabledUserMcpServersByIds(
     getConversationMcpServerIds(input.conversationId),

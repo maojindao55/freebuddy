@@ -85,7 +85,8 @@
     "refresh": "Refresh",
     "back": "Back",
     "loading": "Loading…",
-    "retry": "Retry"
+    "retry": "Retry",
+    "dismiss": "Dismiss"
   },
   "status": {
     "running": "Running",
@@ -2618,7 +2619,11 @@
     "statusError": "Error",
     "willSkip": "skipped",
     "disabled": "disabled",
-    "notAvailableRemote": "MCP servers are not available for remote users"
+    "notAvailableRemote": "MCP servers are not available for remote users",
+    "checking": "Checking",
+    "manageServers": "Manage MCP servers…",
+    "saveSelectionFailed": "Failed to save MCP server selection",
+    "allServersDisabled": "All MCP servers are disabled"
   },
   "mcpServers": {
     "title": "MCP Servers",
@@ -2662,7 +2667,7 @@
     "lastCheckedAt": "Last checked: {{time}}",
     "errorDetail": "Error: {{error}}",
     "note": "MCP servers are only available when running locally on the desktop app. They are not available for remote WebUI users.",
-    "confirmLocalExec": "This command will run on this computer",
+    "confirmLocalExec": "Allow this command to run on this computer",
     "confirmDelete": "Confirm delete",
     "secretStorageWarning": "System encryption is unavailable. Secret values are only encoded, not encrypted.",
     "error": {
@@ -2674,8 +2679,23 @@
       "saveFailed": "Failed to save",
       "deleteFailed": "Failed to delete",
       "selfCheckFailed": "Self-check failed",
-      "confirmLocalExec": "Confirm that this command will run on this computer"
-    }
+      "confirmLocalExec": "Confirm that this command will run on this computer",
+      "invalid_name": "Use 1–48 letters, numbers, underscores, or hyphens",
+      "reserved_prefix": "Server name cannot start with 'freebuddy' (reserved prefix)",
+      "reserved_name": "This name is reserved for a built-in MCP server",
+      "duplicate_name": "A server with this name already exists",
+      "command_required": "Command is required",
+      "cwdRequired": "Self-check needs a workspace because the arguments use ${cwd}. It will be checked automatically with the conversation's workspace when selected in a chat.",
+      "toggleFailed": "Failed to update server"
+    },
+    "saveAndCheck": "Save & check",
+    "discardChanges": "Discard unsaved changes?",
+    "removeEnvVar": "Remove variable",
+    "templates": "Quick fill",
+    "sectionBasic": "Basic info",
+    "envEmpty": "No environment variables",
+    "statusFailed": "Check failed",
+    "statusUnknown": "Not checked"
   },
   "conversationPanel": {
     "title": "All conversations",

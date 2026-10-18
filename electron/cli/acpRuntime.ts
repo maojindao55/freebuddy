@@ -122,8 +122,7 @@ import {
 import { logMain } from "../debugLog.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import {
-  collectLogSecrets,
-  isRemoteMcpAllowed,
+  canUseHostMcp,
   redactSecrets,
   resolveConversationUserMcpServers,
   uniqueUserMcpServerName
@@ -1726,7 +1725,7 @@ export async function runAcpAgent({
     // Read directly from the database so a mid-conversation selection change
     // takes effect on the next message. Delegated sub-agents and workflow
     // steps keep the parent conversation id but must not inherit that selection.
-    if (adapterAcceptsClientMcpServers(args.adapter) && isRemoteMcpAllowed()) {
+    if (adapterAcceptsClientMcpServers(args.adapter) && canUseHostMcp()) {
       const resolved = await resolveConversationUserMcpServers({
         conversationId: args.conversationId,
         cwd: args.cwd,
@@ -1747,7 +1746,7 @@ export async function runAcpAgent({
           takenNames.add(name.toLowerCase());
           mcpServers.push({ ...server, name });
         }
-        mcpSecretValues.push(...collectLogSecrets(resolved.servers));
+        mcpSecretValues.push(...resolved.secretValues);
         if (resolved.servers.length) {
           appendLog(
             logStream,

@@ -25,6 +25,7 @@ import type {
   SessionConfigProbeInput
 } from "@/services/cli/types";
 import { conversationDisplayCwd } from "./conversationProjectGrouping";
+import { McpServerChecklist } from "./McpServerChecklist";
 
 interface TransferConversationPanelProps {
   source: Conversation;
@@ -88,11 +89,14 @@ export function TransferConversationPanel({
     return [];
   });
   const [showMcpPicker, setShowMcpPicker] = useState(false);
-  const enabledSelectedMcpCount = useMemo(
+  const enabledSelectedMcpNames = useMemo(
     () =>
-      mcpServers.filter(
-        (server) => server.enabled && selectedMcpServerIds.includes(server.id)
-      ).length,
+      mcpServers
+        .filter(
+          (server) =>
+            server.enabled && selectedMcpServerIds.includes(server.id)
+        )
+        .map((server) => server.name),
     [mcpServers, selectedMcpServerIds]
   );
 
@@ -410,11 +414,9 @@ export function TransferConversationPanel({
               disabled={submitting}
             >
               <Server size={14} aria-hidden="true" />
-              <span>
-                {enabledSelectedMcpCount > 0
-                  ? t("handoff.mcpServersSelected", {
-                      count: enabledSelectedMcpCount
-                    })
+              <span className="transfer-dialog-mcp-summary">
+                {enabledSelectedMcpNames.length > 0
+                  ? enabledSelectedMcpNames.join(", ")
                   : t("handoff.mcpServersNone", "None selected")}
               </span>
               <ChevronDown
@@ -427,44 +429,18 @@ export function TransferConversationPanel({
           </div>
           {showMcpPicker && (
             <div className="transfer-dialog-mcp-list">
-              {mcpServers.map((server) => {
-                const isSelected = selectedMcpServerIds.includes(server.id);
-                const isDisabled = !server.enabled;
-                return (
-                  <label
-                    key={server.id}
-                    className={`transfer-dialog-mcp-item${isDisabled ? " disabled" : ""}${isDisabled && isSelected ? " skipped" : ""}`}
-                    title={
-                      isDisabled
-                        ? isSelected
-                          ? t("mcp.serverDisabledWillSkip")
-                          : t("mcp.serverDisabled")
-                        : undefined
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      disabled={isDisabled || submitting}
-                      onChange={(e) => {
-                        if (e.currentTarget.checked) {
-                          setSelectedMcpServerIds((prev) => [...prev, server.id]);
-                        } else {
-                          setSelectedMcpServerIds((prev) =>
-                            prev.filter((id) => id !== server.id)
-                          );
-                        }
-                      }}
-                    />
-                    <span>{server.name}</span>
-                    {isDisabled && (
-                      <small className="transfer-dialog-mcp-disabled">
-                        {isSelected ? t("mcp.willSkip") : t("mcp.disabled")}
-                      </small>
-                    )}
-                  </label>
-                );
-              })}
+              <McpServerChecklist
+                servers={mcpServers}
+                selectedIds={selectedMcpServerIds}
+                disabled={submitting}
+                onToggle={(serverId, checked) => {
+                  setSelectedMcpServerIds((prev) =>
+                    checked
+                      ? [...prev, serverId]
+                      : prev.filter((id) => id !== serverId)
+                  );
+                }}
+              />
             </div>
           )}
         </div>

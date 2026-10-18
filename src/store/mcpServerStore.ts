@@ -11,6 +11,7 @@ interface McpServerStoreState {
   secretStorageEncrypted: boolean;
   loaded: boolean;
   loading: boolean;
+  checkingIds: string[];
   error: string | null;
   load: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -31,11 +32,17 @@ interface McpServerStoreState {
   ) => void;
 }
 
+const selfCheckInflight = new Map<
+  string,
+  Promise<UserMcpServerSelfCheckResult>
+>();
+
 export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
   servers: [],
   secretStorageEncrypted: true,
   loaded: false,
   loading: false,
+  checkingIds: [],
   error: null,
 
   load: async () => {
@@ -112,9 +119,33 @@ export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
   },
 
   selfCheck: async (id, cwd) => {
-    const result = await cliClient.selfCheckUserMcpServer(id, cwd);
-    get().applySelfCheckResult(id, result);
-    return result;
+    const inflight = selfCheckInflight.get(id);
+    if (inflight) return inflight;
+    set((state) => ({ checkingIds: [...state.checkingIds, id] }));
+    const promise = (async () => {
+      try {
+        await Promise.resolve();
+        const result = await cliClient.selfCheckUserMcpServer(id, cwd);
+        get().applySelfCheckResult(id, result);
+        return result;
+      } catch (err) {
+        const message = (err instanceof Error ? err.message : String(err))
+          .replace(/^Error invoking remote method '[^']*':\s*/, "");
+        const result: UserMcpServerSelfCheckResult = {
+          status: "error",
+          error: message || "Self-check failed"
+        };
+        get().applySelfCheckResult(id, result);
+        return result;
+      } finally {
+        selfCheckInflight.delete(id);
+        set((state) => ({
+          checkingIds: state.checkingIds.filter((checkId) => checkId !== id)
+        }));
+      }
+    })();
+    selfCheckInflight.set(id, promise);
+    return promise;
   },
 
   applySelfCheckResult: (id, result) => {

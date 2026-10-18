@@ -181,3 +181,40 @@
     max-width: calc(100vw - 40px);
   }
 }
+
+.mcp-picker-spinner {
+  flex-shrink: 0;
+  color: var(--fb-text-tertiary);
+  animation: mcp-picker-spin 1s linear infinite;
+}
+
+@keyframes mcp-picker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mcp-picker-footer {
+  padding: 6px;
+  border-top: 1px solid var(--fb-border);
+}
+
+.mcp-picker-manage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mcp-picker-manage:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}

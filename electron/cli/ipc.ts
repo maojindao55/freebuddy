@@ -281,7 +281,8 @@ import {
   deleteUserMcpServer,
   setUserMcpServerEnabled,
   selfCheckUserMcpServer,
-  isRemoteMcpAllowed,
+  getMcpServersByIds,
+  canUseHostMcp,
   isMcpSecretStorageEncrypted,
   type UserMcpServerInput
 } from "./mcpServers.js";
@@ -1412,11 +1413,18 @@ export function registerCliIpc() {
         }
       }
       // Remote callers cannot inherit or override host MCP servers.
-      const mcpServerIds = !isRemoteMcpAllowed()
-        ? []
-        : Array.isArray(input.mcpServerIds)
-          ? input.mcpServerIds.filter((id): id is string => typeof id === "string")
+      let mcpServerIds: string[] = [];
+      if (canUseHostMcp()) {
+        const carriedIds = Array.isArray(input.mcpServerIds)
+          ? input.mcpServerIds.filter(
+              (id): id is string => typeof id === "string"
+            )
           : getConversationMcpServerIds(source.id);
+        const existingIds = new Set(
+          getMcpServersByIds(carriedIds).map((server) => server.id)
+        );
+        mcpServerIds = carriedIds.filter((id) => existingIds.has(id));
+      }
       const transferMetadata: Record<string, unknown> = {};
       if (mcpServerIds.length > 0) {
         transferMetadata.mcpServerIds = mcpServerIds;
@@ -1639,6 +1647,7 @@ export function registerCliIpc() {
   registerHandler(
     "cli:getConversationMcpServerIds",
     (_e, conversationId: string) => {
+      if (!canUseHostMcp()) return [];
       if (!requireOwnedConversation(conversationId)) return [];
       return getConversationMcpServerIds(conversationId);
     }
@@ -1647,6 +1656,7 @@ export function registerCliIpc() {
   registerHandler(
     "cli:setConversationMcpServerIds",
     (_e, args: { id: string; mcpServerIds: string[] }) => {
+      if (!canUseHostMcp()) return;
       if (!requireOwnedConversation(args.id)) return;
       setConversationMcpServerIds(
         args.id,
@@ -1762,57 +1772,48 @@ export function registerCliIpc() {
   );
 
   // ---- User MCP Servers ----
-  registerHandler("mcpServers:list", () => {
-    if (!isRemoteMcpAllowed()) {
+  function assertHostMcpAccess(): void {
+    if (!canUseHostMcp()) {
       throw new Error("MCP servers are not available for remote users");
     }
+  }
+  registerHandler("mcpServers:list", () => {
+    assertHostMcpAccess();
     return {
       servers: listUserMcpServers(),
       secretStorageEncrypted: isMcpSecretStorageEncrypted()
     };
   });
   registerHandler("mcpServers:get", (_e, id: string) => {
-    if (!isRemoteMcpAllowed()) {
-      throw new Error("MCP servers are not available for remote users");
-    }
+    assertHostMcpAccess();
     return getUserMcpServer(id);
   });
   registerHandler("mcpServers:create", (_e, input: UserMcpServerInput) => {
-    if (!isRemoteMcpAllowed()) {
-      throw new Error("MCP servers are not available for remote users");
-    }
+    assertHostMcpAccess();
     return createUserMcpServer(input);
   });
   registerHandler(
     "mcpServers:update",
     (_e, args: { id: string; input: Partial<UserMcpServerInput> }) => {
-      if (!isRemoteMcpAllowed()) {
-        throw new Error("MCP servers are not available for remote users");
-      }
+      assertHostMcpAccess();
       return updateUserMcpServer(args.id, args.input);
     }
   );
   registerHandler("mcpServers:delete", (_e, id: string) => {
-    if (!isRemoteMcpAllowed()) {
-      throw new Error("MCP servers are not available for remote users");
-    }
+    assertHostMcpAccess();
     return deleteUserMcpServer(id);
   });
   registerHandler(
     "mcpServers:setEnabled",
     (_e, args: { id: string; enabled: boolean }) => {
-      if (!isRemoteMcpAllowed()) {
-        throw new Error("MCP servers are not available for remote users");
-      }
+      assertHostMcpAccess();
       return setUserMcpServerEnabled(args.id, args.enabled);
     }
   );
   registerHandler(
     "mcpServers:selfCheck",
     async (_e, args: { id: string; cwd?: string }) => {
-      if (!isRemoteMcpAllowed()) {
-        throw new Error("MCP servers are not available for remote users");
-      }
+      assertHostMcpAccess();
       return selfCheckUserMcpServer(args.id, args.cwd);
     }
   );

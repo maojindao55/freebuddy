@@ -480,6 +480,21 @@ function preparedTaskWorkspaceMetadata(
   };
 }
 
+function buildNewTaskMetadata(
+  preparedWorkspace: PreparedTaskWorkspace | null | undefined,
+  mcpServerIds: string[]
+): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {
+    ...(preparedWorkspace
+      ? preparedTaskWorkspaceMetadata(preparedWorkspace)
+      : {})
+  };
+  if (mcpServerIds.length) {
+    metadata.mcpServerIds = mcpServerIds;
+  }
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
 function pluginAgentForAdapter(adapter?: string): NativePluginAgent | undefined {
   const normalized = adapter?.trim().toLowerCase();
   if (normalized?.startsWith("codex")) return "codex";
@@ -1093,31 +1108,30 @@ export function ChatView({
   const [slashIndex, setSlashIndex] = useState(0);
   const conv = conversations.find((c) => c.id === activeId);
 
-  const [conversationMcpServerIds, setConversationMcpServerIds] = useState<string[]>([]);
-  useEffect(() => {
-    if (!conv?.id) {
-      setConversationMcpServerIds([]);
-      return;
-    }
-    const metadata = conv.metadata;
+  const conversationMcpServerIds = useMemo(() => {
+    const metadata = conv?.metadata;
     if (metadata && Array.isArray(metadata.mcpServerIds)) {
-      setConversationMcpServerIds(
-        (metadata.mcpServerIds as unknown[]).filter(
-          (id): id is string => typeof id === "string"
-        )
+      return (metadata.mcpServerIds as unknown[]).filter(
+        (id): id is string => typeof id === "string"
       );
-    } else {
-      setConversationMcpServerIds([]);
     }
-  }, [conv?.id, conv?.metadata]);
+    return [];
+  }, [conv?.metadata]);
+
+  const setConversationMcpServerIds = useConversationStore(
+    (s) => s.setConversationMcpServerIds
+  );
 
   const handleMcpServerIdsChange = useCallback(
     async (ids: string[]) => {
       if (!conv?.id) return;
-      setConversationMcpServerIds(ids);
-      await cliClient.setConversationMcpServerIds(conv.id, ids);
+      try {
+        await setConversationMcpServerIds(conv.id, ids);
+      } catch {
+        notify(t("mcp.saveSelectionFailed"));
+      }
     },
-    [conv?.id]
+    [conv?.id, setConversationMcpServerIds, notify, t]
   );
 
   useEffect(() => {
@@ -2274,14 +2288,10 @@ export function ChatView({
           member: teamMember,
           cwd,
           projectId: newTaskProjectId,
-          metadata: {
-            ...(preparedWorkspace
-              ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-              : {}),
-            ...(newTaskMcpServerIds.length
-              ? { mcpServerIds: newTaskMcpServerIds }
-              : {})
-          },
+          metadata: buildNewTaskMetadata(
+            preparedWorkspace,
+            newTaskMcpServerIds
+          ),
           title: buildConversationTitle({
             prompt,
             attachmentName: attachmentsToSend[0]?.name,
@@ -2353,14 +2363,10 @@ export function ChatView({
         member: selectedMember,
         cwd: preparedWorkspace?.cwd,
         projectId: newTaskProjectId,
-        metadata: {
-          ...(preparedWorkspace
-            ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-            : {}),
-          ...(newTaskMcpServerIds.length
-            ? { mcpServerIds: newTaskMcpServerIds }
-            : {})
-        },
+        metadata: buildNewTaskMetadata(
+          preparedWorkspace,
+          newTaskMcpServerIds
+        ),
         title: buildConversationTitle({
           prompt,
           attachmentName: attachmentsToSend[0]?.name,
@@ -2687,14 +2693,10 @@ export function ChatView({
         member: teamMember,
         cwd,
         projectId: newTaskProjectId,
-        metadata: {
-          ...(preparedWorkspace
-            ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-            : {}),
-          ...(newTaskMcpServerIds.length
-            ? { mcpServerIds: newTaskMcpServerIds }
-            : {})
-        },
+        metadata: buildNewTaskMetadata(
+          preparedWorkspace,
+          newTaskMcpServerIds
+        ),
         title: buildConversationTitle({
           prompt: pendingTeamPreview.goal,
           fallback: pendingTeamPreview.teamName
@@ -3671,7 +3673,9 @@ function NewTaskHome({
             }
             onSkillsChange={onSkills}
           />
-          {currentUser?.isOwner !== false && window.freebuddy?.platform !== "web" ? (
+          {currentUser?.isOwner !== false &&
+          window.freebuddy?.platform !== "web" &&
+          !(teamMode && selectedTeam && isDelegationTeam(selectedTeam)) ? (
             <McpServerPicker
               selectedIds={mcpServerIds}
               onSelectionChange={(ids) => onMcpServerIds?.(ids)}

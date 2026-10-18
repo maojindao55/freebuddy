@@ -169,6 +169,7 @@ export interface ConversationState {
     overrides: Record<string, string>
   ): Promise<void>;
   setConversationSkills(id: string, skillIds: string[]): Promise<void>;
+  setConversationMcpServerIds(id: string, ids: string[]): Promise<void>;
 
   sendMessage(input: {
     conversationId: string;
@@ -1213,6 +1214,41 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }));
   },
 
+  async setConversationMcpServerIds(id, ids) {
+    const index = get().conversations.findIndex(
+      (conversation) => conversation.id === id
+    );
+    if (index < 0) return;
+    const previousMetadata = get().conversations[index].metadata;
+    set((state) => ({
+      conversations: state.conversations.map((conversation) =>
+        conversation.id === id
+          ? {
+              ...conversation,
+              metadata: { ...conversation.metadata, mcpServerIds: ids }
+            }
+          : conversation
+      )
+    }));
+    try {
+      await cliClient.setConversationMcpServerIds(id, ids);
+    } catch (err) {
+      const current = get().conversations.find(
+        (conversation) => conversation.id === id
+      );
+      if (current?.metadata?.mcpServerIds === ids) {
+        set((state) => ({
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === id
+              ? { ...conversation, metadata: previousMetadata }
+              : conversation
+          )
+        }));
+      }
+      throw err;
+    }
+  },
+
   isRunning(id) {
     const live = get().live[id];
     return !!live && (live.status === "starting" || live.status === "running");
@@ -1424,12 +1460,6 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ...(configOptionOverrides ?? {})
     };
 
-    const mcpServerIds = Array.isArray(conv.metadata?.mcpServerIds)
-      ? (conv.metadata.mcpServerIds as string[]).filter(
-          (id): id is string => typeof id === "string"
-        )
-      : undefined;
-
     const runArgs: CliRunArgs = {
       sessionId: taskSessionId,
       conversationId,
@@ -1472,8 +1502,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         get().messages[conversationId] ?? []
       ),
       skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId,
-      ...(mcpServerIds?.length ? { mcpServerIds } : {})
+      announceSkills: wantFresh || !resumedFromSessionId
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");

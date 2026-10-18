@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -6,11 +6,11 @@ import {
   ChevronLeft,
   Eye,
   EyeOff,
+  Info,
   Loader2,
   Plus,
-  Power,
   RefreshCw,
-  Terminal,
+  Server,
   Trash2,
   X
 } from "lucide-react";
@@ -22,6 +22,30 @@ import type {
   UserMcpServerInput
 } from "@/services/cli/types";
 import "./McpServersTab.css";
+
+const MCP_SERVER_TEMPLATES: Array<{
+  name: string;
+  command: string;
+  args: string[];
+}> = [
+  {
+    name: "everything",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-everything"]
+  },
+  {
+    name: "filesystem",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${cwd}"]
+  },
+  {
+    name: "memory",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-memory"]
+  },
+  { name: "time", command: "uvx", args: ["mcp-server-time"] },
+  { name: "fetch", command: "uvx", args: ["mcp-server-fetch"] }
+];
 
 interface EnvVarDraft {
   id: string;
@@ -46,7 +70,13 @@ function StatusDot({
 }) {
   const { t } = useTranslation();
   if (checking) {
-    return <Loader2 size={12} className="mcp-status-dot checking" />;
+    return (
+      <Loader2
+        size={10}
+        className="mcp-status-dot checking"
+        aria-label={t("mcp.checking", "Checking")}
+      />
+    );
   }
   const timeLabel = lastCheckedAt
     ? t("mcpServers.lastCheckedAt", "Last checked: {{time}}", {
@@ -57,6 +87,8 @@ function StatusDot({
     return (
       <span
         className="mcp-status-dot ok"
+        role="img"
+        aria-label={t("mcpServers.statusOkTitle", "Latest self-check passed")}
         title={t("mcpServers.statusOkTitle", "Latest self-check passed") + (timeLabel ? `\n${timeLabel}` : "")}
       />
     );
@@ -68,6 +100,8 @@ function StatusDot({
     return (
       <span
         className="mcp-status-dot error"
+        role="img"
+        aria-label={t("mcpServers.statusErrorTitle", "Latest self-check failed")}
         title={t("mcpServers.statusErrorTitle", "Latest self-check failed") + errorDetail + (timeLabel ? `\n${timeLabel}` : "")}
       />
     );
@@ -75,6 +109,8 @@ function StatusDot({
   return (
     <span
       className="mcp-status-dot unknown"
+      role="img"
+      aria-label={t("mcpServers.statusUnknownTitle", "Not checked yet")}
       title={t("mcpServers.statusUnknownTitle", "Not checked yet")}
     />
   );
@@ -85,13 +121,17 @@ function McpServerEditor({
   onSave,
   onDelete,
   onBack,
-  isNew
+  isNew,
+  autoSelfCheck,
+  onAutoSelfCheckDone
 }: {
   server: UserMcpServer | null;
-  onSave: (input: UserMcpServerInput) => Promise<void>;
+  onSave: (input: UserMcpServerInput) => Promise<UserMcpServer | undefined>;
   onDelete?: (id: string) => Promise<void>;
   onBack: () => void;
   isNew: boolean;
+  autoSelfCheck?: boolean;
+  onAutoSelfCheckDone?: () => void;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState(server?.name ?? "");
@@ -120,19 +160,86 @@ function McpServerEditor({
   const needsLocalExecAck = isNew || commandChanged;
 
   const selfCheck = useMcpServerStore((s) => s.selfCheck);
-  const [checking, setChecking] = useState(false);
+  const checkingIds = useMcpServerStore((s) => s.checkingIds);
+  const checking = server ? checkingIds.includes(server.id) : false;
   const [checkResult, setCheckResult] = useState<{
     status: "ok" | "error";
+    code?: string;
     error?: string;
     tools?: string[];
     stderr?: string;
   } | null>(null);
+  const formId = useId();
+  const confirmDeleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (confirmDeleteTimer.current) {
+        clearTimeout(confirmDeleteTimer.current);
+      }
+    };
+  }, []);
 
   const parseArgsFromLines = (text: string): string[] => {
     return text
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
+  };
+
+  const dirty = useMemo(() => {
+    if (isNew || !server) {
+      return (
+        name.trim() !== "" ||
+        command.trim() !== "" ||
+        argsLines.trim() !== "" ||
+        envVars.some((e) => e.name.trim() !== "" || e.value !== "")
+      );
+    }
+    if (name.trim() !== server.name) return true;
+    if (command.trim() !== server.command) return true;
+    if (
+      parseArgsFromLines(argsLines).join("\n") !== server.args.join("\n")
+    ) {
+      return true;
+    }
+    const draftEnv = envVars.filter((e) => e.name.trim());
+    if (draftEnv.length !== server.env.length) return true;
+    for (let i = 0; i < draftEnv.length; i += 1) {
+      const draft = draftEnv[i];
+      const original = server.env[i];
+      if (draft.name.trim() !== original.name) return true;
+      if (draft.secret !== (original.secret ?? false)) return true;
+      if (draft.secret) {
+        if (draft.value !== "") return true;
+        if (
+          !draft.hasStoredSecret &&
+          Boolean(original.hasValue || original.value || original.valueEncrypted)
+        ) {
+          return true;
+        }
+      } else if (draft.value !== (original.value ?? "")) {
+        return true;
+      }
+    }
+    return false;
+  }, [isNew, server, name, command, argsLines, envVars]);
+
+  const mapSaveError = (err: unknown): string => {
+    const raw = err instanceof Error ? err.message : "";
+    const code = raw.match(/\[mcp:([a-z_]+)\]/)?.[1];
+    if (code) {
+      return t(`mcpServers.error.${code}`);
+    }
+    const stripped = raw
+      .replace(/^Error invoking remote method '[^']*':\s*/, "")
+      .replace(/\[mcp:[a-z_]+\]\s*/, "");
+    return stripped || t("mcpServers.error.saveFailed");
+  };
+
+  const handleBack = () => {
+    if (dirty && !window.confirm(t("mcpServers.discardChanges"))) return;
+    onBack();
   };
 
   const handleAddEnvVar = () => {
@@ -182,26 +289,36 @@ function McpServerEditor({
     });
   };
 
-  const handleSave = async () => {
+  const resetDrafts = (saved: UserMcpServer) => {
+    setName(saved.name);
+    setCommand(saved.command);
+    setArgsLines(saved.args.join("\n"));
+    setEnvVars(
+      (saved.env ?? []).map((e) => ({
+        id: nanoid(6),
+        originalName: e.name,
+        name: e.name,
+        value: "",
+        valuePreview: e.valuePreview,
+        hasStoredSecret: e.secret === true && Boolean(e.hasValue),
+        secret: e.secret ?? false
+      }))
+    );
+    setAckLocalExec(false);
+  };
+
+  const handleSave = async (): Promise<UserMcpServer | undefined> => {
     if (!name.trim()) {
       setError(t("mcpServers.error.nameRequired"));
-      return;
+      return undefined;
     }
     if (!command.trim()) {
       setError(t("mcpServers.error.commandRequired"));
-      return;
-    }
-    if (!/^[A-Za-z0-9_-]{1,48}$/.test(name.trim())) {
-      setError(t("mcpServers.error.invalidName"));
-      return;
-    }
-    if (name.trim().toLowerCase().startsWith("freebuddy")) {
-      setError(t("mcpServers.error.reservedPrefix"));
-      return;
+      return undefined;
     }
     if (needsLocalExecAck && !ackLocalExec) {
       setError(t("mcpServers.error.confirmLocalExec"));
-      return;
+      return undefined;
     }
 
     setSaving(true);
@@ -223,7 +340,7 @@ function McpServerEditor({
           return { ...base, value: e.value };
         });
 
-      await onSave({
+      const saved = await onSave({
         id: server?.id,
         name: name.trim(),
         command: command.trim(),
@@ -231,18 +348,10 @@ function McpServerEditor({
         env,
         enabled: server?.enabled ?? true
       });
-      onBack();
+      return saved;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-      if (/reserved/i.test(message)) {
-        setError(t("mcpServers.error.reservedPrefix"));
-      } else if (/already exists/i.test(message)) {
-        setError(t("mcpServers.error.duplicateName"));
-      } else if (/must match/i.test(message)) {
-        setError(t("mcpServers.error.invalidName"));
-      } else {
-        setError(message || t("mcpServers.error.saveFailed"));
-      }
+      setError(mapSaveError(err));
+      return undefined;
     } finally {
       setSaving(false);
     }
@@ -252,6 +361,13 @@ function McpServerEditor({
     if (!server || !onDelete) return;
     if (!confirmDelete) {
       setConfirmDelete(true);
+      if (confirmDeleteTimer.current) {
+        clearTimeout(confirmDeleteTimer.current);
+      }
+      confirmDeleteTimer.current = setTimeout(() => {
+        setConfirmDelete(false);
+        confirmDeleteTimer.current = null;
+      }, 4000);
       return;
     }
     setDeleting(true);
@@ -265,215 +381,309 @@ function McpServerEditor({
     }
   };
 
-  const handleSelfCheck = async () => {
+  const runSelfCheck = async () => {
     if (!server) return;
-    setChecking(true);
     setCheckResult(null);
-    try {
-      const result = await selfCheck(server.id);
-      setCheckResult(result);
-    } catch {
-      setCheckResult({ status: "error", error: t("mcpServers.error.selfCheckFailed") });
-    } finally {
-      setChecking(false);
-    }
+    const result = await selfCheck(server.id);
+    setCheckResult(result);
   };
 
+  const handleSelfCheck = async () => {
+    if (!server) return;
+    if (dirty) {
+      const saved = await handleSave();
+      if (!saved) return;
+      resetDrafts(saved);
+    }
+    await runSelfCheck();
+  };
+
+  const autoCheckFired = useRef(false);
+  useEffect(() => {
+    if (autoCheckFired.current) return;
+    if (!autoSelfCheck || !server) return;
+    autoCheckFired.current = true;
+    onAutoSelfCheckDone?.();
+    if (server.args.some((arg) => arg.includes("${cwd}"))) return;
+    void runSelfCheck();
+  }, []);
+
   return (
-    <div className="mcp-editor">
+    <div className="mcp-servers-tab">
       <div className="mcp-editor-header">
         <button
           type="button"
-          className="mcp-editor-back"
-          onClick={onBack}
+          className="mcp-icon-btn"
+          onClick={handleBack}
         >
           <ChevronLeft size={16} />
           {t("common.back")}
         </button>
-        <h3>{isNew ? t("mcpServers.new") : t("mcpServers.edit")}</h3>
+        <h3>
+          {isNew ? t("mcpServers.new") : t("mcpServers.edit")}
+          {server && <span className="muted"> {server.name}</span>}
+        </h3>
       </div>
 
-      <div className="mcp-editor-form">
-        <div className="mcp-form-group">
-          <label>{t("mcpServers.name")}</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t("mcpServers.namePlaceholder")}
-          />
-          <p className="mcp-form-hint">{t("mcpServers.nameHint")}</p>
+      {isNew && (
+        <div className="mcp-templates">
+          <span className="mcp-templates-label">
+            {t("mcpServers.templates", "Quick fill")}
+          </span>
+          {MCP_SERVER_TEMPLATES.map((template) => (
+            <button
+              key={template.name}
+              type="button"
+              className="mcp-template-chip"
+              disabled={saving}
+              title={`${template.command} ${template.args.join(" ")}`}
+              onClick={() => {
+                setName(template.name);
+                setCommand(template.command);
+                setArgsLines(template.args.join("\n"));
+              }}
+            >
+              {template.name}
+            </button>
+          ))}
         </div>
+      )}
 
-        <div className="mcp-form-group">
-          <label>{t("mcpServers.command")}</label>
-          <input
-            type="text"
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-            placeholder="npx, uvx, node, python..."
-          />
-          <p className="mcp-form-hint">{t("mcpServers.commandHint")}</p>
+      <div className="mcp-editor-section">
+        <div className="mcp-section-title">
+          {t("mcpServers.sectionBasic", "Basic info")}
         </div>
+        <div className="mcp-form-grid">
+          <div className="mcp-form-group">
+            <label htmlFor={`${formId}-name`}>{t("mcpServers.name")}</label>
+            <input
+              id={`${formId}-name`}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("mcpServers.namePlaceholder")}
+            />
+            <p className="mcp-form-hint">{t("mcpServers.nameHint")}</p>
+          </div>
 
-        <div className="mcp-form-group">
-          <label>{t("mcpServers.args")}</label>
-          <textarea
-            value={argsLines}
-            onChange={(e) => setArgsLines(e.target.value)}
-            placeholder={"-y\n@modelcontextprotocol/server-filesystem\n${cwd}"}
-            rows={3}
-            className="mcp-args-textarea"
-          />
-          <p className="mcp-form-hint">{t("mcpServers.argsHintPerLine", "One argument per line. Use ${cwd} for workspace path.")}</p>
+          <div className="mcp-form-group">
+            <label htmlFor={`${formId}-command`}>{t("mcpServers.command")}</label>
+            <input
+              id={`${formId}-command`}
+              type="text"
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              placeholder="npx, uvx, node, python..."
+            />
+            <p className="mcp-form-hint">{t("mcpServers.commandHint")}</p>
+          </div>
+
+          <div className="mcp-form-group mcp-form-span">
+            <label htmlFor={`${formId}-args`}>{t("mcpServers.args")}</label>
+            <textarea
+              id={`${formId}-args`}
+              value={argsLines}
+              onChange={(e) => setArgsLines(e.target.value)}
+              placeholder={"-y\n@modelcontextprotocol/server-filesystem\n${cwd}"}
+              rows={Math.min(
+                10,
+                Math.max(3, argsLines.split("\n").length + 1)
+              )}
+            />
+            <p className="mcp-form-hint">{t("mcpServers.argsHintPerLine", "One argument per line. Use ${cwd} for workspace path.")}</p>
+          </div>
         </div>
+      </div>
 
-        <div className="mcp-form-group">
-          <label>{t("mcpServers.envVars")}</label>
-          <div className="mcp-env-list">
-            {envVars.map((e) => (
-              <div key={e.id} className="mcp-env-row">
+      <div className="mcp-editor-section">
+        <div className="mcp-section-title">{t("mcpServers.envVars")}</div>
+        <div className="mcp-env-list">
+          {envVars.length === 0 && (
+            <p className="mcp-env-empty muted">
+              {t("mcpServers.envEmpty", "No environment variables")}
+            </p>
+          )}
+          <div className="mcp-env-grid">
+          {envVars.length > 0 && (
+            <div className="mcp-env-header">
+              <span className="muted">{t("mcpServers.envName")}</span>
+              <span className="muted">{t("mcpServers.envValue")}</span>
+              <span />
+              <span />
+            </div>
+          )}
+          {envVars.map((e) => (
+            <div key={e.id} className="mcp-env-row">
+              <input
+                type="text"
+                value={e.name}
+                onChange={(ev) =>
+                  handleEnvVarChange(e.id, "name", ev.target.value)
+                }
+                placeholder={t("mcpServers.envName")}
+                className="mcp-env-name"
+                aria-label={t("mcpServers.envName")}
+                title={e.name}
+              />
+              <div className="mcp-env-value-wrapper">
                 <input
-                  type="text"
-                  value={e.name}
+                  type={e.secret && !showSecrets.has(e.id) ? "password" : "text"}
+                  value={e.value}
                   onChange={(ev) =>
-                    handleEnvVarChange(e.id, "name", ev.target.value)
+                    handleEnvVarChange(e.id, "value", ev.target.value)
                   }
-                  placeholder={t("mcpServers.envName")}
-                  className="mcp-env-name"
+                  placeholder={
+                    e.secret && e.hasStoredSecret && e.valuePreview
+                      ? `${e.valuePreview} ${t("mcpServers.storedSecret", "(stored)")}`
+                      : t("mcpServers.envValue")
+                  }
+                  className="mcp-env-value"
+                  aria-label={t("mcpServers.envValue")}
                 />
-                <div className="mcp-env-value-wrapper">
-                  <input
-                    type={e.secret && !showSecrets.has(e.id) ? "password" : "text"}
-                    value={e.value}
-                    onChange={(ev) =>
-                      handleEnvVarChange(e.id, "value", ev.target.value)
-                    }
-                    placeholder={
-                      e.secret && e.hasStoredSecret && e.valuePreview
-                        ? `${e.valuePreview} ${t("mcpServers.storedSecret", "(stored)")}`
-                        : t("mcpServers.envValue")
-                    }
-                    className="mcp-env-value"
-                  />
-                  {e.secret && (
-                    <>
+                {e.secret && (
+                  <>
+                    <button
+                      type="button"
+                      className="mcp-env-toggle-secret"
+                      onClick={() => toggleShowSecret(e.id)}
+                      title={showSecrets.has(e.id) ? t("mcpServers.hideSecret") : t("mcpServers.showSecret")}
+                    >
+                      {showSecrets.has(e.id) ? (
+                        <EyeOff size={14} />
+                      ) : (
+                        <Eye size={14} />
+                      )}
+                    </button>
+                    {e.hasStoredSecret && !e.value && (
                       <button
                         type="button"
-                        className="mcp-env-toggle-secret"
-                        onClick={() => toggleShowSecret(e.id)}
-                        title={showSecrets.has(e.id) ? t("mcpServers.hideSecret") : t("mcpServers.showSecret")}
+                        className="mcp-env-clear-secret"
+                        onClick={() => handleClearSecretValue(e.id)}
+                        title={t("mcpServers.clearSecret", "Clear stored secret")}
                       >
-                        {showSecrets.has(e.id) ? (
-                          <EyeOff size={14} />
-                        ) : (
-                          <Eye size={14} />
-                        )}
+                        <X size={14} />
                       </button>
-                      {e.hasStoredSecret && !e.value && (
-                        <button
-                          type="button"
-                          className="mcp-env-clear-secret"
-                          onClick={() => handleClearSecretValue(e.id)}
-                          title={t("mcpServers.clearSecret", "Clear stored secret")}
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-                <label className="mcp-env-secret-label">
-                  <input
-                    type="checkbox"
-                    checked={e.secret}
-                    onChange={(ev) =>
-                      handleEnvVarChange(e.id, "secret", ev.target.checked)
-                    }
-                  />
-                  {t("mcpServers.secret")}
-                </label>
-                <button
-                  type="button"
-                  className="mcp-env-remove"
-                  onClick={() => handleRemoveEnvVar(e.id)}
-                >
-                  <X size={14} />
-                </button>
+                    )}
+                  </>
+                )}
               </div>
-            ))}
-            <button
-              type="button"
-              className="mcp-env-add"
-              onClick={handleAddEnvVar}
-            >
-              <Plus size={14} />
-              {t("mcpServers.addEnvVar")}
-            </button>
-          </div>
-        </div>
-
-        {!isNew && server && (
-          <div className="mcp-form-group">
-            <label>{t("mcpServers.selfCheck")}</label>
-            <div className="mcp-self-check">
+              <label className="mcp-env-secret-label">
+                <input
+                  type="checkbox"
+                  checked={e.secret}
+                  onChange={(ev) =>
+                    handleEnvVarChange(e.id, "secret", ev.target.checked)
+                  }
+                />
+                {t("mcpServers.secret")}
+              </label>
               <button
                 type="button"
-                className="mcp-self-check-btn"
-                onClick={handleSelfCheck}
-                disabled={checking}
+                className="mcp-env-remove"
+                onClick={() => handleRemoveEnvVar(e.id)}
+                aria-label={t("mcpServers.removeEnvVar", "Remove variable")}
+                title={t("mcpServers.removeEnvVar", "Remove variable")}
               >
-                {checking ? (
-                  <Loader2 size={14} className="spinning" />
-                ) : (
-                  <RefreshCw size={14} />
-                )}
-                {t("mcpServers.runSelfCheck")}
+                <X size={14} />
               </button>
-              {checkResult && (
-                <div
-                  className={`mcp-self-check-result ${checkResult.status}`}
-                >
-                  {checkResult.status === "ok" ? (
-                    <>
-                      <Check size={14} />
-                      <span>
-                        {t("mcpServers.selfCheckOk", {
-                          count: checkResult.tools?.length ?? 0
-                        })}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertTriangle size={14} />
-                      <span>{checkResult.error}</span>
-                    </>
-                  )}
-                </div>
-              )}
-              {checkResult?.tools && checkResult.tools.length > 0 && (
-                <div className="mcp-tools-list">
-                  <label>{t("mcpServers.tools")}</label>
-                  <ul>
-                    {checkResult.tools.map((tool) => (
-                      <li key={tool}>{tool}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {checkResult?.stderr && (
-                <div className="mcp-stderr">
-                  <label>{t("mcpServers.stderr")}</label>
-                  <pre>{checkResult.stderr}</pre>
-                </div>
-              )}
             </div>
+          ))}
           </div>
+          <button
+            type="button"
+            className="mcp-env-add"
+            onClick={handleAddEnvVar}
+          >
+            <Plus size={14} />
+            {t("mcpServers.addEnvVar")}
+          </button>
+        </div>
+      </div>
+
+      {!isNew && server && (
+        <div className="mcp-editor-section">
+          <div className="mcp-section-title">{t("mcpServers.selfCheck")}</div>
+          <div className="mcp-self-check">
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleSelfCheck}
+              disabled={checking}
+            >
+              {checking ? (
+                <Loader2 size={14} className="spinning" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              {dirty
+                ? t("mcpServers.saveAndCheck", "Save & check")
+                : t("mcpServers.runSelfCheck")}
+            </button>
+            {checkResult && (
+              <div
+                className={`mcp-self-check-result ${checkResult.status}`}
+              >
+                {checkResult.status === "ok" ? (
+                  <>
+                    <Check size={14} />
+                    <span>
+                      {t("mcpServers.selfCheckOk", {
+                        count: checkResult.tools?.length ?? 0
+                      })}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle size={14} />
+                    <span>
+                      {checkResult.code === "cwd_required"
+                        ? t("mcpServers.error.cwdRequired")
+                        : checkResult.error}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+            {checkResult?.tools && checkResult.tools.length > 0 && (
+              <div className="mcp-tools-chips">
+                {checkResult.tools.map((tool) => (
+                  <span key={tool} className="mcp-tool-chip">
+                    {tool}
+                  </span>
+                ))}
+              </div>
+            )}
+            {checkResult?.stderr && (
+              <details className="mcp-stderr">
+                <summary>{t("mcpServers.stderr")}</summary>
+                <pre>{checkResult.stderr}</pre>
+              </details>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && <div className="mcp-form-error">{error}</div>}
+
+      <div className="mcp-editor-footer">
+        {!isNew && server && onDelete ? (
+          <button
+            type="button"
+            className="secondary mcp-danger"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader2 size={14} className="spinning" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            {confirmDelete ? t("mcpServers.confirmDelete") : t("common.delete")}
+          </button>
+        ) : (
+          <span />
         )}
-
-        {error && <div className="mcp-form-error">{error}</div>}
-
-        <div className="mcp-form-actions">
+        <div className="mcp-form-actions-right">
           {needsLocalExecAck && (
             <label className="mcp-local-exec-ack">
               <input
@@ -484,43 +694,34 @@ function McpServerEditor({
               {t("mcpServers.confirmLocalExec")}
             </label>
           )}
-          {!isNew && server && onDelete && (
-            <button
-              type="button"
-              className="mcp-delete-btn"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
-              {deleting ? (
-                <Loader2 size={14} className="spinning" />
-              ) : (
-                <Trash2 size={14} />
-              )}
-              {confirmDelete ? t("mcpServers.confirmDelete") : t("common.delete")}
-            </button>
-          )}
-          <div className="mcp-form-actions-right">
-            <button
-              type="button"
-              className="mcp-cancel-btn"
-              onClick={onBack}
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="mcp-save-btn"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? (
-                <Loader2 size={14} className="spinning" />
-              ) : (
-                <Check size={14} />
-              )}
-              {t("common.save")}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="secondary"
+            onClick={handleBack}
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            type="button"
+            className="primary"
+            onClick={async () => {
+              const saved = await handleSave();
+              if (saved && !isNew) onBack();
+            }}
+            disabled={saving || (needsLocalExecAck && !ackLocalExec)}
+            title={
+              needsLocalExecAck && !ackLocalExec
+                ? t("mcpServers.error.confirmLocalExec")
+                : undefined
+            }
+          >
+            {saving ? (
+              <Loader2 size={14} className="spinning" />
+            ) : (
+              <Check size={14} />
+            )}
+            {t("common.save")}
+          </button>
         </div>
       </div>
     </div>
@@ -541,9 +742,12 @@ export function McpServersTab() {
   const remove = useMcpServerStore((s) => s.remove);
   const setEnabled = useMcpServerStore((s) => s.setEnabled);
   const selfCheck = useMcpServerStore((s) => s.selfCheck);
+  const checkingIds = useMcpServerStore((s) => s.checkingIds);
 
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
-  const [checkingIds, setCheckingIds] = useState<Set<string>>(new Set());
+  const [autoCheckId, setAutoCheckId] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const checkingSet = useMemo(() => new Set(checkingIds), [checkingIds]);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -557,15 +761,17 @@ export function McpServersTab() {
   const handleCreate = useCallback(
     async (input: UserMcpServerInput) => {
       const server = await create(input);
+      setAutoCheckId(server.id);
       setSelectedId(server.id);
+      return server;
     },
     [create]
   );
 
   const handleUpdate = useCallback(
     async (input: UserMcpServerInput) => {
-      if (!input.id) return;
-      await update(input.id, input);
+      if (!input.id) return undefined;
+      return update(input.id, input);
     },
     [update]
   );
@@ -578,51 +784,81 @@ export function McpServersTab() {
     [remove]
   );
 
-  const handleSelfCheck = useCallback(
-    async (id: string) => {
-      setCheckingIds((prev) => new Set([...prev, id]));
+  const handleCheckAll = useCallback(async () => {
+    const queue = servers.filter((s) => s.enabled);
+    const worker = async () => {
+      let next = queue.shift();
+      while (next) {
+        await selfCheck(next.id);
+        next = queue.shift();
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(3, queue.length) }, worker)
+    );
+  }, [servers, selfCheck]);
+
+  const handleToggleEnabled = useCallback(
+    async (server: UserMcpServer, enabled: boolean) => {
       try {
-        await selfCheck(id);
-      } finally {
-        setCheckingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+        const ok = await setEnabled(server.id, enabled);
+        setListError(ok ? null : t("mcpServers.error.toggleFailed"));
+      } catch {
+        setListError(t("mcpServers.error.toggleFailed"));
       }
     },
-    [selfCheck]
+    [setEnabled, t]
   );
-
-  const handleCheckAll = useCallback(async () => {
-    for (const server of servers.filter((s) => s.enabled)) {
-      await handleSelfCheck(server.id);
-    }
-  }, [servers, handleSelfCheck]);
 
   if (selectedId) {
     return (
       <McpServerEditor
+        key={selectedId}
         server={selectedServer}
         onSave={selectedId === "new" ? handleCreate : handleUpdate}
         onDelete={selectedId === "new" ? undefined : handleDelete}
         onBack={() => setSelectedId(null)}
         isNew={selectedId === "new"}
+        autoSelfCheck={autoCheckId === selectedId}
+        onAutoSelfCheckDone={() => setAutoCheckId(null)}
       />
     );
   }
 
   return (
     <div className="mcp-servers-tab">
-      <div className="mcp-servers-header">
-        <div className="mcp-servers-title">
-          <Terminal size={20} />
-          <h2>{t("mcpServers.title")}</h2>
+      <div className="mcp-servers-heading">
+        <div className="mcp-servers-heading-text">
+          <h3>{t("mcpServers.title")}</h3>
+          <p className="muted">{t("mcpServers.description")}</p>
         </div>
-        <p className="mcp-servers-description">
-          {t("mcpServers.description")}
-        </p>
+        <div className="plugins-heading-actions">
+          {servers.length > 0 && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleCheckAll}
+              disabled={checkingSet.size > 0}
+            >
+              <RefreshCw size={14} />
+              {t("mcpServers.checkAll")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setSelectedId("new")}
+          >
+            <Plus size={14} />
+            {t("mcpServers.add")}
+          </button>
+        </div>
       </div>
+
+      <p className="mcp-note muted">
+        <Info size={14} aria-hidden="true" />
+        {t("mcpServers.note")}
+      </p>
 
       {loaded && !secretStorageEncrypted && (
         <div className="mcp-storage-warning" role="status">
@@ -630,28 +866,6 @@ export function McpServersTab() {
           <span>{t("mcpServers.secretStorageWarning")}</span>
         </div>
       )}
-
-      <div className="mcp-servers-toolbar">
-        <button
-          type="button"
-          className="mcp-add-btn"
-          onClick={() => setSelectedId("new")}
-        >
-          <Plus size={14} />
-          {t("mcpServers.add")}
-        </button>
-        {servers.length > 0 && (
-          <button
-            type="button"
-            className="mcp-check-all-btn"
-            onClick={handleCheckAll}
-            disabled={checkingIds.size > 0}
-          >
-            <RefreshCw size={14} />
-            {t("mcpServers.checkAll")}
-          </button>
-        )}
-      </div>
 
       {loading && !loaded && (
         <div className="mcp-loading">
@@ -670,80 +884,140 @@ export function McpServersTab() {
         </div>
       )}
 
+      {listError && (
+        <div className="mcp-error">
+          <AlertTriangle size={16} />
+          <span>{listError}</span>
+          <button type="button" onClick={() => setListError(null)}>
+            {t("common.dismiss", "Dismiss")}
+          </button>
+        </div>
+      )}
+
       {loaded && servers.length === 0 && (
         <div className="mcp-empty">
-          <Terminal size={40} />
+          <span className="mcp-empty-icon">
+            <Server size={32} />
+          </span>
           <h3>{t("mcpServers.empty")}</h3>
-          <p>{t("mcpServers.emptyHint")}</p>
+          <p className="muted">{t("mcpServers.emptyHint")}</p>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setSelectedId("new")}
+          >
+            <Plus size={14} />
+            {t("mcpServers.add")}
+          </button>
         </div>
       )}
 
       {loaded && servers.length > 0 && (
         <div className="mcp-servers-list">
-          {servers.map((server) => (
-            <div
-              key={server.id}
-              className={`mcp-server-item ${!server.enabled ? "disabled" : ""}`}
-            >
-              <div className="mcp-server-status">
-                <StatusDot
-                  status={server.lastCheckStatus}
-                  checking={checkingIds.has(server.id)}
-                  lastCheckedAt={server.lastCheckedAt}
-                  lastError={server.lastCheckError}
-                />
-              </div>
-              <div
-                className="mcp-server-info"
-                onClick={() => setSelectedId(server.id)}
-              >
-                <div className="mcp-server-name">{server.name}</div>
-                <div className="mcp-server-command">
-                  {server.command} {server.args.join(" ")}
-                </div>
-                {server.lastCheckTools && server.lastCheckTools.length > 0 && (
-                  <div className="mcp-server-tools-count">
-                    {t("mcpServers.toolCount", {
-                      count: server.lastCheckTools.length
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="mcp-server-actions">
-                <button
-                  type="button"
-                  className="mcp-server-check"
-                  onClick={() => handleSelfCheck(server.id)}
-                  disabled={checkingIds.has(server.id)}
-                  title={t("mcpServers.runSelfCheck")}
-                >
-                  {checkingIds.has(server.id) ? (
-                    <Loader2 size={14} className="spinning" />
-                  ) : (
-                    <RefreshCw size={14} />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className={`mcp-server-toggle ${server.enabled ? "on" : "off"}`}
-                  onClick={() => setEnabled(server.id, !server.enabled)}
-                  title={
-                    server.enabled
-                      ? t("mcpServers.disable")
-                      : t("mcpServers.enable")
+          {servers.map((server) => {
+            const statusPill = !server.enabled
+              ? { cls: "disabled", text: t("mcp.disabled") }
+              : server.lastCheckStatus === "ok"
+                ? {
+                    cls: "ok",
+                    text: t("mcpServers.toolCount", {
+                      count: server.lastCheckTools?.length ?? 0
+                    })
                   }
+                : server.lastCheckStatus === "error"
+                  ? {
+                      cls: "error",
+                      text: t("mcpServers.statusFailed", "Check failed")
+                    }
+                  : {
+                      cls: "unknown",
+                      text: t("mcpServers.statusUnknown", "Not checked")
+                    };
+            const commandLine = `${server.command} ${server.args.join(" ")}`.trim();
+            return (
+              <div
+                key={server.id}
+                className={`mcp-server-card${!server.enabled ? " disabled" : ""}`}
+              >
+                <div className="mcp-server-icon">
+                  <Server size={16} aria-hidden="true" />
+                  <StatusDot
+                    status={server.lastCheckStatus}
+                    checking={checkingSet.has(server.id)}
+                    lastCheckedAt={server.lastCheckedAt}
+                    lastError={server.lastCheckError}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="mcp-server-info"
+                  onClick={() => setSelectedId(server.id)}
                 >
-                  <Power size={14} />
+                  <div className="mcp-server-row1">
+                    <strong>{server.name}</strong>
+                    <span className={`mcp-status-pill ${statusPill.cls}`}>
+                      {statusPill.text}
+                    </span>
+                  </div>
+                  <div className="mcp-server-command" title={commandLine}>
+                    {commandLine}
+                  </div>
+                  {server.lastCheckStatus === "error" &&
+                    server.lastCheckError && (
+                      <div
+                        className="mcp-server-last-error"
+                        title={server.lastCheckError}
+                      >
+                        {server.lastCheckError}
+                      </div>
+                    )}
                 </button>
+                <div className="mcp-server-actions">
+                  <button
+                    type="button"
+                    className="mcp-icon-btn"
+                    onClick={() => void selfCheck(server.id)}
+                    disabled={checkingSet.has(server.id)}
+                    title={t("mcpServers.runSelfCheck")}
+                    aria-label={t("mcpServers.runSelfCheck")}
+                  >
+                    {checkingSet.has(server.id) ? (
+                      <Loader2 size={14} className="spinning" />
+                    ) : (
+                      <RefreshCw size={14} />
+                    )}
+                  </button>
+                  <label
+                    className="skills-switch"
+                    title={
+                      server.enabled
+                        ? t("mcpServers.disable")
+                        : t("mcpServers.enable")
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={server.enabled}
+                      aria-label={
+                        server.enabled
+                          ? t("mcpServers.disable")
+                          : t("mcpServers.enable")
+                      }
+                      onChange={(event) =>
+                        void handleToggleEnabled(
+                          server,
+                          event.currentTarget.checked
+                        )
+                      }
+                    />
+                    <span aria-hidden="true" />
+                  </label>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-
-      <div className="mcp-servers-note">
-        <p>{t("mcpServers.note")}</p>
-      </div>
     </div>
   );
 }

@@ -199,8 +199,6 @@ export interface CliRunArgs {
   knownAgentStreamMessageIds?: string[];
   skills?: SkillSnapshot[];
   announceSkills?: boolean;
-  /** User-configured MCP server ids to inject into this session. */
-  mcpServerIds?: string[];
 }
 
 export interface SessionConfigOption {
@@ -962,6 +960,7 @@ export interface UserMcpServer {
 
 export interface UserMcpServerSelfCheckResult {
   status: "ok" | "error";
+  code?: string;
   error?: string;
   tools?: string[];
   stderr?: string;

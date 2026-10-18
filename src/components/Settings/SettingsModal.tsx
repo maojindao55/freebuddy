@@ -10,7 +10,7 @@ import {
   Newspaper,
   Puzzle,
   Share2,
-  Terminal,
+  Server,
 } from "lucide-react";
 import { AboutTab } from "./AboutTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
@@ -45,7 +45,7 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
   general: Cog,
   cli: Bot,
   providers: Cpu,
-  mcp: Terminal,
+  mcp: Server,
   skills: Layers,
   plugins: Puzzle,
   feed: Newspaper,

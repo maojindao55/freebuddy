@@ -1,10 +1,10 @@
-import { Server } from "lucide-react";
+import { Server, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useMcpServerStore } from "@/store/mcpServerStore";
-import type { UserMcpServer } from "@/services/cli/types";
 
+import { McpServerChecklist } from "./McpServerChecklist";
 import "./McpServerPicker.css";
 
 export interface McpServerPickerProps {
@@ -13,61 +13,6 @@ export interface McpServerPickerProps {
   disabled?: boolean;
   cwd?: string;
   onOpenSettings?: () => void;
-}
-
-function McpServerCheckboxItem({
-  server,
-  selected,
-  onChange
-}: {
-  server: UserMcpServer;
-  selected: boolean;
-  onChange: (serverId: string, checked: boolean) => void;
-}) {
-  const { t } = useTranslation();
-  const isDisabled = !server.enabled;
-  const statusOk = server.lastCheckStatus === "ok";
-  const statusError = server.lastCheckStatus === "error";
-
-  const statusTitle = isDisabled
-    ? selected
-      ? t("mcp.serverDisabledWillSkip", "Server is disabled and will be skipped")
-      : t("mcp.serverDisabled", "Server is disabled")
-    : statusError
-      ? t("mcp.lastCheckFailed", "Last check failed: {{error}}", { error: server.lastCheckError ?? "unknown" })
-      : statusOk
-        ? t("mcp.lastCheckOk", "Last check succeeded")
-        : undefined;
-
-  return (
-    <label
-      className={`mcp-picker-item${isDisabled ? " disabled" : ""}${isDisabled && selected ? " skipped" : ""}`}
-      title={statusTitle}
-    >
-      <input
-        type="checkbox"
-        checked={selected}
-        disabled={isDisabled}
-        onChange={(e) => onChange(server.id, e.currentTarget.checked)}
-      />
-      <span className="mcp-picker-item-name">{server.name}</span>
-      {statusOk && (
-        <span className="mcp-picker-status ok" aria-label={t("mcp.statusOk", "OK")} title={statusTitle}>
-          ●
-        </span>
-      )}
-      {statusError && (
-        <span className="mcp-picker-status error" aria-label={t("mcp.statusError", "Error")} title={statusTitle}>
-          ●
-        </span>
-      )}
-      {isDisabled && (
-        <small className="mcp-picker-disabled-label">
-          {selected ? t("mcp.willSkip", "skipped") : t("mcp.disabled", "disabled")}
-        </small>
-      )}
-    </label>
-  );
 }
 
 export function McpServerPicker({
@@ -80,8 +25,11 @@ export function McpServerPicker({
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const { servers, loaded, load, selfCheck } = useMcpServerStore();
-  const selfCheckInProgressRef = useRef<Set<string>>(new Set());
+  const servers = useMcpServerStore((s) => s.servers);
+  const loaded = useMcpServerStore((s) => s.loaded);
+  const load = useMcpServerStore((s) => s.load);
+  const checkingIds = useMcpServerStore((s) => s.checkingIds);
+  const selfCheck = useMcpServerStore((s) => s.selfCheck);
 
   useEffect(() => {
     if (!loaded) {
@@ -91,6 +39,12 @@ export function McpServerPicker({
 
   useEffect(() => {
     if (!open) return;
+
+    rootRef.current
+      ?.querySelector<HTMLInputElement>(
+        '.mcp-picker-popover input[type="checkbox"]'
+      )
+      ?.focus();
 
     const closeOnOutsidePointer = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
@@ -114,12 +68,7 @@ export function McpServerPicker({
   }, [open]);
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-
-  // Show enabled servers + disabled servers that are selected (greyed)
-  const visibleServers = useMemo(
-    () => servers.filter((s) => s.enabled || selectedSet.has(s.id)),
-    [servers, selectedSet]
-  );
+  const checkingSet = useMemo(() => new Set(checkingIds), [checkingIds]);
 
   const enabledServers = useMemo(
     () => servers.filter((s) => s.enabled),
@@ -135,6 +84,11 @@ export function McpServerPicker({
   const disabledSelectedCount = useMemo(() => {
     return servers.filter((s) => !s.enabled && selectedSet.has(s.id)).length;
   }, [servers, selectedSet]);
+
+  const visibleCount = useMemo(
+    () => servers.filter((s) => s.enabled || selectedSet.has(s.id)).length,
+    [servers, selectedSet]
+  );
   const handleToggle = (serverId: string, checked: boolean) => {
     const next = new Set(selectedIds);
     if (checked) {
@@ -145,15 +99,12 @@ export function McpServerPicker({
     onSelectionChange([...next]);
     if (!checked || !cwd?.trim()) return;
     const server = servers.find((entry) => entry.id === serverId);
-    if (!server?.enabled || selfCheckInProgressRef.current.has(serverId)) return;
+    if (!server?.enabled || checkingSet.has(serverId)) return;
     if (server.lastCheckedAt) {
       const lastChecked = new Date(server.lastCheckedAt).getTime();
       if (lastChecked > Date.now() - 5 * 60 * 1000) return;
     }
-    selfCheckInProgressRef.current.add(serverId);
-    void selfCheck(serverId, cwd).finally(() => {
-      selfCheckInProgressRef.current.delete(serverId);
-    });
+    void selfCheck(serverId, cwd);
   };
 
   if (loaded && servers.length === 0) {
@@ -195,7 +146,11 @@ export function McpServerPicker({
       </button>
 
       {open && (
-        <div className="mcp-picker-popover" role="group" aria-label={t("mcp.selectServers", "Select MCP Servers")}>
+        <div
+          className="mcp-picker-popover"
+          role="dialog"
+          aria-label={t("mcp.selectServers", "Select MCP Servers")}
+        >
           <div className="mcp-picker-heading">
             <strong>{t("mcp.selectForSession", "MCP Servers")}</strong>
             <span>
@@ -203,25 +158,39 @@ export function McpServerPicker({
             </span>
           </div>
           <div className="mcp-picker-list">
-            {visibleServers.length === 0 && (
+            {visibleCount === 0 && (
               <p className="mcp-picker-empty">
-                {t("mcp.noServersConfigured", "No MCP servers configured")}
+                {servers.length === 0
+                  ? t("mcp.noServersConfigured", "No MCP servers configured")
+                  : t("mcp.allServersDisabled", "All MCP servers are disabled")}
               </p>
             )}
-            {visibleServers.map((server) => (
-              <McpServerCheckboxItem
-                key={server.id}
-                server={server}
-                selected={selectedSet.has(server.id)}
-                onChange={handleToggle}
-              />
-            ))}
+            <McpServerChecklist
+              servers={servers}
+              selectedIds={selectedIds}
+              onToggle={handleToggle}
+            />
             {disabledSelectedCount > 0 && (
               <p className="mcp-picker-hint mcp-picker-warning">
                 {t("mcp.disabledServersSkipped", "{{count}} disabled server(s) will be skipped", { count: disabledSelectedCount })}
               </p>
             )}
           </div>
+          {onOpenSettings && (
+            <div className="mcp-picker-footer">
+              <button
+                type="button"
+                className="mcp-picker-manage"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenSettings();
+                }}
+              >
+                <Settings2 size={12} aria-hidden="true" />
+                {t("mcp.manageServers", "Manage MCP servers…")}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

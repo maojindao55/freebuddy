@@ -731,9 +731,14 @@ test("session request logs redact decrypted env values and secret-looking args",
       command: "/usr/bin/npx",
       args: ["--token=abcdefgh12345", "serve"],
       env: [
-        { name: "DATABASE_URL", value: "postgres://u:hunter2@h/db" },
+        {
+          name: "DATABASE_URL",
+          value: "postgres://u:hunter2@h/db",
+          secret: true
+        },
         { name: "GH_PAT", value: "ghp_supersecretvalue" },
-        { name: "API_KEY", value: "sk-live-secret" }
+        { name: "API_KEY", value: "sk-live-secret" },
+        { name: "MODE", value: "production" }
       ]
     }
   ];
@@ -748,6 +753,7 @@ test("session request logs redact decrypted env values and secret-looking args",
   assert.equal(redacted.includes("ghp_supersecretvalue"), false);
   assert.equal(redacted.includes("abcdefgh12345"), false);
   assert.equal(redacted.includes("sk-live-secret"), false);
+  assert.equal(redacted.includes("production"), true);
   assert.match(redacted, /<redacted>/);
   assert.match(redacted, /DATABASE_URL/);
   assert.match(redacted, /session\/new/);
@@ -1002,5 +1008,169 @@ test("remote guard strips mcpServerIds from run and transfer", () => {
   assert.match(guard, /channel === "cli:transferConversation"/);
   assert.match(guard, /delete next\.mcpServerIds/);
   const ipc = fs.readFileSync(new URL("cli/ipc.ts", electronDir), "utf8");
-  assert.match(ipc, /!isRemoteMcpAllowed\(\)/);
+  assert.match(ipc, /assertHostMcpAccess\(\)/);
+  assert.match(ipc, /canUseHostMcp\(\)/);
+});
+
+test("buildSelfCheckSpawn wraps .cmd via ComSpec on win32", async () => {
+  const { buildSelfCheckSpawn } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const wrapped = buildSelfCheckSpawn(
+    "C:\\Program Files\\nodejs\\npx.cmd",
+    ["-y", "@x/srv", 'a"b'],
+    "win32",
+    "C:\\Windows\\System32\\cmd.exe"
+  );
+  assert.equal(wrapped.command, "C:\\Windows\\System32\\cmd.exe");
+  assert.deepEqual(wrapped.args.slice(0, 3), ["/d", "/s", "/c"]);
+  assert.equal(
+    wrapped.args[3],
+    '""C:\\Program Files\\nodejs\\npx.cmd" "-y" "@x/srv" "a""b""'
+  );
+  assert.equal(wrapped.windowsVerbatimArguments, true);
+
+  const exe = buildSelfCheckSpawn("C:\\bin\\srv.exe", ["-y"], "win32");
+  assert.deepEqual(exe, { command: "C:\\bin\\srv.exe", args: ["-y"] });
+  const darwin = buildSelfCheckSpawn("npx.cmd", ["-y"], "darwin");
+  assert.deepEqual(darwin, { command: "npx.cmd", args: ["-y"] });
+});
+
+test("collectArgSecrets extracts inline, flag, and bearer secrets", async () => {
+  const { collectArgSecrets } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  assert.deepEqual(collectArgSecrets(["--api-key=abcd1234"]), ["abcd1234"]);
+  assert.deepEqual(collectArgSecrets(["--token", "tok12345"]), ["tok12345"]);
+  assert.deepEqual(collectArgSecrets(["--compat=foo1234"]), []);
+  assert.deepEqual(collectArgSecrets(["Authorization: Bearer xyz98765"]), [
+    "xyz98765"
+  ]);
+  assert.deepEqual(collectArgSecrets(["--token", "--other"]), []);
+});
+
+test("collectLogSecrets collects env by name or secret flag only", async () => {
+  const { collectLogSecrets } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const secrets = collectLogSecrets([
+    {
+      env: [
+        { name: "MODE", value: "production" },
+        { name: "GITHUB_TOKEN", value: "ghp_1234" },
+        { name: "ODD_NAME", value: "encoded-value", secret: true }
+      ]
+    }
+  ]);
+  assert.deepEqual(secrets.sort(), ["encoded-value", "ghp_1234"]);
+});
+
+test("self-check with ${cwd} arg and no cwd returns cwd_required without spawning", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createUserMcpServer, selfCheckUserMcpServer } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const server = createUserMcpServer({
+    name: "needs-workspace",
+    command: "definitely-not-a-command-99999",
+    args: ["--root", "${cwd}"]
+  });
+  const result = await selfCheckUserMcpServer(server.id);
+  assert.equal(result.status, "error");
+  assert.equal(result.code, "cwd_required");
+  const row = (await import("../dist-electron/cli/db.js"))
+    .getDb()
+    .prepare(
+      "SELECT last_check_status, last_checked_at FROM user_mcp_servers WHERE id = ?"
+    )
+    .get(server.id);
+  assert.equal(row.last_check_status, null);
+  assert.equal(row.last_checked_at, null);
+});
+
+test("self-check resolves error when the command exits immediately (no EPIPE crash)", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createUserMcpServer, selfCheckUserMcpServer } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  const server = createUserMcpServer({
+    name: "exits-fast",
+    command: process.execPath,
+    args: ["-e", "process.exit(0)"]
+  });
+  const result = await selfCheckUserMcpServer(server.id);
+  assert.equal(result.status, "error");
+});
+
+test("create rejects reserved, duplicate, and empty command with mcp error codes", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createUserMcpServer } = await import(
+    "../dist-electron/cli/mcpServers.js"
+  );
+  assert.throws(
+    () => createUserMcpServer({ name: "freebuddy-ctx", command: "npx" }),
+    /\[mcp:reserved_prefix\]/
+  );
+  assert.throws(
+    () => createUserMcpServer({ name: "office-engine", command: "npx" }),
+    /\[mcp:reserved_name\]/
+  );
+  createUserMcpServer({ name: "dup-one", command: "npx" });
+  assert.throws(
+    () => createUserMcpServer({ name: "DUP-ONE", command: "npx" }),
+    /\[mcp:duplicate_name\]/
+  );
+  assert.throws(
+    () => createUserMcpServer({ name: "no-cmd", command: "   " }),
+    /\[mcp:command_required\]/
+  );
+});
+
+test("delete removes the id from conversation metadata without bumping updated_at", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  await makeDbWithMigration();
+  const { createConversation, setConversationMcpServerIds } = await import(
+    "../dist-electron/cli/conversations.js"
+  );
+  const { createUserMcpServer, deleteUserMcpServer, getUserMcpServer } =
+    await import("../dist-electron/cli/mcpServers.js");
+  const { getDb } = await import("../dist-electron/cli/db.js");
+
+  const server = createUserMcpServer({ name: "to-delete", command: "npx" });
+  const keep = createUserMcpServer({ name: "to-keep", command: "npx" });
+  createConversation({
+    id: "conv-del",
+    title: "Del",
+    agentId: "agent-1",
+    agentName: "Agent",
+    adapter: "codex"
+  });
+  setConversationMcpServerIds("conv-del", [server.id, keep.id]);
+  const before = getDb()
+    .prepare("SELECT updated_at FROM conversations WHERE id = ?")
+    .get("conv-del").updated_at;
+
+  assert.equal(deleteUserMcpServer(server.id), true);
+  assert.equal(getUserMcpServer(server.id), undefined);
+
+  const row = getDb()
+    .prepare("SELECT metadata, updated_at FROM conversations WHERE id = ?")
+    .get("conv-del");
+  assert.deepEqual(JSON.parse(row.metadata).mcpServerIds, [keep.id]);
+  assert.equal(row.updated_at, before);
 });

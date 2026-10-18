@@ -85,7 +85,8 @@
     "refresh": "刷新",
     "back": "返回",
     "loading": "加载中…",
-    "retry": "重试"
+    "retry": "重试",
+    "dismiss": "关闭"
   },
   "remote": {
     "title": "共享访问",
@@ -2603,7 +2604,11 @@
     "statusError": "错误",
     "willSkip": "跳过",
     "disabled": "禁用",
-    "notAvailableRemote": "远程用户无法使用 MCP 服务器"
+    "notAvailableRemote": "远程用户无法使用 MCP 服务器",
+    "checking": "检查中",
+    "manageServers": "管理 MCP 服务器…",
+    "saveSelectionFailed": "保存 MCP 服务器选择失败",
+    "allServersDisabled": "所有 MCP 服务器均已禁用"
   },
   "mcpServers": {
     "title": "MCP 服务器",
@@ -2647,7 +2652,7 @@
     "lastCheckedAt": "上次检查：{{time}}",
     "errorDetail": "错误：{{error}}",
     "note": "MCP 服务器仅在本地桌面应用中可用，远程 WebUI 用户无法使用。",
-    "confirmLocalExec": "此命令将在本机执行",
+    "confirmLocalExec": "允许在本机运行此命令",
     "confirmDelete": "确认删除",
     "secretStorageWarning": "系统加密不可用。机密值只做编码存储，并未加密。",
     "error": {
@@ -2659,8 +2664,23 @@
       "saveFailed": "保存失败",
       "deleteFailed": "删除失败",
       "selfCheckFailed": "自检失败",
-      "confirmLocalExec": "请确认此命令将在本机执行"
-    }
+      "confirmLocalExec": "请确认此命令将在本机执行",
+      "invalid_name": "请使用 1–48 位字母、数字、下划线或连字符",
+      "reserved_prefix": "服务器名称不能以 'freebuddy' 开头（保留前缀）",
+      "reserved_name": "该名称为内置 MCP 服务器保留",
+      "duplicate_name": "已存在同名服务器",
+      "command_required": "命令为必填项",
+      "cwdRequired": "参数使用了 ${cwd}，自检需要工作区。在对话中选择该服务器后，将使用该对话的工作区自动检查。",
+      "toggleFailed": "更新服务器状态失败"
+    },
+    "saveAndCheck": "保存并检查",
+    "discardChanges": "丢弃未保存的更改？",
+    "removeEnvVar": "删除变量",
+    "templates": "快速填充",
+    "sectionBasic": "基本信息",
+    "envEmpty": "未添加环境变量",
+    "statusFailed": "检查失败",
+    "statusUnknown": "未检查"
   },
   "conversationPanel": {
     "title": "全部会话",

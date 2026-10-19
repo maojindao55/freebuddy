@@ -934,6 +934,13 @@ export interface UserMcpServerEnvVar {
   previousName?: string;
 }
 
+export interface McpOAuthStatus {
+  state: "disconnected" | "authorizing" | "connected" | "error";
+  error?: string;
+  expiresAt?: number;
+  sessionOnly?: boolean;
+}
+
 export interface UserMcpServerInput {
   id?: string;
   name: string;
@@ -943,6 +950,9 @@ export interface UserMcpServerInput {
   env?: UserMcpServerEnvVar[];
   url?: string;
   headers?: UserMcpServerEnvVar[];
+  authType?: "headers" | "oauth";
+  oauthClientId?: string;
+  oauthScope?: string;
   enabled?: boolean;
 }
 
@@ -955,6 +965,10 @@ export interface UserMcpServer {
   env: UserMcpServerEnvVar[];
   url?: string;
   headers?: UserMcpServerEnvVar[];
+  authType?: "headers" | "oauth";
+  oauthClientId?: string;
+  oauthScope?: string;
+  oauthStatus?: McpOAuthStatus;
   enabled: boolean;
   lastCheckStatus?: "ok" | "error";
   lastCheckError?: string;

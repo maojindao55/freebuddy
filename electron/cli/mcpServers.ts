@@ -11,6 +11,11 @@ import { logMain } from "../debugLog.js";
 import { isCallerAdmin, getCallerUserId } from "./callerContext.js";
 import { killProcessTree } from "./process-kill.js";
 import { selfCheckRemoteMcpServer, type RemoteMcpConfig } from "./remoteMcpTransport.js";
+import {
+  getUserMcpOAuthStatus, getUserMcpOAuthBinding, invalidateUserMcpOAuth,
+  getUserMcpOAuthRevision
+} from "./mcpOAuth.js";
+import type { McpOAuthStatus } from "./mcpOAuthService.js";
 
 const MCP_NAME_PREFIX_RESERVED = "freebuddy";
 const MCP_RESERVED_NAMES = new Set([
@@ -47,6 +52,9 @@ export interface UserMcpServerInput {
   env?: UserMcpServerEnvVar[];
   url?: string;
   headers?: UserMcpServerEnvVar[];
+  authType?: "headers" | "oauth";
+  oauthClientId?: string;
+  oauthScope?: string;
   enabled?: boolean;
 }
 
@@ -57,6 +65,10 @@ export interface UserMcpServer {
   transport: "stdio" | "http" | "sse";
   url?: string;
   headers: UserMcpServerEnvVar[];
+  authType: "headers" | "oauth";
+  oauthClientId?: string;
+  oauthScope?: string;
+  oauthStatus?: McpOAuthStatus & { sessionOnly?: boolean };
   args: string[];
   env: UserMcpServerEnvVar[];
   enabled: boolean;
@@ -122,6 +134,9 @@ function rowToServer(r: any): UserMcpServer {
     transport: r.transport ?? "stdio",
     url: r.url ?? undefined,
     headers: parseEnv(r.headers),
+    authType: r.auth_type ?? "headers",
+    oauthClientId: r.oauth_client_id ?? undefined,
+    oauthScope: r.oauth_scope ?? undefined,
     args: parseArgs(r.args),
     env: parseEnv(r.env),
     enabled: r.enabled === 1,
@@ -154,6 +169,7 @@ function sanitizeEnvForRenderer(env: UserMcpServerEnvVar[]): UserMcpServerEnvVar
 function serverForRenderer(server: UserMcpServer): UserMcpServer {
   return {
     ...server,
+    ...(server.authType === "oauth" ? { oauthStatus: getUserMcpOAuthStatus(server.id) } : {}),
     env: sanitizeEnvForRenderer(server.env),
     headers: sanitizeEnvForRenderer(server.headers).map((header) => ({
       ...header, valuePreview: header.hasValue ? "••••••••" : undefined
@@ -275,7 +291,7 @@ function normalizeHeadersForStorage(
 function normalizeServerConnection(
   input: Partial<UserMcpServerInput>,
   existing?: UserMcpServer
-): Pick<UserMcpServer, "transport" | "command" | "args" | "env" | "url" | "headers"> {
+): Pick<UserMcpServer, "transport" | "command" | "args" | "env" | "url" | "headers" | "authType" | "oauthClientId" | "oauthScope"> {
   const transport = normalizeTransport(input.transport === undefined ? existing?.transport : input.transport);
   if (transport === "stdio") {
     const command = input.command ?? existing?.command;
@@ -284,13 +300,28 @@ function normalizeServerConnection(
     }
     return {
       transport, command: command.trim(), args: input.args ?? existing?.args ?? [],
-      env: normalizeEnvForStorage(input.env, existing?.env), headers: [], url: undefined
+      env: normalizeEnvForStorage(input.env, existing?.env), headers: [], url: undefined,
+      authType: "headers", oauthClientId: undefined, oauthScope: undefined
     };
   }
+  const authType = input.authType === undefined ? existing?.authType ?? "headers" : input.authType;
+  if (authType !== "headers" && authType !== "oauth") {
+    throw mcpError("invalid_auth_type", "Choose request headers or browser authorization");
+  }
+  const optionalText = (value: unknown): string | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string" || /[\x00-\x1f\x7f]/.test(value) || value.length > 2048) {
+      throw mcpError("invalid_oauth_config", "Use a valid OAuth client ID and scope");
+    }
+    return value.trim() || undefined;
+  };
   return {
     transport, command: "", args: [], env: [],
     url: normalizeRemoteUrl(input.url === undefined ? existing?.url : input.url),
-    headers: normalizeHeadersForStorage(input.headers, existing?.headers)
+    headers: authType === "oauth" ? [] : normalizeHeadersForStorage(input.headers, existing?.headers),
+    authType,
+    oauthClientId: authType === "oauth" ? optionalText(input.oauthClientId ?? existing?.oauthClientId) : undefined,
+    oauthScope: authType === "oauth" ? optionalText(input.oauthScope ?? existing?.oauthScope) : undefined
   };
 }
 
@@ -359,8 +390,8 @@ export function createUserMcpServer(
   getDb()
     .prepare(
       `INSERT INTO user_mcp_servers
-         (id, name, command, args, env, transport, url, headers, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, name, command, args, env, transport, url, headers, auth_type, oauth_client_id, oauth_scope, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -371,6 +402,9 @@ export function createUserMcpServer(
       connection.transport,
       connection.url ?? null,
       JSON.stringify(connection.headers),
+      connection.authType,
+      connection.oauthClientId ?? null,
+      connection.oauthScope ?? null,
       input.enabled !== false ? 1 : 0,
       now,
       now
@@ -390,15 +424,18 @@ export function updateUserMcpServer(
   const connection = normalizeServerConnection(input, existing);
   const now = new Date().toISOString();
   const updates: string[] = [
-    "updated_at = ?", "command = ?", "args = ?", "env = ?", "transport = ?", "url = ?", "headers = ?"
+    "updated_at = ?", "command = ?", "args = ?", "env = ?", "transport = ?", "url = ?", "headers = ?",
+    "auth_type = ?", "oauth_client_id = ?", "oauth_scope = ?"
   ];
   const params: any[] = [
     now, connection.command, JSON.stringify(connection.args), JSON.stringify(connection.env),
-    connection.transport, connection.url ?? null, JSON.stringify(connection.headers)
+    connection.transport, connection.url ?? null, JSON.stringify(connection.headers),
+    connection.authType, connection.oauthClientId ?? null, connection.oauthScope ?? null
   ];
   const previousConnection = {
     transport: existing.transport, command: existing.command, args: existing.args,
-    env: existing.env, headers: existing.headers, url: existing.url
+    env: existing.env, headers: existing.headers, url: existing.url,
+    authType: existing.authType, oauthClientId: existing.oauthClientId, oauthScope: existing.oauthScope
   };
   // A previous successful check no longer describes an edited connection.
   if (Object.keys(previousConnection).some((key) => {
@@ -417,6 +454,12 @@ export function updateUserMcpServer(
     params.push(input.enabled ? 1 : 0);
   }
 
+  if (connection.url !== existing.url || connection.authType !== existing.authType ||
+      connection.oauthClientId !== existing.oauthClientId || connection.oauthScope !== existing.oauthScope ||
+      connection.transport !== existing.transport) {
+    invalidateUserMcpOAuth(id);
+  }
+
   params.push(id);
   getDb()
     .prepare(`UPDATE user_mcp_servers SET ${updates.join(", ")} WHERE id = ?`)
@@ -425,6 +468,7 @@ export function updateUserMcpServer(
 }
 
 export function deleteUserMcpServer(id: string): boolean {
+  invalidateUserMcpOAuth(id);
   let deleted = false;
   getDb().transaction(() => {
     const result = getDb()
@@ -581,6 +625,7 @@ export function collectLogSecrets(
         try {
           const config = JSON.parse(entry.value) as RemoteMcpConfig;
           secrets.push(config.url, ...Object.values(config.headers));
+          if (config.oauth) secrets.push(config.oauth.token);
         } catch {
           // The entire malformed configuration is still redacted above.
         }
@@ -736,7 +781,7 @@ export async function selfCheckUserMcpServer(
   if (server.transport !== "stdio") {
     let result: UserMcpServerSelfCheckResult;
     try {
-      const tools = await selfCheckRemoteMcpServer(remoteConfigForRuntime(server), MCP_SELF_CHECK_TIMEOUT_MS);
+      const tools = await selfCheckRemoteMcpServer(await remoteConfigForRuntime(server), MCP_SELF_CHECK_TIMEOUT_MS);
       result = { status: "ok", tools };
     } catch (error) {
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
@@ -983,7 +1028,7 @@ export interface AcpStdioMcpServerFromUser {
   env: Array<{ name: string; value: string }>;
 }
 
-function remoteConfigForRuntime(server: UserMcpServer): RemoteMcpConfig {
+async function remoteConfigForRuntime(server: UserMcpServer): Promise<RemoteMcpConfig> {
   if (server.transport !== "http" && server.transport !== "sse") {
     throw mcpError("invalid_transport", "Expected a remote MCP server");
   }
@@ -994,14 +1039,17 @@ function remoteConfigForRuntime(server: UserMcpServer): RemoteMcpConfig {
     }
     return [header.name, value];
   }));
-  return { transport: server.transport, url: normalizeRemoteUrl(server.url), headers };
+  return {
+    transport: server.transport, url: normalizeRemoteUrl(server.url), headers,
+    ...(server.authType === "oauth" ? { oauth: await getUserMcpOAuthBinding(server.id) } : {})
+  };
 }
 
-export function userMcpServerToAcpFormat(
+export async function userMcpServerToAcpFormat(
   server: UserMcpServer,
   command: string,
   cwd?: string
-): AcpStdioMcpServerFromUser {
+): Promise<AcpStdioMcpServerFromUser> {
   if (server.transport !== "stdio") {
     return {
       name: server.name,
@@ -1009,7 +1057,7 @@ export function userMcpServerToAcpFormat(
       args: [fileURLToPath(new URL("../mcp/remoteMcpBridge.js", import.meta.url))],
       env: [
         { name: "ELECTRON_RUN_AS_NODE", value: "1" },
-        { name: "FREEBUDDY_REMOTE_MCP_CONFIG", value: JSON.stringify(remoteConfigForRuntime(server)) }
+        { name: "FREEBUDDY_REMOTE_MCP_CONFIG", value: JSON.stringify(await remoteConfigForRuntime(server)) }
       ]
     };
   }
@@ -1041,11 +1089,14 @@ export async function getEnabledUserMcpServersByIds(
   for (const server of servers) {
     if (server.transport !== "stdio") {
       try {
-        const bridge = userMcpServerToAcpFormat(server, process.execPath, cwd);
+        const bridge = await userMcpServerToAcpFormat(server, process.execPath, cwd);
         resolved.push(bridge);
         secretValues.push(...collectLogSecrets([bridge]));
-      } catch {
-        skipped.push({ id: server.id, name: server.name, reason: "remote_configuration_invalid" });
+      } catch (error) {
+        const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+        const reason = code === "oauth_required" ? "oauth_required"
+          : code === "oauth_refresh_failed" ? "oauth_unavailable" : "remote_configuration_invalid";
+        skipped.push({ id: server.id, name: server.name, reason });
       }
       continue;
     }
@@ -1062,7 +1113,7 @@ export async function getEnabledUserMcpServersByIds(
       });
       continue;
     }
-    resolved.push(userMcpServerToAcpFormat(server, command.command, cwd));
+    resolved.push(await userMcpServerToAcpFormat(server, command.command, cwd));
     const resolvedEnv = resolveEnvForRuntime(server.env);
     secretValues.push(
       ...collectSecretValues(server.env),
@@ -1124,6 +1175,10 @@ export function mcpConfigFingerprint(ids: string[]): string {
       name: server.name,
       transport: server.transport,
       url: server.url,
+      authType: server.authType,
+      oauthClientId: server.oauthClientId,
+      oauthScope: server.oauthScope,
+      oauthRevision: server.authType === "oauth" ? getUserMcpOAuthRevision(server.id) : undefined,
       headers: server.headers.map((entry) => ({
         name: entry.name,
         value: entry.valueEncrypted ?? entry.value ?? ""

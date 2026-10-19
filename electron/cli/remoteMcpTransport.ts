@@ -2,11 +2,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike, Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { isMcpOAuthBrokerEndpoint } from "./mcpOAuthBroker.js";
 
 export interface RemoteMcpConfig {
   transport: "http" | "sse";
   url: string;
   headers: Record<string, string>;
+  oauth?: { endpoint: string; token: string };
 }
 
 // SDK errors can include response bodies, URLs, or authentication challenges.
@@ -57,12 +59,118 @@ export function createRemoteMcpTransport(
       throw new Error();
     }
     headers = new Headers(config.headers);
+    if (config.oauth !== undefined && (
+      !config.oauth || typeof config.oauth !== "object" ||
+      !isMcpOAuthBrokerEndpoint(config.oauth.endpoint) ||
+      typeof config.oauth.token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(config.oauth.token) ||
+      headers.has("authorization")
+    )) throw new Error();
   } catch {
     throw new RemoteMcpError("Invalid remote MCP configuration.", "remote_config_invalid");
   }
 
   const controller = new AbortController();
+  let closed = false;
+  let closing: Promise<void> | undefined;
+  let starting: Promise<void> | undefined;
   let failure: RemoteMcpError | undefined;
+  const tokenRequests = new Map<string, Promise<string>>();
+  const oauthRequired = () => new RemoteMcpError("Sign in to this MCP server again.", "oauth_required");
+  const oauthUnavailable = () => new RemoteMcpError("Authorization is temporarily unavailable. Try again.", "oauth_unavailable");
+
+  async function startWatch(): Promise<void> {
+    if (!config.oauth) return;
+    let ready!: () => void;
+    let rejectReady!: (error: Error) => void;
+    const watchReady = new Promise<void>((resolve, reject) => { ready = resolve; rejectReady = reject; });
+    // Do not await this reader from close(): the reader itself can initiate
+    // close after a revocation or a lost main-process connection.
+    void (async () => {
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+      try {
+        const response = await fetch(`${config.oauth!.endpoint}/watch`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${config.oauth!.token}` },
+          redirect: "error",
+          signal: controller.signal
+        });
+        if (!response.ok || !/^text\/event-stream(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "") || !response.body) {
+          void response.body?.cancel().catch(() => {});
+          throw response.status === 503 ? oauthUnavailable() : oauthRequired();
+        }
+        reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let hasReady = false;
+        while (!closed) {
+          const { value, done } = await reader.read();
+          if (done) throw oauthRequired();
+          buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
+          if (buffer.length > 8 * 1024) throw oauthRequired();
+          let boundary: number;
+          while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+            const event = buffer.slice(0, boundary).split("\n").find((line) => line.startsWith("event:"))?.slice(6).trim();
+            buffer = buffer.slice(boundary + 2);
+            if (event === "revoked") throw oauthRequired();
+            if (event === "ready" && !hasReady) { hasReady = true; ready(); }
+          }
+        }
+      } catch (error) {
+        const safe = closed
+          ? failure ?? new RemoteMcpError("Remote MCP connection closed.")
+          : error instanceof RemoteMcpError ? error : oauthRequired();
+        rejectReady(safe);
+        if (!closed) {
+          failure = safe;
+          // Mark closed before notifying owners so a queued MCP event can no
+          // longer reach the bridge, even if its socket has not closed yet.
+          void transport.close();
+          transport.onerror?.(safe);
+        }
+      } finally {
+        // Abort normally cancels the fetch body. Cancel explicitly as well
+        // when rejecting a malformed lifecycle event or completing startup.
+        void reader?.cancel().catch(() => {});
+        reader?.releaseLock();
+      }
+    })();
+    await watchReady;
+  }
+
+  async function getAccessToken(requestSignal: AbortSignal, forceRefresh = false, rejectedToken?: string): Promise<string> {
+    if (!config.oauth) throw oauthRequired();
+    // Main-process storage owns token freshness and revocation. Query it for
+    // every MCP request; share only requests that are currently in flight.
+    const key = forceRefresh ? `refresh:${rejectedToken ?? ""}` : "current";
+    const existing = tokenRequests.get(key);
+    if (existing) return untilAborted(existing, requestSignal);
+    const pending = (async () => {
+      try {
+        const response = await fetch(config.oauth!.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.oauth!.token}` },
+          body: JSON.stringify({ forceRefresh, ...(rejectedToken ? { rejectedToken } : {}) }),
+          redirect: "error",
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          void response.body?.cancel().catch(() => {});
+          throw response.status === 401 || response.status === 403 ? oauthRequired() : oauthUnavailable();
+        }
+        const result = await response.json() as { accessToken?: unknown };
+        if (typeof result.accessToken !== "string" || !result.accessToken || result.accessToken.length > 16 * 1024 || /\s|[^\x21-\x7e]/.test(result.accessToken)) {
+          throw oauthUnavailable();
+        }
+        return result.accessToken;
+      } catch (error) {
+        throw error instanceof RemoteMcpError ? error : oauthUnavailable();
+      }
+    })();
+    tokenRequests.set(key, pending);
+    try { return await untilAborted(pending, requestSignal); }
+    finally { if (tokenRequests.get(key) === pending) tokenRequests.delete(key); }
+  }
+
   const guardedFetch: FetchLike = async (input, init) => {
     try {
       const target = new URL(String(input));
@@ -73,17 +181,27 @@ export function createRemoteMcpTransport(
       }
       const requestHeaders = new Headers(headers);
       new Headers(init?.headers).forEach((value, name) => requestHeaders.set(name, value));
-      const response = await fetch(target, {
-        ...init,
-        headers: requestHeaders,
-        redirect: "error",
-        signal: init?.signal
-          ? AbortSignal.any([controller.signal, init.signal])
-          : controller.signal
+      const requestSignal = init?.signal
+        ? AbortSignal.any([controller.signal, init.signal]) : controller.signal;
+      let usedToken: string | undefined;
+      if (config.oauth) {
+        usedToken = await getAccessToken(requestSignal);
+        requestHeaders.set("Authorization", `Bearer ${usedToken}`);
+      }
+      const send = () => fetch(target, {
+        ...init, headers: requestHeaders, redirect: "error", signal: requestSignal
       });
+      let response = await send();
+      if (config.oauth && response.status === 401) {
+        void response.body?.cancel().catch(() => {});
+        const refreshed = await getAccessToken(requestSignal, true, usedToken);
+        requestHeaders.set("Authorization", `Bearer ${refreshed}`);
+        response = await send();
+      }
       // GET 405 is an explicitly supported Streamable HTTP capability response.
       if (!response.ok && !((init?.method ?? "GET") === "GET" && response.status === 405)) {
         void response.body?.cancel().catch(() => {});
+        if (config.oauth && (response.status === 401 || response.status === 403)) throw oauthRequired();
         throw new RemoteMcpError(
           `Remote MCP request failed (HTTP ${response.status}).`,
           response.status === 401 || response.status === 403
@@ -93,7 +211,7 @@ export function createRemoteMcpTransport(
       }
       return response;
     } catch (error) {
-      failure = safeError(error);
+      failure = closed && failure ? failure : safeError(error);
       throw failure;
     }
   };
@@ -118,23 +236,27 @@ export function createRemoteMcpTransport(
         }
       });
 
-  let closed = false;
-  let closing: Promise<void> | undefined;
   const onAbort = () => { void transport.close(); };
   const transport: Transport = {
     get sessionId() { return underlying.sessionId; },
     setProtocolVersion(version) { underlying.setProtocolVersion?.(version); },
-    async start() {
-      if (closed) throw new RemoteMcpError("Remote MCP connection closed.");
-      try {
-        await untilAborted(underlying.start(), controller.signal);
-      } catch (error) {
-        await transport.close();
-        throw failure ?? safeError(error);
-      }
+    start() {
+      if (closed) return Promise.reject(failure ?? new RemoteMcpError("Remote MCP connection closed."));
+      starting ??= (async () => {
+        try {
+          await startWatch();
+          if (closed) throw failure ?? new RemoteMcpError("Remote MCP connection closed.");
+          await untilAborted(underlying.start(), controller.signal);
+          if (closed) throw failure ?? new RemoteMcpError("Remote MCP connection closed.");
+        } catch (error) {
+          await transport.close();
+          throw failure ?? safeError(error);
+        }
+      })();
+      return starting;
     },
     async send(message, options) {
-      if (closed) throw new RemoteMcpError("Remote MCP connection closed.");
+      if (closed) throw failure ?? new RemoteMcpError("Remote MCP connection closed.");
       try {
         await untilAborted(underlying.send(message, options), controller.signal);
       } catch (error) {

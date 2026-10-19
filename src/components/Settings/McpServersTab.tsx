@@ -19,7 +19,8 @@ import { useMcpServerStore } from "@/store/mcpServerStore";
 import type {
   UserMcpServer,
   UserMcpServerEnvVar,
-  UserMcpServerInput
+  UserMcpServerInput,
+  UserMcpServerSelfCheckResult
 } from "@/services/cli/types";
 import "./McpServersTab.css";
 
@@ -275,6 +276,10 @@ function McpServerEditor({
   );
   const [transport, setTransport] = useState<McpTransport>(server?.transport ?? "stdio");
   const [url, setUrl] = useState(server?.url ?? "");
+  const [authType, setAuthType] = useState<"headers" | "oauth">(server?.authType ?? "headers");
+  const [oauthClientId, setOAuthClientId] = useState(server?.oauthClientId ?? "");
+  const [oauthScope, setOAuthScope] = useState(server?.oauthScope ?? "");
+  const [startingOAuth, setStartingOAuth] = useState(false);
   const [envVars, setEnvVars] = useState<EnvVarDraft[]>(() => createValueDrafts(server?.env));
   const [headers, setHeaders] = useState<EnvVarDraft[]>(() => createValueDrafts(server?.headers));
   const [saving, setSaving] = useState(false);
@@ -286,8 +291,22 @@ function McpServerEditor({
   const needsLocalExecAck = transport === "stdio" && (isNew || commandChanged || (server?.transport ?? "stdio") !== "stdio");
 
   const selfCheck = useMcpServerStore((s) => s.selfCheck);
+  const authorize = useMcpServerStore((s) => s.authorize);
+  const disconnect = useMcpServerStore((s) => s.disconnect);
+  const refreshOAuthStatus = useMcpServerStore((s) => s.refreshOAuthStatus);
+  const oauthAuthorizingIds = useMcpServerStore((s) => s.oauthAuthorizingIds);
+  const oauthDisconnectingIds = useMcpServerStore((s) => s.oauthDisconnectingIds);
   const checkingIds = useMcpServerStore((s) => s.checkingIds);
   const checking = server ? checkingIds.includes(server.id) : false;
+  const oauthAuthorizing = server ? oauthAuthorizingIds.includes(server.id) || server.oauthStatus?.state === "authorizing" : false;
+  const oauthDisconnecting = server ? oauthDisconnectingIds.includes(server.id) : false;
+  const oauthStatus = oauthAuthorizing ? "authorizing" : server?.oauthStatus?.state ?? "disconnected";
+  const isOAuth = transport !== "stdio" && authType === "oauth";
+  const busy = saving || checking || deleting || startingOAuth || oauthAuthorizing || oauthDisconnecting;
+  const oauthConnectionChanged = isOAuth && (!server ||
+    server.authType !== "oauth" || transport !== (server.transport ?? "stdio") ||
+    url.trim() !== (server.url ?? "") || oauthClientId.trim() !== (server.oauthClientId ?? "") ||
+    oauthScope.trim() !== (server.oauthScope ?? ""));
   const [checkResult, setCheckResult] = useState<{
     status: "ok" | "error";
     code?: string;
@@ -297,14 +316,28 @@ function McpServerEditor({
   } | null>(null);
   const formId = useId();
   const confirmDeleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
+      mounted.current = false;
       if (confirmDeleteTimer.current) {
         clearTimeout(confirmDeleteTimer.current);
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!server || server.transport === "stdio" || server.authType !== "oauth") return;
+    void refreshOAuthStatus(server.id);
+  }, [server?.id, server?.authType, server?.transport, refreshOAuthStatus]);
+
+  useEffect(() => {
+    if (!server || !oauthAuthorizing) return;
+    const timer = setInterval(() => { void refreshOAuthStatus(server.id); }, 2000);
+    return () => clearInterval(timer);
+  }, [server?.id, oauthAuthorizing, refreshOAuthStatus]);
 
   const parseArgsFromLines = (text: string): string[] => {
     return text
@@ -316,6 +349,7 @@ function McpServerEditor({
   const dirty = useMemo(() => {
     if (isNew || !server) {
       return name.trim() !== "" || transport !== "stdio" || url.trim() !== "" ||
+        authType !== "headers" || oauthClientId.trim() !== "" || oauthScope.trim() !== "" ||
         command.trim() !== "" || argsLines.trim() !== "" ||
         valueDraftsChanged(envVars) || valueDraftsChanged(headers);
     }
@@ -325,13 +359,16 @@ function McpServerEditor({
         parseArgsFromLines(argsLines).join("\n") !== server.args.join("\n") ||
         valueDraftsChanged(envVars, server.env);
     }
-    return url.trim() !== (server.url ?? "") || valueDraftsChanged(headers, server.headers);
-  }, [isNew, server, name, transport, url, command, argsLines, envVars, headers]);
+    if (url.trim() !== (server.url ?? "") || authType !== (server.authType ?? "headers")) return true;
+    return authType === "oauth"
+      ? oauthClientId.trim() !== (server.oauthClientId ?? "") || oauthScope.trim() !== (server.oauthScope ?? "")
+      : valueDraftsChanged(headers, server.headers);
+  }, [isNew, server, name, transport, url, authType, oauthClientId, oauthScope, command, argsLines, envVars, headers]);
 
   useEffect(() => {
     setCheckResult(null);
     setError(null);
-  }, [name, transport, url, command, argsLines, envVars, headers]);
+  }, [name, transport, url, authType, oauthClientId, oauthScope, command, argsLines, envVars, headers]);
 
   const mapSaveError = (err: unknown): string => {
     const raw = err instanceof Error ? err.message : "";
@@ -358,6 +395,9 @@ function McpServerEditor({
     setArgsLines(saved.args.join("\n"));
     setTransport(saved.transport ?? "stdio");
     setUrl(saved.url ?? "");
+    setAuthType(saved.authType ?? "headers");
+    setOAuthClientId(saved.oauthClientId ?? "");
+    setOAuthScope(saved.oauthScope ?? "");
     setEnvVars(createValueDrafts(saved.env));
     setHeaders(createValueDrafts(saved.headers));
     setAckLocalExec(false);
@@ -385,7 +425,7 @@ function McpServerEditor({
         return undefined;
       }
       const names = new Set<string>();
-      for (const header of headers) {
+      for (const header of authType === "headers" ? headers : []) {
         const name = header.name.trim();
         if (!name && !header.value && !header.hasStoredSecret) continue;
         if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) {
@@ -421,16 +461,47 @@ function McpServerEditor({
           env: serializeValueDrafts(envVars)
         } : {
           url: url.trim(),
-          headers: serializeValueDrafts(headers)
+          authType,
+          headers: authType === "oauth" ? [] : serializeValueDrafts(headers),
+          oauthClientId: authType === "oauth" ? oauthClientId.trim() : undefined,
+          oauthScope: authType === "oauth" ? oauthScope.trim() : undefined
         }),
         enabled: server?.enabled ?? true
       });
       return saved;
     } catch (err) {
-      setError(mapSaveError(err));
+      if (mounted.current) setError(mapSaveError(err));
       return undefined;
     } finally {
-      setSaving(false);
+      if (mounted.current) setSaving(false);
+    }
+  };
+
+  const handleAuthorize = async () => {
+    setStartingOAuth(true);
+    setError(null);
+    setCheckResult(null);
+    try {
+      let target = server;
+      if (isNew || dirty) {
+        target = await handleSave() ?? null;
+        if (!target) return;
+        if (mounted.current) resetDrafts(target);
+      }
+      if (target) await authorize(target.id);
+    } finally {
+      if (mounted.current) setStartingOAuth(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!server) return;
+    setError(null);
+    setCheckResult(null);
+    try {
+      await disconnect(server.id);
+    } catch {
+      if (mounted.current) setError(t("mcpServers.oauthDisconnectFailed"));
     }
   };
 
@@ -481,18 +552,25 @@ function McpServerEditor({
     if (!autoSelfCheck || !server) return;
     autoCheckFired.current = true;
     onAutoSelfCheckDone?.();
+    if (server.transport !== "stdio" && server.authType === "oauth" && server.oauthStatus?.state !== "connected") return;
     if ((server.transport ?? "stdio") === "stdio" && server.args.some((arg) => arg.includes("${cwd}"))) return;
     void runSelfCheck();
   }, []);
 
+  const displayedCheckResult: UserMcpServerSelfCheckResult | null = checkResult ?? (!dirty && server?.lastCheckStatus ? {
+    status: server.lastCheckStatus,
+    error: server.lastCheckError,
+    tools: server.lastCheckTools
+  } : null);
+
   return (
-    <div className="mcp-servers-tab">
+    <div className="mcp-servers-tab mcp-server-editor">
       <div className="mcp-editor-header">
         <button
           type="button"
           className="mcp-icon-btn"
           onClick={handleBack}
-          disabled={saving || deleting}
+          disabled={busy}
         >
           <ChevronLeft size={16} />
           {t("common.back")}
@@ -503,6 +581,7 @@ function McpServerEditor({
         </h3>
       </div>
 
+      <div className="mcp-editor-content">
       {isNew && (
         <div className="mcp-templates">
           <span className="mcp-templates-label">
@@ -513,10 +592,11 @@ function McpServerEditor({
               key={template.name}
               type="button"
               className="mcp-template-chip"
-              disabled={saving}
+              disabled={busy}
               title={`${template.command} ${template.args.join(" ")}`}
               onClick={() => {
                 setTransport("stdio");
+                setAuthType("headers");
                 setAckLocalExec(false);
                 setName(template.name);
                 setCommand(template.command);
@@ -540,7 +620,7 @@ function McpServerEditor({
               id={`${formId}-name`}
               type="text"
               value={name}
-              disabled={saving || checking || deleting}
+              disabled={busy}
               onChange={(e) => setName(e.target.value)}
               placeholder={t("mcpServers.namePlaceholder")}
             />
@@ -549,7 +629,7 @@ function McpServerEditor({
 
           <div className="mcp-form-group">
             <label htmlFor={`${formId}-transport`}>{t("mcpServers.transport")}</label>
-            <select id={`${formId}-transport`} value={transport} disabled={saving || checking || deleting}
+            <select id={`${formId}-transport`} value={transport} disabled={busy}
               onChange={(event) => {
                 setTransport(event.target.value as McpTransport);
                 setAckLocalExec(false);
@@ -568,7 +648,7 @@ function McpServerEditor({
               id={`${formId}-command`}
               type="text"
               value={command}
-              disabled={saving || checking || deleting}
+              disabled={busy}
               onChange={(e) => {
                 setCommand(e.target.value);
                 setAckLocalExec(false);
@@ -583,7 +663,7 @@ function McpServerEditor({
             <textarea
               id={`${formId}-args`}
               value={argsLines}
-              disabled={saving || checking || deleting}
+              disabled={busy}
               onChange={(e) => setArgsLines(e.target.value)}
               placeholder={"-y\n@modelcontextprotocol/server-filesystem\n${cwd}"}
               rows={Math.min(
@@ -595,20 +675,88 @@ function McpServerEditor({
           </div>
           </> : <div className="mcp-form-group mcp-form-span">
             <label htmlFor={`${formId}-url`}>{t("mcpServers.url")}</label>
-            <input id={`${formId}-url`} type="text" value={url} disabled={saving || checking || deleting}
+            <input id={`${formId}-url`} type="text" value={url} disabled={busy}
               onChange={(event) => setUrl(event.target.value)}
               placeholder={transport === "sse" ? "https://example.com/sse" : "https://example.com/mcp"}
               autoComplete="off" spellCheck={false} />
             <p className="mcp-form-hint">{t("mcpServers.urlHint")}</p>
           </div>}
+
+          {transport !== "stdio" && <div className="mcp-form-group mcp-form-span">
+            <label htmlFor={`${formId}-auth-type`}>{t("mcpServers.authType")}</label>
+            <select id={`${formId}-auth-type`} value={authType} disabled={busy}
+              onChange={(event) => setAuthType(event.target.value as "headers" | "oauth")}>
+              <option value="headers">{t("mcpServers.authHeaders")}</option>
+              <option value="oauth">{t("mcpServers.authOAuth")}</option>
+            </select>
+            <p className="mcp-form-hint">{t(isOAuth ? "mcpServers.oauthHint" : "mcpServers.authHeadersHint")}</p>
+          </div>}
         </div>
       </div>
 
-      <McpValuesEditor key={transport === "stdio" ? "env" : "headers"}
+      {!isOAuth && <McpValuesEditor key={transport === "stdio" ? "env" : "headers"}
         kind={transport === "stdio" ? "env" : "headers"}
         values={transport === "stdio" ? envVars : headers}
         onChange={transport === "stdio" ? setEnvVars : setHeaders}
-        disabled={saving || checking || deleting} />
+        disabled={busy} />}
+
+      {isOAuth && (
+        <div className="mcp-editor-section mcp-oauth-section">
+          <div className="mcp-section-title">{t("mcpServers.oauthTitle")}</div>
+          <div className={`mcp-oauth-status ${oauthStatus}`} role="status" aria-live="polite">
+            {oauthStatus === "authorizing" ? <Loader2 size={15} className="spinning" />
+              : oauthStatus === "connected" ? <Check size={15} />
+              : oauthStatus === "error" ? <AlertTriangle size={15} /> : <Info size={15} />}
+            <span>{t(`mcpServers.oauthState.${oauthStatus}`)}</span>
+          </div>
+          {oauthStatus === "authorizing" && <p className="mcp-form-hint">{t("mcpServers.oauthWaitingHint")}</p>}
+          {oauthStatus === "error" && <p className="mcp-oauth-error" role="alert">
+            {server?.oauthStatus?.error || t("mcpServers.oauthAuthorizeFailed")}
+          </p>}
+          {oauthConnectionChanged && oauthStatus === "connected" &&
+            <p className="mcp-form-hint">{t("mcpServers.oauthConfigChanged")}</p>}
+          {server?.oauthStatus?.sessionOnly && oauthStatus === "connected" &&
+            <p className="mcp-oauth-session-note"><Info size={14} />{t("mcpServers.oauthSessionOnly")}</p>}
+          <div className="mcp-oauth-actions">
+            {oauthAuthorizing ? (
+              <button type="button" className="secondary" onClick={() => void handleDisconnect()} disabled={oauthDisconnecting}>
+                {oauthDisconnecting ? <Loader2 size={14} className="spinning" /> : <X size={14} />}
+                {t("mcpServers.oauthCancel")}
+              </button>
+            ) : (
+              <>
+                <button type="button" className="secondary" onClick={() => void handleAuthorize()} disabled={busy}>
+                  {startingOAuth ? <Loader2 size={14} className="spinning" /> : <Server size={14} />}
+                  {t(isNew || dirty ? "mcpServers.oauthSaveAndAuthorize"
+                    : oauthStatus === "connected" ? "mcpServers.oauthAuthorizeAgain" : "mcpServers.oauthAuthorize")}
+                </button>
+                {server?.authType === "oauth" && (oauthStatus === "connected" || oauthStatus === "error") &&
+                  <button type="button" className="secondary" onClick={() => void handleDisconnect()} disabled={busy}>
+                    {oauthDisconnecting ? <Loader2 size={14} className="spinning" /> : <X size={14} />}
+                    {t("mcpServers.oauthDisconnect")}
+                  </button>}
+              </>
+            )}
+          </div>
+          <details className="mcp-oauth-advanced">
+            <summary>{t("mcpServers.oauthAdvanced")}</summary>
+            <div className="mcp-form-grid">
+              <div className="mcp-form-group mcp-form-span">
+                <label htmlFor={`${formId}-oauth-client-id`}>{t("mcpServers.oauthClientId")}</label>
+                <input id={`${formId}-oauth-client-id`} type="text" value={oauthClientId} disabled={busy}
+                  onChange={(event) => setOAuthClientId(event.target.value)} autoComplete="off" spellCheck={false} />
+                <p className="mcp-form-hint">{t("mcpServers.oauthClientIdHint")}</p>
+              </div>
+              <div className="mcp-form-group mcp-form-span">
+                <label htmlFor={`${formId}-oauth-scope`}>{t("mcpServers.oauthScope")}</label>
+                <input id={`${formId}-oauth-scope`} type="text" value={oauthScope} disabled={busy}
+                  onChange={(event) => setOAuthScope(event.target.value)} autoComplete="off" spellCheck={false} />
+                <p className="mcp-form-hint">{t("mcpServers.oauthScopeHint")}</p>
+              </div>
+            </div>
+          </details>
+        </div>
+      )}
 
       {!isNew && server && (
         <div className="mcp-editor-section">
@@ -618,7 +766,7 @@ function McpServerEditor({
               type="button"
               className="secondary"
               onClick={handleSelfCheck}
-              disabled={checking || saving || deleting}
+              disabled={busy || (isOAuth && (oauthStatus !== "connected" || oauthConnectionChanged))}
             >
               {checking ? (
                 <Loader2 size={14} className="spinning" />
@@ -629,16 +777,18 @@ function McpServerEditor({
                 ? t("mcpServers.saveAndCheck", "Save & check")
                 : t("mcpServers.runSelfCheck")}
             </button>
-            {checkResult && (
+            {isOAuth && (oauthStatus !== "connected" || oauthConnectionChanged) &&
+              <p className="mcp-form-hint">{t("mcpServers.oauthCheckHint")}</p>}
+            {displayedCheckResult && (
               <div
-                className={`mcp-self-check-result ${checkResult.status}`}
+                className={`mcp-self-check-result ${displayedCheckResult.status}`}
               >
-                {checkResult.status === "ok" ? (
+                {displayedCheckResult.status === "ok" ? (
                   <>
                     <Check size={14} />
                     <span>
                       {t("mcpServers.selfCheckOk", {
-                        count: checkResult.tools?.length ?? 0
+                        count: displayedCheckResult.tools?.length ?? 0
                       })}
                     </span>
                   </>
@@ -646,27 +796,27 @@ function McpServerEditor({
                   <>
                     <AlertTriangle size={14} />
                     <span>
-                      {checkResult.code === "cwd_required"
+                      {displayedCheckResult.code === "cwd_required"
                         ? t("mcpServers.error.cwdRequired")
-                        : checkResult.error}
+                        : displayedCheckResult.error}
                     </span>
                   </>
                 )}
               </div>
             )}
-            {checkResult?.tools && checkResult.tools.length > 0 && (
+            {displayedCheckResult?.tools && displayedCheckResult.tools.length > 0 && (
               <div className="mcp-tools-chips">
-                {checkResult.tools.map((tool) => (
+                {displayedCheckResult.tools.map((tool) => (
                   <span key={tool} className="mcp-tool-chip">
                     {tool}
                   </span>
                 ))}
               </div>
             )}
-            {checkResult?.stderr && (
+            {displayedCheckResult?.stderr && (
               <details className="mcp-stderr">
                 <summary>{t("mcpServers.stderr")}</summary>
-                <pre>{checkResult.stderr}</pre>
+                <pre>{displayedCheckResult.stderr}</pre>
               </details>
             )}
           </div>
@@ -674,6 +824,7 @@ function McpServerEditor({
       )}
 
       {error && <div className="mcp-form-error" role="alert">{error}</div>}
+      </div>
 
       <div className="mcp-editor-footer">
         {!isNew && server && onDelete ? (
@@ -681,7 +832,7 @@ function McpServerEditor({
             type="button"
             className="secondary mcp-danger"
             onClick={handleDelete}
-            disabled={deleting || saving || checking}
+            disabled={busy}
           >
             {deleting ? (
               <Loader2 size={14} className="spinning" />
@@ -699,7 +850,7 @@ function McpServerEditor({
               <input
                 type="checkbox"
                 checked={ackLocalExec}
-                disabled={saving || checking || deleting}
+                disabled={busy}
                 onChange={(event) => setAckLocalExec(event.target.checked)}
               />
               {t("mcpServers.confirmLocalExec")}
@@ -709,7 +860,7 @@ function McpServerEditor({
             type="button"
             className="secondary"
             onClick={handleBack}
-            disabled={saving || deleting}
+            disabled={busy}
           >
             {t("common.cancel")}
           </button>
@@ -720,7 +871,7 @@ function McpServerEditor({
               const saved = await handleSave();
               if (saved && !isNew) onBack();
             }}
-            disabled={saving || checking || deleting || (needsLocalExecAck && !ackLocalExec)}
+            disabled={busy || (needsLocalExecAck && !ackLocalExec)}
             title={
               needsLocalExecAck && !ackLocalExec
                 ? t("mcpServers.error.confirmLocalExec")
@@ -755,11 +906,17 @@ export function McpServersTab() {
   const setEnabled = useMcpServerStore((s) => s.setEnabled);
   const selfCheck = useMcpServerStore((s) => s.selfCheck);
   const checkingIds = useMcpServerStore((s) => s.checkingIds);
+  const oauthAuthorizingIds = useMcpServerStore((s) => s.oauthAuthorizingIds);
+  const oauthDisconnectingIds = useMcpServerStore((s) => s.oauthDisconnectingIds);
 
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
   const [autoCheckId, setAutoCheckId] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const checkingSet = useMemo(() => new Set(checkingIds), [checkingIds]);
+  const oauthBusySet = useMemo(() => new Set([
+    ...oauthAuthorizingIds, ...oauthDisconnectingIds,
+    ...servers.filter((server) => server.oauthStatus?.state === "authorizing").map((server) => server.id)
+  ]), [oauthAuthorizingIds, oauthDisconnectingIds, servers]);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -773,7 +930,7 @@ export function McpServersTab() {
   const handleCreate = useCallback(
     async (input: UserMcpServerInput) => {
       const server = await create(input);
-      setAutoCheckId(server.id);
+      setAutoCheckId(server.transport !== "stdio" && server.authType === "oauth" ? null : server.id);
       setSelectedId(server.id);
       return server;
     },
@@ -797,7 +954,8 @@ export function McpServersTab() {
   );
 
   const handleCheckAll = useCallback(async () => {
-    const queue = servers.filter((s) => s.enabled);
+    const queue = servers.filter((server) => server.enabled && !oauthBusySet.has(server.id) &&
+      (server.authType !== "oauth" || server.oauthStatus?.state === "connected"));
     const worker = async () => {
       let next = queue.shift();
       while (next) {
@@ -808,7 +966,7 @@ export function McpServersTab() {
     await Promise.all(
       Array.from({ length: Math.min(3, queue.length) }, worker)
     );
-  }, [servers, selfCheck]);
+  }, [servers, selfCheck, oauthBusySet]);
 
   const handleToggleEnabled = useCallback(
     async (server: UserMcpServer, enabled: boolean) => {
@@ -850,7 +1008,7 @@ export function McpServersTab() {
               type="button"
               className="secondary"
               onClick={handleCheckAll}
-              disabled={checkingSet.size > 0}
+              disabled={checkingSet.size > 0 || oauthBusySet.size > 0}
             >
               <RefreshCw size={14} />
               {t("mcpServers.checkAll")}
@@ -991,7 +1149,8 @@ export function McpServersTab() {
                     type="button"
                     className="mcp-icon-btn"
                     onClick={() => void selfCheck(server.id)}
-                    disabled={checkingSet.has(server.id)}
+                    disabled={checkingSet.has(server.id) || oauthBusySet.has(server.id) ||
+                      (server.authType === "oauth" && server.oauthStatus?.state !== "connected")}
                     title={t("mcpServers.runSelfCheck")}
                     aria-label={t("mcpServers.runSelfCheck")}
                   >
@@ -1012,6 +1171,7 @@ export function McpServersTab() {
                     <input
                       type="checkbox"
                       checked={server.enabled}
+                      disabled={oauthBusySet.has(server.id)}
                       aria-label={
                         server.enabled
                           ? t("mcpServers.disable")

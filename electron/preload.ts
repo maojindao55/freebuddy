@@ -987,7 +987,10 @@ const mcpServers = {
   setEnabled: (id: string, enabled: boolean) =>
     ipcRenderer.invoke("mcpServers:setEnabled", { id, enabled }),
   selfCheck: (id: string, cwd?: string) =>
-    ipcRenderer.invoke("mcpServers:selfCheck", { id, cwd })
+    ipcRenderer.invoke("mcpServers:selfCheck", { id, cwd }),
+  oauthStatus: (id: string) => ipcRenderer.invoke("mcpServers:oauthStatus", id),
+  authorize: (id: string) => ipcRenderer.invoke("mcpServers:authorize", id),
+  disconnect: (id: string) => ipcRenderer.invoke("mcpServers:disconnect", id)
 };
 
 const docStudio = {

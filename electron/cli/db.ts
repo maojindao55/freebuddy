@@ -1206,6 +1206,11 @@ export function migrate(db: DB) {
       transport TEXT NOT NULL DEFAULT 'stdio',
       url TEXT,
       headers TEXT NOT NULL DEFAULT '[]',
+      auth_type TEXT NOT NULL DEFAULT 'headers',
+      oauth_client_id TEXT,
+      oauth_scope TEXT,
+      oauth_state_encrypted TEXT,
+      oauth_revision INTEGER NOT NULL DEFAULT 0,
       args TEXT NOT NULL DEFAULT '[]',
       env TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
@@ -1232,6 +1237,17 @@ export function migrate(db: DB) {
   }
   if (!mcpColumns.has("headers")) {
     db.exec("ALTER TABLE user_mcp_servers ADD COLUMN headers TEXT NOT NULL DEFAULT '[]'");
+  }
+  for (const [name, definition] of [
+    ["auth_type", "TEXT NOT NULL DEFAULT 'headers'"],
+    ["oauth_client_id", "TEXT"],
+    ["oauth_scope", "TEXT"],
+    ["oauth_state_encrypted", "TEXT"],
+    ["oauth_revision", "INTEGER NOT NULL DEFAULT 0"]
+  ]) {
+    if (!mcpColumns.has(name)) {
+      db.exec(`ALTER TABLE user_mcp_servers ADD COLUMN ${name} ${definition}`);
+    }
   }
 
   installHostIdempotencySchema(db);

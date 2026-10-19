@@ -2686,7 +2686,13 @@
       "duplicate_name": "A server with this name already exists",
       "command_required": "Command is required",
       "cwdRequired": "Self-check needs a workspace because the arguments use ${cwd}. It will be checked automatically with the conversation's workspace when selected in a chat.",
-      "toggleFailed": "Failed to update server"
+      "toggleFailed": "Failed to update server",
+      "url_required": "Server URL is required",
+      "invalid_url": "Enter a valid HTTP or HTTPS URL without login details or a fragment",
+      "invalid_transport": "Choose a supported connection type",
+      "invalid_header_name": "Enter a valid header name without spaces",
+      "duplicate_header": "Each header name can only be used once",
+      "invalid_header_value": "Header values cannot contain line breaks or invalid characters"
     },
     "saveAndCheck": "Save & check",
     "discardChanges": "Discard unsaved changes?",
@@ -2695,7 +2701,22 @@
     "sectionBasic": "Basic info",
     "envEmpty": "No environment variables",
     "statusFailed": "Check failed",
-    "statusUnknown": "Not checked"
+    "statusUnknown": "Not checked",
+    "transport": "Connection type",
+    "transportStdio": "Local command (stdio)",
+    "transportHttp": "HTTP (Streamable HTTP)",
+    "transportSse": "SSE",
+    "transportHint": "Choose the connection type provided by your MCP server.",
+    "sseHint": "For older services that use SSE.",
+    "url": "Server URL",
+    "urlHint": "Enter the HTTP or HTTPS endpoint provided by your MCP service.",
+    "headers": "Request headers",
+    "headerName": "Header name",
+    "headerValue": "Header value",
+    "headersEmpty": "No request headers",
+    "headersHint": "Add an Authorization or API key header if required. Values are hidden; leave stored values blank to keep them.",
+    "addHeader": "Add header",
+    "removeHeader": "Remove header"
   },
   "conversationPanel": {
     "title": "All conversations",

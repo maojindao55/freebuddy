@@ -1197,12 +1197,15 @@ export function migrate(db: DB) {
     }
   } catch { /* 老 SQLite 不支持 DROP COLUMN 时保留该列，读取侧已不再依赖它 */ }
 
-  // ---- User MCP Servers (Phase 1: stdio transport only) ----
+  // ---- User MCP Servers ----
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_mcp_servers (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       command TEXT NOT NULL,
+      transport TEXT NOT NULL DEFAULT 'stdio',
+      url TEXT,
+      headers TEXT NOT NULL DEFAULT '[]',
       args TEXT NOT NULL DEFAULT '[]',
       env TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
@@ -1215,6 +1218,21 @@ export function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_user_mcp_servers_enabled ON user_mcp_servers(enabled);
   `);
+
+  // Existing command-based configurations remain stdio servers after upgrade.
+  const mcpColumns = new Set(
+    (db.prepare("PRAGMA table_info(user_mcp_servers)").all() as Array<{ name: string }>)
+      .map((column) => column.name)
+  );
+  if (!mcpColumns.has("transport")) {
+    db.exec("ALTER TABLE user_mcp_servers ADD COLUMN transport TEXT NOT NULL DEFAULT 'stdio'");
+  }
+  if (!mcpColumns.has("url")) {
+    db.exec("ALTER TABLE user_mcp_servers ADD COLUMN url TEXT");
+  }
+  if (!mcpColumns.has("headers")) {
+    db.exec("ALTER TABLE user_mcp_servers ADD COLUMN headers TEXT NOT NULL DEFAULT '[]'");
+  }
 
   installHostIdempotencySchema(db);
   pruneHostIdempotencyResults({

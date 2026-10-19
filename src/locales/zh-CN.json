@@ -2671,7 +2671,13 @@
       "duplicate_name": "已存在同名服务器",
       "command_required": "命令为必填项",
       "cwdRequired": "参数使用了 ${cwd}，自检需要工作区。在对话中选择该服务器后，将使用该对话的工作区自动检查。",
-      "toggleFailed": "更新服务器状态失败"
+      "toggleFailed": "更新服务器状态失败",
+      "url_required": "服务器 URL 为必填项",
+      "invalid_url": "请输入有效的 HTTP 或 HTTPS 地址，且不包含登录信息或片段标识",
+      "invalid_transport": "请选择支持的连接方式",
+      "invalid_header_name": "请输入有效的请求头名称，不能包含空格",
+      "duplicate_header": "请求头名称不能重复",
+      "invalid_header_value": "请求头值不能包含换行或无效字符"
     },
     "saveAndCheck": "保存并检查",
     "discardChanges": "丢弃未保存的更改？",
@@ -2680,7 +2686,22 @@
     "sectionBasic": "基本信息",
     "envEmpty": "未添加环境变量",
     "statusFailed": "检查失败",
-    "statusUnknown": "未检查"
+    "statusUnknown": "未检查",
+    "transport": "连接方式",
+    "transportStdio": "本地命令（stdio）",
+    "transportHttp": "HTTP（Streamable HTTP）",
+    "transportSse": "SSE",
+    "transportHint": "选择 MCP 服务提供的连接方式。",
+    "sseHint": "用于兼容使用 SSE 的旧服务。",
+    "url": "服务器 URL",
+    "urlHint": "输入 MCP 服务提供的 HTTP 或 HTTPS 地址。",
+    "headers": "请求头",
+    "headerName": "请求头名称",
+    "headerValue": "请求头值",
+    "headersEmpty": "未添加请求头",
+    "headersHint": "按需添加 Authorization 或 API key 请求头。值默认隐藏，已存储的值留空即可保留。",
+    "addHeader": "添加请求头",
+    "removeHeader": "删除请求头"
   },
   "conversationPanel": {
     "title": "全部会话",

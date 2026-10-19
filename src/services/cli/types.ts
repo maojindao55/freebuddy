@@ -937,18 +937,24 @@ export interface UserMcpServerEnvVar {
 export interface UserMcpServerInput {
   id?: string;
   name: string;
-  command: string;
+  transport?: "stdio" | "http" | "sse";
+  command?: string;
   args?: string[];
   env?: UserMcpServerEnvVar[];
+  url?: string;
+  headers?: UserMcpServerEnvVar[];
   enabled?: boolean;
 }
 
 export interface UserMcpServer {
   id: string;
   name: string;
+  transport?: "stdio" | "http" | "sse";
   command: string;
   args: string[];
   env: UserMcpServerEnvVar[];
+  url?: string;
+  headers?: UserMcpServerEnvVar[];
   enabled: boolean;
   lastCheckStatus?: "ok" | "error";
   lastCheckError?: string;

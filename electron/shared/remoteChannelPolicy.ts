@@ -207,6 +207,9 @@ const ADMIN_ONLY = [
   "mcpServers:delete",
   "mcpServers:setEnabled",
   "mcpServers:selfCheck",
+  "mcpServers:oauthStatus",
+  "mcpServers:authorize",
+  "mcpServers:disconnect",
 
   // Per-conversation MCP server selection - remote users cannot use MCP.
   "cli:getConversationMcpServerIds",

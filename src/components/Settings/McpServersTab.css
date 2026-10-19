@@ -547,6 +547,68 @@ button.secondary.mcp-danger:hover:not(:disabled) {
 
 /* ---- Self-check ---- */
 
+.mcp-oauth-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mcp-oauth-section .mcp-section-title {
+  margin-bottom: 0;
+}
+
+.mcp-oauth-status,
+.mcp-oauth-session-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+}
+
+.mcp-oauth-status svg,
+.mcp-oauth-session-note svg {
+  flex-shrink: 0;
+}
+
+.mcp-oauth-status.connected {
+  color: var(--fb-brand);
+}
+
+.mcp-oauth-status.error,
+.mcp-oauth-error {
+  color: var(--fb-danger);
+}
+
+.mcp-oauth-error,
+.mcp-oauth-session-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.mcp-oauth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mcp-oauth-advanced {
+  border-top: 1px solid var(--fb-border);
+  padding-top: 10px;
+}
+
+.mcp-oauth-advanced summary {
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mcp-oauth-advanced .mcp-form-grid {
+  margin-top: 12px;
+}
+
 .mcp-self-check {
   display: flex;
   flex-direction: column;

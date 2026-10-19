@@ -1004,6 +1004,9 @@ declare global {
       id: string,
       cwd?: string
     ): Promise<import("@/services/cli/types").UserMcpServerSelfCheckResult>;
+    oauthStatus(id: string): Promise<import("@/services/cli/types").McpOAuthStatus>;
+    authorize(id: string): Promise<import("@/services/cli/types").McpOAuthStatus>;
+    disconnect(id: string): Promise<import("@/services/cli/types").McpOAuthStatus>;
   }
 
   interface FreebuddyApi {

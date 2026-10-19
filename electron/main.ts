@@ -1747,6 +1747,12 @@ function shutdownAppServices(): Promise<void> {
         /* runtime manager may not have started */
       }
       try {
+        const { shutdownMcpOAuth } = await import("./cli/mcpOAuth.js");
+        await shutdownMcpOAuth();
+      } catch {
+        /* OAuth may not have been initialized. */
+      }
+      try {
         const { stopOfficeEngine } = await import("./officeEngine.js");
         stopOfficeEngine();
       } catch {

@@ -34,8 +34,14 @@ const electronStubUrl =
      export const MenuItem = noop;
      export const nativeImage = any;
      export const protocol = any;
-     export const safeStorage = any;
-     export const shell = any;
+     export const safeStorage = new Proxy({}, {
+       get: (_, name) => globalThis.__freebuddyElectronSafeStorage?.[name] ?? noop
+     });
+     export const shell = new Proxy({}, {
+       get: (_, name) => name === "openExternal"
+         ? (...args) => globalThis.__freebuddyElectronOpenExternal?.(...args)
+         : noop
+     });
      export const utilityProcess = {
        fork: (...args) => globalThis.__freebuddyElectronUtilityProcessFork?.(...args)
      };

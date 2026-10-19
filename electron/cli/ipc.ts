@@ -286,6 +286,9 @@ import {
   isMcpSecretStorageEncrypted,
   type UserMcpServerInput
 } from "./mcpServers.js";
+import {
+  getUserMcpOAuthStatus, authorizeUserMcpServer, disconnectUserMcpServer
+} from "./mcpOAuth.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -1787,6 +1790,18 @@ export function registerCliIpc() {
   registerHandler("mcpServers:get", (_e, id: string) => {
     assertHostMcpAccess();
     return getUserMcpServer(id);
+  });
+  registerHandler("mcpServers:oauthStatus", (_e, id: string) => {
+    assertHostMcpAccess();
+    return getUserMcpOAuthStatus(id);
+  });
+  registerHandler("mcpServers:authorize", (_e, id: string) => {
+    assertHostMcpAccess();
+    return authorizeUserMcpServer(id);
+  });
+  registerHandler("mcpServers:disconnect", (_e, id: string) => {
+    assertHostMcpAccess();
+    return disconnectUserMcpServer(id);
   });
   registerHandler("mcpServers:create", (_e, input: UserMcpServerInput) => {
     assertHostMcpAccess();

@@ -538,5 +538,20 @@ export const cliClient = {
     const mcpServers = window.freebuddy?.mcpServers;
     if (!mcpServers) return Promise.resolve({ status: "error" as const, error: "MCP servers API unavailable" });
     return mcpServers.selfCheck(id, cwd);
+  },
+  getUserMcpOAuthStatus(id: string): Promise<import("./types").McpOAuthStatus> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers?.oauthStatus) throw new Error("MCP OAuth API unavailable");
+    return mcpServers.oauthStatus(id);
+  },
+  authorizeUserMcpServer(id: string): Promise<import("./types").McpOAuthStatus> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers?.authorize) throw new Error("MCP OAuth API unavailable");
+    return mcpServers.authorize(id);
+  },
+  disconnectUserMcpServer(id: string): Promise<import("./types").McpOAuthStatus> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers?.disconnect) throw new Error("MCP OAuth API unavailable");
+    return mcpServers.disconnect(id);
   }
 };

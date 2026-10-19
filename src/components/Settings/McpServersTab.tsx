@@ -564,7 +564,7 @@ function McpServerEditor({
   } : null);
 
   return (
-    <div className="mcp-servers-tab">
+    <div className="mcp-servers-tab mcp-server-editor">
       <div className="mcp-editor-header">
         <button
           type="button"
@@ -581,6 +581,7 @@ function McpServerEditor({
         </h3>
       </div>
 
+      <div className="mcp-editor-content">
       {isNew && (
         <div className="mcp-templates">
           <span className="mcp-templates-label">
@@ -823,6 +824,7 @@ function McpServerEditor({
       )}
 
       {error && <div className="mcp-form-error" role="alert">{error}</div>}
+      </div>
 
       <div className="mcp-editor-footer">
         {!isNew && server && onDelete ? (

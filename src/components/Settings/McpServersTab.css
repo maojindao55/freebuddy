@@ -1,8 +1,26 @@
 .mcp-servers-tab {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 18px;
   min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.mcp-servers-tab > * {
+  flex-shrink: 0;
+}
+
+.settings-panel:has(> .mcp-servers-tab) {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-surface-modal .settings-layout:has(.mcp-servers-tab) {
+  /* Keep the grid's content minimum from expanding the MCP scroller. */
+  grid-template-rows: minmax(0, 1fr);
 }
 
 /* ---- List header ---- */
@@ -306,6 +324,31 @@ button.secondary.mcp-danger:hover:not(:disabled) {
 }
 
 /* ---- Editor ---- */
+
+.mcp-server-editor {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.mcp-server-editor > .mcp-editor-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
+}
+
+.mcp-editor-content > * {
+  flex-shrink: 0;
+}
+
+.mcp-servers-tab::-webkit-scrollbar-thumb,
+.mcp-editor-content::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--fb-text-tertiary) 65%, transparent);
+}
 
 .mcp-editor-header {
   display: flex;
@@ -641,15 +684,18 @@ button.secondary.mcp-danger:hover:not(:disabled) {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  width: 100%;
 }
 
 .mcp-tool-chip {
+  max-width: 100%;
   padding: 2px 8px;
   font-size: 11px;
   font-family: ui-monospace, monospace;
   background: var(--fb-panel-soft);
   border-radius: 6px;
   color: var(--fb-text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .mcp-stderr {
@@ -705,9 +751,8 @@ button.secondary.mcp-danger:hover:not(:disabled) {
 }
 
 .mcp-editor-footer {
-  position: sticky;
-  bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -722,6 +767,7 @@ button.secondary.mcp-danger:hover:not(:disabled) {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  margin-left: auto;
 }
 
 .spinning {

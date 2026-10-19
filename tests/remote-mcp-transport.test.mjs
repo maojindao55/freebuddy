@@ -304,7 +304,7 @@ for (const transport of ["http", "sse"]) {
   });
 }
 
-test("bridge executable exits cleanly on stdin end, SIGTERM and SIGINT", async (t) => {
+test("bridge executable releases connections on stdin end, SIGTERM and SIGINT", async (t) => {
   const remote = await fixture(t);
   const entry = fileURLToPath(new URL("../dist-electron/mcp/remoteMcpBridge.js", import.meta.url));
   for (const shutdown of ["stdin", "SIGTERM", "SIGINT"]) {
@@ -329,7 +329,12 @@ test("bridge executable exits cleanly on stdin end, SIGTERM and SIGINT", async (
     await waitUntil(() => remote.eventStreams.size > 0);
     if (shutdown === "stdin") child.stdin.end();
     else child.kill(shutdown);
-    assert.deepEqual(await exited, { code: 0, signal: null });
+    // Windows child.kill() forcibly terminates the process without running JS
+    // signal handlers. Stdin EOF still exercises graceful shutdown everywhere.
+    const expectedExit = process.platform === "win32" && shutdown !== "stdin"
+      ? { code: null, signal: shutdown }
+      : { code: 0, signal: null };
+    assert.deepEqual(await exited, expectedExit, `${process.platform}: ${shutdown}`);
     assert.equal(stderr, "");
     await waitUntil(() => remote.eventStreams.size === 0);
   }

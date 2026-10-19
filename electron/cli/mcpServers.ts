@@ -2,6 +2,7 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
 import { getDb } from "./db.js";
 import { getConversationMcpServerIds } from "./conversations.js";
@@ -9,6 +10,7 @@ import { encryptSecret, decryptSecret, redactApiKey, isSecretStorageAvailable } 
 import { logMain } from "../debugLog.js";
 import { isCallerAdmin, getCallerUserId } from "./callerContext.js";
 import { killProcessTree } from "./process-kill.js";
+import { selfCheckRemoteMcpServer, type RemoteMcpConfig } from "./remoteMcpTransport.js";
 
 const MCP_NAME_PREFIX_RESERVED = "freebuddy";
 const MCP_RESERVED_NAMES = new Set([
@@ -39,9 +41,12 @@ export interface UserMcpServerEnvVar {
 export interface UserMcpServerInput {
   id?: string;
   name: string;
-  command: string;
+  transport?: "stdio" | "http" | "sse";
+  command?: string;
   args?: string[];
   env?: UserMcpServerEnvVar[];
+  url?: string;
+  headers?: UserMcpServerEnvVar[];
   enabled?: boolean;
 }
 
@@ -49,6 +54,9 @@ export interface UserMcpServer {
   id: string;
   name: string;
   command: string;
+  transport: "stdio" | "http" | "sse";
+  url?: string;
+  headers: UserMcpServerEnvVar[];
   args: string[];
   env: UserMcpServerEnvVar[];
   enabled: boolean;
@@ -111,6 +119,9 @@ function rowToServer(r: any): UserMcpServer {
     id: r.id,
     name: r.name,
     command: r.command,
+    transport: r.transport ?? "stdio",
+    url: r.url ?? undefined,
+    headers: parseEnv(r.headers),
     args: parseArgs(r.args),
     env: parseEnv(r.env),
     enabled: r.enabled === 1,
@@ -143,7 +154,10 @@ function sanitizeEnvForRenderer(env: UserMcpServerEnvVar[]): UserMcpServerEnvVar
 function serverForRenderer(server: UserMcpServer): UserMcpServer {
   return {
     ...server,
-    env: sanitizeEnvForRenderer(server.env)
+    env: sanitizeEnvForRenderer(server.env),
+    headers: sanitizeEnvForRenderer(server.headers).map((header) => ({
+      ...header, valuePreview: header.hasValue ? "••••••••" : undefined
+    }))
   };
 }
 
@@ -194,6 +208,90 @@ function normalizeEnvForStorage(
 
 function mcpError(code: string, message: string): Error {
   return new Error(`[mcp:${code}] ${message}`);
+}
+
+function normalizeTransport(value: unknown): UserMcpServer["transport"] {
+  if (value === undefined) return "stdio";
+  if (value === "stdio" || value === "http" || value === "sse") return value;
+  throw mcpError("invalid_transport", "Choose stdio, HTTP, or SSE transport");
+}
+
+function normalizeRemoteUrl(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw mcpError("url_required", "Server URL is required");
+  }
+  try {
+    const url = new URL(value.trim());
+    if (
+      !["http:", "https:"].includes(url.protocol) || !url.hostname ||
+      url.username || url.password || url.hash
+    ) throw new Error("Invalid URL");
+    return url.href;
+  } catch {
+    throw mcpError("invalid_url", "Use an HTTP or HTTPS URL without credentials or a fragment");
+  }
+}
+
+function normalizeHeadersForStorage(
+  headers: UserMcpServerEnvVar[] | undefined,
+  previous: UserMcpServerEnvVar[] = []
+): UserMcpServerEnvVar[] {
+  if (headers === undefined) return previous;
+  if (!Array.isArray(headers)) {
+    throw mcpError("invalid_header_name", "Headers must be a list of name and value pairs");
+  }
+  const names = new Set<string>();
+  const normalized = headers.map((header) => {
+    const name = typeof header?.name === "string" ? header.name.trim() : "";
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) {
+      throw mcpError("invalid_header_name", "Use a valid HTTP header name");
+    }
+    const lowerName = name.toLowerCase();
+    if (names.has(lowerName)) {
+      throw mcpError("duplicate_header", "Header names must be unique (case-insensitive)");
+    }
+    names.add(lowerName);
+    if (
+      header.value !== undefined &&
+      (typeof header.value !== "string" || /[^\t\x20-\x7e\x80-\xff]/.test(header.value))
+    ) {
+      throw mcpError("invalid_header_value", "Header values cannot contain line breaks or invalid characters");
+    }
+    const previousName = typeof header.previousName === "string"
+      ? header.previousName.trim() : name;
+    const prev = previous.find((entry) => entry.name.toLowerCase() === previousName.toLowerCase());
+    if (header.value !== undefined) {
+      return { name, valueEncrypted: encryptSecret(header.value), secret: true };
+    }
+    if (prev?.valueEncrypted) {
+      return { name, valueEncrypted: prev.valueEncrypted, secret: true };
+    }
+    return { name, valueEncrypted: encryptSecret(""), secret: true };
+  });
+  // Headers may contain credentials under any name. Always encrypt their values.
+  return normalized;
+}
+
+function normalizeServerConnection(
+  input: Partial<UserMcpServerInput>,
+  existing?: UserMcpServer
+): Pick<UserMcpServer, "transport" | "command" | "args" | "env" | "url" | "headers"> {
+  const transport = normalizeTransport(input.transport === undefined ? existing?.transport : input.transport);
+  if (transport === "stdio") {
+    const command = input.command ?? existing?.command;
+    if (typeof command !== "string" || !command.trim()) {
+      throw mcpError("command_required", "Command is required");
+    }
+    return {
+      transport, command: command.trim(), args: input.args ?? existing?.args ?? [],
+      env: normalizeEnvForStorage(input.env, existing?.env), headers: [], url: undefined
+    };
+  }
+  return {
+    transport, command: "", args: [], env: [],
+    url: normalizeRemoteUrl(input.url === undefined ? existing?.url : input.url),
+    headers: normalizeHeadersForStorage(input.headers, existing?.headers)
+  };
 }
 
 function validateServerName(name: string, existingId?: string): void {
@@ -255,24 +353,24 @@ export function createUserMcpServer(
   input: UserMcpServerInput
 ): UserMcpServer {
   validateServerName(input.name);
-  if (!input.command?.trim()) {
-    throw mcpError("command_required", "Command is required");
-  }
+  const connection = normalizeServerConnection(input);
   const id = input.id || `mcp-${nanoid(8)}`;
   const now = new Date().toISOString();
-  const env = normalizeEnvForStorage(input.env);
   getDb()
     .prepare(
       `INSERT INTO user_mcp_servers
-         (id, name, command, args, env, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, name, command, args, env, transport, url, headers, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
       input.name.trim(),
-      input.command.trim(),
-      JSON.stringify(input.args ?? []),
-      JSON.stringify(env),
+      connection.command,
+      JSON.stringify(connection.args),
+      JSON.stringify(connection.env),
+      connection.transport,
+      connection.url ?? null,
+      JSON.stringify(connection.headers),
       input.enabled !== false ? 1 : 0,
       now,
       now
@@ -289,29 +387,30 @@ export function updateUserMcpServer(
   if (input.name !== undefined) {
     validateServerName(input.name, id);
   }
-  if (input.command !== undefined && !input.command.trim()) {
-    throw mcpError("command_required", "Command is required");
-  }
+  const connection = normalizeServerConnection(input, existing);
   const now = new Date().toISOString();
-  const env = normalizeEnvForStorage(input.env, existing.env);
-  const updates: string[] = ["updated_at = ?"];
-  const params: any[] = [now];
+  const updates: string[] = [
+    "updated_at = ?", "command = ?", "args = ?", "env = ?", "transport = ?", "url = ?", "headers = ?"
+  ];
+  const params: any[] = [
+    now, connection.command, JSON.stringify(connection.args), JSON.stringify(connection.env),
+    connection.transport, connection.url ?? null, JSON.stringify(connection.headers)
+  ];
+  const previousConnection = {
+    transport: existing.transport, command: existing.command, args: existing.args,
+    env: existing.env, headers: existing.headers, url: existing.url
+  };
+  // A previous successful check no longer describes an edited connection.
+  if (Object.keys(previousConnection).some((key) => {
+    const field = key as keyof typeof previousConnection;
+    return JSON.stringify(connection[field]) !== JSON.stringify(previousConnection[field]);
+  })) {
+    updates.push("last_check_status = NULL", "last_check_error = NULL", "last_check_tools = NULL", "last_checked_at = NULL");
+  }
 
   if (input.name !== undefined) {
     updates.push("name = ?");
     params.push(input.name.trim());
-  }
-  if (input.command !== undefined) {
-    updates.push("command = ?");
-    params.push(input.command.trim());
-  }
-  if (input.args !== undefined) {
-    updates.push("args = ?");
-    params.push(JSON.stringify(input.args));
-  }
-  if (input.env !== undefined) {
-    updates.push("env = ?");
-    params.push(JSON.stringify(env));
   }
   if (input.enabled !== undefined) {
     updates.push("enabled = ?");
@@ -477,6 +576,16 @@ export function collectLogSecrets(
   const secrets: string[] = [];
   for (const server of servers) {
     for (const entry of server.env ?? []) {
+      if (entry.name === "FREEBUDDY_REMOTE_MCP_CONFIG" && entry.value) {
+        secrets.push(entry.value);
+        try {
+          const config = JSON.parse(entry.value) as RemoteMcpConfig;
+          secrets.push(config.url, ...Object.values(config.headers));
+        } catch {
+          // The entire malformed configuration is still redacted above.
+        }
+        continue;
+      }
       if (entry.secret !== true && !SECRET_NAME_PATTERN.test(entry.name ?? "")) {
         continue;
       }
@@ -622,6 +731,23 @@ export async function selfCheckUserMcpServer(
   const server = getUserMcpServerInternal(id);
   if (!server) {
     return { status: "error", error: "Server not found" };
+  }
+
+  if (server.transport !== "stdio") {
+    let result: UserMcpServerSelfCheckResult;
+    try {
+      const tools = await selfCheckRemoteMcpServer(remoteConfigForRuntime(server), MCP_SELF_CHECK_TIMEOUT_MS);
+      result = { status: "ok", tools };
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+        ? error.code : "remote_connection_failed";
+      result = {
+        status: "error", code,
+        error: error instanceof Error ? error.message : "Remote MCP connection failed"
+      };
+    }
+    updateSelfCheckResult(id, result);
+    return result;
   }
 
   if (!cwd?.trim() && server.args.some((arg) => arg.includes("${cwd}"))) {
@@ -857,11 +983,36 @@ export interface AcpStdioMcpServerFromUser {
   env: Array<{ name: string; value: string }>;
 }
 
+function remoteConfigForRuntime(server: UserMcpServer): RemoteMcpConfig {
+  if (server.transport !== "http" && server.transport !== "sse") {
+    throw mcpError("invalid_transport", "Expected a remote MCP server");
+  }
+  const headers = Object.fromEntries(server.headers.map((header) => {
+    const value = header.value ?? decryptSecret(header.valueEncrypted);
+    if (value === undefined) {
+      throw mcpError("secret_unavailable", "Cannot decrypt MCP headers; enter them again on this device");
+    }
+    return [header.name, value];
+  }));
+  return { transport: server.transport, url: normalizeRemoteUrl(server.url), headers };
+}
+
 export function userMcpServerToAcpFormat(
   server: UserMcpServer,
   command: string,
   cwd?: string
 ): AcpStdioMcpServerFromUser {
+  if (server.transport !== "stdio") {
+    return {
+      name: server.name,
+      command: process.execPath,
+      args: [fileURLToPath(new URL("../mcp/remoteMcpBridge.js", import.meta.url))],
+      env: [
+        { name: "ELECTRON_RUN_AS_NODE", value: "1" },
+        { name: "FREEBUDDY_REMOTE_MCP_CONFIG", value: JSON.stringify(remoteConfigForRuntime(server)) }
+      ]
+    };
+  }
   return {
     name: server.name,
     command,
@@ -888,6 +1039,16 @@ export async function getEnabledUserMcpServersByIds(
   const skipped: ResolvedUserMcpServers["skipped"] = [];
   const secretValues: string[] = [];
   for (const server of servers) {
+    if (server.transport !== "stdio") {
+      try {
+        const bridge = userMcpServerToAcpFormat(server, process.execPath, cwd);
+        resolved.push(bridge);
+        secretValues.push(...collectLogSecrets([bridge]));
+      } catch {
+        skipped.push({ id: server.id, name: server.name, reason: "remote_configuration_invalid" });
+      }
+      continue;
+    }
     if (!cwd?.trim() && server.args.some((arg) => arg.includes("${cwd}"))) {
       skipped.push({ id: server.id, name: server.name, reason: "cwd_required" });
       continue;
@@ -961,6 +1122,12 @@ export function mcpConfigFingerprint(ids: string[]): string {
     getMcpServersByIds(ids).map((server) => ({
       id: server.id,
       name: server.name,
+      transport: server.transport,
+      url: server.url,
+      headers: server.headers.map((entry) => ({
+        name: entry.name,
+        value: entry.valueEncrypted ?? entry.value ?? ""
+      })),
       command: server.command,
       args: server.args,
       enabled: server.enabled,

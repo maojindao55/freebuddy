@@ -64,8 +64,8 @@
   bottom: calc(100% + 8px);
   left: 0;
   z-index: 100;
-  min-width: 220px;
-  max-width: 320px;
+  width: 240px;
+  max-width: calc(100vw - 40px);
   background: var(--fb-panel-bg);
   border: 1px solid var(--fb-border);
   border-radius: 8px;
@@ -130,6 +130,7 @@
 
 .mcp-picker-item-name {
   flex: 1;
+  min-width: 0;
   font-size: 13px;
   color: var(--fb-text-primary);
   overflow: hidden;
@@ -138,6 +139,7 @@
 }
 
 .mcp-picker-status {
+  flex-shrink: 0;
   font-size: 8px;
   line-height: 1;
 }
@@ -151,6 +153,7 @@
 }
 
 .mcp-picker-disabled-label {
+  flex-shrink: 0;
   font-size: 10px;
   color: var(--fb-text-tertiary);
   font-style: italic;
@@ -173,13 +176,6 @@
 .mcp-picker-hint.mcp-picker-warning {
   color: var(--fb-warning);
   background: var(--fb-bg-warning-subtle);
-}
-
-@media (max-width: 640px) {
-  .mcp-picker-popover {
-    min-width: 200px;
-    max-width: calc(100vw - 40px);
-  }
 }
 
 .mcp-picker-spinner {

@@ -695,7 +695,7 @@ test("MCP editor preserves stored secrets on rename", () => {
   // Should track original name
   assert.match(
     editorSource,
-    /originalName.*e\.name/,
+    /originalName:\s*entry\.name/,
     "Should track original env var name"
   );
 
@@ -706,18 +706,18 @@ test("MCP editor preserves stored secrets on rename", () => {
     "Should track hasStoredSecret flag"
   );
 
-  // Should preserve secret when name unchanged
+  // Should preserve the stored value when its name changes
   assert.match(
     editorSource,
-    /previousName: e\.originalName/,
+    /previousName:\s*entry\.originalName/,
     "Should keep the stored secret when the env name changes"
   );
 
-  // Should have clear secret button
+  // Clearing a stored header value must stop preserving the old secret.
   assert.match(
     editorSource,
-    /handleClearSecretValue/,
-    "Should have clear secret function"
+    /value:\s*"",\s*hasStoredSecret:\s*false,\s*valuePreview:\s*undefined/,
+    "Should explicitly clear the stored secret state"
   );
 });
 

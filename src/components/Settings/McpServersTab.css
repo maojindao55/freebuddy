@@ -399,6 +399,7 @@ button.secondary.mcp-danger:hover:not(:disabled) {
 
 .mcp-servers-tab input[type="text"],
 .mcp-servers-tab input[type="password"],
+.mcp-servers-tab select,
 .mcp-servers-tab textarea {
   height: 32px;
   padding: 0 10px;
@@ -420,6 +421,7 @@ button.secondary.mcp-danger:hover:not(:disabled) {
 
 .mcp-servers-tab input[type="text"]:focus,
 .mcp-servers-tab input[type="password"]:focus,
+.mcp-servers-tab select:focus,
 .mcp-servers-tab textarea:focus {
   outline: none;
   border-color: var(--fb-brand);
@@ -445,6 +447,10 @@ button.secondary.mcp-danger:hover:not(:disabled) {
   grid-template-columns: minmax(180px, 1fr) minmax(0, 1.3fr) auto auto;
   gap: 8px;
   align-items: center;
+}
+
+.mcp-headers-grid {
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 1.3fr) auto;
 }
 
 .mcp-env-row {

@@ -31,6 +31,7 @@ function McpServerChecklistRow({
   const isDisabled = !server.enabled;
   const statusOk = server.lastCheckStatus === "ok";
   const statusError = server.lastCheckStatus === "error";
+  const remoteUrl = (server.transport ?? "stdio") !== "stdio" ? server.url : undefined;
 
   const statusTitle = isDisabled
     ? selected
@@ -47,7 +48,7 @@ function McpServerChecklistRow({
   return (
     <label
       className={`mcp-picker-item${isDisabled ? " disabled" : ""}${isDisabled && selected ? " skipped" : ""}`}
-      title={statusTitle}
+      title={[server.name, remoteUrl, statusTitle].filter(Boolean).join("\n")}
     >
       <input
         type="checkbox"

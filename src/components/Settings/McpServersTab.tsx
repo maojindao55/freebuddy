@@ -57,6 +57,140 @@ interface EnvVarDraft {
   secret: boolean;
 }
 
+type McpTransport = NonNullable<UserMcpServerInput["transport"]>;
+
+function createValueDrafts(values: UserMcpServerEnvVar[] = []): EnvVarDraft[] {
+  return values.map((entry) => ({
+    id: nanoid(6),
+    originalName: entry.name,
+    name: entry.name,
+    value: entry.secret ? "" : (entry.value ?? ""),
+    valuePreview: entry.valuePreview,
+    hasStoredSecret: entry.secret === true && Boolean(entry.hasValue),
+    secret: entry.secret ?? false
+  }));
+}
+
+function valueDraftsChanged(drafts: EnvVarDraft[], original: UserMcpServerEnvVar[] = []): boolean {
+  const values = drafts.filter((entry) => entry.name.trim() || entry.value);
+  if (values.length !== original.length) return true;
+  return values.some((draft, index) => {
+    const entry = original[index];
+    if (draft.name.trim() !== entry.name || draft.secret !== (entry.secret ?? false)) return true;
+    if (!draft.secret) return draft.value !== (entry.value ?? "");
+    return draft.value !== "" || (!draft.hasStoredSecret && Boolean(entry.hasValue));
+  });
+}
+
+function serializeValueDrafts(drafts: EnvVarDraft[]): UserMcpServerEnvVar[] {
+  return drafts.filter((entry) => entry.name.trim()).map((entry) => {
+    const name = entry.name.trim();
+    if (!entry.secret) return { name, value: entry.value };
+    if (entry.value) return { name, value: entry.value, secret: true };
+    if (entry.hasStoredSecret && entry.originalName) {
+      return { name, secret: true, previousName: entry.originalName };
+    }
+    return { name, value: "", secret: true };
+  });
+}
+
+function McpValuesEditor({
+  kind,
+  values,
+  onChange,
+  disabled
+}: {
+  kind: "env" | "headers";
+  values: EnvVarDraft[];
+  onChange: (values: EnvVarDraft[]) => void;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const [showSecrets, setShowSecrets] = useState<Set<string>>(new Set());
+  const isHeaders = kind === "headers";
+  const nameLabel = t(isHeaders ? "mcpServers.headerName" : "mcpServers.envName");
+  const valueLabel = t(isHeaders ? "mcpServers.headerValue" : "mcpServers.envValue");
+
+  const update = (id: string, field: "name" | "value" | "secret", value: string | boolean) => {
+    onChange(values.map((entry) => {
+      if (entry.id !== id) return entry;
+      if (field === "value") return { ...entry, value: value as string };
+      if (field === "secret") return { ...entry, secret: value as boolean, hasStoredSecret: Boolean(value) && entry.hasStoredSecret };
+      return { ...entry, name: value as string };
+    }));
+  };
+
+  return (
+    <div className="mcp-editor-section">
+      <div className="mcp-section-title">{t(isHeaders ? "mcpServers.headers" : "mcpServers.envVars")}</div>
+      <div className="mcp-env-list">
+        {values.length === 0 && <p className="mcp-env-empty muted">{t(isHeaders ? "mcpServers.headersEmpty" : "mcpServers.envEmpty")}</p>}
+        {isHeaders && <p className="mcp-form-hint">{t("mcpServers.headersHint")}</p>}
+        <div className={`mcp-env-grid${isHeaders ? " mcp-headers-grid" : ""}`}>
+          {values.length > 0 && (
+            <div className="mcp-env-header">
+              <span className="muted">{nameLabel}</span>
+              <span className="muted">{valueLabel}</span>
+              {!isHeaders && <span />}<span />
+            </div>
+          )}
+          {values.map((entry) => (
+            <div key={entry.id} className="mcp-env-row">
+              <input type="text" value={entry.name} disabled={disabled}
+                onChange={(event) => update(entry.id, "name", event.target.value)}
+                placeholder={nameLabel} className="mcp-env-name" aria-label={nameLabel} title={entry.name}
+                autoComplete="off" spellCheck={false} />
+              <div className="mcp-env-value-wrapper">
+                <input type={entry.secret && !showSecrets.has(entry.id) ? "password" : "text"}
+                  value={entry.value} disabled={disabled}
+                  onChange={(event) => update(entry.id, "value", event.target.value)}
+                  placeholder={entry.secret && entry.hasStoredSecret
+                    ? `${entry.valuePreview ?? "••••••••"} ${t("mcpServers.storedSecret")}` : valueLabel}
+                  className="mcp-env-value" aria-label={valueLabel} autoComplete="off" spellCheck={false} />
+                {entry.secret && (
+                  <>
+                    {(!isHeaders || !entry.hasStoredSecret || entry.value !== "") && <button type="button" className="mcp-env-toggle-secret" disabled={disabled}
+                      onClick={() => setShowSecrets((previous) => {
+                        const next = new Set(previous);
+                        if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
+                        return next;
+                      })}
+                      aria-label={t(showSecrets.has(entry.id) ? "mcpServers.hideSecret" : "mcpServers.showSecret")}
+                      title={t(showSecrets.has(entry.id) ? "mcpServers.hideSecret" : "mcpServers.showSecret")}>
+                      {showSecrets.has(entry.id) ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>}
+                    {isHeaders && entry.hasStoredSecret && !entry.value && (
+                      <button type="button" className="mcp-env-clear-secret" disabled={disabled}
+                        onClick={() => onChange(values.map((value) => value.id === entry.id
+                          ? { ...value, value: "", hasStoredSecret: false, valuePreview: undefined } : value))}
+                        aria-label={t("mcpServers.clearSecret")} title={t("mcpServers.clearSecret")}>
+                        <X size={14} />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              {!isHeaders && <label className="mcp-env-secret-label">
+                <input type="checkbox" checked={entry.secret} disabled={disabled}
+                  onChange={(event) => update(entry.id, "secret", event.target.checked)} />
+                {t("mcpServers.secret")}
+              </label>}
+              <button type="button" className="mcp-env-remove" disabled={disabled}
+                onClick={() => onChange(values.filter((value) => value.id !== entry.id))}
+                aria-label={t(isHeaders ? "mcpServers.removeHeader" : "mcpServers.removeEnvVar")}
+                title={t(isHeaders ? "mcpServers.removeHeader" : "mcpServers.removeEnvVar")}><X size={14} /></button>
+            </div>
+          ))}
+        </div>
+        <button type="button" className="mcp-env-add" disabled={disabled}
+          onClick={() => onChange([...values, { id: nanoid(6), name: "", value: "", hasStoredSecret: false, secret: isHeaders }])}>
+          <Plus size={14} />{t(isHeaders ? "mcpServers.addHeader" : "mcpServers.addEnvVar")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StatusDot({
   status,
   checking,
@@ -139,25 +273,17 @@ function McpServerEditor({
   const [argsLines, setArgsLines] = useState(
     server?.args?.join("\n") ?? ""
   );
-  const [envVars, setEnvVars] = useState<EnvVarDraft[]>(() =>
-    (server?.env ?? []).map((e) => ({
-      id: nanoid(6),
-      originalName: e.name,
-      name: e.name,
-      value: "",
-      valuePreview: e.valuePreview,
-      hasStoredSecret: e.secret === true && Boolean(e.hasValue),
-      secret: e.secret ?? false
-    }))
-  );
-  const [showSecrets, setShowSecrets] = useState<Set<string>>(new Set());
+  const [transport, setTransport] = useState<McpTransport>(server?.transport ?? "stdio");
+  const [url, setUrl] = useState(server?.url ?? "");
+  const [envVars, setEnvVars] = useState<EnvVarDraft[]>(() => createValueDrafts(server?.env));
+  const [headers, setHeaders] = useState<EnvVarDraft[]>(() => createValueDrafts(server?.headers));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [ackLocalExec, setAckLocalExec] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const commandChanged = command.trim() !== (server?.command ?? "").trim();
-  const needsLocalExecAck = isNew || commandChanged;
+  const needsLocalExecAck = transport === "stdio" && (isNew || commandChanged || (server?.transport ?? "stdio") !== "stdio");
 
   const selfCheck = useMcpServerStore((s) => s.selfCheck);
   const checkingIds = useMcpServerStore((s) => s.checkingIds);
@@ -189,47 +315,31 @@ function McpServerEditor({
 
   const dirty = useMemo(() => {
     if (isNew || !server) {
-      return (
-        name.trim() !== "" ||
-        command.trim() !== "" ||
-        argsLines.trim() !== "" ||
-        envVars.some((e) => e.name.trim() !== "" || e.value !== "")
-      );
+      return name.trim() !== "" || transport !== "stdio" || url.trim() !== "" ||
+        command.trim() !== "" || argsLines.trim() !== "" ||
+        valueDraftsChanged(envVars) || valueDraftsChanged(headers);
     }
-    if (name.trim() !== server.name) return true;
-    if (command.trim() !== server.command) return true;
-    if (
-      parseArgsFromLines(argsLines).join("\n") !== server.args.join("\n")
-    ) {
-      return true;
+    if (name.trim() !== server.name || transport !== (server.transport ?? "stdio")) return true;
+    if (transport === "stdio") {
+      return command.trim() !== server.command ||
+        parseArgsFromLines(argsLines).join("\n") !== server.args.join("\n") ||
+        valueDraftsChanged(envVars, server.env);
     }
-    const draftEnv = envVars.filter((e) => e.name.trim());
-    if (draftEnv.length !== server.env.length) return true;
-    for (let i = 0; i < draftEnv.length; i += 1) {
-      const draft = draftEnv[i];
-      const original = server.env[i];
-      if (draft.name.trim() !== original.name) return true;
-      if (draft.secret !== (original.secret ?? false)) return true;
-      if (draft.secret) {
-        if (draft.value !== "") return true;
-        if (
-          !draft.hasStoredSecret &&
-          Boolean(original.hasValue || original.value || original.valueEncrypted)
-        ) {
-          return true;
-        }
-      } else if (draft.value !== (original.value ?? "")) {
-        return true;
-      }
-    }
-    return false;
-  }, [isNew, server, name, command, argsLines, envVars]);
+    return url.trim() !== (server.url ?? "") || valueDraftsChanged(headers, server.headers);
+  }, [isNew, server, name, transport, url, command, argsLines, envVars, headers]);
+
+  useEffect(() => {
+    setCheckResult(null);
+    setError(null);
+  }, [name, transport, url, command, argsLines, envVars, headers]);
 
   const mapSaveError = (err: unknown): string => {
     const raw = err instanceof Error ? err.message : "";
     const code = raw.match(/\[mcp:([a-z_]+)\]/)?.[1];
     if (code) {
-      return t(`mcpServers.error.${code}`);
+      const key = `mcpServers.error.${code}`;
+      const translated = t(key);
+      if (translated !== key) return translated;
     }
     const stripped = raw
       .replace(/^Error invoking remote method '[^']*':\s*/, "")
@@ -242,68 +352,14 @@ function McpServerEditor({
     onBack();
   };
 
-  const handleAddEnvVar = () => {
-    setEnvVars([...envVars, { id: nanoid(6), name: "", value: "", hasStoredSecret: false, secret: false }]);
-  };
-
-  const handleRemoveEnvVar = (id: string) => {
-    setEnvVars(envVars.filter((e) => e.id !== id));
-  };
-
-  const handleEnvVarChange = (
-    id: string,
-    field: "name" | "value" | "secret",
-    value: string | boolean
-  ) => {
-    setEnvVars(
-      envVars.map((e) => {
-        if (e.id !== id) return e;
-        if (field === "value" && value !== "") {
-          return { ...e, value: value as string, hasStoredSecret: false };
-        }
-        if (field === "secret" && value === false) {
-          return { ...e, secret: false, hasStoredSecret: false };
-        }
-        return { ...e, [field]: value };
-      })
-    );
-  };
-
-  const handleClearSecretValue = (id: string) => {
-    setEnvVars(
-      envVars.map((e) =>
-        e.id === id ? { ...e, value: "", hasStoredSecret: false, valuePreview: undefined } : e
-      )
-    );
-  };
-
-  const toggleShowSecret = (id: string) => {
-    setShowSecrets((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
   const resetDrafts = (saved: UserMcpServer) => {
     setName(saved.name);
     setCommand(saved.command);
     setArgsLines(saved.args.join("\n"));
-    setEnvVars(
-      (saved.env ?? []).map((e) => ({
-        id: nanoid(6),
-        originalName: e.name,
-        name: e.name,
-        value: "",
-        valuePreview: e.valuePreview,
-        hasStoredSecret: e.secret === true && Boolean(e.hasValue),
-        secret: e.secret ?? false
-      }))
-    );
+    setTransport(saved.transport ?? "stdio");
+    setUrl(saved.url ?? "");
+    setEnvVars(createValueDrafts(saved.env));
+    setHeaders(createValueDrafts(saved.headers));
     setAckLocalExec(false);
   };
 
@@ -312,9 +368,40 @@ function McpServerEditor({
       setError(t("mcpServers.error.nameRequired"));
       return undefined;
     }
-    if (!command.trim()) {
+    if (transport === "stdio" && !command.trim()) {
       setError(t("mcpServers.error.commandRequired"));
       return undefined;
+    }
+    if (transport !== "stdio") {
+      if (!url.trim()) {
+        setError(t("mcpServers.error.url_required"));
+        return undefined;
+      }
+      try {
+        const parsed = new URL(url.trim());
+        if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error();
+      } catch {
+        setError(t("mcpServers.error.invalid_url"));
+        return undefined;
+      }
+      const names = new Set<string>();
+      for (const header of headers) {
+        const name = header.name.trim();
+        if (!name && !header.value && !header.hasStoredSecret) continue;
+        if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) {
+          setError(t("mcpServers.error.invalid_header_name"));
+          return undefined;
+        }
+        if (names.has(name.toLowerCase())) {
+          setError(t("mcpServers.error.duplicate_header"));
+          return undefined;
+        }
+        names.add(name.toLowerCase());
+        if (/[\r\n\0]/.test(header.value)) {
+          setError(t("mcpServers.error.invalid_header_value"));
+          return undefined;
+        }
+      }
     }
     if (needsLocalExecAck && !ackLocalExec) {
       setError(t("mcpServers.error.confirmLocalExec"));
@@ -324,28 +411,18 @@ function McpServerEditor({
     setSaving(true);
     setError(null);
     try {
-      const env: UserMcpServerEnvVar[] = envVars
-        .filter((e) => e.name.trim())
-        .map((e) => {
-          const base = { name: e.name.trim() };
-          if (e.secret) {
-            if (e.value) {
-              return { ...base, value: e.value, secret: true };
-            }
-            if (e.hasStoredSecret && e.originalName) {
-              return { ...base, secret: true, previousName: e.originalName };
-            }
-            return { ...base, value: "", secret: true };
-          }
-          return { ...base, value: e.value };
-        });
-
       const saved = await onSave({
         id: server?.id,
         name: name.trim(),
-        command: command.trim(),
-        args: parseArgsFromLines(argsLines),
-        env,
+        transport,
+        ...(transport === "stdio" ? {
+          command: command.trim(),
+          args: parseArgsFromLines(argsLines),
+          env: serializeValueDrafts(envVars)
+        } : {
+          url: url.trim(),
+          headers: serializeValueDrafts(headers)
+        }),
         enabled: server?.enabled ?? true
       });
       return saved;
@@ -404,7 +481,7 @@ function McpServerEditor({
     if (!autoSelfCheck || !server) return;
     autoCheckFired.current = true;
     onAutoSelfCheckDone?.();
-    if (server.args.some((arg) => arg.includes("${cwd}"))) return;
+    if ((server.transport ?? "stdio") === "stdio" && server.args.some((arg) => arg.includes("${cwd}"))) return;
     void runSelfCheck();
   }, []);
 
@@ -415,6 +492,7 @@ function McpServerEditor({
           type="button"
           className="mcp-icon-btn"
           onClick={handleBack}
+          disabled={saving || deleting}
         >
           <ChevronLeft size={16} />
           {t("common.back")}
@@ -438,6 +516,8 @@ function McpServerEditor({
               disabled={saving}
               title={`${template.command} ${template.args.join(" ")}`}
               onClick={() => {
+                setTransport("stdio");
+                setAckLocalExec(false);
                 setName(template.name);
                 setCommand(template.command);
                 setArgsLines(template.args.join("\n"));
@@ -460,6 +540,7 @@ function McpServerEditor({
               id={`${formId}-name`}
               type="text"
               value={name}
+              disabled={saving || checking || deleting}
               onChange={(e) => setName(e.target.value)}
               placeholder={t("mcpServers.namePlaceholder")}
             />
@@ -467,12 +548,31 @@ function McpServerEditor({
           </div>
 
           <div className="mcp-form-group">
+            <label htmlFor={`${formId}-transport`}>{t("mcpServers.transport")}</label>
+            <select id={`${formId}-transport`} value={transport} disabled={saving || checking || deleting}
+              onChange={(event) => {
+                setTransport(event.target.value as McpTransport);
+                setAckLocalExec(false);
+              }}>
+              <option value="stdio">{t("mcpServers.transportStdio")}</option>
+              <option value="http">{t("mcpServers.transportHttp")}</option>
+              <option value="sse">{t("mcpServers.transportSse")}</option>
+            </select>
+            <p className="mcp-form-hint">{t(transport === "sse" ? "mcpServers.sseHint" : "mcpServers.transportHint")}</p>
+          </div>
+
+          {transport === "stdio" ? <>
+          <div className="mcp-form-group mcp-form-span">
             <label htmlFor={`${formId}-command`}>{t("mcpServers.command")}</label>
             <input
               id={`${formId}-command`}
               type="text"
               value={command}
-              onChange={(e) => setCommand(e.target.value)}
+              disabled={saving || checking || deleting}
+              onChange={(e) => {
+                setCommand(e.target.value);
+                setAckLocalExec(false);
+              }}
               placeholder="npx, uvx, node, python..."
             />
             <p className="mcp-form-hint">{t("mcpServers.commandHint")}</p>
@@ -483,6 +583,7 @@ function McpServerEditor({
             <textarea
               id={`${formId}-args`}
               value={argsLines}
+              disabled={saving || checking || deleting}
               onChange={(e) => setArgsLines(e.target.value)}
               placeholder={"-y\n@modelcontextprotocol/server-filesystem\n${cwd}"}
               rows={Math.min(
@@ -492,113 +593,22 @@ function McpServerEditor({
             />
             <p className="mcp-form-hint">{t("mcpServers.argsHintPerLine", "One argument per line. Use ${cwd} for workspace path.")}</p>
           </div>
+          </> : <div className="mcp-form-group mcp-form-span">
+            <label htmlFor={`${formId}-url`}>{t("mcpServers.url")}</label>
+            <input id={`${formId}-url`} type="text" value={url} disabled={saving || checking || deleting}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder={transport === "sse" ? "https://example.com/sse" : "https://example.com/mcp"}
+              autoComplete="off" spellCheck={false} />
+            <p className="mcp-form-hint">{t("mcpServers.urlHint")}</p>
+          </div>}
         </div>
       </div>
 
-      <div className="mcp-editor-section">
-        <div className="mcp-section-title">{t("mcpServers.envVars")}</div>
-        <div className="mcp-env-list">
-          {envVars.length === 0 && (
-            <p className="mcp-env-empty muted">
-              {t("mcpServers.envEmpty", "No environment variables")}
-            </p>
-          )}
-          <div className="mcp-env-grid">
-          {envVars.length > 0 && (
-            <div className="mcp-env-header">
-              <span className="muted">{t("mcpServers.envName")}</span>
-              <span className="muted">{t("mcpServers.envValue")}</span>
-              <span />
-              <span />
-            </div>
-          )}
-          {envVars.map((e) => (
-            <div key={e.id} className="mcp-env-row">
-              <input
-                type="text"
-                value={e.name}
-                onChange={(ev) =>
-                  handleEnvVarChange(e.id, "name", ev.target.value)
-                }
-                placeholder={t("mcpServers.envName")}
-                className="mcp-env-name"
-                aria-label={t("mcpServers.envName")}
-                title={e.name}
-              />
-              <div className="mcp-env-value-wrapper">
-                <input
-                  type={e.secret && !showSecrets.has(e.id) ? "password" : "text"}
-                  value={e.value}
-                  onChange={(ev) =>
-                    handleEnvVarChange(e.id, "value", ev.target.value)
-                  }
-                  placeholder={
-                    e.secret && e.hasStoredSecret && e.valuePreview
-                      ? `${e.valuePreview} ${t("mcpServers.storedSecret", "(stored)")}`
-                      : t("mcpServers.envValue")
-                  }
-                  className="mcp-env-value"
-                  aria-label={t("mcpServers.envValue")}
-                />
-                {e.secret && (
-                  <>
-                    <button
-                      type="button"
-                      className="mcp-env-toggle-secret"
-                      onClick={() => toggleShowSecret(e.id)}
-                      title={showSecrets.has(e.id) ? t("mcpServers.hideSecret") : t("mcpServers.showSecret")}
-                    >
-                      {showSecrets.has(e.id) ? (
-                        <EyeOff size={14} />
-                      ) : (
-                        <Eye size={14} />
-                      )}
-                    </button>
-                    {e.hasStoredSecret && !e.value && (
-                      <button
-                        type="button"
-                        className="mcp-env-clear-secret"
-                        onClick={() => handleClearSecretValue(e.id)}
-                        title={t("mcpServers.clearSecret", "Clear stored secret")}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-              <label className="mcp-env-secret-label">
-                <input
-                  type="checkbox"
-                  checked={e.secret}
-                  onChange={(ev) =>
-                    handleEnvVarChange(e.id, "secret", ev.target.checked)
-                  }
-                />
-                {t("mcpServers.secret")}
-              </label>
-              <button
-                type="button"
-                className="mcp-env-remove"
-                onClick={() => handleRemoveEnvVar(e.id)}
-                aria-label={t("mcpServers.removeEnvVar", "Remove variable")}
-                title={t("mcpServers.removeEnvVar", "Remove variable")}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
-          </div>
-          <button
-            type="button"
-            className="mcp-env-add"
-            onClick={handleAddEnvVar}
-          >
-            <Plus size={14} />
-            {t("mcpServers.addEnvVar")}
-          </button>
-        </div>
-      </div>
+      <McpValuesEditor key={transport === "stdio" ? "env" : "headers"}
+        kind={transport === "stdio" ? "env" : "headers"}
+        values={transport === "stdio" ? envVars : headers}
+        onChange={transport === "stdio" ? setEnvVars : setHeaders}
+        disabled={saving || checking || deleting} />
 
       {!isNew && server && (
         <div className="mcp-editor-section">
@@ -608,7 +618,7 @@ function McpServerEditor({
               type="button"
               className="secondary"
               onClick={handleSelfCheck}
-              disabled={checking}
+              disabled={checking || saving || deleting}
             >
               {checking ? (
                 <Loader2 size={14} className="spinning" />
@@ -663,7 +673,7 @@ function McpServerEditor({
         </div>
       )}
 
-      {error && <div className="mcp-form-error">{error}</div>}
+      {error && <div className="mcp-form-error" role="alert">{error}</div>}
 
       <div className="mcp-editor-footer">
         {!isNew && server && onDelete ? (
@@ -671,7 +681,7 @@ function McpServerEditor({
             type="button"
             className="secondary mcp-danger"
             onClick={handleDelete}
-            disabled={deleting}
+            disabled={deleting || saving || checking}
           >
             {deleting ? (
               <Loader2 size={14} className="spinning" />
@@ -689,6 +699,7 @@ function McpServerEditor({
               <input
                 type="checkbox"
                 checked={ackLocalExec}
+                disabled={saving || checking || deleting}
                 onChange={(event) => setAckLocalExec(event.target.checked)}
               />
               {t("mcpServers.confirmLocalExec")}
@@ -698,6 +709,7 @@ function McpServerEditor({
             type="button"
             className="secondary"
             onClick={handleBack}
+            disabled={saving || deleting}
           >
             {t("common.cancel")}
           </button>
@@ -708,7 +720,7 @@ function McpServerEditor({
               const saved = await handleSave();
               if (saved && !isNew) onBack();
             }}
-            disabled={saving || (needsLocalExecAck && !ackLocalExec)}
+            disabled={saving || checking || deleting || (needsLocalExecAck && !ackLocalExec)}
             title={
               needsLocalExecAck && !ackLocalExec
                 ? t("mcpServers.error.confirmLocalExec")
@@ -933,7 +945,9 @@ export function McpServersTab() {
                       cls: "unknown",
                       text: t("mcpServers.statusUnknown", "Not checked")
                     };
-            const commandLine = `${server.command} ${server.args.join(" ")}`.trim();
+            const commandLine = (server.transport ?? "stdio") === "stdio"
+              ? `${server.command} ${server.args.join(" ")}`.trim()
+              : server.url ?? "";
             return (
               <div
                 key={server.id}

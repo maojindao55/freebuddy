@@ -2,6 +2,8 @@ import "./fixtures/electron-stub.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import ts from "typescript";
 
 function transpile(source) {
@@ -141,6 +143,94 @@ test("one provider serves several agent kinds, gated by protocol only", async (t
   );
 
   setDbForTest(null);
+});
+
+test("Codex BYOK catalogs expose MCP tools without native tool search", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const store = await import("../dist-electron/cli/store.js");
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-byok-catalog-"));
+  const previousCodexHome = process.env.CODEX_HOME;
+  const hadGetPath = Object.hasOwn(globalThis, "__freebuddyElectronGetPath");
+  const previousGetPath = globalThis.__freebuddyElectronGetPath;
+
+  try {
+    for (const hasCache of [true, false]) {
+      await t.test(hasCache ? "cached native-search model" : "fallback model", () => {
+        const caseRoot = path.join(testRoot, hasCache ? "cached" : "fallback");
+        const codexHome = path.join(caseRoot, "codex");
+        const userData = path.join(caseRoot, "user-data");
+        fs.mkdirSync(codexHome, { recursive: true });
+        process.env.CODEX_HOME = codexHome;
+        globalThis.__freebuddyElectronGetPath = () => userData;
+        if (hasCache) {
+          fs.writeFileSync(path.join(codexHome, "models_cache.json"), JSON.stringify({
+            models: [{
+              slug: "gpt-5.4",
+              supports_search_tool: true,
+              use_responses_lite: true,
+              tool_mode: "code",
+              code_mode: true
+            }]
+          }));
+        }
+
+        const db = new Database(":memory:");
+        setDbForTest(db);
+        try {
+          migrate(db);
+          store.upsertOverride({
+            id: "catalog-regression",
+            codexByok: {
+              enabled: true,
+              baseUrl: "https://byok.example.test/v1",
+              wireApi: "responses",
+              contextWindow: 400_000,
+              models: [
+                { id: "custom-text", contextWindow: 196_608, supportsVision: false },
+                { id: "custom-vision", contextWindow: 262_144, supportsVision: true }
+              ]
+            }
+          });
+          const env = store.resolveCodexByokEnv("cli-catalog-regression", "codex-acp");
+          assert.ok(env);
+          const config = JSON.parse(env.CODEX_CONFIG);
+          assert.equal(config.model_providers.proxy.wire_api, "responses");
+          const catalogPath = config.model_catalog_json;
+          assert.equal(path.dirname(catalogPath), path.join(userData, "freebuddy", "codex-model-catalogs"));
+          const { models } = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+          assert.deepEqual(
+            models.map((model) => model.slug),
+            ["custom-text", "custom-vision", ...(hasCache ? ["gpt-5.4"] : [])]
+          );
+          for (const model of models) {
+            assert.equal(model.supports_search_tool, false, `${model.slug} must expose MCP tools directly`);
+            assert.equal(model.use_responses_lite, false);
+            assert.equal(model.shell_type, "shell_command");
+            assert.equal(Object.hasOwn(model, "tool_mode"), false);
+            assert.equal(Object.hasOwn(model, "code_mode"), false);
+          }
+          assert.equal(models[0].context_window, 196_608);
+          assert.deepEqual(models[0].input_modalities, ["text"]);
+          assert.equal(models[1].context_window, 262_144);
+          assert.deepEqual(models[1].input_modalities, ["text", "image"]);
+          if (hasCache) assert.equal(models[2].context_window, 400_000);
+        } finally {
+          setDbForTest(null);
+          db.close();
+        }
+      });
+    }
+  } finally {
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
+    if (hadGetPath) globalThis.__freebuddyElectronGetPath = previousGetPath;
+    else delete globalThis.__freebuddyElectronGetPath;
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
 });
 
 test("provider compatibility is derived from protocol, not a stored adapter", async () => {

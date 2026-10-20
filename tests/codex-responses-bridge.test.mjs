@@ -111,7 +111,7 @@ test("codex BYOK chat wire API is routed through the local bridge", () => {
   );
   assert.match(
     bridgeSource,
-    /tool\.type === "tool_search"/,
+    /if \((?:tool\.)?type === "tool_search"\)/,
     "bridge must map Codex tool_search so deferred MCP tools are not dropped"
   );
 });
@@ -405,7 +405,15 @@ test("translateResponsesRequestToChat maps tool_search tools and call history", 
             ]
           }
         ]
-      }
+      },
+      {
+        type: "function_call",
+        call_id: "call_nav_history",
+        namespace: "mcp__freebuddy-browser",
+        name: "browser_navigate",
+        arguments: '{"url":"https://example.test"}'
+      },
+      { type: "function_call_output", call_id: "call_nav_history", output: "Navigated" }
     ],
     tools: [
       {
@@ -428,7 +436,10 @@ test("translateResponsesRequestToChat maps tool_search tools and call history", 
   assert.ok(result);
   assert.deepEqual(result.toolSearchToolNames, ["tool_search"]);
   assert.deepEqual(result.toolNamespaces, {
-    browser_navigate: "mcp__freebuddy-browser"
+    "mcp__freebuddy-browser__browser_navigate": {
+      namespace: "mcp__freebuddy-browser",
+      name: "browser_navigate"
+    }
   });
   assert.deepEqual(result.droppedToolTypes, ["web_search"]);
 
@@ -442,7 +453,9 @@ test("translateResponsesRequestToChat maps tool_search tools and call history", 
     "For MCP tool discovery, always use tool_search."
   );
 
-  const discovered = chat.tools.find((tool) => tool.function?.name === "browser_navigate");
+  const discovered = chat.tools.find(
+    (tool) => tool.function?.name === "mcp__freebuddy-browser__browser_navigate"
+  );
   assert.ok(
     discovered,
     "tools loaded by tool_search_output must be callable on the next chat turn"
@@ -463,6 +476,145 @@ test("translateResponsesRequestToChat maps tool_search tools and call history", 
   const outputTools = JSON.parse(messages[2].content);
   assert.equal(outputTools[0].name, "mcp__freebuddy-browser");
   assert.equal(outputTools[0].tools[0].name, "browser_navigate");
+  assert.equal(messages[3].tool_calls[0].function.name, "mcp__freebuddy-browser__browser_navigate");
+});
+
+test("top-level namespaces preserve schemas, duplicate tool names and call history", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const parameters = {
+    type: "object",
+    properties: { detail: { type: "boolean" } },
+    required: ["detail"],
+    additionalProperties: false
+  };
+  const result = bridge.translateResponsesRequestToChat({
+    model: "chat-model",
+    input: [
+      { type: "function_call", call_id: "figma-history", namespace: "mcp__figma", name: "whoami", arguments: '{"detail":true}' },
+      { type: "function_call_output", call_id: "figma-history", output: "Figma user" },
+      { type: "function_call", call_id: "wiki-history", namespace: "mcp__wiki", name: "whoami", arguments: "{}" },
+      { type: "function_call_output", call_id: "wiki-history", output: "Wiki user" },
+      { type: "function_call", call_id: "bare-history", name: "whoami", arguments: "{}" },
+      { type: "function_call_output", call_id: "bare-history", output: "Local user" }
+    ],
+    tool_choice: { type: "function", namespace: "mcp__wiki", name: "whoami" },
+    tools: [
+      {
+        type: "namespace",
+        name: "mcp__figma",
+        tools: [{ type: "function", name: "whoami", description: "Read the Figma user.", parameters, strict: true }]
+      },
+      {
+        type: "namespace",
+        name: "mcp__wiki",
+        tools: [{ type: "function", name: "whoami", parameters: { type: "object" }, strict: false }]
+      },
+      { type: "function", name: "whoami", parameters: { type: "object" } }
+    ]
+  });
+  assert.ok(result);
+  assert.deepEqual(result.droppedToolTypes, []);
+  assert.deepEqual(result.chat.tools.map((tool) => tool.function.name), [
+    "mcp__figma__whoami", "mcp__wiki__whoami", "whoami"
+  ]);
+  assert.deepEqual(result.toolNamespaces, {
+    mcp__figma__whoami: { namespace: "mcp__figma", name: "whoami" },
+    mcp__wiki__whoami: { namespace: "mcp__wiki", name: "whoami" }
+  });
+  assert.deepEqual(result.chat.tools[0].function.parameters, parameters);
+  assert.equal(result.chat.tools[0].function.description, "Read the Figma user.");
+  assert.equal(result.chat.tools[0].function.strict, true);
+  assert.equal(result.chat.tools[1].function.strict, false);
+  assert.deepEqual(
+    result.chat.messages.filter((message) => message.role === "assistant")
+      .flatMap((message) => message.tool_calls.map((call) => call.function.name)),
+    ["mcp__figma__whoami", "mcp__wiki__whoami", "whoami"]
+  );
+  assert.deepEqual(result.chat.tool_choice, {
+    type: "function", function: { name: "mcp__wiki__whoami" }
+  });
+});
+
+test("namespaced tools round-trip through streaming and non-streaming chat responses", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const translated = bridge.translateResponsesRequestToChat({
+    model: "chat-model",
+    input: "Identify both accounts.",
+    tools: [
+      ...["mcp__figma", "mcp__wiki"].map((name) => ({
+        type: "namespace", name,
+        tools: [{ type: "function", name: "whoami", parameters: { type: "object" } }]
+      })),
+      { type: "function", name: "whoami", parameters: { type: "object" } }
+    ]
+  });
+  const calls = translated.chat.tools.map((tool, index) => ({
+    id: `account-${index}`, type: "function",
+    function: { name: tool.function.name, arguments: "{}" }
+  }));
+  const expected = [
+    { name: "whoami", namespace: "mcp__figma", call_id: "account-0", arguments: "{}" },
+    { name: "whoami", namespace: "mcp__wiki", call_id: "account-1", arguments: "{}" },
+    { name: "whoami", namespace: undefined, call_id: "account-2", arguments: "{}" }
+  ];
+  const identities = (items) => items.filter((item) => item.type === "function_call")
+    .map(({ name, namespace, call_id, arguments: args }) => ({ name, namespace, call_id, arguments: args }));
+  const response = bridge.translateChatResponseToResponses(
+    { id: "accounts", choices: [{ message: { role: "assistant", tool_calls: calls } }] },
+    "chat-model", [], [], translated.toolNamespaces
+  );
+  assert.deepEqual(identities(response.output), expected);
+
+  const stream = new bridge.ChatToResponsesStream("chat-model", [], [], [], translated.toolNamespaces);
+  const chunks = [
+    ...stream.begin(),
+    ...stream.handleChatChunk({
+      choices: [{ delta: { tool_calls: calls.map((call, index) => ({ ...call, index })) } }]
+    }),
+    ...stream.finish()
+  ];
+  const events = chunks.flatMap(sseEvents);
+  for (const eventType of ["response.output_item.added", "response.output_item.done"]) {
+    assert.deepEqual(identities(events.filter((event) => event.type === eventType).map((event) => event.item)), expected);
+  }
+});
+
+test("long or unsafe namespace aliases remain unique and restore their original routes", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const namespaces = ["one", "two"].map((suffix) => `mcp__${"long-server-".repeat(8)}${suffix}`);
+  const toolName = "get/design.context";
+  const translated = bridge.translateResponsesRequestToChat({
+    model: "chat-model",
+    input: "Read both documents.",
+    tools: namespaces.map((name) => ({
+      type: "namespace", name,
+      tools: [{ type: "function", name: toolName, parameters: { type: "object" } }]
+    }))
+  });
+  const aliases = translated.chat.tools.map((tool) => tool.function.name);
+  assert.equal(new Set(aliases).size, 2);
+  for (const [index, alias] of aliases.entries()) {
+    assert.ok(alias.length <= 64);
+    assert.match(alias, /^[A-Za-z0-9_-]+$/);
+    assert.deepEqual(translated.toolNamespaces[alias], { namespace: namespaces[index], name: toolName });
+  }
+  const response = bridge.translateChatResponseToResponses(
+    { choices: [{ message: { role: "assistant", tool_calls: aliases.map((name, index) => ({
+      id: `long-${index}`, function: { name, arguments: "{}" }
+    })) } }] },
+    "chat-model", [], [], translated.toolNamespaces
+  );
+  assert.deepEqual(response.output.map(({ name, namespace }) => ({ name, namespace })),
+    namespaces.map((namespace) => ({ name: toolName, namespace })));
 });
 
 test("ChatToResponsesStream emits tool_search_call items for tool_search function calls", (t) => {

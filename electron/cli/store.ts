@@ -258,6 +258,9 @@ function readCodexModelTemplate(): Record<string, unknown> | undefined {
     };
     merged.shell_type = "shell_command";
     merged.use_responses_lite = false;
+    // Cached OpenAI models may defer MCP schemas behind native tool_search.
+    // BYOK providers need the schemas up front unless that protocol is supported.
+    merged.supports_search_tool = false;
     delete merged.tool_mode;
     delete merged.code_mode;
     return merged;

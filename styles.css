@@ -6302,6 +6302,8 @@ html[data-surface="butler-screen-ball"] #root {
   flex: 0 0 auto;
 }
 
+.chat-composer:has(.mcp-picker-trigger[aria-expanded="true"]),
+.new-task-composer:has(.mcp-picker-trigger[aria-expanded="true"]),
 .chat-composer:has(.composer-add-trigger.active),
 .new-task-composer:has(.composer-add-trigger.active) {
   overflow: visible;

@@ -24,6 +24,8 @@ test("MarkdownText supports links and blockquotes", () => {
   assert.match(streamItemSource, /\[[^\]]+\]\([^)]+\)/);
   assert.match(streamItemSource, /markdown-blockquote/);
   assert.match(streamItemSource, /resolveLinkHref/);
+  assert.match(streamItemSource, /resolveLocalBrowserTarget/);
+  assert.match(streamItemSource, /openTargetInBuiltinBrowser/);
   assert.match(streamItemSource, /splitAutolinkSegments/);
   assert.match(streamItemSource, /message-autolink/);
 });

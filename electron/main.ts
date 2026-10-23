@@ -20,8 +20,8 @@ import {
 } from "./cli/check.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
 import { getWindowFullscreenState, setWindowFullscreen } from "./shared/windowFullscreen.js";
-import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
-import { handleBrowserRequest } from "./browserProtocol.js";
+import { handleFreebuddyFileRequest, resolveAttachmentFilePath } from "./freebuddyFileProtocol.js";
+import { handleBrowserRequest, parseBrowserUrl } from "./browserProtocol.js";
 import { startPreviewServer } from "./previewServer.js";
 import { startWebUIServer } from "./webUIServer.js";
 import { setLocalInvokeWindowGetter, registerHandler } from "./invokeRegistry.js";
@@ -1854,6 +1854,49 @@ function createWindow() {
   setupContextMenu(mainWindow, isDev);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("freebuddy-file://")) {
+      try {
+        const filePath = resolveAttachmentFilePath(url);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          safeSendToWebContents(mainWindow.webContents, "window:bridge", {
+            action: "navigate",
+            params: { to: filePath }
+          });
+        }
+      } catch {
+        // ignore invalid attachment url
+      }
+      return { action: "deny" };
+    }
+    if (url.startsWith("file://")) {
+      try {
+        const filePath = fileURLToPath(url);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          safeSendToWebContents(mainWindow.webContents, "window:bridge", {
+            action: "navigate",
+            params: { to: filePath }
+          });
+        }
+      } catch {
+        // ignore invalid file url
+      }
+      return { action: "deny" };
+    }
+    if (url.startsWith("freebuddy-browser://")) {
+      try {
+        const { root, rel } = parseBrowserUrl(url);
+        const filePath = path.resolve(root, rel);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          safeSendToWebContents(mainWindow.webContents, "window:bridge", {
+            action: "navigate",
+            params: { to: filePath }
+          });
+        }
+      } catch {
+        // ignore invalid browser url
+      }
+      return { action: "deny" };
+    }
     void shell.openExternal(url);
     return { action: "deny" };
   });

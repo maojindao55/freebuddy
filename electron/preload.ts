@@ -365,7 +365,11 @@ const window = {
       payload: { action: string; params: Record<string, string> }
     ) => cb(payload);
     ipcRenderer.on("window:bridge", handler);
-    return () => ipcRenderer.off("window:bridge", handler);
+    ipcRenderer.on("freebuddy://bridge", handler);
+    return () => {
+      ipcRenderer.off("window:bridge", handler);
+      ipcRenderer.off("freebuddy://bridge", handler);
+    };
   },
   onBrowserTool(cb: (event: BrowserToolEvent) => void): () => void {
     const handler = (_e: IpcRendererEvent, payload: BrowserToolEvent) => cb(payload);

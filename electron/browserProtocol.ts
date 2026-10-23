@@ -202,17 +202,38 @@ async function discoverHtmlCandidates(cwd: string): Promise<string[]> {
   return candidates;
 }
 
-const DOCUMENT_EXTENSIONS = new Set(["md", "txt", "log", "json", "yaml", "yml", "csv"]);
+const DOCUMENT_EXTENSIONS = new Set([
+  "md", "markdown", "mdx",
+  "txt", "log", "json", "jsonc", "json5", "yaml", "yml", "csv", "tsv",
+  "ts", "tsx", "js", "jsx", "mjs", "cjs",
+  "py", "php", "go", "rs", "java", "kt", "kts", "swift", "scala",
+  "c", "cc", "cpp", "cxx", "h", "hh", "hpp", "cs",
+  "rb", "lua", "pl", "pm", "r", "dart", "ex", "exs", "erl", "clj",
+  "sql", "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
+  "toml", "ini", "conf", "cfg", "env", "properties",
+  "xml", "plist", "graphql", "gql", "proto", "prisma",
+  "vue", "svelte", "astro", "css", "scss", "sass", "less", "styl",
+  "lock", "gitignore", "dockerignore", "editorconfig",
+  "dockerfile", "makefile", "license"
+]);
 
 export async function readBrowserMarkdown(
   cwd: string,
   rel: string
 ): Promise<string | null> {
   if (!cwd || !path.isAbsolute(cwd) || !rel) return null;
+  const cleanRel = rel
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/:(\d+)(?::\d+)?$/, "")
+    .trim();
+  if (!cleanRel) return null;
   const root = path.resolve(cwd);
-  const filePath = path.resolve(root, rel);
+  const filePath = path.resolve(root, cleanRel);
   if (!isWithinRoot(filePath, root)) return null;
-  const ext = path.extname(filePath).slice(1).toLowerCase();
+  const base = path.basename(filePath);
+  const dotIndex = base.lastIndexOf(".");
+  const ext = dotIndex >= 0 ? base.slice(dotIndex + 1).toLowerCase() : base.toLowerCase();
   if (!DOCUMENT_EXTENSIONS.has(ext)) return null;
   try {
     const stat = await fs.stat(filePath);

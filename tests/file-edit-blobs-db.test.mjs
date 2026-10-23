@@ -355,6 +355,59 @@ function bodyQueries(db) {
   return () => queries.filter(sql => /SELECT payload|substr\(payload|json_extract/.test(sql));
 }
 
+test("legacy same-tool Markdown hunks compose without changing stored records", { skip: !bindingAvailable }, async t => {
+  const db = setup(t);
+  const changes = [
+    { type: "diff", path: "docs/api.md", oldText: "| Home | Favorites | 3 |\n| Home | Stream | all |\n",
+      newText: "| Home | Favorites | 5 |\n| Home | Stream | all |\n" },
+    { type: "diff", path: "other.ts", oldText: "const count = 3;\n", newText: "const count = 5;\n" },
+    { type: "diff", path: "docs/api.md", oldText: "| My | Favorites | 4 |\n| My | Likes | 4 |\n",
+      newText: "| My | Favorites | 5 |\n| My | Likes | 5 |\n" }
+  ];
+  const items = update(changes);
+  // Reproduce the metadata emitted before repeated ACP hunks were recognized.
+  for (const output of items[0].toolOutputs) if (output.kind === "file-edit") delete output.partial;
+  persistFileEditItems(context, items);
+  const before = db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all();
+  const reads = bodyQueries(db);
+  const page = listMessageFileEdits("message", 0, true);
+  assert.equal(reads().length, 0);
+  const markdown = page.edits.find(edit => edit.path === "docs/api.md");
+  const loaded = await loadTurn(markdown);
+  assert.equal(loaded.status, "ready");
+  assert.equal(loaded.content.partial, true);
+  const diff = buildFileDiff({ ...markdown, ...loaded.content });
+  assert.equal(diff.notice, undefined);
+  assert.deepEqual([diff.added, diff.removed], [3, 3]);
+  assert.match(loaded.content.patch, /Home \| Favorites \| 5/);
+  assert.match(loaded.content.patch, /My \| Likes \| 5/);
+  const other = await loadTurn(page.edits.find(edit => edit.path === "other.ts"));
+  assert.equal(other.content.partial, false);
+  assert.equal(other.content.newText, "const count = 5;\n");
+  assert.deepEqual(db.prepare("SELECT * FROM file_edit_blobs ORDER BY sequence").all(), before);
+});
+
+test("disconnected complete versions from different tools cannot be recovered as hunks", { skip: !bindingAvailable }, async t => {
+  setup(t);
+  persist([{ type: "diff", path: "docs/api.md", oldText: "# First\n", newText: "# Changed\n" }], "completed", "first");
+  persist([{ type: "diff", path: "docs/api.md", oldText: "# Unrelated\n", newText: "# Other\n" }], "completed", "other");
+  const [edit] = listMessageFileEdits("message", 0, true).edits;
+  assert.equal(buildFileDiff({ ...edit, ...(await loadTurn(edit)).content }).notice, "missing");
+});
+
+test("a full version accompanied by a patch in one tool retains its document baseline", { skip: !bindingAvailable }, async t => {
+  setup(t);
+  persist([
+    { type: "diff", path: "docs/api.md", oldText: "A\nB\n", newText: "A1\nB\n" },
+    { type: "diff", path: "docs/api.md", patch: "@@ -1,2 +1,2 @@\n A1\n-B\n+B1\n" }
+  ]);
+  const [edit] = listMessageFileEdits("message", 0, true).edits;
+  const { content } = await loadTurn(edit);
+  assert.equal(content.partial, false);
+  assert.deepEqual([content.oldText, content.newText], ["A\nB\n", "A1\nB1\n"]);
+  assert.equal(buildFileDiff({ ...edit, ...content }).notice, undefined);
+});
+
 test("file indexes read no bodies or write summaries; selecting one file computes only its saved records", { skip: !bindingAvailable }, async t => {
   const db = setup(t);
   persist([{ type: "diff", path: "file.ts", oldText: "original\n", newText: "middle\nextra\n" }], "completed", "first");

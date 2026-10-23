@@ -36,6 +36,12 @@ import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { useTerminalStore } from "@/store/terminalStore";
 import { useFileDiffStore } from "@/store/fileDiffStore";
+import {
+  pathFromFileUrl,
+  pathFromFreebuddyFileUrl,
+  useBrowserStore
+} from "@/store/browserStore";
+import { useDetailLayoutStore } from "@/store/detailLayoutStore";
 import { splitAutolinkSegments } from "@/utils/autolink";
 import { copyToClipboard } from "@/utils/clipboard";
 import { formatTokenCount } from "@/utils/tokenCount";
@@ -87,6 +93,70 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
 }
 
+function stripLocalLinkAnchor(value: string): string {
+  return value
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/:(\d+)(?::\d+)?$/, "")
+    .trim();
+}
+
+export function resolveLocalBrowserTarget(raw: string, cwd = ""): string {
+  const value = raw.trim();
+  if (!value || isHttpUrl(value) || /^(mailto|tel|javascript|data):/i.test(value)) {
+    return "";
+  }
+  if (value.startsWith("#")) return "";
+  if (/^freebuddy-file:\/\//i.test(value)) {
+    return pathFromFreebuddyFileUrl(value) ?? value;
+  }
+  if (value.startsWith("/api/attachment")) {
+    try {
+      const url = new URL(value, "http://local.invalid");
+      const filePath = url.searchParams.get("path");
+      if (filePath) {
+        const cleaned = stripLocalLinkAnchor(decodeURIComponent(filePath)).replace(/\\/g, "/");
+        return /^\/[A-Za-z]:/.test(cleaned) ? cleaned.slice(1) : cleaned;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (/^file:\/\//i.test(value)) {
+    return pathFromFileUrl(value) ?? "";
+  }
+  const cleanValue = stripLocalLinkAnchor(value);
+  if (!cleanValue) return "";
+  const effectiveCwd =
+    cwd ||
+    (() => {
+      const convState = useConversationStore.getState();
+      const activeConv = convState.conversations.find((c) => c.id === convState.activeId);
+      return activeConv?.cwd ?? "";
+    })();
+  return resolveLocalFilePath(cleanValue, effectiveCwd);
+}
+
+export function openTargetInBuiltinBrowser(target: string, cwd = ""): boolean {
+  const resolved = resolveLocalBrowserTarget(target, cwd) || target.trim();
+  if (!resolved) return false;
+  const convState = useConversationStore.getState();
+  const activeId = convState.activeId;
+  if (!activeId) return false;
+  const activeConv = convState.conversations.find((c) => c.id === activeId);
+  const effectiveCwd = cwd || activeConv?.cwd;
+  void useBrowserStore
+    .getState()
+    .ensureFor(activeId, effectiveCwd)
+    .then(() => {
+      useBrowserStore.getState().navigate(activeId, resolved);
+      const layout = useDetailLayoutStore.getState();
+      layout.setActiveTab("preview");
+      layout.setDetailCollapsed(false);
+    });
+  return true;
+}
+
 function resolveImageSrc(raw: string, cwd = ""): string {
   const value = raw.trim();
   if (!value) return "";
@@ -95,24 +165,14 @@ function resolveImageSrc(raw: string, cwd = ""): string {
     return withWebMediaAuth(value);
   }
   if (value.startsWith("freebuddy-file://open?path=")) {
-    try {
-      const url = new URL(value);
-      const filePath = url.searchParams.get("path");
-      if (filePath) return attachmentPreviewUrl(filePath);
-    } catch {
-      /* ignore */
-    }
+    const filePath = pathFromFreebuddyFileUrl(value);
+    if (filePath) return attachmentPreviewUrl(filePath);
   }
   if (value.startsWith("file://")) {
-    try {
-      const url = new URL(value);
-      const filePath = decodeURIComponent(url.pathname);
-      if (filePath) return attachmentPreviewUrl(filePath);
-    } catch {
-      /* ignore */
-    }
+    const filePath = pathFromFileUrl(value);
+    if (filePath) return attachmentPreviewUrl(filePath);
   }
-  const abs = resolveLocalFilePath(value, cwd);
+  const abs = resolveLocalFilePath(stripLocalLinkAnchor(value), cwd);
   return abs ? attachmentPreviewUrl(abs) : "";
 }
 
@@ -159,8 +219,10 @@ function renderInline(
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
       const label = linkMatch[1];
-      const href = resolveLinkHref(linkMatch[2], cwd);
+      const rawTarget = linkMatch[2];
+      const href = resolveLinkHref(rawTarget, cwd);
       if (href) {
+        const localTarget = resolveLocalBrowserTarget(rawTarget, cwd);
         nodes.push(
           <a
             key={key}
@@ -168,6 +230,15 @@ function renderInline(
             href={href}
             target="_blank"
             rel="noreferrer noopener"
+            onClick={
+              localTarget
+                ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openTargetInBuiltinBrowser(localTarget, cwd);
+                  }
+                : undefined
+            }
           >
             {renderNested(label, `${key}-link`)}
           </a>
@@ -205,17 +276,8 @@ function resolveLinkHref(raw: string, cwd = ""): string {
   const value = raw.trim();
   if (!value) return "";
   if (isHttpUrl(value)) return value;
-  if (value.startsWith("file://")) {
-    try {
-      const url = new URL(value);
-      const filePath = decodeURIComponent(url.pathname);
-      if (filePath) return attachmentPreviewUrl(filePath);
-    } catch {
-      /* ignore */
-    }
-  }
-  const abs = resolveLocalFilePath(value, cwd);
-  if (abs) return attachmentPreviewUrl(abs);
+  const localTarget = resolveLocalBrowserTarget(value, cwd);
+  if (localTarget) return attachmentPreviewUrl(localTarget);
   return value;
 }
 
@@ -904,6 +966,7 @@ function StreamContentBlock({
     }
     case "resource_link": {
       const href = item.uri ? resolveLinkHref(item.uri) : "";
+      const localTarget = item.uri ? resolveLocalBrowserTarget(item.uri) : "";
       const label = item.title || item.name || item.uri || t("stream.resourceLink");
       const meta = [
         item.mimeType,
@@ -914,7 +977,21 @@ function StreamContentBlock({
       return (
         <div className="stream-content-block stream-resource-link">
           {href ? (
-            <a href={href} target="_blank" rel="noreferrer noopener" title={item.uri}>
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={item.uri}
+              onClick={
+                localTarget
+                  ? (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openTargetInBuiltinBrowser(localTarget);
+                    }
+                  : undefined
+              }
+            >
               {label}
             </a>
           ) : (
@@ -949,10 +1026,24 @@ function StreamContentBlock({
       }
       if (item.uri) {
         const href = resolveLinkHref(item.uri);
+        const localTarget = resolveLocalBrowserTarget(item.uri);
         const label = item.title || item.name || item.uri;
         return (
           <div className="stream-content-block stream-embedded-resource">
-            <a href={href} target="_blank" rel="noreferrer noopener">
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              onClick={
+                localTarget
+                  ? (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openTargetInBuiltinBrowser(localTarget);
+                    }
+                  : undefined
+              }
+            >
               {label}
             </a>
           </div>
@@ -1171,13 +1262,20 @@ export function StreamToolInvocation({
           <span className="stream-tool-locations">
             {call.locations.map((location, index) => {
               const href = resolveLinkHref(location.path);
+              const localTarget = resolveLocalBrowserTarget(location.path);
               return href ? (
                 <a
                   key={`${location.path}-${index}`}
                   href={href}
                   className="stream-tool-location"
                   title={location.path}
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (localTarget) {
+                      event.preventDefault();
+                      openTargetInBuiltinBrowser(localTarget);
+                    }
+                  }}
                 >
                   {truncate(location.path, 48)}
                 </a>

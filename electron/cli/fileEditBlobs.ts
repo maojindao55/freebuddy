@@ -369,15 +369,28 @@ export function readMessageFileEdit(messageId: string, filePath: string, turnKey
     const task = db.prepare("SELECT adapter, log_path FROM cli_tasks WHERE id = ?").get(message.task_id) as
       { adapter: string; log_path: string | null } | undefined;
     const versions = task?.adapter === "claude-agent-acp" && task.log_path ? readFileEditLogVersions(task.log_path) : undefined;
-    const edits = rows.map(row => {
+    const capturedRows = rows.map(row => {
       const body = db.prepare("SELECT payload FROM file_edit_blobs WHERE blob_key = ?").get(row.blob_key) as { payload: Buffer };
-      const captured = JSON.parse(body.payload.toString("utf8")) as FileEditContent;
+      return { row, captured: JSON.parse(body.payload.toString("utf8")) as FileEditContent };
+    });
+    // Older ACP events saved multiple hunks for one file as full documents.
+    // Scope recovery to entries from the same tool, never unrelated versions.
+    const toolHunkCounts = new Map<string, number>();
+    for (const { row, captured } of capturedRows) {
+      if (row.tool_call_id && row.action === "update" && !captured.patch &&
+        captured.oldText !== undefined && captured.newText !== undefined) {
+        toolHunkCounts.set(row.tool_call_id, (toolHunkCounts.get(row.tool_call_id) ?? 0) + 1);
+      }
+    }
+    const edits = capturedRows.map(({ row, captured }) => {
       const recovered = versions?.get(row.tool_call_id ?? "")?.find(({ source }) => source.path === row.path &&
         source.oldText === captured.oldText && source.newText === captured.newText && source.patch === captured.patch);
       if (recovered) return recovered.edit;
       const input = inputs.get(row.tool_call_id ?? "");
+      const multipleHunks = row.action === "update" && (toolHunkCounts.get(row.tool_call_id ?? "") ?? 0) > 1 &&
+        captured.oldText !== undefined && captured.newText !== undefined && !captured.patch;
       return { kind: "file-edit" as const, path: row.path, action: row.action, blobKey: row.blob_key, ...captured,
-        partial: !!row.partial || !!(input && input.oldText === captured.oldText && input.newText === captured.newText) };
+        partial: !!row.partial || multipleHunks || !!(input && input.oldText === captured.oldText && input.newText === captured.newText) };
     });
     if (edits.reduce((total, edit) => total + contentPayload(edit).length, 0) > MAX_CONTENT_BYTES) {
       return { data: "", nextOffset: 0, totalBytes: 0, hasMore: false, notice: "large" };

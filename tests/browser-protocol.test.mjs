@@ -171,11 +171,15 @@ test("readBrowserMarkdown reads workspace text documents and blocks invalid path
   fs.writeFileSync(path.join(dir, "README.md"), "# Hello");
   fs.writeFileSync(path.join(dir, "data.json"), "{\"ok\":true}");
   fs.writeFileSync(path.join(dir, "notes.txt"), "hello");
+  fs.writeFileSync(path.join(dir, "Comm_Upload.php"), "<?php echo 1;");
+  fs.writeFileSync(path.join(dir, "index.ts"), "export const x = 1;");
   fs.writeFileSync(path.join(dir, "index.html"), "<p>x</p>");
 
   assert.equal(await readBrowserMarkdown(dir, "README.md"), "# Hello");
   assert.equal(await readBrowserMarkdown(dir, "data.json"), "{\"ok\":true}");
   assert.equal(await readBrowserMarkdown(dir, "notes.txt"), "hello");
+  assert.equal(await readBrowserMarkdown(dir, "Comm_Upload.php#L45-L60"), "<?php echo 1;");
+  assert.equal(await readBrowserMarkdown(dir, "index.ts:10:2"), "export const x = 1;");
   assert.equal(await readBrowserMarkdown(dir, "index.html"), null);
   assert.equal(await readBrowserMarkdown(dir, "../README.md"), null);
   assert.equal(await readBrowserMarkdown("", "README.md"), null);

@@ -60,7 +60,19 @@ const IMAGE_TARGET_EXTENSIONS = new Set([
   "bmp"
 ]);
 
-const DOCUMENT_TARGET_EXTENSIONS = new Set(["txt", "log", "json", "yaml", "yml", "csv"]);
+const DOCUMENT_TARGET_EXTENSIONS = new Set([
+  "txt", "log", "json", "jsonc", "json5", "yaml", "yml", "csv", "tsv",
+  "ts", "tsx", "js", "jsx", "mjs", "cjs",
+  "py", "php", "go", "rs", "java", "kt", "kts", "swift", "scala",
+  "c", "cc", "cpp", "cxx", "h", "hh", "hpp", "cs",
+  "rb", "lua", "pl", "pm", "r", "dart", "ex", "exs", "erl", "clj",
+  "sql", "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
+  "toml", "ini", "conf", "cfg", "env", "properties",
+  "xml", "plist", "graphql", "gql", "proto", "prisma",
+  "vue", "svelte", "astro", "css", "scss", "sass", "less", "styl",
+  "lock", "gitignore", "dockerignore", "editorconfig",
+  "dockerfile", "makefile", "license"
+]);
 const MIN_IMAGE_ZOOM = 0.5;
 const MAX_IMAGE_ZOOM = 8;
 const EMPTY_NATIVE_BROWSER_STATE: NativeBrowserState = {
@@ -76,8 +88,27 @@ function clampImageZoom(value: number): number {
   return Math.min(MAX_IMAGE_ZOOM, Math.max(MIN_IMAGE_ZOOM, value));
 }
 
+function stripLocalTargetSuffix(filePath: string): string {
+  return filePath
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/:(\d+)(?::\d+)?$/, "")
+    .trim();
+}
+
 function extensionFromLocalPath(filePath: string): string {
-  return filePath.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  const cleaned = stripLocalTargetSuffix(filePath).replace(/\\/g, "/");
+  const base = cleaned.split("/").pop() ?? "";
+  if (!base) return "";
+  const dotIndex = base.lastIndexOf(".");
+  if (dotIndex < 0) {
+    const lowerBase = base.toLowerCase();
+    if (lowerBase === "dockerfile" || lowerBase === "makefile" || lowerBase === "license") {
+      return lowerBase;
+    }
+    return "";
+  }
+  return base.slice(dotIndex + 1).toLowerCase();
 }
 
 export function browserTargetExtension(
@@ -101,7 +132,8 @@ export function browserTargetExtension(
 }
 
 function isMarkdownTarget(target: string | undefined, url: string | undefined): boolean {
-  return browserTargetExtension(target, url) === "md";
+  const ext = browserTargetExtension(target, url);
+  return ext === "md" || ext === "markdown" || ext === "mdx";
 }
 
 export function isImageBrowserTarget(
@@ -111,7 +143,9 @@ export function isImageBrowserTarget(
   return IMAGE_TARGET_EXTENSIONS.has(browserTargetExtension(target, url));
 }
 
-function isDocumentTarget(target: string | undefined, url: string | undefined): boolean {
+export function isDocumentTarget(target: string | undefined, url: string | undefined): boolean {
+  if (target && /^https?:\/\//i.test(target.trim())) return false;
+  if (!target && url && /^https?:\/\//i.test(url.trim()) && !url.startsWith("/api/")) return false;
   return DOCUMENT_TARGET_EXTENSIONS.has(browserTargetExtension(target, url));
 }
 
@@ -306,9 +340,11 @@ export const isExternalOnlyDraftTarget = isExternalOnlyBrowserTarget;
 
 function documentRel(target: string | undefined): string | null {
   if (!target || /^https?:\/\//i.test(target)) return null;
-  const rel = target.split("?")[0].trim();
-  const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-  return ext === "md" || DOCUMENT_TARGET_EXTENSIONS.has(ext) ? rel : null;
+  const rel = stripLocalTargetSuffix(target);
+  const ext = extensionFromLocalPath(rel);
+  return ext === "md" || ext === "markdown" || ext === "mdx" || DOCUMENT_TARGET_EXTENSIONS.has(ext)
+    ? rel
+    : null;
 }
 
 function formatDocumentContent(ext: string, content: string): string {

@@ -16016,11 +16016,11 @@ button.ghost:disabled {
   padding: 18px;
   overflow: auto;
   color: var(--fb-text-primary);
-  background: var(--fb-surface-bg, #0f172a);
+  background: var(--fb-panel-soft, #f8fafc);
   border: 1px solid var(--fb-border-strong);
   border-radius: var(--fb-rounded-md, 8px);
-  font-family: var(--fb-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
-  font-size: 12px;
+  font-family: var(--fb-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;

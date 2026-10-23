@@ -34,9 +34,16 @@ export function resolveAttachmentFilePath(requestUrl: string): string {
     if (!rawPath) {
       throw new Error("Missing attachment path");
     }
-    const decoded = decodeURIComponent(rawPath);
+    let decoded = decodeURIComponent(rawPath)
+      .split("?")[0]
+      .split("#")[0]
+      .replace(/:(\d+)(?::\d+)?$/, "")
+      .trim();
+    if (/^\/[A-Za-z]:/.test(decoded)) {
+      decoded = decoded.slice(1);
+    }
     const normalized = path.normalize(decoded);
-    if (!path.isAbsolute(normalized)) {
+    if (!path.isAbsolute(normalized) && !/^[A-Za-z]:[\\/]/.test(decoded)) {
       throw new Error("Attachment path must be absolute");
     }
     return normalized;

@@ -903,7 +903,19 @@ function toolCallContentToItems(entries: any[], input?: any, snippet = false): A
         break;
     }
   }
-  return out;
+  // Codex apply_patch can emit one old/new snippet per hunk, without rawInput
+  // or partial metadata. Multiple pairs for a path in one tool response cannot
+  // each be treated as the complete document.
+  const snippetCounts = new Map<string, number>();
+  for (const item of out) {
+    if (item.kind === "file-edit" && item.action === "update" && !item.patch &&
+      item.oldText !== undefined && item.newText !== undefined) {
+      snippetCounts.set(item.path, (snippetCounts.get(item.path) ?? 0) + 1);
+    }
+  }
+  return out.map(item => item.kind === "file-edit" && item.action === "update" && !item.patch &&
+    item.oldText !== undefined && item.newText !== undefined && (snippetCounts.get(item.path) ?? 0) > 1
+    ? { ...item, partial: true } : item);
 }
 
 type ToolCallItem = Extract<AcpStreamItem, { kind: "tool-call" }>;

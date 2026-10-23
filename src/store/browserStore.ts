@@ -88,8 +88,20 @@ function shouldKeepRemoteUrlExact(target: string): boolean {
   }
 }
 
+function stripLocalPathAnchor(target: string): string {
+  return target
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/:(\d+)(?::\d+)?$/, "")
+    .trim();
+}
+
 function localFileExtension(target: string): string {
-  return target.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  const cleaned = stripLocalPathAnchor(target).replace(/\\/g, "/");
+  const base = cleaned.split("/").pop() ?? "";
+  const dotIndex = base.lastIndexOf(".");
+  if (dotIndex < 0) return "";
+  return base.slice(dotIndex + 1).toLowerCase();
 }
 
 export function isAbsoluteLocalPath(target: string): boolean {
@@ -162,11 +174,18 @@ function joinWorkspacePath(cwd: string, rel: string): string {
 
 /** Split an absolute file path into parent directory + basename for browser reads. */
 export function splitAbsoluteLocalFile(target: string): { root: string; rel: string } | null {
-  const normalized = target.trim().replace(/\\/g, "/").split("?")[0];
+  const trimmed = target.trim();
+  const resolved = /^file:\/\//i.test(trimmed)
+    ? pathFromFileUrl(trimmed) ?? ""
+    : /^freebuddy-file:\/\//i.test(trimmed)
+      ? pathFromFreebuddyFileUrl(trimmed) ?? ""
+      : trimmed;
+  const normalized = stripLocalPathAnchor(resolved).replace(/\\/g, "/");
   if (!isAbsoluteLocalPath(normalized)) return null;
   const lastSlash = normalized.lastIndexOf("/");
   if (lastSlash < 0) return null;
-  const root = normalized.slice(0, lastSlash) || "/";
+  const rawRoot = normalized.slice(0, lastSlash);
+  const root = /^[A-Za-z]:$/.test(rawRoot) ? `${rawRoot}/` : rawRoot || "/";
   const rel = normalized.slice(lastSlash + 1);
   if (!rel) return null;
   return { root, rel };
@@ -217,9 +236,9 @@ export function pathFromFileUrl(target: string): string | null {
     const parsed = new URL(target);
     if (parsed.protocol !== "file:") return null;
     let pathname = decodeURIComponent(parsed.pathname);
-    // Windows: file:///C:/Users/... → /C:/Users/...
+    // Windows: file:///C:/Users/... → C:/Users/...
     if (/^\/[A-Za-z]:/.test(pathname)) pathname = pathname.slice(1);
-    return pathname.replace(/\\/g, "/");
+    return stripLocalPathAnchor(pathname).replace(/\\/g, "/");
   } catch {
     return null;
   }
@@ -281,11 +300,15 @@ export function normalizeBrowserTarget(input: string | null | undefined): string
   return trimmed;
 }
 
-function pathFromFreebuddyFileUrl(target: string): string | null {
+export function pathFromFreebuddyFileUrl(target: string): string | null {
   try {
     const parsed = new URL(target);
     if (parsed.protocol !== "freebuddy-file:") return null;
-    return parsed.searchParams.get("path");
+    const raw = parsed.searchParams.get("path");
+    if (!raw) return null;
+    let cleaned = stripLocalPathAnchor(decodeURIComponent(raw)).replace(/\\/g, "/");
+    if (/^\/[A-Za-z]:/.test(cleaned)) cleaned = cleaned.slice(1);
+    return cleaned;
   } catch {
     return null;
   }
@@ -303,9 +326,15 @@ export function composeBrowserUrl(
     return withBrowserNonce(normalized, nonce);
   }
   if (/^freebuddy-file:\/\//i.test(normalized)) {
-    if (isWebPlatform()) {
-      const filePath = pathFromFreebuddyFileUrl(normalized);
-      if (filePath) return filePreviewUrl(filePath, nonce);
+    const filePath = pathFromFreebuddyFileUrl(normalized);
+    if (filePath) {
+      const ext = localFileExtension(filePath);
+      if (!LOCAL_FILE_PREVIEW_EXTENSIONS.has(ext)) {
+        return composeBrowserUrl(cwd, filePath, nonce);
+      }
+      if (isWebPlatform()) {
+        return filePreviewUrl(filePath, nonce);
+      }
     }
     return withBrowserNonce(normalized, nonce);
   }
@@ -317,24 +346,24 @@ export function composeBrowserUrl(
     return filePath ? composeBrowserUrl(cwd, filePath, nonce) : "";
   }
   if (isAbsoluteLocalPath(normalized)) {
-    const ext = localFileExtension(normalized);
-    if (LOCAL_BROWSER_DOCUMENT_EXTENSIONS.has(ext)) {
-      return absoluteLocalBrowserUrl(normalized, nonce);
-    }
+    const cleanPath = stripLocalPathAnchor(normalized);
+    const ext = localFileExtension(cleanPath);
     if (LOCAL_FILE_PREVIEW_EXTENSIONS.has(ext)) {
-      return filePreviewUrl(normalized, nonce);
+      return filePreviewUrl(cleanPath, nonce);
     }
+    return absoluteLocalBrowserUrl(cleanPath, nonce);
   }
   if (!cwd) return "";
-  const ext = localFileExtension(normalized);
+  const cleanRel = stripLocalPathAnchor(normalized);
+  const ext = localFileExtension(cleanRel);
   if (LOCAL_FILE_PREVIEW_EXTENSIONS.has(ext)) {
-    const abs = joinWorkspacePath(cwd, normalized);
+    const abs = joinWorkspacePath(cwd, cleanRel);
     return abs ? filePreviewUrl(abs, nonce) : "";
   }
   if (LOCAL_BROWSER_DOCUMENT_EXTENSIONS.has(ext)) {
-    return browserRenderUrl(cwd, normalized, nonce);
+    return browserRenderUrl(cwd, cleanRel, nonce);
   }
-  return browserRenderUrl(cwd, normalized, nonce);
+  return browserRenderUrl(cwd, cleanRel, nonce);
 }
 
 export const composeDraftPreviewUrl = composeBrowserUrl;

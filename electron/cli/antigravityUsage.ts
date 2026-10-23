@@ -66,6 +66,12 @@ export interface ReadAntigravityUsageOptions {
   nowMs?: number;
 }
 
+export function resolveAntigravityUserAgent(): string {
+  const platform = process.platform === "win32" ? "windows" : process.platform;
+  const arch = process.arch === "x64" ? "amd64" : process.arch;
+  return `antigravity/cli/1.4.6 (aidev_client; os_type=${platform}; arch=${arch})`;
+}
+
 export async function readAntigravityUsage(
   options: ReadAntigravityUsageOptions = {}
 ): Promise<AntigravityUsageResult> {
@@ -79,7 +85,7 @@ export async function readAntigravityUsage(
       accept: "application/json",
       authorization: `Bearer ${auth.accessToken}`,
       "content-type": "application/json",
-      "user-agent": "Antigravity/1.0"
+      "user-agent": resolveAntigravityUserAgent()
     };
 
     const response = await fetchImpl(USAGE_SUMMARY_URL, {
@@ -394,6 +400,13 @@ function normalizeAntigravityUsageResponse(
       });
     }
   }
+
+  // Ensure Gemini Models group always displays first
+  groups.sort((a, b) => {
+    if (a.displayName === "Gemini Models") return -1;
+    if (b.displayName === "Gemini Models") return 1;
+    return 0;
+  });
 
   if (groups.length === 0) {
     return { ok: false, reason: "invalid_response", error: "No valid quota buckets parsed", fetchedAt };

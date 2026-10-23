@@ -73,6 +73,20 @@ test("readAntigravityUsage parses quota summary successfully", async () => {
                     remainingFraction: 1.0
                   }
                 ]
+              },
+              {
+                displayName: "Gemini 4 Argon",
+                description:
+                  "For paid Pro plans, Argon quota is separate. Higher Argon quota (included as part of the larger Gemini quota bucket) is available on Ultra plans.",
+                buckets: [
+                  {
+                    bucketId: "gemini-argon-wtu-weekly",
+                    displayName: "Gemini 4 Argon Weekly Limit",
+                    window: "weekly",
+                    resetTime: "2026-10-30T03:39:16Z",
+                    remainingFraction: 0.8330965
+                  }
+                ]
               }
             ]
           };
@@ -83,7 +97,7 @@ test("readAntigravityUsage parses quota summary successfully", async () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.email, "testuser@gmail.com");
-  assert.equal(result.groups.length, 2);
+  assert.equal(result.groups.length, 3);
 
   const geminiGroup = result.groups[0];
   assert.equal(geminiGroup.displayName, "Gemini Models");
@@ -98,8 +112,21 @@ test("readAntigravityUsage parses quota summary successfully", async () => {
   assert.equal(geminiGroup.buckets[1].leftPercent, 83);
   assert.equal(geminiGroup.buckets[1].usedPercent, 17);
 
+  const argonGroup = result.groups[2];
+  assert.equal(argonGroup.displayName, "Gemini 4 Argon");
+  assert.equal(argonGroup.buckets.length, 1);
+  assert.equal(argonGroup.buckets[0].bucketId, "gemini-argon-wtu-weekly");
+  assert.equal(argonGroup.buckets[0].window, "weekly");
+  assert.equal(argonGroup.buckets[0].windowSeconds, 604_800);
+  assert.equal(argonGroup.buckets[0].leftPercent, 83);
+  assert.equal(argonGroup.buckets[0].usedPercent, 17);
+
   assert.equal(calls.length, 1);
   assert.equal(calls[0].init.headers.authorization, "Bearer mock_access_token");
+  assert.match(
+    calls[0].init.headers["user-agent"],
+    /^antigravity\/cli\/1\.4\.6 \(aidev_client; os_type=\w+; arch=\w+\)$/
+  );
 });
 
 test("readAntigravityUsage handles expired token", async () => {

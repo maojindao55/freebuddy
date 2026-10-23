@@ -1554,7 +1554,8 @@ export function registerCliIpc() {
       }
       return attachConversationSharesFromText(
         input.targetConversationId,
-        input.text
+        input.text,
+        input.targetMessageId
       );
     }
   );

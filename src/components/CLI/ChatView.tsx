@@ -1049,9 +1049,26 @@ export function ChatView({
   const newTaskConfigProbeGenerationRef = useRef(0);
   const [permissionMode, setPermissionMode] = useState<"auto" | "ask">("auto");
   const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
-  const [contextReferences, setContextReferences] = useState<
-    ConversationContextReference[]
-  >([]);
+  const [contextReferencesByConversation, setContextReferencesByConversation] =
+    useState<Record<string, ConversationContextReference[]>>({});
+  const contextReferences = useMemo(
+    () => activeId ? contextReferencesByConversation[activeId] ?? [] : [],
+    [activeId, contextReferencesByConversation]
+  );
+  const contextReferenceVersionsRef = useRef(new Map<string, number>());
+  const updateContextReferences = useCallback((
+    id: string,
+    references: ConversationContextReference[]
+  ) => {
+    contextReferenceVersionsRef.current.set(
+      id,
+      (contextReferenceVersionsRef.current.get(id) ?? 0) + 1
+    );
+    setContextReferencesByConversation((current) => ({
+      ...current,
+      [id]: references
+    }));
+  }, []);
   const [submitPreview, setSubmitPreview] = useState<{
     conversationId: string;
     prompt: string;
@@ -1137,19 +1154,33 @@ export function ChatView({
 
   useEffect(() => {
     let active = true;
-    if (!activeId) {
-      setContextReferences([]);
-      return () => {
-        active = false;
-      };
-    }
+    if (!activeId) return;
+    const version = contextReferenceVersionsRef.current.get(activeId) ?? 0;
+    const isCurrent = () =>
+      active && (contextReferenceVersionsRef.current.get(activeId) ?? 0) === version;
     void cliClient
       .listConversationContextReferences(activeId)
       .then((references) => {
-        if (active) setContextReferences(references);
+        if (!isCurrent()) return;
+        setContextReferencesByConversation((current) => {
+          // An attach response may already identify a message still being saved.
+          // Keep that pending binding until the persisted history can resolve it.
+          const previous = new Map(
+            (current[activeId] ?? []).map((reference) => [reference.id, reference])
+          );
+          return {
+            ...current,
+            [activeId]: references.map((reference) => {
+              const targetMessageId = reference.targetMessageId ??
+                previous.get(reference.id)?.targetMessageId;
+              return targetMessageId ? { ...reference, targetMessageId } : reference;
+            })
+          };
+        });
       })
       .catch(() => {
-        if (active) setContextReferences([]);
+        // Keep cached refs if this read fails; a successful attach may already
+        // have supplied everything needed to render the current conversation.
       });
     return () => {
       active = false;
@@ -2301,16 +2332,17 @@ export function ChatView({
           approvalMode: permissionMode,
           skillIds: newTaskSkillIds
         });
+        const userMsgId = nanoid();
         const attached = await cliClient.attachConversationShares({
           targetConversationId: newConv.id,
+          targetMessageId: userMsgId,
           text: prompt
         });
-        setContextReferences(attached.references);
+        updateContextReferences(newConv.id, attached.references);
         setNewTaskDraft("");
         setNewTaskPendingAttachments((prev) =>
           detachAttachmentsForSend(attachmentsToSend, prev)
         );
-        const userMsgId = nanoid();
         const now = new Date().toISOString();
         const savedUser = await cliClient.appendMessage({
           id: userMsgId,
@@ -2378,17 +2410,20 @@ export function ChatView({
         skillIds: newTaskSkillIds
       });
       setPreferredAgentId(selectedMember.id);
+      const userMessageId = nanoid();
       const attached = await cliClient.attachConversationShares({
         targetConversationId: newConv.id,
+        targetMessageId: userMessageId,
         text: prompt
       });
-      setContextReferences(attached.references);
+      updateContextReferences(newConv.id, attached.references);
       setNewTaskDraft("");
       setNewTaskPendingAttachments((prev) =>
         detachAttachmentsForSend(attachmentsToSend, prev)
       );
       await sendMessage({
         conversationId: newConv.id,
+        userMessageId,
         prompt,
         attachments: attachmentsToSend,
         approvalModeOverride: permissionMode
@@ -2549,9 +2584,10 @@ export function ChatView({
 
       const attached = await cliClient.attachConversationShares({
         targetConversationId: conv.id,
+        targetMessageId: userMessageId,
         text: prompt
       });
-      setContextReferences(attached.references);
+      updateContextReferences(conv.id, attached.references);
       if (attached.attachedCount > 0) {
         notify(t("contextShare.linkAttached"));
       }
@@ -2569,7 +2605,15 @@ export function ChatView({
         if (!res.ok) {
           throw new Error(res.error);
         }
-        await useConversationStore.getState().loadMessages(conv.id);
+        const [, references] = await Promise.allSettled([
+          useConversationStore.getState().loadMessages(conv.id),
+          cliClient.listConversationContextReferences(conv.id)
+        ]);
+        // Delegation persists its own message ID rather than the preview ID.
+        // A refresh failure must not turn an accepted follow-up into a retry.
+        if (references.status === "fulfilled") {
+          updateContextReferences(conv.id, references.value);
+        }
         setSubmitPreview(null);
         return;
       }

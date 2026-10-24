@@ -710,6 +710,8 @@ export interface Conversation {
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;
+  /** Manual list position; null = order by activity (new arrivals float in). */
+  sortPosition?: number | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;

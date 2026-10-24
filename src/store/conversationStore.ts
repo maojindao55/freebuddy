@@ -171,6 +171,8 @@ export interface ConversationState {
     projectId: string | null
   ): Promise<Conversation>;
   setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+  setConversationOrder(conversationIds: string[]): Promise<void>;
+  resetConversationOrder(conversationIds: string[]): Promise<void>;
   setConversationApprovalMode(
     id: string,
     approvalMode: "auto" | "ask"
@@ -423,6 +425,17 @@ function mergeMemberSkillIds(
 }
 
 const MEMBER_RUNTIME_OVERRIDES_KEY = "member.runtimeOverrides";
+
+/** Merge server-returned conversation rows into the store without reordering. */
+function patchConversationsFrom(updated: Conversation[]): void {
+  if (!updated.length) return;
+  useConversationStore.setState((s) => ({
+    conversations: s.conversations.map((c) => {
+      const next = updated.find((u) => u.id === c.id);
+      return next ?? c;
+    })
+  }));
+}
 
 async function loadMemberOverrideMap(
   key: string
@@ -1243,6 +1256,48 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       )
     }));
     return conversation;
+  },
+
+  async setConversationOrder(conversationIds) {
+    // Optimistic: mirror the server's index*1024 positions so the list does
+    // not flicker while the IPC round-trip runs.
+    const positionById = new Map(
+      conversationIds.map((id, index) => [id, index * 1024] as const)
+    );
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        positionById.has(c.id)
+          ? { ...c, sortPosition: positionById.get(c.id) }
+          : c
+      )
+    }));
+    try {
+      const updated = await cliClient.setConversationOrder(conversationIds);
+      patchConversationsFrom(updated);
+    } catch (error) {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to save conversation order:", error);
+      }
+      await get().refreshList();
+    }
+  },
+
+  async resetConversationOrder(conversationIds) {
+    const idSet = new Set(conversationIds);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        idSet.has(c.id) ? { ...c, sortPosition: null } : c
+      )
+    }));
+    try {
+      const updated = await cliClient.resetConversationOrder(conversationIds);
+      patchConversationsFrom(updated);
+    } catch (error) {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to reset conversation order:", error);
+      }
+      await get().refreshList();
+    }
   },
 
   async setConversationApprovalMode(id, approvalMode) {

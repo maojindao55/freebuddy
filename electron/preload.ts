@@ -173,6 +173,10 @@ const cli = {
     ipcRenderer.invoke("cli:moveConversationToProject", { id, projectId }),
   setConversationPinned: (id: string, pinned: boolean) =>
     ipcRenderer.invoke("cli:setConversationPinned", { id, pinned }),
+  setConversationOrder: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:setConversationOrder", { conversationIds }),
+  resetConversationOrder: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:resetConversationOrder", { conversationIds }),
   deleteConversation: (id: string) =>
     ipcRenderer.invoke("cli:deleteConversation", id),
   setConversationApprovalMode: (

@@ -648,6 +648,7 @@
     "removeFromProject": "Remove from project",
     "pinConversation": "Pin",
     "unpinConversation": "Unpin",
+    "resetOrder": "Reset order",
     "empty": "No conversations yet.",
     "deleteConfirm": "Delete \"{{title}}\"?",
     "searchPlaceholder": "Search conversations",

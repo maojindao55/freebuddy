@@ -33,7 +33,8 @@ function conversation(partial) {
     sourceCwd: partial.sourceCwd,
     projectId: partial.projectId,
     pinned: partial.pinned,
-    pinnedAt: partial.pinnedAt
+    pinnedAt: partial.pinnedAt,
+    sortPosition: partial.sortPosition
   };
 }
 
@@ -484,5 +485,31 @@ test("pinned conversations lead their group and Recent regardless of activity", 
   assert.deepEqual(
     recent.map((item) => item.id),
     ["r-pinned", "r-fresh"]
+  );
+});
+
+test("manual positions order the group and unpositioned rows lead", async () => {
+  const { groupConversationsByProjects } = await loadGrouping();
+  const project = {
+    id: "p1",
+    name: "P1",
+    folders: ["/tmp/p1"],
+    primaryPath: "/tmp/p1",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  };
+  const items = [
+    conversation({ id: "pos-b", projectId: "p1", sortPosition: 2048 }),
+    conversation({ id: "pos-a", projectId: "p1", sortPosition: 1024 }),
+    // No position: leads above positioned rows, ordered by activity.
+    conversation({ id: "fresh-2", projectId: "p1", lastMessageAt: "2026-07-10T00:00:00.000Z" }),
+    conversation({ id: "fresh-1", projectId: "p1", lastMessageAt: "2026-07-05T00:00:00.000Z" }),
+    // Pinned beats manual position.
+    conversation({ id: "pinned", projectId: "p1", pinned: true, pinnedAt: "2026-07-01T00:00:00.000Z", sortPosition: 4096 })
+  ];
+  const [group] = groupConversationsByProjects(items, [project]);
+  assert.deepEqual(
+    group.items.map((item) => item.id),
+    ["pinned", "fresh-2", "fresh-1", "pos-a", "pos-b"]
   );
 });

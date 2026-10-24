@@ -278,6 +278,8 @@ declare global {
       projectId: string | null
     ): Promise<Conversation>;
     setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+    setConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
+    resetConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,

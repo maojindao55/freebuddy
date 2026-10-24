@@ -56,7 +56,9 @@ export function conversationActivityTime(conversation: Conversation): number {
 
 /**
  * Sidebar order within a group: pinned conversations float above unpinned ones
- * (most recently pinned first), then by activity time, newest first.
+ * (most recently pinned first); manually positioned rows keep their order;
+ * rows without a position (new arrivals, untouched groups) lead, sorted by
+ * activity, newest first.
  */
 export function compareConversationsForList(
   a: Conversation,
@@ -71,6 +73,15 @@ export function compareConversationsForList(
     const aAt = Number.isFinite(aPinnedAt) ? aPinnedAt : 0;
     const bAt = Number.isFinite(bPinnedAt) ? bPinnedAt : 0;
     if (aAt !== bAt) return bAt - aAt;
+  }
+  const aPosition = typeof a.sortPosition === "number" ? a.sortPosition : null;
+  const bPosition = typeof b.sortPosition === "number" ? b.sortPosition : null;
+  if (aPosition !== null && bPosition !== null) {
+    if (aPosition !== bPosition) return aPosition - bPosition;
+  } else if (aPosition !== null) {
+    return 1;
+  } else if (bPosition !== null) {
+    return -1;
   }
   return conversationActivityTime(b) - conversationActivityTime(a);
 }

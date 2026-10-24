@@ -648,6 +648,7 @@
     "removeFromProject": "移出项目",
     "pinConversation": "置顶",
     "unpinConversation": "取消置顶",
+    "resetOrder": "恢复默认排序",
     "empty": "暂无会话。",
     "deleteConfirm": "删除“{{title}}”?",
     "searchPlaceholder": "搜索会话",

@@ -274,6 +274,10 @@ declare global {
     ): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
     setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+    moveConversationToProject(
+      id: string,
+      projectId: string | null
+    ): Promise<Conversation>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,

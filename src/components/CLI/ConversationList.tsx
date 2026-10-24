@@ -28,6 +28,7 @@ import {
   ChevronDown,
   ChevronUp,
   Folder,
+  FolderInput,
   FolderOpen,
   Gamepad2,
   LoaderCircle,
@@ -67,6 +68,7 @@ const ConversationRow = memo(function ConversationRow({
   isUnread,
   deletionBlocked,
   compact,
+  projectOptions,
   onSelect,
   onDelete
 }: {
@@ -77,6 +79,7 @@ const ConversationRow = memo(function ConversationRow({
   isUnread: boolean;
   deletionBlocked: boolean;
   compact?: boolean;
+  projectOptions: Array<{ id: string; name: string }>;
   onSelect: (id: string) => void;
   onDelete: (id: string, title: string) => void;
 }) {
@@ -87,6 +90,9 @@ const ConversationRow = memo(function ConversationRow({
   );
   const archiveConversation = useConversationStore(
     (s) => s.archiveConversation
+  );
+  const moveConversationToProject = useConversationStore(
+    (s) => s.moveConversationToProject
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [editSignal, setEditSignal] = useState(0);
@@ -118,6 +124,14 @@ const ConversationRow = memo(function ConversationRow({
     });
   };
 
+  const handleMoveToProject = (projectId: string | null) => {
+    moveConversationToProject(conversation.id, projectId).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to move conversation:", error);
+      }
+    });
+  };
+
   return (
     <Dropdown
       open={menuOpen}
@@ -130,6 +144,23 @@ const ConversationRow = memo(function ConversationRow({
             key: "rename",
             icon: <Pencil size={14} aria-hidden="true" />,
             label: t("conversations.renameTitle")
+          },
+          {
+            key: "move",
+            icon: <FolderInput size={14} aria-hidden="true" />,
+            label: t("conversations.moveToProject"),
+            children: [
+              ...projectOptions.map((project) => ({
+                key: `move:${project.id}`,
+                label: project.name,
+                disabled: project.id === conversation.projectId
+              })),
+              {
+                key: "move:null",
+                label: t("conversations.removeFromProject"),
+                disabled: !conversation.projectId
+              }
+            ]
           },
           {
             key: "archive",
@@ -154,6 +185,11 @@ const ConversationRow = memo(function ConversationRow({
           }
           if (key === "archive") {
             handleArchive();
+            return;
+          }
+          if (typeof key === "string" && key.startsWith("move:")) {
+            const target = key.slice("move:".length);
+            handleMoveToProject(target === "null" ? null : target);
             return;
           }
           if (key === "delete") {
@@ -786,6 +822,11 @@ export function ConversationList({
 
   const hiddenProjectCount = Math.max(0, projects.length - visibleProjects.length);
 
+  const projectMenuOptions = useMemo(
+    () => apiProjects.map((project) => ({ id: project.id, name: project.name })),
+    [apiProjects]
+  );
+
   useEffect(() => {
     if (projects.length === 0) return;
     setExpandedProjects((current) => {
@@ -878,6 +919,7 @@ export function ConversationList({
       isUnread={Boolean(unreadConversations[c.id])}
       deletionBlocked={deletionBlockedSet.has(c.id)}
       compact={compact}
+      projectOptions={projectMenuOptions}
       onSelect={handleSelect}
       onDelete={handleDelete}
     />

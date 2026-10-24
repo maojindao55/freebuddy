@@ -25,6 +25,7 @@ export type TelemetryEvent =
   | "app_updated"
   | "conversation_created"
   | "conversation_forked"
+  | "conversation_moved_to_project"
   | "conversation_pin_toggled"
   | "agent_run_started"
   | "agent_run_finished"
@@ -43,6 +44,9 @@ interface ProductTelemetryEventProperties {
   };
   conversation_forked: {
     copied_messages: number;
+  };
+  conversation_moved_to_project: {
+    has_project: boolean;
   };
   conversation_pin_toggled: {
     pinned: boolean;

@@ -649,6 +649,8 @@
     "pinConversation": "置顶",
     "unpinConversation": "取消置顶",
     "forkSuffix": "分叉",
+    "moveToProject": "移动到项目",
+    "removeFromProject": "移出项目",
     "empty": "暂无会话。",
     "deleteConfirm": "删除“{{title}}”?",
     "searchPlaceholder": "搜索会话",

@@ -69,6 +69,7 @@ import {
   listMessages,
   listMessagesForIpc,
   listFollowupMessagesForIpc,
+  moveConversationToProject,
   notifyConversationsChanged,
   renameConversation,
   requireOwnedConversation,
@@ -1638,6 +1639,29 @@ export function registerCliIpc() {
       const conversation = setConversationPinned(args.id, args.pinned);
       trackTelemetryEvent("conversation_pin_toggled", {
         pinned: args.pinned
+      });
+      notifyConversationsChanged();
+      return conversation;
+    }
+  );
+  registerHandler(
+    "cli:moveConversationToProject",
+    (_e, args: { id: string; projectId: string | null }): Conversation => {
+      if (typeof args.id !== "string" || !args.id.trim()) {
+        throw new Error("A conversation id is required.");
+      }
+      if (
+        args.projectId !== null &&
+        (typeof args.projectId !== "string" || !args.projectId.trim())
+      ) {
+        throw new Error("Invalid project id.");
+      }
+      const conversation = moveConversationToProject(
+        args.id,
+        args.projectId === null ? null : args.projectId
+      );
+      trackTelemetryEvent("conversation_moved_to_project", {
+        has_project: Boolean(args.projectId)
       });
       notifyConversationsChanged();
       return conversation;

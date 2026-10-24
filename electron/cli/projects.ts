@@ -296,6 +296,43 @@ export function updateProject(id: string, input: ProjectInput): Project {
   return getProject(id) as Project;
 }
 
+function folderEquals(a: string, b: string): boolean {
+  try {
+    return (
+      path.resolve(a.trim()).toLowerCase() ===
+      path.resolve(b.trim()).toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Add a folder to a project's source folders when it is not already part of
+ * it (case-insensitive match, mirroring findProjectByCwd). Used when a
+ * conversation moves into a project so its workspace folder keeps resolving.
+ */
+export function addProjectFolderIfMissing(
+  project: Project,
+  folder: string
+): { project: Project; added: boolean } {
+  if (project.folders.some((existing) => folderEquals(existing, folder))) {
+    return { project, added: false };
+  }
+  const normalized = normalizeAbsoluteFolder(folder);
+  if (project.folders.some((existing) => folderEquals(existing, normalized))) {
+    return { project, added: false };
+  }
+  return {
+    project: updateProject(project.id, {
+      name: project.name,
+      folders: [...project.folders, normalized],
+      primaryPath: project.primaryPath
+    }),
+    added: true
+  };
+}
+
 export function deleteProject(id: string): void {
   const db = getDb();
   const tx = db.transaction(() => {

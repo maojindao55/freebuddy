@@ -125,6 +125,13 @@ const ConversationRow = memo(function ConversationRow({
       <div className="conv-item-main">
         <div className="conv-item-title-row">
           <EditableConversationTitle conversation={conversation} variant="list" />
+          {conversation.pinned && (
+            <Pin
+              className="conv-pinned-indicator"
+              size={11}
+              aria-hidden="true"
+            />
+          )}
         </div>
         {showOwner && ownerName && !isOwnConversation && (
           <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
@@ -824,10 +831,17 @@ export function ConversationList({
             ? !collapsedUnreadProjects.has(project.key)
             : expandedProjects.has(project.key);
           const showAll = unreadOnly || expandedFully.has(project.key);
+          // Pinned conversations stay visible even in the collapsed preview.
           const visibleItems = expanded
             ? showAll
               ? project.items
-              : project.items.slice(0, PROJECT_PREVIEW_LIMIT)
+              : project.items
+                  .filter((item) => item.pinned)
+                  .concat(
+                    project.items
+                      .filter((item) => !item.pinned)
+                      .slice(0, PROJECT_PREVIEW_LIMIT)
+                  )
             : [];
           const hiddenCount = expanded
             ? Math.max(0, project.items.length - visibleItems.length)

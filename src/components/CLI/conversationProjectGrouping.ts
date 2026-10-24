@@ -40,7 +40,7 @@ export function unreadConversationView(
     // Cwd-only conversations can belong to a project too; show each unread once.
     recent: unreadItems
       .filter((conversation) => !groupedIds.has(conversation.id))
-      .sort((a, b) => conversationActivityTime(b) - conversationActivityTime(a)),
+      .sort(compareConversationsForList),
     count: unreadItems.length
   };
 }
@@ -52,6 +52,27 @@ function conversationTimeValue(conversation: Conversation) {
 export function conversationActivityTime(conversation: Conversation): number {
   const ts = Date.parse(conversationTimeValue(conversation));
   return Number.isFinite(ts) ? ts : 0;
+}
+
+/**
+ * Sidebar order within a group: pinned conversations float above unpinned ones
+ * (most recently pinned first), then by activity time, newest first.
+ */
+export function compareConversationsForList(
+  a: Conversation,
+  b: Conversation
+): number {
+  const aPinned = a.pinned ? 1 : 0;
+  const bPinned = b.pinned ? 1 : 0;
+  if (aPinned !== bPinned) return bPinned - aPinned;
+  if (aPinned === 1) {
+    const aPinnedAt = Date.parse(a.pinnedAt ?? "");
+    const bPinnedAt = Date.parse(b.pinnedAt ?? "");
+    const aAt = Number.isFinite(aPinnedAt) ? aPinnedAt : 0;
+    const bAt = Number.isFinite(bPinnedAt) ? bPinnedAt : 0;
+    if (aAt !== bAt) return bAt - aAt;
+  }
+  return conversationActivityTime(b) - conversationActivityTime(a);
 }
 
 /** Last path segment for sidebar project label. */
@@ -114,7 +135,7 @@ export function groupConversationsByProject(
   }
   const groups = Array.from(map.values());
   for (const group of groups) {
-    group.items.sort((a, b) => conversationActivityTime(b) - conversationActivityTime(a));
+    group.items.sort(compareConversationsForList);
   }
   groups.sort((a, b) => b.latestAt - a.latestAt || a.label.localeCompare(b.label));
   return groups;
@@ -154,9 +175,7 @@ export function groupConversationsByProjects(
   const groups: ConversationProjectGroup[] = projects.map((project) => {
     const projectItems = byProjectId.get(project.id) ?? [];
     byProjectId.delete(project.id);
-    projectItems.sort(
-      (a, b) => conversationActivityTime(b) - conversationActivityTime(a)
-    );
+    projectItems.sort(compareConversationsForList);
     let latestAt = 0;
     for (const conversation of projectItems) {
       latestAt = Math.max(latestAt, conversationActivityTime(conversation));
@@ -226,6 +245,6 @@ export function recentConversations(
       if (knownProjectIds === undefined) return false;
       return !knownProjectIds.has(projectId);
     })
-    .sort((a, b) => conversationActivityTime(b) - conversationActivityTime(a))
+    .sort(compareConversationsForList)
     .slice(0, limit);
 }

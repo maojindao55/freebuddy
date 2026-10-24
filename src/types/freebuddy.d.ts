@@ -268,6 +268,7 @@ declare global {
       agentName: string
     ): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
+    setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,

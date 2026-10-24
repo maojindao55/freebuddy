@@ -859,6 +859,20 @@ export interface TransferConversationResult {
   warning?: "brief_extraction_failed";
 }
 
+export interface ForkConversationInput {
+  sourceConversationId: string;
+  /** Fork point: messages up to and including this one are copied. */
+  throughMessageId: string;
+  targetConversationId?: string;
+  /** Title for the fork; defaults to the source title. */
+  title?: string;
+}
+
+export interface ForkConversationResult {
+  conversation: Conversation;
+  copiedMessages: number;
+}
+
 export interface ImportCodexSessionResult {
   conversation: Conversation;
   created: boolean;

@@ -643,6 +643,7 @@
     "deleteProjectConfirm": "Delete {{count}} conversations in \"{{name}}\"? This cannot be undone.",
     "newInCurrentProject": "New task in current project",
     "new": "+ New",
+    "forkSuffix": "fork",
     "empty": "No conversations yet.",
     "deleteConfirm": "Delete \"{{title}}\"?",
     "searchPlaceholder": "Search conversations",
@@ -1083,6 +1084,7 @@
     "copySelection": "Copy selection",
     "upvote": "Upvote",
     "downvote": "Downvote",
+    "fork": "Fork from here",
     "copyAll": "Copy all",
     "runMetrics": {
       "title": "Run metrics",

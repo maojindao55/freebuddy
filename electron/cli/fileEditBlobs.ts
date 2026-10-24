@@ -167,6 +167,76 @@ export function persistFileEditItems(
   })();
 }
 
+/** Copy a conversation's edit payloads into a fork. Blob keys embed the owning
+ * conversation, so rows are re-keyed for the target; the old→new key map is
+ * returned for rewriting the blobKey references inside copied messages. */
+export function copyFileEditBlobsForFork(
+  sourceConversationId: string,
+  targetConversationId: string,
+  taskIds: string[]
+): Map<string, string> {
+  const keyMap = new Map<string, string>();
+  if (!taskIds.length) return keyMap;
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT blob_key, task_id, tool_call_id, entry_index, path, action, partial,
+            status, active, counts, payload
+     FROM file_edit_blobs
+     WHERE conversation_id = ? AND task_id IN (${taskIds.map(() => "?").join(",")})`
+  ).all(sourceConversationId, ...taskIds) as Array<{
+    blob_key: string;
+    task_id: string;
+    tool_call_id: string;
+    entry_index: number;
+    path: string;
+    action: FileEdit["action"];
+    partial: number;
+    status: string;
+    active: number;
+    counts: string | null;
+    payload: Buffer;
+  }>;
+  if (!rows.length) return keyMap;
+  const insert = db.prepare(
+    `INSERT INTO file_edit_blobs
+       (blob_key, conversation_id, task_id, tool_call_id, entry_index, path,
+        action, partial, status, active, counts, payload)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(blob_key) DO NOTHING`
+  );
+  for (const row of rows) {
+    const payload = Buffer.from(row.payload);
+    const nextKey = contentKey(
+      { conversationId: targetConversationId, sessionId: row.task_id },
+      {
+        kind: "file-edit",
+        path: row.path,
+        action: row.action,
+        partial: !!row.partial
+      },
+      row.tool_call_id,
+      row.entry_index,
+      payload
+    );
+    insert.run(
+      nextKey,
+      targetConversationId,
+      row.task_id,
+      row.tool_call_id,
+      row.entry_index,
+      row.path,
+      row.action,
+      row.partial,
+      row.status,
+      row.active,
+      row.counts,
+      payload
+    );
+    keyMap.set(row.blob_key, nextKey);
+  }
+  return keyMap;
+}
+
 export function restoreFileEditReferences(context: FileEditContext, items: AcpStreamItem[]): AcpStreamItem[] {
   const restore = (edit: FileEdit, toolCallId: string, entryIndex: number): FileEdit => {
     if (edit.truncated || (edit.blobKey && edit.counts)) return edit;

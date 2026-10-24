@@ -150,6 +150,12 @@ export interface ConversationState {
     warning?: "brief_extraction_failed";
     startError?: string;
   }>;
+  forkConversation(input: {
+    conversationId: string;
+    throughMessageId: string;
+    /** Localized suffix appended to the source title, supplied by the caller. */
+    titleSuffix?: string;
+  }): Promise<Conversation>;
   importCodexSession(sessionId: string): Promise<{
     conversation: Conversation;
     created: boolean;
@@ -1087,6 +1093,40 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     } finally {
       transferInFlight = false;
     }
+  },
+
+  async forkConversation({ conversationId, throughMessageId, titleSuffix }) {
+    const source = get().conversations.find((c) => c.id === conversationId);
+    const result = await cliClient.forkConversation({
+      sourceConversationId: conversationId,
+      throughMessageId,
+      targetConversationId: nanoid(),
+      ...(source
+        ? {
+            title: titleSuffix?.trim()
+              ? `${source.title} (${titleSuffix.trim()})`
+              : source.title
+          }
+        : {})
+    });
+    setStoredActiveId(result.conversation.id);
+    set((s) => ({
+      conversations: [
+        result.conversation,
+        ...s.conversations.filter((c) => c.id !== result.conversation.id)
+      ],
+      activeId: result.conversation.id,
+      messages: { ...s.messages, [result.conversation.id]: [] },
+      pendingFreshContext: {
+        ...s.pendingFreshContext,
+        [result.conversation.id]: true
+      }
+    }));
+    ensureWorkflowMessageSubscription(result.conversation.id, async (cid, messageIds) => {
+      await get().loadMessages(cid, messageIds);
+    });
+    await get().loadMessages(result.conversation.id);
+    return result.conversation;
   },
 
   async importCodexSession(sessionId) {

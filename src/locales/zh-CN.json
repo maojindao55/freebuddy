@@ -643,6 +643,7 @@
     "deleteProjectConfirm": "删除项目「{{name}}」下的 {{count}} 个会话？此操作不可撤销。",
     "newInCurrentProject": "在当前项目新建",
     "new": "+ 新建",
+    "forkSuffix": "分叉",
     "empty": "暂无会话。",
     "deleteConfirm": "删除“{{title}}”?",
     "searchPlaceholder": "搜索会话",
@@ -1080,6 +1081,7 @@
     "copySelection": "复制选中",
     "upvote": "赞",
     "downvote": "倒赞",
+    "fork": "从此处分叉",
     "copyAll": "复制全部",
     "runMetrics": {
       "title": "本轮指标",

@@ -15118,6 +15118,45 @@ button.new-task-context-control {
   pointer-events: auto;
 }
 
+/* Per-row overflow menu (move to project, later pin/sort), revealed on hover
+   like the delete button. */
+.conv-item-menu {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-items: center;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.conv-item:hover .conv-item-menu,
+.conv-item:focus-within .conv-item-menu,
+.conv-item-menu.open {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.conv-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+}
+
+.conv-menu-button:hover {
+  color: var(--fb-text-primary);
+}
+
 .conv-item:hover .conv-unread-dot,
 .conv-item:focus-within .conv-unread-dot {
   opacity: 0;

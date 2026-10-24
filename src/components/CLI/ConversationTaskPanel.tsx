@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Dropdown, Input, Modal } from "antd";
 import {
   Archive, ArrowRight, CheckCircle2, Circle, CircleAlert, Clock3, Folder,
-  Gamepad2, LayoutGrid, List, LoaderCircle, Maximize, MessageSquare,
+  FolderInput, Gamepad2, LayoutGrid, List, LoaderCircle, Maximize, MessageSquare,
   Minimize, MoreHorizontal, PauseCircle, Pencil, Plus, RefreshCw, Search,
   Square, Trash2, X
 } from "lucide-react";
@@ -51,7 +51,7 @@ function StatusIcon({ status }: { status: PanelStatus }) {
 
 const ConversationTaskCard = memo(function ConversationTaskCard({
   conversation, overview, status, loading, error, unread, unreadResult, project, owner,
-  attentionReason, live, onOpenConversation, onOpenFile, onRetry
+  attentionReason, live, projectOptions, onOpenConversation, onOpenFile, onRetry
 }: {
   conversation: Conversation;
   overview?: ConversationOverview;
@@ -64,6 +64,7 @@ const ConversationTaskCard = memo(function ConversationTaskCard({
   owner?: string;
   attentionReason?: string;
   live?: LiveAssistant;
+  projectOptions: Array<{ id: string; name: string }>;
   onOpenConversation(id: string): void;
   onOpenFile?: ConversationTaskPanelProps["onOpenFile"];
   onRetry(id: string): void;
@@ -93,7 +94,7 @@ const ConversationTaskCard = memo(function ConversationTaskCard({
   const unreadLabel = t(unreadResult ? "conversationPanel.newResult" : "conversationPanel.filter.unread");
   const state = useConversationStore.getState();
 
-  async function operate(operation: () => Promise<void>) {
+  async function operate(operation: () => Promise<unknown>) {
     setOperationError(undefined);
     try { await operation(); }
     catch (cause) { setOperationError(cause instanceof Error ? cause.message : String(cause)); }
@@ -113,6 +114,23 @@ const ConversationTaskCard = memo(function ConversationTaskCard({
             items: [
               { key: "rename", icon: <Pencil size={14} />, label: t("conversations.renameTitle") },
               { key: "archive", icon: <Archive size={14} />, label: t("conversationPanel.archive"), disabled: busy || attention },
+              {
+                key: "move",
+                icon: <FolderInput size={14} />,
+                label: t("conversations.moveToProject"),
+                children: [
+                  ...projectOptions.map((option) => ({
+                    key: `move:${option.id}`,
+                    label: option.name,
+                    disabled: option.id === conversation.projectId
+                  })),
+                  {
+                    key: "move:null",
+                    label: t("conversations.removeFromProject"),
+                    disabled: !conversation.projectId
+                  }
+                ]
+              },
               { type: "divider" },
               { key: "delete", icon: <Trash2 size={14} />, label: t("common.delete"), danger: true, disabled: busy || attention }
             ],
@@ -121,6 +139,10 @@ const ConversationTaskCard = memo(function ConversationTaskCard({
               if (key === "rename") { setDraft(title); setOperationError(undefined); setRenaming(true); }
               else if (key === "archive") void operate(() => state.archiveConversation(conversation.id, true));
               else if (key === "delete" && window.confirm(t("conversations.deleteConfirm", { title }))) void operate(() => state.deleteConversation(conversation.id));
+              else if (typeof key === "string" && key.startsWith("move:")) {
+                const target = key.slice("move:".length);
+                void operate(() => state.moveConversationToProject(conversation.id, target === "null" ? null : target));
+              }
             }
           }}
         >
@@ -223,6 +245,10 @@ export function ConversationTaskPanel({ fullscreen, onToggleFullscreen, onList, 
     const query = ui.query.trim().toLocaleLowerCase();
     return !query || `${conversation.title} ${conversation.agentName} ${projectByConversation.get(conversation.id)?.label ?? ""} ${conversation.ownerUsername ?? ""}`.toLocaleLowerCase().includes(query);
   });
+  const projectMenuOptions = useMemo(
+    () => projects.map((project) => ({ id: project.id, name: project.name })),
+    [projects]
+  );
   const counts = {
     all: matching.length,
     running: matching.filter((conversation) => RUNNING_PANEL_STATUSES.has(statuses[conversation.id])).length,
@@ -275,7 +301,7 @@ export function ConversationTaskPanel({ fullscreen, onToggleFullscreen, onList, 
       <div className="ctp-scroller" ref={scroller} onScroll={(event) => { scrollRef.current = event.currentTarget.scrollTop; }}>
         {unavailableCount > 0 && <div className="ctp-load-warning" role="status"><CircleAlert size={16} aria-hidden="true" /><span>{t("conversationPanel.unavailableCount", { count: unavailableCount })}</span><button type="button" disabled={Object.keys(loading).length > 0} onClick={() => void refresh(matching.filter((conversation) => errors[conversation.id]).map((conversation) => conversation.id))}>{t("conversationPanel.retry")}</button></div>}
         <div className="ctp-grid">
-          {visible.map((conversation) => <ConversationTaskCard key={conversation.id} conversation={conversation} overview={overviews[conversation.id]} status={statuses[conversation.id]} loading={Boolean(loading[conversation.id])} error={errors[conversation.id]} unread={Boolean(unread[conversation.id])} unreadResult={unread[conversation.id]?.kind === "success" || unread[conversation.id]?.kind === "failure"} project={projectByConversation.get(conversation.id)?.label} owner={currentUser?.isOwner && conversation.ownerUsername && conversation.ownerUsername !== currentUser.username ? conversation.ownerUsername : undefined} attentionReason={attentionReasons.get(conversation.id)?.[0]} live={live[conversation.id]} onOpenConversation={onOpenConversation} onOpenFile={onOpenFile} onRetry={(id) => void refresh([id])} />)}
+          {visible.map((conversation) => <ConversationTaskCard key={conversation.id} conversation={conversation} overview={overviews[conversation.id]} status={statuses[conversation.id]} loading={Boolean(loading[conversation.id])} error={errors[conversation.id]} unread={Boolean(unread[conversation.id])} unreadResult={unread[conversation.id]?.kind === "success" || unread[conversation.id]?.kind === "failure"} project={projectByConversation.get(conversation.id)?.label} owner={currentUser?.isOwner && conversation.ownerUsername && conversation.ownerUsername !== currentUser.username ? conversation.ownerUsername : undefined} attentionReason={attentionReasons.get(conversation.id)?.[0]} live={live[conversation.id]} projectOptions={projectMenuOptions} onOpenConversation={onOpenConversation} onOpenFile={onOpenFile} onRetry={(id) => void refresh([id])} />)}
         </div>
         {!visible.length && <div className="ctp-empty">{unresolvedLoading ? <LoaderCircle size={30} className="ctp-spin" aria-hidden="true" /> : <MessageSquare size={38} strokeWidth={1.2} aria-hidden="true" />}<h2>{t(unresolvedLoading ? "conversationPanel.loadingActivities" : items.length ? "conversations.noResults" : "conversations.empty")}</h2>{!unresolvedLoading && (items.length ? <button type="button" onClick={() => { ui.setQuery(""); ui.setProjectKey(""); ui.setFilter("all"); }}>{t("conversationPanel.clearFilters")}</button> : <button type="button" onClick={onNewConversation}>{t("conversationPanel.newConversation")}</button>)}</div>}
         {filtered.length > visible.length && <div className="ctp-load-more"><span>{t("conversationPanel.showing", { count: visible.length, total: filtered.length })}</span><button type="button" onClick={ui.showMore}>{t("conversationPanel.loadMore")}</button></div>}

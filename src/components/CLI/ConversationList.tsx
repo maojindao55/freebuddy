@@ -7,6 +7,7 @@ import {
   useRef,
   useState
 } from "react";
+import { Dropdown } from "antd";
 import { useConversationStore } from "@/store/conversationStore";
 import { usePinnedProjectsStore } from "@/store/pinnedProjectsStore";
 import { useProjectStore } from "@/store/projectStore";
@@ -23,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Folder,
+  FolderInput,
   FolderOpen,
   Gamepad2,
   LoaderCircle,
@@ -60,6 +62,7 @@ const ConversationRow = memo(function ConversationRow({
   isUnread,
   deletionBlocked,
   compact,
+  projectOptions,
   onSelect,
   onDelete
 }: {
@@ -70,16 +73,29 @@ const ConversationRow = memo(function ConversationRow({
   isUnread: boolean;
   deletionBlocked: boolean;
   compact?: boolean;
+  projectOptions: Array<{ id: string; name: string }>;
   onSelect: (id: string) => void;
   onDelete: (id: string, title: string) => void;
 }) {
   const { t } = useTranslation();
   const currentUser = useConversationStore((s) => s.currentUser);
+  const moveConversationToProject = useConversationStore(
+    (s) => s.moveConversationToProject
+  );
+  const [menuOpen, setMenuOpen] = useState(false);
   const visibleTitle = useConversationVisibleTitle(conversation);
   const showOwner = currentUser?.isOwner === true;
   const ownerName = conversation.ownerUsername?.trim() || "";
   const isOwnConversation = ownerName === (currentUser?.username ?? "");
   const isBusy = isRunning || isWorkflowRunning;
+
+  const handleMoveToProject = (projectId: string | null) => {
+    moveConversationToProject(conversation.id, projectId).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to move conversation:", error);
+      }
+    });
+  };
 
   return (
     <li
@@ -120,6 +136,52 @@ const ConversationRow = memo(function ConversationRow({
         {showOwner && ownerName && !isOwnConversation && (
           <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
         )}
+      </div>
+      <div className={`conv-item-menu${menuOpen ? " open" : ""}`}>
+        <Dropdown
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          trigger={["click"]}
+          menu={{
+            items: [
+              {
+                key: "move",
+                icon: <FolderInput size={14} aria-hidden="true" />,
+                label: t("conversations.moveToProject"),
+                children: [
+                  ...projectOptions.map((project) => ({
+                    key: `move:${project.id}`,
+                    label: project.name,
+                    disabled: project.id === conversation.projectId
+                  })),
+                  {
+                    key: "move:null",
+                    label: t("conversations.removeFromProject"),
+                    disabled: !conversation.projectId
+                  }
+                ]
+              }
+            ],
+            onClick: ({ key }) => {
+              if (typeof key === "string" && key.startsWith("move:")) {
+                const target = key.slice("move:".length);
+                handleMoveToProject(target === "null" ? null : target);
+              }
+            }
+          }}
+        >
+          <button
+            type="button"
+            className="icon-btn conv-menu-button"
+            title={t("conversations.moveToProject")}
+            aria-label={t("conversations.moveToProject")}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <MoreHorizontal aria-hidden="true" size={14} strokeWidth={1.75} />
+          </button>
+        </Dropdown>
       </div>
       <div className={`conv-item-side${isBusy ? " running" : isUnread ? " unread" : ""}`}>
         {isBusy ? (
@@ -644,6 +706,11 @@ export function ConversationList({
 
   const hiddenProjectCount = Math.max(0, projects.length - visibleProjects.length);
 
+  const projectMenuOptions = useMemo(
+    () => apiProjects.map((project) => ({ id: project.id, name: project.name })),
+    [apiProjects]
+  );
+
   useEffect(() => {
     if (projects.length === 0) return;
     setExpandedProjects((current) => {
@@ -736,6 +803,7 @@ export function ConversationList({
       isUnread={Boolean(unreadConversations[c.id])}
       deletionBlocked={deletionBlockedSet.has(c.id)}
       compact={compact}
+      projectOptions={projectMenuOptions}
       onSelect={handleSelect}
       onDelete={handleDelete}
     />

@@ -169,6 +169,8 @@ const cli = {
     ipcRenderer.invoke("cli:updateConversationAgentName", { agentId, agentName }),
   archiveConversation: (id: string, archived: boolean) =>
     ipcRenderer.invoke("cli:archiveConversation", { id, archived }),
+  moveConversationToProject: (id: string, projectId: string | null) =>
+    ipcRenderer.invoke("cli:moveConversationToProject", { id, projectId }),
   deleteConversation: (id: string) =>
     ipcRenderer.invoke("cli:deleteConversation", id),
   setConversationApprovalMode: (

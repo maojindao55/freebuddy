@@ -273,6 +273,10 @@ declare global {
       agentName: string
     ): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
+    moveConversationToProject(
+      id: string,
+      projectId: string | null
+    ): Promise<Conversation>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,

@@ -325,6 +325,12 @@ export const cliClient = {
   archiveConversation(id: string, archived: boolean): Promise<void> {
     return api().archiveConversation(id, archived);
   },
+  moveConversationToProject(
+    id: string,
+    projectId: string | null
+  ): Promise<Conversation> {
+    return api().moveConversationToProject(id, projectId);
+  },
   deleteConversation(id: string): Promise<void> {
     return api().deleteConversation(id);
   },

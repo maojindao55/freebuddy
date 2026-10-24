@@ -25,6 +25,7 @@ export type TelemetryEvent =
   | "app_updated"
   | "conversation_created"
   | "conversation_forked"
+  | "conversation_moved_to_project"
   | "agent_run_started"
   | "agent_run_finished"
   | "workflow_run_started"
@@ -42,6 +43,9 @@ interface ProductTelemetryEventProperties {
   };
   conversation_forked: {
     copied_messages: number;
+  };
+  conversation_moved_to_project: {
+    has_project: boolean;
   };
   agent_run_started: {
     adapter: string;

@@ -644,6 +644,8 @@
     "newInCurrentProject": "New task in current project",
     "new": "+ New",
     "forkSuffix": "fork",
+    "moveToProject": "Move to project",
+    "removeFromProject": "Remove from project",
     "empty": "No conversations yet.",
     "deleteConfirm": "Delete \"{{title}}\"?",
     "searchPlaceholder": "Search conversations",

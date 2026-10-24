@@ -10,7 +10,13 @@ import type { SkillSnapshot } from "./skillTypes.js";
 import { mergeRequiredSkillIds } from "./agentProfiles.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import { getUserById } from "./users.js";
-import { cwdForProjectLookup, ensureProjectForCwd, findProjectByCwd } from "./projects.js";
+import {
+  addProjectFolderIfMissing,
+  cwdForProjectLookup,
+  ensureProjectForCwd,
+  findProjectByCwd,
+  getProject
+} from "./projects.js";
 import {
   listRemoteWorkspaces,
   sourcePathForManagedWorkspace,
@@ -449,6 +455,44 @@ export function setConversationProjectId(
       `UPDATE conversations SET project_id = ?, updated_at = ? WHERE id = ?`
     )
     .run(projectId, now, id);
+}
+
+/**
+ * Move a conversation into a project (or back to "recent" when projectId is
+ * null). The conversation's owning folder — the worktree source cwd for
+ * worktree conversations, and the host source path for remote managed
+ * workspaces — is added to the target project's folders when missing so the
+ * project keeps covering the conversation's workspace.
+ */
+export function moveConversationToProject(
+  id: string,
+  projectId: string | null
+): Conversation {
+  const conversation = requireOwnedConversation(id);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const db = getDb();
+  return db.transaction(() => {
+    if (projectId) {
+      const project = getProject(projectId);
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      let folder = cwdForProjectLookup(conversation).trim();
+      const sourceFolder = folder
+        ? sourcePathForManagedWorkspace(folder)
+        : undefined;
+      if (sourceFolder) folder = sourceFolder;
+      if (folder) {
+        try {
+          addProjectFolderIfMissing(project, folder);
+        } catch {
+          // A non-absolute/unresolvable cwd (e.g. remote-only path): the move
+          // proceeds without extending the project's folders.
+        }
+      }
+    }
+    setConversationProjectId(id, projectId);
+    return getConversation(id) as Conversation;
+  })();
 }
 
 export function setConversationConfigOptionOverrides(

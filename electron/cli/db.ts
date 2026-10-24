@@ -297,7 +297,8 @@ export function migrate(db: DB) {
       kind TEXT NOT NULL DEFAULT 'default',
       metadata TEXT,
       pinned INTEGER NOT NULL DEFAULT 0,
-      pinned_at TEXT
+      pinned_at TEXT,
+      sort_position INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_conversations_updated
       ON conversations(archived, updated_at DESC);
@@ -927,6 +928,9 @@ export function migrate(db: DB) {
   }
   if (!conversationCols.some((c) => c.name === "pinned_at")) {
     db.exec("ALTER TABLE conversations ADD COLUMN pinned_at TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "sort_position")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN sort_position INTEGER");
   }
 
   const scheduledTaskOwnerCols = db

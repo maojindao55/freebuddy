@@ -15204,6 +15204,19 @@ button.new-task-context-control {
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
+/* Drag-to-reorder: dimmed source row, brand-colored insertion edges. */
+.conv-item.dragging {
+  opacity: 0.45;
+}
+
+.conv-item.drop-before {
+  box-shadow: inset 0 2px 0 var(--fb-brand);
+}
+
+.conv-item.drop-after {
+  box-shadow: inset 0 -2px 0 var(--fb-brand);
+}
+
 .conv-item:hover .conv-unread-dot,
 .conv-item:focus-within .conv-unread-dot {
   opacity: 0;

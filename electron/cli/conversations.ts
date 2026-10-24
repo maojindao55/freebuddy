@@ -81,6 +81,8 @@ export interface Conversation {
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;
+  /** Manual list position; null = order by activity (new arrivals float in). */
+  sortPosition?: number | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
@@ -212,6 +214,8 @@ function rowToConversation(
     archived: r.archived === 1,
     pinned: r.pinned === 1,
     pinnedAt: r.pinned_at ?? undefined,
+    /** Manual list position; null = order by activity (new arrivals float in). */
+    sortPosition: typeof r.sort_position === "number" ? r.sort_position : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at ?? undefined,
@@ -518,6 +522,70 @@ export function moveConversationToProject(
   })();
 }
 
+export const CONVERSATION_ORDER_STEP = 1024;
+
+/**
+ * Persist a manual list order for a group of conversations. The caller sends
+ * the full desired order (top first); rows get evenly spaced positions.
+ * Unlisted conversations keep their position (null = ordered by activity,
+ * leading positioned rows so new arrivals float in). Reordering never touches
+ * updated_at — it must not reshuffle the activity-based views.
+ */
+export function setConversationOrder(conversationIds: string[]): Conversation[] {
+  if (
+    !Array.isArray(conversationIds) ||
+    conversationIds.some((id) => typeof id !== "string" || !id.trim())
+  ) {
+    throw new Error("conversationIds must be an array of conversation ids.");
+  }
+  const db = getDb();
+  return db.transaction(() => {
+    const update = db.prepare(
+      "UPDATE conversations SET sort_position = ? WHERE id = ?"
+    );
+    const updated: Conversation[] = [];
+    const seen = new Set<string>();
+    for (const [index, rawId] of conversationIds.entries()) {
+      const id = rawId.trim();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (!requireOwnedConversation(id)) continue;
+      update.run(index * CONVERSATION_ORDER_STEP, id);
+      const next = getConversation(id);
+      if (next) updated.push(next);
+    }
+    return updated;
+  })();
+}
+
+/** Drop manual ordering for the given conversations (back to activity order). */
+export function resetConversationOrder(conversationIds: string[]): Conversation[] {
+  if (
+    !Array.isArray(conversationIds) ||
+    conversationIds.some((id) => typeof id !== "string" || !id.trim())
+  ) {
+    throw new Error("conversationIds must be an array of conversation ids.");
+  }
+  const db = getDb();
+  return db.transaction(() => {
+    const update = db.prepare(
+      "UPDATE conversations SET sort_position = NULL WHERE id = ?"
+    );
+    const updated: Conversation[] = [];
+    const seen = new Set<string>();
+    for (const rawId of conversationIds) {
+      const id = rawId.trim();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (!requireOwnedConversation(id)) continue;
+      update.run(id);
+      const next = getConversation(id);
+      if (next) updated.push(next);
+    }
+    return updated;
+  })();
+}
+
 export function setConversationConfigOptionOverrides(
   id: string,
   overrides: Record<string, string> | null
@@ -572,7 +640,7 @@ export function listConversations(args: ListConversationsArgs = {}): Conversatio
     FROM conversations c
     LEFT JOIN remote_users u ON u.id = c.owner_id
     WHERE ${where.join(" AND ")}
-    ORDER BY c.pinned DESC, c.pinned_at DESC, COALESCE(c.last_message_at, c.updated_at) DESC
+    ORDER BY c.pinned DESC, c.pinned_at DESC, c.sort_position ASC, COALESCE(c.last_message_at, c.updated_at) DESC
     LIMIT ?`;
   params.push(args.limit ?? 200);
   const workspaceCache = new Map<string, RemoteWorkspace[]>();

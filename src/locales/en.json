@@ -651,6 +651,7 @@
     "forkSuffix": "fork",
     "moveToProject": "Move to project",
     "removeFromProject": "Remove from project",
+    "resetOrder": "Reset order",
     "empty": "No conversations yet.",
     "deleteConfirm": "Delete \"{{title}}\"?",
     "searchPlaceholder": "Search conversations",

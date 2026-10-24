@@ -5,7 +5,8 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  type DragEvent as ReactDragEvent
 } from "react";
 import { Dropdown } from "antd";
 import { useDismissOnOutsideActivation } from "@/hooks/useDismissOnOutsideActivation";
@@ -31,6 +32,7 @@ import {
   FolderInput,
   FolderOpen,
   Gamepad2,
+  ArrowDownUp,
   LoaderCircle,
   LayoutGrid,
   List,
@@ -69,8 +71,12 @@ const ConversationRow = memo(function ConversationRow({
   deletionBlocked,
   compact,
   projectOptions,
+  isDraggingRow,
+  dropPosition,
   onSelect,
-  onDelete
+  onDelete,
+  onRowDragStart,
+  onRowDragEnd
 }: {
   conversation: Conversation;
   isActive: boolean;
@@ -80,8 +86,12 @@ const ConversationRow = memo(function ConversationRow({
   deletionBlocked: boolean;
   compact?: boolean;
   projectOptions: Array<{ id: string; name: string }>;
+  isDraggingRow?: boolean;
+  dropPosition?: "before" | "after" | null;
   onSelect: (id: string) => void;
   onDelete: (id: string, title: string) => void;
+  onRowDragStart?: (id: string, event: ReactDragEvent<HTMLLIElement>) => void;
+  onRowDragEnd?: () => void;
 }) {
   const { t } = useTranslation();
   const currentUser = useConversationStore((s) => s.currentUser);
@@ -200,7 +210,7 @@ const ConversationRow = memo(function ConversationRow({
     >
       <li
         ref={rowRef}
-        className={`conv-item${compact ? " compact" : ""}${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}`}
+        className={`conv-item${compact ? " compact" : ""}${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}${isDraggingRow ? " dragging" : ""}${dropPosition === "before" ? " drop-before" : ""}${dropPosition === "after" ? " drop-after" : ""}`}
         role="button"
         tabIndex={0}
         aria-current={isActive ? "true" : undefined}
@@ -215,7 +225,9 @@ const ConversationRow = memo(function ConversationRow({
             return;
           }
           writeConversationDrag(event.dataTransfer, conversation.id);
+          onRowDragStart?.(conversation.id, event);
         }}
+        onDragEnd={() => onRowDragEnd?.()}
         onClick={() => onSelect(conversation.id)}
         onDoubleClick={(event) => {
           const target = event.target as HTMLElement | null;
@@ -478,6 +490,7 @@ function ProjectOverflowMenu({
   onOpenChange,
   onEdit,
   onTogglePin,
+  onResetOrder,
   onReveal,
   onDeleteProject
 }: {
@@ -487,6 +500,7 @@ function ProjectOverflowMenu({
   onOpenChange: (open: boolean) => void;
   onEdit: () => void;
   onTogglePin: () => void;
+  onResetOrder: () => void;
   onReveal: () => void;
   onDeleteProject: () => void;
 }) {
@@ -581,6 +595,19 @@ function ProjectOverflowMenu({
           <button
             type="button"
             role="menuitem"
+            className="conv-project-menu-item"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenChange(false);
+              onResetOrder();
+            }}
+          >
+            <ArrowDownUp aria-hidden="true" size={14} strokeWidth={1.8} />
+            <span>{t("conversations.resetOrder")}</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             className="conv-project-menu-item danger"
             onClick={(event) => {
               event.stopPropagation();
@@ -616,6 +643,12 @@ export function ConversationList({
   const setActive = useConversationStore((s) => s.setActive);
   const deleteConversation = useConversationStore((s) => s.deleteConversation);
   const refreshConversations = useConversationStore((s) => s.refreshList);
+  const setConversationOrder = useConversationStore(
+    (s) => s.setConversationOrder
+  );
+  const resetConversationOrder = useConversationStore(
+    (s) => s.resetConversationOrder
+  );
   const live = useConversationStore((s) => s.live);
   const overviews = useConversationOverviewStore((s) => s.overviews);
   const permissions = usePermissionStore((s) => s.queue);
@@ -909,6 +942,111 @@ export function ConversationList({
     await refreshConversations();
   };
 
+  // ---- Manual drag ordering (within a project group or Recent) ----
+  const dragIdRef = useRef<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; before: boolean } | null>(null);
+  const resetDragState = useCallback(() => {
+    dragIdRef.current = null;
+    setDraggingId(null);
+    setDropTarget(null);
+  }, []);
+
+  /** Full member order of the group (project or Recent) a row belongs to. */
+  const groupOrderFor = useCallback(
+    (conversationId: string): Conversation[] | null => {
+      const projectGroup = projects.find((group) =>
+        group.items.some((item) => item.id === conversationId)
+      );
+      if (projectGroup) return projectGroup.items;
+      // Recent: the display list is capped, but ordering must cover the whole
+      // group or unlisted rows would jump above the reordered ones.
+      const knownProjectIds = projectsLoaded
+        ? new Set(apiProjects.map((project) => project.id))
+        : null;
+      const fullRecent = recentConversations(
+        conversations,
+        conversations.length,
+        knownProjectIds
+      );
+      return fullRecent.some((item) => item.id === conversationId)
+        ? fullRecent
+        : null;
+    },
+    [projects, apiProjects, projectsLoaded, conversations]
+  );
+
+  const commitReorder = useCallback(
+    (dragId: string, targetId: string, before: boolean) => {
+      const group = groupOrderFor(targetId);
+      if (!group) return;
+      // Cross-group drags are move-to-project territory; same group only.
+      if (!group.some((item) => item.id === dragId)) return;
+      const ids = group.map((item) => item.id);
+      const fromIndex = ids.indexOf(dragId);
+      let insertIndex = ids.indexOf(targetId);
+      if (fromIndex < 0 || insertIndex < 0) return;
+      ids.splice(fromIndex, 1);
+      insertIndex = ids.indexOf(targetId);
+      ids.splice(before ? insertIndex : insertIndex + 1, 0, dragId);
+      void setConversationOrder(ids);
+    },
+    [groupOrderFor, setConversationOrder]
+  );
+
+  const handleRowDragStart = useCallback(
+    (id: string, event: ReactDragEvent<HTMLLIElement>) => {
+      dragIdRef.current = id;
+      setDraggingId(id);
+      // The same drag carries the composer reference payload, so allow both effects.
+      event.dataTransfer.effectAllowed = "copyMove";
+      try {
+        event.dataTransfer.setData("text/plain", id);
+      } catch {
+        /* some browsers require data to be set */
+      }
+    },
+    []
+  );
+
+  const handleListDragOver = useCallback((event: ReactDragEvent<HTMLUListElement>) => {
+    if (!dragIdRef.current) return;
+    const row = (event.target as HTMLElement | null)?.closest?.(".conv-item");
+    const id = row?.getAttribute("data-conversation-id");
+    if (!id || id === dragIdRef.current) {
+      setDropTarget(null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = (row as HTMLElement).getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    setDropTarget((current) =>
+      current?.id === id && current.before === before ? current : { id, before }
+    );
+  }, []);
+
+  const handleListDrop = useCallback(
+    (event: ReactDragEvent<HTMLUListElement>) => {
+      const dragId = dragIdRef.current;
+      const target = dropTarget;
+      resetDragState();
+      if (!dragId || !target || target.id === dragId) return;
+      event.preventDefault();
+      commitReorder(dragId, target.id, target.before);
+    },
+    [commitReorder, dropTarget, resetDragState]
+  );
+
+  const handleResetProjectOrder = useCallback(
+    (project: ConversationProjectGroup) => {
+      const ids = project.items.map((item) => item.id);
+      if (ids.length === 0) return;
+      void resetConversationOrder(ids);
+    },
+    [resetConversationOrder]
+  );
+
   const renderRow = (c: Conversation, compact?: boolean) => (
     <ConversationRow
       key={c.id}
@@ -920,8 +1058,18 @@ export function ConversationList({
       deletionBlocked={deletionBlockedSet.has(c.id)}
       compact={compact}
       projectOptions={projectMenuOptions}
+      isDraggingRow={draggingId === c.id}
+      dropPosition={
+        dropTarget?.id === c.id
+          ? dropTarget.before
+            ? "before"
+            : "after"
+          : null
+      }
       onSelect={handleSelect}
       onDelete={handleDelete}
+      onRowDragStart={handleRowDragStart}
+      onRowDragEnd={resetDragState}
     />
   );
 
@@ -973,7 +1121,10 @@ export function ConversationList({
           <span className="conv-filter-count" aria-hidden="true">{unreadView.count}</span>
         </button>
       </div>
-      <ul>
+      <ul
+        onDragOver={handleListDragOver}
+        onDrop={handleListDrop}
+      >
         {(!unreadOnly || visibleProjects.length > 0) && (
           <li className="conv-group-header projects">
             <span>{t("conversations.projects")}</span>
@@ -1146,6 +1297,7 @@ export function ConversationList({
                         }}
                         onEdit={() => openEditModal(project)}
                         onTogglePin={() => togglePin(project.key)}
+                        onResetOrder={() => handleResetProjectOrder(project)}
                         onReveal={() => {
                           if (!primaryPath) return;
                           void window.freebuddy?.shell?.showItemInFolder(primaryPath);

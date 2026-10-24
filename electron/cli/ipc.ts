@@ -78,6 +78,8 @@ import {
   setConversationMcpServerIds,
   setConversationPinned,
   setConversationSkills,
+  setConversationOrder,
+  resetConversationOrder,
   recoverInterruptedMessages,
   recoverInterruptedTasks,
   updateConversationAgentName,
@@ -1642,6 +1644,32 @@ export function registerCliIpc() {
       });
       notifyConversationsChanged();
       return conversation;
+    }
+  );
+  registerHandler(
+    "cli:setConversationOrder",
+    (_e, args: { conversationIds: string[] }): Conversation[] => {
+      const updated = setConversationOrder(args.conversationIds);
+      if (updated.length > 0) {
+        trackTelemetryEvent("conversation_reordered", {
+          ordered: updated.length
+        });
+        notifyConversationsChanged();
+      }
+      return updated;
+    }
+  );
+  registerHandler(
+    "cli:resetConversationOrder",
+    (_e, args: { conversationIds: string[] }): Conversation[] => {
+      const updated = resetConversationOrder(args.conversationIds);
+      if (updated.length > 0) {
+        trackTelemetryEvent("conversation_order_reset", {
+          ordered: updated.length
+        });
+        notifyConversationsChanged();
+      }
+      return updated;
     }
   );
   registerHandler(

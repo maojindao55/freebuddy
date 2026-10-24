@@ -278,6 +278,8 @@ declare global {
       id: string,
       projectId: string | null
     ): Promise<Conversation>;
+    setConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
+    resetConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,

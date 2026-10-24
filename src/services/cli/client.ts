@@ -334,6 +334,12 @@ export const cliClient = {
   ): Promise<Conversation> {
     return api().moveConversationToProject(id, projectId);
   },
+  setConversationOrder(conversationIds: string[]): Promise<Conversation[]> {
+    return api().setConversationOrder(conversationIds);
+  },
+  resetConversationOrder(conversationIds: string[]): Promise<Conversation[]> {
+    return api().resetConversationOrder(conversationIds);
+  },
   deleteConversation(id: string): Promise<void> {
     return api().deleteConversation(id);
   },

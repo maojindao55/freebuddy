@@ -170,6 +170,7 @@ export interface ConversationState {
     id: string,
     projectId: string | null
   ): Promise<Conversation>;
+  setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
   setConversationApprovalMode(
     id: string,
     approvalMode: "auto" | "ask"
@@ -1231,6 +1232,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }));
     // The move may have extended the target project's folders.
     await useProjectStore.getState().refresh();
+    return conversation;
+  },
+
+  async setConversationPinned(id, pinned) {
+    const conversation = await cliClient.setConversationPinned(id, pinned);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === conversation.id ? conversation : c
+      )
+    }));
     return conversation;
   },
 

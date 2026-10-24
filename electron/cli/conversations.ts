@@ -78,6 +78,9 @@ export interface Conversation {
   skillSnapshot: SkillSnapshot[];
   titleSource?: ConversationTitleSource;
   archived: boolean;
+  /** Pinned conversations float to the top of their list group. */
+  pinned?: boolean;
+  pinnedAt?: string;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
@@ -206,6 +209,8 @@ function rowToConversation(
     skillSnapshot: parseSkillSnapshot(r.skill_snapshot),
     titleSource: parseTitleSource(r.title_source),
     archived: r.archived === 1,
+    pinned: r.pinned === 1,
+    pinnedAt: r.pinned_at ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at ?? undefined,
@@ -495,6 +500,22 @@ export function moveConversationToProject(
   })();
 }
 
+/**
+ * Pin or unpin a conversation. Pinned conversations float above their list
+ * group regardless of activity; pinnedAt keeps multiple pins in pin order.
+ */
+export function setConversationPinned(id: string, pinned: boolean): Conversation {
+  const conversation = requireOwnedConversation(id);
+  if (!conversation) throw new Error("Conversation not found");
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE conversations SET pinned = ?, pinned_at = ?, updated_at = ? WHERE id = ?`
+    )
+    .run(pinned ? 1 : 0, pinned ? now : null, now, id);
+  return getConversation(id) as Conversation;
+}
+
 export function setConversationConfigOptionOverrides(
   id: string,
   overrides: Record<string, string> | null
@@ -549,7 +570,7 @@ export function listConversations(args: ListConversationsArgs = {}): Conversatio
     FROM conversations c
     LEFT JOIN remote_users u ON u.id = c.owner_id
     WHERE ${where.join(" AND ")}
-    ORDER BY COALESCE(c.last_message_at, c.updated_at) DESC
+    ORDER BY c.pinned DESC, c.pinned_at DESC, COALESCE(c.last_message_at, c.updated_at) DESC
     LIMIT ?`;
   params.push(args.limit ?? 200);
   const workspaceCache = new Map<string, RemoteWorkspace[]>();

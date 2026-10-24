@@ -76,6 +76,7 @@ import {
   setConversationApprovalMode,
   setConversationConfigOptionOverrides,
   setConversationMcpServerIds,
+  setConversationPinned,
   setConversationSkills,
   recoverInterruptedMessages,
   recoverInterruptedTasks,
@@ -1623,6 +1624,23 @@ export function registerCliIpc() {
       if (!requireOwnedConversation(args.id)) return;
       archiveConversation(args.id, args.archived);
       notifyConversationsChanged();
+    }
+  );
+  registerHandler(
+    "cli:setConversationPinned",
+    (_e, args: { id: string; pinned: boolean }): Conversation => {
+      if (typeof args.id !== "string" || !args.id.trim()) {
+        throw new Error("A conversation id is required.");
+      }
+      if (typeof args.pinned !== "boolean") {
+        throw new Error("pinned must be a boolean.");
+      }
+      const conversation = setConversationPinned(args.id, args.pinned);
+      trackTelemetryEvent("conversation_pin_toggled", {
+        pinned: args.pinned
+      });
+      notifyConversationsChanged();
+      return conversation;
     }
   );
   registerHandler(

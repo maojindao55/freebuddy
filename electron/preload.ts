@@ -171,6 +171,8 @@ const cli = {
     ipcRenderer.invoke("cli:archiveConversation", { id, archived }),
   moveConversationToProject: (id: string, projectId: string | null) =>
     ipcRenderer.invoke("cli:moveConversationToProject", { id, projectId }),
+  setConversationPinned: (id: string, pinned: boolean) =>
+    ipcRenderer.invoke("cli:setConversationPinned", { id, pinned }),
   deleteConversation: (id: string) =>
     ipcRenderer.invoke("cli:deleteConversation", id),
   setConversationApprovalMode: (

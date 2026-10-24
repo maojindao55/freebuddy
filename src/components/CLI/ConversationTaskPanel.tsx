@@ -3,8 +3,8 @@ import { Dropdown, Input, Modal } from "antd";
 import {
   Archive, ArrowRight, CheckCircle2, Circle, CircleAlert, Clock3, Folder,
   FolderInput, Gamepad2, LayoutGrid, List, LoaderCircle, Maximize, MessageSquare,
-  Minimize, MoreHorizontal, PauseCircle, Pencil, Plus, RefreshCw, Search,
-  Square, Trash2, X
+  Minimize, MoreHorizontal, PauseCircle, Pencil, Pin, PinOff, Plus, RefreshCw,
+  Search, Square, Trash2, X
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ConversationOverview } from "@freebuddy/protocol";
@@ -104,6 +104,7 @@ const ConversationTaskCard = memo(function ConversationTaskCard({
     <article className={`ctp-card${unread ? " is-unread" : ""}`} aria-label={title}>
       <div className="ctp-card-heading">
         <button type="button" className="ctp-card-title" title={title} onClick={() => onOpenConversation(conversation.id)}>{title}</button>
+        {conversation.pinned && <Pin className="ctp-pinned-indicator" size={13} aria-label={t("conversations.pinned")} aria-hidden="true" />}
         <span className={`ctp-status status-${displayStatus}${quietStatus ? " is-quiet" : ""}`} role="status">{!quietStatus && <StatusIcon status={displayStatus === "loading" ? "starting" : status} />}{t(`conversationPanel.status.${displayStatus}`)}</span>
         {unread && <span className="ctp-unread" role="status" title={unreadLabel} aria-label={unreadLabel}><Circle size={6} fill="currentColor" aria-hidden="true" /></span>}
         <Dropdown
@@ -113,6 +114,11 @@ const ConversationTaskCard = memo(function ConversationTaskCard({
           menu={{
             items: [
               { key: "rename", icon: <Pencil size={14} />, label: t("conversations.renameTitle") },
+              {
+                key: "pin",
+                icon: conversation.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+                label: conversation.pinned ? t("conversations.unpinConversation") : t("conversations.pinConversation")
+              },
               { key: "archive", icon: <Archive size={14} />, label: t("conversationPanel.archive"), disabled: busy || attention },
               {
                 key: "move",
@@ -138,6 +144,7 @@ const ConversationTaskCard = memo(function ConversationTaskCard({
               setMenuOpen(false);
               if (key === "rename") { setDraft(title); setOperationError(undefined); setRenaming(true); }
               else if (key === "archive") void operate(() => state.archiveConversation(conversation.id, true));
+              else if (key === "pin") void operate(() => state.setConversationPinned(conversation.id, !conversation.pinned));
               else if (key === "delete" && window.confirm(t("conversations.deleteConfirm", { title }))) void operate(() => state.deleteConversation(conversation.id));
               else if (typeof key === "string" && key.startsWith("move:")) {
                 const target = key.slice("move:".length);

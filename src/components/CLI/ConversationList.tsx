@@ -82,6 +82,9 @@ const ConversationRow = memo(function ConversationRow({
   const moveConversationToProject = useConversationStore(
     (s) => s.moveConversationToProject
   );
+  const setConversationPinned = useConversationStore(
+    (s) => s.setConversationPinned
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const visibleTitle = useConversationVisibleTitle(conversation);
   const showOwner = currentUser?.isOwner === true;
@@ -93,6 +96,14 @@ const ConversationRow = memo(function ConversationRow({
     moveConversationToProject(conversation.id, projectId).catch((error) => {
       if (import.meta.env?.DEV) {
         console.warn("[FreeBuddy] Failed to move conversation:", error);
+      }
+    });
+  };
+
+  const handleTogglePinned = () => {
+    setConversationPinned(conversation.id, !conversation.pinned).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to pin conversation:", error);
       }
     });
   };
@@ -132,6 +143,13 @@ const ConversationRow = memo(function ConversationRow({
       <div className="conv-item-main">
         <div className="conv-item-title-row">
           <EditableConversationTitle conversation={conversation} variant="list" />
+          {conversation.pinned && (
+            <Pin
+              className="conv-pinned-indicator"
+              size={11}
+              aria-hidden="true"
+            />
+          )}
         </div>
         {showOwner && ownerName && !isOwnConversation && (
           <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
@@ -144,6 +162,18 @@ const ConversationRow = memo(function ConversationRow({
           trigger={["click"]}
           menu={{
             items: [
+              {
+                key: "pin",
+                icon: conversation.pinned ? (
+                  <PinOff size={14} aria-hidden="true" />
+                ) : (
+                  <Pin size={14} aria-hidden="true" />
+                ),
+                label: conversation.pinned
+                  ? t("conversations.unpinConversation")
+                  : t("conversations.pinConversation")
+              },
+              { type: "divider" },
               {
                 key: "move",
                 icon: <FolderInput size={14} aria-hidden="true" />,
@@ -163,6 +193,10 @@ const ConversationRow = memo(function ConversationRow({
               }
             ],
             onClick: ({ key }) => {
+              if (key === "pin") {
+                handleTogglePinned();
+                return;
+              }
               if (typeof key === "string" && key.startsWith("move:")) {
                 const target = key.slice("move:".length);
                 handleMoveToProject(target === "null" ? null : target);
@@ -883,10 +917,17 @@ export function ConversationList({
             ? !collapsedUnreadProjects.has(project.key)
             : expandedProjects.has(project.key);
           const showAll = unreadOnly || expandedFully.has(project.key);
+          // Pinned conversations stay visible even in the collapsed preview.
           const visibleItems = expanded
             ? showAll
               ? project.items
-              : project.items.slice(0, PROJECT_PREVIEW_LIMIT)
+              : project.items
+                  .filter((item) => item.pinned)
+                  .concat(
+                    project.items
+                      .filter((item) => !item.pinned)
+                      .slice(0, PROJECT_PREVIEW_LIMIT)
+                  )
             : [];
           const hiddenCount = expanded
             ? Math.max(0, project.items.length - visibleItems.length)

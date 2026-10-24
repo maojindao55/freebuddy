@@ -31,7 +31,9 @@ function conversation(partial) {
     lastMessageAt: partial.lastMessageAt,
     cwd: partial.cwd,
     sourceCwd: partial.sourceCwd,
-    projectId: partial.projectId
+    projectId: partial.projectId,
+    pinned: partial.pinned,
+    pinnedAt: partial.pinnedAt
   };
 }
 
@@ -431,4 +433,56 @@ test("reading conversations updates unread results without mutating the all view
   assert.equal(afterProjectRead.count, 1);
   assert.deepEqual(afterAllRead, { projects: [], recent: [], count: 0 });
   assert.deepEqual({ items, groups, unread }, initialInputs);
+});
+
+test("pinned conversations lead their group and Recent regardless of activity", async () => {
+  const { groupConversationsByProjects, recentConversations } = await loadGrouping();
+  const project = {
+    id: "p1",
+    name: "P1",
+    folders: ["/tmp/p1"],
+    primaryPath: "/tmp/p1",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  };
+  const items = [
+    conversation({
+      id: "fresh",
+      projectId: "p1",
+      lastMessageAt: "2026-07-10T00:00:00.000Z"
+    }),
+    conversation({
+      id: "pinned-old",
+      projectId: "p1",
+      pinned: true,
+      pinnedAt: "2026-07-02T00:00:00.000Z",
+      lastMessageAt: "2026-07-01T00:00:00.000Z"
+    }),
+    conversation({
+      id: "pinned-newer",
+      projectId: "p1",
+      pinned: true,
+      pinnedAt: "2026-07-05T00:00:00.000Z",
+      lastMessageAt: "2026-07-01T00:00:00.000Z"
+    })
+  ];
+  const [group] = groupConversationsByProjects(items, [project]);
+  assert.deepEqual(
+    group.items.map((item) => item.id),
+    ["pinned-newer", "pinned-old", "fresh"]
+  );
+
+  const recent = recentConversations([
+    conversation({ id: "r-fresh", lastMessageAt: "2026-07-10T00:00:00.000Z" }),
+    conversation({
+      id: "r-pinned",
+      pinned: true,
+      pinnedAt: "2026-07-01T00:00:00.000Z",
+      lastMessageAt: "2026-07-01T00:00:00.000Z"
+    })
+  ]);
+  assert.deepEqual(
+    recent.map((item) => item.id),
+    ["r-pinned", "r-fresh"]
+  );
 });

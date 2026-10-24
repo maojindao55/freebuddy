@@ -15157,6 +15157,11 @@ button.new-task-context-control {
   color: var(--fb-text-primary);
 }
 
+.conv-pinned-indicator {
+  flex: 0 0 auto;
+  color: var(--fb-text-tertiary);
+}
+
 .conv-item:hover .conv-unread-dot,
 .conv-item:focus-within .conv-unread-dot {
   opacity: 0;

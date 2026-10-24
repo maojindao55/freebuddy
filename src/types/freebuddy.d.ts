@@ -277,6 +277,7 @@ declare global {
       id: string,
       projectId: string | null
     ): Promise<Conversation>;
+    setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,

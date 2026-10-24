@@ -9957,6 +9957,18 @@ button.new-task-context-control {
   color: var(--fb-text-secondary);
 }
 
+/* Fork button: always visible in the assistant action bar, hover-revealed on
+   user message headers to keep the header row quiet. */
+.msg-user .msg-header .msg-fork-btn {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.msg-user:hover .msg-header .msg-fork-btn,
+.msg-user .msg-header .msg-fork-btn:focus-visible {
+  opacity: 1;
+}
+
 .msg-time {
   font-size: 11px;
   color: var(--fb-text-tertiary);

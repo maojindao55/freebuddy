@@ -27,6 +27,7 @@ const ALLOW = [
   "cli:createConversation",
   "cli:createConversationShare",
   "cli:deleteConversation",
+  "cli:forkConversation",
   "cli:getConversation",
   "cli:listConversationContextReferences",
   "cli:listConversations",

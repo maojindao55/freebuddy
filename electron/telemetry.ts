@@ -24,6 +24,7 @@ export type TelemetryEvent =
   | "app_launched"
   | "app_updated"
   | "conversation_created"
+  | "conversation_forked"
   | "conversation_pin_toggled"
   | "agent_run_started"
   | "agent_run_finished"
@@ -39,6 +40,9 @@ interface ProductTelemetryEventProperties {
     adapter: string;
     has_workspace: boolean;
     approval_mode: string;
+  };
+  conversation_forked: {
+    copied_messages: number;
   };
   conversation_pin_toggled: {
     pinned: boolean;

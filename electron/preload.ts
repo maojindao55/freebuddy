@@ -149,6 +149,8 @@ const cli = {
     ipcRenderer.invoke("cli:previewHandoffBrief", input),
   transferConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:transferConversation", input),
+  forkConversation: (input: unknown) =>
+    ipcRenderer.invoke("cli:forkConversation", input),
   createConversationShare: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversationShare", input),
   attachConversationShares: (input: unknown) =>

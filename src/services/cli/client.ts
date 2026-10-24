@@ -47,6 +47,8 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult,
+  ForkConversationInput,
+  ForkConversationResult,
   ImportCodexSessionResult,
   CreateConversationShareInput,
   CreateConversationShareResult,
@@ -279,6 +281,9 @@ export const cliClient = {
 
   transferConversation(input: TransferConversationInput): Promise<TransferConversationResult> {
     return api().transferConversation(input);
+  },
+  forkConversation(input: ForkConversationInput): Promise<ForkConversationResult> {
+    return api().forkConversation(input);
   },
   importCodexSession(sessionId: string): Promise<ImportCodexSessionResult> {
     return api().importCodexSession(sessionId);

@@ -114,6 +114,11 @@ import {
 } from "./sessionOwners.js";
 import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
 import { importCodexSession } from "./codexRolloutImport.js";
+import {
+  forkConversation,
+  type ForkConversationInput,
+  type ForkConversationResult
+} from "./conversationFork.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { setTelemetryEnabled, trackTelemetryEvent } from "../telemetry.js";
 import { normalizeTelemetryAdapter } from "../telemetryPrivacy.js";
@@ -1499,7 +1504,19 @@ export function registerCliIpc() {
         warning: brief ? undefined : "brief_extraction_failed"
       };
     }
-  );  registerHandler(
+  );
+  registerHandler(
+    "cli:forkConversation",
+    (_e, input: ForkConversationInput): ForkConversationResult => {
+      const result = forkConversation(input);
+      trackTelemetryEvent("conversation_forked", {
+        copied_messages: result.copiedMessages
+      });
+      notifyConversationsChanged();
+      return result;
+    }
+  );
+  registerHandler(
     "cli:createConversationShare",
     (
       _e,

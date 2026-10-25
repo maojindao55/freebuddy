@@ -738,6 +738,7 @@ export interface ConversationMessage {
   /** For assistant messages: JSON-serialized CliStreamItem[]; for user: text. */
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;
@@ -779,6 +780,7 @@ export interface AppendMessageInput {
   status: MessageStatus;
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;

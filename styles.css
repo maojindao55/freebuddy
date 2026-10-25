@@ -10998,7 +10998,7 @@ button.new-task-context-control {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  color: var(--fb-brand);
+  color: var(--fb-link);
   font-size: 11px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -11017,7 +11017,7 @@ button.new-task-context-control {
 .context-reference-card-meta,
 .context-reference-card-description {
   overflow: hidden;
-  color: var(--fb-text-tertiary);
+  color: var(--fb-text-secondary);
   font-size: 11px;
   line-height: 1.4;
   text-overflow: ellipsis;
@@ -11160,27 +11160,38 @@ button.new-task-context-control {
   position: relative;
 }
 
-.slash-command-menu {
-  margin: 0;
-  padding: 6px;
-  list-style: none;
-  border-bottom: 1px solid var(--fb-border);
-  background: var(--fb-panel-soft);
-  max-height: 180px;
-  overflow-y: auto;
+/* Slash is a keyboard shortcut into the same per-message skill selection. */
+.skill-command-menu {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--fb-border);
+  border-radius: 12px;
+  background: var(--fb-panel-bg);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .16);
+  overflow: hidden;
+  text-align: left;
 }
-
-.slash-command-menu-empty {
-  padding: 8px 12px;
+.skill-command-heading, .skill-command-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
   color: var(--fb-text-tertiary);
-  font-size: 12px;
+  font-size: 11px;
+  flex-shrink: 0;
 }
-
-.slash-command-option {
-  display: grid;
-  gap: 2px;
+.skill-command-heading { justify-content: space-between; border-bottom: 1px solid var(--fb-border); }
+.skill-command-heading strong { color: var(--fb-text-primary); font-size: 12px; font-weight: 600; }
+.skill-command-menu ul { min-height: 0; max-height: 260px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; }
+.skill-command-menu p { padding: 18px 12px; margin: 0; color: var(--fb-text-secondary); font-size: 12px; }
+.skill-command-option {
+  display: flex;
+  align-items: flex-start;
   width: 100%;
-  padding: 8px 10px;
+  gap: 10px;
+  padding: 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -11188,23 +11199,22 @@ button.new-task-context-control {
   text-align: left;
   cursor: pointer;
 }
-
-.slash-command-option:hover,
-.slash-command-option.active {
-  background: var(--fb-panel-bg);
-}
-
-.slash-command-name {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.slash-command-description,
-.slash-command-hint {
-  color: var(--fb-text-tertiary);
-  font-size: 12px;
-  line-height: 1.4;
-}
+.skill-command-option.active, .skill-command-option:hover { background: var(--fb-hover); }
+.skill-command-icon { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border: 1px solid var(--fb-border); border-radius: 8px; color: var(--fb-brand); }
+.skill-command-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.skill-command-copy strong { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.skill-command-copy > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--fb-text-secondary); font-size: 12px; line-height: 1.45; }
+.skill-command-footer { border-top: 1px solid var(--fb-border); padding-top: 8px; padding-bottom: 8px; }
+.composer-message-skills, .message-skill-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.composer-message-skills { padding: 10px 14px 0; }
+.message-skill-tags { margin-bottom: 8px; }
+.message-skill-tag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 5px 7px; border: 1px solid var(--fb-border); border-radius: 6px; background: var(--fb-panel-soft); color: var(--fb-text-primary); font-size: 12px; line-height: 1.2; }
+.message-skill-tag > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-skill-tag > svg { flex-shrink: 0; color: var(--fb-brand); }
+.message-skill-tag button { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--fb-text-tertiary); cursor: pointer; }
+.message-skill-tag button:hover { background: var(--fb-hover); color: var(--fb-text-primary); }
+.message-skill-tag button:focus-visible, .skill-command-option:focus-visible { outline: 2px solid var(--fb-brand); outline-offset: 1px; }
+.message-skills-scope { color: var(--fb-text-tertiary); font-size: 11px; }
 
 .workspace-file-mention-menu {
   max-height: 220px;
@@ -28997,4 +29007,79 @@ button.ghost:focus-visible,
   text-align: left;
   font-size: 11px;
   color: var(--fb-text-tertiary);
+}
+
+/* Conversation references reuse the composer's existing tag and modal tokens. */
+.composer-conversation-references { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 2px; }
+.conversation-reference-tag { max-width: min(320px, 100%); }
+.conversation-reference-tag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-reference-tag > svg, .conversation-reference-tag > button { flex-shrink: 0; }
+.conversation-reference-picker.modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; padding: 24px; gap: 16px; }
+.conversation-reference-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.conversation-reference-heading h3 { margin: 0; font-size: 18px; }
+.conversation-reference-heading > button { display: flex; padding: 5px; border: 0; background: transparent; color: var(--fb-text-secondary); }
+.conversation-reference-picker > p { margin: -8px 0 0; color: var(--fb-text-secondary); font-size: 13px; line-height: 1.6; }
+.modal .conversation-reference-search { display: flex; flex-direction: row; align-items: center; gap: 10px; border: 1px solid var(--fb-border); background: var(--fb-panel-soft); border-radius: 9px; padding: 10px 12px; color: var(--fb-text-tertiary); }
+.conversation-reference-search:focus-within { outline: 2px solid var(--fb-brand); outline-offset: 2px; }
+.conversation-reference-picker .conversation-reference-search input { flex: 1; min-width: 0; width: 0; padding: 0; border: 0; outline: none; box-shadow: none; background: transparent; color: var(--fb-text-primary); font: inherit; font-size: 13px; }
+.conversation-reference-list { min-height: 120px; max-height: 340px; overflow: auto; margin: 0 -6px; padding: 2px 6px; }
+.conversation-reference-option { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 9px; cursor: pointer; color: var(--fb-text-secondary); }
+.conversation-reference-option.is-highlighted { background: var(--fb-hover); }
+.conversation-reference-option > span:first-of-type { flex: 1; min-width: 0; display: grid; gap: 5px; }
+.conversation-reference-option strong { font-size: 14px; font-weight: 500; color: var(--fb-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-reference-option small { color: var(--fb-text-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-reference-check { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid var(--fb-text-tertiary); border-radius: 5px; flex-shrink: 0; }
+.conversation-reference-check.is-selected { color: white; border-color: var(--fb-brand); background: var(--fb-brand); }
+.conversation-reference-empty { padding: 30px 12px; color: var(--fb-text-secondary); font-size: 13px; text-align: center; }
+.conversation-reference-footer { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--fb-border); padding-top: 16px; }
+.conversation-reference-footer > span { margin-right: auto; color: var(--fb-text-secondary); font-size: 12px; }
+.conversation-reference-footer > button { padding: 7px 12px; font-size: 13px; }
+@media (max-width: 480px) { .conversation-reference-picker.modal { padding: 18px; } }
+
+.conversation-reference-picker .conversation-reference-search input:focus { outline: none; border: 0; box-shadow: none; }
+
+.conv-item[draggable="true"] { cursor: grab; }
+.conv-item[draggable="true"]:active { cursor: grabbing; }
+.chat-composer.conversation-drop-active,
+.new-task-composer.conversation-drop-active {
+  border-color: var(--fb-brand);
+  box-shadow: 0 0 0 2px var(--fb-brand-glow), var(--fb-shadow);
+}
+.conversation-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: inherit;
+  background: var(--fb-panel-bg);
+  color: var(--fb-link);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* A manually expanded sidebar remains usable beside the browser at small widths. */
+@media (min-width: 761px) {
+  .app-shell.browser-preview-visible:not(.sidebar-collapsed) {
+    grid-template-columns: 272px minmax(0, 1fr) var(--fb-detail-width, 440px);
+  }
+  .browser-preview-visible .chat-composer {
+    left: var(--fb-sidebar-width, 272px);
+    right: var(--fb-detail-width, 440px);
+    width: min(820px, calc(100vw - var(--fb-sidebar-width, 272px) - var(--fb-detail-width, 440px) - 44px));
+  }
+}
+
+@media (min-width: 761px) {
+  .browser-preview-visible .chat-composer {
+    container: browser-composer / inline-size;
+  }
+}
+@container browser-composer (max-width: 360px) {
+  .composer-tail .composer-hint { display: none; }
+  .chat-composer-actions { gap: 8px; }
+  .composer-tail { flex-shrink: 0; }
 }

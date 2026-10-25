@@ -476,6 +476,8 @@ async function runCliAgent(
     access: executionArgs.workspaceAccess, approval: executionArgs.approvalMode,
     mcpServerIds: mcpServerIds.slice().sort(),
     mcpConfig: mcpConfigFingerprint(mcpServerIds),
+    skills: (executionArgs.skills ?? []).map(({ id, contentHash, rootPath }) =>
+      ({ id, contentHash, rootPath })).sort((a, b) => a.id.localeCompare(b.id)),
   })).digest("hex");
   const reused = warmKey ? acpProcessPool.take(warmKey, warmFingerprint, toolSessionId) : undefined;
   const child = reused?.child ?? spawn(spawnCommand.bin, spawnCommand.args, {

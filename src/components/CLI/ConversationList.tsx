@@ -16,6 +16,7 @@ import { usePermissionStore } from "@/store/permissionStore";
 import { useAuthenticationStore } from "@/store/authenticationStore";
 import { RUNNING_PANEL_STATUSES, selectConversationPanelStatus } from "./conversationPanelData";
 import type { Conversation, Project } from "@/services/cli/types";
+import { writeConversationDrag } from "@/utils/conversationDrag";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -88,6 +89,14 @@ const ConversationRow = memo(function ConversationRow({
       tabIndex={0}
       aria-current={isActive ? "true" : undefined}
       title={visibleTitle}
+      draggable
+      onDragStart={(event) => {
+        if ((event.target as HTMLElement).closest("input, textarea, button, select, [contenteditable=true]")) {
+          event.preventDefault();
+          return;
+        }
+        writeConversationDrag(event.dataTransfer, conversation.id);
+      }}
       onClick={() => onSelect(conversation.id)}
       onKeyDown={(event) => {
         const target = event.target as HTMLElement | null;

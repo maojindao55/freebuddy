@@ -23,6 +23,7 @@ import {
   GitBranch,
   Laptop,
   Layers,
+  MessagesSquare,
   Plus,
   Search,
   Server,
@@ -95,10 +96,15 @@ import { AgentAvatar } from "./AgentAvatar";
 import { CodeWhipOverlay } from "./CodeWhipOverlay";
 import { DelegationTeamPreviewCard } from "../Workflows/DelegationTeamPreviewCard";
 import { DelegationApprovalCard } from "../Workflows/DelegationApprovalCard";
-import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
+import { SlashCommandMenu } from "./SlashCommandMenu";
+import { MessageSkillTags } from "./MessageSkillTags";
+import { ConversationReferencePicker, ConversationReferenceTags } from "./ConversationReferencePicker";
+import { buildReferencedPrompt, mergeConversationReferences, type ConversationReferenceDraft } from "@/utils/conversationReferences";
+import { useSkillCommands } from "@/hooks/useSkillCommands";
+import type { SkillSnapshot } from "@/services/skills/types";
+import { mergeMessageSkills } from "@/utils/skillCommands";
 import {
   mergeSessionMetaItems,
-  type AvailableCommandItem,
   type ConfigOptionItem
 } from "@/store/sessionMetaUtils";
 import {
@@ -121,6 +127,7 @@ import { NewTaskUnreadConversations } from "./NewTaskUnreadConversations";
 import { conversationVisibleTitle } from "./conversationTitle";
 import { HostDirectoryPicker } from "./HostDirectoryPicker";
 import { useSkillStore } from "@/store/skillStore";
+import { useConversationReferenceDrop } from "@/hooks/useConversationReferenceDrop";
 import { useAttachmentImport } from "@/hooks/useAttachmentImport";
 import { useWorkspaceFileMentions } from "@/hooks/useWorkspaceFileMentions";
 import { resolveDeferredAttachmentImport } from "@/utils/attachmentImport";
@@ -950,9 +957,10 @@ export function ChatView({
   const setConfigOptionOverrides = useConversationStore(
     (s) => s.setConversationConfigOptionOverrides
   );
-  const setConversationSkills = useConversationStore((s) => s.setConversationSkills);
   const skills = useSkillStore((s) => s.skills);
   const skillsLoaded = useSkillStore((s) => s.loaded);
+  const skillsLoading = useSkillStore((s) => s.loading);
+  const skillsError = useSkillStore((s) => s.error);
   const loadSkills = useSkillStore((s) => s.load);
 
   const taskMode = useNewTaskUiStore((s) => s.taskMode);
@@ -1000,6 +1008,23 @@ export function ChatView({
   const providers = useProviderStore((s) => s.providers);
 
   const [draft, setDraft] = useState("");
+  const [messageSkillDrafts, setMessageSkillDrafts] = useState<Record<string, SkillSnapshot[]>>({});
+  const messageSkills = activeId ? messageSkillDrafts[activeId] ?? [] : [];
+  const setMessageSkills = useCallback((selected: SkillSnapshot[]) => {
+    if (activeId) setMessageSkillDrafts(current => ({ ...current, [activeId]: selected }));
+  }, [activeId]);
+  const referenceScope = activeId ?? "new-task";
+  const [referenceDrafts, setReferenceDrafts] = useState<Record<string, ConversationReferenceDraft[]>>({});
+  const selectedReferences = referenceDrafts[referenceScope] ?? [];
+  const setSelectedReferences = useCallback((references: ConversationReferenceDraft[]) => {
+    setReferenceDrafts(current => ({ ...current, [referenceScope]: references }));
+  }, [referenceScope]);
+  const [referencePickerScope, setReferencePickerScope] = useState<string>();
+  useEffect(() => setReferencePickerScope(undefined), [referenceScope]);
+  const referencePicker = referencePickerScope === referenceScope ? <ConversationReferencePicker
+    key={referenceScope} targetId={activeId} selected={selectedReferences} onChange={setSelectedReferences}
+    onClose={() => setReferencePickerScope(undefined)} /> : null;
+  const [newTaskMessageSkills, setNewTaskMessageSkills] = useState<SkillSnapshot[]>([]);
   const [historyReveal, setHistoryReveal] = useState(INITIAL_VISIBLE_MESSAGES);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [newTaskDraft, setNewTaskDraft] = useState("");
@@ -1014,7 +1039,6 @@ export function ChatView({
   const { checkingAgentIds, checkAgentEntries } = useAgentAvailabilityChecks();
   const initialAgentDetectionStartedRef = useRef(false);
   const memberSelectionTouchedRef = useRef(false);
-  const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
   const [newTaskMcpServerIds, setNewTaskMcpServerIds] = useState<string[]>([]);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState<string | undefined>();
@@ -1059,6 +1083,7 @@ export function ChatView({
     createdAt: string;
     userMessageId: string;
     assistantMessageId: string;
+    skillSnapshot?: SkillSnapshot[];
   } | null>(null);
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<{
     runId: string;
@@ -1106,7 +1131,6 @@ export function ChatView({
     snapTargetRef.current = el.scrollHeight - el.clientHeight;
     el.scrollTop = el.scrollHeight;
   }, []);
-  const [slashIndex, setSlashIndex] = useState(0);
   const conv = conversations.find((c) => c.id === activeId);
 
   const conversationMcpServerIds = useMemo(() => {
@@ -1154,7 +1178,7 @@ export function ChatView({
     return () => {
       active = false;
     };
-  }, [activeId]);
+  }, [activeId, messages.length]);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowFollowupAgent =
     activeRun && activeRun.conversationId === conv?.id
@@ -1265,7 +1289,7 @@ export function ChatView({
   const sessionMeta = useMemo(() => {
     if (!conv) {
       return {
-        commands: [] as AvailableCommandItem[],
+        commands: [],
         configOptions: [] as ConfigOptionItem[]
       };
     }
@@ -1283,7 +1307,6 @@ export function ChatView({
       live?.items
     );
   }, [conv, live?.items, messages]);
-  const availableCommands = sessionMeta.commands;
   const sessionConfigOptions = sessionMeta.configOptions;
 
   // Persist the thought_level candidates an agent reports for each model while
@@ -1312,7 +1335,6 @@ export function ChatView({
       .catch(() => {});
   }, [conv?.agentId, sessionConfigOptions]);
 
-  const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
   const projects = useProjectStore((s) => s.projects);
   const conversationProject = useMemo(() => {
     if (!conv?.projectId) return undefined;
@@ -1344,6 +1366,17 @@ export function ChatView({
     onChange: setDraft,
     textareaRef: chatTextareaRef
   });
+  const messageSkillsDisabled = Boolean(sending || sendLock || pendingWorkflowAction ||
+    conv?.kind === "workflow" || conv?.kind === "delegation");
+  const referenceTags = <ConversationReferenceTags references={selectedReferences} disabled={sendLock || newTaskSendLock || sending || Boolean(pendingWorkflowAction)}
+    onRemove={id => {
+      setSelectedReferences(selectedReferences.filter(reference => reference.id !== id));
+      window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".chat-composer textarea, .new-task-composer textarea")?.focus());
+    }} />;
+  const skillCommands = useSkillCommands({
+    draft, onDraft: setDraft, skills, selected: messageSkills, onSelected: setMessageSkills,
+    textareaRef: chatTextareaRef, scopeKey: activeId, disabled: messageSkillsDisabled
+  });
   const workflowPlan = useMemo<WorkflowPlan | null>(() => {
     if (!activeRun || activeRun.conversationId !== conv?.id) return null;
     try {
@@ -1374,18 +1407,6 @@ export function ChatView({
     activeRun?.status === "blocked" ||
     activeRun?.status === "pending_approval";
 
-  const filteredSlashCommands = useMemo(() => {
-    if (!slashDraft) return [];
-    const query = slashDraft.query.trim().toLowerCase();
-    return availableCommands.filter((command) =>
-      command.name.toLowerCase().startsWith(query)
-    );
-  }, [availableCommands, slashDraft]);
-
-  useEffect(() => {
-    setSlashIndex(0);
-  }, [draft]);
-
   useEffect(() => {
     if (!approvedWorkflowGate) return;
     if (
@@ -1409,6 +1430,7 @@ export function ChatView({
         status: "sent",
         content: submitPreview.prompt,
         attachments: submitPreview.attachments,
+        skillSnapshot: submitPreview.skillSnapshot,
         authorUsername: currentUser?.username ?? null,
         createdAt: submitPreview.createdAt,
         updatedAt: submitPreview.createdAt
@@ -1521,10 +1543,8 @@ export function ChatView({
   }, [loadSkills, skillsLoaded]);
 
   useEffect(() => {
-    if (activeId || taskMode !== "normal") return;
-    const selectedMember = members.find((entry) => entry.id === selectedMemberId);
-    setNewTaskSkillIds(selectedMember?.cli.skillIds ?? []);
-  }, [activeId, members, selectedMemberId, taskMode]);
+    if (teamMode) setNewTaskMessageSkills([]);
+  }, [teamMode]);
 
   useEffect(() => {
     const generation = ++newTaskConfigProbeGenerationRef.current;
@@ -1768,6 +1788,7 @@ export function ChatView({
     if (activeId) return;
     if (cwdRequestToken === 0) return;
     setNewTaskDraft(requestedDraft ?? "");
+    setNewTaskMessageSkills([]);
     if (requestedAttachments !== undefined) {
       setNewTaskPendingAttachments(requestedAttachments);
     }
@@ -2157,6 +2178,30 @@ export function ChatView({
     onImport: (files) => void handleImportAttachments("new", files)
   });
 
+  const conversationDrop = useConversationReferenceDrop({
+    conversations,
+    targetId: conv?.id,
+    scopeKey: referenceScope,
+    disabled: attachmentBusy || (conv ? sending || sendLock || Boolean(pendingWorkflowAction) : newTaskSendLock),
+    onAdd: reference => setSelectedReferences(mergeConversationReferences(selectedReferences, [reference])),
+    onReject: reason => notify(t(reason === "self" ? "contextShare.cannotReferenceSelf" : "contextShare.dragSourceUnavailable"))
+  });
+  const composerAttachmentImport = conv ? chatAttachmentImport : newTaskAttachmentImport;
+  const composerDropHandlers = {
+    onDragEnter: (event: DragEvent) => {
+      if (!conversationDrop.handleDragEnter(event)) composerAttachmentImport.handleDragEnter(event);
+    },
+    onDragLeave: (event: DragEvent) => {
+      if (!conversationDrop.handleDragLeave(event)) composerAttachmentImport.handleDragLeave(event);
+    },
+    onDragOver: (event: DragEvent) => {
+      if (!conversationDrop.handleDragOver(event)) composerAttachmentImport.handleDragOver(event);
+    },
+    onDrop: (event: DragEvent) => {
+      if (!conversationDrop.handleDrop(event)) composerAttachmentImport.handleDrop(event);
+    }
+  };
+
   const handleRemovePendingAttachment = (id: string) => {
     if (attachmentBusy || sendLock || sendInFlightRef.current) return;
     setPendingAttachments((prev) => {
@@ -2259,12 +2304,13 @@ export function ChatView({
     setPreflightMsg(null);
 
     try {
+      const outgoingPrompt = await buildReferencedPrompt(prompt, selectedReferences, cliClient.createConversationShare);
       if (teamMode) {
         const team = allTeams.find((tt) => tt.id === selectedTeamId)!;
         if (isDelegationTeam(team)) {
           const preparedWorkspace = await prepareWorkspaceForNewTask();
           const cwd = preparedWorkspace?.cwd;
-          const goal = composeMessageWithAttachments(prompt, attachmentsToSend);
+          const goal = composeMessageWithAttachments(outgoingPrompt, attachmentsToSend);
           const res = await delegationClient.createRun({
             teamId: team.id,
             goal,
@@ -2273,6 +2319,7 @@ export function ChatView({
           if (!res.ok) {
             throw new Error(res.error);
           }
+          setSelectedReferences([]);
           setNewTaskDraft("");
           setNewTaskPendingAttachments((prev) =>
             detachAttachmentsForSend(attachmentsToSend, prev)
@@ -2299,14 +2346,15 @@ export function ChatView({
             fallback: team.name
           }),
           approvalMode: permissionMode,
-          skillIds: newTaskSkillIds
+          skillIds: teamMember.cli.skillIds
         });
         const attached = await cliClient.attachConversationShares({
           targetConversationId: newConv.id,
-          text: prompt
+          text: outgoingPrompt
         });
         setContextReferences(attached.references);
         setNewTaskDraft("");
+        setNewTaskMessageSkills([]);
         setNewTaskPendingAttachments((prev) =>
           detachAttachmentsForSend(attachmentsToSend, prev)
         );
@@ -2317,7 +2365,7 @@ export function ChatView({
           conversationId: newConv.id,
           role: "user",
           status: "sent",
-          content: prompt,
+          content: outgoingPrompt,
           attachments: attachmentsToSend
         });
         useConversationStore.setState((s) => ({
@@ -2330,7 +2378,7 @@ export function ChatView({
                 conversationId: newConv.id,
                 role: "user",
                 status: "sent",
-                content: prompt,
+                content: outgoingPrompt,
                 ...(attachmentsToSend.length
                   ? { attachments: savedUser.attachments ?? attachmentsToSend }
                   : {}),
@@ -2343,13 +2391,14 @@ export function ChatView({
         const started = await createAndStartTeam({
           teamId: team.id,
           conversationId: newConv.id,
-          goal: composeMessageWithAttachments(prompt, attachmentsToSend),
+          goal: composeMessageWithAttachments(outgoingPrompt, attachmentsToSend),
           cwd
         });
         if (!started) {
           const errors = useWorkflowStore.getState().pendingErrors;
           throw new Error(errors.length ? errors.join("; ") : "workflow did not start");
         }
+        setSelectedReferences([]);
         await loadWorkflowForConversation(newConv.id);
         return;
       }
@@ -2374,27 +2423,30 @@ export function ChatView({
           fallback: t("chat.defaultAttachmentTitle")
         }),
         approvalMode: permissionMode,
-        configOptionOverrides: newTaskConfigOptionOverrides,
-        skillIds: newTaskSkillIds
+        configOptionOverrides: newTaskConfigOptionOverrides
       });
       setPreferredAgentId(selectedMember.id);
       const attached = await cliClient.attachConversationShares({
         targetConversationId: newConv.id,
-        text: prompt
+        text: outgoingPrompt
       });
       setContextReferences(attached.references);
       setNewTaskDraft("");
+      setNewTaskMessageSkills([]);
       setNewTaskPendingAttachments((prev) =>
         detachAttachmentsForSend(attachmentsToSend, prev)
       );
       await sendMessage({
         conversationId: newConv.id,
-        prompt,
+        prompt: outgoingPrompt,
         attachments: attachmentsToSend,
-        approvalModeOverride: permissionMode
+        approvalModeOverride: permissionMode,
+        messageSkills: newTaskMessageSkills
       });
+      setSelectedReferences([]);
     } catch (e) {
       setNewTaskDraft(prompt);
+      setNewTaskMessageSkills(newTaskMessageSkills);
       setNewTaskPendingAttachments((prev) =>
         restoreAttachmentsForSend(attachmentsToSend, prev)
       );
@@ -2409,11 +2461,6 @@ export function ChatView({
       setNewTaskSendLock(false);
       window.setTimeout(focusComposer, 0);
     }
-  };
-
-  const handleSelectSlashCommand = (command: AvailableCommandItem) => {
-    setDraft(`/${command.name} `);
-    chatTextareaRef.current?.focus();
   };
 
   const resolveWorkflowFollowupMember = async () => {
@@ -2441,6 +2488,7 @@ export function ChatView({
     if (attachmentBusy || sendInFlightRef.current || sendLock || sending) return;
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
+    const skillsToSend = messageSkills;
 
     if (pendingWorkflowAction) {
       if (!conv || !prompt || sending) return;
@@ -2455,6 +2503,9 @@ export function ChatView({
 
     try {
       if (pendingWorkflowAction) {
+        const outgoingPrompt = await buildReferencedPrompt(prompt, selectedReferences, cliClient.createConversationShare, conv!.id);
+        const attached = await cliClient.attachConversationShares({ targetConversationId: conv!.id, text: outgoingPrompt });
+        setContextReferences(attached.references);
         setPreflightMsg(null);
         isNearBottomRef.current = true;
         const userMessageId = nanoid();
@@ -2468,7 +2519,7 @@ export function ChatView({
             conversationId: conv!.id,
             role: "user",
             status: "sent",
-            content: prompt,
+            content: outgoingPrompt,
             attachments: attachmentsToSend
           });
           useConversationStore.setState((s) => ({
@@ -2481,7 +2532,7 @@ export function ChatView({
                   conversationId: conv!.id,
                   role: "user",
                   status: "sent",
-                  content: prompt,
+                  content: outgoingPrompt,
                   ...(attachmentsToSend.length
                     ? { attachments: savedUser.attachments ?? attachmentsToSend }
                     : {}),
@@ -2494,9 +2545,10 @@ export function ChatView({
           const ok = await requestGateChanges(
             pendingWorkflowAction.runId,
             pendingWorkflowAction.phaseId,
-            composeMessageWithAttachments(prompt, attachmentsToSend)
+            composeMessageWithAttachments(outgoingPrompt, attachmentsToSend)
           );
           if (ok) {
+            setSelectedReferences([]);
             setPendingWorkflowAction(null);
           } else {
             setPreflightMsg(t("workflow.requestChangesFailed"));
@@ -2530,16 +2582,19 @@ export function ChatView({
         attachments: attachmentsToSend,
         createdAt: new Date().toISOString(),
         userMessageId,
-        assistantMessageId
+        assistantMessageId,
+        skillSnapshot: skillsToSend
       };
       setSubmitPreview(preview);
       setDraft("");
+      setMessageSkills([]);
       focusComposer();
       setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
 
       if (!(await preflightMember(targetMember))) {
         setSubmitPreview(null);
         setDraft(prompt);
+        setMessageSkills(skillsToSend);
         setPendingAttachments((prev) =>
           restoreAttachmentsForSend(attachmentsToSend, prev)
         );
@@ -2547,11 +2602,13 @@ export function ChatView({
         return;
       }
 
+      const outgoingPrompt = await buildReferencedPrompt(prompt, selectedReferences, cliClient.createConversationShare, conv.id);
       const attached = await cliClient.attachConversationShares({
         targetConversationId: conv.id,
-        text: prompt
+        text: outgoingPrompt
       });
       setContextReferences(attached.references);
+      setSubmitPreview({ ...preview, prompt: outgoingPrompt });
       if (attached.attachedCount > 0) {
         notify(t("contextShare.linkAttached"));
       }
@@ -2562,13 +2619,15 @@ export function ChatView({
         delegationClient.isAvailable() &&
         (await delegationClient.hasRunForConversation(conv.id))
       ) {
+        if (skillsToSend.length) throw new Error(t("chat.teamSkillsHint"));
         const res = await delegationClient.followUp({
           conversationId: conv.id,
-          prompt: composeMessageWithAttachments(prompt, attachmentsToSend)
+          prompt: composeMessageWithAttachments(outgoingPrompt, attachmentsToSend)
         });
         if (!res.ok) {
           throw new Error(res.error);
         }
+        setSelectedReferences([]);
         await useConversationStore.getState().loadMessages(conv.id);
         setSubmitPreview(null);
         return;
@@ -2576,17 +2635,20 @@ export function ChatView({
 
       await sendMessage({
         conversationId: conv.id,
-        prompt,
+        prompt: outgoingPrompt,
         attachments: attachmentsToSend,
         userMessageId,
         assistantMessageId,
         approvalModeOverride: permissionMode,
-        hiddenContext: getPromptContext?.()
+        hiddenContext: getPromptContext?.(),
+        messageSkills: skillsToSend
       });
+      setSelectedReferences([]);
       setSubmitPreview(null);
     } catch (e) {
       setSubmitPreview(null);
       setDraft(prompt);
+      setMessageSkills(skillsToSend);
       setPendingAttachments((prev) =>
         restoreAttachmentsForSend(attachmentsToSend, prev)
       );
@@ -2611,12 +2673,16 @@ export function ChatView({
       conversationId: conv.id,
       prompt,
       attachments: attachmentsToSend,
+      messageSkills,
+      conversationReferences: selectedReferences,
       fireAt
     });
     protectManagedAttachments(attachmentsToSend);
     if (previous) unprotectManagedAttachments(previous.attachments);
     setPreflightMsg(null);
     setDraft("");
+    setMessageSkills([]);
+    setSelectedReferences([]);
     setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
     window.setTimeout(focusComposer, 0);
   };
@@ -2626,6 +2692,8 @@ export function ChatView({
     const entry = removeScheduledSend(conv.id);
     if (!entry) return;
     unprotectManagedAttachments(entry.attachments);
+    setMessageSkills(mergeMessageSkills(messageSkills, entry.messageSkills ?? []));
+    setSelectedReferences(mergeConversationReferences(selectedReferences, entry.conversationReferences ?? []));
     setDraft((current) =>
       current.trim() ? `${entry.prompt}\n${current}` : entry.prompt
     );
@@ -2745,7 +2813,14 @@ export function ChatView({
         configOptionOverrides={newTaskConfigOptionOverrides}
         configOptionsLoading={newTaskConfigLoading}
         skills={skills}
-        selectedSkillIds={newTaskSkillIds}
+        skillsLoading={skillsLoading}
+        skillsError={skillsError}
+        onReloadSkills={loadSkills}
+        messageSkills={newTaskMessageSkills}
+        onMessageSkills={setNewTaskMessageSkills}
+        referenceTags={referenceTags}
+        referencePicker={referencePicker}
+        onSelectConversationReference={() => setReferencePickerScope(referenceScope)}
         mcpServerIds={newTaskMcpServerIds}
         onMcpServerIds={setNewTaskMcpServerIds}
         onOpenMcpSettings={onOpenMcpSettings}
@@ -2851,7 +2926,6 @@ export function ChatView({
               .catch(() => {});
           }
         }}
-        onSkills={setNewTaskSkillIds}
         onCwd={(cwd) => {
           void applyNewTaskWorkspace(cwd);
         }}
@@ -2862,11 +2936,12 @@ export function ChatView({
         onSelectAttachments={() => void handleSelectAttachments("new")}
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
         attachmentBusy={attachmentBusy}
+        conversationDropActive={conversationDrop.dragActive}
         attachmentDropActive={newTaskAttachmentImport.dragActive}
-        onAttachmentDragEnter={newTaskAttachmentImport.handleDragEnter}
-        onAttachmentDragLeave={newTaskAttachmentImport.handleDragLeave}
-        onAttachmentDragOver={newTaskAttachmentImport.handleDragOver}
-        onAttachmentDrop={newTaskAttachmentImport.handleDrop}
+        onAttachmentDragEnter={composerDropHandlers.onDragEnter}
+        onAttachmentDragLeave={composerDropHandlers.onDragLeave}
+        onAttachmentDragOver={composerDropHandlers.onDragOver}
+        onAttachmentDrop={composerDropHandlers.onDrop}
         onAttachmentPaste={newTaskAttachmentImport.handlePaste}
         onTaskMode={(m) => {
           setTaskMode(m);
@@ -2887,6 +2962,7 @@ export function ChatView({
 
   return (
     <div className={`chat-view${variant === "mini" ? " chat-view-mini" : ""}`}>
+      {referencePicker}
       {variant !== "mini" && <CodeWhipOverlay />}
       <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
         {isGuide && variant !== "mini" && (
@@ -3102,12 +3178,14 @@ export function ChatView({
                 status: "sent",
                 content: scheduledSend.prompt,
                 attachments: scheduledSend.attachments,
+                skillSnapshot: scheduledSend.messageSkills,
                 authorUsername: currentUser?.username ?? null,
                 createdAt: new Date(scheduledSend.createdAt).toISOString(),
                 updatedAt: new Date(scheduledSend.createdAt).toISOString()
               }}
               cwd={conv.cwd || conv.sourceCwd}
-              afterContent={
+              afterContent={<>
+                <ConversationReferenceTags references={scheduledSend.conversationReferences ?? []} />
                 <ScheduledSendMeta
                   entry={scheduledSend}
                   now={scheduledSendNow}
@@ -3116,7 +3194,7 @@ export function ChatView({
                   onEdit={onEditScheduledSend}
                   onCancel={onCancelScheduledSend}
                 />
-              }
+              </>}
             />
           </div>
         ) : null}
@@ -3155,12 +3233,15 @@ export function ChatView({
       {conv && <DelegationApprovalCard conversationId={conv.id} />}
 
       <div
-        className={`chat-composer${variant === "mini" ? " chat-composer-mini" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}`}
-        onDragEnter={chatAttachmentImport.handleDragEnter}
-        onDragLeave={chatAttachmentImport.handleDragLeave}
-        onDragOver={chatAttachmentImport.handleDragOver}
-        onDrop={chatAttachmentImport.handleDrop}
+        className={`chat-composer${variant === "mini" ? " chat-composer-mini" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}${conversationDrop.dragActive ? " conversation-drop-active" : ""}`}
+        onDragEnter={composerDropHandlers.onDragEnter}
+        onDragLeave={composerDropHandlers.onDragLeave}
+        onDragOver={composerDropHandlers.onDragOver}
+        onDrop={composerDropHandlers.onDrop}
       >
+        {conversationDrop.dragActive && <div className="conversation-drop-overlay" role="status">
+          <MessagesSquare size={20} aria-hidden="true" />{t("contextShare.dropToReference")}
+        </div>}
         {chatAttachmentImport.dragActive ? (
           <div className="attachment-drop-overlay" aria-hidden="true">
             {t("chat.dropAttachmentsHint")}
@@ -3183,6 +3264,9 @@ export function ChatView({
           onRemove={handleRemovePendingAttachment}
           removeDisabled={attachmentBusy || sendLock}
         />
+        {referenceTags}
+        <MessageSkillTags skills={messageSkills} disabled={messageSkillsDisabled}
+          onRemove={skillCommands.remove} />
         <div className="composer-input-wrap">
           {chatFileMentions.active ? (
             <WorkspaceFileMentionMenu
@@ -3191,13 +3275,10 @@ export function ChatView({
               loading={chatFileMentions.loading}
               onSelect={chatFileMentions.selectMatch}
             />
-          ) : slashDraft && availableCommands.length > 0 ? (
-            <SlashCommandMenu
-              commands={availableCommands}
-              query={slashDraft.query}
-              selectedIndex={slashIndex}
-              onSelect={handleSelectSlashCommand}
-            />
+          ) : skillCommands.active ? (
+            <SlashCommandMenu anchorRef={chatTextareaRef} id={skillCommands.id} skills={skillCommands.matches} query={skillCommands.query}
+              selectedIndex={skillCommands.selectedIndex} onSelect={skillCommands.select} onHighlight={skillCommands.setSelectedIndex}
+              loading={skillsLoading} error={skillsError} onRetry={loadSkills} />
           ) : null}
           <textarea
             ref={chatTextareaRef}
@@ -3210,43 +3291,23 @@ export function ChatView({
                 ? t("workflow.requestChangesPlaceholder")
                 : sending
                 ? t("chat.agentRunning")
-                : availableCommands.length > 0
+                : messageSkills.length ? t("chat.skillTaskPlaceholder")
+                : !messageSkillsDisabled && skills.some(skill => skill.enabled && skill.trusted)
                   ? t("chat.inputPlaceholderWithSlash")
                   : t("chat.inputPlaceholder"))
             }
-            onChange={chatFileMentions.handleChange}
+            aria-autocomplete="list"
+            aria-haspopup="listbox"
+            aria-controls={skillCommands.active ? skillCommands.id : undefined}
+            aria-activedescendant={skillCommands.active && skillCommands.matches.length ? `${skillCommands.id}-${skillCommands.selectedIndex}` : undefined}
+            onChange={event => { chatFileMentions.handleChange(event); skillCommands.handleChange(event); }}
+            onBlur={skillCommands.handleBlur}
             onClick={chatFileMentions.handleCaretChange}
             onKeyUp={chatFileMentions.handleCaretChange}
-            onPaste={chatAttachmentImport.handlePaste}
+            onPaste={event => { skillCommands.handlePaste(); chatAttachmentImport.handlePaste(event); }}
             onKeyDown={(e) => {
               if (chatFileMentions.handleKeyDown(e)) return;
-              if (slashDraft && filteredSlashCommands.length > 0) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setSlashIndex((index) => (index + 1) % filteredSlashCommands.length);
-                  return;
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setSlashIndex(
-                    (index) =>
-                      (index - 1 + filteredSlashCommands.length) %
-                      filteredSlashCommands.length
-                  );
-                  return;
-                }
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  const selected = filteredSlashCommands[slashIndex];
-                  if (selected) handleSelectSlashCommand(selected);
-                  return;
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setDraft("");
-                  return;
-                }
-              }
+              if (skillCommands.handleKeyDown(e)) return;
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 if (!attachmentBusy && !sendLock && !sending) void onSend();
@@ -3258,23 +3319,23 @@ export function ChatView({
           <div className="composer-tools">
             <ComposerAddMenu
               skills={skills}
-              selectedIds={conv?.skillSnapshot.map((skill) => skill.id) ?? []}
-              requiredIds={member?.requiredSkillIds}
+              selectedIds={messageSkills.map(skill => skill.id)}
+              requiredIds={[]}
               pluginAgent={pluginAgentForAdapter(member?.cli.adapter ?? conv?.adapter)}
               attachmentDisabled={
                 sending ||
                 attachmentBusy ||
                 pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
               }
-              skillsDisabled={sending}
+              skillsDisabled={messageSkillsDisabled}
               pluginsDisabled={sending}
+              onSelectConversationReference={() => setReferencePickerScope(referenceScope)}
+              referencesDisabled={sending || sendLock || attachmentBusy || Boolean(pendingWorkflowAction)}
               onSelectAttachments={() => void handleSelectAttachments("chat")}
               onSelectPlugin={(plugin) =>
                 insertPluginMention(draft, plugin, chatTextareaRef.current, setDraft)
               }
-              onSkillsChange={(ids) => {
-                if (conv?.id) void setConversationSkills(conv.id, ids);
-              }}
+              onSkillsChange={skillCommands.selectIds}
             />
             {currentUser?.isOwner !== false && window.freebuddy?.platform !== "web" ? (
               <McpServerPicker
@@ -3441,7 +3502,14 @@ function NewTaskHome({
   configOptionOverrides,
   configOptionsLoading,
   skills,
-  selectedSkillIds,
+  skillsLoading,
+  skillsError,
+  onReloadSkills,
+  messageSkills,
+  onMessageSkills,
+  referenceTags,
+  referencePicker,
+  onSelectConversationReference,
   mcpServerIds = [],
   onMcpServerIds,
   onOpenMcpSettings,
@@ -3452,7 +3520,6 @@ function NewTaskHome({
   onRefreshAgents,
   onManageAgents,
   onConfigOptionOverrides,
-  onSkills,
   onCwd,
   onWorkspaceMode,
   onBranch,
@@ -3462,6 +3529,7 @@ function NewTaskHome({
   onRemoveAttachment,
   attachmentBusy,
   sendLocked,
+  conversationDropActive,
   attachmentDropActive,
   onAttachmentDragEnter,
   onAttachmentDragLeave,
@@ -3492,7 +3560,14 @@ function NewTaskHome({
   configOptionOverrides: Record<string, string>;
   configOptionsLoading: boolean;
   skills: ReturnType<typeof useSkillStore.getState>["skills"];
-  selectedSkillIds: string[];
+  skillsLoading: boolean;
+  skillsError?: string;
+  onReloadSkills: () => void;
+  messageSkills: SkillSnapshot[];
+  onMessageSkills: (value: SkillSnapshot[]) => void;
+  referenceTags: ReactNode;
+  referencePicker: ReactNode;
+  onSelectConversationReference: () => void;
   mcpServerIds?: string[];
   onMcpServerIds?: (ids: string[]) => void;
   onOpenMcpSettings?: () => void;
@@ -3503,7 +3578,6 @@ function NewTaskHome({
   onRefreshAgents: () => void;
   onManageAgents: () => void;
   onConfigOptionOverrides: (value: Record<string, string>) => void;
-  onSkills: (ids: string[]) => void;
   onCwd: (value: string) => void;
   onWorkspaceMode: (value: TaskWorkspaceMode) => void;
   onBranch: (value: string) => void;
@@ -3513,6 +3587,7 @@ function NewTaskHome({
   onRemoveAttachment: (id: string) => void;
   attachmentBusy: boolean;
   sendLocked: boolean;
+  conversationDropActive: boolean;
   attachmentDropActive: boolean;
   onAttachmentDragEnter: (event: DragEvent) => void;
   onAttachmentDragLeave: (event: DragEvent) => void;
@@ -3548,6 +3623,10 @@ function NewTaskHome({
     roots: workspaceRoots,
     onChange: onDraft,
     textareaRef
+  });
+  const skillCommands = useSkillCommands({
+    draft, onDraft, skills, selected: messageSkills, onSelected: onMessageSkills,
+    textareaRef, scopeKey: selectedMemberId, disabled: sendLocked || teamMode
   });
   const workspaceParts = cwd.trim().split(/[\\/]/).filter(Boolean);
   const workspaceName = workspaceParts[workspaceParts.length - 1] || cwd.trim();
@@ -3608,13 +3687,16 @@ function NewTaskHome({
         </div>
 
         <section
-          className={`new-task-composer${attachmentDropActive ? " attachment-drop-active" : ""}`}
+          className={`new-task-composer${attachmentDropActive ? " attachment-drop-active" : ""}${conversationDropActive ? " conversation-drop-active" : ""}`}
           aria-label={t("chat.newTaskAria")}
           onDragEnter={onAttachmentDragEnter}
           onDragLeave={onAttachmentDragLeave}
           onDragOver={onAttachmentDragOver}
           onDrop={onAttachmentDrop}
         >
+        {conversationDropActive && <div className="conversation-drop-overlay" role="status">
+          <MessagesSquare size={20} aria-hidden="true" />{t("contextShare.dropToReference")}
+        </div>}
         {attachmentDropActive ? (
           <div className="attachment-drop-overlay" aria-hidden="true">
             {t("chat.dropAttachmentsHint")}
@@ -3625,6 +3707,10 @@ function NewTaskHome({
           onRemove={onRemoveAttachment}
           removeDisabled={attachmentBusy || sendLocked}
         />
+        {referencePicker}
+        {referenceTags}
+        <MessageSkillTags skills={messageSkills} disabled={sendLocked || teamMode}
+          onRemove={skillCommands.remove} />
         {fileMentions.active ? (
           <WorkspaceFileMentionMenu
             matches={fileMentions.matches}
@@ -3632,6 +3718,10 @@ function NewTaskHome({
             loading={fileMentions.loading}
             onSelect={fileMentions.selectMatch}
           />
+        ) : skillCommands.active ? (
+          <SlashCommandMenu anchorRef={textareaRef} id={skillCommands.id} skills={skillCommands.matches} query={skillCommands.query}
+            selectedIndex={skillCommands.selectedIndex} onSelect={skillCommands.select} onHighlight={skillCommands.setSelectedIndex}
+            loading={skillsLoading} error={skillsError} onRetry={onReloadSkills} />
         ) : null}
         <textarea
           ref={textareaRef}
@@ -3639,13 +3729,19 @@ function NewTaskHome({
           rows={4}
           value={draft}
           disabled={attachmentBusy}
-          placeholder={t("chat.inputPlaceholder")}
-          onChange={fileMentions.handleChange}
+          placeholder={t(messageSkills.length ? "chat.skillTaskPlaceholder" : !teamMode && skills.some(skill => skill.enabled && skill.trusted) ? "chat.inputPlaceholderWithSlash" : "chat.inputPlaceholder")}
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-controls={skillCommands.active ? skillCommands.id : undefined}
+          aria-activedescendant={skillCommands.active && skillCommands.matches.length ? `${skillCommands.id}-${skillCommands.selectedIndex}` : undefined}
+          onChange={event => { fileMentions.handleChange(event); skillCommands.handleChange(event); }}
+          onBlur={skillCommands.handleBlur}
           onClick={fileMentions.handleCaretChange}
           onKeyUp={fileMentions.handleCaretChange}
-          onPaste={onAttachmentPaste}
+          onPaste={event => { skillCommands.handlePaste(); onAttachmentPaste(event); }}
           onKeyDown={(event) => {
             if (fileMentions.handleKeyDown(event)) return;
+            if (skillCommands.handleKeyDown(event)) return;
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               if (!attachmentBusy && !sendLocked) onSubmit();
@@ -3656,23 +3752,20 @@ function NewTaskHome({
         <div className="new-task-toolbar">
           <ComposerAddMenu
             skills={skills}
-            selectedIds={selectedSkillIds}
-            requiredIds={
-              agentAvailability.available.find(
-                (entry) => entry.member.id === selectedMemberId
-              )?.member.requiredSkillIds
-            }
+            selectedIds={messageSkills.map(skill => skill.id)}
             pluginAgent={pluginAgent}
             attachmentDisabled={
               attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
             }
-            skillsDisabled={sendLocked}
+            skillsDisabled={sendLocked || teamMode}
             pluginsDisabled={sendLocked}
+            onSelectConversationReference={onSelectConversationReference}
+            referencesDisabled={sendLocked || attachmentBusy}
             onSelectAttachments={onSelectAttachments}
             onSelectPlugin={(plugin) =>
               insertPluginMention(draft, plugin, textareaRef.current, onDraft)
             }
-            onSkillsChange={onSkills}
+            onSkillsChange={skillCommands.selectIds}
           />
           {currentUser?.isOwner !== false &&
           window.freebuddy?.platform !== "web" &&

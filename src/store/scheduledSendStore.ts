@@ -1,12 +1,16 @@
 import { create } from "zustand";
+import type { ConversationReferenceDraft } from "@/utils/conversationReferences";
 
 import type { ChatAttachment } from "@/services/cli/types";
+import type { SkillSnapshot } from "@/services/skills/types";
 import type { ScheduledSendStatus } from "@/utils/scheduledSend";
 
 export interface ScheduledSend {
   conversationId: string;
   prompt: string;
   attachments: ChatAttachment[];
+  messageSkills?: SkillSnapshot[];
+  conversationReferences?: ConversationReferenceDraft[];
   /** Epoch milliseconds at which the message should be sent. */
   fireAt: number;
   createdAt: number;
@@ -23,6 +27,8 @@ interface ScheduledSendState {
     conversationId: string;
     prompt: string;
     attachments: ChatAttachment[];
+    messageSkills?: SkillSnapshot[];
+    conversationReferences?: ConversationReferenceDraft[];
     fireAt: number;
   }): ScheduledSend;
   /** Moves the fire time to now; the runner sends it on its next tick. */
@@ -38,12 +44,14 @@ export const useScheduledSendStore = create<ScheduledSendState>((set, get) => ({
   entries: {},
   now: Date.now(),
 
-  schedule({ conversationId, prompt, attachments, fireAt }) {
+  schedule({ conversationId, prompt, attachments, messageSkills, conversationReferences, fireAt }) {
     const now = Date.now();
     const entry: ScheduledSend = {
       conversationId,
       prompt,
       attachments,
+      messageSkills,
+      conversationReferences,
       fireAt,
       createdAt: now,
       status: "pending"

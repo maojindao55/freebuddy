@@ -92,3 +92,40 @@ test("sessionMetaUtils reads the latest metadata from assistant messages", async
     updatedAt: "2026-06-23T12:00:00.000Z"
   });
 });
+
+test("session metadata ignores legacy command lists persisted as truncated strings", async () => {
+  const { latestAvailableCommandsFromItems, latestAvailableCommandsFromMessages, mergeSessionMetaItems } =
+    await loadSessionMetaUtils();
+  for (const commands of ['[{"name":"help"},\n… [truncated]', { name: "help" }, null, 42]) {
+    const items = [{ kind: "available-commands", commands }];
+    const messages = [{ role: "assistant", content: JSON.stringify(items) }];
+    assert.deepEqual(latestAvailableCommandsFromItems(items), []);
+    assert.deepEqual(latestAvailableCommandsFromMessages(messages), []);
+    assert.deepEqual(mergeSessionMetaItems(items, undefined).commands, []);
+  }
+});
+
+test("invalid live command metadata falls back to usable persisted commands", async () => {
+  const { mergeSessionMetaItems } = await loadSessionMetaUtils();
+  const saved = [{ kind: "available-commands", commands: [{ name: "help" }] }];
+  const live = [{ kind: "available-commands", commands: "… [truncated]" }];
+  assert.deepEqual(mergeSessionMetaItems(saved, live).commands, [{ name: "help" }]);
+});
+
+test("malformed command entries cannot crash filtering or rendering", async () => {
+  const { mergeSessionMetaItems } = await loadSessionMetaUtils();
+  const items = [{
+    kind: "available-commands",
+    commands: [
+      null, "help", {}, { name: 123 }, { name: " " },
+      { name: " help ", description: "Show help", inputHint: "topic" },
+      { name: "review", description: { text: "bad" }, inputHint: ["bad"] }
+    ]
+  }];
+  const { commands } = mergeSessionMetaItems(items, undefined);
+  assert.deepEqual(commands, [
+    { name: "help", description: "Show help", inputHint: "topic" },
+    { name: "review" }
+  ]);
+  assert.deepEqual(commands.filter(command => command.name.toLowerCase().startsWith("h")), [commands[0]]);
+});

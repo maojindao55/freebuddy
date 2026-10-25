@@ -8,6 +8,7 @@ import {
   notifyConversationsChanged,
   requireOwnedConversation
 } from "./conversations.js";
+import { attachConversationSharesFromText } from "./conversationContext.js";
 import { getDelegationTeam } from "./delegationTeams.js";
 import {
   DelegationRuntime,
@@ -101,6 +102,7 @@ export function registerDelegationIpc(): void {
         cwd: input.cwd,
         approvalMode: "auto"
       });
+      attachConversationSharesFromText(conversationId, input.goal);
       appendMessage({
         id: randomUUID(),
         conversationId,

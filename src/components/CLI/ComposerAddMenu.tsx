@@ -1,4 +1,4 @@
-import { ChevronRight, FileSpreadsheet, Package, Plus, Search, Sparkles, UploadCloud } from "lucide-react";
+import { ChevronRight, FileSpreadsheet, MessagesSquare, Package, Plus, Search, Sparkles, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -46,6 +46,8 @@ export function ComposerAddMenu({
   onSkillsChange,
   onSelectPlugin,
   onSelectAttachments,
+  onSelectConversationReference,
+  referencesDisabled = false,
   attachmentDisabled = false,
   skillsDisabled = false,
   pluginsDisabled = false
@@ -57,6 +59,8 @@ export function ComposerAddMenu({
   onSkillsChange: (ids: string[]) => void;
   onSelectPlugin: (plugin: NativePluginRecord) => void;
   onSelectAttachments: () => void;
+  onSelectConversationReference?: () => void;
+  referencesDisabled?: boolean;
   attachmentDisabled?: boolean;
   skillsDisabled?: boolean;
   pluginsDisabled?: boolean;
@@ -99,7 +103,7 @@ export function ComposerAddMenu({
     0
   );
   const disabled =
-    attachmentDisabled && skillsDisabled && (!pluginAgent || pluginsDisabled);
+    attachmentDisabled && skillsDisabled && (!pluginAgent || pluginsDisabled) && (!onSelectConversationReference || referencesDisabled);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +213,10 @@ export function ComposerAddMenu({
               <UploadCloud className="composer-add-menu-icon" aria-hidden="true" />
               <span>{t("chat.addFile")}</span>
             </button>
+            {onSelectConversationReference && <button className="composer-add-menu-item" type="button" role="menuitem" disabled={referencesDisabled}
+              onClick={() => { setOpen(false); setActivePanel(undefined); onSelectConversationReference(); }}>
+              <MessagesSquare className="composer-add-menu-icon" aria-hidden="true" /><span>{t("contextShare.addReference")}</span>
+            </button>}
             {/* DocStudio entry is desktop-dev only until the feature ships broadly. */}
             {import.meta.env.DEV ? (
               <button
@@ -279,10 +287,10 @@ export function ComposerAddMenu({
             <div
               className="composer-add-skills-panel"
               role="group"
-              aria-label={t("skills.selectionAria")}
+              aria-label={t("chat.messageSkills")}
             >
               <div className="composer-add-skills-heading">
-                <strong>{t("skills.activeForTask")}</strong>
+                <strong>{t("chat.messageSkills")}</strong>
                 <span>{selectedAvailableCount}/{available.length}</span>
               </div>
               <label className="composer-add-skills-search">

@@ -6,6 +6,7 @@ import {
   resolveAgentRunError
 } from "@freebuddy/agent-runtime";
 import { cliRun } from "./runtime.js";
+import { conversationContextPromptPrefix, listResolvedConversationContextPayloads } from "./conversationContext.js";
 import type { CliRunArgs } from "./runtimeShared.js";
 import { appendMessage, updateMessage } from "./conversations.js";
 import { serializeStreamItemsForPersist } from "./messagePayloadSanitize.js";
@@ -104,7 +105,13 @@ export function createDelegateAgentRunner(webContents: WebContents | undefined):
     }
 
     try {
-      await cliRun(webContents as WebContents, args, (e) => {
+      const contextReferences = conversationId ? listResolvedConversationContextPayloads(conversationId) : [];
+      const runArgs = contextReferences.length ? {
+        ...args,
+        prompt: `${conversationContextPromptPrefix(contextReferences)}${args.prompt}`,
+        contextReferences
+      } : args;
+      await cliRun(webContents as WebContents, runArgs, (e) => {
         if (e.type === "items") {
           const items = (e as { items?: unknown[] }).items;
           if (items?.length) {

@@ -406,3 +406,24 @@ test("followup history skips UI-only messages, excluded current turns, and live 
   assert.equal(recent[0].id, "turn-8");
   assert.equal(recent.at(-1).id, "turn-19");
 });
+
+
+test("message-scoped skills survive database reload without changing conversation defaults", async t => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const { createConversation, appendMessage, getMessage, getConversation } = await import("../dist-electron/cli/conversations.js");
+  migrate(db);
+  db.exec("ALTER TABLE conversation_messages DROP COLUMN skill_snapshot");
+  migrate(db);
+  setDbForTest(db);
+  try {
+    createConversation(baseInput("message-skills"));
+    const selected = { id: "review", name: "代码审查", description: "Review changes", version: "1", source: "imported", rootPath: "/skills/review", contentHash: "hash" };
+    appendMessage({ id: "selected-skill-message", conversationId: "message-skills", role: "user", status: "sent", content: "检查改动", skillSnapshot: [selected] });
+    assert.deepEqual(getMessage("selected-skill-message").skillSnapshot, [selected]);
+    assert.deepEqual(getConversation("message-skills").skillSnapshot, []);
+    appendMessage({ id: "plain-message", conversationId: "message-skills", role: "user", status: "sent", content: "普通消息" });
+    assert.equal(getMessage("plain-message").skillSnapshot, undefined);
+  } finally { setDbForTest(null); db.close(); }
+});

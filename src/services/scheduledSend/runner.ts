@@ -1,4 +1,6 @@
 import i18next from "i18next";
+import { cliClient } from "@/services/cli/client";
+import { buildReferencedPrompt } from "@/utils/conversationReferences";
 
 import { delegationClient } from "@/services/delegation/client";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
@@ -44,21 +46,25 @@ export async function fireScheduledSend(entry: ScheduledSend): Promise<void> {
   scheduled.setStatus(conv.id, "sending");
 
   try {
+    const prompt = await buildReferencedPrompt(entry.prompt, entry.conversationReferences ?? [], cliClient.createConversationShare, conv.id);
+    await cliClient.attachConversationShares({ targetConversationId: conv.id, text: prompt });
     if (
       delegationClient.isAvailable() &&
       (await delegationClient.hasRunForConversation(conv.id))
     ) {
+      if (entry.messageSkills?.length) throw new Error(i18next.t("chat.teamSkillsHint"));
       const res = await delegationClient.followUp({
         conversationId: conv.id,
-        prompt: composeMessageWithAttachments(entry.prompt, entry.attachments)
+        prompt: composeMessageWithAttachments(prompt, entry.attachments)
       });
       if (!res.ok) throw new Error(res.error);
       await useConversationStore.getState().loadMessages(conv.id);
     } else {
       await useConversationStore.getState().sendMessage({
         conversationId: conv.id,
-        prompt: entry.prompt,
+        prompt,
         attachments: entry.attachments,
+        messageSkills: entry.messageSkills,
         approvalModeOverride: conv.approvalMode
       });
     }

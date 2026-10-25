@@ -1002,6 +1002,7 @@ export function upsertConversationMessage(
   next[index] = {
     ...previous,
     ...message,
+    skillSnapshot: message.skillSnapshot ?? previous.skillSnapshot,
     attachments: mergeMessageAttachments(message, previous)
   };
   return next;
@@ -1024,6 +1025,7 @@ export function mergeConversationMessages(
       continue;
     }
     const attachments = mergeMessageAttachments(message, previous);
+    const skillSnapshot = message.skillSnapshot ?? previous.skillSnapshot;
     const sequence = message.sequence ?? previous.sequence;
     if (
       previous.createdAt === message.createdAt &&
@@ -1031,7 +1033,8 @@ export function mergeConversationMessages(
       previous.status === message.status &&
       previous.content === message.content &&
       previous.updatedAt === message.updatedAt &&
-      previous.attachments === attachments
+      previous.attachments === attachments &&
+      previous.skillSnapshot === skillSnapshot
     ) {
       continue;
     }
@@ -1039,6 +1042,7 @@ export function mergeConversationMessages(
       ...previous,
       ...message,
       sequence,
+      skillSnapshot,
       attachments
     });
     changed = true;

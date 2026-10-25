@@ -97,6 +97,8 @@ export interface ConversationContextReference {
   id: string;
   snapshotId: string;
   targetConversationId: string;
+  /** First user message introducing this share in the complete history. */
+  targetMessageId?: string;
   referenceType: ConversationContextReferenceType;
   source: HandoffBriefSource;
   transcriptAvailable: boolean;
@@ -119,6 +121,8 @@ export interface CreateConversationShareResult {
 export interface AttachConversationSharesInput {
   targetConversationId: string;
   text: string;
+  /** UI hint before the message is saved; not persisted with the reference. */
+  targetMessageId?: string;
 }
 
 export interface AttachConversationSharesResult {

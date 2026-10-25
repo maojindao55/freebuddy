@@ -192,7 +192,8 @@ function snapshotIdForToken(token: string): string | undefined {
 
 export function attachConversationSharesFromText(
   targetConversationId: string,
-  text: string
+  text: string,
+  targetMessageId?: string
 ): AttachConversationSharesResult {
   const tokens = extractConversationShareTokens(text);
   if (tokens.length === 0) {
@@ -203,6 +204,7 @@ export function attachConversationSharesFromText(
   }
 
   let attachedCount = 0;
+  const attachedSnapshotIds = new Set<string>();
   db().transaction(() => {
     for (const token of tokens) {
       const snapshotId = snapshotIdForToken(token);
@@ -220,12 +222,21 @@ export function attachConversationSharesFromText(
         snapshotId,
         referenceType: "share"
       });
+      attachedSnapshotIds.add(snapshotId);
       if (!before) attachedCount += 1;
     }
   })();
 
+  const references = listConversationContextReferences(targetConversationId);
   return {
-    references: listConversationContextReferences(targetConversationId),
+    references: references.map((reference) =>
+      targetMessageId &&
+      reference.referenceType === "share" &&
+      !reference.targetMessageId &&
+      attachedSnapshotIds.has(reference.snapshotId)
+        ? { ...reference, targetMessageId }
+        : reference
+    ),
     attachedCount
   };
 }
@@ -355,9 +366,60 @@ export function listConversationContextReferences(
        ORDER BY r.created_at`
     )
     .all(targetConversationId) as any[];
-  return rows
+  const references = rows
     .map(referenceFromRow)
     .filter((value): value is ConversationContextReference => Boolean(value));
+  const shareSnapshotIds = new Set(
+    references
+      .filter((reference) => reference.referenceType === "share")
+      .map((reference) => reference.snapshotId)
+  );
+  if (shareSnapshotIds.size === 0) return references;
+
+  // Resolve against the complete persisted history, independently of the UI's
+  // loaded page. Token expiry/revocation prevents new attachment, but must not
+  // move a card that was already introduced by a historical message.
+  const tokenRows = db()
+    .prepare(
+      `SELECT t.token_hash, t.snapshot_id
+       FROM conversation_share_tokens t
+       JOIN conversation_context_refs r ON r.snapshot_id = t.snapshot_id
+       WHERE r.target_conversation_id = ? AND r.reference_type = 'share'`
+    )
+    .all(targetConversationId) as { token_hash: string; snapshot_id: string }[];
+  const snapshotIdsByTokenHash = new Map(
+    tokenRows.map((row) => [row.token_hash, row.snapshot_id])
+  );
+  if (snapshotIdsByTokenHash.size === 0) return references;
+
+  const messageIdsBySnapshotId = new Map<string, string>();
+  const messages = db()
+    .prepare(
+      `SELECT id, content FROM conversation_messages
+       WHERE conversation_id = ? AND role = 'user' AND instr(content, ?) > 0
+       ORDER BY created_at ASC, rowid ASC`
+    )
+    .iterate(targetConversationId, SHARE_LINK_PREFIX) as Iterable<{
+    id: string;
+    content: string;
+  }>;
+  for (const message of messages) {
+    for (const token of extractConversationShareTokens(message.content)) {
+      const snapshotId = snapshotIdsByTokenHash.get(hashToken(token));
+      if (snapshotId && !messageIdsBySnapshotId.has(snapshotId)) {
+        messageIdsBySnapshotId.set(snapshotId, message.id);
+      }
+    }
+    if (messageIdsBySnapshotId.size === shareSnapshotIds.size) break;
+  }
+
+  return references.map((reference) => {
+    const targetMessageId =
+      reference.referenceType === "share"
+        ? messageIdsBySnapshotId.get(reference.snapshotId)
+        : undefined;
+    return targetMessageId ? { ...reference, targetMessageId } : reference;
+  });
 }
 
 export function removeConversationContextReference(

@@ -28,47 +28,26 @@ export function countConversationShareLinks(text: string): number {
   return extractConversationShareTokens(text).length;
 }
 
-/** Pair share refs to the user messages whose text introduced them. */
+/** Only display a share ref on the user message that introduced it. */
 export function assignShareReferencesToMessages<
-  T extends { id: string; role: string; content: string; createdAt: string }
+  T extends { id: string; conversationId: string; role: string }
 >(
   messages: T[],
   references: ConversationContextReference[]
 ): Map<string, ConversationContextReference[]> {
-  const shareRefs = references
-    .filter((reference) => reference.referenceType === "share")
-    .slice()
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   const assigned = new Map<string, ConversationContextReference[]>();
-  if (shareRefs.length === 0) return assigned;
+  const userMessages = messages.filter((message) => message.role === "user");
+  const messagesById = new Map(userMessages.map((message) => [message.id, message]));
 
-  let nextRef = 0;
-  const userMessages = messages
-    .filter((message) => message.role === "user")
-    .slice()
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-
-  for (const message of userMessages) {
-    const linkCount = countConversationShareLinks(message.content);
-    if (linkCount === 0 || nextRef >= shareRefs.length) continue;
-    const take = Math.min(linkCount, shareRefs.length - nextRef);
-    assigned.set(message.id, shareRefs.slice(nextRef, nextRef + take));
-    nextRef += take;
-  }
-
-  if (nextRef < shareRefs.length) {
-    const leftovers = shareRefs.slice(nextRef);
-    const fallbackId =
-      [...assigned.keys()].at(-1) ??
-      userMessages.find((message) => countConversationShareLinks(message.content) > 0)
-        ?.id ??
-      userMessages.at(-1)?.id;
-    if (fallbackId) {
-      assigned.set(fallbackId, [
-        ...(assigned.get(fallbackId) ?? []),
-        ...leftovers
-      ]);
-    }
+  for (const reference of references) {
+    if (reference.referenceType !== "share" || !reference.targetMessageId) continue;
+    const message = messagesById.get(reference.targetMessageId);
+    // The original message may be on an unloaded history page. A stale response
+    // from another conversation must not attach its refs to this conversation.
+    if (!message || message.conversationId !== reference.targetConversationId) continue;
+    const existing = assigned.get(message.id) ?? [];
+    existing.push(reference);
+    assigned.set(message.id, existing);
   }
 
   return assigned;

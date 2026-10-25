@@ -14,6 +14,7 @@ export type MainSettingsTab =
   | "plugins"
   | "feed"
   | "usage"
+  | "archived"
   | "remote"
   | "about";
 
@@ -68,6 +69,7 @@ const SETTINGS_TABS = new Set<MainSettingsTab>([
   "plugins",
   "feed",
   "usage",
+  "archived",
   "remote",
   "about"
 ]);

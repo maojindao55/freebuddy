@@ -21,6 +21,7 @@ import type { Conversation, Project } from "@/services/cli/types";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 import {
+  Archive,
   CheckCheck,
   ChevronDown,
   ChevronUp,
@@ -95,6 +96,9 @@ const ConversationRow = memo(function ConversationRow({
   const setConversationPinned = useConversationStore(
     (s) => s.setConversationPinned
   );
+  const archiveConversation = useConversationStore(
+    (s) => s.archiveConversation
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const visibleTitle = useConversationVisibleTitle(conversation);
   const showOwner = currentUser?.isOwner === true;
@@ -114,6 +118,15 @@ const ConversationRow = memo(function ConversationRow({
     setConversationPinned(conversation.id, !conversation.pinned).catch((error) => {
       if (import.meta.env?.DEV) {
         console.warn("[FreeBuddy] Failed to pin conversation:", error);
+      }
+    });
+  };
+
+  const handleArchive = () => {
+    if (isBusy) return;
+    archiveConversation(conversation.id, true).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to archive conversation:", error);
       }
     });
   };
@@ -169,6 +182,22 @@ const ConversationRow = memo(function ConversationRow({
           <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
         )}
       </div>
+      {!isBusy && (
+        <div className="conv-item-archive">
+          <button
+            type="button"
+            className="icon-btn conv-archive-button"
+            title={t("conversationPanel.archive")}
+            aria-label={t("conversationPanel.archive")}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleArchive();
+            }}
+          >
+            <Archive aria-hidden="true" size={14} strokeWidth={1.75} />
+          </button>
+        </div>
+      )}
       <div className={`conv-item-menu${menuOpen ? " open" : ""}`}>
         <Dropdown
           open={menuOpen}
@@ -187,7 +216,6 @@ const ConversationRow = memo(function ConversationRow({
                   ? t("conversations.unpinConversation")
                   : t("conversations.pinConversation")
               },
-              { type: "divider" },
               {
                 key: "move",
                 icon: <FolderInput size={14} aria-hidden="true" />,
@@ -204,11 +232,33 @@ const ConversationRow = memo(function ConversationRow({
                     disabled: !conversation.projectId
                   }
                 ]
+              },
+              {
+                key: "archive",
+                icon: <Archive size={14} aria-hidden="true" />,
+                label: t("conversationPanel.archive"),
+                disabled: isBusy
+              },
+              { type: "divider" },
+              {
+                key: "delete",
+                icon: <Trash2 size={14} aria-hidden="true" />,
+                label: t("common.delete"),
+                danger: true,
+                disabled: deletionBlocked
               }
             ],
             onClick: ({ key }) => {
               if (key === "pin") {
                 handleTogglePinned();
+                return;
+              }
+              if (key === "archive") {
+                handleArchive();
+                return;
+              }
+              if (key === "delete") {
+                onDelete(conversation.id, visibleTitle);
                 return;
               }
               if (typeof key === "string" && key.startsWith("move:")) {
@@ -221,8 +271,8 @@ const ConversationRow = memo(function ConversationRow({
           <button
             type="button"
             className="icon-btn conv-menu-button"
-            title={t("conversations.moveToProject")}
-            aria-label={t("conversations.moveToProject")}
+            title={t("conversations.projectMenu")}
+            aria-label={t("conversations.projectMenu")}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={(event) => event.stopPropagation()}
@@ -251,17 +301,6 @@ const ConversationRow = memo(function ConversationRow({
                 title={t("conversations.unread")}
               />
             )}
-            {!deletionBlocked && <button
-              className="conv-delete-button icon-btn danger"
-              title={t("common.delete")}
-              aria-label={t("common.delete")}
-              onClick={(event) => {
-                event.stopPropagation();
-                onDelete(conversation.id, visibleTitle);
-              }}
-            >
-              <X aria-hidden="true" />
-            </button>}
           </>
         )}
       </div>

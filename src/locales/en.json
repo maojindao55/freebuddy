@@ -1253,11 +1253,22 @@
       "plugins": "Plugins",
       "feed": "Information Cards",
       "usage": "Usage",
+      "archived": "Archived",
       "workflowTeams": "Workflow Teams",
       "remote": "Shared",
       "about": "About",
       "providers": "Providers",
       "mcp": "MCP Servers"
+    },
+    "archived": {
+      "title": "Archived conversations",
+      "subtitle": "Archived conversations stay out of the main view. Restore them anytime.",
+      "searchPlaceholder": "Search archived conversations",
+      "count": "{{count}} conversation(s)",
+      "empty": "No archived conversations yet.",
+      "loading": "Loading…",
+      "retry": "Retry",
+      "restore": "Restore"
     },
     "cli": {
       "title": "Cli Agents",

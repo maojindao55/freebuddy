@@ -57,7 +57,7 @@ jobs:
             tokscale_arch: arm64
             assets: |
               FreeBuddy_macOS-Apple-Silicon-__VERSION__.dmg|*.dmg
-              FreeBuddy_macOS-Apple-Silicon-__VERSION__.zip|*.zip
+              FreeBuddy_macOS-Apple-Silicon-arm64-__VERSION__.zip|*.zip
           - platform: macos-latest
             builder_args: --mac --x64
             tokscale_platform: darwin
@@ -176,7 +176,8 @@ jobs:
           repo="${{ github.repository }}"
           version_suffix="v$(node -p "require('./package.json').version")"
           arm_dmg="FreeBuddy_macOS-Apple-Silicon-${version_suffix}.dmg"
-          arm_zip="FreeBuddy_macOS-Apple-Silicon-${version_suffix}.zip"
+          # electron-updater detects macOS architecture from "arm64" in the ZIP URL.
+          arm_zip="FreeBuddy_macOS-Apple-Silicon-arm64-${version_suffix}.zip"
           x64_dmg="FreeBuddy_macOS-Intel-${version_suffix}.dmg"
           x64_zip="FreeBuddy_macOS-Intel-${version_suffix}.zip"
           yml=$(find release -maxdepth 1 -name latest-mac.yml -type f | head -1)

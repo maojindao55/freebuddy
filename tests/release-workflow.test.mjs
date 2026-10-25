@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { MacUpdater } from "electron-updater/out/MacUpdater.js";
+import { findFile, parseUpdateInfo, resolveFiles } from "electron-updater/out/providers/Provider.js";
 
 const packageJson = JSON.parse(
   fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")
@@ -48,7 +55,7 @@ test("release workflow uploads version-suffixed assets and update metadata for e
   assert.match(workflow, /node scripts\/release-notes\.mjs --version "\$\{\{ env\.RELEASE_TAG \}\}"/);
   assert.match(workflow, /--notes-file \.release-notes\.md/);
   assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-__VERSION__\.dmg/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-__VERSION__\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-arm64-__VERSION__\.zip/);
   assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.dmg/);
   assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.zip/);
   assert.match(workflow, /FreeBuddy_Windows_x64-__VERSION__\.exe/);
@@ -76,7 +83,7 @@ test("release workflow uploads version-suffixed assets and update metadata for e
   assert.doesNotMatch(buildStep, /CSC_KEY_PASSWORD:/);
   assert.match(workflow, /gh release upload/);
   assert.match(workflow, /Upload macOS update metadata/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-\$\{version_suffix\}\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-arm64-\$\{version_suffix\}\.zip/);
   assert.match(workflow, /FreeBuddy_macOS-Intel-\$\{version_suffix\}\.zip/);
   // Auto-update metadata: latest.yml rewritten to the version-suffixed Windows name.
   assert.match(workflow, /Upload Windows update metadata/);
@@ -94,6 +101,51 @@ test("release workflow uploads version-suffixed assets and update metadata for e
     workflow,
     /FreeBuddy-\[0-9\]\+\\.\[0-9\]\+\\.\[0-9\]\+-linux-\(amd64\|x64\|x86_64\)\\.deb/
   );
+});
+
+test("merged macOS update metadata selects the published ZIP for each actual updater architecture", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-mac-update-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const suffix = `v${packageJson.version}`;
+  const publishedName = (platform) => {
+    const template = workflow.match(new RegExp(`^\\s+(FreeBuddy_macOS-${platform}-[^\\s|]+\\.zip)\\|\\*\\.zip$`, "m"))?.[1];
+    assert.ok(template, `missing published ZIP asset for ${platform}`);
+    return template.replace("__VERSION__", suffix);
+  };
+  const armZip = publishedName("Apple-Silicon");
+  const intelZip = publishedName("Intel");
+  const metadataName = variable => workflow.match(new RegExp(`${variable}="([^"]+)"`))?.[1]
+    .replace("${version_suffix}", suffix);
+  assert.equal(metadataName("arm_zip"), armZip, "ARM metadata and uploaded ZIP names must match");
+  assert.equal(metadataName("x64_zip"), intelZip, "Intel metadata and uploaded ZIP names must match");
+  assert.match(workflow, /"\$\{arm_zip\}\.blockmap"/, "ARM blockmap uses the same updated asset name");
+
+  const hashes = new Map();
+  const writeMetadata = (arch, zip) => {
+    const zipBody = Buffer.from(`sample ${arch} update ZIP`);
+    const hash = createHash("sha512").update(zipBody).digest("base64");
+    hashes.set(zip, hash);
+    const target = path.join(directory, `latest-mac-${arch}.yml`);
+    fs.writeFileSync(target, `version: ${packageJson.version}\nfiles:\n  - url: ${zip}\n    sha512: ${hash}\n    size: ${zipBody.length}\npath: ${zip}\nsha512: ${hash}\nreleaseDate: '2026-10-25T00:00:00.000Z'\n`);
+    return target;
+  };
+  const armMetadata = writeMetadata("arm64", armZip);
+  const intelMetadata = writeMetadata("x64", intelZip);
+  const mergedPath = path.join(directory, "latest-mac.yml");
+  execFileSync(process.execPath, [
+    fileURLToPath(new URL("../scripts/merge-mac-latest-yml.mjs", import.meta.url)),
+    armMetadata, intelMetadata, mergedPath
+  ]);
+  const baseUrl = new URL(`https://github.com/maojindao55/freebuddy/releases/download/${suffix}/`);
+  const updateInfo = parseUpdateInfo(fs.readFileSync(mergedPath, "utf8"), "latest-mac.yml", new URL("latest-mac.yml", baseUrl));
+  const files = resolveFiles(updateInfo, baseUrl);
+  assert.equal(updateInfo.version, packageJson.version);
+  assert.equal(files.length, 2);
+  for (const [isArm64, expectedZip] of [[false, intelZip], [true, armZip]]) {
+    const selected = findFile(MacUpdater.filterFilesForArch(files, isArm64), "zip", ["pkg", "dmg"]);
+    assert.equal(selected.url.pathname.split("/").at(-1), expectedZip);
+    assert.equal(selected.info.sha512, hashes.get(expectedZip));
+  }
 });
 
 test("macOS cert import uses the keychain password for set-key-partition-list", () => {

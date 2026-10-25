@@ -214,6 +214,7 @@
       renameConversation: function (id, title, titleSource) { return invoke("cli:renameConversation", { id: id, title: title, titleSource: titleSource }); },
       updateConversationAgentName: function (agentId, agentName) { return invoke("cli:updateConversationAgentName", { agentId: agentId, agentName: agentName }); },
       archiveConversation: function (id, archived) { return invoke("cli:archiveConversation", { id: id, archived: archived }); },
+      setConversationPinned: function (id, pinned) { return invoke("cli:setConversationPinned", { id: id, pinned: pinned }); },
       deleteConversation: function (id) { return invoke("cli:deleteConversation", id); },
       setConversationApprovalMode: function (id, approvalMode) { return invoke("cli:setConversationApprovalMode", { id: id, approvalMode: approvalMode }); },
       setConversationConfigOptionOverrides: function (id, overrides) { return invoke("cli:setConversationConfigOptionOverrides", { id: id, overrides: overrides }); },

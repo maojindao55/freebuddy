@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Archive,
   Bot,
   ChartColumn,
   Cog,
@@ -13,6 +14,7 @@ import {
   Server,
 } from "lucide-react";
 import { AboutTab } from "./AboutTab";
+import { ArchivedConversationsTab } from "./ArchivedConversationsTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
@@ -25,7 +27,7 @@ import { UsageTab } from "./UsageTab";
 import { McpServersTab } from "./McpServersTab";
 import { useConversationStore } from "@/store/conversationStore";
 
-export type SettingsTab = "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "remote" | "about";
+export type SettingsTab = "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "archived" | "remote" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
@@ -35,6 +37,7 @@ export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "plugins", labelKey: "settings.tabs.plugins" },
   { key: "feed", labelKey: "settings.tabs.feed" },
   { key: "usage", labelKey: "settings.tabs.usage" },
+  { key: "archived", labelKey: "settings.tabs.archived" },
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "remote", labelKey: "settings.tabs.remote" },
   { key: "about", labelKey: "settings.tabs.about" }
@@ -50,6 +53,7 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
   plugins: Puzzle,
   feed: Newspaper,
   usage: ChartColumn,
+  archived: Archive,
   remote: Share2,
   about: Info,
 };
@@ -57,7 +61,7 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
 /** Grouped sidebar sections; every tab key above appears exactly once. */
 const TAB_GROUPS: { groupKey: string; items: SettingsTab[] }[] = [
   { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "mcp", "skills", "plugins"] },
-  { groupKey: "settings.navGroup.data", items: ["feed", "usage"] },
+  { groupKey: "settings.navGroup.data", items: ["feed", "usage", "archived"] },
   { groupKey: "settings.navGroup.system", items: ["general", "remote", "about"] },
 ];
 
@@ -175,6 +179,11 @@ function SettingsContent({
       {activeTab === "usage" && (
         <SettingsTabErrorBoundary>
           <UsageTab />
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "archived" && (
+        <SettingsTabErrorBoundary>
+          <ArchivedConversationsTab />
         </SettingsTabErrorBoundary>
       )}
       {activeTab === "remote" && <RemoteTab />}

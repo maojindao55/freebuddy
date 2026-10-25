@@ -425,6 +425,7 @@ declare global {
         | "plugins"
         | "feed"
         | "usage"
+        | "archived"
         | "remote"
         | "about"
         | null;

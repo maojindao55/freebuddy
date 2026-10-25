@@ -167,7 +167,12 @@ export interface ConversationState {
   }>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
-  archiveConversation(id: string, archived: boolean): Promise<void>;
+  archiveConversation(
+    id: string,
+    archived: boolean,
+    /** The archived conversation row, supplied by the archived-list view on restore. */
+    restored?: Conversation
+  ): Promise<void>;
   setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
   moveConversationToProject(
     id: string,
@@ -1218,19 +1223,28 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
   },
 
-  async archiveConversation(id, archived) {
+  async archiveConversation(id, archived, restored) {
     await cliClient.archiveConversation(id, archived);
     set((s) => {
       const pendingFreshContext = { ...s.pendingFreshContext };
       if (archived) {
         delete pendingFreshContext[id];
+        const next = s.conversations.filter((c) => c.id !== id);
+        return {
+          conversations: next,
+          // Archiving the open conversation must leave the main view too.
+          activeId: s.activeId === id ? next[0]?.id : s.activeId,
+          pendingFreshContext
+        };
       }
+      // Restore: re-insert at the top so the conversation is immediately
+      // visible; the archived row itself is only known to the caller.
+      if (!restored) return { pendingFreshContext };
       return {
-        conversations: archived
-          ? s.conversations.filter((c) => c.id !== id)
-          : s.conversations.map((c) =>
-              c.id === id ? { ...c, archived } : c
-            ),
+        conversations: [
+          { ...restored, archived: false },
+          ...s.conversations.filter((c) => c.id !== restored.id)
+        ],
         pendingFreshContext
       };
     });

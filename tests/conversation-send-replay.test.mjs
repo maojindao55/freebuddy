@@ -65,6 +65,7 @@ async function loadConversationStoreHarness() {
 
     export const cliClient = {
       appendMessage: async (message) => message,
+      archiveConversation: async () => undefined,
       getToolSession: async () => savedToolSession,
       listFollowupMessages: async (conversationId, excludeMessageIds) => {
         capturedFollowupQuery = { conversationId, excludeMessageIds };
@@ -361,4 +362,53 @@ test("selected skills are invoked and saved for one message without changing con
   await useConversationStore.getState().sendMessage({ conversationId: "skill-conv", prompt: "下一条普通消息" });
   assert.deepEqual(mocks.capturedRunArgs.skills, [base]);
   assert.doesNotMatch(mocks.capturedRunArgs.prompt, /skills selected for this message/);
+});
+
+test("archiveConversation hides the row and restore re-inserts it at the top", async () => {
+  const { useConversationStore } = await loadConversationStoreHarness();
+  const timestamp = "2026-07-29T10:00:00.000Z";
+  const conversation = {
+    id: "conv-archive",
+    title: "Archive me",
+    agentId: "agent-1",
+    agentName: "Mock ACP",
+    adapter: "mock-acp",
+    skillSnapshot: [],
+    archived: false,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  const other = { ...conversation, id: "conv-other", title: "Other" };
+
+  useConversationStore.setState({
+    conversations: [conversation, other],
+    activeId: conversation.id,
+    messages: {},
+    live: {},
+    pendingFreshContext: { "conv-archive": true }
+  });
+
+  await useConversationStore
+    .getState()
+    .archiveConversation("conv-archive", true);
+
+  let state = useConversationStore.getState();
+  assert.deepEqual(
+    state.conversations.map((entry) => entry.id),
+    ["conv-other"]
+  );
+  // Archiving the open conversation switches the main view away.
+  assert.equal(state.activeId, "conv-other");
+  assert.equal(state.pendingFreshContext["conv-archive"], undefined);
+
+  await useConversationStore
+    .getState()
+    .archiveConversation("conv-archive", false, { ...conversation, archived: true });
+
+  state = useConversationStore.getState();
+  assert.deepEqual(
+    state.conversations.map((entry) => entry.id),
+    ["conv-archive", "conv-other"]
+  );
+  assert.equal(state.conversations[0].archived, false);
 });

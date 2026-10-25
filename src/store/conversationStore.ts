@@ -162,6 +162,7 @@ export interface ConversationState {
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
   archiveConversation(id: string, archived: boolean): Promise<void>;
+  setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
   setConversationApprovalMode(
     id: string,
     approvalMode: "auto" | "ask"
@@ -1176,6 +1177,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         pendingFreshContext
       };
     });
+  },
+
+  async setConversationPinned(id, pinned) {
+    const conversation = await cliClient.setConversationPinned(id, pinned);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === conversation.id ? conversation : c
+      )
+    }));
+    return conversation;
   },
 
   async setConversationApprovalMode(id, approvalMode) {

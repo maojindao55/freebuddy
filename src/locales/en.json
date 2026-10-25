@@ -643,6 +643,8 @@
     "deleteProjectConfirm": "Delete {{count}} conversations in \"{{name}}\"? This cannot be undone.",
     "newInCurrentProject": "New task in current project",
     "new": "+ New",
+    "pinConversation": "Pin",
+    "unpinConversation": "Unpin",
     "empty": "No conversations yet.",
     "deleteConfirm": "Delete \"{{title}}\"?",
     "searchPlaceholder": "Search conversations",

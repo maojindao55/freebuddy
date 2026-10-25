@@ -49,7 +49,8 @@ import { useOnboardingStore } from "./store/onboardingStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useSkillStore } from "./store/skillStore";
 import { useUpdaterStore } from "./store/updaterStore";
-import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
+import { useDetailLayoutStore, selectDetailWidth } from "./store/detailLayoutStore";
+import { useBrowserSidebarLayout, resolveDetailWidth, getResponsiveDetailCollapse } from "./hooks/useBrowserSidebarLayout";
 import { useNewTaskUiStore } from "./store/newTaskUiStore";
 import { useProjectStore } from "./store/projectStore";
 import { useWorkflowStore } from "./store/workflowStore";
@@ -93,7 +94,6 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("cli");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(() =>
     useConversationPanelUiStore.getState().preferredView === "panel" ? "conversationBoard" : "chat"
@@ -565,11 +565,6 @@ function App() {
   useEffect(() => {
     void loadDetailLayout();
   }, [loadDetailLayout]);
-  useEffect(() => {
-    if (activeDetailTab === "preview") {
-      setSidebarCollapsed(true);
-    }
-  }, [activeDetailTab]);
 
   const [winWidth, setWinWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 1280
@@ -580,33 +575,6 @@ function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const [wasNarrow, setWasNarrow] = useState<boolean | null>(null);
-  useEffect(() => {
-    const isNarrow = winWidth < 1080;
-    if (wasNarrow === null) {
-      setWasNarrow(isNarrow);
-      if (isNarrow && !detailCollapsed) {
-        setDetailCollapsed(true);
-      }
-      return;
-    }
-
-    if (isNarrow && !wasNarrow) {
-      setDetailCollapsed(true);
-      setWasNarrow(true);
-    } else if (!isNarrow && wasNarrow) {
-      setDetailCollapsed(false);
-      setWasNarrow(false);
-    }
-  }, [winWidth, wasNarrow, detailCollapsed, setDetailCollapsed]);
-
-  const sidebarWidth = sidebarCollapsed ? 0 : 272;
-  const effectiveDetailWidth = detailCollapsed
-    ? 0
-    : Math.min(
-        detailWidth,
-        Math.max(DETAIL_MIN_WIDTH, winWidth - sidebarWidth - 420 - 8)
-      );
   const updateStatus = useUpdaterStore((s) => s.status);
   const appVersion = useUpdaterStore((s) => s.appVersion);
   const latestVersion = useUpdaterStore((s) => s.latestVersion);
@@ -676,6 +644,27 @@ function App() {
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
+  const previewOpen = activeDetailTab === "preview" && !detailCollapsed;
+  const detailViewVisible = !settingsOpen && workspaceView === "chat" && Boolean(activeConversation);
+  const previewVisible = detailViewVisible && previewOpen;
+  const { sidebarCollapsed, toggleSidebar } = useBrowserSidebarLayout({
+    viewportWidth: winWidth, previewWidth: detailWidth, previewOpen, previewVisible, conversationId: activeId
+  });
+  const previousNarrow = useRef<boolean | null>(null);
+  const previousDetailTab = useRef(activeDetailTab);
+  useEffect(() => {
+    const isNarrow = winWidth < 1080;
+    const changedTab = previousDetailTab.current !== activeDetailTab;
+    if (detailViewVisible) {
+      // An open browser saves space through the sidebar policy instead.
+      const collapsed = getResponsiveDetailCollapse(winWidth, previousNarrow.current, activeDetailTab === "preview", changedTab);
+      if (collapsed !== undefined) setDetailCollapsed(collapsed);
+      previousNarrow.current = isNarrow;
+      previousDetailTab.current = activeDetailTab;
+    }
+  }, [winWidth, activeDetailTab, detailViewVisible, setDetailCollapsed]);
+  const effectiveDetailWidth = resolveDetailWidth(winWidth, detailWidth, sidebarCollapsed, !detailCollapsed);
+
   useLayoutEffect(() => {
     const reading = workspaceView === "chat" && !settingsOpen;
     setConversationReadingVisible(reading);
@@ -1051,7 +1040,7 @@ function App() {
       title={t(sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}
       aria-label={t(sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}
       aria-expanded={!sidebarCollapsed}
-      onClick={() => setSidebarCollapsed((v) => !v)}
+      onClick={toggleSidebar}
     >
       <SidebarToggleIcon collapsed={sidebarCollapsed} />
     </button>
@@ -1079,9 +1068,9 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" ? " conversation-panel-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" && panelFullscreen ? " conversation-panel-fullscreen" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" ? " conversation-panel-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" && panelFullscreen ? " conversation-panel-fullscreen" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${previewVisible ? " browser-preview-visible" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
-      style={{ "--fb-detail-width": `${effectiveDetailWidth}px` } as CSSProperties}
+      style={{ "--fb-detail-width": `${effectiveDetailWidth}px`, "--fb-sidebar-width": sidebarCollapsed ? "0px" : "272px" } as CSSProperties}
     >
       <aside className={`sidebar${settingsOpen ? " settings-sidebar" : ""}`}>
         {settingsOpen ? (

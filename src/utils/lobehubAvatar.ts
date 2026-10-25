@@ -1,5 +1,7 @@
 import { getLobeIconCDN } from "@lobehub/icons";
 import piLogoUrl from "../../assets/pi-logo.svg";
+// Official ZCode icon: https://zcode.z.ai/favicon-192x192.png?v=20260707-transparent
+import zcodeLogoUrl from "../../assets/zcode-logo.png";
 
 const LOBEHUB_AVATAR_PREFIX = "lobehub:";
 
@@ -21,6 +23,9 @@ export function lobehubAvatarUrl(iconId: string): string {
   const normalized = iconId.toLowerCase();
   if (normalized === "pi" || normalized === "pi-acp") {
     return piLogoUrl;
+  }
+  if (normalized === "zcode" || normalized === "zcode-acp") {
+    return zcodeLogoUrl;
   }
   return getLobeIconCDN(iconId, { format: "avatar", cdn: "aliyun" });
 }

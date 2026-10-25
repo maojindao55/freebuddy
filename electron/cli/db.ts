@@ -316,6 +316,7 @@ export function migrate(db: DB) {
       status TEXT NOT NULL,
       content TEXT NOT NULL,
       attachments TEXT,
+      skill_snapshot TEXT,
       task_id TEXT,
       agent_id TEXT,
       agent_name TEXT,
@@ -847,6 +848,9 @@ export function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!messageCols.some((c) => c.name === "attachments")) {
     db.exec("ALTER TABLE conversation_messages ADD COLUMN attachments TEXT");
+  }
+  if (!messageCols.some((c) => c.name === "skill_snapshot")) {
+    db.exec("ALTER TABLE conversation_messages ADD COLUMN skill_snapshot TEXT");
   }
   if (!messageCols.some((c) => c.name === "agent_id")) {
     db.exec("ALTER TABLE conversation_messages ADD COLUMN agent_id TEXT");

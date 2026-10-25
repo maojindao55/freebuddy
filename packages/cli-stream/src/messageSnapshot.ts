@@ -74,6 +74,16 @@ function compactStreamItem(item: unknown, maxString = MAX_STREAM_STRING_CHARS): 
   if (!item || typeof item !== "object" || Array.isArray(item)) return item;
   const rec = item as Record<string, unknown>;
   const kind = rec.kind;
+  if (kind === "available-commands") {
+    // Command metadata must remain an array for completion after a reload.
+    // Bound individual strings; compactUnknown would turn a long list into text.
+    return {
+      ...rec,
+      commands: Array.isArray(rec.commands)
+        ? rec.commands.map((command) => compactStreamItem(command, maxString))
+        : []
+    };
+  }
   if (kind === "content-block" && rec.blockType === "image" && typeof rec.data === "string") {
     if (rec.data.length > MAX_INLINE_IMAGE_BASE64) {
       return { kind: "raw", content: "… [inline image omitted from conversation snapshot: too large] …" };

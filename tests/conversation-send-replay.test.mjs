@@ -156,6 +156,10 @@ async function loadConversationStoreHarness() {
       '"@freebuddy/cli-stream"', JSON.stringify(import.meta.resolve("@freebuddy/cli-stream"))
     )
   );
+  const skillCommandsUrl = toDataUrl(ts.transpileModule(
+    fs.readFileSync(new URL("../src/utils/skillCommands.ts", import.meta.url), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }
+  ).outputText);
   const source = fs.readFileSync(
     new URL("../src/store/conversationStore.ts", import.meta.url),
     "utf8"
@@ -170,7 +174,7 @@ async function loadConversationStoreHarness() {
     /from\s+["']([^"']+)["']/g,
     (_, specifier) =>
       `from "${
-        specifier === "./conversationUtils"
+        specifier === "@/utils/skillCommands" ? skillCommandsUrl : specifier === "./conversationUtils"
           ? conversationUtilsUrl
           : specifier === "./conversationReading"
             ? readingUrl
@@ -333,4 +337,28 @@ test("orphan followup uses database history regardless of the UI history window"
     prompts.push(mocks.capturedRunArgs.prompt);
   }
   assert.equal(prompts[0], prompts[1]);
+});
+
+
+test("selected skills are invoked and saved for one message without changing conversation defaults", async () => {
+  const { useConversationStore, mocks } = await loadConversationStoreHarness();
+  const base = { id: "base", name: "base", description: "Base", rootPath: "/skills/base", contentHash: "base", version: "1", source: "builtin" };
+  const selected = { ...base, id: "review", name: "代码审查", rootPath: "/skills/review" };
+  useConversationStore.setState({
+    members: mocks.builtinCliMembers,
+    conversations: [{ id: "skill-conv", agentId: "agent-1", adapter: "mock-acp", title: "Skill test", skillSnapshot: [base] }],
+    messages: {}, live: {}, pendingFreshContext: {}
+  });
+  await useConversationStore.getState().sendMessage({ conversationId: "skill-conv", prompt: "检查本次改动", messageSkills: [selected] });
+  assert.deepEqual(mocks.capturedRunArgs.skills.map(s => s.id), ["base", "review"]);
+  assert.equal(mocks.capturedRunArgs.announceSkills, true);
+  assert.match(mocks.capturedRunArgs.prompt, /代码审查/);
+  const user = useConversationStore.getState().messages["skill-conv"].find(m => m.role === "user");
+  assert.deepEqual(user.skillSnapshot, [selected]);
+  assert.equal(user.content, "检查本次改动");
+  assert.deepEqual(useConversationStore.getState().conversations[0].skillSnapshot, [base]);
+  useConversationStore.setState({ live: {} });
+  await useConversationStore.getState().sendMessage({ conversationId: "skill-conv", prompt: "下一条普通消息" });
+  assert.deepEqual(mocks.capturedRunArgs.skills, [base]);
+  assert.doesNotMatch(mocks.capturedRunArgs.prompt, /skills selected for this message/);
 });

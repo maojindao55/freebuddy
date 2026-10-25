@@ -53,7 +53,27 @@ const PI_AVATAR_ITEM: IconToc = {
   }
 };
 
-const ALL_ICONS: IconToc[] = [PI_AVATAR_ITEM, ...toc];
+const ZCODE_AVATAR_ITEM: IconToc = {
+  id: "ZCode",
+  title: "ZCode",
+  fullTitle: "ZCode Agent",
+  desc: "ZCode Agent",
+  color: "#2B2B2B",
+  docsUrl: "https://zcode.z.ai",
+  group: "application",
+  param: {
+    hasAvatar: true,
+    hasBrand: true,
+    hasBrandColor: false,
+    hasColor: false,
+    hasCombine: false,
+    hasText: false,
+    hasTextCn: false,
+    hasTextColor: false
+  }
+};
+
+const ALL_ICONS: IconToc[] = [PI_AVATAR_ITEM, ZCODE_AVATAR_ITEM, ...toc];
 
 export function AvatarPicker({
   value,

@@ -36,6 +36,7 @@ import { splitWorkspaceFileMentions } from "@/utils/workspaceFileMentions";
 import { pluginDisplayName, splitPluginMentions } from "@/utils/pluginMentions";
 import { sanitizeStreamItems } from "@/utils/streamMedia";
 import { AgentAvatar } from "./AgentAvatar";
+import { MessageSkillTags } from "./MessageSkillTags";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
 import { isVisibleItem, visibleBlocks } from "./messageBlocks";
@@ -1022,7 +1023,7 @@ export const MessageBubble = memo(function MessageBubble({
     const displayContent = stripConversationShareLinks(message.content);
     const hasText = displayContent.length > 0;
     const hasOthers = otherAttachments.length > 0;
-    const showBubble = hasText || hasOthers;
+    const showBubble = hasText || hasOthers || Boolean(message.skillSnapshot?.length);
     const userAuthor =
       message.authorUsername?.trim() || currentUser?.username || "";
     const userInitial = (userAuthor[0] ?? "?").toUpperCase();
@@ -1038,6 +1039,7 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
           {showBubble && (
             <div className="msg-bubble">
+              <MessageSkillTags skills={message.skillSnapshot ?? []} />
               {hasText && <UserMessageText content={displayContent} />}
               <MessageAttachments attachments={otherAttachments} />
             </div>

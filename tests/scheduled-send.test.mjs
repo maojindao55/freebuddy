@@ -109,7 +109,7 @@ test("scheduled message renders as a user bubble in the thread with a countdown 
   assert.match(chatViewSource, /className=\{`scheduled-send-bubble scheduled-send-bubble-\$\{scheduledSend\.status\}`\}/);
   assert.match(chatViewSource, /id: `scheduled-send:\$\{conv\.id\}`,\s+conversationId: conv\.id,\s+role: "user"/);
   assert.match(chatViewSource, /content: scheduledSend\.prompt,\s+attachments: scheduledSend\.attachments/);
-  assert.match(chatViewSource, /afterContent=\{\s*<ScheduledSendMeta/);
+  assert.match(chatViewSource, /afterContent=\{<>\s*<ConversationReferenceTags[^>]+\/>\s*<ScheduledSendMeta/);
   assert.match(controlSource, /className=\{`scheduled-send-meta scheduled-send-meta-\$\{entry\.status\}`\}/);
   assert.match(controlSource, /countdown: formatCountdown\(entry\.fireAt - now\)/);
   assert.doesNotMatch(controlSource, /scheduled-send-banner/);

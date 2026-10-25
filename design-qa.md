@@ -976,3 +976,137 @@ final result: passed
 无需要阻塞交付的后续视觉问题。
 
 final result: passed
+
+
+---
+
+# Message-scoped skill shortcuts — 2026-10-24
+
+- Approved target: the existing FreeBuddy composer and the agreed interaction in this chat: slash searches skills, selection becomes a removable tag, sending applies the skill to one message, and history retains the skill label. This extends an existing product; no separate visual mock was selected.
+- Source visual truth: `artifacts/product-design/skill-commands/new-task-menu-before.png`, an initial browser capture using the existing new-task composer, showing the placement defect found during this change.
+- Implementation screenshots: `artifacts/product-design/skill-commands/new-task-menu-after.png`, `artifacts/product-design/skill-commands/menu-light.png`, and `artifacts/product-design/skill-commands/selected-light.png`.
+- Viewport: 1280 × 720 CSS px; source and implementation images are 1280 × 720 px at 1x. No resizing or density normalization was needed.
+- Matched comparison state: light theme, new task, normal mode, empty slash query, the same sample skill records and selected first result. The fixture toolbar is development-only and is not part of the product UI.
+
+## Findings and comparison history
+
+1. [P2, resolved] The first menu opened above the new-task textarea without accounting for available height. Its heading and first row extended beyond the top of the viewport; changing composer overflow also disturbed its existing rounded outline. Evidence: `new-task-menu-before.png`.
+2. Replaced container-relative placement with a body portal positioned from the textarea bounds. The menu chooses the available side, limits its height, scrolls the list, and keeps its heading and keyboard hints visible. The composer retains its original clipping and outline.
+3. Compared the before and after captures together at the same viewport and state. The revised heading begins below the fixture toolbar, the list scrolls within the available space, and the textarea, send action, and workspace controls remain visible. Evidence: `new-task-menu-after.png`.
+4. No actionable P0/P1/P2 issues remain in the tested desktop states. The added tag row and per-message scope text are intentional additions to the existing composer.
+
+## Fidelity surfaces
+
+- Typography: retains the existing application font stack; skill names use 13px/600, descriptions 12px with 1.45 line height, and supporting text 11px. Long descriptions are limited to two lines and names wrap in the menu; tags truncate safely. Chinese and English UI labels were checked.
+- Spacing/layout: retains the production composer, toolbar, workspace strip, and send control. The menu uses the existing 8px spacing rhythm, a 12px outer radius, and a capped 560px width. The focused menu region and tag row were reviewed within the full-resolution images; separate crops were unnecessary because their text and outlines are legible at this density.
+- Colors/tokens: uses existing `--fb-panel-bg`, `--fb-panel-soft`, `--fb-hover`, `--fb-border`, text, and brand tokens. Light and dark menus were inspected in the browser.
+- Assets: reuses the existing Lucide Sparkles and X icons. No raster asset was required for this control.
+- Copy: the menu says “选择技能” and “仅本条消息”; the selected tag is removable. History shows the chosen skill next to the user request. Agent-native commands are absent from the menu. Empty/no-result states show a status message and an Escape hint without advertising an unavailable selection action.
+
+## Primary interactions verified
+
+- Slash typing opens the menu; search matches skill names and descriptions, including Chinese.
+- Recent choices sort first; untrusted/disabled skills are excluded.
+- Arrow keys, Enter, Tab, Escape, tag removal, and selection through the plus menu work. Escape preserves the query; Shift+Tab and IME confirmation retain normal input behavior.
+- Pasting `/car_paly/home/` preserves ordinary text and does not open the menu or produce an error.
+- Existing-conversation send and new-task first send pass the selected skill to the actual production send path using the fixture's memory-only bridge. The next ordinary message has no transient skill; persisted conversation defaults remain unchanged.
+- Scheduled sending retains the skill label; “改回草稿” restores both text and skill selection.
+- A fresh final preview reported no browser console errors. The fixture uses sample skill records and simulated replies, without launching an agent.
+- Behavioral tests cover keyboard/paste/IME handling and per-message runtime arguments. An Electron/SQLite test verifies migration and persistence of the message skill snapshot.
+
+## Implementation checklist
+
+- [x] Skills-only slash menu and shared plus-menu selection.
+- [x] Per-message tags, runtime invocation, scheduled-send preservation, and history labels.
+- [x] Viewport-aware menu and existing theme tokens.
+- [x] Path-paste regression, input-method behavior, and transient-selection isolation.
+- [x] Type checking and full test suite, including the dedicated Electron database checks.
+
+## Residual scope
+
+Team tasks continue to use their team skill configuration. The preview does not exercise a paid/live model response; it verifies the production composer and dispatch arguments with a memory-only bridge. No installation or publishing step was performed.
+
+final result: passed
+
+## Conversation references — 2026-10-24
+
+Final result: pass.
+
+Scope: extend the existing composer with `+ → 引用会话`, a searchable multi-select dialog, removable draft tags, snapshots at send time and existing context cards in message history. Reuses the app's authorized snapshot/share endpoints and context tools. No external service or real agent was invoked by the preview.
+
+Evidence and comparison:
+- Captured the real production `ChatView` through the memory-only preview at `http://127.0.0.1:5197/tests/fixtures/skill-commands-preview.html`, 1280 × 720 CSS pixels, density 1.
+- Compared `artifacts/product-design/conversation-references/picker-before.png` and `picker-light.png` together in one review input, at the same viewport, theme, empty query, three source conversations and no selections. No new mockup was provided; the existing app's modal, composer tags and context cards supply the visual target.
+- [P2, fixed] Global `.modal label` styles stacked the search icon over a zero-width input. Scoped row direction and input sizing restore the usable search field. Final screenshot shows its placeholder and focus outline, and the search was exercised using title/agent queries and an unmatched query.
+- [P2, fixed] Weak empty checkbox boundaries and low-contrast secondary text made source selection and context metadata hard to read. Use existing secondary/link tokens for text and visible checkbox outlines; final light picker and dark history captures confirm readability.
+- Composer and history evidence: `composer-light.png`, `history-light.png`, `history-dark.png`; new task multi-selection evidence: `new-task-dark.png` in the same artifact directory.
+
+Required visual surfaces:
+- Typography: existing app font stack; 18px dialog heading, 14px source titles, 12–13px supporting text. Long titles truncate inside flex rows and expose the full draft title via tooltip.
+- Spacing/layout: centered 560px dialog with viewport bounds, scrollable source list, 24px padding and 16px section rhythm. Composer tags wrap and the send controls remain visible at the desktop viewport. The dialog reuses existing modal and action styles.
+- Colors/tokens: app panel, border, hover, secondary text, link and brand tokens; checked state and keyboard search focus are visible in both themes.
+- Images/assets: existing Lucide icons and existing agent-brand context cards, with no replacement raster assets. Preview source agent identities match the card icons.
+- Copy/content: clear snapshot timing, search prompt and empty states; “会话引用” and “会话摘要和历史” replace share/Brief jargon in the reused cards. Chinese and English translations are provided.
+
+Interaction checks:
+- Search by agent, keyboard Enter selection, multi-selection, no-result Enter safety, current-session exclusion and focus returning to the composer.
+- Skills and references used together; existing conversation send and new-task send clear the composer tags and show source cards in history.
+- Scheduled draft preserves references; “改回草稿” restores both text and references. Unit tests verify snapshot/attach ordering before normal and delegation dispatch and keep failed scheduled entries available for retry.
+- Opening a source card changes to the source conversation; returning preserves the original history.
+- Source permission and invalid-share checks remain on the server. Self-references are rejected before snapshot creation.
+
+Validation:
+- `npm test`: main 2,140 tests, 1,865 passed / 275 skipped; handoff database 245 tests, 241 passed / 4 skipped; file snapshots 66 tests, 64 passed / 2 skipped. No failures.
+- Final focused tests: 38 passed. Final typecheck and production renderer build passed; Electron build passed within the full suite.
+- Build retains the existing bundle-size advisory. No actual external model execution, installation-package deployment, screen-reader session, or mobile device run was performed.
+
+Implementation checklist: complete. Installed `/Applications/FreeBuddy.app` is unchanged; changes are in this checkout and the local preview.
+
+## Sidebar drag into composer — 2026-10-24
+
+Final result: pass.
+
+Implemented the native HTML drag path on the shared sidebar `ConversationRow`, with a dedicated conversation-ID payload. Both existing-chat and new-task composers accept it as a pending conversation reference. The existing file drop path remains the fallback. The composer highlights during a valid conversation drag and restores normal appearance on leave, cancel, drop, scope changes and send locks.
+
+Visual target: existing sidebar, composer and reference tags from the preceding implementation. Reused their typography, spacing, panel/border/link/brand tokens and Lucide icon. No new asset or screen design was needed. The preview now includes the production `ConversationList`, with its own correctly positioned chat container and collapsed detail-panel width; this preview-only layout matches the app's containing-block requirements.
+
+Real native browser checks at 1280 × 720, density 1:
+- Dragged “登录流程：需求与边界情况” from the production sidebar into a composer containing a draft. The active sidebar row remained “优化登录页面的交互”, the exact draft text remained intact and the reference tag appeared.
+- Repeating the same drag kept one reference. Dragging the active conversation added no reference. Dragging a second source produced a second tag.
+- New task began with an independent empty reference draft and accepted the sidebar drag. Returning to the existing conversation restored its text and two references.
+- Reviewed the resulting tags in light and dark modes: readable labels, aligned icons/removal controls, no clipped composer controls or changed sidebar selection. Typography, layout rhythm, colors, icon fidelity and copy follow existing app styles.
+- Sending the dragged references produced two context cards in history and cleared the composer selection. All execution in this preview uses memory-only sample data and simulated responses.
+
+Evidence: `artifacts/product-design/conversation-drag/composer-light.png`, `composer-dark.png`, `new-task-light.png` and `history-light.png`. Mid-drag feedback was behavior-tested through the hook; no synthetic hover screenshot was fabricated.
+
+Validation: focused 29 tests passed, including payload validation, source lookup, self-reference rejection, repeated-drop deduplication, disabled targets, file-drop separation, nested drag depth and cancel cleanup. Full regression passed: main 2,148 tests (1,873 passed / 275 skipped), handoff 245 (241 / 4), file snapshots 66 (64 / 2). Final typecheck and production renderer build passed. Installed app remains unchanged.
+
+## Space-aware browser/sidebar layout — 2026-10-25
+
+Final result: pass.
+
+Replaces unconditional sidebar collapse when switching to browser preview. Automatic collapse is derived from visible space and does not overwrite the user's sidebar preference. A per-browser manual override remains authoritative during resizing and temporary navigation away; closing the browser or changing conversations resets that override. Settings, the conversation board, other tool pages and new tasks do not inherit a hidden preview's automatic collapse.
+
+Width policy: preserve the 272px sidebar, a 420px chat budget and up to 560px of useful browser width when space allows. With the default 680px browser preference, 1280px retains the sidebar and fits the browser into the remaining space; below the 1260px budget, the sidebar collapses temporarily. Smaller requested browser widths reduce the threshold. Width calculations use the requested width, avoiding collapse/expand oscillation.
+
+Responsive coordination:
+- The prior <1080 rule continues to manage non-browser detail tabs. Browser preview uses the sidebar space-saving policy instead.
+- A manually folded browser stays folded when the window expands; resizing no longer reopens it.
+- Manual sidebar expansion at the desktop minimum width of 960px allows the middle column to become narrower than 420px, preventing horizontal overflow. Composer offsets continue to respect the visible browser boundary below the old 1080px breakpoint.
+- [P2, fixed] At the narrowest manual three-column arrangement, the keyboard hint collided with the tool buttons. A composer-width container query hides that optional hint at 360px and below while keeping send, scheduling, attachments, references and permission controls available.
+
+Evidence: real production ConversationList, ChatView, DetailColumn, BrowserCanvas and the shared layout policy in `/tests/fixtures/browser-sidebar-layout-preview.html`, with memory-only data and a local sample webpage. Native browser viewport overrides exercised 1280 × 720 and 960 × 720 at density 1. The fixture also uses the same responsive-detail helper as App; it does not start an agent or modify installed app data.
+
+Accepted screenshots under `artifacts/product-design/browser-sidebar-layout/`:
+1. `01-wide.png`: browser open at 1280px; sidebar remains visible; a real sidebar drag adds a reference; chat draft and browser input are intact.
+2. `02-narrow.png`: resize to 960px; sidebar temporarily disappears while browser, draft and input remain visible.
+3. `03-manual-expand.png`: pre-fix screenshot of hint/button collision after manual sidebar restoration.
+4. `04-manual-expand-fixed.png`: post-fix at the same viewport/state; reviewed together with step 3 in one comparison input; optional hint disappears and buttons remain distinct.
+5. `05-manual-close-stays-closed.png`: manually fold the browser at narrow width, widen to 1280px; browser remains closed and sidebar is restored.
+6. `06-auto-collapse-restored.png`: a new narrow browser opening collapses the sidebar again; closing it restores the expanded sidebar and existing reference draft.
+
+Visual surfaces: existing font stack and hierarchy, existing sidebar/composer spacing, inherited panel/border/link tokens, unchanged native agent assets and Lucide icons, existing localized expand/collapse labels. No new artwork or visual redesign. No remaining P0/P1/P2 finding in the checked desktop states. Installed-app rendering, real external sites and assistive-technology sessions were not exercised; the local rendered production components and state transitions were checked directly.
+
+Validation: 15 behavior tests cover automatic restoration, manual choices, hidden pages, conversation changes, width budgets, detail width and preview closure across breakpoints. Full suite passed: main 2,163 tests (1,888 passed / 275 skipped), handoff 245 (241 / 4), file snapshots 66 (64 / 2). Typecheck and renderer build passed, with the existing bundle-size advisory. No installation or publishing was performed.
+
+Final preview smoke check: the fixture's settings mock was updated to match the current `window.freebuddy.settings` bridge. A fresh page completed open → narrow → close/restore → wide → reopen with zero page errors. Temporary browser viewport overrides were reset before handoff.

@@ -95,6 +95,7 @@ export interface ConversationMessage {
   /** For user messages: raw text. For assistant: serialized CliStreamItem[]. */
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;
@@ -251,6 +252,7 @@ function rowToMessage(r: any): ConversationMessage {
     status: r.status,
     content: r.content,
     attachments,
+    skillSnapshot: r.skill_snapshot ? parseSkillSnapshot(r.skill_snapshot) : undefined,
     taskId: r.task_id ?? undefined,
     agentId: r.agent_id ?? undefined,
     agentName: r.agent_name ?? undefined,
@@ -625,6 +627,7 @@ export interface AppendMessageInput {
   status: string;
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;
@@ -647,11 +650,11 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
   getDb()
     .prepare(
       `INSERT INTO conversation_messages
-         (id, conversation_id, role, status, content, attachments, task_id,
+         (id, conversation_id, role, status, content, attachments, skill_snapshot, task_id,
           agent_id, agent_name, adapter, role_label,
           workflow_run_id, workflow_step_row_id, author_username,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.id,
@@ -660,6 +663,7 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
       input.status,
       input.content,
       input.attachments?.length ? JSON.stringify(input.attachments) : null,
+      input.skillSnapshot?.length ? JSON.stringify(input.skillSnapshot) : null,
       input.taskId ?? null,
       input.agentId ?? null,
       input.agentName ?? null,

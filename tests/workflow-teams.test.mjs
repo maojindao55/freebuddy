@@ -464,7 +464,7 @@ test("ChatView team onCreateAndSend persists user message attachments", () => {
   );
   assert.match(src, /attachments: attachmentsToSend/);
   assert.match(src, /savedUser\.attachments/);
-  assert.match(src, /goal: composeMessageWithAttachments\(prompt, attachmentsToSend\)/);
+  assert.match(src, /goal: composeMessageWithAttachments\(outgoingPrompt, attachmentsToSend\)/);
 });
 
 test("configurable delivery team expands to the unified loop runtime plan", async () => {

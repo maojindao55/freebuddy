@@ -165,12 +165,13 @@ test("sidebar collapse toggle hides the sidebar column", () => {
   );
 });
 
-test("opening the browser preview collapses the conversation sidebar", () => {
-  assert.match(appSource, /const activeDetailTab = useDetailLayoutStore\(\(s\) => s\.activeTab\)/);
-  assert.match(
-    appSource,
-    /useEffect\(\(\) => \{[\s\S]*if \(activeDetailTab === "preview"\) \{[\s\S]*setSidebarCollapsed\(true\);[\s\S]*\}[\s\S]*\}, \[activeDetailTab\]\);/
-  );
+test("browser visibility uses a space-aware sidebar preference and bounds the composer", () => {
+  assert.match(appSource, /useBrowserSidebarLayout\(/);
+  assert.match(appSource, /const previewVisible = detailViewVisible && previewOpen/);
+  assert.match(appSource, /onClick=\{toggleSidebar\}/);
+  assert.doesNotMatch(appSource, /setSidebarCollapsed\(true\)/);
+  assert.match(stylesSource, /\.browser-preview-visible \.chat-composer\s*\{[^}]*right:\s*var\(--fb-detail-width/);
+  assert.match(stylesSource, /\.app-shell\.browser-preview-visible:not\(\.sidebar-collapsed\)\s*\{[^}]*minmax\(0,\s*1fr\)/);
 });
 
 test("new-task page sending flag is not stuck true without an active conversation", () => {

@@ -14,6 +14,21 @@ export type ConfigOptionItem = Extract<
 
 export type SessionInfoItem = Extract<CliStreamItem, { kind: "session" }>;
 
+function normalizeAvailableCommands(value: unknown): AvailableCommandItem[] {
+  // Older snapshots may contain a command array serialized and truncated as text.
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((command): AvailableCommandItem[] => {
+    if (!command || typeof command.name !== "string" || !command.name.trim()) {
+      return [];
+    }
+    return [{
+      name: command.name.trim(),
+      ...(typeof command.description === "string" ? { description: command.description } : {}),
+      ...(typeof command.inputHint === "string" ? { inputHint: command.inputHint } : {})
+    }];
+  });
+}
+
 function parseMessageItems(content: string, messageId?: string): CliStreamItem[] {
   return parseStoredStreamItems(content, messageId) ?? [];
 }
@@ -47,7 +62,7 @@ function latestItemFromMessages<T extends CliStreamItem["kind"]>(
 export function latestAvailableCommandsFromItems(
   items: CliStreamItem[]
 ): AvailableCommandItem[] {
-  return latestItemFromItems(items, "available-commands")?.commands ?? [];
+  return normalizeAvailableCommands(latestItemFromItems(items, "available-commands")?.commands);
 }
 
 export function latestConfigOptionsFromItems(
@@ -59,7 +74,7 @@ export function latestConfigOptionsFromItems(
 export function latestAvailableCommandsFromMessages(
   messages: ConversationMessage[]
 ): AvailableCommandItem[] {
-  return latestItemFromMessages(messages, "available-commands")?.commands ?? [];
+  return normalizeAvailableCommands(latestItemFromMessages(messages, "available-commands")?.commands);
 }
 
 export function latestConfigOptionsFromMessages(
@@ -119,9 +134,10 @@ export function mergeSessionMetaItems(
   commands: AvailableCommandItem[];
   configOptions: ConfigOptionItem[];
 } {
+  const liveCommands = latestAvailableCommandsFromItems(liveItems ?? []);
   const commands =
-    latestAvailableCommandsFromItems(liveItems ?? []).length > 0
-      ? latestAvailableCommandsFromItems(liveItems ?? [])
+    liveCommands.length > 0
+      ? liveCommands
       : latestAvailableCommandsFromItems(messageItems);
   const configOptions = mergeConfigOptionsChronologically([
     messageItems,

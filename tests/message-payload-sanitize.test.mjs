@@ -153,6 +153,34 @@ test("serializeStreamItemsForPersist caps bulky collected tool payloads", () => 
   assert.ok(JSON.parse(persisted)[1].input.length <= 12_000);
 });
 
+test("persisting a large slash command list preserves its array structure across reloads", () => {
+  const commands = Array.from({ length: 160 }, (_, index) => ({
+    name: `command-${index}`,
+    description: "Command description ".repeat(8),
+    inputHint: "Optional input"
+  }));
+  assert.ok(JSON.stringify(commands).length > 12_000);
+
+  let items = [{ kind: "available-commands", commands }];
+  for (let reload = 0; reload < 2; reload += 1) {
+    items = JSON.parse(serializeStreamItemsForPersist(items));
+    assert.ok(Array.isArray(items[0].commands));
+    assert.deepEqual(items[0].commands, commands);
+  }
+});
+
+test("large command descriptions stay bounded without turning the command list into text", () => {
+  const persisted = serializeStreamItemsForPersist([{
+    kind: "available-commands",
+    commands: [{ name: "help", description: "x".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS) }]
+  }]);
+  const items = JSON.parse(persisted);
+  assert.ok(persisted.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.ok(Array.isArray(items[0].commands));
+  assert.equal(items[0].commands[0].name, "help");
+  assert.ok(items[0].commands[0].description.length <= 12_000);
+});
+
 test("IPC history page size matches the renderer initial window", () => {
   assert.equal(IPC_LIST_MESSAGES_PAGE_SIZE, 20);
 });

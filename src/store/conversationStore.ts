@@ -26,6 +26,8 @@ import { workflowFollowupAgentId } from "@/services/workflows/types";
 import { workflowClient } from "@/services/workflows/client";
 import { debugLogClient } from "@/services/debugLog";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
+import type { SkillSnapshot } from "@/services/skills/types";
+import { mergeMessageSkills, withMessageSkills } from "@/utils/skillCommands";
 import {
   filterSessionConfigPickerOptions,
   resolveConfigOptionOverrides
@@ -183,6 +185,7 @@ export interface ConversationState {
     memberOverride?: CLIMember;
     configOptionOverrides?: Record<string, string>;
     hiddenContext?: string;
+    messageSkills?: SkillSnapshot[];
   }): Promise<void>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
@@ -1265,7 +1268,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     internalPrompt = false,
     memberOverride,
     configOptionOverrides,
-    hiddenContext
+    hiddenContext,
+    messageSkills = []
   }) {
     const trimmed = prompt.trim();
     if (!trimmed && attachments.length === 0) return;
@@ -1324,6 +1328,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         role: "user",
         status: "sent",
         content: trimmed,
+        ...(messageSkills.length ? { skillSnapshot: messageSkills } : {}),
         ...(attachments.length ? { attachments } : {}),
         authorUsername: get().currentUser?.username ?? null,
         createdAt: now,
@@ -1344,7 +1349,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         role: "user",
         status: "sent",
         content: trimmed,
-        attachments
+        attachments,
+        skillSnapshot: messageSkills
       });
       set((s) => ({
         messages: {
@@ -1423,9 +1429,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       }
     }
     const userPrompt = composeMessageWithAttachments(trimmed, attachments);
+    const skillPrompt = withMessageSkills(userPrompt, messageSkills);
     const userPromptWithContext = hiddenContext?.trim()
-      ? `${hiddenContext.trim()}\n\n${userPrompt}`
-      : userPrompt;
+      ? `${hiddenContext.trim()}\n\n${skillPrompt}`
+      : skillPrompt;
     const workflowFollowupContext =
       workflowRun && (wantFresh || !resumedFromSessionId)
         ? await workflowFollowupContextForRun(workflowRun)
@@ -1501,8 +1508,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       knownAgentStreamMessageIds: collectStreamAgentMessageIds(
         get().messages[conversationId] ?? []
       ),
-      skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId
+      skills: mergeMessageSkills(conv.skillSnapshot, messageSkills),
+      announceSkills: messageSkills.length > 0 || wantFresh || !resumedFromSessionId
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");

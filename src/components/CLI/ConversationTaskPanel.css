@@ -47,6 +47,7 @@
 .ctp-card-heading { display: flex; align-items: center; gap: 8px; min-height: 32px; margin-bottom: 10px; }
 .ctp-card-title { flex: 1; min-width: 0; border: 0; padding: 0; text-align: left; color: var(--fb-text-primary); background: transparent; font-size: 15px; font-weight: 600; line-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctp-card-title:hover { color: var(--fb-link); }
+.ctp-pinned-indicator { flex: 0 0 auto; align-self: center; color: var(--fb-text-tertiary); }
 .ctp-unread { display: inline-flex; align-items: center; justify-content: center; color: var(--fb-danger); flex: 0 0 auto; width: 6px; height: 18px; }
 .ctp-identity { display: flex; align-items: center; gap: 8px; min-width: 0; height: 24px; font-size: 13px; line-height: 20px; margin-bottom: 16px; color: var(--fb-text-secondary); }
 .ctp-avatar { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 auto; border-radius: 6px; overflow: hidden; background: var(--fb-panel-soft); color: var(--fb-text-secondary); }

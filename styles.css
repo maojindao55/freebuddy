@@ -2362,25 +2362,6 @@ html[data-surface="butler-screen-ball"] #root {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--fb-brand) 16%, transparent);
 }
 
-.conversation-title-editor.list .conversation-title-edit-btn {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  opacity: 0;
-  color: var(--fb-text-tertiary);
-}
-
-.conv-item:hover .conversation-title-editor.list .conversation-title-edit-btn,
-.conv-item:focus-within .conversation-title-editor.list .conversation-title-edit-btn {
-  opacity: 1;
-}
-
-.conversation-title-editor.list .conversation-title-edit-btn:hover,
-.conversation-title-editor.list .conversation-title-edit-btn:focus-visible {
-  color: var(--fb-brand);
-}
-
 .conversation-title-editor.list .conversation-title-input {
   height: 22px;
   font-size: 13px;
@@ -15057,28 +15038,90 @@ button.new-task-context-control {
 }
 
 
-.conv-item-side {
+.conv-item {
   position: relative;
-  display: grid;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
-  align-items: center;
-  justify-items: center;
 }
 
-.conv-item-running,
-.conv-unread-dot,
-.conv-delete-button {
+/* Hover-revealed quick actions overlaying the title tail: pin + archive,
+   compact like the project-row actions (1px gap, 22px buttons). Fully out of
+   flow so idle rows show the full title width. Two stacked gradient layers
+   share the same left fade: an OPAQUE sidebar-bg layer masks the title text
+   under the buttons, and the hover wash sits on top to match the row's
+   hovered/active tint. */
+.conv-item-actions {
   position: absolute;
-  inset: 0;
-  margin: auto;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding-left: 18px;
+  padding-right: 4px;
+  background:
+    linear-gradient(
+      to right,
+      transparent,
+      var(--fb-hover) 18px,
+      var(--fb-hover)
+    ),
+    linear-gradient(
+      to right,
+      transparent,
+      var(--fb-sidebar-bg) 18px,
+      var(--fb-sidebar-bg)
+    );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.conv-item.active .conv-item-actions,
+.conv-item:hover .conv-item-actions,
+.conv-item:focus-within .conv-item-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.conv-action-button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.conv-action-button:hover {
+  background: color-mix(in srgb, var(--fb-text-tertiary) 14%, transparent);
+  color: var(--fb-text-primary);
+}
+
+/* Pinned rows carry a small pin next to the title; the action group stays
+   hover-only so pinned titles also render in full. */
+.conv-pinned-indicator {
+  flex: 0 0 auto;
+  color: var(--fb-brand);
+}
+
+/* Status slot occupies flow space only when there is something to show
+   (running spinner or unread dot), never truncating idle rows. */
+.conv-item-status {
+  display: grid;
+  width: 16px;
+  flex: 0 0 16px;
+  place-items: center;
 }
 
 .conv-item-running {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   place-items: center;
   color: var(--fb-text-tertiary);
 }
@@ -15095,25 +15138,6 @@ button.new-task-context-control {
   border-radius: 50%;
   background: var(--fb-brand);
   transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.conv-delete-button {
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
-}
-
-.conv-delete-button svg {
-  width: 14px;
-  height: 14px;
-}
-
-.conv-item:hover .conv-delete-button,
-.conv-item:focus-within .conv-delete-button {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .conv-item:hover .conv-unread-dot,

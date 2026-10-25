@@ -320,6 +320,9 @@ export const cliClient = {
   archiveConversation(id: string, archived: boolean): Promise<void> {
     return api().archiveConversation(id, archived);
   },
+  setConversationPinned(id: string, pinned: boolean): Promise<Conversation> {
+    return api().setConversationPinned(id, pinned);
+  },
   deleteConversation(id: string): Promise<void> {
     return api().deleteConversation(id);
   },

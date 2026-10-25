@@ -42,6 +42,7 @@ const ALLOW = [
   "cli:renameConversation",
   "cli:setConversationApprovalMode",
   "cli:setConversationConfigOptionOverrides",
+  "cli:setConversationPinned",
   "cli:setConversationSkills",
   "cli:transferConversation",
   "cli:updateConversationAgentName",

@@ -197,10 +197,10 @@ test("ConversationList renders workflow runs as protected loading states", () =>
   assert.match(src, /!isBusy && isUnread \? " unread" : ""/);
   assert.match(css, /\.conv-item-running svg/);
   assert.match(css, /\.conv-item-running svg[\s\S]*?width: 14px;[\s\S]*?height: 14px;/);
-  assert.match(css, /\.conv-delete-button/);
+  assert.match(css, /\.conv-item-actions/);
   assert.match(css, /\.conv-unread-dot/);
   assert.match(css, /\.conv-unread-dot[\s\S]*?width: 7px;[\s\S]*?background: var\(--fb-brand\)/);
-  assert.match(css, /\.conv-item:hover \.conv-delete-button/);
+  assert.match(css, /\.conv-item:focus-within \.conv-item-actions/);
   assert.match(css, /\.conv-item:hover \.conv-unread-dot/);
   assert.match(css, /--fb-workflow/);
 });

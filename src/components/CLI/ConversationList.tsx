@@ -7,6 +7,7 @@ import {
   useRef,
   useState
 } from "react";
+import { Dropdown } from "antd";
 import { useConversationStore } from "@/store/conversationStore";
 import { usePinnedProjectsStore } from "@/store/pinnedProjectsStore";
 import { useProjectStore } from "@/store/projectStore";
@@ -20,6 +21,7 @@ import { writeConversationDrag } from "@/utils/conversationDrag";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 import {
+  Archive,
   CheckCheck,
   ChevronDown,
   ChevronUp,
@@ -35,8 +37,7 @@ import {
   Pin,
   PinOff,
   Plus,
-  Trash2,
-  X
+  Trash2
 } from "lucide-react";
 import { AgentAvatar } from "./AgentAvatar";
 import { EditableConversationTitle, useConversationVisibleTitle } from "./conversationTitle";
@@ -76,80 +77,164 @@ const ConversationRow = memo(function ConversationRow({
 }) {
   const { t } = useTranslation();
   const currentUser = useConversationStore((s) => s.currentUser);
+  const setConversationPinned = useConversationStore(
+    (s) => s.setConversationPinned
+  );
+  const archiveConversation = useConversationStore(
+    (s) => s.archiveConversation
+  );
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editSignal, setEditSignal] = useState(0);
   const visibleTitle = useConversationVisibleTitle(conversation);
   const showOwner = currentUser?.isOwner === true;
   const ownerName = conversation.ownerUsername?.trim() || "";
   const isOwnConversation = ownerName === (currentUser?.username ?? "");
   const isBusy = isRunning || isWorkflowRunning;
 
+  const handleTogglePinned = () => {
+    setConversationPinned(conversation.id, !conversation.pinned).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to pin conversation:", error);
+      }
+    });
+  };
+
+  const handleArchive = () => {
+    if (isBusy) return;
+    archiveConversation(conversation.id, true).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to archive conversation:", error);
+      }
+    });
+  };
+
   return (
-    <li
-      className={`conv-item${compact ? " compact" : ""}${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}`}
-      role="button"
-      tabIndex={0}
-      aria-current={isActive ? "true" : undefined}
-      title={visibleTitle}
-      draggable
-      onDragStart={(event) => {
-        if ((event.target as HTMLElement).closest("input, textarea, button, select, [contenteditable=true]")) {
-          event.preventDefault();
-          return;
-        }
-        writeConversationDrag(event.dataTransfer, conversation.id);
-      }}
-      onClick={() => onSelect(conversation.id)}
-      onKeyDown={(event) => {
-        const target = event.target as HTMLElement | null;
-        if (target?.closest("input, textarea, button")) return;
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect(conversation.id);
+    <Dropdown
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
+      trigger={[]}
+      placement="bottomRight"
+      menu={{
+        items: [
+          {
+            key: "rename",
+            icon: <Pencil size={14} aria-hidden="true" />,
+            label: t("conversations.renameTitle")
+          },
+          {
+            key: "archive",
+            icon: <Archive size={14} aria-hidden="true" />,
+            label: t("conversationPanel.archive"),
+            disabled: isBusy
+          },
+          { type: "divider" },
+          {
+            key: "delete",
+            icon: <Trash2 size={14} aria-hidden="true" />,
+            label: t("common.delete"),
+            danger: true,
+            disabled: deletionBlocked
+          }
+        ],
+        onClick: ({ key }) => {
+          setMenuOpen(false);
+          if (key === "rename") {
+            setEditSignal((current) => current + 1);
+            return;
+          }
+          if (key === "archive") {
+            handleArchive();
+            return;
+          }
+          if (key === "delete") {
+            onDelete(conversation.id, visibleTitle);
+          }
         }
       }}
     >
-      {conversation.kind === "game" ? (
-        <span
-          className="conv-item-avatar flex items-center justify-center text-amber-500 font-bold"
-          title={t("game.sessionTitle")}
-          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-        >
-          <Gamepad2 size={16} />
-        </span>
-      ) : (
-        <AgentAvatar
-          adapter={conversation.adapter}
-          className="conv-item-avatar"
-          fallback={<MessageSquare aria-hidden="true" />}
-        />
-      )}
-      <div className="conv-item-main">
-        <div className="conv-item-title-row">
-          <EditableConversationTitle conversation={conversation} variant="list" />
-          {conversation.pinned && (
-            <Pin
-              className="conv-pinned-indicator"
-              size={11}
-              aria-hidden="true"
-            />
-          )}
-        </div>
-        {showOwner && ownerName && !isOwnConversation && (
-          <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
-        )}
-      </div>
-      <div className={`conv-item-side${isBusy ? " running" : isUnread ? " unread" : ""}`}>
-        {isBusy ? (
+      <li
+        className={`conv-item${compact ? " compact" : ""}${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}`}
+        role="button"
+        tabIndex={0}
+        aria-current={isActive ? "true" : undefined}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title={visibleTitle}
+        data-conversation-id={conversation.id}
+        draggable={!isBusy}
+        onDragStart={(event) => {
+          if ((event.target as HTMLElement).closest("input, textarea, button, select, [contenteditable=true]")) {
+            event.preventDefault();
+            return;
+          }
+          writeConversationDrag(event.dataTransfer, conversation.id);
+        }}
+        onClick={() => onSelect(conversation.id)}
+        onDoubleClick={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, button, .conv-item-title-row")) return;
+          setMenuOpen(true);
+        }}
+        onContextMenu={(event) => {
+          // Two-finger / right-click opens the same menu as the double-click
+          // (trackpad users expect a context menu here).
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, button")) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuOpen(true);
+        }}
+        onKeyDown={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, button")) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(conversation.id);
+          }
+        }}
+      >
+        {conversation.kind === "game" ? (
           <span
-            className="conv-item-running"
-            role="status"
-            aria-label={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
-            title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+            className="conv-item-avatar flex items-center justify-center text-amber-500 font-bold"
+            title={t("game.sessionTitle")}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
           >
-            <LoaderCircle aria-hidden="true" size={14} strokeWidth={1.75} />
+            <Gamepad2 size={16} />
           </span>
         ) : (
-          <>
-            {isUnread && (
+          <AgentAvatar
+            adapter={conversation.adapter}
+            className="conv-item-avatar"
+            fallback={<MessageSquare aria-hidden="true" />}
+          />
+        )}
+        <div className="conv-item-main">
+          <div className="conv-item-title-row">
+            {conversation.pinned && (
+              <Pin className="conv-pinned-indicator" size={11} aria-hidden="true" />
+            )}
+            <EditableConversationTitle
+              conversation={conversation}
+              variant="list"
+              editSignal={editSignal}
+            />
+          </div>
+          {showOwner && ownerName && !isOwnConversation && (
+            <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
+          )}
+        </div>
+        {(isBusy || isUnread) && (
+          <div className={`conv-item-status${isBusy ? " running" : " unread"}`}>
+            {isBusy ? (
+              <span
+                className="conv-item-running"
+                role="status"
+                aria-label={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+                title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+              >
+                <LoaderCircle aria-hidden="true" size={14} strokeWidth={1.75} />
+              </span>
+            ) : (
               <span
                 className="conv-unread-dot"
                 role="status"
@@ -157,21 +242,51 @@ const ConversationRow = memo(function ConversationRow({
                 title={t("conversations.unread")}
               />
             )}
-            {!deletionBlocked && <button
-              className="conv-delete-button icon-btn danger"
-              title={t("common.delete")}
-              aria-label={t("common.delete")}
+          </div>
+        )}
+        {!isBusy && (
+          <div
+            className="conv-item-actions"
+            role="group"
+            aria-label={t("conversations.projectMenu")}
+          >
+            <button
+              type="button"
+              className="conv-action-button"
+              title={conversation.pinned
+                ? t("conversations.unpinConversation")
+                : t("conversations.pinConversation")}
+              aria-label={conversation.pinned
+                ? t("conversations.unpinConversation")
+                : t("conversations.pinConversation")}
+              aria-pressed={conversation.pinned}
               onClick={(event) => {
                 event.stopPropagation();
-                onDelete(conversation.id, visibleTitle);
+                handleTogglePinned();
               }}
             >
-              <X aria-hidden="true" />
-            </button>}
-          </>
+              {conversation.pinned ? (
+                <PinOff aria-hidden="true" size={13} strokeWidth={1.8} />
+              ) : (
+                <Pin aria-hidden="true" size={13} strokeWidth={1.8} />
+              )}
+            </button>
+            <button
+              type="button"
+              className="conv-action-button"
+              title={t("conversationPanel.archive")}
+              aria-label={t("conversationPanel.archive")}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleArchive();
+              }}
+            >
+              <Archive aria-hidden="true" size={14} strokeWidth={1.75} />
+            </button>
+          </div>
         )}
-      </div>
-    </li>
+      </li>
+    </Dropdown>
   );
 });
 

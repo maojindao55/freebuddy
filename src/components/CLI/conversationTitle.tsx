@@ -55,10 +55,13 @@ export function ConversationKindBadge({
 
 export function EditableConversationTitle({
   conversation,
-  variant
+  variant,
+  editSignal
 }: {
   conversation: TitleConversation;
   variant: "titlebar" | "list";
+  /** Increment to request an edit session (e.g. from a row menu); 0 = none. */
+  editSignal?: number;
 }) {
   const { t } = useTranslation();
   const renameConversation = useConversationStore((s) => s.renameConversation);
@@ -74,17 +77,6 @@ export function EditableConversationTitle({
   } | null>(null);
   const editing = editingId === conversation.id;
 
-  useEffect(() => {
-    if (editingId) return;
-    setDraft(visibleTitle);
-  }, [conversation.id, visibleTitle, editingId]);
-
-  useEffect(() => {
-    if (!editing) return;
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, [editing]);
-
   const startEditing = (event?: MouseEvent) => {
     event?.preventDefault();
     event?.stopPropagation();
@@ -97,6 +89,24 @@ export function EditableConversationTitle({
     setDraft(visibleTitle);
     setEditingId(conversation.id);
   };
+
+  // Menu-driven rename requests arrive as an incrementing counter.
+  useEffect(() => {
+    if (!editSignal) return;
+    startEditing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editSignal]);
+
+  useEffect(() => {
+    if (editingId) return;
+    setDraft(visibleTitle);
+  }, [conversation.id, visibleTitle, editingId]);
+
+  useEffect(() => {
+    if (!editing) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [editing]);
 
   const cancel = () => {
     if (finishRef.current) return;
@@ -173,23 +183,21 @@ export function EditableConversationTitle({
               {visibleTitle}
             </strong>
           )}
-          <button
-            type="button"
-            className={
-              variant === "titlebar"
-                ? "titlebar-icon-button conversation-title-edit-btn"
-                : "conversation-title-edit-btn icon-btn"
-            }
-            title={t("conversations.renameTitle")}
-            aria-label={t("conversations.renameTitle")}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={startEditing}
-          >
-            <Pencil aria-hidden="true" size={14} strokeWidth={1.8} />
-          </button>
+          {variant === "titlebar" && (
+            <button
+              type="button"
+              className="titlebar-icon-button conversation-title-edit-btn"
+              title={t("conversations.renameTitle")}
+              aria-label={t("conversations.renameTitle")}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={startEditing}
+            >
+              <Pencil aria-hidden="true" size={14} strokeWidth={1.8} />
+            </button>
+          )}
         </>
       )}
     </div>

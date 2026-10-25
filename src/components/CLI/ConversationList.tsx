@@ -8,6 +8,7 @@ import {
   useState
 } from "react";
 import { Dropdown } from "antd";
+import { useDismissOnOutsideActivation } from "@/hooks/useDismissOnOutsideActivation";
 import { useConversationStore } from "@/store/conversationStore";
 import { usePinnedProjectsStore } from "@/store/pinnedProjectsStore";
 import { useProjectStore } from "@/store/projectStore";
@@ -85,6 +86,11 @@ const ConversationRow = memo(function ConversationRow({
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [editSignal, setEditSignal] = useState(0);
+  const rowRef = useRef<HTMLLIElement>(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  // antd's trigger={[]} never registers an outside-click close, so the
+  // manually opened menu must dismiss itself (outside rows and main content).
+  useDismissOnOutsideActivation({ active: menuOpen, anchor: rowRef, onClose: closeMenu });
   const visibleTitle = useConversationVisibleTitle(conversation);
   const showOwner = currentUser?.isOwner === true;
   const ownerName = conversation.ownerUsername?.trim() || "";
@@ -153,6 +159,7 @@ const ConversationRow = memo(function ConversationRow({
       }}
     >
       <li
+        ref={rowRef}
         className={`conv-item${compact ? " compact" : ""}${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}`}
         role="button"
         tabIndex={0}

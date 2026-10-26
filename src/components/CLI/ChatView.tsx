@@ -1366,6 +1366,65 @@ export function ChatView({
       .catch(() => {});
   }, [conv?.agentId, sessionConfigOptions]);
 
+  useEffect(() => {
+    if (!running || !conv?.id) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+
+      const isEscape = event.key === "Escape";
+      const isCtrlC =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "c";
+
+      if (!isEscape && !isCtrlC) return;
+
+      // Do not interrupt if an overlay, modal, menu, or lightbox is open
+      const hasOverlay = [
+        ...document.querySelectorAll(
+          '[role="dialog"], [role="menu"], .modal, .modal-backdrop, .image-lightbox'
+        )
+      ].some(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          getComputedStyle(element).visibility !== "hidden"
+      );
+      if (hasOverlay) return;
+
+      // Do not hijack typing in other inputs outside this chat view
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        target.tagName === "INPUT" &&
+        target !== chatTextareaRef.current
+      ) {
+        return;
+      }
+
+      // For Ctrl+C, only stop if no text is selected (to preserve normal copy)
+      if (isCtrlC) {
+        const hasSelection = Boolean(
+          window.getSelection()?.toString() ||
+            (document.activeElement instanceof HTMLInputElement &&
+              document.activeElement.selectionStart !==
+                document.activeElement.selectionEnd) ||
+            (document.activeElement instanceof HTMLTextAreaElement &&
+              document.activeElement.selectionStart !==
+                document.activeElement.selectionEnd)
+        );
+        if (hasSelection) return;
+      }
+
+      event.preventDefault();
+      void stopActive(conv.id);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [running, conv?.id, stopActive]);
+
   const projects = useProjectStore((s) => s.projects);
   const conversationProject = useMemo(() => {
     if (!conv?.projectId) return undefined;
@@ -3356,6 +3415,24 @@ export function ChatView({
             onKeyDown={(e) => {
               if (chatFileMentions.handleKeyDown(e)) return;
               if (skillCommands.handleKeyDown(e)) return;
+              if (running && conv?.id && e.key === "Escape") {
+                e.preventDefault();
+                void stopActive(conv.id);
+                return;
+              }
+              if (
+                running &&
+                conv?.id &&
+                (e.ctrlKey || e.metaKey) &&
+                !e.altKey &&
+                !e.shiftKey &&
+                e.key.toLowerCase() === "c" &&
+                e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+              ) {
+                e.preventDefault();
+                void stopActive(conv.id);
+                return;
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 if (!attachmentBusy && !sendLock && !sending) void onSend();
@@ -3501,8 +3578,8 @@ export function ChatView({
                 className="danger stop-icon-button"
                 type="button"
                 disabled={!running}
-                title={running ? t("chat.stop") : t("status.starting")}
-                aria-label={running ? t("chat.stopAria") : t("chat.startingAria")}
+                title={running ? `${t("chat.stop")} (Esc)` : t("status.starting")}
+                aria-label={running ? `${t("chat.stopAria")} (Esc)` : t("chat.startingAria")}
                 onClick={() => void stopActive(conv.id)}
               >
                 {running ? <StopIcon /> : <span className="starting-spinner">…</span>}

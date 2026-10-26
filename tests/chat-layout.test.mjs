@@ -351,3 +351,14 @@ test("composer textarea stays enabled and preserves focus across sending and con
   assert.match(freshChatViewSource, /prevSendingRef\.current && !sending/);
 });
 
+
+test("chat view provides Escape and Ctrl+C keyboard shortcuts to stop running conversation", () => {
+  const freshChatViewSource = fs.readFileSync(
+    new URL("../src/components/CLI/ChatView.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(freshChatViewSource, /const isEscape = event\.key === "Escape";/);
+  assert.match(freshChatViewSource, /const isCtrlC =/);
+  assert.match(freshChatViewSource, /void stopActive\(conv\.id\);/);
+  assert.match(freshChatViewSource, /\$\{t\("chat\.stop"\)\} \(Esc\)/);
+});

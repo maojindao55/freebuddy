@@ -5,13 +5,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { registerHandler } from "./invokeRegistry.js";
 import { getConversation } from "./cli/conversations.js";
-import { resolveDocStudioOfficeFile } from "./officeEngineToolService.js";
+import {
+  associateDocStudioOfficeFile,
+  resolveDocStudioOfficeFile
+} from "./officeEngineToolService.js";
+import { markDocStudioConversation } from "./cli/conversations.js";
 import {
   isDocStudioWindowSender,
   registerDocStudioWindow,
   unregisterDocStudioWindow
 } from "./docStudioWindowRegistry.js";
 export { isDocStudioWindowSender } from "./docStudioWindowRegistry.js";
+
+function isAllowedDocSender(sender: Electron.WebContents): boolean {
+  if (isDocStudioWindowSender(sender)) return true;
+  const win = BrowserWindow.fromWebContents(sender);
+  return Boolean(win && !win.isDestroyed());
+}
 import {
   isOfficeEngineFile,
   buildOfficeEnginePreviewUrl,
@@ -270,13 +280,24 @@ export function initDocStudioBridge(): void {
   });
 
   registerHandler("docStudio:defaultDirectory", async (event) => {
-    if (!isDocStudioWindowSender(event.sender)) return null;
+    if (!isAllowedDocSender(event.sender)) return null;
     return app.getPath("documents");
+  });
+
+  registerHandler("docStudio:resolveConversationFile", async (_event, conversationId: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId) return null;
+    return resolveDocStudioOfficeFile(conversationId);
+  });
+
+  registerHandler("docStudio:attachFileToConversation", async (_event, conversationId: unknown, filePath: unknown) => {
+    if (typeof conversationId !== "string" || typeof filePath !== "string") return false;
+    associateDocStudioOfficeFile(conversationId, filePath);
+    return markDocStudioConversation(conversationId, filePath);
   });
 
   // Office engine preview URL (personal-learning integration; see officeEngineCore.ts)
   registerHandler("docStudio:officePreview", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
+    if (!isAllowedDocSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return { success: false, error: "forbidden" };
     }
     const port = await ensureOfficeEnginePort();
@@ -287,7 +308,7 @@ export function initDocStudioBridge(): void {
   // Office engine editor status (is_dirty / last_saved_ms). The SDK's
   // file_path query parameter is not URL-decoded, so match the pool locally.
   registerHandler("docStudio:engineEditorStatus", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
+    if (!isAllowedDocSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return { success: false, error: "forbidden" };
     }
     const port = await ensureOfficeEnginePort();
@@ -316,14 +337,14 @@ export function initDocStudioBridge(): void {
   // Covers office-engine files too: when an agent saves the file through the
   // engine MCP, the on-disk change reloads the embedded preview.
   registerHandler("docStudio:watchFile", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
+    if (!isAllowedDocSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return false;
     }
     return docStudioWatchFile(event, targetPath);
   });
 
   registerHandler("docStudio:unwatchFile", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender)) return false;
+    if (!isAllowedDocSender(event.sender)) return false;
     docStudioUnwatch(event.sender.id, targetPath);
     return true;
   });
@@ -336,7 +357,7 @@ export function initDocStudioBridge(): void {
 
   // Show in Finder / Explorer
   registerHandler("docStudio:showItemInFolder", async (event, targetPath: string) => {
-    if (!isDocStudioWindowSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
+    if (!isAllowedDocSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return false;
     }
     try {

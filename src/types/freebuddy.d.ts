@@ -1050,6 +1050,8 @@ declare global {
     openConversation(conversationId: string): Promise<boolean>;
     setActiveConversation(conversationId: string | null): Promise<boolean>;
     getDefaultDirectory(): Promise<string | null>;
+    resolveConversationFile(conversationId: string): Promise<string | null>;
+    attachFileToConversation(conversationId: string, filePath: string): Promise<boolean>;
     showOpenDialog(defaultPath?: string): Promise<string[] | null>;
     showItemInFolder(filePath: string): Promise<boolean>;
     openConversationInMain(conversationId: string): Promise<boolean>;

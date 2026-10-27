@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { AlertCircle, Bot, FileText, Folder, FolderOpen, Plus, X } from "lucide-react";
+import { AlertCircle, Bot, FileText, Folder, FolderOpen, PanelRight, Plus, X } from "lucide-react";
 import type { DocTab } from "./types";
 import { DocStudioCopilot } from "./DocStudioCopilot";
 import { useTranslation } from "react-i18next";
@@ -379,6 +379,20 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
               title={t("docStudio.showInFinder")}
             >
               <Folder size={15} />
+            </button>
+            <button
+              type="button"
+              className="ds-icon-btn"
+              title={t("docStudio.dockInMain", { defaultValue: "Dock into main window" })}
+              onClick={async () => {
+                const targetConvId = initialConversationId || blankConversationId;
+                if (targetConvId) {
+                  await window.freebuddy?.docStudio?.openConversationInMain(targetConvId);
+                  window.close();
+                }
+              }}
+            >
+              <PanelRight size={15} />
             </button>
             {!showCopilot && (
               <button

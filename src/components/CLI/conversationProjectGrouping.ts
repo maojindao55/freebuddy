@@ -17,6 +17,34 @@ export type ConversationProjectGroup = {
   latestAt: number;
 };
 
+export type ProjectSortMode = "activity" | "fixed";
+
+/** Pins take priority in either mode; conversation order within a group is unchanged. */
+export function sortProjectGroups(
+  groups: ConversationProjectGroup[],
+  pinnedKeys: string[],
+  mode: ProjectSortMode = "activity",
+  fixedOrder: string[] = []
+): ConversationProjectGroup[] {
+  const pins = new Map(pinnedKeys.map((key, index) => [key, index]));
+  const positions = new Map(fixedOrder.map((key, index) => [key, index]));
+  return [...groups].sort((a, b) => {
+    const aPin = pins.get(a.key);
+    const bPin = pins.get(b.key);
+    if (aPin !== undefined || bPin !== undefined) {
+      return (aPin ?? Infinity) - (bPin ?? Infinity);
+    }
+    if (mode === "fixed") {
+      const aPosition = positions.get(a.key) ?? Infinity;
+      const bPosition = positions.get(b.key) ?? Infinity;
+      if (aPosition !== bPosition) return aPosition - bPosition;
+    }
+    const aHasItems = a.items.length > 0 ? 1 : 0;
+    const bHasItems = b.items.length > 0 ? 1 : 0;
+    return bHasItems - aHasItems || b.latestAt - a.latestAt || a.label.localeCompare(b.label);
+  });
+}
+
 /** Derive the complete unread view before applying any sidebar display limits. */
 export function unreadConversationView(
   conversations: Conversation[],

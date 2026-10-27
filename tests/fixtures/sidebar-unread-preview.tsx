@@ -101,12 +101,28 @@ function Preview() {
   const [language, setLanguage] = useState<"zh-CN" | "en">("zh-CN");
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
   const active = useConversationStore(state => state.conversations.find(item => item.id === state.activeId));
+  const currentUser = useConversationStore(state => state.currentUser);
   const unreadCount = useConversationStore(state => state.conversations.filter(item => !!state.unreadConversations[item.id]).length);
   const running = useConversationStore(state => active ? state.live[active.id]?.status === "running" : false);
   const english = language === "en";
 
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   const newTask = () => { markRead(undefined); setWorkspaceView("chat"); };
+  const simulateActivity = () => {
+    const id = "docs-latest-activity";
+    useConversationStore.setState(state => ({
+      conversations: [
+        conversation(id, "Latest documentation activity", -1, { projectId: "docs", cwd: projects[2].primaryPath }),
+        ...state.conversations.filter(item => item.id !== id)
+      ],
+      unreadConversations: { ...state.unreadConversations, [id]: { kind: "message", at: timestamp(-1) } }
+    }));
+  };
+  const addProject = () => useProjectStore.setState(state => ({
+    projects: state.projects.some(item => item.id === "new-project")
+      ? state.projects
+      : [...state.projects, project("new-project", "New project", "/Users/demo/www/new-project")]
+  }));
 
   return <div className="app-shell detail-collapsed" data-theme={theme}>
     <style>{`
@@ -131,7 +147,7 @@ function Preview() {
       </div>
       <SidebarNavigation workspaceView={workspaceView} isNewTask={!active} onNewTask={newTask} onOpenScheduledTasks={() => setWorkspaceView("scheduledTasks")} onOpenTeams={() => setWorkspaceView("workflowTeams")} onOpenFreebie={() => setWorkspaceView("freebie")} />
       <ConversationList onNewTaskInProject={newTask} />
-      <div className="sidebar-footer"><span className="sidebar-user-name">Hongbin</span><span className="footer-version">v0.10.24</span></div>
+      <div className="sidebar-footer"><span className="sidebar-user-name">{currentUser?.username}</span><span className="footer-version">v0.10.24</span></div>
     </aside>
     <main className="unread-fixture-main">
       <div className="unread-fixture-toolbar" aria-label="Preview controls">
@@ -140,6 +156,9 @@ function Preview() {
         <button type="button" onClick={() => useConversationStore.setState({ unreadConversations: {} })}><Check size={13} />{english ? "Clear unread" : "清空未读"}</button>
         <button type="button" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme === "light" ? <Moon size={13} /> : <Sun size={13} />}{english ? "Theme" : "切换主题"}</button>
         <button type="button" onClick={() => { const next = english ? "zh-CN" : "en"; setLanguage(next); document.documentElement.lang = next; void i18next.changeLanguage(next); }}>{english ? "中文" : "English"}</button>
+        <button type="button" onClick={simulateActivity}>Simulate project activity</button>
+        <button type="button" onClick={addProject}>Add sample project</button>
+        <button type="button" onClick={() => useConversationStore.setState({ currentUser: { username: currentUser?.username === "Hongbin" ? "OtherUser" : "Hongbin", isOwner: true } })}>Switch sample user</button>
       </div>
       <div className="unread-fixture-content">
         <div className="unread-fixture-label">{active?.projectId === "freebuddy" ? "FreeBuddy" : english ? "Workspace" : "工作区"} / {english ? "Task" : "任务"}</div>

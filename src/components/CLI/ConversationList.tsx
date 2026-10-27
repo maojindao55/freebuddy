@@ -11,6 +11,7 @@ import { Dropdown } from "antd";
 import { useDismissOnOutsideActivation } from "@/hooks/useDismissOnOutsideActivation";
 import { useConversationStore } from "@/store/conversationStore";
 import { usePinnedProjectsStore } from "@/store/pinnedProjectsStore";
+import { projectSortPreferenceForUser, useProjectSortStore } from "@/store/projectSortStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useConversationOverviewStore } from "@/store/conversationOverviewStore";
@@ -32,6 +33,8 @@ import {
   LoaderCircle,
   LayoutGrid,
   List,
+  Lock,
+  LockOpen,
   MessageSquare,
   MoreHorizontal,
   Pencil,
@@ -51,6 +54,7 @@ import {
   groupConversationsByProject,
   groupConversationsByProjects,
   recentConversations,
+  sortProjectGroups,
   unreadConversationView,
   type ConversationProjectGroup
 } from "./conversationProjectGrouping";
@@ -585,12 +589,19 @@ export function ConversationList({
   const loadWorkflowActiveRuns = useWorkflowStore((s) => s.loadActiveRuns);
   const apiProjects = useProjectStore((s) => s.projects);
   const projectsLoaded = useProjectStore((s) => s.loaded);
+  const projectsLoading = useProjectStore((s) => s.loading);
   const projectsError = useProjectStore((s) => s.error);
   const refreshProjects = useProjectStore((s) => s.refresh);
   const removeProject = useProjectStore((s) => s.remove);
   const pinnedKeys = usePinnedProjectsStore((s) => s.pinnedKeys);
   const togglePin = usePinnedProjectsStore((s) => s.toggle);
   const unpin = usePinnedProjectsStore((s) => s.unpin);
+  const currentUser = useConversationStore((s) => s.currentUser);
+  const username = currentUser?.username;
+  const projectSort = useProjectSortStore((s) => projectSortPreferenceForUser(s, username));
+  const projectOrderLocked = projectSort.mode === "fixed";
+  const setProjectSortMode = useProjectSortStore((s) => s.setMode);
+  const rememberProjects = useProjectSortStore((s) => s.rememberProjects);
   const { t } = useTranslation();
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -705,19 +716,14 @@ export function ConversationList({
     const groups = projectsLoaded
       ? groupConversationsByProjects(conversations, apiProjects)
       : groupConversationsByProject(conversations);
-    return [...groups].sort((a, b) => {
-      const aPin = pinnedKeys.indexOf(a.key);
-      const bPin = pinnedKeys.indexOf(b.key);
-      const aPinned = aPin >= 0;
-      const bPinned = bPin >= 0;
-      if (aPinned !== bPinned) return aPinned ? -1 : 1;
-      if (aPinned && bPinned && aPin !== bPin) return aPin - bPin;
-      const aHasItems = a.items.length > 0 ? 1 : 0;
-      const bHasItems = b.items.length > 0 ? 1 : 0;
-      if (aHasItems !== bHasItems) return bHasItems - aHasItems;
-      return b.latestAt - a.latestAt || a.label.localeCompare(b.label);
-    });
-  }, [conversations, apiProjects, pinnedKeys, projectsLoaded]);
+    return sortProjectGroups(groups, pinnedKeys, projectSort.mode, projectSort.fixedOrder);
+  }, [conversations, apiProjects, pinnedKeys, projectsLoaded, projectSort]);
+
+  useEffect(() => {
+    // Never replace saved ids with temporary cwd groups or an incomplete/error list.
+    if (!projectsLoaded || projectsLoading || projectsError) return;
+    rememberProjects(username, projects.map((project) => project.key));
+  }, [projectsLoaded, projectsLoading, projectsError, projects, username, rememberProjects]);
   const unreadView = useMemo(
     () => unreadConversationView(conversations, projects, unreadConversations),
     [conversations, projects, unreadConversations]
@@ -741,8 +747,6 @@ export function ConversationList({
     }
     return undefined;
   }, [activeId, conversations, projects]);
-
-  const currentUser = useConversationStore((s) => s.currentUser);
 
   const visibleProjects = useMemo(() => {
     if (unreadOnly) return unreadView.projects;
@@ -931,15 +935,34 @@ export function ConversationList({
         {(!unreadOnly || visibleProjects.length > 0) && (
           <li className="conv-group-header projects">
             <span>{t("conversations.projects")}</span>
-            <button
-              type="button"
-              className="conv-projects-add"
-              title={t("conversations.addProject")}
-              aria-label={t("conversations.addProject")}
-              onClick={openCreateModal}
-            >
-              <Plus aria-hidden="true" size={14} strokeWidth={2} />
-            </button>
+            <div className="conv-projects-header-actions">
+              <button
+                type="button"
+                className={`conv-project-sort-lock${projectOrderLocked ? " locked" : ""}`}
+                aria-label={t("conversations.lockProjectOrder")}
+                aria-pressed={projectOrderLocked}
+                title={t(projectOrderLocked ? "conversations.unlockProjectOrderHint" : "conversations.lockProjectOrderHint")}
+                disabled={!projectsLoaded || projectsLoading || !!projectsError}
+                onClick={() => setProjectSortMode(
+                  username,
+                  projectOrderLocked ? "activity" : "fixed",
+                  projects.map((project) => project.key)
+                )}
+              >
+                {projectOrderLocked
+                  ? <Lock aria-hidden="true" size={14} strokeWidth={1.8} />
+                  : <LockOpen aria-hidden="true" size={14} strokeWidth={1.8} />}
+              </button>
+              <button
+                type="button"
+                className="conv-projects-add"
+                title={t("conversations.addProject")}
+                aria-label={t("conversations.addProject")}
+                onClick={openCreateModal}
+              >
+                <Plus aria-hidden="true" size={14} strokeWidth={2} />
+              </button>
+            </div>
           </li>
         )}
         {projectsError ? (

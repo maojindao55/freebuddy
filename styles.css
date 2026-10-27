@@ -14203,6 +14203,58 @@ button.new-task-context-control {
   color: var(--fb-brand);
 }
 
+.conv-projects-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.conv-project-sort-lock {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.conv-group-header.projects:hover .conv-project-sort-lock,
+.conv-group-header.projects:focus-within .conv-project-sort-lock,
+.conv-project-sort-lock.locked {
+  opacity: 1;
+}
+
+.conv-project-sort-lock.locked {
+  color: var(--fb-text-secondary);
+}
+
+.conv-project-sort-lock:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+
+.conv-project-sort-lock:focus-visible {
+  outline: 2px solid var(--fb-brand);
+  outline-offset: 1px;
+}
+
+.conv-project-sort-lock:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+@media (hover: none) {
+  .conv-project-sort-lock {
+    opacity: 1;
+  }
+}
+
 .conv-projects-error {
   list-style: none;
   padding: 2px 8px 6px;

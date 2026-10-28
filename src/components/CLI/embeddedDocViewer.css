@@ -162,3 +162,28 @@
 .embedded-doc-primary-btn:hover {
   opacity: 0.9;
 }
+
+/* Frame wrapper: keeps the engine iframe mounted across reloads. Loading
+   dims the existing frame instead of unmounting it, so live reloads never
+   blank the panel or flash the whole viewer. */
+.embedded-doc-frame-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.embedded-doc-frame-wrap .ds-office-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+}
+
+.embedded-doc-frame-wrap[data-loading]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--fb-bg, #f3f4f6);
+  opacity: 0.55;
+  pointer-events: none;
+}
+

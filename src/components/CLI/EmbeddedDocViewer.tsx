@@ -104,7 +104,16 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
     try {
       const res = await api.getEnginePreview(targetFile);
       if (res.success && res.url) {
-        setPreviewUrl(res.url);
+        // Set dark_mode once at load: the engine only enables its theme
+        // message listener when the query flag is present, and rewriting the
+        // URL later would reload (and discard) document edits. Read the store
+        // snapshot instead of adding resolvedTheme to the deps so a theme
+        // change never reloads the frame; syncTheme postMessage handles that.
+        const url = new URL(res.url);
+        if (url.origin !== "null") {
+          url.searchParams.set("dark_mode", useSettingsStore.getState().resolvedTheme);
+        }
+        setPreviewUrl(url.toString());
       } else {
         setError(res.error || t("docStudio.openFailedGeneric", { defaultValue: "Failed to open document preview." }));
       }
@@ -123,6 +132,24 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
       setLoading(false);
     }
   }, [filePath, loadPreview, reloadKey]);
+
+  // Reload the preview only when the engine editor has no unsaved changes —
+  // remounting the iframe would discard in-memory edits (same guard as
+  // DocStudioApp's handleFileChanged).
+  const reloadPreview = useCallback(() => {
+    const reload = () => setReloadKey((prev) => prev + 1);
+    const status = filePath
+      ? window.freebuddy?.docStudio?.getEngineEditorStatus?.(filePath)
+      : undefined;
+    if (!status) {
+      reload();
+      return;
+    }
+    void status.then((res) => {
+      if (res.success && res.isDirty) return;
+      reload();
+    }).catch(reload);
+  }, [filePath]);
 
   // File watcher for external or agent updates
   useEffect(() => {
@@ -225,7 +252,7 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
                 className="embedded-doc-btn"
                 title={t("docStudio.reloadPreview", { defaultValue: "Reload Preview" })}
                 aria-label={t("docStudio.reloadPreview", { defaultValue: "Reload Preview" })}
-                onClick={() => setReloadKey((k) => k + 1)}
+                onClick={reloadPreview}
               >
                 <RotateCw size={14} />
               </button>
@@ -244,23 +271,25 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
         </div>
       </div>
 
-      {/* Main Preview / Empty State */}
+      {/* Main Preview / Empty State. The iframe stays mounted across reloads
+          (loading becomes an overlay, errors keep the stale frame) so live
+          reloads never blank the panel or discard engine-side edits. */}
       <div className="embedded-doc-body">
-        {loading && (
+        {loading && !previewUrl && (
           <div className="embedded-doc-status-panel">
             <Loader2 className="animate-spin" size={24} />
             <p>{t("docStudio.copilotLoading", { defaultValue: "Loading document preview…" })}</p>
           </div>
         )}
 
-        {!loading && error && (
+        {!loading && error && !previewUrl && (
           <div className="embedded-doc-status-panel error">
             <AlertCircle size={24} />
             <p>{error}</p>
             <button
               type="button"
               className="embedded-doc-primary-btn"
-              onClick={() => setReloadKey((k) => k + 1)}
+              onClick={reloadPreview}
             >
               {t("common.retry", { defaultValue: "Retry" })}
             </button>
@@ -289,16 +318,19 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
           </div>
         )}
 
-        {!loading && !error && filePath && previewUrl && (
-          <iframe
-            ref={frameRef}
-            src={previewUrl}
-            onLoad={syncTheme}
-            className="ds-office-frame"
-            data-active="true"
-            title={fileName}
-            allow="clipboard-read; clipboard-write"
-          />
+        {filePath && previewUrl && (
+          <div className="embedded-doc-frame-wrap" data-loading={loading || undefined}>
+            <iframe
+              ref={frameRef}
+              key={`${filePath}-${reloadKey}`}
+              src={previewUrl}
+              onLoad={syncTheme}
+              className="ds-office-frame"
+              data-active="true"
+              title={fileName}
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
         )}
       </div>
     </div>

@@ -12,15 +12,18 @@ import {
 import { markDocStudioConversation } from "./cli/conversations.js";
 import {
   isDocStudioWindowSender,
+  isDocStudioMainWindowSender,
   registerDocStudioWindow,
   unregisterDocStudioWindow
 } from "./docStudioWindowRegistry.js";
 export { isDocStudioWindowSender } from "./docStudioWindowRegistry.js";
 
 function isAllowedDocSender(sender: Electron.WebContents): boolean {
-  if (isDocStudioWindowSender(sender)) return true;
-  const win = BrowserWindow.fromWebContents(sender);
-  return Boolean(win && !win.isDestroyed());
+  // Explicit allow-list: the main window's own webContents (embedded doc
+  // viewer) plus registered standalone DocStudio windows. Deliberately not
+  // BrowserWindow.fromWebContents(), which would admit any webContents that
+  // happens to be associated with a window — including WebContentsViews.
+  return isDocStudioWindowSender(sender) || isDocStudioMainWindowSender(sender);
 }
 import {
   isOfficeEngineFile,
@@ -284,13 +287,16 @@ export function initDocStudioBridge(): void {
     return app.getPath("documents");
   });
 
-  registerHandler("docStudio:resolveConversationFile", async (_event, conversationId: unknown) => {
+  registerHandler("docStudio:resolveConversationFile", async (event, conversationId: unknown) => {
+    if (!isAllowedDocSender(event.sender)) return null;
     if (typeof conversationId !== "string" || !conversationId) return null;
     return resolveDocStudioOfficeFile(conversationId);
   });
 
-  registerHandler("docStudio:attachFileToConversation", async (_event, conversationId: unknown, filePath: unknown) => {
-    if (typeof conversationId !== "string" || typeof filePath !== "string") return false;
+  registerHandler("docStudio:attachFileToConversation", async (event, conversationId: unknown, filePath: unknown) => {
+    if (!isAllowedDocSender(event.sender)) return false;
+    if (typeof conversationId !== "string" || !conversationId) return false;
+    if (!isAllowedOfficeEnginePath(filePath)) return false;
     associateDocStudioOfficeFile(conversationId, filePath);
     return markDocStudioConversation(conversationId, filePath);
   });
@@ -351,6 +357,7 @@ export function initDocStudioBridge(): void {
 
   // Open dialog
   registerHandler("docStudio:showOpenDialog", async (event, defaultPath?: string) => {
+    if (!isAllowedDocSender(event.sender)) return null;
     const parentWin = BrowserWindow.fromWebContents(event.sender);
     return showDocStudioOpenDialog(parentWin ?? undefined, defaultPath);
   });

@@ -42,6 +42,10 @@ import {
   isDocStudioOpenableFile,
   isDocStudioWindowSender
 } from "./docStudioBridge.js";
+import {
+  registerDocStudioMainWindow,
+  unregisterDocStudioMainWindow
+} from "./docStudioWindowRegistry.js";
 import { getDb, getDataDir } from "./cli/db.js";
 import { getSetting, setSetting } from "./cli/settings.js";
 import { migrateLegacyDocStudioConversations } from "./officeEngineToolService.js";
@@ -1838,6 +1842,13 @@ function createWindow() {
     butlerBuddyStateCoordinator.setStreaming(false);
     closeButlerBuddyWindows();
   });
+
+  // Allow-list the main window's own webContents for DocStudio IPC (the
+  // embedded doc viewer). Sibling WebContentsViews stay excluded.
+  const mainDocStudioWebContentsId = mainWindow.webContents.id;
+  registerDocStudioMainWindow(mainDocStudioWebContentsId);
+  mainWindow.webContents.once("destroyed", () =>
+    unregisterDocStudioMainWindow(mainDocStudioWebContentsId));
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     logMain().error("crash", "render process gone", {

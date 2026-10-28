@@ -1008,6 +1008,10 @@ const docStudio = {
     ipcRenderer.invoke("docStudio:setActiveConversation", conversationId) as Promise<boolean>,
   getDefaultDirectory: () =>
     ipcRenderer.invoke("docStudio:defaultDirectory") as Promise<string | null>,
+  resolveConversationFile: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:resolveConversationFile", conversationId) as Promise<string | null>,
+  attachFileToConversation: (conversationId: string, filePath: string) =>
+    ipcRenderer.invoke("docStudio:attachFileToConversation", conversationId, filePath) as Promise<boolean>,
   showOpenDialog: (defaultPath?: string) =>
     ipcRenderer.invoke("docStudio:showOpenDialog", defaultPath) as Promise<string[] | null>,
   showItemInFolder: (filePath: string) =>

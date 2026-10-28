@@ -1142,11 +1142,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         ...s.conversations.filter((c) => c.id !== result.conversation.id)
       ],
       activeId: result.conversation.id,
-      messages: { ...s.messages, [result.conversation.id]: [] },
-      pendingFreshContext: {
-        ...s.pendingFreshContext,
-        [result.conversation.id]: true
-      }
+      messages: { ...s.messages, [result.conversation.id]: [] }
+      // No pendingFreshContext: the fork owns copied history rows, and the
+      // backend strips the source session marker, so the next send correctly
+      // goes down the orphan-followup path (listFollowupMessages) and the
+      // first answer still sees the pre-fork conversation.
     }));
     ensureWorkflowMessageSubscription(result.conversation.id, async (cid, messageIds) => {
       await get().loadMessages(cid, messageIds);

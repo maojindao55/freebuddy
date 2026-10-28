@@ -82,6 +82,11 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [showCopilot, setShowCopilot] = useState(true);
   const [blankConversationId, setBlankConversationId] = useState<string | null>(initialConversationId ?? null);
+  // The conversation the copilot is currently chatting in. Starts at the
+  // reopened conversation and is kept up to date by DocStudioCopilot; docking
+  // must use this instead of blankConversationId, which goes stale once a
+  // document tab resolves to its own conversation.
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(initialConversationId ?? null);
   const [initialFilePending, setInitialFilePending] = useState(Boolean(initialFilePath));
   const [toast, setToast] = useState<string | null>(null);
   const [copilotWidth, setCopilotWidth] = useState(() => {
@@ -211,6 +216,9 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
   }, [openFileIntoTab]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
+  // Dock target: the copilot's live conversation, falling back to the blank
+  // conversation until the copilot reports one (engine not ready yet).
+  const targetConvId = activeConversationId ?? blankConversationId;
 
   // Open file dialog (engine files only)
   const handleOpenFileDialog = async () => {
@@ -383,13 +391,12 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
             <button
               type="button"
               className="ds-icon-btn"
-              title={t("docStudio.dockInMain", { defaultValue: "Dock into main window" })}
+              title={t(targetConvId ? "docStudio.dockInMain" : "docStudio.dockUnavailable")}
+              disabled={!targetConvId}
               onClick={async () => {
-                const targetConvId = initialConversationId || blankConversationId;
-                if (targetConvId) {
-                  await window.freebuddy?.docStudio?.openConversationInMain(targetConvId);
-                  window.close();
-                }
+                if (!targetConvId) return;
+                await window.freebuddy?.docStudio?.openConversationInMain(targetConvId, { embed: true });
+                window.close();
               }}
             >
               <PanelRight size={15} />
@@ -511,6 +518,7 @@ export const DocStudioApp: React.FC<DocStudioAppProps> = ({ initialFilePath, ini
               initialFilePending={initialFilePending}
               blankConversationId={blankConversationId}
               onBlankConversationChange={setBlankConversationId}
+              onActiveConversationChange={setActiveConversationId}
               onCollapse={() => setShowCopilot(false)}
             />
           </div>

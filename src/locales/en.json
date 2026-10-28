@@ -2865,6 +2865,8 @@
     "openInStudio": "Open in DocStudio",
     "openDocument": "Open document...",
     "showInFinder": "Show in Finder",
+    "dockInMain": "Dock into main window",
+    "dockUnavailable": "No document session to dock yet",
     "noDocument": "No document opened",
     "noDocumentHint": "Ask AI to create a document, or open a local Office or PDF file to start editing.",
     "selectLocalFile": "Choose local file to open",

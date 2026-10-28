@@ -1544,7 +1544,7 @@ function registerButlerBuddyWindowIpc() {
   });
   registerHandler(
     "docStudio:openConversationInMain",
-    (event, conversationId: unknown) => {
+    (event, conversationId: unknown, options?: { embed?: boolean }) => {
       if (!isDocStudioWindowSender(event.sender)) return false;
       if (typeof conversationId !== "string" || !conversationId) return false;
       revealMainWindow();
@@ -1553,7 +1553,7 @@ function registerButlerBuddyWindowIpc() {
       safeSendToWebContents(
         win.webContents,
         "window:open-conversation",
-        conversationId
+        options?.embed ? { conversationId, embed: true } : conversationId
       );
       return true;
     }

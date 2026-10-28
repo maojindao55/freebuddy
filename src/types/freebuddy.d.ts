@@ -388,7 +388,7 @@ declare global {
     ): () => void;
     onBrowserTool(cb: (event: BrowserToolEvent) => void): () => void;
     resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean>;
-    onOpenConversation(cb: (conversationId: string) => void): () => void;
+    onOpenConversation(cb: (conversationId: string, embed?: boolean) => void): () => void;
     onNewConversation(cb: () => void): () => void;
     onExternalShare(cb: (payload: ExternalSharePayload) => void): () => void;
     onShellOpen(cb: (payload: ShellOpenPayload) => void): () => void;
@@ -1054,7 +1054,7 @@ declare global {
     attachFileToConversation(conversationId: string, filePath: string): Promise<boolean>;
     showOpenDialog(defaultPath?: string): Promise<string[] | null>;
     showItemInFolder(filePath: string): Promise<boolean>;
-    openConversationInMain(conversationId: string): Promise<boolean>;
+    openConversationInMain(conversationId: string, options?: { embed?: boolean }): Promise<boolean>;
     watchFile(filePath: string): Promise<boolean>;
     unwatchFile(filePath: string): Promise<boolean>;
     getEnginePreview(filePath: string): Promise<{

@@ -276,7 +276,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId) => {
+    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId, embed) => {
       void (async () => {
         const state = useConversationStore.getState();
         // Conversations created in other renderer processes (e.g. DocStudio)
@@ -284,7 +284,10 @@ function App() {
         if (!state.conversations.some((c) => c.id === conversationId)) {
           await state.refreshList();
         }
-        if (useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
+        // "Dock into main window" from the standalone studio asks for the
+        // embedded viewer explicitly; everything else keeps popping the
+        // standalone DocStudio window open for document chats.
+        if (!embed && useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
           try {
             if (await window.freebuddy?.docStudio?.openConversation(conversationId)) {
               useConversationStore.getState().markConversationRead(conversationId);

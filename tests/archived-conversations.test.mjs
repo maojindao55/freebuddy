@@ -28,14 +28,22 @@ test("archived conversations are managed from a Settings tab", () => {
   assert.match(tab, /settings\.archived\.searchPlaceholder/);
   assert.match(tab, /settings\.archived\.restore/);
 
-  // Sidebar: one-click archive outside the menu, delete moved inside.
-  assert.match(list, /conv-archive-button/);
+  // Sidebar rows keep main's integrated form: archive lives in the hover
+  // quick actions and in the context menu, delete stays inside the menu.
+  // The PR's standalone inline archive/menu buttons were dropped when the
+  // row was rebased onto main's row-level context menu (#222).
+  assert.match(list, /conv-action-button/);
+  assert.match(list, /handleArchive\(\)/);
   assert.match(list, /archiveConversation\(conversation\.id, true\)/);
   assert.match(list, /key: "archive"/);
   assert.match(list, /key: "delete"/);
   assert.ok(
     !/conv-delete-button/.test(list),
     "the inline delete X button must be gone from sidebar rows"
+  );
+  assert.ok(
+    !/conv-item-archive|conv-item-menu/.test(list),
+    "the PR's inline archive/overflow buttons must not come back"
   );
 
   // Store: archive drops the row (and switches away when active); restore
@@ -61,7 +69,8 @@ test("archived conversations are managed from a Settings tab", () => {
     }
   }
 
-  // Styles for the quick archive button and the settings list.
-  assert.match(css, /\.conv-item-archive/);
+  // Styles: only the settings list remains; the inline row button styles
+  // were dropped together with the buttons.
   assert.match(css, /\.archived-conversations-list/);
+  assert.doesNotMatch(css, /\.conv-item-archive/);
 });

@@ -490,6 +490,11 @@ export function setConversationPinned(id: string, pinned: boolean): Conversation
  * worktree conversations, and the host source path for remote managed
  * workspaces — is added to the target project's folders when missing so the
  * project keeps covering the conversation's workspace.
+ *
+ * Removing a conversation records `projectDetached` in its metadata: without
+ * the marker the sidebar's cwd fallback would immediately regroup it under
+ * the project that still owns its cwd, so "remove from project" would look
+ * like a no-op (row stays in the group while also reappearing in Recent).
  */
 export function moveConversationToProject(
   id: string,
@@ -500,6 +505,10 @@ export function moveConversationToProject(
 
   const db = getDb();
   return db.transaction(() => {
+    updateConversationMetadata(id, {
+      // JSON.stringify drops undefined keys, so this clears the marker too.
+      projectDetached: projectId ? undefined : true
+    });
     if (projectId) {
       const project = getProject(projectId);
       if (!project) throw new Error(`Project not found: ${projectId}`);

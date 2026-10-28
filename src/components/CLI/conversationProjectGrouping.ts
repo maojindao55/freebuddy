@@ -183,6 +183,11 @@ export function groupConversationsByProject(
 /**
  * Group conversations by projectId. Every project in `projects` appears even with
  * zero conversations. `key` is the project id when present.
+ *
+ * The cwd fallback only applies to conversations that were never assigned (or
+ * whose project disappeared). One explicitly removed via "remove from project"
+ * carries `metadata.projectDetached` and stays in Recent even though its cwd
+ * still resolves to a project folder.
  */
 export function groupConversationsByProjects(
   items: Conversation[],
@@ -199,7 +204,7 @@ export function groupConversationsByProjects(
 
   for (const conversation of items) {
     let projectId = conversation.projectId?.trim();
-    if (!projectId) {
+    if (!projectId && !conversation.metadata?.projectDetached) {
       const cwd = conversationDisplayCwd(conversation);
       if (cwd) {
         projectId = folderToProjectId.get(projectKeyFromCwd(cwd));

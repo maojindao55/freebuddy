@@ -32,6 +32,7 @@ function conversation(partial) {
     cwd: partial.cwd,
     sourceCwd: partial.sourceCwd,
     projectId: partial.projectId,
+    metadata: partial.metadata,
     pinned: partial.pinned,
     pinnedAt: partial.pinnedAt,
     sortPosition: partial.sortPosition
@@ -511,5 +512,36 @@ test("manual positions order the group and unpositioned rows lead", async () => 
   assert.deepEqual(
     group.items.map((item) => item.id),
     ["pinned", "fresh-2", "fresh-1", "pos-a", "pos-b"]
+  );
+});
+
+test("explicitly detached conversations skip the cwd fallback and stay in Recent", async () => {
+  const { groupConversationsByProjects, recentConversations } = await loadGrouping();
+  const project = {
+    id: "p1",
+    name: "P1",
+    folders: ["/tmp/p1"],
+    primaryPath: "/tmp/p1",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  };
+  const detached = conversation({
+    id: "detached",
+    cwd: "/tmp/p1",
+    metadata: { projectDetached: true },
+    lastMessageAt: "2026-07-10T00:00:00.000Z"
+  });
+  const neverAssigned = conversation({
+    id: "never-assigned",
+    cwd: "/tmp/p1",
+    lastMessageAt: "2026-07-09T00:00:00.000Z"
+  });
+  const [group] = groupConversationsByProjects([detached, neverAssigned], [project]);
+  // The detached row must not regroup under the project that owns its cwd;
+  // the never-assigned row still benefits from the cwd fallback.
+  assert.deepEqual(group.items.map((item) => item.id), ["never-assigned"]);
+  assert.deepEqual(
+    recentConversations([detached, neverAssigned]).map((item) => item.id),
+    ["detached", "never-assigned"]
   );
 });

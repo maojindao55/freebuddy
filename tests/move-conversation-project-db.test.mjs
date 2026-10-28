@@ -136,6 +136,47 @@ test("moving to null clears the project assignment", async (t) => {
 
     const moved = ctx.moveConversationToProject("conv-1", null);
     assert.equal(moved.projectId, undefined);
+    // The explicit detach marker keeps the sidebar's cwd fallback from
+    // regrouping the conversation under the project that owns its cwd.
+    assert.equal(moved.metadata.projectDetached, true);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("moving back into a project clears the detach marker", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    const folder = abs("tmp", "work");
+    const project = ctx.createProject({ name: "P", folders: [folder], primaryPath: folder });
+    ctx.createConversation({ ...convInput("conv-1"), projectId: project.id, cwd: folder });
+    ctx.moveConversationToProject("conv-1", null);
+    assert.equal(ctx.getConversation("conv-1").metadata.projectDetached, true);
+
+    const moved = ctx.moveConversationToProject("conv-1", project.id);
+    assert.equal(moved.metadata.projectDetached, undefined);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("detach keeps unrelated metadata intact", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    const folder = abs("tmp", "work");
+    const project = ctx.createProject({ name: "P", folders: [folder], primaryPath: folder });
+    ctx.createConversation({
+      ...convInput("conv-1"),
+      projectId: project.id,
+      cwd: folder,
+      metadata: { mcpServerIds: ["srv-1"] }
+    });
+
+    const moved = ctx.moveConversationToProject("conv-1", null);
+    assert.deepEqual(moved.metadata.mcpServerIds, ["srv-1"]);
+    assert.equal(moved.metadata.projectDetached, true);
   } finally {
     ctx.cleanup();
   }

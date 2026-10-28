@@ -387,7 +387,7 @@
       resizeRafId = null;
     }
     const schedule = typeof window.requestAnimationFrame === "function"
-      ? window.requestAnimationFrame
+      ? (cb) => window.requestAnimationFrame(cb)
       : (cb) => setTimeout(cb, 16);
     resizeRafId = schedule(() => {
       resizeRafId = null;

@@ -143,6 +143,22 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
     };
   }, [filePath]);
 
+  // Files the agent created or saved-as during a run: the main process
+  // associates them with this conversation; pick the new file up and switch
+  // the preview once the refreshed metadata (or the fallback resolve) lands.
+  useEffect(() => {
+    const api = window.freebuddy?.docStudio;
+    if (!api?.onFileSavedAs) return;
+    return api.onFileSavedAs((savedPath) => {
+      if (!savedPath) return;
+      void useConversationStore.getState().refreshList().then(() => {
+        void api.resolveConversationFile?.(conversationId).then((resolved) => {
+          if (resolved) setFilePath(resolved);
+        });
+      });
+    });
+  }, [conversationId]);
+
   const handleOpenInStandalone = async () => {
     if (window.freebuddy?.docStudio?.openConversation) {
       await window.freebuddy.docStudio.openConversation(conversationId);

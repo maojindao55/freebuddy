@@ -32,6 +32,7 @@ async function setup() {
     moveConversationToProject: conversations.moveConversationToProject,
     createProject: projects.createProject,
     getProject: projects.getProject,
+    resolveWorkspaceRootsForConversation: projects.resolveWorkspaceRootsForConversation,
     cleanup() {
       setDbForTest(null);
       db.close();
@@ -76,7 +77,7 @@ test("moving a temp conversation adds its folder to the target project", async (
   }
 });
 
-test("moving between projects carries the conversation folder over", async (t) => {
+test("moving between projects does not duplicate the folder across projects", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
   const ctx = await setup();
   try {
@@ -97,8 +98,12 @@ test("moving between projects carries the conversation folder over", async (t) =
 
     const moved = ctx.moveConversationToProject("conv-1", other.id);
     assert.equal(moved.projectId, other.id);
-    const otherAfter = ctx.getProject(other.id);
-    assert.ok(otherAfter.folders.includes(folder), "target project now owns the folder");
+    // The conversation's cwd already belongs to the source project; copying
+    // that folder into the target project would give both projects the same
+    // path and make findProjectByCwd ambiguous. The conversation stays
+    // assigned via its explicit projectId instead (workspace access keeps
+    // working because resolveWorkspaceRootsForConversation includes the cwd).
+    assert.deepEqual(ctx.getProject(other.id).folders, [abs("tmp", "other")]);
     // Source project untouched.
     assert.deepEqual(ctx.getProject(source.id).folders, [folder]);
   } finally {
@@ -229,6 +234,53 @@ test("move rejects unknown conversations and projects", async (t) => {
       () => ctx.moveConversationToProject("conv-1", "no-such-project"),
       /Project not found/
     );
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("extendProjectFolders:false skips host project folder changes", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    const folder = abs("tmp", "fresh-folder");
+    const target = ctx.createProject({
+      name: "Target",
+      folders: [abs("tmp", "target")],
+      primaryPath: abs("tmp", "target")
+    });
+    ctx.createConversation(convInput("conv-1", folder));
+
+    const moved = ctx.moveConversationToProject("conv-1", target.id, {
+      extendProjectFolders: false
+    });
+    // Assignment proceeds (per-conversation data) even though the host
+    // folder list — global configuration — is left untouched.
+    assert.equal(moved.projectId, target.id);
+    assert.deepEqual(ctx.getProject(target.id).folders, [abs("tmp", "target")]);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("workspace roots include the conversation cwd even under an unrelated project", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    const target = ctx.createProject({
+      name: "Target",
+      folders: [abs("tmp", "target")],
+      primaryPath: abs("tmp", "target")
+    });
+    const cwd = abs("tmp", "elsewhere");
+    const roots = ctx.resolveWorkspaceRootsForConversation({
+      projectId: target.id,
+      cwd
+    });
+    // Moving into a project whose folders do not cover the cwd must not
+    // hide the conversation's own workspace from the agent.
+    assert.ok(roots.includes(abs("tmp", "target")));
+    assert.ok(roots.includes(cwd));
   } finally {
     ctx.cleanup();
   }

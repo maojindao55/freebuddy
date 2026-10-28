@@ -231,7 +231,7 @@ export function resolveWorkspaceRootsForConversation(conv: {
   if (conv.projectId) {
     const project = getProject(conv.projectId);
     if (project?.folders?.length) {
-      return project.folders
+      const roots = project.folders
         .map((folder) => {
           const trimmed = folder.trim();
           if (!trimmed) return "";
@@ -242,6 +242,21 @@ export function resolveWorkspaceRootsForConversation(conv: {
           }
         })
         .filter(Boolean);
+      // A conversation moved into a project whose folders do not cover its
+      // cwd (remote non-admin moves skip folder extension, and moves never
+      // steal another project's folder) must still reach its own workspace.
+      const cwd = conv.cwd?.trim();
+      if (cwd) {
+        try {
+          const resolvedCwd = path.resolve(cwd);
+          if (!roots.some((root) => root.toLowerCase() === resolvedCwd.toLowerCase())) {
+            roots.push(resolvedCwd);
+          }
+        } catch {
+          /* unresolvable cwd: keep the project folders only */
+        }
+      }
+      return roots;
     }
   }
   const cwd = conv.cwd?.trim();

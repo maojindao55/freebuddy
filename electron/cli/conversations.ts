@@ -495,10 +495,18 @@ export function setConversationPinned(id: string, pinned: boolean): Conversation
  * the marker the sidebar's cwd fallback would immediately regroup it under
  * the project that still owns its cwd, so "remove from project" would look
  * like a no-op (row stays in the group while also reappearing in Recent).
+ *
+ * Folder extension mutates host-global project configuration, so callers
+ * pass { extendProjectFolders: false } for remote non-admin members (the
+ * assignment itself is per-conversation data and still proceeds). Folder
+ * extension also never steals a folder that already belongs to another
+ * project: the conversation stays assigned via its explicit projectId and
+ * the two projects' folder lists never overlap on the same path.
  */
 export function moveConversationToProject(
   id: string,
-  projectId: string | null
+  projectId: string | null,
+  options: { extendProjectFolders?: boolean } = {}
 ): Conversation {
   const conversation = requireOwnedConversation(id);
   if (!conversation) throw new Error("Conversation not found");
@@ -517,7 +525,10 @@ export function moveConversationToProject(
         ? sourcePathForManagedWorkspace(folder)
         : undefined;
       if (sourceFolder) folder = sourceFolder;
-      if (folder) {
+      const folderOwner = folder ? findProjectByCwd(folder) : null;
+      const crossProjectFolder =
+        folderOwner !== null && folderOwner.id !== project.id;
+      if (folder && options.extendProjectFolders !== false && !crossProjectFolder) {
         try {
           addProjectFolderIfMissing(project, folder);
         } catch {

@@ -1684,9 +1684,14 @@ export function registerCliIpc() {
       ) {
         throw new Error("Invalid project id.");
       }
+      // Extending a project's folders rewrites host-global configuration
+      // (cli:updateProject is admin-only), so remote non-admin members move
+      // conversations without it — same split as cli:createConversation.
+      const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
       const conversation = moveConversationToProject(
         args.id,
-        args.projectId === null ? null : args.projectId
+        args.projectId === null ? null : args.projectId,
+        { extendProjectFolders: !remoteMember }
       );
       trackTelemetryEvent("conversation_moved_to_project", {
         has_project: Boolean(args.projectId)

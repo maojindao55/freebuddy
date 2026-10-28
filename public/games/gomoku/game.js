@@ -371,6 +371,8 @@
   let currentGridSize = 0;
   let currentPadding = 0;
   let currentCellSize = 0;
+  let currentDpr = 0;
+  let currentWideLayout = null;
   let fallbackRetried = false;
   let resizeRafId = null;
 
@@ -413,6 +415,15 @@
     } else {
       fallbackRetried = false;
     }
+
+    const wideLayout = ((typeof window !== "undefined" && window.innerWidth) || 0) >= 640;
+    if (size === currentGridSize && dpr === currentDpr && wideLayout === currentWideLayout) {
+      // Skip when nothing changed: reassigning canvas.width clears the canvas
+      // even for the same value, so avoid needless clears and repaints here.
+      return;
+    }
+    currentDpr = dpr;
+    currentWideLayout = wideLayout;
 
     currentGridSize = size;
     currentPadding = Math.max(22, Math.round(size * 0.08));

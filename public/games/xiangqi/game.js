@@ -562,6 +562,10 @@
   let paddingX = 0;
   let paddingY = 0;
   let pieceRadius = 0;
+  let appliedWidth = 0;
+  let appliedHeight = 0;
+  let currentDpr = 0;
+  let currentWideLayout = null;
   let fallbackRetried = false;
   let resizeRafId = null;
 
@@ -617,6 +621,18 @@
     } else {
       fallbackRetried = false;
     }
+
+    const wideLayout = ((typeof window !== "undefined" && window.innerWidth) || 0) >= 640;
+    if (width === appliedWidth && height === appliedHeight
+      && dpr === currentDpr && wideLayout === currentWideLayout) {
+      // Skip when nothing changed: reassigning canvas.width clears the canvas
+      // even for the same value, so avoid needless clears and repaints here.
+      return;
+    }
+    appliedWidth = width;
+    appliedHeight = height;
+    currentDpr = dpr;
+    currentWideLayout = wideLayout;
 
     paddingX = Math.max(22, Math.round(width * 0.08));
     paddingY = Math.max(22, Math.round(height * 0.075));

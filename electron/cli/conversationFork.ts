@@ -110,7 +110,10 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
       agentName: source.agentName,
       adapter: source.adapter,
       kind: "default",
+      // Merge on top of the source metadata: dropping it would lose the
+      // conversation's mcpServerIds and Git worktree (taskWorkspace) config.
       metadata: {
+        ...(source.metadata ?? {}),
         forkedFrom: source.id,
         forkedAtMessageId: input.throughMessageId
       },
@@ -142,11 +145,11 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
 
     const insertMessage = db.prepare(
       `INSERT INTO conversation_messages
-         (id, conversation_id, role, status, content, attachments, task_id,
+         (id, conversation_id, role, status, content, attachments, skill_snapshot, task_id,
           agent_id, agent_name, adapter, role_label,
           workflow_run_id, workflow_step_row_id, author_username,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const message of sourceSlice) {
       insertMessage.run(
@@ -159,6 +162,9 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
           : message.content,
         message.attachments?.length
           ? JSON.stringify(message.attachments)
+          : null,
+        message.skillSnapshot?.length
+          ? JSON.stringify(message.skillSnapshot)
           : null,
         message.taskId ?? null,
         message.agentId ?? null,

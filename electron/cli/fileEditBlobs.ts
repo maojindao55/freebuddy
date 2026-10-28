@@ -182,7 +182,8 @@ export function copyFileEditBlobsForFork(
     `SELECT blob_key, task_id, tool_call_id, entry_index, path, action, partial,
             status, active, counts, payload
      FROM file_edit_blobs
-     WHERE conversation_id = ? AND task_id IN (${taskIds.map(() => "?").join(",")})`
+     WHERE conversation_id = ? AND task_id IN (${taskIds.map(() => "?").join(",")})
+     ORDER BY sequence ASC`
   ).all(sourceConversationId, ...taskIds) as Array<{
     blob_key: string;
     task_id: string;

@@ -299,3 +299,118 @@ test("fork rejects unknown sources, fork points and non-default kinds", async (t
     ctx.cleanup();
   }
 });
+
+test("fork preserves source metadata alongside fork provenance", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    ctx.createConversation({
+      ...baseInput("src"),
+      metadata: {
+        mcpServerIds: ["srv-1", "srv-2"],
+        taskWorkspace: { mode: "worktree", sourceCwd: "/repo", worktreeRoot: "/wt" }
+      }
+    });
+    seedTurns(ctx, "src", [["u1", "user", "question"]]);
+
+    const result = ctx.forkConversation({
+      sourceConversationId: "src",
+      throughMessageId: "u1",
+      targetConversationId: "fork1"
+    });
+    assert.deepEqual(result.conversation.metadata, {
+      mcpServerIds: ["srv-1", "srv-2"],
+      taskWorkspace: { mode: "worktree", sourceCwd: "/repo", worktreeRoot: "/wt" },
+      forkedFrom: "src",
+      forkedAtMessageId: "u1"
+    });
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("fork copies per-message skill snapshots", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    ctx.createConversation(baseInput("src"));
+    const skill = {
+      id: "review", name: "代码审查", rootPath: "/skills/review",
+      contentHash: "hash-1", version: "1", source: "builtin"
+    };
+    seedTurns(ctx, "src", [
+      ["u1", "user", "question"],
+      [
+        "a1",
+        "assistant",
+        JSON.stringify([{ kind: "text", content: "answer" }]),
+        { skillSnapshot: [skill] }
+      ]
+    ]);
+
+    ctx.forkConversation({
+      sourceConversationId: "src",
+      throughMessageId: "a1",
+      targetConversationId: "fork1"
+    });
+    const forkAssistant = ctx.listMessages("fork1").find((m) => m.role === "assistant");
+    assert.deepEqual(forkAssistant.skillSnapshot, [skill]);
+    // The user message without a snapshot stays empty.
+    const forkUser = ctx.listMessages("fork1").find((m) => m.role === "user");
+    assert.deepEqual(forkUser.skillSnapshot, []);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("fork preserves file edit order within and across tasks", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    ctx.createConversation(baseInput("src"));
+    const payload = Buffer.from(JSON.stringify({ oldText: "a", newText: "b" }), "utf8");
+    // Chronological order interleaves two tasks: seq 1 (task-1), 2 (task-2),
+    // 3 (task-1), 4 (task-2). A copy that re-inserts in index/scan order
+    // instead of sequence order scrambles the replay order in the fork.
+    const rows = [
+      [1, "k1", "task-1", "call-1", 0, "/tmp/one.txt"],
+      [2, "k2", "task-2", "call-2", 0, "/tmp/two.txt"],
+      [3, "k3", "task-1", "call-3", 0, "/tmp/three.txt"],
+      [4, "k4", "task-2", "call-4", 0, "/tmp/four.txt"]
+    ];
+    for (const [sequence, key, taskId, callId, entryIndex, blobPath] of rows) {
+      ctx.db.prepare(
+        `INSERT INTO file_edit_blobs
+           (sequence, blob_key, conversation_id, task_id, tool_call_id, entry_index, path,
+            action, partial, status, active, counts, payload)
+         VALUES (?, ?, 'src', ?, ?, ?, ?, 'update', 0, 'completed', 1, NULL, ?)`
+      ).run(sequence, key, taskId, callId, entryIndex, blobPath, payload);
+    }
+    seedTurns(ctx, "src", [
+      ["u1", "user", "edit files", { taskId: "task-1" }],
+      ["a1", "assistant", JSON.stringify([{ kind: "text", content: "done" }]), { taskId: "task-1" }],
+      ["u2", "user", "edit more", { taskId: "task-2" }],
+      ["a2", "assistant", JSON.stringify([{ kind: "text", content: "done" }]), { taskId: "task-2" }]
+    ]);
+
+    ctx.forkConversation({
+      sourceConversationId: "src",
+      throughMessageId: "a2",
+      targetConversationId: "fork1"
+    });
+    const forkOrder = ctx.db
+      .prepare(
+        `SELECT path FROM file_edit_blobs WHERE conversation_id = 'fork1' ORDER BY sequence ASC`
+      )
+      .all()
+      .map((row) => row.path);
+    assert.deepEqual(forkOrder, [
+      "/tmp/one.txt",
+      "/tmp/two.txt",
+      "/tmp/three.txt",
+      "/tmp/four.txt"
+    ]);
+  } finally {
+    ctx.cleanup();
+  }
+});

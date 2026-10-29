@@ -944,10 +944,13 @@ export function ConversationList({
 
   // ---- Manual drag ordering (within a project group or Recent) ----
   const dragIdRef = useRef<string | null>(null);
+  /** Member ids of the dragged row's group; drops outside it are rejected. */
+  const dragGroupIdsRef = useRef<Set<string> | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; before: boolean } | null>(null);
   const resetDragState = useCallback(() => {
     dragIdRef.current = null;
+    dragGroupIdsRef.current = null;
     setDraggingId(null);
     setDropTarget(null);
   }, []);
@@ -997,8 +1000,15 @@ export function ConversationList({
   const handleRowDragStart = useCallback(
     (id: string, event: ReactDragEvent<HTMLLIElement>) => {
       dragIdRef.current = id;
+      // Reordering only applies within the dragged row's group; remember its
+      // members once so dragover can reject cross-group rows cheaply.
+      dragGroupIdsRef.current = new Set(
+        groupOrderFor(id)?.map((item) => item.id) ?? []
+      );
       setDraggingId(id);
-      // The same drag carries the composer reference payload, so allow both effects.
+      // The same drag carries the composer reference payload: row targets
+      // reorder (dropEffect move), the composer inserts a reference
+      // (dropEffect copy), and cross-group rows reject both.
       event.dataTransfer.effectAllowed = "copyMove";
       try {
         event.dataTransfer.setData("text/plain", id);
@@ -1006,14 +1016,21 @@ export function ConversationList({
         /* some browsers require data to be set */
       }
     },
-    []
+    [groupOrderFor]
   );
 
   const handleListDragOver = useCallback((event: ReactDragEvent<HTMLUListElement>) => {
     if (!dragIdRef.current) return;
     const row = (event.target as HTMLElement | null)?.closest?.(".conv-item");
     const id = row?.getAttribute("data-conversation-id");
-    if (!id || id === dragIdRef.current) {
+    // Only same-group rows accept the drop. Cross-group reordering is
+    // move-to-project territory, so those rows must show the forbidden
+    // cursor and no insertion line — an indicator there would promise a
+    // reorder that commitReorder would silently ignore.
+    const sameGroup = Boolean(
+      id && id !== dragIdRef.current && dragGroupIdsRef.current?.has(id)
+    );
+    if (!id || !sameGroup) {
       setDropTarget(null);
       return;
     }

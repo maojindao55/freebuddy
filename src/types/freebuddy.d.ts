@@ -1049,6 +1049,7 @@ declare global {
     openWindow(target?: string | { filePath?: string }): Promise<boolean>;
     openConversation(conversationId: string): Promise<boolean>;
     setActiveConversation(conversationId: string | null): Promise<boolean>;
+    isConversationEmbedded(conversationId: string): Promise<boolean>;
     getDefaultDirectory(): Promise<string | null>;
     resolveConversationFile(conversationId: string): Promise<string | null>;
     attachFileToConversation(conversationId: string, filePath: string): Promise<boolean>;

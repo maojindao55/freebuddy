@@ -779,13 +779,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       (typeof document === "undefined" || document.documentElement.dataset.surface !== "doc-studio")) {
       const conversation = get().conversations.find((item) => item.id === id);
       if (conversation?.kind === "doc-studio" && window.freebuddy?.platform !== "web") {
-        try {
-          if (await window.freebuddy?.docStudio?.openConversation(id)) {
-            get().markConversationRead(id);
-            return;
+        // A conversation docked into this window's embedded viewer must stay
+        // embedded; only undocked ones pop the standalone DocStudio window.
+        const embedded = await window.freebuddy?.docStudio?.isConversationEmbedded?.(id)?.catch(() => false) ?? false;
+        if (!embedded) {
+          try {
+            if (await window.freebuddy?.docStudio?.openConversation(id)) {
+              get().markConversationRead(id);
+              return;
+            }
+          } catch {
+            /* Fall back to the conversation when a standalone window cannot open. */
           }
-        } catch {
-          /* Fall back to the conversation when a standalone window cannot open. */
         }
       }
     }

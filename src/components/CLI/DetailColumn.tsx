@@ -32,7 +32,12 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
   const activeConv = useConversationStore((s) =>
     activeId ? s.conversations.find((c) => c.id === activeId) : undefined
   );
-  const isDoc = activeConv?.kind === "doc-studio" || Boolean(activeConv?.metadata?.docStudioFilePath);
+  // Doc conversations are identified by their conversation kind — the same
+  // discriminator every route uses (docStudio:openConversation, setActive's
+  // standalone redirect, the sidebar). markDocStudioConversation always sets
+  // kind together with metadata.docStudioFilePath, so kind alone is the
+  // canonical test; the metadata field is just the attached file payload.
+  const isDoc = activeConv?.kind === "doc-studio";
 
   useEffect(() => {
     if (!activeId) return;
@@ -41,7 +46,7 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
       .conversations.find((c) => c.id === activeId);
     const openingDiff = useDetailLayoutStore.getState().activeTab === "diff"
       && useFileDiffStore.getState().selection?.conversationId === activeId;
-    const docMode = conv?.kind === "doc-studio" || Boolean(conv?.metadata?.docStudioFilePath);
+    const docMode = conv?.kind === "doc-studio";
     if (previousId.current !== activeId || (!openingDiff && (conv?.kind === "game" || docMode))) {
       if (conv?.kind === "game") {
         useDetailLayoutStore.getState().setActiveTab("preview");

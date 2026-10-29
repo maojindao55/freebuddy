@@ -24,9 +24,33 @@ export function registerDocStudioMainWindow(webContentsId: number): void {
 }
 
 export function unregisterDocStudioMainWindow(webContentsId: number): void {
-  if (mainWindowWebContentsId === webContentsId) mainWindowWebContentsId = null;
+  if (mainWindowWebContentsId === webContentsId) {
+    mainWindowWebContentsId = null;
+    // The main window's renderer is gone, so nothing can stay docked in it.
+    setDocStudioEmbeddedConversation(null);
+  }
 }
 
 export function isDocStudioMainWindowSender(sender: { id: number }): boolean {
   return mainWindowWebContentsId !== null && sender.id === mainWindowWebContentsId;
+}
+
+// The doc-studio conversation currently docked into the main window's embedded
+// viewer, if any. Written by the main process when a conversation docks
+// (openConversationInMain with embed) and by the embedded surface reporting its
+// active conversation; read by open-conversation routing so a docked
+// conversation stays in the embedded viewer instead of popping a standalone
+// window.
+let embeddedConversationId: string | null = null;
+
+export function setDocStudioEmbeddedConversation(conversationId: string | null): void {
+  embeddedConversationId = typeof conversationId === "string" && conversationId ? conversationId : null;
+}
+
+export function getDocStudioEmbeddedConversation(): string | null {
+  return embeddedConversationId;
+}
+
+export function isDocStudioConversationEmbedded(conversationId: string): boolean {
+  return embeddedConversationId !== null && embeddedConversationId === conversationId;
 }

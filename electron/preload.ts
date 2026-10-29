@@ -1009,6 +1009,8 @@ const docStudio = {
     ipcRenderer.invoke("docStudio:openConversation", conversationId) as Promise<boolean>,
   setActiveConversation: (conversationId: string | null) =>
     ipcRenderer.invoke("docStudio:setActiveConversation", conversationId) as Promise<boolean>,
+  isConversationEmbedded: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:isConversationEmbedded", conversationId) as Promise<boolean>,
   getDefaultDirectory: () =>
     ipcRenderer.invoke("docStudio:defaultDirectory") as Promise<string | null>,
   resolveConversationFile: (conversationId: string) =>

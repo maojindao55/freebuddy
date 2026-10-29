@@ -4,17 +4,18 @@ import { watch } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { registerHandler } from "./invokeRegistry.js";
-import { getConversation } from "./cli/conversations.js";
 import {
   associateDocStudioOfficeFile,
   resolveDocStudioOfficeFile
 } from "./officeEngineToolService.js";
-import { markDocStudioConversation } from "./cli/conversations.js";
+import { getConversation, markDocStudioConversation } from "./cli/conversations.js";
 import {
   isDocStudioWindowSender,
   isDocStudioMainWindowSender,
   registerDocStudioWindow,
-  unregisterDocStudioWindow
+  unregisterDocStudioWindow,
+  setDocStudioEmbeddedConversation,
+  isDocStudioConversationEmbedded
 } from "./docStudioWindowRegistry.js";
 export { isDocStudioWindowSender } from "./docStudioWindowRegistry.js";
 
@@ -301,16 +302,33 @@ export function initDocStudioBridge(): void {
   });
 
   registerHandler("docStudio:setActiveConversation", (event, conversationId: unknown) => {
-    if (!isDocStudioWindowSender(event.sender)) return false;
+    // Standalone DocStudio windows report the conversation their copilot is
+    // driving; the main window reports the conversation its embedded viewer
+    // shows. Both keep "which conversation is where" queryable for routing.
+    const isMainWindow = isDocStudioMainWindowSender(event.sender);
+    if (!isMainWindow && !isDocStudioWindowSender(event.sender)) return false;
     if (conversationId !== null &&
       (typeof conversationId !== "string" || getConversation(conversationId)?.kind !== "doc-studio")) {
       return false;
+    }
+    if (isMainWindow) {
+      setDocStudioEmbeddedConversation(typeof conversationId === "string" ? conversationId : null);
+      return true;
     }
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return false;
     if (conversationId) docStudioActiveConversations.set(win.id, conversationId);
     else docStudioActiveConversations.delete(win.id);
     return true;
+  });
+
+  // Whether a conversation is currently docked into the main window's embedded
+  // viewer. Read by open-conversation routing so docked conversations stay
+  // embedded instead of popping a standalone DocStudio window.
+  registerHandler("docStudio:isConversationEmbedded", (event, conversationId: unknown) => {
+    if (!isAllowedDocSender(event.sender)) return false;
+    if (typeof conversationId !== "string" || !conversationId) return false;
+    return isDocStudioConversationEmbedded(conversationId);
   });
 
   registerHandler("docStudio:defaultDirectory", async (event) => {

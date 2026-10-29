@@ -288,6 +288,7 @@ const DENY = [
   "docStudio:openWindow",
   "docStudio:openConversation",
   "docStudio:setActiveConversation",
+  "docStudio:isConversationEmbedded",
   "docStudio:defaultDirectory",
   "docStudio:showOpenDialog",
   "docStudio:showItemInFolder",

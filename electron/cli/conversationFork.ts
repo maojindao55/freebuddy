@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { getDb } from "./db.js";
 import {
   createConversation,
+  getConversation,
   listMessages,
   requireOwnedConversation,
   type Conversation
@@ -100,6 +101,13 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
   }
   const sourceSlice = sourceMessages.slice(0, throughIndex + 1);
   const targetConversationId = input.targetConversationId?.trim() || nanoid();
+  // A caller-supplied target id must be free; otherwise the insert would die
+  // with a raw SQLite primary-key error deep inside the transaction.
+  if (input.targetConversationId && getConversation(targetConversationId)) {
+    throw new Error(
+      `A conversation with the id "${targetConversationId}" already exists; pick a different fork target.`
+    );
+  }
   const db = getDb();
 
   const conversation = db.transaction(() => {

@@ -295,6 +295,20 @@ test("fork rejects unknown sources, fork points and non-default kinds", async (t
       () => ctx.forkConversation({ sourceConversationId: "", throughMessageId: "u1" }),
       /source conversation id is required/
     );
+    // A caller-supplied target id that is already taken fails with a typed
+    // error instead of a raw SQLite primary-key violation.
+    ctx.createConversation(baseInput("taken"));
+    assert.throws(
+      () =>
+        ctx.forkConversation({
+          sourceConversationId: "src",
+          throughMessageId: "u1",
+          targetConversationId: "taken"
+        }),
+      /already exists/
+    );
+    // The occupied target conversation is untouched by the failed fork.
+    assert.equal(ctx.listMessages("taken").length, 0);
   } finally {
     ctx.cleanup();
   }

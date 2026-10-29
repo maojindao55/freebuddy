@@ -8,7 +8,11 @@ import {
   associateDocStudioOfficeFile,
   resolveDocStudioOfficeFile
 } from "./officeEngineToolService.js";
-import { getConversation, markDocStudioConversation } from "./cli/conversations.js";
+import {
+  getConversation,
+  markDocStudioConversation,
+  requireOwnedConversation
+} from "./cli/conversations.js";
 import {
   isDocStudioWindowSender,
   isDocStudioMainWindowSender,
@@ -339,6 +343,10 @@ export function initDocStudioBridge(): void {
   registerHandler("docStudio:resolveConversationFile", async (event, conversationId: unknown) => {
     if (!isAllowedDocSender(event.sender)) return null;
     if (typeof conversationId !== "string" || !conversationId) return null;
+    // Same conversation-ownership gate as the other conversation-scoped
+    // channels (game:*, cli:*): a sender may only resolve files for
+    // conversations it owns.
+    if (!requireOwnedConversation(conversationId)) return null;
     return resolveDocStudioOfficeFile(conversationId);
   });
 
@@ -346,6 +354,7 @@ export function initDocStudioBridge(): void {
     if (!isAllowedDocSender(event.sender)) return false;
     if (typeof conversationId !== "string" || !conversationId) return false;
     if (!isAllowedOfficeEnginePath(filePath)) return false;
+    if (!requireOwnedConversation(conversationId)) return false;
     associateDocStudioOfficeFile(conversationId, filePath);
     return markDocStudioConversation(conversationId, filePath);
   });

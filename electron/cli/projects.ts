@@ -178,14 +178,21 @@ export function ensureProjectForCwd(cwd: string): Project {
   })();
 }
 
-export function findProjectByCwd(cwd: string): Project | null {
-  const trimmed = (cwd || "").trim();
-  if (!trimmed) return null;
-  const candidates: string[] = [trimmed];
-  const source = sourcePathForManagedWorkspace(trimmed);
-  if (source && source !== trimmed) candidates.push(source);
-
-  const all = listProjects();
+function matchProjectByFolderCandidates(candidates: string[]): Project | null {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, name, folders, primary_path, created_at, updated_at
+       FROM projects
+       ORDER BY updated_at DESC`
+    )
+    .all() as Array<{
+    id: string;
+    name: string;
+    folders: string;
+    primary_path: string;
+    created_at: string;
+    updated_at: string;
+  }>;
   for (const candidate of candidates) {
     let normalized: string;
     try {
@@ -193,7 +200,7 @@ export function findProjectByCwd(cwd: string): Project | null {
     } catch {
       continue;
     }
-    for (const project of all) {
+    for (const project of rows.map(rowToProject)) {
       for (const folder of project.folders) {
         let folderNormalized: string;
         try {
@@ -206,6 +213,34 @@ export function findProjectByCwd(cwd: string): Project | null {
     }
   }
   return null;
+}
+
+function folderLookupCandidates(cwd: string): string[] {
+  const trimmed = (cwd || "").trim();
+  const candidates: string[] = [trimmed];
+  const source = sourcePathForManagedWorkspace(trimmed);
+  if (source && source !== trimmed) candidates.push(source);
+  return candidates;
+}
+
+/**
+ * Pure project lookup by folder: reads the projects table directly and never
+ * runs the cwd-groups migration (nor any other write). Use this where a
+ * "does some project already own this folder?" answer must not mutate state —
+ * e.g. the conversation move path, where a side-effectful lookup would create
+ * ad-hoc projects mid-check and misread them as pre-existing ownership.
+ */
+export function findProjectFolderOwner(cwd: string): Project | null {
+  const trimmed = (cwd || "").trim();
+  if (!trimmed) return null;
+  return matchProjectByFolderCandidates(folderLookupCandidates(trimmed));
+}
+
+export function findProjectByCwd(cwd: string): Project | null {
+  const trimmed = (cwd || "").trim();
+  if (!trimmed) return null;
+  migrateCwdGroupsToProjects();
+  return matchProjectByFolderCandidates(folderLookupCandidates(trimmed));
 }
 
 /** Resolve ACP workspace roots from project folders, else `[cwd]`. */

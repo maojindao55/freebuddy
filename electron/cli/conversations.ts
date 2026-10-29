@@ -15,6 +15,7 @@ import {
   cwdForProjectLookup,
   ensureProjectForCwd,
   findProjectByCwd,
+  findProjectFolderOwner,
   getProject
 } from "./projects.js";
 import {
@@ -501,7 +502,15 @@ export function setConversationPinned(id: string, pinned: boolean): Conversation
  * assignment itself is per-conversation data and still proceeds). Folder
  * extension also never steals a folder that already belongs to another
  * project: the conversation stays assigned via its explicit projectId and
- * the two projects' folder lists never overlap on the same path.
+ * the two projects' folder lists never overlap on the same path. The
+ * ownership check is a pure query — it must not create the very projects it
+ * is asked about (the cwd-groups migration would otherwise mint an ad-hoc
+ * project for an unassigned conversation's folder mid-check and misread it
+ * as pre-existing ownership). One carve-out: a worktree conversation's
+ * source repo held by its own current project is the auto-projection
+ * default, not a third-party claim — the repo has to follow the
+ * conversation into the target project or moving it would break its
+ * workspace.
  */
 export function moveConversationToProject(
   id: string,
@@ -525,9 +534,23 @@ export function moveConversationToProject(
         ? sourcePathForManagedWorkspace(folder)
         : undefined;
       if (sourceFolder) folder = sourceFolder;
-      const folderOwner = folder ? findProjectByCwd(folder) : null;
+      // Pure lookup: must not run the cwd-groups migration, which would
+      // create an ad-hoc project for this very folder and misread it as a
+      // pre-existing cross-project claim.
+      const folderOwner = folder ? findProjectFolderOwner(folder) : null;
+      const worktreeSourceFolder =
+        folderOwner !== null &&
+        conversation.metadata?.taskWorkspace &&
+        typeof conversation.metadata.taskWorkspace === "object" &&
+        (conversation.metadata.taskWorkspace as Record<string, unknown>)
+          .mode === "worktree";
       const crossProjectFolder =
-        folderOwner !== null && folderOwner.id !== project.id;
+        folderOwner !== null &&
+        folderOwner.id !== project.id &&
+        !(
+          worktreeSourceFolder &&
+          folderOwner.id === conversation.projectId
+        );
       if (folder && options.extendProjectFolders !== false && !crossProjectFolder) {
         try {
           addProjectFolderIfMissing(project, folder);

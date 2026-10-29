@@ -163,9 +163,10 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
         message.attachments?.length
           ? JSON.stringify(message.attachments)
           : null,
-        message.skillSnapshot?.length
-          ? JSON.stringify(message.skillSnapshot)
-          : null,
+        // Always serialize (empty array -> '[]'): rowToMessage collapses a NULL
+        // snapshot to undefined, so an inherited empty snapshot must be stored
+        // as '[]' to keep reading back as [].
+        JSON.stringify(message.skillSnapshot ?? []),
         message.taskId ?? null,
         message.agentId ?? null,
         message.agentName ?? null,

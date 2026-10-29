@@ -160,7 +160,10 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
     void api.watchFile(filePath);
     const unlisten = api.onFileChanged?.((changedPath) => {
       if (changedPath === filePath) {
-        setReloadKey((prev) => prev + 1);
+        // Route through reloadPreview so a dirty engine editor is never
+        // remounted — that would discard its unsaved in-memory edits (same
+        // guard as DocStudioApp's handleFileChanged).
+        reloadPreview();
       }
     });
 
@@ -168,7 +171,7 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
       void api.unwatchFile(filePath);
       unlisten?.();
     };
-  }, [filePath]);
+  }, [filePath, reloadPreview]);
 
   // Files the agent created or saved-as during a run: the main process
   // associates them with this conversation; pick the new file up and switch

@@ -118,3 +118,24 @@ test("native turn usage updates the same final metrics summary consumed by the c
   assert.equal(metrics.snapshot().outputTokens, 57);
   assert.equal(metrics.snapshot().tokensPerSecond, undefined);
 });
+
+test("Pi outcome tracks only this prompt's last assistant, without reviving historical errors", t => {
+  const { file, reader } = fixture(t);
+  const error = { ...row(), message: { role: "assistant", content: [], stopReason: "error", errorMessage: "429 free_campaign_global_limit" } };
+  fs.writeFileSync(file("session"), lines([error]));
+  reader.begin("session");
+  reader.read();
+  assert.equal(reader.lastAssistantOutcome, undefined);
+  fs.appendFileSync(file("session"), lines([error]));
+  reader.read();
+  assert.equal(reader.lastAssistantOutcome.errorMessage, "429 free_campaign_global_limit");
+  fs.appendFileSync(file("session"), lines([row()]));
+  reader.read();
+  assert.equal(reader.lastAssistantOutcome.errorMessage, undefined);
+  assert.equal(reader.lastAssistantOutcome.hasText, true);
+  reader.begin("fresh");
+  assert.equal(reader.lastAssistantOutcome, undefined);
+  fs.appendFileSync(file("session"), lines([error]));
+  reader.read();
+  assert.equal(reader.lastAssistantOutcome, undefined);
+});

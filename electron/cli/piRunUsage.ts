@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CliStreamItem } from "@freebuddy/protocol/cli";
 import { PI_GENERATION_METRICS_TYPE } from "./piRunMetricsExtension.js";
+import { summarizePiAssistantMessage, type PiAssistantOutcome } from "./piTurn.js";
 
 type UsageItem = Extract<CliStreamItem, { kind: "usage" }>;
 type TokenField = "inputTokens" | "outputTokens" | "cachedReadTokens" | "cachedWriteTokens" | "thoughtTokens";
@@ -24,6 +25,12 @@ export class PiRunUsageReader {
   private measuredOutput = 0;
   private generationMs = 0;
   private invalidMeasurement = false;
+  private outcome: PiAssistantOutcome | undefined;
+  private outcomeSessionId: string | undefined;
+
+  get lastAssistantOutcome(): PiAssistantOutcome | undefined {
+    return this.failed ? undefined : this.outcome;
+  }
 
   constructor(dataDir: string) {
     this.sessionsDir = path.join(dataDir, "pi-agent", "sessions");
@@ -44,8 +51,10 @@ export class PiRunUsageReader {
     return matches.length === 1 ? matches[0] : undefined;
   }
 
-  /** Called before writing the first prompt for each native session in this run. */
+  /** Each prompt resets completion state; retries retain the usage checkpoint. */
   begin(sessionId: string): void {
+    this.outcome = undefined;
+    this.outcomeSessionId = sessionId;
     if (this.cursors.has(sessionId)) return;
     const file = this.findFile(sessionId);
     const cursor: Cursor = { sessionId, file, offset: 0 };
@@ -102,6 +111,7 @@ export class PiRunUsageReader {
             }
             const message = entry.message;
             if (entry.type !== "message" || message?.role !== "assistant") continue;
+            if (cursor.sessionId === this.outcomeSessionId) this.outcome = summarizePiAssistantMessage(message);
             this.assistantCalls++;
             const usage = message.usage;
             const input = count(usage?.input);

@@ -145,6 +145,8 @@ import {
 } from "./adapters.js";
 import type { RunMetricsCollector } from "./runMetricsCollector.js";
 import { PiRunUsageReader } from "./piRunUsage.js";
+import { PiTurnTracker, piBridgeStatus, piLifecycleStatus } from "./piTurn.js";
+import { AcpEmbeddedTerminalTracker } from "./acpEmbeddedTerminal.js";
 import type { AcpWarmConnection } from "./acpProcessPool.js";
 
 const PERMISSION_REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
@@ -273,6 +275,8 @@ export async function runAcpAgent({
   let cancellationRequested = false;
   let activeAcpSessionId: string | undefined;
   let piUsageReader: PiRunUsageReader | undefined;
+  let piTurn = args.adapter === "pi-acp" ? new PiTurnTracker() : undefined;
+  let piStructuredStatus = false;
   let hasPromptUsage = false;
   let piUsageFinalized = false;
   const collectPiUsage = () => {
@@ -310,6 +314,7 @@ export async function runAcpAgent({
   let emptySessionResetAttempted = false;
   let nonRetryableUpstreamError: string | undefined;
   const activeToolCallIds = new Set<string>();
+  const embeddedTerminals = new AcpEmbeddedTerminalTracker();
   let activePrompt = args.prompt;
   const sessionMeta: AcpSessionMeta | undefined = claudeAcpSessionOptions
     ? { claudeCode: { options: claudeAcpSessionOptions } }
@@ -833,8 +838,21 @@ export async function runAcpAgent({
         turnHadLiveAgentChunk = true;
         sessionWasResumed = false;
       }
+      const piStatus = args.adapter === "pi-acp"
+        ? (piStructuredStatus ? piLifecycleStatus : piBridgeStatus)(msg.params?.update, getLanguage().startsWith("zh")) : undefined;
+      if (piStatus) {
+        armInactivityTimer();
+        if (piStatus.kind === "retry-start") piTurn?.retrying();
+        collectPiUsage();
+        const detail = piTurn ? piUsageReader?.lastAssistantOutcome?.errorMessage : undefined;
+        const diagnostic = redactMcpLog(`${piStatus.message}${detail ? ` ${detail.slice(0, 1000)}` : ""}`);
+        appendLog(logStream, "system", diagnostic);
+        emit({ type: "stderr", content: diagnostic + "\n" });
+        return;
+      }
       const localDiff = importAgyLocalDiff(msg.params?.update, args.adapter);
       const items = acpUpdateToItems(localDiff.update, sessionId, args.adapter);
+      piTurn?.observe(items, updateType === "tool_call" ? msg.params?.update?.toolCallId : undefined);
       metrics?.observe(items, arrivedAt);
       // Some tool calls render as plans / edits instead of tool-call items.
       // Their actual protocol boundaries still matter for generation timing.
@@ -866,6 +884,9 @@ export async function runAcpAgent({
           if (localDiff.imported) storedItems = withoutInlineFileBodies(items);
         }
         emit({ type: "items", items: storedItems });
+      }
+      for (const snapshot of embeddedTerminals.consume(msg.params?.update)) {
+        emit({ type: "terminal-update", ...snapshot });
       }
       return;
     }
@@ -1238,6 +1259,10 @@ export async function runAcpAgent({
         finish("done", 0);
         return;
       }
+      if (cancellationRequested && !inactivityFired) {
+        finish("killed", exitCode);
+        return;
+      }
       const status = exitCode === 0 ? "done" : "failed";
       const stderrTail = recentStderr.slice(-40).join("\n").trim();
       const commandTail = lastToolCommand.slice(-500).trim();
@@ -1273,6 +1298,10 @@ export async function runAcpAgent({
     // _meta.agentVersion instead; fall back to both so every adapter is logged.
     const info = init?.agentInfo;
     const meta = init?._meta;
+    if (args.adapter === "pi-acp") {
+      piStructuredStatus = meta?.piAcp?.lifecycleStatusVersion === 1;
+      piTurn = meta?.piAcp?.promptOutcomeVersion === 1 ? undefined : new PiTurnTracker();
+    }
     const agentName =
       typeof info?.name === "string"
         ? info.name
@@ -1428,6 +1457,7 @@ export async function runAcpAgent({
       items: [{ kind: "session", sessionId: activeAcpSessionId! }]
     });
     promptStarted = true;
+    piTurn?.reset();
     promptHadContent = false;
     turnHadTerminalError = false;
     turnTerminalErrorMessage = undefined;
@@ -1447,6 +1477,7 @@ export async function runAcpAgent({
         )
       );
       const resultItems = acpPromptResultToItems(promptResult);
+      appendLog(logStream, "system", `ACP prompt result stopReason=${String(promptResult?.stopReason ?? "unknown")} activeTools=${activeToolCallIds.size}`);
       hasPromptUsage ||= resultItems.some(item => item.kind === "usage" && item.usageScope === "turn" &&
         item.inputTokens !== undefined && item.outputTokens !== undefined);
       if (promptResult?.stopReason === "cancelled") {
@@ -1464,9 +1495,27 @@ export async function runAcpAgent({
       if (resultItems.length) {
         emit({ type: "items", items: resultItems });
       }
+      if (promptResult?.stopReason === "max_tokens" || promptResult?.stopReason === "max_turn_requests") {
+        throw new Error(getLanguage().startsWith("zh")
+          ? (promptResult.stopReason === "max_tokens"
+            ? "输出达到长度上限，本轮未完成。请继续会话或调整模型输出限制。"
+            : "本轮达到请求次数上限，任务尚未完成。请继续会话。")
+          : (promptResult.stopReason === "max_tokens"
+            ? "The output limit was reached; the turn did not complete. Continue the conversation or adjust the model output limit."
+            : "The request limit was reached; the task did not complete. Continue the conversation."));
+      }
     } finally {
       collectPiUsage();
       disarmInactivityTimer();
+    }
+    if (piTurn && !finished && !yieldRequested && !cancellationRequested) {
+      const outcome = piUsageReader?.lastAssistantOutcome;
+      appendLog(logStream, "system", `Pi completion outcome=${JSON.stringify(outcome ?? { nativeUnavailable: true })}`);
+      const completionError = piTurn.completionError(outcome, getLanguage().startsWith("zh"));
+      if (completionError) throw new Error(completionError);
+      if (activeToolCallIds.size) throw new Error(getLanguage().startsWith("zh")
+        ? "Pi 结束时仍有工具调用未完成，本轮未完成。"
+        : "Pi ended with unfinished tool calls; the turn did not complete.");
     }
   };
 

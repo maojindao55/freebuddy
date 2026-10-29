@@ -979,6 +979,18 @@ test("appendItems upserts terminal embed snapshots by terminalId", async () => {
   ]);
 });
 
+test("terminal snapshots persist inside their owning tool without duplicate terminal blocks", async () => {
+  const { appendItems } = await loadConversationUtils();
+  const initial = [{ kind: "tool-call", id: "pi-tool", tool: "git status", toolKind: "execute",
+    toolOutputs: [{ kind: "terminal-embed", terminalId: "pi-tool" }] }];
+  const live = appendItems(initial, [{ kind: "terminal-embed", terminalId: "pi-tool", output: "first\n", running: true }]);
+  const completed = appendItems(live, [{ kind: "terminal-embed", terminalId: "pi-tool", output: "first\nlast\n", running: false, exited: true, exitCode: 0 }]);
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].toolOutputs.length, 1);
+  assert.deepEqual(completed[0].toolOutputs[0], { kind: "terminal-embed", terminalId: "pi-tool", output: "first\nlast\n", running: false, exited: true, exitCode: 0 });
+  assert.equal(initial[0].toolOutputs[0].output, undefined);
+});
+
 test("collectStreamMessageIds gathers ids from stored assistant snapshots", async () => {
   const { collectStreamMessageIds } = await loadConversationUtils();
 

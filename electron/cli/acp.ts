@@ -980,7 +980,6 @@ function buildToolCallItem(
     Array.isArray(update.content) && update.content.length > 0;
   if (!isUpdate) {
     if (update.rawInput !== undefined) item.input = update.rawInput;
-    else if (update.content !== undefined) item.input = update.content;
   } else if (update.rawInput !== undefined && !streamingContent) {
     item.input = update.rawInput;
   }

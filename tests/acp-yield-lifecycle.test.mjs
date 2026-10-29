@@ -10,6 +10,8 @@ import { PassThrough, Writable } from "node:stream";
 import ts from "typescript";
 import * as acp from "../dist-electron/cli/acp.js";
 import * as acpLocalDiff from "../dist-electron/cli/acpLocalDiff.js";
+import * as piTurn from "../dist-electron/cli/piTurn.js";
+import * as acpEmbeddedTerminal from "../dist-electron/cli/acpEmbeddedTerminal.js";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
 import { PiRunUsageReader } from "../dist-electron/cli/piRunUsage.js";
 import { DelegationOrchestrator, createMemoryDelegationRepository } from "../packages/delegation-runtime/dist/index.js";
@@ -82,16 +84,67 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
         if (msg.method === "initialize") {
           metricClock = 500;
           notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "pre-prompt replay" } });
-          reply(msg, { protocolVersion: 1, ...(mode.startsWith("warm") ? { _meta: { freebuddy: { persistentSession: true } } } : {}), agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } } });
+          reply(msg, { protocolVersion: 1, ...(mode.startsWith("warm") ? { _meta: { freebuddy: { persistentSession: true } } } : {}),
+            ...(mode.startsWith("pi-v1-") ? { _meta: { piAcp: { lifecycleStatusVersion: 1, promptOutcomeVersion: 1 } } } : {}),
+            agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } } });
         }
         else if (msg.method === "session/new" || msg.method === "session/load") reply(msg, { sessionId: "fake-session" });
         else if (msg.method === "session/prompt") {
           if (captureOptions) { assert.ok(captureOrder.includes("prepared")); captureOrder.push("prompt"); }
-          if (isPi) {
+          if (mode === "pi-terminal-metadata") {
+            notify({ sessionUpdate: "tool_call", toolCallId: "pi-tool", kind: "execute", title: "git status --short", status: "in_progress",
+              content: [{ type: "terminal", terminalId: "pi-tool" }], _meta: { terminal_info: { terminal_id: "pi-tool", cwd: "C:/project" } } });
+            notify({ sessionUpdate: "tool_call_update", toolCallId: "pi-tool", status: "in_progress",
+              _meta: { terminal_output: { terminal_id: "pi-tool", data: "first line\n" } } });
+            notify({ sessionUpdate: "tool_call_update", toolCallId: "pi-tool", status: "completed", _meta: {
+              terminal_output: { terminal_id: "pi-tool", data: "last line\n" }, terminal_exit: { terminal_id: "pi-tool", exit_code: 0, signal: null }
+            } });
+            notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Command complete." } });
+            reply(msg, { stopReason: "end_turn" });
+          } else if (mode.startsWith("pi-v1-")) {
+            // The modern adapter owns completion validation. Stale native metadata
+            // cannot override its wire outcome or supply an error description.
+            fs.appendFileSync(piSessionFile, JSON.stringify({ type: "message", message: {
+              role: "assistant", content: [{ type: "thinking", thinking: "stale private reasoning" }], stopReason: "error", errorMessage: "stale native failure"
+            } }) + "\n");
+            const status = (type, phase, detail = {}) => notify({ sessionUpdate: "session_info_update", _meta: {
+              piAcp: { status: { version: 1, type, phase, ...detail } }
+            } });
+            status("retry", "started", { attempt: 1, maxAttempts: 3, delayMs: 2000 });
+            status("retry", "succeeded");
+            status("compaction", "started");
+            status("compaction", "succeeded");
+            if (mode === "pi-v1-error") {
+              status("retry", "failed");
+              child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "The model ended with thinking but no answer." } }) + "\n");
+            } else {
+              notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Retrying (attempt 1/3, waiting 2s)..." } });
+              reply(msg, { stopReason: mode === "pi-v1-limit" ? "max_tokens" : mode === "pi-v1-cancel" ? "cancelled" : "end_turn" });
+            }
+          } else if (mode === "limit-requests") reply(msg, { stopReason: "max_turn_requests" });
+          else if (isPi) {
+            const thinkingOnly = mode === "pi-thinking-only" || mode === "pi-thinking-after-tool" || mode === "pi-cancel-thinking";
+            const nativeError = mode === "pi-retry-exhausted";
+            const piBody = mode === "pi-malformed"
+              ? "<thinking>unfinished</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>" : "new Pi body";
+            if (mode.startsWith("pi-retry")) {
+              fs.appendFileSync(piSessionFile, JSON.stringify({ type: "message", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "429 free_campaign_global_limit" } }) + "\n");
+              notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Retrying (attempt 1/3, waiting 2s)..." } });
+              notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Retry finished, resuming." } });
+            }
+            if (mode === "pi-thinking-after-tool") {
+              notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Checking the PR." } });
+              notify({ sessionUpdate: "tool_call", toolCallId: "fetch", title: "Fetch", status: "pending" });
+              notify({ sessionUpdate: "tool_call_update", toolCallId: "fetch", status: "completed" });
+            }
             fs.appendFileSync(piSessionFile, JSON.stringify({ type: "custom", customType: "freebuddy-generation-metrics", data: { version: 1, outputTokens: 20, durationMs: 500 } }) + "\n");
-            fs.appendFileSync(piSessionFile, JSON.stringify({ type: "message", message: { role: "assistant", usage: { input: 50, output: 20, cacheRead: 100, cacheWrite: 5, reasoning: 3 } } }) + "\n");
-            notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "new Pi body" } });
-            if (mode === "pi-cancel") running.get("test-turn").cancel();
+            if (!nativeError && mode !== "pi-no-native-thinking") fs.appendFileSync(piSessionFile, JSON.stringify({ type: "message", message: {
+              role: "assistant", content: thinkingOnly ? [{ type: "thinking", thinking: "private reasoning" }] : [{ type: "text", text: piBody }],
+              stopReason: mode === "pi-length" ? "length" : "stop", usage: { input: 50, output: 20, cacheRead: 100, cacheWrite: 5, reasoning: 3 }
+            } }) + "\n");
+            if (!nativeError) notify({ sessionUpdate: thinkingOnly || mode === "pi-no-native-thinking" ? "agent_thought_chunk" : "agent_message_chunk", content: { type: "text", text: thinkingOnly ? "private reasoning" : piBody } });
+            if (mode === "pi-outstanding-tool") notify({ sessionUpdate: "tool_call", toolCallId: "pending", title: "Tool", status: "in_progress" });
+            if (mode === "pi-cancel" || mode === "pi-cancel-thinking") running.get("test-turn").cancel();
             else if (mode === "pi-yield") running.get("test-turn").yield();
             else reply(msg, { stopReason: "end_turn", ...(mode === "pi-upstream" ? { usage: { inputTokens: 250, outputTokens: 40 } } : {}) });
           } else if (mode === "failed") child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "fixture prompt failed" } }) + "\n");
@@ -153,7 +206,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
             reply(msg, { stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 40 } });
           } else reply(msg, { stopReason: mode === "cancel-result" ? "cancelled" : "end_turn" });
         } else if (msg.method === "session/cancel") {
-          if (["yield-close", "cancel", "pi-cancel", "pi-yield"].includes(mode)) close();
+          if (["yield-close", "cancel", "pi-cancel", "pi-cancel-thinking", "pi-yield"].includes(mode)) close();
           // yield-silent deliberately never replies or exits until killed.
         } else if (msg.method === "session/list") {
           if (mode === "exit-during-list") close();
@@ -202,6 +255,8 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
       if (name.startsWith("node:")) return require(name);
       if (name === "./acp.js") return acp;
       if (name === "./acpLocalDiff.js") return acpLocalDiff;
+      if (name === "./piTurn.js") return piTurn;
+      if (name === "./acpEmbeddedTerminal.js") return acpEmbeddedTerminal;
       return new Proxy(services, { get: (obj, key) => key === "__esModule" ? true : obj[key] ?? noop });
     }
   };
@@ -227,6 +282,75 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
   await new Promise(resolve => setTimeout(resolve, 30));
   return { events, requests, traces, running, killCount, metricSnapshots, warmConnection, parked, child, captureOrder };
 }
+
+test("Pi display-only terminal metadata reaches live output and exit events", async t => {
+  const result = await runScenario(t, "pi-terminal-metadata");
+  assert.equal(result.events.find(event => event.type === "done").exitCode, 0);
+  const terminal = result.events.filter(event => event.type === "terminal-update");
+  assert.equal(terminal.length, 3);
+  assert.equal(terminal.at(-1).output, "first line\nlast line\n");
+  assert.equal(terminal.at(-1).exitCode, 0);
+  assert.equal(terminal.at(-1).running, false);
+  const call = result.events.flatMap(event => event.type === "items" ? event.items : []).find(item => item.kind === "tool-call");
+  assert.equal(call.tool, "git status --short");
+  assert.equal(call.input, undefined);
+  assert.equal(result.requests.includes("terminal/create"), false);
+});
+
+test("modern Pi status uses diagnostics while completion follows ACP without native inference", async t => {
+  const result = await runScenario(t, "pi-v1-success");
+  assert.equal(result.events.find(e => e.type === "done").exitCode, 0);
+  assert.equal(result.metricSnapshots.at(-1).status, "done");
+  const diagnostics = result.events.filter(e => e.type === "stderr").map(e => e.content).join("");
+  assert.match(diagnostics, /retrying in 2s/);
+  assert.match(diagnostics, /Context compaction completed/);
+  assert.doesNotMatch(diagnostics, /stale native failure/);
+  const texts = result.events.flatMap(e => e.type === "items" ? e.items : []).filter(i => i.kind === "text");
+  assert.deepEqual(texts.map(i => i.content), ["Retrying (attempt 1/3, waiting 2s)..."]);
+});
+
+for (const mode of ["pi-v1-error", "pi-v1-limit", "limit-requests"]) {
+  test(`ACP incomplete outcomes propagate to failed metrics (${mode})`, async t => {
+    const result = await runScenario(t, mode);
+    assert.notEqual(result.events.find(e => e.type === "done").exitCode, 0);
+    assert.equal(result.metricSnapshots.at(-1).status, "failed");
+    assert.match(result.events.find(e => e.type === "error").message,
+      mode === "pi-v1-error" ? /thinking but no answer/ : /limit.*did not complete/);
+  });
+}
+
+test("modern Pi cancelled outcome remains cancelled", async t => {
+  const result = await runScenario(t, "pi-v1-cancel");
+  assert.equal(result.metricSnapshots.at(-1).status, "cancelled");
+  assert.deepEqual(result.events.filter(e => e.type === "error"), []);
+});
+
+for (const mode of ["pi-thinking-only", "pi-thinking-after-tool", "pi-retry-exhausted", "pi-length", "pi-malformed", "pi-no-native-thinking", "pi-outstanding-tool"]) {
+  test(`${mode} ends as failed even when the bridge returns end_turn`, async t => {
+    const result = await runScenario(t, mode);
+    assert.equal(result.events.filter(e => e.type === "done").length, 1);
+    assert.notEqual(result.events.find(e => e.type === "done").exitCode, 0);
+    assert.equal(result.metricSnapshots.at(-1).status, "failed");
+    assert.equal(result.events.some(e => e.type === "error"), true);
+    if (mode === "pi-retry-exhausted") assert.match(result.events.find(e => e.type === "error").message, /429 free_campaign_global_limit/);
+  });
+}
+
+test("Pi retry notices use diagnostics and a recovered reply still succeeds", async t => {
+  const result = await runScenario(t, "pi-retry-recovered");
+  assert.equal(result.events.find(e => e.type === "done").exitCode, 0);
+  assert.equal(result.metricSnapshots.at(-1).status, "done");
+  const text = result.events.flatMap(e => e.type === "items" ? e.items : []).filter(i => i.kind === "text");
+  assert.equal(text.some(i => /Retrying|Retry finished/.test(i.content)), false);
+  assert.equal(text.some(i => i.content === "new Pi body"), true);
+  assert.equal(result.events.some(e => e.type === "stderr" && /429 free_campaign_global_limit/.test(e.content)), true);
+});
+
+test("user cancellation of Pi thinking remains cancelled without an incomplete-answer error", async t => {
+  const result = await runScenario(t, "pi-cancel-thinking");
+  assert.equal(result.metricSnapshots.at(-1).status, "cancelled");
+  assert.deepEqual(result.events.filter(e => e.type === "error"), []);
+});
 
 for (const mode of ["complete", "cancel", "yield-silent", "warm", "failed"]) {
   test(`file versions seal before done and scheduler return (${mode})`, async t => {

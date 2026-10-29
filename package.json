@@ -105,7 +105,7 @@
     "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.25.9",
-    "pi-acp": "npm:@hobby0524/pi-acp@0.0.34-fb.2",
+    "pi-acp": "npm:@hobby0524/pi-acp@0.0.34-fb.3",
     "typescript": "^5.9.3",
     "vite": "^7.2.7"
   }

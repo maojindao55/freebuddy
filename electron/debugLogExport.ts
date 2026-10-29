@@ -251,7 +251,8 @@ function readSessionLogFiles(
         const size = fs.statSync(file).size;
         let text: string;
         let truncated = false;
-        if (size > SESSION_TAIL_BYTES) {
+        // Full exports/self-checks need the prompt and initialization evidence too.
+        if (mode !== "full" && size > SESSION_TAIL_BYTES) {
           const fd = fs.openSync(file, "r");
           try {
             const buf = Buffer.alloc(SESSION_TAIL_BYTES);

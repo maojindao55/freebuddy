@@ -496,6 +496,14 @@ export function appendItems(
       }
     }
     if (item.kind === "terminal-embed") {
+      const toolIndex = out.findIndex(previous => previous.kind === "tool-call" &&
+        previous.toolOutputs?.some(output => output.kind === "terminal-embed" && output.terminalId === item.terminalId));
+      if (toolIndex >= 0) {
+        const call = out[toolIndex] as ToolCallItem;
+        out[toolIndex] = { ...call, toolOutputs: call.toolOutputs?.map(output =>
+          output.kind === "terminal-embed" && output.terminalId === item.terminalId ? { ...output, ...item } : output) };
+        continue;
+      }
       const index = out.findIndex(
         (previous) =>
           previous.kind === "terminal-embed" &&

@@ -1059,9 +1059,10 @@ function StreamContentBlock({
 function summarizeValue(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value.map(String).join(" ");
+  if (Array.isArray(value)) return value.map(summarizeValue).filter(Boolean).join(" ");
   if (typeof value === "object") {
     const record = value as Record<string, unknown>;
+    if (record.type === "terminal" && typeof record.terminalId === "string") return "";
     const direct =
       record.path ??
       record.file ??
@@ -1187,6 +1188,7 @@ function hasVisibleContent(content: string) {
 function formatValue(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.every(entry => entry?.type === "terminal" && typeof entry.terminalId === "string")) return "";
   if (
     typeof value === "object" &&
     !Array.isArray(value) &&

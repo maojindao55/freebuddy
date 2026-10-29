@@ -570,9 +570,18 @@ export const CONVERSATION_ORDER_STEP = 1024;
 /**
  * Persist a manual list order for a group of conversations. The caller sends
  * the full desired order (top first); rows get evenly spaced positions.
- * Unlisted conversations keep their position (null = ordered by activity,
- * leading positioned rows so new arrivals float in). Reordering never touches
- * updated_at — it must not reshuffle the activity-based views.
+ * Unlisted conversations keep their position (null = ordered by activity).
+ * Reordering never touches updated_at — it must not reshuffle the
+ * activity-based views.
+ *
+ * Positions are only meaningful inside the group they were assigned in (each
+ * group starts at 0), so listConversations must NOT order by sort_position:
+ * per-group positions from different groups overlap, and interleaving them
+ * under the global LIMIT would silently drop rows from the sidebar. The DB
+ * list stays activity-ordered (main's pagination contract: the most recent
+ * rows survive the limit); applying the manual order within a group is the
+ * client's job (compareConversationsForList, which floats unpositioned new
+ * arrivals above positioned rows).
  */
 export function setConversationOrder(conversationIds: string[]): Conversation[] {
   if (
@@ -683,7 +692,7 @@ export function listConversations(args: ListConversationsArgs = {}): Conversatio
     FROM conversations c
     LEFT JOIN remote_users u ON u.id = c.owner_id
     WHERE ${where.join(" AND ")}
-    ORDER BY c.pinned DESC, c.pinned_at DESC, c.sort_position ASC, COALESCE(c.last_message_at, c.updated_at) DESC
+    ORDER BY c.pinned DESC, c.pinned_at DESC, COALESCE(c.last_message_at, c.updated_at) DESC
     LIMIT ?`;
   params.push(args.limit ?? 200);
   const workspaceCache = new Map<string, RemoteWorkspace[]>();

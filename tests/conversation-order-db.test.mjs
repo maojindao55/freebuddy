@@ -65,7 +65,7 @@ function seedOrdered(ctx) {
   );
 }
 
-test("manual order overrides activity and survives new arrivals above it", async (t) => {
+test("manual order persists positions; the global list stays activity-ordered", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
   const ctx = await setup();
   try {
@@ -73,20 +73,40 @@ test("manual order overrides activity and survives new arrivals above it", async
 
     const updated = ctx.setConversationOrder(["c", "a", "b"]);
     assert.equal(updated.length, 3);
+    // Positions are persisted for the client to apply within a group.
+    assert.deepEqual(
+      updated.map((conv) => [conv.id, conv.sortPosition]),
+      [["c", 0], ["a", 1024], ["b", 2048]]
+    );
+    assert.equal(ctx.getConversation("c").sortPosition, 0);
+    assert.equal(ctx.getConversation("a").sortPosition, 1024);
+    assert.equal(ctx.getConversation("b").sortPosition, 2048);
+
+    // The DB list itself keeps main's pagination contract (activity order,
+    // pins first): per-group positions from different groups overlap, so
+    // ordering the global list by them would break the LIMIT truncation.
+    // Applying the manual order is the client's job (grouping util).
     assert.deepEqual(
       ctx.listConversations({ archived: false }).map((conv) => conv.id),
-      ["c", "a", "b"]
+      ["a", "b", "c"]
+    );
+    assert.deepEqual(
+      ctx.listConversations({ archived: false }).map((conv) => conv.sortPosition),
+      [1024, 2048, 0]
     );
 
-    // A brand-new conversation has no position and floats in at the top.
+    // A brand-new conversation has no position; the DB list keeps pure
+    // activity order and the client floats the unpositioned row above
+    // positioned rows inside its group.
     ctx.createConversation(convInput("new"));
     ctx.db
       .prepare("UPDATE conversations SET last_message_at = ? WHERE id = ?")
       .run("2026-01-15T00:00:00.000Z", "new");
     assert.deepEqual(
       ctx.listConversations({ archived: false }).map((conv) => conv.id),
-      ["new", "c", "a", "b"]
+      ["a", "b", "new", "c"]
     );
+    assert.equal(ctx.getConversation("new").sortPosition, null);
   } finally {
     ctx.cleanup();
   }
@@ -131,15 +151,17 @@ test("order accepts a subset, ignores unknown ids, rejects bad input", async (t)
   try {
     seedOrdered(ctx);
 
-    // Position only "b"; the untouched rows stay null and float above it.
+    // Position only "b"; the untouched rows stay null and the client lets
+    // them lead within the group.
     ctx.setConversationOrder(["b"]);
-    assert.deepEqual(
-      ctx.listConversations({ archived: false }).map((conv) => conv.id),
-      ["a", "c", "b"]
-    );
+    assert.equal(ctx.getConversation("b").sortPosition, 0);
+    assert.equal(ctx.getConversation("a").sortPosition, null);
+    assert.equal(ctx.getConversation("c").sortPosition, null);
 
     const updated = ctx.setConversationOrder(["a", "ghost", "c"]);
     assert.deepEqual(updated.map((conv) => conv.id), ["a", "c"]);
+    // Previously positioned rows keep their position until reset.
+    assert.equal(ctx.getConversation("b").sortPosition, 0);
 
     assert.throws(() => ctx.setConversationOrder("a"), /array/);
     assert.throws(() => ctx.setConversationOrder(["a", 42]), /array/);

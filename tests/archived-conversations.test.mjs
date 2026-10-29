@@ -47,8 +47,14 @@ test("archived conversations are managed from a Settings tab", () => {
   );
 
   // Store: archive drops the row (and switches away when active); restore
-  // re-inserts it at the top.
-  assert.match(store, /restored\?: Conversation/);
+  // re-inserts it at the top. Un-archiving without the archived row would be
+  // invisible in the list, so the overload makes `restored` required exactly
+  // when archived is false.
+  assert.match(store, /archiveConversation\(id: string, archived: true\): Promise<void>/);
+  assert.match(
+    store,
+    /archiveConversation\(\s*id: string,\s*archived: false,\s*restored: Conversation\s*\): Promise<void>/
+  );
   assert.match(store, /activeId: s\.activeId === id \? next\[0\]\?\.id : s\.activeId/);
   assert.match(store, /\[\s*\{\s*\.\.\.restored, archived: false \},/);
 

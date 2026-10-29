@@ -167,11 +167,17 @@ export interface ConversationState {
   }>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
+  /**
+   * Archive (archived: true) drops the row from the sidebar list. Un-archiving
+   * only becomes visible when the caller supplies the archived row — the
+   * Settings archived list has it in hand — which is then re-inserted at the
+   * top, so `restored` is required exactly when `archived` is false.
+   */
+  archiveConversation(id: string, archived: true): Promise<void>;
   archiveConversation(
     id: string,
-    archived: boolean,
-    /** The archived conversation row, supplied by the archived-list view on restore. */
-    restored?: Conversation
+    archived: false,
+    restored: Conversation
   ): Promise<void>;
   setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
   moveConversationToProject(
@@ -1223,7 +1229,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
   },
 
-  async archiveConversation(id, archived, restored) {
+  async archiveConversation(id: string, archived: boolean, restored?: Conversation) {
     await cliClient.archiveConversation(id, archived);
     set((s) => {
       const pendingFreshContext = { ...s.pendingFreshContext };

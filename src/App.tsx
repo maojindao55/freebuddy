@@ -78,6 +78,18 @@ function nextThemePreference(theme: "system" | "light" | "dark") {
   return "system";
 }
 
+// Whether a conversation is currently docked into the main window's embedded
+// doc viewer. All open-conversation routes consult this so a docked
+// conversation activates in place instead of popping a standalone DocStudio
+// window. Missing/unavailable API means "not docked" (legacy behavior).
+async function isConversationEmbeddedInMainWindow(id: string): Promise<boolean> {
+  try {
+    return (await window.freebuddy?.docStudio?.isConversationEmbedded?.(id)) ?? false;
+  } catch {
+    return false;
+  }
+}
+
 function BrandMark() {
   return (
     <span className="sidebar-logo" aria-hidden="true">
@@ -276,7 +288,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId) => {
+    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId, embed) => {
       void (async () => {
         const state = useConversationStore.getState();
         // Conversations created in other renderer processes (e.g. DocStudio)
@@ -284,7 +296,12 @@ function App() {
         if (!state.conversations.some((c) => c.id === conversationId)) {
           await state.refreshList();
         }
-        if (useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
+        // "Dock into main window" from the standalone studio asks for the
+        // embedded viewer explicitly; everything else keeps popping the
+        // standalone DocStudio window open for document chats — unless that
+        // conversation is currently docked into this window's embedded viewer.
+        if (!embed && useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio") &&
+          !(await isConversationEmbeddedInMainWindow(conversationId))) {
           try {
             if (await window.freebuddy?.docStudio?.openConversation(conversationId)) {
               useConversationStore.getState().markConversationRead(conversationId);
@@ -772,6 +789,23 @@ function App() {
     t
   ]);
 
+  // Mirror the active doc conversation up to the main process: while a
+  // doc-studio conversation is active in this window it counts as docked into
+  // the embedded viewer, and every open-conversation route (sidebar, panel,
+  // board, cross-window events) then keeps it embedded instead of popping the
+  // standalone DocStudio window. Mirrors DocStudioCopilot's reporting in the
+  // standalone window; the cleanup covers switching away, conversation
+  // deletion and unmount. Docking also writes this state in the main process
+  // up front (openConversationInMain), so this effect only keeps it fresh.
+  useEffect(() => {
+    if (platform === "web") return;
+    if (!activeId || activeConversation?.kind !== "doc-studio") return;
+    const docStudio = window.freebuddy?.docStudio;
+    if (!docStudio?.setActiveConversation) return;
+    void docStudio.setActiveConversation(activeId).catch(() => {});
+    return () => { void docStudio.setActiveConversation(null).catch(() => {}); };
+  }, [activeId, activeConversation?.kind, platform]);
+
   const activeWorkflowRunning = useWorkflowStore((s) =>
     Boolean(activeId && s.activeRuns.some((run) => run.conversationId === activeId))
   );
@@ -974,7 +1008,7 @@ function App() {
   };
   const openPanelConversation = async (id: string) => {
     const conversation = useConversationStore.getState().conversations.find((item) => item.id === id);
-    if (conversation?.kind === "doc-studio") {
+    if (conversation?.kind === "doc-studio" && !(await isConversationEmbeddedInMainWindow(id))) {
       try {
         if (await window.freebuddy?.docStudio?.openConversation(id)) {
           useConversationStore.getState().markConversationRead(id);

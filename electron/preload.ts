@@ -391,8 +391,11 @@ const window = {
   resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean> {
     return ipcRenderer.invoke("browser-tool:resolve", resolution);
   },
-  onOpenConversation(cb: (conversationId: string) => void): () => void {
-    const handler = (_e: IpcRendererEvent, conversationId: string) => cb(conversationId);
+  onOpenConversation(cb: (conversationId: string, embed?: boolean) => void): () => void {
+    const handler = (_e: IpcRendererEvent, payload: string | { conversationId: string; embed?: boolean }) => {
+      if (typeof payload === "string") cb(payload);
+      else if (payload && typeof payload.conversationId === "string") cb(payload.conversationId, payload.embed);
+    };
     ipcRenderer.on("window:open-conversation", handler);
     return () => ipcRenderer.off("window:open-conversation", handler);
   },
@@ -1014,14 +1017,20 @@ const docStudio = {
     ipcRenderer.invoke("docStudio:openConversation", conversationId) as Promise<boolean>,
   setActiveConversation: (conversationId: string | null) =>
     ipcRenderer.invoke("docStudio:setActiveConversation", conversationId) as Promise<boolean>,
+  isConversationEmbedded: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:isConversationEmbedded", conversationId) as Promise<boolean>,
   getDefaultDirectory: () =>
     ipcRenderer.invoke("docStudio:defaultDirectory") as Promise<string | null>,
+  resolveConversationFile: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:resolveConversationFile", conversationId) as Promise<string | null>,
+  attachFileToConversation: (conversationId: string, filePath: string) =>
+    ipcRenderer.invoke("docStudio:attachFileToConversation", conversationId, filePath) as Promise<boolean>,
   showOpenDialog: (defaultPath?: string) =>
     ipcRenderer.invoke("docStudio:showOpenDialog", defaultPath) as Promise<string[] | null>,
   showItemInFolder: (filePath: string) =>
     ipcRenderer.invoke("docStudio:showItemInFolder", filePath) as Promise<boolean>,
-  openConversationInMain: (conversationId: string) =>
-    ipcRenderer.invoke("docStudio:openConversationInMain", conversationId) as Promise<boolean>,
+  openConversationInMain: (conversationId: string, options?: { embed?: boolean }) =>
+    ipcRenderer.invoke("docStudio:openConversationInMain", conversationId, options) as Promise<boolean>,
   watchFile: (filePath: string) =>
     ipcRenderer.invoke("docStudio:watchFile", filePath) as Promise<boolean>,
   unwatchFile: (filePath: string) =>

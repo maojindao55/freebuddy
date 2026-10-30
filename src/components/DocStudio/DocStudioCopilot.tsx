@@ -35,6 +35,8 @@ interface DocStudioCopilotProps {
   initialFilePending: boolean;
   blankConversationId: string | null;
   onBlankConversationChange: (id: string | null) => void;
+  /** Reports the copilot's currently active conversation so the parent can dock it. */
+  onActiveConversationChange?: (id: string | null) => void;
   onCollapse: () => void;
 }
 
@@ -54,6 +56,7 @@ export const DocStudioCopilot: React.FC<DocStudioCopilotProps> = ({
   initialFilePending,
   blankConversationId,
   onBlankConversationChange,
+  onActiveConversationChange,
   onCollapse
 }) => {
   const { t } = useTranslation();
@@ -307,6 +310,13 @@ export const DocStudioCopilot: React.FC<DocStudioCopilotProps> = ({
     void docStudio.setActiveConversation(conversationId).catch(() => {});
     return () => { void docStudio.setActiveConversation(null).catch(() => {}); };
   }, [conversationId]);
+
+  // Mirror the active conversation up to DocStudioApp so "Dock into main
+  // window" targets the conversation the user is actually looking at, not the
+  // last blank one. Covers every state that sets conversationId below.
+  useEffect(() => {
+    onActiveConversationChange?.(conversationId);
+  }, [conversationId, onActiveConversationChange]);
   const messages = useConversationStore((s) =>
     (conversationId ? s.messages[conversationId] : undefined) ?? NO_MESSAGES
   );

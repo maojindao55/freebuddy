@@ -47,6 +47,8 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult,
+  ForkConversationInput,
+  ForkConversationResult,
   ImportCodexSessionResult,
   CreateConversationShareInput,
   CreateConversationShareResult,
@@ -280,6 +282,9 @@ export const cliClient = {
   transferConversation(input: TransferConversationInput): Promise<TransferConversationResult> {
     return api().transferConversation(input);
   },
+  forkConversation(input: ForkConversationInput): Promise<ForkConversationResult> {
+    return api().forkConversation(input);
+  },
   importCodexSession(sessionId: string): Promise<ImportCodexSessionResult> {
     return api().importCodexSession(sessionId);
   },
@@ -322,6 +327,18 @@ export const cliClient = {
   },
   setConversationPinned(id: string, pinned: boolean): Promise<Conversation> {
     return api().setConversationPinned(id, pinned);
+  },
+  moveConversationToProject(
+    id: string,
+    projectId: string | null
+  ): Promise<Conversation> {
+    return api().moveConversationToProject(id, projectId);
+  },
+  setConversationOrder(conversationIds: string[]): Promise<Conversation[]> {
+    return api().setConversationOrder(conversationIds);
+  },
+  resetConversationOrder(conversationIds: string[]): Promise<Conversation[]> {
+    return api().resetConversationOrder(conversationIds);
   },
   deleteConversation(id: string): Promise<void> {
     return api().deleteConversation(id);

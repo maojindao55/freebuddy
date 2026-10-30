@@ -53,6 +53,8 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult,
+  ForkConversationInput,
+  ForkConversationResult,
   ImportCodexSessionResult,
   CreateConversationShareInput,
   CreateConversationShareResult,
@@ -242,6 +244,9 @@ declare global {
     transferConversation(
       input: TransferConversationInput
     ): Promise<TransferConversationResult>;
+    forkConversation(
+      input: ForkConversationInput
+    ): Promise<ForkConversationResult>;
     importCodexSession(
       sessionId: string
     ): Promise<ImportCodexSessionResult>;
@@ -269,6 +274,12 @@ declare global {
     ): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
     setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+    moveConversationToProject(
+      id: string,
+      projectId: string | null
+    ): Promise<Conversation>;
+    setConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
+    resetConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,
@@ -414,6 +425,7 @@ declare global {
         | "plugins"
         | "feed"
         | "usage"
+        | "archived"
         | "remote"
         | "about"
         | null;

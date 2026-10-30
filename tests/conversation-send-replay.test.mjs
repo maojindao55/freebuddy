@@ -23,6 +23,7 @@ async function loadConversationStoreHarness() {
     export let capturedRunArgs;
     export let followupMessages = [];
     export let capturedFollowupQuery;
+    export let capturedForkInput;
     export function setFollowupMessages(value) { followupMessages = value; }
 
     export function setSavedToolSession(value) {
@@ -65,7 +66,26 @@ async function loadConversationStoreHarness() {
 
     export const cliClient = {
       appendMessage: async (message) => message,
+      archiveConversation: async () => undefined,
+      forkConversation: async (input) => {
+        capturedForkInput = input;
+        return {
+          conversation: {
+            id: input.targetConversationId,
+            title: input.title ?? "Forked",
+            agentId: "agent-1",
+            agentName: "Mock ACP",
+            adapter: "mock-acp",
+            skillSnapshot: [],
+            createdAt: "2026-10-28T00:00:00.000Z",
+            updatedAt: "2026-10-28T00:00:00.000Z"
+          },
+          copiedMessages: 2
+        };
+      },
       getToolSession: async () => savedToolSession,
+      isAvailable: () => true,
+      listMessages: async () => ({ messages: [], hasMore: false }),
       listFollowupMessages: async (conversationId, excludeMessageIds) => {
         capturedFollowupQuery = { conversationId, excludeMessageIds };
         return followupMessages.filter((message) => !excludeMessageIds.includes(message.id));
@@ -361,4 +381,112 @@ test("selected skills are invoked and saved for one message without changing con
   await useConversationStore.getState().sendMessage({ conversationId: "skill-conv", prompt: "下一条普通消息" });
   assert.deepEqual(mocks.capturedRunArgs.skills, [base]);
   assert.doesNotMatch(mocks.capturedRunArgs.prompt, /skills selected for this message/);
+});
+
+test("archiveConversation hides the row and restore re-inserts it at the top", async () => {
+  const { useConversationStore } = await loadConversationStoreHarness();
+  const timestamp = "2026-07-29T10:00:00.000Z";
+  const conversation = {
+    id: "conv-archive",
+    title: "Archive me",
+    agentId: "agent-1",
+    agentName: "Mock ACP",
+    adapter: "mock-acp",
+    skillSnapshot: [],
+    archived: false,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  const other = { ...conversation, id: "conv-other", title: "Other" };
+
+  useConversationStore.setState({
+    conversations: [conversation, other],
+    activeId: conversation.id,
+    messages: {},
+    live: {},
+    pendingFreshContext: { "conv-archive": true }
+  });
+
+  await useConversationStore
+    .getState()
+    .archiveConversation("conv-archive", true);
+
+  let state = useConversationStore.getState();
+  assert.deepEqual(
+    state.conversations.map((entry) => entry.id),
+    ["conv-other"]
+  );
+  // Archiving the open conversation switches the main view away.
+  assert.equal(state.activeId, "conv-other");
+  assert.equal(state.pendingFreshContext["conv-archive"], undefined);
+
+  await useConversationStore
+    .getState()
+    .archiveConversation("conv-archive", false, { ...conversation, archived: true });
+
+  state = useConversationStore.getState();
+  assert.deepEqual(
+    state.conversations.map((entry) => entry.id),
+    ["conv-archive", "conv-other"]
+  );
+  assert.equal(state.conversations[0].archived, false);
+});
+
+test("forkConversation keeps followup context so the first send sees forked history", async () => {
+  const { useConversationStore, mocks } = await loadConversationStoreHarness();
+  mocks.setSavedToolSession(undefined);
+  const timestamp = "2026-10-28T00:00:00.000Z";
+  const source = {
+    id: "fork-source", title: "Fork source", agentId: "agent-1",
+    agentName: "Mock ACP", adapter: "mock-acp", cwd: "/tmp/fork",
+    createdAt: timestamp, updatedAt: timestamp
+  };
+  const history = [
+    {
+      id: "fork-user-1", conversationId: "fork-target", role: "user",
+      status: "sent", content: "Remember the launch code is 4-2",
+      createdAt: timestamp, updatedAt: timestamp
+    },
+    {
+      id: "fork-assistant-1", conversationId: "fork-target", role: "assistant",
+      status: "done",
+      content: JSON.stringify([{ kind: "text", content: "Understood." }]),
+      createdAt: timestamp, updatedAt: timestamp
+    }
+  ];
+  mocks.setFollowupMessages(history);
+  useConversationStore.setState({
+    conversations: [source],
+    messages: { [source.id]: [] },
+    live: {},
+    pendingFreshContext: {}
+  });
+
+  const forked = await useConversationStore.getState().forkConversation({
+    conversationId: source.id,
+    throughMessageId: "fork-assistant-1"
+  });
+  assert.equal(mocks.capturedForkInput.sourceConversationId, "fork-source");
+
+  // The fork must not be treated like /clear: without a resumable session the
+  // copied history feeds the orphan-followup context on the first send.
+  assert.notEqual(
+    useConversationStore.getState().pendingFreshContext[forked.id],
+    true
+  );
+
+  await useConversationStore.getState().sendMessage({
+    conversationId: forked.id,
+    prompt: "What is the launch code?",
+    userMessageId: "fork-q-user",
+    assistantMessageId: "fork-q-assistant"
+  });
+  assert.deepEqual(mocks.capturedFollowupQuery, {
+    conversationId: forked.id,
+    excludeMessageIds: ["fork-q-user", "fork-q-assistant"]
+  });
+  assert.match(mocks.capturedRunArgs.prompt, /Remember the launch code is 4-2/);
+  // No source-session resume and no fresh-context reset: a brand-new session.
+  assert.equal(mocks.capturedRunArgs.toolSessionId, undefined);
+  assert.equal(mocks.capturedRunArgs.resumeToolSession, true);
 });

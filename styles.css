@@ -9957,6 +9957,18 @@ button.new-task-context-control {
   color: var(--fb-text-secondary);
 }
 
+/* Fork button: always visible in the assistant action bar, hover-revealed on
+   user message headers to keep the header row quiet. */
+.msg-user .msg-header .msg-fork-btn {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.msg-user:hover .msg-header .msg-fork-btn,
+.msg-user .msg-header .msg-fork-btn:focus-visible {
+  opacity: 1;
+}
+
 .msg-time {
   font-size: 11px;
   color: var(--fb-text-tertiary);
@@ -15190,6 +15202,170 @@ button.new-task-context-control {
   border-radius: 50%;
   background: var(--fb-brand);
   transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* Archived conversations tab (Settings). */
+.archived-conversations-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 10px;
+}
+
+.archived-conversations-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  max-width: 340px;
+  padding: 6px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  color: var(--fb-text-tertiary);
+}
+
+.archived-conversations-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fb-text-primary);
+  font-size: 13px;
+}
+
+.archived-conversations-search input:focus {
+  outline: none;
+}
+
+.archived-conversations-count {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--fb-text-tertiary);
+}
+
+.archived-conversations-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.archived-conversation-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+}
+
+.archived-conversation-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+}
+
+.archived-conversation-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.archived-conversation-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-conversation-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+}
+
+.archived-conversation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.archived-conversation-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.archived-conversation-actions button:hover {
+  color: var(--fb-text-primary);
+  border-color: var(--fb-text-tertiary);
+}
+
+.archived-conversation-actions .archived-conversation-delete:hover {
+  color: var(--fb-danger);
+  border-color: var(--fb-danger);
+}
+
+.archived-conversations-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 0;
+  color: var(--fb-text-tertiary);
+  font-size: 13px;
+}
+
+.archived-conversations-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-danger);
+  border-radius: 8px;
+  color: var(--fb-danger);
+  font-size: 13px;
+}
+
+.archived-conversations-error button {
+  margin-left: auto;
+  border: 1px solid var(--fb-danger);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fb-danger);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+/* Drag-to-reorder: dimmed source row, brand-colored insertion edges. */
+.conv-item.dragging {
+  opacity: 0.45;
+}
+
+.conv-item.drop-before {
+  box-shadow: inset 0 2px 0 var(--fb-brand);
+}
+
+.conv-item.drop-after {
+  box-shadow: inset 0 -2px 0 var(--fb-brand);
 }
 
 .conv-item:hover .conv-unread-dot,

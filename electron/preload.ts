@@ -149,6 +149,8 @@ const cli = {
     ipcRenderer.invoke("cli:previewHandoffBrief", input),
   transferConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:transferConversation", input),
+  forkConversation: (input: unknown) =>
+    ipcRenderer.invoke("cli:forkConversation", input),
   createConversationShare: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversationShare", input),
   attachConversationShares: (input: unknown) =>
@@ -169,6 +171,12 @@ const cli = {
     ipcRenderer.invoke("cli:archiveConversation", { id, archived }),
   setConversationPinned: (id: string, pinned: boolean) =>
     ipcRenderer.invoke("cli:setConversationPinned", { id, pinned }),
+  moveConversationToProject: (id: string, projectId: string | null) =>
+    ipcRenderer.invoke("cli:moveConversationToProject", { id, projectId }),
+  setConversationOrder: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:setConversationOrder", { conversationIds }),
+  resetConversationOrder: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:resetConversationOrder", { conversationIds }),
   deleteConversation: (id: string) =>
     ipcRenderer.invoke("cli:deleteConversation", id),
   setConversationApprovalMode: (

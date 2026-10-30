@@ -152,6 +152,12 @@ export interface ConversationState {
     warning?: "brief_extraction_failed";
     startError?: string;
   }>;
+  forkConversation(input: {
+    conversationId: string;
+    throughMessageId: string;
+    /** Localized suffix appended to the source title, supplied by the caller. */
+    titleSuffix?: string;
+  }): Promise<Conversation>;
   importCodexSession(sessionId: string): Promise<{
     conversation: Conversation;
     created: boolean;
@@ -161,8 +167,25 @@ export interface ConversationState {
   }>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
-  archiveConversation(id: string, archived: boolean): Promise<void>;
+  /**
+   * Archive (archived: true) drops the row from the sidebar list. Un-archiving
+   * only becomes visible when the caller supplies the archived row — the
+   * Settings archived list has it in hand — which is then re-inserted at the
+   * top, so `restored` is required exactly when `archived` is false.
+   */
+  archiveConversation(id: string, archived: true): Promise<void>;
+  archiveConversation(
+    id: string,
+    archived: false,
+    restored: Conversation
+  ): Promise<void>;
   setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+  moveConversationToProject(
+    id: string,
+    projectId: string | null
+  ): Promise<Conversation>;
+  setConversationOrder(conversationIds: string[]): Promise<void>;
+  resetConversationOrder(conversationIds: string[]): Promise<void>;
   setConversationApprovalMode(
     id: string,
     approvalMode: "auto" | "ask"
@@ -416,6 +439,17 @@ function mergeMemberSkillIds(
 }
 
 const MEMBER_RUNTIME_OVERRIDES_KEY = "member.runtimeOverrides";
+
+/** Merge server-returned conversation rows into the store without reordering. */
+function patchConversationsFrom(updated: Conversation[]): void {
+  if (!updated.length) return;
+  useConversationStore.setState((s) => ({
+    conversations: s.conversations.map((c) => {
+      const next = updated.find((u) => u.id === c.id);
+      return next ?? c;
+    })
+  }));
+}
 
 async function loadMemberOverrideMap(
   key: string
@@ -1093,6 +1127,40 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
 
+  async forkConversation({ conversationId, throughMessageId, titleSuffix }) {
+    const source = get().conversations.find((c) => c.id === conversationId);
+    const result = await cliClient.forkConversation({
+      sourceConversationId: conversationId,
+      throughMessageId,
+      targetConversationId: nanoid(),
+      ...(source
+        ? {
+            title: titleSuffix?.trim()
+              ? `${source.title} (${titleSuffix.trim()})`
+              : source.title
+          }
+        : {})
+    });
+    setStoredActiveId(result.conversation.id);
+    set((s) => ({
+      conversations: [
+        result.conversation,
+        ...s.conversations.filter((c) => c.id !== result.conversation.id)
+      ],
+      activeId: result.conversation.id,
+      messages: { ...s.messages, [result.conversation.id]: [] }
+      // No pendingFreshContext: the fork owns copied history rows, and the
+      // backend strips the source session marker, so the next send correctly
+      // goes down the orphan-followup path (listFollowupMessages) and the
+      // first answer still sees the pre-fork conversation.
+    }));
+    ensureWorkflowMessageSubscription(result.conversation.id, async (cid, messageIds) => {
+      await get().loadMessages(cid, messageIds);
+    });
+    await get().loadMessages(result.conversation.id);
+    return result.conversation;
+  },
+
   async importCodexSession(sessionId) {
     const result = await cliClient.importCodexSession(sessionId);
     set((s) => ({
@@ -1161,19 +1229,28 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
   },
 
-  async archiveConversation(id, archived) {
+  async archiveConversation(id: string, archived: boolean, restored?: Conversation) {
     await cliClient.archiveConversation(id, archived);
     set((s) => {
       const pendingFreshContext = { ...s.pendingFreshContext };
       if (archived) {
         delete pendingFreshContext[id];
+        const next = s.conversations.filter((c) => c.id !== id);
+        return {
+          conversations: next,
+          // Archiving the open conversation must leave the main view too.
+          activeId: s.activeId === id ? next[0]?.id : s.activeId,
+          pendingFreshContext
+        };
       }
+      // Restore: re-insert at the top so the conversation is immediately
+      // visible; the archived row itself is only known to the caller.
+      if (!restored) return { pendingFreshContext };
       return {
-        conversations: archived
-          ? s.conversations.filter((c) => c.id !== id)
-          : s.conversations.map((c) =>
-              c.id === id ? { ...c, archived } : c
-            ),
+        conversations: [
+          { ...restored, archived: false },
+          ...s.conversations.filter((c) => c.id !== restored.id)
+        ],
         pendingFreshContext
       };
     });
@@ -1187,6 +1264,63 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       )
     }));
     return conversation;
+  },
+
+  async moveConversationToProject(id, projectId) {
+    const conversation = await cliClient.moveConversationToProject(
+      id,
+      projectId
+    );
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === conversation.id ? conversation : c
+      )
+    }));
+    // The move may have extended the target project's folders.
+    await useProjectStore.getState().refresh();
+    return conversation;
+  },
+
+  async setConversationOrder(conversationIds) {
+    // Optimistic: mirror the server's index*1024 positions so the list does
+    // not flicker while the IPC round-trip runs.
+    const positionById = new Map(
+      conversationIds.map((id, index) => [id, index * 1024] as const)
+    );
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        positionById.has(c.id)
+          ? { ...c, sortPosition: positionById.get(c.id) }
+          : c
+      )
+    }));
+    try {
+      const updated = await cliClient.setConversationOrder(conversationIds);
+      patchConversationsFrom(updated);
+    } catch (error) {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to save conversation order:", error);
+      }
+      await get().refreshList();
+    }
+  },
+
+  async resetConversationOrder(conversationIds) {
+    const idSet = new Set(conversationIds);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        idSet.has(c.id) ? { ...c, sortPosition: null } : c
+      )
+    }));
+    try {
+      const updated = await cliClient.resetConversationOrder(conversationIds);
+      patchConversationsFrom(updated);
+    } catch (error) {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to reset conversation order:", error);
+      }
+      await get().refreshList();
+    }
   },
 
   async setConversationApprovalMode(id, approvalMode) {

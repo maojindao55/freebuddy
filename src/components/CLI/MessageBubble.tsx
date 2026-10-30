@@ -4,6 +4,7 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  GitBranch,
   LoaderCircle,
   Package,
   Search,
@@ -975,7 +976,42 @@ export const MessageBubble = memo(function MessageBubble({
     });
   };
 
-  const actionBarNode = showActionBar || showRunMetrics ? (
+  const forkConversationAction = useConversationStore((s) => s.forkConversation);
+  const [forking, setForking] = useState(false);
+  const canFork = message.role !== "system" && !runActive;
+  const doFork = () => {
+    if (forking) return;
+    setForking(true);
+    forkConversationAction({
+      conversationId: message.conversationId,
+      throughMessageId: message.id,
+      titleSuffix: t("conversations.forkSuffix")
+    })
+      .catch((error) => {
+        if (import.meta.env?.DEV) {
+          console.warn("[FreeBuddy] Failed to fork conversation:", error);
+        }
+      })
+      .finally(() => setForking(false));
+  };
+  const forkButton = canFork ? (
+    <button
+      type="button"
+      className="msg-action-btn msg-fork-btn"
+      onClick={doFork}
+      disabled={forking}
+      title={t("message.fork")}
+      aria-label={t("message.fork")}
+    >
+      {forking ? (
+        <LoaderCircle className="msg-action-icon spin" aria-hidden="true" />
+      ) : (
+        <GitBranch className="msg-action-icon" aria-hidden="true" />
+      )}
+    </button>
+  ) : null;
+
+  const actionBarNode = showActionBar || showRunMetrics || (canFork && message.role === "assistant") ? (
     <div className="msg-actions">
       {showActionBar && (
         <>
@@ -1012,6 +1048,7 @@ export const MessageBubble = memo(function MessageBubble({
           </button>
         </>
       )}
+      {message.role === "assistant" && forkButton}
       {timeStr && <span className="msg-action-time">{timeStr}</span>}
       {showRunMetrics && runMetrics && <MessageRunMetrics metrics={runMetrics} />}
     </div>
@@ -1036,6 +1073,7 @@ export const MessageBubble = memo(function MessageBubble({
             <span className="msg-author">
               {userAuthor || t("message.you")}
             </span>
+            {forkButton}
           </div>
           {showBubble && (
             <div className="msg-bubble">

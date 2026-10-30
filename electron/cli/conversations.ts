@@ -10,7 +10,14 @@ import type { SkillSnapshot } from "./skillTypes.js";
 import { mergeRequiredSkillIds } from "./agentProfiles.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import { getUserById } from "./users.js";
-import { cwdForProjectLookup, ensureProjectForCwd, findProjectByCwd } from "./projects.js";
+import {
+  addProjectFolderIfMissing,
+  cwdForProjectLookup,
+  ensureProjectForCwd,
+  findProjectByCwd,
+  findProjectFolderOwner,
+  getProject
+} from "./projects.js";
 import {
   listRemoteWorkspaces,
   sourcePathForManagedWorkspace,
@@ -75,6 +82,8 @@ export interface Conversation {
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;
+  /** Manual list position; null = order by activity (new arrivals float in). */
+  sortPosition?: number | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
@@ -206,6 +215,8 @@ function rowToConversation(
     archived: r.archived === 1,
     pinned: r.pinned === 1,
     pinnedAt: r.pinned_at ?? undefined,
+    /** Manual list position; null = order by activity (new arrivals float in). */
+    sortPosition: typeof r.sort_position === "number" ? r.sort_position : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at ?? undefined,
@@ -293,11 +304,15 @@ export interface CreateConversationInput {
   ownerId?: string | null;
 }
 
-export function createConversation(input: CreateConversationInput): Conversation {
+export function createConversation(
+  input: CreateConversationInput,
+  // Forks inherit the source assignment, including an explicitly empty one.
+  options: { autoAssignProject?: boolean } = {}
+): Conversation {
   const now = new Date().toISOString();
   const ownerId = input.ownerId ?? getCallerUserId() ?? null;
   let projectId = input.projectId;
-  if (!projectId) {
+  if (!projectId && options.autoAssignProject !== false) {
     const lookupCwd = cwdForProjectLookup(input);
     if (lookupCwd) {
       const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
@@ -472,6 +487,146 @@ export function setConversationPinned(id: string, pinned: boolean): Conversation
     )
     .run(pinned ? 1 : 0, pinned ? now : null, now, id);
   return getConversation(id) as Conversation;
+}
+
+/**
+ * Move a conversation into a project (or back to "recent" when projectId is
+ * null). The conversation's owning folder — the worktree source cwd for
+ * worktree conversations, and the host source path for remote managed
+ * workspaces — is added to the target project's folders when missing so the
+ * project keeps covering the conversation's workspace.
+ *
+ * Removing a conversation records `projectDetached` in its metadata: without
+ * the marker the sidebar's cwd fallback would immediately regroup it under
+ * the project that still owns its cwd, so "remove from project" would look
+ * like a no-op (row stays in the group while also reappearing in Recent).
+ *
+ * Folder extension mutates host-global project configuration, so callers
+ * pass { extendProjectFolders: false } for remote non-admin members (the
+ * assignment itself is per-conversation data and still proceeds). Folder
+ * extension also never steals a folder that already belongs to another
+ * project: the conversation stays assigned via its explicit projectId and
+ * the two projects' folder lists never overlap on the same path. The
+ * ownership check is a pure query — it must not create the very projects it
+ * is asked about (the cwd-groups migration would otherwise mint an ad-hoc
+ * project for an unassigned conversation's folder mid-check and misread it
+ * as pre-existing ownership). Worktree source folders keep their existing
+ * owner too; workspace access uses the conversation's own worktree cwd.
+ */
+export function moveConversationToProject(
+  id: string,
+  projectId: string | null,
+  options: { extendProjectFolders?: boolean } = {}
+): Conversation {
+  const conversation = requireOwnedConversation(id);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const db = getDb();
+  return db.transaction(() => {
+    updateConversationMetadata(id, {
+      // JSON.stringify drops undefined keys, so this clears the marker too.
+      projectDetached: projectId ? undefined : true
+    });
+    if (projectId) {
+      const project = getProject(projectId);
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      let folder = cwdForProjectLookup(conversation).trim();
+      const sourceFolder = folder
+        ? sourcePathForManagedWorkspace(folder)
+        : undefined;
+      if (sourceFolder) folder = sourceFolder;
+      // Pure lookup: must not run the cwd-groups migration, which would
+      // create an ad-hoc project for this very folder and misread it as a
+      // pre-existing cross-project claim.
+      const folderOwner = folder ? findProjectFolderOwner(folder) : null;
+      const crossProjectFolder =
+        folderOwner !== null &&
+        folderOwner.id !== project.id;
+      if (folder && options.extendProjectFolders !== false && !crossProjectFolder) {
+        try {
+          addProjectFolderIfMissing(project, folder);
+        } catch {
+          // A non-absolute/unresolvable cwd (e.g. remote-only path): the move
+          // proceeds without extending the project's folders.
+        }
+      }
+    }
+    setConversationProjectId(id, projectId);
+    return getConversation(id) as Conversation;
+  })();
+}
+
+export const CONVERSATION_ORDER_STEP = 1024;
+
+/**
+ * Persist a manual list order for a group of conversations. The caller sends
+ * the full desired order (top first); rows get evenly spaced positions.
+ * Unlisted conversations keep their position (null = ordered by activity).
+ * Reordering never touches updated_at — it must not reshuffle the
+ * activity-based views.
+ *
+ * Positions are only meaningful inside the group they were assigned in (each
+ * group starts at 0), so listConversations must NOT order by sort_position:
+ * per-group positions from different groups overlap, and interleaving them
+ * under the global LIMIT would silently drop rows from the sidebar. The DB
+ * list stays activity-ordered (main's pagination contract: the most recent
+ * rows survive the limit); applying the manual order within a group is the
+ * client's job (compareConversationsForList, which floats unpositioned new
+ * arrivals above positioned rows).
+ */
+export function setConversationOrder(conversationIds: string[]): Conversation[] {
+  if (
+    !Array.isArray(conversationIds) ||
+    conversationIds.some((id) => typeof id !== "string" || !id.trim())
+  ) {
+    throw new Error("conversationIds must be an array of conversation ids.");
+  }
+  const db = getDb();
+  return db.transaction(() => {
+    const update = db.prepare(
+      "UPDATE conversations SET sort_position = ? WHERE id = ?"
+    );
+    const updated: Conversation[] = [];
+    const seen = new Set<string>();
+    for (const [index, rawId] of conversationIds.entries()) {
+      const id = rawId.trim();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (!requireOwnedConversation(id)) continue;
+      update.run(index * CONVERSATION_ORDER_STEP, id);
+      const next = getConversation(id);
+      if (next) updated.push(next);
+    }
+    return updated;
+  })();
+}
+
+/** Drop manual ordering for the given conversations (back to activity order). */
+export function resetConversationOrder(conversationIds: string[]): Conversation[] {
+  if (
+    !Array.isArray(conversationIds) ||
+    conversationIds.some((id) => typeof id !== "string" || !id.trim())
+  ) {
+    throw new Error("conversationIds must be an array of conversation ids.");
+  }
+  const db = getDb();
+  return db.transaction(() => {
+    const update = db.prepare(
+      "UPDATE conversations SET sort_position = NULL WHERE id = ?"
+    );
+    const updated: Conversation[] = [];
+    const seen = new Set<string>();
+    for (const rawId of conversationIds) {
+      const id = rawId.trim();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (!requireOwnedConversation(id)) continue;
+      update.run(id);
+      const next = getConversation(id);
+      if (next) updated.push(next);
+    }
+    return updated;
+  })();
 }
 
 export function setConversationConfigOptionOverrides(

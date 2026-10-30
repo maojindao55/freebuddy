@@ -178,14 +178,21 @@ export function ensureProjectForCwd(cwd: string): Project {
   })();
 }
 
-export function findProjectByCwd(cwd: string): Project | null {
-  const trimmed = (cwd || "").trim();
-  if (!trimmed) return null;
-  const candidates: string[] = [trimmed];
-  const source = sourcePathForManagedWorkspace(trimmed);
-  if (source && source !== trimmed) candidates.push(source);
-
-  const all = listProjects();
+function matchProjectByFolderCandidates(candidates: string[]): Project | null {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, name, folders, primary_path, created_at, updated_at
+       FROM projects
+       ORDER BY updated_at DESC`
+    )
+    .all() as Array<{
+    id: string;
+    name: string;
+    folders: string;
+    primary_path: string;
+    created_at: string;
+    updated_at: string;
+  }>;
   for (const candidate of candidates) {
     let normalized: string;
     try {
@@ -193,7 +200,7 @@ export function findProjectByCwd(cwd: string): Project | null {
     } catch {
       continue;
     }
-    for (const project of all) {
+    for (const project of rows.map(rowToProject)) {
       for (const folder of project.folders) {
         let folderNormalized: string;
         try {
@@ -206,6 +213,34 @@ export function findProjectByCwd(cwd: string): Project | null {
     }
   }
   return null;
+}
+
+function folderLookupCandidates(cwd: string): string[] {
+  const trimmed = (cwd || "").trim();
+  const candidates: string[] = [trimmed];
+  const source = sourcePathForManagedWorkspace(trimmed);
+  if (source && source !== trimmed) candidates.push(source);
+  return candidates;
+}
+
+/**
+ * Pure project lookup by folder: reads the projects table directly and never
+ * runs the cwd-groups migration (nor any other write). Use this where a
+ * "does some project already own this folder?" answer must not mutate state —
+ * e.g. the conversation move path, where a side-effectful lookup would create
+ * ad-hoc projects mid-check and misread them as pre-existing ownership.
+ */
+export function findProjectFolderOwner(cwd: string): Project | null {
+  const trimmed = (cwd || "").trim();
+  if (!trimmed) return null;
+  return matchProjectByFolderCandidates(folderLookupCandidates(trimmed));
+}
+
+export function findProjectByCwd(cwd: string): Project | null {
+  const trimmed = (cwd || "").trim();
+  if (!trimmed) return null;
+  migrateCwdGroupsToProjects();
+  return matchProjectByFolderCandidates(folderLookupCandidates(trimmed));
 }
 
 /** Resolve ACP workspace roots from project folders, else `[cwd]`. */
@@ -231,7 +266,7 @@ export function resolveWorkspaceRootsForConversation(conv: {
   if (conv.projectId) {
     const project = getProject(conv.projectId);
     if (project?.folders?.length) {
-      return project.folders
+      const roots = project.folders
         .map((folder) => {
           const trimmed = folder.trim();
           if (!trimmed) return "";
@@ -242,6 +277,21 @@ export function resolveWorkspaceRootsForConversation(conv: {
           }
         })
         .filter(Boolean);
+      // A conversation moved into a project whose folders do not cover its
+      // cwd (remote non-admin moves skip folder extension, and moves never
+      // steal another project's folder) must still reach its own workspace.
+      const cwd = conv.cwd?.trim();
+      if (cwd) {
+        try {
+          const resolvedCwd = path.resolve(cwd);
+          if (!roots.some((root) => root.toLowerCase() === resolvedCwd.toLowerCase())) {
+            roots.push(resolvedCwd);
+          }
+        } catch {
+          /* unresolvable cwd: keep the project folders only */
+        }
+      }
+      return roots;
     }
   }
   const cwd = conv.cwd?.trim();
@@ -294,6 +344,43 @@ export function updateProject(id: string, input: ProjectInput): Project {
       id
     );
   return getProject(id) as Project;
+}
+
+function folderEquals(a: string, b: string): boolean {
+  try {
+    return (
+      path.resolve(a.trim()).toLowerCase() ===
+      path.resolve(b.trim()).toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Add a folder to a project's source folders when it is not already part of
+ * it (case-insensitive match, mirroring findProjectByCwd). Used when a
+ * conversation moves into a project so its workspace folder keeps resolving.
+ */
+export function addProjectFolderIfMissing(
+  project: Project,
+  folder: string
+): { project: Project; added: boolean } {
+  if (project.folders.some((existing) => folderEquals(existing, folder))) {
+    return { project, added: false };
+  }
+  const normalized = normalizeAbsoluteFolder(folder);
+  if (project.folders.some((existing) => folderEquals(existing, normalized))) {
+    return { project, added: false };
+  }
+  return {
+    project: updateProject(project.id, {
+      name: project.name,
+      folders: [...project.folders, normalized],
+      primaryPath: project.primaryPath
+    }),
+    added: true
+  };
 }
 
 export function deleteProject(id: string): void {

@@ -24,7 +24,11 @@ export type TelemetryEvent =
   | "app_launched"
   | "app_updated"
   | "conversation_created"
+  | "conversation_forked"
+  | "conversation_moved_to_project"
   | "conversation_pin_toggled"
+  | "conversation_reordered"
+  | "conversation_order_reset"
   | "agent_run_started"
   | "agent_run_finished"
   | "workflow_run_started"
@@ -40,8 +44,20 @@ interface ProductTelemetryEventProperties {
     has_workspace: boolean;
     approval_mode: string;
   };
+  conversation_forked: {
+    copied_messages: number;
+  };
+  conversation_moved_to_project: {
+    has_project: boolean;
+  };
   conversation_pin_toggled: {
     pinned: boolean;
+  };
+  conversation_reordered: {
+    ordered: number;
+  };
+  conversation_order_reset: {
+    ordered: number;
   };
   agent_run_started: {
     adapter: string;

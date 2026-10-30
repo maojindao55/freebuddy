@@ -84,7 +84,9 @@ export function conversationActivityTime(conversation: Conversation): number {
 
 /**
  * Sidebar order within a group: pinned conversations float above unpinned ones
- * (most recently pinned first), then by activity time, newest first.
+ * (most recently pinned first); manually positioned rows keep their order;
+ * rows without a position (new arrivals, untouched groups) lead, sorted by
+ * activity, newest first.
  */
 export function compareConversationsForList(
   a: Conversation,
@@ -99,6 +101,15 @@ export function compareConversationsForList(
     const aAt = Number.isFinite(aPinnedAt) ? aPinnedAt : 0;
     const bAt = Number.isFinite(bPinnedAt) ? bPinnedAt : 0;
     if (aAt !== bAt) return bAt - aAt;
+  }
+  const aPosition = typeof a.sortPosition === "number" ? a.sortPosition : null;
+  const bPosition = typeof b.sortPosition === "number" ? b.sortPosition : null;
+  if (aPosition !== null && bPosition !== null) {
+    if (aPosition !== bPosition) return aPosition - bPosition;
+  } else if (aPosition !== null) {
+    return 1;
+  } else if (bPosition !== null) {
+    return -1;
   }
   return conversationActivityTime(b) - conversationActivityTime(a);
 }
@@ -172,6 +183,11 @@ export function groupConversationsByProject(
 /**
  * Group conversations by projectId. Every project in `projects` appears even with
  * zero conversations. `key` is the project id when present.
+ *
+ * The cwd fallback only applies to conversations that were never assigned (or
+ * whose project disappeared). One explicitly removed via "remove from project"
+ * carries `metadata.projectDetached` and stays in Recent even though its cwd
+ * still resolves to a project folder.
  */
 export function groupConversationsByProjects(
   items: Conversation[],
@@ -188,7 +204,7 @@ export function groupConversationsByProjects(
 
   for (const conversation of items) {
     let projectId = conversation.projectId?.trim();
-    if (!projectId) {
+    if (!projectId && !conversation.metadata?.projectDetached) {
       const cwd = conversationDisplayCwd(conversation);
       if (cwd) {
         projectId = folderToProjectId.get(projectKeyFromCwd(cwd));

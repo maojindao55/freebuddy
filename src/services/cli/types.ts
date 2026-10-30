@@ -710,6 +710,8 @@ export interface Conversation {
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;
+  /** Manual list position; null = order by activity (new arrivals float in). */
+  sortPosition?: number | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
@@ -862,6 +864,20 @@ export interface TransferConversationResult {
   briefId: string | null;
   seedPrompt: string;
   warning?: "brief_extraction_failed";
+}
+
+export interface ForkConversationInput {
+  sourceConversationId: string;
+  /** Fork point: messages up to and including this one are copied. */
+  throughMessageId: string;
+  targetConversationId?: string;
+  /** Title for the fork; defaults to the source title. */
+  title?: string;
+}
+
+export interface ForkConversationResult {
+  conversation: Conversation;
+  copiedMessages: number;
 }
 
 export interface ImportCodexSessionResult {

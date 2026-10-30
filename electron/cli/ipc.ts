@@ -69,6 +69,7 @@ import {
   listMessages,
   listMessagesForIpc,
   listFollowupMessagesForIpc,
+  moveConversationToProject,
   notifyConversationsChanged,
   renameConversation,
   requireOwnedConversation,
@@ -77,6 +78,8 @@ import {
   setConversationMcpServerIds,
   setConversationPinned,
   setConversationSkills,
+  setConversationOrder,
+  resetConversationOrder,
   recoverInterruptedMessages,
   recoverInterruptedTasks,
   updateConversationAgentName,
@@ -114,6 +117,11 @@ import {
 } from "./sessionOwners.js";
 import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
 import { importCodexSession } from "./codexRolloutImport.js";
+import {
+  forkConversation,
+  type ForkConversationInput,
+  type ForkConversationResult
+} from "./conversationFork.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { setTelemetryEnabled, trackTelemetryEvent } from "../telemetry.js";
 import { normalizeTelemetryAdapter } from "../telemetryPrivacy.js";
@@ -1499,7 +1507,19 @@ export function registerCliIpc() {
         warning: brief ? undefined : "brief_extraction_failed"
       };
     }
-  );  registerHandler(
+  );
+  registerHandler(
+    "cli:forkConversation",
+    (_e, input: ForkConversationInput): ForkConversationResult => {
+      const result = forkConversation(input);
+      trackTelemetryEvent("conversation_forked", {
+        copied_messages: result.copiedMessages
+      });
+      notifyConversationsChanged();
+      return result;
+    }
+  );
+  registerHandler(
     "cli:createConversationShare",
     (
       _e,
@@ -1621,6 +1641,60 @@ export function registerCliIpc() {
       const conversation = setConversationPinned(args.id, args.pinned);
       trackTelemetryEvent("conversation_pin_toggled", {
         pinned: args.pinned
+      });
+      notifyConversationsChanged();
+      return conversation;
+    }
+  );
+  registerHandler(
+    "cli:setConversationOrder",
+    (_e, args: { conversationIds: string[] }): Conversation[] => {
+      const updated = setConversationOrder(args.conversationIds);
+      if (updated.length > 0) {
+        trackTelemetryEvent("conversation_reordered", {
+          ordered: updated.length
+        });
+        notifyConversationsChanged();
+      }
+      return updated;
+    }
+  );
+  registerHandler(
+    "cli:resetConversationOrder",
+    (_e, args: { conversationIds: string[] }): Conversation[] => {
+      const updated = resetConversationOrder(args.conversationIds);
+      if (updated.length > 0) {
+        trackTelemetryEvent("conversation_order_reset", {
+          ordered: updated.length
+        });
+        notifyConversationsChanged();
+      }
+      return updated;
+    }
+  );
+  registerHandler(
+    "cli:moveConversationToProject",
+    (_e, args: { id: string; projectId: string | null }): Conversation => {
+      if (typeof args.id !== "string" || !args.id.trim()) {
+        throw new Error("A conversation id is required.");
+      }
+      if (
+        args.projectId !== null &&
+        (typeof args.projectId !== "string" || !args.projectId.trim())
+      ) {
+        throw new Error("Invalid project id.");
+      }
+      // Extending a project's folders rewrites host-global configuration
+      // (cli:updateProject is admin-only), so remote non-admin members move
+      // conversations without it — same split as cli:createConversation.
+      const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
+      const conversation = moveConversationToProject(
+        args.id,
+        args.projectId === null ? null : args.projectId,
+        { extendProjectFolders: !remoteMember }
+      );
+      trackTelemetryEvent("conversation_moved_to_project", {
+        has_project: Boolean(args.projectId)
       });
       notifyConversationsChanged();
       return conversation;

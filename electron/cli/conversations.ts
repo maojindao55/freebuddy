@@ -304,11 +304,15 @@ export interface CreateConversationInput {
   ownerId?: string | null;
 }
 
-export function createConversation(input: CreateConversationInput): Conversation {
+export function createConversation(
+  input: CreateConversationInput,
+  // Forks inherit the source assignment, including an explicitly empty one.
+  options: { autoAssignProject?: boolean } = {}
+): Conversation {
   const now = new Date().toISOString();
   const ownerId = input.ownerId ?? getCallerUserId() ?? null;
   let projectId = input.projectId;
-  if (!projectId) {
+  if (!projectId && options.autoAssignProject !== false) {
     const lookupCwd = cwdForProjectLookup(input);
     if (lookupCwd) {
       const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
@@ -506,11 +510,8 @@ export function setConversationPinned(id: string, pinned: boolean): Conversation
  * ownership check is a pure query — it must not create the very projects it
  * is asked about (the cwd-groups migration would otherwise mint an ad-hoc
  * project for an unassigned conversation's folder mid-check and misread it
- * as pre-existing ownership). One carve-out: a worktree conversation's
- * source repo held by its own current project is the auto-projection
- * default, not a third-party claim — the repo has to follow the
- * conversation into the target project or moving it would break its
- * workspace.
+ * as pre-existing ownership). Worktree source folders keep their existing
+ * owner too; workspace access uses the conversation's own worktree cwd.
  */
 export function moveConversationToProject(
   id: string,
@@ -538,19 +539,9 @@ export function moveConversationToProject(
       // create an ad-hoc project for this very folder and misread it as a
       // pre-existing cross-project claim.
       const folderOwner = folder ? findProjectFolderOwner(folder) : null;
-      const worktreeSourceFolder =
-        folderOwner !== null &&
-        conversation.metadata?.taskWorkspace &&
-        typeof conversation.metadata.taskWorkspace === "object" &&
-        (conversation.metadata.taskWorkspace as Record<string, unknown>)
-          .mode === "worktree";
       const crossProjectFolder =
         folderOwner !== null &&
-        folderOwner.id !== project.id &&
-        !(
-          worktreeSourceFolder &&
-          folderOwner.id === conversation.projectId
-        );
+        folderOwner.id !== project.id;
       if (folder && options.extendProjectFolders !== false && !crossProjectFolder) {
         try {
           addProjectFolderIfMissing(project, folder);

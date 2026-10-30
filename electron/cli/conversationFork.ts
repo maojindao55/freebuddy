@@ -111,7 +111,7 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
   const db = getDb();
 
   const conversation = db.transaction(() => {
-    const fork = createConversation({
+    createConversation({
       id: targetConversationId,
       title: input.title?.trim() || source.title,
       agentId: source.agentId,
@@ -130,7 +130,7 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
       approvalMode: source.approvalMode,
       configOptionOverrides: source.configOptionOverrides,
       titleSource: "user"
-    });
+    }, { autoAssignProject: false });
     // createConversation resolves snapshots from skill ids; carry over the
     // source's pinned snapshot verbatim instead.
     db.prepare("UPDATE conversations SET skill_snapshot = ? WHERE id = ?").run(
@@ -192,7 +192,7 @@ export function forkConversation(input: ForkConversationInput): ForkConversation
       sourceSlice[sourceSlice.length - 1]?.createdAt ?? null,
       targetConversationId
     );
-    return fork;
+    return getConversation(targetConversationId) as Conversation;
   })();
 
   return { conversation, copiedMessages: sourceSlice.length };

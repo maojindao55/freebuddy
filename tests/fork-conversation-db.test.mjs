@@ -2,6 +2,7 @@ import "./fixtures/electron-stub.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import path from "node:path";
 
 let Database;
 let bindingAvailable = true;
@@ -37,6 +38,8 @@ async function setup() {
     db,
     forkConversation,
     createConversation: conversations.createConversation,
+    getConversation: conversations.getConversation,
+    moveConversationToProject: conversations.moveConversationToProject,
     appendMessage: conversations.appendMessage,
     listMessages: conversations.listMessages,
     deleteConversation: conversations.deleteConversation,
@@ -376,6 +379,79 @@ test("fork copies per-message skill snapshots", async (t) => {
     ctx.cleanup();
   }
 });
+
+test("fork returns the inherited conversation skills and final message timestamp", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    ctx.createConversation(baseInput("src"));
+    const snapshot = [{
+      id: "review", name: "Review", rootPath: "/skills/review",
+      contentHash: "pinned-hash", version: "1", source: "builtin"
+    }];
+    // A pinned snapshot can outlive the installed skill registry.
+    ctx.db.prepare("UPDATE conversations SET skill_snapshot = ? WHERE id = 'src'")
+      .run(JSON.stringify(snapshot));
+    seedTurns(ctx, "src", [
+      ["u1", "user", "question"],
+      ["a1", "assistant", JSON.stringify([{ kind: "text", content: "answer" }])]
+    ]);
+
+    const result = ctx.forkConversation({
+      sourceConversationId: "src",
+      throughMessageId: "a1",
+      targetConversationId: "fork1"
+    });
+
+    assert.deepEqual(result.conversation.skillSnapshot, snapshot);
+    assert.equal(result.conversation.lastMessageAt, ctx.listMessages("src")[1].createdAt);
+    assert.deepEqual(result.conversation, ctx.getConversation("fork1"));
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+for (const mode of ["directory", "worktree"]) {
+  test(`fork keeps an explicitly detached ${mode} conversation in Recent`, async (t) => {
+    if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+    const ctx = await setup();
+    try {
+      const { createProject, listProjects } = await import("../dist-electron/cli/projects.js");
+      // Exercise current project assignment independently of legacy migration.
+      ctx.db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)")
+        .run("projects.cwdMigration.v1", "1");
+      const repo = path.resolve("workspace", "repo");
+      const project = createProject({ name: "Source", folders: [repo], primaryPath: repo });
+      const cwd = mode === "worktree" ? path.join(repo, ".worktrees", "task") : repo;
+      ctx.createConversation({
+        ...baseInput("src"),
+        projectId: project.id,
+        cwd,
+        ...(mode === "worktree" ? {
+          metadata: { taskWorkspace: { mode: "worktree", sourceCwd: repo } }
+        } : {})
+      });
+      ctx.moveConversationToProject("src", null);
+      seedTurns(ctx, "src", [["u1", "user", "question"]]);
+      const source = ctx.getConversation("src");
+
+      const result = ctx.forkConversation({
+        sourceConversationId: "src",
+        throughMessageId: "u1",
+        targetConversationId: "fork1"
+      });
+
+      assert.equal(result.conversation.projectId, undefined);
+      assert.equal(result.conversation.metadata.projectDetached, true);
+      assert.equal(result.conversation.cwd, cwd);
+      assert.deepEqual(result.conversation, ctx.getConversation("fork1"));
+      assert.deepEqual(ctx.getConversation("src"), source);
+      assert.deepEqual(listProjects().map((entry) => entry.id), [project.id]);
+    } finally {
+      ctx.cleanup();
+    }
+  });
+}
 
 test("fork preserves file edit order within and across tasks", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }

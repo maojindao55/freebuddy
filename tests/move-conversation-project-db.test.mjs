@@ -32,6 +32,7 @@ async function setup() {
     moveConversationToProject: conversations.moveConversationToProject,
     createProject: projects.createProject,
     getProject: projects.getProject,
+    findProjectFolderOwner: projects.findProjectFolderOwner,
     resolveWorkspaceRootsForConversation: projects.resolveWorkspaceRootsForConversation,
     cleanup() {
       setDbForTest(null);
@@ -187,7 +188,7 @@ test("detach keeps unrelated metadata intact", async (t) => {
   }
 });
 
-test("worktree conversations move by their source folder", async (t) => {
+test("moving a worktree preserves its source folder owner and workspace access", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
   const ctx = await setup();
   try {
@@ -204,12 +205,51 @@ test("worktree conversations move by their source folder", async (t) => {
         taskWorkspace: { mode: "worktree", sourceCwd: sourceFolder }
       }
     };
-    ctx.createConversation(conversation);
+    const created = ctx.createConversation(conversation);
+    const source = ctx.getProject(created.projectId);
 
-    ctx.moveConversationToProject("conv-1", target.id);
+    const moved = ctx.moveConversationToProject("conv-1", target.id);
     const folders = ctx.getProject(target.id).folders;
-    assert.ok(folders.includes(sourceFolder), "source folder added");
+    assert.equal(moved.projectId, target.id);
+    assert.deepEqual(folders, [abs("tmp", "target")]);
+    assert.deepEqual(ctx.getProject(source.id).folders, [sourceFolder]);
+    assert.equal(ctx.findProjectFolderOwner(sourceFolder).id, source.id);
     assert.ok(!folders.includes(worktree), "worktree temp folder not added");
+    assert.deepEqual(ctx.resolveWorkspaceRootsForConversation(moved), [worktree]);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("moving a worktree does not claim a user-created source project's folder", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const ctx = await setup();
+  try {
+    const sourceFolder = abs("tmp", "repo");
+    const worktree = abs("tmp", "worktrees", "task-1");
+    const source = ctx.createProject({
+      name: "Source", folders: [sourceFolder], primaryPath: sourceFolder
+    });
+    const targetFolder = abs("tmp", "target");
+    const target = ctx.createProject({
+      name: "Target", folders: [targetFolder], primaryPath: targetFolder
+    });
+    ctx.createConversation({
+      ...convInput("conv-1", worktree),
+      projectId: source.id,
+      metadata: { taskWorkspace: { mode: "worktree", sourceCwd: sourceFolder } }
+    });
+    ctx.createConversation({ ...convInput("sibling", sourceFolder), projectId: source.id });
+
+    const moved = ctx.moveConversationToProject("conv-1", target.id);
+
+    assert.equal(moved.projectId, target.id);
+    assert.deepEqual(ctx.getProject(target.id).folders, [targetFolder]);
+    assert.deepEqual(ctx.getProject(source.id).folders, [sourceFolder]);
+    assert.equal(ctx.findProjectFolderOwner(sourceFolder).id, source.id);
+    assert.equal(ctx.getConversation("sibling").projectId, source.id);
+    assert.deepEqual(ctx.resolveWorkspaceRootsForConversation(moved), [worktree]);
+    assert.equal(ctx.createConversation(convInput("new", sourceFolder)).projectId, source.id);
   } finally {
     ctx.cleanup();
   }

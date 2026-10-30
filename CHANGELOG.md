@@ -2,6 +2,18 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.53] - 2026-10-30
+
+### 新功能
+
+- archive, reorder, pin, move conversations and fork from messages (#224)
+
+### 问题修复
+
+- update native Antigravity CLI alongside ACP adapter
+- 修复回合状态与命令展示并升级 pi-acp
+- improve game canvas responsive scaling and window resize recovery (#223)
+
 ## [0.10.52] - 2026-10-27
 
 ### 新功能

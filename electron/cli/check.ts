@@ -44,6 +44,7 @@ import { findMacAppCliBinary } from "./macAppCli.js";
 import { hasLocalAgentApp } from "./localAgentApps.js";
 import { logMain } from "../debugLog.js";
 import { getRuntimePackagePolicy, readRuntimePackage } from "./runtimePackages.js";
+import { antigravityUpdateBinary, antigravityUpgradeCommand } from "./antigravityUpdate.js";
 import { checkRuntimeUpdate, upgradeVerificationError, versionFromProbe, type CliRuntimeUpdateRequest, type CliUpgradePlan, type RuntimeUpdateStatus } from "../shared/cliRuntimeUpdate.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
@@ -752,8 +753,11 @@ export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<
   plan.targetVersion = runtime?.installed ? runtime.latestVersion : await latestPackageVersion(policy.packageName, args.env);
   const current = runtime?.installed ? extractSemver(runtime.version) : undefined;
   const target = extractSemver(plan.targetVersion);
-  if (current && target && compareSemver(current, target) >= 0) return { ...plan, alreadyCurrent: true };
-  if (policy.managed) {
+  const adapterCurrent = !!current && !!target && compareSemver(current, target) >= 0;
+  if (adapterCurrent && args.adapter !== "agy-acp") return { ...plan, alreadyCurrent: true };
+  if (adapterCurrent) {
+    plan.command = "";
+  } else if (policy.managed) {
     // The DeepSeek installer also migrates legacy/global installs into the
     // application-managed standalone runtime. Verify that destination.
     plan.expectedBinaryPath = path.join(dshAcpManagedRoot(getDataDir()), "node_modules", policy.packageName, "lib", "bin.js");
@@ -763,6 +767,11 @@ export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<
     if (runtime?.installed && !pkg?.prefix) throw new Error("runtime_install_source_unknown");
     plan.command = definition.installHint.replace(policy.packageName, `${policy.packageName}@${plan.targetVersion}`)
       + (pkg?.prefix ? ` --prefix ${quoteForShell(pkg.prefix)}` : "") + " --no-audit --no-fund";
+  }
+  if (args.adapter === "agy-acp") {
+    const env = await getFreshWindowsEnvironment({ ...process.env, ...args.env });
+    plan.command = antigravityUpgradeCommand(plan.command, antigravityUpdateBinary(env));
+    plan.updatesNativeCli = true;
   }
   return plan;
 }

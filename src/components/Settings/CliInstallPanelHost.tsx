@@ -132,7 +132,10 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
             : preparing ? t("settings.cli.installPreparing") : t("settings.cli.installBackgroundHint")}
         </p>
       )}
-      {job.plan?.targetVersion && !job.plan.alreadyCurrent && !job.done && <p className="install-panel-hint muted">
+      {job.plan?.updatesNativeCli && !job.done && <p className="install-panel-hint muted">
+        {t("settings.cli.antigravityUpgradeProgress")}
+      </p>}
+      {job.plan?.targetVersion && !job.plan.alreadyCurrent && job.plan.previousVersion !== job.plan.targetVersion && !job.done && <p className="install-panel-hint muted">
         {job.plan.previousVersion
           ? t("settings.cli.upgradeTarget", { from: job.plan.previousVersion, to: job.plan.targetVersion })
           : t("settings.cli.installTarget", { version: job.plan.targetVersion })}
@@ -150,7 +153,8 @@ function InstallFloatingPanel({ job }: { job: CliInstallJob }) {
       {job.done && (
         <div className={`install-result ${success ? "ok" : "warn"}`}>
           {success
-            ? job.plan?.alreadyCurrent ? t("settings.cli.upToDate")
+            ? job.plan?.updatesNativeCli ? t("settings.cli.antigravityUpgradeSuccess")
+              : job.plan?.alreadyCurrent ? t("settings.cli.upToDate")
               : job.plan?.previousVersion && job.verifiedVersion
                 ? t("settings.cli.upgradeVerified", { from: job.plan.previousVersion, to: job.verifiedVersion })
                 : t("settings.cli.installVerifiedSuccess")

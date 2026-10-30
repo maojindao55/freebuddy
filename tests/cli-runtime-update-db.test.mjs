@@ -39,6 +39,8 @@ function setup(t, { output = "0.3.6", packageVersion, handshake = true } = {}) {
   fs.symlinkSync(entry, binary);
   const npmDir = path.join(root, "npm-bin");
   fs.mkdirSync(npmDir);
+  const agy = path.join(npmDir, "agy");
+  fs.writeFileSync(agy, '#!/bin/sh\n[ "$1" = update ] || exit 2\necho "agy update completed"\n', { mode: 0o755 });
   const npm = path.join(npmDir, "npm");
   fs.writeFileSync(npm, `#!${nodeExecutable}\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst args=process.argv.slice(2);\nif(args[0]==='view') { if(process.env.FREEBUDDY_TEST_REGISTRY_OFFLINE){ console.error('registry offline');process.exit(1); } console.log(JSON.stringify('0.3.8')); }\nelse if(args[0]==='install') { const prefix=args[args.indexOf('--prefix')+1]; if(!prefix||prefix!==${JSON.stringify(prefix)}){console.error('wrong install prefix');process.exit(1);} const file=path.join(prefix,'lib/node_modules/agy-acp-bridge/package.json'); const pkg=JSON.parse(fs.readFileSync(file)); pkg.version='0.3.8';fs.writeFileSync(file,JSON.stringify(pkg)); }\nelse {console.error('unexpected fake npm command');process.exit(1);}\n`);
   // This fixture is outside a package scope, so use .mjs via a tiny shell launcher.
@@ -49,7 +51,7 @@ function setup(t, { output = "0.3.6", packageVersion, handshake = true } = {}) {
   const previousPath = process.env.PATH;
   process.env.PATH = npmDir + path.delimiter + previousPath;
   t.after(() => { process.env.PATH = previousPath; setDbForTest(null); db.close(); fs.rmSync(root, { recursive: true, force: true }); });
-  const request = { adapter: "agy-acp", binary, env: { PATH: process.env.PATH }, force: true };
+  const request = { adapter: "agy-acp", binary, env: { PATH: process.env.PATH, AGY_ACP_COMMAND: agy }, force: true };
   return { db, root, prefix, pkgFile, binary, request };
 }
 
@@ -81,10 +83,12 @@ test("upgrade pins the selected npm prefix and verifies the new version and ACP 
   const plan = await prepareCliUpgrade(request);
   assert.equal(plan.targetVersion, "0.3.8");
   assert.match(plan.command, /agy-acp-bridge@0\.3\.8/);
+  assert.equal(plan.updatesNativeCli, true);
   assert.ok(plan.command.includes(prefix));
   await assert.rejects(verifyCliUpgrade(request, plan), /runtime_target_not_active/);
   const installed = await cliInstallStream(plan.command, null, request.adapter);
   assert.equal(installed.success, true, installed.stderr);
+  assert.match(installed.stdout, /agy update completed/);
   assert.equal(JSON.parse(fs.readFileSync(pkgFile)).version, "0.3.8");
   const verified = await verifyCliUpgrade(request, plan);
   assert.equal(verified.version, "0.3.8");
@@ -95,7 +99,9 @@ test("upgrade pins the selected npm prefix and verifies the new version and ACP 
 test("matching version alone is insufficient when ACP initialization fails", { skip }, async t => {
   const { request } = setup(t, { packageVersion: "0.3.8", handshake: false });
   const plan = await prepareCliUpgrade(request);
-  assert.equal(plan.alreadyCurrent, true);
+  assert.equal(plan.alreadyCurrent, undefined);
+  assert.equal(plan.updatesNativeCli, true);
+  assert.doesNotMatch(plan.command, /npm install/);
   await assert.rejects(verifyCliUpgrade(request, plan), /Unsupported ACP protocol version 999/);
   assert.equal(listRuntimes()[0].installed, false);
   assert.equal(listRuntimes()[0].updateStatus, "error");

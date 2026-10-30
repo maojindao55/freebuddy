@@ -1051,7 +1051,7 @@ function AdapterHeaderActions({
             className="adapter-editor-action"
             onClick={onInstall}
             disabled={installing || checking || rt?.updateStatus === "updating"}
-            title={t("settings.cli.upgradeHint")}
+            title={t((ex.baseAdapter ?? ex.id) === "agy-acp" ? "settings.cli.antigravityUpgradeHint" : "settings.cli.upgradeHint")}
           >
             {installing ? t("common.upgrading") : t("common.upgrade")}
           </button>
@@ -1103,11 +1103,12 @@ function AdapterHeaderMeta({
   const { t } = useTranslation();
   const rt = ex.runtime;
   const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
+  const isAntigravity = (ex.baseAdapter ?? ex.id) === "agy-acp";
   return (
     <>
       {!checking && rt?.installed && (
         <span>
-          {t("settings.cli.versionLabel")} <code>{rt.version || t("settings.cli.versionUnknown")}</code>
+          {t(isAntigravity ? "settings.cli.adapterVersionLabel" : "settings.cli.versionLabel")} <code>{rt.version || t("settings.cli.versionUnknown")}</code>
         </span>
       )}
       {rt?.installed && runtimeVersionBelow(rt.version, rt.minimumVersion) && <span className="adapter-status error">
@@ -1126,7 +1127,8 @@ function AdapterHeaderMeta({
       )}
       <RuntimeAutoUpdateStatus
         runtime={rt}
-        label={ex.label}
+        label={isAntigravity ? `${ex.label} ACP` : ex.label}
+        adapterOnly={isAntigravity}
       />
       {ex.id === "codex-acp" && (
         <RuntimeAutoUpdateStatus runtime={codexCliRuntime} label="Codex CLI" />
@@ -1211,10 +1213,12 @@ function AdapterRowMenu({
 
 function RuntimeAutoUpdateStatus({
   runtime,
-  label
+  label,
+  adapterOnly = false
 }: {
   runtime?: CliRuntime;
   label: string;
+  adapterOnly?: boolean;
 }) {
   const { t } = useTranslation();
   switch (runtime?.updateStatus) {
@@ -1253,7 +1257,7 @@ function RuntimeAutoUpdateStatus({
       return <span className="adapter-status muted">{t("settings.cli.updateAvailable", { version: runtime.latestVersion })}</span>;
     case "current":
       if (!runtime.installed) return null;
-      return <span className="adapter-status ok">{t("settings.cli.upToDate")}</span>;
+      return <span className="adapter-status ok">{t(adapterOnly ? "settings.cli.adapterUpToDate" : "settings.cli.upToDate")}</span>;
     default:
       return null;
   }

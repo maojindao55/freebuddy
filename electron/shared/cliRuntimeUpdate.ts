@@ -16,6 +16,8 @@ export interface CliUpgradePlan {
   targetVersion?: string;
   expectedBinaryPath?: string;
   alreadyCurrent?: boolean;
+  /** The command also runs the native Antigravity CLI's self-update. */
+  updatesNativeCli?: boolean;
 }
 
 export type RuntimeUpdateStatus = "idle" | "checking" | "current" | "available" | "updating" | "updated" | "error";

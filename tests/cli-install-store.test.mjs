@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
 
-async function loadStore(t, { preparationError, verificationError, alreadyCurrent = false } = {}) {
+async function loadStore(t, { preparationError, verificationError, alreadyCurrent = false, updatesNativeCli = false, installExitCode = 0 } = {}) {
   const key = `__freebuddyInstallTest_${Math.random()}`;
   const calls = [];
   const resolved = { id: "custom-agy", baseAdapter: "agy-acp", binary: "/selected/npm/bin/agy-acp", defaultBinary: "agy-acp", installHint: "npm install -g agy-acp-bridge", extraArgs: [], runtime: { installed: true, version: "0.3.6" } };
@@ -19,11 +19,11 @@ async function loadStore(t, { preparationError, verificationError, alreadyCurren
         calls.push(["prepare", request.adapter, request.runtimeAdapter]);
         assert.equal(request.binary, resolved.binary);
         if (preparationError) throw new Error(preparationError);
-        return { command: "npm install -g agy-acp-bridge@0.3.8", previousVersion: "0.3.6", targetVersion: "0.3.8", alreadyCurrent };
+        return { command: updatesNativeCli ? "agy update" : "npm install -g agy-acp-bridge@0.3.8", previousVersion: "0.3.6", targetVersion: "0.3.8", alreadyCurrent, updatesNativeCli };
       },
       installStream: (adapter, command, cb) => {
         calls.push(["install", adapter, command]);
-        queueMicrotask(() => cb({ type: "done", exitCode: 0 }));
+        queueMicrotask(() => cb({ type: "done", exitCode: installExitCode }));
         return () => {};
       },
       verifyUpgrade: async () => { calls.push("verify"); if (verificationError) throw new Error(verificationError); }
@@ -74,4 +74,18 @@ test("an already current package is verified without reinstalling", async t => {
   assert.equal(job.phase, "succeeded");
   assert.equal(calls.some(call => Array.isArray(call) && call[0] === "install"), false);
   assert.ok(calls.includes("verify"));
+});
+
+test("a native-only Antigravity upgrade runs instead of taking the up-to-date shortcut", async t => {
+  const { job, calls } = await loadStore(t, { updatesNativeCli: true });
+  assert.equal(job.phase, "succeeded");
+  assert.deepEqual(calls[1], ["install", "agy-acp", "agy update"]);
+  assert.equal(job.plan.updatesNativeCli, true);
+});
+
+test("native update failure keeps the job failed even when the bridge is installed", async t => {
+  const { job, calls } = await loadStore(t, { updatesNativeCli: true, installExitCode: 9 });
+  assert.equal(job.phase, "failed");
+  assert.equal(job.exitCode, 9);
+  assert.equal(calls.includes("verify"), false);
 });

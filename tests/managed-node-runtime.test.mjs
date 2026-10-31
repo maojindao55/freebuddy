@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
 import spawn from "cross-spawn";
 import { spawn as spawnProcess } from "node:child_process";
+import { once } from "node:events";
 import { applyManagedNodeEnvironment, ensureManagedNodeRuntime, getManagedNodeRuntime, setManagedNodeRuntime } from "../dist-electron/cli/managedNodeRuntime.js";
 import { resolveNodeBinaryHint, resolveCodexBinaryHint } from "../dist-electron/cli/codexBinaryHint.js";
 import { ensurePiAcpLauncher, resolvePiAcpRuntime, piCliEntryForRoot } from "../dist-electron/cli/piRuntime.js";
@@ -21,14 +22,20 @@ try {
 } catch { /* Backend installation tests run with the app's Electron ABI below. */ }
 
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
+async function removeWorkspace(root) {
+  const target = path.resolve(root);
+  assert.equal(path.dirname(target), path.resolve(os.tmpdir()));
+  assert.ok(path.basename(target).startsWith("freebuddy-managed-node-"));
+  // Windows can retain process/CWD handles briefly after an exit event. Yield
+  // between retries so pending process and stream close callbacks can finish.
+  await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+}
 function workspace(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-managed-node-"));
-  t.after(() => {
+  t.after(async () => {
     setManagedNodeRuntime(undefined);
     delete globalThis.__freebuddyElectronGetPath;
-    assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
-    assert.ok(path.basename(root).startsWith("freebuddy-managed-node-"));
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await removeWorkspace(root);
   });
   return root;
 }
@@ -59,6 +66,29 @@ test("other platforms and older Windows packages retain their existing environme
   assert.equal(await ensureManagedNodeRuntime(root, { platform: "win32", packageDir: root }), undefined);
   const env = { Path: "user path", ELECTRON_RUN_AS_NODE: "1" };
   assert.deepEqual(applyManagedNodeEnvironment(env, { platform: "win32" }), env);
+});
+
+test("Windows workspace cleanup yields until a child releases its working directory", {
+  skip: process.platform !== "win32", timeout: 30_000
+}, async t => {
+  const root = workspace(t);
+  const child = spawnProcess(process.execPath, ["-e", "process.stdout.write('ready'); setInterval(() => {}, 1000)"], {
+    cwd: root, env: process.env, windowsHide: true
+  });
+  const closed = once(child, "close");
+  let timer;
+  try {
+    await once(child.stdout, "data");
+    // A synchronous cleanup would block this callback while retrying deletion.
+    timer = setTimeout(() => child.kill(), 250);
+    await removeWorkspace(root);
+    await closed;
+    assert.equal(fs.existsSync(root), false);
+  } finally {
+    clearTimeout(timer);
+    if (child.exitCode === null) child.kill();
+    await closed;
+  }
 });
 
 test("local archives extract concurrently once, survive resource relocation and repair missing or corrupt cached files", async t => {

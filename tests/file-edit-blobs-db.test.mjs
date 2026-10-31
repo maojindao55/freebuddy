@@ -249,9 +249,11 @@ test("initial tool inputs carry references while empty, deleted and patch conten
     { type: "diff", path: "deleted.ts", oldText: "removed" },
     { type: "diff", path: "patched.ts", patch: "@@ -1 +1 @@\n-before\n+after" }
   ];
+  const content = [{ type: "content", content: { type: "text", text: "Updating files" } }, { type: "diff" }, ...contents];
   const items = acpUpdateToItems({
     sessionUpdate: "tool_call", toolCallId: "initial", status: "completed",
-    content: [{ type: "content", content: { type: "text", text: "Updating files" } }, { type: "diff" }, ...contents]
+    rawInput: content,
+    content
   });
   const [emitted] = persistFileEditItems(context, items);
   const references = collectFileEdits([emitted]);
@@ -333,9 +335,11 @@ test("history detail replay reuses immutable references without duplicating edit
 
 test("restored initial inputs and standalone changes reuse the same keys", { skip: !bindingAvailable }, testContext => {
   setup(testContext);
+  const content = [{ type: "diff", path: "file.ts", oldText: "before", newText: "after" }];
   const items = acpUpdateToItems({
     sessionUpdate: "tool_call", toolCallId: "initial", status: "completed",
-    content: [{ type: "diff", path: "file.ts", oldText: "before", newText: "after" }]
+    rawInput: content,
+    content
   });
   items.push({ kind: "file-edit", path: "another.ts", action: "create", newText: "standalone" });
   const saved = persistFileEditItems(context, items);

@@ -57,7 +57,30 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Request epochs for the two async doc pipelines. DetailColumn keeps a
+  // single EmbeddedDocViewer instance across conversations (no key), so a
+  // response may only write state while it is still the latest request of
+  // its pipeline — otherwise a slow resolve/preview for conversation A lands
+  // after the switch to B and repopulates A's document next to B's chat.
+  const resolveSeqRef = useRef(0);
+  const previewSeqRef = useRef(0);
+
   const frameRef = useRef<HTMLIFrameElement>(null);
+
+  // Conversation switch: drop everything the previous conversation left
+  // behind and orphan its in-flight resolve/preview requests by bumping both
+  // epochs. The file path itself is re-derived by the resolve effect below
+  // (it always writes on a conversationId change); this effect is keyed on
+  // the conversation id alone so a metadata refresh for the SAME conversation
+  // never blanks the preview.
+  useEffect(() => {
+    resolveSeqRef.current += 1;
+    previewSeqRef.current += 1;
+    setPreviewUrl(null);
+    setError(null);
+    setLoading(false);
+    setReloadKey(0);
+  }, [conversationId]);
 
   // Sync theme to iframe
   const syncTheme = useCallback(() => {
@@ -77,19 +100,36 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
 
   useEffect(syncTheme, [syncTheme]);
 
-  // If conversation has no docStudioFilePath in metadata yet, try to resolve via backend
+  // Resolve the displayed file: conversation metadata wins, the backend
+  // resolve is the fallback. Runs on every conversation switch — this is what
+  // clears the previous conversation's file down to the empty state — and
+  // whenever metadata lands or changes.
   useEffect(() => {
     const raw = conversation?.metadata?.docStudioFilePath;
     if (typeof raw === "string" && raw.trim()) {
+      // Attached metadata is authoritative: orphan any in-flight background
+      // resolve so it cannot overwrite the file that was just attached.
+      resolveSeqRef.current += 1;
       setFilePath(raw.trim());
       return;
     }
+    // No attached file: fall back to the empty state (with the file-picker
+    // entry) immediately, then resolve in the background. A null resolve
+    // keeps that empty state instead of resurrecting the old document.
+    setFilePath(null);
     const api = window.freebuddy?.docStudio;
-    if (api?.resolveConversationFile) {
-      void api.resolveConversationFile(conversationId).then((resolved) => {
-        if (resolved) setFilePath(resolved);
+    if (!api?.resolveConversationFile) return;
+    const seq = ++resolveSeqRef.current;
+    void api
+      .resolveConversationFile(conversationId)
+      .then((resolved) => {
+        if (seq !== resolveSeqRef.current) return;
+        setFilePath(resolved);
+      })
+      .catch(() => {
+        if (seq !== resolveSeqRef.current) return;
+        setFilePath(null);
       });
-    }
   }, [conversation?.metadata?.docStudioFilePath, conversationId]);
 
   // Load engine preview URL
@@ -99,10 +139,14 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
       setError(t("docStudio.engineUnavailable", { defaultValue: "Office engine is unavailable." }));
       return;
     }
+    const seq = ++previewSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const res = await api.getEnginePreview(targetFile);
+      // A newer request (reload, re-file or conversation switch) owns the
+      // preview state; this response is stale and must not write anywhere.
+      if (seq !== previewSeqRef.current) return;
       if (res.success && res.url) {
         // Set dark_mode once at load: the engine only enables its theme
         // message listener when the query flag is present, and rewriting the
@@ -118,9 +162,10 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
         setError(res.error || t("docStudio.openFailedGeneric", { defaultValue: "Failed to open document preview." }));
       }
     } catch (err) {
+      if (seq !== previewSeqRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (seq === previewSeqRef.current) setLoading(false);
     }
   }, [t]);
 
@@ -128,6 +173,9 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
     if (filePath) {
       void loadPreview(filePath);
     } else {
+      // No file to preview: orphan any in-flight preview request so its
+      // response cannot repopulate the (cleared) frame.
+      previewSeqRef.current += 1;
       setPreviewUrl(null);
       setLoading(false);
     }
@@ -181,9 +229,17 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
     if (!api?.onFileSavedAs) return;
     return api.onFileSavedAs((savedPath) => {
       if (!savedPath) return;
+      const epoch = resolveSeqRef.current;
       void useConversationStore.getState().refreshList().then(() => {
+        // Only the latest document request may write: a refresh that lands
+        // after a conversation switch (its reset bumped the epoch) or after
+        // the refreshed metadata already picked the file up must not resolve
+        // the old conversation here.
+        if (resolveSeqRef.current !== epoch) return;
+        const seq = ++resolveSeqRef.current;
         void api.resolveConversationFile?.(conversationId).then((resolved) => {
-          if (resolved) setFilePath(resolved);
+          if (seq !== resolveSeqRef.current) return;
+          setFilePath(resolved);
         });
       });
     });
@@ -207,6 +263,9 @@ export function EmbeddedDocViewer({ conversationId }: EmbeddedDocViewerProps) {
     const files = await api.showOpenDialog();
     if (files && files[0]) {
       const selected = files[0];
+      // The picked file is authoritative: orphan any background resolve so a
+      // late response cannot overwrite it before the refreshed metadata lands.
+      resolveSeqRef.current += 1;
       setFilePath(selected);
       if (api.attachFileToConversation) {
         await api.attachFileToConversation(conversationId, selected);

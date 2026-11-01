@@ -1,9 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, screen, webContents } from "electron";
 import fs from "node:fs/promises";
-import { watch } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { registerHandler } from "./invokeRegistry.js";
+import {
+  docStudioUnwatch,
+  docStudioWatchFile,
+  setDocStudioWatchSubscriberLookup
+} from "./docStudioWatchers.js";
 import {
   associateDocStudioOfficeFile,
   resolveDocStudioOfficeFile
@@ -49,113 +53,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 let officeEngineAddonBusy = false;
 const docStudioActiveConversations = new Map<number, string>();
-
-// Shared per-file watchers for the DocStudio live-reload feature. One fs.watch
-// per file fans out to exactly the webContents that subscribed to it, so each
-// renderer only learns about files it explicitly watches — changes are never
-// broadcast to every DocStudio-capable renderer.
-interface DocStudioWatchEntry {
-  watcher: ReturnType<typeof watch>;
-  timer?: NodeJS.Timeout;
-  needsRearm: boolean;
-  subscribers: Set<number>;
-}
-const docStudioWatchers = new Map<string, DocStudioWatchEntry>();
-const docStudioWatchersWithDestroyHook = new WeakSet<Electron.WebContents>();
-const DOCSTUDIO_WATCH_DEBOUNCE_MS = 300;
-
-function docStudioNotifySubscribers(filePath: string): void {
-  const entry = docStudioWatchers.get(filePath);
-  if (!entry) return;
-  for (const wcId of entry.subscribers) {
-    const subscriber = webContents.fromId(wcId);
-    if (subscriber && !subscriber.isDestroyed()) {
-      subscriber.send("docStudio:fileChanged", { filePath });
-    }
-  }
-}
-
-function docStudioCloseWatcher(filePath: string): void {
-  const entry = docStudioWatchers.get(filePath);
-  if (!entry) return;
-  if (entry.timer) clearTimeout(entry.timer);
-  try {
-    entry.watcher.close();
-  } catch {
-    /* already closed */
-  }
-  docStudioWatchers.delete(filePath);
-}
-
-function docStudioUnwatch(wcId: number, filePath: string): void {
-  const entry = docStudioWatchers.get(filePath);
-  if (!entry) return;
-  entry.subscribers.delete(wcId);
-  if (entry.subscribers.size === 0) docStudioCloseWatcher(filePath);
-}
-
-function docStudioUnwatchAll(wcId: number): void {
-  for (const filePath of [...docStudioWatchers.keys()]) docStudioUnwatch(wcId, filePath);
-}
-
-function docStudioWatchFile(event: Electron.IpcMainInvokeEvent, filePath: string): boolean {
-  const wcId = event.sender.id;
-  const existing = docStudioWatchers.get(filePath);
-  if (existing) {
-    existing.subscribers.add(wcId);
-    return true;
-  }
-  // Clean up this sender's subscriptions whenever its webContents goes away,
-  // mirroring the lifetime of watchFile/unwatchFile registration.
-  if (!docStudioWatchersWithDestroyHook.has(event.sender)) {
-    docStudioWatchersWithDestroyHook.add(event.sender);
-    event.sender.once("destroyed", () => docStudioUnwatchAll(wcId));
-  }
-  const entry: DocStudioWatchEntry = {
-    watcher: undefined as never,
-    needsRearm: false,
-    subscribers: new Set([wcId])
-  };
-  docStudioWatchers.set(filePath, entry);
-  const arm = () => {
-    const live = docStudioWatchers.get(filePath);
-    if (!live) return;
-    try {
-      live.watcher = watch(filePath, (eventType) => {
-        const current = docStudioWatchers.get(filePath);
-        if (!current) return;
-        if (eventType === "rename") current.needsRearm = true;
-        if (current.timer) clearTimeout(current.timer);
-        current.timer = setTimeout(() => {
-          void (async () => {
-            try {
-              await fs.stat(filePath);
-              docStudioNotifySubscribers(filePath);
-            } catch {
-              /* file may be gone */
-            }
-          })();
-          if (current.needsRearm) {
-            current.needsRearm = false;
-            try {
-              current.watcher.close();
-            } catch {
-              /* already closed */
-            }
-            arm();
-          }
-        }, DOCSTUDIO_WATCH_DEBOUNCE_MS);
-      });
-      live.watcher.on("error", () => {});
-    } catch {
-      // The path vanished between registration and watch: drop the entry so a
-      // later watchFile call re-arms it.
-      docStudioWatchers.delete(filePath);
-    }
-  };
-  arm();
-  return true;
-}
 
 function companionWebPreferences() {
   return {
@@ -248,6 +145,10 @@ export async function showDocStudioOpenDialog(parentWin?: BrowserWindow, default
 }
 
 export function initDocStudioBridge(): void {
+  // Route watcher fan-out through the real webContents registry; the watcher
+  // module itself stays Electron-free for plain Node lifecycle tests.
+  setDocStudioWatchSubscriberLookup((wcId) => webContents.fromId(wcId));
+
   registerHandler("docStudio:officeEngineAddonStatus", async () => {
     const managedPath = getManagedOfficeEnginePath(app.getPath("userData"));
     const installed = await fs.stat(managedPath).then((stat) => stat.isFile(), () => false);
@@ -412,7 +313,7 @@ export function initDocStudioBridge(): void {
     if (!isAllowedDocSender(event.sender) || !isAllowedOfficeEnginePath(targetPath)) {
       return false;
     }
-    return docStudioWatchFile(event, targetPath);
+    return docStudioWatchFile(event.sender, targetPath);
   });
 
   registerHandler("docStudio:unwatchFile", async (event, targetPath: string) => {

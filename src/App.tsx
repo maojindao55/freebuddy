@@ -789,22 +789,14 @@ function App() {
     t
   ]);
 
-  // Mirror the active doc conversation up to the main process: while a
-  // doc-studio conversation is active in this window it counts as docked into
-  // the embedded viewer, and every open-conversation route (sidebar, panel,
-  // board, cross-window events) then keeps it embedded instead of popping the
-  // standalone DocStudio window. Mirrors DocStudioCopilot's reporting in the
-  // standalone window; the cleanup covers switching away, conversation
-  // deletion and unmount. Docking also writes this state in the main process
-  // up front (openConversationInMain), so this effect only keeps it fresh.
-  useEffect(() => {
-    if (platform === "web") return;
-    if (!activeId || activeConversation?.kind !== "doc-studio") return;
-    const docStudio = window.freebuddy?.docStudio;
-    if (!docStudio?.setActiveConversation) return;
-    void docStudio.setActiveConversation(activeId).catch(() => {});
-    return () => { void docStudio.setActiveConversation(null).catch(() => {}); };
-  }, [activeId, activeConversation?.kind, platform]);
+  // Note: the main window deliberately does NOT report its active doc
+  // conversation to docStudio:setActiveConversation. Docking is a
+  // per-conversation record in the main process (openConversationInMain with
+  // embed), kept across conversation switches and cleared only on pop-out,
+  // deletion and main-window teardown — reporting the "current" document as
+  // the single docked state here would drop the record whenever the user
+  // clicks a non-document conversation, and re-clicking the docked one would
+  // then pop a standalone window.
 
   const activeWorkflowRunning = useWorkflowStore((s) =>
     Boolean(activeId && s.activeRuns.some((run) => run.conversationId === activeId))

@@ -45,7 +45,7 @@ import {
 import {
   registerDocStudioMainWindow,
   unregisterDocStudioMainWindow,
-  setDocStudioEmbeddedConversation
+  addDocStudioEmbeddedConversation
 } from "./docStudioWindowRegistry.js";
 import { getDb, getDataDir } from "./cli/db.js";
 import { getSetting, setSetting } from "./cli/settings.js";
@@ -1555,7 +1555,7 @@ function registerButlerBuddyWindowIpc() {
         // Record the dock in the main process before the renderer reacts, so
         // every open-conversation route (including the store's own
         // doc-studio redirect) already sees the conversation as embedded.
-        setDocStudioEmbeddedConversation(conversationId);
+        addDocStudioEmbeddedConversation(conversationId);
       }
       safeSendToWebContents(
         win.webContents,

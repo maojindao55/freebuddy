@@ -18,7 +18,7 @@ import {
   isDocStudioMainWindowSender,
   registerDocStudioWindow,
   unregisterDocStudioWindow,
-  setDocStudioEmbeddedConversation,
+  removeDocStudioEmbeddedConversation,
   isDocStudioConversationEmbedded
 } from "./docStudioWindowRegistry.js";
 export { isDocStudioWindowSender } from "./docStudioWindowRegistry.js";
@@ -285,6 +285,12 @@ export function initDocStudioBridge(): void {
     if (typeof conversationId !== "string" || !conversationId) return false;
     const conversation = getConversation(conversationId);
     if (conversation?.kind !== "doc-studio") return false;
+    // Opening (or focusing) the standalone DocStudio window is an explicit
+    // pop-out: the conversation is no longer docked in the main window's
+    // embedded viewer, so drop its dock record. Routing calls this only for
+    // conversations it already considers undocked — this keeps the record
+    // exact for the embedded viewer's own "Pop out" action.
+    removeDocStudioEmbeddedConversation(conversationId);
     for (const [windowId, activeId] of docStudioActiveConversations) {
       if (activeId !== conversationId) continue;
       const existing = BrowserWindow.fromId(windowId);
@@ -307,17 +313,17 @@ export function initDocStudioBridge(): void {
 
   registerHandler("docStudio:setActiveConversation", (event, conversationId: unknown) => {
     // Standalone DocStudio windows report the conversation their copilot is
-    // driving; the main window reports the conversation its embedded viewer
-    // shows. Both keep "which conversation is where" queryable for routing.
-    const isMainWindow = isDocStudioMainWindowSender(event.sender);
-    if (!isMainWindow && !isDocStudioWindowSender(event.sender)) return false;
+    // driving, keeping "which standalone window has which conversation open"
+    // queryable so openConversation focuses the right window instead of
+    // spawning a duplicate. Docking into the main window is recorded at dock
+    // time (openConversationInMain with embed) and survives switching the
+    // main window to other conversations — it is only cleared on pop-out,
+    // deletion and main-window teardown — so the embedded viewer does not
+    // report active conversations here.
+    if (!isDocStudioWindowSender(event.sender)) return false;
     if (conversationId !== null &&
       (typeof conversationId !== "string" || getConversation(conversationId)?.kind !== "doc-studio")) {
       return false;
-    }
-    if (isMainWindow) {
-      setDocStudioEmbeddedConversation(typeof conversationId === "string" ? conversationId : null);
-      return true;
     }
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return false;

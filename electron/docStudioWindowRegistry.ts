@@ -27,7 +27,7 @@ export function unregisterDocStudioMainWindow(webContentsId: number): void {
   if (mainWindowWebContentsId === webContentsId) {
     mainWindowWebContentsId = null;
     // The main window's renderer is gone, so nothing can stay docked in it.
-    setDocStudioEmbeddedConversation(null);
+    clearDocStudioEmbeddedConversations();
   }
 }
 
@@ -35,22 +35,34 @@ export function isDocStudioMainWindowSender(sender: { id: number }): boolean {
   return mainWindowWebContentsId !== null && sender.id === mainWindowWebContentsId;
 }
 
-// The doc-studio conversation currently docked into the main window's embedded
-// viewer, if any. Written by the main process when a conversation docks
-// (openConversationInMain with embed) and by the embedded surface reporting its
-// active conversation; read by open-conversation routing so a docked
+// The doc-studio conversations currently docked into the main window's
+// embedded viewer. Docking is a per-conversation record, not "the one
+// conversation the viewer is showing": switching the main window to another
+// conversation keeps the record so clicking back re-docks instead of popping
+// a standalone window. Records are written when a conversation docks
+// (openConversationInMain with embed) and removed only when it is explicitly
+// popped out (docStudio:openConversation), deleted (deleteConversation) or
+// the main window goes away. Read by open-conversation routing so a docked
 // conversation stays in the embedded viewer instead of popping a standalone
 // window.
-let embeddedConversationId: string | null = null;
+const dockedDocStudioConversationIds = new Set<string>();
 
-export function setDocStudioEmbeddedConversation(conversationId: string | null): void {
-  embeddedConversationId = typeof conversationId === "string" && conversationId ? conversationId : null;
+export function addDocStudioEmbeddedConversation(conversationId: string): void {
+  if (conversationId) dockedDocStudioConversationIds.add(conversationId);
 }
 
-export function getDocStudioEmbeddedConversation(): string | null {
-  return embeddedConversationId;
+export function removeDocStudioEmbeddedConversation(conversationId: string): void {
+  dockedDocStudioConversationIds.delete(conversationId);
+}
+
+export function clearDocStudioEmbeddedConversations(): void {
+  dockedDocStudioConversationIds.clear();
+}
+
+export function listDocStudioEmbeddedConversations(): string[] {
+  return [...dockedDocStudioConversationIds];
 }
 
 export function isDocStudioConversationEmbedded(conversationId: string): boolean {
-  return embeddedConversationId !== null && embeddedConversationId === conversationId;
+  return dockedDocStudioConversationIds.has(conversationId);
 }

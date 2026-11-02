@@ -179,7 +179,8 @@ export function createAcpTerminalManager(options: {
       const child = spawn(prepared.command, prepared.args, {
         cwd,
         env: prepared.env,
-        stdio: ["ignore", "pipe", "pipe"]
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: process.platform === "win32"
       });
 
       const record: TerminalRecord = {

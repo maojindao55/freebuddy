@@ -62,6 +62,22 @@ test("background ACP spawns hide the Windows console window", () => {
   }
   const source = fs.readFileSync(new URL("../electron/cli/check.ts", import.meta.url), "utf8");
   assert.match(source, /function runCheckProbe[\s\S]+?windowsHide: process\.platform === "win32"/);
+  assert.ok(!/spawn\([^;]+?\{ env(?:: \w+)?(?:, [\w.]+)? \}\)/s.test(source));
+  assert.match(source, /spawn\(cmd, \[bin\], \{ env: mergedEnv, windowsHide: isWindows \}\)/);
+});
+
+test("auxiliary background processes hide the Windows console window", () => {
+  const expected = new Map([
+    ["windowsEnv.ts", /\{ env, windowsHide: true \}/],
+    ["acpTerminal.ts", /stdio: \["ignore", "pipe", "pipe"\],\s*windowsHide: process\.platform === "win32"/],
+    ["mcpServers.ts", /windowsVerbatimArguments: spawnConfig\.windowsVerbatimArguments,\s*windowsHide: process\.platform === "win32"/],
+    ["nativePlugins.ts", /\{ env, windowsHide: process\.platform === "win32" \}/],
+    ["antigravityUsage.ts", /\], \{ windowsHide: true \}\);/]
+  ]);
+  for (const [file, pattern] of expected) {
+    const source = fs.readFileSync(new URL(`../electron/cli/${file}`, import.meta.url), "utf8");
+    assert.match(source, pattern, file);
+  }
 });
 
 test("zcode-acp checks zcode-acp-server binary probe", () => {

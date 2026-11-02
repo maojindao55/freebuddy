@@ -875,7 +875,8 @@ export async function selfCheckUserMcpServer(
         cwd: cwd || process.cwd(),
         env: { ...process.env, ...resolvedEnv },
         stdio: ["pipe", "pipe", "pipe"],
-        windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments
+        windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments,
+        windowsHide: process.platform === "win32"
       });
       child.stdin.on("error", () => {});
 

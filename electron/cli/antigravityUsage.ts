@@ -310,7 +310,7 @@ if ($null -ne $secret) {
       "Bypass",
       "-EncodedCommand",
       encodedCommand
-    ]);
+    ], { windowsHide: true });
     return stdout;
   }
 

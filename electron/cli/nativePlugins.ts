@@ -577,7 +577,7 @@ async function runCommand(command: PluginCommand, timeoutMs = COMMAND_TIMEOUT_MS
     env = { ...process.env };
   }
   return new Promise((resolve) => {
-    const child = spawn(command.binary, command.args, { env });
+    const child = spawn(command.binary, command.args, { env, windowsHide: process.platform === "win32" });
     let stdout = "";
     let stderr = "";
     let settled = false;

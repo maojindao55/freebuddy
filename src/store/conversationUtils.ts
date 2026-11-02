@@ -270,6 +270,11 @@ export function mergeToolCalls(prev: ToolCallItem, next: ToolCallItem): ToolCall
   const status = next.status ?? prev.status;
   if (status !== undefined) merged.status = status;
 
+  const startedAt = prev.startedAt ?? next.startedAt;
+  if (startedAt !== undefined) merged.startedAt = startedAt;
+  const lastProgressAt = next.lastProgressAt ?? prev.lastProgressAt;
+  if (lastProgressAt !== undefined) merged.lastProgressAt = lastProgressAt;
+
   const toolKind = next.toolKind ?? prev.toolKind;
   if (toolKind !== undefined) merged.toolKind = toolKind;
 

@@ -102,6 +102,9 @@ export type CliStreamItem =
       isError?: boolean;
       toolOutputs?: ToolOutputItem[];
       replaceToolOutputs?: boolean;
+      /** Client-observed live tool timing; absent on historical replay and legacy adapters. */
+      startedAt?: number;
+      lastProgressAt?: number;
     }
   | {
       kind: "tool-result";

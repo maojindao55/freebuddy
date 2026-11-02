@@ -40,6 +40,7 @@ import { AgentAvatar } from "./AgentAvatar";
 import { MessageSkillTags } from "./MessageSkillTags";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
+import { ToolActivityStatus } from "./ToolActivityStatus";
 import { isVisibleItem, visibleBlocks } from "./messageBlocks";
 import { selectRunMetrics } from "./runCardMetrics";
 import { hasMessageRunMetrics, LiveRunElapsed, MessageRunMetrics } from "./MessageRunMetrics";
@@ -1170,6 +1171,8 @@ export const MessageBubble = memo(function MessageBubble({
             </div>
           </div>
         )}
+        <ToolActivityStatus items={displayItems} active={runActive}
+          onStop={() => useConversationStore.getState().stopActive(message.conversationId)} />
         {isWaitingForAgent && (
           <div className="msg-loading">
             <span className="loading-dots">●●●</span>

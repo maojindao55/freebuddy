@@ -3,6 +3,8 @@ import fs from "node:fs";
 import type { ChildProcess } from "node:child_process";
 import spawn from "cross-spawn";
 import { applyManagedNodeEnvironment } from "./managedNodeRuntime.js";
+import { backgroundExecutionArgs, backgroundExecutionEnv } from "./backgroundExecution.js";
+import { killProcessTree } from "./process-kill.js";
 
 /** Keep repeated terminal results from exhausting an agent's context window. */
 export const MAX_TERMINAL_OUTPUT_BYTES = 128 * 1024;
@@ -141,8 +143,8 @@ export function createAcpTerminalManager(options: {
       for (const entry of params.env ?? []) {
         env[entry.name] = entry.value;
       }
-      env = applyManagedNodeEnvironment(env, { install: true,
-        preserveElectronRunAsNode: params.command === process.execPath }) as Record<string, string>;
+      env = backgroundExecutionEnv(applyManagedNodeEnvironment(env, { install: true,
+        preserveElectronRunAsNode: params.command === process.execPath })) as Record<string, string>;
 
       const cwd = params.cwd || options.defaultCwd || process.cwd();
       const rawArgs = params.args ?? [];
@@ -167,7 +169,7 @@ export function createAcpTerminalManager(options: {
         ? process.platform === "win32"
           ? ["/d", "/s", "/c", params.command]
           : ["-c", params.command]
-        : rawArgs;
+        : backgroundExecutionArgs(command, rawArgs);
       const prepared = options.prepareSpawn
         ? await options.prepareSpawn({
             command,
@@ -248,7 +250,13 @@ export function createAcpTerminalManager(options: {
       const record = terminals.get(terminalId);
       if (!record || record.exited) return;
       try {
-        record.child.kill("SIGTERM");
+        killProcessTree(record.child, "term");
+        if (process.platform !== "win32") {
+          const timer = setTimeout(() => {
+            if (!record.exited) killProcessTree(record.child, "force");
+          }, 2000);
+          timer.unref();
+        }
       } catch {
         /* noop */
       }
@@ -259,7 +267,7 @@ export function createAcpTerminalManager(options: {
       if (!record) return;
       if (!record.exited) {
         try {
-          record.child.kill("SIGKILL");
+          killProcessTree(record.child, "force");
         } catch {
           /* noop */
         }

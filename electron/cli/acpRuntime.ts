@@ -147,6 +147,8 @@ import type { RunMetricsCollector } from "./runMetricsCollector.js";
 import { PiRunUsageReader } from "./piRunUsage.js";
 import { PiTurnTracker, piBridgeStatus, piLifecycleStatus } from "./piTurn.js";
 import { AcpEmbeddedTerminalTracker } from "./acpEmbeddedTerminal.js";
+import { AcpToolActivityTracker } from "./acpToolActivity.js";
+import { backgroundExecutionPrompt } from "./backgroundExecution.js";
 import type { AcpWarmConnection } from "./acpProcessPool.js";
 
 const PERMISSION_REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
@@ -299,6 +301,7 @@ export async function runAcpAgent({
   let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
   let inactivityFired = false;
   let inactivityReprieves = 0;
+  let activityRevision = 0;
   let promptHadContent = false;
   let turnHadTerminalError = false;
   let turnTerminalErrorMessage: string | undefined;
@@ -314,6 +317,7 @@ export async function runAcpAgent({
   let emptySessionResetAttempted = false;
   let nonRetryableUpstreamError: string | undefined;
   const activeToolCallIds = new Set<string>();
+  const toolActivity = new AcpToolActivityTracker();
   const embeddedTerminals = new AcpEmbeddedTerminalTracker();
   let activePrompt = args.prompt;
   const sessionMeta: AcpSessionMeta | undefined = claudeAcpSessionOptions
@@ -381,6 +385,12 @@ export async function runAcpAgent({
       });
     },
     onOutput: (terminalId, snap) => {
+      if (promptStarted && !finished) {
+        activityRevision += 1;
+        armInactivityTimer();
+        const timing = toolActivity.terminalProgress(terminalId);
+        if (timing) emit({ type: "items", items: [{ kind: "tool-call", tool: "tool", ...timing }] });
+      }
       emit({
         type: "terminal-update",
         terminalId,
@@ -505,23 +515,27 @@ export async function runAcpAgent({
       return;
     }
     if (finished) return;
+    const revisionBeforeProbe = activityRevision;
     const alive = await probeAgentLiveness();
     if (finished) return;
+    // Progress can arrive while the probe is in flight. A stale probe must not
+    // cancel an active command or consume one of its liveness reprieves.
+    if (activityRevision !== revisionBeforeProbe) {
+      inactivityFired = false;
+      armInactivityTimer();
+      return;
+    }
     const minutes = Math.round(INACTIVITY_TIMEOUT_MS / 60000);
     const hasActiveToolCall = activeToolCallIds.size > 0;
     if (
-      (alive || hasActiveToolCall) &&
+      alive &&
       inactivityReprieves < MAX_INACTIVITY_REPRIEVES
     ) {
       inactivityReprieves += 1;
       appendLog(
         logStream,
         "system",
-        `inactivity after ${INACTIVITY_TIMEOUT_MS}ms; ${
-          alive
-            ? "agent responded to liveness probe"
-            : `ACP tool call still active (${activeToolCallIds.size})`
-        }; continuing (reprieve ${inactivityReprieves}/${MAX_INACTIVITY_REPRIEVES})`
+        `inactivity after ${INACTIVITY_TIMEOUT_MS}ms; agent responded to liveness probe; continuing (reprieve ${inactivityReprieves}/${MAX_INACTIVITY_REPRIEVES})`
       );
       inactivityFired = false;
       disarmInactivityTimer();
@@ -538,7 +552,7 @@ export async function runAcpAgent({
       "failed",
       -1,
       hasActiveToolCall
-        ? `Agent's active tool call produced no output for ${minutes} minutes and remained silent after ${MAX_INACTIVITY_REPRIEVES} watchdog reprieves.`
+        ? `Agent's active tool call produced no new progress for ${minutes} minutes; ${alive ? `liveness reprieves exhausted (${inactivityReprieves})` : "the agent did not respond to a liveness probe"}.`
         : alive
         ? `Agent produced no output for ${minutes} minutes and was still silent after ${MAX_INACTIVITY_REPRIEVES} liveness probes. This usually means a tool spawned a long-running process (for example a dev server or sub-agent) that held the agent's output stream open.`
         : `Agent produced no output for ${minutes} minutes and did not respond to a liveness probe. This usually means a tool spawned a long-running process (for example a dev server) that held the agent's output stream open.`
@@ -700,6 +714,9 @@ export async function runAcpAgent({
           /* noop */
         }
       }
+      // Cancellation must settle the UI even if the adapter never closes its
+      // transport or answers the outstanding session/prompt request.
+      if (!finished) finish("killed", -1);
     }, 500);
   };
   const yieldRun = () => {
@@ -799,6 +816,7 @@ export async function runAcpAgent({
         )
       ) {
         promptHadContent = true;
+        activityRevision += 1;
         armInactivityTimer();
       }
       if (
@@ -849,6 +867,7 @@ export async function runAcpAgent({
       const piStatus = args.adapter === "pi-acp"
         ? (piStructuredStatus ? piLifecycleStatus : piBridgeStatus)(msg.params?.update, getLanguage().startsWith("zh")) : undefined;
       if (piStatus) {
+        activityRevision += 1;
         armInactivityTimer();
         if (piStatus.kind === "retry-start") piTurn?.retrying();
         collectPiUsage();
@@ -859,7 +878,9 @@ export async function runAcpAgent({
         return;
       }
       const localDiff = importAgyLocalDiff(msg.params?.update, args.adapter);
-      const items = acpUpdateToItems(localDiff.update, sessionId, args.adapter);
+      const timing = promptStarted ? toolActivity.observe(msg.params?.update) : undefined;
+      const items = acpUpdateToItems(localDiff.update, sessionId, args.adapter).map(item =>
+        item.kind === "tool-call" && timing ? { ...item, ...timing } : item);
       piTurn?.observe(items, updateType === "tool_call" ? msg.params?.update?.toolCallId : undefined);
       metrics?.observe(items, arrivedAt);
       // Some tool calls render as plans / edits instead of tool-call items.
@@ -1472,6 +1493,7 @@ export async function runAcpAgent({
     turnHadLiveAgentChunk = false;
     inactivityReprieves = 0;
     activeToolCallIds.clear();
+    toolActivity.clear();
     // Replay suppression remains active on resumed sessions until the first
     // live chunk or non-replayed tool call signals real generation.
     armInactivityTimer();
@@ -1480,7 +1502,7 @@ export async function runAcpAgent({
         buildSessionPromptRequest(
           nextId(),
           activeAcpSessionId!,
-          activePrompt,
+          backgroundExecutionPrompt(activePrompt, process.platform),
           args.promptAttachments
         )
       );

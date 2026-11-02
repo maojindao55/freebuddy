@@ -612,7 +612,7 @@ export async function runAcpAgent({
       // window) associate the file and notify the surface that previewed it.
       // takeSavedOfficeFiles is only called here so ordinary chats skip the
       // event file read entirely.
-      if (args.conversationId && !webContents.isDestroyed()) {
+      if (args.conversationId && !webContents?.isDestroyed?.()) {
         const isDocStudioRun = standaloneDocStudio ||
           getConversation(args.conversationId)?.kind === "doc-studio";
         const savedOfficeFiles = isDocStudioRun ? takeSavedOfficeFiles(args.conversationId) : [];
@@ -626,7 +626,7 @@ export async function runAcpAgent({
           }
           for (const filePath of savedOfficeFiles) {
             try {
-              webContents.send("docStudio:fileSavedAs", { filePath });
+              webContents.send?.("docStudio:fileSavedAs", { filePath });
             } catch {
               break;
             }

@@ -48,12 +48,10 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
       && useFileDiffStore.getState().selection?.conversationId === activeId;
     const docMode = conv?.kind === "doc-studio";
     if (previousId.current !== activeId || (!openingDiff && (conv?.kind === "game" || docMode))) {
-      if (conv?.kind === "game") {
-        useDetailLayoutStore.getState().setActiveTab("preview");
-      } else if (docMode) {
-        useDetailLayoutStore.getState().setActiveTab("document");
-      } else if (!openingDiff) {
-        useDetailLayoutStore.getState().setActiveTab("overview");
+      if (!openingDiff || conv?.kind === "game" || docMode) {
+        useDetailLayoutStore.getState().setActiveTab(
+          docMode ? "document" : conv?.kind === "game" ? "preview" : "overview"
+        );
       }
     }
     previousId.current = activeId;

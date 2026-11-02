@@ -1,12 +1,17 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Sun } from "lucide-react";
+import { LayoutGrid, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Stethoscope, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
-import { TitlebarOverflowMenu } from "./components/CLI/ReplayBar";
 import { ConversationList } from "./components/CLI/ConversationList";
+import { ConversationTaskPanel } from "./components/CLI/ConversationTaskPanel";
+import { useConversationOverviewUpdates } from "./components/CLI/useConversationOverviewUpdates";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
+import {
+  conversationVisibleTitle,
+  EditableConversationTitle
+} from "./components/CLI/conversationTitle";
 import { ConversationContextDialog } from "./components/CLI/ConversationContextDialog";
 import { ImportCodexSessionDialog } from "./components/CLI/ImportCodexSessionDialog";
 import {
@@ -17,6 +22,7 @@ import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { AuthenticationDialog } from "./components/CLI/AuthenticationDialog";
 import { TaskReceiptDialog } from "./components/ButlerBuddy/TaskReceiptDialog";
+import { OnboardingWelcomeOverlay } from "./components/Onboarding/OnboardingWelcomeOverlay";
 import { ExportDebugLogsDialog } from "./components/Settings/ExportDebugLogsDialog";
 import { DetailColumn } from "./components/CLI/DetailColumn";
 import { AgentBridgeListener } from "./components/AgentBridge/AgentBridgeListener";
@@ -30,23 +36,39 @@ import { SidebarUserMenu } from "./components/SidebarUserMenu";
 import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
-import { AgentUsagePage } from "./components/Usage/AgentUsagePage";
+import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
+import { useProviderStore } from "./store/providerStore";
 import { useConversationStore } from "./store/conversationStore";
+import { useConversationPanelUiStore } from "./store/conversationPanelUiStore";
+import { isConversationReadingVisible, setConversationReadingVisible } from "./store/conversationReading";
+import { useFileDiffStore } from "./store/fileDiffStore";
+import { cliClient } from "./services/cli/client";
+import { useDebugLogsDialogStore } from "./store/debugLogsDialogStore";
+import { useOnboardingStore } from "./store/onboardingStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useSkillStore } from "./store/skillStore";
 import { useUpdaterStore } from "./store/updaterStore";
-import { useDetailLayoutStore, selectDetailWidth, DETAIL_MIN_WIDTH } from "./store/detailLayoutStore";
+import { useDetailLayoutStore, selectDetailWidth } from "./store/detailLayoutStore";
+import { useBrowserSidebarLayout, resolveDetailWidth, getResponsiveDetailCollapse } from "./hooks/useBrowserSidebarLayout";
 import { useNewTaskUiStore } from "./store/newTaskUiStore";
 import { useProjectStore } from "./store/projectStore";
 import { useWorkflowStore } from "./store/workflowStore";
 import { useTaskReceiptStore } from "./store/taskReceiptStore";
+import { useAgentBridgeStore } from "./store/agentBridgeStore";
+import {
+  executeGuideInstall,
+  useGuideInstallStore
+} from "./store/guideInstallStore";
+import { createChatAttachment } from "./utils/chatAttachments";
 import {
   notifyTaskFinished,
   playTaskFailure,
   playTaskSuccess
 } from "./utils/soundEffects";
 import { isAppInBackground } from "./utils/appFocus";
+import { shouldFollowConversationSelection } from "./utils/conversationPanelNavigation";
+import { startScheduledSendRunner } from "./services/scheduledSend/runner";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -54,6 +76,18 @@ function nextThemePreference(theme: "system" | "light" | "dark") {
   if (theme === "system") return "light";
   if (theme === "light") return "dark";
   return "system";
+}
+
+// Whether a conversation is currently docked into the main window's embedded
+// doc viewer. All open-conversation routes consult this so a docked
+// conversation activates in place instead of popping a standalone DocStudio
+// window. Missing/unavailable API means "not docked" (legacy behavior).
+async function isConversationEmbeddedInMainWindow(id: string): Promise<boolean> {
+  try {
+    return (await window.freebuddy?.docStudio?.isConversationEmbedded?.(id)) ?? false;
+  } catch {
+    return false;
+  }
 }
 
 function BrandMark() {
@@ -72,9 +106,17 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("cli");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("chat");
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(() =>
+    useConversationPanelUiStore.getState().preferredView === "panel" ? "conversationBoard" : "chat"
+  );
+  const [panelFullscreen, setPanelFullscreen] = useState(false);
+  const [messageFocus, setMessageFocus] = useState<{ conversationId: string; messageId: string } | null>(null);
+  const fullscreenSnapshot = useRef<{ native: boolean | null; browser: boolean } | null>(null);
+  const fullscreenTransition = useRef(false);
+  const fullscreenRevision = useRef(0);
+  const preferredConversationView = useConversationPanelUiStore((s) => s.preferredView);
+  useConversationOverviewUpdates(!settingsOpen && (workspaceView === "chat" || workspaceView === "conversationBoard"));
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [contextSourceId, setContextSourceId] = useState<string>();
   const [codexImportOpen, setCodexImportOpen] = useState(false);
@@ -89,15 +131,21 @@ function App() {
   const platform = window.freebuddy?.platform ?? "";
 
   const loadExecutors = useCliExecutorStore((s) => s.load);
+  const loadProviders = useProviderStore((s) => s.load);
   const loadConversations = useConversationStore((s) => s.load);
   const refreshConversationList = useConversationStore((s) => s.refreshList);
   const refreshProjects = useProjectStore((s) => s.refresh);
   useEffect(() => {
     void (async () => {
-      await loadExecutors();
+      await Promise.all([loadExecutors(), loadProviders()]);
       await Promise.all([loadConversations(), refreshProjects()]);
+      // First-run decision needs executor overrides + provider list to be
+      // loaded, so it runs after the stores above.
+      await useOnboardingStore.getState().evaluate();
     })();
-  }, [loadExecutors, loadConversations, refreshProjects]);
+  }, [loadExecutors, loadProviders, loadConversations, refreshProjects]);
+
+  useEffect(() => startScheduledSendRunner(), []);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -198,10 +246,10 @@ function App() {
   useEffect(() => {
     const off = window.freebuddy?.cli?.onMessagesChanged?.((conversationId) => {
       const state = useConversationStore.getState();
-      if (conversationId !== state.activeId || isAppInBackground()) {
+      if (conversationId !== state.activeId || !isConversationReadingVisible() || isAppInBackground()) {
         state.markConversationUnread(conversationId);
         void state.refreshList();
-        if (conversationId !== state.activeId) return;
+        if (conversationId !== state.activeId || !isConversationReadingVisible()) return;
       }
       // Skip conversations this client is already live-streaming (e.g. the
       // current user's own active run) — live streaming owns those updates.
@@ -218,7 +266,7 @@ function App() {
   useEffect(() => {
     const handleFocus = () => {
       const state = useConversationStore.getState();
-      if (state.activeId && state.unreadConversations[state.activeId]) {
+      if (isConversationReadingVisible() && state.activeId && state.unreadConversations[state.activeId]) {
         state.markConversationRead(state.activeId);
       }
     };
@@ -229,6 +277,10 @@ function App() {
   useEffect(() => {
     const off = window.freebuddy?.window?.onChromeVisible?.((visible) => {
       setChromeVisible(visible);
+      if (visible && fullscreenSnapshot.current?.native === false && !fullscreenTransition.current) {
+        fullscreenSnapshot.current = null;
+        setPanelFullscreen(false);
+      }
     });
     return () => {
       off?.();
@@ -236,19 +288,158 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId) => {
-      setSettingsOpen(false);
-      setWorkspaceView("chat");
-      void useConversationStore.getState().setActive(conversationId);
+    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId, embed) => {
+      void (async () => {
+        const state = useConversationStore.getState();
+        // Conversations created in other renderer processes (e.g. DocStudio)
+        // may not be in this window's list yet — refresh before activating.
+        if (!state.conversations.some((c) => c.id === conversationId)) {
+          await state.refreshList();
+        }
+        // "Dock into main window" from the standalone studio asks for the
+        // embedded viewer explicitly; everything else keeps popping the
+        // standalone DocStudio window open for document chats — unless that
+        // conversation is currently docked into this window's embedded viewer.
+        if (!embed && useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio") &&
+          !(await isConversationEmbeddedInMainWindow(conversationId))) {
+          try {
+            if (await window.freebuddy?.docStudio?.openConversation(conversationId)) {
+              useConversationStore.getState().markConversationRead(conversationId);
+              return;
+            }
+          } catch {
+            // Fall back to the main conversation view.
+          }
+        }
+        setSettingsOpen(false);
+        setWorkspaceView("chat");
+        await useConversationStore.getState().setActive(conversationId);
+      })();
     });
     return () => {
       off?.();
     };
   }, []);
+
+  // Settings → CLI Agents: hand missing built-in installs to GuideBuddy.
+  // Consumed here because closing Settings and switching to the chat
+  // workspace is App-level state; the hand-off itself lives in the store.
+  const guideInstallRequest = useGuideInstallStore((s) => s.pending);
+  useEffect(() => {
+    if (!guideInstallRequest) return;
+    useGuideInstallStore.getState().clearRequest();
+    void (async () => {
+      const outcome = await executeGuideInstall(guideInstallRequest.agentIds);
+      if (!outcome.ok) {
+        useAgentBridgeStore
+          .getState()
+          .notify(
+            i18next.t(`settings.cli.guideInstall.error.${outcome.reason}`)
+          );
+        return;
+      }
+      setSettingsOpen(false);
+      setWorkspaceView("chat");
+      useAgentBridgeStore
+        .getState()
+        .notify(i18next.t("settings.cli.guideInstall.requested"));
+    })();
+  }, [guideInstallRequest]);
 
   useEffect(() => {
     const off = window.freebuddy?.window?.onNewConversation?.(() => {
       startNewTask();
+    });
+    return () => {
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const off = window.freebuddy?.window?.onExternalShare?.((payload) => {
+      setSettingsOpen(false);
+      setWorkspaceView("chat");
+
+      const attachments = (payload.files || [])
+        .map((f) =>
+          createChatAttachment({
+            name: f.name,
+            path: f.path,
+            size: f.size,
+            managed: f.managed ?? true
+          })
+        )
+        .filter((att): att is NonNullable<typeof att> => Boolean(att));
+
+      let draft = "";
+      if (payload.instruction?.trim()) {
+        draft = payload.instruction.trim();
+        if (payload.text?.trim()) {
+          draft += `\n\n${payload.text.trim()}`;
+        }
+      } else if (payload.text?.trim()) {
+        draft = payload.text.trim();
+      }
+
+      void (async () => {
+        await useConversationStore.getState().setActive(undefined);
+        useNewTaskUiStore.getState().setRequestedTeamId(undefined);
+        useNewTaskUiStore.getState().setTaskMode("normal");
+        useNewTaskUiStore.getState().requestNewTask({
+          draft,
+          attachments
+        });
+        const summary =
+          attachments.length > 0
+            ? i18next.t("externalShare.importedWithFiles", { count: attachments.length })
+            : i18next.t("externalShare.imported");
+        useAgentBridgeStore.getState().notify(summary);
+      })();
+    });
+    return () => {
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const off = window.freebuddy?.window?.onShellOpen?.((payload) => {
+      setSettingsOpen(false);
+      setWorkspaceView("chat");
+
+      const attachments = (payload.files || [])
+        .map((f) =>
+          createChatAttachment({
+            name: f.name,
+            path: f.path,
+            size: f.size,
+            mimeType: f.mimeType,
+            managed: f.managed ?? false
+          })
+        )
+        .filter((att): att is NonNullable<typeof att> => Boolean(att));
+
+      void (async () => {
+        await useConversationStore.getState().setActive(undefined);
+        useNewTaskUiStore.getState().setRequestedTeamId(undefined);
+        useNewTaskUiStore.getState().setTaskMode("normal");
+        useNewTaskUiStore.getState().requestNewTask({
+          cwd: payload.cwd,
+          attachments
+        });
+        const folderName = payload.cwd
+          ? payload.cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || payload.cwd
+          : "";
+        const summary =
+          attachments.length > 0 && folderName
+            ? i18next.t("shellOpen.openedFolderWithFiles", {
+                name: folderName,
+                count: attachments.length
+              })
+            : attachments.length > 0
+              ? i18next.t("shellOpen.openedFiles", { count: attachments.length })
+              : i18next.t("shellOpen.openedFolder", { name: folderName });
+        useAgentBridgeStore.getState().notify(summary);
+      })();
     });
     return () => {
       off?.();
@@ -358,6 +549,8 @@ function App() {
   }, []);
 
   const { t } = useTranslation();
+  // Locale-specific secondary brand name; empty in locales that only use "FreeBuddy".
+  const brandSub = t("app.brandSub", { defaultValue: "" }).trim();
   const loadSettings = useSettingsStore((s) => s.load);
   const themePreference = useSettingsStore((s) => s.theme);
   const theme = useSettingsStore((s) => s.resolvedTheme);
@@ -389,11 +582,6 @@ function App() {
   useEffect(() => {
     void loadDetailLayout();
   }, [loadDetailLayout]);
-  useEffect(() => {
-    if (activeDetailTab === "preview") {
-      setSidebarCollapsed(true);
-    }
-  }, [activeDetailTab]);
 
   const [winWidth, setWinWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 1280
@@ -404,33 +592,6 @@ function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const [wasNarrow, setWasNarrow] = useState<boolean | null>(null);
-  useEffect(() => {
-    const isNarrow = winWidth < 1080;
-    if (wasNarrow === null) {
-      setWasNarrow(isNarrow);
-      if (isNarrow && !detailCollapsed) {
-        setDetailCollapsed(true);
-      }
-      return;
-    }
-
-    if (isNarrow && !wasNarrow) {
-      setDetailCollapsed(true);
-      setWasNarrow(true);
-    } else if (!isNarrow && wasNarrow) {
-      setDetailCollapsed(false);
-      setWasNarrow(false);
-    }
-  }, [winWidth, wasNarrow, detailCollapsed, setDetailCollapsed]);
-
-  const sidebarWidth = sidebarCollapsed ? 0 : 272;
-  const effectiveDetailWidth = detailCollapsed
-    ? 0
-    : Math.min(
-        detailWidth,
-        Math.max(DETAIL_MIN_WIDTH, winWidth - sidebarWidth - 420 - 8)
-      );
   const updateStatus = useUpdaterStore((s) => s.status);
   const appVersion = useUpdaterStore((s) => s.appVersion);
   const latestVersion = useUpdaterStore((s) => s.latestVersion);
@@ -484,7 +645,10 @@ function App() {
         if (unread?.kind === "success" || unread?.kind === "failure") {
           tasks.push({
             id: conversation.id,
-            title: conversation.title,
+            title: conversationVisibleTitle(
+              conversation,
+              t("workflow.delegation.sessionTitleFallback")
+            ),
             result: unread.kind,
             completedAt: unread.at
           });
@@ -497,6 +661,35 @@ function App() {
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
   const activeConversation = conversations.find((c) => c.id === activeId);
+  const previewOpen = activeDetailTab === "preview" && !detailCollapsed;
+  const detailViewVisible = !settingsOpen && workspaceView === "chat" && Boolean(activeConversation);
+  const previewVisible = detailViewVisible && previewOpen;
+  const { sidebarCollapsed, toggleSidebar } = useBrowserSidebarLayout({
+    viewportWidth: winWidth, previewWidth: detailWidth, previewOpen, previewVisible, conversationId: activeId
+  });
+  const previousNarrow = useRef<boolean | null>(null);
+  const previousDetailTab = useRef(activeDetailTab);
+  useEffect(() => {
+    const isNarrow = winWidth < 1080;
+    const changedTab = previousDetailTab.current !== activeDetailTab;
+    if (detailViewVisible) {
+      // An open browser saves space through the sidebar policy instead.
+      const collapsed = getResponsiveDetailCollapse(winWidth, previousNarrow.current, activeDetailTab === "preview", changedTab);
+      if (collapsed !== undefined) setDetailCollapsed(collapsed);
+      previousNarrow.current = isNarrow;
+      previousDetailTab.current = activeDetailTab;
+    }
+  }, [winWidth, activeDetailTab, detailViewVisible, setDetailCollapsed]);
+  const effectiveDetailWidth = resolveDetailWidth(winWidth, detailWidth, sidebarCollapsed, !detailCollapsed);
+
+  useLayoutEffect(() => {
+    const reading = workspaceView === "chat" && !settingsOpen;
+    setConversationReadingVisible(reading);
+    if (reading && activeId && !isAppInBackground()) {
+      useConversationStore.getState().markConversationRead(activeId);
+    }
+    return () => setConversationReadingVisible(false);
+  }, [workspaceView, settingsOpen, activeId]);
   const contextSource = conversations.find((c) => c.id === contextSourceId);
   const activeConversationRunning = useConversationStore((s) => {
     if (!activeId) return false;
@@ -534,7 +727,7 @@ function App() {
     ? runningConversationIds.split("\u001f").length
     : 0;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const member = members.find((m) => m.id === activeConversation?.agentId);
     const runningIds = new Set(
       runningConversationIds ? runningConversationIds.split("\u001f") : []
@@ -546,7 +739,10 @@ function App() {
       activeConversation: activeConversation
         ? {
             id: activeConversation.id,
-            title: activeConversation.title,
+            title: conversationVisibleTitle(
+              activeConversation,
+              t("workflow.delegation.sessionTitleFallback")
+            ),
             agentId: activeConversation.agentId,
             agentName:
               member?.name ??
@@ -559,7 +755,10 @@ function App() {
         .filter((conversation) => runningIds.has(conversation.id))
         .map((conversation) => ({
           id: conversation.id,
-          title: conversation.title
+          title: conversationVisibleTitle(
+            conversation,
+            t("workflow.delegation.sessionTitleFallback")
+          )
         })),
       completedUnreadTasks: JSON.parse(completedUnreadTasksJson) as Array<{
         id: string;
@@ -570,16 +769,15 @@ function App() {
       unreadCount,
       updatedAt: new Date().toISOString()
     };
-    const timer = window.setTimeout(() => {
-      window.freebuddy?.window?.setUiPresence?.(snapshot);
-    }, 250);
-    return () => window.clearTimeout(timer);
+    // View changes also control native Escape handling, so publish before paint.
+    window.freebuddy?.window?.setUiPresence?.(snapshot);
   }, [
     workspaceView,
     settingsOpen,
     settingsInitialTab,
     activeConversation?.id,
     activeConversation?.title,
+    activeConversation?.kind,
     activeConversation?.agentId,
     activeConversation?.agentName,
     activeConversationRunning,
@@ -587,8 +785,18 @@ function App() {
     completedUnreadTasksJson,
     unreadCount,
     members,
-    conversations
+    conversations,
+    t
   ]);
+
+  // Note: the main window deliberately does NOT report its active doc
+  // conversation to docStudio:setActiveConversation. Docking is a
+  // per-conversation record in the main process (openConversationInMain with
+  // embed), kept across conversation switches and cleared only on pop-out,
+  // deletion and main-window teardown — reporting the "current" document as
+  // the single docked state here would drop the record whenever the user
+  // clicks a non-document conversation, and re-clicking the docked one would
+  // then pop a standalone window.
 
   const activeWorkflowRunning = useWorkflowStore((s) =>
     Boolean(activeId && s.activeRuns.some((run) => run.conversationId === activeId))
@@ -608,12 +816,28 @@ function App() {
   const setNewTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
   const requestNewTask = useNewTaskUiStore((s) => s.requestNewTask);
-  const startNewTask = (options?: { cwd?: string; projectId?: string }) => {
+  const startNewTask = async (options?: { cwd?: string; projectId?: string; agentId?: string }) => {
     setRequestedTeamId(undefined);
     setNewTaskMode("normal");
-    requestNewTask({ cwd: options?.cwd, projectId: options?.projectId });
     setSettingsOpen(false);
     setWorkspaceView("chat");
+    if (options?.agentId) {
+      const convStore = useConversationStore.getState();
+      const member = convStore.members.find((m) => m.id === options.agentId);
+      if (member) {
+        await convStore.newConversation({
+          member,
+          title: member.name
+        });
+        useNewTaskUiStore.getState().setPreferredAgentId(member.id);
+        return;
+      }
+    }
+    requestNewTask({
+      cwd: options?.cwd,
+      projectId: options?.projectId,
+      agentId: options?.agentId
+    });
     void setActive(undefined);
   };
   const openScheduledTasks = () => {
@@ -632,8 +856,11 @@ function App() {
     void setActive(undefined);
   };
   const openUsage = () => {
+    openSettings("usage");
+  };
+  const openFreebie = () => {
     setSettingsOpen(false);
-    setWorkspaceView("usage");
+    setWorkspaceView("freebie");
     void setActive(undefined);
   };
 
@@ -662,19 +889,176 @@ function App() {
     };
   }, []);
 
+  const previousActiveId = useRef(activeId);
   useEffect(() => {
-    if (activeId) setWorkspaceView("chat");
-  }, [activeId]);
+    const previous = previousActiveId.current;
+    previousActiveId.current = activeId;
+    // Restoring the previous selection at startup must not replace a saved
+    // panel preference. Explicit conversation navigation still opens chat.
+    if (shouldFollowConversationSelection(previous, activeId, conversations.map((entry) => entry.id),
+      useConversationPanelUiStore.getState().preferredView)) {
+      setWorkspaceView("chat");
+    }
+  }, [activeId, conversations]);
+
+  const exitPanelFullscreen = useCallback(async () => {
+    fullscreenRevision.current++;
+    const snapshot = fullscreenSnapshot.current;
+    fullscreenSnapshot.current = null;
+    setPanelFullscreen(false);
+    if (!snapshot) return;
+    try {
+      if (window.freebuddy?.window?.setFullscreen && snapshot.native === false) {
+        await window.freebuddy.window.setFullscreen(false);
+      } else if (!snapshot.browser && document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // The presentation can always return to its previous layout even when
+      // a browser or native window refuses the full-screen transition.
+    }
+  }, []);
+
+  const togglePanelFullscreen = useCallback(async () => {
+    if (fullscreenTransition.current) return;
+    fullscreenTransition.current = true;
+    const revision = ++fullscreenRevision.current;
+    try {
+      if (fullscreenSnapshot.current) {
+        await exitPanelFullscreen();
+        return;
+      }
+      const bridge = window.freebuddy?.window;
+      const native = bridge?.getFullscreenState ? await bridge.getFullscreenState() : false;
+      if (revision !== fullscreenRevision.current) return;
+      const snapshot = { native, browser: Boolean(document.fullscreenElement) };
+      fullscreenSnapshot.current = snapshot;
+      setPanelFullscreen(true);
+      if (bridge?.setFullscreen) {
+        await bridge.setFullscreen(true);
+      } else if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+      // List/navigation can cancel while the OS or browser is still entering.
+      // Restore after that transition finishes as well as at cancellation time.
+      if (revision !== fullscreenRevision.current) {
+        if (bridge?.setFullscreen && snapshot.native === false) await bridge.setFullscreen(false);
+        else if (!snapshot.browser && document.fullscreenElement) await document.exitFullscreen();
+      }
+    } catch {
+      // Keep the board expanded inside the application if OS full-screen is
+      // unavailable (for example an embedded preview browser).
+      if (revision === fullscreenRevision.current) {
+        if (!fullscreenSnapshot.current) fullscreenSnapshot.current = { native: null, browser: Boolean(document.fullscreenElement) };
+        setPanelFullscreen(true);
+      }
+    } finally {
+      fullscreenTransition.current = false;
+    }
+  }, [exitPanelFullscreen]);
+
+  useEffect(() => {
+    if (workspaceView !== "conversationBoard" || settingsOpen) void exitPanelFullscreen();
+  }, [workspaceView, settingsOpen, exitPanelFullscreen]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement && fullscreenSnapshot.current && !window.freebuddy?.window?.setFullscreen) {
+        fullscreenSnapshot.current = null;
+        setPanelFullscreen(false);
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || workspaceView !== "conversationBoard") return;
+      const hasOverlay = [...document.querySelectorAll('[role="dialog"], [role="menu"], .ant-select-dropdown')]
+        .some((element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden");
+      if (hasOverlay) return;
+      if (fullscreenSnapshot.current) {
+        event.preventDefault();
+        void exitPanelFullscreen();
+      } else if (!chromeVisible) {
+        void window.freebuddy?.window?.setFullscreen?.(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [workspaceView, chromeVisible, exitPanelFullscreen]);
+
+  const openConversationPanel = () => {
+    useConversationPanelUiStore.getState().setPreferredView("panel");
+    setSettingsOpen(false);
+    setWorkspaceView("conversationBoard");
+  };
+  const openConversationList = () => {
+    useConversationPanelUiStore.getState().setPreferredView("list");
+    void exitPanelFullscreen();
+    setWorkspaceView("chat");
+  };
+  const openPanelConversation = async (id: string) => {
+    const conversation = useConversationStore.getState().conversations.find((item) => item.id === id);
+    if (conversation?.kind === "doc-studio" && !(await isConversationEmbeddedInMainWindow(id))) {
+      try {
+        if (await window.freebuddy?.docStudio?.openConversation(id)) {
+          useConversationStore.getState().markConversationRead(id);
+          return;
+        }
+      } catch {
+        // Show the conversation in the main window if DocStudio cannot open.
+      }
+    }
+    void exitPanelFullscreen();
+    setMessageFocus(null);
+    setWorkspaceView("chat");
+    await setActive(id);
+  };
+  const openPanelFile = async (conversationId: string, messageId: string, path: string) => {
+    if (useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
+      await openPanelConversation(conversationId);
+      return;
+    }
+    await openPanelConversation(conversationId);
+    try {
+      let cursor: number | undefined;
+      for (let count = 0; count < 20; count++) {
+        const page = await cliClient.listMessageFileEdits(messageId, cursor, true);
+        const index = page.edits.findIndex((edit) => edit.path === path);
+        if (useConversationStore.getState().activeId !== conversationId) return;
+        if (index >= 0) {
+          useFileDiffStore.getState().open({ conversationId, messageId, edits: page.edits, index });
+          return;
+        }
+        if (!page.hasMore || page.nextCursor === cursor) break;
+        cursor = page.nextCursor;
+      }
+    } catch {
+      // Opening the original conversation remains a useful fallback when
+      // an older file-edit payload is unavailable.
+    }
+    if (useConversationStore.getState().activeId === conversationId) setMessageFocus({ conversationId, messageId });
+  };
 
   const workspaceTitle = settingsOpen
     ? t("common.settings")
+    : workspaceView === "conversationBoard"
+      ? t("conversationPanel.title")
     : workspaceView === "scheduledTasks"
       ? t("scheduledTasks.title")
       : workspaceView === "workflowTeams"
         ? t("workflow.teamList")
-        : workspaceView === "usage"
-          ? t("usage.title")
-        : activeConversation?.title ?? t("app.chat");
+        : workspaceView === "freebie"
+          ? t("freebie.title")
+        : activeConversation
+          ? conversationVisibleTitle(
+              activeConversation,
+              t("workflow.delegation.sessionTitleFallback")
+            )
+        : t("app.chat");
+  const titlebarHidden = !settingsOpen && workspaceView === "chat" && isNewTask;
+  const showSidebarRestore = sidebarCollapsed && !settingsOpen && !panelFullscreen;
   const renderToggleButton = (extraClass = "") => (
     <button
       type="button"
@@ -682,7 +1066,7 @@ function App() {
       title={t(sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}
       aria-label={t(sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}
       aria-expanded={!sidebarCollapsed}
-      onClick={() => setSidebarCollapsed((v) => !v)}
+      onClick={toggleSidebar}
     >
       <SidebarToggleIcon collapsed={sidebarCollapsed} />
     </button>
@@ -710,9 +1094,9 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" ? " conversation-panel-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" && panelFullscreen ? " conversation-panel-fullscreen" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${previewVisible ? " browser-preview-visible" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
-      style={{ "--fb-detail-width": `${effectiveDetailWidth}px` } as CSSProperties}
+      style={{ "--fb-detail-width": `${effectiveDetailWidth}px`, "--fb-sidebar-width": sidebarCollapsed ? "0px" : "272px" } as CSSProperties}
     >
       <aside className={`sidebar${settingsOpen ? " settings-sidebar" : ""}`}>
         {settingsOpen ? (
@@ -739,9 +1123,14 @@ function App() {
               <div className="sidebar-brand">
                 <BrandMark />
                 <div className="sidebar-brand-text">
-                  <h1>{t("app.brand")}</h1>
-                  {import.meta.env.DEV && (
-                    <span className="sidebar-dev-badge">DEV</span>
+                  <div className="sidebar-brand-row">
+                    <h1>{t("app.brand")}</h1>
+                    {import.meta.env.DEV && (
+                      <span className="sidebar-dev-badge">DEV</span>
+                    )}
+                  </div>
+                  {brandSub && (
+                    <span className="sidebar-brand-sub">{brandSub}</span>
                   )}
                 </div>
               </div>
@@ -763,9 +1152,13 @@ function App() {
               onNewTask={startNewTask}
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
-              onOpenUsage={openUsage}
+              onOpenFreebie={openFreebie}
             />
             <ConversationList
+              panelActive={workspaceView === "conversationBoard"}
+              onOpenPanel={openConversationPanel}
+              onOpenList={openConversationList}
+              onOpenConversation={(id) => void openPanelConversation(id)}
               onNewTaskInProject={({ cwd, projectId }) =>
                 startNewTask({ cwd, projectId })
               }
@@ -813,14 +1206,30 @@ function App() {
       </aside>
 
       <main className={`workspace${settingsOpen ? " settings-workspace" : ""}`}>
-        <header className="titlebar">
-          {sidebarCollapsed && renderToggleButton("floating")}
-          <div
-            className="breadcrumb"
-            title={workspaceTitle}
-          >
-            <strong>{workspaceTitle}</strong>
-          </div>
+        {showSidebarRestore && titlebarHidden && renderToggleButton("floating")}
+        <header
+          className={`titlebar${
+            workspaceView === "chat" && activeConversation && !settingsOpen
+              ? " titlebar--chat"
+              : ""
+          }`}
+        >
+          {/* Keep the restore control inside the Electron drag region;
+              an earlier sibling overlay can have its click area overwritten. */}
+          {showSidebarRestore && !titlebarHidden && renderToggleButton("floating")}
+          {!settingsOpen && workspaceView === "chat" && activeConversation ? (
+            <EditableConversationTitle
+              conversation={activeConversation}
+              variant="titlebar"
+            />
+          ) : (
+            <div
+              className="breadcrumb"
+              title={workspaceTitle}
+            >
+              <strong>{workspaceTitle}</strong>
+            </div>
+          )}
           {settingsOpen ? (
             <div className="titlebar-actions titlebar-actions-plain">
               <button
@@ -833,6 +1242,12 @@ function App() {
             </div>
           ) : workspaceView === "chat" && activeConversation && (
             <div className="titlebar-actions titlebar-actions-plain">
+              {preferredConversationView === "panel" && (
+                <button type="button" className="titlebar-icon-button" onClick={openConversationPanel}
+                  title={t("conversationPanel.backToPanel")} aria-label={t("conversationPanel.backToPanel")}>
+                  <LayoutGrid size={16} aria-hidden="true" />
+                </button>
+              )}
               {activeConversationHasContent && (
                 <button
                   type="button"
@@ -853,7 +1268,19 @@ function App() {
                   <Share2 size={14} aria-hidden="true" />
                 </button>
               )}
-              <TitlebarOverflowMenu />
+              <button
+                type="button"
+                className="titlebar-icon-button"
+                title={t("debugLogs.title")}
+                aria-label={t("debugLogs.title")}
+                onClick={() =>
+                  useDebugLogsDialogStore
+                    .getState()
+                    .setOpen(true, activeConversation?.id)
+                }
+              >
+                <Stethoscope size={14} aria-hidden="true" />
+              </button>
               {detailCollapsed && (
                 <button
                   type="button"
@@ -881,6 +1308,15 @@ function App() {
               onTabChange={setSettingsInitialTab}
               onClose={() => setSettingsOpen(false)}
             />
+          ) : workspaceView === "conversationBoard" ? (
+            <ConversationTaskPanel
+              fullscreen={panelFullscreen}
+              onToggleFullscreen={() => void togglePanelFullscreen()}
+              onList={openConversationList}
+              onOpenConversation={(id) => void openPanelConversation(id)}
+              onOpenFile={(conversationId, messageId, path) => void openPanelFile(conversationId, messageId, path)}
+              onNewConversation={() => startNewTask()}
+            />
           ) : workspaceView === "scheduledTasks" ? (
             <section className="workspace-tool-page">
               <div className="workspace-tool-page-inner">
@@ -902,14 +1338,20 @@ function App() {
                 />
               </div>
             </section>
-          ) : workspaceView === "usage" ? (
-            <section className="workspace-tool-page usage-workspace-page">
-              <div className="workspace-tool-page-inner">
-                <AgentUsagePage />
-              </div>
+          ) : workspaceView === "freebie" ? (
+            <section className="workspace-tool-page freebie-workspace-page">
+              <FreebiePage
+                onStartChat={(agentId) => startNewTask({ agentId })}
+                onOpenAgentSettings={() => openSettings("cli")}
+              />
             </section>
           ) : (
-            <ChatView onOpenAgentSettings={() => openSettings("cli")} />
+            <ChatView
+              onOpenAgentSettings={() => openSettings("cli")}
+              onOpenMcpSettings={() => openSettings("mcp")}
+              messageFocus={messageFocus}
+              onMessageFocused={() => setMessageFocus(null)}
+            />
           )}
         </section>
       </main>
@@ -923,6 +1365,7 @@ function App() {
       <ExportDebugLogsDialog />
       <AuthenticationDialog />
       <TaskReceiptDialog />
+      <OnboardingWelcomeOverlay onOpenSettings={openSettings} />
       <ConversationCommandPalette
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
@@ -933,10 +1376,7 @@ function App() {
           setCommandPaletteOpen(false);
           setCodexImportOpen(true);
         }}
-        onSelectConversation={() => {
-          setSettingsOpen(false);
-          setWorkspaceView("chat");
-        }}
+        onSelectConversation={(id) => { void openPanelConversation(id); }}
       />
       {contextSource && (
         <ConversationContextDialog
@@ -946,7 +1386,10 @@ function App() {
         />
       )}
       {codexImportOpen && (
-        <ImportCodexSessionDialog onClose={() => setCodexImportOpen(false)} />
+        <ImportCodexSessionDialog
+          onClose={() => setCodexImportOpen(false)}
+          onImported={(id) => { void openPanelConversation(id); }}
+        />
       )}
       <AgentBridgeListener />
       <AgentBridgeToasts />

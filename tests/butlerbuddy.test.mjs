@@ -189,6 +189,25 @@ test("ButlerBuddy exposes an always-on-top pet and lightweight chat surface", ()
   assert.match(pet, /butlerbuddy\/states/);
 });
 
+test("desktop pet stays hidden until the user turns it on", () => {
+  const main = fs.readFileSync(
+    new URL("../electron/main.ts", import.meta.url),
+    "utf8"
+  );
+  const settings = fs.readFileSync(
+    new URL("../src/store/settingsStore.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(main, /getSetting\(BUTLER_VISIBLE_SETTING\) === "true"/);
+  assert.doesNotMatch(
+    main,
+    /getSetting\(BUTLER_VISIBLE_SETTING\) !== "false"/
+  );
+  assert.match(settings, /butlerBuddyVisible: false/);
+  assert.match(settings, /butlerPreferences\?\.visible \?\? false/);
+});
+
 test("ButlerBuddy preferences expose a global shortcut with conflict feedback", () => {
   const main = fs.readFileSync(
     new URL("../electron/main.ts", import.meta.url),

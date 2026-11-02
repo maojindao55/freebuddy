@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { agyTurnChanges, agyTurnUpdate } from "./fixtures/agy-turn-diff.mjs";
+import { codebuddyTurnUpdate } from "./fixtures/codebuddy-turn-diff.mjs";
+import { claudeTurnBefore, claudeTurnAfter, claudeTurnUpdates } from "./fixtures/claude-turn-diff.mjs";
+import { aggregateFileEdits, buildFileDiff } from "@freebuddy/cli-stream";
 
 import {
   buildCommand,
@@ -11,6 +15,8 @@ import {
   extraArgsHaveDshConfig,
   resolveDshAcpConfigPath,
   DSH_ACP_NODE_DISABLE_WARNING,
+  isClineAcpStartupBannerLine,
+  isDevinAcpDiagnosticLine,
   isDshAcpExperimentalWarningLine,
   mergeNodeOptions,
   sanitizeCliAgentEnv,
@@ -45,13 +51,74 @@ import {
   buildTerminalOutputResponse,
   contentBlockToItems,
   isMissingSavedSessionError,
+  formatAcpRpcError,
   parseAcpLine,
   selectAcpAuthMethod,
   selectAcpSessionStartMode,
+  shouldDiscardAcpToolSession,
   shouldEmitAcpUpdate,
+  shouldRetryEmptyResumedDshTurn,
   shouldSkipUserMessageChunk,
-  shouldDropReplayPhaseAgentChunk
+  shouldDropReplayPhaseAgentChunk,
+  shouldSuppressAcpReplayByPhase,
+  isAcpMetadataSessionUpdate,
+  compactAcpStdoutLine,
+  shouldWriteAcpStdoutLog,
+  updateActiveAcpToolCalls
 } from "../dist-electron/cli/acp.js";
+
+test("ACP preserves a trailing blank patch context line in structured diffs", () => {
+  const patch = "@@ -1,2 +1,2 @@\n-old\n+new\n \n";
+  const [call] = acpUpdateToItems({
+    sessionUpdate: "tool_call_update", toolCallId: "preserve", status: "completed",
+    content: [{ type: "diff", path: "file.ts", patch }]
+  });
+  assert.equal(call.toolOutputs[0].patch, patch);
+});
+
+test("ACP recovers AGY's untrimmed context from the matching raw diff block", () => {
+  for (let index = 0; index < agyTurnChanges.length; index++) {
+    const [call] = acpUpdateToItems(agyTurnUpdate(index));
+    const diff = call.toolOutputs.find(item => item.kind === "file-edit");
+    assert.equal(diff.patch, agyTurnChanges[index].patch + "\n ");
+  }
+});
+
+test("ACP marks CodeBuddy old_string/new_string diff previews as snippets", () => {
+  const [call] = acpUpdateToItems(codebuddyTurnUpdate(0));
+  assert.equal(call.toolOutputs[0].partial, true);
+});
+
+test("Claude contextual diffs use the captured original document and retain its EOF state", () => {
+  const edits = [];
+  for (let index = 0; index < 3; index++) {
+    const updates = claudeTurnUpdates(index);
+    assert.equal(acpUpdateToItems(updates[1])[0].toolOutputs[0].partial, true);
+    const [edit] = acpUpdateToItems(updates[2])[0].toolOutputs;
+    assert.equal(edit.partial, undefined);
+    assert.equal(edit.oldText, updates[2]._meta.claudeCode.toolResponse.originalFile);
+    assert.equal(edit.newText.endsWith("\n"), false);
+    assert.equal(edit.newText.includes("No newline at end of file"), false);
+    edits.push(edit);
+  }
+  const [summary] = aggregateFileEdits(edits);
+  assert.equal(summary.oldText, claudeTurnBefore);
+  assert.equal(summary.newText, claudeTurnAfter);
+  assert.deepEqual([buildFileDiff(summary).added, buildFileDiff(summary).removed], [3, 3]);
+  assert.deepEqual(buildFileDiff(summary).rows.filter(row => row.kind === "delete").map(row => row.oldLine), [1, 7, 50]);
+});
+
+test("invalid Claude metadata stays partial; validated patches take precedence over requested replacements", () => {
+  const update = structuredClone(claudeTurnUpdates(0)[2]);
+  update._meta.claudeCode.toolResponse.structuredPatch[0].oldLines++;
+  assert.equal(acpUpdateToItems(update)[0].toolOutputs[0].partial, true);
+  const modified = structuredClone(claudeTurnUpdates(1)[2]);
+  modified._meta.claudeCode.toolResponse.userModified = true;
+  modified._meta.claudeCode.toolResponse.newString = "different user request";
+  const [edit] = acpUpdateToItems(modified)[0].toolOutputs;
+  assert.equal(edit.newText.includes("different user request"), false);
+  assert.ok(edit.newText.includes("Chrome / Safari / Edge / Firefox"));
+});
 
 const acpRuntimeSource = fs.readFileSync(
   new URL("../electron/cli/acpRuntime.ts", import.meta.url),
@@ -160,7 +227,11 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "codebuddy-acp", label: "CodeBuddy", protocol: "acp" },
       { id: "grok-acp", label: "Grok", protocol: "acp" },
       { id: "agy-acp", label: "Antigravity", protocol: "acp" },
-      { id: "dsh-acp", label: "DeepSeek Harness", protocol: "acp" }
+      { id: "dsh-acp", label: "DeepSeek Harness", protocol: "acp" },
+      { id: "zcode-acp", label: "ZCode", protocol: "acp" },
+      { id: "cline-acp", label: "Cline", protocol: "acp" },
+      { id: "devin-acp", label: "Devin", protocol: "acp" },
+      { id: "pi-acp", label: "Pi", protocol: "acp" }
     ]
   );
 });
@@ -180,6 +251,63 @@ test("buildCommand starts Codex and Claude ACP adapters", () => {
     {
       bin: "claude-agent-acp",
       args: [],
+      promptViaStdin: false,
+      protocol: "acp"
+    }
+  );
+});
+
+test("buildCommand starts ZCode ACP adapter", () => {
+  assert.deepEqual(
+    buildCommand({ adapter: "zcode-acp", prompt: "hello" }),
+    {
+      bin: "zcode-acp-server",
+      args: [],
+      promptViaStdin: false,
+      protocol: "acp"
+    }
+  );
+});
+
+test("buildCommand starts Cline ACP adapter", () => {
+  assert.deepEqual(
+    buildCommand({ adapter: "cline-acp", prompt: "hello" }),
+    {
+      bin: "cline",
+      args: ["--acp"],
+      promptViaStdin: false,
+      protocol: "acp"
+    }
+  );
+});
+
+test("buildCommand translates Cline model shorthand for cline-acp", () => {
+  assert.deepEqual(
+    buildCommand({
+      adapter: "cline-acp",
+      prompt: "hello",
+      extraArgs: ["--model", "claude-3-7-sonnet"]
+    }),
+    {
+      bin: "cline",
+      args: ["--acp"],
+      env: { CLINE_MODEL: "claude-3-7-sonnet" },
+      promptViaStdin: false,
+      protocol: "acp"
+    }
+  );
+});
+
+test("buildCommand starts Devin through its ACP subcommand", () => {
+  assert.deepEqual(
+    buildCommand({
+      adapter: "devin-acp",
+      prompt: "hello",
+      extraArgs: ["--model", "opus"]
+    }),
+    {
+      bin: "devin",
+      args: ["acp", "--model", "opus"],
       promptViaStdin: false,
       protocol: "acp"
     }
@@ -551,6 +679,12 @@ test("buildCommand keeps extra DeepSeek args after the bundled config", () => {
   ]);
 });
 
+test("legacy Claude enables actual partial output for host measurement", () => {
+  const built = buildCommand({ adapter: "claude", prompt: "hello" });
+  assert.ok(built.args.includes("--include-partial-messages"));
+  assert.ok(built.args.includes("stream-json"));
+});
+
 test("buildCommand forwards DeepSeek Harness extra args including cordis config", () => {
   const built = buildCommand({
     adapter: "dsh-acp",
@@ -610,6 +744,54 @@ test("isDshAcpExperimentalWarningLine matches Node sqlite warning stderr", () =>
   assert.equal(
     isDshAcpExperimentalWarningLine("plugin tree failed to load"),
     false
+  );
+});
+
+test("isClineAcpStartupBannerLine matches Cline ACP startup banner stderr", () => {
+  assert.equal(
+    isClineAcpStartupBannerLine("[acp] starting ACP mode over stdio…"),
+    true
+  );
+  assert.equal(
+    isClineAcpStartupBannerLine("[acp] starting ACP mode over stdio..."),
+    true
+  );
+  assert.equal(
+    isClineAcpStartupBannerLine("  [acp]  starting ACP mode over stdio  "),
+    true
+  );
+  assert.equal(
+    isClineAcpStartupBannerLine("Error: failed to connect"),
+    false
+  );
+});
+
+test("isDevinAcpDiagnosticLine filters timestamped Devin diagnostics", () => {
+  assert.equal(
+    isDevinAcpDiagnosticLine(
+      "2026-09-22T12:43:40.818047Z  INFO chisel: elapsed_since_main_ms=24 logging initialized"
+    ),
+    true
+  );
+  assert.equal(
+    isDevinAcpDiagnosticLine(
+      "2026-09-22T12:43:41.195112Z  WARN message_forest: MessageChain tree duplication"
+    ),
+    true
+  );
+  assert.equal(
+    isDevinAcpDiagnosticLine(
+      "2026-09-22T12:43:41.195112Z  ERROR run_acp_server: session failed"
+    ),
+    false
+  );
+  assert.equal(
+    isDevinAcpDiagnosticLine("Error: failed to connect"),
+    false
+  );
+  assert.match(
+    acpRuntimeSource,
+    /args\.adapter === "devin-acp" && isDevinAcpDiagnosticLine\(line\)/
   );
 });
 
@@ -905,7 +1087,7 @@ test("buildCommand keeps Grok global flags before the ACP subcommand", () => {
   assert.equal(built.protocol, "acp");
 });
 
-test("buildInitializeRequest advertises only implemented stable capabilities", () => {
+test("buildInitializeRequest advertises stable capabilities and local diff import", () => {
   assert.deepEqual(buildInitializeRequest(7, "0.4.9-test"), {
     jsonrpc: "2.0",
     id: 7,
@@ -914,7 +1096,8 @@ test("buildInitializeRequest advertises only implemented stable capabilities", (
       protocolVersion: 1,
       clientCapabilities: {
         terminal: true,
-        auth: { terminal: true }
+        auth: { terminal: true },
+        _meta: { freebuddy: { localDiffFiles: 1 } }
       },
       clientInfo: {
         name: "freebuddy",
@@ -975,6 +1158,41 @@ test("ACP auth selection prefers available API keys, otherwise interactive login
       {}
     ),
     undefined
+  );
+  assert.equal(
+    selectAcpAuthMethod(
+      [
+        { id: "cline", name: "Sign in with Cline" },
+        { id: "cline-pass", name: "Sign in with ClinePass" },
+        { id: "openai-codex", name: "Sign in with ChatGPT Subscription" }
+      ],
+      {}
+    )?.id,
+    "cline"
+  );
+  assert.equal(
+    selectAcpAuthMethod(
+      [
+        { id: "cline", name: "Sign in with Cline" },
+        { id: "cline-pass", name: "Sign in with ClinePass" },
+        { id: "openai-codex", name: "Sign in with ChatGPT Subscription" }
+      ],
+      {},
+      "cline-pass"
+    )?.id,
+    "cline-pass"
+  );
+  assert.equal(
+    selectAcpAuthMethod(
+      [
+        { id: "cline", name: "Sign in with Cline" },
+        { id: "cline-pass", name: "Sign in with ClinePass" },
+        { id: "openai-codex", name: "Sign in with ChatGPT Subscription" }
+      ],
+      {},
+      "openai-codex"
+    )?.id,
+    "openai-codex"
   );
 });
 
@@ -1177,6 +1395,85 @@ test("ACP runtime starts a fresh session once when a prompt exceeds context", ()
   );
 });
 
+test("ACP tool-call activity tracks silent in-flight tools until terminal updates", () => {
+  const active = new Set();
+  updateActiveAcpToolCalls(active, {
+    sessionUpdate: "tool_call",
+    toolCallId: "job-1",
+    status: "in_progress"
+  });
+  assert.deepEqual([...active], ["job-1"]);
+  updateActiveAcpToolCalls(active, {
+    sessionUpdate: "tool_call_update",
+    toolCallId: "job-1",
+    status: "completed"
+  });
+  assert.equal(active.size, 0);
+});
+
+test("DeepSeek session health policy retries one empty resume and discards unhealthy sessions", () => {
+  assert.equal(
+    shouldRetryEmptyResumedDshTurn({
+      adapter: "dsh-acp",
+      resumed: true,
+      promptHadContent: false,
+      resetAttempted: false
+    }),
+    true
+  );
+  assert.equal(
+    shouldRetryEmptyResumedDshTurn({
+      adapter: "dsh-acp",
+      resumed: true,
+      promptHadContent: false,
+      resetAttempted: true
+    }),
+    false,
+    "a second empty fresh turn must not start an infinite retry loop"
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "dsh-acp",
+      status: "failed",
+      promptStarted: true,
+      promptHadContent: true,
+      turnHadTerminalError: false
+    }),
+    true
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "dsh-acp",
+      status: "done",
+      promptStarted: true,
+      promptHadContent: false,
+      turnHadTerminalError: false
+    }),
+    true
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "dsh-acp",
+      status: "done",
+      promptStarted: true,
+      promptHadContent: true,
+      turnHadTerminalError: false
+    }),
+    false
+  );
+  assert.equal(
+    shouldDiscardAcpToolSession({
+      adapter: "codex-acp",
+      status: "failed",
+      promptStarted: true,
+      promptHadContent: false,
+      turnHadTerminalError: false
+    }),
+    false,
+    "the compatibility policy is intentionally limited to DeepSeek Harness"
+  );
+});
+
 test("ACP runtime reset instruction is fixed English for reliable model compliance", () => {
   assert.match(
     acpRuntimeSource,
@@ -1216,6 +1513,16 @@ test("parseAcpLine parses JSON-RPC messages and ignores blank lines", () => {
     id: 1,
     result: {}
   });
+});
+
+test("ACP in_progress tool calls and updates are running, not pending", () => {
+  for (const sessionUpdate of ["tool_call", "tool_call_update"]) {
+    const [item] = acpUpdateToItems({
+      sessionUpdate, toolCallId: "yield-1",
+      title: "mcp.freebuddy-delegate.yield_to_delegates", status: "in_progress"
+    });
+    assert.equal(item.status, "running");
+  }
 });
 
 test("acpUpdateToItems maps message, thought, tool, session and usage updates", () => {
@@ -1267,6 +1574,53 @@ test("acpUpdateToItems maps message, thought, tool, session and usage updates", 
         contextSize: 200000,
         costAmount: 0.045,
         costCurrency: "USD"
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems treats legacy Antigravity bridge result errors as terminal", () => {
+  assert.deepEqual(
+    acpUpdateToItems(
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: "Error: The stream was interrupted. Please continue the task you were working on.\n"
+        }
+      },
+      undefined,
+      "agy-acp"
+    ),
+    [
+      {
+        kind: "error",
+        message:
+          "The stream was interrupted. Please continue the task you were working on.",
+        details: [
+          "Antigravity returned a failed result through the legacy ACP bridge."
+        ],
+        terminal: true
+      }
+    ]
+  );
+  assert.deepEqual(
+    acpUpdateToItems(
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "msg-1",
+        content: { type: "text", text: "Error: this is an example" }
+      },
+      undefined,
+      "agy-acp"
+    ),
+    [
+      {
+        kind: "text",
+        role: "assistant",
+        content: "Error: this is an example",
+        append: true,
+        messageId: "msg-1"
       }
     ]
   );
@@ -1808,6 +2162,22 @@ test("acpUpdateToItems maps image and resource_link message chunks", () => {
   );
 });
 
+test("acpUpdateToItems omits streaming tool_call_update rawInput", () => {
+  const task = "x".repeat(4000);
+  const items = acpUpdateToItems({
+    sessionUpdate: "tool_call_update",
+    toolCallId: "call_stream",
+    title: "Delegate",
+    rawInput: { params: { task } },
+    content: [{ type: "content", content: { type: "text", text: "ok" } }]
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "tool-call");
+  assert.equal(items[0].id, "call_stream");
+  assert.equal("input" in items[0], false);
+  assert.equal(JSON.stringify(items).includes(task), false);
+});
+
 test("acpUpdateToItems maps tool_call_update content blocks", () => {
   assert.deepEqual(
     acpUpdateToItems({
@@ -1885,6 +2255,45 @@ test("acpUpdateToItems maps structured tool_call_update diff and terminal conten
             newText: "const a = 2;"
           },
           { kind: "terminal-embed", terminalId: "term-1" }
+        ],
+        replaceToolOutputs: true
+      }
+    ]
+  );
+});
+
+test("acpUpdateToItems maps structured tool_call_update diff with patch", () => {
+  assert.deepEqual(
+    acpUpdateToItems({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-6",
+      title: "replace_file_content",
+      kind: "edit",
+      status: "completed",
+      locations: [{ path: "/tmp/app.ts" }],
+      content: [
+        {
+          type: "diff",
+          path: "/tmp/app.ts",
+          patch: "@@ -1,2 +1,2 @@\n-old\n+new"
+        }
+      ]
+    }),
+    [
+      {
+        kind: "tool-call",
+        id: "tool-6",
+        tool: "replace_file_content",
+        status: "completed",
+        toolKind: "edit",
+        locations: [{ path: "/tmp/app.ts" }],
+        toolOutputs: [
+          {
+            kind: "file-edit",
+            path: "/tmp/app.ts",
+            action: "update",
+            patch: "@@ -1,2 +1,2 @@\n-old\n+new"
+          }
         ],
         replaceToolOutputs: true
       }
@@ -2111,6 +2520,34 @@ test("shouldEmitAcpUpdate suppresses replayed chunks by content signature", () =
   );
 });
 
+test("resumed Codex without historical IDs keeps live text in output and logs", () => {
+  const state = {
+    promptStarted: false,
+    replaySuppressionEnabled: true,
+    replayMessageIds: new Set(),
+    suppressReplayByPhase: shouldSuppressAcpReplayByPhase("codex-acp", true),
+    turnHadLiveAgentChunk: false
+  };
+  const chunk = (text) => ({
+    sessionUpdate: "agent_message_chunk",
+    messageId: "new-codex-message-id",
+    content: { type: "text", text }
+  });
+  assert.equal(shouldEmitAcpUpdate(chunk("old answer during load"), state), false);
+  state.promptStarted = true;
+  const text = [];
+  for (const part of ["ACP", "_DIAGNOSTIC", "_OK"]) {
+    const update = chunk(part);
+    assert.equal(shouldDropReplayPhaseAgentChunk(update, state), false);
+    assert.equal(shouldEmitAcpUpdate(update, state), true);
+    assert.equal(shouldWriteAcpStdoutLog({ method: "session/update", params: { update } }, state), true);
+    text.push(update.content.text);
+  }
+  assert.equal(text.join(""), "ACP_DIAGNOSTIC_OK");
+  assert.equal(shouldSuppressAcpReplayByPhase("qoder-acp", true), true);
+  assert.equal(shouldSuppressAcpReplayByPhase("qoder-acp", false), false);
+});
+
 test("shouldDropReplayPhaseAgentChunk drops messageId chunks before any live chunk", () => {
   const state = { suppressReplayByPhase: true, turnHadLiveAgentChunk: false };
   assert.equal(
@@ -2260,6 +2697,98 @@ test("acpSessionSetupToItems maps Kimi legacy modes and models", () => {
   assert.equal(items[1].options[1].currentValue, "kimi-k2");
 });
 
+test("compactAcpStdoutLine strips streaming tool_call_update rawInput", () => {
+  const task = "review this whole module ".repeat(80);
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: "sess-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call_stream",
+        rawInput: { params: { task } },
+        content: [{ type: "content", content: { type: "text", text: "H" } }]
+      }
+    }
+  });
+  const compacted = compactAcpStdoutLine(line);
+  assert.equal(compacted.includes(task), false);
+  assert.equal(compacted.includes("rawInput"), false);
+  const parsed = JSON.parse(compacted);
+  assert.equal(parsed.params.update.toolCallId, "call_stream");
+  assert.equal(parsed.params.update.content[0].content.text, "H");
+});
+
+test("compactAcpStdoutLine keeps initial tool_call rawInput", () => {
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-1",
+        rawInput: { command: "npm test" }
+      }
+    }
+  });
+  assert.equal(compactAcpStdoutLine(line), line);
+});
+
+test("shouldWriteAcpStdoutLog skips replayed session updates", () => {
+  const replayState = {
+    promptStarted: true,
+    replaySuppressionEnabled: true,
+    replayMessageIds: new Set(["tool-old-1"])
+  };
+  assert.equal(
+    shouldWriteAcpStdoutLog(
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          update: { sessionUpdate: "tool_call", toolCallId: "tool-old-1" }
+        }
+      },
+      replayState
+    ),
+    false
+  );
+  assert.equal(
+    shouldWriteAcpStdoutLog(
+      {
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          update: { sessionUpdate: "tool_call", toolCallId: "tool-new-1" }
+        }
+      },
+      replayState
+    ),
+    true
+  );
+  assert.equal(
+    shouldWriteAcpStdoutLog(
+      { jsonrpc: "2.0", id: 1, result: { sessionId: "sess" } },
+      replayState
+    ),
+    true
+  );
+});
+
+test("ACP runtime logs compacted stdout and skips replayed session updates", () => {
+  assert.match(acpRuntimeSource, /shouldWriteAcpStdoutLog/);
+  assert.match(acpRuntimeSource, /compactAcpStdoutLine/);
+  assert.match(
+    acpRuntimeSource,
+    /appendLog\(\s*logStream,\s*"stdout",\s*redactMcpLog\(compactAcpStdoutLine\(line\)\)/
+  );
+  assert.doesNotMatch(
+    acpRuntimeSource,
+    /const handleAcpLine = \(line: string\) => \{\s*appendLog\(logStream, "stdout", line\);/
+  );
+});
+
 test("acpSessionListToItems maps session/list titles", () => {
   const items = acpSessionListToItems("sess-1", {
     sessions: [
@@ -2280,4 +2809,260 @@ test("acpSessionListToItems maps session/list titles", () => {
       updatedAt: "2026-06-23T12:00:00.000Z"
     }
   ]);
+});
+
+test("isAcpMetadataSessionUpdate recognizes metadata vs live session updates", () => {
+  assert.equal(isAcpMetadataSessionUpdate("session_info_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("config_option_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("available_commands_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("usage_update"), true);
+  assert.equal(isAcpMetadataSessionUpdate("current_mode_update"), true);
+
+  assert.equal(isAcpMetadataSessionUpdate("agent_message_chunk"), false);
+  assert.equal(isAcpMetadataSessionUpdate("agent_thought_chunk"), false);
+  assert.equal(isAcpMetadataSessionUpdate("tool_call"), false);
+  assert.equal(isAcpMetadataSessionUpdate("tool_call_update"), false);
+  assert.equal(isAcpMetadataSessionUpdate("plan"), false);
+});
+
+test("ACP runtime keeps sessionWasResumed active across prompt until first live chunk or non-replayed tool call", () => {
+  assert.match(
+    acpRuntimeSource,
+    /Replay suppression remains active on resumed sessions until the first/
+  );
+  assert.doesNotMatch(
+    acpRuntimeSource,
+    /const runPromptOnSession = async \(\) => \{[\s\S]*?sessionWasResumed = false;[\s\S]*?buildSessionPromptRequest/
+  );
+  assert.match(
+    acpRuntimeSource,
+    /if\s*\(\s*sessionWasResumed\s*&&\s*!isAcpMetadataSessionUpdate\(updateType\)\s*\)\s*\{\s*turnHadLiveAgentChunk = true;\s*sessionWasResumed = false;\s*\}/
+  );
+});
+
+test("shouldSkipUserMessageChunk drops any user_message_chunk during replay suppression", () => {
+  assert.equal(
+    shouldSkipUserMessageChunk(
+      {
+        sessionUpdate: "user_message_chunk",
+        messageId: "historical-user-id",
+        content: { type: "text", text: "历史提问" }
+      },
+      {
+        userMessageId: "current-user-id",
+        promptText: "当前新问题",
+        replaySuppressionEnabled: true
+      }
+    ),
+    true
+  );
+});
+
+test("shouldEmitAcpUpdate suppresses completed tool calls and user messages on resumed sessions", () => {
+  // Replayed tool call arriving with status completed before any live tool execution
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "pruned-old-tool",
+        status: "completed",
+        title: "git status"
+      },
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true
+      }
+    ),
+    false
+  );
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "pruned-old-tool",
+        status: "completed"
+      },
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true
+      }
+    ),
+    false
+  );
+  // Live tool call (status pending or undefined) must pass
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "live-new-tool",
+        status: "pending",
+        title: "git status"
+      },
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true
+      }
+    ),
+    true
+  );
+  // Replayed user message chunk must be suppressed
+  assert.equal(
+    shouldEmitAcpUpdate(
+      {
+        sessionUpdate: "user_message_chunk",
+        messageId: "old-user-mid",
+        content: { type: "text", text: "历史问题" }
+      },
+      {
+        promptStarted: true,
+        replaySuppressionEnabled: true
+      }
+    ),
+    false
+  );
+});
+
+test("Qoder ACP resume sequence cleanly drops historical replay and emits live generation", () => {
+  const updates = [
+    // Historical completed tool call (pruned from stored history)
+    { sessionUpdate: "tool_call", toolCallId: "call-hist-1", status: "completed", title: "search" },
+    // Historical thought chunk with replay messageId
+    { sessionUpdate: "agent_thought_chunk", messageId: "hist-mid-thought", content: { type: "text", text: "thinking about step 1" } },
+    // Historical echoed user message
+    { sessionUpdate: "user_message_chunk", messageId: "hist-user-mid", content: { type: "text", text: "之前的问题" } },
+    // Historical agent message chunk with replay messageId
+    { sessionUpdate: "agent_message_chunk", messageId: "hist-mid-msg", content: { type: "text", text: "已完成第一步。" } },
+    // Available commands update (metadata)
+    { sessionUpdate: "available_commands_update", availableCommands: [{ name: "run" }] },
+    // Live thought chunk (no messageId)
+    { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Now handling new turn" } },
+    // Live message chunk (no messageId)
+    { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "这是当前轮次的live回答" } },
+    // Live tool call (status pending)
+    { sessionUpdate: "tool_call", toolCallId: "call-live-1", status: "pending", title: "test" }
+  ];
+
+  let sessionWasResumed = true;
+  let turnHadLiveAgentChunk = false;
+  const promptStarted = true;
+  const suppressReplayByPhase = () =>
+    shouldSuppressAcpReplayByPhase("qoder-acp", sessionWasResumed);
+
+  const emitted = [];
+
+  for (const update of updates) {
+    const updateType = update.sessionUpdate;
+    if (
+      shouldSkipUserMessageChunk(update, {
+        userMessageId: "current-user-mid",
+        promptText: "当前新问题",
+        replaySuppressionEnabled: sessionWasResumed
+      })
+    ) {
+      continue;
+    }
+
+    const isAgentChunkForPhase =
+      updateType === "agent_message_chunk" ||
+      updateType === "agent_thought_chunk";
+    const phaseSuppression = suppressReplayByPhase();
+
+    if (isAgentChunkForPhase && phaseSuppression) {
+      if (
+        shouldDropReplayPhaseAgentChunk(update, {
+          suppressReplayByPhase: phaseSuppression,
+          turnHadLiveAgentChunk
+        })
+      ) {
+        continue;
+      }
+      const hasMessageId =
+        typeof update.messageId === "string" && update.messageId.length > 0;
+      if (!hasMessageId) {
+        turnHadLiveAgentChunk = true;
+        sessionWasResumed = false;
+      }
+    }
+
+    if (
+      !shouldEmitAcpUpdate(update, {
+        promptStarted,
+        replaySuppressionEnabled: sessionWasResumed,
+        suppressReplayByPhase: phaseSuppression,
+        turnHadLiveAgentChunk
+      })
+    ) {
+      continue;
+    }
+
+    if (sessionWasResumed && !isAcpMetadataSessionUpdate(updateType)) {
+      turnHadLiveAgentChunk = true;
+      sessionWasResumed = false;
+    }
+
+    emitted.push(update);
+  }
+
+  // Only metadata and live items should be emitted
+  assert.deepEqual(
+    emitted.map((u) => u.sessionUpdate),
+    [
+      "available_commands_update",
+      "agent_thought_chunk",
+      "agent_message_chunk",
+      "tool_call"
+    ]
+  );
+  assert.equal(emitted[1].content.text, "Now handling new turn");
+  assert.equal(emitted[2].content.text, "这是当前轮次的live回答");
+  assert.equal(emitted[3].toolCallId, "call-live-1");
+});
+
+test("formatAcpRpcError extracts friendly quota recovery time for usageLimitExceeded", () => {
+  const err = {
+    code: -32603,
+    message: "Internal error",
+    data: {
+      message: "You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 11:11 PM.",
+      codexErrorInfo: "usageLimitExceeded"
+    }
+  };
+  const formatted = formatAcpRpcError(err);
+  assert.match(formatted, /账户额度已用尽，预计于 11:11 PM 恢复/);
+  assert.match(formatted, /Upgrade to Pro/);
+});
+
+test("formatAcpRpcError formats active writer conflict with user-facing instruction", () => {
+  const err = {
+    code: -32603,
+    message: "Internal error",
+    data: {
+      details: "thread 01a0ed62-47fd-7ea2-93f9-b71262ca4080 already has an active writer"
+    }
+  };
+  const formatted = formatAcpRpcError(err);
+  assert.match(formatted, /该会话（会话 ID: 01a0ed62-47fd-7ea2-93f9-b71262ca4080）正被另一个 Codex\/ChatGPT 实例占用/);
+  assert.match(formatted, /请关闭其他客户端后重试/);
+});
+
+test("formatAcpRpcError unpacks specific details instead of generic Internal error", () => {
+  const err = {
+    code: -32603,
+    message: "Internal error",
+    data: {
+      details: "custom subsystem failure: pipe broke"
+    }
+  };
+  assert.equal(formatAcpRpcError(err), "custom subsystem failure: pipe broke");
+});
+
+test("isMissingSavedSessionError does not abandon session on active writer conflict", () => {
+  const err = {
+    code: -32603,
+    message: "Internal error",
+    data: {
+      details: "thread 01a0ed62-47fd-7ea2-93f9-b71262ca4080 already has an active writer"
+    }
+  };
+  assert.equal(isMissingSavedSessionError(err), false);
 });

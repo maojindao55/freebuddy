@@ -15,7 +15,8 @@ import type { ConfigOptionItem } from "@/store/sessionMetaUtils";
 import {
   displayConfigOptionLabel,
   displayConfigOptionValue,
-  filterSessionConfigPickerOptions
+  filterSessionConfigPickerOptions,
+  findMainModelConfigOption
 } from "@/utils/sessionConfigOptions";
 
 type Props = {
@@ -39,10 +40,14 @@ type PanelPosition = {
 
 function categoryLabel(
   option: ConfigOptionItem,
-  t: (key: string) => string
+  t: (key: string, options?: Record<string, unknown>) => string
 ): string {
+  if (option.id === "provider" || option.category === "provider") {
+    return t("chat.provider", { defaultValue: option.name || "Provider" });
+  }
   switch (option.category) {
     case "model":
+      if (option.id !== "model" && option.name) return option.name;
       return t("chat.model");
     case "model_config":
       return t("chat.modelConfig");
@@ -55,7 +60,7 @@ function categoryLabel(
 }
 
 function computePanelPosition(trigger: HTMLElement): PanelPosition {
-  const width = 260;
+  const width = 280;
   const gap = 8;
   const rect = trigger.getBoundingClientRect();
   const left = Math.min(
@@ -65,14 +70,14 @@ function computePanelPosition(trigger: HTMLElement): PanelPosition {
 
   const spaceAbove = Math.max(120, rect.top - gap - 8);
   const spaceBelow = Math.max(120, window.innerHeight - rect.bottom - gap - 8);
-  const openUp = spaceAbove >= Math.min(spaceBelow, 220) || spaceAbove >= 180;
+  const openUp = spaceAbove >= Math.min(spaceBelow, 260) || spaceAbove >= 200;
 
   if (openUp) {
     return {
       bottom: window.innerHeight - rect.top + gap,
       left,
       width,
-      maxHeight: Math.min(360, spaceAbove)
+      maxHeight: Math.min(460, spaceAbove)
     };
   }
 
@@ -80,8 +85,91 @@ function computePanelPosition(trigger: HTMLElement): PanelPosition {
     top: rect.bottom + gap,
     left,
     width,
-    maxHeight: Math.min(360, spaceBelow)
+    maxHeight: Math.min(460, spaceBelow)
   };
+}
+
+function ConfigOptionRow({
+  option,
+  selected,
+  t,
+  onSelect
+}: {
+  option: ConfigOptionItem;
+  selected: string;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  onSelect: (valueId: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const values = option.values ?? [];
+  const showSearch = values.length > 8;
+
+  useEffect(() => {
+    setSearch("");
+  }, [option.values]);
+
+  const filteredValues = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return values;
+    return values.filter(
+      (v) =>
+        (v.name || "").toLowerCase().includes(query) ||
+        v.id.toLowerCase().includes(query)
+    );
+  }, [values, search]);
+
+  return (
+    <div className="session-config-picker-row">
+      <div className="session-config-picker-row-header">
+        <div className="session-config-picker-row-label">
+          {categoryLabel(option, t)}
+        </div>
+        {showSearch ? (
+          <input
+            type="text"
+            className="session-config-picker-search"
+            placeholder={t("chat.modelSearchPlaceholder", {
+              defaultValue: "Search…"
+            })}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        ) : null}
+      </div>
+      <div
+        className={`session-config-picker-choices${
+          showSearch ? " scrollable" : ""
+        }`}
+        role="listbox"
+        aria-label={categoryLabel(option, t)}
+      >
+        {filteredValues.map((value) => {
+          const active = value.id === selected;
+          return (
+            <button
+              key={value.id}
+              type="button"
+              role="option"
+              aria-selected={active}
+              className={`session-config-picker-choice${
+                active ? " active" : ""
+              }`}
+              onClick={() => onSelect(value.id)}
+            >
+              {value.name || value.id}
+            </button>
+          );
+        })}
+        {showSearch && filteredValues.length === 0 ? (
+          <div className="session-config-picker-empty">
+            {t("common.noMatches", { defaultValue: "No matches" })}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export function SessionConfigPicker({
@@ -108,10 +196,7 @@ export function SessionConfigPicker({
   );
 
   const modelOption = useMemo(
-    () =>
-      filtered.find((option) => option.category === "model") ??
-      filtered.find((option) => option.id === "model") ??
-      filtered[0],
+    () => findMainModelConfigOption(filtered),
     [filtered]
   );
 
@@ -167,7 +252,10 @@ export function SessionConfigPicker({
 
   const handleChange = (option: ConfigOptionItem, selected: string) => {
     const next: Record<string, string> = { ...(overrides ?? {}) };
-    if (selected === option.currentValue || selected === "") {
+    if (option.id === "provider" || option.category === "provider") {
+      delete next.model;
+    }
+    if (selected === "") {
       delete next[option.id];
     } else {
       next[option.id] = selected;
@@ -229,37 +317,13 @@ export function SessionConfigPicker({
                 const selected =
                   displayConfigOptionValue(option, overrides) ?? "";
                 return (
-                  <div
+                  <ConfigOptionRow
                     key={`${option.category ?? ""}:${option.id}:${index}`}
-                    className="session-config-picker-row"
-                  >
-                    <div className="session-config-picker-row-label">
-                      {categoryLabel(option, t)}
-                    </div>
-                    <div
-                      className="session-config-picker-choices"
-                      role="listbox"
-                      aria-label={categoryLabel(option, t)}
-                    >
-                      {(option.values ?? []).map((value) => {
-                        const active = value.id === selected;
-                        return (
-                          <button
-                            key={value.id}
-                            type="button"
-                            role="option"
-                            aria-selected={active}
-                            className={`session-config-picker-choice${
-                              active ? " active" : ""
-                            }`}
-                            onClick={() => handleChange(option, value.id)}
-                          >
-                            {value.name || value.id}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                    option={option}
+                    selected={selected}
+                    t={t}
+                    onSelect={(valueId) => handleChange(option, valueId)}
+                  />
                 );
               })}
             </div>,

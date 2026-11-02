@@ -1,0 +1,66 @@
+{
+  "horizontalOverflow": false,
+  "styles": [
+    {
+      "family": "\"Plus Jakarta Sans\", Outfit, -apple-system, \"system-ui\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", 微软雅黑, \"Noto Sans SC\", \"Source Han Sans SC\", \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif",
+      "lineHeight": "22px",
+      "selector": ".ctp-card-title",
+      "size": "15px",
+      "weight": "600"
+    },
+    {
+      "family": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", sans-serif",
+      "lineHeight": "22px",
+      "selector": ".ctp-activities li button",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "family": "-apple-system, \"system-ui\", \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", \"Noto Sans SC\", sans-serif",
+      "lineHeight": "22px",
+      "selector": ".ctp-reply p",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Plus Jakarta Sans\", Outfit, -apple-system, \"system-ui\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", 微软雅黑, \"Noto Sans SC\", \"Source Han Sans SC\", \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif",
+      "lineHeight": "22px",
+      "selector": ".ctp-toolbar h1",
+      "size": "16px",
+      "weight": "600"
+    },
+    {
+      "family": "Outfit, \"Plus Jakarta Sans\", Outfit, -apple-system, \"system-ui\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", 微软雅黑, \"Noto Sans SC\", \"Source Han Sans SC\", \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif",
+      "lineHeight": "22px",
+      "selector": ".ctp-brand strong",
+      "size": "18px",
+      "weight": "700"
+    },
+    {
+      "family": "\"Plus Jakarta Sans\", Outfit, -apple-system, \"system-ui\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", 微软雅黑, \"Noto Sans SC\", \"Source Han Sans SC\", \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif",
+      "lineHeight": "18px",
+      "selector": ".ctp-status",
+      "size": "12px",
+      "weight": "600"
+    },
+    {
+      "family": "\"Plus Jakarta Sans\", Outfit, -apple-system, \"system-ui\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", 微软雅黑, \"Noto Sans SC\", \"Source Han Sans SC\", \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif",
+      "lineHeight": "20px",
+      "selector": ".ctp-view-switch button",
+      "size": "13px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Plus Jakarta Sans\", Outfit, -apple-system, \"system-ui\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", 微软雅黑, \"Noto Sans SC\", \"Source Han Sans SC\", \"Segoe UI\", Roboto, \"Helvetica Neue\", sans-serif",
+      "lineHeight": "18px",
+      "selector": ".ctp-card-footer time",
+      "size": "12px",
+      "weight": "400"
+    }
+  ],
+  "viewport": {
+    "density": 2,
+    "height": 720,
+    "width": 1280
+  }
+}

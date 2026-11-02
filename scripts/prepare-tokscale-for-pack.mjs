@@ -2,6 +2,7 @@ import { Arch } from "builder-util";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureManagedNodePackage } from "./managed-node-package.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -14,6 +15,7 @@ function packagePart(platform, arch) {
 
 export default async function prepareTokscaleForPack(context) {
   const arch = Arch[context.arch];
+  await ensureManagedNodePackage({ platform: context.electronPlatformName, arch });
   if (arch !== "arm64" && arch !== "x64") {
     throw new Error(`Unsupported tokscale packaging architecture: ${arch}`);
   }

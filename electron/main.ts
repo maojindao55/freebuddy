@@ -1,15 +1,27 @@
 import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, protocol, screen, shell } from "electron";
 import type { WebContents } from "electron";
+import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { shellEnv } from "shell-env";
+import AdmZip from "adm-zip";
 
 import { registerCliIpc } from "./cli/ipc.js";
-import { logAllCliRuntimes, startCodexToolchainAutoUpdate } from "./cli/check.js";
+import { shutdownCliProcesses } from "./cli/runtime.js";
+import { stopSnapshotProcess } from "./cli/turnFileSnapshotProcess.js";
+import {
+  logAllCliRuntimes,
+  startCodexToolchainAutoUpdate,
+  startDshAcpAutoUpdate,
+  startRuntimeUpdateChecks
+} from "./cli/check.js";
 import { safeSendToWebContents } from "./cli/ipcSend.js";
-import { handleFreebuddyFileRequest } from "./freebuddyFileProtocol.js";
-import { handleBrowserRequest } from "./browserProtocol.js";
+import { getWindowFullscreenState, setWindowFullscreen } from "./shared/windowFullscreen.js";
+import { handleFreebuddyFileRequest, resolveAttachmentFilePath } from "./freebuddyFileProtocol.js";
+import { handleBrowserRequest, parseBrowserUrl } from "./browserProtocol.js";
 import { startPreviewServer } from "./previewServer.js";
 import { startWebUIServer } from "./webUIServer.js";
 import { setLocalInvokeWindowGetter, registerHandler } from "./invokeRegistry.js";
@@ -24,8 +36,20 @@ import {
 import { bindDelegationRunFinishedNotifier } from "./cli/delegationRuns.js";
 import { applyOwnerBackfill } from "./cli/ownerBackfill.js";
 import { initFileBridge } from "./fileBridge.js";
-import { getDb } from "./cli/db.js";
+import {
+  initDocStudioBridge,
+  openDocStudioWindow,
+  isDocStudioOpenableFile,
+  isDocStudioWindowSender
+} from "./docStudioBridge.js";
+import {
+  registerDocStudioMainWindow,
+  unregisterDocStudioMainWindow,
+  addDocStudioEmbeddedConversation
+} from "./docStudioWindowRegistry.js";
+import { getDb, getDataDir } from "./cli/db.js";
 import { getSetting, setSetting } from "./cli/settings.js";
+import { migrateLegacyDocStudioConversations } from "./officeEngineToolService.js";
 import {
   handleGetGameState,
   handlePlayerMove,
@@ -40,7 +64,7 @@ import {
   getConfiguredBindMode,
   getConfiguredPort
 } from "./cli/remoteControl.js";
-import { cleanupOrphanManagedAttachments } from "./cli/attachments.js";
+import { cleanupOrphanManagedAttachments, prepareAttachmentFiles } from "./cli/attachments.js";
 import { seedBuiltinWorkflowTeams } from "./cli/workflowTeams.js";
 import { seedBuiltinDelegationTeams } from "./cli/delegationTeams.js";
 import { seedBuiltinSkills } from "./cli/skills.js";
@@ -51,6 +75,13 @@ import { initAutoUpdater, registerUpdaterIpc } from "./updater.js";
 import { initializeScheduledTaskScheduler } from "./cli/scheduledTasks.js";
 import { initializeTelemetry, shutdownTelemetry } from "./telemetry.js";
 import { getFreshWindowsEnvironment } from "./cli/windowsEnv.js";
+import { ensureManagedNodeRuntime } from "./cli/managedNodeRuntime.js";
+import {
+  applyWindowsContextMenu,
+  classifyShellOpenPaths,
+  collectShellOpenPaths
+} from "./cli/shellOpen.js";
+import { applyWindowsExplorerCommandPackage } from "./cli/windowsExplorerCommand.js";
 import { initializeAgentUsageReconciler } from "./cli/usageReconciler.js";
 import { initDebugLog, logMain } from "./debugLog.js";
 import {
@@ -97,12 +128,19 @@ function readOnlyRemoteDevelopmentUserDataPath(): string {
   return userDataPath;
 }
 
+const isPackagedDev = app.isPackaged && (process.execPath.includes("FreeBuddy Dev") || process.env.FB_ENV === "dev");
+const isDevInstance = !app.isPackaged || isPackagedDev;
+
 if (!app.isPackaged) {
   app.setName(readOnlyRemoteDevelopment ? "FreeBuddy Read-only Remote Dev" : "FreeBuddy Dev");
   app.setPath("userData", readOnlyRemoteDevelopment
     ? readOnlyRemoteDevelopmentUserDataPath()
     : path.join(app.getPath("appData"), "freebuddy-dev"));
   app.setAppUserModelId(readOnlyRemoteDevelopment ? "dev.freebuddy.app.readonly-remote" : "dev.freebuddy.app.dev");
+} else if (isPackagedDev) {
+  app.setName("FreeBuddy Dev");
+  app.setPath("userData", path.join(app.getPath("appData"), "freebuddy-dev"));
+  app.setAppUserModelId("dev.freebuddy.app.dev");
 } else {
   app.setName(APP_NAME);
   app.setAppUserModelId("dev.freebuddy.app");
@@ -110,19 +148,220 @@ if (!app.isPackaged) {
 if (process.platform === "darwin") {
   app.setActivationPolicy("regular");
 }
+if (process.platform === "win32") {
+  // Prevent GPU process crashes (STATUS_BREAKPOINT 0x80000003) on Windows machines
+  // with multi-GPU setups or third-party virtual display drivers (e.g. ToDesk, Sunlogin, Parsec).
+  app.commandLine.appendSwitch("disable-gpu-sandbox");
+}
+if (process.env.FB_DISABLE_GPU === "1") {
+  app.disableHardwareAcceleration();
+}
 process.env.FB_APP_VERSION = APP_VERSION;
 app.setAboutPanelOptions({
-  applicationName: app.isPackaged ? APP_NAME : `${APP_NAME} (Dev)`,
+  applicationName: !isDevInstance ? APP_NAME : `${APP_NAME} (Dev)`,
   applicationVersion: APP_VERSION,
   version: APP_VERSION
 });
 crashReporter.start({
-  productName: app.isPackaged ? APP_NAME : `${APP_NAME} Dev`,
+  productName: !isDevInstance ? APP_NAME : `${APP_NAME} Dev`,
   uploadToServer: false,
   compress: false
 });
 
-const PROTOCOL = "freebuddy";
+const PROTOCOL = isDevInstance ? "freebuddy-dev" : "freebuddy";
+
+let pendingExternalShare: {
+  id: string;
+  timestamp: number;
+  instruction?: string;
+  text?: string;
+  files?: Array<{ name: string; path: string; size?: number; managed?: boolean }>;
+} | null = null;
+
+const MAX_SHELL_OPEN_FILES = 10;
+
+type ShellOpenEvent = {
+  cwd?: string;
+  files: Array<{
+    name: string;
+    path: string;
+    size?: number;
+    mimeType?: string;
+    managed?: boolean;
+  }>;
+};
+
+let pendingShellOpen: ShellOpenEvent | null = null;
+const queuedShellOpenPaths: string[] = [];
+let shellOpenListenerReady = false;
+let shellOpenFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function emitShellOpen(event: ShellOpenEvent) {
+  if (!event.cwd && event.files.length === 0) return;
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isLoading()
+  ) {
+    safeSendToWebContents(mainWindow.webContents, "freebuddy://shell-open", event);
+    revealMainWindow();
+    return;
+  }
+  pendingShellOpen = event;
+}
+
+function handleShellOpenPaths(rawPaths: string[]) {
+  if (rawPaths.length === 0) return;
+  const target = classifyShellOpenPaths(rawPaths);
+  const prepared = prepareAttachmentFiles(
+    target.files.slice(0, MAX_SHELL_OPEN_FILES).map((filePath) => ({
+      kind: "path" as const,
+      path: filePath
+    }))
+  );
+  emitShellOpen({
+    ...(target.cwd ? { cwd: target.cwd } : {}),
+    files: prepared.candidates.map((file) => ({
+      name: file.name,
+      path: file.path,
+      size: file.size,
+      mimeType: file.mimeType,
+      ...(file.managed ? { managed: true } : {})
+    }))
+  });
+}
+
+function enqueueShellOpenPaths(rawPaths: string[]) {
+  if (rawPaths.length === 0) return;
+  queuedShellOpenPaths.push(...rawPaths);
+  scheduleShellOpenFlush();
+}
+
+function scheduleShellOpenFlush() {
+  if (!shellOpenListenerReady) return;
+  if (shellOpenFlushTimer) clearTimeout(shellOpenFlushTimer);
+  shellOpenFlushTimer = setTimeout(() => {
+    shellOpenFlushTimer = null;
+    flushQueuedShellOpen();
+  }, 75);
+}
+
+function flushQueuedShellOpen() {
+  if (queuedShellOpenPaths.length === 0) return;
+  const paths = queuedShellOpenPaths.splice(0, queuedShellOpenPaths.length);
+  handleShellOpenPaths(paths);
+}
+
+function collectLaunchShellOpenPaths(argv: readonly string[]): string[] {
+  return collectShellOpenPaths(argv, {
+    execPath: process.execPath,
+    appPath: app.isPackaged ? undefined : app.getAppPath()
+  });
+}
+
+function handleExternalShare(shareId: string | null, payloadPath: string | null) {
+  try {
+    let jsonFile = payloadPath && fs.existsSync(payloadPath) ? payloadPath : null;
+    if (!jsonFile && shareId) {
+      const possibleDirs = [
+        path.join(os.homedir(), "Library", "Containers", "dev.freebuddy.app.dev.share", "Data", "Library", "Application Support", "FreeBuddy", "share-inbox"),
+        path.join(os.homedir(), "Library", "Containers", "dev.freebuddy.app.share", "Data", "Library", "Application Support", "FreeBuddy", "share-inbox"),
+        path.join(os.homedir(), "Library", "Application Support", "freebuddy-dev", "share-inbox"),
+        path.join(os.homedir(), "Library", "Application Support", "FreeBuddy", "share-inbox"),
+        path.join(app.getPath("userData"), "share-inbox")
+      ];
+      for (const dir of possibleDirs) {
+        const candidate = path.join(dir, `${shareId}.json`);
+        if (fs.existsSync(candidate)) {
+          jsonFile = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!jsonFile) return;
+
+    const raw = fs.readFileSync(jsonFile, "utf-8");
+    const payload = JSON.parse(raw);
+    try {
+      fs.unlinkSync(jsonFile);
+    } catch {}
+
+    const managedDir = path.join(app.getPath("userData"), "managed-attachments");
+    fs.mkdirSync(managedDir, { recursive: true });
+
+    let extractedChatText = "";
+    const importedFiles: Array<{ name: string; path: string; size?: number; managed: boolean }> = [];
+    if (Array.isArray(payload.files)) {
+      for (const file of payload.files) {
+        if (!file?.path || !fs.existsSync(file.path)) continue;
+        try {
+          const ext = path.extname(file.name || file.path) || "";
+          const targetName = `${crypto.randomUUID()}${ext}`;
+          const targetPath = path.join(managedDir, targetName);
+          fs.copyFileSync(file.path, targetPath);
+          try {
+            fs.unlinkSync(file.path);
+          } catch {}
+          const stat = fs.statSync(targetPath);
+          importedFiles.push({
+            name: file.name || path.basename(file.path),
+            path: targetPath,
+            size: stat.size,
+            managed: true
+          });
+
+          if (ext.toLowerCase() === ".zip") {
+            try {
+              const zip = new AdmZip(targetPath);
+              const entries = zip.getEntries();
+              for (const entry of entries) {
+                if (!entry.isDirectory && (entry.entryName.endsWith(".txt") || entry.entryName.includes("聊天记录"))) {
+                  const text = zip.readAsText(entry);
+                  if (text && text.trim()) {
+                    extractedChatText = text.trim();
+                    break;
+                  }
+                }
+              }
+            } catch {
+              // ignore non-chat zip
+            }
+          }
+        } catch (err) {
+          console.warn("[FreeBuddy] Failed to import shared file:", err);
+        }
+      }
+    }
+
+    let shareText = typeof payload.text === "string" ? payload.text : "";
+    if (extractedChatText) {
+      if (shareText.trim()) {
+        shareText = `${shareText.trim()}\n\n${extractedChatText}`;
+      } else {
+        shareText = extractedChatText;
+      }
+    }
+
+    const shareEvent = {
+      id: payload.id || shareId || crypto.randomUUID(),
+      timestamp: payload.timestamp || Date.now(),
+      instruction: typeof payload.instruction === "string" ? payload.instruction : "",
+      text: shareText,
+      files: importedFiles
+    };
+
+    revealMainWindow();
+
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+      safeSendToWebContents(mainWindow.webContents, "freebuddy://external-share", shareEvent);
+    } else {
+      pendingExternalShare = shareEvent;
+    }
+  } catch (err) {
+    console.error("[FreeBuddy] Failed to handle external share:", err);
+  }
+}
 
 function handleSchemeUrl(raw: string) {
   try {
@@ -133,14 +372,34 @@ function handleSchemeUrl(raw: string) {
         action: "preview",
         params: {}
       });
+      return;
+    }
+    if (action === "share") {
+      const shareId = parsed.searchParams.get("id");
+      const payloadPath = parsed.searchParams.get("path");
+      handleExternalShare(shareId, payloadPath);
+      return;
     }
   } catch {
     // ignore malformed scheme urls
   }
 }
 
-if (app.isPackaged && !app.isDefaultProtocolClient(PROTOCOL)) {
-  app.setAsDefaultProtocolClient(PROTOCOL);
+if (app.isPackaged) {
+  if (!app.isDefaultProtocolClient(PROTOCOL)) {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+  if (!isDevInstance && !app.isDefaultProtocolClient("freebuddy")) {
+    app.setAsDefaultProtocolClient("freebuddy");
+  }
+  if (isDevInstance && !app.isDefaultProtocolClient("freebuddy-dev")) {
+    app.setAsDefaultProtocolClient("freebuddy-dev");
+  }
+} else {
+  const devArgs = process.argv.slice(1);
+  if (!app.isDefaultProtocolClient("freebuddy-dev", process.execPath, devArgs)) {
+    app.setAsDefaultProtocolClient("freebuddy-dev", process.execPath, devArgs);
+  }
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -152,11 +411,66 @@ app.on("open-url", (event, url) => {
   handleSchemeUrl(url);
 });
 
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  if (isDocStudioOpenableFile(filePath)) {
+    openDocStudioWindow(filePath);
+    return;
+  }
+  enqueueShellOpenPaths([filePath]);
+});
+
 app.on("second-instance", (_event, argv) => {
-  const url = argv.find((arg) => arg.startsWith(`${PROTOCOL}://`));
+  const url = argv.find((arg) => arg.startsWith("freebuddy://") || arg.startsWith("freebuddy-dev://"));
   if (url) handleSchemeUrl(url);
+  const launchPaths = collectLaunchShellOpenPaths(argv);
+  const docPaths = launchPaths.filter(isDocStudioOpenableFile);
+  const otherPaths = launchPaths.filter((p) => !isDocStudioOpenableFile(p));
+  for (const doc of docPaths) {
+    openDocStudioWindow(doc);
+  }
+  if (otherPaths.length > 0) {
+    enqueueShellOpenPaths(otherPaths);
+  }
   revealMainWindow();
 });
+
+function ensureMacShareExtensionRegistered() {
+  if (process.platform !== "darwin") return;
+
+  try {
+    const pluginsDir = path.join(process.resourcesPath, "..", "PlugIns");
+    const appexPath = path.join(pluginsDir, "FreeBuddyShare.appex");
+    if (!fs.existsSync(appexPath)) return;
+
+    const bundleId = isDevInstance
+      ? "dev.freebuddy.app.dev.share"
+      : "dev.freebuddy.app.share";
+
+    execFile("pluginkit", ["-a", appexPath], (err) => {
+      if (err) {
+        logMain().warn("share", "pluginkit -a failed", { error: String(err) });
+        return;
+      }
+      execFile("pluginkit", ["-e", "use", "-i", bundleId], (enableErr) => {
+        if (enableErr) {
+          logMain().warn("share", "pluginkit -e use failed", { error: String(enableErr) });
+        } else {
+          logMain().info("share", "Share extension registered and enabled", { bundleId, appexPath });
+        }
+      });
+    });
+
+    const lsregister =
+      "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+    const appBundlePath = path.resolve(process.resourcesPath, "..", "..");
+    if (fs.existsSync(lsregister) && fs.existsSync(appBundlePath) && appBundlePath.endsWith(".app")) {
+      execFile(lsregister, ["-f", appBundlePath], () => {});
+    }
+  } catch (err) {
+    logMain().warn("share", "Failed to ensure share extension registration", { error: String(err) });
+  }
+}
 
 function resolveAppIconPath() {
   return app.isPackaged
@@ -357,8 +671,8 @@ function recoverMainRenderer(win: BrowserWindow, reason: string): void {
   }, 250);
 }
 
-const BUTLER_CHAT_WIDTH = 360;
-const BUTLER_CHAT_HEIGHT = 420;
+const BUTLER_CHAT_WIDTH = 380;
+const BUTLER_CHAT_HEIGHT = 540;
 const BUTLER_PET_SIZE = 108;
 const BUTLER_WINDOW_GAP = 6;
 const BUTLER_VISIBLE_SETTING = "butlerbuddy.visible";
@@ -388,7 +702,7 @@ let registeredButlerMainWindowShortcut: string | null = null;
 let butlerMainWindowShortcutError: "shortcutUnavailable" | undefined;
 
 function readButlerBuddyPreferences(): ButlerBuddyPreferences {
-  const visible = getSetting(BUTLER_VISIBLE_SETTING) !== "false";
+  const visible = getSetting(BUTLER_VISIBLE_SETTING) === "true";
   const shortcutEnabled =
     getSetting(BUTLER_SHORTCUT_ENABLED_SETTING) !== "false";
   const shortcut =
@@ -689,16 +1003,17 @@ function syncButlerChatPosition() {
   const chat = butlerChatWindow;
   if (!pet || pet.isDestroyed() || !chat || chat.isDestroyed()) return;
 
+  const chatBounds = chat.getBounds();
   const petBounds = pet.getBounds();
   const workArea = screen.getDisplayMatching(petBounds).workArea;
-  let x = petBounds.x - BUTLER_CHAT_WIDTH - BUTLER_WINDOW_GAP;
+  let x = petBounds.x - chatBounds.width - BUTLER_WINDOW_GAP;
   if (x < workArea.x + 8) {
     x = petBounds.x + petBounds.width + BUTLER_WINDOW_GAP;
   }
-  const idealY = petBounds.y - Math.round((BUTLER_CHAT_HEIGHT - petBounds.height) / 2);
+  const idealY = petBounds.y - Math.round((chatBounds.height - petBounds.height) / 2);
   const y = Math.max(
     workArea.y + 8,
-    Math.min(idealY, workArea.y + workArea.height - BUTLER_CHAT_HEIGHT - 8)
+    Math.min(idealY, workArea.y + workArea.height - chatBounds.height - 8)
   );
   chat.setPosition(Math.round(x), Math.round(y), false);
 }
@@ -974,11 +1289,13 @@ function ensureButlerChatWindow(): BrowserWindow {
   const chat = new BrowserWindow({
     width: BUTLER_CHAT_WIDTH,
     height: BUTLER_CHAT_HEIGHT,
+    minWidth: 320,
+    minHeight: 400,
     type: process.platform === "darwin" ? "panel" : undefined,
     show: false,
     frame: false,
     transparent: true,
-    resizable: false,
+    resizable: true,
     maximizable: false,
     minimizable: false,
     fullscreenable: false,
@@ -1243,6 +1560,28 @@ function registerButlerBuddyWindowIpc() {
       conversationId
     );
   });
+  registerHandler(
+    "docStudio:openConversationInMain",
+    (event, conversationId: unknown, options?: { embed?: boolean }) => {
+      if (!isDocStudioWindowSender(event.sender)) return false;
+      if (typeof conversationId !== "string" || !conversationId) return false;
+      revealMainWindow();
+      const win = mainWindow;
+      if (!win || win.isDestroyed()) return false;
+      if (options?.embed) {
+        // Record the dock in the main process before the renderer reacts, so
+        // every open-conversation route (including the store's own
+        // doc-studio redirect) already sees the conversation as embedded.
+        addDocStudioEmbeddedConversation(conversationId);
+      }
+      safeSendToWebContents(
+        win.webContents,
+        "window:open-conversation",
+        options?.embed ? { conversationId, embed: true } : conversationId
+      );
+      return true;
+    }
+  );
   ipcMain.on("freebuddy:uiPresence", (event, payload) => {
     const win = mainWindow;
     if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
@@ -1398,11 +1737,61 @@ function windowChromeOptions() {
 
 function revealMainWindow() {
   const win = mainWindow;
-  if (!win || win.isDestroyed()) return;
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
   if (win.isMinimized()) win.restore();
   if (!win.isVisible()) win.show();
   win.moveTop();
   win.focus();
+  app.focus({ steal: true });
+  try {
+    win.setAlwaysOnTop(true);
+    win.setAlwaysOnTop(false);
+  } catch {}
+}
+
+let appServicesShutdownPromise: Promise<void> | null = null;
+let readOnlyRemoteDevelopmentService: ReturnType<typeof startReadOnlyRemoteDevelopment>;
+
+function shutdownAppServices(): Promise<void> {
+  if (!appServicesShutdownPromise) {
+    appServicesShutdownPromise = (async () => {
+      readOnlyRemoteDevelopmentService?.disable();
+      readOnlyRemoteDevelopmentService = undefined;
+      if (!telemetryShutdownStarted) {
+        telemetryShutdownStarted = true;
+        await shutdownTelemetry().catch(() => {});
+      }
+      try {
+        await shutdownCliProcesses();
+      } catch {
+        /* agent runtime may not have started */
+      } finally {
+        stopSnapshotProcess();
+      }
+      try {
+        const { shutdownRuntimeProcesses } = await import("./runtime/runtimeIpc.js");
+        await shutdownRuntimeProcesses();
+      } catch {
+        /* runtime manager may not have started */
+      }
+      try {
+        const { shutdownMcpOAuth } = await import("./cli/mcpOAuth.js");
+        await shutdownMcpOAuth();
+      } catch {
+        /* OAuth may not have been initialized. */
+      }
+      try {
+        const { stopOfficeEngine } = await import("./officeEngine.js");
+        stopOfficeEngine();
+      } catch {
+        /* office engine may not have started */
+      }
+    })();
+  }
+  return appServicesShutdownPromise;
 }
 
 function quitApp() {
@@ -1481,6 +1870,13 @@ function createWindow() {
     closeButlerBuddyWindows();
   });
 
+  // Allow-list the main window's own webContents for DocStudio IPC (the
+  // embedded doc viewer). Sibling WebContentsViews stay excluded.
+  const mainDocStudioWebContentsId = mainWindow.webContents.id;
+  registerDocStudioMainWindow(mainDocStudioWebContentsId);
+  mainWindow.webContents.once("destroyed", () =>
+    unregisterDocStudioMainWindow(mainDocStudioWebContentsId));
+
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     logMain().error("crash", "render process gone", {
       reason: details.reason,
@@ -1496,6 +1892,49 @@ function createWindow() {
   setupContextMenu(mainWindow, isDev);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("freebuddy-file://")) {
+      try {
+        const filePath = resolveAttachmentFilePath(url);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          safeSendToWebContents(mainWindow.webContents, "window:bridge", {
+            action: "navigate",
+            params: { to: filePath }
+          });
+        }
+      } catch {
+        // ignore invalid attachment url
+      }
+      return { action: "deny" };
+    }
+    if (url.startsWith("file://")) {
+      try {
+        const filePath = fileURLToPath(url);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          safeSendToWebContents(mainWindow.webContents, "window:bridge", {
+            action: "navigate",
+            params: { to: filePath }
+          });
+        }
+      } catch {
+        // ignore invalid file url
+      }
+      return { action: "deny" };
+    }
+    if (url.startsWith("freebuddy-browser://")) {
+      try {
+        const { root, rel } = parseBrowserUrl(url);
+        const filePath = path.resolve(root, rel);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          safeSendToWebContents(mainWindow.webContents, "window:bridge", {
+            action: "navigate",
+            params: { to: filePath }
+          });
+        }
+      } catch {
+        // ignore invalid browser url
+      }
+      return { action: "deny" };
+    }
     void shell.openExternal(url);
     return { action: "deny" };
   });
@@ -1531,7 +1970,22 @@ function createWindow() {
       !input.shift &&
       mainWindow?.isFullScreen()
     ) {
-      mainWindow.setFullScreen(false);
+      // The board handles Escape in the renderer so an open menu or dialog
+      // closes first. Other views keep the existing native shortcut.
+      if (getMainWindowPresence()?.workspaceView !== "conversationBoard") {
+        void setWindowFullscreen(mainWindow, false);
+      }
+    }
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (pendingExternalShare && mainWindow && !mainWindow.isDestroyed()) {
+      safeSendToWebContents(mainWindow.webContents, "freebuddy://external-share", pendingExternalShare);
+      pendingExternalShare = null;
+    }
+    if (pendingShellOpen && mainWindow && !mainWindow.isDestroyed()) {
+      safeSendToWebContents(mainWindow.webContents, "freebuddy://shell-open", pendingShellOpen);
+      pendingShellOpen = null;
     }
   });
 
@@ -1560,6 +2014,16 @@ type SaveReceiptImagePayload = {
 };
 
 function registerTaskNotificationIpc(): void {
+  ipcMain.handle("window:get-fullscreen", (event) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return false;
+    return getWindowFullscreenState(win);
+  });
+  ipcMain.handle("window:set-fullscreen", (event, fullscreen: unknown) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents || typeof fullscreen !== "boolean") return false;
+    return setWindowFullscreen(win, fullscreen);
+  });
   ipcMain.handle(
     "window:save-image",
     async (event, payload: SaveReceiptImagePayload) => {
@@ -1652,6 +2116,16 @@ function registerTaskNotificationIpc(): void {
   });
 }
 
+app.on("child-process-gone", (_event, details) => {
+  logMain().error("crash", "child process gone", {
+    type: details.type,
+    reason: details.reason,
+    exitCode: details.exitCode,
+    name: details.name,
+    serviceName: details.serviceName
+  });
+});
+
 app.whenReady().then(async () => {
   initDebugLog();
   scheduleButlerBuddySleepBoundary();
@@ -1662,6 +2136,10 @@ app.whenReady().then(async () => {
     arch: process.arch
   });
   await injectShellPath();
+  void ensureManagedNodeRuntime(getDataDir()).catch(error => {
+    logMain().error("managed-node", "Bundled Node preparation failed; tool operations will retry", { error: String(error) });
+  });
+  ensureMacShareExtensionRegistered();
   registerLocalFileProtocol();
   registerBrowserProtocol();
   startPreviewServer(() =>
@@ -1670,10 +2148,43 @@ app.whenReady().then(async () => {
   initFileBridge(() =>
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
   );
+  initDocStudioBridge();
   getDb();
   // D4's only startup path is an explicit local-development opt-in. It is
   // independent from the legacy LAN WebUI switch and remains disabled by default.
-  const readOnlyRemoteDevelopment = startReadOnlyRemoteDevelopment({ isPackaged: app.isPackaged });
+  readOnlyRemoteDevelopmentService = startReadOnlyRemoteDevelopment({ isPackaged: app.isPackaged });
+  migrateLegacyDocStudioConversations();
+  const initialLaunchPaths = collectLaunchShellOpenPaths(process.argv);
+  const initialDocPaths = initialLaunchPaths.filter(isDocStudioOpenableFile);
+  const initialOtherPaths = initialLaunchPaths.filter((p) => !isDocStudioOpenableFile(p));
+  for (const doc of initialDocPaths) {
+    openDocStudioWindow(doc);
+  }
+  enqueueShellOpenPaths(initialOtherPaths);
+  shellOpenListenerReady = true;
+  scheduleShellOpenFlush();
+  void applyWindowsContextMenu({
+    exePath: process.execPath,
+    appPath: app.isPackaged ? undefined : app.getAppPath(),
+    packaged: app.isPackaged,
+    locale: app.getLocale(),
+    productName: app.getName(),
+    isDevInstance
+  }).catch((err) => {
+    logMain().warn("shell-open", "failed to register Explorer context menu", {
+      error: String(err)
+    });
+  });
+  void applyWindowsExplorerCommandPackage({
+    packaged: app.isPackaged,
+    installDir: path.dirname(process.execPath),
+    stampPath: path.join(app.getPath("userData"), "windows-explorer-command.json"),
+    isDevInstance
+  }).catch((err) => {
+    logMain().warn("shell-open", "failed to register Win11 Explorer command", {
+      error: String(err)
+    });
+  });
   logAllCliRuntimes();
   const existingOwner = getOwnerUser();
   if (existingOwner) {
@@ -1743,17 +2254,7 @@ app.whenReady().then(async () => {
       trayController?.destroy();
       trayController = null;
       closeButlerBuddyWindows();
-      if (!telemetryShutdownStarted) {
-        telemetryShutdownStarted = true;
-        await shutdownTelemetry().catch(() => {});
-      }
-      try {
-        readOnlyRemoteDevelopment?.disable();
-        const { shutdownRuntimeProcesses } = await import("./runtime/runtimeIpc.js");
-        await shutdownRuntimeProcesses();
-      } catch {
-        /* runtime manager may not have started */
-      }
+      await shutdownAppServices();
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
           win.removeAllListeners("close");
@@ -1808,6 +2309,11 @@ app.whenReady().then(async () => {
     mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined
   );
   void startCodexToolchainAutoUpdate();
+  void startDshAcpAutoUpdate();
+  void startRuntimeUpdateChecks();
+  const runtimeUpdateTimer = setInterval(() => { void startRuntimeUpdateChecks(); }, 24 * 60 * 60 * 1000);
+  runtimeUpdateTimer.unref();
+  app.once("will-quit", () => clearInterval(runtimeUpdateTimer));
   initAutoUpdater();
 
   app.on("activate", () => {
@@ -1835,8 +2341,7 @@ app.on("before-quit", (event) => {
   butlerBuddyStateCoordinator.dispose();
   trayController?.destroy();
   trayController = null;
-  if (telemetryShutdownStarted) return;
-  telemetryShutdownStarted = true;
+  if (appServicesShutdownPromise) return;
   event.preventDefault();
-  void shutdownTelemetry().finally(() => app.quit());
+  void shutdownAppServices().finally(() => app.quit());
 });

@@ -18,6 +18,69 @@ export type ToolKind =
 
 export type ToolCallStatus = "pending" | "running" | "completed" | "failed";
 
+/** Matched output tokens and monotonic streaming time for this execution. */
+export interface GenerationMeasurement {
+  outputTokens: number;
+  durationMs: number;
+  complete: boolean;
+}
+
+/** Host observations for one execution, independent of the native agent session. */
+export interface AgentRunMetrics {
+  runId: string;
+  status: "preparing" | "running" | "done" | "failed" | "cancelled" | "timed-out" | "yielded";
+  elapsedMs: number;
+  promptSubmitted: boolean;
+  /** Distinguishes first-output observations from historical body-only metrics. */
+  firstOutputTracked?: boolean;
+  firstOutputLatencyMs?: number;
+  firstOutputKind?: "text" | "thinking" | "tool-call";
+  firstOutputUnavailable?: boolean;
+  firstTextLatencyMs?: number;
+  firstTextUnavailable?: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+  reportedTtftMs?: number;
+  tokensPerSecond?: number;
+  speedSource?: "measured" | "observed" | "call-average" | "reported";
+  automaticSpeed?: boolean;
+  generationDurationMs?: number;
+  modelCallDurationMs?: number;
+}
+
+export interface FileEditContent {
+  oldText?: string;
+  newText?: string;
+  patch?: string;
+  action?: "create" | "update" | "delete";
+  partial?: boolean;
+  unchanged?: boolean;
+  source?: "snapshot" | "records";
+  overlapping?: boolean;
+  notice?: "binary" | "large" | "unavailable";
+}
+
+export interface FileEditBlobChunk {
+  data: string;
+  nextOffset: number;
+  totalBytes: number;
+  hasMore: boolean;
+  notice?: "large";
+}
+
+export interface FileEditPage {
+  edits: Extract<CliStreamItem, { kind: "file-edit" }>[];
+  /** Paths covered by the file index, including files awaiting calculation. */
+  coveredPaths?: string[];
+  capture?: {
+    state: "ready" | "incomplete" | "finalizing";
+    complete: boolean;
+    overlapping: boolean;
+  };
+  nextCursor: number;
+  hasMore: boolean;
+}
+
 export type CliStreamItem =
   | {
       kind: "text";
@@ -57,9 +120,23 @@ export type CliStreamItem =
       kind: "file-edit";
       path: string;
       action: "create" | "update" | "delete";
+      status?: ToolCallStatus;
       patch?: string;
       oldText?: string;
       newText?: string;
+      blobKey?: string;
+      /** Version of a file's turn records; content is computed only when opened. */
+      turnKey?: string;
+      source?: "snapshot" | "records";
+      overlapping?: boolean;
+      notice?: "binary" | "large" | "unavailable";
+      unchanged?: boolean;
+      /** Line counts remain available when full content is loaded on demand. */
+      counts?: { added: number; removed: number };
+      /** Content is a snippet rather than a complete file. */
+      partial?: boolean;
+      /** Content was shortened while saving or sanitizing the stream. */
+      truncated?: boolean;
     }
   | {
       kind: "terminal-embed";
@@ -102,6 +179,10 @@ export type CliStreamItem =
     }
   | {
       kind: "usage";
+      runId?: string;
+      usageScope?: "turn" | "session" | "unknown";
+      runMetrics?: AgentRunMetrics;
+      generationMeasurement?: GenerationMeasurement;
       inputTokens?: number;
       outputTokens?: number;
       totalCost?: number;
@@ -117,6 +198,7 @@ export type CliStreamItem =
         turns?: number;
         steps?: number;
         llmDurationMs?: number;
+        modelCallDurationMs?: number;
         avgTtftMs?: number;
         tokensPerSecond?: number;
         cacheHitRate?: number;
@@ -158,4 +240,5 @@ export type ToolOutputItem = Extract<
 export interface ParseContext {
   sessionId?: string;
   diagnosticLogs?: string[];
+  streamMessageId?: string;
 }

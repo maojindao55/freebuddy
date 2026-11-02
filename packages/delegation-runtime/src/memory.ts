@@ -102,13 +102,22 @@ export function createMemoryDelegationRepository(): DelegationRunRepository & {
         if (!allowed) return false;
       }
       const terminal = isTerminalDelegationStatus(to);
+      const transitionedAt = nowIso();
+      const reopeningTerminal =
+        options?.allowReopen === true &&
+        to === "running" &&
+        isTerminalDelegationStatus(current.status);
       events.set(eventId, {
         ...current,
         status: to,
         resultSummary: resultSummary ?? current.resultSummary,
         startedAt:
-          to === "running" ? (current.startedAt ?? nowIso()) : current.startedAt,
-        endedAt: terminal ? nowIso() : current.endedAt
+          to === "running"
+            ? reopeningTerminal
+              ? transitionedAt
+              : (current.startedAt ?? transitionedAt)
+            : current.startedAt,
+        endedAt: terminal ? transitionedAt : to === "running" ? null : current.endedAt
       });
       return true;
     },

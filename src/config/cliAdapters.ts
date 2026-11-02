@@ -14,6 +14,10 @@ export type CLIAdapterId =
   | "grok-acp"
   | "agy-acp"
   | "dsh-acp"
+  | "zcode-acp"
+  | "cline-acp"
+  | "devin-acp"
+  | "pi-acp"
   | (string & {});
 
 export type { CLIStreamMode } from "@freebuddy/protocol/cli";
@@ -172,6 +176,64 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "npm install -g deepseek-harness-acp",
     docsUrl: "https://github.com/deepseek-ai/deepseek-harness",
+    protocol: "acp"
+  },
+  {
+    id: "zcode-acp",
+    label: "ZCode",
+    defaultBinary: "zcode-acp-server",
+    streamMode: "raw",
+    commandGroup: "zcode",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g zcode-acp-server",
+    docsUrl: "https://github.com/william0wang/zcode-acp",
+    protocol: "acp"
+  },
+  {
+    id: "cline-acp",
+    label: "Cline",
+    defaultBinary: "cline",
+    streamMode: "raw",
+    commandGroup: "cline",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g cline",
+    docsUrl: "https://docs.cline.bot/usage/acp",
+    protocol: "acp"
+  },
+  {
+    id: "devin-acp",
+    label: "Devin",
+    defaultBinary: "devin",
+    streamMode: "raw",
+    commandGroup: "devin",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "curl -fsSL https://cli.devin.ai/install.sh | bash",
+    docsUrl: "https://docs.devin.ai/cli",
+    protocol: "acp"
+  },
+  {
+    // Bundled minimal runtime (pi + pi-acp bridge); see electron/cli/piRuntime.ts.
+    // Kept last so butler-profile members only fall back to it when no other
+    // ACP agent is installed.
+    id: "pi-acp",
+    label: "Pi",
+    defaultBinary: "pi-acp",
+    streamMode: "raw",
+    commandGroup: "pi",
+    capabilities: {
+      toolSession: true,
+      skills: { mode: "native", nativeDirs: [".agents/skills"], reloadPolicy: "new-session" }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g pi-acp @earendil-works/pi-coding-agent",
+    docsUrl: "https://github.com/svkozak/pi-acp",
     protocol: "acp"
   }
 ];

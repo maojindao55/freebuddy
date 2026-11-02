@@ -14,7 +14,12 @@ const defaultAgentIcon: Partial<Record<CLIAdapterId, string>> = {
   "codebuddy-acp": "CodeBuddy",
   "grok-acp": "Grok",
   "agy-acp": "Gemini",
-  "dsh-acp": "DeepSeek"
+  "dsh-acp": "DeepSeek",
+  "zcode-acp": "ZCode",
+  "cline-acp": "Cline",
+  "devin-acp": "Devin",
+  "pi-acp": "Pi",
+  pi: "Pi"
 };
 
 /**

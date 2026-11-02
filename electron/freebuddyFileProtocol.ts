@@ -12,7 +12,12 @@ const MIME_BY_EXT: Record<string, string> = {
   txt: "text/plain",
   md: "text/markdown",
   json: "application/json",
-  csv: "text/csv"
+  csv: "text/csv",
+  zip: "application/zip",
+  tar: "application/x-tar",
+  gz: "application/gzip",
+  "7z": "application/x-7z-compressed",
+  rar: "application/vnd.rar"
 };
 
 export function buildAttachmentPreviewUrl(filePath: string): string {
@@ -29,9 +34,16 @@ export function resolveAttachmentFilePath(requestUrl: string): string {
     if (!rawPath) {
       throw new Error("Missing attachment path");
     }
-    const decoded = decodeURIComponent(rawPath);
+    let decoded = decodeURIComponent(rawPath)
+      .split("?")[0]
+      .split("#")[0]
+      .replace(/:(\d+)(?::\d+)?$/, "")
+      .trim();
+    if (/^\/[A-Za-z]:/.test(decoded)) {
+      decoded = decoded.slice(1);
+    }
     const normalized = path.normalize(decoded);
-    if (!path.isAbsolute(normalized)) {
+    if (!path.isAbsolute(normalized) && !/^[A-Za-z]:[\\/]/.test(decoded)) {
       throw new Error("Attachment path must be absolute");
     }
     return normalized;

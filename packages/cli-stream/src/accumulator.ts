@@ -114,10 +114,14 @@ export function mergeToolCalls(
   previous: ToolCallItem,
   next: ToolCallItem
 ): ToolCallItem {
+  const isGenericTool = (name?: string) => !name || name === "tool" || name === "edit";
+  const tool = isGenericTool(next.tool) && !isGenericTool(previous.tool)
+    ? previous.tool
+    : (next.tool || previous.tool);
   const merged: ToolCallItem = {
     kind: "tool-call",
     id: previous.id!,
-    tool: next.tool || previous.tool
+    tool
   };
 
   const input = next.input !== undefined ? next.input : previous.input;
@@ -313,6 +317,15 @@ export function appendItems(
   for (const rawItem of coalesceIncomingItems(next)) {
     const item = legacyTodoPlan(rawItem) ?? rawItem;
     const last = output[output.length - 1];
+    if (item.kind === "usage" && item.runMetrics) {
+      const runId = item.runMetrics.runId;
+      const index = output.findIndex(existing =>
+        existing.kind === "usage" && existing.runMetrics?.runId === runId);
+      if (index >= 0) {
+        output[index] = item;
+        continue;
+      }
+    }
     if (item.kind === "text" && item.messageId) {
       const index = output.findIndex(
         (existing) =>
@@ -338,6 +351,21 @@ export function appendItems(
       }
     }
     if (item.kind === "terminal-embed") {
+      const toolIndex = output.findIndex(existing =>
+        existing.kind === "tool-call" &&
+        existing.toolOutputs?.some(toolOutput =>
+          toolOutput.kind === "terminal-embed" && toolOutput.terminalId === item.terminalId));
+      if (toolIndex >= 0) {
+        const call = output[toolIndex] as ToolCallItem;
+        output[toolIndex] = {
+          ...call,
+          toolOutputs: call.toolOutputs?.map(toolOutput =>
+            toolOutput.kind === "terminal-embed" && toolOutput.terminalId === item.terminalId
+              ? { ...toolOutput, ...item }
+              : toolOutput)
+        };
+        continue;
+      }
       const index = output.findIndex(
         (existing) =>
           existing.kind === "terminal-embed" &&

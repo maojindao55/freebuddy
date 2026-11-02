@@ -40,6 +40,50 @@ const policy = {
 const snap = { roster, policy, entryRoleId: "r-impl" };
 const tick = (ms) => new Promise((r) => setTimeout(r, ms));
 
+test("rebinding a conversation preserves historical message authors and content", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { createConversation, appendMessage, getConversation, listMessages, updateConversationAgentBinding } = await import("../dist-electron/cli/conversations.js");
+    createConversation({ id: "old-task", title: "Original task", agentId: "old", agentName: "Old", adapter: "dsh-acp" });
+    appendMessage({ id: "history", conversationId: "old-task", role: "assistant", status: "done", content: "Original progress", agentId: "old", agentName: "Old" });
+    const before = listMessages("old-task");
+    updateConversationAgentBinding("old-task", { id: "new", name: "New", cli: { adapter: "dsh-acp" } });
+    assert.equal(getConversation("old-task").agentId, "new");
+    assert.equal(getConversation("old-task").agentName, "New");
+    assert.deepEqual(listMessages("old-task"), before);
+  });
+});
+
+test("follow-up uses edited team entry after deleting the old agent, including after restart", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const { insertDelegationTeam, updateDelegationTeam } = await import("../dist-electron/cli/delegationTeams.js");
+    insertDelegationTeam({ id: "replacement-team", name: "Team", enabled: true, source: "user", ...snap });
+    let deleted = false;
+    const calls = [];
+    const deps = {
+      webContents: undefined,
+      resolveAgent: (id) => deleted && id === roster[0].agentId ? undefined : ({ adapter: "dsh-acp", agentName: id, skillIds: [] }),
+      runAgent: async (args) => {
+        calls.push(args);
+        return { summary: "Saved task progress", exitCode: 0, error: null };
+      }
+    };
+    const rt = new DelegationRuntime(deps);
+    const runId = await rt.start({ goal: "Keep original task", teamId: "replacement-team", teamSnapshot: snap, cwd: "/r" });
+    updateDelegationTeam("replacement-team", { roster: [{ ...roster[0], agentId: "replacement" }, roster[1]] });
+    deleted = true;
+    await rt.followUp(runId, "Continue after replacement");
+    assert.equal(calls.at(-1).agentId, "replacement");
+    assert.match(calls.at(-1).prompt, /Continue after replacement/);
+    const restarted = new DelegationRuntime(deps);
+    await restarted.followUp(runId, "Continue after restart");
+    assert.equal(calls.at(-1).agentId, "replacement");
+    assert.match(calls.at(-1).prompt, /Continue after restart/);
+  });
+});
+
 test("followUp after completed run parks on delegate and wakes with result", async (t) => {
   if (!bindingAvailable) { t.skip(); return; }
   await withDb(async () => {
@@ -233,5 +277,108 @@ test("followUp after completed entry reopens without reusing entry sessionId", a
     assert.notEqual(sessionIds[1], first, "follow-up must mint a new cli task id");
     assert.equal(scopes[0], `delegation:${runId}:entry`);
     assert.equal(scopes[1], scopes[0], "tool session scope stays stable for resume");
+  });
+});
+
+test("followUp after a failed entry restores the original task for a fresh session", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const prompts = [];
+    let turn = 0;
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: () => ({ adapter: "dsh-acp", agentName: "DeepSeek", skillIds: [] }),
+      runAgent: async (args) => {
+        prompts.push(args.prompt);
+        turn += 1;
+        return turn === 1
+          ? { summary: "", exitCode: 0, error: "Agent returned no output.", hasOutput: false }
+          : { summary: "done", exitCode: 0, error: null, hasOutput: true };
+      }
+    });
+
+    const runId = await rt.start({
+      goal: "制作五张短视频封面并完成验收",
+      teamId: "t",
+      teamSnapshot: snap,
+      cwd: "/r"
+    });
+    await rt.followUp(runId, "继续");
+
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[1], /Original task:\n制作五张短视频封面并完成验收/);
+    assert.match(prompts[1], /Latest user instruction:\n继续/);
+  });
+});
+
+test("followUp during an initial park is queued without prematurely completing the run", async (t) => {
+  if (!bindingAvailable) { t.skip(); return; }
+  await withDb(async () => {
+    const { DelegationRuntime } = await import("../dist-electron/cli/delegationRuntime.js");
+    const { dispatchDelegateAction } = await import("../dist-electron/cli/delegationDispatch.js");
+    const { getDelegationRun, listDelegationEvents } = await import(
+      "../dist-electron/cli/delegationRuns.js"
+    );
+
+    const entryPrompts = [];
+    let releaseChild;
+    const childGate = new Promise((resolve) => { releaseChild = resolve; });
+    const rt = new DelegationRuntime({
+      webContents: undefined,
+      resolveAgent: (id) => ({
+        adapter: id.includes("claude") ? "claude-agent-acp" : "codex-acp",
+        agentName: id,
+        skillIds: []
+      }),
+      runAgent: async (args) => {
+        if (args.delegation.depth === 0) {
+          entryPrompts.push(args.prompt);
+          if (entryPrompts.length === 1) {
+            await dispatchDelegateAction(
+              {
+                token: "t",
+                taskSessionId: "s",
+                runId: args.delegation.runId,
+                parentEventId: args.delegation.parentEventId,
+                depth: 0,
+                selfAgentId: "r-impl",
+                selfLabel: "实现"
+              },
+              "delegate",
+              { teammate_id: "r-rev", task: "review the initial change" }
+            );
+          }
+          return { summary: "entry", exitCode: 0, error: null };
+        }
+        await childGate;
+        return { summary: "review complete", exitCode: 0, error: null };
+      }
+    });
+
+    const runId = rt.prepareRun({
+      goal: "implement",
+      teamId: "t",
+      teamSnapshot: snap,
+      cwd: "/r"
+    });
+    const entryDrive = rt.runEntry(runId, "implement");
+    await tick(30);
+
+    await rt.followUp(runId, "also verify the release notes");
+    assert.equal(entryPrompts.length, 1, "parked follow-up must not re-enter the entry agent");
+    assert.equal(getDelegationRun(runId).status, "running");
+    assert.equal(
+      listDelegationEvents(runId).find((event) => event.depth === 0)?.status,
+      "running"
+    );
+
+    releaseChild();
+    await entryDrive;
+
+    assert.equal(entryPrompts.length, 2);
+    assert.match(entryPrompts[1], /review complete/);
+    assert.match(entryPrompts[1], /also verify the release notes/);
+    assert.equal(getDelegationRun(runId).status, "completed");
   });
 });

@@ -28,8 +28,9 @@ function isMentionBoundary(value: string): boolean {
 
 function looksLikeWorkspaceFile(value: string): boolean {
   const normalized = value.replace(/\\/g, "/");
+  if (normalized.endsWith("/")) return /[^/]/.test(normalized);
   const name = normalized.split("/").pop()?.toLocaleLowerCase() ?? "";
-  if (!name || normalized.endsWith("/")) return false;
+  if (!name) return false;
   if (normalized.includes("/")) return true;
   if (name.startsWith(".") && name.length > 1) return true;
   if (name.includes(".")) return true;

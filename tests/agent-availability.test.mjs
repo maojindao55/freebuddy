@@ -78,6 +78,41 @@ test("sorts available agents by most recent successful use", async () => {
   ]);
 });
 
+test("new tasks prefer the last selected member over another agent's newer runtime", async () => {
+  const { buildAgentAvailabilityGroups, preferredAvailableAgentId } = await loadModule();
+  const groups = buildAgentAvailabilityGroups(
+    [member("codex-acp", "Codex"), member("claude-agent-acp", "ClaudeCode")],
+    {
+      "codex-acp": runtime("codex-acp", true, { lastRunAt: "2026-07-17T01:30:00.000Z" }),
+      "claude-agent-acp": runtime("claude-agent-acp", true, { lastRunAt: "2026-07-17T01:10:00.000Z" })
+    }
+  );
+  assert.equal(preferredAvailableAgentId(groups, "cli-claude-agent-acp"), "cli-claude-agent-acp");
+  assert.equal(preferredAvailableAgentId(groups), "cli-codex-acp");
+});
+
+test("a missing, disabled or uninstalled preference falls back to an available agent", async () => {
+  const { buildAgentAvailabilityGroups, preferredAvailableAgentId } = await loadModule();
+  const groups = buildAgentAvailabilityGroups(
+    [member("codex-acp", "Codex"), member("disabled", "Disabled", false), member("missing", "Missing")],
+    { "codex-acp": runtime("codex-acp", true), missing: runtime("missing", false) }
+  );
+  for (const id of ["cli-removed", "cli-disabled", "cli-missing"]) {
+    assert.equal(preferredAvailableAgentId(groups, id), "cli-codex-acp");
+  }
+  assert.equal(preferredAvailableAgentId({ available: [], checking: [], unavailable: [] }, "cli-codex-acp"), "");
+});
+
+test("a remembered member is restored when detection finishes, including cloned agents", async () => {
+  const { buildAgentAvailabilityGroups, preferredAvailableAgentId } = await loadModule();
+  const clone = { ...member("codex-clone", "Codex Clone"), cli: { adapter: "codex-acp" }, runtimeKey: "codex-clone" };
+  const members = [member("codex-acp", "Codex"), clone];
+  const runtimes = { "codex-acp": runtime("codex-acp", true) };
+  assert.equal(preferredAvailableAgentId(buildAgentAvailabilityGroups(members, runtimes), clone.id), "cli-codex-acp");
+  runtimes["codex-clone"] = runtime("codex-clone", true);
+  assert.equal(preferredAvailableAgentId(buildAgentAvailabilityGroups(members, runtimes), clone.id), clone.id);
+});
+
 test("refreshes unknown and stale agents without hiding stale installed agents", async () => {
   const { agentEntriesNeedingRefresh, buildAgentAvailabilityGroups } =
     await loadModule();

@@ -371,24 +371,59 @@
   let currentGridSize = 0;
   let currentPadding = 0;
   let currentCellSize = 0;
+  let currentDpr = 0;
+  let currentWideLayout = null;
+  let fallbackRetried = false;
+  let resizeRafId = null;
+
+  function debouncedResizeCanvas() {
+    if (typeof window === "undefined") return;
+    if (resizeRafId) {
+      if (typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(resizeRafId);
+      } else {
+        clearTimeout(resizeRafId);
+      }
+      resizeRafId = null;
+    }
+    const schedule = typeof window.requestAnimationFrame === "function"
+      ? (cb) => window.requestAnimationFrame(cb)
+      : (cb) => setTimeout(cb, 16);
+    resizeRafId = schedule(() => {
+      resizeRafId = null;
+      resizeCanvas();
+    });
+  }
 
   function resizeCanvas() {
-    const parent = canvas.parentElement || document.body;
-    const parentRect = parent ? parent.getBoundingClientRect() : null;
-    const dpr = window.devicePixelRatio || 1;
+    const parent = canvas.parentElement || (typeof document.querySelector === "function" ? document.querySelector(".board-wrapper") : null) || (typeof document !== "undefined" ? document.body : null);
+    const parentRect = parent && typeof parent.getBoundingClientRect === "function" ? parent.getBoundingClientRect() : null;
+    const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
     const availWidth = parentRect && parentRect.width > 12
       ? parentRect.width - 12
-      : Math.max(0, (window.innerWidth || 600) - 280);
+      : Math.max(0, ((typeof window !== "undefined" && window.innerWidth) || 600) - 280);
     const availHeight = parentRect && parentRect.height > 12
       ? parentRect.height - 12
-      : Math.max(0, (window.innerHeight || 600) - 140);
+      : Math.max(0, ((typeof window !== "undefined" && window.innerHeight) || 600) - 140);
     let size = Math.floor(Math.min(availWidth, availHeight));
     if (size <= 0) {
       size = 460;
-      if (typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(resizeCanvas);
+      if (!fallbackRetried && typeof window !== "undefined") {
+        fallbackRetried = true;
+        debouncedResizeCanvas();
       }
+    } else {
+      fallbackRetried = false;
     }
+
+    const wideLayout = ((typeof window !== "undefined" && window.innerWidth) || 0) >= 640;
+    if (size === currentGridSize && dpr === currentDpr && wideLayout === currentWideLayout) {
+      // Skip when nothing changed: reassigning canvas.width clears the canvas
+      // even for the same value, so avoid needless clears and repaints here.
+      return;
+    }
+    currentDpr = dpr;
+    currentWideLayout = wideLayout;
 
     currentGridSize = size;
     currentPadding = Math.max(22, Math.round(size * 0.08));
@@ -402,7 +437,7 @@
     ctx.scale(dpr, dpr);
 
     if (moveHistoryPanel) {
-      if (window.innerWidth >= 640) {
+      if ((typeof window !== "undefined" && window.innerWidth) >= 640) {
         moveHistoryPanel.style.height = `${size}px`;
       } else {
         moveHistoryPanel.style.height = "";
@@ -414,7 +449,7 @@
 
   function getMouseGridCoord(e) {
     const rect = canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0 || currentGridSize <= 0) return null;
+    if (rect.width <= 0 || rect.height <= 0 || currentGridSize <= 0 || currentCellSize <= 0) return null;
 
     const mouseX = (e.clientX - rect.left) * (currentGridSize / rect.width);
     const mouseY = (e.clientY - rect.top) * (currentGridSize / rect.height);
@@ -763,6 +798,7 @@
     if (!data || typeof data !== "object") return;
 
     if (data.type === "FREEBUDDY_GAME_SYNC" || data.type === "GAME_STATE_UPDATE") {
+      debouncedResizeCanvas();
       syncState(data.payload);
       if (data.payload?.agentInfo) {
         updateAgentInfo(data.payload.agentInfo);
@@ -828,12 +864,31 @@
     drawBoard();
   });
 
-  window.addEventListener("resize", resizeCanvas);
-  if (window.ResizeObserver) {
-    const ro = new ResizeObserver(() => {
-      resizeCanvas();
+  const boardContainer = canvas.parentElement || (typeof document.querySelector === "function" ? document.querySelector(".board-wrapper") : null) || (typeof document !== "undefined" ? document.body : null);
+
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("resize", debouncedResizeCanvas);
+    window.addEventListener("focus", debouncedResizeCanvas);
+  }
+
+  if (typeof window !== "undefined" && typeof window.ResizeObserver === "function" && boardContainer) {
+    try {
+      const ro = new window.ResizeObserver(() => {
+        debouncedResizeCanvas();
+      });
+      ro.observe(boardContainer);
+    } catch (e) {
+      // In case ResizeObserver throws
+    }
+  }
+
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        resizeCanvas();
+        debouncedResizeCanvas();
+      }
     });
-    ro.observe(canvas);
   }
 
   // Share Card Generation

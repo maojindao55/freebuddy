@@ -24,6 +24,32 @@ export function filterSessionConfigPickerOptions(
   return options.filter(isSessionConfigPickerOption);
 }
 
+export function findMainModelConfigOption<T extends SessionConfigOptionLike>(
+  options: T[]
+): T | undefined {
+  return (
+    options.find((option) => option.id === "model") ??
+    options.find(
+      (option) =>
+        (option.category === "model" || option.category === "model_config") &&
+        option.id !== "provider"
+    ) ??
+    options.find(
+      (option) => option.category === "model" && option.id !== "provider"
+    ) ??
+    options.find((option) => option.id !== "provider") ??
+    options[0]
+  );
+}
+
+export function findProviderConfigOption<T extends SessionConfigOptionLike>(
+  options: T[]
+): T | undefined {
+  return options.find(
+    (option) => option.id === "provider" || option.category === "provider"
+  );
+}
+
 function isUnsupportedThoughtLevelNone(
   option: SessionConfigOptionLike,
   value: string

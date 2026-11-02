@@ -1,0 +1,44 @@
+{
+  "bodySize": "14px",
+  "columns": "352px",
+  "horizontalOverflow": false,
+  "titleSize": "15px",
+  "toolbarButtons": [
+    {
+      "rect": {
+        "height": 32,
+        "left": 19,
+        "right": 92
+      },
+      "text": "列表"
+    },
+    {
+      "rect": {
+        "height": 32,
+        "left": 92,
+        "right": 191
+      },
+      "text": "任务面板"
+    },
+    {
+      "rect": {
+        "height": 36,
+        "left": 240,
+        "right": 331
+      },
+      "text": "新会话"
+    },
+    {
+      "rect": {
+        "height": 36,
+        "left": 339,
+        "right": 374
+      },
+      "text": "退出全屏"
+    }
+  ],
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { getManagedNodeRuntime } from "./managedNodeRuntime.js";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -650,6 +651,20 @@ function adapterConfigPaths(adapter: string): string[] {
   if (adapter.includes("dsh") || adapter.includes("deepseek")) {
     paths.push(path.join(home, ".dsh"), path.join(home, ".config", "dsh"));
   }
+  if (adapter.includes("devin")) {
+    paths.push(
+      path.join(home, ".config", "devin"),
+      path.join(home, ".local", "share", "devin")
+    );
+    if (process.platform === "win32") {
+      paths.push(
+        path.join(
+          process.env.APPDATA ?? path.join(home, "AppData", "Roaming"),
+          "devin"
+        )
+      );
+    }
+  }
   return existing(paths);
 }
 
@@ -1220,7 +1235,8 @@ export async function prepareSandboxedSpawn(input: {
               ? [getWindowsAgentLinksRoot()]
               : []),
           ...(process.platform === "win32" ? [getWindowsManagedRoot()] : []),
-          ...(input.extraReadPaths ?? [])
+          ...(input.extraReadPaths ?? []),
+          ...(getManagedNodeRuntime() ? [getManagedNodeRuntime()!.root, getManagedNodeRuntime()!.prefix] : [])
         ]);
         return {
           binaryAlias,

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WebContents } from "electron";
 import type { Readable, Writable } from "node:stream";
+import { createHash } from "node:crypto";
 
 import {
   buildCommand,
@@ -19,9 +20,19 @@ import {
   sanitizeCliAgentEnv,
   syncDshAcpManagedConfig
 } from "./adapters.js";
+import {
+  ensurePiSettings,
+  piLauncherDir,
+  resolvePiAcpRuntime
+} from "./piRuntime.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { runAcpAgent } from "./acpRuntime.js";
+import { acpProcessPool, type AcpWarmConnection } from "./acpProcessPool.js";
+import { unregisterBrowserToolSession } from "../browserToolService.js";
+import { getCallerUserId } from "./callerContext.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getDataDir, getLogDir } from "./db.js";
+import { applyManagedNodeEnvironment, ensureManagedNodeRuntime } from "./managedNodeRuntime.js";
 import { updateRuntimeRun, waitForCodexToolchainAutoUpdate } from "./check.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { getToolSession } from "./store.js";
@@ -35,11 +46,14 @@ import {
   type CliRunArgs,
   type Running
 } from "./runtimeShared.js";
+import { getConversationMcpServerIds } from "./conversations.js";
+import { mcpConfigFingerprint } from "./mcpServers.js";
 import { killProcessTree } from "./process-kill.js";
 import {
   ensureCodexChatBridge,
   resolveClaudeByokSessionOptions,
-  resolveCliByokEnv
+  resolveCliByokEnv,
+  resolvePiByokDefaultModel
 } from "./store.js";
 import { getSkillOwnershipRoots } from "./skills.js";
 import {
@@ -57,6 +71,7 @@ import {
 } from "./sandboxRuntime.js";
 import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
 import { clearSessionOwner } from "./sessionOwners.js";
+import { RunMetricsCollector } from "./runMetricsCollector.js";
 
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
@@ -77,13 +92,14 @@ type StreamItemEntry = Extract<CliEvent, { type: "items" }>["items"][number];
  */
 function createItemsBatchingEmit(
   send: (e: CliEvent) => void
-): (e: CliEvent) => void {
+): ((e: CliEvent) => void) & { flush: () => void } {
   const FLUSH_MS = 80;
   const MAX_BUFFER = 200;
   let buffer: StreamItemEntry[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const flush = () => {
+    if (timer) clearTimeout(timer);
     timer = null;
     if (buffer.length === 0) return;
     const items = buffer;
@@ -91,7 +107,7 @@ function createItemsBatchingEmit(
     send({ type: "items", items });
   };
 
-  return (e: CliEvent) => {
+  const emit = (e: CliEvent) => {
     if (e.type === "items" && e.items.length) {
       for (const it of e.items) buffer.push(it);
       if (buffer.length >= MAX_BUFFER) {
@@ -115,6 +131,7 @@ function createItemsBatchingEmit(
     if (buffer.length > 0) flush();
     send(e);
   };
+  return Object.assign(emit, { flush });
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -164,7 +181,15 @@ export function mergeBuiltEnv(
           ? mergeNodeOptions(next[key], value)
           : value;
   }
-  return sanitizeCliAgentEnv(next);
+  const sanitized = sanitizeCliAgentEnv(next);
+  // Built commands may explicitly opt into Electron-as-Node (the bundled pi
+  // runtime does when no user node is available). sanitize strips the
+  // *inherited* value so Electron children of CLI agents never misbehave; an
+  // explicit patch from buildCommand must still win.
+  if (typeof patch.ELECTRON_RUN_AS_NODE === "string") {
+    sanitized.ELECTRON_RUN_AS_NODE = patch.ELECTRON_RUN_AS_NODE;
+  }
+  return sanitized;
 }
 
 export async function cliRun(
@@ -173,10 +198,39 @@ export async function cliRun(
   onEvent?: (e: CliEvent) => void
 ): Promise<void> {
   const channel = channelName(args.sessionId);
-  const emit = createItemsBatchingEmit((e) => {
+  const send = createItemsBatchingEmit((e) => {
     if (onEvent) onEvent(e);
     safeSendToWebContents(webContents, channel, e);
   });
+  const metrics = new RunMetricsCollector(args.sessionId, (runMetrics) => {
+    send({ type: "items", items: [{ kind: "usage", runId: args.sessionId, runMetrics }] });
+  });
+  const emit = (event: CliEvent) => {
+    if (event.type === "error") metrics.error();
+    if (event.type === "done") metrics.finish(event.exitCode === 0 ? "done" : "failed");
+    if (event.type === "items") {
+      event = { ...event, items: event.items.map(item => item.kind === "usage"
+        ? { ...item, runId: args.sessionId } : item) };
+    }
+    send(event);
+  };
+  metrics.emit();
+  try {
+    await runCliAgent(webContents, args, emit, metrics);
+  } catch (error) {
+    metrics.error();
+    metrics.finish("failed");
+    send.flush();
+    throw error;
+  }
+}
+
+async function runCliAgent(
+  webContents: WebContents,
+  args: CliRunArgs,
+  emit: (event: CliEvent) => void,
+  metrics: RunMetricsCollector
+): Promise<void> {
 
   const logFile = path.join(getLogDir(), `${args.sessionId}.jsonl`);
   let logStream: fs.WriteStream | null = null;
@@ -232,7 +286,7 @@ export async function cliRun(
     `start adapter=${args.adapter} approvalMode=${args.approvalMode ?? "default"} cwd=${args.cwd ?? "."} resume=${toolSessionId ?? "-"}`
   );
 
-  // Avoid spawning codex-acp while npm is replacing its global package files.
+  // Wait until any installation replacing this agent's files has finished.
   // A failed background update is non-fatal and resolves this wait normally.
   await waitForCodexToolchainAutoUpdate(args.adapter);
 
@@ -279,6 +333,10 @@ export async function cliRun(
 
   let built;
   try {
+    await ensureManagedNodeRuntime(getDataDir());
+    if (executionArgs.adapter === "pi-acp") {
+      await ensurePackagedPiRuntime(getDataDir());
+    }
     built = buildCommand({
       adapter: executionArgs.adapter,
       binary: executionArgs.binary,
@@ -287,10 +345,13 @@ export async function cliRun(
       cwd: executionArgs.cwd,
       toolSessionId,
       workspaceRoots: args.workspaceRoots,
+      nodeEnv: process.platform === "win32" ? { ...process.env, ...effectiveArgs.env } : undefined,
       dshAcpRuntimeRoot:
         executionArgs.adapter === "dsh-acp"
           ? dshAcpManagedRoot(getDataDir())
-          : undefined
+          : undefined,
+      piDataDir:
+        executionArgs.adapter === "pi-acp" ? getDataDir() : undefined
     });
     if (executionArgs.adapter === "dsh-acp") {
       patchDshAcpRuntimeFromCommand(built);
@@ -331,16 +392,27 @@ export async function cliRun(
   }
 
   await ensureCodexChatBridge();
+  const byokEnv = resolveCliByokEnv(
+    args.agentId,
+    args.adapter,
+    args.configOptionOverrides?.model ?? built.env?.ANTHROPIC_MODEL
+  );
+  if (byokEnv && effectiveArgs.env?.FREEBUDDY_NODE_BIN) byokEnv.FREEBUDDY_NODE_BIN = effectiveArgs.env.FREEBUDDY_NODE_BIN;
+  if (args.adapter === "pi-acp") {
+    const defaultModel = resolvePiByokDefaultModel(args.agentId, args.adapter);
+    if (defaultModel) {
+      ensurePiSettings(getDataDir(), {
+        defaultProvider: "freebuddy-relay",
+        defaultModel: defaultModel.replace(/^freebuddy-relay\//, "")
+      });
+    }
+  }
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
-      { ...process.env, ...(effectiveArgs.env || {}) },
+      applyManagedNodeEnvironment({ ...process.env, ...(effectiveArgs.env || {}) }, { install: true }),
       built.env
     ),
-    resolveCliByokEnv(
-      args.agentId,
-      args.adapter,
-      args.configOptionOverrides?.model ?? built.env?.ANTHROPIC_MODEL
-    )
+    byokEnv
   );
 
   let spawnCommand: SandboxedSpawn = {
@@ -368,6 +440,13 @@ export async function cliRun(
                 dshAcpKoffiGuardPath(),
                 dshAcpWindowsResiduePath() ?? ""
               ].filter(Boolean)
+            : []),
+          ...(executionArgs.adapter === "pi-acp"
+            ? [
+                resolvePiAcpRuntime().root ?? "",
+                piLauncherDir(getDataDir()),
+                path.join(getDataDir(), "pi-agent")
+              ].filter(Boolean)
             : [])
         ]
       });
@@ -386,10 +465,26 @@ export async function cliRun(
     }
   }
 
-  const child = spawn(spawnCommand.bin, spawnCommand.args, {
+  if (built.protocol !== "acp" && !built.promptViaStdin) metrics.promptSubmitted();
+  const warmKey = built.protocol === "acp" && args.adapter === "agy-acp" && args.conversationId &&
+      !processSandboxed && !remoteIsolated && !args.delegation && !userControlsResume
+    ? JSON.stringify([getCallerUserId(), webContents.id, args.conversationId, args.agentId, toolSessionScope]) : undefined;
+  const mcpServerIds = args.conversationId ? getConversationMcpServerIds(args.conversationId) : [];
+  const warmFingerprint = createHash("sha256").update(JSON.stringify({
+    bin: spawnCommand.bin, args: spawnCommand.args, cwd: executionArgs.cwd,
+    env: Object.entries(spawnCommand.env).sort(([a], [b]) => a.localeCompare(b)),
+    access: executionArgs.workspaceAccess, approval: executionArgs.approvalMode,
+    mcpServerIds: mcpServerIds.slice().sort(),
+    mcpConfig: mcpConfigFingerprint(mcpServerIds),
+    skills: (executionArgs.skills ?? []).map(({ id, contentHash, rootPath }) =>
+      ({ id, contentHash, rootPath })).sort((a, b) => a.id.localeCompare(b.id)),
+  })).digest("hex");
+  const reused = warmKey ? acpProcessPool.take(warmKey, warmFingerprint, toolSessionId) : undefined;
+  const child = reused?.child ?? spawn(spawnCommand.bin, spawnCommand.args, {
     cwd: executionArgs.cwd,
     env: spawnCommand.env,
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: process.platform === "win32"
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
   const attachSandboxStdin = (
     target: ChildProcessByStdio<Writable, Readable, Readable>,
@@ -402,8 +497,7 @@ export async function cliRun(
     target.once("close", () => stdin.end());
   };
 
-  attachSandboxStdin(child);
-
+  if (!reused) attachSandboxStdin(child);
 
   let resolved = false;
   await new Promise<void>((resolve) => {
@@ -413,8 +507,8 @@ export async function cliRun(
         resolve();
       }
     };
-    child.once("spawn", done);
-    child.once("error", (err) => {
+    if (reused) { done(); return; }
+    const spawnError = (err: Error) => {
       const msg = `spawn failed: ${err.message}`;
       appendLog(logStream, "system", msg);
       emit({ type: "error", message: msg });
@@ -424,7 +518,9 @@ export async function cliRun(
       updateRuntimeRun(args.adapter, msg);
       logStream?.end();
       done();
-    });
+    };
+    child.once("spawn", () => { child.off("error", spawnError); done(); });
+    child.once("error", spawnError);
   });
 
   const pid = child.pid ?? 0;
@@ -436,6 +532,14 @@ export async function cliRun(
   emit({ type: "started", pid });
 
   if (built.protocol === "acp") {
+    const connection: AcpWarmConnection | undefined = warmKey ? reused ?? {
+      child, fingerprint: warmFingerprint, conversationId: args.conversationId!, requestId: 0,
+      dispose: () => {
+        if (connection?.previousRunId) unregisterBrowserToolSession(connection.previousRunId);
+        try { killProcessTree(connection?.child ?? child, "term"); } catch { /* already closed */ }
+      },
+    } : undefined;
+    let parked = false;
     try {
       await runAcpAgent({
         child,
@@ -448,6 +552,12 @@ export async function cliRun(
         running,
         capturedSessions,
         emit,
+        metrics,
+        warmConnection: connection,
+        parkConnection: connection && warmKey ? () => {
+          parked = true;
+          acpProcessPool.put(warmKey, connection);
+        } : undefined,
         agentCommand: {
           bin: spawnCommand.bin,
           args: spawnCommand.args,
@@ -462,7 +572,8 @@ export async function cliRun(
           const restarted = spawn(spawnCommand.bin, spawnCommand.args, {
             cwd: executionArgs.cwd,
             env: spawnCommand.env,
-            stdio: ["pipe", "pipe", "pipe"]
+            stdio: ["pipe", "pipe", "pipe"],
+            windowsHide: process.platform === "win32"
           }) as ChildProcessByStdio<Writable, Readable, Readable>;
           attachSandboxStdin(restarted, true);
           await new Promise<void>((resolve, reject) => {
@@ -479,6 +590,7 @@ export async function cliRun(
         }
       });
     } finally {
+      if (connection && !parked) connection.dispose();
       if (processSandboxed) cleanupSandboxCommand();
     }
     return;
@@ -494,7 +606,9 @@ export async function cliRun(
     toolSessionScope,
     running,
     capturedSessions,
-    emit
+    emit,
+    metrics,
+    resumed: Boolean(toolSessionId) || userControlsResume
   });
 }
 
@@ -521,6 +635,33 @@ export function cliKill(sessionId: string): boolean {
   } catch {
     return false;
   }
+}
+
+function waitForCliProcessExit(
+  child: Running["child"],
+  timeoutMs: number
+): Promise<void> {
+  if (child.exitCode != null || child.signalCode != null) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      child.off("close", done);
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    child.once("close", done);
+  });
+}
+
+export async function shutdownCliProcesses(timeoutMs = 2000): Promise<void> {
+  acpProcessPool.dispose();
+  const entries = [...running.entries()];
+  for (const [sessionId] of entries) cliKill(sessionId);
+  await Promise.all(
+    entries.map(([, entry]) => waitForCliProcessExit(entry.child, timeoutMs))
+  );
 }
 
 /** Ask an ACP-backed agent to end its current turn successfully. */

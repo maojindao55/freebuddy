@@ -1,3 +1,4 @@
+import type { ConversationOverview, FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
 import type {
   CLIAdapterDefinition,
   CLIAdapterId
@@ -10,12 +11,15 @@ import type {
   CliEvent,
   CliRuntime,
   CliCheckResult,
+  CliRuntimeUpdateRequest,
+  CliUpgradePlan,
   CliInstallResult,
   CliInstallEvent,
   CliTaskRow,
   CliTaskLogPage,
   CliTaskListArgs,
   CodexUsageResult,
+  AntigravityUsageResult,
   AgentUsagePeriod,
   AgentUsageSummary,
   CursorUsageConnectInput,
@@ -49,6 +53,8 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult,
+  ForkConversationInput,
+  ForkConversationResult,
   ImportCodexSessionResult,
   CreateConversationShareInput,
   CreateConversationShareResult,
@@ -56,6 +62,7 @@ import type {
   AttachConversationSharesResult,
   ConversationContextReference
 } from "@/services/cli/types";
+import type { CliStreamItem } from "@/services/cli/parsers";
 import type {
   WorkflowPlan,
   WorkflowRunRow,
@@ -115,6 +122,20 @@ import type {
 export {};
 
 declare global {
+  interface FreebuddyProviders {
+    list(): Promise<import("@/services/providers/types").Provider[]>;
+    upsert(
+      input: import("@/services/providers/types").ProviderInput & { apiKey?: string }
+    ): Promise<import("@/services/providers/types").Provider>;
+    remove(id: string): Promise<void>;
+    setEnabled(input: {
+      id: string;
+      enabled: boolean;
+    }): Promise<import("@/services/providers/types").Provider>;
+    reorder(ids: string[]): Promise<import("@/services/providers/types").Provider[]>;
+    test(id: string): Promise<import("@/services/providers/types").ProviderTestResult>;
+  }
+
   interface FreebuddyCli {
     listAdapters(): Promise<CLIAdapterDefinition[]>;
 
@@ -123,10 +144,14 @@ declare global {
     resetOverride(id: string): Promise<void>;
 
     listRuntimes(): Promise<CliRuntime[]>;
+    checkUpdates(args: CliRuntimeUpdateRequest): Promise<CliRuntime | undefined>;
+    prepareUpgrade(args: CliRuntimeUpdateRequest): Promise<CliUpgradePlan>;
+    verifyUpgrade(request: CliRuntimeUpdateRequest, plan: CliUpgradePlan): Promise<CliCheckResult>;
     onRuntimeUpdated(cb: (runtime: CliRuntime) => void): () => void;
     onConversationsChanged(cb: () => void): () => void;
     onMessagesChanged(cb: (conversationId: string) => void): () => void;
     codexUsage(): Promise<CodexUsageResult>;
+    antigravityUsage(): Promise<AntigravityUsageResult>;
     usageSummary(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     refreshUsage(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     cursorUsageStatus(): Promise<CursorUsageStatus>;
@@ -145,7 +170,8 @@ declare global {
     installStream(
       adapter: string,
       command: string,
-      cb: (event: CliInstallEvent) => void
+      cb: (event: CliInstallEvent) => void,
+      targetVersion?: string
     ): () => void;
 
     run(args: CliRunArgs): Promise<{ sessionId: string }>;
@@ -202,10 +228,12 @@ declare global {
     listProjects(): Promise<Project[]>;
     getProject(id: string): Promise<Project | null>;
     createProject(input: ProjectInput): Promise<Project>;
+    ensureProjectForCwd(cwd: string): Promise<Project>;
     updateProject(input: ProjectInput & { id: string }): Promise<Project>;
     deleteProject(id: string): Promise<{ ok: true }>;
 
     listConversations(args?: ListConversationsArgs): Promise<Conversation[]>;
+    listConversationOverviews(conversationIds: string[]): Promise<ConversationOverview[]>;
     getConversation(id: string): Promise<Conversation | undefined>;
     createConversation(
       input: CreateConversationInput
@@ -216,6 +244,9 @@ declare global {
     transferConversation(
       input: TransferConversationInput
     ): Promise<TransferConversationResult>;
+    forkConversation(
+      input: ForkConversationInput
+    ): Promise<ForkConversationResult>;
     importCodexSession(
       sessionId: string
     ): Promise<ImportCodexSessionResult>;
@@ -242,6 +273,13 @@ declare global {
       agentName: string
     ): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
+    setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+    moveConversationToProject(
+      id: string,
+      projectId: string | null
+    ): Promise<Conversation>;
+    setConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
+    resetConversationOrder(conversationIds: string[]): Promise<Conversation[]>;
     deleteConversation(id: string): Promise<void>;
     setConversationApprovalMode(
       id: string,
@@ -255,9 +293,29 @@ declare global {
       id: string,
       skillIds: string[]
     ): Promise<Conversation | undefined>;
+    getConversationMcpServerIds(conversationId: string): Promise<string[]>;
+    setConversationMcpServerIds(id: string, mcpServerIds: string[]): Promise<void>;
 
-    listMessages(conversationId: string): Promise<ConversationMessage[]>;
+    listMessages(
+      conversationId: string,
+      options?: {
+        limit?: number;
+        beforeCreatedAt?: string;
+        beforeId?: string;
+      }
+    ): Promise<{ messages: ConversationMessage[]; hasMore: boolean }>;
     listMessage(id: string): Promise<ConversationMessage | undefined>;
+    listMessageFileEdits(messageId: string, cursor?: number, groupFiles?: boolean): Promise<FileEditPage>;
+    readFileEditBlob(conversationId: string, blobKey: string, offset?: number): Promise<FileEditBlobChunk | undefined>;
+    readMessageFileEdit(messageId: string, path: string, turnKey: string, offset?: number): Promise<FileEditBlobChunk | undefined>;
+    readMessageDetails(messageId: string, offset?: number): Promise<{
+      items?: CliStreamItem[];
+      available: boolean; text: string; nextOffset: number; hasMore: boolean;
+    }>;
+    listFollowupMessages(
+      conversationId: string,
+      excludeMessageIds: string[]
+    ): Promise<ConversationMessage[]>;
     appendMessage(input: AppendMessageInput): Promise<ConversationMessage>;
     updateMessage(input: UpdateMessageInput): Promise<void>;
 
@@ -306,19 +364,49 @@ declare global {
     onEvent(sessionId: string, cb: (event: CliEvent) => void): () => void;
   }
 
+  interface ExternalShareFile {
+    name: string;
+    path: string;
+    size?: number;
+    managed?: boolean;
+  }
+
+  interface ExternalSharePayload {
+    id: string;
+    timestamp: number;
+    instruction?: string;
+    text?: string;
+    files?: ExternalShareFile[];
+  }
+
+  interface ShellOpenPayload {
+    cwd?: string;
+    files?: Array<{
+      name: string;
+      path: string;
+      size?: number;
+      mimeType?: string;
+      managed?: boolean;
+    }>;
+  }
+
   interface FreebuddyWindow {
+    getFullscreenState?(): Promise<boolean>;
+    setFullscreen?(fullscreen: boolean): Promise<boolean>;
     onChromeVisible(cb: (visible: boolean) => void): () => void;
     onBridge(
       cb: (event: { action: string; params: Record<string, string> }) => void
     ): () => void;
     onBrowserTool(cb: (event: BrowserToolEvent) => void): () => void;
     resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean>;
-    onOpenConversation(cb: (conversationId: string) => void): () => void;
+    onOpenConversation(cb: (conversationId: string, embed?: boolean) => void): () => void;
     onNewConversation(cb: () => void): () => void;
+    onExternalShare(cb: (payload: ExternalSharePayload) => void): () => void;
+    onShellOpen(cb: (payload: ShellOpenPayload) => void): () => void;
     onOpenTaskReceipt(cb: () => void): () => void;
     onOpenView(
       cb: (payload: {
-        view: "chat" | "scheduledTasks" | "workflowTeams" | "usage" | string;
+        view: "chat" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie" | string;
         teamId?: string;
         create?: boolean;
       }) => void
@@ -326,14 +414,18 @@ declare global {
     onOpenSettings(cb: (tab: string) => void): () => void;
     onAppearanceChanged(cb: (theme: string) => void): () => void;
     setUiPresence(snapshot: {
-      workspaceView: "chat" | "scheduledTasks" | "workflowTeams" | "usage";
+      workspaceView: "chat" | "conversationBoard" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
       settingsOpen: boolean;
       settingsTab:
         | "general"
         | "cli"
+        | "providers"
+        | "mcp"
         | "skills"
         | "plugins"
         | "feed"
+        | "usage"
+        | "archived"
         | "remote"
         | "about"
         | null;
@@ -906,6 +998,30 @@ declare global {
     listAuditLog(limit?: number): Promise<RemoteAuditEntry[]>;
   }
 
+  interface FreebuddyMcpServers {
+    list(): Promise<{
+      servers: import("@/services/cli/types").UserMcpServer[];
+      secretStorageEncrypted: boolean;
+    }>;
+    get(id: string): Promise<import("@/services/cli/types").UserMcpServer | undefined>;
+    create(
+      input: import("@/services/cli/types").UserMcpServerInput
+    ): Promise<import("@/services/cli/types").UserMcpServer>;
+    update(
+      id: string,
+      input: Partial<import("@/services/cli/types").UserMcpServerInput>
+    ): Promise<import("@/services/cli/types").UserMcpServer | undefined>;
+    delete(id: string): Promise<boolean>;
+    setEnabled(id: string, enabled: boolean): Promise<boolean>;
+    selfCheck(
+      id: string,
+      cwd?: string
+    ): Promise<import("@/services/cli/types").UserMcpServerSelfCheckResult>;
+    oauthStatus(id: string): Promise<import("@/services/cli/types").McpOAuthStatus>;
+    authorize(id: string): Promise<import("@/services/cli/types").McpOAuthStatus>;
+    disconnect(id: string): Promise<import("@/services/cli/types").McpOAuthStatus>;
+  }
+
   interface FreebuddyApi {
     platform: string;
     arch: string;
@@ -918,6 +1034,8 @@ declare global {
     /** WebUI only: bearer token for media URLs that cannot send Authorization headers. */
     sessionToken?: () => string;
     cli: FreebuddyCli;
+    providers?: FreebuddyProviders;
+    mcpServers?: FreebuddyMcpServers;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;
     delegation: FreebuddyDelegation;
@@ -936,6 +1054,44 @@ declare global {
     remote: FreebuddyRemote;
     butlerBuddy: FreebuddyButlerBuddy;
     game: FreebuddyGame;
+    docStudio: FreebuddyDocStudio;
+  }
+
+  interface FreebuddyDocStudio {
+    openWindow(target?: string | { filePath?: string }): Promise<boolean>;
+    openConversation(conversationId: string): Promise<boolean>;
+    setActiveConversation(conversationId: string | null): Promise<boolean>;
+    isConversationEmbedded(conversationId: string): Promise<boolean>;
+    getDefaultDirectory(): Promise<string | null>;
+    resolveConversationFile(conversationId: string): Promise<string | null>;
+    attachFileToConversation(conversationId: string, filePath: string): Promise<boolean>;
+    showOpenDialog(defaultPath?: string): Promise<string[] | null>;
+    showItemInFolder(filePath: string): Promise<boolean>;
+    openConversationInMain(conversationId: string, options?: { embed?: boolean }): Promise<boolean>;
+    watchFile(filePath: string): Promise<boolean>;
+    unwatchFile(filePath: string): Promise<boolean>;
+    getEnginePreview(filePath: string): Promise<{
+      success: boolean;
+      url?: string;
+      error?: string;
+    }>;
+    getEngineEditorStatus(filePath: string): Promise<{
+      success: boolean;
+      isDirty?: boolean;
+      lastSavedMs?: number;
+      error?: string;
+    }>;
+    getOfficeEngineAddonStatus(): Promise<{
+      supported: boolean;
+      installed: boolean;
+      installing: boolean;
+      managedPath: string;
+      activePath: string | null;
+    }>;
+    downloadOfficeEngineAddon(): Promise<{ installedPath: string }>;
+    onOfficeEngineDownloadProgress(cb: (progress: { receivedBytes: number; totalBytes: number | null }) => void): () => void;
+    onFileChanged(cb: (filePath: string) => void): () => void;
+    onFileSavedAs(cb: (filePath: string) => void): () => void;
   }
 
   interface FreebuddyGame {

@@ -153,6 +153,8 @@ export function normalizeButlerDelegationTeamInput(
 
     const model = optionalText(role.model);
     const modelOptionId = optionalText(role.modelOptionId);
+    const thoughtLevel = optionalText(role.thoughtLevel);
+    const thoughtLevelOptionId = optionalText(role.thoughtLevelOptionId);
     const instructions = optionalText(role.instructions);
     roleIds.add(id);
     roster.push({
@@ -161,6 +163,8 @@ export function normalizeButlerDelegationTeamInput(
       agentId,
       ...(model ? { model } : {}),
       ...(modelOptionId ? { modelOptionId } : {}),
+      ...(thoughtLevel ? { thoughtLevel } : {}),
+      ...(thoughtLevelOptionId ? { thoughtLevelOptionId } : {}),
       capability,
       ...(instructions ? { instructions } : {}),
       canWrite: role.canWrite,

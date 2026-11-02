@@ -314,6 +314,15 @@ test("Browser preview keeps remote article URLs inside the preview target", asyn
   assert.equal(parsed.searchParams.get("from"), "rss");
 });
 
+test("Browser preview keeps remote HTTP URLs exact inside the preview target", async () => {
+  const { composeBrowserUrl, remoteBrowserOrigin } = await loadBrowserStoreModule();
+  const source = "http://w.gangpeitong.cloud:2011/dashboard";
+  assert.equal(remoteBrowserOrigin(source), "http://w.gangpeitong.cloud:2011");
+
+  const url = composeBrowserUrl("/Users/me/workspace", source, 11);
+  assert.equal(url, "http://w.gangpeitong.cloud:2011/dashboard");
+});
+
 test("Browser preview supports remote URLs but not relative files without a workspace", async () => {
   const { composeBrowserUrl } = await loadBrowserStoreModule();
   const remote = composeBrowserUrl("", "https://example.com/article", 4);
@@ -421,4 +430,35 @@ test("Browser store normalizes cwd across slashes, dots, and case", async () => 
   assert.equal(isSameBrowserCwd(".", ""), true);
   assert.equal(isSameBrowserCwd("/a", "/b"), false);
 });
+
+test("Browser preview supports source code file links with line anchors in built-in browser", async () => {
+  const { composeBrowserUrl, splitAbsoluteLocalFile } = await loadBrowserStoreModule();
+  const { isDocumentTarget, browserTargetExtension } = await loadBrowserCanvasModule();
+
+  const winFileUrl = "file:///D:/www/project/app/Comm_Upload.php#L45-L60";
+  const url = composeBrowserUrl("", winFileUrl, 3);
+  const parsed = new URL(url);
+
+  assert.equal(parsed.protocol, "freebuddy-browser:");
+  assert.equal(parsed.hostname, "render");
+  assert.equal(parsed.pathname, "/D%3A%2Fwww%2Fproject%2Fapp/Comm_Upload.php");
+  assert.deepEqual(splitAbsoluteLocalFile(winFileUrl), {
+    root: "D:/www/project/app",
+    rel: "Comm_Upload.php"
+  });
+  assert.equal(browserTargetExtension(winFileUrl, url), "php");
+  assert.equal(isDocumentTarget(winFileUrl, url), true);
+
+  const freebuddyFileUrl =
+    "freebuddy-file://open?path=%2FD%3A%2Fwww%2Fproject%2Fapp%2FComm_Upload.php";
+  const fromFreebuddyUrl = composeBrowserUrl("", freebuddyFileUrl, 4);
+  assert.equal(new URL(fromFreebuddyUrl).protocol, "freebuddy-browser:");
+  assert.deepEqual(splitAbsoluteLocalFile(freebuddyFileUrl), {
+    root: "D:/www/project/app",
+    rel: "Comm_Upload.php"
+  });
+  assert.equal(isDocumentTarget(freebuddyFileUrl, fromFreebuddyUrl), true);
+  assert.equal(isDocumentTarget("https://example.com/script.js", "https://example.com/script.js"), false);
+});
+
 

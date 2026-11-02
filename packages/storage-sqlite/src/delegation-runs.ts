@@ -371,8 +371,18 @@ export function transitionDelegationEvent(
   const terminal = isTerminalDelegationStatus(status);
   const transitionedAt = nowIso(ctx);
   const current = ctx.db
-    .prepare("SELECT verdict, verdict_summary FROM delegation_events WHERE id = ?")
-    .get(id) as { verdict?: DelegationVerdict | null; verdict_summary?: string | null } | undefined;
+    .prepare("SELECT status, verdict, verdict_summary FROM delegation_events WHERE id = ?")
+    .get(id) as
+      | {
+          status?: DelegationEventStatus;
+          verdict?: DelegationVerdict | null;
+          verdict_summary?: string | null;
+        }
+      | undefined;
+  const resetAttemptStart =
+    options?.allowReopen === true &&
+    status === "running" &&
+    isTerminalDelegationStatus(current?.status ?? "");
   const structuredResult = terminal
     ? {
         ...(options?.result ??
@@ -391,7 +401,11 @@ export function transitionDelegationEvent(
     .prepare(
       `UPDATE delegation_events
        SET status = ?, result_summary = ?, result_json = ?,
-           started_at = CASE WHEN ? = 'running' THEN COALESCE(started_at, ?) ELSE started_at END,
+           started_at = CASE
+             WHEN ? = 'running' AND ? = 1 THEN ?
+             WHEN ? = 'running' THEN COALESCE(started_at, ?)
+             ELSE started_at
+           END,
            ended_at = ?
        WHERE id = ? AND status IN (${placeholders})`
     )
@@ -399,6 +413,9 @@ export function transitionDelegationEvent(
       status,
       resultSummary ?? null,
       structuredResult ? JSON.stringify(structuredResult) : null,
+      status,
+      resetAttemptStart ? 1 : 0,
+      transitionedAt,
       status,
       transitionedAt,
       terminal ? transitionedAt : null,

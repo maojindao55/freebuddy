@@ -2,8 +2,10 @@ import type { TFunction } from "i18next";
 import {
   Brain,
   Check,
+  Code,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   MoveRight,
   Search,
@@ -14,17 +16,35 @@ import {
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { useCallback, useState, type ReactNode } from "react";
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode
+} from "react";
 import { useTranslation } from "react-i18next";
+import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
 
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import { useDebugLogsDialogStore } from "@/store/debugLogsDialogStore";
 import { dedupeCommands, dedupeToolResults } from "@/store/conversationUtils";
 import { useImagePreviewStore } from "@/store/imagePreviewStore";
 import { useTerminalStore } from "@/store/terminalStore";
+import { useFileDiffStore } from "@/store/fileDiffStore";
+import {
+  pathFromFileUrl,
+  pathFromFreebuddyFileUrl,
+  useBrowserStore
+} from "@/store/browserStore";
+import { useDetailLayoutStore } from "@/store/detailLayoutStore";
 import { splitAutolinkSegments } from "@/utils/autolink";
 import { copyToClipboard } from "@/utils/clipboard";
+import { formatTokenCount } from "@/utils/tokenCount";
 import { prepareToolResultText } from "@/utils/streamMedia";
 import {
   attachmentPreviewUrl,
@@ -33,6 +53,7 @@ import {
   withWebMediaAuth
 } from "@/utils/chatAttachments";
 import { useImageLightbox } from "./ImageLightbox";
+import { DeferredDetails } from "./DeferredDetails";
 
 const IMAGE_PATH_EXTENSIONS = "png|jpe?g|webp|gif|bmp|svg|avif|heic|heif";
 const IMAGE_EXTENSIONS_SET = new Set([
@@ -72,6 +93,70 @@ function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
 }
 
+function stripLocalLinkAnchor(value: string): string {
+  return value
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/:(\d+)(?::\d+)?$/, "")
+    .trim();
+}
+
+export function resolveLocalBrowserTarget(raw: string, cwd = ""): string {
+  const value = raw.trim();
+  if (!value || isHttpUrl(value) || /^(mailto|tel|javascript|data):/i.test(value)) {
+    return "";
+  }
+  if (value.startsWith("#")) return "";
+  if (/^freebuddy-file:\/\//i.test(value)) {
+    return pathFromFreebuddyFileUrl(value) ?? value;
+  }
+  if (value.startsWith("/api/attachment")) {
+    try {
+      const url = new URL(value, "http://local.invalid");
+      const filePath = url.searchParams.get("path");
+      if (filePath) {
+        const cleaned = stripLocalLinkAnchor(decodeURIComponent(filePath)).replace(/\\/g, "/");
+        return /^\/[A-Za-z]:/.test(cleaned) ? cleaned.slice(1) : cleaned;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (/^file:\/\//i.test(value)) {
+    return pathFromFileUrl(value) ?? "";
+  }
+  const cleanValue = stripLocalLinkAnchor(value);
+  if (!cleanValue) return "";
+  const effectiveCwd =
+    cwd ||
+    (() => {
+      const convState = useConversationStore.getState();
+      const activeConv = convState.conversations.find((c) => c.id === convState.activeId);
+      return activeConv?.cwd ?? "";
+    })();
+  return resolveLocalFilePath(cleanValue, effectiveCwd);
+}
+
+export function openTargetInBuiltinBrowser(target: string, cwd = ""): boolean {
+  const resolved = resolveLocalBrowserTarget(target, cwd) || target.trim();
+  if (!resolved) return false;
+  const convState = useConversationStore.getState();
+  const activeId = convState.activeId;
+  if (!activeId) return false;
+  const activeConv = convState.conversations.find((c) => c.id === activeId);
+  const effectiveCwd = cwd || activeConv?.cwd;
+  void useBrowserStore
+    .getState()
+    .ensureFor(activeId, effectiveCwd)
+    .then(() => {
+      useBrowserStore.getState().navigate(activeId, resolved);
+      const layout = useDetailLayoutStore.getState();
+      layout.setActiveTab("preview");
+      layout.setDetailCollapsed(false);
+    });
+  return true;
+}
+
 function resolveImageSrc(raw: string, cwd = ""): string {
   const value = raw.trim();
   if (!value) return "";
@@ -80,29 +165,15 @@ function resolveImageSrc(raw: string, cwd = ""): string {
     return withWebMediaAuth(value);
   }
   if (value.startsWith("freebuddy-file://open?path=")) {
-    try {
-      const url = new URL(value);
-      const filePath = url.searchParams.get("path");
-      if (filePath) return attachmentPreviewUrl(filePath);
-    } catch {
-      /* ignore */
-    }
+    const filePath = pathFromFreebuddyFileUrl(value);
+    if (filePath) return attachmentPreviewUrl(filePath);
   }
   if (value.startsWith("file://")) {
-    try {
-      const url = new URL(value);
-      const filePath = decodeURIComponent(url.pathname);
-      if (filePath) return attachmentPreviewUrl(filePath);
-    } catch {
-      /* ignore */
-    }
+    const filePath = pathFromFileUrl(value);
+    if (filePath) return attachmentPreviewUrl(filePath);
   }
-  const abs = resolveLocalFilePath(value, cwd);
+  const abs = resolveLocalFilePath(stripLocalLinkAnchor(value), cwd);
   return abs ? attachmentPreviewUrl(abs) : "";
-}
-
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 function formatCost(amount: number, currency?: string): string {
@@ -148,8 +219,10 @@ function renderInline(
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
       const label = linkMatch[1];
-      const href = resolveLinkHref(linkMatch[2], cwd);
+      const rawTarget = linkMatch[2];
+      const href = resolveLinkHref(rawTarget, cwd);
       if (href) {
+        const localTarget = resolveLocalBrowserTarget(rawTarget, cwd);
         nodes.push(
           <a
             key={key}
@@ -157,6 +230,15 @@ function renderInline(
             href={href}
             target="_blank"
             rel="noreferrer noopener"
+            onClick={
+              localTarget
+                ? (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openTargetInBuiltinBrowser(localTarget, cwd);
+                  }
+                : undefined
+            }
           >
             {renderNested(label, `${key}-link`)}
           </a>
@@ -194,17 +276,8 @@ function resolveLinkHref(raw: string, cwd = ""): string {
   const value = raw.trim();
   if (!value) return "";
   if (isHttpUrl(value)) return value;
-  if (value.startsWith("file://")) {
-    try {
-      const url = new URL(value);
-      const filePath = decodeURIComponent(url.pathname);
-      if (filePath) return attachmentPreviewUrl(filePath);
-    } catch {
-      /* ignore */
-    }
-  }
-  const abs = resolveLocalFilePath(value, cwd);
-  if (abs) return attachmentPreviewUrl(abs);
+  const localTarget = resolveLocalBrowserTarget(value, cwd);
+  if (localTarget) return attachmentPreviewUrl(localTarget);
   return value;
 }
 
@@ -332,7 +405,7 @@ function tableCells(line: string) {
     .map((cell) => cell.trim());
 }
 
-function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
+function CodeCopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -343,27 +416,33 @@ function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
   }, [code]);
 
   return (
+    <button
+      type="button"
+      className="markdown-code-copy-btn"
+      onClick={handleCopy}
+      title="Copy code"
+    >
+      {copied ? (
+        <>
+          <Check className="code-copy-icon" />
+          <span>Copied</span>
+        </>
+      ) : (
+        <>
+          <Copy className="code-copy-icon" />
+          <span>Copy</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
+  return (
     <div className="markdown-code-card">
       <div className="markdown-code-header">
         <span className="markdown-code-lang">{lang || "code"}</span>
-        <button
-          type="button"
-          className="markdown-code-copy-btn"
-          onClick={handleCopy}
-          title="Copy code"
-        >
-          {copied ? (
-            <>
-              <Check className="code-copy-icon" />
-              <span>Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="code-copy-icon" />
-              <span>Copy</span>
-            </>
-          )}
-        </button>
+        <CodeCopyButton code={code} />
       </div>
       <pre className="markdown-code">
         <code>{code}</code>
@@ -371,6 +450,286 @@ function CodeBlockCard({ lang, code }: { lang?: string; code: string }) {
     </div>
   );
 }
+
+let mermaidLoader: Promise<typeof import("mermaid")> | null = null;
+
+function loadMermaid() {
+  mermaidLoader ??= import("mermaid");
+  return mermaidLoader;
+}
+
+function removeMermaidTempNode(id: string) {
+  document.getElementById(`d${id}`)?.remove();
+  document.getElementById(id)?.remove();
+}
+
+function normalizeMermaidSource(code: string): string {
+  const lines = code.split("\n");
+  const firstMeaningful = lines.find((line) => line.trim());
+  const isFlowchart = Boolean(
+    firstMeaningful && /^(flowchart|graph)\b/i.test(firstMeaningful.trim())
+  );
+
+  let subgraphDepth = 0;
+  const out: string[] = [];
+  for (const line of lines) {
+    const subgraphMatch = line.match(/^(\s*subgraph\s+)(\S.*)$/i);
+    if (subgraphMatch) {
+      subgraphDepth += 1;
+      const title = subgraphMatch[2].trim();
+      if (
+        !title ||
+        title.startsWith('"') ||
+        title.includes("[") ||
+        /^[\w.-]+$/.test(title)
+      ) {
+        out.push(line);
+      } else {
+        out.push(`${subgraphMatch[1]}"${title.replace(/"/g, "'")}"`);
+      }
+      continue;
+    }
+    if (isFlowchart && /^\s*end\s*$/.test(line)) {
+      if (subgraphDepth === 0) continue;
+      subgraphDepth -= 1;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+function mermaidSvgToDataUrl(svg: string, background: string): string {
+  const host = document.createElement("div");
+  host.innerHTML = svg;
+  const svgEl = host.firstElementChild;
+  if (svgEl) {
+    svg = new XMLSerializer().serializeToString(svgEl);
+  }
+  const sized = svg.replace(/<svg\b([^>]*)>/, (match, attrs: string) => {
+    const viewBox = attrs.match(/viewBox="([^"]+)"/);
+    if (!viewBox) return match;
+    const parts = viewBox[1].trim().split(/[\s,]+/).map(Number);
+    if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return match;
+    const cleaned = attrs
+      .replace(/\swidth="[^"]*"/, "")
+      .replace(/\sheight="[^"]*"/, "")
+      .replace(/\sstyle="[^"]*"/, "");
+    return (
+      `<svg${cleaned} width="${parts[2]}" height="${parts[3]}">` +
+      `<rect x="${parts[0]}" y="${parts[1]}" width="100%" height="100%" fill="${background}"/>`
+    );
+  });
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sized)}`;
+}
+
+function MermaidBlock({ code }: { code: string }) {
+  const resolvedTheme = useSettingsStore((s) => s.resolvedTheme);
+  const { open } = useImageLightbox();
+  const [svg, setSvg] = useState("");
+  const [showSource, setShowSource] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const renderId = `fb-mermaid-${Math.random().toString(36).slice(2, 10)}`;
+
+    const timer = window.setTimeout(() => {
+      void loadMermaid()
+        .then(async (mod) => {
+          const mermaid = mod.default;
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: "strict",
+            suppressErrorRendering: true,
+            theme: resolvedTheme === "dark" ? "dark" : "default"
+          });
+          let result;
+          try {
+            result = await mermaid.render(renderId, code);
+          } catch (rawError) {
+            removeMermaidTempNode(renderId);
+            const normalized = normalizeMermaidSource(code);
+            if (normalized === code) throw rawError;
+            result = await mermaid.render(`${renderId}-n`, normalized);
+          }
+          if (!cancelled) setSvg(result.svg);
+        })
+        .catch((error) => {
+          removeMermaidTempNode(renderId);
+          removeMermaidTempNode(`${renderId}-n`);
+          console.warn("Mermaid render failed:", error);
+          if (!cancelled) setSvg("");
+        });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      removeMermaidTempNode(renderId);
+    };
+  }, [code, resolvedTheme]);
+
+  return (
+    <div className="markdown-code-card">
+      <div className="markdown-code-header">
+        <span className="markdown-code-lang">mermaid</span>
+        <div className="markdown-code-actions">
+          {svg ? (
+            <button
+              type="button"
+              className="markdown-code-copy-btn"
+              onClick={() => setShowSource((value) => !value)}
+              title={showSource ? "Show diagram" : "Show source"}
+            >
+              <Code className="code-copy-icon" />
+              <span>{showSource ? "Diagram" : "Source"}</span>
+            </button>
+          ) : null}
+          <CodeCopyButton code={code} />
+        </div>
+      </div>
+      {svg && !showSource ? (
+        <button
+          type="button"
+          className="mermaid-diagram-button"
+          onClick={() =>
+            open({
+              src: mermaidSvgToDataUrl(
+                svg,
+                resolvedTheme === "dark" ? "#0f172a" : "#ffffff"
+              ),
+              alt: "mermaid"
+            })
+          }
+          title="Click to enlarge"
+        >
+          <div
+            className="mermaid-diagram"
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        </button>
+      ) : (
+        <pre className="markdown-code">
+          <code>{code}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
+
+export interface RawMarkdownListItem {
+  indent: number;
+  ordered: boolean;
+  start?: number;
+  text: string;
+}
+
+export interface ParsedMarkdownListItem {
+  text: string;
+  subLists?: ParsedMarkdownList[];
+}
+
+export interface ParsedMarkdownList {
+  ordered: boolean;
+  start?: number;
+  items: ParsedMarkdownListItem[];
+}
+
+export const MARKDOWN_LIST_ITEM_RE = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
+
+export function getMarkdownIndent(whitespace: string): number {
+  let count = 0;
+  for (const ch of whitespace) {
+    if (ch === "\t") {
+      count += 4 - (count % 4);
+    } else {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+export function buildMarkdownListTrees(
+  rawItems: RawMarkdownListItem[]
+): ParsedMarkdownList[] {
+  if (rawItems.length === 0) return [];
+
+  let index = 0;
+
+  function parseLevel(parentIndent: number): ParsedMarkdownList {
+    const first = rawItems[index];
+    const currentIndent = first.indent;
+    const ordered = first.ordered;
+    const list: ParsedMarkdownList = {
+      ordered,
+      start: ordered && first.start && first.start !== 1 ? first.start : undefined,
+      items: []
+    };
+
+    while (index < rawItems.length) {
+      const item = rawItems[index];
+
+      if (item.indent < currentIndent) {
+        break;
+      }
+
+      if (item.indent > currentIndent) {
+        if (list.items.length > 0) {
+          const prevItem = list.items[list.items.length - 1];
+          const sub = parseLevel(currentIndent);
+          if (!prevItem.subLists) prevItem.subLists = [];
+          prevItem.subLists.push(sub);
+        } else {
+          list.items.push({ text: item.text });
+          index += 1;
+        }
+        continue;
+      }
+
+      if (item.ordered !== ordered) {
+        break;
+      }
+
+      list.items.push({ text: item.text });
+      index += 1;
+    }
+
+    return list;
+  }
+
+  const result: ParsedMarkdownList[] = [];
+  while (index < rawItems.length) {
+    result.push(parseLevel(-1));
+  }
+  return result;
+}
+
+function renderMarkdownListTree(
+  list: ParsedMarkdownList,
+  keyPrefix: string,
+  cwd: string
+): ReactNode {
+  const ListTag = list.ordered ? "ol" : "ul";
+  return (
+    <ListTag key={keyPrefix} start={list.start}>
+      {list.items.map((item, itemIndex) => {
+        const itemKey = `${keyPrefix}-${itemIndex}`;
+        return (
+          <li key={itemKey}>
+            {renderInline(item.text, itemKey, 0, cwd)}
+            {item.subLists?.map((sub, subIndex) =>
+              renderMarkdownListTree(sub, `${itemKey}-sub-${subIndex}`, cwd)
+            )}
+          </li>
+        );
+      })}
+    </ListTag>
+  );
+}
+
+
+export const MarkdownCodeBlockContext = createContext<
+  ((lang: string, code: string, closed: boolean) => ReactNode | null) | null
+>(null);
 
 export function MarkdownText({
   content,
@@ -385,6 +744,7 @@ export function MarkdownText({
     return s.conversations.find((conv) => conv.id === id)?.cwd ?? "";
   });
   const cwd = cwdProp ?? activeCwd ?? "";
+  const renderCodeBlock = useContext(MarkdownCodeBlockContext);
   const blocks: ReactNode[] = [];
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   let i = 0;
@@ -433,9 +793,19 @@ export function MarkdownText({
         code.push(lines[i]);
         i += 1;
       }
-      if (i < lines.length) i += 1;
+      const closed = i < lines.length;
+      if (closed) i += 1;
+      const custom = renderCodeBlock?.(lang, code.join("\n"), closed);
+      if (custom != null) {
+        blocks.push(<Fragment key={`code-${i}`}>{custom}</Fragment>);
+        continue;
+      }
       blocks.push(
-        <CodeBlockCard key={`code-${i}`} lang={lang} code={code.join("\n")} />
+        /^mermaid$/i.test(lang) ? (
+          <MermaidBlock key={`code-${i}`} code={code.join("\n")} />
+        ) : (
+          <CodeBlockCard key={`code-${i}`} lang={lang} code={code.join("\n")} />
+        )
       );
       continue;
     }
@@ -482,23 +852,46 @@ export function MarkdownText({
       continue;
     }
 
-    if (/^\s*(?:[-*]|\d+\.)\s+/.test(line)) {
-      const ordered = /^\s*\d+\.\s+/.test(line);
-      const items: string[] = [];
-      while (i < lines.length && /^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, ""));
-        i += 1;
+    if (MARKDOWN_LIST_ITEM_RE.test(line)) {
+      const rawItems: RawMarkdownListItem[] = [];
+      while (i < lines.length) {
+        const curLine = lines[i];
+        const match = curLine.match(MARKDOWN_LIST_ITEM_RE);
+        if (match) {
+          const indent = getMarkdownIndent(match[1]);
+          const ordered = Boolean(match[3]);
+          const start = match[3] ? parseInt(match[3], 10) : undefined;
+          const text = match[4];
+          rawItems.push({ indent, ordered, start, text });
+          i += 1;
+        } else if (
+          rawItems.length > 0 &&
+          curLine.trim() &&
+          !curLine.trim().startsWith("```") &&
+          !/^#{1,6}\s+/.test(curLine) &&
+          !/^\s*>\s?/.test(curLine) &&
+          !(curLine.includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) &&
+          getMarkdownIndent(curLine.match(/^(\s*)/)?.[1] ?? "") >= rawItems[rawItems.length - 1].indent + 2
+        ) {
+          rawItems[rawItems.length - 1].text += "\n" + curLine.trim();
+          i += 1;
+        } else if (
+          !curLine.trim() &&
+          i + 1 < lines.length &&
+          MARKDOWN_LIST_ITEM_RE.test(lines[i + 1])
+        ) {
+          i += 1;
+        } else {
+          break;
+        }
       }
-      const ListTag = ordered ? "ol" : "ul";
-      blocks.push(
-        <ListTag key={`list-${i}`}>
-          {items.map((item, itemIndex) => (
-            <li key={itemIndex}>
-              {renderInline(item, `li-${i}-${itemIndex}`, 0, cwd)}
-            </li>
-          ))}
-        </ListTag>
-      );
+
+      const parsedLists = buildMarkdownListTrees(rawItems);
+      parsedLists.forEach((parsedList, listIndex) => {
+        blocks.push(
+          renderMarkdownListTree(parsedList, `list-${i}-${listIndex}`, cwd)
+        );
+      });
       continue;
     }
 
@@ -511,7 +904,7 @@ export function MarkdownText({
       !/^#{1,6}\s+/.test(lines[i]) &&
       !/^\s*>\s?/.test(lines[i]) &&
       !(lines[i].includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) &&
-      !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])
+      !MARKDOWN_LIST_ITEM_RE.test(lines[i])
     ) {
       paragraph.push(lines[i]);
       i += 1;
@@ -573,6 +966,7 @@ function StreamContentBlock({
     }
     case "resource_link": {
       const href = item.uri ? resolveLinkHref(item.uri) : "";
+      const localTarget = item.uri ? resolveLocalBrowserTarget(item.uri) : "";
       const label = item.title || item.name || item.uri || t("stream.resourceLink");
       const meta = [
         item.mimeType,
@@ -583,7 +977,21 @@ function StreamContentBlock({
       return (
         <div className="stream-content-block stream-resource-link">
           {href ? (
-            <a href={href} target="_blank" rel="noreferrer noopener" title={item.uri}>
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={item.uri}
+              onClick={
+                localTarget
+                  ? (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openTargetInBuiltinBrowser(localTarget);
+                    }
+                  : undefined
+              }
+            >
               {label}
             </a>
           ) : (
@@ -618,10 +1026,24 @@ function StreamContentBlock({
       }
       if (item.uri) {
         const href = resolveLinkHref(item.uri);
+        const localTarget = resolveLocalBrowserTarget(item.uri);
         const label = item.title || item.name || item.uri;
         return (
           <div className="stream-content-block stream-embedded-resource">
-            <a href={href} target="_blank" rel="noreferrer noopener">
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              onClick={
+                localTarget
+                  ? (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openTargetInBuiltinBrowser(localTarget);
+                    }
+                  : undefined
+              }
+            >
               {label}
             </a>
           </div>
@@ -637,9 +1059,10 @@ function StreamContentBlock({
 function summarizeValue(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value.map(String).join(" ");
+  if (Array.isArray(value)) return value.map(summarizeValue).filter(Boolean).join(" ");
   if (typeof value === "object") {
     const record = value as Record<string, unknown>;
+    if (record.type === "terminal" && typeof record.terminalId === "string") return "";
     const direct =
       record.path ??
       record.file ??
@@ -765,6 +1188,7 @@ function hasVisibleContent(content: string) {
 function formatValue(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.every(entry => entry?.type === "terminal" && typeof entry.terminalId === "string")) return "";
   if (
     typeof value === "object" &&
     !Array.isArray(value) &&
@@ -825,14 +1249,14 @@ export function StreamToolInvocation({
     toolImages.length === 0;
 
   return (
-    <details
+    <DeferredDetails
       className={`stream-tool-invocation${hasBody ? " has-body" : ""}${
         hasError ? " error" : ""
       }${
         statusMeta ? ` status-${statusMeta.className}` : ""
       }`}
       open={call.status === "running" ? true : undefined}
-    >
+      summary={
       <summary>
         <ToolKindIcon toolKind={call.toolKind} />
         <span className="stream-tool-summary-main">{toolGroupLabel(call, t)}</span>
@@ -840,13 +1264,20 @@ export function StreamToolInvocation({
           <span className="stream-tool-locations">
             {call.locations.map((location, index) => {
               const href = resolveLinkHref(location.path);
+              const localTarget = resolveLocalBrowserTarget(location.path);
               return href ? (
                 <a
                   key={`${location.path}-${index}`}
                   href={href}
                   className="stream-tool-location"
                   title={location.path}
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (localTarget) {
+                      event.preventDefault();
+                      openTargetInBuiltinBrowser(localTarget);
+                    }
+                  }}
                 >
                   {truncate(location.path, 48)}
                 </a>
@@ -878,7 +1309,9 @@ export function StreamToolInvocation({
           </span>
         ) : null}
       </summary>
-      <div className="stream-tool-body">
+      }
+    >
+      {() => <div className="stream-tool-body">
         {input && (
           <div className="stream-tool-section">
             <span className="stream-label">{t("stream.input")}</span>
@@ -921,8 +1354,8 @@ export function StreamToolInvocation({
             )}
           </div>
         ))}
-      </div>
-    </details>
+      </div>}
+    </DeferredDetails>
   );
 }
 
@@ -973,13 +1406,14 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
       );
     case "thinking":
       return (
-        <details className="stream-thinking">
+        <DeferredDetails className="stream-thinking" summary={
           <summary>
             <ToolKindIcon toolKind="think" />
             <span>{t("stream.thinking")}</span>
           </summary>
-          <MarkdownText content={item.content} cwd={cwd} />
-        </details>
+        }>
+          {() => <MarkdownText content={item.content} cwd={cwd} />}
+        </DeferredDetails>
       );
     case "content-block":
       return <StreamContentBlock item={item} />;
@@ -1004,15 +1438,16 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
         );
       }
       return (
-        <details className={`stream-tool-result${item.isError ? " error" : ""}`}>
+        <DeferredDetails className={`stream-tool-result${item.isError ? " error" : ""}`} summary={
           <summary>
             <span className="stream-label stream-summary-label">
               {t("stream.result", { tool: item.tool })}
             </span>
             {item.isError && <span className="stream-error-suffix">{t("stream.errorTag")}</span>}
           </summary>
-          <StreamToolResultBody content={item.content} />
-        </details>
+        }>
+          {() => <StreamToolResultBody content={item.content} />}
+        </DeferredDetails>
       );
     case "command":
       return (
@@ -1028,20 +1463,40 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
           {item.content}
         </pre>
       );
-    case "file-edit":
+    case "file-edit": {
+      const isDoc = isOfficeOrDocFile(item.path);
       return (
-        <details className="stream-file-edit">
-          <summary>{item.action} {item.path}</summary>
-          {item.oldText != null && item.newText != null ? (
-            <div className="stream-diff">
-              <pre className="stream-diff-old">{item.oldText}</pre>
-              <pre className="stream-diff-new">{item.newText}</pre>
-            </div>
-          ) : item.patch ? (
-            <pre>{item.patch}</pre>
-          ) : null}
-        </details>
+        <div className="stream-file-edit-group" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <button type="button" className="file-change-entry stream-file-edit" onClick={() => {
+            const conversationId = useConversationStore.getState().activeId;
+            if (conversationId) useFileDiffStore.getState().open({ conversationId, edits: [item], index: 0 });
+          }}>
+            <FileText size={15} /><span className="file-change-path">{item.path}</span><span>{t("fileDiff.view")}</span>
+          </button>
+          {isDoc && window.freebuddy?.docStudio?.openWindow && (
+            <button
+              type="button"
+              className="file-change-entry stream-file-edit"
+              title={t("docStudio.openInStudio", "Open in DocStudio")}
+              onClick={() => void window.freebuddy?.docStudio?.openWindow({ filePath: item.path })}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                background: "rgba(59, 130, 246, 0.12)",
+                color: "#2563eb",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
+                fontSize: 12
+              }}
+            >
+              <ExternalLink size={12} />
+              <span>DocStudio</span>
+            </button>
+          )}
+        </div>
       );
+    }
     case "terminal-embed":
       return <TerminalEmbed item={item} />;
     case "session":
@@ -1055,8 +1510,8 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
     case "usage": {
       const hasContext =
         item.contextUsed != null || item.contextSize != null;
-      const used = item.contextUsed != null ? formatTokens(item.contextUsed) : "–";
-      const total = item.contextSize != null ? ` / ${formatTokens(item.contextSize)}` : "";
+      const used = item.contextUsed != null ? formatTokenCount(item.contextUsed) : "–";
+      const total = item.contextSize != null ? ` / ${formatTokenCount(item.contextSize)}` : "";
       return (
         <div className="stream-meta">
           <span className="stream-label">{t("stream.usageLabel")}</span>

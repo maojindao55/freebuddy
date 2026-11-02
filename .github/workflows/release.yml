@@ -57,7 +57,7 @@ jobs:
             tokscale_arch: arm64
             assets: |
               FreeBuddy_macOS-Apple-Silicon-__VERSION__.dmg|*.dmg
-              FreeBuddy_macOS-Apple-Silicon-__VERSION__.zip|*.zip
+              FreeBuddy_macOS-Apple-Silicon-arm64-__VERSION__.zip|*.zip
           - platform: macos-latest
             builder_args: --mac --x64
             tokscale_platform: darwin
@@ -87,6 +87,17 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      # workflow_dispatch can rebuild an older tag with this workflow file.
+      # Fetch the helper from the workflow commit, not from the tag checkout.
+      - name: Checkout signing helper
+        if: matrix.platform == 'macos-latest'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .ci-helpers
+          sparse-checkout: scripts/import-macos-csc-cert.sh
+          sparse-checkout-cone-mode: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -99,18 +110,30 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Verify bundled Windows Node without system Node on PATH
+        if: matrix.platform == 'windows-latest'
+        run: npm run test:managed-node
+
+      # electron-builder 26.15.3 + macOS 26.6: CSC_LINK makes the builder call
+      # `security set-key-partition-list -k <p12 password>`, but that flag
+      # needs the temporary keychain password. Import the cert ourselves and
+      # leave CSC_LINK unset so the builder auto-discovers the identity.
+      # See electron-userland/electron-builder#10066.
+      - name: Import macOS signing certificate
+        if: matrix.platform == 'macos-latest'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: bash .ci-helpers/scripts/import-macos-csc-cert.sh
+
       - name: Build Electron app
         env:
           FREEBUDDY_POSTHOG_KEY: ${{ secrets.FREEBUDDY_POSTHOG_KEY }}
           FREEBUDDY_POSTHOG_HOST: ${{ vars.FREEBUDDY_POSTHOG_HOST }}
-          # macOS code signing (REQUIRED for Squirrel.Mac auto-update to work).
-          # Scoped to macOS only: the Apple Development cert cannot sign
-          # Windows exes, and feeding the multi-cert .p12 to Windows
-          # signtool fails with "Multiple certificates were found".
-          CSC_LINK: ${{ matrix.platform == 'macos-latest' && secrets.CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.CSC_KEY_PASSWORD || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'macos-latest' && 'true' || 'false' }}
         run: |
           node scripts/ensure-tokscale-platform.mjs --platform ${{ matrix.tokscale_platform }} --arch ${{ matrix.tokscale_arch }}
+          node scripts/ensure-pi-runtime.mjs
           npm run build
           npx electron-builder ${{ matrix.builder_args }} --publish never
 
@@ -126,10 +149,14 @@ jobs:
               continue
             fi
             asset_name="${asset_name//__VERSION__/$version_suffix}"
-            FILE=$(find release -name "$find_pattern" -type f | head -1)
+            FILE=$(find release -maxdepth 1 -name "$find_pattern" -type f | head -1)
             if [ -z "$FILE" ]; then
-              echo "No artifact matching $find_pattern found"
-              find release -type f || true
+              echo "No artifact matching $find_pattern found in release/"
+              find release -maxdepth 1 -type f || true
+              exit 1
+            fi
+            if [ "$(basename "$FILE")" = "runtime.zip" ]; then
+              echo "Error: Matched bundled runtime.zip instead of release package: $FILE"
               exit 1
             fi
             cp "$FILE" "$asset_name"
@@ -149,10 +176,11 @@ jobs:
           repo="${{ github.repository }}"
           version_suffix="v$(node -p "require('./package.json').version")"
           arm_dmg="FreeBuddy_macOS-Apple-Silicon-${version_suffix}.dmg"
-          arm_zip="FreeBuddy_macOS-Apple-Silicon-${version_suffix}.zip"
+          # electron-updater detects macOS architecture from "arm64" in the ZIP URL.
+          arm_zip="FreeBuddy_macOS-Apple-Silicon-arm64-${version_suffix}.zip"
           x64_dmg="FreeBuddy_macOS-Intel-${version_suffix}.dmg"
           x64_zip="FreeBuddy_macOS-Intel-${version_suffix}.zip"
-          yml=$(find release -name latest-mac.yml -type f | head -1)
+          yml=$(find release -maxdepth 1 -name latest-mac.yml -type f | head -1)
           if [ -z "$yml" ]; then
             echo "No latest-mac.yml found; skipping"
             exit 0
@@ -176,7 +204,7 @@ jobs:
           gh release upload "$tag" "latest-mac-${arch_tag}.yml" \
             --repo "$repo" --clobber
           # Also upload the blockmap so delta updates work.
-          dmg_blockmap=$(find release -name "*.dmg.blockmap" -type f | head -1)
+          dmg_blockmap=$(find release -maxdepth 1 -name "*.dmg.blockmap" -type f | head -1)
           if [ -n "$dmg_blockmap" ]; then
             if [ "$arch_tag" = "arm64" ]; then
               cp "$dmg_blockmap" "${arm_dmg}.blockmap"
@@ -188,7 +216,7 @@ jobs:
                 --repo "$repo" --clobber
             fi
           fi
-          zip_blockmap=$(find release -name "*.zip.blockmap" -type f | head -1)
+          zip_blockmap=$(find release -maxdepth 1 -name "*.zip.blockmap" -type f | head -1)
           if [ -n "$zip_blockmap" ]; then
             if [ "$arch_tag" = "arm64" ]; then
               cp "$zip_blockmap" "${arm_zip}.blockmap"
@@ -212,7 +240,7 @@ jobs:
           version_suffix="v$(node -p "require('./package.json').version")"
           appimage_name="FreeBuddy_Linux_x64-${version_suffix}.AppImage"
           deb_name="FreeBuddy_Ubuntu_x64-${version_suffix}.deb"
-          yml=$(find release -name latest-linux.yml -type f | head -1)
+          yml=$(find release -maxdepth 1 -name latest-linux.yml -type f | head -1)
           if [ -z "$yml" ]; then
             echo "No latest-linux.yml found; skipping"
             exit 0
@@ -247,10 +275,14 @@ jobs:
             $assetName = $parts[0]
             $assetName = $assetName.Replace("__VERSION__", "v$appVersion")
             $findPattern = $parts[1]
-            $file = Get-ChildItem -Path release -Recurse -Filter $findPattern | Select-Object -First 1
+            $file = Get-ChildItem -Path release -Filter $findPattern -File | Select-Object -First 1
             if (-not $file) {
               Write-Error "No artifact matching $findPattern found"
-              Get-ChildItem -Path release -Recurse -File
+              Get-ChildItem -Path release -File
+              exit 1
+            }
+            if ($file.Name -eq "FreeBuddy.exe") {
+              Write-Error "Matched unpacked FreeBuddy.exe instead of installer package"
               exit 1
             }
             Copy-Item $file.FullName $assetName
@@ -271,7 +303,7 @@ jobs:
           # electron-updater reads latest.yml to discover newer versions.
           # Rewrite the native artifact name so it points at the friendly
           # download name uploaded above.
-          $yml = Get-ChildItem -Path release -Recurse -Filter latest.yml | Select-Object -First 1
+          $yml = Get-ChildItem -Path release -Filter latest.yml -File | Select-Object -First 1
           if (-not $yml) {
             Write-Host "No latest.yml found; skipping update metadata upload"
             exit 0
@@ -280,7 +312,7 @@ jobs:
           $content = $content -replace 'FreeBuddy-[0-9]+\.[0-9]+\.[0-9]+-win-x64\.exe', $windowsAssetName
           Set-Content -Path latest.yml -Value $content -NoNewline
           gh release upload $tag latest.yml --repo $repo --clobber
-          $blockmap = Get-ChildItem -Path release -Recurse -Filter *.exe.blockmap | Select-Object -First 1
+          $blockmap = Get-ChildItem -Path release -Filter *.exe.blockmap -File | Select-Object -First 1
           if ($blockmap) {
             Copy-Item $blockmap.FullName "$windowsAssetName.blockmap"
             gh release upload $tag "$windowsAssetName.blockmap" --repo $repo --clobber

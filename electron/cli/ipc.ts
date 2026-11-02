@@ -12,7 +12,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { cliAdapterDefinitions } from "./adapters.js";
-import { cliCheck, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
+import { readMessageDetails } from "./messageDetails.js";
+import { listConversationOverviews } from "./conversationOverview.js";
+import { listMessageFileEdits, readMessageFileEdit, readFileEditBlob, readFileEditSnapshot, readTurnFileSnapshotForHandoff } from "./fileEditBlobs.js";
+import { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
+import type { CliRuntimeUpdateRequest, CliUpgradePlan } from "../shared/cliRuntimeUpdate.js";
 import {
   listOverrides,
   upsertOverride,
@@ -21,6 +25,16 @@ import {
   saveToolSession,
   type CLIExecutorOverride
 } from "./store.js";
+import {
+  listProviders,
+  upsertProvider,
+  deleteProvider,
+  setProviderEnabled,
+  reorderProviders,
+  getProviderApiKey,
+  type ProviderInput,
+} from "./providers.js";
+import { testProvider, type TestProviderOptions } from "./providerCheck.js";
 import {
   cliKill,
   cliRun,
@@ -49,27 +63,44 @@ import {
   createConversation,
   deleteConversation,
   getConversation,
+  getConversationMcpServerIds,
   listConversations,
-  listMessage,
+  getMessageForIpc,
   listMessages,
+  listMessagesForIpc,
+  listFollowupMessagesForIpc,
+  moveConversationToProject,
   notifyConversationsChanged,
   renameConversation,
   requireOwnedConversation,
   setConversationApprovalMode,
   setConversationConfigOptionOverrides,
+  setConversationMcpServerIds,
+  setConversationPinned,
   setConversationSkills,
+  setConversationOrder,
+  resetConversationOrder,
   recoverInterruptedMessages,
+  recoverInterruptedTasks,
   updateConversationAgentName,
   updateMessage,
   type AppendMessageInput,
+  type Conversation,
   type ConversationTitleSource,
   type CreateConversationInput,
   type ListConversationsArgs,
+  type ListMessagesIpcOptions,
   type UpdateMessageInput
 } from "./conversations.js";
 import {
+  sanitizeMessageForIpc,
+  sanitizeMessagesForIpc
+} from "./messagePayloadSanitize.js";
+import {
   createProject,
+  cwdForProjectLookup,
   deleteProject,
+  ensureProjectForCwd,
   findProjectByCwd,
   getProject,
   listProjects,
@@ -78,7 +109,7 @@ import {
   type ProjectInput
 } from "./projects.js";
 import { getSetting, setSetting, getLanguage } from "./settings.js";
-import { getCallerUserId } from "./callerContext.js";
+import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import {
   callerCanControlSession,
   recordSessionOwner,
@@ -86,6 +117,11 @@ import {
 } from "./sessionOwners.js";
 import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
 import { importCodexSession } from "./codexRolloutImport.js";
+import {
+  forkConversation,
+  type ForkConversationInput,
+  type ForkConversationResult
+} from "./conversationFork.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { setTelemetryEnabled, trackTelemetryEvent } from "../telemetry.js";
 import { normalizeTelemetryAdapter } from "../telemetryPrivacy.js";
@@ -150,6 +186,7 @@ import { registerWorkflowIpc } from "./workflowIpc.js";
 import { registerDelegationIpc } from "./delegationIpc.js";
 import { registerDelegationTeamIpc } from "./delegationTeamIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
+import { readAntigravityUsage } from "./antigravityUsage.js";
 import {
   deleteSkill,
   importSkills,
@@ -246,6 +283,22 @@ import {
   type NativePluginAgent,
   type NativePluginScope
 } from "./nativePlugins.js";
+import {
+  listUserMcpServers,
+  getUserMcpServer,
+  createUserMcpServer,
+  updateUserMcpServer,
+  deleteUserMcpServer,
+  setUserMcpServerEnabled,
+  selfCheckUserMcpServer,
+  getMcpServersByIds,
+  canUseHostMcp,
+  isMcpSecretStorageEncrypted,
+  type UserMcpServerInput
+} from "./mcpServers.js";
+import {
+  getUserMcpOAuthStatus, authorizeUserMcpServer, disconnectUserMcpServer
+} from "./mcpOAuth.js";
 
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -387,6 +440,7 @@ function attachmentCandidate(filePath: string) {
 
 export function registerCliIpc() {
   recoverInterruptedMessages();
+  recoverInterruptedTasks();
   registerHandler("plugins:list", (_event, agent: unknown) =>
     listNativePlugins(nativePluginAgent(agent))
   );
@@ -875,8 +929,25 @@ export function registerCliIpc() {
   );
   registerHandler("cli:resetOverride", (_e, id: string) => resetOverride(id));
 
+  // ---- 服务商 / Provider ----
+  registerHandler("providers:list", () => listProviders());
+  registerHandler("providers:upsert", (_e, input: ProviderInput) => upsertProvider(input));
+  registerHandler("providers:delete", (_e, id: string) => deleteProvider(id));
+  registerHandler("providers:setEnabled", (_e, args: { id: string; enabled: boolean }) =>
+    setProviderEnabled(args.id, args.enabled)
+  );
+  registerHandler("providers:reorder", (_e, ids: string[]) => reorderProviders(ids));
+  registerHandler("providers:test", (_e, target: unknown) =>
+    testProvider(target as string | TestProviderOptions)
+  );
+  registerHandler("providers:getApiKey", (_e, id: string) => getProviderApiKey(id));
+
   registerHandler("cli:listRuntimes", () => listRuntimes());
+  registerHandler("cli:checkUpdates", (_e, args: CliRuntimeUpdateRequest) => cliCheckUpdates(args));
+  registerHandler("cli:prepareUpgrade", (_e, args: CliRuntimeUpdateRequest) => prepareCliUpgrade(args));
+  registerHandler("cli:verifyUpgrade", (_e, args: { request: CliRuntimeUpdateRequest; plan: CliUpgradePlan }) => verifyCliUpgrade(args.request, args.plan));
   registerHandler("cli:codexUsage", () => readCodexUsage());
+  registerHandler("cli:antigravityUsage", () => readAntigravityUsage());
   registerHandler("cli:probeAuthentication", (_e, args: CliAuthControlArgs) =>
     probeAcpAuthentication(args)
   );
@@ -902,12 +973,14 @@ export function registerCliIpc() {
     adapter: string;
     command: string;
     requestId: string;
+    targetVersion?: string;
   }) =>
     cliInstallStream(
       args.command,
       event.sender,
       args.adapter,
-      args.requestId
+      args.requestId,
+      args.targetVersion
     )
   );
 
@@ -1233,6 +1306,12 @@ export function registerCliIpc() {
   registerHandler("cli:createProject", (_e, input: unknown) =>
     createProject(parseProjectInput(input))
   );
+  registerHandler("cli:ensureProjectForCwd", (_e, cwd: unknown) => {
+    if (typeof cwd !== "string" || !cwd.trim()) {
+      throw new Error("Folder path is required");
+    }
+    return ensureProjectForCwd(cwd);
+  });
   registerHandler("cli:updateProject", (_e, args: unknown) => {
     if (!args || typeof args !== "object") {
       throw new Error("Project update args are required");
@@ -1251,15 +1330,24 @@ export function registerCliIpc() {
   registerHandler("cli:listConversations", (_e, args: ListConversationsArgs = {}) =>
     listConversations(args)
   );
+  registerHandler("cli:listConversationOverviews", (_e, conversationIds: string[]) =>
+    listConversationOverviews(conversationIds)
+  );
   registerHandler("cli:getConversation", (_e, id: string) =>
     requireOwnedConversation(id)
   );
   registerHandler(
     "cli:createConversation",
     async (_e, input: CreateConversationInput) => {
+      const lookupCwd = cwdForProjectLookup(input);
+      const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
       const matchedProjectId =
         input.projectId ||
-        (input.cwd ? findProjectByCwd(input.cwd)?.id : undefined);
+        (lookupCwd
+          ? remoteMember
+            ? findProjectByCwd(lookupCwd)?.id
+            : ensureProjectForCwd(lookupCwd).id
+          : undefined);
       const isolatedCwd = await isolateRemoteCwdForCaller(input.cwd);
       const conversation = createConversation({
         ...input,
@@ -1329,12 +1417,32 @@ export function registerCliIpc() {
           transcript = createHandoffTranscriptSnapshot(
             getDataDir(),
             briefId,
-            messages
+            messages,
+            readFileEditSnapshot,
+            readTurnFileSnapshotForHandoff
           );
         } catch {
           transcript = undefined;
         }
       }
+      // Remote callers cannot inherit or override host MCP servers.
+      let mcpServerIds: string[] = [];
+      if (canUseHostMcp()) {
+        const carriedIds = Array.isArray(input.mcpServerIds)
+          ? input.mcpServerIds.filter(
+              (id): id is string => typeof id === "string"
+            )
+          : getConversationMcpServerIds(source.id);
+        const existingIds = new Set(
+          getMcpServersByIds(carriedIds).map((server) => server.id)
+        );
+        mcpServerIds = carriedIds.filter((id) => existingIds.has(id));
+      }
+      const transferMetadata: Record<string, unknown> = {};
+      if (mcpServerIds.length > 0) {
+        transferMetadata.mcpServerIds = mcpServerIds;
+      }
+
       let txResult: { conversation: ReturnType<typeof createConversation> };
       try {
         txResult = getDb().transaction(() => {
@@ -1342,6 +1450,11 @@ export function registerCliIpc() {
           // conversations(id), so B must exist before the brief row is inserted.
           // conversations.source_brief_id is a plain TEXT column (no FK), so it
           // can reference a brief that doesn't exist yet.
+          const overrides = Object.fromEntries(
+            Object.entries(input.configOptionOverrides ?? {}).filter(
+              ([id, value]) => id.trim() !== "" && value.trim() !== ""
+            )
+          );
           const conversation = createConversation({
             id: input.targetConversationId,
             title: source.title,
@@ -1351,8 +1464,15 @@ export function registerCliIpc() {
             // Transfers always inherit the source workspace so referenced
             // files and the target agent's execution directory stay aligned.
             cwd: source.cwd,
+            // Handoff carries MCP selection by default
+            metadata: Object.keys(transferMetadata).length > 0
+              ? transferMetadata
+              : undefined,
             skillIds: [],
             titleSource: "default",
+            ...(Object.keys(overrides).length > 0
+              ? { configOptionOverrides: overrides }
+              : {}),
             sourceConversationId: source.id,
             sourceAgentId: source.agentId,
             sourceAgentName: source.agentName,
@@ -1387,7 +1507,19 @@ export function registerCliIpc() {
         warning: brief ? undefined : "brief_extraction_failed"
       };
     }
-  );  registerHandler(
+  );
+  registerHandler(
+    "cli:forkConversation",
+    (_e, input: ForkConversationInput): ForkConversationResult => {
+      const result = forkConversation(input);
+      trackTelemetryEvent("conversation_forked", {
+        copied_messages: result.copiedMessages
+      });
+      notifyConversationsChanged();
+      return result;
+    }
+  );
+  registerHandler(
     "cli:createConversationShare",
     (
       _e,
@@ -1403,7 +1535,9 @@ export function registerCliIpc() {
         transcript = createHandoffTranscriptSnapshot(
           getDataDir(),
           snapshotId,
-          messages
+          messages,
+          readFileEditSnapshot,
+          readTurnFileSnapshotForHandoff
         );
       } catch {
         transcript = undefined;
@@ -1442,7 +1576,8 @@ export function registerCliIpc() {
       }
       return attachConversationSharesFromText(
         input.targetConversationId,
-        input.text
+        input.text,
+        input.targetMessageId
       );
     }
   );
@@ -1494,6 +1629,77 @@ export function registerCliIpc() {
       notifyConversationsChanged();
     }
   );
+  registerHandler(
+    "cli:setConversationPinned",
+    (_e, args: { id: string; pinned: boolean }): Conversation => {
+      if (typeof args.id !== "string" || !args.id.trim()) {
+        throw new Error("A conversation id is required.");
+      }
+      if (typeof args.pinned !== "boolean") {
+        throw new Error("pinned must be a boolean.");
+      }
+      const conversation = setConversationPinned(args.id, args.pinned);
+      trackTelemetryEvent("conversation_pin_toggled", {
+        pinned: args.pinned
+      });
+      notifyConversationsChanged();
+      return conversation;
+    }
+  );
+  registerHandler(
+    "cli:setConversationOrder",
+    (_e, args: { conversationIds: string[] }): Conversation[] => {
+      const updated = setConversationOrder(args.conversationIds);
+      if (updated.length > 0) {
+        trackTelemetryEvent("conversation_reordered", {
+          ordered: updated.length
+        });
+        notifyConversationsChanged();
+      }
+      return updated;
+    }
+  );
+  registerHandler(
+    "cli:resetConversationOrder",
+    (_e, args: { conversationIds: string[] }): Conversation[] => {
+      const updated = resetConversationOrder(args.conversationIds);
+      if (updated.length > 0) {
+        trackTelemetryEvent("conversation_order_reset", {
+          ordered: updated.length
+        });
+        notifyConversationsChanged();
+      }
+      return updated;
+    }
+  );
+  registerHandler(
+    "cli:moveConversationToProject",
+    (_e, args: { id: string; projectId: string | null }): Conversation => {
+      if (typeof args.id !== "string" || !args.id.trim()) {
+        throw new Error("A conversation id is required.");
+      }
+      if (
+        args.projectId !== null &&
+        (typeof args.projectId !== "string" || !args.projectId.trim())
+      ) {
+        throw new Error("Invalid project id.");
+      }
+      // Extending a project's folders rewrites host-global configuration
+      // (cli:updateProject is admin-only), so remote non-admin members move
+      // conversations without it — same split as cli:createConversation.
+      const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
+      const conversation = moveConversationToProject(
+        args.id,
+        args.projectId === null ? null : args.projectId,
+        { extendProjectFolders: !remoteMember }
+      );
+      trackTelemetryEvent("conversation_moved_to_project", {
+        has_project: Boolean(args.projectId)
+      });
+      notifyConversationsChanged();
+      return conversation;
+    }
+  );
   registerHandler("cli:deleteConversation", (_e, id: string) => {
     if (!requireOwnedConversation(id)) return;
     const transcriptPath = getHandoffBriefByTarget(id)?.transcript?.path;
@@ -1535,15 +1741,69 @@ export function registerCliIpc() {
     }
   );
 
-  registerHandler("cli:listMessages", (_e, conversationId: string) =>
-    requireOwnedConversation(conversationId) ? listMessages(conversationId) : []
+  registerHandler(
+    "cli:getConversationMcpServerIds",
+    (_e, conversationId: string) => {
+      if (!canUseHostMcp()) return [];
+      if (!requireOwnedConversation(conversationId)) return [];
+      return getConversationMcpServerIds(conversationId);
+    }
   );
-  registerHandler("cli:listMessage", (_e, id: string) =>
-    callerCanAccessMessage(id) ? listMessage(id) : undefined
+
+  registerHandler(
+    "cli:setConversationMcpServerIds",
+    (_e, args: { id: string; mcpServerIds: string[] }) => {
+      if (!canUseHostMcp()) return;
+      if (!requireOwnedConversation(args.id)) return;
+      setConversationMcpServerIds(
+        args.id,
+        Array.isArray(args.mcpServerIds) ? args.mcpServerIds : []
+      );
+    }
+  );
+
+  registerHandler(
+    "cli:listMessages",
+    (_e, conversationId: string, options?: ListMessagesIpcOptions) => {
+      if (!requireOwnedConversation(conversationId)) {
+        return { messages: [], hasMore: false };
+      }
+      const page = listMessagesForIpc(conversationId, options);
+      return {
+        messages: sanitizeMessagesForIpc(page.messages),
+        hasMore: page.hasMore
+      };
+    }
+  );
+  registerHandler("cli:listMessage", (_e, id: string) => {
+    if (!callerCanAccessMessage(id)) return undefined;
+    const message = getMessageForIpc(id);
+    return message ? sanitizeMessageForIpc(message) : undefined;
+  });
+  registerHandler("cli:readMessageDetails", (_e, messageId: string, offset?: number) =>
+    readMessageDetails(messageId, offset)
+  );
+  registerHandler("cli:listMessageFileEdits", (_e, messageId: string, cursor?: number, groupFiles?: boolean) =>
+    listMessageFileEdits(messageId, cursor, groupFiles)
+  );
+  registerHandler("cli:readFileEditBlob", (_e, conversationId: string, blobKey: string, offset?: number) =>
+    readFileEditBlob(conversationId, blobKey, offset)
+  );
+  registerHandler("cli:readMessageFileEdit", (_e, messageId: string, path: string, turnKey: string, offset?: number) =>
+    readMessageFileEdit(messageId, path, turnKey, offset)
+  );
+  registerHandler(
+    "cli:listFollowupMessages",
+    (_e, conversationId: string, excludeMessageIds: string[] = []) => {
+      if (!requireOwnedConversation(conversationId)) return [];
+      return sanitizeMessagesForIpc(
+        listFollowupMessagesForIpc(conversationId, excludeMessageIds)
+      );
+    }
   );
   registerHandler("cli:appendMessage", (_e, input: AppendMessageInput) => {
     if (!requireOwnedConversation(input.conversationId)) return undefined;
-    return appendMessage(input);
+    return sanitizeMessageForIpc(appendMessage(input));
   });
   registerHandler("cli:updateMessage", (_e, input: UpdateMessageInput) => {
     if (!callerCanAccessMessage(input.id)) return;
@@ -1606,6 +1866,65 @@ export function registerCliIpc() {
   registerHandler("infoCards:marketProvider", () => getMarketProviderConfig());
   registerHandler("infoCards:searchMarketSymbols", (_e, query: string) =>
     searchMarketSymbols(query)
+  );
+
+  // ---- User MCP Servers ----
+  function assertHostMcpAccess(): void {
+    if (!canUseHostMcp()) {
+      throw new Error("MCP servers are not available for remote users");
+    }
+  }
+  registerHandler("mcpServers:list", () => {
+    assertHostMcpAccess();
+    return {
+      servers: listUserMcpServers(),
+      secretStorageEncrypted: isMcpSecretStorageEncrypted()
+    };
+  });
+  registerHandler("mcpServers:get", (_e, id: string) => {
+    assertHostMcpAccess();
+    return getUserMcpServer(id);
+  });
+  registerHandler("mcpServers:oauthStatus", (_e, id: string) => {
+    assertHostMcpAccess();
+    return getUserMcpOAuthStatus(id);
+  });
+  registerHandler("mcpServers:authorize", (_e, id: string) => {
+    assertHostMcpAccess();
+    return authorizeUserMcpServer(id);
+  });
+  registerHandler("mcpServers:disconnect", (_e, id: string) => {
+    assertHostMcpAccess();
+    return disconnectUserMcpServer(id);
+  });
+  registerHandler("mcpServers:create", (_e, input: UserMcpServerInput) => {
+    assertHostMcpAccess();
+    return createUserMcpServer(input);
+  });
+  registerHandler(
+    "mcpServers:update",
+    (_e, args: { id: string; input: Partial<UserMcpServerInput> }) => {
+      assertHostMcpAccess();
+      return updateUserMcpServer(args.id, args.input);
+    }
+  );
+  registerHandler("mcpServers:delete", (_e, id: string) => {
+    assertHostMcpAccess();
+    return deleteUserMcpServer(id);
+  });
+  registerHandler(
+    "mcpServers:setEnabled",
+    (_e, args: { id: string; enabled: boolean }) => {
+      assertHostMcpAccess();
+      return setUserMcpServerEnabled(args.id, args.enabled);
+    }
+  );
+  registerHandler(
+    "mcpServers:selfCheck",
+    async (_e, args: { id: string; cwd?: string }) => {
+      assertHostMcpAccess();
+      return selfCheckUserMcpServer(args.id, args.cwd);
+    }
   );
 
   registerWorkflowIpc();

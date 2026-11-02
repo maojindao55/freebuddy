@@ -35,6 +35,7 @@ export function getDb(): DB {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);
+  recoverInterruptedFileCaptures(db);
   const transcriptRows = db
     .prepare(
       `SELECT transcript_path FROM handoff_briefs WHERE transcript_path IS NOT NULL
@@ -66,6 +67,16 @@ export function getLogDir(): string {
   const dir = path.join(getDataDir(), "cli-logs");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/** An interrupted turn must never acquire an ending version from today's disk. */
+export function recoverInterruptedFileCaptures(db: DB): void {
+  db.transaction(() => {
+    db.prepare(`UPDATE turn_file_versions SET before_blob = NULL, after_blob = NULL, after_version = NULL, changed = 0 WHERE task_id IN
+      (SELECT task_id FROM turn_file_capture_runs WHERE state IN ('preparing', 'running', 'finalizing'))`).run();
+    db.prepare(`UPDATE turn_file_capture_runs SET state = 'incomplete', complete = 0, reason = 'interrupted'
+      WHERE state IN ('preparing', 'running', 'finalizing')`).run();
+  })();
 }
 
 export function migrate(db: DB) {
@@ -293,7 +304,10 @@ export function migrate(db: DB) {
       owner_id TEXT,
       project_id TEXT,
       kind TEXT NOT NULL DEFAULT 'default',
-      metadata TEXT
+      metadata TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      pinned_at TEXT,
+      sort_position INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_conversations_updated
       ON conversations(archived, updated_at DESC);
@@ -314,6 +328,7 @@ export function migrate(db: DB) {
       status TEXT NOT NULL,
       content TEXT NOT NULL,
       attachments TEXT,
+      skill_snapshot TEXT,
       task_id TEXT,
       agent_id TEXT,
       agent_name TEXT,
@@ -328,6 +343,75 @@ export function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conv_time
       ON conversation_messages(conversation_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_conv_role_time
+      ON conversation_messages(conversation_id, role, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_messages_conv_task_time
+      ON conversation_messages(conversation_id, created_at DESC)
+      WHERE role = 'assistant' AND task_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_messages_task_conv
+      ON conversation_messages(task_id, conversation_id)
+      WHERE task_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS file_edit_blobs (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      blob_key TEXT NOT NULL UNIQUE,
+      conversation_id TEXT NOT NULL,
+      task_id TEXT NOT NULL,
+      tool_call_id TEXT NOT NULL,
+      entry_index INTEGER NOT NULL,
+      path TEXT NOT NULL,
+      action TEXT NOT NULL,
+      partial INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      counts TEXT,
+      payload BLOB NOT NULL,
+      FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_file_edits_task
+      ON file_edit_blobs(conversation_id, task_id, active, status, sequence);
+    CREATE INDEX IF NOT EXISTS idx_file_edits_tool
+      ON file_edit_blobs(conversation_id, task_id, tool_call_id, active);
+
+    CREATE TABLE IF NOT EXISTS turn_file_capture_runs (
+      task_id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      owner_key TEXT NOT NULL,
+      roots TEXT NOT NULL,
+      state TEXT NOT NULL,
+      complete INTEGER NOT NULL DEFAULT 0,
+      overlapping INTEGER NOT NULL DEFAULT 0,
+      started_at INTEGER NOT NULL,
+      sealed_at INTEGER,
+      reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_turn_capture_conversation ON turn_file_capture_runs(conversation_id);
+    CREATE TABLE IF NOT EXISTS file_version_blobs (
+      blob_key TEXT PRIMARY KEY,
+      owner_key TEXT NOT NULL,
+      payload BLOB NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS turn_file_versions (
+      task_id TEXT NOT NULL REFERENCES turn_file_capture_runs(task_id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      identity TEXT NOT NULL,
+      before_version TEXT NOT NULL,
+      after_version TEXT,
+      before_blob TEXT REFERENCES file_version_blobs(blob_key),
+      after_blob TEXT REFERENCES file_version_blobs(blob_key),
+      changed INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(task_id, identity)
+    );
+    CREATE INDEX IF NOT EXISTS idx_turn_versions_before_blob ON turn_file_versions(before_blob);
+    CREATE INDEX IF NOT EXISTS idx_turn_versions_after_blob ON turn_file_versions(after_blob);
+    CREATE TRIGGER IF NOT EXISTS turn_versions_gc_delete AFTER DELETE ON turn_file_versions BEGIN
+      DELETE FROM file_version_blobs WHERE blob_key IN (OLD.before_blob, OLD.after_blob)
+        AND NOT EXISTS (SELECT 1 FROM turn_file_versions WHERE before_blob = blob_key OR after_blob = blob_key);
+    END;
+    CREATE TRIGGER IF NOT EXISTS turn_versions_gc_update AFTER UPDATE OF before_blob, after_blob ON turn_file_versions BEGIN
+      DELETE FROM file_version_blobs WHERE blob_key IN (OLD.before_blob, OLD.after_blob)
+        AND NOT EXISTS (SELECT 1 FROM turn_file_versions WHERE before_blob = blob_key OR after_blob = blob_key);
+    END;
 
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
@@ -593,6 +677,11 @@ export function migrate(db: DB) {
       ON remote_audit_log(created_at DESC);
   `);
 
+  const fileEditCols = db.prepare("PRAGMA table_info(file_edit_blobs)").all() as Array<{ name: string }>;
+  if (!fileEditCols.some((c) => c.name === "counts")) {
+    db.exec("ALTER TABLE file_edit_blobs ADD COLUMN counts TEXT");
+  }
+
   const remoteUserCols = db
     .prepare("PRAGMA table_info(remote_users)")
     .all() as Array<{ name: string }>;
@@ -729,6 +818,9 @@ export function migrate(db: DB) {
   if (!overrideCols.some((c) => c.name === "deepseek_byok")) {
     db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN deepseek_byok TEXT");
   }
+  if (!overrideCols.some((c) => c.name === "pi_byok")) {
+    db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN pi_byok TEXT");
+  }
   if (!overrideCols.some((c) => c.name === "skill_ids")) {
     db.exec("ALTER TABLE cli_executor_overrides ADD COLUMN skill_ids TEXT");
   }
@@ -768,6 +860,9 @@ export function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!messageCols.some((c) => c.name === "attachments")) {
     db.exec("ALTER TABLE conversation_messages ADD COLUMN attachments TEXT");
+  }
+  if (!messageCols.some((c) => c.name === "skill_snapshot")) {
+    db.exec("ALTER TABLE conversation_messages ADD COLUMN skill_snapshot TEXT");
   }
   if (!messageCols.some((c) => c.name === "agent_id")) {
     db.exec("ALTER TABLE conversation_messages ADD COLUMN agent_id TEXT");
@@ -836,6 +931,15 @@ export function migrate(db: DB) {
   }
   if (!conversationCols.some((c) => c.name === "metadata")) {
     db.exec("ALTER TABLE conversations ADD COLUMN metadata TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "pinned")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!conversationCols.some((c) => c.name === "pinned_at")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN pinned_at TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "sort_position")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN sort_position INTEGER");
   }
 
   const scheduledTaskOwnerCols = db
@@ -1019,6 +1123,156 @@ export function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!currentScheduledTaskCols.some((c) => c.name === "config_option_overrides")) {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN config_option_overrides TEXT");
+  }
+
+  // ---- 服务商 / Provider（模型 API 渠道，中转站/BYOK）----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS providers (
+      id TEXT PRIMARY KEY,
+      preset_id TEXT,
+      name TEXT NOT NULL,
+      protocol TEXT NOT NULL DEFAULT 'openai-chat',
+      protocols TEXT,
+      base_url TEXT NOT NULL,
+      env_key TEXT,
+      api_key_encrypted TEXT,
+      api_key_preview TEXT,
+      models TEXT,
+      context_window INTEGER,
+      icon TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL DEFAULT 100,
+      wire_api TEXT,
+      notes TEXT,
+      last_health TEXT,
+      last_latency_ms INTEGER,
+      last_error TEXT,
+      last_checked_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_providers_preset ON providers(preset_id);
+    CREATE INDEX IF NOT EXISTS idx_providers_enabled ON providers(enabled, position);
+  `);
+  // 老 freebie-* override 迁移：只建服务商架子（不含 Key，由用户重新填），避免 Key 明文搬运
+  try {
+    const hasOverrides = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='cli_executor_overrides'`)
+      .get();
+    if (hasOverrides) {
+      const rows = db
+        .prepare(`SELECT id, label, base_adapter, codex_byok, claude_byok, deepseek_byok FROM cli_executor_overrides WHERE id LIKE 'freebie-%'`)
+        .all() as Array<{
+        id: string; label: string | null; base_adapter: string | null;
+        codex_byok: string | null; claude_byok: string | null; deepseek_byok: string | null;
+      }>;
+      const now = new Date().toISOString();
+      for (const r of rows) {
+        const m = /^freebie-(.+)-([0-9a-z]{6})$/.exec(r.id);
+        const presetId = m ? m[1] : undefined;
+        const byokRaw = r.codex_byok || r.claude_byok || r.deepseek_byok;
+        let baseUrl = "";
+        let envKey: string | null = null;
+        let models = "[]";
+        let providerName: string | null = null;
+        let wireApi: string | null = null;
+        let contextWindow: number | null = null;
+        let icon: string | null = null;
+        try {
+          const b = byokRaw ? (JSON.parse(byokRaw) as Record<string, unknown>) : null;
+          if (b) {
+            if (typeof b.baseUrl === "string") baseUrl = b.baseUrl;
+            if (typeof b.envKey === "string") envKey = b.envKey;
+            if (typeof b.providerName === "string") providerName = b.providerName;
+            if (typeof b.providerId === "string" && !presetId) void 0;
+            if (typeof b.wireApi === "string") wireApi = b.wireApi;
+            if (typeof b.contextWindow === "number") contextWindow = b.contextWindow;
+            if (Array.isArray(b.models)) models = JSON.stringify(b.models);
+          }
+        } catch { /* ignore */ }
+        if (!baseUrl) continue;
+        const exists = db.prepare(`SELECT id FROM providers WHERE id = ?`).get(r.id) as { id: string } | undefined;
+        if (exists) continue;
+        const dup = presetId
+          ? (db.prepare(`SELECT id FROM providers WHERE preset_id = ? AND base_url = ? LIMIT 1`).get(presetId, baseUrl) as { id: string } | undefined)
+          : undefined;
+        if (dup) continue;
+        const baseAdapter = r.base_adapter || "codex-acp";
+        const protocol = baseAdapter === "claude-agent-acp" ? "anthropic" : baseAdapter === "dsh-acp" ? "deepseek" : "openai-chat";
+        db.prepare(
+          `INSERT INTO providers (id, preset_id, name, protocol, base_url, env_key, models, context_window, icon, enabled, position, wire_api, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 100, ?, ?)`,
+        ).run(
+          r.id, presetId ?? null, r.label || providerName || presetId || r.id,
+          protocol, baseUrl, envKey, models, contextWindow, icon, wireApi, now,
+        );
+      }
+    }
+  } catch { /* 迁移失败不阻塞启动 */ }
+
+  // providers.base_adapter was dropped: a provider is described by its wire
+  // protocol, and the set of agents that can use it is derived at read time.
+  // Databases created by an earlier build still carry the column (NOT NULL
+  // DEFAULT), and SQLite has supported DROP COLUMN since 3.35.
+  try {
+    const providerCols = db
+      .prepare("PRAGMA table_info(providers)")
+      .all() as Array<{ name: string }>;
+    if (providerCols.some((c) => c.name === "base_adapter")) {
+      db.exec("ALTER TABLE providers DROP COLUMN base_adapter");
+    }
+  } catch { /* 老 SQLite 不支持 DROP COLUMN 时保留该列，读取侧已不再依赖它 */ }
+
+  // ---- User MCP Servers ----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_mcp_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      command TEXT NOT NULL,
+      transport TEXT NOT NULL DEFAULT 'stdio',
+      url TEXT,
+      headers TEXT NOT NULL DEFAULT '[]',
+      auth_type TEXT NOT NULL DEFAULT 'headers',
+      oauth_client_id TEXT,
+      oauth_scope TEXT,
+      oauth_state_encrypted TEXT,
+      oauth_revision INTEGER NOT NULL DEFAULT 0,
+      args TEXT NOT NULL DEFAULT '[]',
+      env TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_check_status TEXT,
+      last_check_error TEXT,
+      last_check_tools TEXT,
+      last_checked_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_mcp_servers_enabled ON user_mcp_servers(enabled);
+  `);
+
+  // Existing command-based configurations remain stdio servers after upgrade.
+  const mcpColumns = new Set(
+    (db.prepare("PRAGMA table_info(user_mcp_servers)").all() as Array<{ name: string }>)
+      .map((column) => column.name)
+  );
+  if (!mcpColumns.has("transport")) {
+    db.exec("ALTER TABLE user_mcp_servers ADD COLUMN transport TEXT NOT NULL DEFAULT 'stdio'");
+  }
+  if (!mcpColumns.has("url")) {
+    db.exec("ALTER TABLE user_mcp_servers ADD COLUMN url TEXT");
+  }
+  if (!mcpColumns.has("headers")) {
+    db.exec("ALTER TABLE user_mcp_servers ADD COLUMN headers TEXT NOT NULL DEFAULT '[]'");
+  }
+  for (const [name, definition] of [
+    ["auth_type", "TEXT NOT NULL DEFAULT 'headers'"],
+    ["oauth_client_id", "TEXT"],
+    ["oauth_scope", "TEXT"],
+    ["oauth_state_encrypted", "TEXT"],
+    ["oauth_revision", "INTEGER NOT NULL DEFAULT 0"]
+  ]) {
+    if (!mcpColumns.has(name)) {
+      db.exec(`ALTER TABLE user_mcp_servers ADD COLUMN ${name} ${definition}`);
+    }
   }
 
   installHostIdempotencySchema(db);

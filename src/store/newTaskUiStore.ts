@@ -1,9 +1,23 @@
 import { create } from "zustand";
+import type { ChatAttachment } from "@/services/cli/types";
 
 export type NewTaskMode = "normal" | "team";
 
+const PREFERRED_AGENT_KEY = "freebuddy.newTask.preferredAgent.v1";
+
+function loadPreferredAgentId(): string | undefined {
+  try {
+    return globalThis.localStorage?.getItem(PREFERRED_AGENT_KEY)?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface NewTaskUiState {
   taskMode: NewTaskMode;
+  /** Last explicitly selected agent; automatic fallback never overwrites it. */
+  preferredAgentId?: string;
+  setPreferredAgentId(agentId: string): void;
   requestedTeamId?: string;
   /** Bumped whenever a new-task cwd/project should be applied (including clear). */
   cwdRequestToken: number;
@@ -13,20 +27,41 @@ interface NewTaskUiState {
   requestedProjectId?: string;
   /** Optional composer text to apply when the new-task page opens. */
   requestedDraft?: string;
+  /** Member id to preselect in the agent picker when the new-task page opens. */
+  requestedAgentId?: string;
+  /** Optional attachments to prefill when the new-task page opens. */
+  requestedAttachments?: ChatAttachment[];
   setTaskMode(mode: NewTaskMode): void;
   setRequestedTeamId(teamId?: string): void;
-  requestNewTask(options?: { cwd?: string; projectId?: string; draft?: string }): void;
+  requestNewTask(options?: {
+    cwd?: string;
+    projectId?: string;
+    draft?: string;
+    agentId?: string;
+    attachments?: ChatAttachment[];
+  }): void;
   /** @deprecated Prefer requestNewTask */
   requestNewTaskCwd(cwd?: string): void;
 }
 
 export const useNewTaskUiStore = create<NewTaskUiState>((set) => ({
   taskMode: "normal",
+  preferredAgentId: loadPreferredAgentId(),
+  setPreferredAgentId(agentId) {
+    try {
+      globalThis.localStorage?.setItem(PREFERRED_AGENT_KEY, agentId);
+    } catch {
+      // Keep the preference for this app session if persistent storage is blocked.
+    }
+    set({ preferredAgentId: agentId });
+  },
   requestedTeamId: undefined,
   cwdRequestToken: 0,
   requestedCwd: undefined,
   requestedProjectId: undefined,
   requestedDraft: undefined,
+  requestedAgentId: undefined,
+  requestedAttachments: undefined,
   setTaskMode: (taskMode) =>
     set((state) => ({
       taskMode,
@@ -38,6 +73,8 @@ export const useNewTaskUiStore = create<NewTaskUiState>((set) => ({
       requestedCwd: options?.cwd,
       requestedProjectId: options?.projectId,
       requestedDraft: options?.draft,
+      requestedAgentId: options?.agentId,
+      requestedAttachments: options?.attachments,
       cwdRequestToken: state.cwdRequestToken + 1
     })),
   requestNewTaskCwd: (cwd) =>
@@ -45,6 +82,8 @@ export const useNewTaskUiStore = create<NewTaskUiState>((set) => ({
       requestedCwd: cwd,
       requestedProjectId: undefined,
       requestedDraft: undefined,
+      requestedAgentId: undefined,
+      requestedAttachments: undefined,
       cwdRequestToken: state.cwdRequestToken + 1
     }))
 }));

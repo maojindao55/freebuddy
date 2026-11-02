@@ -3,6 +3,13 @@ productName: FreeBuddy
 copyright: Copyright © 2026 FreeBuddy
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 beforePack: scripts/prepare-tokscale-for-pack.mjs
+afterPack: scripts/after-pack.mjs
+
+protocols:
+  - name: FreeBuddy URL Protocol
+    schemes:
+      - freebuddy
+      - freebuddy-dev
 
 directories:
   output: release
@@ -24,6 +31,8 @@ extraResources:
     to: dsh
   - from: third_party/deepseek-harness/overlays
     to: dsh-harness-overlays
+  - from: .build/pi-runtime-package
+    to: pi-runtime
   - from: assets/app-icon.png
     to: app-icon.png
   - from: assets/sidebar-logo.png
@@ -55,12 +64,33 @@ mac:
   hardenedRuntime: true
   entitlements: desktop/macos/entitlements.mac.plist
   entitlementsInherit: desktop/macos/entitlements.mac.inherit.plist
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Folders
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.folder
+      - CFBundleTypeName: Documents
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.data
+          - public.content
+          - public.text
+          - public.image
+          - public.source-code
+          - public.archive
+          - public.composite-content
   target:
     - target: dmg
     - target: zip
 
 win:
   icon: assets/app-icon.ico
+  extraResources:
+    - from: .build/node-runtime/win32-x64
+      to: node-runtime
   target:
     - target: nsis
 
@@ -68,6 +98,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
+  include: desktop/windows/installer.nsh
 
 linux:
   icon: assets/app-icon.png

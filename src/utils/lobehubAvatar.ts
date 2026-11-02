@@ -1,4 +1,7 @@
 import { getLobeIconCDN } from "@lobehub/icons";
+import piLogoUrl from "../../assets/pi-logo.svg";
+// Official ZCode icon: https://zcode.z.ai/favicon-192x192.png?v=20260707-transparent
+import zcodeLogoUrl from "../../assets/zcode-logo.png";
 
 const LOBEHUB_AVATAR_PREFIX = "lobehub:";
 
@@ -17,12 +20,22 @@ export function parseLobehubAvatar(value?: string | null): string | null {
 }
 
 export function lobehubAvatarUrl(iconId: string): string {
+  const normalized = iconId.toLowerCase();
+  if (normalized === "pi" || normalized === "pi-acp") {
+    return piLogoUrl;
+  }
+  if (normalized === "zcode" || normalized === "zcode-acp") {
+    return zcodeLogoUrl;
+  }
   return getLobeIconCDN(iconId, { format: "avatar", cdn: "aliyun" });
 }
 
 /** Resolve a stored avatar value (lobehub:<id> or bare id) to a renderable CDN url. */
 export function resolveLobehubAvatarUrl(value?: string | null): string | undefined {
   if (!value) return undefined;
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
+    return value;
+  }
   const id = parseLobehubAvatar(value) ?? value;
   return lobehubAvatarUrl(id);
 }

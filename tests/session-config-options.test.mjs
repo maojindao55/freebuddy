@@ -132,3 +132,35 @@ test("clears overrides that match current agent values", async () => {
     { effort: "high" }
   );
 });
+
+test("findMainModelConfigOption prefers id===model over provider with model category", async () => {
+  const { findMainModelConfigOption } = await loadModule();
+  const options = [
+    { id: "provider", name: "Provider", category: "model", currentValue: "cline" },
+    { id: "model", name: "Model", category: "model", currentValue: "claude-sonnet" }
+  ];
+  assert.equal(findMainModelConfigOption(options)?.id, "model");
+  assert.equal(findMainModelConfigOption(options)?.currentValue, "claude-sonnet");
+});
+
+test("pruneConfigOptionOverrides drops models from previous provider", async () => {
+  const { pruneConfigOptionOverrides } = await loadModule();
+  const openaiOptions = [
+    {
+      id: "provider",
+      currentValue: "openai-codex",
+      values: [{ id: "cline" }, { id: "openai-codex" }]
+    },
+    {
+      id: "model",
+      currentValue: "gpt-5.6-terra",
+      values: [{ id: "gpt-5.6-terra" }, { id: "gpt-6-astra" }]
+    }
+  ];
+  const pruned = pruneConfigOptionOverrides(
+    { provider: "openai-codex", model: "anthropic/claude-sonnet-5" },
+    openaiOptions
+  );
+  assert.deepEqual(pruned, { provider: "openai-codex" });
+});
+

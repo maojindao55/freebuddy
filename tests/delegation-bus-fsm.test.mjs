@@ -77,3 +77,30 @@ test("FSM: UserFollowUp reopens completed run", async () => {
   assert.equal(state.nodes.root.status, "turning");
   assert.ok(effects.some((e) => e.type === "SpawnFollowUp"));
 });
+
+test("FSM: stopped run stays cancelled on child settlement until an explicit follow-up", async () => {
+  const { createInitialBusState, ensureChildNode, reduce } = await import(
+    "../packages/delegation-core/dist/index.js"
+  );
+  let state = createInitialBusState({ runId: "r1", entryNodeId: "root" });
+  state = ensureChildNode(state, { id: "child", parentId: "root", depth: 1 });
+  ({ state } = reduce(state, { type: "RunKilled" }));
+  let effects;
+  ({ state, effects } = reduce(state, {
+    type: "ChildSettled",
+    parentId: "root",
+    childId: "child",
+    childStatus: "done",
+    resultSummary: "late result",
+    taskText: "review",
+    roleLabel: "reviewer"
+  }));
+  assert.equal(state.runStatus, "killed");
+  assert.equal(state.nodes.root.status, "cancelled");
+  assert.equal(effects.length, 0);
+
+  ({ state, effects } = reduce(state, { type: "UserFollowUp", prompt: "continue" }));
+  assert.equal(state.runStatus, "running");
+  assert.equal(state.nodes.root.status, "turning");
+  assert.deepEqual(effects, [{ type: "SpawnFollowUp", prompt: "continue" }]);
+});

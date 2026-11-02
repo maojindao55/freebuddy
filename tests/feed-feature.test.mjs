@@ -136,8 +136,9 @@ test("feed bridge is exposed across ipc preload types and client", () => {
 });
 
 test("settings modal mounts the feed management tab", () => {
-  assert.match(settingsModal, /"feed" \| "remote" \| "about"/);
-  assert.match(settingsModal, /settings\.tabs\.feed/);
+  assert.match(settingsModal, /SettingsTab = [^;]*"feed"/);
+  assert.match(settingsModal, /key: "feed", labelKey: "settings.tabs.feed"/);
+  assert.match(settingsModal, /activeTab === "feed"/);
   assert.match(settingsModal, /<InfoCardsTab \/>/);
   assert.match(infoCardsTab, /<FeedTab \/>/);
   assert.match(feedTab, /addSource/);

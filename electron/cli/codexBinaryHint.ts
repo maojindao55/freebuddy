@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { applyManagedNodeEnvironment, getManagedNodeRuntime } from "./managedNodeRuntime.js";
 
 const CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp";
 const BUNDLED_CODEX_JS = "@openai/codex/bin/codex.js";
@@ -43,7 +44,7 @@ function pathDirs(pathEnv: string | undefined, delimiter: string): string[] {
 export function codexAcpInstallRoots(
   options: CodexBinaryHintOptions = {}
 ): string[] {
-  const env = options.env ?? process.env;
+  const env = applyManagedNodeEnvironment(options.env ?? process.env, { platform: options.platform });
   const platform = options.platform ?? process.platform;
   const home = options.homedir ?? os.homedir();
   const roots: string[] = [];
@@ -169,6 +170,8 @@ function resolveGlobalCodexBinary(
   const candidates: string[] = [];
 
   if (platform === "win32") {
+    const managed = getManagedNodeRuntime();
+    if (managed) candidates.push(path.join(managed.prefix, "codex.cmd"), path.join(managed.prefix, "codex.exe"));
     if (env.APPDATA) {
       candidates.push(path.join(env.APPDATA, "npm", "codex.cmd"));
       candidates.push(path.join(env.APPDATA, "npm", "codex.exe"));
@@ -224,6 +227,9 @@ export function resolveNodeBinaryHint(
   const isFile = options.isFile ?? defaultIsFile;
   const fromEnv = env.FREEBUDDY_NODE_BIN?.trim();
   if (fromEnv && isFile(fromEnv)) return fromEnv;
+
+  const managed = platform === "win32" ? getManagedNodeRuntime() : undefined;
+  if (managed && isFile(managed.node)) return managed.node;
 
   const delimiter = platform === "win32" ? ";" : ":";
   const dirs = pathDirs(options.pathEnv ?? env.PATH, delimiter);

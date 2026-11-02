@@ -41,10 +41,11 @@ export function listCliMembers(): CLIMember[] {
     const overrideAdapter = member.runtimeKey
       ? runtimeOverrides[member.id]
       : undefined;
-    const adapter =
-      overrideAdapter ??
-      (member.runtimeKey ? dynamicDefaultAdapter : undefined) ??
-      member.cli.adapter;
+    const defaultAdapter =
+      member.profile === "butler"
+        ? (dynamicDefaultAdapter ?? member.cli.adapter)
+        : member.cli.adapter;
+    const adapter = overrideAdapter ?? defaultAdapter;
     const adapterOverride = overrideById.get(adapter);
     const extraArgs = [
       ...(adapterOverride?.extraArgs ?? []),

@@ -1,0 +1,219 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  IPC_LIST_MESSAGES_PAGE_SIZE,
+  MAX_IPC_LIST_MESSAGES_CHARS,
+  MAX_IPC_MESSAGE_CONTENT_CHARS,
+  sanitizeMessageForIpc,
+  sanitizeMessagesForIpc,
+  serializeStreamItemsForPersist
+} from "../dist-electron/cli/messagePayloadSanitize.js";
+
+function message(overrides = {}) {
+  return {
+    id: "m1",
+    conversationId: "c1",
+    role: "assistant",
+    status: "done",
+    content: "[]",
+    createdAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    ...overrides
+  };
+}
+
+test("sanitizeMessageForIpc redacts inline base64 media from stored assistant JSON", () => {
+  const payload = "A".repeat(80_000);
+  const sanitized = sanitizeMessageForIpc(
+    message({
+      content: JSON.stringify([
+        {
+          kind: "tool-call",
+          id: "tool-1",
+          tool: "screenshot",
+          input: { huge: payload },
+          output: `{"url":"data:image/png;base64,${payload}"}`
+        }
+      ])
+    })
+  );
+
+  assert.doesNotMatch(sanitized.content, /data:image\/png;base64,/);
+  assert.ok(JSON.parse(sanitized.content)[0].input.length <= 12_000);
+  assert.ok(sanitized.content.length < 20_000);
+  assert.doesNotThrow(() => structuredClone(sanitized));
+});
+
+test("sanitizeMessageForIpc caps oversized assistant text without a data URL", () => {
+  const sanitized = sanitizeMessageForIpc(
+    message({
+      content: JSON.stringify([
+        { kind: "text", content: "x".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS + 50_000) }
+      ])
+    })
+  );
+
+  assert.ok(sanitized.content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.match(sanitized.content, /truncated|omitted/i);
+  assert.doesNotThrow(() => JSON.parse(sanitized.content));
+});
+
+test("sanitizeMessageForIpc caps oversized user text and strips lone surrogates", () => {
+  const sanitized = sanitizeMessageForIpc(
+    message({
+      role: "user",
+      status: "sent",
+      content: `hello \uD800 world ${"y".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS + 10_000)}`
+    })
+  );
+
+  assert.equal(sanitized.content.includes("\uD800"), false);
+  assert.match(sanitized.content, /hello/);
+  assert.ok(sanitized.content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.doesNotThrow(() => structuredClone(sanitized));
+});
+
+test("sanitizeMessagesForIpc keeps newest oversized history within the IPC budget", () => {
+  const bulky = "z".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS);
+  const messages = Array.from({ length: 80 }, (_, index) =>
+    message({
+      id: `m${index}`,
+      role: "user",
+      status: "sent",
+      content: bulky
+    })
+  );
+
+  const sanitized = sanitizeMessagesForIpc(messages);
+  const total = sanitized.reduce((sum, entry) => sum + entry.content.length, 0);
+
+  assert.equal(sanitized.length, messages.length);
+  assert.ok(total <= MAX_IPC_LIST_MESSAGES_CHARS);
+  assert.equal(sanitized.at(-1)?.content, bulky);
+  assert.notEqual(sanitized[0]?.content, bulky);
+  assert.doesNotThrow(() => structuredClone(sanitized));
+});
+
+test("small conversation messages pass through unchanged", () => {
+  const original = message({
+    content: JSON.stringify([{ kind: "text", content: "hi" }])
+  });
+  assert.deepEqual(sanitizeMessageForIpc(original), original);
+});
+
+test("sanitizeMessageForIpc does not JSON.parse oversized assistant blobs", () => {
+  const content = JSON.stringify([
+    {
+      kind: "tool-call",
+      id: "tool-1",
+      input: { blob: "a".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS + 50_000) },
+      output: "ok"
+    },
+    { kind: "text", content: "keep me" }
+  ]);
+  assert.ok(content.length > MAX_IPC_MESSAGE_CONTENT_CHARS);
+
+  const started = Date.now();
+  const sanitized = sanitizeMessageForIpc(message({ content }));
+  const elapsed = Date.now() - started;
+
+  assert.ok(elapsed < 250, `sanitize took ${elapsed}ms`);
+  assert.match(sanitized.content, /omitted/i);
+  assert.doesNotMatch(sanitized.content, /keep me/);
+  assert.doesNotThrow(() => JSON.parse(sanitized.content));
+  assert.doesNotThrow(() => structuredClone(sanitized));
+});
+
+test("serializeStreamItemsForPersist keeps recent text instead of omitting a busy stream", () => {
+  const items = Array.from({ length: 4000 }, (_, index) => ({
+    kind: "text",
+    content: `chunk-${index} ${"n".repeat(80)}`
+  }));
+  const persisted = serializeStreamItemsForPersist(items);
+
+  assert.ok(persisted.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.doesNotMatch(persisted, /omitted/i);
+  assert.match(persisted, /chunk-3999/);
+  assert.doesNotThrow(() => JSON.parse(persisted));
+});
+
+test("serializeStreamItemsForPersist caps bulky collected tool payloads", () => {
+  const persisted = serializeStreamItemsForPersist([
+    { kind: "text", content: "done" },
+    {
+      kind: "tool-call",
+      id: "tool-1",
+      input: { blob: "a".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS) },
+      output: "ok"
+    }
+  ]);
+  assert.ok(persisted.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.match(persisted, /done/);
+  assert.ok(JSON.parse(persisted)[1].input.length <= 12_000);
+});
+
+test("persisting a large slash command list preserves its array structure across reloads", () => {
+  const commands = Array.from({ length: 160 }, (_, index) => ({
+    name: `command-${index}`,
+    description: "Command description ".repeat(8),
+    inputHint: "Optional input"
+  }));
+  assert.ok(JSON.stringify(commands).length > 12_000);
+
+  let items = [{ kind: "available-commands", commands }];
+  for (let reload = 0; reload < 2; reload += 1) {
+    items = JSON.parse(serializeStreamItemsForPersist(items));
+    assert.ok(Array.isArray(items[0].commands));
+    assert.deepEqual(items[0].commands, commands);
+  }
+});
+
+test("large command descriptions stay bounded without turning the command list into text", () => {
+  const persisted = serializeStreamItemsForPersist([{
+    kind: "available-commands",
+    commands: [{ name: "help", description: "x".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS) }]
+  }]);
+  const items = JSON.parse(persisted);
+  assert.ok(persisted.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  assert.ok(Array.isArray(items[0].commands));
+  assert.equal(items[0].commands[0].name, "help");
+  assert.ok(items[0].commands[0].description.length <= 12_000);
+});
+
+test("IPC history page size matches the renderer initial window", () => {
+  assert.equal(IPC_LIST_MESSAGES_PAGE_SIZE, 20);
+});
+
+test("busy delegate saves serialize a bounded amount of history and preserve chronology", () => {
+  const items = [
+    { kind: "text", content: "before tools" },
+    ...Array.from({ length: 1200 }, (_, index) => ({
+      kind: "tool-call", id: `tool-${index}`, output: "x".repeat(12_000)
+    })),
+    { kind: "text", content: "after tools" }
+  ];
+  const original = JSON.stringify;
+  let arrayEntriesSerialized = 0;
+  let persisted;
+  try {
+    JSON.stringify = function (value, ...args) {
+      if (Array.isArray(value)) arrayEntriesSerialized += value.length;
+      return original(value, ...args);
+    };
+    persisted = serializeStreamItemsForPersist(items);
+  } finally {
+    JSON.stringify = original;
+  }
+  assert.ok(arrayEntriesSerialized <= items.length * 4,
+    `repeatedly serialized ${arrayEntriesSerialized} history entries`);
+  assert.ok(persisted.length <= MAX_IPC_MESSAGE_CONTENT_CHARS);
+  const snapshot = JSON.parse(persisted);
+  assert.match(snapshot[0].content, /earlier stream details truncated/);
+  const result = snapshot.slice(1);
+  assert.equal(result[0].content, "before tools");
+  assert.equal(result.at(-1).content, "after tools");
+  assert.equal(result.at(-2).id, "tool-1199");
+  const retainedIds = new Set(result.filter((item) => item.kind === "tool-call").map((item) => item.id));
+  assert.deepEqual(result, items.filter((item) => item.kind === "text" || retainedIds.has(item.id)));
+});

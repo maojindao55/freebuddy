@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import type { CliStreamItem } from "@freebuddy/protocol";
+import { extractFileDiffPatch, inputTokensIncludingCache } from "@freebuddy/cli-stream";
 import type {
   AuthenticateRequest,
   InitializeRequest,
@@ -9,6 +11,7 @@ import type {
 } from "@agentclientprotocol/sdk";
 
 import type { AcpStdioMcpServer } from "../shared/browserToolProtocol.js";
+import { fileEditFromToolResponse } from "./acpFileEditVersions.js";
 
 export type AcpRequestId = number | string | null;
 
@@ -19,6 +22,53 @@ export interface AcpMessage {
   params?: any;
   result?: any;
   error?: { code: number; message: string; data?: any };
+}
+
+/** Keep the inactivity watchdog aware of a silent, in-flight ACP tool call. */
+export function updateActiveAcpToolCalls(
+  activeToolCallIds: Set<string>,
+  update: any
+): void {
+  const type = String(update?.sessionUpdate ?? "");
+  if (type !== "tool_call" && type !== "tool_call_update") return;
+  if (update?.toolCallId == null) return;
+  const toolCallId = String(update.toolCallId);
+  if (!toolCallId) return;
+  const status = String(update?.status ?? "").toLowerCase();
+  if (["completed", "failed", "cancelled", "done", "error"].includes(status)) {
+    activeToolCallIds.delete(toolCallId);
+    return;
+  }
+  activeToolCallIds.add(toolCallId);
+}
+
+export function shouldRetryEmptyResumedDshTurn(input: {
+  adapter: string;
+  resumed: boolean;
+  promptHadContent: boolean;
+  resetAttempted: boolean;
+}): boolean {
+  return (
+    input.adapter === "dsh-acp" &&
+    input.resumed &&
+    !input.promptHadContent &&
+    !input.resetAttempted
+  );
+}
+
+export function shouldDiscardAcpToolSession(input: {
+  adapter: string;
+  status: "done" | "failed" | "killed";
+  promptStarted: boolean;
+  promptHadContent: boolean;
+  turnHadTerminalError: boolean;
+}): boolean {
+  return (
+    input.adapter === "dsh-acp" &&
+    (input.status !== "done" ||
+      input.turnHadTerminalError ||
+      (input.promptStarted && !input.promptHadContent))
+  );
 }
 
 /** An ACP authentication method advertised by an agent in `initialize`.
@@ -37,7 +87,8 @@ export interface AcpAuthMethod {
 
 export function selectAcpAuthMethod(
   methods: AcpAuthMethod[],
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  preferredMethodId?: string
 ): AcpAuthMethod | undefined {
   const supported = methods.filter(
     (method) =>
@@ -48,6 +99,11 @@ export function selectAcpAuthMethod(
         method.type === "terminal")
   );
   if (supported.length <= 1) return supported[0];
+
+  if (preferredMethodId) {
+    const preferred = supported.find((method) => method.id === preferredMethodId);
+    if (preferred) return preferred;
+  }
 
   const apiKeyMethod = supported.find((method) =>
     /api[-_ ]?key/i.test(`${method.id} ${method.name ?? ""}`)
@@ -65,8 +121,11 @@ export function selectAcpAuthMethod(
         : false;
   if (apiKeyMethod && hasApiKey) return apiKeyMethod;
 
+  const nativeClineMethod = supported.find((method) => method.id === "cline");
+  if (nativeClineMethod) return nativeClineMethod;
+
   const interactiveMethods = supported.filter((method) =>
-    /chat[-_ ]?gpt|oauth|browser|device|log[-_ ]?in|account|subscription|github|google|wechat|ioa/i.test(
+    /chat[-_ ]?gpt|oauth|browser|device|log[-_ ]?in|sign[-_ ]?in|account|subscription|github|google|wechat|ioa/i.test(
       `${method.id} ${method.name ?? ""} ${method.description ?? ""}`
     )
   );
@@ -118,14 +177,7 @@ export type AcpStreamItem =
       content: string;
       stream?: "stdout" | "stderr";
     }
-  | {
-      kind: "file-edit";
-      path: string;
-      action: "create" | "update" | "delete";
-      patch?: string;
-      oldText?: string;
-      newText?: string;
-    }
+  | Extract<CliStreamItem, { kind: "file-edit" }>
   | {
       kind: "terminal-embed";
       terminalId: string;
@@ -167,6 +219,10 @@ export type AcpStreamItem =
     }
   | {
       kind: "usage";
+      runId?: string;
+      usageScope?: "turn" | "session" | "unknown";
+      runMetrics?: import("@freebuddy/protocol/cli").AgentRunMetrics;
+      generationMeasurement?: import("@freebuddy/protocol/cli").GenerationMeasurement;
       inputTokens?: number;
       outputTokens?: number;
       totalCost?: number;
@@ -182,6 +238,7 @@ export type AcpStreamItem =
         turns?: number;
         steps?: number;
         llmDurationMs?: number;
+        modelCallDurationMs?: number;
         avgTtftMs?: number;
         tokensPerSecond?: number;
         cacheHitRate?: number;
@@ -225,7 +282,8 @@ export function buildInitializeRequest(
       protocolVersion: 1,
       clientCapabilities: {
         terminal: true,
-        auth: { terminal: true }
+        auth: { terminal: true },
+        _meta: { freebuddy: { localDiffFiles: 1 } }
       },
       clientInfo: {
         name: "freebuddy",
@@ -339,6 +397,9 @@ export function isMissingSavedSessionError(err: unknown): boolean {
     }
   }
   const haystack = parts.join(" ");
+  if (/already\s+has\s+an\s+active\s+writer/i.test(haystack)) {
+    return false;
+  }
   if (/session\s+["'`]?[^"'`\s]+["'`]?\s+not found/i.test(haystack)) {
     return true;
   }
@@ -354,6 +415,95 @@ export function isMissingSavedSessionError(err: unknown): boolean {
   return /saved (?:agent )?session.*(?:not found|no longer available|unavailable)/i.test(
     haystack
   );
+}
+
+/**
+ * Unpacks structured ACP JSON-RPC error payloads (especially from Codex and other ACP agents)
+ * and formats human-friendly error messages for users instead of generic "Internal error".
+ */
+export function formatAcpRpcError(err: unknown): string {
+  if (!err) return "Unknown ACP error";
+  if (typeof err === "string") return err;
+
+  const e = err as { code?: number; message?: string; data?: unknown };
+  const rawMessage = typeof e.message === "string" ? e.message.trim() : "";
+  const data = e.data;
+
+  let details = "";
+  let dataMessage = "";
+  let codexErrorInfo = "";
+  let nestedErrorMessage = "";
+
+  if (typeof data === "string") {
+    details = data.trim();
+  } else if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    if (typeof d.details === "string") details = d.details.trim();
+    if (typeof d.message === "string") dataMessage = d.message.trim();
+    if (typeof d.codexErrorInfo === "string") codexErrorInfo = d.codexErrorInfo.trim();
+    if (typeof d.error === "string") nestedErrorMessage = d.error.trim();
+    else if (d.error && typeof d.error === "object") {
+      const ne = d.error as Record<string, unknown>;
+      if (typeof ne.message === "string") nestedErrorMessage = ne.message.trim();
+    }
+  }
+
+  const allTexts = [rawMessage, dataMessage, details, nestedErrorMessage, codexErrorInfo]
+    .filter(Boolean)
+    .join(" ");
+
+  // 1. Detect usage limit exceeded (e.g. ChatGPT / Codex quota)
+  const isUsageLimit =
+    codexErrorInfo === "usageLimitExceeded" ||
+    /usageLimitExceeded/i.test(allTexts) ||
+    /hit\s+your\s+usage\s+limit/i.test(allTexts) ||
+    /usage\s+limit\s+exceeded/i.test(allTexts) ||
+    /exceeded\s+your\s+(?:current\s+)?quota/i.test(allTexts);
+
+  if (isUsageLimit) {
+    const timeMatch = allTexts.match(/try\s+again\s+at\s+([^,.;)]+)/i);
+    const retryTime = timeMatch ? timeMatch[1].trim() : undefined;
+    const basePrompt = retryTime
+      ? `账户额度已用尽，预计于 ${retryTime} 恢复。`
+      : `账户额度已用尽（usageLimitExceeded）。`;
+
+    const extra = dataMessage || details || (rawMessage && !/^internal error$/i.test(rawMessage) ? rawMessage : "");
+    if (extra) {
+      return `${basePrompt} ${extra}`;
+    }
+    return `${basePrompt} 请稍后重试或前往对应平台升级账户配额。`;
+  }
+
+  // 2. Detect active writer conflict (e.g. concurrent session access in Codex)
+  const isActiveWriter =
+    /already\s+has\s+an\s+active\s+writer/i.test(allTexts) ||
+    /\bactive\s+writer\b/i.test(allTexts);
+
+  if (isActiveWriter) {
+    const threadMatch = allTexts.match(/(?:thread|session)\s+([a-zA-Z0-9_-]+)\s+already\s+has\s+an\s+active\s+writer/i);
+    const threadId = threadMatch ? threadMatch[1] : undefined;
+    const threadSuffix = threadId ? `（会话 ID: ${threadId}）` : "";
+    return `该会话${threadSuffix}正被另一个 Codex/ChatGPT 实例占用，请关闭其他客户端后重试（thread already has an active writer）。`;
+  }
+
+  // 3. Fallback for other errors: prefer specific details/message over generic "Internal error"
+  const isGeneric = !rawMessage || /^internal error$/i.test(rawMessage) || /^request error$/i.test(rawMessage);
+  if (isGeneric) {
+    if (details) return details;
+    if (dataMessage) return dataMessage;
+    if (nestedErrorMessage) return nestedErrorMessage;
+    if (codexErrorInfo) return `Codex error: ${codexErrorInfo}`;
+    return rawMessage || "Internal error";
+  }
+
+  // If rawMessage is specific, append details if not already present
+  if (details && !rawMessage.includes(details)) {
+    return `${rawMessage}: ${details}`;
+  }
+  if (dataMessage && !rawMessage.includes(dataMessage)) {
+    return `${rawMessage}: ${dataMessage}`;
+  }
+  return rawMessage;
 }
 
 export function buildSessionNewRequest(
@@ -704,7 +854,7 @@ export function contentBlockToItems(
   }
 }
 
-function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
+function toolCallContentToItems(entries: any[], input?: any, snippet = false): AcpStreamItem[] {
   const out: AcpStreamItem[] = [];
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
@@ -717,17 +867,27 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
         if (!path) break;
         const hasOld = typeof entry.oldText === "string";
         const hasNew = typeof entry.newText === "string";
-        const action: "create" | "update" | "delete" = !hasOld
-          ? "create"
-          : !hasNew
-            ? "delete"
-            : "update";
+        const patch = typeof entry.patch === "string" && entry.patch.trim() ? entry.patch : undefined;
+        const explicitAction = entry.action ?? entry._meta?.freebuddy?.action;
+        const action: "create" | "update" | "delete" =
+          explicitAction === "create" || explicitAction === "delete" || explicitAction === "update"
+            ? explicitAction
+            : !hasOld && !patch
+              ? "create"
+              : !hasNew && !patch
+                ? "delete"
+                : "update";
         out.push({
           kind: "file-edit",
           path,
           action,
           ...(hasOld ? { oldText: entry.oldText } : {}),
-          ...(hasNew ? { newText: entry.newText } : {})
+          ...(hasNew ? { newText: entry.newText } : {}),
+          ...(patch ? { patch } : {}),
+          ...(snippet || entry._meta?.freebuddy?.partial === true ||
+            (typeof input?.old_string === "string" && typeof input?.new_string === "string" &&
+              entry.oldText === input.old_string && entry.newText === input.new_string) ? { partial: true } : {}),
+          ...(entry._meta?.freebuddy?.truncated === true ? { truncated: true } : {})
         });
         break;
       }
@@ -743,7 +903,19 @@ function toolCallContentToItems(entries: any[]): AcpStreamItem[] {
         break;
     }
   }
-  return out;
+  // Codex apply_patch can emit one old/new snippet per hunk, without rawInput
+  // or partial metadata. Multiple pairs for a path in one tool response cannot
+  // each be treated as the complete document.
+  const snippetCounts = new Map<string, number>();
+  for (const item of out) {
+    if (item.kind === "file-edit" && item.action === "update" && !item.patch &&
+      item.oldText !== undefined && item.newText !== undefined) {
+      snippetCounts.set(item.path, (snippetCounts.get(item.path) ?? 0) + 1);
+    }
+  }
+  return out.map(item => item.kind === "file-edit" && item.action === "update" && !item.patch &&
+    item.oldText !== undefined && item.newText !== undefined && (snippetCounts.get(item.path) ?? 0) > 1
+    ? { ...item, partial: true } : item);
 }
 
 type ToolCallItem = Extract<AcpStreamItem, { kind: "tool-call" }>;
@@ -751,6 +923,7 @@ type ToolCallItem = Extract<AcpStreamItem, { kind: "tool-call" }>;
 function normalizeToolStatus(
   value: unknown
 ): ToolCallItem["status"] | undefined {
+  if (value === "in_progress") return "running";
   return value === "pending" ||
     value === "running" ||
     value === "completed" ||
@@ -803,9 +976,12 @@ function buildToolCallItem(
     tool: String(update.title ?? update.kind ?? "tool")
   };
 
-  if (!isUpdate || update.rawInput !== undefined) {
+  const streamingContent =
+    Array.isArray(update.content) && update.content.length > 0;
+  if (!isUpdate) {
     if (update.rawInput !== undefined) item.input = update.rawInput;
-    else if (!isUpdate && update.content !== undefined) item.input = update.content;
+  } else if (update.rawInput !== undefined && !streamingContent) {
+    item.input = update.rawInput;
   }
 
   const status = normalizeToolStatus(update.status);
@@ -819,7 +995,16 @@ function buildToolCallItem(
   if (locations) item.locations = locations;
 
   if (Array.isArray(update.content)) {
-    item.toolOutputs = toolCallContentToItems(update.content);
+    item.toolOutputs = toolCallContentToItems(update.content, update.rawInput, update._meta?.claudeCode?.toolName === "Edit");
+    item.replaceToolOutputs = true;
+  }
+
+  const completeEdit = fileEditFromToolResponse(update);
+  if (completeEdit) {
+    const outputs = item.toolOutputs ?? [];
+    item.toolOutputs = outputs.some(output => output.kind === "file-edit")
+      ? outputs.map(output => output.kind === "file-edit" && output.path === completeEdit.path ? completeEdit : output)
+      : [...outputs, completeEdit];
     item.replaceToolOutputs = true;
   }
 
@@ -828,7 +1013,22 @@ function buildToolCallItem(
   }
   if (update.status === "failed") item.isError = true;
 
-  if (!item.toolOutputs?.length) {
+  if (item.toolOutputs?.length) {
+    if (update.rawOutput != null) {
+      const rawText = stringifyValue(update.rawOutput);
+      const blockPatch = extractFileDiffPatch(rawText);
+      const patchVal = blockPatch ?? rawText;
+      if (patchVal) {
+        for (const outItem of item.toolOutputs) {
+          if (outItem.kind === "file-edit" && (
+            (!outItem.patch && !outItem.oldText && !outItem.newText) ||
+            (blockPatch && outItem.patch?.trim() === blockPatch.trim()))) {
+            outItem.patch = patchVal;
+          }
+        }
+      }
+    }
+  } else {
     if (update.kind === "execute" && update.rawInput?.command) {
       item.toolOutputs = [
         {
@@ -936,6 +1136,22 @@ function normalizeConfigOptions(update: any): ConfigOptionItem[] {
   return normalizeConfigOptionList(rawOptions);
 }
 
+export function acpModelSelectionMatches(adapter: string, actual: string, requested: string): boolean {
+  const normalize = (value: string) => value.trim().replace(/\[(?:none|low|medium|high|xhigh|max)\]$/i, "");
+  const selection = (value: string): [string, string] => {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed) && parsed.length === 2 && parsed.every((part) => typeof part === "string")) {
+        return [parsed[0], normalize(parsed[1])];
+      }
+    } catch { /* Legacy clients select a bare model ID. */ }
+    return ["deepseek-official", normalize(value)];
+  };
+  if (adapter !== "dsh-acp") return normalize(actual) === normalize(requested);
+  const a = selection(actual), b = selection(requested);
+  return a[0] === b[0] && a[1] === b[1];
+}
+
 function configOptionValueId(value: any): string {
   const raw = value?.id ?? value?.value;
   return raw == null ? "" : String(raw);
@@ -950,7 +1166,12 @@ function configOptionValuesSource(option: any): any[] | undefined {
       nested[0]?.id != null ||
       typeof nested[0]?.name === "string"
     ) {
-      return nested;
+      // ACP select options can be grouped by provider; the composer consumes flat values.
+      return nested.flatMap((value: any) =>
+        Array.isArray(value?.options) && typeof value?.group === "string"
+          ? configOptionValuesSource(value) ?? []
+          : [value]
+      );
     }
   }
   if (nested && typeof nested === "object" && Array.isArray(nested.values)) {
@@ -1169,8 +1390,11 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
   if (usage || metrics) {
     items.push({
       kind: "usage",
-      inputTokens: usage?.inputTokens ?? metrics?.totalInputTokens ?? metrics?.inputTokens,
-      outputTokens: usage?.outputTokens ?? metrics?.outputTokens,
+      // PromptResponse.usage is turn-scoped. Vendor metadata needs an
+      // explicit scope before its token counters can represent this run.
+      usageScope: usage || metrics?.usageScope === "turn" ? "turn" : "unknown",
+      inputTokens: usage ? inputTokensIncludingCache(usage) : metrics?.totalInputTokens ?? metrics?.inputTokens,
+      outputTokens: usage ? usage.outputTokens : metrics?.outputTokens,
       cachedReadTokens: usage?.cachedReadTokens ?? metrics?.cachedReadTokens,
       cachedWriteTokens: usage?.cachedWriteTokens ?? metrics?.cachedWriteTokens,
       thoughtTokens: usage?.thoughtTokens ?? metrics?.thoughtTokens,
@@ -1181,6 +1405,7 @@ export function acpPromptResultToItems(result: any): AcpStreamItem[] {
               turns: metrics.turns,
               steps: metrics.steps,
               llmDurationMs: metrics.llmDurationMs,
+              modelCallDurationMs: metrics.modelCallDurationMs,
               avgTtftMs: metrics.avgTtftMs,
               tokensPerSecond: metrics.tokensPerSecond,
               cacheHitRate: metrics.cacheHitRate,
@@ -1223,11 +1448,39 @@ function codexMetaErrorToItems(meta: unknown): AcpStreamItem[] {
   };
   const info = e.codexErrorInfo as
     | { responseStreamDisconnected?: { httpStatusCode?: unknown } }
+    | string
     | undefined;
-  const httpStatus = info?.responseStreamDisconnected?.httpStatusCode;
+  const httpStatus =
+    typeof info === "object" && info !== null
+      ? info.responseStreamDisconnected?.httpStatusCode
+      : undefined;
   const message = typeof e.message === "string" ? e.message : "";
   const additionalDetails =
     typeof e.additionalDetails === "string" ? e.additionalDetails : "";
+
+  if (
+    info === "usageLimitExceeded" ||
+    /usageLimitExceeded|hit\s+your\s+usage\s+limit/i.test(message) ||
+    /usageLimitExceeded|hit\s+your\s+usage\s+limit/i.test(additionalDetails)
+  ) {
+    const timeMatch = (message + " " + additionalDetails).match(/try\s+again\s+at\s+([^,.;)]+)/i);
+    const retryTime = timeMatch ? timeMatch[1].trim() : undefined;
+    const headline = retryTime
+      ? `账户额度已用尽，预计于 ${retryTime} 恢复`
+      : `账户额度已用尽（usageLimitExceeded）`;
+    const details: string[] = [];
+    if (message) details.push(message);
+    if (additionalDetails) details.push(additionalDetails);
+    return [
+      {
+        kind: "error",
+        message: `${headline} — the turn did not complete.`,
+        details,
+        terminal: true
+      }
+    ];
+  }
+
   const attemptMatch = message.match(/(\d+)\s*\/\s*\d+/);
   const attempt = attemptMatch ? attemptMatch[1] : undefined;
 
@@ -1298,7 +1551,8 @@ export function acpNonRetryableUpstreamError(update: any): string | undefined {
 
 export function acpUpdateToItems(
   update: any,
-  fallbackSessionId?: string
+  fallbackSessionId?: string,
+  adapter?: string
 ): AcpStreamItem[] {
   const type = String(update?.sessionUpdate ?? "");
   switch (type) {
@@ -1307,6 +1561,25 @@ export function acpUpdateToItems(
     case "agent_message_chunk":
       {
         const text = textFromContent(update.content).trim();
+        // agy-acp-bridge <= 0.3.1 reports a failed native `agy` result as an
+        // ordinary, message-id-less assistant chunk and then resolves the ACP
+        // prompt with `end_turn`. Without this adapter-specific compatibility
+        // guard, timeouts such as "The stream was interrupted" are persisted
+        // and announced as successful assistant replies.
+        if (
+          adapter === "agy-acp" &&
+          !update.messageId &&
+          /^Error:\s*\S/i.test(text)
+        ) {
+          return [
+            {
+              kind: "error",
+              message: text.replace(/^Error:\s*/i, ""),
+              details: ["Antigravity returned a failed result through the legacy ACP bridge."],
+              terminal: true
+            }
+          ];
+        }
         if (/^(?:unexpected status \d{3}\b|exceeded retry limit\b)/i.test(text)) {
           return [
             {
@@ -1425,6 +1698,10 @@ export function acpUpdateToItems(
       return [
         {
           kind: "usage",
+          ...(update.usageScope === "turn" || update.usageScope === "session"
+            ? { usageScope: update.usageScope }
+            : update?._meta?.metrics?.usageScope === "turn" || update?._meta?.metrics?.usageScope === "session"
+              ? { usageScope: update._meta.metrics.usageScope } : {}),
           ...(num(update, "used") != null
             ? { contextUsed: num(update, "used") }
             : {}),
@@ -1477,19 +1754,29 @@ export function acpUpdateToItems(
   }
 }
 
-const METADATA_SESSION_UPDATES = new Set([
+export const METADATA_SESSION_UPDATES = new Set([
   "session_info_update",
   "config_option_update",
   "available_commands_update",
-  "usage_update"
+  "usage_update",
+  "current_mode_update"
 ]);
+
+export function isAcpMetadataSessionUpdate(type: string): boolean {
+  return METADATA_SESSION_UPDATES.has(type);
+}
 
 export function shouldSkipUserMessageChunk(
   update: any,
-  context: { userMessageId?: string; promptText?: string }
+  context: {
+    userMessageId?: string;
+    promptText?: string;
+    replaySuppressionEnabled?: boolean;
+  }
 ): boolean {
   const type = String(update?.sessionUpdate ?? "");
   if (type !== "user_message_chunk") return false;
+  if (context.replaySuppressionEnabled) return true;
   const messageId =
     typeof update?.messageId === "string" ? update.messageId : undefined;
   if (context.userMessageId && messageId === context.userMessageId) {
@@ -1500,6 +1787,11 @@ export function shouldSkipUserMessageChunk(
     return true;
   }
   return false;
+}
+
+/** Only Qoder distinguishes replay from live text by the presence of messageId. */
+export function shouldSuppressAcpReplayByPhase(adapter: string, resumed: boolean): boolean {
+  return resumed && adapter.includes("qoder");
 }
 
 export function shouldDropReplayPhaseAgentChunk(
@@ -1514,6 +1806,45 @@ export function shouldDropReplayPhaseAgentChunk(
   return typeof update?.messageId === "string" && update.messageId.length > 0;
 }
 
+export function compactAcpStdoutLine(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) return line;
+  let msg: AcpMessage;
+  try {
+    msg = JSON.parse(trimmed) as AcpMessage;
+  } catch {
+    return line;
+  }
+  const update = msg?.params?.update;
+  if (msg?.method !== "session/update" || !update) return line;
+  if (String(update.sessionUpdate) !== "tool_call_update") return line;
+  if (update.rawInput === undefined) return line;
+  if (!Array.isArray(update.content) || update.content.length === 0) return line;
+  const { rawInput: _rawInput, ...rest } = update;
+  return JSON.stringify({
+    ...msg,
+    params: {
+      ...msg.params,
+      update: rest
+    }
+  });
+}
+
+export function shouldWriteAcpStdoutLog(
+  msg: AcpMessage | null | undefined,
+  state: {
+    promptStarted: boolean;
+    replaySuppressionEnabled: boolean;
+    replayMessageIds?: ReadonlySet<string>;
+    replayContentSignatures?: ReadonlySet<string>;
+    suppressReplayByPhase?: boolean;
+    turnHadLiveAgentChunk?: boolean;
+  }
+): boolean {
+  if (!msg || msg.method !== "session/update") return true;
+  return shouldEmitAcpUpdate(msg.params?.update, state);
+}
+
 export function shouldEmitAcpUpdate(
   update: any,
   state: {
@@ -1521,6 +1852,8 @@ export function shouldEmitAcpUpdate(
     replaySuppressionEnabled: boolean;
     replayMessageIds?: ReadonlySet<string>;
     replayContentSignatures?: ReadonlySet<string>;
+    suppressReplayByPhase?: boolean;
+    turnHadLiveAgentChunk?: boolean;
   }
 ): boolean {
   const type = String(update?.sessionUpdate ?? "");
@@ -1532,6 +1865,19 @@ export function shouldEmitAcpUpdate(
   }
   if (!state.replaySuppressionEnabled) {
     return true;
+  }
+  if (type === "user_message_chunk") {
+    return false;
+  }
+  if (
+    state.suppressReplayByPhase &&
+    !state.turnHadLiveAgentChunk &&
+    shouldDropReplayPhaseAgentChunk(update, {
+      suppressReplayByPhase: true,
+      turnHadLiveAgentChunk: false
+    })
+  ) {
+    return false;
   }
   const isMessageOrThought =
     type === "agent_message_chunk" || type === "agent_thought_chunk";
@@ -1556,6 +1902,12 @@ export function shouldEmitAcpUpdate(
     toolCallId &&
     state.replayMessageIds?.has(toolCallId) &&
     (type === "tool_call" || type === "tool_call_update")
+  ) {
+    return false;
+  }
+  if (
+    (type === "tool_call" || type === "tool_call_update") &&
+    update?.status === "completed"
   ) {
     return false;
   }

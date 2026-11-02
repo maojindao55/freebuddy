@@ -142,9 +142,20 @@ test("Frontend game scripts (Gomoku & Xiangqi) execute cleanly without runtime r
         },
         body: mockElement
       };
+      const windowListeners = {};
       const mockWindow = {
-        addEventListener() {},
+        addEventListener(type, handler) {
+          (windowListeners[type] = windowListeners[type] || []).push(handler);
+        },
         removeEventListener() {},
+        // Mimic the WebIDL receiver check: extracting this method and calling
+        // it unbound must throw instead of silently succeeding.
+        requestAnimationFrame(cb) {
+          if (this !== mockWindow) throw new TypeError("Illegal invocation");
+          cb();
+          return 1;
+        },
+        cancelAnimationFrame() {},
         devicePixelRatio: 1,
         innerWidth: 800,
         innerHeight: 700,
@@ -174,6 +185,11 @@ test("Frontend game scripts (Gomoku & Xiangqi) execute cleanly without runtime r
       };
       vm.createContext(sandbox);
       vm.runInContext(code, sandbox);
+      // Route a resize event through the recorded listeners so the
+      // requestAnimationFrame scheduling path in debouncedResizeCanvas runs.
+      for (const handler of windowListeners.resize || []) {
+        handler({ type: "resize" });
+      }
     }, `Runtime execution error in ${filePath}`);
   }
 });
@@ -269,7 +285,8 @@ test("Game mode architecture and spectator support in multi-agent and engine mod
   assert.match(gameSetup, /modeAgentVsAgent/);
   assert.match(gameSetup, /modeAgentVsEngine/);
   assert.match(gameSetup, /isPlayableGameAgent/);
-  assert.match(gameSetup, /profile !== "butler"/);
+  // Official-profile members (butler/guide) never play games.
+  assert.match(gameSetup, /!m.profile/);
 
   // BrowserCanvas supports multi-agent and engine turn loops
   assert.match(canvas, /mode === "agent_vs_agent"/);

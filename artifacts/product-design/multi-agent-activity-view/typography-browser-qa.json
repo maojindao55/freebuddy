@@ -1,0 +1,11 @@
+{
+  "logs": [],
+  "checks": [
+    "ChatView and panel body: 14px / 22px / 400 and same font family",
+    "card title 15px on desktop and narrow widths",
+    "800px two columns, no horizontal overflow",
+    "390px one column, no horizontal overflow, toolbar buttons within viewport",
+    "List restores retained ChatView and sidebar",
+    "sidebar panel button restores board"
+  ]
+}

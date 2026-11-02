@@ -136,8 +136,9 @@ export function reduce(state: BusState, event: BusEvent): ReduceResult {
       break;
     }
     case "UserFollowUp": {
-      if (next.runStatus === "killed") break;
-      if (next.runStatus === "completed" || next.runStatus === "failed") {
+      // An explicit user follow-up resumes stopped runs too. Leaving the bus
+      // killed would cancel the new turn at TurnEnded instead of parking it.
+      if (next.runStatus === "completed" || next.runStatus === "failed" || next.runStatus === "killed") {
         next.runStatus = "running";
       }
       const entry = next.nodes[next.entryNodeId];

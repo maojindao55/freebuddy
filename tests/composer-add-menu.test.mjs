@@ -52,6 +52,16 @@ test("composer add menu follows the compact two-panel reference layout", () => {
   assert.match(stylesSource, /\.composer-add-plugin-option\s*\{[^}]*grid-template-columns:\s*36px minmax\(0, 1fr\);/m);
 });
 
+test("composer add menu shows the DocStudio entry only in dev builds", () => {
+  const docIdx = menuSource.indexOf("docStudio.openInStudio");
+  assert.ok(docIdx >= 0, "DocStudio menu item missing from composer add menu");
+  const gateIdx = menuSource.indexOf("import.meta.env.DEV ?");
+  assert.ok(
+    gateIdx >= 0 && gateIdx < docIdx,
+    "DocStudio entry must be gated by import.meta.env.DEV (dev-only entry point)"
+  );
+});
+
 test("composer add menu escapes the rounded composer clipping boundary", () => {
   assert.match(
     stylesSource,

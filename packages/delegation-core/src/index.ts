@@ -23,13 +23,17 @@ export type {
 export { createInitialBusState, ensureChildNode, markChildTurning, reduce } from "./bus/stateMachine.js";
 export {
   ancestorRosterIds,
+  eventsForRosterRole,
   isWholeTaskRedelegate,
   normalizeTaskText,
+  resolveActiveDelegationRoleId,
   rosterIdForEvent,
   taskSimilarity,
   WHOLE_TASK_SIMILARITY_THRESHOLD
 } from "./protocol/guards.js";
+export type { DelegationEventRoleRef } from "./protocol/guards.js";
 export {
+  buildDelegateFollowUpTask,
   buildDelegateTaskPrompt,
   buildDelegateWakePrompt,
   buildDelegationRosterPrompt,

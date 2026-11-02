@@ -12,6 +12,17 @@ test("macOS shell preparation does not depend on macOS-only plist tools", () => 
   assert.doesNotMatch(electronShellSource, /\/usr\/libexec\/PlistBuddy/);
 });
 
+test("missing Electron runtime reports recovery command and preserves existing shell", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-electron-missing-"));
+  const targetApp = path.join(tmp, "FreeBuddy.app");
+  fs.mkdirSync(targetApp);
+  fs.writeFileSync(path.join(targetApp, "existing"), "keep");
+  assert.throws(() => prepareMacElectronShell({
+    sourceApp: path.join(tmp, "missing.app"), targetApp
+  }), /node node_modules\/electron\/install.js/);
+  assert.equal(fs.readFileSync(path.join(targetApp, "existing"), "utf8"), "keep");
+});
+
 test("prepareMacElectronShell creates a FreeBuddy-named macOS app shell", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-electron-shell-"));
   const sourceApp = path.join(tmp, "Electron.app");

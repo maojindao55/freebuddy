@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { delegationClient } from "@/services/delegation/client";
+import { parseStoredStreamItems } from "@freebuddy/cli-stream";
+import { delegationClient, type DelegationRunRow } from "@/services/delegation/client";
 
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -10,27 +11,23 @@ import type {
   CodexResetCredit,
   CodexUsageResult,
   CodexUsageWindow,
+  AntigravityQuotaBucket,
+  AntigravityUsageResult,
   ConversationMessage
 } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import { useConversationStore } from "@/store/conversationStore";
-import { useReplayStore } from "@/store/replayStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useProjectStore } from "@/store/projectStore";
-import { copyToClipboard } from "@/utils/clipboard";
-import { formatDuration } from "@/utils/duration";
-import {
-  folderBaseName,
-  formatDisplayPath,
-  pathsEqual,
-  shortPath
-} from "@/utils/projectPaths";
 import { AgentAvatar } from "./AgentAvatar";
+import { AgentSessionCard } from "./AgentSessionCard";
+import { runCardElapsedMs, selectRunCardMetrics } from "./runCardMetrics";
 import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
 import { DelegationTeamCard } from "../Workflows/DelegationTeamCard";
 import { mergeSessionMetaItems } from "@/store/sessionMetaUtils";
-import { conversationDisplayCwd } from "./conversationProjectGrouping";
+import { displayConfigOptionLabel } from "@/utils/sessionConfigOptions";
+import { conversationDisplayCwd, conversationWorktreePath } from "./conversationProjectGrouping";
 
 type PlanItem = Extract<CliStreamItem, { kind: "plan" }>;
 type PlanEntry = PlanItem["entries"][number];
@@ -39,11 +36,7 @@ type PlanEntry = PlanItem["entries"][number];
 // reference when there is no active conversation (avoids re-renders).
 const EMPTY_MESSAGES: ConversationMessage[] = [];
 
-export function WorkspacePanel({
-  runningCount
-}: {
-  runningCount: number;
-}) {
+export function WorkspacePanel(_props: { runningCount: number }) {
   const { t, i18n } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
@@ -57,19 +50,18 @@ export function WorkspacePanel({
     s.activeId ? s.live[s.activeId] : undefined
   );
   const [now, setNow] = useState(() => Date.now());
+  const [monotonicNow, setMonotonicNow] = useState(() => performance.now());
   const [codexUsage, setCodexUsage] = useState<CodexUsageResult | undefined>();
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
+  const [antigravityUsage, setAntigravityUsage] = useState<AntigravityUsageResult | undefined>();
+  const [antigravityUsageLoading, setAntigravityUsageLoading] = useState(false);
   const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
-  const [copiedSession, setCopiedSession] = useState(false);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const clearActiveWorkflowConversation = useWorkflowStore(
     (s) => s.clearActiveConversation
   );
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowSteps = useWorkflowStore((s) => s.steps);
-  const replayConvId = useReplayStore((s) => s.conversationId);
-  const replayIndex = useReplayStore((s) => s.index);
-  const replayFrames = useReplayStore((s) => s.frames);
 
   useEffect(() => {
     if (!activeId) {
@@ -79,22 +71,19 @@ export function WorkspacePanel({
     void loadWorkflowForConversation(activeId);
   }, [activeId, clearActiveWorkflowConversation, loadWorkflowForConversation]);
 
-  const replayFrame =
-    replayConvId === activeId && replayIndex >= 0
-      ? replayFrames[replayIndex]
-      : undefined;
-  const replayWorkflow = replayFrame?.workflow;
-  const displayMessages = replayFrame
-    ? messages.slice(0, replayFrame.messageIndex + 1)
-    : messages;
-  const displayLive = replayFrame ? undefined : live;
+  const displayMessages = messages;
+  const displayLive = live;
   const currentWorkflowRun =
     activeRun?.conversationId === activeId ? activeRun : undefined;
-  const displayRun = replayWorkflow?.run ?? currentWorkflowRun;
+  const displayRun = currentWorkflowRun;
 
   const active = conversations.find((c) => c.id === activeId);
   const activeAgentName = displayAgentName(active?.agentName, active?.adapter);
   const activeDisplayCwd = active ? conversationDisplayCwd(active) : "";
+  const worktreePath = useMemo(
+    () => (active ? conversationWorktreePath(active) : undefined),
+    [active]
+  );
   const activeProject = useMemo(() => {
     const projectId = active?.projectId?.trim();
     if (!projectId) return undefined;
@@ -106,13 +95,16 @@ export function WorkspacePanel({
     }
     return activeDisplayCwd ? [activeDisplayCwd] : [];
   }, [activeDisplayCwd, activeProject]);
-  const isMultiRoot = mountedFolders.length > 1;
   const primaryFolder =
     activeProject?.primaryPath?.trim() ||
     activeDisplayCwd ||
     mountedFolders[0];
   const isCodexAgent =
     active?.adapter === "codex-acp" || active?.agentId === "cli-codex-acp";
+  const isAntigravityAgent =
+    active?.adapter === "agy-acp" ||
+    active?.adapter === "antigravity" ||
+    active?.agentId === "cli-agy-acp";
   const isDshAgent =
     active?.adapter === "dsh-acp" ||
     active?.adapter === "dsh" ||
@@ -121,30 +113,34 @@ export function WorkspacePanel({
   const status = displayLive?.status ?? "ready";
   const isLive = status === "running" || status === "starting";
 
-  const [isDelegationConv, setIsDelegationConv] = useState(false);
+  const [delegationRun, setDelegationRun] = useState<DelegationRunRow>();
   useEffect(() => {
-    if (!activeId || !delegationClient.isAvailable()) {
-      setIsDelegationConv(false);
-      return;
-    }
-    delegationClient
-      .getRunByConversation(activeId)
-      .then((r) => setIsDelegationConv(!!r))
-      .catch(() => setIsDelegationConv(false));
-  }, [activeId]);
+    let cancelled = false;
+    let revision = 0;
+    if (!activeId || !delegationClient.isAvailable()) return;
+    const refresh = () => {
+      const requestedRevision = ++revision;
+      void delegationClient.getRunByConversation(activeId)
+        .then(run => { if (!cancelled && requestedRevision === revision) setDelegationRun(run); })
+        .catch(() => { /* Preserve the last verified team result. */ });
+    };
+    refresh();
+    const offChanged = delegationClient.onChanged(refresh);
+    const offFinished = delegationClient.onRunFinished(refresh);
+    return () => { cancelled = true; offChanged?.(); offFinished?.(); };
+  }, [activeId, displayLive?.taskSessionId, displayLive?.status]);
 
-  const isTeamRun = (!!displayRun && displayRun.conversationId === activeId) || isDelegationConv;
-  const isTeamLive =
-    !replayFrame &&
-    !!displayRun &&
-    isTeamRun &&
-    (displayRun.status === "running" ||
-      displayRun.status === "paused" ||
-      displayRun.status === "blocked");
+  const currentDelegationRun = delegationRun?.conversationId === activeId ? delegationRun : undefined;
+  const teamRun = displayRun ?? currentDelegationRun;
+  const isTeamRun = Boolean(teamRun) || active?.kind === "workflow" || active?.kind === "delegation";
+  const isTeamLive = !!teamRun && ["running", "paused", "blocked", "pending", "pending_approval"].includes(teamRun.status);
 
   useEffect(() => {
     if (!isLive && !isTeamLive) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+      setMonotonicNow(performance.now());
+    }, 1000);
     return () => window.clearInterval(id);
   }, [isLive, isTeamLive]);
 
@@ -169,7 +165,7 @@ export function WorkspacePanel({
       const message = displayMessages[i];
       if (message.role !== "assistant") continue;
       try {
-        const items = JSON.parse(message.content) as unknown[];
+        const items = parseStoredStreamItems(message.content, message.id);
         if (!Array.isArray(items)) continue;
         for (let j = items.length - 1; j >= 0; j -= 1) {
           const item = items[j] as { kind?: string; sessionId?: string };
@@ -185,66 +181,11 @@ export function WorkspacePanel({
     return undefined;
   }, [isTeamRun, displayLive?.capturedSessionId, displayLive?.resumedFromSessionId, displayMessages]);
 
-  const latestUsage = useMemo(() => {
-    type UsageItem = {
-      kind?: string;
-      contextUsed?: number;
-      contextSize?: number;
-      costAmount?: number;
-      costCurrency?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      totalCost?: number;
-      cachedReadTokens?: number;
-      cachedWriteTokens?: number;
-      thoughtTokens?: number;
-      totalTokens?: number;
-      metrics?: {
-        turns?: number;
-        steps?: number;
-        llmDurationMs?: number;
-        avgTtftMs?: number;
-        tokensPerSecond?: number;
-        cacheHitRate?: number;
-        uncachedInputTokens?: number;
-        cachedReadTokens?: number;
-        cachedWriteTokens?: number;
-        outputTokens?: number;
-        thoughtTokens?: number;
-        totalTokens?: number;
-        rawSummary?: string;
-      };
-    };
-    // Prefer billable main-turn usage or rich metrics-bearing usage.
-    let fallback: UsageItem | undefined;
-
-    if (displayLive?.items) {
-      for (let j = displayLive.items.length - 1; j >= 0; j -= 1) {
-        const item = displayLive.items[j] as UsageItem;
-        if (item?.kind !== "usage") continue;
-        if (item.metrics != null || item.costAmount != null) return item;
-        if (!fallback) fallback = item;
-      }
-    }
-
-    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
-      const message = displayMessages[i];
-      if (message.role !== "assistant") continue;
-      try {
-        const items = JSON.parse(message.content) as unknown[];
-        if (!Array.isArray(items)) continue;
-        for (let j = items.length - 1; j >= 0; j -= 1) {
-          const item = items[j] as UsageItem;
-          if (item?.kind !== "usage") continue;
-          if (item.metrics != null || item.costAmount != null) return item;
-          if (!fallback) fallback = item;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    return fallback;
-  }, [displayLive?.items, displayMessages]);
+  const runCard = useMemo(
+    () => selectRunCardMetrics(displayMessages, displayLive),
+    [displayMessages, displayLive]
+  );
+  const latestUsage = isTeamRun ? undefined : runCard.usage;
 
   const latestPlan = useMemo(
     () => (isTeamRun ? undefined : latestPlanFromMessages(displayMessages)),
@@ -257,7 +198,7 @@ export function WorkspacePanel({
       .filter((message) => message.role === "assistant")
       .flatMap((message) => {
         try {
-          const items = JSON.parse(message.content);
+          const items = parseStoredStreamItems(message.content, message.id);
           return Array.isArray(items) ? items : [];
         } catch {
           return [];
@@ -267,54 +208,33 @@ export function WorkspacePanel({
   }, [isTeamRun, displayLive, displayMessages]);
 
   const durationMs = useMemo(() => {
-    if (isTeamRun && displayRun?.createdAt) {
-      const start = Date.parse(displayRun.createdAt);
-      const end = replayWorkflow?.at
-        ? Date.parse(replayWorkflow.at)
-        : displayRun.endedAt
-          ? Date.parse(displayRun.endedAt)
-          : now;
-      if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
-      const ms = end - start;
-      return Math.max(ms, 0);
+    if (isTeamRun) {
+      if (!teamRun) return undefined;
+      const start = Date.parse(teamRun.createdAt);
+      const end = teamRun.endedAt ? Date.parse(teamRun.endedAt) : isTeamLive ? now : NaN;
+      return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : undefined;
     }
-    const replayMessage = replayFrame ? messages[replayFrame.messageIndex] : undefined;
-    for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
-      const message = displayMessages[i];
-      if (message.role !== "assistant") continue;
-      const start = Date.parse(message.createdAt);
-      const replayingMessage = Boolean(replayFrame && message.id === replayMessage?.id);
-      const end = replayingMessage
-        ? Date.parse(replayFrame?.messageComplete ? message.updatedAt : message.createdAt)
-        : isLive
-          ? now
-          : Date.parse(message.updatedAt);
-      if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
-      const ms = end - start;
-      return Math.max(ms, 0);
-    }
-    return undefined;
-  }, [
-    isTeamRun,
-    displayRun?.createdAt,
-    displayRun?.endedAt,
-    replayWorkflow?.at,
-    replayFrame,
-    replayFrame?.messageComplete,
-    messages,
-    displayMessages,
-    isLive,
-    now
-  ]);
+    return runCardElapsedMs(runCard.summary, runCard.running, runCard.receivedAt, monotonicNow);
+  }, [isTeamRun, teamRun, isTeamLive, now, runCard, monotonicNow]);
+  const teamStatus = teamRun?.status === "completed" ? "done" :
+    teamRun?.status === "stopped" || teamRun?.status === "killed" ? "cancelled" :
+    teamRun?.status === "pending_approval" ? "pending" :
+    teamRun?.status === "timeout" ? "timed-out" : teamRun?.status ?? "unknown";
+  const runStatus = isTeamRun ? teamStatus : runCard.exists ? runCard.status : "idle";
 
   const sessionConfigSummary = useMemo(() => {
     const sessionConfigValues = latestConfigOptions
-      .map((option) => option.currentLabel ?? option.currentValue)
+      .map(
+        (option) =>
+          displayConfigOptionLabel(option, active?.configOptionOverrides) ??
+          option.currentLabel ??
+          option.currentValue
+      )
       .filter((value): value is string => Boolean(value));
     return sessionConfigValues.length > 0
       ? sessionConfigValues.join(" / ")
       : t("workspace.localAgent");
-  }, [latestConfigOptions, t]);
+  }, [active?.configOptionOverrides, latestConfigOptions, t]);
 
   useEffect(() => {
     if (!isCodexAgent) {
@@ -351,19 +271,56 @@ export function WorkspacePanel({
     };
   }, [isCodexAgent, status]);
 
+  useEffect(() => {
+    if (!isAntigravityAgent) {
+      setAntigravityUsage(undefined);
+      setAntigravityUsageLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      setAntigravityUsageLoading(true);
+      try {
+        const result = await cliClient.antigravityUsage();
+        if (!cancelled) setAntigravityUsage(result);
+      } catch (error) {
+        if (!cancelled) {
+          setAntigravityUsage({
+            ok: false,
+            reason: "request_failed",
+            error: error instanceof Error ? error.message : String(error),
+            fetchedAt: new Date().toISOString()
+          });
+        }
+      } finally {
+        if (!cancelled) setAntigravityUsageLoading(false);
+      }
+    };
+
+    void refresh();
+    const id = window.setInterval(refresh, 2 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [isAntigravityAgent, status]);
+
   return (
     <div className="workspace-cards" aria-label={t("workspace.panelAria")}>
       <WorkflowRunPanel />
-      {activeId && isDelegationConv ? (
+      {activeId && currentDelegationRun ? (
         <DelegationTeamCard conversationId={activeId} />
       ) : null}
 
-      {isTeamRun ? null : (
-        <section className="side-card active-agent-card">
-          <div className="side-card-header">
-            <span>{t("workspace.activeAgent")}</span>
-            <strong>{t(`status.${status}`)}</strong>
-          </div>
+      <AgentSessionCard
+        key={`session:${activeId}`}
+        metrics={runCard}
+        elapsedMs={durationMs}
+        status={runStatus}
+        team={isTeamRun}
+        teamRunning={isTeamLive}
+        identity={isTeamRun ? undefined : (
           <div className="agent-lockup">
             <AgentAvatar
               adapter={active?.adapter}
@@ -380,177 +337,18 @@ export function WorkspacePanel({
               <small title={sessionConfigSummary}>{sessionConfigSummary}</small>
             </div>
           </div>
-        </section>
-      )}
-
-      <section className="side-card">
-        <div className="side-card-header">
-          <span>{t("workspace.runState")}</span>
-          <strong>
-            {runningCount > 0
-              ? t("workspace.liveCount", { count: runningCount })
-              : t("status.idle")}
-          </strong>
-        </div>
-        <dl className="compact-dl">
-          {activeProject && mountedFolders.length > 0 ? (
-            <>
-              <div>
-                <dt>{t("workspace.project")}</dt>
-                <dd title={activeProject.name}>
-                  {activeProject.name || folderBaseName(primaryFolder || "")}
-                </dd>
-              </div>
-              <div className="workspace-mounted-row">
-                <dt>{t("workspace.mountedFolders")}</dt>
-                <dd>
-                  <ul className="workspace-mounted-list">
-                    {mountedFolders.map((folder) => {
-                      const showPrimary =
-                        isMultiRoot &&
-                        primaryFolder != null &&
-                        pathsEqual(folder, primaryFolder);
-                      return (
-                        <li key={folder} title={folder}>
-                          <span>{formatDisplayPath(folder)}</span>
-                          {showPrimary ? (
-                            <em>{t("workspace.primaryFolder")}</em>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </dd>
-              </div>
-            </>
-          ) : (
-            <div>
-              <dt>{t("workspace.workspace")}</dt>
-              <dd title={activeDisplayCwd || undefined}>
-                {activeDisplayCwd
-                  ? shortPath(activeDisplayCwd)
-                  : t("workspace.notSet")}
-              </dd>
-            </div>
-          )}
-          {!isTeamRun && (
-            <div>
-              <dt>{t("workspace.sessionId")}</dt>
-              <dd>
-                <button
-                  className="session-id-copy"
-                  type="button"
-                  disabled={!latestSessionId}
-                  title={
-                    latestSessionId
-                      ? t("workspace.copySession", { id: latestSessionId })
-                      : t("workspace.noSession")
-                  }
-                  onClick={() => {
-                    if (!latestSessionId) return;
-                    void copyToClipboard(latestSessionId).then(() => {
-                      setCopiedSession(true);
-                      window.setTimeout(() => setCopiedSession(false), 1200);
-                    });
-                  }}
-                >
-                  {copiedSession
-                    ? t("workspace.copied")
-                    : latestSessionId
-                      ? shortSessionId(latestSessionId)
-                      : t("workspace.notCaptured")}
-                </button>
-              </dd>
-            </div>
-          )}
-          <div>
-            <dt>{t("workspace.messages")}</dt>
-            <dd>{totalMessages}</dd>
-          </div>
-          <div>
-            <dt>{t("workspace.agentTurns")}</dt>
-            <dd>{assistantTurns}</dd>
-          </div>
-          {durationMs != null && (
-            <div>
-              <dt>{t("workspace.duration")}</dt>
-              <dd>{formatDuration(durationMs)}</dd>
-            </div>
-          )}
-          {latestUsage?.metrics?.llmDurationMs != null && (
-            <div>
-              <dt>{t("workspace.llmDuration")}</dt>
-              <dd>{(latestUsage.metrics.llmDurationMs / 1000).toFixed(1)}s</dd>
-            </div>
-          )}
-          {latestUsage?.metrics?.avgTtftMs != null && latestUsage.metrics.avgTtftMs > 0 && (
-            <div>
-              <dt>{t("workspace.ttft")}</dt>
-              <dd>{(latestUsage.metrics.avgTtftMs / 1000).toFixed(1)}s</dd>
-            </div>
-          )}
-          {latestUsage?.metrics?.tokensPerSecond != null && latestUsage.metrics.tokensPerSecond > 0 && (
-            <div>
-              <dt>{t("workspace.speed")}</dt>
-              <dd>{latestUsage.metrics.tokensPerSecond} tok/s</dd>
-            </div>
-          )}
-          {(latestUsage?.metrics?.cacheHitRate != null || latestUsage?.cachedReadTokens != null) && (
-            <div>
-              <dt>{t("workspace.cacheHitRate")}</dt>
-              <dd>
-                {latestUsage?.metrics?.cacheHitRate != null
-                  ? `${Math.round(latestUsage.metrics.cacheHitRate * 100)}%`
-                  : latestUsage?.inputTokens
-                    ? `${Math.round(((latestUsage.cachedReadTokens ?? 0) / latestUsage.inputTokens) * 100)}%`
-                    : "0%"}
-                {latestUsage?.cachedReadTokens != null && latestUsage.cachedReadTokens > 0 && (
-                  <span style={{ fontSize: "11px", fontWeight: 400, marginLeft: "4px", color: "var(--fb-text-tertiary)" }}>
-                    ({formatTokens(latestUsage.cachedReadTokens)})
-                  </span>
-                )}
-              </dd>
-            </div>
-          )}
-          {latestUsage?.thoughtTokens != null && latestUsage.thoughtTokens > 0 && (
-            <div>
-              <dt>{t("workspace.thoughtTokens")}</dt>
-              <dd>{formatTokens(latestUsage.thoughtTokens)}</dd>
-            </div>
-          )}
-          {latestUsage?.contextUsed != null && (
-            <div>
-              <dt>{t("workspace.context")}</dt>
-              <dd>
-                {formatTokens(latestUsage.contextUsed)}
-                {latestUsage.contextSize != null
-                  ? ` / ${formatTokens(latestUsage.contextSize)}`
-                  : ""}
-              </dd>
-            </div>
-          )}
-          {latestUsage?.costAmount != null && (
-            <div>
-              <dt>{t("workspace.cost")}</dt>
-              <dd>{formatCost(latestUsage.costAmount, latestUsage.costCurrency)}</dd>
-            </div>
-          )}
-          {latestUsage?.contextUsed == null &&
-            latestUsage?.costAmount == null &&
-            (latestUsage?.inputTokens != null ||
-              latestUsage?.outputTokens != null) && (
-              <div>
-                <dt>{t("workspace.tokens")}</dt>
-                <dd>
-                  {t("workspace.tokenBreakdown", {
-                    input: latestUsage.inputTokens != null ? formatTokens(latestUsage.inputTokens) : "\u2013",
-                    output: latestUsage.outputTokens != null ? formatTokens(latestUsage.outputTokens) : "\u2013"
-                  })}
-                </dd>
-              </div>
-            )}
-        </dl>
-      </section>
+        )}
+        projectName={activeProject?.name}
+        cwd={activeDisplayCwd}
+        folders={mountedFolders}
+        primaryFolder={primaryFolder}
+        worktreePath={worktreePath}
+        sessionId={latestSessionId}
+        messages={totalMessages}
+        turns={assistantTurns}
+        contextUsed={latestUsage?.contextUsed}
+        contextSize={latestUsage?.contextSize}
+      />
 
       {latestPlan &&
         latestPlan.entries.some((entry) => entry.status !== "cancelled") && (
@@ -694,6 +492,82 @@ export function WorkspacePanel({
         </section>
       )}
 
+      {isAntigravityAgent && (
+        <section className="side-card codex-usage-card antigravity-usage-card">
+          <div className="side-card-header">
+            <span title={antigravityUsage?.ok && antigravityUsage.email ? antigravityUsage.email : undefined}>
+              {t("workspace.antigravityUsage")}
+            </span>
+            <button
+              className="codex-usage-refresh"
+              type="button"
+              disabled={antigravityUsageLoading}
+              onClick={() => {
+                setAntigravityUsageLoading(true);
+                void cliClient
+                  .antigravityUsage()
+                  .then(setAntigravityUsage)
+                  .catch((error) =>
+                    setAntigravityUsage({
+                      ok: false,
+                      reason: "request_failed",
+                      error: error instanceof Error ? error.message : String(error),
+                      fetchedAt: new Date().toISOString()
+                    })
+                  )
+                  .finally(() => setAntigravityUsageLoading(false));
+              }}
+            >
+              {antigravityUsageLoading
+                ? t("workspace.antigravityUsageLoading")
+                : t("workspace.antigravityUsageRefresh")}
+            </button>
+          </div>
+          {antigravityUsage?.ok ? (
+            <div className="codex-limit-list antigravity-limit-list">
+              {antigravityUsage.groups.map((group, gIdx) => (
+                <div key={group.displayName || gIdx} className="antigravity-quota-group">
+                  <div className="antigravity-group-title">
+                    {group.displayName === "Gemini Models"
+                      ? t("workspace.antigravityGeminiGroup")
+                      : group.displayName === "Claude and GPT models"
+                        ? t("workspace.antigravityThirdPartyGroup")
+                        : group.displayName}
+                  </div>
+                  {group.buckets.map((bucket) => (
+                    <AntigravityLimitRow
+                      key={bucket.bucketId}
+                      label={antigravityUsageWindowLabel(bucket, t)}
+                      bucket={bucket}
+                      leftLabel={t("workspace.antigravityLeft", {
+                        percent: bucket.leftPercent
+                      })}
+                      resetLabel={
+                        bucket.resetAt
+                          ? t("workspace.antigravityResetAt", {
+                              time: formatCodexResetAt(
+                                bucket.resetAt,
+                                i18n.language,
+                                bucket.windowSeconds < 86_400 ? "time" : "dateTime"
+                              )
+                            })
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="codex-usage-empty">
+              {antigravityUsageLoading
+                ? t("workspace.antigravityUsageLoading")
+                : t("workspace.antigravityUsageUnavailable")}
+            </p>
+          )}
+        </section>
+      )}
+
       <InfoCardHost />
     </div>
   );
@@ -738,16 +612,22 @@ function CodexLimitRow({
   leftLabel: string;
   resetLabel: string;
 }) {
+  const isWarning = usage.leftPercent <= 20 && usage.leftPercent > 0;
+  const isDanger = usage.leftPercent === 0;
+  const barClass = isDanger ? "limit-danger" : isWarning ? "limit-warning" : "";
+
   return (
     <div className="codex-limit-row">
       <div className="codex-limit-meta">
         <strong>{label}</strong>
-        <span>{leftLabel}</span>
+        <span className={barClass ? `antigravity-limit-badge ${barClass}` : undefined}>
+          {leftLabel}
+        </span>
       </div>
       <div className="codex-limit-track" aria-hidden="true">
         <span
-          className="codex-limit-fill"
-          style={{ width: `${usage.usedPercent}%` }}
+          className={`codex-limit-fill ${barClass}`}
+          style={{ width: `${usage.leftPercent}%` }}
         />
       </div>
       <small>{resetLabel}</small>
@@ -765,6 +645,54 @@ function codexUsageWindowLabel(
     return t("workspace.codexUsageHours", { hours: windowSeconds / 3_600 });
   }
   return t("workspace.codexUsageWindow");
+}
+
+function AntigravityLimitRow({
+  label,
+  bucket,
+  leftLabel,
+  resetLabel
+}: {
+  label: string;
+  bucket: AntigravityQuotaBucket;
+  leftLabel: string;
+  resetLabel?: string;
+}) {
+  const isWarning = bucket.leftPercent <= 20 && bucket.leftPercent > 0;
+  const isDanger = bucket.leftPercent === 0;
+  const barClass = isDanger ? "limit-danger" : isWarning ? "limit-warning" : "";
+
+  return (
+    <div className="codex-limit-row">
+      <div className="codex-limit-meta">
+        <strong>{label}</strong>
+        <span className={barClass ? `antigravity-limit-badge ${barClass}` : undefined}>
+          {leftLabel}
+        </span>
+      </div>
+      <div className="codex-limit-track" aria-hidden="true">
+        <span
+          className={`codex-limit-fill ${barClass}`}
+          style={{ width: `${bucket.leftPercent}%` }}
+        />
+      </div>
+      {resetLabel && <small>{resetLabel}</small>}
+    </div>
+  );
+}
+
+function antigravityUsageWindowLabel(
+  bucket: AntigravityQuotaBucket,
+  t: TFunction
+): string {
+  if (bucket.window === "5h") return t("workspace.antigravityLimit5h");
+  if (bucket.window === "weekly" || bucket.windowSeconds === 604_800) {
+    return t("workspace.antigravityLimitWeekly");
+  }
+  if (bucket.window === "daily" || bucket.windowSeconds === 86_400) {
+    return t("workspace.antigravityLimitDaily");
+  }
+  return bucket.displayName || t("workspace.antigravityUsageWindow");
 }
 
 function codexResetCreditStatusKey(status: string): "available" | "used" | "unknown" {
@@ -824,11 +752,6 @@ function isPlanEntry(entry: unknown): entry is PlanEntry {
   );
 }
 
-function shortSessionId(id: string) {
-  if (id.length <= 18) return id;
-  return `${id.slice(0, 8)}\u2026${id.slice(-6)}`;
-}
-
 function formatCodexResetAt(
   resetAt: number,
   lang: string,
@@ -852,13 +775,4 @@ function formatCodexResetAt(
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
-}
-
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
-
-function formatCost(amount: number, currency?: string): string {
-  const value = amount.toFixed(amount < 0.01 ? 4 : 2);
-  return currency === "USD" ? `$${value}` : `${value} ${currency ?? ""}`.trim();
 }

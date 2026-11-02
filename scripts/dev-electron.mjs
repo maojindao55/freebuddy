@@ -37,8 +37,9 @@ function waitForExit(child, label) {
   });
 }
 
-async function waitForVite() {
+async function waitForVite(child) {
   for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (child.exitCode !== null) throw new Error("Vite exited before startup; check whether port 5173 is already in use.");
     try {
       const response = await fetch(viteUrl);
       if (response.ok) {
@@ -73,25 +74,35 @@ process.on("SIGTERM", () => {
 // Vite is ready in ~100ms; tsc for electron takes multiple seconds. Launching
 // Electron before build:electron finishes loads half-written dist-electron
 // modules and surfaces confusing ESM named-export SyntaxErrors.
-const buildPackages = run("npm", ["run", "build:packages"]);
-await waitForExit(buildPackages, "build:packages");
-const buildElectron = run("npm", ["run", "build:electron"]);
-const vite = run("npm", ["exec", "vite", "--", "--host", "127.0.0.1", "--port", "5173", "--strictPort"]);
+try {
+  const buildPackages = run("npm", ["run", "build:packages"]);
+  await waitForExit(buildPackages, "build:packages");
+  const buildElectron = run("npm", ["run", "build:electron"]);
+  const vite = run(process.execPath, [path.join(rootDir, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5173", "--strictPort"]);
 
-await Promise.all([
-  waitForExit(buildElectron, "build:electron"),
-  waitForVite()
-]);
+  await Promise.all([
+    waitForExit(buildElectron, "build:electron"),
+    waitForVite(vite)
+  ]);
 
-const electronCommand = resolveElectronCommand(rootDir, path.join(rootDir, "dist-electron/main.js"));
-const electron = run(electronCommand.command, electronCommand.args, {
-  env: {
-    ...process.env,
-    VITE_DEV_SERVER_URL: viteUrl
-  }
-});
+  if (vite.exitCode !== null) throw new Error("Vite exited before startup; check whether port 5173 is already in use.");
 
-electron.on("exit", (code) => {
-  vite.kill();
-  process.exit(code ?? 0);
-});
+  const electronCommand = resolveElectronCommand(rootDir, path.join(rootDir, "dist-electron/main.js"));
+  const electron = run(electronCommand.command, electronCommand.args, {
+    env: {
+      ...process.env,
+      VITE_DEV_SERVER_URL: viteUrl
+    }
+  });
+
+  const exitCode = await new Promise((resolve, reject) => {
+    electron.once("error", reject);
+    electron.once("exit", (code) => resolve(code ?? 0));
+  });
+  shutdown();
+  process.exitCode = exitCode;
+} catch (error) {
+  shutdown();
+  console.error(`[FreeBuddy dev] ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+}

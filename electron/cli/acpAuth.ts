@@ -12,12 +12,15 @@ import {
   type CLIAdapterId
 } from "./adapters.js";
 import { getDataDir } from "./db.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
+import { applyManagedNodeEnvironment, ensureManagedNodeRuntime } from "./managedNodeRuntime.js";
 import {
   buildInitializeRequest,
   buildLogoutRequest,
   type AcpMessage
 } from "./acp.js";
 import { killProcessTree } from "./process-kill.js";
+import { waitForRuntimeInstall } from "./check.js";
 import { mergeBuiltEnv } from "./runtime.js";
 import {
   clearToolSessionsForAgent,
@@ -48,11 +51,14 @@ async function withAcpAgent<T>(
   args: CliAuthControlArgs,
   operation: (request: (message: AcpMessage) => Promise<any>) => Promise<T>
 ): Promise<T> {
+  await waitForRuntimeInstall(args.adapter);
+  await ensureManagedNodeRuntime(getDataDir());
   const cwd =
     args.adapter === "dsh-acp"
       ? ensureDshAcpCwd(args.cwd, getDataDir())
       : args.cwd;
   if (args.adapter === "dsh-acp") syncDshAcpManagedConfig(getDataDir());
+  if (args.adapter === "pi-acp") await ensurePackagedPiRuntime(getDataDir());
   const built = buildCommand({
     adapter: args.adapter,
     binary: args.binary,
@@ -60,28 +66,29 @@ async function withAcpAgent<T>(
     prompt: "",
     cwd,
     dshAcpRuntimeRoot:
-      args.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined
+      args.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined,
+    piDataDir: args.adapter === "pi-acp" ? getDataDir() : undefined,
+    nodeEnv: process.platform === "win32" ? { ...process.env, ...args.env } : undefined
   });
   if (args.adapter === "dsh-acp") patchDshAcpRuntimeFromCommand(built);
   if (built.protocol !== "acp") {
     throw new Error("Authentication control requires an ACP agent.");
   }
   await ensureCodexChatBridge();
+  const byokEnv = resolveCliByokEnv(args.agentId, args.adapter, built.env?.ANTHROPIC_MODEL);
+  if (byokEnv && args.env?.FREEBUDDY_NODE_BIN) byokEnv.FREEBUDDY_NODE_BIN = args.env.FREEBUDDY_NODE_BIN;
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
-      { ...process.env, ...(args.env ?? {}) },
+      applyManagedNodeEnvironment({ ...process.env, ...(args.env ?? {}) }, { install: true }),
       built.env
     ),
-    resolveCliByokEnv(
-      args.agentId,
-      args.adapter,
-      built.env?.ANTHROPIC_MODEL
-    )
+    byokEnv
   );
   const child = spawn(built.bin, built.args, {
     cwd,
     env,
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: process.platform === "win32"
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
   const pending = new Map<
     string,

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import type { ChildProcess } from "node:child_process";
 import spawn from "cross-spawn";
+import { applyManagedNodeEnvironment } from "./managedNodeRuntime.js";
 
 /** Keep repeated terminal results from exhausting an agent's context window. */
 export const MAX_TERMINAL_OUTPUT_BYTES = 128 * 1024;
@@ -136,10 +137,12 @@ export function createAcpTerminalManager(options: {
         requestedByteLimit,
         MAX_TERMINAL_OUTPUT_BYTES
       );
-      const env = { ...process.env } as Record<string, string>;
+      let env = { ...process.env } as Record<string, string>;
       for (const entry of params.env ?? []) {
         env[entry.name] = entry.value;
       }
+      env = applyManagedNodeEnvironment(env, { install: true,
+        preserveElectronRunAsNode: params.command === process.execPath }) as Record<string, string>;
 
       const cwd = params.cwd || options.defaultCwd || process.cwd();
       const rawArgs = params.args ?? [];
@@ -176,7 +179,8 @@ export function createAcpTerminalManager(options: {
       const child = spawn(prepared.command, prepared.args, {
         cwd,
         env: prepared.env,
-        stdio: ["ignore", "pipe", "pipe"]
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: process.platform === "win32"
       });
 
       const record: TerminalRecord = {

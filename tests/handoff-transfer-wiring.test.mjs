@@ -74,6 +74,7 @@ test("IPC exposes preview/transfer and resolves handoff briefs inside the main p
   assert.match(ipc, /cli:createConversationShare/);
   assert.match(ipc, /cli:attachConversationShares/);
   assert.match(ipc, /createHandoffTranscriptSnapshot/);
+  assert.equal([...ipc.matchAll(/createHandoffTranscriptSnapshot\([\s\S]*?messages,\s*readFileEditSnapshot,\s*readTurnFileSnapshotForHandoff\s*\)/g)].length, 2);
   assert.match(ipc, /deleteHandoffTranscriptSnapshot/);
   assert.match(ipc, /cwd: source\.cwd/);
   assert.doesNotMatch(ipc, /input\.cwd \?\? source\.cwd/);
@@ -143,7 +144,7 @@ test("handoff UI auto-starts with a reference card and keeps per-conversation dr
   assert.doesNotMatch(store, /pendingTransferSeed/);
   assert.doesNotMatch(store, /handoffBriefId|maybeHandoffArgs/);
   assert.doesNotMatch(chat, /composer-context-transfer/);
-  assert.match(app, /TitlebarOverflowMenu/);
+  assert.match(app, /useDebugLogsDialogStore/);
   assert.match(app, /titlebar-icon-button/);
   assert.match(app, /activeConversationHasContent/);
   assert.match(app, /conversationContext\.stopBeforeAction/);
@@ -165,4 +166,29 @@ test("handoff UI auto-starts with a reference card and keeps per-conversation dr
   assert.doesNotMatch(css, /\.context-share-card\s*\{/);
   assert.match(css, /appearance: none/);
   assert.match(css, /\.transfer-dialog-select-chevron\s*\{/);
+});
+
+test("transfer conversation carries model and thinking-effort overrides to the target", () => {
+  const sharedTypes = read("electron/shared/handoffTypes.ts");
+  const rendererTypes = read("src/services/cli/types.ts");
+  const ipc = read("electron/cli/ipc.ts");
+  const store = read("src/store/conversationStore.ts");
+  const dialog = read("src/components/CLI/TransferDialog.tsx");
+  assert.match(sharedTypes, /interface TransferConversationInput[\s\S]*?configOptionOverrides\?: Record<string, string>/);
+  assert.match(rendererTypes, /interface TransferConversationInput[\s\S]*?configOptionOverrides\?: Record<string, string>/);
+  assert.match(ipc, /input\.configOptionOverrides \?\? \{\}/);
+  assert.match(ipc, /configOptionOverrides: overrides/);
+  assert.match(store, /async transferConversation\(\{ sourceConversationId, targetMember, configOptionOverrides, mcpServerIds \}\)/);
+  assert.match(store, /targetAdapter: targetMember\.cli\.adapter,\s*\.\.\.\(configOptionOverrides && Object\.keys\(configOptionOverrides\)\.length > 0/);
+  assert.match(dialog, /getCachedSessionConfigOptions\(input\)/);
+  assert.match(dialog, /inspectSessionConfigOptions\(input\)/);
+  assert.match(dialog, /findConfigOption\(configOptions, "thought_level"\)/);
+  assert.match(dialog, /overrides\[thoughtOption\?\.id \?\? "thought_level"\] = selectedThought/);
+  assert.match(dialog, /overrides\[modelOption\?\.id \?\? "model"\] = selectedModel/);
+  assert.match(dialog, /handoff\.targetModel/);
+  assert.match(dialog, /handoff\.targetThoughtLevel/);
+  assert.match(dialog, /handoff\.sameAgentHint/);
+  // Transferring back to the same agent prefills the pickers from the stored
+  // overrides instead of resetting to agent defaults.
+  assert.match(dialog, /source\.configOptionOverrides/);
 });

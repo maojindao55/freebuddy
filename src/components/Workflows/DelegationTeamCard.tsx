@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { parseStoredStreamItems } from "@freebuddy/cli-stream";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -9,11 +10,14 @@ import {
 } from "lucide-react";
 
 import {
+  eventsForRosterRole,
+  resolveActiveDelegationRoleId
+} from "@freebuddy/delegation-core";
+import {
   delegationClient,
   type DelegationEventRow,
   type DelegationEventStatus
 } from "@/services/delegation/client";
-import { cliClient } from "@/services/cli/client";
 import type { DelegationTeam } from "@/services/workflowTeams/types";
 import { useConversationStore } from "@/store/conversationStore";
 import { AgentAvatar } from "../CLI/AgentAvatar";
@@ -45,8 +49,11 @@ export function DelegationTeamCard({
   const { t } = useTranslation();
   const members = useConversationStore((s) => s.members);
   const liveStatus = useConversationStore((s) => s.live[conversationId]?.status);
+  const conversationMessages = useConversationStore(
+    (s) => s.messages[conversationId]
+  );
   const [team, setTeam] = useState<DelegationTeam | undefined>(undefined);
-  const [activeAgentId, setActiveAgentId] = useState<string | undefined>(undefined);
+  const [activeRoleId, setActiveRoleId] = useState<string | undefined>(undefined);
   const [runStatus, setRunStatus] = useState<string | undefined>(undefined);
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [events, setEvents] = useState<DelegationEventRow[]>([]);
@@ -64,41 +71,35 @@ export function DelegationTeamCard({
     setExpandedEventIds(new Set());
   }, [conversationId]);
 
-  // Extract model per agent from the conversation's streamed config-options
-  // items — same mechanism as WorkspacePanel's sessionConfigSummary.
+  // Extract model per agent from already-loaded conversation messages —
+  // same mechanism as WorkspacePanel's sessionConfigSummary. Do not call
+  // listMessages here: opening a large team session would freeze the UI.
   useEffect(() => {
     if (!team) return;
-    let cancelled = false;
-    (async () => {
+    const messages = conversationMessages ?? [];
+    const map: Record<string, string> = {};
+    for (const msg of messages) {
+      if (msg.role !== "assistant" || !msg.agentId) continue;
+      if (msg.content.length > 80_000) continue;
       try {
-        const messages = await cliClient.listMessages(conversationId);
-        if (cancelled) return;
-        const map: Record<string, string> = {};
-        for (const msg of messages) {
-          if (msg.role !== "assistant" || !msg.agentId) continue;
-          try {
-            const items = JSON.parse(msg.content);
-            if (!Array.isArray(items)) continue;
-            for (const item of items) {
-              if (item.kind === "config-options" && Array.isArray(item.options)) {
-                const modelOpt = item.options.find((o: any) => o.id === "model");
-                if (modelOpt?.currentLabel || modelOpt?.currentValue) {
-                  map[msg.agentId] = modelOpt.currentLabel ?? modelOpt.currentValue;
-                }
-              }
-            }
-          } catch {}
+        const items = parseStoredStreamItems(msg.content, msg.id);
+        if (!Array.isArray(items)) continue;
+        for (const item of items) {
+          if (item.kind === "config-options" && Array.isArray(item.options)) {
+            const modelOpt = item.options.find((o: any) => o.id === "model");
+            const model = modelOpt?.currentLabel ?? modelOpt?.currentValue;
+            if (model) map[msg.agentId] = model;
+          }
         }
-        for (const r of team.roster) {
-          if (r.model && !map[r.agentId]) map[r.agentId] = r.model;
-        }
-        if (!cancelled) setModelsByAgent(map);
       } catch {
-        if (!cancelled) setModelsByAgent({});
+        /* ignore malformed stream JSON */
       }
-    })();
-    return () => { cancelled = true; };
-  }, [team, conversationId]);
+    }
+    for (const r of team.roster) {
+      if (r.model && !map[r.agentId]) map[r.agentId] = r.model;
+    }
+    setModelsByAgent(map);
+  }, [team, conversationId, conversationMessages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +111,7 @@ export function DelegationTeamCard({
         if (!run || !run.teamId) {
           if (!cancelled) {
             setTeam(undefined);
-            setActiveAgentId(undefined);
+            setActiveRoleId(undefined);
             setRunStatus(undefined);
             setRunId(undefined);
             setEvents([]);
@@ -121,32 +122,36 @@ export function DelegationTeamCard({
           setRunStatus(run.status);
           setRunId(run.id);
         }
-        if (!team) {
+        let currentTeam = team;
+        if (!currentTeam) {
           const loaded = await delegationClient.get(run.teamId);
           if (!cancelled) setTeam(loaded ?? undefined);
+          currentTeam = loaded ?? undefined;
         }
 
-        // Determine the active agent from run + events (bus is source of truth):
-        // 1. Child event (depth>0) "running" → that child
-        // 2. Else if run is running/blocked → entry is active (turning or parked)
+        // Determine the active role from run + events (bus is source of truth):
+        // 1. Child event (depth>0) "running" → that child's roster role
+        // 2. Else if run is running/blocked → entry role is active (turning or parked)
+        // Roles that share a CLI adapter must not inherit each other's live slot.
         const events = await delegationClient.listEvents(run.id);
         if (cancelled) return;
         setEvents(events);
-        const runningChild = events.find(
-          (e) => e.status === "running" && e.depth > 0
-        );
-        if (runningChild?.agentId) {
-          setActiveAgentId(runningChild.agentId);
-        } else {
-          const runLive = run.status === "running" || run.status === "blocked";
-          const isLive =
-            runLive || liveStatus === "running" || liveStatus === "starting";
-          const entry = team?.roster.find((r) => r.id === team.entryRoleId) ?? team?.roster[0];
-          setActiveAgentId(isLive && entry ? entry.agentId : undefined);
+        if (!currentTeam) {
+          setActiveRoleId(undefined);
+          return;
         }
+        setActiveRoleId(
+          resolveActiveDelegationRoleId({
+            roster: currentTeam.roster,
+            entryRoleId: currentTeam.entryRoleId,
+            events,
+            runStatus: run.status,
+            liveStatus
+          })
+        );
       } catch {
         if (!cancelled) {
-          setActiveAgentId(undefined);
+          setActiveRoleId(undefined);
           setRunStatus(undefined);
         }
       }
@@ -304,15 +309,8 @@ export function DelegationTeamCard({
       <div className="delegation-member-list" aria-live="polite">
       {team.roster.map((r) => {
         const isEntry = r.id === team.entryRoleId;
-        const isActive = activeAgentId === r.agentId;
-        const duplicateAgentRoles = team.roster.filter(
-          (candidate) => candidate.agentId === r.agentId
-        ).length;
-        const memberEvents = events.filter(
-          (event) =>
-            event.agentId === r.agentId &&
-            (duplicateAgentRoles === 1 || event.roleLabel === r.label)
-        );
+        const isActive = activeRoleId === r.id;
+        const memberEvents = eventsForRosterRole(events, r, team.roster);
         const newestFirst = [...memberEvents].reverse();
         const activeEvent = newestFirst.find(
           (event) => event.status === "running" || event.status === "pending"
@@ -326,7 +324,7 @@ export function DelegationTeamCard({
             : [];
         // Entry is parked when the run is live but a child agent owns the active slot.
         const parkedEntry =
-          isEntry && runStatus === "running" && Boolean(activeAgentId) && !isActive;
+          isEntry && runStatus === "running" && Boolean(activeRoleId) && !isActive;
         const badge = isActive
           ? t("status.running")
           : parkedEntry

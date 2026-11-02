@@ -100,8 +100,14 @@ function mergeBuiltinRoles(existing: WorkflowTeam, builtin: WorkflowTeam): Workf
     return {
       ...role,
       agentId: savedRole?.agentId ?? role.agentId,
+      ...(savedRole?.provider ? { provider: savedRole.provider } : {}),
+      ...(savedRole?.providerOptionId ? { providerOptionId: savedRole.providerOptionId } : {}),
       ...(savedRole?.model ? { model: savedRole.model } : {}),
       ...(savedRole?.modelOptionId ? { modelOptionId: savedRole.modelOptionId } : {}),
+      ...(savedRole?.thoughtLevel ? { thoughtLevel: savedRole.thoughtLevel } : {}),
+      ...(savedRole?.thoughtLevelOptionId
+        ? { thoughtLevelOptionId: savedRole.thoughtLevelOptionId }
+        : {}),
       skillIds: savedRole?.skillIds ?? role.skillIds
     };
   });

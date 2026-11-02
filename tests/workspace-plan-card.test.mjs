@@ -56,7 +56,7 @@ test("delegation timeline participates in the third column scroll container", ()
 test("active agent subtitle truncates merged session config values", () => {
   assert.match(source, /const sessionConfigSummary = useMemo/);
   assert.match(source, /sessionConfigValues\.join\(" \/ "\)/);
-  assert.match(styles, /\.agent-lockup small\s*\{[^}]*color:\s*var\(--fb-text-tertiary\)/s);
+  assert.match(styles, /\.agent-lockup small\s*\{[^}]*color:\s*var\(--fb-text-secondary\)/s);
   assert.match(styles, /\.agent-lockup strong,\s*\.agent-lockup small\s*\{[^}]*text-overflow:\s*ellipsis/s);
   assert.match(styles, /\.agent-lockup strong,\s*\.agent-lockup small\s*\{[^}]*white-space:\s*nowrap/s);
 });
@@ -66,7 +66,7 @@ test("active agent card absorbs session config values", () => {
   assert.match(source, /sessionConfigValues\.join\(" \/ "\)/);
   assert.match(source, /<small title=\{sessionConfigSummary\}>\{sessionConfigSummary\}<\/small>/);
   assert.match(source, /workspace\.localAgent/);
-  assert.match(source, /workspace\.runState/);
+  assert.match(source, /<AgentSessionCard/);
   assert.doesNotMatch(source, /className="side-card session-config-card"/);
 });
 
@@ -90,11 +90,10 @@ test("workspace panel renders the Codex usage card from the CLI bridge", () => {
 
 test("Codex usage card is rendered after the primary workspace cards", () => {
   const codexCard = source.indexOf('className="side-card codex-usage-card"');
-  const activeAgent = source.indexOf('className="side-card active-agent-card"');
-  const runStateCard = source.indexOf('workspace.runState');
+  const runStateCard = source.indexOf('<AgentSessionCard');
+  assert.ok(runStateCard >= 0);
   const planCard = source.indexOf('className="side-card plan-card"');
 
-  assert.ok(codexCard > activeAgent);
   assert.ok(codexCard > runStateCard);
   assert.ok(codexCard > planCard);
 });
@@ -102,10 +101,11 @@ test("Codex usage card is rendered after the primary workspace cards", () => {
 test("information card host is rendered last because it is a secondary workspace affordance", () => {
   const infoCardHost = source.lastIndexOf("<InfoCardHost />");
   const codexCard = source.indexOf('className="side-card codex-usage-card"');
-  const activeAgent = source.indexOf('className="side-card active-agent-card"');
+  const runStateCard = source.indexOf('<AgentSessionCard');
+  assert.ok(runStateCard >= 0);
   const planCard = source.indexOf('className="side-card plan-card"');
 
-  assert.ok(infoCardHost > activeAgent);
+  assert.ok(infoCardHost > runStateCard);
   assert.ok(infoCardHost > planCard);
   assert.ok(infoCardHost > codexCard);
 });

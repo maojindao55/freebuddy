@@ -75,6 +75,14 @@ export function isPathWithinRoots(target: string, roots: string[]): boolean {
   return false;
 }
 
+export function filterPathsWithinRoots(candidates: unknown, roots: string[]): string[] {
+  if (!Array.isArray(candidates)) return [];
+  return candidates.filter(
+    (entry): entry is string =>
+      typeof entry === "string" && entry.trim().length > 0 && isPathWithinRoots(entry, roots)
+  );
+}
+
 export function parentWithinRoots(target: string, roots: string[]): string | null {
   const parent = path.dirname(path.resolve(target));
   return isPathWithinRoots(parent, roots) ? parent : null;

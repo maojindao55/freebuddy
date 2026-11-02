@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import spawn from "cross-spawn";
+import { applyManagedNodeEnvironment } from "./managedNodeRuntime.js";
 
 const WINDOWS_PATH_QUERY = [
   "$machine=[Environment]::GetEnvironmentVariable('Path','Machine')",
@@ -83,7 +84,7 @@ function runPowerShell(
     const child = spawn(
       resolveWindowsPowerShell(env),
       args,
-      { env }
+      { env, windowsHide: true }
     );
     let stdout = "";
     let settled = false;
@@ -212,7 +213,7 @@ export async function getFreshWindowsEnvironment(
     // Avoid passing two differently-cased PATH variables to Windows children.
     delete env.Path;
   }
-  return env;
+  return applyManagedNodeEnvironment(env);
 }
 
 export async function resolveWindowsShellCommand(

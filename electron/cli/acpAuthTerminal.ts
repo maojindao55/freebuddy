@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
+import { applyManagedNodeEnvironment } from "./managedNodeRuntime.js";
 
 import type { AcpAuthMethod } from "./acp.js";
 import type { CliEvent } from "./runtimeShared.js";
+import { setAuthenticationTerminalPending } from "./authenticationTerminalPending.js";
 
 interface ActiveAuthTerminal {
   write(data: string): void;
@@ -87,10 +89,10 @@ export async function runAuthenticationTerminal(options: {
   const requestId = randomUUID();
   const terminalKey = key(sessionId, requestId);
   const env: Record<string, string> = {};
-  for (const [name, value] of Object.entries({
+  for (const [name, value] of Object.entries(applyManagedNodeEnvironment({
     ...command.env,
     ...(method.env ?? {})
-  })) {
+  }, { install: true, preserveElectronRunAsNode: command.bin === process.execPath }))) {
     if (value != null) env[name] = value;
   }
 
@@ -103,6 +105,7 @@ export async function runAuthenticationTerminal(options: {
       methodName: method.name ?? method.id
     }
   });
+  setAuthenticationTerminalPending(sessionId, requestId, true);
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -113,6 +116,7 @@ export async function runAuthenticationTerminal(options: {
       if (settled) return;
       settled = true;
       activeTerminals.delete(terminalKey);
+      setAuthenticationTerminalPending(sessionId, requestId, false);
       emit({ type: "authentication-terminal-resolved", requestId });
       if (error) reject(error);
       else resolve();

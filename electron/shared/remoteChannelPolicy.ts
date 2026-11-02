@@ -27,15 +27,26 @@ const ALLOW = [
   "cli:createConversation",
   "cli:createConversationShare",
   "cli:deleteConversation",
+  "cli:forkConversation",
   "cli:getConversation",
   "cli:listConversationContextReferences",
   "cli:listConversations",
+  "cli:listConversationOverviews",
+  "cli:listFollowupMessages",
   "cli:listMessage",
   "cli:listMessages",
+  "cli:readMessageDetails",
+  "cli:listMessageFileEdits",
+  "cli:moveConversationToProject",
+  "cli:readFileEditBlob",
+  "cli:readMessageFileEdit",
   "cli:removeConversationContextReference",
   "cli:renameConversation",
+  "cli:resetConversationOrder",
   "cli:setConversationApprovalMode",
   "cli:setConversationConfigOptionOverrides",
+  "cli:setConversationOrder",
+  "cli:setConversationPinned",
   "cli:setConversationSkills",
   "cli:transferConversation",
   "cli:updateConversationAgentName",
@@ -74,6 +85,7 @@ const ALLOW = [
 
   // Usage reporting.
   "cli:codexUsage",
+  "cli:antigravityUsage",
   "cli:cursorUsageStatus",
   "cli:refreshUsage",
   "cli:usageSummary",
@@ -192,14 +204,42 @@ const ADMIN_ONLY = [
   "cli:upsertOverride",
   "cli:resetOverride",
 
+  // User MCP servers execute arbitrary commands, host-only configuration.
+  "mcpServers:list",
+  "mcpServers:get",
+  "mcpServers:create",
+  "mcpServers:update",
+  "mcpServers:delete",
+  "mcpServers:setEnabled",
+  "mcpServers:selfCheck",
+  "mcpServers:oauthStatus",
+  "mcpServers:authorize",
+  "mcpServers:disconnect",
+
+  // Per-conversation MCP server selection - remote users cannot use MCP.
+  "cli:getConversationMcpServerIds",
+  "cli:setConversationMcpServerIds",
+
+  // 服务商含 API Key：读是脱敏列表，写是 host 配置，均仅桌面端。
+  "providers:list",
+  "providers:upsert",
+  "providers:delete",
+  "providers:setEnabled",
+  "providers:reorder",
+  "providers:test",
+  "providers:getApiKey",
+
   // Host workspace project mounts affect agent cwd/roots; no remote path guard yet.
   "cli:createProject",
+  "cli:ensureProjectForCwd",
   "cli:updateProject",
   "cli:deleteProject",
 
   // Host-level credentials for the coding CLIs.
   "cli:logout",
   "cli:probeAuthentication",
+  "cli:checkUpdates",
+  "cli:verifyUpgrade",
   "cli:connectCursorUsage",
   "cli:disconnectCursorUsage",
 
@@ -248,9 +288,28 @@ const DENY = [
   "skills:reveal",
   "skills:openMarketUrl",
 
+  // Standalone DocStudio window and office-engine operations
+  "docStudio:openWindow",
+  "docStudio:openConversation",
+  "docStudio:setActiveConversation",
+  "docStudio:isConversationEmbedded",
+  "docStudio:defaultDirectory",
+  "docStudio:showOpenDialog",
+  "docStudio:showItemInFolder",
+  "docStudio:openConversationInMain",
+  "docStudio:watchFile",
+  "docStudio:unwatchFile",
+  "docStudio:officePreview",
+  "docStudio:engineEditorStatus",
+  "docStudio:officeEngineAddonStatus",
+  "docStudio:officeEngineAddonDownload",
+  "docStudio:resolveConversationFile",
+  "docStudio:attachFileToConversation",
+
   // Anything that installs or updates code on the host.
   "cli:install",
   "cli:installStream",
+  "cli:prepareUpgrade",
   "skills:import",
   "skills:installFromMarket",
   "plugins:install",

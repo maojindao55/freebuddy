@@ -22,7 +22,8 @@ export function buildCodexAppServerWrapperContent(
       .replace(/\//g, "\\")
       .replace(/%/g, "%%");
     const script = `@echo off
-setlocal EnableExtensions
+setlocal EnableExtensions DisableDelayedExpansion
+chcp 65001 >nul
 set "FREEBUDDY_CATALOG_PATH=${catalogPathCmd}"
 set "NODE_BIN=node"
 if defined FREEBUDDY_NODE_BIN if exist "%FREEBUDDY_NODE_BIN%" set "NODE_BIN=%FREEBUDDY_NODE_BIN%"

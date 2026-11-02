@@ -11,3 +11,7 @@ node_modules/
 .sessions/
 .agents/
 .codebuddy/
+.zcode/
+.cline/
+promo/
+*.obj

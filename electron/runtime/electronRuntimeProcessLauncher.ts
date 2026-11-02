@@ -15,7 +15,10 @@ export function createElectronRuntimeProcessLauncher(): RuntimeProcessLauncher {
           child.postMessage(message);
         },
         onMessage(handler) {
-          const listener = (event: { data: unknown }) => handler(event.data);
+          // UtilityProcess emits the deserialized message itself. Unlike a
+          // MessagePort "message" event, there is no wrapping `{ data }`
+          // object on the host side.
+          const listener = (message: unknown) => handler(message);
           child.on("message", listener);
           return () => child.off("message", listener);
         },

@@ -105,38 +105,17 @@ test("migrateCwdGroupsToProjects groups by normalized cwd once", async (t) => {
   const cwdA = abs("Users", "me", "App");
   const cwdASlash = cwdA + path.sep;
   const cwdB = abs("Users", "me", "Other");
-
-  conversations.createConversation({
-    id: "c1",
-    title: "c1",
-    agentId: "agent",
-    agentName: "Agent",
-    adapter: "codex",
-    cwd: cwdA
-  });
-  conversations.createConversation({
-    id: "c2",
-    title: "c2",
-    agentId: "agent",
-    agentName: "Agent",
-    adapter: "codex",
-    cwd: cwdASlash
-  });
-  conversations.createConversation({
-    id: "c3",
-    title: "c3",
-    agentId: "agent",
-    agentName: "Agent",
-    adapter: "codex",
-    cwd: cwdB
-  });
-  conversations.createConversation({
-    id: "c4",
-    title: "c4",
-    agentId: "agent",
-    agentName: "Agent",
-    adapter: "codex"
-  });
+  const now = new Date().toISOString();
+  const insertLegacy = db.prepare(
+    `INSERT INTO conversations
+       (id, title, agent_id, agent_name, adapter, kind, cwd, project_id,
+        skill_snapshot, archived, created_at, updated_at)
+     VALUES (?, ?, 'agent', 'Agent', 'codex', 'default', ?, NULL, '[]', 0, ?, ?)`
+  );
+  insertLegacy.run("c1", "c1", cwdA, now, now);
+  insertLegacy.run("c2", "c2", cwdASlash, now, now);
+  insertLegacy.run("c3", "c3", cwdB, now, now);
+  insertLegacy.run("c4", "c4", null, now, now);
 
   const first = projects.migrateCwdGroupsToProjects();
   assert.equal(first.migrated, 2);
@@ -164,4 +143,102 @@ test("migrateCwdGroupsToProjects groups by normalized cwd once", async (t) => {
   const second = projects.migrateCwdGroupsToProjects();
   assert.equal(second.migrated, 0);
   assert.equal(projects.listProjects().length, 2);
+});
+
+test("ensureProjectForCwd reuses a matching project and creates one otherwise", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable");
+    return;
+  }
+  const { projects } = await setup();
+  const folder = abs("Users", "me", "opened-app");
+  const created = projects.ensureProjectForCwd(folder);
+  assert.equal(created.name, "opened-app");
+  assert.deepEqual(created.folders, [folder]);
+  assert.equal(created.primaryPath, folder);
+
+  const reused = projects.ensureProjectForCwd(folder + path.sep);
+  assert.equal(reused.id, created.id);
+  assert.equal(projects.listProjects().length, 1);
+});
+
+test("createConversation auto-creates a project for a new cwd", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable");
+    return;
+  }
+  const { projects, conversations } = await setup();
+  const folder = abs("Users", "me", "fresh-folder");
+
+  conversations.createConversation({
+    id: "c-auto-project",
+    title: "auto",
+    agentId: "agent",
+    agentName: "Agent",
+    adapter: "codex",
+    cwd: folder
+  });
+
+  const conv = conversations.getConversation("c-auto-project");
+  assert.ok(conv?.projectId);
+  const project = projects.getProject(conv.projectId);
+  assert.equal(project?.name, "fresh-folder");
+  assert.deepEqual(project?.folders, [folder]);
+});
+
+test("worktree conversations attach to the source folder project, not the worktree path", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable");
+    return;
+  }
+  const { projects, conversations } = await setup();
+  const source = abs("Users", "me", "source-app");
+  const worktree = abs("data", "task-worktrees", "source-app-abc123", "taskKey");
+
+  conversations.createConversation({
+    id: "c-worktree",
+    title: "wt",
+    agentId: "agent",
+    agentName: "Agent",
+    adapter: "codex",
+    cwd: worktree,
+    metadata: {
+      taskWorkspace: {
+        mode: "worktree",
+        sourceCwd: source,
+        worktreeRoot: worktree
+      }
+    }
+  });
+
+  const conv = conversations.getConversation("c-worktree");
+  assert.ok(conv?.projectId);
+  const project = projects.getProject(conv.projectId);
+  assert.equal(project?.primaryPath, source);
+  assert.deepEqual(project?.folders, [source]);
+  assert.equal(projects.findProjectByCwd(worktree), null);
+});
+
+test("remote members do not auto-create host projects from cwd", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable");
+    return;
+  }
+  const { projects, conversations } = await setup();
+  const { runAsCaller } = await import("../dist-electron/cli/callerContext.js");
+  const folder = abs("Users", "me", "remote-only");
+
+  runAsCaller("alice", () => {
+    conversations.createConversation({
+      id: "c-remote",
+      title: "remote",
+      agentId: "agent",
+      agentName: "Agent",
+      adapter: "codex",
+      cwd: folder
+    });
+  });
+
+  assert.equal(conversations.getConversation("c-remote")?.projectId, undefined);
+  assert.equal(projects.listProjects().length, 0);
 });

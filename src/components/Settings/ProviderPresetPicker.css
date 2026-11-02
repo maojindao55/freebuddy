@@ -1,0 +1,69 @@
+.providers-workspace .providers-catalog-intro {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px 28px 24px;
+}
+
+.providers-workspace .providers-catalog-intro h3 { font-size: 18px; margin-bottom: 8px; }
+.providers-workspace .providers-catalog-intro p { color: var(--fb-text-secondary); font-size: 12px; }
+
+.providers-catalog-custom {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 7px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.providers-catalog-custom:hover { background: var(--fb-panel-soft); }
+.providers-catalog .preset-picker-clean { padding: 0 28px 28px; gap: 18px; container: provider-catalog / inline-size; }
+.preset-picker-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.preset-picker-search { display: flex; align-items: center; gap: 8px; width: 300px; max-width: 100%; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--fb-border); border-radius: 7px; background: var(--fb-panel-soft); color: var(--fb-text-tertiary); }
+.preset-picker-search:focus-within { border-color: var(--fb-brand); }
+.preset-picker-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: none; background: transparent; color: var(--fb-text-primary); font: inherit; font-size: 12px; }
+.preset-picker-search button { display: inline-flex; align-items: center; justify-content: center; padding: 3px; border: 0; background: transparent; color: var(--fb-text-secondary); cursor: pointer; }
+.preset-picker-count { white-space: nowrap; flex-shrink: 0; color: var(--fb-text-tertiary); font-size: 11px; }
+
+.providers-catalog .preset-picker-clean .preset-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.providers-catalog .preset-picker-clean .preset-card { align-items: center; min-height: 84px; padding: 16px; gap: 12px; border-color: var(--fb-border); border-radius: 10px; background: var(--fb-panel-bg); }
+.preset-picker-clean .preset-card .preset-card-icon { margin: 0; }
+.preset-picker-clean .preset-card-body { flex: 1; gap: 6px; }
+.preset-picker-clean .preset-card-name { font-size: 13px; line-height: 18px; font-weight: 600; }
+.preset-picker-clean .preset-card-summary { display: block; font-size: 11px; line-height: 16px; color: var(--fb-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-picker-clean .preset-card-chevron { flex-shrink: 0; color: var(--fb-text-tertiary); opacity: 0; transition: opacity 0.15s; }
+.providers-catalog .preset-picker-clean .preset-card:hover { background: var(--fb-panel-soft); border-color: var(--fb-border-strong); box-shadow: none; }
+.preset-picker-clean .preset-card:hover .preset-card-chevron,
+.preset-picker-clean .preset-card:focus-visible .preset-card-chevron { opacity: 1; }
+.preset-picker-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 16px; color: var(--fb-text-tertiary); }
+.preset-picker-empty p { margin: 0; font-size: 13px; }
+.preset-picker-empty .preset-custom-btn { align-self: center; }
+
+@container provider-catalog (max-width: 780px) {
+  .providers-catalog .preset-picker-clean .preset-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container provider-catalog (max-width: 480px) {
+  .providers-catalog .preset-picker-clean .preset-picker-grid { grid-template-columns: minmax(0, 1fr); }
+  .preset-picker-count { display: none; }
+  .preset-picker-search { width: 100%; }
+}
+
+@container provider-settings (max-width: 540px) {
+  .providers-workspace .providers-catalog-intro { flex-direction: column; gap: 14px; padding: 20px; }
+  .providers-catalog .preset-picker-clean { padding: 0 20px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preset-picker-clean .preset-card,
+  .preset-picker-clean .preset-card-chevron { transition: none; }
+}

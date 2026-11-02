@@ -19,6 +19,15 @@ export type AgentAvailabilityGroups = {
   unavailable: AgentAvailabilityEntry[];
 };
 
+export function preferredAvailableAgentId(
+  groups: AgentAvailabilityGroups,
+  preferredAgentId?: string
+): string {
+  return groups.available.find((entry) => entry.member.id === preferredAgentId)?.member.id
+    ?? groups.available[0]?.member.id
+    ?? "";
+}
+
 export function agentRuntimeKey(member: CLIMember): string {
   if (member.runtimeKey) return member.runtimeKey;
   return member.id.startsWith("cli-")
@@ -75,8 +84,8 @@ export function buildAgentAvailabilityGroups(
     const leftRun = Date.parse(left.runtime?.lastRunAt ?? "") || 0;
     const rightRun = Date.parse(right.runtime?.lastRunAt ?? "") || 0;
     if (leftRun !== rightRun) return rightRun - leftRun;
-    const leftUtilityProfile = left.member.profile === "butler" ? 1 : 0;
-    const rightUtilityProfile = right.member.profile === "butler" ? 1 : 0;
+    const leftUtilityProfile = left.member.profile ? 1 : 0;
+    const rightUtilityProfile = right.member.profile ? 1 : 0;
     if (leftUtilityProfile !== rightUtilityProfile) {
       return leftUtilityProfile - rightUtilityProfile;
     }

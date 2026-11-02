@@ -29,9 +29,10 @@ test("native browser configures a browser-compatible UA before creating web cont
   assert.ok(configureIndex >= 0 && configureIndex < createIndex);
 });
 
-test("native browser accepts HTTPS only", () => {
+test("native browser accepts HTTP and HTTPS", () => {
   const source = read("electron/nativeBrowserViewService.ts");
   assert.match(source, /url\.protocol !== "https:"/);
+  assert.match(source, /url\.protocol !== "http:"/);
   assert.match(source, /Browser URLs cannot contain credentials/);
   assert.doesNotMatch(source, /clearNativeBrowserData|clearData\(/);
 });

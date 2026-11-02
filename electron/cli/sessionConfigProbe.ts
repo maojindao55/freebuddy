@@ -10,11 +10,13 @@ import {
   buildInitializeRequest,
   buildSessionCloseRequest,
   buildSessionNewRequest,
+  buildSessionSetConfigOptionRequest,
   parseAcpLine,
   type AcpMessage
 } from "./acp.js";
 import { buildCommand, dshAcpManagedRoot, ensureDshAcpCwd, getAdapterDefinition, patchDshAcpRuntimeFromCommand, syncDshAcpManagedConfig } from "./adapters.js";
 import { getDataDir } from "./db.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { waitForCodexToolchainAutoUpdate } from "./check.js";
 import { killProcessTree } from "./process-kill.js";
 import { mergeBuiltEnv } from "./runtime.js";
@@ -44,10 +46,11 @@ export interface SessionConfigProbeInput {
   extraArgs?: string[];
   env?: Record<string, string>;
   cwd?: string;
+  configOptionOverrides?: Record<string, string>;
 }
 
 const PROBE_TIMEOUT_MS = 15_000;
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_PREFIX = "session-config-options:";
 
 function sessionConfigCacheKey(input: SessionConfigProbeInput): string {
@@ -60,7 +63,8 @@ function sessionConfigCacheKey(input: SessionConfigProbeInput): string {
     binary: input.binary ?? "",
     extraArgs: input.extraArgs ?? [],
     envKeys: Object.keys(input.env ?? {}).sort(),
-    byokModels: cliByokModelSignature(input.agentId, input.adapter)
+    byokModels: cliByokModelSignature(input.agentId, input.adapter),
+    provider: input.configOptionOverrides?.provider ?? ""
   });
   return `${CACHE_PREFIX}${createHash("sha256").update(signature).digest("hex")}`;
 }
@@ -144,6 +148,7 @@ export async function inspectSessionConfigOptions(
       ? ensureDshAcpCwd(input.cwd, getDataDir())
       : input.cwd;
   if (input.adapter === "dsh-acp") syncDshAcpManagedConfig(getDataDir());
+  if (input.adapter === "pi-acp") await ensurePackagedPiRuntime(getDataDir());
   const built = buildCommand({
     adapter: input.adapter,
     binary: input.binary,
@@ -151,7 +156,8 @@ export async function inspectSessionConfigOptions(
     prompt: "",
     cwd,
     dshAcpRuntimeRoot:
-      input.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined
+      input.adapter === "dsh-acp" ? dshAcpManagedRoot(getDataDir()) : undefined,
+    piDataDir: input.adapter === "pi-acp" ? getDataDir() : undefined
   });
   if (input.adapter === "dsh-acp") patchDshAcpRuntimeFromCommand(built);
   if (built.protocol !== "acp") return [];
@@ -171,7 +177,8 @@ export async function inspectSessionConfigOptions(
   const child = spawn(built.bin, built.args, {
     cwd,
     env,
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: process.platform === "win32"
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
 
   let nextRequestId = 0;
@@ -259,16 +266,101 @@ export async function inspectSessionConfigOptions(
       buildSessionNewRequest(++nextRequestId, input.cwd, [])
     );
     const sessionId = created?.sessionId ?? created?.session_id;
-    const discoveredOptions = sessionId
+    let discoveredOptions = sessionId
       ? acpSessionSetupToItems(sessionId, created).find(
           (item) => item.kind === "config-options"
         )?.options ?? []
       : [];
+
+    const providerOption = discoveredOptions.find(
+      (option) => option.id === "provider" || option.category === "provider"
+    );
+
+    if (
+      sessionId &&
+      providerOption &&
+      input.configOptionOverrides?.provider &&
+      providerOption.currentValue !== input.configOptionOverrides.provider
+    ) {
+      try {
+        const switchRes = await request(
+          buildSessionSetConfigOptionRequest(
+            ++nextRequestId,
+            sessionId,
+            "provider",
+            input.configOptionOverrides.provider
+          )
+        );
+        const switchItems = acpSessionSetupToItems(sessionId, {
+          sessionId,
+          ...(switchRes && typeof switchRes === "object" ? switchRes : {})
+        });
+        const switchOptions = switchItems.find(
+          (item) => item.kind === "config-options"
+        )?.options;
+        if (switchOptions && switchOptions.length > 0) {
+          discoveredOptions = switchOptions;
+        }
+      } catch {
+        /* best-effort provider switch */
+      }
+    }
+
     const options = mergeCliByokModelOption(
       input.agentId,
       input.adapter,
       discoveredOptions
     );
+
+    if (
+      sessionId &&
+      !input.configOptionOverrides?.provider &&
+      providerOption?.values &&
+      providerOption.values.length > 1
+    ) {
+      if (providerOption.currentValue) {
+        cacheSessionConfigOptions(
+          {
+            ...input,
+            configOptionOverrides: { provider: providerOption.currentValue }
+          },
+          options
+        );
+      }
+      for (const val of providerOption.values) {
+        if (val.id === providerOption.currentValue) continue;
+        try {
+          const altRes = await request(
+            buildSessionSetConfigOptionRequest(
+              ++nextRequestId,
+              sessionId,
+              "provider",
+              val.id
+            )
+          );
+          const altItems = acpSessionSetupToItems(sessionId, {
+            sessionId,
+            ...(altRes && typeof altRes === "object" ? altRes : {})
+          });
+          const altDiscovered = altItems.find(
+            (item) => item.kind === "config-options"
+          )?.options;
+          if (altDiscovered && altDiscovered.length > 0) {
+            const altMerged = mergeCliByokModelOption(
+              input.agentId,
+              input.adapter,
+              altDiscovered
+            );
+            cacheSessionConfigOptions(
+              { ...input, configOptionOverrides: { provider: val.id } },
+              altMerged
+            );
+          }
+        } catch {
+          /* best-effort pre-cache for alternate provider */
+        }
+      }
+    }
 
     if (
       sessionId &&

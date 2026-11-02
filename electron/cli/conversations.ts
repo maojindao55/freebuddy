@@ -1,5 +1,7 @@
 import { getDb } from "./db.js";
 import { electronModule } from "../shared/electronModule.js";
+import { acpProcessPool } from "./acpProcessPool.js";
+import { removeDocStudioEmbeddedConversation } from "../docStudioWindowRegistry.js";
 import {
   discardManagedAttachmentIfUnreferenced,
   isManagedAttachmentPath
@@ -9,13 +11,26 @@ import type { SkillSnapshot } from "./skillTypes.js";
 import { mergeRequiredSkillIds } from "./agentProfiles.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
 import { getUserById } from "./users.js";
-import { findProjectByCwd } from "./projects.js";
+import {
+  addProjectFolderIfMissing,
+  cwdForProjectLookup,
+  ensureProjectForCwd,
+  findProjectByCwd,
+  findProjectFolderOwner,
+  getProject
+} from "./projects.js";
 import {
   listRemoteWorkspaces,
   sourcePathForManagedWorkspace,
   type RemoteWorkspace
 } from "./remoteWorkspaces.js";
 import { safeSendToWebContents } from "./ipcSend.js";
+import {
+  IPC_LIST_MESSAGES_PAGE_SIZE,
+  IPC_LIST_MESSAGES_PAGE_CHARS,
+  MAX_IPC_MESSAGE_CONTENT_CHARS,
+  OMITTED_ASSISTANT_CONTENT
+} from "./messagePayloadSanitize.js";
 
 let notifyMessagesChangedHandler: ((conversationId: string) => void) | null = null;
 
@@ -66,6 +81,11 @@ export interface Conversation {
   skillSnapshot: SkillSnapshot[];
   titleSource?: ConversationTitleSource;
   archived: boolean;
+  /** Pinned conversations float to the top of their list group. */
+  pinned?: boolean;
+  pinnedAt?: string;
+  /** Manual list position; null = order by activity (new arrivals float in). */
+  sortPosition?: number | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
@@ -80,6 +100,8 @@ export interface Conversation {
 
 export interface ConversationMessage {
   id: string;
+  /** SQLite insertion order, used to break equal createdAt timestamps. */
+  sequence?: number;
   conversationId: string;
   role: "user" | "assistant" | "system";
   /** running | done | failed | killed | sent */
@@ -87,6 +109,7 @@ export interface ConversationMessage {
   /** For user messages: raw text. For assistant: serialized CliStreamItem[]. */
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;
@@ -192,6 +215,10 @@ function rowToConversation(
     skillSnapshot: parseSkillSnapshot(r.skill_snapshot),
     titleSource: parseTitleSource(r.title_source),
     archived: r.archived === 1,
+    pinned: r.pinned === 1,
+    pinnedAt: r.pinned_at ?? undefined,
+    /** Manual list position; null = order by activity (new arrivals float in). */
+    sortPosition: typeof r.sort_position === "number" ? r.sort_position : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastMessageAt: r.last_message_at ?? undefined,
@@ -238,10 +265,12 @@ function rowToMessage(r: any): ConversationMessage {
   return {
     id: r.id,
     conversationId: r.conversation_id,
+    sequence: r.message_sequence,
     role: r.role,
     status: r.status,
     content: r.content,
     attachments,
+    skillSnapshot: r.skill_snapshot ? parseSkillSnapshot(r.skill_snapshot) : undefined,
     taskId: r.task_id ?? undefined,
     agentId: r.agent_id ?? undefined,
     agentName: r.agent_name ?? undefined,
@@ -277,13 +306,22 @@ export interface CreateConversationInput {
   ownerId?: string | null;
 }
 
-export function createConversation(input: CreateConversationInput): Conversation {
+export function createConversation(
+  input: CreateConversationInput,
+  // Forks inherit the source assignment, including an explicitly empty one.
+  options: { autoAssignProject?: boolean } = {}
+): Conversation {
   const now = new Date().toISOString();
   const ownerId = input.ownerId ?? getCallerUserId() ?? null;
   let projectId = input.projectId;
-  if (!projectId && input.cwd) {
-    const matched = findProjectByCwd(input.cwd);
-    if (matched) projectId = matched.id;
+  if (!projectId && options.autoAssignProject !== false) {
+    const lookupCwd = cwdForProjectLookup(input);
+    if (lookupCwd) {
+      const remoteMember = Boolean(getCallerUserId()) && !isCallerAdmin();
+      projectId = remoteMember
+        ? findProjectByCwd(lookupCwd)?.id
+        : ensureProjectForCwd(lookupCwd).id;
+    }
   }
   getDb()
     .prepare(
@@ -351,6 +389,16 @@ export function setConversationSkills(
   return getConversation(id);
 }
 
+/** Rebind future turns without changing the authors of historical messages. */
+export function updateConversationAgentBinding(
+  id: string,
+  agent: { id: string; name: string; cli: { adapter: string } }
+): void {
+  getDb().prepare(
+    "UPDATE conversations SET agent_id = ?, agent_name = ?, adapter = ?, updated_at = ? WHERE id = ?"
+  ).run(agent.id, agent.name, agent.cli.adapter, new Date().toISOString(), id);
+}
+
 export function updateConversationMetadata(
   id: string,
   patch: Record<string, unknown>
@@ -361,6 +409,46 @@ export function updateConversationMetadata(
   getDb()
     .prepare("UPDATE conversations SET metadata = ?, updated_at = ? WHERE id = ?")
     .run(JSON.stringify(merged), new Date().toISOString(), id);
+}
+
+export function getConversationMcpServerIds(id: string): string[] {
+  const conv = getConversation(id);
+  if (!conv?.metadata) return [];
+  const mcpServerIds = conv.metadata.mcpServerIds;
+  if (!Array.isArray(mcpServerIds)) return [];
+  return mcpServerIds.filter((id): id is string => typeof id === "string");
+}
+
+export function setConversationMcpServerIds(
+  id: string,
+  mcpServerIds: string[]
+): void {
+  const conv = getConversation(id);
+  if (!conv) return;
+  const cleanIds = mcpServerIds.filter(
+    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+  );
+  const metadata = { ...(conv.metadata || {}), mcpServerIds: cleanIds };
+  getDb()
+    .prepare("UPDATE conversations SET metadata = ?, updated_at = ? WHERE id = ?")
+    .run(JSON.stringify(metadata), new Date().toISOString(), id);
+}
+
+/** Mark a local conversation as belonging to DocStudio and attach its file. */
+export function markDocStudioConversation(id: string, filePath?: string): boolean {
+  const conv = getConversation(id);
+  if (!conv || (conv.kind !== "default" && conv.kind !== "doc-studio")) return false;
+  const metadata = filePath
+    ? { ...(conv.metadata ?? {}), docStudioFilePath: filePath }
+    : conv.metadata ?? {};
+  if (conv.kind === "doc-studio" && (!filePath || conv.metadata?.docStudioFilePath === filePath)) {
+    return true;
+  }
+  getDb()
+    .prepare("UPDATE conversations SET kind = ?, metadata = ? WHERE id = ?")
+    .run("doc-studio", JSON.stringify(metadata), id);
+  notifyConversationsChanged();
+  return true;
 }
 
 export function setConversationApprovalMode(
@@ -385,6 +473,162 @@ export function setConversationProjectId(
       `UPDATE conversations SET project_id = ?, updated_at = ? WHERE id = ?`
     )
     .run(projectId, now, id);
+}
+
+/**
+ * Pin or unpin a conversation. Pinned conversations float above their list
+ * group regardless of activity; pinnedAt keeps multiple pins in pin order.
+ */
+export function setConversationPinned(id: string, pinned: boolean): Conversation {
+  const conversation = requireOwnedConversation(id);
+  if (!conversation) throw new Error("Conversation not found");
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE conversations SET pinned = ?, pinned_at = ?, updated_at = ? WHERE id = ?`
+    )
+    .run(pinned ? 1 : 0, pinned ? now : null, now, id);
+  return getConversation(id) as Conversation;
+}
+
+/**
+ * Move a conversation into a project (or back to "recent" when projectId is
+ * null). The conversation's owning folder — the worktree source cwd for
+ * worktree conversations, and the host source path for remote managed
+ * workspaces — is added to the target project's folders when missing so the
+ * project keeps covering the conversation's workspace.
+ *
+ * Removing a conversation records `projectDetached` in its metadata: without
+ * the marker the sidebar's cwd fallback would immediately regroup it under
+ * the project that still owns its cwd, so "remove from project" would look
+ * like a no-op (row stays in the group while also reappearing in Recent).
+ *
+ * Folder extension mutates host-global project configuration, so callers
+ * pass { extendProjectFolders: false } for remote non-admin members (the
+ * assignment itself is per-conversation data and still proceeds). Folder
+ * extension also never steals a folder that already belongs to another
+ * project: the conversation stays assigned via its explicit projectId and
+ * the two projects' folder lists never overlap on the same path. The
+ * ownership check is a pure query — it must not create the very projects it
+ * is asked about (the cwd-groups migration would otherwise mint an ad-hoc
+ * project for an unassigned conversation's folder mid-check and misread it
+ * as pre-existing ownership). Worktree source folders keep their existing
+ * owner too; workspace access uses the conversation's own worktree cwd.
+ */
+export function moveConversationToProject(
+  id: string,
+  projectId: string | null,
+  options: { extendProjectFolders?: boolean } = {}
+): Conversation {
+  const conversation = requireOwnedConversation(id);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const db = getDb();
+  return db.transaction(() => {
+    updateConversationMetadata(id, {
+      // JSON.stringify drops undefined keys, so this clears the marker too.
+      projectDetached: projectId ? undefined : true
+    });
+    if (projectId) {
+      const project = getProject(projectId);
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      let folder = cwdForProjectLookup(conversation).trim();
+      const sourceFolder = folder
+        ? sourcePathForManagedWorkspace(folder)
+        : undefined;
+      if (sourceFolder) folder = sourceFolder;
+      // Pure lookup: must not run the cwd-groups migration, which would
+      // create an ad-hoc project for this very folder and misread it as a
+      // pre-existing cross-project claim.
+      const folderOwner = folder ? findProjectFolderOwner(folder) : null;
+      const crossProjectFolder =
+        folderOwner !== null &&
+        folderOwner.id !== project.id;
+      if (folder && options.extendProjectFolders !== false && !crossProjectFolder) {
+        try {
+          addProjectFolderIfMissing(project, folder);
+        } catch {
+          // A non-absolute/unresolvable cwd (e.g. remote-only path): the move
+          // proceeds without extending the project's folders.
+        }
+      }
+    }
+    setConversationProjectId(id, projectId);
+    return getConversation(id) as Conversation;
+  })();
+}
+
+export const CONVERSATION_ORDER_STEP = 1024;
+
+/**
+ * Persist a manual list order for a group of conversations. The caller sends
+ * the full desired order (top first); rows get evenly spaced positions.
+ * Unlisted conversations keep their position (null = ordered by activity).
+ * Reordering never touches updated_at — it must not reshuffle the
+ * activity-based views.
+ *
+ * Positions are only meaningful inside the group they were assigned in (each
+ * group starts at 0), so listConversations must NOT order by sort_position:
+ * per-group positions from different groups overlap, and interleaving them
+ * under the global LIMIT would silently drop rows from the sidebar. The DB
+ * list stays activity-ordered (main's pagination contract: the most recent
+ * rows survive the limit); applying the manual order within a group is the
+ * client's job (compareConversationsForList, which floats unpositioned new
+ * arrivals above positioned rows).
+ */
+export function setConversationOrder(conversationIds: string[]): Conversation[] {
+  if (
+    !Array.isArray(conversationIds) ||
+    conversationIds.some((id) => typeof id !== "string" || !id.trim())
+  ) {
+    throw new Error("conversationIds must be an array of conversation ids.");
+  }
+  const db = getDb();
+  return db.transaction(() => {
+    const update = db.prepare(
+      "UPDATE conversations SET sort_position = ? WHERE id = ?"
+    );
+    const updated: Conversation[] = [];
+    const seen = new Set<string>();
+    for (const [index, rawId] of conversationIds.entries()) {
+      const id = rawId.trim();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (!requireOwnedConversation(id)) continue;
+      update.run(index * CONVERSATION_ORDER_STEP, id);
+      const next = getConversation(id);
+      if (next) updated.push(next);
+    }
+    return updated;
+  })();
+}
+
+/** Drop manual ordering for the given conversations (back to activity order). */
+export function resetConversationOrder(conversationIds: string[]): Conversation[] {
+  if (
+    !Array.isArray(conversationIds) ||
+    conversationIds.some((id) => typeof id !== "string" || !id.trim())
+  ) {
+    throw new Error("conversationIds must be an array of conversation ids.");
+  }
+  const db = getDb();
+  return db.transaction(() => {
+    const update = db.prepare(
+      "UPDATE conversations SET sort_position = NULL WHERE id = ?"
+    );
+    const updated: Conversation[] = [];
+    const seen = new Set<string>();
+    for (const rawId of conversationIds) {
+      const id = rawId.trim();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (!requireOwnedConversation(id)) continue;
+      update.run(id);
+      const next = getConversation(id);
+      if (next) updated.push(next);
+    }
+    return updated;
+  })();
 }
 
 export function setConversationConfigOptionOverrides(
@@ -441,7 +685,7 @@ export function listConversations(args: ListConversationsArgs = {}): Conversatio
     FROM conversations c
     LEFT JOIN remote_users u ON u.id = c.owner_id
     WHERE ${where.join(" AND ")}
-    ORDER BY COALESCE(c.last_message_at, c.updated_at) DESC
+    ORDER BY c.pinned DESC, c.pinned_at DESC, COALESCE(c.last_message_at, c.updated_at) DESC
     LIMIT ?`;
   params.push(args.limit ?? 200);
   const workspaceCache = new Map<string, RemoteWorkspace[]>();
@@ -517,6 +761,11 @@ export function archiveConversation(id: string, archived: boolean): void {
 }
 
 export function deleteConversation(id: string): void {
+  // A deleted conversation can no longer be docked anywhere: drop its
+  // embedded-viewer dock record. Every deletion path funnels through here
+  // (the cli:deleteConversation handler and the butler conversation_delete
+  // tool), so a dock record cannot outlive its conversation.
+  removeDocStudioEmbeddedConversation(id);
   const managedPaths: string[] = [];
   const rows = getDb()
     .prepare(
@@ -539,6 +788,7 @@ export function deleteConversation(id: string): void {
   }
 
   getDb().prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
+  acpProcessPool.closeConversation(id);
   for (const filePath of managedPaths) {
     discardManagedAttachmentIfUnreferenced(filePath);
   }
@@ -560,6 +810,7 @@ export interface AppendMessageInput {
   status: string;
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;
@@ -582,11 +833,11 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
   getDb()
     .prepare(
       `INSERT INTO conversation_messages
-         (id, conversation_id, role, status, content, attachments, task_id,
+         (id, conversation_id, role, status, content, attachments, skill_snapshot, task_id,
           agent_id, agent_name, adapter, role_label,
           workflow_run_id, workflow_step_row_id, author_username,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.id,
@@ -595,6 +846,7 @@ export function appendMessage(input: AppendMessageInput): ConversationMessage {
       input.status,
       input.content,
       input.attachments?.length ? JSON.stringify(input.attachments) : null,
+      input.skillSnapshot?.length ? JSON.stringify(input.skillSnapshot) : null,
       input.taskId ?? null,
       input.agentId ?? null,
       input.agentName ?? null,
@@ -660,9 +912,27 @@ export function recoverInterruptedMessages(): number {
   return result.changes;
 }
 
+// Force-quit leaves cli_tasks at 'running' with no live process. Install and
+// upgrade refuse to start while any related row is running, so those orphans
+// would block the agent forever.
+export function recoverInterruptedTasks(): number {
+  const now = new Date().toISOString();
+  const result = getDb()
+    .prepare(
+      `UPDATE cli_tasks
+       SET status = 'failed',
+           error_message = COALESCE(error_message, 'Interrupted by app restart'),
+           ended_at = COALESCE(ended_at, ?),
+           updated_at = ?
+       WHERE status = 'running'`
+    )
+    .run(now, now);
+  return result.changes;
+}
+
 export function getMessage(id: string): ConversationMessage | undefined {
   const row = getDb()
-    .prepare(`SELECT * FROM conversation_messages WHERE id = ?`)
+    .prepare(`SELECT *, rowid AS message_sequence FROM conversation_messages WHERE id = ?`)
     .get(id) as any;
   return row ? rowToMessage(row) : undefined;
 }
@@ -674,10 +944,116 @@ export function listMessage(id: string): ConversationMessage | undefined {
 export function listMessages(conversationId: string): ConversationMessage[] {
   const rows = getDb()
     .prepare(
-      `SELECT * FROM conversation_messages
+      `SELECT *, rowid AS message_sequence FROM conversation_messages
        WHERE conversation_id = ?
-       ORDER BY created_at ASC`
+       ORDER BY created_at ASC, rowid ASC`
     )
     .all(conversationId) as any[];
   return rows.map(rowToMessage);
+}
+
+export interface ListMessagesIpcOptions {
+  limit?: number;
+  beforeCreatedAt?: string;
+  beforeId?: string;
+}
+
+export interface ListMessagesIpcPage {
+  messages: ConversationMessage[];
+  hasMore: boolean;
+}
+
+// octet_length reads record metadata without loading the text. Four UTF-8
+// bytes per character is a conservative bound for legacy oversized assistants.
+// substr alone loads those hundreds of MB inside SQLite before slicing them.
+const IPC_MESSAGE_SELECT = `
+  SELECT
+    id, rowid AS message_sequence, conversation_id, role, status,
+    CASE
+      WHEN role = 'assistant'
+        AND octet_length(content) > ${MAX_IPC_MESSAGE_CONTENT_CHARS * 4}
+      THEN '${OMITTED_ASSISTANT_CONTENT}'
+      ELSE substr(content, 1, ?)
+    END AS content,
+    attachments, task_id, agent_id, agent_name, adapter, role_label,
+    workflow_run_id, workflow_step_row_id, author_username,
+    created_at, updated_at
+  FROM conversation_messages
+`;
+
+const IPC_CONTENT_FETCH_CHARS = MAX_IPC_MESSAGE_CONTENT_CHARS + 1;
+const IPC_LIST_MESSAGES_MAX_PAGE = 80;
+
+function clampIpcMessageLimit(limit: number | undefined): number {
+  const requested = limit ?? IPC_LIST_MESSAGES_PAGE_SIZE;
+  if (!Number.isFinite(requested)) return IPC_LIST_MESSAGES_PAGE_SIZE;
+  return Math.min(Math.max(1, Math.floor(requested)), IPC_LIST_MESSAGES_MAX_PAGE);
+}
+
+/** IPC reads: newest page only, content capped so Node never holds the full blob. */
+export function getMessageForIpc(id: string): ConversationMessage | undefined {
+  const row = getDb()
+    .prepare(`${IPC_MESSAGE_SELECT} WHERE id = ?`)
+    .get(IPC_CONTENT_FETCH_CHARS, id) as any;
+  return row ? rowToMessage(row) : undefined;
+}
+
+export function listMessagesForIpc(
+  conversationId: string,
+  options: ListMessagesIpcOptions = {}
+): ListMessagesIpcPage {
+  const limit = clampIpcMessageLimit(options.limit);
+  const params: unknown[] = [IPC_CONTENT_FETCH_CHARS, conversationId];
+  let where = "conversation_id = ?";
+  if (options.beforeCreatedAt && options.beforeId) {
+    where += ` AND (
+      created_at < ?
+      OR (
+        created_at = ?
+        AND rowid < (SELECT rowid FROM conversation_messages WHERE id = ?)
+      )
+    )`;
+    params.push(options.beforeCreatedAt, options.beforeCreatedAt, options.beforeId);
+  } else if (options.beforeCreatedAt) {
+    where += " AND created_at < ?";
+    params.push(options.beforeCreatedAt);
+  }
+  const rows = getDb()
+    .prepare(
+      `${IPC_MESSAGE_SELECT}
+       WHERE ${where}
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT ?`
+    )
+    .all(...params, limit + 1) as any[];
+  const page: any[] = [];
+  let chars = 0;
+  for (const row of rows.slice(0, limit)) {
+    if (page.length && chars + row.content.length > IPC_LIST_MESSAGES_PAGE_CHARS) break;
+    page.push(row);
+    chars += row.content.length;
+  }
+  const hasMore = rows.length > page.length;
+  page.reverse();
+  return { messages: page.map(rowToMessage), hasMore };
+}
+
+/** Recent effective turns for context, independent of the UI's history window. */
+export function listFollowupMessagesForIpc(
+  conversationId: string,
+  excludeMessageIds: string[] = []
+): ConversationMessage[] {
+  const excluded = excludeMessageIds.slice(0, 80);
+  const exclusion = excluded.length
+    ? ` AND id NOT IN (${excluded.map(() => "?").join(",")})`
+    : "";
+  const rows = getDb().prepare(
+    `${IPC_MESSAGE_SELECT}
+     WHERE conversation_id = ?
+       AND role IN ('user', 'assistant')
+       AND NOT (role = 'assistant' AND status IN ('running', 'starting'))
+       ${exclusion}
+     ORDER BY created_at DESC, rowid DESC LIMIT 12`
+  ).all(IPC_CONTENT_FETCH_CHARS, conversationId, ...excluded) as any[];
+  return rows.reverse().map(rowToMessage);
 }

@@ -22,7 +22,7 @@ const electronStubUrl =
      const noop = function () {};
      const any = new Proxy({}, { get: () => noop });
      export const app = {
-       getPath: () => "/tmp/freebuddy-test",
+       getPath: (name) => globalThis.__freebuddyElectronGetPath?.(name) ?? "/tmp/freebuddy-test",
        getLocale: () => "en-US"
      };
      export const BrowserWindow = Object.assign(function () {}, { getAllWindows: () => [] });
@@ -34,8 +34,17 @@ const electronStubUrl =
      export const MenuItem = noop;
      export const nativeImage = any;
      export const protocol = any;
-     export const safeStorage = any;
-     export const shell = any;
+     export const safeStorage = new Proxy({}, {
+       get: (_, name) => globalThis.__freebuddyElectronSafeStorage?.[name] ?? noop
+     });
+     export const shell = new Proxy({}, {
+       get: (_, name) => name === "openExternal"
+         ? (...args) => globalThis.__freebuddyElectronOpenExternal?.(...args)
+         : noop
+     });
+     export const utilityProcess = {
+       fork: (...args) => globalThis.__freebuddyElectronUtilityProcessFork?.(...args)
+     };
      export const webUtils = any;
     `
   );

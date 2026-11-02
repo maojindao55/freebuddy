@@ -5,32 +5,49 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  type DragEvent as ReactDragEvent
 } from "react";
+import { Dropdown } from "antd";
+import { useDismissOnOutsideActivation } from "@/hooks/useDismissOnOutsideActivation";
 import { useConversationStore } from "@/store/conversationStore";
 import { usePinnedProjectsStore } from "@/store/pinnedProjectsStore";
+import { projectSortPreferenceForUser, useProjectSortStore } from "@/store/projectSortStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useWorkflowStore } from "@/store/workflowStore";
+import { useConversationOverviewStore } from "@/store/conversationOverviewStore";
+import { usePermissionStore } from "@/store/permissionStore";
+import { useAuthenticationStore } from "@/store/authenticationStore";
+import { RUNNING_PANEL_STATUSES, selectConversationPanelStatus } from "./conversationPanelData";
 import type { Conversation, Project } from "@/services/cli/types";
+import { writeConversationDrag } from "@/utils/conversationDrag";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 import {
+  Archive,
+  CheckCheck,
   ChevronDown,
   ChevronUp,
   Folder,
+  FolderInput,
   FolderOpen,
   Gamepad2,
+  ArrowDownUp,
   LoaderCircle,
+  LayoutGrid,
+  List,
+  Lock,
+  LockOpen,
   MessageSquare,
   MoreHorizontal,
   Pencil,
   Pin,
   PinOff,
   Plus,
-  Trash2,
-  X
+  Trash2
 } from "lucide-react";
 import { AgentAvatar } from "./AgentAvatar";
+import { EditableConversationTitle, useConversationVisibleTitle } from "./conversationTitle";
 import { ProjectFormModal } from "./ProjectFormModal";
 import { useDetailLayoutStore } from "@/store/detailLayoutStore";
 import {
@@ -40,6 +57,8 @@ import {
   groupConversationsByProject,
   groupConversationsByProjects,
   recentConversations,
+  sortProjectGroups,
+  unreadConversationView,
   type ConversationProjectGroup
 } from "./conversationProjectGrouping";
 
@@ -49,77 +68,232 @@ const ConversationRow = memo(function ConversationRow({
   isRunning,
   isWorkflowRunning,
   isUnread,
+  deletionBlocked,
   compact,
+  projectOptions,
+  isDraggingRow,
+  dropPosition,
   onSelect,
-  onDelete
+  onDelete,
+  onRowDragStart,
+  onRowDragEnd
 }: {
   conversation: Conversation;
   isActive: boolean;
   isRunning: boolean;
   isWorkflowRunning: boolean;
   isUnread: boolean;
+  deletionBlocked: boolean;
   compact?: boolean;
+  projectOptions: Array<{ id: string; name: string }>;
+  isDraggingRow?: boolean;
+  dropPosition?: "before" | "after" | null;
   onSelect: (id: string) => void;
   onDelete: (id: string, title: string) => void;
+  onRowDragStart?: (id: string, event: ReactDragEvent<HTMLLIElement>) => void;
+  onRowDragEnd?: () => void;
 }) {
   const { t } = useTranslation();
   const currentUser = useConversationStore((s) => s.currentUser);
+  const setConversationPinned = useConversationStore(
+    (s) => s.setConversationPinned
+  );
+  const archiveConversation = useConversationStore(
+    (s) => s.archiveConversation
+  );
+  const moveConversationToProject = useConversationStore(
+    (s) => s.moveConversationToProject
+  );
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editSignal, setEditSignal] = useState(0);
+  const rowRef = useRef<HTMLLIElement>(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  // antd's trigger={[]} never registers an outside-click close, so the
+  // manually opened menu must dismiss itself (outside rows and main content).
+  useDismissOnOutsideActivation({ active: menuOpen, anchor: rowRef, onClose: closeMenu });
+  const visibleTitle = useConversationVisibleTitle(conversation);
   const showOwner = currentUser?.isOwner === true;
   const ownerName = conversation.ownerUsername?.trim() || "";
   const isOwnConversation = ownerName === (currentUser?.username ?? "");
   const isBusy = isRunning || isWorkflowRunning;
 
+  const handleTogglePinned = () => {
+    setConversationPinned(conversation.id, !conversation.pinned).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to pin conversation:", error);
+      }
+    });
+  };
+
+  const handleArchive = () => {
+    if (isBusy) return;
+    archiveConversation(conversation.id, true).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to archive conversation:", error);
+      }
+    });
+  };
+
+  const handleMoveToProject = (projectId: string | null) => {
+    moveConversationToProject(conversation.id, projectId).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to move conversation:", error);
+      }
+    });
+  };
+
   return (
-    <li
-      className={`conv-item${compact ? " compact" : ""}${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}`}
-      role="button"
-      tabIndex={0}
-      aria-current={isActive ? "true" : undefined}
-      title={conversation.title}
-      onClick={() => onSelect(conversation.id)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect(conversation.id);
+    <Dropdown
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
+      trigger={[]}
+      placement="bottomRight"
+      menu={{
+        items: [
+          {
+            key: "rename",
+            icon: <Pencil size={14} aria-hidden="true" />,
+            label: t("conversations.renameTitle")
+          },
+          {
+            key: "move",
+            icon: <FolderInput size={14} aria-hidden="true" />,
+            label: t("conversations.moveToProject"),
+            children: [
+              ...projectOptions.map((project) => ({
+                key: `move:${project.id}`,
+                label: project.name,
+                disabled: project.id === conversation.projectId
+              })),
+              {
+                key: "move:null",
+                label: t("conversations.removeFromProject"),
+                disabled: !conversation.projectId
+              }
+            ]
+          },
+          {
+            key: "archive",
+            icon: <Archive size={14} aria-hidden="true" />,
+            label: t("conversationPanel.archive"),
+            disabled: isBusy
+          },
+          { type: "divider" },
+          {
+            key: "delete",
+            icon: <Trash2 size={14} aria-hidden="true" />,
+            label: t("common.delete"),
+            danger: true,
+            disabled: deletionBlocked
+          }
+        ],
+        onClick: ({ key }) => {
+          setMenuOpen(false);
+          if (key === "rename") {
+            setEditSignal((current) => current + 1);
+            return;
+          }
+          if (key === "archive") {
+            handleArchive();
+            return;
+          }
+          if (typeof key === "string" && key.startsWith("move:")) {
+            const target = key.slice("move:".length);
+            handleMoveToProject(target === "null" ? null : target);
+            return;
+          }
+          if (key === "delete") {
+            onDelete(conversation.id, visibleTitle);
+          }
         }
       }}
     >
-      {conversation.kind === "game" ? (
-        <span
-          className="conv-item-avatar flex items-center justify-center text-amber-500 font-bold"
-          title={t("game.sessionTitle")}
-          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-        >
-          <Gamepad2 size={16} />
-        </span>
-      ) : (
-        <AgentAvatar
-          adapter={conversation.adapter}
-          className="conv-item-avatar"
-          fallback={<MessageSquare aria-hidden="true" />}
-        />
-      )}
-      <div className="conv-item-main">
-        <div className="conv-item-title-row">
-          <strong>{conversation.title}</strong>
-        </div>
-        {showOwner && ownerName && !isOwnConversation && (
-          <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
-        )}
-      </div>
-      <div className={`conv-item-side${isBusy ? " running" : isUnread ? " unread" : ""}`}>
-        {isBusy ? (
+      <li
+        ref={rowRef}
+        className={`conv-item${compact ? " compact" : ""}${isActive ? " active" : ""}${!isBusy && isUnread ? " unread" : ""}${isDraggingRow ? " dragging" : ""}${dropPosition === "before" ? " drop-before" : ""}${dropPosition === "after" ? " drop-after" : ""}`}
+        role="button"
+        tabIndex={0}
+        aria-current={isActive ? "true" : undefined}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title={visibleTitle}
+        data-conversation-id={conversation.id}
+        draggable={!isBusy}
+        onDragStart={(event) => {
+          if ((event.target as HTMLElement).closest("input, textarea, button, select, [contenteditable=true]")) {
+            event.preventDefault();
+            return;
+          }
+          writeConversationDrag(event.dataTransfer, conversation.id);
+          onRowDragStart?.(conversation.id, event);
+        }}
+        onDragEnd={() => onRowDragEnd?.()}
+        onClick={() => onSelect(conversation.id)}
+        onDoubleClick={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, button, .conv-item-title-row")) return;
+          setMenuOpen(true);
+        }}
+        onContextMenu={(event) => {
+          // Two-finger / right-click opens the same menu as the double-click
+          // (trackpad users expect a context menu here).
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, button")) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuOpen(true);
+        }}
+        onKeyDown={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, button")) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(conversation.id);
+          }
+        }}
+      >
+        {conversation.kind === "game" ? (
           <span
-            className="conv-item-running"
-            role="status"
-            aria-label={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
-            title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+            className="conv-item-avatar flex items-center justify-center text-amber-500 font-bold"
+            title={t("game.sessionTitle")}
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
           >
-            <LoaderCircle aria-hidden="true" size={14} strokeWidth={1.75} />
+            <Gamepad2 size={16} />
           </span>
         ) : (
-          <>
-            {isUnread && (
+          <AgentAvatar
+            adapter={conversation.adapter}
+            className="conv-item-avatar"
+            fallback={<MessageSquare aria-hidden="true" />}
+          />
+        )}
+        <div className="conv-item-main">
+          <div className="conv-item-title-row">
+            {conversation.pinned && (
+              <Pin className="conv-pinned-indicator" size={11} aria-hidden="true" />
+            )}
+            <EditableConversationTitle
+              conversation={conversation}
+              variant="list"
+              editSignal={editSignal}
+            />
+          </div>
+          {showOwner && ownerName && !isOwnConversation && (
+            <div className="conv-owner-sub" title={`@${ownerName}`}>@{ownerName}</div>
+          )}
+        </div>
+        {(isBusy || isUnread) && (
+          <div className={`conv-item-status${isBusy ? " running" : " unread"}`}>
+            {isBusy ? (
+              <span
+                className="conv-item-running"
+                role="status"
+                aria-label={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+                title={isWorkflowRunning ? t("workflow.runningIndicator") : t("chat.agentRunning")}
+              >
+                <LoaderCircle aria-hidden="true" size={14} strokeWidth={1.75} />
+              </span>
+            ) : (
               <span
                 className="conv-unread-dot"
                 role="status"
@@ -127,21 +301,51 @@ const ConversationRow = memo(function ConversationRow({
                 title={t("conversations.unread")}
               />
             )}
+          </div>
+        )}
+        {!isBusy && (
+          <div
+            className="conv-item-actions"
+            role="group"
+            aria-label={t("conversations.projectMenu")}
+          >
             <button
-              className="conv-delete-button icon-btn danger"
-              title={t("common.delete")}
-              aria-label={t("common.delete")}
+              type="button"
+              className="conv-action-button"
+              title={conversation.pinned
+                ? t("conversations.unpinConversation")
+                : t("conversations.pinConversation")}
+              aria-label={conversation.pinned
+                ? t("conversations.unpinConversation")
+                : t("conversations.pinConversation")}
+              aria-pressed={conversation.pinned}
               onClick={(event) => {
                 event.stopPropagation();
-                onDelete(conversation.id, conversation.title);
+                handleTogglePinned();
               }}
             >
-              <X aria-hidden="true" />
+              {conversation.pinned ? (
+                <PinOff aria-hidden="true" size={13} strokeWidth={1.8} />
+              ) : (
+                <Pin aria-hidden="true" size={13} strokeWidth={1.8} />
+              )}
             </button>
-          </>
+            <button
+              type="button"
+              className="conv-action-button"
+              title={t("conversationPanel.archive")}
+              aria-label={t("conversationPanel.archive")}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleArchive();
+              }}
+            >
+              <Archive aria-hidden="true" size={14} strokeWidth={1.75} />
+            </button>
+          </div>
         )}
-      </div>
-    </li>
+      </li>
+    </Dropdown>
   );
 });
 
@@ -286,6 +490,7 @@ function ProjectOverflowMenu({
   onOpenChange,
   onEdit,
   onTogglePin,
+  onResetOrder,
   onReveal,
   onDeleteProject
 }: {
@@ -295,6 +500,7 @@ function ProjectOverflowMenu({
   onOpenChange: (open: boolean) => void;
   onEdit: () => void;
   onTogglePin: () => void;
+  onResetOrder: () => void;
   onReveal: () => void;
   onDeleteProject: () => void;
 }) {
@@ -389,6 +595,19 @@ function ProjectOverflowMenu({
           <button
             type="button"
             role="menuitem"
+            className="conv-project-menu-item"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenChange(false);
+              onResetOrder();
+            }}
+          >
+            <ArrowDownUp aria-hidden="true" size={14} strokeWidth={1.8} />
+            <span>{t("conversations.resetOrder")}</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             className="conv-project-menu-item danger"
             onClick={(event) => {
               event.stopPropagation();
@@ -406,9 +625,17 @@ function ProjectOverflowMenu({
 }
 
 export function ConversationList({
-  onNewTaskInProject
+  onNewTaskInProject,
+  panelActive = false,
+  onOpenPanel,
+  onOpenList,
+  onOpenConversation
 }: {
   onNewTaskInProject?: (args: { cwd: string; projectId: string }) => void;
+  panelActive?: boolean;
+  onOpenPanel?: () => void;
+  onOpenList?: () => void;
+  onOpenConversation?: (id: string) => void;
 }) {
   const conversations = useConversationStore((s) => s.conversations);
   const activeId = useConversationStore((s) => s.activeId);
@@ -416,26 +643,40 @@ export function ConversationList({
   const setActive = useConversationStore((s) => s.setActive);
   const deleteConversation = useConversationStore((s) => s.deleteConversation);
   const refreshConversations = useConversationStore((s) => s.refreshList);
-  const runningSignature = useConversationStore((s) => {
-    const ids: string[] = [];
-    for (const c of s.conversations) {
-      const st = s.live[c.id]?.status;
-      if (st === "running" || st === "starting") ids.push(c.id);
-    }
-    return ids.join("\n");
-  });
+  const setConversationOrder = useConversationStore(
+    (s) => s.setConversationOrder
+  );
+  const resetConversationOrder = useConversationStore(
+    (s) => s.resetConversationOrder
+  );
+  const live = useConversationStore((s) => s.live);
+  const overviews = useConversationOverviewStore((s) => s.overviews);
+  const permissions = usePermissionStore((s) => s.queue);
+  const authentications = useAuthenticationStore((s) => s.queue);
+  const authTerminals = useAuthenticationStore((s) => s.terminalQueue);
   const workflowActiveRuns = useWorkflowStore((s) => s.activeRuns);
   const loadWorkflowActiveRuns = useWorkflowStore((s) => s.loadActiveRuns);
   const apiProjects = useProjectStore((s) => s.projects);
   const projectsLoaded = useProjectStore((s) => s.loaded);
+  const projectsLoading = useProjectStore((s) => s.loading);
   const projectsError = useProjectStore((s) => s.error);
   const refreshProjects = useProjectStore((s) => s.refresh);
   const removeProject = useProjectStore((s) => s.remove);
   const pinnedKeys = usePinnedProjectsStore((s) => s.pinnedKeys);
   const togglePin = usePinnedProjectsStore((s) => s.toggle);
   const unpin = usePinnedProjectsStore((s) => s.unpin);
+  const currentUser = useConversationStore((s) => s.currentUser);
+  const username = currentUser?.username;
+  const projectSort = useProjectSortStore((s) => projectSortPreferenceForUser(s, username));
+  const projectOrderLocked = projectSort.mode === "fixed";
+  const setProjectSortMode = useProjectSortStore((s) => s.setMode);
+  const rememberProjects = useProjectSortStore((s) => s.rememberProjects);
   const { t } = useTranslation();
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [collapsedUnreadProjects, setCollapsedUnreadProjects] = useState<Set<string>>(() => new Set());
+  const allFilterRef = useRef<HTMLButtonElement>(null);
+  const unreadFilterRef = useRef<HTMLButtonElement>(null);
   const [expandedFully, setExpandedFully] = useState<Set<string>>(() => new Set());
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [menuProjectKey, setMenuProjectKey] = useState<string | null>(null);
@@ -485,23 +726,41 @@ export function ConversationList({
     return () => clearHoverCloseTimer();
   }, [clearHoverCloseTimer]);
 
-  const runningSet = new Set(runningSignature ? runningSignature.split("\n") : []);
-  const workflowRunningSet = new Set(
-    workflowActiveRuns
-      .map((run) => run.conversationId)
-      .filter((id): id is string => Boolean(id))
-  );
+  const attentionIds = new Set([...permissions, ...authentications, ...authTerminals].map((request) => request.conversationId));
+  const runningSet = new Set(conversations.filter((conversation) => RUNNING_PANEL_STATUSES.has(
+    selectConversationPanelStatus(overviews[conversation.id], {
+      live: live[conversation.id],
+      attentionCount: attentionIds.has(conversation.id) ? 1 : 0,
+      workflowStatus: workflowActiveRuns.find((run) => run.conversationId === conversation.id)?.status
+    })
+  )).map((conversation) => conversation.id));
+  const workflowRunningSet = new Set(workflowActiveRuns
+    .filter((run) => run.conversationId && runningSet.has(run.conversationId))
+    .map((run) => run.conversationId));
+  const deletionBlockedSet = new Set(conversations.filter((conversation) => {
+    const status = selectConversationPanelStatus(overviews[conversation.id], {
+      live: live[conversation.id],
+      attentionCount: attentionIds.has(conversation.id) ? 1 : 0,
+      workflowStatus: workflowActiveRuns.find((run) => run.conversationId === conversation.id)?.status
+    });
+    return RUNNING_PANEL_STATUSES.has(status) || status === "needs-input" || status === "waiting" || status === "paused";
+  }).map((conversation) => conversation.id));
 
   const handleSelect = useCallback(
     (id: string) => {
-      void setActive(id);
+      // A read row leaves the filtered list. Keep keyboard focus on a stable control.
+      if (unreadOnly && document.activeElement?.matches(".conv-item")) {
+        unreadFilterRef.current?.focus();
+      }
+      if (onOpenConversation) onOpenConversation(id);
+      else void setActive(id);
       const conv = conversations.find((c) => c.id === id);
       if (conv?.kind === "game") {
         useDetailLayoutStore.getState().setActiveTab("preview");
         useDetailLayoutStore.getState().setDetailCollapsed(false);
       }
     },
-    [setActive, conversations]
+    [setActive, conversations, unreadOnly, onOpenConversation]
   );
   const handleDelete = useCallback(
     (id: string, title: string) => {
@@ -526,27 +785,27 @@ export function ConversationList({
     const groups = projectsLoaded
       ? groupConversationsByProjects(conversations, apiProjects)
       : groupConversationsByProject(conversations);
-    return [...groups].sort((a, b) => {
-      const aPin = pinnedKeys.indexOf(a.key);
-      const bPin = pinnedKeys.indexOf(b.key);
-      const aPinned = aPin >= 0;
-      const bPinned = bPin >= 0;
-      if (aPinned !== bPinned) return aPinned ? -1 : 1;
-      if (aPinned && bPinned && aPin !== bPin) return aPin - bPin;
-      const aHasItems = a.items.length > 0 ? 1 : 0;
-      const bHasItems = b.items.length > 0 ? 1 : 0;
-      if (aHasItems !== bHasItems) return bHasItems - aHasItems;
-      return b.latestAt - a.latestAt || a.label.localeCompare(b.label);
-    });
-  }, [conversations, apiProjects, pinnedKeys, projectsLoaded]);
+    return sortProjectGroups(groups, pinnedKeys, projectSort.mode, projectSort.fixedOrder);
+  }, [conversations, apiProjects, pinnedKeys, projectsLoaded, projectSort]);
+
+  useEffect(() => {
+    // Never replace saved ids with temporary cwd groups or an incomplete/error list.
+    if (!projectsLoaded || projectsLoading || projectsError) return;
+    rememberProjects(username, projects.map((project) => project.key));
+  }, [projectsLoaded, projectsLoading, projectsError, projects, username, rememberProjects]);
+  const unreadView = useMemo(
+    () => unreadConversationView(conversations, projects, unreadConversations),
+    [conversations, projects, unreadConversations]
+  );
   const recent = useMemo(() => {
+    if (unreadOnly) return unreadView.recent;
     // null = not hydrated yet → keep projectId chats in Recent temporarily.
     // After load, only exclude chats whose project appears in the sidebar.
     const knownProjectIds = projectsLoaded
       ? new Set(apiProjects.map((project) => project.id))
       : null;
     return recentConversations(conversations, RECENT_LIMIT, knownProjectIds);
-  }, [conversations, apiProjects, projectsLoaded]);
+  }, [conversations, apiProjects, projectsLoaded, unreadOnly, unreadView]);
 
   const activeProjectKey = useMemo(() => {
     const active = conversations.find((c) => c.id === activeId);
@@ -558,9 +817,8 @@ export function ConversationList({
     return undefined;
   }, [activeId, conversations, projects]);
 
-  const currentUser = useConversationStore((s) => s.currentUser);
-
   const visibleProjects = useMemo(() => {
+    if (unreadOnly) return unreadView.projects;
     const relevantProjects =
       currentUser && !currentUser.isOwner
         ? projects.filter(
@@ -593,9 +851,14 @@ export function ConversationList({
       if (active) result.push(active);
     }
     return result;
-  }, [projects, showAllProjects, pinnedKeys, activeProjectKey, currentUser]);
+  }, [projects, showAllProjects, pinnedKeys, activeProjectKey, currentUser, unreadOnly, unreadView]);
 
   const hiddenProjectCount = Math.max(0, projects.length - visibleProjects.length);
+
+  const projectMenuOptions = useMemo(
+    () => apiProjects.map((project) => ({ id: project.id, name: project.name })),
+    [apiProjects]
+  );
 
   useEffect(() => {
     if (projects.length === 0) return;
@@ -609,6 +872,15 @@ export function ConversationList({
   }, [projects, activeProjectKey]);
 
   const toggleProject = (key: string) => {
+    if (unreadOnly) {
+      setCollapsedUnreadProjects((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+      return;
+    }
     setExpandedProjects((current) => {
       const next = new Set(current);
       if (next.has(key)) {
@@ -670,6 +942,128 @@ export function ConversationList({
     await refreshConversations();
   };
 
+  // ---- Manual drag ordering (within a project group or Recent) ----
+  const dragIdRef = useRef<string | null>(null);
+  /** Member ids of the dragged row's group; drops outside it are rejected. */
+  const dragGroupIdsRef = useRef<Set<string> | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; before: boolean } | null>(null);
+  const resetDragState = useCallback(() => {
+    dragIdRef.current = null;
+    dragGroupIdsRef.current = null;
+    setDraggingId(null);
+    setDropTarget(null);
+  }, []);
+
+  /** Full member order of the group (project or Recent) a row belongs to. */
+  const groupOrderFor = useCallback(
+    (conversationId: string): Conversation[] | null => {
+      const projectGroup = projects.find((group) =>
+        group.items.some((item) => item.id === conversationId)
+      );
+      if (projectGroup) return projectGroup.items;
+      // Recent: the display list is capped, but ordering must cover the whole
+      // group or unlisted rows would jump above the reordered ones.
+      const knownProjectIds = projectsLoaded
+        ? new Set(apiProjects.map((project) => project.id))
+        : null;
+      const fullRecent = recentConversations(
+        conversations,
+        conversations.length,
+        knownProjectIds
+      );
+      return fullRecent.some((item) => item.id === conversationId)
+        ? fullRecent
+        : null;
+    },
+    [projects, apiProjects, projectsLoaded, conversations]
+  );
+
+  const commitReorder = useCallback(
+    (dragId: string, targetId: string, before: boolean) => {
+      const group = groupOrderFor(targetId);
+      if (!group) return;
+      // Cross-group drags are move-to-project territory; same group only.
+      if (!group.some((item) => item.id === dragId)) return;
+      const ids = group.map((item) => item.id);
+      const fromIndex = ids.indexOf(dragId);
+      let insertIndex = ids.indexOf(targetId);
+      if (fromIndex < 0 || insertIndex < 0) return;
+      ids.splice(fromIndex, 1);
+      insertIndex = ids.indexOf(targetId);
+      ids.splice(before ? insertIndex : insertIndex + 1, 0, dragId);
+      void setConversationOrder(ids);
+    },
+    [groupOrderFor, setConversationOrder]
+  );
+
+  const handleRowDragStart = useCallback(
+    (id: string, event: ReactDragEvent<HTMLLIElement>) => {
+      dragIdRef.current = id;
+      // Reordering only applies within the dragged row's group; remember its
+      // members once so dragover can reject cross-group rows cheaply.
+      dragGroupIdsRef.current = new Set(
+        groupOrderFor(id)?.map((item) => item.id) ?? []
+      );
+      setDraggingId(id);
+      // The same drag carries the composer reference payload: row targets
+      // reorder (dropEffect move), the composer inserts a reference
+      // (dropEffect copy), and cross-group rows reject both.
+      event.dataTransfer.effectAllowed = "copyMove";
+      try {
+        event.dataTransfer.setData("text/plain", id);
+      } catch {
+        /* some browsers require data to be set */
+      }
+    },
+    [groupOrderFor]
+  );
+
+  const handleListDragOver = useCallback((event: ReactDragEvent<HTMLUListElement>) => {
+    if (!dragIdRef.current) return;
+    const row = (event.target as HTMLElement | null)?.closest?.(".conv-item");
+    const id = row?.getAttribute("data-conversation-id");
+    // Only same-group rows accept the drop. Cross-group reordering is
+    // move-to-project territory, so those rows must show the forbidden
+    // cursor and no insertion line — an indicator there would promise a
+    // reorder that commitReorder would silently ignore.
+    const sameGroup = Boolean(
+      id && id !== dragIdRef.current && dragGroupIdsRef.current?.has(id)
+    );
+    if (!id || !sameGroup) {
+      setDropTarget(null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = (row as HTMLElement).getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    setDropTarget((current) =>
+      current?.id === id && current.before === before ? current : { id, before }
+    );
+  }, []);
+
+  const handleListDrop = useCallback(
+    (event: ReactDragEvent<HTMLUListElement>) => {
+      const dragId = dragIdRef.current;
+      const target = dropTarget;
+      resetDragState();
+      if (!dragId || !target || target.id === dragId) return;
+      event.preventDefault();
+      commitReorder(dragId, target.id, target.before);
+    },
+    [commitReorder, dropTarget, resetDragState]
+  );
+
+  const handleResetProjectOrder = useCallback(
+    (project: ConversationProjectGroup) => {
+      const ids = project.items.map((item) => item.id);
+      if (ids.length === 0) return;
+      void resetConversationOrder(ids);
+    },
+    [resetConversationOrder]
+  );
+
   const renderRow = (c: Conversation, compact?: boolean) => (
     <ConversationRow
       key={c.id}
@@ -678,30 +1072,109 @@ export function ConversationList({
       isRunning={runningSet.has(c.id)}
       isWorkflowRunning={workflowRunningSet.has(c.id)}
       isUnread={Boolean(unreadConversations[c.id])}
+      deletionBlocked={deletionBlockedSet.has(c.id)}
       compact={compact}
+      projectOptions={projectMenuOptions}
+      isDraggingRow={draggingId === c.id}
+      dropPosition={
+        dropTarget?.id === c.id
+          ? dropTarget.before
+            ? "before"
+            : "after"
+          : null
+      }
       onSelect={handleSelect}
       onDelete={handleDelete}
+      onRowDragStart={handleRowDragStart}
+      onRowDragEnd={resetDragState}
     />
   );
 
   const showEmpty =
-    conversations.length === 0 && apiProjects.length === 0 && recent.length === 0;
+    !unreadOnly && conversations.length === 0 && apiProjects.length === 0 && recent.length === 0;
+
+  const changeFilter = (onlyUnread: boolean) => {
+    (onlyUnread ? unreadFilterRef : allFilterRef).current?.focus();
+    if (onlyUnread === unreadOnly) return;
+    setUnreadOnly(onlyUnread);
+    setCollapsedUnreadProjects(new Set());
+    setMenuProjectKey(null);
+    setHoverProjectKey(null);
+    setHoverCardStyle(null);
+    clearHoverCloseTimer();
+  };
 
   return (
     <div className="conv-list">
-      <ul>
-        <li className="conv-group-header projects">
-          <span>{t("conversations.projects")}</span>
-          <button
-            type="button"
-            className="conv-projects-add"
-            title={t("conversations.addProject")}
-            aria-label={t("conversations.addProject")}
-            onClick={openCreateModal}
-          >
-            <Plus aria-hidden="true" size={14} strokeWidth={2} />
+      <div className="conv-filter" role="group" aria-label={t("conversations.filterLabel")}>
+        {onOpenPanel && <div className="conv-view-switch" role="group" aria-label={t("conversationPanel.viewLabel")}>
+          <button type="button" className={`conv-view-button${!panelActive ? " active" : ""}`}
+            title={t("conversationPanel.list")} aria-label={t("conversationPanel.list")} aria-pressed={!panelActive} onClick={onOpenList}>
+            <List size={15} aria-hidden="true" />
           </button>
-        </li>
+          <button type="button" className={`conv-view-button${panelActive ? " active" : ""}`}
+            title={t("conversationPanel.panel")} aria-label={t("conversationPanel.panel")} aria-pressed={panelActive} onClick={onOpenPanel}>
+            <LayoutGrid size={15} aria-hidden="true" />
+          </button>
+        </div>}
+        <button
+          ref={allFilterRef}
+          type="button"
+          className="conv-filter-button"
+          aria-pressed={!unreadOnly}
+          onClick={() => changeFilter(false)}
+        >
+          {t("conversations.filterAll")}
+        </button>
+        <button
+          ref={unreadFilterRef}
+          type="button"
+          className="conv-filter-button"
+          aria-pressed={unreadOnly}
+          aria-label={t("conversations.filterUnreadCount", { count: unreadView.count })}
+          onClick={() => changeFilter(true)}
+        >
+          {t("conversations.filterUnread")}
+          <span className="conv-filter-count" aria-hidden="true">{unreadView.count}</span>
+        </button>
+      </div>
+      <ul
+        onDragOver={handleListDragOver}
+        onDrop={handleListDrop}
+      >
+        {(!unreadOnly || visibleProjects.length > 0) && (
+          <li className="conv-group-header projects">
+            <span>{t("conversations.projects")}</span>
+            <div className="conv-projects-header-actions">
+              <button
+                type="button"
+                className={`conv-project-sort-lock${projectOrderLocked ? " locked" : ""}`}
+                aria-label={t("conversations.lockProjectOrder")}
+                aria-pressed={projectOrderLocked}
+                title={t(projectOrderLocked ? "conversations.unlockProjectOrderHint" : "conversations.lockProjectOrderHint")}
+                disabled={!projectsLoaded || projectsLoading || !!projectsError}
+                onClick={() => setProjectSortMode(
+                  username,
+                  projectOrderLocked ? "activity" : "fixed",
+                  projects.map((project) => project.key)
+                )}
+              >
+                {projectOrderLocked
+                  ? <Lock aria-hidden="true" size={14} strokeWidth={1.8} />
+                  : <LockOpen aria-hidden="true" size={14} strokeWidth={1.8} />}
+              </button>
+              <button
+                type="button"
+                className="conv-projects-add"
+                title={t("conversations.addProject")}
+                aria-label={t("conversations.addProject")}
+                onClick={openCreateModal}
+              >
+                <Plus aria-hidden="true" size={14} strokeWidth={2} />
+              </button>
+            </div>
+          </li>
+        )}
         {projectsError ? (
           <li className="conv-projects-error" role="status">
             {t("conversations.projectsLoadFailed")}
@@ -709,12 +1182,21 @@ export function ConversationList({
         ) : null}
 
         {visibleProjects.map((project) => {
-          const expanded = expandedProjects.has(project.key);
-          const showAll = expandedFully.has(project.key);
+          const expanded = unreadOnly
+            ? !collapsedUnreadProjects.has(project.key)
+            : expandedProjects.has(project.key);
+          const showAll = unreadOnly || expandedFully.has(project.key);
+          // Pinned conversations stay visible even in the collapsed preview.
           const visibleItems = expanded
             ? showAll
               ? project.items
-              : project.items.slice(0, PROJECT_PREVIEW_LIMIT)
+              : project.items
+                  .filter((item) => item.pinned)
+                  .concat(
+                    project.items
+                      .filter((item) => !item.pinned)
+                      .slice(0, PROJECT_PREVIEW_LIMIT)
+                  )
             : [];
           const hiddenCount = expanded
             ? Math.max(0, project.items.length - visibleItems.length)
@@ -832,6 +1314,7 @@ export function ConversationList({
                         }}
                         onEdit={() => openEditModal(project)}
                         onTogglePin={() => togglePin(project.key)}
+                        onResetOrder={() => handleResetProjectOrder(project)}
                         onReveal={() => {
                           if (!primaryPath) return;
                           void window.freebuddy?.shell?.showItemInFolder(primaryPath);
@@ -854,7 +1337,9 @@ export function ConversationList({
                       label={project.label}
                       folders={project.folders ?? []}
                       primaryPath={primaryPath}
-                      conversationCount={project.items.length}
+                      conversationCount={
+                        projects.find((entry) => entry.key === project.key)?.items.length ?? project.items.length
+                      }
                       pinned={pinned}
                       canReveal={canReveal}
                       onTogglePin={() => togglePin(project.key)}
@@ -896,7 +1381,7 @@ export function ConversationList({
           );
         })}
 
-        {projects.length > PROJECT_LIST_LIMIT && (
+        {!unreadOnly && projects.length > PROJECT_LIST_LIMIT && (
           <li className="conv-projects-footer">
             <button
               type="button"
@@ -931,6 +1416,18 @@ export function ConversationList({
 
         {showEmpty && (
           <li className="conv-empty muted">{t("conversations.empty")}</li>
+        )}
+        {unreadOnly && unreadView.count === 0 && (
+          <li className="conv-unread-empty">
+            <div className="conv-unread-empty-message" role="status">
+              <CheckCheck aria-hidden="true" size={22} strokeWidth={1.6} />
+              <strong>{t("conversations.noUnread")}</strong>
+              <span>{t("conversations.noUnreadHint")}</span>
+            </div>
+            <button type="button" onClick={() => changeFilter(false)}>
+              {t("conversations.viewAll")}
+            </button>
+          </li>
         )}
       </ul>
 

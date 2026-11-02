@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { FileText, Folder } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { WorkspaceFileMatch } from "@/services/cli/types";
@@ -43,27 +44,40 @@ export function WorkspaceFileMentionMenu({
       role="listbox"
       aria-label={t("chat.workspaceFilesAria")}
     >
-      {matches.map((match, index) => (
-        <li key={match.root ? `${match.root}:${match.path}` : match.path} role="presentation">
-          <button
-            ref={(node) => {
-              optionRefs.current[index] = node;
-            }}
-            type="button"
-            className={`workspace-file-mention-option${index === selectedIndex ? " active" : ""}`}
-            role="option"
-            aria-selected={index === selectedIndex}
-            title={match.label ?? match.path}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              onSelect(match);
-            }}
-          >
-            <span className="workspace-file-mention-name">@{match.name}</span>
-            <span className="workspace-file-mention-path">{match.label ?? match.path}</span>
-          </button>
-        </li>
-      ))}
+      {matches.map((match, index) => {
+        const isDirectory = match.kind === "directory";
+        const Icon = isDirectory ? Folder : FileText;
+        return (
+          <li key={match.root ? `${match.root}:${match.path}` : match.path} role="presentation">
+            <button
+              ref={(node) => {
+                optionRefs.current[index] = node;
+              }}
+              type="button"
+              className={`workspace-file-mention-option${index === selectedIndex ? " active" : ""}`}
+              role="option"
+              aria-selected={index === selectedIndex}
+              title={match.label ?? match.path}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onSelect(match);
+              }}
+            >
+              <Icon
+                className="workspace-file-mention-icon"
+                aria-hidden="true"
+                size={14}
+                strokeWidth={1.8}
+              />
+              <span className="workspace-file-mention-name">
+                @{match.name}
+                {isDirectory ? "/" : ""}
+              </span>
+              <span className="workspace-file-mention-path">{match.label ?? match.path}</span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }

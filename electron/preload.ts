@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 
 import { collectPreparedAttachmentsUntilLimit, managedPathsToDiscardAfterPrepare } from "./shared/collectPreparedAttachmentsUntilLimit.js";
+import type { CliRuntimeUpdateRequest, CliUpgradePlan } from "./shared/cliRuntimeUpdate.js";
 import type {
   BrowserToolAction,
   BrowserToolEvent,
@@ -36,8 +37,10 @@ const cli = {
   listOverrides: () => ipcRenderer.invoke("cli:listOverrides"),
   upsertOverride: (o: unknown) => ipcRenderer.invoke("cli:upsertOverride", o),
   resetOverride: (id: string) => ipcRenderer.invoke("cli:resetOverride", id),
-
   listRuntimes: () => ipcRenderer.invoke("cli:listRuntimes"),
+  checkUpdates: (args: CliRuntimeUpdateRequest) => ipcRenderer.invoke("cli:checkUpdates", args),
+  prepareUpgrade: (args: CliRuntimeUpdateRequest) => ipcRenderer.invoke("cli:prepareUpgrade", args),
+  verifyUpgrade: (request: CliRuntimeUpdateRequest, plan: CliUpgradePlan) => ipcRenderer.invoke("cli:verifyUpgrade", { request, plan }),
   onRuntimeUpdated: (cb: (runtime: unknown) => void): (() => void) => {
     const channel = "cli://runtime";
     const handler = (_e: IpcRendererEvent, runtime: unknown) => cb(runtime);
@@ -59,6 +62,7 @@ const cli = {
     return () => ipcRenderer.off(channel, handler);
   },
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
+  antigravityUsage: () => ipcRenderer.invoke("cli:antigravityUsage"),
   usageSummary: (period?: unknown) => ipcRenderer.invoke("cli:usageSummary", period),
   refreshUsage: (period?: unknown) => ipcRenderer.invoke("cli:refreshUsage", period),
   cursorUsageStatus: () => ipcRenderer.invoke("cli:cursorUsageStatus"),
@@ -79,7 +83,8 @@ const cli = {
   installStream: (
     adapter: string,
     command: string,
-    cb: (event: CliInstallEvent) => void
+    cb: (event: CliInstallEvent) => void,
+    targetVersion?: string
   ): (() => void) => {
     const channel = "cli://install";
     const requestId = nextCliInstallRequestId();
@@ -90,9 +95,9 @@ const cli = {
       cb(event);
     };
     ipcRenderer.on(channel, handler);
-    ipcRenderer.invoke("cli:installStream", { adapter, command, requestId }).catch((err) => {
+    ipcRenderer.invoke("cli:installStream", { adapter, command, requestId, targetVersion }).catch((err) => {
       cb({ type: "stderr", content: String(err) });
-      cb({ type: "done", exitCode: 1 });
+      cb({ type: "done", exitCode: 1, failureCode: "spawn_error", failureDetail: String(err) });
     });
     return () => ipcRenderer.off(channel, handler);
   },
@@ -125,12 +130,16 @@ const cli = {
   getProject: (id: string) => ipcRenderer.invoke("cli:getProject", id),
   createProject: (input: unknown) =>
     ipcRenderer.invoke("cli:createProject", input),
+  ensureProjectForCwd: (cwd: string) =>
+    ipcRenderer.invoke("cli:ensureProjectForCwd", cwd),
   updateProject: (input: unknown) =>
     ipcRenderer.invoke("cli:updateProject", input),
   deleteProject: (id: string) => ipcRenderer.invoke("cli:deleteProject", id),
 
   listConversations: (args?: unknown) =>
     ipcRenderer.invoke("cli:listConversations", args),
+  listConversationOverviews: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:listConversationOverviews", conversationIds),
   getConversation: (id: string) => ipcRenderer.invoke("cli:getConversation", id),
   createConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversation", input),
@@ -140,6 +149,8 @@ const cli = {
     ipcRenderer.invoke("cli:previewHandoffBrief", input),
   transferConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:transferConversation", input),
+  forkConversation: (input: unknown) =>
+    ipcRenderer.invoke("cli:forkConversation", input),
   createConversationShare: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversationShare", input),
   attachConversationShares: (input: unknown) =>
@@ -158,6 +169,14 @@ const cli = {
     ipcRenderer.invoke("cli:updateConversationAgentName", { agentId, agentName }),
   archiveConversation: (id: string, archived: boolean) =>
     ipcRenderer.invoke("cli:archiveConversation", { id, archived }),
+  setConversationPinned: (id: string, pinned: boolean) =>
+    ipcRenderer.invoke("cli:setConversationPinned", { id, pinned }),
+  moveConversationToProject: (id: string, projectId: string | null) =>
+    ipcRenderer.invoke("cli:moveConversationToProject", { id, projectId }),
+  setConversationOrder: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:setConversationOrder", { conversationIds }),
+  resetConversationOrder: (conversationIds: string[]) =>
+    ipcRenderer.invoke("cli:resetConversationOrder", { conversationIds }),
   deleteConversation: (id: string) =>
     ipcRenderer.invoke("cli:deleteConversation", id),
   setConversationApprovalMode: (
@@ -174,10 +193,26 @@ const cli = {
     }),
   setConversationSkills: (id: string, skillIds: string[]) =>
     ipcRenderer.invoke("cli:setConversationSkills", { id, skillIds }),
-  listMessages: (conversationId: string) =>
-    ipcRenderer.invoke("cli:listMessages", conversationId),
+  getConversationMcpServerIds: (conversationId: string) =>
+    ipcRenderer.invoke("cli:getConversationMcpServerIds", conversationId),
+  setConversationMcpServerIds: (id: string, mcpServerIds: string[]) =>
+    ipcRenderer.invoke("cli:setConversationMcpServerIds", { id, mcpServerIds }),
+  listMessages: (
+    conversationId: string,
+    options?: { limit?: number; beforeCreatedAt?: string; beforeId?: string }
+  ) => ipcRenderer.invoke("cli:listMessages", conversationId, options),
   listMessage: (id: string) =>
     ipcRenderer.invoke("cli:listMessage", id),
+  readMessageDetails: (messageId: string, offset?: number) =>
+    ipcRenderer.invoke("cli:readMessageDetails", messageId, offset),
+  listMessageFileEdits: (messageId: string, cursor?: number, groupFiles?: boolean) =>
+    ipcRenderer.invoke("cli:listMessageFileEdits", messageId, cursor, groupFiles),
+  readFileEditBlob: (conversationId: string, blobKey: string, offset?: number) =>
+    ipcRenderer.invoke("cli:readFileEditBlob", conversationId, blobKey, offset),
+  readMessageFileEdit: (messageId: string, path: string, turnKey: string, offset?: number) =>
+    ipcRenderer.invoke("cli:readMessageFileEdit", messageId, path, turnKey, offset),
+  listFollowupMessages: (conversationId: string, excludeMessageIds: string[]) =>
+    ipcRenderer.invoke("cli:listFollowupMessages", conversationId, excludeMessageIds),
   appendMessage: (input: unknown) =>
     ipcRenderer.invoke("cli:appendMessage", input),
   updateMessage: (input: unknown) =>
@@ -325,6 +360,8 @@ const cli = {
 };
 
 const window = {
+  getFullscreenState: (): Promise<boolean> => ipcRenderer.invoke("window:get-fullscreen"),
+  setFullscreen: (fullscreen: boolean): Promise<boolean> => ipcRenderer.invoke("window:set-fullscreen", fullscreen),
   onChromeVisible(cb: (visible: boolean) => void): () => void {
     const handler = (_e: IpcRendererEvent, visible: boolean) => cb(visible);
     ipcRenderer.on("window:chrome", handler);
@@ -338,7 +375,11 @@ const window = {
       payload: { action: string; params: Record<string, string> }
     ) => cb(payload);
     ipcRenderer.on("window:bridge", handler);
-    return () => ipcRenderer.off("window:bridge", handler);
+    ipcRenderer.on("freebuddy://bridge", handler);
+    return () => {
+      ipcRenderer.off("window:bridge", handler);
+      ipcRenderer.off("freebuddy://bridge", handler);
+    };
   },
   onBrowserTool(cb: (event: BrowserToolEvent) => void): () => void {
     const handler = (_e: IpcRendererEvent, payload: BrowserToolEvent) => cb(payload);
@@ -350,8 +391,11 @@ const window = {
   resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean> {
     return ipcRenderer.invoke("browser-tool:resolve", resolution);
   },
-  onOpenConversation(cb: (conversationId: string) => void): () => void {
-    const handler = (_e: IpcRendererEvent, conversationId: string) => cb(conversationId);
+  onOpenConversation(cb: (conversationId: string, embed?: boolean) => void): () => void {
+    const handler = (_e: IpcRendererEvent, payload: string | { conversationId: string; embed?: boolean }) => {
+      if (typeof payload === "string") cb(payload);
+      else if (payload && typeof payload.conversationId === "string") cb(payload.conversationId, payload.embed);
+    };
     ipcRenderer.on("window:open-conversation", handler);
     return () => ipcRenderer.off("window:open-conversation", handler);
   },
@@ -359,6 +403,56 @@ const window = {
     const handler = () => cb();
     ipcRenderer.on("window:new-conversation", handler);
     return () => ipcRenderer.off("window:new-conversation", handler);
+  },
+  onExternalShare(
+    cb: (payload: {
+      id: string;
+      timestamp: number;
+      instruction?: string;
+      text?: string;
+      files?: Array<{ name: string; path: string; size?: number; managed?: boolean }>;
+    }) => void
+  ): () => void {
+    const handler = (
+      _e: IpcRendererEvent,
+      payload: {
+        id: string;
+        timestamp: number;
+        instruction?: string;
+        text?: string;
+        files?: Array<{ name: string; path: string; size?: number; managed?: boolean }>;
+      }
+    ) => cb(payload);
+    ipcRenderer.on("freebuddy://external-share", handler);
+    return () => ipcRenderer.off("freebuddy://external-share", handler);
+  },
+  onShellOpen(
+    cb: (payload: {
+      cwd?: string;
+      files?: Array<{
+        name: string;
+        path: string;
+        size?: number;
+        mimeType?: string;
+        managed?: boolean;
+      }>;
+    }) => void
+  ): () => void {
+    const handler = (
+      _e: IpcRendererEvent,
+      payload: {
+        cwd?: string;
+        files?: Array<{
+          name: string;
+          path: string;
+          size?: number;
+          mimeType?: string;
+          managed?: boolean;
+        }>;
+      }
+    ) => cb(payload);
+    ipcRenderer.on("freebuddy://shell-open", handler);
+    return () => ipcRenderer.off("freebuddy://shell-open", handler);
   },
   onOpenTaskReceipt(cb: () => void): () => void {
     const handler = () => cb();
@@ -889,6 +983,104 @@ const game = {
   }
 };
 
+const providers = {
+  list: () => ipcRenderer.invoke("providers:list"),
+  upsert: (input: unknown) => ipcRenderer.invoke("providers:upsert", input),
+  remove: (id: string) => ipcRenderer.invoke("providers:delete", id),
+  setEnabled: (input: { id: string; enabled: boolean }) =>
+    ipcRenderer.invoke("providers:setEnabled", input),
+  reorder: (ids: string[]) => ipcRenderer.invoke("providers:reorder", ids),
+  test: (target: unknown) => ipcRenderer.invoke("providers:test", target),
+  getApiKey: (id: string) => ipcRenderer.invoke("providers:getApiKey", id),
+};
+
+const mcpServers = {
+  list: () => ipcRenderer.invoke("mcpServers:list"),
+  get: (id: string) => ipcRenderer.invoke("mcpServers:get", id),
+  create: (input: unknown) => ipcRenderer.invoke("mcpServers:create", input),
+  update: (id: string, input: unknown) =>
+    ipcRenderer.invoke("mcpServers:update", { id, input }),
+  delete: (id: string) => ipcRenderer.invoke("mcpServers:delete", id),
+  setEnabled: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke("mcpServers:setEnabled", { id, enabled }),
+  selfCheck: (id: string, cwd?: string) =>
+    ipcRenderer.invoke("mcpServers:selfCheck", { id, cwd }),
+  oauthStatus: (id: string) => ipcRenderer.invoke("mcpServers:oauthStatus", id),
+  authorize: (id: string) => ipcRenderer.invoke("mcpServers:authorize", id),
+  disconnect: (id: string) => ipcRenderer.invoke("mcpServers:disconnect", id)
+};
+
+const docStudio = {
+  openWindow: (target?: string | { filePath?: string }) =>
+    ipcRenderer.invoke("docStudio:openWindow", target) as Promise<boolean>,
+  openConversation: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:openConversation", conversationId) as Promise<boolean>,
+  setActiveConversation: (conversationId: string | null) =>
+    ipcRenderer.invoke("docStudio:setActiveConversation", conversationId) as Promise<boolean>,
+  isConversationEmbedded: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:isConversationEmbedded", conversationId) as Promise<boolean>,
+  getDefaultDirectory: () =>
+    ipcRenderer.invoke("docStudio:defaultDirectory") as Promise<string | null>,
+  resolveConversationFile: (conversationId: string) =>
+    ipcRenderer.invoke("docStudio:resolveConversationFile", conversationId) as Promise<string | null>,
+  attachFileToConversation: (conversationId: string, filePath: string) =>
+    ipcRenderer.invoke("docStudio:attachFileToConversation", conversationId, filePath) as Promise<boolean>,
+  showOpenDialog: (defaultPath?: string) =>
+    ipcRenderer.invoke("docStudio:showOpenDialog", defaultPath) as Promise<string[] | null>,
+  showItemInFolder: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:showItemInFolder", filePath) as Promise<boolean>,
+  openConversationInMain: (conversationId: string, options?: { embed?: boolean }) =>
+    ipcRenderer.invoke("docStudio:openConversationInMain", conversationId, options) as Promise<boolean>,
+  watchFile: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:watchFile", filePath) as Promise<boolean>,
+  unwatchFile: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:unwatchFile", filePath) as Promise<boolean>,
+  getEnginePreview: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:officePreview", filePath) as Promise<{
+      success: boolean;
+      url?: string;
+      error?: string;
+    }>,
+  getEngineEditorStatus: (filePath: string) =>
+    ipcRenderer.invoke("docStudio:engineEditorStatus", filePath) as Promise<{
+      success: boolean;
+      isDirty?: boolean;
+      lastSavedMs?: number;
+      error?: string;
+    }>,
+  getOfficeEngineAddonStatus: () =>
+    ipcRenderer.invoke("docStudio:officeEngineAddonStatus") as Promise<{
+      supported: boolean;
+      installed: boolean;
+      installing: boolean;
+      managedPath: string;
+      activePath: string | null;
+    }>,
+  downloadOfficeEngineAddon: () =>
+    ipcRenderer.invoke("docStudio:officeEngineAddonDownload") as Promise<{
+      installedPath: string;
+    }>,
+  onOfficeEngineDownloadProgress: (cb: (progress: { receivedBytes: number; totalBytes: number | null }) => void): (() => void) => {
+    const handler = (_e: IpcRendererEvent, progress: { receivedBytes: number; totalBytes: number | null }) => cb(progress);
+    ipcRenderer.on("docStudio:officeEngineDownloadProgress", handler);
+    return () => ipcRenderer.off("docStudio:officeEngineDownloadProgress", handler);
+  },
+  onFileChanged: (cb: (filePath: string) => void): (() => void) => {
+    const handler = (_e: IpcRendererEvent, payload: { filePath?: string }) => {
+      if (payload?.filePath) cb(payload.filePath);
+    };
+    ipcRenderer.on("docStudio:fileChanged", handler);
+    return () => ipcRenderer.off("docStudio:fileChanged", handler);
+  },
+  onFileSavedAs: (cb: (filePath: string) => void): (() => void) => {
+    const handler = (_e: IpcRendererEvent, payload: { filePath?: string }) => {
+      if (payload?.filePath) cb(payload.filePath);
+    };
+    ipcRenderer.on("docStudio:fileSavedAs", handler);
+    return () => ipcRenderer.off("docStudio:fileSavedAs", handler);
+  }
+};
+
 contextBridge.exposeInMainWorld("freebuddy", {
   platform: process.platform,
   arch: process.arch,
@@ -899,6 +1091,8 @@ contextBridge.exposeInMainWorld("freebuddy", {
   },
   appVersion: process.env.FB_APP_VERSION ?? "",
   cli,
+  providers,
+  mcpServers,
   workflow,
   workflowTeams,
   skills,
@@ -915,5 +1109,6 @@ contextBridge.exposeInMainWorld("freebuddy", {
   shell: shellApi,
   remote,
   butlerBuddy,
-  game
+  game,
+  docStudio
 });

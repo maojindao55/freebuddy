@@ -6,7 +6,7 @@ import {
   adapterBinary,
   applyDshAcpNpmInstallEnv,
   bundledDshAcpConfigPath,
-  cleanupLegacyDshAcpManagedFiles,
+  cleanDshAcpManagedNodeModules,
   dshAcpCompositionReady,
   dshAcpInstallCommand,
   dshAcpManagedDemoBin,
@@ -14,10 +14,18 @@ import {
   dshAcpWindowsResiduePath,
   DSH_ACP_PLUGIN_TREE_MISSING,
   getCliCheckProbe,
+  getAdapterDefinition,
+  cliAdapterDefinitions,
+  quoteForShell,
   isDefaultDshAcpBinary,
   patchDshAcpManagedRuntime,
-  syncDshAcpManagedConfig
+  sanitizeCliAgentEnv,
+  syncDshAcpManagedConfig,
+  windowsExtendedPath
 } from "./adapters.js";
+import { resolvePiAcpRuntime } from "./piRuntime.js";
+import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
+import { applyManagedNodeEnvironment, ensureManagedNodeRuntime } from "./managedNodeRuntime.js";
 import { getDataDir, getDb } from "./db.js";
 import { safeSendToWebContents } from "./ipcSend.js";
 import { compareSemver, extractSemver } from "./version.js";
@@ -33,7 +41,11 @@ import {
   windowsInstallInvocation
 } from "./windowsEnv.js";
 import { findMacAppCliBinary } from "./macAppCli.js";
+import { hasLocalAgentApp } from "./localAgentApps.js";
 import { logMain } from "../debugLog.js";
+import { getRuntimePackagePolicy, readRuntimePackage } from "./runtimePackages.js";
+import { antigravityUpdateBinary, antigravityUpgradeCommand } from "./antigravityUpdate.js";
+import { checkRuntimeUpdate, upgradeVerificationError, versionFromProbe, type CliRuntimeUpdateRequest, type CliUpgradePlan, type RuntimeUpdateStatus } from "../shared/cliRuntimeUpdate.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const CODEX_ACP_ADAPTER = "codex-acp";
@@ -42,7 +54,10 @@ const CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp";
 const CODEX_CLI_PACKAGE = "@openai/codex";
 const CODEX_CLI_FOUND_ACP_MISSING = "codex cli found; acp adapter missing";
 const CLAUDE_CLI_FOUND_ACP_MISSING = "claude cli found; acp adapter missing";
-const CODEX_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DSH_ACP_ADAPTER = "dsh-acp";
+const DSH_ACP_PACKAGE = "deepseek-harness-acp";
+// Shared throttle for every toolchain auto-update check (codex, dsh-acp, ...).
+const TOOLCHAIN_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CLI_RUNTIME_CHANNEL = "cli://runtime";
 
 interface CodexUpdateTarget {
@@ -55,13 +70,7 @@ const CODEX_UPDATE_TARGETS: CodexUpdateTarget[] = [
   { adapter: CODEX_ACP_ADAPTER, packageName: CODEX_ACP_PACKAGE }
 ];
 
-export type CliRuntimeUpdateStatus =
-  | "idle"
-  | "checking"
-  | "current"
-  | "updating"
-  | "updated"
-  | "error";
+export type CliRuntimeUpdateStatus = RuntimeUpdateStatus;
 
 export interface CliCheckResult {
   installed: boolean;
@@ -87,7 +96,7 @@ function which(
   bin: string,
   env?: Record<string, string>
 ): Promise<string | undefined> {
-  const mergedEnv = { ...process.env, ...(env || {}) };
+  const mergedEnv = applyManagedNodeEnvironment({ ...process.env, ...(env || {}) });
   const isWindows = process.platform === "win32";
   const isFile = (candidate: string): boolean => {
     try {
@@ -109,7 +118,7 @@ function which(
 
   return new Promise((resolve) => {
     const cmd = isWindows ? "where" : "which";
-    const child = spawn(cmd, [bin], { env: mergedEnv });
+    const child = spawn(cmd, [bin], { env: mergedEnv, windowsHide: isWindows });
     let out = "";
     child.stdout!.on("data", (d) => (out += d.toString()));
     child.on("error", () => resolve(undefined));
@@ -220,8 +229,8 @@ function runCheckProbe(
   timeoutMs = 15_000
 ): Promise<CliProbeResult> {
   return new Promise((resolve) => {
-    const mergedEnv = { ...process.env, ...(env || {}) };
-    const child = spawn(bin, args, { env: mergedEnv });
+    const mergedEnv = applyManagedNodeEnvironment({ ...process.env, ...(env || {}) });
+    const child = spawn(bin, args, { env: mergedEnv, windowsHide: process.platform === "win32" });
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -311,7 +320,7 @@ function upsertRuntime(
        ON CONFLICT(adapter) DO UPDATE SET
          installed=excluded.installed,
          binary_path=excluded.binary_path,
-         version=excluded.version,
+         version=COALESCE(excluded.version, CASE WHEN cli_runtimes.binary_path=excluded.binary_path THEN cli_runtimes.version END),
          last_check_at=excluded.last_check_at,
          last_error=excluded.last_error,
          updated_at=excluded.updated_at`
@@ -368,6 +377,8 @@ export async function cliCheck(
   env?: Record<string, string>,
   runtimeAdapter?: string
 ): Promise<CliCheckResult> {
+  await waitForRuntimeInstall(adapter);
+  await ensureManagedNodeRuntime(getDataDir());
   const runtimeKey = runtimeAdapter?.trim() || adapter;
   const bin = binary?.trim() || adapterBinary(adapter) || adapter;
   const effectiveEnv = await getFreshWindowsEnvironment({
@@ -375,6 +386,15 @@ export async function cliCheck(
     ...(env || {})
   });
   let resolved = await which(bin, effectiveEnv as Record<string, string>);
+  // New Qoder CLI releases use `qoder`; do not confuse the IDE launcher
+  // with the ACP CLI. Respect explicit custom binaries.
+  if (adapter === "qoder-acp" && !resolved && bin === "qodercli") {
+    const candidate = await which("qoder", effectiveEnv as Record<string, string>);
+    if (candidate) {
+      const help = await runCheckProbe(candidate, ["--help"], effectiveEnv as Record<string, string>);
+      if (help.ok && /--acp\b/.test(`${help.stdout}\n${help.stderr}`)) resolved = candidate;
+    }
+  }
   if (adapter === "dsh-acp" && !resolved && (!binary?.trim() || isDefaultDshAcpBinary(binary))) {
     for (const alt of ["deepseek-harness-acp", "dsh-acp", "dsh-acp-demo"]) {
       if (alt === bin) continue;
@@ -388,9 +408,10 @@ export async function cliCheck(
   if (adapter === "dsh-acp") {
     const cfgPath = bundledDshAcpConfigPath();
     const managedBin = dshAcpManagedDemoBin(getDataDir());
-    if (fs.existsSync(managedBin) && dshAcpCompositionReady(managedBin, cfgPath)) {
-      const result: CliCheckResult = { installed: true, path: managedBin };
-      upsertRuntime(runtimeKey, true, managedBin);
+    if ((!binary?.trim() || isDefaultDshAcpBinary(binary)) && fs.existsSync(managedBin) && dshAcpCompositionReady(managedBin, cfgPath)) {
+      const version = readRuntimePackage(managedBin, DSH_ACP_PACKAGE)?.version;
+      const result: CliCheckResult = { installed: true, path: managedBin, version };
+      upsertRuntime(runtimeKey, true, managedBin, version);
       trackAgentSetup(adapter, "check", "detected");
       return result;
     }
@@ -418,10 +439,28 @@ export async function cliCheck(
       trackAgentSetup(adapter, "check", "probe_failed", DSH_ACP_PLUGIN_TREE_MISSING);
       return { installed: false };
     }
-    const result: CliCheckResult = { installed: true, path: resolved };
-    upsertRuntime(runtimeKey, true, resolved);
+    const version = readRuntimePackage(resolved, DSH_ACP_PACKAGE)?.version;
+    const result: CliCheckResult = { installed: true, path: resolved, version };
+    upsertRuntime(runtimeKey, true, resolved, version);
     trackAgentSetup(adapter, "check", "detected");
     return result;
+  }
+  if (adapter === "pi-acp") {
+    await ensurePackagedPiRuntime(getDataDir());
+    // Bundled runtime (pi + pi-acp bridge) shipped as an extraResource takes
+    // precedence over a PATH-installed pi-acp; see electron/cli/piRuntime.ts.
+    const status = resolvePiAcpRuntime();
+    if (status.ready && status.piAcpEntry) {
+      const version = status.piAcpVersion ?? status.piVersion;
+      upsertRuntime(runtimeKey, true, status.piAcpEntry, version);
+      trackAgentSetup(adapter, "check", "detected");
+      return {
+        installed: true,
+        path: status.piAcpEntry,
+        ...(version ? { version } : {})
+      };
+    }
+    // Fall through: a user-installed global pi-acp still works via PATH.
   }
   if (!resolved) {
     const nativeCli =
@@ -437,7 +476,11 @@ export async function cliCheck(
       ? adapter === "codex-acp"
         ? CODEX_CLI_FOUND_ACP_MISSING
         : CLAUDE_CLI_FOUND_ACP_MISSING
-      : "binary not found";
+      : adapter === "codex-acp" && hasLocalAgentApp("Codex")
+        ? "codex app found; acp adapter missing"
+        : adapter === "qoder-acp" && hasLocalAgentApp("Qoder")
+          ? "qoder app found; cli missing"
+          : "binary not found";
     upsertRuntime(runtimeKey, false, undefined, undefined, error);
     trackAgentSetup(adapter, "check", "missing", error);
     return { installed: false };
@@ -466,12 +509,17 @@ export async function cliCheck(
     trackAgentSetup(adapter, "check", "probe_failed", error);
     return { installed: false };
   }
+  const policy = getRuntimePackagePolicy(adapter);
+  const packageVersion = policy ? readRuntimePackage(resolved, policy.packageName)?.version : undefined;
   const result: CliCheckResult = {
     installed: true,
     path: resolved,
-    version: probe.versionOptional ? undefined : probeResult.output
+    version: packageVersion ?? (policy?.packageVersionOnly ? undefined : versionFromProbe(probeResult.output, probe.versionOptional))
   };
   upsertRuntime(runtimeKey, true, resolved, result.version);
+  if (policy?.packageVersionOnly && !packageVersion) {
+    getDb().prepare("UPDATE cli_runtimes SET version = NULL WHERE adapter = ?").run(runtimeKey);
+  }
   trackAgentSetup(adapter, "check", "detected");
   return result;
 }
@@ -482,6 +530,8 @@ export interface CliRuntime {
   binaryPath?: string;
   version?: string;
   latestVersion?: string;
+  minimumVersion?: string;
+  updateCheckSupported?: boolean;
   updateStatus?: CliRuntimeUpdateStatus;
   lastUpdateCheckAt?: string;
   lastUpdateError?: string;
@@ -492,6 +542,7 @@ export interface CliRuntime {
 }
 
 export function listRuntimes(): CliRuntime[] {
+  const aliases = new Map((getDb().prepare("SELECT id, base_adapter FROM cli_executor_overrides").all() as Array<{ id: string; base_adapter: string | null }>).map(row => [row.id, row.base_adapter]));
   const rows = getDb()
     .prepare(
       `SELECT adapter, installed, binary_path, version, latest_version, update_status,
@@ -519,6 +570,8 @@ export function listRuntimes(): CliRuntime[] {
     binaryPath: r.binary_path ?? undefined,
     version: r.version ?? undefined,
     latestVersion: r.latest_version ?? undefined,
+    minimumVersion: getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter)?.minimumVersion,
+    updateCheckSupported: !!getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter),
     updateStatus: (r.update_status as CliRuntimeUpdateStatus | null) ?? undefined,
     lastUpdateCheckAt: r.last_update_check_at ?? undefined,
     lastUpdateError: r.last_update_error ?? undefined,
@@ -576,6 +629,180 @@ function setRuntimeUpdateState(
   broadcastRuntime(adapter);
 }
 
+/** Persist initialize metadata for agents whose version probe cannot report it. */
+export function recordRuntimeAgentVersion(adapter: string, version: string | undefined, binary?: string): void {
+  const parsed = extractSemver(version);
+  const runtime = runtimeFor(adapter);
+  if (!parsed || !runtime || runtime.updateStatus === "updating" || getRuntimePackagePolicy(adapter)?.packageVersionOnly) return;
+  if (binary && path.isAbsolute(binary) && runtime.binaryPath !== binary) return;
+  // Package/probe versions identify the detected executable. Do not replace
+  // them with a protocol implementation's unrelated SDK or engine version.
+  if (extractSemver(runtime.version)) return;
+  getDb().prepare("UPDATE cli_runtimes SET version = ?, updated_at = ? WHERE adapter = ?")
+    .run(parsed.raw, new Date().toISOString(), adapter);
+  broadcastRuntime(adapter);
+}
+
+const pendingUpdateChecks = new Map<string, Promise<CliRuntime | undefined>>();
+
+export function cliCheckUpdates(args: CliRuntimeUpdateRequest): Promise<CliRuntime | undefined> {
+  const key = args.runtimeAdapter?.trim() || args.adapter;
+  const pending = pendingUpdateChecks.get(key);
+  if (pending) return args.force ? pending.then(() => cliCheckUpdates(args)) : pending;
+  const promise = (async () => {
+    const previous = runtimeFor(key);
+    if (previous?.updateStatus === "updating" || runtimeInstallationPromises.has(runtimeInstallKey(args.adapter))) return previous;
+    const installed = await cliCheck(args.adapter, args.binary, args.env, key);
+    const policy = getRuntimePackagePolicy(args.adapter);
+    if (!installed.installed || !policy) return runtimeFor(key);
+    const snapshot = { ...previous, version: runtimeFor(key)?.version };
+    setRuntimeUpdateState(key, "checking");
+    const state = await checkRuntimeUpdate(snapshot, () => latestPackageVersion(policy.packageName, args.env), {
+      force: args.force || previous?.binaryPath !== installed.path
+    });
+    if (runtimeInstallationPromises.has(runtimeInstallKey(args.adapter))) return runtimeFor(key);
+    const actual = extractSemver(runtimeFor(key)?.version), latest = extractSemver(state.latestVersion);
+    if (latest && state.updateStatus !== "error") state.updateStatus = actual && compareSemver(actual, latest) >= 0 ? "current" : "available";
+    setRuntimeUpdateState(key, state.updateStatus ?? "idle", {
+      latestVersion: state.latestVersion, checkedAt: state.lastUpdateCheckAt, error: state.lastUpdateError
+    });
+    return runtimeFor(key);
+  })().finally(() => pendingUpdateChecks.delete(key));
+  pendingUpdateChecks.set(key, promise);
+  return promise;
+}
+
+/** Passive checks complement existing Codex/DeepSeek update policies. */
+export async function startRuntimeUpdateChecks(): Promise<void> {
+  await Promise.allSettled([codexToolchainAutoUpdatePromise, dshAcpAutoUpdatePromise]);
+  for (const runtime of listRuntimes()) {
+    if (!runtime.installed || !getRuntimePackagePolicy(runtime.adapter)) continue;
+    try { await cliCheckUpdates({ adapter: runtime.adapter, binary: runtime.binaryPath }); }
+    catch (error) { logMain().warn("runtime", "agent update check failed", { adapter: runtime.adapter, error: String(error) }); }
+  }
+}
+
+function isPidAlive(pid: unknown): boolean {
+  const value = typeof pid === "number" ? pid : Number(pid);
+  if (!Number.isInteger(value) || value <= 0) return false;
+  try {
+    process.kill(value, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+function assertRuntimeIdle(adapter: string): void {
+  const group = getAdapterDefinition(adapter)?.commandGroup;
+  const related = [...new Set([adapter, ...cliAdapterDefinitions.filter(definition => group && definition.commandGroup === group).map(definition => definition.id), ...(group ? [group] : [])])];
+  const rows = getDb().prepare(
+    `SELECT id, pid FROM cli_tasks WHERE status = 'running' AND adapter IN (${related.map(() => "?").join(",")})`
+  ).all(...related) as Array<{ id: string; pid: number | null }>;
+  const stale = rows.filter((row) => !isPidAlive(row.pid));
+  if (stale.length) {
+    const now = new Date().toISOString();
+    const closeStale = getDb().prepare(
+      `UPDATE cli_tasks
+       SET status = 'failed',
+           error_message = COALESCE(error_message, 'Interrupted because the agent process is no longer running'),
+           ended_at = COALESCE(ended_at, ?),
+           updated_at = ?
+       WHERE id = ? AND status = 'running'`
+    );
+    for (const row of stale) closeStale.run(now, now, row.id);
+  }
+  if (rows.length !== stale.length) throw new Error("runtime_in_use");
+}
+
+const runtimeInstallationPromises = new Map<string, Promise<void>>();
+
+function runtimeInstallKey(adapter: string): string {
+  return getRuntimePackagePolicy(adapter)?.packageName ?? getAdapterDefinition(adapter)?.commandGroup ?? adapter;
+}
+
+export async function waitForRuntimeInstall(adapter: string): Promise<void> {
+  await runtimeInstallationPromises.get(runtimeInstallKey(adapter));
+}
+
+function acquireRuntimeInstall(adapter: string): () => void {
+  assertRuntimeIdle(adapter);
+  const key = runtimeInstallKey(adapter);
+  if (runtimeInstallationPromises.has(key)) throw new Error("runtime_install_in_progress");
+  let finish = () => {};
+  runtimeInstallationPromises.set(key, new Promise(resolve => { finish = resolve; }));
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    runtimeInstallationPromises.delete(key);
+    finish();
+  };
+}
+
+export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<CliUpgradePlan> {
+  assertRuntimeIdle(args.adapter);
+  const definition = getAdapterDefinition(args.adapter);
+  if (!definition?.installHint || args.adapter === "pi-acp") throw new Error("runtime_update_managed_by_app");
+  const policy = getRuntimePackagePolicy(args.adapter);
+  const runtime = await cliCheckUpdates({ ...args, force: true });
+  const plan: CliUpgradePlan = { command: definition.installHint,
+    previousVersion: runtime?.installed ? runtime.version : undefined,
+    expectedBinaryPath: runtime?.installed ? runtime.binaryPath : undefined };
+  if (!policy) return plan;
+  if (runtime?.installed && (runtime.updateStatus === "error" || !runtime.latestVersion)) throw new Error("runtime_update_check_failed");
+  plan.targetVersion = runtime?.installed ? runtime.latestVersion : await latestPackageVersion(policy.packageName, args.env);
+  const current = runtime?.installed ? extractSemver(runtime.version) : undefined;
+  const target = extractSemver(plan.targetVersion);
+  const adapterCurrent = !!current && !!target && compareSemver(current, target) >= 0;
+  if (adapterCurrent && args.adapter !== "agy-acp") return { ...plan, alreadyCurrent: true };
+  if (adapterCurrent) {
+    plan.command = "";
+  } else if (policy.managed) {
+    // The DeepSeek installer also migrates legacy/global installs into the
+    // application-managed standalone runtime. Verify that destination.
+    plan.expectedBinaryPath = path.join(dshAcpManagedRoot(getDataDir()), "node_modules", policy.packageName, "lib", "bin.js");
+    plan.command = dshAcpInstallCommand({ prefix: dshAcpManagedRoot(getDataDir()), version: plan.targetVersion });
+  } else {
+    const pkg = readRuntimePackage(runtime?.binaryPath, policy.packageName);
+    if (runtime?.installed && !pkg?.prefix) throw new Error("runtime_install_source_unknown");
+    plan.command = definition.installHint.replace(policy.packageName, `${policy.packageName}@${plan.targetVersion}`)
+      + (pkg?.prefix ? ` --prefix ${quoteForShell(pkg.prefix)}` : "") + " --no-audit --no-fund";
+  }
+  if (args.adapter === "agy-acp") {
+    const env = await getFreshWindowsEnvironment({ ...process.env, ...args.env });
+    plan.command = antigravityUpgradeCommand(plan.command, antigravityUpdateBinary(env));
+    plan.updatesNativeCli = true;
+  }
+  return plan;
+}
+
+export async function verifyCliUpgrade(args: CliRuntimeUpdateRequest, plan: CliUpgradePlan): Promise<CliCheckResult> {
+  await waitForRuntimeInstall(args.adapter);
+  const key = args.runtimeAdapter?.trim() || args.adapter;
+  const actual = await cliCheck(args.adapter, plan.expectedBinaryPath ?? args.binary, args.env, key);
+  const error = upgradeVerificationError(actual, plan, process.platform);
+  if (error) {
+    setRuntimeUpdateState(key, "error", { error });
+    throw new Error(error);
+  }
+  if (getAdapterDefinition(args.adapter)?.protocol === "acp") {
+    const { probeAcpAuthentication } = await import("./acpAuth.js");
+    try {
+      await probeAcpAuthentication({ agentId: key, adapter: args.adapter, binary: actual.path,
+        extraArgs: args.extraArgs, cwd: args.cwd,
+        env: await getFreshWindowsEnvironment({ ...process.env, ...args.env }) as Record<string, string> });
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : String(failure);
+      upsertRuntime(key, false, actual.path, actual.version, message);
+      setRuntimeUpdateState(key, "error", { error: message });
+      throw failure;
+    }
+  }
+  setRuntimeUpdateState(key, plan.alreadyCurrent ? "current" : "updated", { latestVersion: plan.targetVersion, checkedAt: new Date().toISOString() });
+  return actual;
+}
+
 interface ProcessResult {
   code: number | null;
   stdout: string;
@@ -585,11 +812,12 @@ interface ProcessResult {
 function runProcess(
   bin: string,
   args: string[],
-  timeoutMs: number
+  timeoutMs: number,
+  extraEnv?: Record<string, string>
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, NPM_CONFIG_OFFLINE: "false" };
-    const child = spawn(bin, args, { env });
+    const env = applyManagedNodeEnvironment({ ...process.env, ...extraEnv, NPM_CONFIG_OFFLINE: "false" }, { install: true });
+    const child = spawn(bin, args, { env, windowsHide: process.platform === "win32" });
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -631,7 +859,7 @@ function recentSuccessfulUpdateCheck(runtime: CliRuntime | undefined): boolean {
   const checkedAt = Date.parse(runtime.lastUpdateCheckAt);
   return (
     Number.isFinite(checkedAt) &&
-    Date.now() - checkedAt < CODEX_UPDATE_INTERVAL_MS
+    Date.now() - checkedAt < TOOLCHAIN_UPDATE_INTERVAL_MS
   );
 }
 
@@ -639,29 +867,19 @@ function isNpmManagedBinary(
   binaryPath: string | undefined,
   packageName: string
 ): boolean {
-  if (!binaryPath) return false;
-  const candidates = [binaryPath];
-  try {
-    candidates.push(fs.realpathSync(binaryPath));
-  } catch {
-    /* Windows npm shims are regular command files, not symlinks. */
-  }
-  const packagePath = `/node_modules/${packageName.toLowerCase()}/`;
-  return candidates.some((candidate) => {
-    const normalized = candidate.replace(/\\/g, "/").toLowerCase();
-    return (
-      normalized.includes(packagePath) ||
-      (process.platform === "win32" &&
-        normalized.includes("/appdata/roaming/npm/"))
-    );
-  });
+  return !!readRuntimePackage(binaryPath, packageName)?.prefix;
 }
 
-async function latestPackageVersion(packageName: string): Promise<string> {
+async function latestPackageVersion(packageName: string, extraEnv?: Record<string, string>): Promise<string> {
+  await ensureManagedNodeRuntime(getDataDir());
+  const env = await getFreshWindowsEnvironment({ ...process.env, ...extraEnv });
+  const npm = await which("npm", env as Record<string, string>);
+  if (!npm) throw new Error("Required install tool not found: npm");
   const result = await runProcess(
-    "npm",
+    npm,
     ["view", packageName, "version", "--json", "--offline=false"],
-    30_000
+    30_000,
+    env as Record<string, string>
   );
   if (result.code !== 0) {
     throw new Error(firstNonEmptyLine(result.stderr) ?? "npm version check failed");
@@ -673,27 +891,29 @@ async function latestPackageVersion(packageName: string): Promise<string> {
 
 async function installPackageVersion(
   packageName: string,
-  version: string
+  version: string,
+  binaryPath?: string
 ): Promise<void> {
-  const result = await runProcess(
-    "npm",
-    [
-      "install",
-      "-g",
-      "--force",
-      `${packageName}@${version}`,
-      "--offline=false",
-      "--no-audit",
-      "--no-fund"
-    ],
-    2 * 60 * 1000
-  );
-  if (result.code !== 0) {
-    throw new Error(
-      firstNonEmptyLine(result.stderr) ??
-        firstNonEmptyLine(result.stdout) ??
-        `${packageName} update failed`
+  const pkg = readRuntimePackage(binaryPath, packageName);
+  if (!pkg?.prefix) throw new Error("runtime_install_source_unknown");
+  const env = await getFreshWindowsEnvironment(process.env);
+  const npm = await which("npm", env as Record<string, string>);
+  if (!npm) throw new Error("Required install tool not found: npm");
+  const adapter = CODEX_UPDATE_TARGETS.find(target => target.packageName === packageName)?.adapter ?? packageName;
+  const release = acquireRuntimeInstall(adapter);
+  try {
+    const result = await runProcess(
+      npm,
+      ["install", "-g", "--force", `${packageName}@${version}`, "--prefix", pkg.prefix,
+        "--offline=false", "--no-audit", "--no-fund"],
+      2 * 60 * 1000,
+      env as Record<string, string>
     );
+    if (result.code !== 0) {
+      throw new Error(firstNonEmptyLine(result.stderr) ?? firstNonEmptyLine(result.stdout) ?? `${packageName} update failed`);
+    }
+  } finally {
+    release();
   }
 }
 
@@ -733,19 +953,13 @@ async function runCodexPackageAutoUpdate(
       return;
     }
 
+    assertRuntimeIdle(target.adapter);
     setRuntimeUpdateState(target.adapter, "updating", { latestVersion });
-    await installPackageVersion(target.packageName, latestVersion);
-    const verified = await cliCheck(target.adapter);
-    const verifiedVersion = extractSemver(verified.version);
-    if (
-      !verified.installed ||
-      !verifiedVersion ||
-      compareSemver(verifiedVersion, latest) < 0
-    ) {
-      throw new Error(
-        `${target.packageName} update completed but the new version was not detected`
-      );
-    }
+    await installPackageVersion(target.packageName, latestVersion, installed.path);
+    await verifyCliUpgrade({ adapter: target.adapter, binary: installed.path }, {
+      command: "", previousVersion: installed.version, targetVersion: latestVersion,
+      expectedBinaryPath: installed.path
+    });
     setRuntimeUpdateState(target.adapter, "updated", {
       latestVersion,
       checkedAt
@@ -775,9 +989,100 @@ export function startCodexToolchainAutoUpdate(): Promise<void> {
   return promise;
 }
 
+/** Read the version FreeBuddy's managed dsh-acp install currently has on disk. */
+function readDshAcpManagedVersion(root: string): string | undefined {
+  try {
+    const pkgDir = path.join(root, "node_modules", DSH_ACP_PACKAGE);
+    // A source checkout or file: junction can carry a package.json version
+    // without lib/bin.js. That is not an install we can call current.
+    if (!fs.existsSync(path.join(pkgDir, "lib", "bin.js"))) return undefined;
+    const pkgPath = path.join(pkgDir, "package.json");
+    if (!fs.existsSync(pkgPath)) return undefined;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
+      version?: unknown;
+    };
+    return typeof pkg.version === "string" ? pkg.version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let dshAcpAutoUpdatePromise: Promise<void> | null = null;
+
+async function runDshAcpAutoUpdate(): Promise<void> {
+  const root = dshAcpManagedRoot(getDataDir());
+  const current = extractSemver(readDshAcpManagedVersion(root));
+  if (!current) {
+    // Nothing managed by FreeBuddy yet (not installed, or a PATH binary is
+    // used instead) — there is nothing for us to keep up to date.
+    setRuntimeUpdateState(DSH_ACP_ADAPTER, "idle");
+    return;
+  }
+  if (recentSuccessfulUpdateCheck(runtimeFor(DSH_ACP_ADAPTER))) return;
+
+  setRuntimeUpdateState(DSH_ACP_ADAPTER, "checking");
+  const checkedAt = new Date().toISOString();
+  try {
+    const latestVersion = await latestPackageVersion(DSH_ACP_PACKAGE);
+    const latest = extractSemver(latestVersion)!;
+    if (compareSemver(current, latest) >= 0) {
+      setRuntimeUpdateState(DSH_ACP_ADAPTER, "current", {
+        latestVersion,
+        checkedAt
+      });
+      return;
+    }
+
+    assertRuntimeIdle(DSH_ACP_ADAPTER);
+    setRuntimeUpdateState(DSH_ACP_ADAPTER, "updating", { latestVersion });
+    // Reuses the managed-install path used by the manual "install" button in
+    // Settings, which now wipes node_modules/lockfile first (see
+    // cleanDshAcpManagedNodeModules) so sibling packages published under the
+    // same floating alpha tag can't drift out of sync with each other.
+    const result = await cliInstall("", DSH_ACP_ADAPTER, latestVersion);
+    if (!result.success) {
+      throw new Error(
+        firstNonEmptyLine(result.stderr) ??
+          firstNonEmptyLine(result.stdout) ??
+          `${DSH_ACP_PACKAGE} update failed`
+      );
+    }
+
+    await verifyCliUpgrade({ adapter: DSH_ACP_ADAPTER }, {
+      command: "", previousVersion: current.raw, targetVersion: latestVersion,
+      expectedBinaryPath: dshAcpManagedDemoBin(getDataDir())
+    });
+    setRuntimeUpdateState(DSH_ACP_ADAPTER, "updated", {
+      latestVersion,
+      checkedAt
+    });
+  } catch (error) {
+    setRuntimeUpdateState(DSH_ACP_ADAPTER, "error", {
+      checkedAt,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+export function startDshAcpAutoUpdate(): Promise<void> {
+  if (dshAcpAutoUpdatePromise) return dshAcpAutoUpdatePromise;
+  const promise = runDshAcpAutoUpdate().finally(() => {
+    if (dshAcpAutoUpdatePromise === promise) {
+      dshAcpAutoUpdatePromise = null;
+    }
+  });
+  dshAcpAutoUpdatePromise = promise;
+  return promise;
+}
+
 export async function waitForCodexToolchainAutoUpdate(
   adapter: string
 ): Promise<void> {
+  await waitForRuntimeInstall(adapter);
+  if (adapter === DSH_ACP_ADAPTER) {
+    await dshAcpAutoUpdatePromise;
+    return;
+  }
   if (adapter !== CODEX_ACP_ADAPTER && adapter !== CODEX_CLI_ADAPTER) return;
   await codexToolchainAutoUpdatePromise;
 }
@@ -849,19 +1154,20 @@ async function prepareInstallEnvironment(
   command: string,
   adapter: string
 ): Promise<InstallPreflightResult> {
+  await ensureManagedNodeRuntime(getDataDir());
   const tool = requiredInstallTool(command);
   if (!tool) {
     return {
-      env: applyDshAcpNpmInstallEnv(adapter, { ...process.env }),
+      env: applyDshAcpNpmInstallEnv(adapter, applyManagedNodeEnvironment(sanitizeCliAgentEnv({ ...process.env }), { install: true })),
       command
     };
   }
 
-  const env = await getFreshWindowsEnvironment(process.env);
+  const env = applyManagedNodeEnvironment(sanitizeCliAgentEnv(await getFreshWindowsEnvironment(process.env)), { install: true });
   const executable = await which(tool, env as Record<string, string>);
   if (!executable) {
     return {
-      env: { ...process.env },
+      env,
       command,
       failureCode: "tool_missing",
       failureDetail: tool,
@@ -902,12 +1208,6 @@ async function prepareInstallEnvironment(
   return { env, ...absoluteInstallCommand(command, executable) };
 }
 
-function windowsExtendedPath(target: string): string {
-  if (process.platform !== "win32") return target;
-  if (target.startsWith("\\\\?\\")) return target;
-  return `\\\\?\\${path.resolve(target)}`;
-}
-
 async function removeDshAcpWindowsResidue(
   env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
@@ -923,123 +1223,39 @@ async function removeDshAcpWindowsResidue(
     .catch(() => undefined);
 }
 
-function prepareDshAcpManagedInstall(): string {
-  const root = syncDshAcpManagedConfig(getDataDir());
-  cleanupLegacyDshAcpManagedFiles(root);
-  return dshAcpInstallCommand({ prefix: root });
+async function prepareDshAcpManagedInstall(): Promise<void> {
+  const root = dshAcpManagedRoot(getDataDir());
+  // `@deepseek-ai/*` shims beside the managed prefix resolve upward from the tree and
+  // reintroduce the version conflict that demotes the harness plugin subtree.
+  await removeDshAcpWindowsResidue();
+  // Wipe any existing node_modules/lockfile first so npm re-resolves every package from
+  // scratch instead of reusing a stale sibling dependency (see cleanDshAcpManagedNodeModules).
+  if (!cleanDshAcpManagedNodeModules(root)) {
+    throw new Error(
+      `DeepSeek Harness runtime directory is still in use: ${root}. Quit FreeBuddy and retry.`
+    );
+  }
+  syncDshAcpManagedConfig(getDataDir());
 }
 
-export function cliInstall(command: string, adapter = "custom"): Promise<CliInstallResult> {
+export function cliInstall(command: string, adapter = "custom", targetVersion?: string): Promise<CliInstallResult> {
   return new Promise((resolve, reject) => {
+    let release = () => {};
     void (async () => {
       const trimmed =
-        adapter === "dsh-acp" ? prepareDshAcpManagedInstall() : command.trim();
+        adapter === "dsh-acp" ? dshAcpInstallCommand({ prefix: dshAcpManagedRoot(getDataDir()), version: targetVersion }) : command.trim();
       if (!trimmed) {
-        reject(new Error("install command required"));
-        return;
+        throw new Error("install command required");
       }
+      release = acquireRuntimeInstall(adapter);
+      if (adapter === "dsh-acp") await prepareDshAcpManagedInstall();
 
-      const isWindows = process.platform === "win32";
-      const isPowerShellCommand =
-        /^irm\s/i.test(trimmed) ||
-        /\|\s*iex\b/i.test(trimmed) ||
-        /Invoke-(WebRequest|Expression)/i.test(trimmed) ||
-        (isWindows && /"/.test(trimmed));
+      const preflight: InstallPreflightResult = process.platform === "win32"
+        ? await prepareInstallEnvironment(trimmed, adapter)
+        : { command: trimmed, env: applyDshAcpNpmInstallEnv(adapter, { ...process.env }) };
+      if (preflight.failureCode) throw new Error(preflight.error || "Install environment check failed");
+      const installCommand = preflight.command;
 
-      let shell: string;
-      let args: string[];
-      if (isWindows && isPowerShellCommand) {
-        shell = "powershell";
-        args = [
-          "-ExecutionPolicy", "Bypass",
-          "-OutputFormat", "Text",
-          "-Command",
-          "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; " +
-            trimmed
-        ];
-      } else if (isWindows) {
-        shell = "cmd";
-        args = ["/C", trimmed];
-      } else {
-        shell = process.env.SHELL || "/bin/sh";
-        args = ["-lc", trimmed];
-      }
-
-      const env = applyDshAcpNpmInstallEnv(adapter, { ...process.env });
-      const child = spawn(shell, args, { env });
-      let stdout = "";
-      let stderr = "";
-      let timedOut = false;
-      let setupTracked = false;
-      const reportSetup = (result: "installed" | "failed" | "timeout", error?: unknown) => {
-        if (setupTracked) return;
-        setupTracked = true;
-        trackAgentSetup(adapter, "install", result, error);
-      };
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill();
-      }, 10 * 60 * 1000);
-      child.stdout!.on("data", (d) => (stdout += d.toString()));
-      child.stderr!.on("data", (d) => (stderr += d.toString()));
-      child.on("error", (err) => {
-        clearTimeout(timer);
-        reportSetup("failed", err);
-        reject(err);
-      });
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        if (adapter === "dsh-acp" && code === 0) {
-          patchDshAcpManagedRuntime(dshAcpManagedRoot(getDataDir()));
-        }
-        reportSetup(
-          timedOut ? "timeout" : code === 0 ? "installed" : "failed",
-          timedOut ? "timeout" : code === 0 ? undefined : `process exited ${code ?? "unknown"}`
-        );
-        resolve({
-          success: code === 0,
-          exitCode: code,
-          stdout,
-          stderr
-        });
-      });
-    })().catch(reject);
-  });
-}
-
-export function cliInstallStream(
-  command: string,
-  webContents?: Electron.WebContents | null,
-  adapter = "custom",
-  requestId = adapter
-): Promise<CliInstallResult> {
-  return new Promise((resolve, reject) => {
-    const channel = "cli://install";
-    const send = (payload: Record<string, unknown>) => {
-      safeSendToWebContents(webContents, channel, { ...payload, requestId });
-    };
-    void (async () => {
-      const trimmed = command.trim();
-      if (!trimmed) throw new Error("install command required");
-
-      const preflight = await prepareInstallEnvironment(trimmed, adapter);
-      if (preflight.failureCode) {
-        const error = preflight.error || "Install environment check failed";
-        const exitCode = preflight.failureCode === "tool_missing" ? 127 : 1;
-        trackAgentSetup(adapter, "install", "failed", preflight.failureCode);
-        send({ type: "stderr", content: `${error}\n` });
-        send({
-          type: "done",
-          exitCode,
-          failureCode: preflight.failureCode,
-          failureDetail: preflight.failureDetail
-        });
-        resolve({ success: false, exitCode, stdout: "", stderr: error });
-        return;
-      }
-
-      const installCommand =
-        adapter === "dsh-acp" ? prepareDshAcpManagedInstall() : preflight.command;
       const isWindows = process.platform === "win32";
       const isPowerShellCommand =
         preflight.requiresPowerShell ||
@@ -1067,7 +1283,115 @@ export function cliInstallStream(
         args = ["-lc", installCommand];
       }
 
-      const child = spawn(shell, args, { env: preflight.env });
+      const child = spawn(shell, args, { env: preflight.env, windowsHide: isWindows });
+      let stdout = "";
+      let stderr = "";
+      let timedOut = false;
+      let setupTracked = false;
+      const reportSetup = (result: "installed" | "failed" | "timeout", error?: unknown) => {
+        if (setupTracked) return;
+        setupTracked = true;
+        trackAgentSetup(adapter, "install", result, error);
+      };
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, 10 * 60 * 1000);
+      child.stdout!.on("data", (d) => (stdout += d.toString()));
+      child.stderr!.on("data", (d) => (stderr += d.toString()));
+      child.on("error", (err) => {
+        release();
+        clearTimeout(timer);
+        reportSetup("failed", err);
+        reject(err);
+      });
+      child.on("close", (code) => {
+        release();
+        clearTimeout(timer);
+        if (adapter === "dsh-acp" && code === 0) {
+          patchDshAcpManagedRuntime(dshAcpManagedRoot(getDataDir()));
+        }
+        reportSetup(
+          timedOut ? "timeout" : code === 0 ? "installed" : "failed",
+          timedOut ? "timeout" : code === 0 ? undefined : `process exited ${code ?? "unknown"}`
+        );
+        resolve({
+          success: code === 0,
+          exitCode: code,
+          stdout,
+          stderr
+        });
+      });
+    })().catch(error => { release(); reject(error); });
+  });
+}
+
+export function cliInstallStream(
+  command: string,
+  webContents?: Electron.WebContents | null,
+  adapter = "custom",
+  requestId = adapter,
+  targetVersion?: string
+): Promise<CliInstallResult> {
+  return new Promise((resolve, reject) => {
+    let release = () => {};
+    const channel = "cli://install";
+    const send = (payload: Record<string, unknown>) => {
+      safeSendToWebContents(webContents, channel, { ...payload, requestId });
+    };
+    void (async () => {
+      const trimmed = adapter === "dsh-acp"
+        ? dshAcpInstallCommand({ prefix: dshAcpManagedRoot(getDataDir()), version: targetVersion })
+        : command.trim();
+      if (!trimmed) throw new Error("install command required");
+
+      const preflight = await prepareInstallEnvironment(trimmed, adapter);
+      if (preflight.failureCode) {
+        const error = preflight.error || "Install environment check failed";
+        const exitCode = preflight.failureCode === "tool_missing" ? 127 : 1;
+        trackAgentSetup(adapter, "install", "failed", preflight.failureCode);
+        send({ type: "stderr", content: `${error}\n` });
+        send({
+          type: "done",
+          exitCode,
+          failureCode: preflight.failureCode,
+          failureDetail: preflight.failureDetail
+        });
+        resolve({ success: false, exitCode, stdout: "", stderr: error });
+        return;
+      }
+
+      release = acquireRuntimeInstall(adapter);
+      if (adapter === "dsh-acp") await prepareDshAcpManagedInstall();
+      const installCommand = preflight.command;
+      const isWindows = process.platform === "win32";
+      const isPowerShellCommand =
+        preflight.requiresPowerShell ||
+        /^irm\s/i.test(installCommand) ||
+        /\|\s*iex\b/i.test(installCommand) ||
+        /Invoke-(WebRequest|Expression)/i.test(installCommand) ||
+        (isWindows && /"/.test(installCommand));
+
+      let shell: string;
+      let args: string[];
+      if (isWindows && isPowerShellCommand) {
+        shell = "powershell";
+        args = [
+          "-ExecutionPolicy", "Bypass",
+          "-OutputFormat", "Text",
+          "-Command",
+          "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; " +
+            installCommand
+        ];
+      } else if (isWindows) {
+        shell = "cmd";
+        args = ["/C", installCommand];
+      } else {
+        shell = process.env.SHELL || "/bin/sh";
+        args = ["-lc", installCommand];
+      }
+
+      const child = spawn(shell, args, { env: preflight.env, windowsHide: isWindows });
       let stdout = "";
       let stderr = "";
       let settled = false;
@@ -1087,6 +1411,7 @@ export function cliInstallStream(
       ) => {
         if (settled) return;
         settled = true;
+        release();
         clearTimeout(timer);
         send({ type: "done", exitCode, failureCode, failureDetail });
         resolve({ success: exitCode === 0, exitCode, stdout, stderr });
@@ -1128,6 +1453,6 @@ export function cliInstallStream(
         );
         complete(code);
       });
-    })().catch(reject);
+    })().catch(error => { release(); reject(error); });
   });
 }

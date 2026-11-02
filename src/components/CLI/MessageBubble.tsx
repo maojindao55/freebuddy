@@ -2,7 +2,9 @@ import {
   Brain,
   Check,
   Copy,
+  ExternalLink,
   FileText,
+  GitBranch,
   LoaderCircle,
   Package,
   Search,
@@ -16,6 +18,10 @@ import {
 import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { useTranslation } from "react-i18next";
+import { isTruncatedStreamNotice, prepareStoredStreamItems } from "@freebuddy/cli-stream";
+import { HistoryDetails } from "./HistoryDetails";
+import { FileChangesCard } from "./FileChanges";
+import { isOfficeOrDocFile } from "@/components/DocStudio/utils/docFileKinds";
 
 import { displayAgentName } from "@/config/agentDisplay";
 import type { ChatAttachment, ConversationMessage } from "@/services/cli/types";
@@ -31,9 +37,12 @@ import { splitWorkspaceFileMentions } from "@/utils/workspaceFileMentions";
 import { pluginDisplayName, splitPluginMentions } from "@/utils/pluginMentions";
 import { sanitizeStreamItems } from "@/utils/streamMedia";
 import { AgentAvatar } from "./AgentAvatar";
+import { MessageSkillTags } from "./MessageSkillTags";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
 import { isVisibleItem, visibleBlocks } from "./messageBlocks";
+import { selectRunMetrics } from "./runCardMetrics";
+import { hasMessageRunMetrics, LiveRunElapsed, MessageRunMetrics } from "./MessageRunMetrics";
 import { useWhipEffectStore, type WhipTargetPoint } from "@/store/whipEffectStore";
 
 type MessageBlock = ReturnType<typeof visibleBlocks>[number];
@@ -166,28 +175,26 @@ function normalizeRawItem(item: Extract<CliStreamItem, { kind: "raw" }>): CliStr
 }
 
 export function normalizeStoredItems(items: CliStreamItem[]): CliStreamItem[] {
-  let out: CliStreamItem[] = [];
+  // Coalesce tiny append chunks before rebuilding accumulated text/tool state.
+  return appendItems([], items.flatMap(item =>
+    item.kind === "raw" ? normalizeRawItem(item) : [item]
+  ));
+}
 
-  for (const item of items) {
-    const normalized = item.kind === "raw" ? normalizeRawItem(item) : [item];
-
-    for (const next of normalized) {
-      const last = out[out.length - 1];
-      if (
-        next.kind === "error" &&
-        last?.kind === "error" &&
-        last.message === next.message
-      ) {
-        continue;
-      }
-      out = appendItems(out, [next]);
-    }
+function prepareStoredItems(items: CliStreamItem[] | undefined, content: string): CliStreamItem[] {
+  const raw: CliStreamItem[] = [{ kind: "raw", content }];
+  const sanitize = (value: CliStreamItem[]) => sanitizeStreamItems(value, image =>
+    useImagePreviewStore.getState().register(image)
+  );
+  try {
+    return normalizeStoredItems(sanitize(items ?? raw));
+  } catch {
+    return normalizeStoredItems(sanitize(raw));
   }
-
-  return out;
 }
 
 function copyableItemText(item: CliStreamItem): string {
+  if (isTruncatedStreamNotice(item)) return "";
   if (item.kind === "text" || item.kind === "raw") return item.content;
   return "";
 }
@@ -511,6 +518,7 @@ function renderMessageBlock(block: MessageBlock, key: string | number) {
 
 function StreamProcessGroup({ blocks }: { blocks: MessageBlock[] }) {
   const { t } = useTranslation();
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const hasRunning = blocks.some(blockIsRunning);
   const activityCounts = countProcessActivity(blocks);
   const outcomeCounts = countProcessOutcomes(blocks);
@@ -526,6 +534,9 @@ function StreamProcessGroup({ blocks }: { blocks: MessageBlock[] }) {
     <details
       className={`stream-process${hasRunning ? " running" : ""}`}
       aria-label={t("stream.processDetails", { count: blocks.length })}
+      onToggle={(event) => {
+        setDetailsOpen(event.currentTarget.open);
+      }}
     >
       <summary>
         <Icon
@@ -550,11 +561,13 @@ function StreamProcessGroup({ blocks }: { blocks: MessageBlock[] }) {
           )}
         </span>
       </summary>
-      <div className="stream-process-detail-list">
-        {blocks.map((block, index) =>
-          renderMessageBlock(block, `process-${index}`)
-        )}
-      </div>
+      {detailsOpen ? (
+        <div className="stream-process-detail-list">
+          {blocks.map((block, index) =>
+            renderMessageBlock(block, `process-${index}`)
+          )}
+        </div>
+      ) : null}
     </details>
   );
 }
@@ -644,7 +657,13 @@ function MessageAttachments({
     <div className="message-attachments attachment-list" aria-label={t("attachments.listAria")}>
       {attachments.map((attachment) => {
         const isImage = attachment.kind === "image";
+        const isDoc = isOfficeOrDocFile(attachment.path);
         const previewSrc = isImage ? attachmentPreviewUrl(attachment.path) : null;
+        const handleOpenDoc = () => {
+          if (isDoc && window.freebuddy?.docStudio?.openWindow) {
+            void window.freebuddy.docStudio.openWindow({ filePath: attachment.path });
+          }
+        };
         const thumb = (
           <span className="message-attachment-thumb" aria-hidden={!isImage}>
             {isImage && previewSrc ? (
@@ -674,7 +693,15 @@ function MessageAttachments({
           </span>
         );
         return (
-          <div className="message-attachment" key={attachment.id} title={attachment.path}>
+          <div
+            className={`message-attachment${isDoc ? " is-doc-clickable" : ""}`}
+            key={attachment.id}
+            title={isDoc ? `${attachment.path} (${t("docStudio.openInStudio", "Open in DocStudio")})` : attachment.path}
+            onClick={isDoc ? handleOpenDoc : undefined}
+            role={isDoc ? "button" : undefined}
+            tabIndex={isDoc ? 0 : undefined}
+            onKeyDown={isDoc ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenDoc(); } } : undefined}
+          >
             {isImage && previewSrc ? (
               <button
                 type="button"
@@ -688,7 +715,15 @@ function MessageAttachments({
               thumb
             )}
             <span className="message-attachment-main">
-              <span className="message-attachment-name">{attachment.name}</span>
+              <span className="message-attachment-name">
+                {attachment.name}
+                {isDoc && (
+                  <span className="doc-studio-badge">
+                    <ExternalLink size={10} />
+                    <span>DocStudio</span>
+                  </span>
+                )}
+              </span>
               <span className="message-attachment-meta">
                 {attachmentSummary(attachment)}
               </span>
@@ -758,8 +793,6 @@ export const MessageBubble = memo(function MessageBubble({
   adapter,
   agentName,
   agentIconKey,
-  blockLimit,
-  typingChars,
   afterContent,
   cwd
 }: {
@@ -767,8 +800,6 @@ export const MessageBubble = memo(function MessageBubble({
   adapter?: string;
   agentName?: string;
   agentIconKey?: string;
-  blockLimit?: number;
-  typingChars?: number;
   afterContent?: ReactNode;
   cwd?: string;
 }) {
@@ -776,52 +807,36 @@ export const MessageBubble = memo(function MessageBubble({
   const currentUser = useConversationStore((s) => s.currentUser);
   const items = useMemo<CliStreamItem[]>(() => {
     if (message.role !== "assistant") return [];
-    try {
-      const parsed = JSON.parse(message.content);
-      const base = Array.isArray(parsed)
-        ? parsed
-        : [{ kind: "raw", content: message.content } satisfies CliStreamItem];
-      return normalizeStoredItems(
-        sanitizeStreamItems(base as CliStreamItem[], (image) =>
-          useImagePreviewStore.getState().register(image)
-        )
-      );
-    } catch {
-      return normalizeStoredItems(
-        sanitizeStreamItems([{ kind: "raw", content: message.content }], (image) =>
-          useImagePreviewStore.getState().register(image)
-        )
-      );
+    return prepareStoredStreamItems(message.content, prepareStoredItems, message.id);
+  }, [message.role, message.content, message.id]);
+  const [restoredItems, setRestoredItems] = useState<CliStreamItem[]>([]);
+  const historyTruncated = items.some(isTruncatedStreamNotice);
+  const displayItems = useMemo(() => {
+    const saved = items.filter((item) => !isTruncatedStreamNotice(item));
+    if (!restoredItems.length) return saved;
+    const restored = normalizeStoredItems(sanitizeStreamItems(restoredItems, (image) =>
+      useImagePreviewStore.getState().register(image)));
+    const savedText = saved.filter((item) => item.kind === "text");
+    const restoredText = restored.filter((item) => item.kind === "text");
+    const answer = savedText.at(-1);
+    const lastText = restoredText.at(-1);
+    // A complete saved answer takes precedence over the last replayed answer.
+    // Earlier assistant messages remain in their original stream positions.
+    if (answer && lastText && (answer.content.includes(lastText.content) || lastText.content.includes(answer.content))) {
+      const index = restored.indexOf(lastText);
+      restored[index] = answer;
+      return normalizeStoredItems(appendItems(restored, saved.filter((item) => item.kind !== "text")));
     }
-  }, [message.role, message.content]);
+    return normalizeStoredItems(appendItems(restored, saved));
+  }, [items, restoredItems]);
   const visibleItems = useMemo(() => {
-    const hideDiagnosticStderr = items.some(
+    const hideDiagnosticStderr = displayItems.some(
       (item) => item.kind === "error" && Boolean(item.details?.length)
     );
-    return items.filter((item) => isVisibleItem(item, hideDiagnosticStderr));
-  }, [items]);
+    return displayItems.filter((item) => isVisibleItem(item, hideDiagnosticStderr));
+  }, [displayItems]);
   const blocks = useMemo(() => visibleBlocks(visibleItems), [visibleItems]);
-  const renderedBlocks = useMemo(() => {
-    const sliced = blockLimit != null ? blocks.slice(0, blockLimit) : blocks;
-    if (typingChars == null || sliced.length === 0) return sliced;
-    const lastIdx = sliced.length - 1;
-    const last = sliced[lastIdx];
-    if (
-      last.kind === "single" &&
-      (last.item.kind === "text" || last.item.kind === "raw")
-    ) {
-      const next = sliced.slice();
-      next[lastIdx] = {
-        ...last,
-        item: {
-          ...last.item,
-          content: (last.item.content ?? "").slice(0, typingChars)
-        }
-      };
-      return next;
-    }
-    return sliced;
-  }, [blocks, blockLimit, typingChars]);
+  const renderedBlocks = blocks;
   const renderedSections = useMemo(
     () => buildDisplaySections(renderedBlocks),
     [renderedBlocks]
@@ -943,6 +958,16 @@ export const MessageBubble = memo(function MessageBubble({
   );
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
+  const runMetrics = useMemo(
+    () => (message.role === "assistant" ? selectRunMetrics(items, message.taskId) : undefined),
+    [message.role, message.taskId, items]
+  );
+  const liveRunMetricsReceivedAt = useConversationStore((s) => {
+    const l = s.live[message.conversationId];
+    return l?.messageId === message.id ? l.runMetricsReceivedAt : undefined;
+  });
+  const runActive = message.status === "running" || message.status === "starting";
+  const showRunMetrics = message.role === "assistant" && !runActive && !!runMetrics && hasMessageRunMetrics(runMetrics);
   const doCopy = (text: string) => {
     if (!text) return;
     void copyToClipboard(text).then(() => {
@@ -951,40 +976,81 @@ export const MessageBubble = memo(function MessageBubble({
     });
   };
 
-  const actionBarNode = showActionBar ? (
+  const forkConversationAction = useConversationStore((s) => s.forkConversation);
+  const [forking, setForking] = useState(false);
+  const canFork = message.role !== "system" && !runActive;
+  const doFork = () => {
+    if (forking) return;
+    setForking(true);
+    forkConversationAction({
+      conversationId: message.conversationId,
+      throughMessageId: message.id,
+      titleSuffix: t("conversations.forkSuffix")
+    })
+      .catch((error) => {
+        if (import.meta.env?.DEV) {
+          console.warn("[FreeBuddy] Failed to fork conversation:", error);
+        }
+      })
+      .finally(() => setForking(false));
+  };
+  const forkButton = canFork ? (
+    <button
+      type="button"
+      className="msg-action-btn msg-fork-btn"
+      onClick={doFork}
+      disabled={forking}
+      title={t("message.fork")}
+      aria-label={t("message.fork")}
+    >
+      {forking ? (
+        <LoaderCircle className="msg-action-icon spin" aria-hidden="true" />
+      ) : (
+        <GitBranch className="msg-action-icon" aria-hidden="true" />
+      )}
+    </button>
+  ) : null;
+
+  const actionBarNode = showActionBar || showRunMetrics || (canFork && message.role === "assistant") ? (
     <div className="msg-actions">
-      <button
-        type="button"
-        className={`msg-action-btn${copied ? " copied" : ""}`}
-        onClick={() => doCopy(copyText)}
-        title={t("message.copy")}
-        aria-label={t("message.copy")}
-      >
-        {copied ? (
-          <Check className="msg-action-icon" aria-hidden="true" />
-        ) : (
-          <Copy className="msg-action-icon" aria-hidden="true" />
-        )}
-      </button>
-      <button
-        type="button"
-        className={`msg-action-btn${vote === "up" ? " active up" : ""}`}
-        onClick={() => setVote((v) => (v === "up" ? null : "up"))}
-        title={t("message.upvote")}
-        aria-label={t("message.upvote")}
-      >
-        <ThumbsUp className="msg-action-icon" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className={`msg-action-btn${vote === "down" ? " active down" : ""}`}
-        onClick={() => setVote((v) => (v === "down" ? null : "down"))}
-        title={t("message.downvote")}
-        aria-label={t("message.downvote")}
-      >
-        <ThumbsDown className="msg-action-icon" aria-hidden="true" />
-      </button>
+      {showActionBar && (
+        <>
+          <button
+            type="button"
+            className={`msg-action-btn${copied ? " copied" : ""}`}
+            onClick={() => doCopy(copyText)}
+            title={t("message.copy")}
+            aria-label={t("message.copy")}
+          >
+            {copied ? (
+              <Check className="msg-action-icon" aria-hidden="true" />
+            ) : (
+              <Copy className="msg-action-icon" aria-hidden="true" />
+            )}
+          </button>
+          <button
+            type="button"
+            className={`msg-action-btn${vote === "up" ? " active up" : ""}`}
+            onClick={() => setVote((v) => (v === "up" ? null : "up"))}
+            title={t("message.upvote")}
+            aria-label={t("message.upvote")}
+          >
+            <ThumbsUp className="msg-action-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={`msg-action-btn${vote === "down" ? " active down" : ""}`}
+            onClick={() => setVote((v) => (v === "down" ? null : "down"))}
+            title={t("message.downvote")}
+            aria-label={t("message.downvote")}
+          >
+            <ThumbsDown className="msg-action-icon" aria-hidden="true" />
+          </button>
+        </>
+      )}
+      {message.role === "assistant" && forkButton}
       {timeStr && <span className="msg-action-time">{timeStr}</span>}
+      {showRunMetrics && runMetrics && <MessageRunMetrics metrics={runMetrics} />}
     </div>
   ) : null;
 
@@ -994,7 +1060,7 @@ export const MessageBubble = memo(function MessageBubble({
     const displayContent = stripConversationShareLinks(message.content);
     const hasText = displayContent.length > 0;
     const hasOthers = otherAttachments.length > 0;
-    const showBubble = hasText || hasOthers;
+    const showBubble = hasText || hasOthers || Boolean(message.skillSnapshot?.length);
     const userAuthor =
       message.authorUsername?.trim() || currentUser?.username || "";
     const userInitial = (userAuthor[0] ?? "?").toUpperCase();
@@ -1003,12 +1069,15 @@ export const MessageBubble = memo(function MessageBubble({
       <div className="msg msg-user">
         <div className="msg-content-wrapper">
           <div className="msg-header">
+            {timeStr && <span className="msg-time">{timeStr}</span>}
             <span className="msg-author">
               {userAuthor || t("message.you")}
             </span>
+            {forkButton}
           </div>
           {showBubble && (
             <div className="msg-bubble">
+              <MessageSkillTags skills={message.skillSnapshot ?? []} />
               {hasText && <UserMessageText content={displayContent} />}
               <MessageAttachments attachments={otherAttachments} />
             </div>
@@ -1047,7 +1116,7 @@ export const MessageBubble = memo(function MessageBubble({
     message.status !== "ready" ? t(`status.${message.status}`) : null;
 
   return (
-    <div className="msg msg-assistant">
+    <div className="msg msg-assistant" data-message-id={message.id} tabIndex={-1}>
       <button
         type="button"
         ref={avatarRef}
@@ -1078,12 +1147,16 @@ export const MessageBubble = memo(function MessageBubble({
                 <span className="status-pill-role">{roleLabel}</span>
               )}
               {statusText && <span>{statusText}</span>}
+              {runActive && runMetrics?.summary && liveRunMetricsReceivedAt !== undefined && (
+                <LiveRunElapsed summary={runMetrics.summary} receivedAt={liveRunMetricsReceivedAt} />
+              )}
             </span>
           )}
         </div>
-        {renderedBlocks.length > 0 && (
+        {(renderedBlocks.length > 0 || historyTruncated) && (
           <div className="msg-bubble">
             <div className="msg-items">
+              {historyTruncated && <HistoryDetails messageId={message.id} onRestore={setRestoredItems} />}
               {renderedSections.map((section, i) =>
                 section.kind === "process" ? (
                   <StreamProcessGroup
@@ -1103,7 +1176,9 @@ export const MessageBubble = memo(function MessageBubble({
             <span>{t("message.thinking")}</span>
           </div>
         )}
+        <FileChangesCard items={displayItems} conversationId={message.conversationId} messageId={message.id} storedTaskId={message.taskId} isRunning={message.status === "running" || message.status === "starting"} />
         {actionBarNode}
+        {afterContent}
       </div>
     </div>
   );

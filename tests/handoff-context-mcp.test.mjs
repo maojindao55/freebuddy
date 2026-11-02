@@ -7,6 +7,7 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createContextMcpServer } from "../dist-electron/mcp/contextMcpServer.js";
+import { createHandoffTranscriptSnapshot } from "../dist-electron/shared/handoffTranscript.js";
 
 const sampleBrief = {
   version: 1,
@@ -71,7 +72,7 @@ function withContextManifest(references, fn, messages = []) {
     fs.writeFileSync(manifest, JSON.stringify({ version: 4, references: resolvedReferences }));
     process.env.FREEBUDDY_CONTEXT_MANIFEST = manifest;
     try {
-      await fn({ snapshot });
+      await fn({ snapshot, dataDir, manifest });
     } finally {
       delete process.env.FREEBUDDY_CONTEXT_MANIFEST;
       fs.rmSync(dataDir, { recursive: true, force: true });
@@ -235,3 +236,41 @@ test("missing or corrupt context manifests return non-error empty results", asyn
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("transfer and share tools read and search hydrated diff snapshots without a live blob store", withContextManifest(
+  [],
+  async ({ dataDir, manifest }) => {
+    const body = { oldText: "before", newText: "snapshot-diff-marker 中文" };
+    const sourceMessages = [{
+      id: "diff-message", conversationId: "A", role: "assistant", status: "done", createdAt: "1",
+      content: JSON.stringify([{ kind: "tool-call", tool: "Edit", toolOutputs: [
+        { kind: "file-edit", path: "file.ts", action: "update", blobKey: "key", apiKey: "private-key" }
+      ] }])
+    }];
+    let available = true;
+    const transcript = createHandoffTranscriptSnapshot(dataDir, "diff", sourceMessages, () => available ? body : undefined);
+    available = false;
+    fs.writeFileSync(manifest, JSON.stringify({ version: 4, references: [
+      reference("transfer", "transfer", sampleBrief, transcript),
+      reference("share", "share", sampleBrief, transcript)
+    ] }));
+    const { client, server } = await connect();
+    try {
+      for (const contextId of ["transfer", "share"]) {
+        const result = await client.callTool({ name: "read_context_messages", arguments: { contextId } });
+        const page = JSON.parse(result.content[0].text);
+        const edit = page.messages[0].content[0].toolOutputs[0];
+        assert.equal(edit.oldText, body.oldText);
+        assert.equal(edit.newText, body.newText);
+        assert.equal(edit.blobKey, undefined);
+        assert.equal(edit.apiKey, "[redacted]");
+        assert.equal(JSON.stringify(result).includes("private-key"), false);
+        const search = await client.callTool({ name: "search_context_history", arguments: { contextId, query: "snapshot-diff-marker" } });
+        assert.equal(JSON.parse(search.content[0].text).matches[0].messageId, "diff-message");
+      }
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  }
+));

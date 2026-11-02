@@ -36,6 +36,9 @@ export function prepareMacElectronShell({
   bundleIdentifier = DEV_BUNDLE_ID,
   iconPath
 }) {
+  if (!fs.existsSync(sourceApp)) {
+    throw new Error("Electron runtime is missing. Run `node node_modules/electron/install.js` before starting FreeBuddy.");
+  }
   const contentsDir = path.join(targetApp, "Contents");
   const resourcesDir = path.join(contentsDir, "Resources");
   const plistPath = path.join(contentsDir, "Info.plist");
@@ -56,6 +59,13 @@ export function prepareMacElectronShell({
     fs.mkdirSync(resourcesDir, { recursive: true });
     fs.copyFileSync(iconPath, path.join(resourcesDir, "AppIcon.icns"));
     setPlistString(plistPath, "CFBundleIconFile", "AppIcon");
+  }
+
+  const devAppex = path.join(path.dirname(path.dirname(targetApp)), ".build/macos/FreeBuddyShareDev.appex");
+  if (fs.existsSync(devAppex)) {
+    const pluginsDir = path.join(contentsDir, "PlugIns");
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.cpSync(devAppex, path.join(pluginsDir, "FreeBuddyShare.appex"), { recursive: true });
   }
 
   return path.join(targetApp, "Contents", "MacOS", "Electron");

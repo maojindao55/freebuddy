@@ -1,7 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from "react";
 import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
-import { Info, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  Copy,
+  Info,
+  KeyRound,
+  LogOut,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Trash2
+} from "lucide-react";
 
 import { useCliExecutorStore, type ResolvedExecutor } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -16,15 +34,47 @@ import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
 import { useCliInstallStore } from "@/store/cliInstallStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
+import { useGuideInstallStore } from "@/store/guideInstallStore";
 import { getAgentIconId } from "@/config/agentIcon";
 import { SkillPicker } from "@/components/CLI/SkillPicker";
 import { useSkillStore } from "@/store/skillStore";
+import { useOnboardingStore } from "@/store/onboardingStore";
+import { useProviderStore } from "@/store/providerStore";
+import { ProviderSelect } from "./ProviderSelect";
 import { cliAdapterDefinitions, type CLIAdapterDefinition } from "@/config/cliAdapters";
-import type { CLIMember } from "@/config/aiMembers";
+import { runtimeVersionBelow } from "../../../electron/shared/cliRuntimeUpdate";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const BYOK_CONTEXT_WINDOW_MIN = 100000;
 const BYOK_CONTEXT_WINDOW_MAX = 1000000;
+
+type AdapterStatusKind =
+  | "disabled"
+  | "checking"
+  | "available"
+  | "update-available"
+  | "unavailable"
+  | "unchecked";
+
+const ADAPTER_STATUS_LABEL_KEY: Record<AdapterStatusKind, string> = {
+  disabled: "settings.cli.disabled",
+  checking: "settings.cli.checking",
+  available: "settings.cli.installed",
+  "update-available": "settings.cli.updateAvailableShort",
+  unavailable: "settings.cli.notInstalled",
+  unchecked: "settings.cli.notChecked"
+};
+
+function adapterStatusKind(
+  ex: ResolvedExecutor,
+  checking: boolean
+): AdapterStatusKind {
+  if (!ex.enabled) return "disabled";
+  if (checking) return "checking";
+  if (ex.runtime?.installed && (ex.runtime.updateStatus === "available" || runtimeVersionBelow(ex.runtime.version, ex.runtime.minimumVersion))) return "update-available";
+  if (ex.runtime?.installed) return "available";
+  return ex.runtime ? "unavailable" : "unchecked";
+}
 
 interface ByokModelDraft {
   id: string;
@@ -157,6 +207,21 @@ function nextCloneLabel(source: ResolvedExecutor, list: ResolvedExecutor[]): str
   return `${base} ${nanoid(4)}`;
 }
 
+const NARROW_LAYOUT_QUERY = "(max-width: 920px)";
+
+function useNarrowLayout(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => window.matchMedia(NARROW_LAYOUT_QUERY).matches
+  );
+  useEffect(() => {
+    const media = window.matchMedia(NARROW_LAYOUT_QUERY);
+    const onChange = () => setNarrow(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
+
 export function CLIAdaptersTab() {
   const { t } = useTranslation();
   const loaded = useCliExecutorStore((s) => s.loaded);
@@ -189,8 +254,9 @@ export function CLIAdaptersTab() {
   const setMemberRuntimeOverride = useConversationStore(
     (s) => s.setMemberRuntimeOverride
   );
+  // Official built-in members carry a profile ("butler" | "guide").
   const officialMembers = useMemo(
-    () => members.filter((member) => member.profile === "butler"),
+    () => members.filter((member) => member.profile),
     [members]
   );
   const runtimeOptions = useMemo(
@@ -262,6 +328,7 @@ export function CLIAdaptersTab() {
         const checked = useCliExecutorStore.getState().resolve(id);
         const runtime = checked?.runtime;
         if (runtime?.installed) {
+          void useCliExecutorStore.getState().checkUpdates(id).catch(() => {});
           notify(t("settings.cli.checkInstalled", {
             label: checked?.label ?? id,
             version: runtime.version ? ` (${runtime.version})` : ""
@@ -290,6 +357,17 @@ export function CLIAdaptersTab() {
     },
     [check, notify, t]
   );
+
+  const handleCheckUpdates = useCallback(async (id: string) => {
+    setCheckingIds(previous => new Set(previous).add(id));
+    try {
+      await useCliExecutorStore.getState().checkUpdates(id, true);
+    } catch (error) {
+      notify(t("settings.cli.checkFailed", { label: id, error: String(error) }));
+    } finally {
+      setCheckingIds(previous => { const next = new Set(previous); next.delete(id); return next; });
+    }
+  }, [notify, t]);
 
   const handleCheckAll = useCallback(async () => {
     setCheckingAll(true);
@@ -329,6 +407,40 @@ export function CLIAdaptersTab() {
     },
     [list, refreshMembers, upsertOverride]
   );
+
+  const handleToggleEnabled = useCallback(
+    async (ex: ResolvedExecutor, enabled: boolean) => {
+      try {
+        await upsertOverride({
+          ...(ex.override ?? {}),
+          id: ex.id,
+          baseAdapter: ex.baseAdapter,
+          enabled
+        });
+        refreshMembers();
+      } catch (error) {
+        notify(
+          t("settings.cli.toggleFailed", {
+            label: ex.label,
+            error: (error as Error)?.message || String(error)
+          })
+        );
+      }
+    },
+    [notify, refreshMembers, t, upsertOverride]
+  );
+
+  const availabilitySummary = useMemo(() => {
+    if (!loaded || category === "official") return null;
+    const scoped = list.filter((ex) => categoryOf(ex) === category);
+    if (!scoped.length) return null;
+    let installed = 0;
+    for (const ex of scoped) {
+      if (ex.runtime?.installed) installed += 1;
+    }
+    if (installed === scoped.length) return null;
+    return { installed, total: scoped.length };
+  }, [list, loaded, category]);
 
   const authControlArgs = useCallback((ex: ResolvedExecutor) => ({
     agentId: `cli-${ex.id}`,
@@ -401,6 +513,13 @@ export function CLIAdaptersTab() {
     void checkAll();
   }, [loaded, checkAll]);
 
+  // A GuideBuddy hand-off may have finished installing while the user was
+  // away from the chat view; re-probe its requested agents when the list
+  // opens so rows never show stale "not installed".
+  useEffect(() => {
+    void useGuideInstallStore.getState().settleGuideTurn();
+  }, []);
+
   useEffect(() => {
     if (!loaded) return;
     if (
@@ -428,29 +547,53 @@ export function CLIAdaptersTab() {
     }
   }, [installingIdSet, list, loaded, startInstall]);
 
-  const renderRow = (ex: ResolvedExecutor) => (
-    <AdapterRow
-      key={ex.id}
-      ex={ex}
-      checking={checkingIds.has(ex.id)}
-      selected={false}
-      onCheck={() => void handleCheck(ex.id)}
-      onClone={() => void handleClone(ex)}
-      onEdit={() => setEditingId(ex.id)}
-      onInstall={() => {
-        if (!ex.installHint) return;
-        startInstall({
-          adapterId: ex.id,
-          label: ex.label,
-          command: ex.installHint
-        });
-      }}
-      authProbe={authProbes[ex.id]}
-      authBusy={authBusyIds.has(ex.id)}
-      authMessage={authMessages[ex.id]}
-      onAuthProbe={() => void handleAuthProbe(ex)}
-      onLogout={() => void handleLogout(ex)}
-      installing={installingIdSet.has(ex.id)}
+  const isNarrow = useNarrowLayout();
+  const editorDirtyRef = useRef(false);
+  const [editorNonce, setEditorNonce] = useState(0);
+  const selectAgent = (id: string | null) => {
+    if (id === editingId) return;
+    if (editorDirtyRef.current && !window.confirm(t("settings.cli.unsavedConfirm"))) {
+      return;
+    }
+    editorDirtyRef.current = false;
+    setEditingId(id);
+  };
+
+  // Wide layouts always show a detail pane, so fall back to the first visible
+  // agent. Narrow layouts keep "nothing selected" to show the list alone.
+  const defaultAgentId =
+    category === "official" ? filteredOfficialMembers[0]?.id : filteredList[0]?.id;
+  useEffect(() => {
+    if (isNarrow || editingId || !defaultAgentId) return;
+    setEditingId(defaultAgentId);
+  }, [defaultAgentId, editingId, isNarrow]);
+
+  const categoryTabs = (
+    <div className="adapter-filter-tabs" role="tablist">
+      {(["builtin", "custom", "official"] as AgentCategory[]).map((c) => (
+        <button
+          key={c}
+          type="button"
+          role="tab"
+          aria-selected={category === c}
+          className={category === c ? "active" : undefined}
+          onClick={() => setCategory(c)}
+          disabled={c !== "official" && !loaded}
+        >
+          {t(`settings.cli.category.${c}`)}{" "}
+          <span>{categoryCounts[c]}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const searchInput = (
+    <input
+      type="search"
+      className="adapter-search"
+      placeholder={t("settings.cli.searchAgents")}
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
     />
   );
 
@@ -467,140 +610,206 @@ export function CLIAdaptersTab() {
     );
   }
 
-  if (editingId && selectedOfficialMember) {
-    return (
-      <div className="settings-tab">
-        <div className="adapter-edit-workspace">
-          <OfficialPersonaPanel
-            key={selectedOfficialMember.id}
-            memberId={selectedOfficialMember.id}
-            runtimeOptions={runtimeOptions}
-            onChangeRuntime={(runtimeKey) =>
-              void setMemberRuntimeOverride(selectedOfficialMember.id, runtimeKey)
-            }
-            onBackToList={() => setEditingId(null)}
-          />
-        </div>
-      </div>
-    );
-  }
+  const masterEmpty =
+    category === "official"
+      ? filteredOfficialMembers.length === 0
+      : !loaded || filteredList.length === 0;
 
-  if (editingId && selectedExecutor) {
-    return (
-      <div className="settings-tab">
-        <div className="adapter-edit-workspace">
-          <EditOverridePanel
-            key={selectedExecutor.id}
-            executorId={selectedExecutor.id}
-            onBackToList={() => setEditingId(null)}
-            onResetSelection={() => setEditingId(null)}
+  const detailPanel =
+    editingId && selectedOfficialMember ? (
+      <OfficialPersonaPanel
+        key={selectedOfficialMember.id}
+        memberId={selectedOfficialMember.id}
+        runtimeOptions={runtimeOptions}
+        onChangeRuntime={(runtimeKey) =>
+          void setMemberRuntimeOverride(selectedOfficialMember.id, runtimeKey)
+        }
+        onBackToList={() => selectAgent(null)}
+      />
+    ) : editingId && selectedExecutor ? (
+      <EditOverridePanel
+        key={`${selectedExecutor.id}:${editorNonce}`}
+        executorId={selectedExecutor.id}
+        dirtyRef={editorDirtyRef}
+        headerBadge={
+          <AdapterStatusBadge
+            kind={adapterStatusKind(selectedExecutor, checkingIds.has(selectedExecutor.id))}
+            title={selectedExecutor.runtime?.lastError}
           />
-        </div>
-      </div>
-    );
-  }
+        }
+        headerMeta={
+          <AdapterHeaderMeta
+            ex={selectedExecutor}
+            checking={checkingIds.has(selectedExecutor.id)}
+            authMessage={authMessages[selectedExecutor.id]}
+          />
+        }
+        headerActions={
+          <AdapterHeaderActions
+            ex={selectedExecutor}
+            checking={checkingIds.has(selectedExecutor.id)}
+            installing={installingIdSet.has(selectedExecutor.id)}
+            authProbe={authProbes[selectedExecutor.id]}
+            authBusy={authBusyIds.has(selectedExecutor.id)}
+            onCheck={() => void handleCheck(selectedExecutor.id)}
+            onCheckUpdates={() => void handleCheckUpdates(selectedExecutor.id)}
+            onClone={() => {
+              if (editorDirtyRef.current && !window.confirm(t("settings.cli.unsavedConfirm"))) {
+                return;
+              }
+              editorDirtyRef.current = false;
+              void handleClone(selectedExecutor);
+            }}
+            onToggleEnabled={(enabled) =>
+              void handleToggleEnabled(selectedExecutor, enabled)
+            }
+            onAuthProbe={() => void handleAuthProbe(selectedExecutor)}
+            onLogout={() => void handleLogout(selectedExecutor)}
+            onInstall={() => {
+              if (!selectedExecutor.installHint) return;
+              startInstall({
+                adapterId: selectedExecutor.id,
+                label: selectedExecutor.label,
+                command: selectedExecutor.installHint
+              });
+            }}
+            onAskGuideInstall={
+              selectedExecutor.id !== "pi-acp" &&
+              selectedExecutor.installHint &&
+              !selectedExecutor.runtime?.installed
+                ? () =>
+                    useGuideInstallStore
+                      .getState()
+                      .requestGuideInstall([selectedExecutor.id])
+                : undefined
+            }
+          />
+        }
+        onBackToList={() => selectAgent(null)}
+        onResetSelection={() => {
+          editorDirtyRef.current = false;
+          setEditorNonce((nonce) => nonce + 1);
+        }}
+      />
+    ) : null;
 
   return (
     <div className="settings-tab">
-      <div className="settings-section-heading">
-        <h3 className="settings-section-title">{t("settings.cli.title")}</h3>
-        <span className="settings-section-desc">
-          {t("settings.cli.description")}
-        </span>
-      </div>
-
-      <div className="adapter-list-toolbar">
-        <div className="adapter-filter-tabs" role="tablist">
-          {(["builtin", "custom", "official"] as AgentCategory[]).map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="tab"
-              aria-selected={category === c}
-              className={category === c ? "active" : undefined}
-              onClick={() => setCategory(c)}
-              disabled={c !== "official" && !loaded}
-            >
-              {t(`settings.cli.category.${c}`)}{" "}
-              <span>{categoryCounts[c]}</span>
-            </button>
-          ))}
-        </div>
-        <input
-          type="search"
-          className="adapter-search"
-          placeholder={t("settings.cli.searchAgents")}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <div className="adapter-settings-workspace">
-        <div className="adapter-list-panel">
-          <div className="adapter-list">
-            {category === "official" ? (
-              filteredOfficialMembers.length === 0 ? (
-                <p className="muted adapter-empty">{t("settings.cli.noResults")}</p>
-              ) : (
-                filteredOfficialMembers.map((member) => (
-                  <OfficialRow
-                    key={member.id}
-                    member={member}
-                    onEdit={() => setEditingId(member.id)}
-                  />
-                ))
-              )
-            ) : !loaded ? (
-              <p className="muted">{t("settings.cli.loading")}</p>
-            ) : filteredList.length === 0 ? (
-              <p className="muted adapter-empty">{t("settings.cli.noResults")}</p>
+      <div
+        className={`adapter-master-detail${
+          detailPanel ? " adapter-master-detail--selected" : ""
+        }`}
+      >
+        <aside
+          className="adapter-master-list"
+          aria-label={t("settings.cli.title")}
+        >
+          {categoryTabs}
+          <div className="adapter-list-toolbar">
+            {searchInput}
+            {availabilitySummary ? (
+              <span className="adapter-availability-summary muted">
+                {t("settings.cli.summary", availabilitySummary)}
+              </span>
+            ) : null}
+          </div>
+          <div className="adapter-master-items">
+            {masterEmpty ? (
+              <p className="muted adapter-empty">
+                {category === "official" || loaded
+                  ? t("settings.cli.noResults")
+                  : t("settings.cli.loading")}
+              </p>
+            ) : category === "official" ? (
+              filteredOfficialMembers.map((member) => (
+                <AdapterListItem
+                  key={member.id}
+                  adapter={member.cli.adapter}
+                  agentId={member.id}
+                  label={member.name}
+                  statusKind="available"
+                  statusLabel={t("settings.cli.category.official")}
+                  selected={member.id === editingId}
+                  onSelect={() => selectAgent(member.id)}
+                />
+              ))
             ) : (
-              filteredList.map((ex) => renderRow(ex))
+              filteredList.map((ex) => {
+                const kind = adapterStatusKind(ex, checkingIds.has(ex.id));
+                return (
+                  <AdapterListItem
+                    key={ex.id}
+                    adapter={ex.baseAdapter ?? ex.id}
+                    agentId={`cli-${ex.id}`}
+                    label={ex.label}
+                    statusKind={kind}
+                    statusLabel={t(ADAPTER_STATUS_LABEL_KEY[kind])}
+                    selected={ex.id === editingId}
+                    onSelect={() => selectAgent(ex.id)}
+                  />
+                );
+              })
             )}
           </div>
+        </aside>
+        <div className="adapter-edit-workspace">
+          {detailPanel ?? (
+            <p className="muted adapter-empty adapter-detail-empty">
+              {loaded ? t("settings.cli.noResults") : t("settings.cli.loading")}
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function OfficialRow({
-  member,
-  onEdit
+function AdapterListItem({
+  adapter,
+  agentId,
+  label,
+  statusKind,
+  statusLabel,
+  selected,
+  onSelect
 }: {
-  member: CLIMember;
-  onEdit: () => void;
+  adapter: string;
+  agentId: string;
+  label: string;
+  statusKind: AdapterStatusKind;
+  statusLabel: string;
+  selected: boolean;
+  onSelect: () => void;
 }) {
-  const { t } = useTranslation();
-  const runtimeLabel = member.runtimeKey ?? member.cli.adapter;
-  return (
-    <div className="adapter-row">
+  const body = (
+    <>
       <AgentAvatar
-        adapter={member.cli.adapter}
-        agentId={member.id}
-        className="adapter-avatar"
-        fallback={<span>{member.name.slice(0, 2).toUpperCase()}</span>}
+        adapter={adapter}
+        agentId={agentId}
+        className="adapter-master-avatar"
+        fallback={<span>{label.slice(0, 2).toUpperCase()}</span>}
       />
-      <button type="button" className="adapter-row-main" onClick={onEdit}>
-        <div className="adapter-row-title">
-          <strong>{member.name}</strong>
-          <span className="adapter-availability available">
-            {t("settings.cli.category.official")}
-          </span>
-        </div>
-        <div className="adapter-row-meta">
-          <span className="adapter-status muted">
-            {t("settings.cli.official.runtime")}: <code>{runtimeLabel}</code>
-          </span>
-          {member.description && <span className="muted">{member.description}</span>}
-        </div>
-      </button>
-      <div className="adapter-row-actions">
-        <button type="button" className="adapter-row-edit-btn" onClick={onEdit}>
-          ›
-        </button>
-      </div>
-    </div>
+      <span className="adapter-master-item-label">{label}</span>
+      <span
+        className={`adapter-master-dot ${statusKind}`}
+        role="img"
+        aria-label={statusLabel}
+      />
+    </>
+  );
+  const className = `adapter-master-item${selected ? " selected" : ""}${
+    statusKind === "disabled" ? " disabled" : ""
+  }`;
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-current={selected ? "true" : undefined}
+      title={`${label} · ${statusLabel}`}
+      onClick={onSelect}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -642,7 +851,11 @@ function OfficialPersonaPanel({
             className="adapter-editor-back"
             onClick={onBackToList}
           >
-            <span className="adapter-editor-back-chevron">‹</span>
+            <ChevronLeft
+              size={15}
+              className="adapter-editor-back-chevron"
+              aria-hidden="true"
+            />
             {t("settings.cli.backToList")}
           </button>
           <div className="adapter-editor-heading">
@@ -705,167 +918,307 @@ function OfficialPersonaPanel({
             </span>
           </div>
         </div>
+
+        {member.profile === "guide" ? (
+          <div className="adapter-editor-section">
+            <div className="adapter-editor-field">
+              <span className="adapter-editor-field-label">
+                {t("settings.cli.official.onboarding")}
+              </span>
+              <button
+                type="button"
+                className="adapter-editor-upgrade"
+                onClick={() => useOnboardingStore.getState().restart()}
+              >
+                {t("settings.cli.official.restartOnboarding")}
+              </button>
+              <span className="settings-field-hint">
+                {t("settings.cli.official.onboardingHint")}
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
 }
 
-function AdapterRow({
+function AdapterHeaderActions({
   ex,
   checking,
-  selected,
-  onCheck,
-  onClone,
-  onEdit,
-  onInstall,
+  installing,
   authProbe,
   authBusy,
-  authMessage,
+  onCheck,
+  onCheckUpdates,
+  onClone,
+  onInstall,
+  onToggleEnabled,
   onAuthProbe,
   onLogout,
-  installing
+  onAskGuideInstall
 }: {
   ex: ResolvedExecutor;
   checking: boolean;
-  selected: boolean;
-  onCheck: () => void;
-  onClone: () => void;
-  onEdit: () => void;
-  onInstall: () => void;
+  installing: boolean;
   authProbe?: CliAuthProbeResult;
   authBusy: boolean;
-  authMessage?: string;
+  onCheck: () => void;
+  onCheckUpdates: () => void;
+  onClone: () => void;
+  onInstall: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
   onAuthProbe: () => void;
   onLogout: () => void;
-  installing: boolean;
+  onAskGuideInstall?: () => void;
 }) {
   const { t } = useTranslation();
   const rt = ex.runtime;
-  const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
-  const parsedExtraArgs = extractModelArg(ex.extraArgs);
-  const model = parsedExtraArgs.model;
-  const statusKind = checking
-    ? "checking"
-    : rt?.installed
-      ? "available"
-      : rt
-        ? "unavailable"
-        : "unchecked";
-  const codexUpdateStatus = ex.id === "codex-acp" ? rt?.updateStatus : undefined;
+  const menuItems: AdapterRowMenuItem[] = [
+    {
+      key: "check",
+      label: checking ? t("settings.cli.checking") : t("common.check"),
+      icon: <RefreshCw size={14} aria-hidden="true" />,
+      disabled: checking || installing,
+      onSelect: onCheck
+    },
+    ...(rt?.installed && rt.updateCheckSupported ? [{
+      key: "check-updates",
+      label: t("settings.cli.checkUpdates"),
+      icon: <RefreshCw size={14} aria-hidden="true" />,
+      disabled: checking || installing || rt.updateStatus === "updating",
+      onSelect: onCheckUpdates
+    }] : []),
+    ...(rt?.installed && !authProbe
+      ? [
+          {
+            key: "auth",
+            label: authBusy
+              ? t("settings.cli.authChecking")
+              : t("settings.cli.checkAuthentication"),
+            icon: <KeyRound size={14} aria-hidden="true" />,
+            disabled: authBusy,
+            onSelect: onAuthProbe
+          }
+        ]
+      : []),
+    ...(rt?.installed && authProbe?.logoutSupported
+      ? [
+          {
+            key: "logout",
+            label: authBusy
+              ? t("settings.cli.loggingOut")
+              : t("settings.cli.logout"),
+            icon: <LogOut size={14} aria-hidden="true" />,
+            danger: true,
+            disabled: authBusy,
+            onSelect: onLogout
+          }
+        ]
+      : []),
+    {
+      key: "clone",
+      label: t("common.clone"),
+      icon: <Copy size={14} aria-hidden="true" />,
+      disabled: checking || installing,
+      onSelect: onClone
+    },
+  ];
+  const toggleId = `adapter-enabled-${ex.id}`;
   return (
-    <div className={`adapter-row${selected ? " selected" : ""}`}>
-      <AgentAvatar
-        adapter={ex.id}
-        className="adapter-avatar"
-        fallback={<span>{ex.label.slice(0, 2).toUpperCase()}</span>}
-      />
-      <button type="button" className="adapter-row-main" onClick={onEdit}>
-        <div className="adapter-row-title">
-          <strong>{ex.label}</strong>
-          <span className={`adapter-availability ${statusKind}`}>
-            {checking
-              ? t("settings.cli.checking")
-              : rt?.installed
-                ? t("settings.cli.installed")
-                : rt
-                  ? t("settings.cli.notInstalled")
-                  : t("settings.cli.notChecked")}
-          </span>
-        </div>
-        <div className="adapter-row-meta">
-          {checking ? (
-            <span className="adapter-status muted">{t("settings.cli.checking")}</span>
-          ) : rt?.installed ? (
-            <span className="adapter-status ok">
-              {t("settings.cli.installed")} {rt.version ? `(${rt.version})` : ""}
-            </span>
-          ) : rt ? (
-            <span className="adapter-status warn" title={rt.lastError}>
-              {t("settings.cli.notInstalled")}
-            </span>
-          ) : (
-            <span className="adapter-status muted">{t("settings.cli.notChecked")}</span>
-          )}
-          {!checking && rt?.lastError && !rt.installed && (
-            <span className="adapter-status error" title={rt.lastError}>
-              {t(cliRuntimeErrorKey(rt.lastError))}
-            </span>
-          )}
-          {ex.id === "codex-acp" && codexCliRuntime?.installed && (
-            <span className="muted">
-              Codex CLI: <code>{codexCliRuntime.version}</code>
-            </span>
-          )}
-          <RuntimeAutoUpdateStatus
-            runtime={codexUpdateStatus ? rt : undefined}
-            label="Codex ACP"
+    <>
+      <div className="adapter-editor-toggle">
+        <label htmlFor={toggleId} className="adapter-editor-toggle-text">
+          {ex.enabled ? t("settings.cli.enabled") : t("settings.cli.disabled")}
+        </label>
+        <label className="adapter-switch">
+          <input
+            id={toggleId}
+            type="checkbox"
+            checked={ex.enabled}
+            disabled={checking || installing}
+            aria-label={t("settings.cli.toggleAria", { name: ex.label })}
+            onChange={(event) => onToggleEnabled(event.currentTarget.checked)}
           />
-          {ex.id === "codex-acp" && (
-            <RuntimeAutoUpdateStatus
-              runtime={codexCliRuntime}
-              label="Codex CLI"
-            />
-          )}
-          {model && (
-            <span className="muted">
-              {t("settings.cli.modelLabel")}: <code>{model}</code>
-            </span>
-          )}
-          {authMessage && (
-            <span className="adapter-status muted" title={authMessage}>
-              {authMessage}
-            </span>
-          )}
-        </div>
-      </button>
-      <div className="adapter-row-actions">
-        {!rt?.installed && ex.installHint && (
+          <span aria-hidden="true" />
+        </label>
+      </div>
+      <span className="adapter-editor-actions-divider" aria-hidden="true" />
+      {ex.installHint && !(ex.id === "pi-acp" && rt?.installed) &&
+        (rt?.installed ? (
           <button
             type="button"
-            className="primary"
+            className="adapter-editor-action"
+            onClick={onInstall}
+            disabled={installing || checking || rt?.updateStatus === "updating"}
+            title={t((ex.baseAdapter ?? ex.id) === "agy-acp" ? "settings.cli.antigravityUpgradeHint" : "settings.cli.upgradeHint")}
+          >
+            {installing ? t("common.upgrading") : t("common.upgrade")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="adapter-editor-action primary"
             onClick={onInstall}
             disabled={installing || checking}
           >
             {installing ? t("common.installing") : t("common.install")}
           </button>
-        )}
-        <button type="button" onClick={onCheck} disabled={checking || installing}>
-          {checking ? t("settings.cli.checking") : t("common.check")}
+        ))}
+      {onAskGuideInstall && (
+        <button
+          type="button"
+          className="adapter-editor-action"
+          onClick={onAskGuideInstall}
+          disabled={installing || checking}
+          title={t("settings.cli.guideInstall.actionHint")}
+        >
+          <Sparkles size={12} aria-hidden="true" />
+          {t("settings.cli.guideInstall.bannerAction")}
         </button>
-        {rt?.installed && !authProbe && (
-          <button type="button" onClick={onAuthProbe} disabled={authBusy}>
-            {authBusy
-              ? t("settings.cli.authChecking")
-              : t("settings.cli.checkAuthentication")}
-          </button>
-        )}
-        {rt?.installed && authProbe?.logoutSupported && (
-          <button
-            type="button"
-            className="danger"
-            onClick={onLogout}
-            disabled={authBusy}
-          >
-            {authBusy ? t("settings.cli.loggingOut") : t("settings.cli.logout")}
-          </button>
-        )}
-        <button type="button" onClick={onClone} disabled={checking || installing}>
-          {t("common.clone")}
-        </button>
-        <button type="button" className="adapter-row-edit-btn" onClick={onEdit} disabled={checking || selected}>
-          ›
-        </button>
-      </div>
+      )}
+      <AdapterRowMenu label={t("settings.cli.moreActions")} items={menuItems} />
+    </>
+  );
+}
+
+function AdapterStatusBadge({ kind, title }: { kind: AdapterStatusKind; title?: string }) {
+  const { t } = useTranslation();
+  return (
+    <span className={`adapter-editor-badge ${kind}`} title={title}>
+      {t(`settings.cli.status.${kind}`)}
+    </span>
+  );
+}
+
+function AdapterHeaderMeta({
+  ex,
+  checking,
+  authMessage
+}: {
+  ex: ResolvedExecutor;
+  checking: boolean;
+  authMessage?: string;
+}) {
+  const { t } = useTranslation();
+  const rt = ex.runtime;
+  const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
+  const isAntigravity = (ex.baseAdapter ?? ex.id) === "agy-acp";
+  return (
+    <>
+      {!checking && rt?.installed && (
+        <span>
+          {t(isAntigravity ? "settings.cli.adapterVersionLabel" : "settings.cli.versionLabel")} <code>{rt.version || t("settings.cli.versionUnknown")}</code>
+        </span>
+      )}
+      {rt?.installed && runtimeVersionBelow(rt.version, rt.minimumVersion) && <span className="adapter-status error">
+        {t("settings.cli.minimumVersionWarning", { version: rt.minimumVersion })}
+      </span>}
+      {rt?.installed && ex.id === "pi-acp" && <span>{t("settings.cli.managedByApp")}</span>}
+      {!checking && rt?.lastError && !rt.installed && (
+        <span className="adapter-status error" title={rt.lastError}>
+          {t(cliRuntimeErrorKey(rt.lastError))}
+        </span>
+      )}
+      {ex.id === "codex-acp" && codexCliRuntime?.installed && (
+        <span>
+          Codex CLI: <code>{codexCliRuntime.version}</code>
+        </span>
+      )}
+      <RuntimeAutoUpdateStatus
+        runtime={rt}
+        label={isAntigravity ? `${ex.label} ACP` : ex.label}
+        adapterOnly={isAntigravity}
+      />
+      {ex.id === "codex-acp" && (
+        <RuntimeAutoUpdateStatus runtime={codexCliRuntime} label="Codex CLI" />
+      )}
+      {authMessage && <span title={authMessage}>{authMessage}</span>}
+    </>
+  );
+}
+
+interface AdapterRowMenuItem {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}
+
+function AdapterRowMenu({
+  label,
+  items
+}: {
+  label: string;
+  items: AdapterRowMenuItem[];
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  if (!items.length) return null;
+  return (
+    <div className="adapter-row-menu" ref={rootRef}>
+      <button
+        type="button"
+        className="icon-btn adapter-row-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <MoreHorizontal size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="adapter-row-menu-popover" role="menu">
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              className={item.danger ? "danger" : undefined}
+              disabled={item.disabled}
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function RuntimeAutoUpdateStatus({
   runtime,
-  label
+  label,
+  adapterOnly = false
 }: {
   runtime?: CliRuntime;
   label: string;
+  adapterOnly?: boolean;
 }) {
   const { t } = useTranslation();
   switch (runtime?.updateStatus) {
@@ -887,18 +1240,24 @@ function RuntimeAutoUpdateStatus({
     case "updated":
       return (
         <span className="adapter-status ok">
-          {t("settings.cli.autoUpdated", {
+          {t("settings.cli.updateVerified", {
             target: label,
-            version: runtime.latestVersion ?? ""
+            version: runtime.version ?? runtime.latestVersion ?? t("settings.cli.versionUnknown")
           })}
         </span>
       );
     case "error":
       return (
         <span className="adapter-status error" title={runtime.lastUpdateError}>
-          {t("settings.cli.autoUpdateFailed", { target: label })}
+          {t("settings.cli.updateCheckFailed", { target: label })}
         </span>
       );
+    case "available":
+      if (!runtime.installed) return null;
+      return <span className="adapter-status muted">{t("settings.cli.updateAvailable", { version: runtime.latestVersion })}</span>;
+    case "current":
+      if (!runtime.installed) return null;
+      return <span className="adapter-status ok">{t(adapterOnly ? "settings.cli.adapterUpToDate" : "settings.cli.upToDate")}</span>;
     default:
       return null;
   }
@@ -906,10 +1265,18 @@ function RuntimeAutoUpdateStatus({
 
 function EditOverridePanel({
   executorId,
+  dirtyRef,
+  headerBadge,
+  headerMeta,
+  headerActions,
   onBackToList,
   onResetSelection
 }: {
   executorId: string;
+  dirtyRef?: { current: boolean };
+  headerBadge?: ReactNode;
+  headerMeta?: ReactNode;
+  headerActions?: ReactNode;
   onBackToList: () => void;
   onResetSelection: () => void;
 }) {
@@ -923,10 +1290,9 @@ function EditOverridePanel({
   const skills = useSkillStore((s) => s.skills);
   const skillsLoaded = useSkillStore((s) => s.loaded);
   const loadSkills = useSkillStore((s) => s.load);
-  const startInstall = useCliInstallStore((s) => s.startJob);
-  const installing = useCliInstallStore((s) =>
-    s.jobs.some((j) => j.adapterId === executorId && !j.done)
-  );
+  const providers = useProviderStore((s) => s.providers);
+  const providersLoaded = useProviderStore((s) => s.loaded);
+  const loadProviders = useProviderStore((s) => s.load);
 
   const [label, setLabel] = useState(ex?.label ?? "");
   const [binary, setBinary] = useState(
@@ -951,19 +1317,30 @@ function EditOverridePanel({
   const isClaude =
     adapterForConfig === "claude-agent-acp" || adapterForConfig === "claude";
   const isDeepSeek = adapterForConfig === "dsh-acp";
+  const isPi = adapterForConfig === "pi-acp";
   const savedCodexByok = ex?.override?.codexByok;
   const savedClaudeByok = ex?.override?.claudeByok;
   const savedDeepSeekByok = ex?.override?.deepseekByok;
+  const savedPiByok = ex?.override?.piByok;
   const savedByok = isCodex
     ? savedCodexByok
     : isClaude
       ? savedClaudeByok
       : isDeepSeek
         ? savedDeepSeekByok
-        : undefined;
+        : isPi
+          ? savedPiByok
+          : undefined;
   const [codexByokEnabled, setCodexByokEnabled] = useState(
     savedByok?.enabled === true
   );
+  const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>(() => {
+    if (savedByok?.enabled !== true) return undefined;
+    const byok = savedByok as { providerId?: string } | undefined;
+    const pid = byok?.providerId;
+    return pid && pid !== "proxy" && pid !== "custom" ? pid : undefined;
+  });
+  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
   const [codexProviderId, setCodexProviderId] = useState(
     savedCodexByok?.providerId ?? "proxy"
   );
@@ -991,13 +1368,21 @@ function EditOverridePanel({
   );
   const [deepseekOfficialApiKey, setDeepseekOfficialApiKey] = useState("");
   const [codexApiKey, setCodexApiKey] = useState("");
-  const [byokModels, setByokModels] = useState<ByokModelDraft[]>(
-    savedByok?.models?.length
-      ? savedByok.models
-      : parsedExtraArgs.model
-        ? [{ id: parsedExtraArgs.model, name: "", supportsVision: isCodex }]
-        : []
-  );
+  const [byokModels, setByokModels] = useState<ByokModelDraft[]>(() => {
+    if (selectedProvider?.models?.length) {
+      const active = selectedProvider.models.filter((m) => m.enabled !== false);
+      return active.map((m) => ({
+        id: m.id,
+        name: m.name ?? "",
+        contextWindow: m.contextWindow,
+        supportsVision: m.supportsVision
+      }));
+    }
+    if (savedByok?.models?.length) return savedByok.models;
+    return parsedExtraArgs.model
+      ? [{ id: parsedExtraArgs.model, name: "", supportsVision: isCodex }]
+      : [];
+  });
   const [byokContextWindow, setByokContextWindow] = useState(
     savedClaudeByok?.contextWindow?.toString() ??
       savedClaudeByok?.compaction?.window?.toString() ??
@@ -1010,6 +1395,8 @@ function EditOverridePanel({
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const [saveError, setSaveError] = useState("");
+  const baselineRef = useRef<string | null>(null);
+  const latestDirtyRef = useRef(false);
 
   useEffect(() => {
     setSaveStatus("idle");
@@ -1022,6 +1409,41 @@ function EditOverridePanel({
   }, [loadSkills, skillsLoaded]);
 
   useEffect(() => {
+    if (!providersLoaded) void loadProviders();
+  }, [loadProviders, providersLoaded]);
+
+  useEffect(() => {
+    if (selectedProvider) {
+      if (selectedProvider.baseUrl && !codexBaseUrl) {
+        setCodexBaseUrl(selectedProvider.baseUrl);
+      }
+      if (selectedProvider.envKey && !codexEnvKey) {
+        setCodexEnvKey(selectedProvider.envKey);
+      }
+    }
+  }, [selectedProvider, codexBaseUrl, codexEnvKey]);
+
+  useEffect(() => {
+    if (selectedProvider) {
+      const active = selectedProvider.models.filter((m) => m.enabled !== false);
+      setByokModels(
+        active.map((m) => ({
+          id: m.id,
+          name: m.name ?? "",
+          contextWindow: m.contextWindow,
+          supportsVision: m.supportsVision
+        }))
+      );
+      if (!model.trim() && active[0]?.id) {
+        setModel(active[0].id);
+      }
+      // Provider-driven normalization rewrites draft fields without user
+      // edits; re-baseline so the unsaved indicator doesn't self-trigger.
+      if (!latestDirtyRef.current) baselineRef.current = null;
+    }
+  }, [selectedProvider]);
+
+  useEffect(() => {
     if (saveStatus !== "saved") return;
     const timer = window.setTimeout(() => setSaveStatus("idle"), 2200);
     return () => window.clearTimeout(timer);
@@ -1030,17 +1452,17 @@ function EditOverridePanel({
   if (!ex) return null;
 
   const isClone = Boolean(ex.isClone);
-  const supportsByok = isCodex || isClaude || isDeepSeek;
+  const supportsByok = isCodex || isClaude || isDeepSeek || isPi;
+  const byokContextWindowInvalid =
+    byokContextWindow.trim() !== "" &&
+    parseByokContextWindow(byokContextWindow) === undefined;
   const byokBaseUrlPlaceholder = isClaude
     ? "https://api.anthropic.com"
     : isDeepSeek
       ? "https://api.deepseek.com"
       : "https://api.openai.com/v1";
 
-  const onSave = async () => {
-    if (saveStatus === "saving") return;
-    setSaveStatus("saving");
-    setSaveError("");
+  const buildOverride = (): CLIExecutorOverride => {
     const cleanedExtraArgs = extraArgs
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -1075,59 +1497,140 @@ function EditOverridePanel({
           ...(contextWindow !== undefined ? { contextWindow } : {}),
           ...(isCodex
             ? { supportsVision: entry.supportsVision !== false }
-            : {})
+            : isDeepSeek
+              ? {
+                  supportsVision:
+                    entry.supportsVision ??
+                    (id.toLowerCase().includes("flash") || id.toLowerCase().includes("vision"))
+                }
+              : isPi
+                ? { supportsVision: entry.supportsVision === true }
+                : {})
         };
         return model;
       })
       .filter((entry) => entry.id.length > 0);
 
+    const effectiveByokModels: CLIByokModel[] = selectedProvider
+      ? selectedProvider.models
+          .filter((m) => m.enabled !== false)
+          .map((m) => ({
+            id: m.id,
+            ...(m.name ? { name: m.name } : {}),
+            ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
+            ...(isCodex
+              ? { supportsVision: m.supportsVision !== false }
+              : isDeepSeek
+                ? {
+                    supportsVision:
+                      m.supportsVision ??
+                      (m.id.toLowerCase().includes("flash") || m.id.toLowerCase().includes("vision"))
+                  }
+                : isPi
+                  ? { supportsVision: m.supportsVision === true }
+                  : {})
+          }))
+      : normalizedByokModels;
+
     const codexByokConfig =
       isCodex && codexByokEnabled
-        ? {
-            enabled: true,
-            providerId: codexProviderId.trim() || "proxy",
-            providerName: codexProviderName.trim() || "BYOK provider",
-            baseUrl: codexBaseUrl.trim(),
-            envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
-            wireApi: codexWireApi,
-            apiKey: codexApiKey.trim() || undefined,
-            models: normalizedByokModels,
-            apiKeyPreview: savedByok?.apiKeyPreview
-          }
+        ? selectedProviderId
+          ? {
+              // Provider-reference mode: store providerId with current models snapshot
+              enabled: true,
+              providerId: selectedProviderId,
+              providerName: selectedProvider?.name || codexProviderName.trim() || "BYOK provider",
+              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "OPENAI_API_KEY",
+              wireApi: selectedProvider?.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const),
+              models: effectiveByokModels
+            }
+          : {
+              enabled: true,
+              providerId: codexProviderId.trim() || "proxy",
+              providerName: codexProviderName.trim() || "BYOK provider",
+              baseUrl: codexBaseUrl.trim(),
+              envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
+              wireApi: codexWireApi,
+              apiKey: codexApiKey.trim() || undefined,
+              models: normalizedByokModels,
+              apiKeyPreview: savedByok?.apiKeyPreview
+            }
         : undefined;
     const claudeByokConfig =
       isClaude && codexByokEnabled
-        ? {
-            enabled: true,
-            baseUrl: codexBaseUrl.trim(),
-            envKey: codexEnvKey.trim() || "ANTHROPIC_API_KEY",
-            apiKey: codexApiKey.trim() || undefined,
-            models: normalizedByokModels,
-            contextWindow: parseByokContextWindow(byokContextWindow),
-            compaction: {
-              enabled: claudeCompactionEnabled
-            },
-            apiKeyPreview: savedClaudeByok?.apiKeyPreview
-          }
+        ? selectedProviderId
+          ? {
+              enabled: true,
+              providerId: selectedProviderId,
+              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "ANTHROPIC_API_KEY",
+              models: effectiveByokModels,
+              compaction: { enabled: claudeCompactionEnabled }
+            }
+          : {
+              enabled: true,
+              baseUrl: codexBaseUrl.trim(),
+              envKey: codexEnvKey.trim() || "ANTHROPIC_API_KEY",
+              apiKey: codexApiKey.trim() || undefined,
+              models: normalizedByokModels,
+              contextWindow: parseByokContextWindow(byokContextWindow),
+              compaction: {
+                enabled: claudeCompactionEnabled
+              },
+              apiKeyPreview: savedClaudeByok?.apiKeyPreview
+            }
         : undefined;
     const deepseekByokConfig = isDeepSeek
-      ? {
-          enabled: codexByokEnabled,
-          baseUrl: codexByokEnabled ? codexBaseUrl.trim() || undefined : undefined,
-          envKey: codexByokEnabled ? codexEnvKey.trim() || undefined : undefined,
-          wireApi: "chat" as const,
-          officialApiKey: deepseekOfficialApiKey.trim() || undefined,
-          officialApiKeyPreview: savedDeepSeekByok?.officialApiKeyPreview,
-          apiKey: codexApiKey.trim() || undefined,
-          apiKeyPreview: savedDeepSeekByok?.apiKeyPreview,
-          models: codexByokEnabled ? normalizedByokModels : [],
-          contextWindow: codexByokEnabled
-            ? parseByokContextWindow(byokContextWindow)
-            : undefined
-        }
+      ? codexByokEnabled
+        ? selectedProviderId
+          ? {
+            enabled: true,
+            providerId: selectedProviderId,
+            envKey: selectedProvider?.envKey || codexEnvKey.trim() || "DEEPSEEK_API_KEY",
+            wireApi: "chat" as const,
+            models: effectiveByokModels
+          }
+        : {
+            enabled: true,
+            baseUrl: codexBaseUrl.trim() || undefined,
+            envKey: codexEnvKey.trim() || undefined,
+            wireApi: "chat" as const,
+            officialApiKey: deepseekOfficialApiKey.trim() || undefined,
+            officialApiKeyPreview: savedDeepSeekByok?.officialApiKeyPreview,
+            apiKey: codexApiKey.trim() || undefined,
+            apiKeyPreview: savedDeepSeekByok?.apiKeyPreview,
+            models: normalizedByokModels,
+            contextWindow: parseByokContextWindow(byokContextWindow)
+          }
+        : {
+            enabled: false,
+            officialApiKey: deepseekOfficialApiKey.trim() || undefined,
+            officialApiKeyPreview: savedDeepSeekByok?.officialApiKeyPreview
+          }
       : undefined;
 
-    const override: CLIExecutorOverride = {
+    const piByokConfig =
+      isPi && codexByokEnabled
+        ? selectedProviderId
+          ? {
+              // Provider-reference mode: store providerId with current models snapshot
+              enabled: true,
+              providerId: selectedProviderId,
+              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "OPENAI_API_KEY",
+              models: effectiveByokModels
+            }
+          : {
+              enabled: true,
+              providerId: "custom",
+              baseUrl: codexBaseUrl.trim() || undefined,
+              envKey: codexEnvKey.trim() || "OPENAI_API_KEY",
+              apiKey: codexApiKey.trim() || undefined,
+              apiKeyPreview: savedPiByok?.apiKeyPreview,
+              models: normalizedByokModels,
+              contextWindow: parseByokContextWindow(byokContextWindow)
+            }
+        : undefined;
+
+    return {
       id: ex.id,
       baseAdapter: ex.baseAdapter,
       label: isClone ? label.trim() || ex.label : undefined,
@@ -1141,16 +1644,35 @@ function EditOverridePanel({
       codexByok: codexByokConfig,
       claudeByok: claudeByokConfig,
       deepseekByok: deepseekByokConfig,
+      piByok: piByokConfig,
       skillIds,
-      enabled: true
+      enabled: ex.enabled
     };
+  };
+
+  if (baselineRef.current === null) {
+    baselineRef.current = JSON.stringify(buildOverride());
+  }
+  const dirty = JSON.stringify(buildOverride()) !== baselineRef.current;
+  latestDirtyRef.current = dirty;
+  if (dirtyRef) dirtyRef.current = dirty;
+
+  const onSave = async () => {
+    if (saveStatus === "saving" || !dirty) return;
+    setSaveStatus("saving");
+    setSaveError("");
+    const override = buildOverride();
     try {
       await upsert(override);
       refreshMembers();
-      setModel(effectiveModel);
-      setExtraArgs(extractModelArg(cleanedExtraArgs).args.join("\n"));
+      setModel(extractModelArg(override.extraArgs ?? []).model);
+      setExtraArgs(extractModelArg(override.extraArgs ?? []).args.join("\n"));
       setCodexApiKey("");
       setDeepseekOfficialApiKey("");
+      if (!codexByokEnabled) {
+        setSelectedProviderId(undefined);
+      }
+      baselineRef.current = JSON.stringify(override);
       setSaveStatus("saved");
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -1163,8 +1685,9 @@ function EditOverridePanel({
     setSaveStatus("idle");
     setSaveError("");
     if (
-      isClone &&
-      !window.confirm(t("settings.cli.deleteAgentConfirm", { label: ex.label }))
+      isClone
+        ? !window.confirm(t("settings.cli.deleteAgentConfirm", { label: ex.label }))
+        : dirty && !window.confirm(t("settings.cli.unsavedConfirm"))
     ) {
       return;
     }
@@ -1187,7 +1710,11 @@ function EditOverridePanel({
             className="adapter-editor-back"
             onClick={onBackToList}
           >
-            <span className="adapter-editor-back-chevron">‹</span>
+            <ChevronLeft
+              size={15}
+              className="adapter-editor-back-chevron"
+              aria-hidden="true"
+            />
             {t("settings.cli.backToList")}
           </button>
           <div className="adapter-editor-heading">
@@ -1198,55 +1725,30 @@ function EditOverridePanel({
               fallback={<span>{ex.label.slice(0, 2).toUpperCase()}</span>}
             />
             <div className="adapter-editor-heading-text">
-              <h3>{ex.label}</h3>
-              {ex.docsUrl && (
-                <a className="adapter-editor-docs-link" href={ex.docsUrl} target="_blank" rel="noreferrer">
-                  {t("settings.cli.setupGuide")} ↗
-                </a>
-              )}
+              <div className="adapter-editor-title-row">
+                <h3>{ex.label}</h3>
+                {headerBadge}
+              </div>
+              <div className="adapter-editor-meta">
+                {headerMeta}
+                {ex.docsUrl && (
+                  <a className="adapter-editor-docs-link" href={ex.docsUrl} target="_blank" rel="noreferrer">
+                    {t("settings.cli.setupGuide")} ↗
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
-        <div className="adapter-editor-status-group">
-          {ex.runtime?.installed ? (
-            <span className="adapter-status adapter-editor-status ok">
-              {t("settings.cli.installed")}
-            </span>
-          ) : ex.runtime ? (
-            <span
-              className="adapter-status adapter-editor-status warn"
-              title={ex.runtime.lastError}
-            >
-              {t("settings.cli.notInstalled")}
-            </span>
-          ) : (
-            <span className="adapter-status adapter-editor-status muted">
-              {t("settings.cli.notChecked")}
-            </span>
-          )}
-          {ex.runtime?.installed && ex.installHint && (
-            <button
-              type="button"
-              className="adapter-editor-upgrade"
-              disabled={installing}
-              title={t("settings.cli.upgradeHint")}
-              onClick={() =>
-                startInstall({
-                  adapterId: ex.id,
-                  label: ex.label,
-                  command: ex.installHint!
-                })
-              }
-            >
-              {installing ? t("common.upgrading") : t("common.upgrade")}
-            </button>
-          )}
-        </div>
+        <div className="adapter-editor-status-group">{headerActions}</div>
       </header>
 
       <div className="adapter-editor-scroll">
         {/* ── Identity section ── */}
         <div className="adapter-editor-section">
+          <h4 className="adapter-editor-section-title">
+            {t("settings.cli.section.identity")}
+          </h4>
           <div className="icon-picker-field">
             <span className="icon-picker-label">{t("settings.cli.avatar")}</span>
             <AvatarPicker
@@ -1271,6 +1773,9 @@ function EditOverridePanel({
 
         {/* ── Command Configuration section ── */}
         <div className="adapter-editor-section">
+          <h4 className="adapter-editor-section-title">
+            {t("settings.cli.section.command")}
+          </h4>
           <label className="adapter-editor-field">
             <span className="adapter-editor-field-label">{t("settings.cli.commandOverride")}</span>
             <input
@@ -1365,12 +1870,51 @@ function EditOverridePanel({
 
             {codexByokEnabled && (
               <>
+                <div className="adapter-editor-field">
+                  <ProviderSelect
+                    adapter={ex.baseAdapter ?? ex.id}
+                    value={selectedProviderId}
+                    onChange={(pid) => {
+                      setSelectedProviderId(pid);
+                      if (pid) {
+                        const p = providers.find((x) => x.id === pid);
+                        if (p) {
+                          if (isCodex) {
+                            setCodexProviderId(p.presetId ?? p.id);
+                            setCodexProviderName(p.name);
+                          }
+                          setCodexBaseUrl(p.baseUrl);
+                          setCodexEnvKey(p.envKey);
+                          const active = p.models.filter((m) => m.enabled !== false);
+                          setByokModels(
+                            active.map((m) => ({
+                              id: m.id,
+                              name: m.name ?? "",
+                              contextWindow: m.contextWindow,
+                              supportsVision: m.supportsVision
+                            }))
+                          );
+                          if (!model.trim() && active[0]?.id) {
+                            setModel(active[0].id);
+                          }
+                        }
+                      }
+                    }}
+                  />
+                </div>
+                {selectedProvider ? (
+                  <p className="settings-field-hint">
+                    {t("providers.managedHint")}：{selectedProvider.name} · {selectedProvider.baseUrl}
+                    {selectedProvider.apiKeyPreview ? ` · ${selectedProvider.apiKeyPreview}` : ""}
+                  </p>
+                ) : null}
                 <label className="adapter-editor-field">
                   <span className="adapter-editor-field-label">{t("settings.cli.byok.baseUrl")}</span>
                   <input
                     type="url"
-                    value={codexBaseUrl}
+                    value={selectedProvider ? selectedProvider.baseUrl : codexBaseUrl}
                     placeholder={byokBaseUrlPlaceholder}
+                    disabled={Boolean(selectedProvider)}
                     onChange={(e) => setCodexBaseUrl(e.target.value)}
                   />
                   <span className="settings-field-hint">
@@ -1379,7 +1923,9 @@ function EditOverridePanel({
                         ? "settings.cli.byok.baseUrlHintClaude"
                         : isDeepSeek
                           ? "settings.cli.byok.baseUrlHintDeepSeek"
-                          : "settings.cli.byok.baseUrlHintCodex"
+                          : isPi
+                            ? "settings.cli.byok.baseUrlHintPi"
+                            : "settings.cli.byok.baseUrlHintCodex"
                     )}
                   </span>
                 </label>
@@ -1389,17 +1935,26 @@ function EditOverridePanel({
                     type="password"
                     value={codexApiKey}
                     placeholder={
+                      selectedProvider?.apiKeyPreview ||
                       savedByok?.apiKeyPreview ||
                       t("settings.cli.byok.apiKeyPlaceholder")
                     }
+                    disabled={Boolean(selectedProvider)}
                     onChange={(e) => setCodexApiKey(e.target.value)}
                   />
                   <span className="settings-field-hint">
-                    {savedByok?.apiKeyPreview
-                      ? t("settings.cli.byok.savedKeyHint", {
-                          preview: savedByok.apiKeyPreview
-                        })
-                      : t("settings.cli.byok.newKeyHint")}
+                    {selectedProvider
+                      ? selectedProvider.apiKeyPreview
+                        ? t("settings.cli.byok.providerKeyHint", {
+                            name: selectedProvider.name,
+                            preview: selectedProvider.apiKeyPreview
+                          })
+                        : t("providers.managedHint")
+                      : savedByok?.apiKeyPreview
+                        ? t("settings.cli.byok.savedKeyHint", {
+                            preview: savedByok.apiKeyPreview
+                          })
+                        : t("settings.cli.byok.newKeyHint")}
                   </span>
                 </label>
 
@@ -1410,7 +1965,11 @@ function EditOverridePanel({
                   <div className="byok-model-list">
                     <div
                       className={`byok-model-header${
-                        isCodex ? " byok-model-header--with-context" : ""
+                        isCodex
+                          ? " byok-model-header--with-context"
+                          : isDeepSeek || isPi
+                            ? " byok-model-header--with-vision"
+                            : ""
                       }`}
                       aria-hidden="true"
                     >
@@ -1421,14 +1980,18 @@ function EditOverridePanel({
                           {t("settings.cli.byok.modelContextWindowHeader")}
                         </span>
                       )}
-                      {isCodex && (
+                      {(isCodex || isDeepSeek || isPi) && (
                         <span>{t("settings.cli.byok.modelVisionHeader")}</span>
                       )}
                     </div>
                     {byokModels.map((byokModel, index) => (
                       <div
                         className={`byok-model-row${
-                          isCodex ? " byok-model-row--with-context" : ""
+                          isCodex
+                            ? " byok-model-row--with-context"
+                            : isDeepSeek || isPi
+                              ? " byok-model-row--with-vision"
+                              : ""
                         }`}
                         key={index}
                       >
@@ -1438,6 +2001,7 @@ function EditOverridePanel({
                             "settings.cli.byok.modelIdPlaceholder"
                           )}
                           aria-label={t("settings.cli.byok.modelIdPlaceholder")}
+                          disabled={Boolean(selectedProvider)}
                           onChange={(event) =>
                             setByokModels((models) =>
                               models.map((entry, entryIndex) =>
@@ -1454,6 +2018,7 @@ function EditOverridePanel({
                             "settings.cli.byok.modelNamePlaceholder"
                           )}
                           aria-label={t("settings.cli.byok.modelNamePlaceholder")}
+                          disabled={Boolean(selectedProvider)}
                           onChange={(event) =>
                             setByokModels((models) =>
                               models.map((entry, entryIndex) =>
@@ -1477,6 +2042,16 @@ function EditOverridePanel({
                             aria-label={t(
                               "settings.cli.byok.modelContextWindowPlaceholder"
                             )}
+                            aria-invalid={
+                              String(byokModel.contextWindow ?? "").trim() !==
+                                "" &&
+                              parseByokContextWindow(
+                                byokModel.contextWindow
+                              ) === undefined
+                                ? true
+                                : undefined
+                            }
+                            disabled={Boolean(selectedProvider)}
                             onChange={(event) =>
                               setByokModels((models) =>
                                 models.map((entry, entryIndex) =>
@@ -1491,17 +2066,25 @@ function EditOverridePanel({
                             }
                           />
                         )}
-                        {isCodex && (
+                        {(isCodex || isDeepSeek || isPi) && (
                           <label
                             className="byok-model-vision"
                             title={t("settings.cli.byok.modelVisionHint")}
                           >
                             <input
                               type="checkbox"
-                              checked={byokModel.supportsVision !== false}
+                              checked={
+                                isCodex
+                                  ? byokModel.supportsVision !== false
+                                  : isPi
+                                    ? byokModel.supportsVision === true
+                                    : (byokModel.supportsVision ??
+                                       (byokModel.id.toLowerCase().includes("flash") || byokModel.id.toLowerCase().includes("vision")))
+                              }
                               aria-label={t(
                                 "settings.cli.byok.modelVisionEnabled"
                               )}
+                              disabled={Boolean(selectedProvider)}
                               onChange={(event) =>
                                 setByokModels((models) =>
                                   models.map((entry, entryIndex) =>
@@ -1520,43 +2103,55 @@ function EditOverridePanel({
                             </span>
                           </label>
                         )}
-                        <button
-                          type="button"
-                          className="byok-model-remove"
-                          aria-label={t("settings.cli.byok.removeModel")}
-                          title={t("settings.cli.byok.removeModel")}
-                          onClick={() =>
-                            setByokModels((models) =>
-                              models.filter(
-                                (_, entryIndex) => entryIndex !== index
+                        {selectedProvider ? (
+                          <span aria-hidden="true" />
+                        ) : (
+                          <button
+                            type="button"
+                            className="byok-model-remove"
+                            aria-label={t("settings.cli.byok.removeModel")}
+                            title={t("settings.cli.byok.removeModel")}
+                            onClick={() =>
+                              setByokModels((models) =>
+                                models.filter(
+                                  (_, entryIndex) => entryIndex !== index
+                                )
                               )
-                            )
-                          }
-                        >
-                          <Trash2 size={15} aria-hidden="true" />
-                        </button>
+                            }
+                          >
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                        )}
                       </div>
                     ))}
-                    <button
-                      type="button"
-                      className="byok-model-add"
-                      onClick={() =>
-                        setByokModels((models) => [
-                          ...models,
-                          { id: "", name: "", supportsVision: isCodex }
-                        ])
-                      }
-                    >
-                      <Plus size={15} aria-hidden="true" />
-                      {t("settings.cli.byok.addModel")}
-                    </button>
+                    {!selectedProvider && (
+                      <button
+                        type="button"
+                        className="byok-model-add"
+                        onClick={() =>
+                          setByokModels((models) => [
+                            ...models,
+                            { id: "", name: "", supportsVision: isCodex }
+                          ])
+                        }
+                      >
+                        <Plus size={15} aria-hidden="true" />
+                        {t("settings.cli.byok.addModel")}
+                      </button>
+                    )}
                   </div>
                   <span className="settings-field-hint">
-                    {t(
-                      isCodex
-                        ? "settings.cli.byok.modelsHintCodex"
-                        : "settings.cli.byok.modelsHint"
-                    )}
+                    {selectedProvider
+                      ? selectedProvider.models.filter((m) => m.enabled !== false).length === 0
+                        ? t("settings.cli.byok.providerNoActiveModels")
+                        : t("settings.cli.byok.providerModelsHint", {
+                            name: selectedProvider.name
+                          })
+                      : t(
+                          isCodex
+                            ? "settings.cli.byok.modelsHintCodex"
+                            : "settings.cli.byok.modelsHint"
+                        )}
                   </span>
                 </div>
 
@@ -1596,6 +2191,7 @@ function EditOverridePanel({
                             : "settings.cli.byok.contextWindowPlaceholderCodex"
                         )}
                         aria-describedby="byok-context-window-hint"
+                        aria-invalid={byokContextWindowInvalid || undefined}
                         onChange={(e) => setByokContextWindow(e.target.value)}
                       />
                       <span className="byok-context-input-unit">
@@ -1604,13 +2200,20 @@ function EditOverridePanel({
                     </span>
                     <span
                       id="byok-context-window-hint"
-                      className="settings-field-hint"
+                      className={`settings-field-hint${
+                        byokContextWindowInvalid ? " error" : ""
+                      }`}
                     >
-                      {t(
-                        isClaude
-                          ? "settings.cli.byok.contextWindowHintClaude"
-                          : "settings.cli.byok.contextWindowHintCodex"
-                      )}
+                      {byokContextWindowInvalid
+                        ? t("settings.cli.byok.contextWindowInvalid", {
+                            min: BYOK_CONTEXT_WINDOW_MIN.toLocaleString(),
+                            max: BYOK_CONTEXT_WINDOW_MAX.toLocaleString()
+                          })
+                        : t(
+                            isClaude
+                              ? "settings.cli.byok.contextWindowHintClaude"
+                              : "settings.cli.byok.contextWindowHintCodex"
+                          )}
                     </span>
                   </label>
 
@@ -1724,6 +2327,9 @@ function EditOverridePanel({
 
         {/* ── Advanced section ── */}
         <div className="adapter-editor-section">
+          <h4 className="adapter-editor-section-title">
+            {t("settings.cli.section.advanced")}
+          </h4>
           <label className="adapter-editor-field">
             <span className="adapter-editor-field-label">{t("settings.cli.extraArgs")}</span>
             <textarea
@@ -1756,6 +2362,11 @@ function EditOverridePanel({
               {t("settings.cli.saveFailed", { err: saveError })}
             </span>
           )}
+          {dirty && saveStatus === "idle" && (
+            <span className="adapter-save-message warn" role="status">
+              {t("settings.cli.unsavedChanges")}
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -1769,7 +2380,7 @@ function EditOverridePanel({
           type="button"
           className="primary adapter-save-btn"
           onClick={onSave}
-          disabled={saveStatus === "saving"}
+          disabled={saveStatus === "saving" || !dirty}
         >
           {saveStatus === "saving"
             ? t("common.saving")

@@ -10,6 +10,7 @@ import {
 test("telemetry adapter values are bounded", () => {
   assert.equal(normalizeTelemetryAdapter("codex-acp"), "codex-acp");
   assert.equal(normalizeTelemetryAdapter("dsh-acp"), "dsh-acp");
+  assert.equal(normalizeTelemetryAdapter("devin-acp"), "devin-acp");
   assert.equal(normalizeTelemetryAdapter("private-agent-name"), "custom");
   assert.equal(normalizeTelemetryAdapter(), "custom");
 });

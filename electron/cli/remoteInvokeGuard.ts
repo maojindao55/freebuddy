@@ -3,7 +3,7 @@ import path from "node:path";
 import { getAdapterDefinition } from "./adapters.js";
 import { listOverrides, type CLIExecutorOverride } from "./store.js";
 import { remoteRootsForUser } from "./remoteRoots.js";
-import { isPathWithinRoots } from "../shared/workspaceRoots.js";
+import { filterPathsWithinRoots, isPathWithinRoots } from "../shared/workspaceRoots.js";
 import {
   REMOTE_READABLE_SETTING_KEYS,
   REMOTE_WRITABLE_SETTING_KEYS
@@ -145,6 +145,7 @@ export function guardRemoteInvokeArgs(
       extraArgs: resolved.extraArgs,
       env: resolved.env
     };
+    if (channel === "cli:run") delete next.mcpServerIds;
     if (CWD_CHANNELS.has(channel)) {
       assertPathAllowed(next.cwd, roots, "cwd");
     }
@@ -153,7 +154,16 @@ export function guardRemoteInvokeArgs(
 
   if (CWD_CHANNELS.has(channel) && payload) {
     assertPathAllowed(payload.cwd, roots, "cwd");
+    if (channel === "cli:searchWorkspaceFiles" && payload.roots !== undefined) {
+      return [{ ...payload, roots: filterPathsWithinRoots(payload.roots, roots) }, ...args.slice(1)];
+    }
     return args;
+  }
+
+  if (channel === "cli:transferConversation" && payload) {
+    const next = { ...payload };
+    delete next.mcpServerIds;
+    return [next, ...args.slice(1)];
   }
 
   if (channel === "cli:resolveBrowserEntry") {
@@ -198,13 +208,15 @@ export function guardRemoteInvokeArgs(
  * desktop.
  */
 export function filterRemoteInvokeResult(channel: string, result: unknown): unknown {
-  if (channel !== "cli:listOverrides" || !Array.isArray(result)) return result;
-  return result.map((entry) => {
-    const override = asRecord(entry);
-    if (!override?.env || typeof override.env !== "object") return entry;
-    const redacted = Object.fromEntries(
-      Object.keys(override.env as Record<string, string>).map((key) => [key, ""])
-    );
-    return { ...override, env: redacted };
-  });
+  if (channel === "cli:listOverrides" && Array.isArray(result)) {
+    return result.map((entry) => {
+      const override = asRecord(entry);
+      if (!override?.env || typeof override.env !== "object") return entry;
+      const redacted = Object.fromEntries(
+        Object.keys(override.env as Record<string, string>).map((key) => [key, ""])
+      );
+      return { ...override, env: redacted };
+    });
+  }
+  return result;
 }

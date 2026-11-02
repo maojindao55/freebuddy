@@ -1,4 +1,5 @@
 import i18next from "i18next";
+import type { ConversationOverview, FileEditBlobChunk, FileEditPage } from "@freebuddy/protocol";
 import type {
   CLIExecutorOverride,
   CliCheckResult,
@@ -11,10 +12,13 @@ import type {
   SessionConfigOption,
   SessionConfigProbeInput,
   CliRuntime,
+  CliRuntimeUpdateRequest,
+  CliUpgradePlan,
   CliTaskListArgs,
   CliTaskLogPage,
   CliTaskRow,
   CodexUsageResult,
+  AntigravityUsageResult,
   AgentUsagePeriod,
   AgentUsageSummary,
   CursorUsageConnectInput,
@@ -32,6 +36,9 @@ import type {
   PrepareAttachmentFilesResult,
   CreateConversationInput,
   ListConversationsArgs,
+  ListMessagesPage,
+  MessageDetailsPage,
+  ListMessagesQuery,
   AppendMessageInput,
   UpdateMessageInput,
   Project,
@@ -40,6 +47,8 @@ import type {
   PreviewHandoffBriefResult,
   TransferConversationInput,
   TransferConversationResult,
+  ForkConversationInput,
+  ForkConversationResult,
   ImportCodexSessionResult,
   CreateConversationShareInput,
   CreateConversationShareResult,
@@ -53,6 +62,10 @@ import type {
 } from "./types";
 import type { CLIAdapterDefinition, CLIAdapterId } from "@/config/cliAdapters";
 import { addPluginHostCompatibility } from "@/utils/pluginMentions";
+import {
+  awaitPendingMcpSelection as waitForMcpSelectionWrite,
+  trackMcpSelectionWrite
+} from "./pendingMcpSelection";
 
 function api() {
   const cli = window.freebuddy?.cli;
@@ -90,8 +103,20 @@ export const cliClient = {
   listRuntimes(): Promise<CliRuntime[]> {
     return api().listRuntimes();
   },
+  checkUpdates(args: CliRuntimeUpdateRequest): Promise<CliRuntime | undefined> {
+    return api().checkUpdates(args);
+  },
+  prepareUpgrade(args: CliRuntimeUpdateRequest): Promise<CliUpgradePlan> {
+    return api().prepareUpgrade(args);
+  },
+  verifyUpgrade(request: CliRuntimeUpdateRequest, plan: CliUpgradePlan): Promise<CliCheckResult> {
+    return api().verifyUpgrade(request, plan);
+  },
   codexUsage(): Promise<CodexUsageResult> {
     return api().codexUsage();
+  },
+  antigravityUsage(): Promise<AntigravityUsageResult> {
+    return api().antigravityUsage();
   },
   usageSummary(period: AgentUsagePeriod = "all"): Promise<AgentUsageSummary> {
     return api().usageSummary(period);
@@ -131,9 +156,10 @@ export const cliClient = {
   installStream(
     adapter: string,
     command: string,
-    cb: (event: CliInstallEvent) => void
+    cb: (event: CliInstallEvent) => void,
+    targetVersion?: string
   ): () => void {
-    return api().installStream(adapter, command, cb);
+    return api().installStream(adapter, command, cb, targetVersion);
   },
 
   run(args: CliRunArgs): Promise<{ sessionId: string }> {
@@ -227,6 +253,9 @@ export const cliClient = {
   async createProject(input: ProjectInput): Promise<Project> {
     return api().createProject(input);
   },
+  async ensureProjectForCwd(cwd: string): Promise<Project> {
+    return api().ensureProjectForCwd(cwd);
+  },
   async updateProject(input: ProjectInput & { id: string }): Promise<Project> {
     return api().updateProject(input);
   },
@@ -236,6 +265,9 @@ export const cliClient = {
 
   listConversations(args?: ListConversationsArgs): Promise<Conversation[]> {
     return api().listConversations(args);
+  },
+  listConversationOverviews(conversationIds: string[]): Promise<ConversationOverview[]> {
+    return api().listConversationOverviews(conversationIds);
   },
   getConversation(id: string): Promise<Conversation | undefined> {
     return api().getConversation(id);
@@ -249,6 +281,9 @@ export const cliClient = {
 
   transferConversation(input: TransferConversationInput): Promise<TransferConversationResult> {
     return api().transferConversation(input);
+  },
+  forkConversation(input: ForkConversationInput): Promise<ForkConversationResult> {
+    return api().forkConversation(input);
   },
   importCodexSession(sessionId: string): Promise<ImportCodexSessionResult> {
     return api().importCodexSession(sessionId);
@@ -290,6 +325,21 @@ export const cliClient = {
   archiveConversation(id: string, archived: boolean): Promise<void> {
     return api().archiveConversation(id, archived);
   },
+  setConversationPinned(id: string, pinned: boolean): Promise<Conversation> {
+    return api().setConversationPinned(id, pinned);
+  },
+  moveConversationToProject(
+    id: string,
+    projectId: string | null
+  ): Promise<Conversation> {
+    return api().moveConversationToProject(id, projectId);
+  },
+  setConversationOrder(conversationIds: string[]): Promise<Conversation[]> {
+    return api().setConversationOrder(conversationIds);
+  },
+  resetConversationOrder(conversationIds: string[]): Promise<Conversation[]> {
+    return api().resetConversationOrder(conversationIds);
+  },
   deleteConversation(id: string): Promise<void> {
     return api().deleteConversation(id);
   },
@@ -311,11 +361,43 @@ export const cliClient = {
   ): Promise<Conversation | undefined> {
     return api().setConversationSkills(id, skillIds);
   },
-  listMessages(conversationId: string): Promise<ConversationMessage[]> {
-    return api().listMessages(conversationId);
+  getConversationMcpServerIds(conversationId: string): Promise<string[]> {
+    return api().getConversationMcpServerIds(conversationId);
+  },
+  setConversationMcpServerIds(id: string, mcpServerIds: string[]): Promise<void> {
+    return trackMcpSelectionWrite(id, () =>
+      api().setConversationMcpServerIds(id, mcpServerIds)
+    );
+  },
+  awaitPendingMcpSelection(conversationId: string): Promise<void> {
+    return waitForMcpSelectionWrite(conversationId);
+  },
+  listMessages(
+    conversationId: string,
+    options?: ListMessagesQuery
+  ): Promise<ListMessagesPage> {
+    return api().listMessages(conversationId, options);
   },
   listMessage(id: string): Promise<ConversationMessage | undefined> {
     return api().listMessage(id);
+  },
+  readMessageDetails(messageId: string, offset?: number): Promise<MessageDetailsPage> {
+    return api().readMessageDetails(messageId, offset);
+  },
+  listMessageFileEdits(messageId: string, cursor?: number, groupFiles?: boolean): Promise<FileEditPage> {
+    return api().listMessageFileEdits(messageId, cursor, groupFiles);
+  },
+  readFileEditBlob(conversationId: string, blobKey: string, offset?: number): Promise<FileEditBlobChunk | undefined> {
+    return api().readFileEditBlob(conversationId, blobKey, offset);
+  },
+  readMessageFileEdit(messageId: string, path: string, turnKey: string, offset?: number): Promise<FileEditBlobChunk | undefined> {
+    return api().readMessageFileEdit(messageId, path, turnKey, offset);
+  },
+  listFollowupMessages(
+    conversationId: string,
+    excludeMessageIds: string[]
+  ): Promise<ConversationMessage[]> {
+    return api().listFollowupMessages(conversationId, excludeMessageIds);
   },
   appendMessage(input: AppendMessageInput): Promise<ConversationMessage> {
     return api().appendMessage(input);
@@ -426,5 +508,70 @@ export const cliClient = {
 
   onEvent(sessionId: string, cb: (e: CliEvent) => void): () => void {
     return api().onEvent(sessionId, cb as (e: unknown) => void);
+  },
+
+  // ---- User MCP Servers ----
+  listUserMcpServers(): Promise<{
+    servers: import("./types").UserMcpServer[];
+    secretStorageEncrypted: boolean;
+  }> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) {
+      return Promise.resolve({ servers: [], secretStorageEncrypted: true });
+    }
+    return mcpServers.list();
+  },
+  getUserMcpServer(id: string): Promise<import("./types").UserMcpServer | undefined> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(undefined);
+    return mcpServers.get(id);
+  },
+  createUserMcpServer(
+    input: import("./types").UserMcpServerInput
+  ): Promise<import("./types").UserMcpServer> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) throw new Error("MCP servers API unavailable");
+    return mcpServers.create(input);
+  },
+  updateUserMcpServer(
+    id: string,
+    input: Partial<import("./types").UserMcpServerInput>
+  ): Promise<import("./types").UserMcpServer | undefined> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(undefined);
+    return mcpServers.update(id, input);
+  },
+  deleteUserMcpServer(id: string): Promise<boolean> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(false);
+    return mcpServers.delete(id);
+  },
+  setUserMcpServerEnabled(id: string, enabled: boolean): Promise<boolean> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve(false);
+    return mcpServers.setEnabled(id, enabled);
+  },
+  selfCheckUserMcpServer(
+    id: string,
+    cwd?: string
+  ): Promise<import("./types").UserMcpServerSelfCheckResult> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers) return Promise.resolve({ status: "error" as const, error: "MCP servers API unavailable" });
+    return mcpServers.selfCheck(id, cwd);
+  },
+  getUserMcpOAuthStatus(id: string): Promise<import("./types").McpOAuthStatus> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers?.oauthStatus) throw new Error("MCP OAuth API unavailable");
+    return mcpServers.oauthStatus(id);
+  },
+  authorizeUserMcpServer(id: string): Promise<import("./types").McpOAuthStatus> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers?.authorize) throw new Error("MCP OAuth API unavailable");
+    return mcpServers.authorize(id);
+  },
+  disconnectUserMcpServer(id: string): Promise<import("./types").McpOAuthStatus> {
+    const mcpServers = window.freebuddy?.mcpServers;
+    if (!mcpServers?.disconnect) throw new Error("MCP OAuth API unavailable");
+    return mcpServers.disconnect(id);
   }
 };

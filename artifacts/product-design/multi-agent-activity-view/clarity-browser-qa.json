@@ -1,0 +1,29 @@
+{
+  "cleanCheckStartedAt": "2026-10-05T14:47:37.006Z",
+  "logs": [],
+  "checks": {
+    "stressConversations": 42,
+    "firstPage": 24,
+    "loadedPage": 42,
+    "attentionFiltered": 13,
+    "searchMarkdown": 2,
+    "workProject": 19,
+    "activityLimit": 3,
+    "summaryLines": 2,
+    "body": "14px / 22px",
+    "listReturnsLastChat": true,
+    "fileDiff": true,
+    "requestNavigation": true,
+    "completeCommandDetails": 6,
+    "narrow800": {
+      "columns": 2,
+      "overflow": false
+    },
+    "narrow390": {
+      "columns": 1,
+      "overflow": false,
+      "controlRightMax": 374
+    },
+    "darkChecked": true
+  }
+}

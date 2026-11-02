@@ -109,6 +109,11 @@ test("codex BYOK chat wire API is routed through the local bridge", () => {
     /chat\/completions/,
     "bridge module must document the chat/completions translation"
   );
+  assert.match(
+    bridgeSource,
+    /if \((?:tool\.)?type === "tool_search"\)/,
+    "bridge must map Codex tool_search so deferred MCP tools are not dropped"
+  );
 });
 
 test("session runners pre-start the codex chat bridge", () => {
@@ -357,6 +362,403 @@ test("translateChatResponseToResponses emits local_shell_call for non-stream res
   assert.ok(item);
   assert.equal(item.call_id, "call_shell_3");
   assert.deepEqual(item.action, { type: "exec", command: ["bash", "-lc", "pwd"] });
+});
+
+test("translateResponsesRequestToChat maps tool_search tools and call history", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const { translateResponsesRequestToChat } = bridge;
+  const result = translateResponsesRequestToChat({
+    model: "agnes-3.0-flash",
+    stream: true,
+    input: [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "open github" }] },
+      {
+        type: "tool_search_call",
+        call_id: "call_search_1",
+        execution: "client",
+        arguments: { query: "browser navigate", limit: 8 }
+      },
+      {
+        type: "tool_search_output",
+        call_id: "call_search_1",
+        status: "completed",
+        execution: "client",
+        tools: [
+          {
+            type: "namespace",
+            name: "mcp__freebuddy-browser",
+            description: "Browser automation",
+            tools: [
+              {
+                type: "function",
+                name: "browser_navigate",
+                description: "Navigate the browser to a URL.",
+                parameters: {
+                  type: "object",
+                  properties: { url: { type: "string" } },
+                  required: ["url"]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        type: "function_call",
+        call_id: "call_nav_history",
+        namespace: "mcp__freebuddy-browser",
+        name: "browser_navigate",
+        arguments: '{"url":"https://example.test"}'
+      },
+      { type: "function_call_output", call_id: "call_nav_history", output: "Navigated" }
+    ],
+    tools: [
+      {
+        type: "tool_search",
+        execution: "client",
+        description: "For MCP tool discovery, always use tool_search.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Search query for deferred tools." },
+            limit: { type: "number" }
+          },
+          required: ["query"]
+        }
+      },
+      { type: "web_search" }
+    ]
+  });
+
+  assert.ok(result);
+  assert.deepEqual(result.toolSearchToolNames, ["tool_search"]);
+  assert.deepEqual(result.toolNamespaces, {
+    "mcp__freebuddy-browser__browser_navigate": {
+      namespace: "mcp__freebuddy-browser",
+      name: "browser_navigate"
+    }
+  });
+  assert.deepEqual(result.droppedToolTypes, ["web_search"]);
+
+  const chat = result.chat;
+  const searchTool = chat.tools.find((tool) => tool.function?.name === "tool_search");
+  assert.ok(searchTool, "tool_search must be exposed as a chat function");
+  assert.equal(searchTool.type, "function");
+  assert.deepEqual(searchTool.function.parameters.required, ["query"]);
+  assert.equal(
+    searchTool.function.description,
+    "For MCP tool discovery, always use tool_search."
+  );
+
+  const discovered = chat.tools.find(
+    (tool) => tool.function?.name === "mcp__freebuddy-browser__browser_navigate"
+  );
+  assert.ok(
+    discovered,
+    "tools loaded by tool_search_output must be callable on the next chat turn"
+  );
+  assert.equal(discovered.function.description, "Navigate the browser to a URL.");
+
+  const messages = chat.messages;
+  assert.equal(messages[0].role, "user");
+  assert.equal(messages[1].role, "assistant");
+  assert.equal(messages[1].tool_calls[0].id, "call_search_1");
+  assert.equal(messages[1].tool_calls[0].function.name, "tool_search");
+  assert.deepEqual(JSON.parse(messages[1].tool_calls[0].function.arguments), {
+    query: "browser navigate",
+    limit: 8
+  });
+  assert.equal(messages[2].role, "tool");
+  assert.equal(messages[2].tool_call_id, "call_search_1");
+  const outputTools = JSON.parse(messages[2].content);
+  assert.equal(outputTools[0].name, "mcp__freebuddy-browser");
+  assert.equal(outputTools[0].tools[0].name, "browser_navigate");
+  assert.equal(messages[3].tool_calls[0].function.name, "mcp__freebuddy-browser__browser_navigate");
+});
+
+test("top-level namespaces preserve schemas, duplicate tool names and call history", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const parameters = {
+    type: "object",
+    properties: { detail: { type: "boolean" } },
+    required: ["detail"],
+    additionalProperties: false
+  };
+  const result = bridge.translateResponsesRequestToChat({
+    model: "chat-model",
+    input: [
+      { type: "function_call", call_id: "figma-history", namespace: "mcp__figma", name: "whoami", arguments: '{"detail":true}' },
+      { type: "function_call_output", call_id: "figma-history", output: "Figma user" },
+      { type: "function_call", call_id: "wiki-history", namespace: "mcp__wiki", name: "whoami", arguments: "{}" },
+      { type: "function_call_output", call_id: "wiki-history", output: "Wiki user" },
+      { type: "function_call", call_id: "bare-history", name: "whoami", arguments: "{}" },
+      { type: "function_call_output", call_id: "bare-history", output: "Local user" }
+    ],
+    tool_choice: { type: "function", namespace: "mcp__wiki", name: "whoami" },
+    tools: [
+      {
+        type: "namespace",
+        name: "mcp__figma",
+        tools: [{ type: "function", name: "whoami", description: "Read the Figma user.", parameters, strict: true }]
+      },
+      {
+        type: "namespace",
+        name: "mcp__wiki",
+        tools: [{ type: "function", name: "whoami", parameters: { type: "object" }, strict: false }]
+      },
+      { type: "function", name: "whoami", parameters: { type: "object" } }
+    ]
+  });
+  assert.ok(result);
+  assert.deepEqual(result.droppedToolTypes, []);
+  assert.deepEqual(result.chat.tools.map((tool) => tool.function.name), [
+    "mcp__figma__whoami", "mcp__wiki__whoami", "whoami"
+  ]);
+  assert.deepEqual(result.toolNamespaces, {
+    mcp__figma__whoami: { namespace: "mcp__figma", name: "whoami" },
+    mcp__wiki__whoami: { namespace: "mcp__wiki", name: "whoami" }
+  });
+  assert.deepEqual(result.chat.tools[0].function.parameters, parameters);
+  assert.equal(result.chat.tools[0].function.description, "Read the Figma user.");
+  assert.equal(result.chat.tools[0].function.strict, true);
+  assert.equal(result.chat.tools[1].function.strict, false);
+  assert.deepEqual(
+    result.chat.messages.filter((message) => message.role === "assistant")
+      .flatMap((message) => message.tool_calls.map((call) => call.function.name)),
+    ["mcp__figma__whoami", "mcp__wiki__whoami", "whoami"]
+  );
+  assert.deepEqual(result.chat.tool_choice, {
+    type: "function", function: { name: "mcp__wiki__whoami" }
+  });
+});
+
+test("namespaced tools round-trip through streaming and non-streaming chat responses", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const translated = bridge.translateResponsesRequestToChat({
+    model: "chat-model",
+    input: "Identify both accounts.",
+    tools: [
+      ...["mcp__figma", "mcp__wiki"].map((name) => ({
+        type: "namespace", name,
+        tools: [{ type: "function", name: "whoami", parameters: { type: "object" } }]
+      })),
+      { type: "function", name: "whoami", parameters: { type: "object" } }
+    ]
+  });
+  const calls = translated.chat.tools.map((tool, index) => ({
+    id: `account-${index}`, type: "function",
+    function: { name: tool.function.name, arguments: "{}" }
+  }));
+  const expected = [
+    { name: "whoami", namespace: "mcp__figma", call_id: "account-0", arguments: "{}" },
+    { name: "whoami", namespace: "mcp__wiki", call_id: "account-1", arguments: "{}" },
+    { name: "whoami", namespace: undefined, call_id: "account-2", arguments: "{}" }
+  ];
+  const identities = (items) => items.filter((item) => item.type === "function_call")
+    .map(({ name, namespace, call_id, arguments: args }) => ({ name, namespace, call_id, arguments: args }));
+  const response = bridge.translateChatResponseToResponses(
+    { id: "accounts", choices: [{ message: { role: "assistant", tool_calls: calls } }] },
+    "chat-model", [], [], translated.toolNamespaces
+  );
+  assert.deepEqual(identities(response.output), expected);
+
+  const stream = new bridge.ChatToResponsesStream("chat-model", [], [], [], translated.toolNamespaces);
+  const chunks = [
+    ...stream.begin(),
+    ...stream.handleChatChunk({
+      choices: [{ delta: { tool_calls: calls.map((call, index) => ({ ...call, index })) } }]
+    }),
+    ...stream.finish()
+  ];
+  const events = chunks.flatMap(sseEvents);
+  for (const eventType of ["response.output_item.added", "response.output_item.done"]) {
+    assert.deepEqual(identities(events.filter((event) => event.type === eventType).map((event) => event.item)), expected);
+  }
+});
+
+test("long or unsafe namespace aliases remain unique and restore their original routes", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const namespaces = ["one", "two"].map((suffix) => `mcp__${"long-server-".repeat(8)}${suffix}`);
+  const toolName = "get/design.context";
+  const translated = bridge.translateResponsesRequestToChat({
+    model: "chat-model",
+    input: "Read both documents.",
+    tools: namespaces.map((name) => ({
+      type: "namespace", name,
+      tools: [{ type: "function", name: toolName, parameters: { type: "object" } }]
+    }))
+  });
+  const aliases = translated.chat.tools.map((tool) => tool.function.name);
+  assert.equal(new Set(aliases).size, 2);
+  for (const [index, alias] of aliases.entries()) {
+    assert.ok(alias.length <= 64);
+    assert.match(alias, /^[A-Za-z0-9_-]+$/);
+    assert.deepEqual(translated.toolNamespaces[alias], { namespace: namespaces[index], name: toolName });
+  }
+  const response = bridge.translateChatResponseToResponses(
+    { choices: [{ message: { role: "assistant", tool_calls: aliases.map((name, index) => ({
+      id: `long-${index}`, function: { name, arguments: "{}" }
+    })) } }] },
+    "chat-model", [], [], translated.toolNamespaces
+  );
+  assert.deepEqual(response.output.map(({ name, namespace }) => ({ name, namespace })),
+    namespaces.map((namespace) => ({ name: toolName, namespace })));
+});
+
+test("ChatToResponsesStream emits tool_search_call items for tool_search function calls", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const stream = new bridge.ChatToResponsesStream("agnes-3.0-flash", [], [], ["tool_search"]);
+  const chunks = [];
+  for (const raw of stream.begin()) chunks.push(...sseDataChunks(raw));
+  for (const chunk of [
+    {
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_search_2",
+                function: {
+                  name: "tool_search",
+                  arguments: "{\"query\":\"browser click\",\"limit\":8}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    { choices: [{ delta: {}, finish_reason: "tool_calls" }] }
+  ]) {
+    for (const raw of stream.handleChatChunk(chunk)) chunks.push(...sseDataChunks(raw));
+  }
+  for (const raw of stream.finish()) chunks.push(...sseDataChunks(raw));
+
+  const events = chunks
+    .filter((line) => line !== "[DONE]")
+    .map((line) => JSON.parse(line));
+
+  const callDone = events.find(
+    (event) =>
+      event.type === "response.output_item.done" &&
+      event.item.type === "tool_search_call"
+  );
+  assert.ok(callDone, "expected a tool_search_call output item");
+  assert.equal(callDone.item.call_id, "call_search_2");
+  assert.equal(callDone.item.execution, "client");
+  assert.equal(callDone.item.status, "completed");
+  assert.deepEqual(callDone.item.arguments, { query: "browser click", limit: 8 });
+  assert.equal(
+    typeof callDone.item.arguments,
+    "object",
+    "Codex requires tool_search_call.arguments as a JSON object, not a string"
+  );
+});
+
+test("translateChatResponseToResponses emits tool_search_call for non-stream responses", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const responseObj = bridge.translateChatResponseToResponses(
+    {
+      id: "chat_search",
+      model: "agnes-3.0-flash",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_search_3",
+                function: {
+                  name: "tool_search",
+                  arguments: "{\"query\":\"freebuddy-browser\"}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "agnes-3.0-flash",
+    [],
+    ["tool_search"]
+  );
+  assert.ok(responseObj);
+  const item = responseObj.output.find((entry) => entry.type === "tool_search_call");
+  assert.ok(item);
+  assert.equal(item.call_id, "call_search_3");
+  assert.equal(item.execution, "client");
+  assert.deepEqual(item.arguments, { query: "freebuddy-browser" });
+});
+
+test("ChatToResponsesStream adds namespace when calling a tool loaded by tool_search", (t) => {
+  if (!bridge) {
+    t.skip("dist-electron bridge not built yet");
+    return;
+  }
+  const stream = new bridge.ChatToResponsesStream(
+    "agnes-3.0-flash",
+    [],
+    [],
+    ["tool_search"],
+    { browser_navigate: "mcp__freebuddy-browser" }
+  );
+  const chunks = [];
+  for (const raw of stream.begin()) chunks.push(...sseDataChunks(raw));
+  for (const chunk of [
+    {
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_nav_1",
+                function: {
+                  name: "browser_navigate",
+                  arguments: "{\"url\":\"https://github.com\"}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]) {
+    for (const raw of stream.handleChatChunk(chunk)) chunks.push(...sseDataChunks(raw));
+  }
+  for (const raw of stream.finish()) chunks.push(...sseDataChunks(raw));
+
+  const events = chunks
+    .filter((line) => line !== "[DONE]")
+    .map((line) => JSON.parse(line));
+  const callDone = events.find(
+    (event) =>
+      event.type === "response.output_item.done" &&
+      event.item.type === "function_call"
+  );
+  assert.ok(callDone);
+  assert.equal(callDone.item.name, "browser_navigate");
+  assert.equal(callDone.item.namespace, "mcp__freebuddy-browser");
+  assert.equal(callDone.item.call_id, "call_nav_1");
 });
 
 test("stripOptionalChatFields removes chat extensions providers reject", (t) => {

@@ -731,3 +731,382 @@ No actionable P0, P1, or P2 crowding, overlap, or hierarchy issue remains in the
 3. The final same-size comparison confirms the characters no longer collide and moving targets no longer obscure the Boss face.
 
 final result: passed
+
+---
+
+# 会话任务面板视觉与交互验收
+
+日期：2026-10-05
+
+final result: passed
+
+当前没有未解决的 P0 / P1 / P2 视觉或核心交互问题。残余差异为既有产品约束和 P3 样式细节，列于下文。
+
+## 比较目标与证据
+
+- 原始需求参考：`/var/folders/5t/jv509wn1335b48c6gfk67f4w0000gn/T/codex-clipboard-e41af522-3e5f-4d1d-837f-9f1fa55e3221.png`。采用用户修正后的范围：一张卡片对应一个会话，支持列表切换与全屏。
+- 选定视觉目标：`artifacts/product-design/multi-agent-activity-view/conversation-task-panel-fullscreen.png`。
+- 最终实现截图：`artifacts/product-design/multi-agent-activity-view/implementation-final.jpg`。
+- 全屏合并比较：`artifacts/product-design/multi-agent-activity-view/comparison-final.jpg`。源图与最终实现放在同一张图中比较，左侧为参考，右侧为实现。
+- 首张卡片合并比较：`artifacts/product-design/multi-agent-activity-view/comparison-card-final.jpg`。检查标题、身份行、状态、活动与页脚的字号、位置和清晰度。
+- 交互预览：<http://127.0.0.1:5173/artifacts/product-design/multi-agent-activity-view/preview.html>。预览导入实际 App 和生产组件；桥接层使用内存演示数据，不启动真实 Agent，不写真实会话数据库。
+
+源图像素为 1487 × 1058，最终实现为 1488 × 1056。比较图将源图轻微缩放到 1488 × 1056，未裁切内容；两侧各加 36px 标题区，合并图为 2976 × 1092。浏览器 CSS 视口为 1488 × 1056，density / deviceScaleFactor 为 1。以上像素归一化不会改变布局判断。
+
+比较状态：浅色、任务面板全屏、全部项目、空搜索、全部筛选、六个会话、两个执行中、一个需关注、两个未读。参考以示意文案表达状态，实现使用真实状态语义；例如正在执行的未读消息显示“未读”，本轮结束显示“本轮完成”。
+
+## 五项视觉检查
+
+| 检查面 | 观察与结论 |
+| --- | --- |
+| 字体与层级 | 沿用现有 `--fb-font` 字体栈。最终桌面标题 26px / 750，活动 18px / 1.5，身份 16px，模型与项目 14px，状态 13px，页脚 14px。较参考约 28px / 20px 略小、较轻，标题仍优先于身份与活动，中文行高清楚。长标题最多两行、活动单行省略，模型与项目不会挤占状态。残余字重差异记为 P3。 |
+| 间距与布局 | 24px 页面与卡片留白、16px 网格间距、16px 圆角。桌面三列，身份行右侧显示状态；窄卡将状态换至下一行。卡片统一最小高度 426px，参考第二行约 389px；统一高度使页脚位置稳定，内容区可纵向滚动，全部操作可达。800px 两列、390px 一列，没有横向溢出或工具栏遮挡。 |
+| 颜色与变量 | 复用 FreeBuddy 品牌绿、背景、文字、边框和语义色。运行蓝、待确认黄、完成绿、未读红，状态同时包含图标和文字。实际主题的颜色比示意图更柔和，遵循现有产品变量，深色截图中卡片背景为 rgb(17, 27, 45)。 |
+| 图像与图标 | 复用现有 FreeBuddy、Codex、Claude、Kimi 品牌图像和 AgentAvatar，无占位头像或手绘品牌替代。图像比例、裁切与边缘清楚。通用操作和状态使用项目现有图标库；轮廓状态图标与参考实心图标有 P3 差异。 |
+| 文案与内容 | 会话标题为首要信息，Agent / 实际模型 / 项目为身份信息。保留生产适配器名称 ClaudeCode、Kimi；无证据时不伪造模型。完成为“本轮完成”，避免暗示整个会话永久结束。活动取结构化工具记录；没有工具活动则显示最后回复摘要。待确认提供“查看请求”，文件编辑可进入真实 Diff。 |
+
+## 比较与修正历史
+
+1. 首轮 `comparison-01.jpg` 暴露卡片正文与身份文字偏小、状态独立占行的问题。该实现截图只有 1488 × 931，不作为完整全屏验收证据；另一次 `implementation-fullpage-01.jpg` 捕获到了恢复侧栏状态，也不作为全屏证据。修正截图方法后取得 `implementation-fullscreen-02.jpg`。
+2. 第二轮修正标题、活动、身份、状态和页脚字号，将桌面状态移至身份行右侧，调整卡片高度为 426px，统一筛选控件高度和内容间距。修正后的完整证据为 `implementation-fullscreen-03.jpg`、`comparison-03.jpg`、`comparison-card-03.jpg`，前述 P2 层级和布局差异消除。
+3. 最终浏览器验收确认列表返回、消息定位和 Diff 跳转；补齐演示桥接层需要的设置接口。重新采集 `implementation-final.jpg`，将其与源图并排查看，并检查 `comparison-card-final.jpg` 的细节。最终没有需要继续修正的 P0 / P1 / P2。
+
+## 交互与状态验证
+
+- 点击“列表”：退出面板全屏，恢复原侧边栏及上次 README 会话；只清除进入正文的会话未读，其他未读保留。
+- 侧栏再次进入面板；卡片打开会话后返回，README 搜索条件保留。项目筛选得到三条 freebuddy 会话，执行中筛选得到两条。
+- 卡片重命名保存后标题更新；正在执行和待处理会话的归档 / 删除禁用。
+- Escape 先关闭卡片菜单，再退出面板全屏，恢复侧栏。全屏保存和恢复进入前状态，异步进入 / 退出竞争由原生控制器测试覆盖。
+- 点击读取活动 `site/main.js` 定位并聚焦来源消息 `release-reply`；点击编辑活动 `electron-builder.yml` 打开实际 FileDiff，展示 +1 变更。
+- 新会话入口打开原有新会话编辑器。
+- `implementation-list-return.jpg`、`implementation-file-diff.jpg` 保存上述关键返回和文件操作状态。
+- `implementation-800.jpg`：800 × 900，两列；`implementation-390.jpg`：390 × 844，一列。390px 工具栏控件右边界均在视口内，无横向滚动。
+- `implementation-dark.jpg` 验证深色变量与状态可辨识。
+- 控件使用语义按钮 / 输入 / 选择框、可见焦点样式；动画遵循 reduced-motion。源码和组件测试覆盖加载、未知、失败后重试、无工具活动、批量摘要和事件更新。没有对这些所有状态逐一截图，亦未执行完整屏幕阅读器审计。
+
+最后一次干净浏览器检查从 `2026-10-05T13:25:00.935Z` 开始，记录见 `artifacts/product-design/multi-agent-activity-view/browser-qa.json`：0 个控制台错误、0 个警告。
+
+## 工程验证与边界
+
+- `npm run typecheck`：通过。
+- `npm run build:renderer`：通过，保留既有大 chunk 提示。
+- `npm test`：通过。Node 1492 条、Electron 数据库 173 条、文件编辑数据库 9 条，共 1674 条通过、175 条条件跳过、0 条失败。跳过包括 Node 原生 ABI 与平台限制；Electron 单独执行了数据库用例。
+- 42 条面板、导航、未读、窗口存在状态等定向检查通过；原生全屏队列包含 6 条事件与竞态测试。
+- `git diff --check`：通过。
+- 真实 Electron/macOS 全屏动画没有人工界面验收。浏览器使用模拟原生桥接验证 App 流程，原生事件、恢复队列、超时和迟到事件以测试覆盖。真实 Agent 执行未在演示预览中启动；摘要权限、数据库和远程入口由测试验证。
+
+## P3 后续细节
+
+- `.ctp-status` 与活动图标可进一步接近参考的实心光学重量；目前沿用现有图标族，保持跨页面一致。
+- `.ctp-card-title`、活动与页脚可按用户偏好增加 1–2px 或略加字重；当前大小已保持清晰层级和窄屏可用性。
+- 空闲卡片摘要保持一个回复区，卡片高度统一；若希望增加首屏密度，可另行调整空闲卡片留白。
+
+## 实施核对
+
+- [x] 一张卡片对应一个会话，共享现有标题、可见性与操作规则。
+- [x] 列表 / 面板切换，返回原侧边栏与上次对话。
+- [x] 全屏、Escape 层级、进入前窗口状态恢复。
+- [x] 搜索、项目 / 状态 / 未读筛选及返回状态保持。
+- [x] 轻量概览、实际模型、真实活动和问题入口。
+- [x] 面板浏览保留未读，正文阅读才按原规则处理。
+- [x] 文件 Diff 与来源消息定位。
+- [x] 桌面 / 窄屏 / 深色及控制台检查。
+- [x] 修正后完整与局部视觉比较通过。
+
+---
+
+# 会话任务面板：按 ChatView 对齐字体
+
+日期：2026-10-05。此补充依据用户最新反馈，替代上一轮以生成示意图的大字号为目标的排版与字号 P3 建议；其余功能和既有验收记录保留。
+
+final result: passed
+
+## 本轮问题与修正
+
+- [P2，已修复] 面板正文与 ChatView 字体体系不一致。原桌面活动为 18px、窄卡 16px，标题为 26px、窄卡 23px / 750；用户要求采用现有 ChatView 的日常阅读尺度。活动、回复摘要、待确认文案和空状态现采用 `--fb-chat-font / 14px / 22px / 400`，与实际 ChatView 的 `.markdown-body`、`.stream-text` 浏览器计算样式完全一致。
+- [P2，已修复] 缩小字号后需要同步修正空间比例。卡片标题采用 15px / 600 / 22px，主标题 16px / 600；身份与控件 13px，模型、项目、状态和页脚 12px。卡片留白改为 18px / 20px，活动间距 8px，最小高度 310px。品牌名称与现有侧栏一致，为 Outfit / 18px / 700 / 22px；头像缩为 28px，品牌图标缩为 36px。操作保留 32–36px 点击区域。
+- [P2，已修复] 原字体 reset 的选择器优先级会覆盖标题的显式行高。改为 `.conversation-task-panel :where(button, input, select)`，标题的 22px 行高现正常生效；窄卡和窄窗口不再额外放大文字。
+
+仅修改 `src/components/CLI/ConversationTaskPanel.css` 中的字体、配套间距、图像显示尺寸和控件尺寸。
+
+## 视觉目标与比较证据
+
+- 本轮字体真值：现有 `styles.css` 中 ChatView `.markdown-body` / `.stream-text`、标题栏与侧栏品牌字体；实际截图 `artifacts/product-design/multi-agent-activity-view/typography-chatview-reference.jpg`，计算样式 `typography-chatview-styles.json`。
+- 改前截图：`artifacts/product-design/multi-agent-activity-view/typography-before.jpg`。
+- 改后截图：`artifacts/product-design/multi-agent-activity-view/typography-after.jpg`。普通模式截图 `typography-inline-panel.jpg` 为恢复默认视口后的 980 × 823 像素，展示与既有侧栏共同出现时的排版尺度；等待卡片可见后重新采集，已确认内容为面板。
+- 全视图并排比较：`typography-comparison-full.jpg`，左侧改前、右侧改后，均为 1280 × 720 CSS px、浅色、全屏、全部项目、空搜索、六个会话、两个执行中、一个需关注、两个未读。相对更新时间自然前进约一分钟，不影响排版比较。
+- 卡片局部并排比较：`typography-comparison-card.jpg`，两侧以相同像素尺度展示第一张卡片，检查标题、身份行、活动、未读和页脚。
+- 字体局部并排比较：`typography-comparison-body.jpg`，将实际 ChatView 正文与改后活动正文放在同一张图中，以 1:1 截图尺度检查字体与字号；不同页面内容和行间分组不作为逐像素布局匹配目标。
+
+ChatView 真值、改前与改后完整截图均为 1280 × 720 像素。浏览器报告 devicePixelRatio 为 2，截图 API 输出为每 CSS px 一像素；比较时未额外放大或缩小。全视图合并加入 24px 间隔和 28px 标签区。聚焦比较保持原像素尺寸，只裁切对应内容。
+
+## 五项视觉检查
+
+- 字体：ChatView 与面板正文计算出的 family、14px、22px、400 完全一致；UI 控件和标题继续使用产品 `--fb-font`，对应 ChatView 标题栏的 UI 字体。标题保持一至两行，活动单行省略。默认、800px 和 390px 宽度都采用 15px 卡片标题、14px 正文。
+- 间距：字号缩小后卡片内容与身份区域同步收紧；页脚位置保持稳定。三列、两列、一列网格切换正常，窄屏无横向溢出，搜索、筛选、全屏及列表操作均可见。
+- 颜色：现有文字、品牌、背景和状态变量保留。活动的次要文字颜色、运行蓝、待确认黄、完成绿仍可辨识；文字层级调整未引入新色板。
+- 图像：保留现有 FreeBuddy 与 Agent 原始资产，无新绘制或替代图像；缩小显示尺寸后边缘清晰，比例与裁切正常。活动图标统一为 16px，与正文尺度相配。
+- 文案：标题、实际模型、项目、状态、活动和操作文案未变，卡片仍优先呈现任务标题；所有操作含义保持清楚。
+
+## 验证与最终结果
+
+- `typography-800.jpg`：800 × 900，双列，无横向溢出。
+- `typography-390.jpg`：390 × 844，单列，无横向溢出；顶部按钮右边界最大 374px，全部在视口内，点击区域高 32–36px。
+- 点击“列表”恢复上次 README 会话与原侧栏；再次点击侧栏“任务面板”正常返回。
+- 浏览器错误和警告为 0，记录于 `typography-browser-qa.json`；最终计算样式见 `typography-after-styles.json` 与 `typography-narrow-styles.json`。
+- `npm run build:renderer` 通过；保留既有大 chunk 构建提示。此次为纯 CSS 修改，未重复运行上一轮完整功能测试。
+- `git diff --check` 通过。没有剩余 P0 / P1 / P2。原生全屏动画的上一轮验证边界仍适用；本次未改动原生窗口实现。
+- 可保留的 P3：更紧凑的卡片高度可按用户偏好进一步调整；本次已将字号和空间比例对齐现有 ChatView，不再建议向原生成示意图放大文字。
+
+## 实施核对
+
+- [x] ChatView 与面板正文使用相同 family / size / line-height / weight。
+- [x] 标题、控件、辅助信息采用现有应用的字体尺度。
+- [x] 移除窄屏放大覆盖，修复 reset 行高优先级。
+- [x] 截图的完整与局部并排比较通过。
+- [x] 800px / 390px 响应式与原列表返回验证通过。
+- [x] 浏览器控制台和 renderer 构建检查通过。
+
+---
+
+# 会话任务面板：真实内容密度与层级整理
+
+日期：2026-10-05。依据用户最新截图“怎么感觉乱糟糟的”，本轮检查和修正总览、需关注筛选、原对话详情三个步骤。此前演示图和字号记录保留；本轮以真实内容压力场景的可扫读性为目标。
+
+final result: passed
+
+## 问题与结果
+
+- [P1，已修复] 完整命令、cwd、MCP 工具名挤占活动正文。识别有依据的文件 / 搜索 / 脚本 / 构建 / 协作动作；未知执行使用中性名称，已有简短自然描述保留。文件显示相对路径，原始 filePath、messageId 和调用对象仍用于导航。完成动作去重，最多显示三条；不同运行 / 待执行 / 失败调用不因同名被合并。
+- [P2，已修复] 五行灰色回复、Mermaid 与 Markdown 源码抢占视线。正文改为两行纯文本摘要，移除气泡与装饰图标；代码结果只有中性提示，不编造任务成果。长普通回复保留最近内容，长代码保留 opening fence，避免完成后数据库投影截掉 fence 而再次显示中部源码。数学比较符及普通图表名称说明不会被误删。
+- [P2，已修复] 长标题 / 身份 / 状态位置和卡片高度不一致。标题统一单行，状态移至首行；完成 / 空闲 / 停止为轻量文字，执行 / 待确认 / 失败保留语义颜色和图标。身份统一 24px 头像和一行信息，卡片最小高度 244px，移除内部横线和阴影，页脚为轻量文本入口。1470px 压力场景首行实际高 256px，由三条活动决定，同一行对齐。
+
+## 来源、尺寸与完整 / 局部比较
+
+- 用户原图 `clarity-user-before.png` 为 2940 × 1912 像素；按 2× 缩小为 `clarity-user-normalized.jpg` 的 1470 × 956，用于对照同一 CSS 尺度。没有重新生成用户截图。
+- 本轮在实际 App 和生产组件上使用内存桥接，构造 42 会话 / 0 执行中 / 13 需关注 / 0 未读的压力场景，包含长自然回复、六条 shell 命令、五个 MCP 动作、Mermaid、附件哈希标题。它复现同类内容，未读取或更改用户真实数据库；项目标签与第三行会话内容不要求与用户数据逐字一致。
+- `clarity-before.jpg` 和 `clarity-after.jpg` 均为 1470 × 956 CSS px、浅色、全屏、全部项目、空搜索、首批 24 张卡片，使用相同 fixture 输入。浏览器报告 devicePixelRatio 2，截图 API 每 CSS px 输出一像素，未额外缩放。
+- `clarity-comparison-full.jpg` 同图并排检查改前 / 改后；`clarity-comparison-user.jpg` 同图检查归一化用户截图 / 实现。比较画布增加 24px 间隔与 32px 标签区。
+- `clarity-comparison-card.jpg` 与 `clarity-comparison-actions.jpg` 以 1:1 像素裁切对应卡片：宽 464px，改前高 372px，改后高 256px；改后下方填比较画布背景，不引入下一张卡片。已逐一查看完整与局部合并图，确认标题 / 身份对齐、两行摘要、三条活动、轻量状态和页脚；无需要继续修正的 P0 / P1 / P2。
+
+## 五项视觉检查
+
+- 字体：正文继续 `--fb-chat-font / 14px / 22px / 400`，标题 15px / 600 / 22px，UI 与辅助信息采用既有 12–13px 尺度。800px / 390px 未额外放大字体，摘要计算出的 clamp 为 2。
+- 间距：同一行标题和身份起点一致，移除聊天气泡、卡内横线和大按钮。首屏可见第三行待确认卡片；短回复仍保留适量留白，让网格保持稳定。
+- 颜色：完成 / 空闲文字使用既有 secondary 变量，无胶囊背景；执行蓝、待确认黄、失败红、未读点保留。深色正文和安静状态为 rgb(203,213,225)，卡片为 rgb(17,27,45)，截图已检查。
+- 图像：沿用 FreeBuddy 与 Agent 原始资产，24px 头像比例和边缘正常；没有新绘制或替代图像。
+- 文案：真实标题、模型、项目和状态保留；长标题有完整 title 提示和可访问名称。命令按已知动作取短名称，不推断执行成果；详情仍保留原内容。
+
+## 交互、工程检查和边界
+
+- 三步骤审计见 `artifacts/product-design/multi-agent-activity-view/clarity-audit.zh-CN.md`，各步骤已记录原始截图、具体问题与修复后状态。
+- 浏览器：需关注筛选 13 张；返回后筛选保持；加载更多由 24 到 42 张；搜索 Markdown 得到两张；work 项目得到 19 张。精简“运行脚本”打开正确对话，可展开六条原始命令；文件编辑打开 electron-builder.yml 的实际 +1 Diff；列表恢复原侧栏与最近签名会话。
+- `clarity-800.jpg` 为 800 × 900 双列，`clarity-390.jpg` 为 390 × 844 单列，均无横向溢出，390px 顶部操作右边界最大 374px。`clarity-running.jpg`、`clarity-dark.jpg` 验证自然动作、执行 / 待确认 / 未读与深色。已恢复默认视口并保存 `clarity-default-viewport.jpg`，尺寸 980 × 823，无横向溢出。
+- 浏览器干净检查从 2026-10-05T14:47:37.006Z 开始，0 错误、0 警告，见 `clarity-browser-qa.json`。
+- 前端 helper / store / 导航 26 条测试通过；Electron 数据库投影 9 条通过，共 35 条通过，0 跳过 / 失败。包含长分块图表完成后投影与显示、普通 prose 最后结果、原始数据库内容不变、路径 / 真实调用对象导航、数学比较和自然语言说明等回归。
+- `npm run typecheck`、`npm run build:renderer`、Electron TypeScript 编译与 `git diff --check` 通过。既有 npm sass 配置 / 大 chunk 提示与 Electron 测试 runner 的 macOS codesign 诊断保留，测试退出码为 0。本轮没有重复上一轮全量 1674 条测试。
+- 真实 Agent、真实审批处理和 macOS 全屏动画未在内存 fixture 中执行；本轮未修改原生窗口与审批实现。截图与语义控件检查不代表完整屏幕阅读器合规审计。
+- P3：用户真实标题中的附件哈希仍保留，只做单行截断；如需自动清理标题，属于另一项标题生成规则调整。辅助时间 / 模型沿用既有三级文字颜色，可后续随全局 token 一并改善。
+
+## 实施核对
+
+- [x] 长命令、MCP、代码和五行回复不再铺满卡片。
+- [x] 标题 / 状态 / 身份统一位置，正文三条活动或两行摘要。
+- [x] 真实短描述、最新 prose 结果和各调用的导航对象保留。
+- [x] 完整与局部比较、深色 / 窄屏 / 详情入口复核通过。
+- [x] 35 条定向回归、类型检查、构建和控制台检查通过。
+
+## 发布前完整回归补充
+
+用户已授权提交所有改动并发布新版。发布前完整回归发现摘要语义匹配正则含中文字面量，与仓库的 src 国际化检查冲突；已将匹配字符改为等价 Unicode 正则转义，未改变文案或识别行为。摘要与国际化 21 条定向检查通过。
+
+2026-10-05 的 `npm test` 在系统权限环境中完整通过：Node 1502 条、Electron 数据库 174 条、文件编辑数据库 9 条，共 1685 条通过、176 条条件跳过、0 条失败。沙箱首次运行的本地端口用例失败以系统权限复跑解决；日志保存在 `/private/tmp/freebuddy-release-tests.log`。宣传目录 9 个 JavaScript 文件语法检查及 `git diff --check` 通过。GitHub 系统权限预检确认当前账号和仓库 API 权限有效。
+
+
+---
+
+# Pi BYOK 图片开关对齐修复（2026-10-07）
+
+## 来源、预览与状态
+
+- Source visual truth: /var/folders/5t/jv509wn1335b48c6gfk67f4w0000gn/T/codex-clipboard-1256912a-2398-4bb6-a1d2-44e62e9fffe4.png；原样副本 artifacts/product-design/pi-byok-alignment/source.png。
+- 任务：修复截图中复选框位于“图片”文字上方的错位，沿用现有表单、网格、文案和图标；用户截图作为缺陷证据，不把竖排作为需要保留的设计目标。
+- 实现：tests/fixtures/pi-byok-preview.html 使用生产 CLIAdaptersTab 和完整 SettingsPage 外层类名，内存中的单模型自定义 Pi BYOK，API 地址与 Key 后缀均为固定样例，不读写用户真实配置。
+- Browser-rendered implementation: artifacts/product-design/pi-byok-alignment/final.jpg；局部截图 final-widget.jpg。
+- 源图 1296 × 280 px，按 2× 归一化为 source-normalized.png 的 648 × 140 px。浏览器报告 devicePixelRatio 2；截图 API 每 CSS px 输出一像素，未再放大浏览器截图。
+- 同状态全图：before.jpg / after.jpg 均为 1280 × 720 CSS px 与截图像素，浅色、图片未勾选、模型 ID 输入框聚焦。
+- 源图同宽对照：1090 × 720 CSS px 视口，source-match-widget.jpg 为 648 × 141 px；源图没有聚焦描边，且裁剪边界没有包含全部说明文字，这些状态/裁剪差异不作为设计偏差。
+- 响应式：narrow-dark.jpg 为 800 × 900 CSS px；最终可见预览 final.jpg 为 734 × 823 CSS px，局部截图为 608 × 141 px，图片已勾选并保存。已清除临时视口覆盖。
+
+## 全图和局部比较证据
+
+- comparison-full.jpg 把同视口、同状态的实际设置页改前/改后并排放在同一张图中；页面层级、网格宽度、输入框、删除按钮和其他区块保留，视觉控件不再撑高模型行。
+- comparison-source.jpg 把用户截图归一化副本与 648 CSS px 宽的实际模型区放在同一张图中；明确看到复选框从文字上方回到文字左侧，且与输入框、删除按钮垂直居中。
+- final-metrics.json：最终窗口中输入框、复选框、图片文字、删除按钮的中心 Y 均为 364.3359375 CSS px，复选框 16 × 16，输入框/删除按钮高 32，无横向溢出。
+- narrow-metrics.json：800px 深色窗口中复选框与文字中心 Y 也完全一致，无横向溢出。
+
+## Findings 与比较历史
+
+1. [P2，已修复] 全局 .settings-surface label / .modal label 的选择器优先级高于原 .byok-model-vision，把控件改为 column，同时覆盖局部字号。生产页面复现的 computed flex-direction 为 column；此前只预览模型列表、未包含 SettingsPage 外层，因此遗漏了冲突。
+2. 修复：在真实设置页和模态容器下限定 .byok-model-vision 样式，明确 row 和 center；复选框清除通用输入框内边距，并禁止在窄列内压缩。
+3. 修复后重新截图并进行上述同图对照：computed flex-direction 为 row，四个控件中心一致；全图与局部比较均无剩余 P0/P1/P2 问题。
+
+## 五项视觉核对
+
+- 字体与排版：保留产品字体和原模型 ID 等宽字体；“图片”恢复原组件 12px 字号与单行显示，未改动全局标签排版。源图和浏览器截图的聚焦描边/光标差异为测试状态差异。
+- 间距与布局：保留模型表格列宽、8px 行间距和表单卡片；标签内部 6px 间距，复选框 16px、文字和两侧控件居中。800px 深色及最终 734px 浅色窗口无溢出。
+- 颜色与 tokens：沿用现有浅/深色表单、文字、边框和选中颜色，没有新增色值或改变色彩层级。
+- 图片与图标：沿用生产 Agent 图标、Lucide 删除/添加图标及原生复选框，无替代图形、图标重画或新增位图资产。
+- 文案与内容：模型 ID、显示名称、视觉、图片、添加/删除与说明文案保持不变；演示 API 地址和 Key 后缀只属于隔离 fixture。
+
+## 交互与验证
+
+- 点击“图片”文字切换勾选；出现未保存状态，点击保存后显示“已保存”，按钮恢复不可操作。预览保存仅更新内存。
+- Pi、Codex 和 DeepSeek 的同类控件均为横排，文字/复选框中心差为 0。
+- 预览浏览器控制台检查无 error/warn；真实生产数据、网络模型能力与原生 Electron 窗口没有在此隔离预览中执行。
+- scripts/run-electron-node-test.mjs tests/pi-byok.test.mjs：4 项通过，0 失败，0 跳过，包含保存、重新加载、数据库与运行时能力转换回归。现有 macOS codesign 诊断不影响测试退出码 0。
+
+## Implementation Checklist
+
+- [x] 在完整设置页样式下复现，不再使用缺少外层样式的静态列表作为验证。
+- [x] 修复标签层叠冲突并保留原表单结构。
+- [x] 完整/局部同图比较、深浅色、窄窗口和实际点击/保存复核。
+- [x] 4 项相关回归通过，临时视口已恢复，用户预览保持打开。
+
+无需要阻塞交付的后续视觉问题。
+
+final result: passed
+
+
+---
+
+# Message-scoped skill shortcuts — 2026-10-24
+
+- Approved target: the existing FreeBuddy composer and the agreed interaction in this chat: slash searches skills, selection becomes a removable tag, sending applies the skill to one message, and history retains the skill label. This extends an existing product; no separate visual mock was selected.
+- Source visual truth: `artifacts/product-design/skill-commands/new-task-menu-before.png`, an initial browser capture using the existing new-task composer, showing the placement defect found during this change.
+- Implementation screenshots: `artifacts/product-design/skill-commands/new-task-menu-after.png`, `artifacts/product-design/skill-commands/menu-light.png`, and `artifacts/product-design/skill-commands/selected-light.png`.
+- Viewport: 1280 × 720 CSS px; source and implementation images are 1280 × 720 px at 1x. No resizing or density normalization was needed.
+- Matched comparison state: light theme, new task, normal mode, empty slash query, the same sample skill records and selected first result. The fixture toolbar is development-only and is not part of the product UI.
+
+## Findings and comparison history
+
+1. [P2, resolved] The first menu opened above the new-task textarea without accounting for available height. Its heading and first row extended beyond the top of the viewport; changing composer overflow also disturbed its existing rounded outline. Evidence: `new-task-menu-before.png`.
+2. Replaced container-relative placement with a body portal positioned from the textarea bounds. The menu chooses the available side, limits its height, scrolls the list, and keeps its heading and keyboard hints visible. The composer retains its original clipping and outline.
+3. Compared the before and after captures together at the same viewport and state. The revised heading begins below the fixture toolbar, the list scrolls within the available space, and the textarea, send action, and workspace controls remain visible. Evidence: `new-task-menu-after.png`.
+4. No actionable P0/P1/P2 issues remain in the tested desktop states. The added tag row and per-message scope text are intentional additions to the existing composer.
+
+## Fidelity surfaces
+
+- Typography: retains the existing application font stack; skill names use 13px/600, descriptions 12px with 1.45 line height, and supporting text 11px. Long descriptions are limited to two lines and names wrap in the menu; tags truncate safely. Chinese and English UI labels were checked.
+- Spacing/layout: retains the production composer, toolbar, workspace strip, and send control. The menu uses the existing 8px spacing rhythm, a 12px outer radius, and a capped 560px width. The focused menu region and tag row were reviewed within the full-resolution images; separate crops were unnecessary because their text and outlines are legible at this density.
+- Colors/tokens: uses existing `--fb-panel-bg`, `--fb-panel-soft`, `--fb-hover`, `--fb-border`, text, and brand tokens. Light and dark menus were inspected in the browser.
+- Assets: reuses the existing Lucide Sparkles and X icons. No raster asset was required for this control.
+- Copy: the menu says “选择技能” and “仅本条消息”; the selected tag is removable. History shows the chosen skill next to the user request. Agent-native commands are absent from the menu. Empty/no-result states show a status message and an Escape hint without advertising an unavailable selection action.
+
+## Primary interactions verified
+
+- Slash typing opens the menu; search matches skill names and descriptions, including Chinese.
+- Recent choices sort first; untrusted/disabled skills are excluded.
+- Arrow keys, Enter, Tab, Escape, tag removal, and selection through the plus menu work. Escape preserves the query; Shift+Tab and IME confirmation retain normal input behavior.
+- Pasting `/car_paly/home/` preserves ordinary text and does not open the menu or produce an error.
+- Existing-conversation send and new-task first send pass the selected skill to the actual production send path using the fixture's memory-only bridge. The next ordinary message has no transient skill; persisted conversation defaults remain unchanged.
+- Scheduled sending retains the skill label; “改回草稿” restores both text and skill selection.
+- A fresh final preview reported no browser console errors. The fixture uses sample skill records and simulated replies, without launching an agent.
+- Behavioral tests cover keyboard/paste/IME handling and per-message runtime arguments. An Electron/SQLite test verifies migration and persistence of the message skill snapshot.
+
+## Implementation checklist
+
+- [x] Skills-only slash menu and shared plus-menu selection.
+- [x] Per-message tags, runtime invocation, scheduled-send preservation, and history labels.
+- [x] Viewport-aware menu and existing theme tokens.
+- [x] Path-paste regression, input-method behavior, and transient-selection isolation.
+- [x] Type checking and full test suite, including the dedicated Electron database checks.
+
+## Residual scope
+
+Team tasks continue to use their team skill configuration. The preview does not exercise a paid/live model response; it verifies the production composer and dispatch arguments with a memory-only bridge. No installation or publishing step was performed.
+
+final result: passed
+
+## Conversation references — 2026-10-24
+
+Final result: pass.
+
+Scope: extend the existing composer with `+ → 引用会话`, a searchable multi-select dialog, removable draft tags, snapshots at send time and existing context cards in message history. Reuses the app's authorized snapshot/share endpoints and context tools. No external service or real agent was invoked by the preview.
+
+Evidence and comparison:
+- Captured the real production `ChatView` through the memory-only preview at `http://127.0.0.1:5197/tests/fixtures/skill-commands-preview.html`, 1280 × 720 CSS pixels, density 1.
+- Compared `artifacts/product-design/conversation-references/picker-before.png` and `picker-light.png` together in one review input, at the same viewport, theme, empty query, three source conversations and no selections. No new mockup was provided; the existing app's modal, composer tags and context cards supply the visual target.
+- [P2, fixed] Global `.modal label` styles stacked the search icon over a zero-width input. Scoped row direction and input sizing restore the usable search field. Final screenshot shows its placeholder and focus outline, and the search was exercised using title/agent queries and an unmatched query.
+- [P2, fixed] Weak empty checkbox boundaries and low-contrast secondary text made source selection and context metadata hard to read. Use existing secondary/link tokens for text and visible checkbox outlines; final light picker and dark history captures confirm readability.
+- Composer and history evidence: `composer-light.png`, `history-light.png`, `history-dark.png`; new task multi-selection evidence: `new-task-dark.png` in the same artifact directory.
+
+Required visual surfaces:
+- Typography: existing app font stack; 18px dialog heading, 14px source titles, 12–13px supporting text. Long titles truncate inside flex rows and expose the full draft title via tooltip.
+- Spacing/layout: centered 560px dialog with viewport bounds, scrollable source list, 24px padding and 16px section rhythm. Composer tags wrap and the send controls remain visible at the desktop viewport. The dialog reuses existing modal and action styles.
+- Colors/tokens: app panel, border, hover, secondary text, link and brand tokens; checked state and keyboard search focus are visible in both themes.
+- Images/assets: existing Lucide icons and existing agent-brand context cards, with no replacement raster assets. Preview source agent identities match the card icons.
+- Copy/content: clear snapshot timing, search prompt and empty states; “会话引用” and “会话摘要和历史” replace share/Brief jargon in the reused cards. Chinese and English translations are provided.
+
+Interaction checks:
+- Search by agent, keyboard Enter selection, multi-selection, no-result Enter safety, current-session exclusion and focus returning to the composer.
+- Skills and references used together; existing conversation send and new-task send clear the composer tags and show source cards in history.
+- Scheduled draft preserves references; “改回草稿” restores both text and references. Unit tests verify snapshot/attach ordering before normal and delegation dispatch and keep failed scheduled entries available for retry.
+- Opening a source card changes to the source conversation; returning preserves the original history.
+- Source permission and invalid-share checks remain on the server. Self-references are rejected before snapshot creation.
+
+Validation:
+- `npm test`: main 2,140 tests, 1,865 passed / 275 skipped; handoff database 245 tests, 241 passed / 4 skipped; file snapshots 66 tests, 64 passed / 2 skipped. No failures.
+- Final focused tests: 38 passed. Final typecheck and production renderer build passed; Electron build passed within the full suite.
+- Build retains the existing bundle-size advisory. No actual external model execution, installation-package deployment, screen-reader session, or mobile device run was performed.
+
+Implementation checklist: complete. Installed `/Applications/FreeBuddy.app` is unchanged; changes are in this checkout and the local preview.
+
+## Sidebar drag into composer — 2026-10-24
+
+Final result: pass.
+
+Implemented the native HTML drag path on the shared sidebar `ConversationRow`, with a dedicated conversation-ID payload. Both existing-chat and new-task composers accept it as a pending conversation reference. The existing file drop path remains the fallback. The composer highlights during a valid conversation drag and restores normal appearance on leave, cancel, drop, scope changes and send locks.
+
+Visual target: existing sidebar, composer and reference tags from the preceding implementation. Reused their typography, spacing, panel/border/link/brand tokens and Lucide icon. No new asset or screen design was needed. The preview now includes the production `ConversationList`, with its own correctly positioned chat container and collapsed detail-panel width; this preview-only layout matches the app's containing-block requirements.
+
+Real native browser checks at 1280 × 720, density 1:
+- Dragged “登录流程：需求与边界情况” from the production sidebar into a composer containing a draft. The active sidebar row remained “优化登录页面的交互”, the exact draft text remained intact and the reference tag appeared.
+- Repeating the same drag kept one reference. Dragging the active conversation added no reference. Dragging a second source produced a second tag.
+- New task began with an independent empty reference draft and accepted the sidebar drag. Returning to the existing conversation restored its text and two references.
+- Reviewed the resulting tags in light and dark modes: readable labels, aligned icons/removal controls, no clipped composer controls or changed sidebar selection. Typography, layout rhythm, colors, icon fidelity and copy follow existing app styles.
+- Sending the dragged references produced two context cards in history and cleared the composer selection. All execution in this preview uses memory-only sample data and simulated responses.
+
+Evidence: `artifacts/product-design/conversation-drag/composer-light.png`, `composer-dark.png`, `new-task-light.png` and `history-light.png`. Mid-drag feedback was behavior-tested through the hook; no synthetic hover screenshot was fabricated.
+
+Validation: focused 29 tests passed, including payload validation, source lookup, self-reference rejection, repeated-drop deduplication, disabled targets, file-drop separation, nested drag depth and cancel cleanup. Full regression passed: main 2,148 tests (1,873 passed / 275 skipped), handoff 245 (241 / 4), file snapshots 66 (64 / 2). Final typecheck and production renderer build passed. Installed app remains unchanged.
+
+## Space-aware browser/sidebar layout — 2026-10-25
+
+Final result: pass.
+
+Replaces unconditional sidebar collapse when switching to browser preview. Automatic collapse is derived from visible space and does not overwrite the user's sidebar preference. A per-browser manual override remains authoritative during resizing and temporary navigation away; closing the browser or changing conversations resets that override. Settings, the conversation board, other tool pages and new tasks do not inherit a hidden preview's automatic collapse.
+
+Width policy: preserve the 272px sidebar, a 420px chat budget and up to 560px of useful browser width when space allows. With the default 680px browser preference, 1280px retains the sidebar and fits the browser into the remaining space; below the 1260px budget, the sidebar collapses temporarily. Smaller requested browser widths reduce the threshold. Width calculations use the requested width, avoiding collapse/expand oscillation.
+
+Responsive coordination:
+- The prior <1080 rule continues to manage non-browser detail tabs. Browser preview uses the sidebar space-saving policy instead.
+- A manually folded browser stays folded when the window expands; resizing no longer reopens it.
+- Manual sidebar expansion at the desktop minimum width of 960px allows the middle column to become narrower than 420px, preventing horizontal overflow. Composer offsets continue to respect the visible browser boundary below the old 1080px breakpoint.
+- [P2, fixed] At the narrowest manual three-column arrangement, the keyboard hint collided with the tool buttons. A composer-width container query hides that optional hint at 360px and below while keeping send, scheduling, attachments, references and permission controls available.
+
+Evidence: real production ConversationList, ChatView, DetailColumn, BrowserCanvas and the shared layout policy in `/tests/fixtures/browser-sidebar-layout-preview.html`, with memory-only data and a local sample webpage. Native browser viewport overrides exercised 1280 × 720 and 960 × 720 at density 1. The fixture also uses the same responsive-detail helper as App; it does not start an agent or modify installed app data.
+
+Accepted screenshots under `artifacts/product-design/browser-sidebar-layout/`:
+1. `01-wide.png`: browser open at 1280px; sidebar remains visible; a real sidebar drag adds a reference; chat draft and browser input are intact.
+2. `02-narrow.png`: resize to 960px; sidebar temporarily disappears while browser, draft and input remain visible.
+3. `03-manual-expand.png`: pre-fix screenshot of hint/button collision after manual sidebar restoration.
+4. `04-manual-expand-fixed.png`: post-fix at the same viewport/state; reviewed together with step 3 in one comparison input; optional hint disappears and buttons remain distinct.
+5. `05-manual-close-stays-closed.png`: manually fold the browser at narrow width, widen to 1280px; browser remains closed and sidebar is restored.
+6. `06-auto-collapse-restored.png`: a new narrow browser opening collapses the sidebar again; closing it restores the expanded sidebar and existing reference draft.
+
+Visual surfaces: existing font stack and hierarchy, existing sidebar/composer spacing, inherited panel/border/link tokens, unchanged native agent assets and Lucide icons, existing localized expand/collapse labels. No new artwork or visual redesign. No remaining P0/P1/P2 finding in the checked desktop states. Installed-app rendering, real external sites and assistive-technology sessions were not exercised; the local rendered production components and state transitions were checked directly.
+
+Validation: 15 behavior tests cover automatic restoration, manual choices, hidden pages, conversation changes, width budgets, detail width and preview closure across breakpoints. Full suite passed: main 2,163 tests (1,888 passed / 275 skipped), handoff 245 (241 / 4), file snapshots 66 (64 / 2). Typecheck and renderer build passed, with the existing bundle-size advisory. No installation or publishing was performed.
+
+Final preview smoke check: the fixture's settings mock was updated to match the current `window.freebuddy.settings` bridge. A fresh page completed open → narrow → close/restore → wide → reopen with zero page errors. Temporary browser viewport overrides were reset before handoff.

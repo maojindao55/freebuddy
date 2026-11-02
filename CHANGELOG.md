@@ -2,6 +2,702 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.56] - 2026-11-02
+
+### 问题修复
+
+- guard webContents in publishFinished and preserve DetailColumn game tab contract
+
+## [0.10.55] - 2026-11-02
+
+### 新功能
+
+- embedded split-pane document viewer and seamless window docking (#225)
+
+### 问题修复
+
+- hide background ACP console windows on Windows (#226)
+
+## [0.10.54] - 2026-10-31
+
+### 问题修复
+
+- restore release checks for self-check prompts and ACP fixtures
+
+## [0.10.53] - 2026-10-30
+
+### 新功能
+
+- archive, reorder, pin, move conversations and fork from messages (#224)
+
+### 问题修复
+
+- update native Antigravity CLI alongside ACP adapter
+- 修复回合状态与命令展示并升级 pi-acp
+- improve game canvas responsive scaling and window resize recovery (#223)
+
+## [0.10.52] - 2026-10-27
+
+### 新功能
+
+- add per-user project order lock
+- support Escape and Ctrl+C shortcuts to stop running conversation
+
+## [0.10.51] - 2026-10-25
+
+### 新功能
+
+- 支持会话置顶与取消置顶，按置顶时间显示在所在项目或最近列表前方，状态保存至数据库。
+- 输入框支持通过 `/` 搜索并选择本条消息使用的技能，发送前显示可移除标签，消息历史保留技能标识。
+- 支持引用其他会话：可搜索、多选，或从左侧会话列表直接拖入输入框；发送时保存摘要与历史快照，供 Agent 读取。
+- 会话引用适用于新任务、团队任务和定时发送；编辑定时消息时可一并恢复引用。
+
+### 体验优化
+
+- 侧栏会话新增置顶、归档快捷操作及右键菜单，支持从菜单重命名、归档和删除。
+- 打开内置浏览器时，空间足够便保留左侧会话列表；空间不足时临时收起，关闭浏览器后恢复，并优先保留用户的手动选择。
+- 技能选择支持键盘操作、最近使用排序和中英文搜索；粘贴文件路径时不会误触发技能菜单。
+- 优化新任务技能菜单位置和窄聊天栏的操作按钮布局。
+
+### 问题修复
+
+- 修复粘贴斜杠开头的路径时，异常命令元数据导致输入框崩溃的问题。
+- 修复旧引用卡片随历史分页或后续消息移动的问题，并避免跨会话异步状态覆盖。
+- 修复手动收起内置浏览器后，扩大窗口会将其重新打开的问题。
+- 修正 macOS 自动更新包的架构识别，避免 Intel Mac 误下载 Apple Silicon 更新包。
+- 更新 ZCode 的官方 Agent 图标。
+
+## [0.10.50] - 2026-10-23
+
+### 新功能
+
+- support Gemini 4 Argon quota and open file links in built-in browser
+
+### 问题修复
+
+- prevent MCP picker from being clipped by composer
+
+## [0.10.49] - 2026-10-20
+
+### 问题修复
+
+- preserve MCP tools for BYOK providers
+
+## [0.10.48] - 2026-10-19
+
+### 新功能
+
+- 支持远程服务器浏览器 OAuth 授权 (#214)
+
+## [0.10.47] - 2026-10-19
+
+### 新功能
+
+- support remote MCP servers and remove duplicate release checks (#212)
+
+## [0.10.46] - 2026-10-18
+
+### 新功能
+
+- implement user-configurable third-party MCP server support (Phase 1) (#211)
+
+## [0.10.45] - 2026-10-15
+
+### 问题修复
+
+- 内置可复用 Node 并修复空 diff 卡片 (#209)
+
+### 体验优化
+
+- reduce work when reopening conversation history (#210)
+
+## [0.10.44] - 2026-10-13
+
+### 问题修复
+
+- 修复 ACP 断管闪退并过滤 diff 资源文件 (#208)
+
+## [0.10.43] - 2026-10-13
+
+### 问题修复
+
+- normalize Windows snapshot fixture paths (#207)
+
+## [0.10.42] - 2026-10-13
+
+### 新功能
+
+- 对话结束后展示文件卡片，点击计算本轮整体 diff (#206)
+
+## [0.10.41] - 2026-10-12
+
+### 新功能
+
+- improve start page, theme sync and copying
+
+## [0.10.40] - 2026-10-11
+
+### 问题修复
+
+- restore source checks and await engine replies
+
+## [0.10.39] - 2026-10-11
+
+### 新功能
+
+- support macOS engines and document mode shortcut
+
+### 体验优化
+
+- 精简关于页布局并优化 Office 引擎操作
+
+## [0.10.38] - 2026-10-11
+
+### 新功能
+
+- 支持 AI 新建文档与会话恢复 (#205)
+
+## [0.10.37] - 2026-10-11
+
+### 问题修复
+
+- make Office engine tests cross-platform (#204)
+
+## [0.10.36] - 2026-10-11
+
+### 新功能
+
+- show per-turn metrics in the message action row and merge the session card (#201)
+- office engine preview, message run metrics, and managed DSH install hardening (#202)
+
+## [0.10.35] - 2026-10-09
+
+### 新功能
+
+- Revert "feat(windows): add Explorer verb to open files in DocStudio"
+
+### 问题修复
+
+- show Explorer menu icon via resource string index
+
+## [0.10.34] - 2026-10-09
+
+### 新功能
+
+- standalone document workspace with agent copilot (#200)
+
+## [0.10.33] - 2026-10-08
+
+### 新功能
+
+- merge agent into run card and show token counts as K/M/B (#199)
+
+## [0.10.32] - 2026-10-08
+
+### 问题修复
+
+- 修复 Windows 更新时安装器自身占用安装目录，导致旧版卸载失败并误报“FreeBuddy 无法关闭”的问题。
+- 升级时校验旧文件已清理并复用空安装目录，保留长路径清理能力，同时继续检测真正的文件占用。
+- DSH 升级固定使用检查更新时确认的目标版本，避免升级过程中版本发生漂移。
+
+## [0.10.31] - 2026-10-08
+
+### 新功能
+
+- add per-run metrics cards and warm AGY connections (#198)
+
+## [0.10.30] - 2026-10-07
+
+### 改进与修复
+
+- Agent 管理支持查看已安装版本、检查更新，并在升级后验证实际生效的版本。
+- Pi 自定义 BYOK 模型可单独配置图片能力，保存和重新加载时保留设置。
+- 修复模型配置中“图片”开关与输入框、删除按钮的对齐问题。
+- 修复发布流程中未随 Agent 升级流程更新的测试断言。
+
+## [0.10.29] - 2026-10-07
+
+### 新功能
+
+- add
+
+### 问题修复
+
+- detect agent versions and verify upgrades (#197)
+
+## [0.10.28] - 2026-10-06
+
+### 问题修复
+
+- remember the selected agent for new conversations
+
+## [0.10.27] - 2026-10-05
+
+### 问题修复
+
+- show diff counts before opening files
+
+## [0.10.26] - 2026-10-05
+
+### 新功能
+
+- 会话列表新增任务面板，可跨项目查看会话状态与最近进展，支持全屏展示，一键切回原侧边栏和对话。
+- 面板支持搜索、项目、执行中、需关注与未读筛选；可直接进入待确认请求、原对话和文件变更 Diff。
+- 「白嫖」页面改为内嵌免费资源页面，可直接在应用中访问。
+
+### 体验改进
+
+- 任务卡片字号与 ChatView 对齐，统一标题、身份和状态位置；摘要最多两行，活动最多三条，命令和工具名使用简短动作描述。
+- 完成与空闲状态采用轻量文字，执行中、待确认和失败保持醒目；支持深色模式与窄窗口布局。
+- 查看面板保留会话未读，返回对话时恢复筛选和位置；后台更新保持卡片顺序稳定。
+
+### 问题修复
+
+- 改善长代码和图表回复的摘要展示，保留普通长回复的最新结果，避免卡片显示截断的源码片段。
+- 补齐跨会话状态、认证等待与全屏恢复处理。
+
+## [0.10.25] - 2026-10-03
+
+### 新功能
+
+- 支持侧边栏未读会话筛选并重构模型供应商管理
+
+## [0.10.24] - 2026-10-01
+
+### 问题修复
+
+- 关闭 SQLite 连接后再清理测试目录
+
+## [0.10.23] - 2026-10-01
+
+### 新功能
+
+- 独立存储 ACP diff 并按需加载 (#196)
+
+## [0.10.22] - 2026-09-30
+
+### 新功能
+
+- support Antigravity agent file diffs and polish diff viewer UI
+
+### 问题修复
+
+- restrict release artifact lookup to root release directory
+
+## [0.10.21] - 2026-09-29
+
+### 新功能
+
+- 普通对话新增文件变更入口与右侧差异面板，支持行号、增删高亮、上下文折叠和复制差异。
+- 文件变更以简洁的单行文件列表展示，支持多文件展开和完整路径提示。
+
+### 改进与修复
+
+- 内置浏览器与文件变更统一关闭入口，关闭后返回概览；切换标签时保留浏览器页面。
+- 补齐 Codex 文件变更事件与 Claude Edit 记录解析，标记局部内容和历史截断，避免误展示差异。
+- 改善 ACP 额度耗尽、会话占用及底层错误提示，避免会话占用时错误重建会话。
+
+## [0.10.20] - 2026-09-29
+
+### 问题修复
+
+- restore delegation wake after resuming stopped runs
+
+## [0.10.19] - 2026-09-29
+
+### 新功能
+
+- allow @ mention of workspace directories
+- auto-update the dsh-acp managed install
+- replace session replay with a diagnostics shortcut
+- reuse bundled Pi runtime across upgrades (#195)
+
+### 问题修复
+
+- serialize mermaid svg to valid xml before lightbox preview
+
+## [0.10.18] - 2026-09-27
+
+### 问题修复
+
+- fix Antigravity CLI quota retrieval on Windows Credential Manager
+
+## [0.10.17] - 2026-09-26
+
+### 新功能
+
+- add Antigravity CLI usage quota card
+
+## [0.10.16] - 2026-09-25
+
+### 新功能
+
+- bridge ACP session mcpServers into bundled pi via forked pi-acp
+
+## [0.10.15] - 2026-09-24
+
+### 问题修复
+
+- disable GPU sandbox on Windows and avoid restarting explorer
+- improve DeepSeek adapter toggle, model resolution and vision support
+
+## [0.10.14] - 2026-09-23
+
+### 设置页改进
+
+- CLI Agent 列表：已安装统计并入搜索框所在行，移除列表上方的安装引导横幅与批量勾选流程
+- 未安装的 Agent 详情页头部新增「让 GuideBuddy 安装」操作（内置 Pi 除外）
+- 修复设置页打开时标题栏仍显示并可编辑上一会话标题的问题
+
+## [0.10.13] - 2026-09-23
+
+### 体验优化
+
+- tone down GuideBuddy install banner (v2)
+
+## [0.10.12] - 2026-09-23
+
+### 体验优化
+
+- tone down GuideBuddy install banner
+
+## [0.10.11] - 2026-09-23
+
+### 新功能
+
+- master-detail CLI agent management page (#194)
+
+### 问题修复
+
+- sweep orphaned install-dir processes during Windows upgrades
+
+## [0.10.10] - 2026-09-22
+
+### 新功能
+
+- add Devin ACP agent (#192)
+- keep the CLI agent list in sync with GuideBuddy installs (#191)
+
+### 问题修复
+
+- harden Windows upgrades and render release notes (#193)
+
+## [0.10.9] - 2026-09-22
+
+### 新功能
+
+- Improve GuideBuddy install selection and fix ACP replay suppression
+- re-probe GuideBuddy hand-offs through the real check pipeline
+
+### 问题修复
+
+- restore usage page scrolling
+
+## [0.10.8] - 2026-09-22
+
+### 新功能
+
+- let GuideBuddy install missing built-in agents
+
+### 问题修复
+
+- keep titlebar actions always visible and hover-reveal only the pencil
+
+## [0.10.7] - 2026-09-21
+
+### 新功能
+
+- hide chat titlebar icons until hover
+- let GuideBuddy install agents via bash when asked
+
+### 问题修复
+
+- keep the rename pencil next to the conversation title
+
+## [0.10.6] - 2026-09-21
+
+### 新功能
+
+- declare deepseek-v4.1-flash vision capability in cordis templates and model inference
+
+### 问题修复
+
+- ship the bundled pi runtime in packaged apps
+
+## [0.10.5] - 2026-09-21
+
+### 问题修复
+
+- make onboarding and pi runtime checks portable on Windows
+
+## [0.10.4] - 2026-09-21
+
+### 新功能
+
+- GuideBuddy 对话向导体验与完成闭环（新手引导 PR3/3） (#189)
+- 内置 pi 运行时 + 官方新手引导 Agent GuideBuddy（新手引导 PR1/3） (#187)
+- point guide gateway to freebuddy-freebie worker
+- PR2 — pi BYOK 能力 + 首次安装引导浮层
+- 新增普通 Pi 内置成员，可直接在 AgentPicker 中选用
+- 内置 pi 运行时 + 官方新手引导 Agent GuideBuddy（新手引导 PR1）
+
+### 问题修复
+
+- add mainland fallback activation and auto-bind pi adapter
+- prefix apiKey with $ so pi-ai expands envKey instead of treating it as literal token
+- enrich silent turn failure with pi session error details
+- 默认切换至 BYOK Relay 模型并避免 OpenAI 凭证劫持
+- Pi 图标 + GuideBuddy 固定 pi-acp 运行时（评审反馈）
+
+## [0.10.3] - 2026-09-21
+
+### 问题修复
+
+- 优先解析全局 standalone deepseek-harness-acp 并支持默认命令路径
+
+## [0.10.2] - 2026-09-21
+
+### 新功能
+
+- 适配现代 standalone DeepSeek Harness ACP 与 BYOK 图片/模型配置
+
+### 问题修复
+
+- 强化恢复会话重放抑制，防止历史消息与已完成工具泄漏
+- 发送消息后保持输入框光标焦点
+
+## [0.10.1] - 2026-09-18
+
+### 新功能
+
+- 服务商页与设置侧边栏 UI/UX 优化 (#185)
+
+### 问题修复
+
+- 修复团队会话停止与锁冲突，并修复 Qoder 回放重复 (#186)
+
+## [0.10.0] - 2026-09-18
+
+### 新功能
+
+- **统一服务商架构（Provider Management）**：新增服务商管理中心，集中配置和维护第三方模型 API 渠道（Base URL、API Key、协议类型），支持安全加密存储与连通性检测。
+- **Agent BYOK 引用模式**：Codex、Claude Code、DeepSeek Harness 等所有 Agent 支持一键关联服务商，修改服务商密钥全 Agent 同步生效，无缝兼容既有本地配置。
+- **模型独立启用与过滤**：支持对各服务商的模型列表进行启用/禁用开关控制，仅启用的模型可在聊天 Composer 与 Agent BYOK 下拉框中使用；列表与会话选项实时双向同步。
+- **协议兼容增强**：统一支持 OpenAI 兼容、OpenAI Responses、Anthropic Claude 以及 DeepSeek Harness 等多种协议。
+
+### 体验与界面优化
+
+- **单列紧凑排版**：服务商编辑界面重构为紧凑流式布局，优化表单对齐与内联药丸协议选择器，最大化模型列表纵向可视空间。
+- **搜索与展示体验优化**：优化模型搜索框的层叠特异性与图标对齐，新增未保存变更浮动提醒栏。
+- **释放长上下文能力**：取消拉取模型时硬编码的上下文窗口猜测，不设人为上限，原生支持 DeepSeek 1M 等超长上下文模型。
+
+## [0.9.40] - 2026-09-17
+
+### 新功能
+
+- integrate Cline adapter and support provider model cascading
+- 缩短自组织团队会话标题并支持自定义编辑 (#182)
+
+## [0.9.39] - 2026-09-16
+
+### 问题修复
+
+- unblock ACP delegation yield before cleanup (#181)
+
+## [0.9.38] - 2026-09-16
+
+### 修复
+
+- 修复自组织团队交接结束后工具仍显示“等待中”的问题。
+- 修复 ACP 工具运行状态的映射，正确显示正在执行的工具。
+
+### 诊断改进
+
+- 增加团队子任务落库、结果通知、等待恢复和主控唤醒的关联日志，便于排查偶发停滞；日志不包含对话正文。
+
+本版本未确认修复尚未复现的最后一轮未唤醒问题，新增日志用于后续定位。
+
+## [0.9.37] - 2026-09-15
+
+### 问题修复
+
+- 让资源管理器一级菜单真正加载 ExplorerCommand DLL (#177)
+- resume team conversations after replacing deleted agents (#178)
+
+## [0.9.36] - 2026-09-15
+
+### 问题修复
+
+- 修复子组织会话卡死，并支持还原精简的历史详情
+
+## [0.9.35] - 2026-09-15
+
+### 问题修复
+
+- 自组织团队子角色超长输出改为保留截断后的正文，运行中不再整条显示 omitted (#176)
+
+## [0.9.34] - 2026-09-15
+
+### 问题修复
+
+- 同一毫秒内按插入顺序分页消息，避免 IPC 读到旧消息
+
+## [0.9.33] - 2026-09-15
+
+### 问题修复
+
+- 打开超长旧对话（含自组织团队会话）时改为分页加载并跳过超大 JSON.parse，避免主进程卡死 (#173)
+
+## [0.9.32] - 2026-09-15
+
+### 问题修复
+
+- 打开超长旧对话（含自组织团队会话）时改为分页加载并跳过超大 JSON.parse，避免主进程卡死 (#173)
+
+## [0.9.31] - 2026-09-15
+
+### 问题修复
+
+- 打开含超长历史的旧对话（含自组织团队会话）时截断 IPC 消息载荷，避免主进程闪退 (#172)
+
+## [0.9.30] - 2026-09-15
+
+### 问题修复
+
+- 一级菜单需要把签名证书导入本地计算机证书库 (#171)
+
+## [0.9.29] - 2026-09-15
+
+### 问题修复
+
+- 用 .NET 导出稀疏包签名证书，避开 CI 的 Security 模块 (#170)
+
+## [0.9.28] - 2026-09-14
+
+### 问题修复
+
+- 用 desktop5 ItemType 注册文件夹右键，避免 MakeAppx 校验失败 (#169)
+
+## [0.9.27] - 2026-09-14
+
+### 新功能
+
+- 把「使用 FreeBuddy 打开」放进 Win11 一级右键菜单 (#168)
+
+## [0.9.26] - 2026-09-14
+
+### 新功能
+
+- 支持 Finder 右键用 FreeBuddy 打开文件夹和文件 (#167)
+
+### 问题修复
+
+- 降低超长会话卡死崩溃，并支持资源管理器右键打开 (#166)
+
+## [0.9.25] - 2026-09-13
+
+### 问题修复
+
+- 修复 macOS 分享扩展签名问题：发布包内的微信分享扩展现使用与主程序相同的签名证书，可被系统正常注册加载，避免首次打开提示"已损坏"
+- 修复本地部署脚本将 /Applications 中的应用重签为 ad-hoc 签名导致自动更新一直失败（"代码未能满足指定的代码要求"）的问题
+
+## [0.9.24] - 2026-09-13
+
+### 新功能
+
+- bundle and auto-register share extension for wechat integration
+- bridge community reviews and availability votes with HMAC client auth
+
+### 问题修复
+
+- fix dev scheme dispatch and helper resolution
+- remove hardcoded client secret and enforce CWE-798 regression guard
+
+## [0.9.23] - 2026-09-12
+
+### 新功能
+
+- 白嫖专区：支持导入服务商头像与自定义头像，根据协议智能匹配和选择底层 Agent（Codex / Claude / DSH）
+
+## [0.9.22] - 2026-09-12
+
+### 新功能
+
+- 团队与转接支持思考强度选择，转接可交回原 agent (#164)
+- 支持通过 zcode-acp 接入智谱 ZCode + 修复 Markdown 嵌套列表渲染 (#162)
+
+## [0.9.21] - 2026-09-11
+
+### 问题修复
+
+- 克隆 BYOK 模型透传 + 委派异常终态结构化 outcome (#160)
+- 在 chat 桥接中转译 tool_search，恢复 MCP 工具发现 (#158)
+
+## [0.9.20] - 2026-09-10
+
+### 问题修复
+
+- 修复设置页 Tab 类型断言，解除发版 CI 阻塞
+
+## [0.9.19] - 2026-09-10
+
+### 新功能
+
+- 白嫖专区：外置服务商页面 + JS bridge 一键导入 BYOK Agent；侧栏中文副品牌名 (#155)
+
+## [0.9.18] - 2026-09-09
+
+### 新功能
+
+- 定时发送（额度恢复后自动继续对话） (#154)
+
+## [0.9.17] - 2026-09-08
+
+### 问题修复
+
+- resolve macOS cert import helper path on Windows (#153)
+
+## [0.9.16] - 2026-09-08
+
+### 问题修复
+
+- replace leftover macOS signing keychain before import (#152)
+
+## [0.9.15] - 2026-09-08
+
+### 问题修复
+
+- import macOS signing cert before electron-builder (#151)
+
+## [0.9.14] - 2026-09-08
+
+### 新功能
+
+- auto-create projects when opening a folder and show worktree path (#150)
+
+## [0.9.13] - 2026-09-03
+
+### 新功能
+
+- allow isolated browser to load remote HTTP URLs (#149)
+
+### 问题修复
+
+- handle legacy Antigravity bridge result errors as terminal failures
+
+## [0.9.12] - 2026-09-02
+
+### 问题修复
+
+- recover stalled DeepSeek delegation turns (#148)
+
+## [0.9.11] - 2026-09-02
+
+### 问题修复
+
+- make delegation wake recovery reliable (#147)
+- key self-organizing team status by role, not shared CLI adapter (#146)
+
 ## [0.9.10] - 2026-09-01
 
 ### 新功能

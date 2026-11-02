@@ -183,8 +183,20 @@ export function AgentBridgeListener() {
     const setTarget = (to: string | undefined, openPreview: boolean) => {
       const convId = useConversationStore.getState().activeId;
       if (to && convId) {
-        useBrowserStore.getState().navigate(convId, to);
-        if (openPreview) useDetailLayoutStore.getState().setActiveTab("preview");
+        const activeConv = useConversationStore
+          .getState()
+          .conversations.find((c) => c.id === convId);
+        void useBrowserStore
+          .getState()
+          .ensureFor(convId, activeConv?.cwd)
+          .then(() => {
+            useBrowserStore.getState().navigate(convId, to);
+            if (openPreview) {
+              const layout = useDetailLayoutStore.getState();
+              layout.setActiveTab("preview");
+              layout.setDetailCollapsed(false);
+            }
+          });
       }
     };
 

@@ -81,6 +81,17 @@ const codexParser: AdapterStreamParser = {
               content: String(text)
             });
           }
+        } else if (itemType === "file_change") {
+          for (const change of Array.isArray(item.changes) ? item.changes : []) {
+            if (typeof change.path !== "string") continue;
+            out.push({
+              kind: "file-edit",
+              path: change.path,
+              action: change.kind === "add" ? "create" : change.kind === "delete" ? "delete" : "update",
+              status: item.status === "failed" ? "failed" : "completed",
+              ...(typeof change.diff === "string" ? { patch: change.diff } : {})
+            });
+          }
         } else if (itemType === "reasoning") {
           const text = item.text ?? item.content;
           if (text) out.push({ kind: "thinking", content: String(text) });
@@ -107,6 +118,7 @@ const codexParser: AdapterStreamParser = {
         if (Object.keys(usage).length > 0) {
           out.push({
             kind: "usage",
+            usageScope: "turn",
             inputTokens: usage.input_tokens ?? usage.inputTokens,
             outputTokens: usage.output_tokens ?? usage.outputTokens,
             totalCost: usage.total_cost ?? usage.totalCost
@@ -216,6 +228,7 @@ const codexParser: AdapterStreamParser = {
             kind: "file-edit",
             path: String(msg.path),
             action: (msg.action as any) ?? "update",
+            status: type === "patch_apply_begin" ? "pending" : "completed",
             patch: msg.patch ?? msg.diff
           });
         }

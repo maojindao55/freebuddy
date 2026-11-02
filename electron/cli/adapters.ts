@@ -5,12 +5,14 @@ import {
   readdirSync,
   readFileSync,
   realpathSync as fsRealpath,
+  rmSync,
+  statSync,
   unlinkSync
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DSH_ACP_NPM_TAG = "next";
+import { resolvePiAcpSpawnPlan } from "./piRuntime.js";
 
 /** Node 22+ emits this for `node:sqlite`; DeepSeek ACP uses it via session-query-sqlite. */
 export const DSH_ACP_NODE_DISABLE_WARNING =
@@ -30,6 +32,10 @@ export type CLIAdapterId =
   | "grok-acp"
   | "agy-acp"
   | "dsh-acp"
+  | "zcode-acp"
+  | "cline-acp"
+  | "devin-acp"
+  | "pi-acp"
   | (string & {});
 
 export type CLIStreamMode =
@@ -266,6 +272,85 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     installHint: dshAcpInstallCommand(),
     docsUrl: "https://github.com/deepseek-ai/deepseek-harness",
     protocol: "acp"
+  },
+  {
+    id: "zcode-acp",
+    label: "ZCode",
+    defaultBinary: "zcode-acp-server",
+    checkProbe: { args: ["--version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "zcode",
+    capabilities: {
+      toolSession: true,
+      skills: {
+        mode: "native",
+        nativeDirs: [".agents/skills", ".zcode/skills"],
+        reloadPolicy: "process-start"
+      }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g zcode-acp-server",
+    docsUrl: "https://github.com/william0wang/zcode-acp",
+    protocol: "acp"
+  },
+  {
+    id: "cline-acp",
+    label: "Cline",
+    defaultBinary: "cline",
+    checkProbe: { args: ["--version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "cline",
+    capabilities: {
+      toolSession: true,
+      skills: { mode: "mcp", reloadPolicy: "new-session" }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g cline",
+    docsUrl: "https://docs.cline.bot/usage/acp",
+    protocol: "acp"
+  },
+  {
+    id: "devin-acp",
+    label: "Devin",
+    defaultBinary: "devin",
+    checkProbe: { args: ["--version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "devin",
+    capabilities: {
+      toolSession: true,
+      skills: { mode: "mcp", reloadPolicy: "new-session" }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint:
+      process.platform === "win32"
+        ? "irm https://static.devin.ai/cli/setup.ps1 | iex"
+        : "curl -fsSL https://cli.devin.ai/install.sh | bash",
+    docsUrl: "https://docs.devin.ai/cli",
+    protocol: "acp"
+  },
+  {
+    // Bundled minimal runtime (pi + pi-acp bridge) shipped as an extraResource;
+    // see electron/cli/piRuntime.ts. Kept last so butler-profile members fall
+    // back to it only when no other ACP agent is installed.
+    id: "pi-acp",
+    label: "Pi",
+    defaultBinary: "pi-acp",
+    checkProbe: { args: [], versionOptional: true, skipSpawn: true },
+    streamMode: "raw",
+    commandGroup: "pi",
+    capabilities: {
+      toolSession: true,
+      // pi natively reads Agent Skills from <cwd>/.agents/skills (and .pi/skills).
+      skills: { mode: "native", nativeDirs: [".agents/skills"], reloadPolicy: "new-session" }
+    },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g pi-acp @earendil-works/pi-coding-agent",
+    docsUrl: "https://github.com/svkozak/pi-acp",
+    protocol: "acp"
   }
 ];
 
@@ -327,6 +412,16 @@ export function isDshAcpExperimentalWarningLine(line: string): boolean {
   return /Use `node --trace-warnings/i.test(text);
 }
 
+export function isClineAcpStartupBannerLine(line: string): boolean {
+  return /^\[acp\]\s+starting\s+acp\s+mode/i.test(line.trim());
+}
+
+export function isDevinAcpDiagnosticLine(line: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+(?:TRACE|DEBUG|INFO|WARN)\b/i.test(
+    line.trim()
+  );
+}
+
 function dshAcpBinaryBaseName(binary: string): string {
   return binary.split(/[/\\]/).pop()?.toLowerCase() ?? "";
 }
@@ -386,9 +481,28 @@ function dshAcpDemoBinJsFromBinaryHint(binary?: string): string | undefined {
   return demoDir ? dshAcpDemoBinJsFromDir(demoDir) : undefined;
 }
 
+/** The dsh-base standalone owns its composition; legacy demos still need ours. */
+export function isModernDshAcpBinary(binary: string): boolean {
+  const pkgDir = resolveDshAcpDemoDirFromBinary(binary);
+  if (!pkgDir) return false;
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+    return pkg.name === "deepseek-harness-acp" && Boolean(pkg.dependencies?.["@deepseek-ai/dsh-base"]);
+  } catch {
+    return false;
+  }
+}
+
 function wellKnownGlobalDshAcpDemoBinJs(
   env: NodeJS.ProcessEnv = process.env
 ): string | undefined {
+  const appdata = env.APPDATA?.trim();
+  if (appdata) {
+    const standalone = dshAcpDemoBinJsFromDir(
+      path.join(appdata, "npm", "node_modules", "deepseek-harness-acp")
+    );
+    if (standalone) return standalone;
+  }
   const residue =
     dshAcpWindowsResiduePath(env) ??
     (env.APPDATA?.trim()
@@ -398,77 +512,16 @@ function wellKnownGlobalDshAcpDemoBinJs(
     const demo = dshAcpDemoBinJsFromDir(path.join(residue, "dsh-acp-demo"));
     if (demo) return demo;
   }
-  const appdata = env.APPDATA?.trim();
-  if (appdata) {
-    const standalone = dshAcpDemoBinJsFromDir(
-      path.join(appdata, "npm", "node_modules", "deepseek-harness-acp")
-    );
-    if (standalone) return standalone;
-  }
   return undefined;
 }
 
-const ELECTRON_CHILD_ENV_BLOCKLIST = [
-  "ELECTRON_RUN_AS_NODE",
-  "ELECTRON_NO_ASAR",
-  "ELECTRON_NO_ATTACH_CONSOLE",
-  "CHROME_CRASHPAD_PIPE_NAME",
-  "ELECTRON_CRASHPAD_PIPE_NAME"
-] as const;
+export { sanitizeCliAgentEnv } from "./cliAgentEnv.js";
 
 /** NTSTATUS STATUS_ACCESS_VIOLATION; Node reports it as signed or unsigned. */
 export const WINDOWS_STATUS_ACCESS_VIOLATION = 0xc0000005;
 
 export function isWindowsAccessViolationExit(code: number): boolean {
   return (code >>> 0) === WINDOWS_STATUS_ACCESS_VIOLATION;
-}
-
-/**
- * Chromium/Electron env inherited by `spawn("node")` can make native addons
- * (koffi, node:sqlite) abort with 0xC0000005 on Windows.
- */
-export function sanitizeCliAgentEnv(
-  env: Record<string, string | undefined>
-): Record<string, string | undefined> {
-  const next = { ...env };
-  for (const key of ELECTRON_CHILD_ENV_BLOCKLIST) {
-    delete next[key];
-  }
-  if (typeof next.NODE_OPTIONS === "string") {
-    const kept = sanitizeNodeOptions(next.NODE_OPTIONS);
-    if (kept) next.NODE_OPTIONS = kept;
-    else delete next.NODE_OPTIONS;
-  }
-  return next;
-}
-
-const NODE_OPTIONS_PATH_FLAGS = new Set([
-  "--require",
-  "-r",
-  "--import",
-  "--loader",
-  "--experimental-loader"
-]);
-
-function sanitizeNodeOptions(value: string): string | undefined {
-  const tokens = value.split(/\s+/).filter(Boolean);
-  const kept: string[] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
-    if (/electron|asar/i.test(token)) continue;
-    const eq = token.indexOf("=");
-    const flag = eq === -1 ? token : token.slice(0, eq);
-    const inline = eq === -1 ? "" : token.slice(eq + 1);
-    if (NODE_OPTIONS_PATH_FLAGS.has(flag)) {
-      const arg = inline || tokens[i + 1];
-      if (arg && /electron|asar/i.test(arg)) {
-        if (!inline) i += 1;
-        continue;
-      }
-    }
-    kept.push(token);
-  }
-  return kept.length ? kept.join(" ") : undefined;
 }
 
 export function dshAcpFallbackWorkspace(dataDir: string): string {
@@ -485,6 +538,57 @@ export function ensureDshAcpCwd(
   const fallback = dshAcpFallbackWorkspace(dataDir);
   mkdirSync(fallback, { recursive: true });
   return fallback;
+}
+
+/**
+ * Standalone 0.1.31 persists with `compression: none` unless
+ * `DSH_PERSISTENCE_COMPRESSION` overrides it. One `.jsonl.zstd` file anywhere
+ * under the root makes every later `session/new` fail. An explicit sessions
+ * root or zstd mode is left alone; otherwise use a sibling directory.
+ */
+function dshAcpPlaintextSessionsRoot(
+  cwd: string | undefined,
+  runtimeRoot?: string
+): string | undefined {
+  if (process.env.DSH_SESSIONS_ROOT?.trim()) return undefined;
+  if (process.env.DSH_PERSISTENCE_COMPRESSION?.trim() === "zstd") return undefined;
+  const base = cwd?.trim();
+  if (!base || !sessionsDirectoryHasZstd(path.join(base, ".sessions"))) return undefined;
+  return path.join(runtimeRoot?.trim() || base, "sessions");
+}
+
+function sessionsDirectoryHasZstd(root: string): boolean {
+  let projects;
+  try {
+    projects = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const project of projects) {
+    if (project.name.endsWith(".jsonl.zstd")) return true;
+    if (!project.isDirectory()) continue;
+    const projectPath = path.join(root, project.name);
+    let sessions;
+    try {
+      sessions = readdirSync(projectPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const session of sessions) {
+      if (session.name.endsWith(".jsonl.zstd")) return true;
+      if (!session.isDirectory()) continue;
+      let files;
+      try {
+        files = readdirSync(path.join(projectPath, session.name), { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      if (files.some((file) => file.isFile() && file.name.endsWith(".jsonl.zstd"))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function formatAcpAgentExitMessage(
@@ -640,8 +744,7 @@ export function resolveDshAcpDemoBinJs(input: {
   if (isDefaultDshAcpBinary(input.binary) && managedReady) return managedBin;
   const fromHint = dshAcpDemoBinJsFromBinaryHint(input.binary);
   if (fromHint) return fromHint;
-  const base = dshAcpBinaryBaseName(input.binary?.trim() ?? "");
-  if (isDefaultDshAcpBinary(input.binary) && base.startsWith("dsh-acp-demo")) {
+  if (isDefaultDshAcpBinary(input.binary)) {
     const globalBin = wellKnownGlobalDshAcpDemoBinJs();
     if (globalBin) return globalBin;
   }
@@ -933,6 +1036,8 @@ export function buildDshAcpRuntimeDiagnostics(input: {
 }
 
 export function patchDshAcpManagedRuntime(root: string): number {
+  if (isModernDshAcpBinary(path.join(root, "lib", "bin.js"))) return 0;
+  if (isModernDshAcpBinary(path.join(root, "node_modules", "deepseek-harness-acp", "lib", "bin.js"))) return 0;
   const overlayRoot = dshHarnessOverlayDir();
   const jsonlFrom = path.join(
     overlayRoot,
@@ -945,6 +1050,13 @@ export function patchDshAcpManagedRuntime(root: string): number {
   try {
     if (existsSync(jsonlFrom)) {
       for (const dest of findDshPackageLibIndex(root, DSH_JSONL_PACKAGE)) {
+        // A legacy prefix can contain newer nested/linked installs. Check the target too.
+        try {
+          const pkg = JSON.parse(readFileSync(path.join(path.dirname(path.dirname(dest)), "package.json"), "utf8"));
+          const version = /^(\d+)\.(\d+)\.(\d+)/.exec(pkg.version ?? "");
+          if (version && (Number(version[1]) > 0 || Number(version[2]) > 1 ||
+            (Number(version[2]) === 1 && Number(version[3]) >= 6))) continue;
+        } catch { /* Legacy test fixtures and incomplete installs may lack metadata. */ }
         try {
           copyFileSync(jsonlFrom, dest);
           count += 1;
@@ -970,6 +1082,7 @@ export function patchDshAcpManagedRuntime(root: string): number {
 
 /** Overlay the npm prefix that owns a `dsh-acp-demo` bin, including PATH installs. */
 export function patchDshAcpRuntimeFromBin(binPath: string): void {
+  if (isModernDshAcpBinary(binPath)) return;
   try {
     const demoDir = resolveDshAcpDemoDirFromBinary(binPath);
     if (!demoDir) return;
@@ -992,21 +1105,78 @@ export function patchDshAcpRuntimeFromCommand(command: {
   if (entry) patchDshAcpRuntimeFromBin(entry);
 }
 
-/** Clean up legacy package.json and lockfile in the managed runtime if they hold stale granular dependencies. */
+/**
+ * Bypass `MAX_PATH` and literal-path parsing for deep deletions. A demoted npm dependency
+ * subtree routinely exceeds 260 characters, where Windows reports ENOENT instead of ENAMETOOLONG.
+ */
+export function windowsExtendedPath(target: string): string {
+  if (process.platform !== "win32") return target;
+  if (target.startsWith("\\\\?\\")) return target;
+  return `\\\\?\\${path.resolve(target)}`;
+}
+
+/**
+ * Wipe the managed install's `node_modules`/lockfile before a reinstall.
+ *
+ * DeepSeek republishes some sibling packages (e.g. `@deepseek-ai/dsh-session-persistence`
+ * and `@deepseek-ai/dsh-session-persistence-jsonl`) under the same floating
+ * alpha tag with different contents. An incremental `npm install` can keep a
+ * stale copy of one sibling while fetching a fresh copy of the other,
+ * producing mismatched exports at import time (silent plugin activation
+ * failures inside the harness). Forcing npm to re-resolve everything from
+ * scratch avoids that drift.
+ *
+ * Returns false when the tree is still present afterwards. A running agent, an editor or
+ * antivirus can hold files open on Windows, and installing into a half-deleted directory
+ * reproduces exactly the demotion this wipe exists to prevent.
+ */
+export function cleanDshAcpManagedNodeModules(root: string): boolean {
+  const modules = windowsExtendedPath(path.join(root, "node_modules"));
+  try {
+    rmSync(modules, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 });
+  } catch {
+    /* reported by the existence check below */
+  }
+  try {
+    unlinkSync(windowsExtendedPath(path.join(root, "package-lock.json")));
+  } catch {
+    /* ignore a missing lockfile */
+  }
+  return !existsSync(modules);
+}
+
+/**
+ * Drop a managed manifest that npm cannot resolve into a bootable tree.
+ *
+ * Only a single-package manifest is safe. Any extra root dependency competes with the
+ * harness's own `@deepseek-ai/dsh-base` plugin subtree, and npm resolves that conflict by
+ * demoting the whole subtree into `dsh-base/node_modules`, where the harness cannot reach
+ * it — dozens of "failed to import" entries and exit 1 at startup. A `file:` specifier is
+ * equally unusable since it points at a checkout that may no longer exist. Removing the
+ * manifest and its lockfile makes npm re-resolve from scratch.
+ */
 export function cleanupLegacyDshAcpManagedFiles(root: string): void {
   const pkgJsonPath = path.join(root, "package.json");
-  if (existsSync(pkgJsonPath)) {
-    try {
-      const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
-      const deps = { ...parsed.dependencies, ...parsed.devDependencies };
-      if (deps["@deepseek-ai/dsh-acp-demo"] || !deps["deepseek-harness-acp"]) {
-        unlinkSync(pkgJsonPath);
-        const lockPath = path.join(root, "package-lock.json");
-        if (existsSync(lockPath)) unlinkSync(lockPath);
-      }
-    } catch {
-      /* ignore */
-    }
+  if (!existsSync(pkgJsonPath)) return;
+  let stale = true;
+  try {
+    const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+    const deps = { ...parsed.dependencies, ...parsed.devDependencies };
+    const harness = deps["deepseek-harness-acp"];
+    stale =
+      Object.keys(deps).length !== 1 ||
+      typeof harness !== "string" ||
+      !/^[\^~]?\d/.test(harness);
+  } catch {
+    /* an unparsable manifest is of no use to npm either */
+  }
+  if (!stale) return;
+  try {
+    unlinkSync(pkgJsonPath);
+    const lockPath = path.join(root, "package-lock.json");
+    if (existsSync(lockPath)) unlinkSync(lockPath);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -1062,15 +1232,7 @@ export function nodeModulesHasPackage(
   startDir: string,
   packageName: string
 ): boolean {
-  let dir = path.resolve(startDir);
-  for (;;) {
-    if (existsSync(path.join(dir, "node_modules", packageName, "package.json"))) {
-      return true;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return false;
-    dir = parent;
-  }
+  return Boolean(nodeModulesPackageDir(startDir, packageName));
 }
 
 export function resolveDshAcpDemoDirFromBinary(
@@ -1114,11 +1276,72 @@ export function isStandaloneDshAcpBinary(binary?: string): boolean {
   return base.startsWith("deepseek-harness-acp") || base.startsWith("dsh-acp");
 }
 
+/** Walk up from `startDir` to the installed directory for `packageName`. */
+function nodeModulesPackageDir(
+  startDir: string,
+  packageName: string
+): string | undefined {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    const candidate = path.join(dir, "node_modules", packageName);
+    if (existsSync(path.join(candidate, "package.json"))) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+const DSH_ACP_BASE_PACKAGE = "@deepseek-ai/dsh-base";
+const DSH_ACP_CORE_PACKAGES = [
+  DSH_ACP_BASE_PACKAGE,
+  "@deepseek-ai/dsh-acp",
+  "@deepseek-ai/dsh-app-boot"
+];
+
+const dshBaseCompositionCache = new Map<string, string[]>();
+
+/**
+ * Plugin rows a standalone harness mounts by itself. `boot()` resolves bare specifiers
+ * relative to `lib/bin.js`, so a row npm demoted into `dsh-base/node_modules` is invisible
+ * to the loader and aborts startup with an aggregate of "failed to import" entries.
+ * An unreadable patch yields an empty list, degrading readiness to the core-package verdict.
+ */
+function dshBaseCompositionPackages(pkgDir: string): string[] {
+  const baseDir = nodeModulesPackageDir(pkgDir, DSH_ACP_BASE_PACKAGE);
+  if (!baseDir) return [];
+  const patchPath = path.join(baseDir, "cordis.patch.yml");
+  let key: string;
+  try {
+    const stat = statSync(patchPath);
+    key = `${patchPath}:${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return [];
+  }
+  const cached = dshBaseCompositionCache.get(key);
+  if (cached) return cached;
+  let names: string[] = [];
+  try {
+    names = parseDshAcpCompositionPackages(readFileSync(patchPath, "utf8"));
+  } catch {
+    /* ignore unreadable composition */
+  }
+  dshBaseCompositionCache.set(key, names);
+  return names;
+}
+
 export function dshAcpCompositionReady(
   binPath: string,
   configPath?: string
 ): boolean {
   const pkgDir = resolveDshAcpDemoDirFromBinary(binPath) ?? path.dirname(binPath);
+  if (isModernDshAcpBinary(binPath)) {
+    if (!DSH_ACP_CORE_PACKAGES.every((pkg) => nodeModulesHasPackage(pkgDir, pkg))) {
+      return false;
+    }
+    return dshBaseCompositionPackages(pkgDir).every((pkg) =>
+      nodeModulesHasPackage(pkgDir, pkg)
+    );
+  }
   if (!nodeModulesHasPackage(pkgDir, DSH_ACP_PROBE_PACKAGE)) {
     return false;
   }
@@ -1146,21 +1369,26 @@ export function parseDshAcpCompositionPackages(yamlText: string): string[] {
 }
 
 /**
- * `dsh-acp-demo` ships with `deps: none`. Installing only the bin leaves
- * cordis unable to import `@deepseek-ai/dsh-llm-deepseek` and the rest of
- * the official ACP plugin tree (`ERR_MODULE_NOT_FOUND`).
+ * Installs the standalone harness only. `@deepseek-ai/dsh-bash-local` must not
+ * be added here: `@next` floats ahead of the harness core line, and that
+ * same-name conflict makes npm demote `@deepseek-ai/dsh-base`'s plugin subtree
+ * into its private `node_modules`, where the boot module cannot resolve it
+ * (dozens of "failed to import" entries at startup). It already arrives transitively
+ * at the matching version.
  */
 export function dshAcpInstallCommand(options?: {
-  yamlText?: string;
   prefix?: string;
-  platform?: NodeJS.Platform;
+  version?: string;
 }): string {
-  const isWin = (options?.platform ?? process.platform) === "win32";
+  if (options?.version && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(options.version)) {
+    throw new Error("Invalid DeepSeek Harness target version");
+  }
   const target = options?.prefix
     ? `--prefix ${quoteForShell(options.prefix)}`
     : "-g";
-  const extra = isWin ? " @deepseek-ai/dsh-bash-local@next" : "";
-  return `npm install ${target} deepseek-harness-acp${extra}`;
+  const version = options?.version || (options?.prefix ? "latest" : undefined);
+  const online = options?.prefix ? " --offline=false --prefer-online" : "";
+  return `npm install ${target} deepseek-harness-acp${version ? `@${version}` : ""}${online}`;
 }
 
 export function hasExplicitToolSessionArg(
@@ -1188,6 +1416,10 @@ export interface BuildCommandInput {
   workspaceRoots?: string[];
   /** FreeBuddy-managed `runtimes/dsh-acp` prefix; used when no custom binary. */
   dshAcpRuntimeRoot?: string;
+  /** FreeBuddy data dir; the bundled pi runtime generates its launcher there. */
+  piDataDir?: string;
+  /** Explicit per-agent Node settings also apply when constructing Pi's launcher. */
+  nodeEnv?: NodeJS.ProcessEnv;
 }
 
 export interface BuiltCommand {
@@ -1478,12 +1710,55 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
         protocol: "acp"
       };
     }
+    case "zcode-acp": {
+      const args: string[] = [...extra];
+      return {
+        bin,
+        args,
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "cline-acp": {
+      const { model, args: acpArgs } = splitModelArg(extra);
+      const args: string[] = ["--acp"];
+      args.push(...acpArgs);
+      return {
+        bin,
+        args,
+        ...(model ? { env: { CLINE_MODEL: model } } : {}),
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
     case "dsh-acp": {
       const nodeEntry = resolveDshAcpDemoBinJs({
         binary: input.binary,
         cwd: input.cwd,
         dshAcpRuntimeRoot: input.dshAcpRuntimeRoot
       });
+      if (nodeEntry && isModernDshAcpBinary(nodeEntry)) {
+        const { model, args: acpArgs } = splitModelArg(extra);
+        const effectiveModel =
+          model && model.trim().toLowerCase() !== "auto"
+            ? model.trim()
+            : undefined;
+        const sessionsRoot = dshAcpPlaintextSessionsRoot(
+          input.cwd,
+          input.dshAcpRuntimeRoot
+        );
+        const env: Record<string, string> = {};
+        if (effectiveModel) env.DEEPSEEK_MODEL = effectiveModel;
+        if (sessionsRoot) env.DSH_SESSIONS_ROOT = sessionsRoot;
+        // Explicit --config remains supported. Never inject legacy composition or koffi hooks.
+        return {
+          bin: "node",
+          args: [DSH_ACP_NODE_DISABLE_WARNING, nodeEntry, ...acpArgs],
+          ...(Object.keys(env).length ? { env } : {}),
+          promptViaStdin: false,
+          protocol: "acp"
+        };
+      }
       const args = extraArgsHaveDshConfig(extra)
         ? [...extra]
         : [
@@ -1506,11 +1781,39 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
         protocol: "acp"
       });
     }
+    case "devin-acp": {
+      return {
+        bin,
+        args: ["acp", ...extra],
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "pi-acp": {
+      const plan = resolvePiAcpSpawnPlan(input.piDataDir, undefined, input.nodeEnv);
+      if (plan) {
+        return {
+          bin: plan.bin,
+          args: [plan.piAcpEntry, ...extra],
+          env: plan.env,
+          promptViaStdin: false,
+          protocol: "acp"
+        };
+      }
+      // No bundled runtime (broken install): fall back to a PATH pi-acp.
+      return {
+        bin,
+        args: [...extra],
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
     case "claude": {
       const args: string[] = [
         "--print",
         "--output-format",
         "stream-json",
+        "--include-partial-messages",
         "--verbose"
       ];
       if (input.toolSessionId && !hasExplicitToolSessionArg("claude", extra)) {

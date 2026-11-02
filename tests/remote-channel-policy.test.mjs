@@ -85,6 +85,7 @@ test("channels that spawn or reconfigure the host are not remotely callable", as
     "cli:connectCursorUsage",
     "cli:disconnectCursorUsage",
     "cli:createProject",
+    "cli:ensureProjectForCwd",
     "cli:updateProject",
     "cli:deleteProject",
     "skills:setTrusted",
@@ -132,6 +133,8 @@ test("the chat surface the web client depends on stays callable", async () => {
     "cli:check",
     "cli:listConversations",
     "cli:listMessages",
+    "cli:listMessageFileEdits",
+    "cli:readMessageFileEdit",
     "cli:appendMessage",
     "cli:listOverrides",
     "cli:listAdapters",
@@ -195,6 +198,11 @@ test("the arg guard replaces caller-supplied executables and clamps paths", () =
     guard,
     /"workflow:createDelegationRun"/,
     "remote delegation cwd must use the workspace-root guard"
+  );
+  assert.match(
+    guard,
+    /roots: filterPathsWithinRoots\(payload\.roots, roots\)/,
+    "search roots are clamped to the caller's workspace roots"
   );
 
   const roots = fs.readFileSync(new URL("cli/remoteRoots.ts", electronDir), "utf8");

@@ -57,10 +57,86 @@ test("titlebar truncates long conversation titles to one line", () => {
   assert.match(appSource, /className="breadcrumb"[\s\S]*title=\{/m);
 });
 
+test("chat titlebar rename pencil is hover-revealed while actions stay visible", () => {
+  // The rename pencil must hug the title and the actions stay right-aligned.
+  assert.match(appSource, /titlebar--chat/);
+  assert.match(
+    stylesSource,
+    /\.conversation-title-editor\.titlebar,\s*\.conversation-title-editor\.titlebar \.conversation-title-text\s*\{[^}]*flex:\s*0 1 auto;/m
+  );
+
+  // Only the rename pencil is hidden by default and revealed on hover/keyboard
+  // focus, without layout shift.
+  assert.match(
+    stylesSource,
+    /\.titlebar--chat \.conversation-title-edit-btn\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/m
+  );
+  assert.match(
+    stylesSource,
+    /\.titlebar--chat:hover \.conversation-title-edit-btn[^;{}]*\{[^}]*opacity:\s*1;/m
+  );
+  assert.match(
+    stylesSource,
+    /\.titlebar--chat:focus-within \.conversation-title-edit-btn/m
+  );
+  // The share/overflow/detail actions must stay always visible: no rule may
+  // hide the actions row behind opacity 0.
+  assert.doesNotMatch(
+    stylesSource,
+    /\.titlebar--chat [^{]*\.titlebar-actions[^{]*\{[^}]*opacity:\s*0;/m
+  );
+  // Touch devices have no hover: always show the pencil there.
+  assert.match(
+    stylesSource,
+    /@media \(hover: none\)\s*\{[\s\S]*?\.titlebar--chat \.conversation-title-edit-btn[\s\S]*?opacity:\s*1;/m
+  );
+});
+
+test("settings view shows the page title instead of the editable conversation title", () => {
+  // While Settings is open the conversation stays active in the background;
+  // the titlebar must fall back to the workspace breadcrumb rather than
+  // rendering (and allowing edits on) the stale conversation title.
+  assert.match(
+    appSource,
+    /\{!settingsOpen && workspaceView === "chat" && activeConversation \? \(\s*<EditableConversationTitle/
+  );
+  assert.match(
+    appSource,
+    /const workspaceTitle = settingsOpen\s*\?\s*t\("common\.settings"\)/
+  );
+});
+
+test("chat history windows to the newest messages with an earlier-load control", () => {
+  assert.match(chatViewSource, /INITIAL_VISIBLE_MESSAGES/);
+  assert.match(chatViewSource, /visibleConversationSlice/);
+  assert.match(chatViewSource, /chat\.loadEarlier/);
+  assert.match(chatViewSource, /setHistoryReveal/);
+  assert.match(chatViewSource, /loadOlderMessages/);
+  assert.match(chatViewSource, /olderMessagesAvailable/);
+  assert.match(stylesSource, /\.chat-load-earlier\s*\{/);
+});
+
 test("sending a message restores auto-follow to the latest output", () => {
   assert.match(
     chatViewSource,
     /const onSend = async \(\) => \{[\s\S]*isNearBottomRef\.current = true;[\s\S]*setSubmitPreview\(preview\)/m
+  );
+});
+
+test("programmatic snaps stay pinned when content grows asynchronously", () => {
+  // A scroll event matching our own snap target must not clear the
+  // near-bottom flag, otherwise a running task strands the view mid-history.
+  assert.match(
+    chatViewSource,
+    /el\.scrollTop === snapTargetRef\.current[\s\S]*?isNearBottomRef\.current = true;/
+  );
+  // Async growth (streamed chunks, lazy blocks, media) re-pins via observers.
+  assert.match(chatViewSource, /new ResizeObserver\(/);
+  assert.match(chatViewSource, /new MutationObserver\(/);
+  // Switching conversations snaps to the latest output on entry.
+  assert.match(
+    chatViewSource,
+    /isNearBottomRef\.current = true;\s*const el = scrollRef\.current;\s*if \(el\) pinToBottom\(el\);\s*\}, \[activeId, pinToBottom\]\);/
   );
 });
 
@@ -89,12 +165,13 @@ test("sidebar collapse toggle hides the sidebar column", () => {
   );
 });
 
-test("opening the browser preview collapses the conversation sidebar", () => {
-  assert.match(appSource, /const activeDetailTab = useDetailLayoutStore\(\(s\) => s\.activeTab\)/);
-  assert.match(
-    appSource,
-    /useEffect\(\(\) => \{[\s\S]*if \(activeDetailTab === "preview"\) \{[\s\S]*setSidebarCollapsed\(true\);[\s\S]*\}[\s\S]*\}, \[activeDetailTab\]\);/
-  );
+test("browser visibility uses a space-aware sidebar preference and bounds the composer", () => {
+  assert.match(appSource, /useBrowserSidebarLayout\(/);
+  assert.match(appSource, /const previewVisible = detailViewVisible && previewOpen/);
+  assert.match(appSource, /onClick=\{toggleSidebar\}/);
+  assert.doesNotMatch(appSource, /setSidebarCollapsed\(true\)/);
+  assert.match(stylesSource, /\.browser-preview-visible \.chat-composer\s*\{[^}]*right:\s*var\(--fb-detail-width/);
+  assert.match(stylesSource, /\.app-shell\.browser-preview-visible:not\(\.sidebar-collapsed\)\s*\{[^}]*minmax\(0,\s*1fr\)/);
 });
 
 test("new-task page sending flag is not stuck true without an active conversation", () => {
@@ -180,11 +257,13 @@ test("new-task workspace context renders project, mode, and branch below the com
 });
 
 test("active composer presents the assigned source as an isolated workspace", () => {
-  assert.match(chatViewSource, /conversationDisplayCwd\(conv\)/);
-  assert.match(chatViewSource, /className="composer-workspace-name"/);
-  assert.match(chatViewSource, /className="composer-workspace-badge"/);
-  assert.match(chatViewSource, /t\("chat\.isolatedWorkspace"\)/);
-  assert.match(chatViewSource, /t\("chat\.isolatedWorkspaceTooltip"/);
+  const composerWorkspaceSource = fs.readFileSync(new URL("../src/components/CLI/ComposerWorkspaceMeta.tsx", import.meta.url), "utf8");
+  assert.match(chatViewSource, /conversation=\{conv\}/);
+  assert.match(composerWorkspaceSource, /conversationDisplayCwd\(conversation\)/);
+  assert.match(composerWorkspaceSource, /className="composer-workspace-name"/);
+  assert.match(composerWorkspaceSource, /className="composer-workspace-badge"/);
+  assert.match(composerWorkspaceSource, /t\("chat\.isolatedWorkspace"\)/);
+  assert.match(composerWorkspaceSource, /t\("chat\.isolatedWorkspaceTooltip"/);
   assert.match(
     stylesSource,
     /\.composer-workspace-name\s*\{[^}]*text-overflow:\s*ellipsis;/m
@@ -256,4 +335,30 @@ test("sidebar brand uses the dedicated sidebar logo asset", () => {
   assert.match(appSource, /<img\s+src=\{sidebarLogoUrl\}\s+alt=""\s+className="sidebar-logo-img"\s*\/>/);
   assert.doesNotMatch(brandMarkSource, /<svg/m);
   assert.match(stylesSource, /\.sidebar-logo-img\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover;/m);
+});
+
+test("composer textarea stays enabled and preserves focus across sending and conversation switch", () => {
+  const freshChatViewSource = fs.readFileSync(
+    new URL("../src/components/CLI/ChatView.tsx", import.meta.url),
+    "utf8"
+  );
+  // chat textarea is not disabled by sending or sendLock so it doesn't blur
+  assert.match(freshChatViewSource, /<textarea\s+ref=\{chatTextareaRef\}[\s\S]*?disabled=\{attachmentBusy\}/);
+  assert.doesNotMatch(freshChatViewSource, /<textarea\s+ref=\{chatTextareaRef\}[^>]*disabled=\{[^}]*sending/);
+  // focusComposer helper is called when sending message and when reply finishes
+  assert.match(freshChatViewSource, /const focusComposer = useCallback\(/);
+  assert.match(freshChatViewSource, /setDraft\(""\);\s*focusComposer\(\);/);
+  assert.match(freshChatViewSource, /prevSendingRef\.current && !sending/);
+});
+
+
+test("chat view provides Escape and Ctrl+C keyboard shortcuts to stop running conversation", () => {
+  const freshChatViewSource = fs.readFileSync(
+    new URL("../src/components/CLI/ChatView.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(freshChatViewSource, /const isEscape = event\.key === "Escape";/);
+  assert.match(freshChatViewSource, /const isCtrlC =/);
+  assert.match(freshChatViewSource, /void stopActive\(conv\.id\);/);
+  assert.match(freshChatViewSource, /\$\{t\("chat\.stop"\)\} \(Esc\)/);
 });

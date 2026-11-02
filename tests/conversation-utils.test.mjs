@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { getParser } from "@freebuddy/cli-stream";
 
 const testDirectory = fileURLToPath(new URL(".", import.meta.url));
 let moduleCounter = 0;
@@ -404,7 +405,7 @@ test("stored assistant messages reuse appendItems normalization", () => {
   );
 
   assert.match(source, /import \{ appendItems \} from "@\/store\/conversationUtils"/);
-  assert.match(source, /out = appendItems\(out, \[next\]\)/);
+  assert.match(source, /return appendItems\(\[\], items\.flatMap\(item =>/);
 });
 
 test("appendItems upserts enriched tool calls by toolCallId", async () => {
@@ -1106,4 +1107,303 @@ test("buildOrphanFollowupContext returns undefined when there is no prior histor
     ),
     undefined
   );
+});
+
+test("Claude partial output and final snapshots share block identity without duplicating text or thinking", async () => {
+  const { appendItems } = await loadConversationUtils();
+  const parser = getParser("claude-json");
+  const ctx = {};
+  const events = [
+    { type: "stream_event", event: { type: "message_start", message: { id: "native-message" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "thought" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "hello" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: " world" } } },
+    { type: "assistant", message: { id: "native-message", content: [{ type: "thinking", thinking: "thought" }, { type: "text", text: "hello world" }] } }
+  ];
+  let items = [];
+  for (const event of events) items = appendItems(items, parser.parseStdoutLine(JSON.stringify(event), ctx));
+  assert.equal(items.filter(item => item.kind === "text").length, 1);
+  assert.equal(items.find(item => item.kind === "text").content, "hello world");
+  assert.equal(items.filter(item => item.kind === "thinking").length, 1);
+});
+
+test("skill announcement session titles are not applied or shown as conversation titles", async () => {
+  const {
+    shouldApplyAgentSessionTitle,
+    isInternalSkillAnnouncementTitle,
+    isDelegationConversation,
+    displayConversationTitle,
+    buildDelegationConversationTitle,
+    recoverConversationTitleFromMessages
+  } = await loadConversationUtils();
+
+  const leaked =
+    "[FreeBuddy active skills] - delegation (1.4.0): Collaborate with teammate agents in a self-organizing delegation run. Discover teammates and delegate sub-tasks asynchronously; the system ...";
+
+  assert.equal(isInternalSkillAnnouncementTitle(leaked), true);
+  assert.equal(
+    isInternalSkillAnnouncementTitle(
+      "delegation (1.4.0): Collaborate with teammate agents in a self-organizing delegation run."
+    ),
+    true
+  );
+  assert.equal(isInternalSkillAnnouncementTitle("Fix the login bug"), false);
+  assert.equal(isDelegationConversation({ kind: "delegation", title: "Fix cwd" }), true);
+  assert.equal(isDelegationConversation({ title: leaked }), true);
+  assert.equal(
+    isDelegationConversation({ title: "[FreeBuddy active skills] - verify-change (1.0.0): checks" }),
+    false
+  );
+
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "你怎么在这个工作区搞的", titleSource: "prompt" },
+      [],
+      leaked
+    ),
+    false
+  );
+  assert.equal(
+    shouldApplyAgentSessionTitle(
+      { title: "Codex · project", agentName: "Codex", cwd: "/tmp/project", titleSource: "default" },
+      [],
+      "Fix workspace mapping"
+    ),
+    true
+  );
+
+  assert.equal(
+    displayConversationTitle(
+      { title: leaked, agentName: "Codex", cwd: "/tmp/zombie-workspace" },
+      "自组织团队会话"
+    ),
+    "自组织团队会话"
+  );
+  assert.equal(
+    displayConversationTitle({
+      title: leaked,
+      agentName: "Codex",
+      cwd: "/tmp/zombie-workspace"
+    }),
+    "Codex · zombie-workspace"
+  );
+  assert.equal(
+    displayConversationTitle({
+      title: "你怎么在这个工作区搞的",
+      agentName: "Codex",
+      cwd: "/tmp/zombie-workspace"
+    }),
+    "你怎么在这个工作区搞的"
+  );
+  assert.equal(
+    displayConversationTitle({
+      title: "工作区映射",
+      titleSource: "user",
+      agentName: "Codex",
+      cwd: "/tmp/zombie-workspace"
+    }),
+    "工作区映射"
+  );
+
+  assert.equal(
+    buildDelegationConversationTitle("自组织：实现+评审", "你怎么在这个工作区搞的 没在我选的目录呢？"),
+    "你怎么在这个工作区搞的 没在我选的目录呢？"
+  );
+  assert.equal(
+    buildDelegationConversationTitle("自组织：实现+评审", leaked),
+    "自组织：实现+评审"
+  );
+  assert.equal(
+    recoverConversationTitleFromMessages(
+      { title: leaked, titleSource: "agent", agentName: "Codex", cwd: "/tmp/zombie-workspace" },
+      [{ role: "user", content: "你怎么在这个工作区搞的 没在我选的目录呢？" }]
+    ),
+    "你怎么在这个工作区搞的 没在我选的目录呢？"
+  );
+  assert.equal(
+    recoverConversationTitleFromMessages(
+      { title: "My custom name", titleSource: "user" },
+      [{ role: "user", content: "ignore me" }]
+    ),
+    undefined
+  );
+});
+
+test("user conversation titles are sanitized and kept as custom names", async () => {
+  const {
+    sanitizeUserConversationTitle,
+    USER_CONVERSATION_TITLE_MAX,
+    displayConversationTitle
+  } = await loadConversationUtils();
+
+  assert.equal(sanitizeUserConversationTitle("  修复  登录  "), "修复 登录");
+  assert.equal(sanitizeUserConversationTitle("\n\t"), "");
+  assert.equal(
+    Array.from(sanitizeUserConversationTitle("😀".repeat(90))).length,
+    USER_CONVERSATION_TITLE_MAX
+  );
+  assert.equal(
+    displayConversationTitle({
+      title: "[FreeBuddy active skills] - keep my name",
+      titleSource: "user",
+      agentName: "Codex",
+      cwd: "/tmp/project"
+    }),
+    "[FreeBuddy active skills] - keep my name"
+  );
+});
+
+test("terminal snapshots persist inside their owning tool without duplicate terminal blocks", async () => {
+  const { appendItems } = await loadConversationUtils();
+  const initial = [{ kind: "tool-call", id: "pi-tool", tool: "git status", toolKind: "execute",
+    toolOutputs: [{ kind: "terminal-embed", terminalId: "pi-tool" }] }];
+  const live = appendItems(initial, [{ kind: "terminal-embed", terminalId: "pi-tool", output: "first\n", running: true }]);
+  const completed = appendItems(live, [{ kind: "terminal-embed", terminalId: "pi-tool", output: "first\nlast\n", running: false, exited: true, exitCode: 0 }]);
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].toolOutputs.length, 1);
+  assert.deepEqual(completed[0].toolOutputs[0], { kind: "terminal-embed", terminalId: "pi-tool", output: "first\nlast\n", running: false, exited: true, exitCode: 0 });
+  assert.equal(initial[0].toolOutputs[0].output, undefined);
+});
+
+test("visibleConversationSlice keeps the newest messages", async () => {
+  const { visibleConversationSlice } = await loadConversationUtils();
+  const messages = Array.from({ length: 5 }, (_, i) => ({ id: String(i) }));
+  assert.deepEqual(visibleConversationSlice(messages, 5), {
+    hiddenCount: 0,
+    items: messages
+  });
+  assert.deepEqual(visibleConversationSlice(messages, 2), {
+    hiddenCount: 3,
+    items: [{ id: "3" }, { id: "4" }]
+  });
+});
+
+test("capPersistedStreamItems bounds bulky tool inputs while preserving tool identity", async () => {
+  const { capPersistedStreamItems } = await loadConversationUtils();
+  const bulky = {
+    kind: "tool-call",
+    id: "tool-1",
+    tool: "Delegate",
+    input: { task: "x".repeat(5000) },
+    toolOutputs: [{ kind: "text", role: "assistant", content: "ok" }]
+  };
+  const capped = capPersistedStreamItems(
+    [
+      { kind: "text", role: "assistant", content: "done" },
+      bulky
+    ],
+    800
+  );
+  assert.ok(JSON.stringify(capped).length <= 800);
+  assert.match(capped[1].input, /truncated/);
+  assert.equal(capped[0].kind, "text");
+  assert.equal(capped[1].kind, "tool-call");
+  assert.equal(capped[1].id, "tool-1");
+});
+
+test("persist cap handles oversized text, JSON escapes, and latest content", async () => {
+  const { capPersistedStreamItems, MAX_PERSISTED_STREAM_JSON_CHARS } = await loadConversationUtils();
+  const items = Array.from({ length: 3 }, (_, index) => ({
+    kind: "text", role: "assistant", content: `${index}:` + "x".repeat(199_980)
+  }));
+  const capped = capPersistedStreamItems(items);
+  assert.ok(JSON.stringify(capped).length <= MAX_PERSISTED_STREAM_JSON_CHARS);
+  assert.ok(capped.some((item) => item.content?.startsWith("2:")));
+  assert.match(capped[0].content, /truncated/);
+
+  for (const content of ['"'.repeat(200_000), "\\\n".repeat(100_000), "🙂".repeat(100_000)]) {
+    const small = capPersistedStreamItems([{ kind: "text", role: "assistant", content: content + "latest" }], 800);
+    assert.ok(JSON.stringify(small).length <= 800);
+    assert.match(small[0].content, /truncated/);
+    assert.ok(small[0].content.endsWith("latest"));
+  }
+});
+
+test("renderer persist cap avoids repeated whole-history serialization", async () => {
+  const { capPersistedStreamItems } = await loadConversationUtils();
+  const items = Array.from({ length: 600 }, (_, index) => ({
+    kind: "tool-call", id: String(index), output: "x".repeat(12_000)
+  }));
+  const original = JSON.stringify;
+  let historyEntries = 0;
+  let result;
+  try {
+    JSON.stringify = (value, ...args) => {
+      if (Array.isArray(value)) historyEntries += value.length;
+      return original(value, ...args);
+    };
+    result = capPersistedStreamItems(items);
+  } finally {
+    JSON.stringify = original;
+  }
+  assert.ok(historyEntries <= items.length * 4);
+  assert.equal(result.at(-1).id, "599");
+});
+
+test("merging equal-timestamp pages advances the oldest message in insertion order", async () => {
+  const { mergeConversationMessages } = await loadConversationUtils();
+  const make = (sequence) => ({
+    id: `m${sequence}`, sequence, createdAt: "2026-09-15T00:00:00Z",
+    updatedAt: "2026-09-15T00:00:00Z", status: "done", content: `${sequence}`
+  });
+  const newest = [make(3), make(4)];
+  const merged = mergeConversationMessages(newest, [make(1), make(2)]);
+  assert.deepEqual(merged.map((item) => item.id), ["m1", "m2", "m3", "m4"]);
+  assert.equal(merged[0].id, "m1");
+  const withoutSequence = [{ ...make(1), sequence: undefined }];
+  assert.equal(mergeConversationMessages(withoutSequence, [make(1)])[0].sequence, 1);
+});
+
+test("persisted small inline images retain valid base64", async () => {
+  const { capPersistedStreamItems } = await loadConversationUtils();
+  const image = { kind: "content-block", blockType: "image", mimeType: "image/png", data: "A".repeat(16_000) };
+  assert.deepEqual(capPersistedStreamItems([image]), [image]);
+  const large = capPersistedStreamItems([{ ...image, data: "A".repeat(50_000) }]);
+  assert.match(large[0].content, /inline image omitted/);
+  assert.equal(large[0].data, undefined);
+});
+
+test("followup context budget keeps the latest unanswered question", async () => {
+  const { buildOrphanFollowupContext } = await loadConversationUtils();
+  const messages = Array.from({ length: 10 }, (_, index) => ({
+    id: `old-${index}`, role: "user", status: "sent", content: "old history ".repeat(200)
+  }));
+  messages.push({ id: "latest", role: "user", status: "sent", content: "LATEST QUESTION: repair the remote connection" });
+  messages.push({ id: "failure", role: "assistant", status: "failed", content: "[]" });
+  const context = buildOrphanFollowupContext(messages);
+  assert.ok(context.length <= 6000);
+  assert.match(context, /LATEST QUESTION: repair the remote connection/);
+  assert.match(context, /not successfully answered/);
+});
+
+test("mergeToolCalls preserves specific tool name when update provides generic fallback", async () => {
+  const { mergeToolCalls } = await loadConversationUtils();
+  const prev = {
+    kind: "tool-call",
+    id: "tool-1",
+    tool: "replace_file_content",
+    status: "running"
+  };
+  const next = {
+    kind: "tool-call",
+    id: "tool-1",
+    tool: "tool",
+    status: "completed"
+  };
+  const merged = mergeToolCalls(prev, next);
+  assert.equal(merged.tool, "replace_file_content");
+  assert.equal(merged.status, "completed");
+});
+
+test("run metrics upsert one summary per execution without replacing reported usage", async () => {
+  const { appendItems, capPersistedStreamItems } = await loadConversationUtils();
+  const summary = status => ({ kind: "usage", runId: "run", runMetrics: {
+    runId: "run", status, elapsedMs: status === "done" ? 2_000 : 500, promptSubmitted: true
+  } });
+  const reported = { kind: "usage", usageScope: "turn", inputTokens: 0, outputTokens: 100 };
+  const items = appendItems([summary("running"), reported], [summary("running"), summary("done")]);
+  assert.equal(items.filter(item => item.runMetrics).length, 1);
+  assert.equal(items.find(item => item.runMetrics).runMetrics.status, "done");
+  assert.equal(items.includes(reported), true);
+  assert.equal(capPersistedStreamItems(items).find(item => item.runMetrics).runMetrics.status, "done");
 });

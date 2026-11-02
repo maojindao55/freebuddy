@@ -55,6 +55,73 @@ test("agy-acp checks agy-acp binary probe", () => {
   });
 });
 
+test("background ACP spawns hide the Windows console window", () => {
+  for (const file of ["runtime.ts", "acpAuth.ts", "sessionConfigProbe.ts"]) {
+    const source = fs.readFileSync(new URL(`../electron/cli/${file}`, import.meta.url), "utf8");
+    assert.ok(!/spawn\([^;]+?\{[^;]+?stdio: \["pipe", "pipe", "pipe"\]\s*\}\)/s.test(source), file);
+  }
+  const source = fs.readFileSync(new URL("../electron/cli/check.ts", import.meta.url), "utf8");
+  assert.match(source, /function runCheckProbe[\s\S]+?windowsHide: process\.platform === "win32"/);
+  assert.ok(!/spawn\([^;]+?\{ env(?:: \w+)?(?:, [\w.]+)? \}\)/s.test(source));
+  assert.match(source, /spawn\(cmd, \[bin\], \{ env: mergedEnv, windowsHide: isWindows \}\)/);
+});
+
+test("auxiliary background processes hide the Windows console window", () => {
+  const expected = new Map([
+    ["windowsEnv.ts", /\{ env, windowsHide: true \}/],
+    ["acpTerminal.ts", /stdio: \["ignore", "pipe", "pipe"\],\s*windowsHide: process\.platform === "win32"/],
+    ["mcpServers.ts", /windowsVerbatimArguments: spawnConfig\.windowsVerbatimArguments,\s*windowsHide: process\.platform === "win32"/],
+    ["nativePlugins.ts", /\{ env, windowsHide: process\.platform === "win32" \}/],
+    ["antigravityUsage.ts", /\], \{ windowsHide: true \}\);/]
+  ]);
+  for (const [file, pattern] of expected) {
+    const source = fs.readFileSync(new URL(`../electron/cli/${file}`, import.meta.url), "utf8");
+    assert.match(source, pattern, file);
+  }
+});
+
+test("zcode-acp checks zcode-acp-server binary probe", () => {
+  assert.deepEqual(getCliCheckProbe("zcode-acp"), {
+    args: ["--version"],
+    versionOptional: false
+  });
+});
+
+test("ZCode ACP install hint matches official package", () => {
+  assert.equal(
+    getAdapterDefinition("zcode-acp")?.installHint,
+    "npm install -g zcode-acp-server"
+  );
+});
+
+test("cline-acp checks cline binary probe", () => {
+  assert.deepEqual(getCliCheckProbe("cline-acp"), {
+    args: ["--version"],
+    versionOptional: false
+  });
+});
+
+test("Cline ACP install hint matches official package", () => {
+  assert.equal(
+    getAdapterDefinition("cline-acp")?.installHint,
+    "npm install -g cline"
+  );
+});
+
+test("devin-acp checks the Devin CLI and uses the official installer", () => {
+  assert.deepEqual(getCliCheckProbe("devin-acp"), {
+    args: ["--version"],
+    versionOptional: false
+  });
+  assert.equal(getAdapterDefinition("devin-acp")?.defaultBinary, "devin");
+  assert.equal(
+    getAdapterDefinition("devin-acp")?.installHint,
+    process.platform === "win32"
+      ? "irm https://static.devin.ai/cli/setup.ps1 | iex"
+      : "curl -fsSL https://cli.devin.ai/install.sh | bash"
+  );
+});
+
 test("Windows fallback search includes the native Claude installer directory", () => {
   const source = fs.readFileSync(
     new URL("../electron/cli/check.ts", import.meta.url),
@@ -73,11 +140,7 @@ test("dsh-acp uses standalone deepseek-harness-acp package", () => {
   });
   const hint = getAdapterDefinition("dsh-acp")?.installHint;
   assert.equal(hint, dshAcpInstallCommand());
-  if (process.platform === "win32") {
-    assert.equal(hint, "npm install -g deepseek-harness-acp @deepseek-ai/dsh-bash-local@next");
-  } else {
-    assert.equal(hint, "npm install -g deepseek-harness-acp");
-  }
+  assert.equal(hint, "npm install -g deepseek-harness-acp");
   assert.equal(getAdapterDefinition("dsh-acp")?.defaultBinary, "deepseek-harness-acp");
 });
 
@@ -96,30 +159,34 @@ test("bundled DeepSeek ACP config disables zstd persistence on Windows-safe defa
 
 test("dsh-acp install command matches standalone deepseek-harness-acp package", () => {
   assert.equal(
-    dshAcpInstallCommand({ platform: "darwin" }),
+    dshAcpInstallCommand(),
     "npm install -g deepseek-harness-acp"
-  );
-  assert.equal(
-    dshAcpInstallCommand({ platform: "linux" }),
-    "npm install -g deepseek-harness-acp"
-  );
-  assert.equal(
-    dshAcpInstallCommand({ platform: "win32" }),
-    "npm install -g deepseek-harness-acp @deepseek-ai/dsh-bash-local@next"
   );
   const renderer = fs.readFileSync(
     new URL("../src/config/cliAdapters.ts", import.meta.url),
     "utf8"
   );
   assert.equal(renderer.includes("npm install -g deepseek-harness-acp"), true);
-  const prefixedWin = dshAcpInstallCommand({ prefix: "C:\\tmp\\dsh", platform: "win32" });
+  const prefixedWin = dshAcpInstallCommand({ prefix: "C:\\tmp\\dsh" });
   assert.match(prefixedWin, /--prefix /);
-  assert.match(prefixedWin, /@deepseek-ai\/dsh-bash-local@next/);
   assert.equal(prefixedWin.includes(" -g "), false);
-  const prefixedMac = dshAcpInstallCommand({ prefix: "/tmp/freebuddy-dsh", platform: "darwin" });
+  assert.equal(prefixedWin.includes("@deepseek-ai/dsh-bash-local"), false);
+  const prefixedMac = dshAcpInstallCommand({ prefix: "/tmp/freebuddy-dsh" });
   assert.match(prefixedMac, /--prefix /);
   assert.equal(prefixedMac.includes(" -g "), false);
   assert.equal(prefixedMac.includes("@deepseek-ai/dsh-bash-local"), false);
+});
+
+test("managed DSH installs pin a checked version and refresh cached registry metadata", () => {
+  const command = dshAcpInstallCommand({ prefix: "/tmp/free buddy", version: "0.1.31" });
+  assert.match(command, /deepseek-harness-acp@0\.1\.31(?:\s|$)/);
+  assert.match(command, /--offline=false/);
+  assert.match(command, /--prefer-online/);
+  assert.equal(command.includes(" -g "), false);
+  assert.equal(command.includes("@deepseek-ai/dsh-bash-local"), false);
+  assert.match(dshAcpInstallCommand({ prefix: "/tmp/dsh" }), /deepseek-harness-acp@latest/);
+  assert.match(dshAcpInstallCommand({ prefix: "/tmp/dsh", version: "0.2.0-rc.1" }), /deepseek-harness-acp@0\.2\.0-rc\.1/);
+  assert.throws(() => dshAcpInstallCommand({ version: "0.1.31; echo injected" }), /Invalid.*target version/);
 });
 
 test("dsh-acp npm installs skip koffi rebuild scripts", () => {
@@ -196,29 +263,48 @@ test("resolveDshAcpDemoBinJs defaults to standalone binary instead of picking up
   assert.equal(standalone, undefined);
 });
 
-test("cleanupLegacyDshAcpManagedFiles removes legacy granular package.json and lockfile", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-legacy-cleanup-"));
-  const legacyPkg = {
-    dependencies: {
+test("cleanupLegacyDshAcpManagedFiles keeps only a single-package harness manifest", () => {
+  const probe = (body) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-manifest-"));
+    try {
+      fs.writeFileSync(path.join(root, "package.json"), body);
+      fs.writeFileSync(path.join(root, "package-lock.json"), "{}");
+      cleanupLegacyDshAcpManagedFiles(root);
+      return {
+        manifest: fs.existsSync(path.join(root, "package.json")),
+        lockfile: fs.existsSync(path.join(root, "package-lock.json"))
+      };
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  };
+  const deps = (dependencies) => probe(JSON.stringify({ dependencies }));
+  const kept = { manifest: true, lockfile: true };
+  const dropped = { manifest: false, lockfile: false };
+
+  // The only shape npm resolves into a hoisted, bootable tree.
+  assert.deepEqual(deps({ "deepseek-harness-acp": "^0.1.16" }), kept);
+  // A sibling floating ahead of the harness core line forces npm to demote
+  // dsh-base's plugin subtree, where the boot module cannot reach it.
+  assert.deepEqual(
+    deps({
+      "@deepseek-ai/dsh-bash-local": "^0.2.0-rc.2",
+      "deepseek-harness-acp": "^0.1.31"
+    }),
+    dropped
+  );
+  // The pre-standalone granular composition.
+  assert.deepEqual(
+    deps({
       "@deepseek-ai/dsh-acp-demo": "^0.1.0-rc.6",
       "@deepseek-ai/dsh-llm-deepseek": "^0.1.0-rc.6"
-    }
-  };
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify(legacyPkg));
-  fs.writeFileSync(path.join(root, "package-lock.json"), "{}");
-
-  cleanupLegacyDshAcpManagedFiles(root);
-  assert.equal(fs.existsSync(path.join(root, "package.json")), false);
-  assert.equal(fs.existsSync(path.join(root, "package-lock.json")), false);
-
-  const cleanPkg = {
-    dependencies: {
-      "deepseek-harness-acp": "^0.1.16"
-    }
-  };
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify(cleanPkg));
-  cleanupLegacyDshAcpManagedFiles(root);
-  assert.equal(fs.existsSync(path.join(root, "package.json")), true);
+    }),
+    dropped
+  );
+  // A local checkout link stops resolving as soon as the checkout moves.
+  assert.deepEqual(deps({ "deepseek-harness-acp": "file:../deepseek-harness-acp" }), dropped);
+  assert.deepEqual(deps({ "@deepseek-ai/dsh-base": "^0.1.6" }), dropped);
+  assert.deepEqual(probe("{ not json"), dropped);
 });
 
 test("dshAcpCompositionReady validates required plugins in cordis.yml", () => {
@@ -249,5 +335,3 @@ test("dshAcpCompositionReady validates required plugins in cordis.yml", () => {
 
   assert.equal(dshAcpCompositionReady(bin, cordisYaml), true);
 });
-
-

@@ -1,15 +1,20 @@
 export type MainWorkspaceView =
   | "chat"
+  | "conversationBoard"
   | "scheduledTasks"
   | "workflowTeams"
-  | "usage";
+  | "usage"
+  | "freebie";
 
 export type MainSettingsTab =
   | "general"
   | "cli"
+  | "providers"
   | "skills"
   | "plugins"
   | "feed"
+  | "usage"
+  | "archived"
   | "remote"
   | "about";
 
@@ -49,17 +54,22 @@ export interface ButlerBuddyTaskPresence {
 
 const WORKSPACE_VIEWS = new Set<MainWorkspaceView>([
   "chat",
+  "conversationBoard",
   "scheduledTasks",
   "workflowTeams",
-  "usage"
+  "usage",
+  "freebie"
 ]);
 
 const SETTINGS_TABS = new Set<MainSettingsTab>([
   "general",
   "cli",
+  "providers",
   "skills",
   "plugins",
   "feed",
+  "usage",
+  "archived",
   "remote",
   "about"
 ]);

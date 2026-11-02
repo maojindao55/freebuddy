@@ -144,6 +144,38 @@ test("ACP inactivity watchdog probes liveness before cancelling and caps repriev
   );
 });
 
+test("ACP watchdog grants bounded time to an explicitly active tool call", () => {
+  assert.match(acpRuntimeSource, /updateActiveAcpToolCalls/);
+  assert.match(acpRuntimeSource, /const activeToolCallIds = new Set<string>\(\)/);
+  assert.match(acpRuntimeSource, /alive \|\| hasActiveToolCall/);
+  assert.match(acpRuntimeSource, /MAX_INACTIVITY_REPRIEVES/);
+});
+
+test("ACP runtime fails turns that contain terminal adapter errors", () => {
+  assert.match(
+    acpRuntimeSource,
+    /acpUpdateToItems\(localDiff\.update, sessionId, args\.adapter\)/
+  );
+  assert.match(acpRuntimeSource, /turnTerminalErrorMessage = terminalError\.message/);
+  assert.match(
+    acpRuntimeSource,
+    /if \(turnTerminalErrorMessage\) \{\s*throw new Error\(turnTerminalErrorMessage\);/
+  );
+});
+
+test("DeepSeek empty resumed turns retry fresh once and unhealthy sessions are evicted", () => {
+  assert.match(acpRuntimeSource, /shouldRetryEmptyResumedDshTurn/);
+  assert.match(acpRuntimeSource, /emptySessionResetAttempted = true/);
+  assert.match(acpRuntimeSource, /Previous DeepSeek session returned no output/);
+  assert.match(acpRuntimeSource, /emptySessionResetInstruction\(\)/);
+  assert.match(acpRuntimeSource, /shouldDiscardAcpToolSession/);
+  const finishBody = acpRuntimeSource.slice(
+    acpRuntimeSource.indexOf("const finish ="),
+    acpRuntimeSource.indexOf("const cancelRun")
+  );
+  assert.match(finishBody, /clearToolSession\(args\.agentId, toolSessionScope\)/);
+});
+
 test("CLI runtime records the approval mode with each task start", () => {
   assert.match(runtimeSource, /approvalMode: args\.approvalMode \?\? "default"/);
 });
@@ -163,7 +195,7 @@ test("acpRuntime skips client MCP servers for adapters that reject them", () => 
   assert.match(acpRuntimeSource, /adapterAcceptsClientMcpServers\(args\.adapter\)/);
   assert.match(
     acpRuntimeSource,
-    /DeepSeek Harness ACP rejects non-empty mcpServers/
+    /registerSkillToolSession\(args\.sessionId, args\.skills\)/
   );
 });
 
@@ -175,11 +207,27 @@ test("ACP runtime hides DeepSeek Node SQLite ExperimentalWarning from UI stderr"
   );
   assert.match(stderrHandler, /args\.adapter === "dsh-acp"/);
   assert.match(stderrHandler, /isDshAcpExperimentalWarningLine\(line\)/);
-  assert.match(stderrHandler, /recentStderr\.push\(line\)/);
+  assert.match(stderrHandler, /recentStderr\.push\(safeLine\)/);
   assert.ok(
     stderrHandler.indexOf("isDshAcpExperimentalWarningLine(line)") <
-      stderrHandler.indexOf("recentStderr.push(line)"),
+      stderrHandler.indexOf("recentStderr.push(safeLine)"),
     "SQLite ExperimentalWarning is skipped before it becomes UI stderr or crash text"
+  );
+});
+
+test("ACP runtime hides Cline startup banner from UI stderr", () => {
+  assert.match(acpRuntimeSource, /isClineAcpStartupBannerLine/);
+  const stderrHandler = acpRuntimeSource.slice(
+    acpRuntimeSource.indexOf('rlErr.on("line"'),
+    acpRuntimeSource.indexOf("child.on(\"close\"")
+  );
+  assert.match(stderrHandler, /args\.adapter === "cline-acp"/);
+  assert.match(stderrHandler, /isClineAcpStartupBannerLine\(line\)/);
+  assert.match(stderrHandler, /recentStderr\.push\(safeLine\)/);
+  assert.ok(
+    stderrHandler.indexOf("isClineAcpStartupBannerLine(line)") <
+      stderrHandler.indexOf("recentStderr.push(safeLine)"),
+    "Cline ACP startup banner is skipped before it becomes UI stderr or crash text"
   );
 });
 

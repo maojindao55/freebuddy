@@ -105,7 +105,7 @@ test("chat composer supports pending and attachment-only sends", () => {
   assert.match(files.chatView, /handleImportAttachments/);
   assert.match(files.chatView, /handleRemovePendingAttachment/);
   assert.match(files.chatView, /useAttachmentImport/);
-  assert.match(files.chatView, /onPaste=\{chatAttachmentImport\.handlePaste\}/);
+  assert.match(files.chatView, /chatAttachmentImport\.handlePaste\(event\)/);
   assert.match(files.chatView, /attachment-drop-active/);
   assert.match(files.chatView, /draft\.trim\(\) \|\| pendingAttachments\.length > 0/);
   assert.match(files.chatView, /attachments:\s*attachmentsToSend/);

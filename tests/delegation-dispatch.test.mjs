@@ -237,36 +237,39 @@ test("delegate timeout pauses while nested child is active", async (t) => {
   });
 });
 
-test("withActiveTimeTimeout pauses budget while isPaused", async () => {
+test("withActiveTimeTimeout pauses budget while isPaused", async (t) => {
   const { withActiveTimeTimeout, DelegateTimeout } = await import(
     "../dist-electron/cli/delegation/bus/concurrency.js"
   );
+  // Real 80ms deadlines can expire under Windows CI scheduler contention.
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 0 });
   let paused = true;
+  let complete;
   const start = Date.now();
-  const value = await withActiveTimeTimeout(
-    new Promise((resolve) => {
-      setTimeout(() => {
-        paused = false;
-        setTimeout(() => resolve("ok"), 40);
-      }, 120);
-    }),
+  const result = withActiveTimeTimeout(
+    new Promise((resolve) => { complete = resolve; }),
     80,
     () => paused,
     { tickMs: 10 }
   );
-  assert.equal(value, "ok");
-  assert.ok(Date.now() - start >= 120, "wall time includes paused stretch");
+  t.mock.timers.tick(120);
+  paused = false;
+  t.mock.timers.tick(40);
+  complete("ok");
+  assert.equal(await result, "ok");
+  assert.equal(Date.now() - start, 160, "wall time includes paused stretch");
 
-  await assert.rejects(
-    () =>
-      withActiveTimeTimeout(
-        new Promise(() => {}),
-        40,
-        () => false,
-        { tickMs: 10 }
-      ),
-    (err) => err instanceof DelegateTimeout
+  const expired = assert.rejects(
+    withActiveTimeTimeout(
+      new Promise(() => {}),
+      40,
+      () => false,
+      { tickMs: 10 }
+    ),
+    (err) => err instanceof DelegateTimeout && err.timeoutMs === 40
   );
+  t.mock.timers.tick(40);
+  await expired;
 });
 
 test("delegate executor failure -> pending now, poll -> failed", async (t) => {
@@ -286,6 +289,41 @@ test("delegate executor failure -> pending now, poll -> failed", async (t) => {
     const polled = await runDelegateAction(binding, "check_delegate_result", { request_id: res.request_id }, sentinelDeps());
     assert.equal(polled.status, "failed");
     assert.equal(polled.result, "boom");
+  });
+});
+
+test("delegate timeout writes a structured outcome naming the role and deadline", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 unavailable"); return; }
+  await withDb(async () => {
+    const { createDelegationRun, listDelegationEvents } = await import("../dist-electron/cli/delegationRuns.js");
+    const { runDelegateAction } = await import("../dist-electron/cli/delegationDispatch.js");
+    const runId = createDelegationRun({ goal: "g", teamId: "team-1", teamSnapshotJson: "{}" });
+    const binding = makeBinding(runId);
+    const shortTimeout = {
+      roster,
+      policy: { ...policy, delegateTimeoutMs: 60 },
+      teamId: "team-1",
+      cwd: "/repo"
+    };
+    const res = await runDelegateAction(binding, "delegate", { teammate_id: "r-rev", task: "审" }, {
+      contextProvider: () => shortTimeout,
+      executor: () => new Promise(() => {}),
+      writeApproval: async () => true
+    });
+    assert.equal(res.status, "pending");
+    await tick(300);
+
+    const ev = listDelegationEvents(runId).find((e) => e.id === res.request_id);
+    assert.equal(ev.status, "timeout");
+    assert.match(ev.resultSummary, /委派超时/);
+    assert.match(ev.resultSummary, /「评审」/);
+    assert.match(ev.resultSummary, /团队策略时限/);
+    assert.match(ev.resultSummary, /1 分钟/);
+    assert.match(ev.resultSummary, /仅计活跃时间/);
+    assert.equal(ev.result?.schemaVersion, 1);
+    assert.equal(ev.result?.status, "timeout");
+    assert.equal(ev.result?.error?.code, "delegate_timeout");
+    assert.equal(ev.result?.error?.retryable, true);
   });
 });
 

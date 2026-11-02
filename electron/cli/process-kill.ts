@@ -19,7 +19,7 @@ export function killProcessTree(child: Killable, mode: "term" | "force"): void {
   if (process.platform === "win32") {
     // Fire-and-forget: swallow the `error` event so a failed spawn (e.g. ENOENT)
     // never crashes the Electron main process with an unhandled emitter error.
-    spawn("taskkill", taskkillArgs(pid), { stdio: "ignore" }).on("error", () => {});
+    spawn("taskkill", taskkillArgs(pid), { stdio: "ignore", windowsHide: true }).on("error", () => {});
     return;
   }
   child.kill(mode === "force" ? "SIGKILL" : "SIGTERM");

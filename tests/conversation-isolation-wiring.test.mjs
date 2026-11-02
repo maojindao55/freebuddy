@@ -15,12 +15,42 @@ test("conversation data handlers enforce ownership at the boundary", () => {
 
   const listMsgs = ipc.slice(ipc.indexOf('"cli:listMessages"'));
   assert.match(listMsgs, /requireOwnedConversation/, "listMessages checks ownership");
+  assert.match(
+    listMsgs,
+    /listMessagesForIpc/,
+    "listMessages pages and truncates payloads in SQLite before IPC"
+  );
+  assert.match(
+    listMsgs,
+    /sanitizeMessagesForIpc/,
+    "listMessages sanitizes stored payloads before IPC"
+  );
+  const listMsg = ipc.slice(ipc.indexOf('"cli:listMessage",'));
+  assert.match(
+    listMsg,
+    /getMessageForIpc/,
+    "listMessage reads a truncated copy for IPC"
+  );
+  assert.match(
+    listMsg,
+    /sanitizeMessageForIpc/,
+    "listMessage sanitizes stored payloads before IPC"
+  );
 
   const append = ipc.slice(ipc.indexOf('"cli:appendMessage"'));
   assert.match(append, /requireOwnedConversation/, "appendMessage checks ownership");
 
   const run = ipc.slice(ipc.indexOf('"cli:run"'));
   assert.match(run, /requireOwnedConversation/, "run checks conversation ownership");
+});
+
+test("conversation store pages IPC history instead of hydrating every message", () => {
+  const store = read("../src/store/conversationStore.ts");
+  assert.match(store, /olderMessagesAvailable/);
+  assert.match(store, /loadOlderMessages/);
+  assert.match(store, /listMessages\(id, \{/);
+  assert.match(store, /beforeCreatedAt: oldest\.createdAt/);
+  assert.match(store, /INITIAL_VISIBLE_MESSAGES/);
 });
 
 test("every conversation participant refreshes messages changed by another client", () => {

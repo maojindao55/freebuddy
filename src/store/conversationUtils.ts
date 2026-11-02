@@ -1,4 +1,4 @@
-import { plainAssistantText } from "@freebuddy/cli-stream";
+import { IPC_LIST_MESSAGES_PAGE_SIZE, serializeStreamItemsForPersist, plainAssistantText } from "@freebuddy/cli-stream";
 import type { CliStreamItem } from "@freebuddy/cli-stream";
 import type { CLIMember } from "@/config/aiMembers";
 import type {
@@ -6,6 +6,8 @@ import type {
   ConversationMessage,
   ConversationTitleSource
 } from "@/services/cli/types";
+
+export type { ConversationTitleSource };
 
 export {
   appendItems,
@@ -16,7 +18,30 @@ export {
   mergeToolCalls,
   plainAssistantText
 } from "@freebuddy/cli-stream";
-export type { ConversationTitleSource };
+
+export const MAX_PERSISTED_STREAM_JSON_CHARS = 400_000;
+export const INITIAL_VISIBLE_MESSAGES = IPC_LIST_MESSAGES_PAGE_SIZE;
+export const VISIBLE_MESSAGE_STEP = IPC_LIST_MESSAGES_PAGE_SIZE;
+const MERGED_STREAM_TRUNCATION_MARKER = "\n… [stream truncated] …\n";
+
+export function visibleConversationSlice<T>(
+  messages: readonly T[],
+  visibleCount: number
+): { hiddenCount: number; items: T[] } {
+  if (visibleCount <= 0 || messages.length <= visibleCount) {
+    return { hiddenCount: 0, items: [...messages] };
+  }
+  const hiddenCount = messages.length - visibleCount;
+  return { hiddenCount, items: messages.slice(hiddenCount) };
+}
+
+/** Shared with delegate saves: valid JSON, bounded size, recent output retained. */
+export function capPersistedStreamItems(
+  items: CliStreamItem[],
+  maxChars = MAX_PERSISTED_STREAM_JSON_CHARS
+): CliStreamItem[] {
+  return JSON.parse(serializeStreamItemsForPersist(items, maxChars)) as CliStreamItem[];
+}
 
 export function collectStreamMessageIds(
   messages: ConversationMessage[]
@@ -116,8 +141,8 @@ export function collectStreamContentSignatures(
 }
 
 function assistantErrorSummary(items: CliStreamItem[]): string | undefined {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
     if (item.kind === "error" && item.message.trim()) {
       return item.message.trim();
     }
@@ -203,10 +228,26 @@ export function buildOrphanFollowupContext(
       ? "The latest user question below was not successfully answered. If the current follow-up is a short continue/retry request, answer that unanswered question."
       : "Answer the current follow-up in light of this history.",
     "",
-    "Prior conversation:",
-    ...blocks
+    "Prior conversation:"
   ];
-  return truncateFollowupBlock(lines.join("\n"), maxChars);
+  const header = lines.join("\n");
+  let remaining = Math.max(0, maxChars - header.length - 1);
+  const kept: string[] = [];
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    const cost = block.length + (kept.length ? 1 : 0);
+    if (cost > remaining) {
+      if (kept.length === 0 && remaining > 12) {
+        kept.push(truncateFollowupBlock(block, remaining - 12));
+      }
+      break;
+    }
+    kept.push(block);
+    remaining -= cost;
+  }
+  // Spend the budget on the newest turns; truncating the joined history from
+  // its beginning could discard the very question a retry needs to answer.
+  return `${header}\n${kept.reverse().join("\n")}`.slice(0, maxChars);
 }
 
 export function composeOrphanFollowupPrompt(
@@ -224,6 +265,14 @@ export function defaultTitleFor(member: CLIMember, cwd?: string): string {
   return tail ? `${member.name} · ${tail}` : member.name;
 }
 
+export const USER_CONVERSATION_TITLE_MAX = 80;
+
+export function sanitizeUserConversationTitle(value: string): string {
+  return Array.from(value.replace(/\s+/g, " ").trim())
+    .slice(0, USER_CONVERSATION_TITLE_MAX)
+    .join("");
+}
+
 export function buildConversationTitle(input: {
   prompt?: string;
   attachmentName?: string;
@@ -239,8 +288,55 @@ export function buildConversationTitle(input: {
   return Array.from(source).slice(0, maxLength).join("");
 }
 
+export function buildDelegationConversationTitle(
+  teamName: string,
+  goal: string,
+  maxLength = 80
+): string {
+  const task = isInternalSkillAnnouncementTitle(goal) ? "" : goal;
+  return buildConversationTitle({
+    prompt: task,
+    fallback: teamName,
+    maxLength
+  });
+}
+
 function normalizeTitleText(value: string | undefined): string {
   return value?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+export function isInternalSkillAnnouncementTitle(
+  title: string | undefined
+): boolean {
+  const normalized = normalizeTitleText(title);
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  if (lower.includes("[freebuddy active skills]")) return true;
+  if (lower.includes("freebuddy-skills mcp")) return true;
+  if (lower.includes("self-organizing delegation")) return true;
+  return /^[-\s]*delegation\s+\([^)]+\):/i.test(normalized);
+}
+
+export function isDelegationSkillAnnouncementTitle(
+  title: string | undefined
+): boolean {
+  const normalized = normalizeTitleText(title);
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  if (lower.includes("self-organizing delegation")) return true;
+  if (/^[-\s]*delegation\s+\([^)]+\):/i.test(normalized)) return true;
+  return (
+    lower.includes("[freebuddy active skills]") && /\bdelegation\b/.test(lower)
+  );
+}
+
+export function isDelegationConversation(
+  conversation: Pick<Conversation, "kind" | "title">
+): boolean {
+  return (
+    conversation.kind === "delegation" ||
+    isDelegationSkillAnnouncementTitle(conversation.title)
+  );
 }
 
 function defaultTitleForConversation(
@@ -250,6 +346,40 @@ function defaultTitleForConversation(
     ? conversation.cwd.split(/[/\\]/).filter(Boolean).slice(-1)[0]
     : undefined;
   return tail ? `${conversation.agentName} · ${tail}` : conversation.agentName;
+}
+
+export function displayConversationTitle(
+  conversation: Pick<Conversation, "title" | "agentName" | "cwd" | "titleSource">,
+  fallback?: string
+): string {
+  const title = normalizeTitleText(conversation.title);
+  if (conversation.titleSource === "user" && title) return title;
+  if (title && !isInternalSkillAnnouncementTitle(title)) return title;
+  const recovered = defaultTitleForConversation(conversation);
+  return (
+    normalizeTitleText(fallback) ||
+    normalizeTitleText(recovered) ||
+    title ||
+    "New chat"
+  );
+}
+
+export function recoverConversationTitleFromMessages(
+  conversation: ConversationForTitleSource,
+  messages: Pick<ConversationMessage, "role" | "content">[]
+): string | undefined {
+  if (!isInternalSkillAnnouncementTitle(conversation.title)) return undefined;
+  if (inferConversationTitleSource(conversation) === "user") return undefined;
+  const firstUser = messages.find(
+    (message) => message.role === "user" && normalizeTitleText(message.content)
+  );
+  const recovered = buildConversationTitle({
+    prompt: firstUser?.content,
+    fallback: defaultTitleForConversation(conversation)
+  });
+  if (!recovered || recovered === conversation.title) return undefined;
+  if (isInternalSkillAnnouncementTitle(recovered)) return undefined;
+  return recovered;
 }
 
 type ConversationForTitleSource = Pick<
@@ -282,6 +412,7 @@ export function shouldApplyAgentSessionTitle(
     Array.isArray(messagesOrTitle) ? maybeTitle : messagesOrTitle
   );
   if (!title || conversation.title === title) return false;
+  if (isInternalSkillAnnouncementTitle(title)) return false;
   if (messages.some((message) => Boolean(message.workflowRunId))) return false;
   const source = inferConversationTitleSource(conversation);
   return source === "default" || source === "prompt";
@@ -332,6 +463,7 @@ export function upsertConversationMessage(
   next[index] = {
     ...previous,
     ...message,
+    skillSnapshot: message.skillSnapshot ?? previous.skillSnapshot,
     attachments: mergeMessageAttachments(message, previous)
   };
   return next;
@@ -354,18 +486,24 @@ export function mergeConversationMessages(
       continue;
     }
     const attachments = mergeMessageAttachments(message, previous);
+    const skillSnapshot = message.skillSnapshot ?? previous.skillSnapshot;
+    const sequence = message.sequence ?? previous.sequence;
     if (
       previous.createdAt === message.createdAt &&
+      previous.sequence === sequence &&
       previous.status === message.status &&
       previous.content === message.content &&
       previous.updatedAt === message.updatedAt &&
-      previous.attachments === attachments
+      previous.attachments === attachments &&
+      previous.skillSnapshot === skillSnapshot
     ) {
       continue;
     }
     byId.set(message.id, {
       ...previous,
       ...message,
+      sequence,
+      skillSnapshot,
       attachments
     });
     changed = true;
@@ -373,6 +511,8 @@ export function mergeConversationMessages(
   if (!changed && byId.size !== existing.length) changed = true;
   if (!changed) return existing;
   return Array.from(byId.values()).sort((a, b) =>
-    a.createdAt.localeCompare(b.createdAt)
+    a.createdAt.localeCompare(b.createdAt) ||
+    (a.sequence !== undefined && b.sequence !== undefined
+      ? a.sequence - b.sequence : 0)
   );
 }

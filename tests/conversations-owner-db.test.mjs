@@ -26,6 +26,40 @@ const baseInput = (id) => ({
   adapter: "codex"
 });
 
+test("history pages bound content without dropping messages at size or count boundaries", async t => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const { createConversation, appendMessage, listMessagesForIpc } = await import("../dist-electron/cli/conversations.js");
+  const { IPC_LIST_MESSAGES_PAGE_SIZE, IPC_LIST_MESSAGES_PAGE_CHARS } = await import("@freebuddy/cli-stream");
+  migrate(db); setDbForTest(db);
+  try {
+    for (const [name, count, size] of [["large",9,300_000],["small",45,30]]) {
+      createConversation(baseInput(name));
+      const bodies = new Map();
+      for (let i=0; i<count; i++) {
+        const id = `${name}-${i}`;
+        const content = JSON.stringify([{kind:"text",role:"assistant",content:`${i}:`+"x".repeat(size)}]);
+        bodies.set(id, content);
+        appendMessage({id,conversationId:name,role:"assistant",status:"done",content});
+      }
+      const ids = [];
+      let cursor;
+      for (;;) {
+        const page = listMessagesForIpc(name, cursor);
+        assert.ok(page.messages.length > 0 && page.messages.length <= IPC_LIST_MESSAGES_PAGE_SIZE);
+        assert.ok(page.messages.reduce((sum,m)=>sum+m.content.length,0) <= IPC_LIST_MESSAGES_PAGE_CHARS);
+        for (const message of page.messages) assert.equal(message.content,bodies.get(message.id));
+        ids.unshift(...page.messages.map(m=>m.id));
+        if (!page.hasMore) break;
+        const oldest = page.messages[0];
+        cursor = {beforeCreatedAt:oldest.createdAt,beforeId:oldest.id};
+      }
+      assert.deepEqual(ids,[...bodies.keys()]);
+    }
+  } finally {setDbForTest(null);db.close();}
+});
+
 test("createConversation stamps the caller as owner; listConversations filters by caller", async (t) => {
   if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
   const db = makeDb();
@@ -225,4 +259,171 @@ test("admin (desktop owner) sees every user's conversations", async (t) => {
     runAsCaller("bob", () => listConversations().map((c) => c.id)),
     ["b1"]
   );
+});
+
+test("listMessagesForIpc pages newest messages and does not load oversized blobs", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  migrate(db);
+  setDbForTest(db);
+  const {
+    createConversation,
+    appendMessage,
+    listMessages,
+    listMessagesForIpc,
+    getMessageForIpc
+  } = await import("../dist-electron/cli/conversations.js");
+  const { MAX_IPC_MESSAGE_CONTENT_CHARS } = await import(
+    "../dist-electron/cli/messagePayloadSanitize.js"
+  );
+
+  createConversation(baseInput("c1"));
+  for (const id of ["m1", "m2", "m3", "m4", "m5"]) {
+    appendMessage({
+      id,
+      conversationId: "c1",
+      role: "user",
+      status: "sent",
+      content: id
+    });
+  }
+
+  const page1 = listMessagesForIpc("c1", { limit: 2 });
+  assert.equal(page1.hasMore, true);
+  assert.deepEqual(
+    page1.messages.map((entry) => entry.id),
+    ["m4", "m5"]
+  );
+
+  const oldest = page1.messages[0];
+  const page2 = listMessagesForIpc("c1", {
+    limit: 2,
+    beforeCreatedAt: oldest.createdAt,
+    beforeId: oldest.id
+  });
+  assert.equal(page2.hasMore, true);
+  assert.deepEqual(
+    page2.messages.map((entry) => entry.id),
+    ["m2", "m3"]
+  );
+
+  const hugeId = "huge";
+  const huge = "x".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS + 50_000);
+  appendMessage({
+    id: hugeId,
+    conversationId: "c1",
+    role: "assistant",
+    status: "done",
+    content: huge
+  });
+  const full = listMessages("c1");
+  assert.equal(full.at(-1)?.content.length, huge.length);
+
+  const ipcLatest = listMessagesForIpc("c1", { limit: 1 });
+  assert.equal(ipcLatest.messages[0]?.id, hugeId);
+  assert.ok(ipcLatest.messages[0].content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS + 1);
+
+  const ipcOne = getMessageForIpc(hugeId);
+  assert.ok(ipcOne);
+  assert.ok(ipcOne.content.length <= MAX_IPC_MESSAGE_CONTENT_CHARS + 1);
+
+  // Legacy delegate rows can contain hundreds of MB. Confirm the SQL guard
+  // bypasses substr entirely instead of loading the blob just to slice it.
+  db.prepare("UPDATE conversation_messages SET content = ? WHERE id = ?")
+    .run("x".repeat(MAX_IPC_MESSAGE_CONTENT_CHARS * 4 + 1), hugeId);
+  db.function("substr", (value, start, length) => {
+    assert.ok(value.length <= MAX_IPC_MESSAGE_CONTENT_CHARS * 4,
+      "large blob must not be sliced");
+    return value.slice(start - 1, start - 1 + length);
+  });
+  assert.match(getMessageForIpc(hugeId).content, /omitted/);
+  assert.match(listMessagesForIpc("c1", { limit: 1 }).messages.at(-1).content, /omitted/);
+});
+
+test("listMessagesForIpc keeps insertion order when created_at timestamps collide", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  migrate(db);
+  setDbForTest(db);
+  const { createConversation, listMessagesForIpc } = await import(
+    "../dist-electron/cli/conversations.js"
+  );
+
+  createConversation(baseInput("c1"));
+  const ts = "2026-09-15T00:00:00.000Z";
+  const insert = (id) =>
+    db.prepare(
+      `INSERT INTO conversation_messages
+         (id, conversation_id, role, status, content, created_at, updated_at)
+       VALUES (?, 'c1', 'user', 'sent', ?, ?, ?)`
+    ).run(id, id, ts, ts);
+  insert("z-first");
+  insert("a-second");
+
+  const latest = listMessagesForIpc("c1", { limit: 1 });
+  assert.equal(latest.messages[0]?.id, "a-second");
+  assert.equal(latest.hasMore, true);
+
+  const older = listMessagesForIpc("c1", {
+    limit: 1,
+    beforeCreatedAt: latest.messages[0].createdAt,
+    beforeId: latest.messages[0].id
+  });
+  assert.equal(older.messages[0]?.id, "z-first");
+  assert.ok(older.messages[0].sequence < latest.messages[0].sequence);
+  assert.equal(older.hasMore, false);
+});
+
+test("followup history skips UI-only messages, excluded current turns, and live assistants", async (t) => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  migrate(db);
+  setDbForTest(db);
+  const { createConversation, appendMessage, listFollowupMessagesForIpc } = await import(
+    "../dist-electron/cli/conversations.js"
+  );
+  createConversation(baseInput("c1"));
+  createConversation(baseInput("c2"));
+  const add = (id, role, status, content = id, conversationId = "c1") => appendMessage({
+    id, conversationId, role, status, content
+  });
+  add("ask", "user", "sent", "Build the missing feature");
+  add("failure", "assistant", "failed", "[]");
+  for (let index = 0; index < 60; index++) add(`system-${index}`, "system", "done");
+  add("current", "user", "sent", "continue");
+  add("live", "assistant", "running", "[]");
+  add("starting", "assistant", "starting", "[]");
+  add("foreign", "user", "sent", "Private other conversation", "c2");
+  const messages = listFollowupMessagesForIpc("c1", ["current", "live"]);
+  assert.deepEqual(messages.map((message) => message.id), ["ask", "failure"]);
+  assert.ok(messages[0].sequence < messages[1].sequence);
+  for (let index = 0; index < 20; index++) add(`turn-${index}`, "user", "sent");
+  const recent = listFollowupMessagesForIpc("c1");
+  assert.equal(recent.length, 12);
+  assert.equal(recent[0].id, "turn-8");
+  assert.equal(recent.at(-1).id, "turn-19");
+});
+
+
+test("message-scoped skills survive database reload without changing conversation defaults", async t => {
+  if (!bindingAvailable) { t.skip("better-sqlite3 native binding unavailable"); return; }
+  const db = makeDb();
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const { createConversation, appendMessage, getMessage, getConversation } = await import("../dist-electron/cli/conversations.js");
+  migrate(db);
+  db.exec("ALTER TABLE conversation_messages DROP COLUMN skill_snapshot");
+  migrate(db);
+  setDbForTest(db);
+  try {
+    createConversation(baseInput("message-skills"));
+    const selected = { id: "review", name: "代码审查", description: "Review changes", version: "1", source: "imported", rootPath: "/skills/review", contentHash: "hash" };
+    appendMessage({ id: "selected-skill-message", conversationId: "message-skills", role: "user", status: "sent", content: "检查改动", skillSnapshot: [selected] });
+    assert.deepEqual(getMessage("selected-skill-message").skillSnapshot, [selected]);
+    assert.deepEqual(getConversation("message-skills").skillSnapshot, []);
+    appendMessage({ id: "plain-message", conversationId: "message-skills", role: "user", status: "sent", content: "普通消息" });
+    assert.equal(getMessage("plain-message").skillSnapshot, undefined);
+  } finally { setDbForTest(null); db.close(); }
 });

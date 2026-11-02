@@ -18,6 +18,10 @@ import type {
   SessionConfigOption,
   SessionConfigProbeInput
 } from "@/services/cli/types";
+import {
+  findMainModelConfigOption,
+  findProviderConfigOption
+} from "@/utils/sessionConfigOptions";
 import type {
   DelegationPolicy,
   DelegationRosterEntry
@@ -110,7 +114,7 @@ export function DelegationTeamEditor({
   const modelRefreshedRef = useRef(new Set<string>());
 
   const sessionProbeInputForAgent = useCallback(
-    (agentId: string): SessionConfigProbeInput | undefined => {
+    (agentId: string, provider?: string): SessionConfigProbeInput | undefined => {
       const member = members.find((entry) => entry.id === agentId);
       if (!member) return undefined;
       const resolved = useCliExecutorStore
@@ -124,43 +128,59 @@ export function DelegationTeamEditor({
           ...(resolved?.extraArgs ?? []),
           ...(member.cli.extraArgs ?? [])
         ],
-        env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) }
+        env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
+        configOptionOverrides: provider ? { provider } : undefined
       };
     },
     [members]
   );
 
-  const rosterAgentIdsKey = useMemo(
+  const getAgentOptionsKey = (agentId: string, provider?: string) =>
+    provider ? `${agentId}:${provider}` : agentId;
+
+  const rosterConfigKey = useMemo(
     () =>
-      Array.from(new Set(roster.map((r) => r.agentId).filter(Boolean)))
+      Array.from(
+        new Set(
+          roster
+            .map((r) =>
+              r.agentId ? `${r.agentId}|${r.provider ?? ""}` : ""
+            )
+            .filter(Boolean)
+        )
+      )
         .sort()
         .join("\u0000"),
     [roster]
   );
 
   useEffect(() => {
-    if (!rosterAgentIdsKey || !cliClient.isAvailable()) return;
+    if (!rosterConfigKey || !cliClient.isAvailable()) return;
     let cancelled = false;
-    const agentIds = rosterAgentIdsKey.split("\u0000");
+    const items = rosterConfigKey.split("\u0000").map((pair) => {
+      const [agentId, provider] = pair.split("|");
+      return { agentId, provider: provider || undefined };
+    });
     void Promise.all(
-      agentIds.map(async (agentId) => {
-        const input = sessionProbeInputForAgent(agentId);
-        if (!input) return [agentId, [] as SessionConfigOption[]] as const;
+      items.map(async ({ agentId, provider }) => {
+        const input = sessionProbeInputForAgent(agentId, provider);
+        const key = getAgentOptionsKey(agentId, provider);
+        if (!input) return [key, [] as SessionConfigOption[]] as const;
         try {
           return [
-            agentId,
+            key,
             await cliClient.getCachedSessionConfigOptions(input)
           ] as const;
         } catch {
-          return [agentId, [] as SessionConfigOption[]] as const;
+          return [key, [] as SessionConfigOption[]] as const;
         }
       })
     ).then((entries) => {
       if (cancelled) return;
       setModelOptionsByAgent((current) => {
         const next = { ...current };
-        for (const [agentId, options] of entries) {
-          if (options.length > 0) next[agentId] = options;
+        for (const [key, options] of entries) {
+          if (options.length > 0) next[key] = options;
         }
         return next;
       });
@@ -168,34 +188,35 @@ export function DelegationTeamEditor({
     return () => {
       cancelled = true;
     };
-  }, [rosterAgentIdsKey, sessionProbeInputForAgent]);
+  }, [rosterConfigKey, sessionProbeInputForAgent]);
 
-  const refreshEntryModels = async (agentId: string) => {
+  const refreshEntryModels = async (agentId: string, provider?: string) => {
+    const key = getAgentOptionsKey(agentId, provider);
     if (
       !cliClient.isAvailable() ||
-      modelRefreshedRef.current.has(agentId) ||
-      modelProbeInFlightRef.current.has(agentId)
+      modelRefreshedRef.current.has(key) ||
+      modelProbeInFlightRef.current.has(key)
     ) {
       return;
     }
-    const input = sessionProbeInputForAgent(agentId);
+    const input = sessionProbeInputForAgent(agentId, provider);
     if (!input) return;
-    modelProbeInFlightRef.current.add(agentId);
-    setModelLoadingByAgent((current) => ({ ...current, [agentId]: true }));
+    modelProbeInFlightRef.current.add(key);
+    setModelLoadingByAgent((current) => ({ ...current, [key]: true }));
     try {
       const options = await cliClient.inspectSessionConfigOptions(input);
       if (options.length > 0) {
-        modelRefreshedRef.current.add(agentId);
+        modelRefreshedRef.current.add(key);
         setModelOptionsByAgent((current) => ({
           ...current,
-          [agentId]: options
+          [key]: options
         }));
       }
     } catch {
       // Keep any persisted options and allow another refresh attempt.
     } finally {
-      modelProbeInFlightRef.current.delete(agentId);
-      setModelLoadingByAgent((current) => ({ ...current, [agentId]: false }));
+      modelProbeInFlightRef.current.delete(key);
+      setModelLoadingByAgent((current) => ({ ...current, [key]: false }));
     }
   };
 
@@ -206,10 +227,62 @@ export function DelegationTeamEditor({
     setRoster((rs) =>
       rs.map((r) =>
         r.id === id
-          ? { ...r, agentId, model: undefined, modelOptionId: undefined }
+          ? {
+              ...r,
+              agentId,
+              provider: undefined,
+              providerOptionId: undefined,
+              model: undefined,
+              modelOptionId: undefined,
+              thoughtLevel: undefined,
+              thoughtLevelOptionId: undefined
+            }
           : r
       )
     );
+
+  const setEntryProvider = async (
+    id: string,
+    agentId: string,
+    provider: string,
+    providerOptionId: string
+  ) => {
+    const nextProvider = provider.trim() || undefined;
+    setRoster((rs) =>
+      rs.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              provider: nextProvider,
+              providerOptionId: nextProvider ? providerOptionId : undefined,
+              model: undefined,
+              modelOptionId: undefined
+            }
+          : r
+      )
+    );
+    if (nextProvider) {
+      const key = getAgentOptionsKey(agentId, nextProvider);
+      if (!modelOptionsByAgent[key]) {
+        const input = sessionProbeInputForAgent(agentId, nextProvider);
+        if (input) {
+          try {
+            const cached = await cliClient.getCachedSessionConfigOptions(input);
+            if (cached.length > 0) {
+              setModelOptionsByAgent((curr) => ({ ...curr, [key]: cached }));
+            } else {
+              const fresh = await cliClient.inspectSessionConfigOptions(input);
+              if (fresh.length > 0) {
+                setModelOptionsByAgent((curr) => ({ ...curr, [key]: fresh }));
+              }
+            }
+          } catch {
+            /* best-effort */
+          }
+        }
+      }
+    }
+  };
 
   const setEntryModel = (
     id: string,
@@ -228,11 +301,52 @@ export function DelegationTeamEditor({
       )
     );
 
-  const modelOptionForAgent = (agentId: string): SessionConfigOption | undefined =>
-    (modelOptionsByAgent[agentId] ?? []).find(
-      (entry) => entry.category === "model"
-    ) ??
-    (modelOptionsByAgent[agentId] ?? []).find((entry) => entry.id === "model");
+  const setEntryThoughtLevel = (
+    id: string,
+    thoughtLevel: string,
+    thoughtLevelOptionId: string
+  ) =>
+    setRoster((rs) =>
+      rs.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              thoughtLevel: thoughtLevel.trim() || undefined,
+              thoughtLevelOptionId: thoughtLevel.trim()
+                ? thoughtLevelOptionId
+                : undefined
+            }
+          : r
+      )
+    );
+
+  const providerOptionForAgent = (
+    agentId: string
+  ): SessionConfigOption | undefined =>
+    findProviderConfigOption(modelOptionsByAgent[agentId] ?? []);
+
+  const modelOptionForAgent = (
+    agentId: string,
+    provider?: string
+  ): SessionConfigOption | undefined => {
+    const key = getAgentOptionsKey(agentId, provider);
+    const options =
+      modelOptionsByAgent[key] ?? modelOptionsByAgent[agentId] ?? [];
+    return findMainModelConfigOption(options);
+  };
+
+  const thoughtOptionForAgent = (
+    agentId: string,
+    provider?: string
+  ): SessionConfigOption | undefined => {
+    const key = getAgentOptionsKey(agentId, provider);
+    const options =
+      modelOptionsByAgent[key] ?? modelOptionsByAgent[agentId] ?? [];
+    return (
+      options.find((entry) => entry.category === "thought_level") ??
+      options.find((entry) => entry.id === "thought_level")
+    );
+  };
 
   const addEntry = () =>
     setRoster((rs) => [...rs, newEntry(`r-${Date.now().toString(36)}`)]);
@@ -372,10 +486,43 @@ export function DelegationTeamEditor({
               showSearch
               optionFilterProp="label"
             />
+            {(() => {
+              const providerOpt = providerOptionForAgent(r.agentId);
+              if (!providerOpt?.values?.length) return null;
+              return (
+                <Select
+                  value={r.provider || undefined}
+                  options={[
+                    {
+                      value: "",
+                      label: t("chat.providerDefault", {
+                        defaultValue: "Default provider"
+                      })
+                    },
+                    ...providerOpt.values.map((v) => ({
+                      value: v.id,
+                      label: v.name || v.id
+                    }))
+                  ]}
+                  onChange={(v: string) =>
+                    void setEntryProvider(
+                      r.id,
+                      r.agentId,
+                      v,
+                      providerOpt.id
+                    )
+                  }
+                  placeholder={t("chat.provider", { defaultValue: "Provider" })}
+                  style={{ width: "100%" }}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              );
+            })()}
             <Select
               value={r.model || undefined}
               options={(() => {
-                const option = modelOptionForAgent(r.agentId);
+                const option = modelOptionForAgent(r.agentId, r.provider);
                 const values = [...(option?.values ?? [])];
                 if (r.model && !values.some((v) => v.id === r.model)) {
                   values.unshift({ id: r.model, name: r.model });
@@ -392,17 +539,60 @@ export function DelegationTeamEditor({
                 setEntryModel(
                   r.id,
                   v,
-                  modelOptionForAgent(r.agentId)?.id ?? r.modelOptionId ?? "model"
+                  modelOptionForAgent(r.agentId, r.provider)?.id ??
+                    r.modelOptionId ??
+                    "model"
                 )
               }
-              onFocus={() => void refreshEntryModels(r.agentId)}
+              onFocus={() => void refreshEntryModels(r.agentId, r.provider)}
               placeholder={t("workflow.currentModel")}
               style={{ width: "100%" }}
               showSearch
               optionFilterProp="label"
               loading={
-                modelLoadingByAgent[r.agentId] &&
-                !(modelOptionForAgent(r.agentId)?.values?.length ?? 0)
+                modelLoadingByAgent[
+                  getAgentOptionsKey(r.agentId, r.provider)
+                ] &&
+                !(
+                  modelOptionForAgent(r.agentId, r.provider)?.values?.length ??
+                  0
+                )
+              }
+            />
+            <Select
+              value={r.thoughtLevel || undefined}
+              options={(() => {
+                const option = thoughtOptionForAgent(r.agentId, r.provider);
+                const values = [...(option?.values ?? [])];
+                if (
+                  r.thoughtLevel &&
+                  !values.some((v) => v.id === r.thoughtLevel)
+                ) {
+                  values.unshift({ id: r.thoughtLevel, name: r.thoughtLevel });
+                }
+                return [
+                  { value: "", label: t("workflow.defaultThoughtLevel") },
+                  ...values.map((v) => ({
+                    value: v.id,
+                    label: v.name || v.id
+                  }))
+                ];
+              })()}
+              onChange={(v: string) =>
+                setEntryThoughtLevel(
+                  r.id,
+                  v,
+                  thoughtOptionForAgent(r.agentId, r.provider)?.id ??
+                    r.thoughtLevelOptionId ??
+                    "thought_level"
+                )
+              }
+              onFocus={() => void refreshEntryModels(r.agentId, r.provider)}
+              placeholder={t("workflow.currentThoughtLevel")}
+              style={{ width: "100%" }}
+              disabled={
+                !thoughtOptionForAgent(r.agentId) &&
+                !r.thoughtLevel
               }
             />
             <TextArea

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { cliClient } from "@/services/cli/client";
+import { findMainModelConfigOption } from "@/utils/sessionConfigOptions";
 import type { SessionConfigOption, SessionConfigProbeInput } from "@/services/cli/types";
 import { scheduledTasksClient } from "@/services/scheduledTasks/client";
 import type {
@@ -140,9 +141,7 @@ export function ScheduledTasksTab({
   );
 
   const modelOption = useMemo(
-    () =>
-      modelOptions.find((option) => option.category === "model") ??
-      modelOptions.find((option) => option.id === "model"),
+    () => findMainModelConfigOption(modelOptions),
     [modelOptions]
   );
   const persistedModelEntry = useMemo(

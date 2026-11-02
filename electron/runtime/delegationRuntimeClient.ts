@@ -15,6 +15,18 @@ export type DelegationRuntimeHandle = {
   followUp: (runId: string, prompt: string) => void | Promise<void>;
 };
 
+/**
+ * Delegation tools still execute in the desktop host and need the in-process
+ * runtime's queue/orchestrator callbacks. Keep delegation local by default
+ * until the runtime-process bridge forwards enqueue, settle, and yield events.
+ */
+export function shouldUseDelegationRuntimeProcess(): boolean {
+  return (
+    process.env.FREEBUDDY_DELEGATION_RUNTIME_PROCESS === "1" &&
+    shouldUseRuntimeProcess()
+  );
+}
+
 async function invokeDelegationRpc(
   event: IpcMainInvokeEvent,
   runId: string | undefined,
@@ -39,7 +51,7 @@ export function createDelegationRuntimeHandle(
   event: IpcMainInvokeEvent,
   getLocal: () => DelegationRuntime
 ): DelegationRuntimeHandle {
-  const useProcess = shouldUseRuntimeProcess();
+  const useProcess = shouldUseDelegationRuntimeProcess();
 
   function call<T>(
     runId: string | undefined,

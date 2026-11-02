@@ -6,6 +6,8 @@ import type {
 } from "@/services/cli/parsers";
 import { getParser } from "@/services/cli/parsers";
 import { cliClient } from "@/services/cli/client";
+import { delegationClient } from "@/services/delegation/client";
+import { workflowClient } from "@/services/workflows/client";
 import { debugLogClient } from "@/services/debugLog";
 import {
   notifyTaskFinished,
@@ -17,7 +19,13 @@ import type { ConversationState } from "./conversationStore";
 import { runCtxMap } from "./conversationStore";
 import { usePermissionStore } from "./permissionStore";
 import { useAuthenticationStore } from "./authenticationStore";
-import { appendItems, shouldApplyAgentSessionTitle } from "./conversationUtils";
+import {
+  displayConversationTitle,
+  isDelegationConversation,
+  appendItems,
+  capPersistedStreamItems,
+  shouldApplyAgentSessionTitle
+} from "./conversationUtils";
 import { latestSessionInfoFromMessages } from "./sessionMetaUtils";
 import { useImagePreviewStore } from "./imagePreviewStore";
 import { useTerminalStore } from "./terminalStore";
@@ -206,6 +214,7 @@ export function handleStreamEvent(
     let exitCode = live.exitCode;
     let errorMessage = live.errorMessage;
     let capturedSessionId = live.capturedSessionId;
+    let runMetricsReceivedAt = live.runMetricsReceivedAt;
 
     if (e.type === "started") {
       status = "running";
@@ -224,6 +233,9 @@ export function handleStreamEvent(
       nextItems = refreshLatestErrorDetails(nextItems, parseCtx);
     } else if (e.type === "items") {
       nextItems = appendItems(nextItems, sanitizeIncomingItems(e.items));
+      if (e.items.some(item => item.kind === "usage" && item.runMetrics?.runId === live.taskSessionId)) {
+        runMetricsReceivedAt = performance.now();
+      }
       const sessionItem = [...e.items]
         .reverse()
         .find((item) => item.kind === "session");
@@ -311,7 +323,8 @@ export function handleStreamEvent(
           pid,
           exitCode,
           errorMessage,
-          capturedSessionId
+          capturedSessionId,
+          runMetricsReceivedAt
         }
       },
       conversations
@@ -329,9 +342,15 @@ export function handleStreamEvent(
         conversationId,
         success ? "success" : "failure"
       );
-      const conversationTitle =
-        get().conversations.find((c) => c.id === conversationId)?.title ??
-        i18next.t("conversations.untitled");
+      const conversation = get().conversations.find((c) => c.id === conversationId);
+      const conversationTitle = conversation
+        ? displayConversationTitle(
+            conversation,
+            isDelegationConversation(conversation)
+              ? i18next.t("workflow.delegation.sessionTitleFallback")
+              : undefined
+          )
+        : i18next.t("conversations.untitled");
       if (success) {
         playTaskSuccess(true);
         notifyTaskFinished(
@@ -420,7 +439,7 @@ async function finalizeRun(
       : live.status === "done" && live.exitCode === 0
         ? "done"
         : "failed";
-  const finalContent = JSON.stringify(live.items);
+  const finalContent = JSON.stringify(capPersistedStreamItems(live.items));
 
   const ctx = runCtxMap.get(live.taskSessionId);
   ctx?.unsubscribe();
@@ -470,17 +489,69 @@ export async function killConversation(
   conversationId: string
 ): Promise<void> {
   const live = get().live[conversationId];
-  if (!live) return;
-  set((s) => ({
-    live: {
-      ...s.live,
-      [conversationId]: { ...live, status: "killed" }
+  if (live) {
+    set((s) => ({
+      live: {
+        ...s.live,
+        [conversationId]: { ...live, status: "killed" }
+      }
+    }));
+    try {
+      await cliClient.kill(live.taskSessionId);
+    } catch {
+      /* ignore */
     }
-  }));
-  await cliClient.kill(live.taskSessionId);
-  // The runtime will still emit a "done" event with exitCode != 0; finalizeRun
-  // is called from handleStreamEvent on done, which will overwrite status using
-  // exitCode. To preserve the killed status we rely on main marking the task
-  // as killed in DB, but for in-memory state we want killed to stick. Override
-  // by tagging it in the live snapshot which finalizeRun re-reads.
+  }
+
+  if (delegationClient.isAvailable()) {
+    try {
+      const delegationRun = await delegationClient.getRunByConversation(conversationId);
+      if (
+        delegationRun &&
+        delegationRun.status !== "killed" &&
+        delegationRun.status !== "completed" &&
+        delegationRun.status !== "failed"
+      ) {
+        await delegationClient.stopRun(delegationRun.id);
+      }
+    } catch {
+      /* ignore delegation stop errors */
+    }
+  }
+
+  if (workflowClient.isAvailable()) {
+    try {
+      const runs = await workflowClient.listRuns(conversationId);
+      for (const run of runs ?? []) {
+        if (run.status === "running" || run.status === "paused") {
+          await workflowClient.stop(run.id);
+        }
+      }
+    } catch {
+      /* ignore workflow stop errors */
+    }
+  }
+
+  const messages = get().messages[conversationId];
+  if (
+    messages &&
+    messages.some(
+      (m) =>
+        m.role === "assistant" &&
+        (m.status === "running" || m.status === "starting")
+    )
+  ) {
+    set((s) => ({
+      messages: {
+        ...s.messages,
+        [conversationId]: (s.messages[conversationId] ?? []).map((m) =>
+          m.role === "assistant" &&
+          (m.status === "running" || m.status === "starting")
+            ? { ...m, status: "killed" as const }
+            : m
+        )
+      }
+    }));
+  }
 }
+

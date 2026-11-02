@@ -15,7 +15,6 @@ const runtimeShared = read("../electron/cli/runtimeShared.ts");
 const db = read("../electron/cli/db.ts");
 const aboutTab = read("../src/components/Settings/AboutTab.tsx");
 const streamItem = read("../src/components/CLI/StreamItem.tsx");
-const replayBar = read("../src/components/CLI/ReplayBar.tsx");
 const app = read("../src/App.tsx");
 const updater = read("../electron/updater.ts");
 const conversationStore = read("../src/store/conversationStore.ts");
@@ -85,7 +84,7 @@ test("conversation-scoped export filters task logs and merges their resumable se
 
 test("chat entry points scope the export to the active conversation; About does not", () => {
   assert.match(streamItem, /setOpen\(true, useConversationStore\.getState\(\)\.activeId \?\? undefined\)/);
-  assert.match(replayBar, /setOpen\(true, activeId \?\? undefined\)/);
+  assert.match(app, /setOpen\(true, activeConversation\?\.id\)/);
   assert.match(aboutTab, /setDebugLogsOpen\(true\)/);
   assert.doesNotMatch(aboutTab, /setDebugLogsOpen\(true, /);
 });
@@ -99,10 +98,10 @@ test("three entry points mount the export dialog", () => {
   assert.match(app, /ExportDebugLogsDialog/);
   assert.match(aboutTab, /debugLogs\.aboutSectionTitle/);
   assert.match(streamItem, /debugLogs\.exportLink/);
-  assert.match(replayBar, /debugLogs\.title/);
+  assert.match(app, /debugLogs\.title/);
   assert.match(aboutTab, /useDebugLogsDialogStore/);
   assert.match(streamItem, /useDebugLogsDialogStore/);
-  assert.match(replayBar, /useDebugLogsDialogStore/);
+  assert.match(app, /useDebugLogsDialogStore/);
 });
 
 test("renderer logger installs global hooks and instruments run failures", () => {

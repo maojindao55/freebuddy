@@ -34,6 +34,7 @@ test("project form modal and sidebar wiring expose create/edit project UI", () =
   assert.match(store, /remapPins\(projects\)/);
   assert.match(store, /cliClient\.listProjects/);
   assert.match(store, /cliClient\.createProject/);
+  assert.match(store, /cliClient\.ensureProjectForCwd/);
   assert.match(store, /cliClient\.deleteProject/);
   assert.match(store, /loaded:\s*true/);
   assert.match(store, /Keep last-good projects/);

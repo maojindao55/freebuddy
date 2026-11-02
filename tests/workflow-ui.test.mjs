@@ -33,18 +33,14 @@ test("WorkflowRunPanel polls pending approval and live runs for tree updates", (
   assert.match(src, /setInterval\(\(\) => void refresh\(activeRun\.id\), 1500\)/);
 });
 
-test("WorkflowRunPanel uses replay workflow snapshots as read-only state", () => {
+test("WorkflowRunPanel derives its state directly from the workflow store", () => {
   const src = read("../src/components/Workflows/WorkflowRunPanel.tsx");
-  assert.match(src, /useReplayStore/);
-  assert.match(src, /replayFrames\[replayIndex\]\?\.workflow/);
+  assert.doesNotMatch(src, /useReplayStore/);
   assert.match(src, /storeActiveRun\?\.conversationId === activeId/);
-  assert.match(src, /const activeRun = replaySnapshot\?\.run \?\? currentStoreRun/);
-  assert.match(
-    src,
-    /const steps = replaySnapshot\?\.steps \?\? \(currentStoreRun \? storeSteps : \[\]\)/
-  );
-  assert.match(src, /!replayingWorkflow && \(isLive \|\| gatingPhaseId \|\| canContinueImplementReview\)/);
-  assert.match(src, /replayingWorkflow[\s\S]*\? undefined[\s\S]*: \(step\) => void retryStep/);
+  assert.match(src, /const activeRun = currentStoreRun/);
+  assert.match(src, /const steps = currentStoreRun \? storeSteps : \[\]/);
+  assert.match(src, /\(isLive \|\| gatingPhaseId \|\| canContinueImplementReview\)/);
+  assert.match(src, /onRetry=\{\(step\) => void retryStep\(activeRun\.id, step\.id\)\}/);
 });
 
 test("WorkflowRunPanel can continue build review after verification failure", () => {
@@ -113,16 +109,13 @@ test("WorkspacePanel mounts the WorkflowRunPanel", () => {
   assert.match(src, /<WorkflowRunPanel/);
 });
 
-test("WorkspacePanel syncs the run-state card with replay frames", () => {
+test("WorkspacePanel derives its run-state card directly from live conversation state", () => {
   const src = read("../src/components/CLI/WorkspacePanel.tsx");
-  assert.match(src, /useReplayStore/);
-  assert.match(src, /const replayFrame =[\s\S]*?replayFrames\[replayIndex\]/);
-  assert.match(src, /const displayMessages = replayFrame[\s\S]*?messages\.slice\(0, replayFrame\.messageIndex \+ 1\)[\s\S]*?: messages/);
-  assert.match(src, /const displayLive = replayFrame \? undefined : live/);
+  assert.doesNotMatch(src, /useReplayStore/);
+  assert.match(src, /const displayMessages = messages/);
+  assert.match(src, /const displayLive = live/);
   assert.match(src, /activeRun\?\.conversationId === activeId/);
-  assert.match(src, /const displayRun = replayWorkflow\?\.run \?\? currentWorkflowRun/);
-  assert.match(src, /!replayFrame &&[\s\S]*?isTeamRun/);
-  assert.match(src, /const end = replayWorkflow\?\.at[\s\S]*?Date\.parse\(replayWorkflow\.at\)/);
+  assert.match(src, /const displayRun = currentWorkflowRun/);
 });
 
 test("WorkflowStepRow shows the agent avatar inline", () => {
@@ -204,10 +197,10 @@ test("ConversationList renders workflow runs as protected loading states", () =>
   assert.match(src, /!isBusy && isUnread \? " unread" : ""/);
   assert.match(css, /\.conv-item-running svg/);
   assert.match(css, /\.conv-item-running svg[\s\S]*?width: 14px;[\s\S]*?height: 14px;/);
-  assert.match(css, /\.conv-delete-button/);
+  assert.match(css, /\.conv-item-actions/);
   assert.match(css, /\.conv-unread-dot/);
   assert.match(css, /\.conv-unread-dot[\s\S]*?width: 7px;[\s\S]*?background: var\(--fb-brand\)/);
-  assert.match(css, /\.conv-item:hover \.conv-delete-button/);
+  assert.match(css, /\.conv-item:focus-within \.conv-item-actions/);
   assert.match(css, /\.conv-item:hover \.conv-unread-dot/);
   assert.match(css, /--fb-workflow/);
 });
@@ -288,6 +281,9 @@ test("MessageBubble supports inline copy button", () => {
   assert.match(css, /\.msg-action-btn\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*26px;/);
   assert.match(css, /\.msg-action-icon\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;[\s\S]*?flex:\s*0 0 16px;/);
   assert.doesNotMatch(css, /msg-content-wrapper:hover \.msg-actions/);
+  assert.match(src, /<MessageRunMetrics/);
+  assert.match(src, /showRunMetrics/);
+  assert.match(src, /<LiveRunElapsed/);
 });
 
 test("ChatView resolves agent avatars per message", () => {
@@ -306,6 +302,9 @@ test("MessageBubble compacts execution process while preserving final text", () 
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
   assert.match(src, /function StreamProcessGroup/);
+  assert.match(src, /const \[detailsOpen, setDetailsOpen\] = useState\(false\)/);
+  assert.match(src, /onToggle=\{/);
+  assert.match(src, /detailsOpen \?/);
   assert.match(src, /const hasRunning = blocks\.some\(blockIsRunning\)/);
   assert.doesNotMatch(src, /messageStatus=\{message\.status\}/);
   assert.match(src, /countProcessActivity/);
@@ -336,10 +335,12 @@ test("MessageBubble compacts execution process while preserving final text", () 
   assert.match(css, /\.stream-process\s*\{/);
   assert.match(css, /\.stream-process\s*\{[^}]*color:\s*#969ba3;[^}]*font-size:\s*14px;/);
   assert.match(css, /\.stream-process \+ \.stream-process\s*\{[\s\S]*?margin-top:\s*-12px;/);
-  assert.match(css, /\.stream-process > summary\s*\{/);
-  assert.match(css, /\.stream-process > summary\s*\{[\s\S]*?font-weight:\s*650;/);
-  assert.match(css, /\.stream-process > summary::after\s*\{/);
-  assert.match(css, /\.stream-process\[open\] > summary::after\s*\{/);
+  // The compacted-history link reuses the process summary affordance so both
+  // read as the same inline, collapsible control.
+  assert.match(css, /\.stream-process > summary,\s*\.history-details-link\s*\{/);
+  assert.match(css, /\.stream-process > summary,\s*\.history-details-link\s*\{[\s\S]*?font-weight:\s*650;/);
+  assert.match(css, /\.stream-process > summary::after,\s*\.history-details-link::after\s*\{/);
+  assert.match(css, /\.stream-process\[open\] > summary::after,\s*\.history-details-link\[aria-expanded="true"\]::after\s*\{/);
   assert.doesNotMatch(css, /\.stream-process summary::after\s*\{/);
   assert.doesNotMatch(css, /\.stream-process\[open\] summary::after\s*\{/);
   assert.match(css, /\.stream-process-title\s*\{/);

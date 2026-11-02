@@ -56,7 +56,12 @@ const ATTACHMENT_EXTENSIONS = new Set([
   "xls",
   "xlsx",
   "ppt",
-  "pptx"
+  "pptx",
+  "zip",
+  "tar",
+  "gz",
+  "7z",
+  "rar"
 ]);
 
 export interface AttachmentCandidateResult {
@@ -110,6 +115,16 @@ function attachmentMimeFromExtension(extension: string): string {
       return "application/vnd.ms-powerpoint";
     case "pptx":
       return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    case "zip":
+      return "application/zip";
+    case "tar":
+      return "application/x-tar";
+    case "gz":
+      return "application/gzip";
+    case "7z":
+      return "application/x-7z-compressed";
+    case "rar":
+      return "application/vnd.rar";
     default:
       return "text/plain";
   }

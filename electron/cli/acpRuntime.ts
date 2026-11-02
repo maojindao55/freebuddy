@@ -7,6 +7,7 @@ import type { WebContents } from "electron";
 
 import {
   acpPromptResultToItems,
+  acpModelSelectionMatches,
   acpNonRetryableUpstreamError,
   acpSessionListToItems,
   acpSessionSetupToItems,
@@ -26,21 +27,35 @@ import {
   selectAcpSessionStartMode,
   selectAcpAuthMethod,
   shouldDropReplayPhaseAgentChunk,
+  shouldSuppressAcpReplayByPhase,
   shouldEmitAcpUpdate,
+  shouldWriteAcpStdoutLog,
+  compactAcpStdoutLine,
   shouldSkipUserMessageChunk,
+  shouldDiscardAcpToolSession,
+  shouldRetryEmptyResumedDshTurn,
   textFromContent,
+  updateActiveAcpToolCalls,
   isMissingSavedSessionError,
+  formatAcpRpcError,
+  isAcpMetadataSessionUpdate,
   type AcpAuthMethod,
   type AcpMessage,
   type AcpSessionMeta,
   type AcpRequestId
 } from "./acp.js";
 import { createAcpTerminalManager } from "./acpTerminal.js";
-import { updateRuntimeRun } from "./check.js";
+import { updateRuntimeRun, recordRuntimeAgentVersion } from "./check.js";
+import { getDataDir } from "./db.js";
+import { persistFileEditItems } from "./fileEditBlobs.js";
+import { prepareTurnFileCapture, finalizeTurnFileCapture, type TurnFileCapture } from "./turnFileSnapshots.js";
+import { importAgyLocalDiff, withoutInlineFileBodies } from "./acpLocalDiff.js";
+import { findLastPiSessionErrorMessage } from "./piRuntime.js";
 import {
   hasCliByokModels,
   mergeCliByokModelOption,
   clearToolSession,
+  resolvePiByokDefaultModel,
   saveToolSession
 } from "./store.js";
 import {
@@ -62,7 +77,9 @@ import { isInactivitySuppressed, removeInactivitySuppression } from "./inactivit
 import { killProcessTree } from "./process-kill.js";
 import {
   registerBrowserToolSession,
-  unregisterBrowserToolSession
+  unregisterBrowserToolSession,
+  rebindBrowserToolSession,
+  suspendBrowserToolSession
 } from "../browserToolService.js";
 import {
   registerGameToolSession,
@@ -89,6 +106,13 @@ import {
   registerWorkspaceFsToolSession,
   unregisterWorkspaceFsToolSession
 } from "../workspaceFsToolService.js";
+import {
+  associateDocStudioOfficeFile,
+  registerOfficeEngineToolSession,
+  resolveDocStudioOfficeFile,
+  takeSavedOfficeFiles
+} from "../officeEngineToolService.js";
+import { isDocStudioWindowSender } from "../docStudioWindowRegistry.js";
 import { getConversation } from "./conversations.js";
 import type { AcpStdioMcpServer } from "../shared/browserToolProtocol.js";
 import {
@@ -97,6 +121,12 @@ import {
 } from "./acpAuthTerminal.js";
 import { logMain } from "../debugLog.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
+import {
+  canUseHostMcp,
+  redactSecrets,
+  resolveConversationUserMcpServers,
+  uniqueUserMcpServerName
+} from "./mcpServers.js";
 import {
   cleanupSandboxCommand,
   isRemoteIsolatedCaller,
@@ -109,8 +139,15 @@ import { getLanguage } from "./settings.js";
 import {
   adapterAcceptsClientMcpServers,
   formatAcpAgentExitMessage,
+  isClineAcpStartupBannerLine,
+  isDevinAcpDiagnosticLine,
   isDshAcpExperimentalWarningLine
 } from "./adapters.js";
+import type { RunMetricsCollector } from "./runMetricsCollector.js";
+import { PiRunUsageReader } from "./piRunUsage.js";
+import { PiTurnTracker, piBridgeStatus, piLifecycleStatus } from "./piTurn.js";
+import { AcpEmbeddedTerminalTracker } from "./acpEmbeddedTerminal.js";
+import type { AcpWarmConnection } from "./acpProcessPool.js";
 
 const PERMISSION_REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
 // An ACP turn blocks on a single session/prompt request that only resolves
@@ -128,18 +165,45 @@ const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 // capped so a permanently silent run still gets killed eventually.
 const INACTIVITY_PING_TIMEOUT_MS = 15_000;
 const MAX_INACTIVITY_REPRIEVES = 2;
+const CLEANUP_REQUEST_TIMEOUT_MS = 2_000;
 
-function writeAcp(
-  child: ChildProcessByStdio<Writable, Readable, Readable>,
-  msg: AcpMessage
-) {
-  child.stdin.write(JSON.stringify(msg) + "\n");
+interface AcpStdinState {
+  error?: Error;
+  onError?: (error: Error) => void;
+}
+const acpStdinStates = new WeakMap<Writable, AcpStdinState>();
+
+function observeAcpStdin(stdin: Writable, onError: (error: Error) => void) {
+  let state = acpStdinStates.get(stdin);
+  if (!state) {
+    const streamState: AcpStdinState = {};
+    acpStdinStates.set(stdin, streamState);
+    // A failed write calls its callback AND emits a stream error. Keep one
+    // listener for the stream's lifetime, including late errors after yield,
+    // authentication restart or return to the warm pool. Detach the per-turn
+    // callback without removing this listener.
+    stdin.on("error", error => {
+      streamState.error ??= error;
+      streamState.onError?.(error);
+    });
+    state = streamState;
+  }
+  state.onError = onError;
+  return () => {
+    if (state.onError === onError) state.onError = undefined;
+  };
 }
 
 function contextResetInstruction(): string {
   // Agent-facing instruction (sent to the model). Keep it English for reliable
   // instruction-following across all models; UI language must not change it.
   return "The previous agent session reached its context limit. Continue from the current workspace state; do not repeat completed work. Re-check the current files and finish the request.";
+}
+
+function emptySessionResetInstruction(): string {
+  // Agent-facing recovery instruction. The original prompt is retained before
+  // this suffix so a newly created session can safely resume the same task.
+  return "The previous agent session ended without producing output. Continue from the current workspace state; do not repeat completed work. Re-check the current files and finish the request.";
 }
 
 function contextWindowExceededAfterResetError(err: unknown): Error {
@@ -164,6 +228,9 @@ export interface AcpRuntimeInput {
   running: Map<string, Running>;
   capturedSessions: Map<string, string>;
   emit: (e: CliEvent) => void;
+  metrics?: RunMetricsCollector;
+  warmConnection?: AcpWarmConnection;
+  parkConnection?: () => void;
   agentCommand: {
     bin: string;
     args: string[];
@@ -193,6 +260,9 @@ export async function runAcpAgent({
   running,
   capturedSessions,
   emit,
+  metrics,
+  warmConnection,
+  parkConnection,
   agentCommand,
   claudeAcpSessionOptions,
   restartAgent
@@ -200,8 +270,29 @@ export async function runAcpAgent({
   let child = initialChild;
   let pid = initialPid;
   let requestedToolSessionId = toolSessionId;
-  let requestId = 0;
+  let requestId = warmConnection?.requestId ?? 0;
+  let keepWarm = false;
+  let cancellationRequested = false;
   let activeAcpSessionId: string | undefined;
+  let piUsageReader: PiRunUsageReader | undefined;
+  let piTurn = args.adapter === "pi-acp" ? new PiTurnTracker() : undefined;
+  let piStructuredStatus = false;
+  let hasPromptUsage = false;
+  let piUsageFinalized = false;
+  const collectPiUsage = () => {
+    if (piUsageFinalized) return;
+    try {
+      const usage = piUsageReader?.read();
+      if (usage) {
+        // Native timing remains useful when a newer bridge supplies prompt usage.
+        const item = hasPromptUsage ? { kind: "usage" as const, usageScope: "turn" as const,
+          generationMeasurement: usage.generationMeasurement } : usage;
+        metrics?.observe([item]);
+        emit({ type: "items", items: [item] });
+      }
+    } catch { /* Usage recovery cannot stop the agent. */ }
+  };
+  metrics?.enableAutomaticSpeed(args.adapter === "pi-acp" ? "native" : "stream");
   let finished = false;
   let yieldRequested = false;
   let promptStarted = false;
@@ -209,16 +300,28 @@ export async function runAcpAgent({
   let inactivityFired = false;
   let inactivityReprieves = 0;
   let promptHadContent = false;
+  let turnHadTerminalError = false;
+  let turnTerminalErrorMessage: string | undefined;
   let turnHadLiveAgentChunk = false;
   let sessionWasResumed = false;
   let mcpServers: AcpStdioMcpServer[] = [];
+  let mcpSecretValues: string[] = [];
+  const redactMcpLog = (text: string) =>
+    mcpSecretValues.length > 0 ? redactSecrets(text, mcpSecretValues) : text;
+  let officeFileForSession: string | null = null;
+  const standaloneDocStudio = isDocStudioWindowSender(webContents);
   let contextResetAttempted = false;
+  let emptySessionResetAttempted = false;
   let nonRetryableUpstreamError: string | undefined;
+  const activeToolCallIds = new Set<string>();
+  const embeddedTerminals = new AcpEmbeddedTerminalTracker();
   let activePrompt = args.prompt;
   const sessionMeta: AcpSessionMeta | undefined = claudeAcpSessionOptions
     ? { claudeCode: { options: claudeAcpSessionOptions } }
     : undefined;
   const remoteIsolated = isRemoteIsolatedCaller();
+  let fileCapture: Promise<TurnFileCapture | undefined> | undefined;
+  let captureCompletion: Promise<void> | undefined;
   const readOnlyWorkspace = args.workspaceAccess === "read-only";
   // OS process sandbox follows the shared remote strictIsolation flag only.
   // Local read-only reviewers must not enter srt-win / seatbelt just because
@@ -229,12 +332,11 @@ export async function runAcpAgent({
     args.knownStreamContentSignatures ?? []
   );
   // Qoder-style adapters stream live agent chunks WITHOUT a messageId and only
-  // attach messageIds when replaying history on resume. When resuming such an
-  // adapter (prior turns persisted zero agent messageIds), drop messageId-
-  // carrying chunks until the first live chunk signals real generation.
+  // attach messageIds when replaying history on resume. Keep this heuristic
+  // adapter-specific: Codex includes messageIds on live chunks too, and team
+  // runners may not supply historical IDs at all.
   const suppressReplayByPhase = () =>
-    sessionWasResumed &&
-    (args.knownAgentStreamMessageIds ?? []).length === 0;
+    shouldSuppressAcpReplayByPhase(args.adapter, sessionWasResumed);
   const terminalManager = createAcpTerminalManager({
     defaultCwd: args.cwd,
     // Grok ACP and CodeBuddy ACP both send a complete command line in
@@ -293,54 +395,109 @@ export async function runAcpAgent({
   const pending = new Map<
     string,
     {
-      resolve: (value: any) => void;
+      resolve: (value: any, at?: number) => void;
       reject: (reason: Error) => void;
     }
   >();
 
+  const connectionClosed = () => finished || Boolean(acpStdinStates.get(child.stdin)?.error) ||
+    child.exitCode != null || child.signalCode != null ||
+    child.stdin.destroyed || child.stdin.writableEnded;
+  const rejectPendingWrites = (error: Error) => {
+    for (const waiter of pending.values()) waiter.reject(error);
+    pending.clear();
+  };
+  const writeAcp = (msg: AcpMessage, onError?: (error: Error) => void) => {
+    if (connectionClosed()) {
+      onError?.(acpStdinStates.get(child.stdin)?.error ?? new Error("ACP connection is closed."));
+      return;
+    }
+    const writingChild = child;
+    const fail = (error: Error) => {
+      const state = acpStdinStates.get(writingChild.stdin);
+      if (state) {
+        state.error ??= error;
+        // Route to this stream's current owner. A callback from a retired
+        // process must not reject requests on its replacement's stdin.
+        state.onError?.(error);
+      }
+      onError?.(error);
+    };
+    try {
+      child.stdin.write(JSON.stringify(msg) + "\n", error => {
+        if (error) fail(error);
+      });
+    } catch (error) {
+      fail(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
   const nextId = () => ++requestId;
-  const request = (msg: AcpMessage) =>
+  const request = (msg: AcpMessage, timeoutMs?: number) =>
     new Promise<any>((resolve, reject) => {
+      if (connectionClosed() || cancellationRequested) {
+        reject(acpStdinStates.get(child.stdin)?.error ?? new Error("ACP connection is closed."));
+        return;
+      }
       if (msg.id == null) {
         reject(new Error("ACP requests require an id"));
         return;
       }
-      pending.set(String(msg.id), { resolve, reject });
-      appendLog(logStream, "stdin", JSON.stringify(msg));
-      writeAcp(child, msg);
+      const id = String(msg.id);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const settle = (complete: () => void) => {
+        if (!pending.delete(id)) return;
+        if (timer) clearTimeout(timer);
+        complete();
+      };
+      const waiter = {
+        resolve: (value: any, at?: number) => settle(() => {
+          if (msg.method === "session/prompt") metrics?.completeGeneration(at);
+          resolve(value);
+        }),
+        reject: (error: Error) => settle(() => reject(error))
+      };
+      pending.set(id, waiter);
+      if (timeoutMs != null) {
+        timer = setTimeout(() => {
+          logMain().warn("acp", "cleanup request timed out", {
+            sessionId: args.sessionId, method: msg.method, timeoutMs
+          });
+          waiter.reject(new Error(`ACP ${msg.method} timed out.`));
+        }, timeoutMs);
+      }
+      try {
+        const logContent = JSON.stringify(msg);
+        appendLog(logStream, "stdin", redactMcpLog(logContent));
+        if (msg.method === "session/prompt") {
+          if (args.adapter === "pi-acp") {
+            try {
+              piUsageReader ??= new PiRunUsageReader(getDataDir());
+              piUsageReader.begin(String(msg.params.sessionId));
+            } catch { /* Usage recovery cannot stop prompt submission. */ }
+          }
+          metrics?.promptSubmitted();
+          metrics?.beginGeneration();
+        }
+        writeAcp(msg, waiter.reject);
+      } catch (error) {
+        waiter.reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   const notify = (msg: AcpMessage) => {
-    appendLog(logStream, "stdin", JSON.stringify(msg));
-    writeAcp(child, msg);
+    if (connectionClosed()) return;
+    const logContent = JSON.stringify(msg);
+    appendLog(logStream, "stdin", redactMcpLog(logContent));
+    writeAcp(msg);
   };
-  const probeAgentLiveness = (): Promise<boolean> =>
-    new Promise<boolean>((resolve) => {
+  const probeAgentLiveness = async (): Promise<boolean> => {
+    try {
       const probeId = nextId();
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        pending.delete(String(probeId));
-        resolve(false);
-      }, INACTIVITY_PING_TIMEOUT_MS);
-      pending.set(String(probeId), {
-        resolve: () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(true);
-        },
-        reject: () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(false);
-        }
-      });
-      const probeMsg = buildSessionListRequest(probeId);
-      appendLog(logStream, "stdin", JSON.stringify(probeMsg));
-      writeAcp(child, probeMsg);
-    });
+      await request(buildSessionListRequest(probeId), INACTIVITY_PING_TIMEOUT_MS);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const onInactivityExpired = async () => {
     if (args.sessionId && isInactivitySuppressed(args.sessionId)) {
@@ -351,12 +508,20 @@ export async function runAcpAgent({
     const alive = await probeAgentLiveness();
     if (finished) return;
     const minutes = Math.round(INACTIVITY_TIMEOUT_MS / 60000);
-    if (alive && inactivityReprieves < MAX_INACTIVITY_REPRIEVES) {
+    const hasActiveToolCall = activeToolCallIds.size > 0;
+    if (
+      (alive || hasActiveToolCall) &&
+      inactivityReprieves < MAX_INACTIVITY_REPRIEVES
+    ) {
       inactivityReprieves += 1;
       appendLog(
         logStream,
         "system",
-        `inactivity after ${INACTIVITY_TIMEOUT_MS}ms; agent responded to liveness probe; continuing (reprieve ${inactivityReprieves}/${MAX_INACTIVITY_REPRIEVES})`
+        `inactivity after ${INACTIVITY_TIMEOUT_MS}ms; ${
+          alive
+            ? "agent responded to liveness probe"
+            : `ACP tool call still active (${activeToolCallIds.size})`
+        }; continuing (reprieve ${inactivityReprieves}/${MAX_INACTIVITY_REPRIEVES})`
       );
       inactivityFired = false;
       disarmInactivityTimer();
@@ -372,7 +537,9 @@ export async function runAcpAgent({
     finish(
       "failed",
       -1,
-      alive
+      hasActiveToolCall
+        ? `Agent's active tool call produced no output for ${minutes} minutes and remained silent after ${MAX_INACTIVITY_REPRIEVES} watchdog reprieves.`
+        : alive
         ? `Agent produced no output for ${minutes} minutes and was still silent after ${MAX_INACTIVITY_REPRIEVES} liveness probes. This usually means a tool spawned a long-running process (for example a dev server or sub-agent) that held the agent's output stream open.`
         : `Agent produced no output for ${minutes} minutes and did not respond to a liveness probe. This usually means a tool spawned a long-running process (for example a dev server) that held the agent's output stream open.`
     );
@@ -405,11 +572,22 @@ export async function runAcpAgent({
   ) => {
     if (finished) return;
     finished = true;
+    collectPiUsage();
+    piUsageFinalized = true;
+    if (yieldRequested) metrics?.requestOutcome("yielded");
+    else if (inactivityFired) metrics?.requestOutcome("timed-out");
+    else if (status === "killed") metrics?.requestOutcome("cancelled");
+    metrics?.finish(status === "failed" ? "failed" : "done");
+    for (const waiter of pending.values()) {
+      waiter.reject(new Error("ACP turn finished."));
+    }
+    pending.clear();
     disarmInactivityTimer();
     removeInactivitySuppression(args.sessionId);
     terminalManager.dispose();
     running.delete(args.sessionId);
-    unregisterBrowserToolSession(args.sessionId);
+    if (keepWarm) suspendBrowserToolSession(args.sessionId);
+    else unregisterBrowserToolSession(args.sessionId);
     unregisterGameToolSession(args.sessionId);
     unregisterSkillToolSession(args.sessionId);
     unregisterButlerToolSession(args.sessionId);
@@ -427,32 +605,97 @@ export async function runAcpAgent({
       ...(agentInfo?.name ? { agentName: agentInfo.name } : {}),
       ...(agentInfo?.version ? { agentVersion: agentInfo.version } : {})
     });
-    if (errorMessage) emit({ type: "error", message: errorMessage });
-    emit({ type: "done", exitCode });
-    // WebUI session events are routed through the in-memory owner mapping.
-    // Keep it alive until the terminal events have been broadcast, otherwise
-    // remote clients see streamed content but never receive done/error.
-    clearSessionOwner(args.sessionId);
-    updateTaskStatus(args.sessionId, status, exitCode, errorMessage);
-    updateRuntimeRun(args.adapter, status === "failed" ? errorMessage : undefined);
-    if (activeAcpSessionId && toolSessionScope) {
-      saveToolSession(args.agentId, toolSessionScope, args.adapter, activeAcpSessionId);
-      setTaskToolSessionId(args.sessionId, activeAcpSessionId);
-    }
-    capturedSessions.delete(args.sessionId);
-    logStream?.end();
+    const publishFinished = () => {
+      if (errorMessage) emit({ type: "error", message: errorMessage });
+      emit({ type: "done", exitCode });
+      // DocStudio save events (standalone window or embedded in the main
+      // window) associate the file and notify the surface that previewed it.
+      // takeSavedOfficeFiles is only called here so ordinary chats skip the
+      // event file read entirely.
+      if (args.conversationId && !webContents?.isDestroyed?.()) {
+        const isDocStudioRun = standaloneDocStudio ||
+          getConversation(args.conversationId)?.kind === "doc-studio";
+        const savedOfficeFiles = isDocStudioRun ? takeSavedOfficeFiles(args.conversationId) : [];
+        if (isDocStudioRun && savedOfficeFiles.length) {
+          if (!officeFileForSession && savedOfficeFiles[0]) {
+            try {
+              associateDocStudioOfficeFile(args.conversationId, savedOfficeFiles[0]);
+            } catch {
+              /* Opening the file is still useful if conversation mapping fails. */
+            }
+          }
+          for (const filePath of savedOfficeFiles) {
+            try {
+              webContents.send?.("docStudio:fileSavedAs", { filePath });
+            } catch {
+              break;
+            }
+          }
+        }
+      }
+      // WebUI session events are routed through the in-memory owner mapping.
+      // Keep it alive until the terminal events have been broadcast, otherwise
+      // remote clients see streamed content but never receive done/error.
+      clearSessionOwner(args.sessionId);
+      updateTaskStatus(args.sessionId, status, exitCode, errorMessage);
+      updateRuntimeRun(args.adapter, status === "failed" ? errorMessage : undefined);
+      const discardToolSession = shouldDiscardAcpToolSession({
+        adapter: args.adapter,
+        status,
+        promptStarted,
+        promptHadContent,
+        turnHadTerminalError
+      });
+      if (discardToolSession && toolSessionScope) {
+        try {
+          clearToolSession(args.agentId, toolSessionScope);
+        } catch {
+          /* best-effort */
+        }
+      } else if (activeAcpSessionId && toolSessionScope) {
+        saveToolSession(args.agentId, toolSessionScope, args.adapter, activeAcpSessionId);
+        setTaskToolSessionId(args.sessionId, activeAcpSessionId);
+      }
+      capturedSessions.delete(args.sessionId);
+      logStream?.end();
+    };
+    if (fileCapture) {
+      captureCompletion = (async () => {
+        const capture = await fileCapture;
+        if (capture) {
+          // Non-persistent processes may still be writing after cancel/response.
+          // Bound the wait and explicitly degrade if teardown cannot be observed.
+          if (!keepWarm && child.exitCode == null && child.signalCode == null) {
+            await new Promise<void>(resolve => {
+              const onClose = () => { clearTimeout(timer); resolve(); };
+              const timer = setTimeout(() => { child.removeListener("close", onClose); resolve(); }, 750);
+              child.once("close", onClose);
+            });
+          }
+          await finalizeTurnFileCapture(capture, !keepWarm && child.exitCode == null && child.signalCode == null);
+        }
+      })().catch(error => {
+        logMain().warn("acp", "file version capture failed", { sessionId: args.sessionId, error: String(error) });
+      }).finally(publishFinished);
+    } else publishFinished();
   };
 
   const cancelRun = () => {
+    cancellationRequested = true;
+    if (yieldRequested) metrics?.requestOutcome("yielded");
+    else if (inactivityFired) metrics?.requestOutcome("timed-out");
+    else metrics?.requestOutcome("cancelled");
+    const cancellingChild = child;
     clearAuthenticationTerminalsForSession(args.sessionId);
     if (activeAcpSessionId) {
       notify(buildSessionCancelNotification(activeAcpSessionId));
     }
     setTimeout(() => {
-      const still = running.get(args.sessionId);
-      if (still) {
+      // finish() removes the running entry before this timer fires on yield.
+      // Retain this specific process so it is still reaped after logical finish.
+      if (cancellingChild.exitCode == null && cancellingChild.signalCode == null) {
         try {
-          killProcessTree(still.child, "term");
+          killProcessTree(cancellingChild, "term");
         } catch {
           /* noop */
         }
@@ -464,6 +707,9 @@ export async function runAcpAgent({
     yieldRequested = true;
     appendLog(logStream, "system", "delegate yield accepted; parking current ACP turn");
     cancelRun();
+    // Release the awaited prompt immediately. Parking must not depend on a
+    // cancelled agent replying to session/list or session/close during teardown.
+    finish("done", 0);
   };
   const updateRunningProcess = () => {
     running.set(args.sessionId, { child, pid, cancel: cancelRun, yield: yieldRun });
@@ -471,25 +717,40 @@ export async function runAcpAgent({
   updateRunningProcess();
 
   const handleAcpLine = (line: string) => {
-    appendLog(logStream, "stdout", line);
+    const arrivedAt = metrics?.now();
     const msg = parseAcpLine(line);
+    const replayPhaseSuppressionEnabled = suppressReplayByPhase();
+    const logState = {
+      promptStarted,
+      replaySuppressionEnabled: sessionWasResumed,
+      replayMessageIds,
+      replayContentSignatures,
+      suppressReplayByPhase: replayPhaseSuppressionEnabled,
+      turnHadLiveAgentChunk
+    };
     if (!msg) {
-      emit({ type: "stderr", content: line });
+      const safeLine = redactMcpLog(line);
+      appendLog(logStream, "stdout", safeLine);
+      emit({ type: "stderr", content: safeLine });
       return;
+    }
+    if (shouldWriteAcpStdoutLog(msg, logState)) {
+      appendLog(logStream, "stdout", redactMcpLog(compactAcpStdoutLine(line)));
     }
 
     if (msg.id != null && (msg.result !== undefined || msg.error)) {
       const waiter = pending.get(String(msg.id));
       if (waiter) {
-        pending.delete(String(msg.id));
         if (msg.error) {
-          const err = new Error(msg.error.message);
+          const userFacingMessage = formatAcpRpcError(msg.error);
+          const err = new Error(userFacingMessage);
           (err as Error & { code?: number; data?: unknown }).code = msg.error.code;
           (err as Error & { code?: number; data?: unknown }).data = msg.error.data;
           waiter.reject(err);
         } else {
-          waiter.resolve(msg.result);
+          waiter.resolve(msg.result, arrivedAt);
         }
+        pending.delete(String(msg.id));
       }
       return;
     }
@@ -501,6 +762,9 @@ export async function runAcpAgent({
         capturedSessions.set(args.sessionId, sessionId);
       }
       const updateType = String(msg.params?.update?.sessionUpdate ?? "");
+      if (promptStarted) {
+        updateActiveAcpToolCalls(activeToolCallIds, msg.params?.update);
+      }
       const upstreamFailure = acpNonRetryableUpstreamError(msg.params?.update);
       if (!nonRetryableUpstreamError && upstreamFailure) {
         nonRetryableUpstreamError = upstreamFailure;
@@ -540,7 +804,8 @@ export async function runAcpAgent({
       if (
         shouldSkipUserMessageChunk(msg.params?.update, {
           userMessageId: args.userMessageId,
-          promptText: args.prompt
+          promptText: args.prompt,
+          replaySuppressionEnabled: sessionWasResumed
         })
       ) {
         return;
@@ -548,7 +813,6 @@ export async function runAcpAgent({
       const isAgentChunkForPhase =
         updateType === "agent_message_chunk" ||
         updateType === "agent_thought_chunk";
-      const replayPhaseSuppressionEnabled = suppressReplayByPhase();
       if (isAgentChunkForPhase && replayPhaseSuppressionEnabled) {
         if (
           shouldDropReplayPhaseAgentChunk(msg.params?.update, {
@@ -563,6 +827,7 @@ export async function runAcpAgent({
           msg.params.update.messageId.length > 0;
         if (!hasMessageId) {
           turnHadLiveAgentChunk = true;
+          sessionWasResumed = false;
         }
       }
       if (
@@ -570,13 +835,67 @@ export async function runAcpAgent({
           promptStarted,
           replaySuppressionEnabled: sessionWasResumed,
           replayMessageIds,
-          replayContentSignatures
+          replayContentSignatures,
+          suppressReplayByPhase: replayPhaseSuppressionEnabled,
+          turnHadLiveAgentChunk
         })
       ) {
         return;
       }
-      const items = acpUpdateToItems(msg.params?.update, sessionId);
-      if (items.length) emit({ type: "items", items });
+      if (sessionWasResumed && !isAcpMetadataSessionUpdate(updateType)) {
+        turnHadLiveAgentChunk = true;
+        sessionWasResumed = false;
+      }
+      const piStatus = args.adapter === "pi-acp"
+        ? (piStructuredStatus ? piLifecycleStatus : piBridgeStatus)(msg.params?.update, getLanguage().startsWith("zh")) : undefined;
+      if (piStatus) {
+        armInactivityTimer();
+        if (piStatus.kind === "retry-start") piTurn?.retrying();
+        collectPiUsage();
+        const detail = piTurn ? piUsageReader?.lastAssistantOutcome?.errorMessage : undefined;
+        const diagnostic = redactMcpLog(`${piStatus.message}${detail ? ` ${detail.slice(0, 1000)}` : ""}`);
+        appendLog(logStream, "system", diagnostic);
+        emit({ type: "stderr", content: diagnostic + "\n" });
+        return;
+      }
+      const localDiff = importAgyLocalDiff(msg.params?.update, args.adapter);
+      const items = acpUpdateToItems(localDiff.update, sessionId, args.adapter);
+      piTurn?.observe(items, updateType === "tool_call" ? msg.params?.update?.toolCallId : undefined);
+      metrics?.observe(items, arrivedAt);
+      // Some tool calls render as plans / edits instead of tool-call items.
+      // Their actual protocol boundaries still matter for generation timing.
+      if (/^tool_call(?:_update)?$/.test(updateType) && !items.some(item => item.kind === "tool-call")) {
+        const update = msg.params.update;
+        metrics?.observe([{ kind: "tool-call", id: update.toolCallId,
+          status: update.status ?? "pending" }], arrivedAt);
+      }
+      const terminalError = items.find(
+        (item) => item.kind === "error" && item.terminal === true
+      );
+      if (terminalError?.kind === "error") {
+        turnHadTerminalError = true;
+        turnTerminalErrorMessage = terminalError.message;
+      }
+      if (items.length) {
+        let storedItems = items;
+        try {
+          storedItems = persistFileEditItems(args, items);
+          if (localDiff.imported) {
+            // A missing conversation can leave bodies inline without throwing.
+            storedItems = withoutInlineFileBodies(storedItems);
+            localDiff.release();
+          }
+        } catch {
+          appendLog(logStream, "system", localDiff.imported
+            ? "File edit storage failed; imported diff unavailable"
+            : "File edit storage failed; retaining inline changes");
+          if (localDiff.imported) storedItems = withoutInlineFileBodies(items);
+        }
+        emit({ type: "items", items: storedItems });
+      }
+      for (const snapshot of embeddedTerminals.consume(msg.params?.update)) {
+        emit({ type: "terminal-update", ...snapshot });
+      }
       return;
     }
 
@@ -586,7 +905,7 @@ export async function runAcpAgent({
       } else if (msg.method.startsWith("terminal/")) {
         void handleTerminalRequest(msg);
       } else {
-        writeAcp(child, {
+        writeAcp({
           jsonrpc: "2.0",
           id: msg.id,
           error: {
@@ -641,8 +960,9 @@ export async function runAcpAgent({
     requestRpcId: AcpRequestId,
     decision: CliPermissionDecision
   ) {
+    metrics?.resumeGeneration();
     if (decision.outcome === "selected") {
-      writeAcp(child, {
+      writeAcp({
         jsonrpc: "2.0",
         id: requestRpcId,
         result: {
@@ -650,7 +970,7 @@ export async function runAcpAgent({
         }
       });
     } else {
-      writeAcp(child, {
+      writeAcp({
         jsonrpc: "2.0",
         id: requestRpcId,
         result: { outcome: { outcome: "cancelled" } }
@@ -659,6 +979,7 @@ export async function runAcpAgent({
   }
 
   function handlePermissionRequest(msg: AcpMessage) {
+    metrics?.pauseGeneration();
     const params = (msg.params ?? {}) as Record<string, unknown>;
     const options = normalizePermissionOptions(params.options);
     const requestRpcId = msg.id!;
@@ -774,10 +1095,10 @@ export async function runAcpAgent({
     const params = (msg.params ?? {}) as Record<string, unknown>;
     const requestRpcId = msg.id!;
     const respond = (result: Record<string, unknown>) => {
-      writeAcp(child, { jsonrpc: "2.0", id: requestRpcId, result });
+      writeAcp({ jsonrpc: "2.0", id: requestRpcId, result });
     };
     const respondError = (message: string) => {
-      writeAcp(child, {
+      writeAcp({
         jsonrpc: "2.0",
         id: requestRpcId,
         error: { code: -32603, message }
@@ -886,12 +1207,26 @@ export async function runAcpAgent({
   let connectionEpoch = 0;
   let rlOut: readline.Interface | undefined;
   let rlErr: readline.Interface | undefined;
+  let connectionCloseHandler: ((code: number | null) => void) | undefined;
+  let connectionErrorHandler: ((error: Error) => void) | undefined;
+  let detachStdinErrors: (() => void) | undefined;
+  const detachConnection = () => {
+    connectionEpoch += 1;
+    rlOut?.close();
+    rlErr?.close();
+    if (connectionCloseHandler) child.off("close", connectionCloseHandler);
+    if (connectionErrorHandler) child.off("error", connectionErrorHandler);
+    detachStdinErrors?.();
+  };
   let recentStderr: string[] = [];
   let lastAgentText = "";
   let lastToolCommand = "";
 
   const attachConnection = () => {
     const epoch = ++connectionEpoch;
+    detachStdinErrors = observeAcpStdin(child.stdin, error => {
+      if (epoch === connectionEpoch) rejectPendingWrites(error);
+    });
     recentStderr = [];
     lastAgentText = "";
     lastToolCommand = "";
@@ -902,18 +1237,20 @@ export async function runAcpAgent({
     rlErr = readline.createInterface({ input: child.stderr });
     rlErr.on("line", (line) => {
       if (epoch !== connectionEpoch) return;
-      appendLog(logStream, "stderr", line);
+      const safeLine = redactMcpLog(line);
+      appendLog(logStream, "stderr", safeLine);
       if (
-        args.adapter === "dsh-acp" &&
-        isDshAcpExperimentalWarningLine(line)
+        (args.adapter === "dsh-acp" && isDshAcpExperimentalWarningLine(line)) ||
+        (args.adapter === "cline-acp" && isClineAcpStartupBannerLine(line)) ||
+        (args.adapter === "devin-acp" && isDevinAcpDiagnosticLine(line))
       ) {
         return;
       }
-      recentStderr.push(line);
+      recentStderr.push(safeLine);
       if (recentStderr.length > 50) recentStderr.shift();
-      if (args.showStderr !== false) emit({ type: "stderr", content: line });
+      if (args.showStderr !== false) emit({ type: "stderr", content: safeLine });
     });
-    child.on("close", (code) => {
+    connectionCloseHandler = (code) => {
       if (epoch !== connectionEpoch) return;
       const exitCode = code ?? -1;
       for (const waiter of pending.values()) {
@@ -930,6 +1267,10 @@ export async function runAcpAgent({
         finish("done", 0);
         return;
       }
+      if (cancellationRequested && !inactivityFired) {
+        finish("killed", exitCode);
+        return;
+      }
       const status = exitCode === 0 ? "done" : "failed";
       const stderrTail = recentStderr.slice(-40).join("\n").trim();
       const commandTail = lastToolCommand.slice(-500).trim();
@@ -942,7 +1283,13 @@ export async function runAcpAgent({
             formatAcpAgentExitMessage(exitCode, getLanguage(), args.adapter)
           : undefined;
       finish(status, exitCode, crashMessage);
-    });
+    };
+    connectionErrorHandler = error => {
+      if (epoch !== connectionEpoch || finished) return;
+      finish("failed", -1, error.message);
+    };
+    child.on("close", connectionCloseHandler);
+    child.on("error", connectionErrorHandler);
   };
   attachConnection();
 
@@ -959,6 +1306,10 @@ export async function runAcpAgent({
     // _meta.agentVersion instead; fall back to both so every adapter is logged.
     const info = init?.agentInfo;
     const meta = init?._meta;
+    if (args.adapter === "pi-acp") {
+      piStructuredStatus = meta?.piAcp?.lifecycleStatusVersion === 1;
+      piTurn = meta?.piAcp?.promptOutcomeVersion === 1 ? undefined : new PiTurnTracker();
+    }
     const agentName =
       typeof info?.name === "string"
         ? info.name
@@ -973,6 +1324,7 @@ export async function runAcpAgent({
           : undefined;
     agentInfo =
       agentName || agentVersion ? { name: agentName, version: agentVersion } : undefined;
+    recordRuntimeAgentVersion(args.adapter, agentVersion, args.binary);
     logMain().info("acp", "agent initialized", {
       adapter: args.adapter,
       sessionId: args.sessionId,
@@ -983,9 +1335,7 @@ export async function runAcpAgent({
 
   const stopAcpConnectionForAuthentication = async () => {
     const stoppingChild = child;
-    connectionEpoch += 1;
-    rlOut?.close();
-    rlErr?.close();
+    detachConnection();
     for (const waiter of pending.values()) {
       waiter.reject(new Error("ACP connection restarting for authentication."));
     }
@@ -1010,6 +1360,7 @@ export async function runAcpAgent({
   const restartAndInitialize = async () => {
     const restarted = await restartAgent();
     child = restarted.child;
+    if (warmConnection) { warmConnection.child = child; warmConnection.initialize = undefined; }
     pid = restarted.pid;
     activeAcpSessionId = undefined;
     promptStarted = false;
@@ -1019,6 +1370,7 @@ export async function runAcpAgent({
     updateRunningProcess();
     attachConnection();
     const init = await request(buildInitializeRequest(nextId()));
+    if (warmConnection) warmConnection.initialize = init;
     if (init?.protocolVersion !== 1) {
       throw new Error(
         `Unsupported ACP protocol version ${String(init?.protocolVersion ?? "missing")}; FreeBuddy supports version 1.`
@@ -1087,9 +1439,10 @@ export async function runAcpAgent({
   };
 
   const syncSessionMetadataFromList = async () => {
-    if (!agentCaps?.sessionCapabilities?.list || !activeAcpSessionId) return;
+    if (cancellationRequested || connectionClosed() ||
+        !agentCaps?.sessionCapabilities?.list || !activeAcpSessionId) return;
     try {
-      const listed = await request(buildSessionListRequest(nextId(), args.cwd));
+      const listed = await request(buildSessionListRequest(nextId(), args.cwd), CLEANUP_REQUEST_TIMEOUT_MS);
       const items = acpSessionListToItems(activeAcpSessionId, listed);
       if (items.length) emit({ type: "items", items });
     } catch {
@@ -1098,18 +1451,29 @@ export async function runAcpAgent({
   };
 
   const runPromptOnSession = async () => {
+    if (!fileCapture && !remoteIsolated && args.conversationId && args.cwd) {
+      fileCapture = prepareTurnFileCapture({ conversationId: args.conversationId, taskId: args.sessionId,
+        roots: [args.cwd, ...(args.workspaceRoots ?? [])] }).catch(error => {
+        logMain().warn("acp", "file baseline capture failed", { sessionId: args.sessionId, error: String(error) });
+        return undefined;
+      });
+    }
+    await fileCapture;
+    if (finished || cancellationRequested) return;
     emit({
       type: "items",
       items: [{ kind: "session", sessionId: activeAcpSessionId! }]
     });
     promptStarted = true;
+    piTurn?.reset();
     promptHadContent = false;
+    turnHadTerminalError = false;
+    turnTerminalErrorMessage = undefined;
     turnHadLiveAgentChunk = false;
     inactivityReprieves = 0;
-    // Live generation begins here. Replay suppression (sessionWasResumed) must
-    // be confined to the pre-prompt replay phase; keeping it enabled would drop
-    // live agent chunks whose text matches a persisted history signature.
-    sessionWasResumed = false;
+    activeToolCallIds.clear();
+    // Replay suppression remains active on resumed sessions until the first
+    // live chunk or non-replayed tool call signals real generation.
     armInactivityTimer();
     try {
       const promptResult = await request(
@@ -1121,16 +1485,51 @@ export async function runAcpAgent({
         )
       );
       const resultItems = acpPromptResultToItems(promptResult);
+      appendLog(logStream, "system", `ACP prompt result stopReason=${String(promptResult?.stopReason ?? "unknown")} activeTools=${activeToolCallIds.size}`);
+      hasPromptUsage ||= resultItems.some(item => item.kind === "usage" && item.usageScope === "turn" &&
+        item.inputTokens !== undefined && item.outputTokens !== undefined);
+      if (promptResult?.stopReason === "cancelled") {
+        cancellationRequested = true;
+        metrics?.requestOutcome("cancelled");
+      }
+      metrics?.observe(resultItems);
+      const terminalError = resultItems.find(
+        (item) => item.kind === "error" && item.terminal === true
+      );
+      if (terminalError?.kind === "error") {
+        turnHadTerminalError = true;
+        turnTerminalErrorMessage = terminalError.message;
+      }
       if (resultItems.length) {
         emit({ type: "items", items: resultItems });
       }
+      if (promptResult?.stopReason === "max_tokens" || promptResult?.stopReason === "max_turn_requests") {
+        throw new Error(getLanguage().startsWith("zh")
+          ? (promptResult.stopReason === "max_tokens"
+            ? "输出达到长度上限，本轮未完成。请继续会话或调整模型输出限制。"
+            : "本轮达到请求次数上限，任务尚未完成。请继续会话。")
+          : (promptResult.stopReason === "max_tokens"
+            ? "The output limit was reached; the turn did not complete. Continue the conversation or adjust the model output limit."
+            : "The request limit was reached; the task did not complete. Continue the conversation."));
+      }
     } finally {
+      collectPiUsage();
       disarmInactivityTimer();
+    }
+    if (piTurn && !finished && !yieldRequested && !cancellationRequested) {
+      const outcome = piUsageReader?.lastAssistantOutcome;
+      appendLog(logStream, "system", `Pi completion outcome=${JSON.stringify(outcome ?? { nativeUnavailable: true })}`);
+      const completionError = piTurn.completionError(outcome, getLanguage().startsWith("zh"));
+      if (completionError) throw new Error(completionError);
+      if (activeToolCallIds.size) throw new Error(getLanguage().startsWith("zh")
+        ? "Pi 结束时仍有工具调用未完成，本轮未完成。"
+        : "Pi ended with unfinished tool calls; the turn did not complete.");
     }
   };
 
   const authRequiredError = (methods: AcpAuthMethod[]) => {
-    const selected = selectAcpAuthMethod(methods, agentCommand.env);
+    const preferredId = args.configOptionOverrides?.provider;
+    const selected = selectAcpAuthMethod(methods, agentCommand.env, preferredId);
     const method = selected ?? methods[0];
     const label = method?.name ? ` (${method.name})` : "";
     const unsupportedType =
@@ -1225,7 +1624,12 @@ export async function runAcpAgent({
   };
 
   const isAuthenticationRequiredError = (err: unknown) => {
-    const e = err as Error & { code?: number };
+    const e = err as Error & { code?: number; data?: unknown };
+    const eData = e?.data as Record<string, unknown> | undefined;
+    if (eData?.codexErrorInfo === "usageLimitExceeded") return false;
+    if (/usageLimitExceeded|hit\s+your\s+usage\s+limit/i.test(String(e?.message ?? err))) {
+      return false;
+    }
     if (e?.code === -32000) return true;
     if (e?.code === 401 || e?.code === 403) return true;
     const message = String(e?.message ?? err).toLowerCase();
@@ -1266,7 +1670,8 @@ export async function runAcpAgent({
   };
 
   try {
-    const init = await request(buildInitializeRequest(nextId()));
+    const init = warmConnection?.initialize ?? await request(buildInitializeRequest(nextId()));
+    if (warmConnection) warmConnection.initialize = init;
     if (init?.protocolVersion !== 1) {
       throw new Error(
         `Unsupported ACP protocol version ${String(init?.protocolVersion ?? "missing")}; FreeBuddy supports version 1.`
@@ -1278,20 +1683,20 @@ export async function runAcpAgent({
     // and launches an Electron child process. Remote WebUI callers use the
     // authenticated HTTP Browser endpoints instead, so do not expose this
     // desktop-only capability to isolated remote users.
-    // DeepSeek Harness ACP rejects non-empty mcpServers on session/new.
+    // Pass client tools to adapters that accept session-scoped MCP servers.
     if (adapterAcceptsClientMcpServers(args.adapter)) {
       if (args.conversationId && !remoteIsolated) {
-        mcpServers.push(
-          await registerBrowserToolSession({
-            taskSessionId: args.sessionId,
-            conversationId: args.conversationId,
-            // Keep an unscoped conversation unscoped. ACP itself requires a cwd
-            // and falls back to process.cwd(), but Browser must not treat the app's
-            // launch directory as a user-selected workspace.
-            cwd: args.cwd ?? "",
-            webContents
-          })
-        );
+        const browserInput = {
+          taskSessionId: args.sessionId, conversationId: args.conversationId,
+          // Preserve the user's explicit workspace boundary.
+          cwd: args.cwd ?? "", webContents,
+        };
+        const previousRunId = warmConnection?.previousRunId;
+        const rebound = warmConnection?.browserServer && previousRunId &&
+          rebindBrowserToolSession(previousRunId, browserInput);
+        const browserServer = rebound ? warmConnection!.browserServer! : await registerBrowserToolSession(browserInput);
+        if (warmConnection) warmConnection.browserServer = browserServer;
+        mcpServers.push(browserServer);
       }
       if (args.conversationId) {
         const conv = getConversation(args.conversationId);
@@ -1355,7 +1760,73 @@ export async function runAcpAgent({
           })
         );
       }
+      // All DocStudio conversations — standalone window or embedded in the
+      // main window — including their empty state, get the office engine's
+      // create/edit/save tools. Normal (non doc-studio) conversations are
+      // never affected.
+      if (args.conversationId && !remoteIsolated) {
+        const docStudioSurface = standaloneDocStudio ||
+          getConversation(args.conversationId)?.kind === "doc-studio";
+        const officeFile = resolveDocStudioOfficeFile(args.conversationId);
+        if (officeFile || docStudioSurface) {
+          const officeServer = await registerOfficeEngineToolSession(
+            args.sessionId, args.conversationId, officeFile ?? ""
+          );
+          if (officeServer) {
+            officeFileForSession = officeFile;
+            mcpServers.push(officeServer);
+          } else if (standaloneDocStudio) {
+            throw new Error("Office engine is unavailable. Download it in Settings > About before using DocStudio AI.");
+          }
+          // Embedded main-window runs skip silently: the chat stays usable and
+          // the embedded preview surfaces engineUnavailable on its own.
+        }
+      }
     }
+
+    // Merge user-configured MCP servers (after built-in servers for priority).
+    // Read directly from the database so a mid-conversation selection change
+    // takes effect on the next message. Delegated sub-agents and workflow
+    // steps keep the parent conversation id but must not inherit that selection.
+    if (adapterAcceptsClientMcpServers(args.adapter) && canUseHostMcp()) {
+      const resolved = await resolveConversationUserMcpServers({
+        conversationId: args.conversationId,
+        cwd: args.cwd,
+        delegation: args.delegation,
+        toolSessionScope: args.toolSessionScope
+      });
+      if (resolved.servers.length > 0 || resolved.skipped.length > 0) {
+        const takenNames = new Set(mcpServers.map((server) => server.name.toLowerCase()));
+        for (const server of resolved.servers) {
+          const name = uniqueUserMcpServerName(server.name, takenNames);
+          if (name !== server.name) {
+            appendLog(
+              logStream,
+              "system",
+              `mcp server renamed to avoid collision: ${server.name} -> ${name}`
+            );
+          }
+          takenNames.add(name.toLowerCase());
+          mcpServers.push({ ...server, name });
+        }
+        mcpSecretValues.push(...resolved.secretValues);
+        if (resolved.servers.length) {
+          appendLog(
+            logStream,
+            "system",
+            `user mcp servers=${resolved.servers.map((s) => s.name).join(",")}`
+          );
+        }
+        for (const skipped of resolved.skipped) {
+          appendLog(
+            logStream,
+            "system",
+            `mcp server skipped (${skipped.reason}): ${skipped.name}`
+          );
+        }
+      }
+    }
+
     if (mcpServers.length) {
       appendLog(
         logStream,
@@ -1391,9 +1862,27 @@ export async function runAcpAgent({
     }
 
     const applyConfigOptionOverrides = async () => {
-      const overrides = args.configOptionOverrides;
-      if (!overrides || !activeAcpSessionId) return;
-      for (const [configId, value] of Object.entries(overrides)) {
+      const overrides = { ...(args.configOptionOverrides ?? {}) };
+      if (!overrides.model && args.adapter === "pi-acp") {
+        const defaultPiModel = resolvePiByokDefaultModel(
+          args.agentId,
+          args.adapter
+        );
+        if (defaultPiModel) {
+          overrides.model = defaultPiModel;
+        }
+      }
+      if (!Object.keys(overrides).length || !activeAcpSessionId) return;
+      const order = ["provider", "model", "thought_level"];
+      const sortedOverrides = Object.entries(overrides).sort(([a], [b]) => {
+        const ai = order.indexOf(a);
+        const bi = order.indexOf(b);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return 0;
+      });
+      for (const [configId, value] of sortedOverrides) {
         if (!configId || value == null || value === "") continue;
         if (
           configId === "model" &&
@@ -1419,15 +1908,13 @@ export async function runAcpAgent({
             const actualModel = setupItems
               .find((item) => item.kind === "config-options")
               ?.options.find(
-                (option) => option.id === "model" || option.category === "model"
+                (option) =>
+                  option.id === "model" ||
+                  (option.category === "model" && option.id !== "provider")
               )?.currentValue;
-            const normalizeModel = (model: string) =>
-              model
-                .trim()
-                .replace(/\[(?:none|low|medium|high|xhigh|max)\]$/i, "");
             if (
               actualModel &&
-              normalizeModel(actualModel) !== normalizeModel(value)
+              !acpModelSelectionMatches(args.adapter, actualModel, value)
             ) {
               throw new Error(
                 `agent kept ${actualModel} after selecting ${value}`
@@ -1470,6 +1957,7 @@ export async function runAcpAgent({
     };
 
     await applyConfigOptionOverrides();
+    const initialPromptResumedSession = sessionWasResumed;
     try {
       await runPromptOnSession();
     } catch (promptErr) {
@@ -1490,7 +1978,7 @@ export async function runAcpAgent({
         );
         if (exhaustedSessionId && agentCaps?.sessionCapabilities?.close) {
           try {
-            await request(buildSessionCloseRequest(nextId(), exhaustedSessionId));
+            await request(buildSessionCloseRequest(nextId(), exhaustedSessionId), CLEANUP_REQUEST_TIMEOUT_MS);
           } catch {
             /* best-effort */
           }
@@ -1528,32 +2016,138 @@ export async function runAcpAgent({
         throw promptErr;
       }
     }
+    if (yieldRequested || finished) return;
     if (nonRetryableUpstreamError) {
       throw new Error(nonRetryableUpstreamError);
     }
+    if (turnTerminalErrorMessage) {
+      throw new Error(turnTerminalErrorMessage);
+    }
+
+    if (
+      !finished &&
+      !cancellationRequested &&
+      shouldRetryEmptyResumedDshTurn({
+        adapter: args.adapter,
+        resumed: initialPromptResumedSession,
+        promptHadContent,
+        resetAttempted: emptySessionResetAttempted
+      })
+    ) {
+      emptySessionResetAttempted = true;
+      const emptySessionId = activeAcpSessionId;
+      appendLog(
+        logStream,
+        "system",
+        `saved DeepSeek ACP session returned an empty turn; starting a fresh session${
+          emptySessionId ? ` from ${emptySessionId}` : ""
+        }`
+      );
+      emit({
+        type: "stderr",
+        content:
+          "Previous DeepSeek session returned no output; retrying once in a fresh session."
+      });
+      if (toolSessionScope) {
+        try {
+          clearToolSession(args.agentId, toolSessionScope);
+        } catch {
+          /* best-effort */
+        }
+      }
+      requestedToolSessionId = undefined;
+      activeAcpSessionId = undefined;
+      sessionWasResumed = false;
+      activePrompt = [
+        args.prompt.trimEnd(),
+        "",
+        emptySessionResetInstruction()
+      ].join("\n");
+      await establishSession();
+      await applyConfigOptionOverrides();
+      await runPromptOnSession();
+      if (nonRetryableUpstreamError) {
+        throw new Error(nonRetryableUpstreamError);
+      }
+    }
+    if (yieldRequested || finished) return;
     await syncSessionMetadataFromList();
+    if (yieldRequested || finished) return;
 
     // Some agents (e.g. kimi when signed out) let session creation succeed but
     // return an empty turn because the model layer is unauthenticated. If the
     // agent advertised auth methods and produced nothing, treat it as a missing
     // login rather than a silent success.
-    if (!promptHadContent && authMethods.length > 0 && !finished) {
-      if (!authenticationAttempted) {
+    if (!promptHadContent && authMethods.length > 0 && !finished && !cancellationRequested) {
+      const isPiByok =
+        args.adapter === "pi-acp" &&
+        hasCliByokModels(args.agentId, args.adapter);
+      if (!authenticationAttempted && !isPiByok) {
         const restarted = await authenticate(authMethods);
         if (restarted) await establishSession();
         await runPromptOnSession();
       }
-      if (!promptHadContent) throw authRequiredError(authMethods);
+      if (!promptHadContent) {
+        if (isPiByok) {
+          const model =
+            args.configOptionOverrides?.model ??
+            resolvePiByokDefaultModel(args.agentId, args.adapter);
+          const piErr = findLastPiSessionErrorMessage(
+            getDataDir(),
+            activeAcpSessionId
+          );
+          const detail = piErr ? `: ${piErr}` : "";
+          throw new Error(
+            `The Pi agent completed the turn without producing output (model: ${
+              model || "unknown"
+            })${detail}. Please check your provider API key, base URL, or model quota.`
+          );
+        }
+        const hasExistingCreds = recentStderr.some((line) =>
+          /using existing credentials/i.test(line)
+        );
+        if (authenticationAttempted || hasExistingCreds) {
+          const provider = args.configOptionOverrides?.provider;
+          const model = args.configOptionOverrides?.model;
+          const contextParts = [
+            provider ? `provider: ${provider}` : "",
+            model ? `model: ${model}` : ""
+          ].filter(Boolean);
+          const contextInfo =
+            contextParts.length > 0 ? ` (${contextParts.join(", ")})` : "";
+          throw new Error(
+            `The agent completed the turn without producing output${contextInfo}. ` +
+              `This usually indicates the selected model is unsupported for this provider, ` +
+              `the account lacks a required subscription (such as ClinePass), or an upstream limit occurred. ` +
+              `Please check your provider and model configuration.`
+          );
+        }
+        throw authRequiredError(authMethods);
+      }
     }
 
-    if (agentCaps?.sessionCapabilities?.close) {
+    keepWarm = Boolean(warmConnection && parkConnection && activeAcpSessionId &&
+      warmConnection.initialize?._meta?.freebuddy?.persistentSession === true && !cancellationRequested &&
+      !connectionClosed() && !inactivityFired && !turnHadTerminalError);
+    if (!keepWarm && !cancellationRequested && !connectionClosed() && agentCaps?.sessionCapabilities?.close) {
       try {
-        await request(buildSessionCloseRequest(nextId(), activeAcpSessionId!));
+        await request(buildSessionCloseRequest(nextId(), activeAcpSessionId!), CLEANUP_REQUEST_TIMEOUT_MS);
       } catch {
         /* best-effort */
       }
     }
-    appendLog(logStream, "system", "prompt complete; finalizing ACP turn");
+    appendLog(logStream, "system", keepWarm ? "prompt complete; retaining ACP connection" : "prompt complete; finalizing ACP turn");
+    if (keepWarm && warmConnection && parkConnection) {
+      detachConnection();
+      warmConnection.child = child;
+      warmConnection.requestId = requestId;
+      warmConnection.sessionId = activeAcpSessionId;
+      warmConnection.previousRunId = args.sessionId;
+      finish("done", 0);
+      await captureCompletion;
+      parkConnection();
+      return;
+    }
     finish("done", 0);
     try {
       child.stdin.end();
@@ -1574,7 +2168,7 @@ export async function runAcpAgent({
       finish("done", 0);
       return;
     }
-    const msg = (e as Error)?.message || String(e);
+    const msg = formatAcpRpcError(e);
     appendLog(logStream, "system", msg);
     try {
       child.stdin.end();
@@ -1582,5 +2176,8 @@ export async function runAcpAgent({
       /* noop */
     }
     finish("failed", -1, msg);
+  } finally {
+    detachStdinErrors?.();
+    await captureCompletion;
   }
 }

@@ -31,7 +31,11 @@ function conversation(partial) {
     lastMessageAt: partial.lastMessageAt,
     cwd: partial.cwd,
     sourceCwd: partial.sourceCwd,
-    projectId: partial.projectId
+    projectId: partial.projectId,
+    metadata: partial.metadata,
+    pinned: partial.pinned,
+    pinnedAt: partial.pinnedAt,
+    sortPosition: partial.sortPosition
   };
 }
 
@@ -206,6 +210,38 @@ test("recentConversations excludes projectId conversations but keeps cwd-only", 
   );
 });
 
+test("conversationWorktreePath reads the real worktree directory", async () => {
+  const { conversationWorktreePath } = await loadGrouping();
+  assert.equal(
+    conversationWorktreePath({
+      cwd: "/data/task-worktrees/app-abc/task-1/src",
+      metadata: {
+        taskWorkspace: {
+          mode: "worktree",
+          sourceCwd: "/Users/me/app",
+          worktreeRoot: "/data/task-worktrees/app-abc/task-1"
+        }
+      }
+    }),
+    "/data/task-worktrees/app-abc/task-1"
+  );
+  assert.equal(
+    conversationWorktreePath({
+      cwd: "/data/task-worktrees/app-abc/task-2",
+      metadata: { taskWorkspace: { mode: "worktree" } }
+    }),
+    "/data/task-worktrees/app-abc/task-2"
+  );
+  assert.equal(
+    conversationWorktreePath({
+      cwd: "/Users/me/app",
+      metadata: { taskWorkspace: { mode: "local" } }
+    }),
+    undefined
+  );
+  assert.equal(conversationWorktreePath({ cwd: "/Users/me/app" }), undefined);
+});
+
 test("empty projects before load does not drop projectId conversations", async () => {
   const { groupConversationsByProjects, recentConversations } = await loadGrouping();
   const items = [
@@ -243,5 +279,269 @@ test("empty projects before load does not drop projectId conversations", async (
   assert.deepEqual(
     orphaned.map((item) => item.id),
     ["proj-chat", "plain"]
+  );
+});
+
+function project(id) {
+  return {
+    id,
+    name: id,
+    folders: [`/work/${id}`],
+    primaryPath: `/work/${id}`,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  };
+}
+
+function unreadEntry(kind = "message") {
+  return { kind, at: "2026-07-25T00:00:00.000Z" };
+}
+
+test("unread view includes every unread kind and counts only current conversations", async () => {
+  const { unreadConversationView } = await loadGrouping();
+  const items = [
+    conversation({ id: "message", lastMessageAt: "2026-07-21T00:00:00.000Z" }),
+    conversation({ id: "read", lastMessageAt: "2026-07-25T00:00:00.000Z" }),
+    conversation({ id: "failure", lastMessageAt: "2026-07-23T00:00:00.000Z" }),
+    conversation({ id: "success", lastMessageAt: "2026-07-22T00:00:00.000Z" })
+  ];
+  const view = unreadConversationView(items, [], {
+    message: unreadEntry(),
+    success: unreadEntry("success"),
+    failure: unreadEntry("failure"),
+    deleted: unreadEntry(),
+    archived: unreadEntry("success")
+  });
+
+  assert.equal(view.count, 3);
+  assert.deepEqual(view.projects, []);
+  assert.deepEqual(view.recent.map((item) => item.id), ["failure", "success", "message"]);
+});
+
+test("unread view removes empty and read-only projects while preserving pinned order", async () => {
+  const { groupConversationsByProjects, unreadConversationView } = await loadGrouping();
+  const items = [
+    conversation({ id: "old", projectId: "pinned-old", lastMessageAt: "2026-07-20T00:00:00.000Z" }),
+    conversation({ id: "new", projectId: "newest", lastMessageAt: "2026-07-24T00:00:00.000Z" }),
+    conversation({ id: "middle", projectId: "pinned-middle", lastMessageAt: "2026-07-22T00:00:00.000Z" }),
+    conversation({ id: "already-read", projectId: "read-only", lastMessageAt: "2026-07-25T00:00:00.000Z" }),
+    conversation({ id: "read-in-mixed", projectId: "pinned-old", lastMessageAt: "2026-07-23T00:00:00.000Z" })
+  ];
+  const projectOrder = ["empty", "pinned-old", "read-only", "pinned-middle", "newest"];
+  const groups = groupConversationsByProjects(items, projectOrder.map(project));
+  // The sidebar has already put pinned projects in their user-selected order.
+  const orderedGroups = projectOrder.map((id) => groups.find((group) => group.key === id));
+  const view = unreadConversationView(items, orderedGroups, {
+    old: unreadEntry(),
+    new: unreadEntry(),
+    middle: unreadEntry()
+  });
+
+  assert.deepEqual(view.projects.map((group) => group.key), ["pinned-old", "pinned-middle", "newest"]);
+  assert.deepEqual(view.projects.map((group) => group.items.map((item) => item.id)), [["old"], ["middle"], ["new"]]);
+  assert.equal(view.projects[0].primaryPath, "/work/pinned-old");
+  assert.deepEqual(view.projects[0].folders, ["/work/pinned-old"]);
+  assert.deepEqual(view.recent, []);
+  assert.equal(view.count, 3);
+});
+
+test("unread view lists cwd-only matches once and retains missing-project orphans", async () => {
+  const { groupConversationsByProjects, groupConversationsByProject, unreadConversationView } = await loadGrouping();
+  const items = [
+    conversation({ id: "cwd-only", cwd: "/work/app/", lastMessageAt: "2026-07-21T00:00:00.000Z" }),
+    conversation({ id: "worktree", cwd: "/tmp/worktree", sourceCwd: "/work/app", lastMessageAt: "2026-07-22T00:00:00.000Z" }),
+    conversation({ id: "orphan", projectId: "removed-project", lastMessageAt: "2026-07-24T00:00:00.000Z" }),
+    conversation({ id: "plain", lastMessageAt: "2026-07-23T00:00:00.000Z" })
+  ];
+  const unread = Object.fromEntries(items.map((item) => [item.id, unreadEntry()]));
+  const groupVariants = [
+    groupConversationsByProjects(items, [project("app")]),
+    groupConversationsByProject(items)
+  ];
+
+  for (const groups of groupVariants) {
+    const view = unreadConversationView(items, groups, unread);
+    assert.deepEqual(view.projects.flatMap((group) => group.items.map((item) => item.id)), ["worktree", "cwd-only"]);
+    assert.deepEqual(view.recent.map((item) => item.id), ["orphan", "plain"]);
+    assert.equal(view.count, 4);
+    const visibleIds = [...view.projects.flatMap((group) => group.items), ...view.recent].map((item) => item.id);
+    assert.equal(new Set(visibleIds).size, visibleIds.length);
+  }
+
+  // Without any hydrated groups, project conversations remain reachable in Recent.
+  const beforeProjectsLoad = unreadConversationView(items, [], unread);
+  assert.deepEqual(beforeProjectsLoad.recent.map((item) => item.id), ["orphan", "plain", "worktree", "cwd-only"]);
+});
+
+test("unread view exposes matches beyond every default sidebar display limit", async () => {
+  const { groupConversationsByProjects, unreadConversationView } = await loadGrouping();
+  const projects = Array.from({ length: 8 }, (_, index) => project(`project-${index}`));
+  const projectItems = projects.flatMap((entry) =>
+    Array.from({ length: 7 }, (_, index) => conversation({
+      id: `${entry.id}-task-${index}`,
+      projectId: entry.id,
+      lastMessageAt: `2026-07-${String(index + 10).padStart(2, "0")}T00:00:00.000Z`
+    }))
+  );
+  const recentItems = Array.from({ length: 10 }, (_, index) => conversation({
+    id: `recent-${index}`,
+    lastMessageAt: `2026-07-${String(index + 10).padStart(2, "0")}T00:00:00.000Z`
+  }));
+  const items = [...projectItems, ...recentItems];
+  const view = unreadConversationView(
+    items,
+    groupConversationsByProjects(items, projects),
+    Object.fromEntries(items.map((item) => [item.id, unreadEntry()]))
+  );
+
+  assert.equal(view.projects.length, 8);
+  for (const group of view.projects) {
+    assert.deepEqual(group.items.map((item) => item.id),
+      [6, 5, 4, 3, 2, 1, 0].map((index) => `${group.key}-task-${index}`));
+  }
+  assert.deepEqual(view.recent.map((item) => item.id),
+    [9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((index) => `recent-${index}`));
+  assert.equal(view.count, 66);
+});
+
+test("reading conversations updates unread results without mutating the all view or earlier results", async () => {
+  const { groupConversationsByProjects, unreadConversationView } = await loadGrouping();
+  const items = [
+    conversation({ id: "project-task", projectId: "app" }),
+    conversation({ id: "recent-task" }),
+    conversation({ id: "already-read", projectId: "app" })
+  ];
+  const groups = groupConversationsByProjects(items, [project("app")]);
+  const unread = { "project-task": unreadEntry(), "recent-task": unreadEntry("success") };
+  const initialInputs = structuredClone({ items, groups, unread });
+  const freeze = (value) => {
+    if (!value || typeof value !== "object" || Object.isFrozen(value)) return;
+    for (const child of Object.values(value)) freeze(child);
+    Object.freeze(value);
+  };
+  freeze(items);
+  freeze(groups);
+  freeze(unread);
+
+  const beforeRead = unreadConversationView(items, groups, unread);
+  const afterProjectRead = unreadConversationView(items, groups, { "recent-task": unread["recent-task"] });
+  const afterAllRead = unreadConversationView(items, groups, {});
+
+  assert.equal(beforeRead.count, 2);
+  assert.deepEqual(beforeRead.projects[0].items.map((item) => item.id), ["project-task"]);
+  assert.deepEqual(beforeRead.recent.map((item) => item.id), ["recent-task"]);
+  assert.deepEqual(afterProjectRead.projects, []);
+  assert.deepEqual(afterProjectRead.recent.map((item) => item.id), ["recent-task"]);
+  assert.equal(afterProjectRead.count, 1);
+  assert.deepEqual(afterAllRead, { projects: [], recent: [], count: 0 });
+  assert.deepEqual({ items, groups, unread }, initialInputs);
+});
+
+test("pinned conversations lead their group and Recent regardless of activity", async () => {
+  const { groupConversationsByProjects, recentConversations } = await loadGrouping();
+  const project = {
+    id: "p1",
+    name: "P1",
+    folders: ["/tmp/p1"],
+    primaryPath: "/tmp/p1",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  };
+  const items = [
+    conversation({
+      id: "fresh",
+      projectId: "p1",
+      lastMessageAt: "2026-07-10T00:00:00.000Z"
+    }),
+    conversation({
+      id: "pinned-old",
+      projectId: "p1",
+      pinned: true,
+      pinnedAt: "2026-07-02T00:00:00.000Z",
+      lastMessageAt: "2026-07-01T00:00:00.000Z"
+    }),
+    conversation({
+      id: "pinned-newer",
+      projectId: "p1",
+      pinned: true,
+      pinnedAt: "2026-07-05T00:00:00.000Z",
+      lastMessageAt: "2026-07-01T00:00:00.000Z"
+    })
+  ];
+  const [group] = groupConversationsByProjects(items, [project]);
+  assert.deepEqual(
+    group.items.map((item) => item.id),
+    ["pinned-newer", "pinned-old", "fresh"]
+  );
+
+  const recent = recentConversations([
+    conversation({ id: "r-fresh", lastMessageAt: "2026-07-10T00:00:00.000Z" }),
+    conversation({
+      id: "r-pinned",
+      pinned: true,
+      pinnedAt: "2026-07-01T00:00:00.000Z",
+      lastMessageAt: "2026-07-01T00:00:00.000Z"
+    })
+  ]);
+  assert.deepEqual(
+    recent.map((item) => item.id),
+    ["r-pinned", "r-fresh"]
+  );
+});
+
+test("manual positions order the group and unpositioned rows lead", async () => {
+  const { groupConversationsByProjects } = await loadGrouping();
+  const project = {
+    id: "p1",
+    name: "P1",
+    folders: ["/tmp/p1"],
+    primaryPath: "/tmp/p1",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  };
+  const items = [
+    conversation({ id: "pos-b", projectId: "p1", sortPosition: 2048 }),
+    conversation({ id: "pos-a", projectId: "p1", sortPosition: 1024 }),
+    // No position: leads above positioned rows, ordered by activity.
+    conversation({ id: "fresh-2", projectId: "p1", lastMessageAt: "2026-07-10T00:00:00.000Z" }),
+    conversation({ id: "fresh-1", projectId: "p1", lastMessageAt: "2026-07-05T00:00:00.000Z" }),
+    // Pinned beats manual position.
+    conversation({ id: "pinned", projectId: "p1", pinned: true, pinnedAt: "2026-07-01T00:00:00.000Z", sortPosition: 4096 })
+  ];
+  const [group] = groupConversationsByProjects(items, [project]);
+  assert.deepEqual(
+    group.items.map((item) => item.id),
+    ["pinned", "fresh-2", "fresh-1", "pos-a", "pos-b"]
+  );
+});
+
+test("explicitly detached conversations skip the cwd fallback and stay in Recent", async () => {
+  const { groupConversationsByProjects, recentConversations } = await loadGrouping();
+  const project = {
+    id: "p1",
+    name: "P1",
+    folders: ["/tmp/p1"],
+    primaryPath: "/tmp/p1",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z"
+  };
+  const detached = conversation({
+    id: "detached",
+    cwd: "/tmp/p1",
+    metadata: { projectDetached: true },
+    lastMessageAt: "2026-07-10T00:00:00.000Z"
+  });
+  const neverAssigned = conversation({
+    id: "never-assigned",
+    cwd: "/tmp/p1",
+    lastMessageAt: "2026-07-09T00:00:00.000Z"
+  });
+  const [group] = groupConversationsByProjects([detached, neverAssigned], [project]);
+  // The detached row must not regroup under the project that owns its cwd;
+  // the never-assigned row still benefits from the cwd fallback.
+  assert.deepEqual(group.items.map((item) => item.id), ["never-assigned"]);
+  assert.deepEqual(
+    recentConversations([detached, neverAssigned]).map((item) => item.id),
+    ["detached", "never-assigned"]
   );
 });

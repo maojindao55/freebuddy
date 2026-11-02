@@ -100,9 +100,14 @@ test("coding agent settings expose Codex BYOK without echoing saved keys", () =>
   assert.equal(enLocale.settings.cli.byok.modeCustom, "Use my own API key");
 });
 
-test("coding agent settings open editor from the list view", () => {
-  assert.equal(settingsSource.includes("adapter-settings-workspace"), true);
+test("coding agent settings pair a docked agent list with the editor", () => {
+  assert.equal(settingsSource.includes("adapter-master-detail"), true);
+  assert.equal(settingsSource.includes("adapter-master-list"), true);
   assert.equal(settingsSource.includes("adapter-edit-workspace"), true);
+  // Wide layouts auto-select an agent; narrow layouts keep list-only mode.
+  assert.match(settingsSource, /if \(isNarrow \|\| editingId \|\| !defaultAgentId\) return;/);
+  // Switching agents with unsaved edits asks before discarding them.
+  assert.match(settingsSource, /editorDirtyRef\.current && !window\.confirm\(t\("settings\.cli\.unsavedConfirm"\)\)/);
   assert.equal(settingsSource.includes("onBackToList"), true);
   assert.equal(settingsSource.includes("settings.cli.backToList"), true);
   assert.equal(settingsSource.includes("EditOverridePanel"), true);
@@ -168,6 +173,14 @@ test("coding agent runtime stores Claude BYOK separately from Codex BYOK", () =>
   );
   assert.equal(electronStoreSource.includes("ANTHROPIC_API_KEY"), true);
   assert.equal(electronStoreSource.includes("ANTHROPIC_BASE_URL"), true);
+  assert.match(
+    electronStoreSource,
+    /function normalizeClaudeByokForStorage[\s\S]*?providerId: providerRef/
+  );
+  assert.match(
+    electronStoreSource,
+    /function normalizeDeepSeekByokForStorage[\s\S]*?providerId: providerRef/
+  );
   assert.equal(
     electronStoreSource.includes("model_supports_reasoning_summaries"),
     true
@@ -326,9 +339,125 @@ test("coding agent settings force-install the new Codex ACP when the old package
   assert.match(settingsSource, /startInstall\(\{\s*adapterId: ex\.id,\s*label: ex\.label,\s*command: ex\.installHint!/s);
 });
 
+test("built-in agent list can hand missing installs to GuideBuddy", () => {
+  const guideStoreSource = fs.readFileSync(
+    new URL("../src/store/guideInstallStore.ts", import.meta.url),
+    "utf8"
+  );
+  const appSource = fs.readFileSync(
+    new URL("../src/App.tsx", import.meta.url),
+    "utf8"
+  );
+  const skillSource = fs.readFileSync(
+    new URL("../assets/skills/onboarding-guide/SKILL.md", import.meta.url),
+    "utf8"
+  );
+  const adaptersSource = fs.readFileSync(
+    new URL("../src/config/cliAdapters.ts", import.meta.url),
+    "utf8"
+  );
+
+  // Editor header: dedicated GuideBuddy action on uninstalled agents,
+  // excluding the bundled Pi.
+  assert.match(settingsSource, /selectedExecutor\.id !== "pi-acp"/);
+  assert.match(settingsSource, /onAskGuideInstall/);
+  assert.match(
+    settingsSource,
+    /useGuideInstallStore\s*\.\s*getState\(\)\s*\.\s*requestGuideInstall/
+  );
+
+  // Hand-off store: readiness pre-checks, find-or-create the guide
+  // conversation, then send the prompt through the normal message pipeline.
+  assert.match(guideStoreSource, /export async function executeGuideInstall/);
+  assert.match(guideStoreSource, /ONBOARDING_GUIDE_AGENT_ID/);
+  assert.match(guideStoreSource, /isRunning\(/);
+  assert.match(guideStoreSource, /piByok\?\.enabled/);
+  assert.match(guideStoreSource, /newConversation\(/);
+  assert.match(guideStoreSource, /sendMessage\(/);
+
+  // App consumes the request: close Settings, switch to chat, notify.
+  assert.match(appSource, /useGuideInstallStore/);
+  assert.match(appSource, /executeGuideInstall/);
+
+  // SKILL.md approved commands stay in lockstep with the adapter registry:
+  // every adapter installHint must be an approved GuideBuddy command.
+  for (const match of adaptersSource.matchAll(/installHint:\s*\n?\s*"([^"]+)"/g)) {
+    assert.ok(
+      skillSource.includes(match[1]),
+      `skill missing approved command: ${match[1]}`
+    );
+  }
+
+  // Locale strings mirrored across zh-CN and en.
+  for (const key of ["bannerAction", "actionHint", "requested", "prompt"]) {
+    assert.ok(zhLocale.settings.cli.guideInstall?.[key], `zh missing guideInstall.${key}`);
+    assert.ok(enLocale.settings.cli.guideInstall?.[key], `en missing guideInstall.${key}`);
+  }  for (const key of [
+    "no_member",
+    "runtime_missing",
+    "model_missing",
+    "busy",
+    "nothing_to_do",
+    "send_failed"
+  ]) {
+    assert.ok(zhLocale.settings.cli.guideInstall?.error?.[key]);
+    assert.ok(enLocale.settings.cli.guideInstall?.error?.[key]);
+  }
+
+  // Verification loop: pending hand-off ids are re-probed through the real
+  // check pipeline (on guide turn completion + settings list mount), so the
+  // agent list reflects verified state instead of the assistant's claim.
+  assert.match(guideStoreSource, /awaitingVerification/);
+  assert.match(guideStoreSource, /settleGuideTurn/);
+  assert.match(guideStoreSource, /Promise\.allSettled/);
+  const chatViewSource = fs.readFileSync(
+    new URL("../src/components/CLI/ChatView.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(
+    chatViewSource,
+    /settleGuideTurn\(useConversationStore\.getState\(\)\.activeId\)/
+  );
+  assert.match(
+    settingsSource,
+    /useGuideInstallStore\s*\.\s*getState\(\)\s*\.\s*settleGuideTurn\(\)/
+  );
+});
+
+test("uninstalled agents get a GuideBuddy install action in the editor header", () => {
+  // The header action is wired only for uninstalled agents that carry an
+  // installHint (the bundled Pi adapter is excluded at the call site).
+  assert.match(
+    settingsSource,
+    /selectedExecutor\.id !== "pi-acp"[\s\S]*?selectedExecutor\.installHint[\s\S]*?!selectedExecutor\.runtime\?\.installed[\s\S]*?requestGuideInstall\(\[selectedExecutor\.id\]\)/
+  );
+  // Rendered as a visible header button (not hidden in the overflow menu):
+  // the guide-install menu item is gone, the button uses the shared
+  // adapter-editor-action style next to Install.
+  assert.doesNotMatch(settingsSource, /key: "guide-install"/);
+  assert.match(
+    settingsSource,
+    /\{onAskGuideInstall && \([\s\S]*?className="adapter-editor-action"[\s\S]*?guideInstall\.actionHint[\s\S]*?guideInstall\.bannerAction/
+  );
+
+  // The batch-selection banner is gone entirely: no selection state, no
+  // checkboxes, no meta row, and no leftover styles.
+  assert.doesNotMatch(settingsSource, /adapter-guide-install-banner/);
+  assert.doesNotMatch(settingsSource, /guide-install-checkbox/);
+  assert.doesNotMatch(settingsSource, /guideSelectionActive/);
+  assert.doesNotMatch(settingsSource, /adapter-master-item--guide/);
+  const stylesSource = fs.readFileSync(
+    new URL("../styles.css", import.meta.url),
+    "utf8"
+  );
+  assert.doesNotMatch(stylesSource, /\.adapter-list-meta/);
+  assert.doesNotMatch(stylesSource, /guide-install-checkbox/);
+  assert.doesNotMatch(stylesSource, /adapter-guide-install-banner/);
+});
+
 test("Codex CLI and ACP updates run in the background and surface runtime status", () => {
   assert.equal(cliCheckSource.includes("startCodexToolchainAutoUpdate"), true);
-  assert.equal(cliCheckSource.includes("CODEX_UPDATE_INTERVAL_MS"), true);
+  assert.equal(cliCheckSource.includes("TOOLCHAIN_UPDATE_INTERVAL_MS"), true);
   assert.equal(cliCheckSource.includes("isNpmManagedBinary"), true);
   assert.equal(cliCheckSource.includes('CODEX_CLI_PACKAGE = "@openai/codex"'), true);
   assert.equal(
@@ -338,19 +467,28 @@ test("Codex CLI and ACP updates run in the background and surface runtime status
     true
   );
   assert.match(cliCheckSource, /NPM_CONFIG_OFFLINE:\s*"false"/);
-  assert.match(cliCheckSource, /"npm",\s*\["view", packageName/);
+  assert.match(cliCheckSource, /const npm = await which\("npm", env as Record<string, string>\)/);
+  assert.match(cliCheckSource, /runProcess\(\s*npm,\s*\["view", packageName, "version", "--json", "--offline=false"\]/);
   assert.match(cliCheckSource, /"install",\s*"-g",\s*"--force"/);
   assert.equal(settingsSource.includes("Codex CLI:"), true);
   assert.equal(settingsSource.includes("settings.cli.autoUpdating"), true);
-  assert.equal(settingsSource.includes("settings.cli.autoUpdated"), true);
-  assert.equal(settingsSource.includes("settings.cli.autoUpdateFailed"), true);
+  assert.match(settingsSource, /case "updated":[\s\S]*?t\("settings\.cli\.updateVerified"/);
+  assert.match(settingsSource, /case "error":[\s\S]*?t\("settings\.cli\.updateCheckFailed"/);
   assert.equal(
-    enLocale.settings.cli.autoUpdateFailed,
-    "{{target}} automatic update failed"
+    enLocale.settings.cli.updateVerified,
+    "{{target}} {{version}} verified and ready"
   );
   assert.equal(
-    zhLocale.settings.cli.autoUpdateFailed,
-    "{{target}} 自动更新失败"
+    zhLocale.settings.cli.updateVerified,
+    "{{target}} {{version}} 已验证可正常启动"
+  );
+  assert.equal(
+    enLocale.settings.cli.updateCheckFailed,
+    "{{target}} update check or verification failed"
+  );
+  assert.equal(
+    zhLocale.settings.cli.updateCheckFailed,
+    "{{target}} 更新检查或验证未通过"
   );
 });
 
@@ -393,3 +531,19 @@ test("coding agent settings allow manual typing of model context window without 
     /parseByokContextWindow\(entry\.contextWindow\)/
   );
 });
+
+test("coding agent settings toggle DeepSeek official vs custom provider properly", () => {
+  assert.match(
+    settingsSource,
+    /const deepseekByokConfig = isDeepSeek\s*\?\s*codexByokEnabled\s*\?\s*selectedProviderId/
+  );
+  assert.match(
+    settingsSource,
+    /if \(savedByok\?\.enabled !== true\) return undefined;/
+  );
+  assert.match(
+    settingsSource,
+    /if \(!codexByokEnabled\) \{\s*setSelectedProviderId\(undefined\);\s*\}/
+  );
+});
+

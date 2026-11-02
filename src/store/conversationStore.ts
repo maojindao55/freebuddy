@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isConversationReadingVisible } from "./conversationReading";
 import { nanoid } from "nanoid";
 
 import type { CLIMember } from "@/config/aiMembers";
@@ -25,6 +26,8 @@ import { workflowFollowupAgentId } from "@/services/workflows/types";
 import { workflowClient } from "@/services/workflows/client";
 import { debugLogClient } from "@/services/debugLog";
 import { composeMessageWithAttachments } from "@/utils/chatAttachments";
+import type { SkillSnapshot } from "@/services/skills/types";
+import { mergeMessageSkills, withMessageSkills } from "@/utils/skillCommands";
 import {
   filterSessionConfigPickerOptions,
   resolveConfigOptionOverrides
@@ -42,8 +45,11 @@ import {
   defaultTitleFor,
   feedArticleTitleFromMessages,
   mergeConversationMessages,
+  recoverConversationTitleFromMessages,
+  sanitizeUserConversationTitle,
   shouldApplyAgentSessionTitle,
-  upsertConversationMessage
+  upsertConversationMessage,
+  INITIAL_VISIBLE_MESSAGES
 } from "./conversationUtils";
 import {
   handleStreamControlEvent,
@@ -92,6 +98,8 @@ export interface LiveAssistant {
   errorMessage?: string;
   resumedFromSessionId?: string;
   capturedSessionId?: string;
+  /** Renderer monotonic receipt time for extrapolating the Host's elapsed sample. */
+  runMetricsReceivedAt?: number;
   preserveConversationTitle?: boolean;
 }
 
@@ -101,6 +109,7 @@ export interface ConversationState {
   conversations: Conversation[];
   activeId?: string;
   messages: Record<string, ConversationMessage[]>;
+  olderMessagesAvailable: Record<string, boolean>;
   live: Record<string, LiveAssistant>;
   unreadConversations: UnreadConversationMap;
   pendingFreshContext: Record<string, boolean>;
@@ -114,6 +123,7 @@ export interface ConversationState {
   requestFreshContext(id: string): void;
   setActive(id: string | undefined): Promise<void>;
   loadMessages(id: string, messageIds?: string[]): Promise<void>;
+  loadOlderMessages(id: string): Promise<number>;
   markConversationUnread(id: string): void;
   markConversationCompletedUnread(
     id: string,
@@ -135,11 +145,19 @@ export interface ConversationState {
   transferConversation(input: {
     sourceConversationId: string;
     targetMember: CLIMember;
+    configOptionOverrides?: Record<string, string>;
+    mcpServerIds?: string[];
   }): Promise<{
     conversation: Conversation;
     warning?: "brief_extraction_failed";
     startError?: string;
   }>;
+  forkConversation(input: {
+    conversationId: string;
+    throughMessageId: string;
+    /** Localized suffix appended to the source title, supplied by the caller. */
+    titleSuffix?: string;
+  }): Promise<Conversation>;
   importCodexSession(sessionId: string): Promise<{
     conversation: Conversation;
     created: boolean;
@@ -149,7 +167,25 @@ export interface ConversationState {
   }>;
   renameConversation(id: string, title: string): Promise<void>;
   deleteConversation(id: string): Promise<void>;
-  archiveConversation(id: string, archived: boolean): Promise<void>;
+  /**
+   * Archive (archived: true) drops the row from the sidebar list. Un-archiving
+   * only becomes visible when the caller supplies the archived row — the
+   * Settings archived list has it in hand — which is then re-inserted at the
+   * top, so `restored` is required exactly when `archived` is false.
+   */
+  archiveConversation(id: string, archived: true): Promise<void>;
+  archiveConversation(
+    id: string,
+    archived: false,
+    restored: Conversation
+  ): Promise<void>;
+  setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+  moveConversationToProject(
+    id: string,
+    projectId: string | null
+  ): Promise<Conversation>;
+  setConversationOrder(conversationIds: string[]): Promise<void>;
+  resetConversationOrder(conversationIds: string[]): Promise<void>;
   setConversationApprovalMode(
     id: string,
     approvalMode: "auto" | "ask"
@@ -159,6 +195,7 @@ export interface ConversationState {
     overrides: Record<string, string>
   ): Promise<void>;
   setConversationSkills(id: string, skillIds: string[]): Promise<void>;
+  setConversationMcpServerIds(id: string, ids: string[]): Promise<void>;
 
   sendMessage(input: {
     conversationId: string;
@@ -171,6 +208,8 @@ export interface ConversationState {
     internalPrompt?: boolean;
     memberOverride?: CLIMember;
     configOptionOverrides?: Record<string, string>;
+    hiddenContext?: string;
+    messageSkills?: SkillSnapshot[];
   }): Promise<void>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
@@ -187,6 +226,7 @@ export interface RunCtx {
 export const runCtxMap = new Map<string, RunCtx>();
 
 let transferInFlight = false;
+const olderMessagesInFlight = new Set<string>();
 
 const workflowMessageUnsubscribes = new Map<string, () => void>();
 const workflowEventUnsubscribes = new Map<string, () => void>();
@@ -400,6 +440,17 @@ function mergeMemberSkillIds(
 
 const MEMBER_RUNTIME_OVERRIDES_KEY = "member.runtimeOverrides";
 
+/** Merge server-returned conversation rows into the store without reordering. */
+function patchConversationsFrom(updated: Conversation[]): void {
+  if (!updated.length) return;
+  useConversationStore.setState((s) => ({
+    conversations: s.conversations.map((c) => {
+      const next = updated.find((u) => u.id === c.id);
+      return next ?? c;
+    })
+  }));
+}
+
 async function loadMemberOverrideMap(
   key: string
 ): Promise<Record<string, string>> {
@@ -442,10 +493,11 @@ function buildConversationMembers(
     const overrideAdapter = member.runtimeKey
       ? runtimeOverrides[member.id]
       : undefined;
-    const resolvedAdapter =
-      overrideAdapter ??
-      (member.runtimeKey ? dynamicDefaultAdapter : undefined) ??
-      member.cli.adapter;
+    const defaultAdapter =
+      member.profile === "butler"
+        ? (dynamicDefaultAdapter ?? member.cli.adapter)
+        : member.cli.adapter;
+    const resolvedAdapter = overrideAdapter ?? defaultAdapter;
     const executor = executorStore.resolve(resolvedAdapter);
     return {
       ...member,
@@ -483,6 +535,21 @@ function buildConversationMembers(
       }
     }));
   return [...builtinMembers, ...customMembers];
+}
+
+/**
+ * A cloned adapter keeps its base adapter id in `member.cli.adapter` (see
+ * {@link buildConversationMembers}), so resolving that id returns the *base*
+ * adapter's override. The clone's own override id is encoded in the `cli-`
+ * prefixed member id; resolve that instead so a clone's BYOK config — and the
+ * model list that seeds its session — is used rather than the base adapter's.
+ */
+function resolveMemberExecutor(member: CLIMember) {
+  const store = useCliExecutorStore.getState();
+  const resolved = store.resolve(member.cli.adapter);
+  const overrideId = member.id.startsWith("cli-") ? member.id.slice(4) : "";
+  if (!overrideId || overrideId === member.cli.adapter) return resolved;
+  return store.resolve(overrideId) ?? resolved;
 }
 
 function defaultTitleForAgentName(agentName: string, cwd?: string): string {
@@ -640,6 +707,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   conversations: [],
   activeId: undefined,
   messages: {},
+  olderMessagesAvailable: {},
   live: {},
   unreadConversations: loadUnreadConversations(),
   pendingFreshContext: {},
@@ -666,14 +734,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const cur = get().activeId || stored;
     const matchedCur =
       cur && synced.conversations.some((c) => c.id === cur) ? cur : undefined;
+    const restored = synced.conversations.find((c) => c.id === matchedCur);
+    const activeId = restored?.kind === "doc-studio" &&
+      (typeof document === "undefined" || document.documentElement.dataset.surface !== "doc-studio")
+      ? undefined : matchedCur;
     set({
       members,
       memberRuntimeOverrides,
       conversations: synced.conversations,
-      activeId: matchedCur
+      activeId
     });
     const active = get().activeId;
-    if (active) get().markConversationRead(active);
+    if (active && isConversationReadingVisible()) get().markConversationRead(active);
     if (active && !get().messages[active]) {
       await get().loadMessages(active);
     }
@@ -737,6 +809,25 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async setActive(id) {
+    if (id && typeof window !== "undefined" &&
+      (typeof document === "undefined" || document.documentElement.dataset.surface !== "doc-studio")) {
+      const conversation = get().conversations.find((item) => item.id === id);
+      if (conversation?.kind === "doc-studio" && window.freebuddy?.platform !== "web") {
+        // A conversation docked into this window's embedded viewer must stay
+        // embedded; only undocked ones pop the standalone DocStudio window.
+        const embedded = await window.freebuddy?.docStudio?.isConversationEmbedded?.(id)?.catch(() => false) ?? false;
+        if (!embedded) {
+          try {
+            if (await window.freebuddy?.docStudio?.openConversation(id)) {
+              get().markConversationRead(id);
+              return;
+            }
+          } catch {
+            /* Fall back to the conversation when a standalone window cannot open. */
+          }
+        }
+      }
+    }
     setStoredActiveId(id);
     if (id && get().unreadConversations[id]) {
       const unreadConversations = { ...get().unreadConversations };
@@ -774,7 +865,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   markConversationUnread(id) {
-    if ((get().activeId === id && !isAppInBackground()) || get().unreadConversations[id]) return;
+    if ((get().activeId === id && !isAppInBackground() && isConversationReadingVisible()) || get().unreadConversations[id]) return;
     const unreadConversations: UnreadConversationMap = {
       ...get().unreadConversations,
       [id]: { kind: "message", at: new Date().toISOString() }
@@ -784,7 +875,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   markConversationCompletedUnread(id, result) {
-    if (get().activeId === id && !isAppInBackground()) return;
+    if (get().activeId === id && !isAppInBackground() && isConversationReadingVisible()) return;
     const current = get().unreadConversations[id];
     if (current?.kind === result) return;
     const unreadConversations: UnreadConversationMap = {
@@ -821,14 +912,27 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       return;
     }
 
-    const list = await cliClient.listMessages(id);
+    const page = await cliClient.listMessages(id, {
+      limit: INITIAL_VISIBLE_MESSAGES
+    });
+    const list = page.messages;
     set((s) => {
       const sessionInfo = latestSessionInfoFromMessages(list);
       const agentTitle = sessionInfo?.title?.trim();
       const feedArticleTitle = feedArticleTitleFromMessages(list);
       let conversations = s.conversations;
-      if (agentTitle) {
-        const conversation = conversations.find((entry) => entry.id === id);
+      const conversation = conversations.find((entry) => entry.id === id);
+      const recoveredTitle = conversation
+        ? recoverConversationTitleFromMessages(conversation, list)
+        : undefined;
+      if (conversation && recoveredTitle) {
+        conversations = conversations.map((entry) =>
+          entry.id === id
+            ? { ...entry, title: recoveredTitle, titleSource: "prompt" as const }
+            : entry
+        );
+        void cliClient.renameConversation(id, recoveredTitle, "prompt");
+      } else if (agentTitle) {
         const nextTitle =
           conversation &&
           feedArticleTitle &&
@@ -855,14 +959,52 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           void cliClient.renameConversation(id, agentTitle, "agent");
         }
       }
+      const existing = s.messages[id] ?? [];
+      const alreadyPaged = Object.prototype.hasOwnProperty.call(
+        s.olderMessagesAvailable,
+        id
+      );
       return {
         messages: {
           ...s.messages,
-          [id]: mergeConversationMessages(s.messages[id] ?? [], list)
+          [id]: mergeConversationMessages(existing, list)
+        },
+        olderMessagesAvailable: {
+          ...s.olderMessagesAvailable,
+          [id]: alreadyPaged ? s.olderMessagesAvailable[id] : page.hasMore
         },
         conversations
       };
     });
+  },
+
+  async loadOlderMessages(id) {
+    if (!cliClient.isAvailable()) return 0;
+    if (olderMessagesInFlight.has(id)) return 0;
+    const existing = get().messages[id] ?? [];
+    const oldest = existing[0];
+    if (!oldest) return 0;
+    olderMessagesInFlight.add(id);
+    try {
+      const page = await cliClient.listMessages(id, {
+        limit: INITIAL_VISIBLE_MESSAGES,
+        beforeCreatedAt: oldest.createdAt,
+        beforeId: oldest.id
+      });
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [id]: mergeConversationMessages(s.messages[id] ?? [], page.messages)
+        },
+        olderMessagesAvailable: {
+          ...s.olderMessagesAvailable,
+          [id]: page.hasMore
+        }
+      }));
+      return page.messages.length;
+    } finally {
+      olderMessagesInFlight.delete(id);
+    }
   },
 
   async newConversation({
@@ -877,15 +1019,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     skillIds
   }) {
     const id = nanoid();
-    const resolvedExecutor = useCliExecutorStore
-      .getState()
-      .resolve(member.cli.adapter);
+    const resolvedExecutor = resolveMemberExecutor(member);
     const defaultCodexByokModel =
       member.cli.adapter === "codex-acp" && resolvedExecutor?.codexByok?.enabled
         ? resolvedExecutor.codexByok.models?.[0]?.id?.trim()
         : undefined;
+    const defaultPiByokModel =
+      member.cli.adapter === "pi-acp" && resolvedExecutor?.piByok?.enabled
+        ? `freebuddy-relay/${resolvedExecutor.piByok.models?.[0]?.id?.trim()}`
+        : undefined;
     const persistedConfigOptionOverrides = {
       ...(defaultCodexByokModel ? { model: defaultCodexByokModel } : {}),
+      ...(defaultPiByokModel ? { model: defaultPiByokModel } : {}),
       ...(configOptionOverrides ?? {})
     };
     const conv = await cliClient.createConversation({
@@ -908,6 +1053,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ),
       titleSource: title ? "prompt" : "default"
     });
+    await useProjectStore.getState().refresh();
     setStoredActiveId(conv.id);
     set((s) => ({
       conversations: [conv, ...s.conversations.filter((c) => c.id !== conv.id)],
@@ -932,7 +1078,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     return conv;
   },
 
-  async transferConversation({ sourceConversationId, targetMember }) {
+  async transferConversation({ sourceConversationId, targetMember, configOptionOverrides, mcpServerIds }) {
     if (transferInFlight) {
       throw new Error("Another transfer is in progress");
     }
@@ -944,7 +1090,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         targetConversationId,
         targetAgentId: targetMember.id,
         targetAgentName: targetMember.name,
-        targetAdapter: targetMember.cli.adapter
+        targetAdapter: targetMember.cli.adapter,
+        ...(configOptionOverrides && Object.keys(configOptionOverrides).length > 0
+          ? { configOptionOverrides }
+          : {}),
+        ...(mcpServerIds !== undefined ? { mcpServerIds } : {})
       });
       set((s) => ({
         conversations: [
@@ -982,6 +1132,40 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
 
+  async forkConversation({ conversationId, throughMessageId, titleSuffix }) {
+    const source = get().conversations.find((c) => c.id === conversationId);
+    const result = await cliClient.forkConversation({
+      sourceConversationId: conversationId,
+      throughMessageId,
+      targetConversationId: nanoid(),
+      ...(source
+        ? {
+            title: titleSuffix?.trim()
+              ? `${source.title} (${titleSuffix.trim()})`
+              : source.title
+          }
+        : {})
+    });
+    setStoredActiveId(result.conversation.id);
+    set((s) => ({
+      conversations: [
+        result.conversation,
+        ...s.conversations.filter((c) => c.id !== result.conversation.id)
+      ],
+      activeId: result.conversation.id,
+      messages: { ...s.messages, [result.conversation.id]: [] }
+      // No pendingFreshContext: the fork owns copied history rows, and the
+      // backend strips the source session marker, so the next send correctly
+      // goes down the orphan-followup path (listFollowupMessages) and the
+      // first answer still sees the pre-fork conversation.
+    }));
+    ensureWorkflowMessageSubscription(result.conversation.id, async (cid, messageIds) => {
+      await get().loadMessages(cid, messageIds);
+    });
+    await get().loadMessages(result.conversation.id);
+    return result.conversation;
+  },
+
   async importCodexSession(sessionId) {
     const result = await cliClient.importCodexSession(sessionId);
     set((s) => ({
@@ -1004,10 +1188,14 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async renameConversation(id, title) {
-    await cliClient.renameConversation(id, title, "user");
+    const next = sanitizeUserConversationTitle(title);
+    if (!next) return;
+    const current = get().conversations.find((entry) => entry.id === id);
+    if (current?.title === next && current.titleSource === "user") return;
+    await cliClient.renameConversation(id, next, "user");
     set((s) => ({
       conversations: s.conversations.map((c) =>
-        c.id === id ? { ...c, title, titleSource: "user" as const } : c
+        c.id === id ? { ...c, title: next, titleSource: "user" as const } : c
       )
     }));
   },
@@ -1027,15 +1215,18 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((s) => {
       const next = s.conversations.filter((c) => c.id !== id);
       const nextMessages = { ...s.messages };
+      const olderMessagesAvailable = { ...s.olderMessagesAvailable };
       const unreadConversations = { ...s.unreadConversations };
       const pendingFreshContext = { ...s.pendingFreshContext };
       delete nextMessages[id];
+      delete olderMessagesAvailable[id];
       delete unreadConversations[id];
       delete pendingFreshContext[id];
       persistUnreadConversations(unreadConversations);
       return {
         conversations: next,
         messages: nextMessages,
+        olderMessagesAvailable,
         unreadConversations,
         pendingFreshContext,
         activeId: s.activeId === id ? next[0]?.id : s.activeId
@@ -1043,22 +1234,98 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
   },
 
-  async archiveConversation(id, archived) {
+  async archiveConversation(id: string, archived: boolean, restored?: Conversation) {
     await cliClient.archiveConversation(id, archived);
     set((s) => {
       const pendingFreshContext = { ...s.pendingFreshContext };
       if (archived) {
         delete pendingFreshContext[id];
+        const next = s.conversations.filter((c) => c.id !== id);
+        return {
+          conversations: next,
+          // Archiving the open conversation must leave the main view too.
+          activeId: s.activeId === id ? next[0]?.id : s.activeId,
+          pendingFreshContext
+        };
       }
+      // Restore: re-insert at the top so the conversation is immediately
+      // visible; the archived row itself is only known to the caller.
+      if (!restored) return { pendingFreshContext };
       return {
-        conversations: archived
-          ? s.conversations.filter((c) => c.id !== id)
-          : s.conversations.map((c) =>
-              c.id === id ? { ...c, archived } : c
-            ),
+        conversations: [
+          { ...restored, archived: false },
+          ...s.conversations.filter((c) => c.id !== restored.id)
+        ],
         pendingFreshContext
       };
     });
+  },
+
+  async setConversationPinned(id, pinned) {
+    const conversation = await cliClient.setConversationPinned(id, pinned);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === conversation.id ? conversation : c
+      )
+    }));
+    return conversation;
+  },
+
+  async moveConversationToProject(id, projectId) {
+    const conversation = await cliClient.moveConversationToProject(
+      id,
+      projectId
+    );
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === conversation.id ? conversation : c
+      )
+    }));
+    // The move may have extended the target project's folders.
+    await useProjectStore.getState().refresh();
+    return conversation;
+  },
+
+  async setConversationOrder(conversationIds) {
+    // Optimistic: mirror the server's index*1024 positions so the list does
+    // not flicker while the IPC round-trip runs.
+    const positionById = new Map(
+      conversationIds.map((id, index) => [id, index * 1024] as const)
+    );
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        positionById.has(c.id)
+          ? { ...c, sortPosition: positionById.get(c.id) }
+          : c
+      )
+    }));
+    try {
+      const updated = await cliClient.setConversationOrder(conversationIds);
+      patchConversationsFrom(updated);
+    } catch (error) {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to save conversation order:", error);
+      }
+      await get().refreshList();
+    }
+  },
+
+  async resetConversationOrder(conversationIds) {
+    const idSet = new Set(conversationIds);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        idSet.has(c.id) ? { ...c, sortPosition: null } : c
+      )
+    }));
+    try {
+      const updated = await cliClient.resetConversationOrder(conversationIds);
+      patchConversationsFrom(updated);
+    } catch (error) {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to reset conversation order:", error);
+      }
+      await get().refreshList();
+    }
   },
 
   async setConversationApprovalMode(id, approvalMode) {
@@ -1100,6 +1367,41 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }));
   },
 
+  async setConversationMcpServerIds(id, ids) {
+    const index = get().conversations.findIndex(
+      (conversation) => conversation.id === id
+    );
+    if (index < 0) return;
+    const previousMetadata = get().conversations[index].metadata;
+    set((state) => ({
+      conversations: state.conversations.map((conversation) =>
+        conversation.id === id
+          ? {
+              ...conversation,
+              metadata: { ...conversation.metadata, mcpServerIds: ids }
+            }
+          : conversation
+      )
+    }));
+    try {
+      await cliClient.setConversationMcpServerIds(id, ids);
+    } catch (err) {
+      const current = get().conversations.find(
+        (conversation) => conversation.id === id
+      );
+      if (current?.metadata?.mcpServerIds === ids) {
+        set((state) => ({
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === id
+              ? { ...conversation, metadata: previousMetadata }
+              : conversation
+          )
+        }));
+      }
+      throw err;
+    }
+  },
+
   isRunning(id) {
     const live = get().live[id];
     return !!live && (live.status === "starting" || live.status === "running");
@@ -1115,7 +1417,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     preserveConversationTitle,
     internalPrompt = false,
     memberOverride,
-    configOptionOverrides
+    configOptionOverrides,
+    hiddenContext,
+    messageSkills = []
   }) {
     const trimmed = prompt.trim();
     if (!trimmed && attachments.length === 0) return;
@@ -1174,6 +1478,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         role: "user",
         status: "sent",
         content: trimmed,
+        ...(messageSkills.length ? { skillSnapshot: messageSkills } : {}),
         ...(attachments.length ? { attachments } : {}),
         authorUsername: get().currentUser?.username ?? null,
         createdAt: now,
@@ -1194,7 +1499,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         role: "user",
         status: "sent",
         content: trimmed,
-        attachments
+        attachments,
+        skillSnapshot: messageSkills
       });
       set((s) => ({
         messages: {
@@ -1247,6 +1553,9 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const resolved = useCliExecutorStore
       .getState()
       .resolve(member.cli.adapter);
+    // BYOK defaults must come from the member's own override; `resolved` points
+    // at the base adapter for clones (see resolveMemberExecutor).
+    const memberExecutor = resolveMemberExecutor(member);
     const binary = member.cli.binary || resolved?.binary;
     const extraArgs = [
       ...(resolved?.extraArgs ?? []),
@@ -1270,6 +1579,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       }
     }
     const userPrompt = composeMessageWithAttachments(trimmed, attachments);
+    const skillPrompt = withMessageSkills(userPrompt, messageSkills);
+    const userPromptWithContext = hiddenContext?.trim()
+      ? `${hiddenContext.trim()}\n\n${skillPrompt}`
+      : skillPrompt;
     const workflowFollowupContext =
       workflowRun && (wantFresh || !resumedFromSessionId)
         ? await workflowFollowupContextForRun(workflowRun)
@@ -1278,13 +1591,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     // FreeBuddy chat history so short follow-ups like "continue" keep prior asks.
     const orphanFollowupContext =
       !workflowRun && !wantFresh && !resumedFromSessionId
-        ? buildOrphanFollowupContext(get().messages[conversationId] ?? [], {
-            excludeMessageIds: [userMsgId, assistantMsgId]
-          })
+        ? buildOrphanFollowupContext(
+            await cliClient.listFollowupMessages(conversationId, [userMsgId, assistantMsgId])
+          )
         : undefined;
     const promptWithWorkflowContext = workflowFollowupContext
-      ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPrompt}`
-      : composeOrphanFollowupPrompt(userPrompt, orphanFollowupContext);
+      ? `${workflowFollowupContext}\n\nUser follow-up:\n${userPromptWithContext}`
+      : composeOrphanFollowupPrompt(userPromptWithContext, orphanFollowupContext);
 
     const msgs = get().messages[conversationId] ?? [];
     const liveItems = get().live[conversationId]?.items;
@@ -1297,8 +1610,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       configOptions
     );
     const combinedOverrides = {
-      ...(member.cli.adapter === "codex-acp" && resolved?.codexByok?.enabled
-        ? { model: resolved.codexByok.models?.[0]?.id?.trim() }
+      ...(member.cli.adapter === "codex-acp" && memberExecutor?.codexByok?.enabled
+        ? { model: memberExecutor.codexByok.models?.[0]?.id?.trim() }
         : {}),
       ...(overridesToSend ?? {}),
       ...(configOptionOverrides ?? {})
@@ -1345,8 +1658,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       knownAgentStreamMessageIds: collectStreamAgentMessageIds(
         get().messages[conversationId] ?? []
       ),
-      skills: conv.skillSnapshot,
-      announceSkills: wantFresh || !resumedFromSessionId
+      skills: mergeMessageSkills(conv.skillSnapshot, messageSkills),
+      announceSkills: messageSkills.length > 0 || wantFresh || !resumedFromSessionId
     };
 
     const parser = getParser(resolved?.streamMode ?? "raw");
@@ -1396,6 +1709,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
 
     try {
+      await cliClient.awaitPendingMcpSelection(conversationId);
       await cliClient.run(runArgs);
     } catch (err) {
       const msg = (err as Error)?.message || String(err);

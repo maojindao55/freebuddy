@@ -13,36 +13,44 @@ import {
   type ReactNode
 } from "react";
 import { nanoid } from "nanoid";
+import { parseStoredStreamItems } from "@freebuddy/cli-stream";
 import {
   Check,
   ChevronDown,
+  ChevronUp,
   ExternalLink,
   Folder,
-  FolderLock,
   GitBranch,
   Laptop,
+  Layers,
+  MessagesSquare,
   Plus,
   Search,
+  Server,
+  Sparkles,
   X
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ONBOARDING_GUIDE_AGENT_ID } from "@/config/agentProfiles";
+import { OnboardingGuideSetupCard } from "@/components/Onboarding/OnboardingGuideSetupCard";
 import { useConversationStore } from "@/store/conversationStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
+import { useGuideInstallStore } from "@/store/guideInstallStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useWorkflowTeamStore } from "@/store/workflowTeamStore";
 import { useDelegationTeamStore } from "@/store/delegationStore";
 import { delegationClient } from "@/services/delegation/client";
+import { resolveDelegationFollowupMember } from "@/services/delegation/followupMember";
 import { useNewTaskUiStore } from "@/store/newTaskUiStore";
+import { useProviderStore } from "@/store/providerStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useProjectStore } from "@/store/projectStore";
-import {
-  folderBaseName,
-  formatDisplayPath,
-  pathsEqual
-} from "@/utils/projectPaths";
 import { cliClient } from "@/services/cli/client";
-import { pruneConfigOptionOverrides } from "@/utils/sessionConfigOptions";
+import {
+  findMainModelConfigOption,
+  pruneConfigOptionOverrides
+} from "@/utils/sessionConfigOptions";
 import type {
   AttachmentPrepareRejection,
   ChatAttachment,
@@ -83,27 +91,43 @@ import {
   shouldDiscardCreatedManagedCandidate
 } from "@/utils/mergeSelectedAttachments";
 import { MessageBubble } from "./MessageBubble";
+import { MarkdownCodeBlockContext } from "./StreamItem";
 import { AgentAvatar } from "./AgentAvatar";
 import { CodeWhipOverlay } from "./CodeWhipOverlay";
 import { DelegationTeamPreviewCard } from "../Workflows/DelegationTeamPreviewCard";
 import { DelegationApprovalCard } from "../Workflows/DelegationApprovalCard";
-import { useReplayStore } from "@/store/replayStore";
-import { parseSlashDraft, SlashCommandMenu } from "./SlashCommandMenu";
+import { SlashCommandMenu } from "./SlashCommandMenu";
+import { MessageSkillTags } from "./MessageSkillTags";
+import { ConversationReferencePicker, ConversationReferenceTags } from "./ConversationReferencePicker";
+import { buildReferencedPrompt, mergeConversationReferences, type ConversationReferenceDraft } from "@/utils/conversationReferences";
+import { useSkillCommands } from "@/hooks/useSkillCommands";
+import type { SkillSnapshot } from "@/services/skills/types";
+import { mergeMessageSkills } from "@/utils/skillCommands";
 import {
   mergeSessionMetaItems,
-  type AvailableCommandItem,
   type ConfigOptionItem
 } from "@/store/sessionMetaUtils";
 import {
   buildConversationTitle,
-  upsertConversationMessage
+  upsertConversationMessage,
+  visibleConversationSlice,
+  INITIAL_VISIBLE_MESSAGES,
+  VISIBLE_MESSAGE_STEP
 } from "@/store/conversationUtils";
 import { SessionConfigPicker } from "./SessionConfigPicker";
+import {
+  ScheduledSendControl,
+  ScheduledSendMeta
+} from "./ScheduledSendControl";
+import { useScheduledSendStore } from "@/store/scheduledSendStore";
 import { ComposerAddMenu } from "./ComposerAddMenu";
+import { McpServerPicker } from "./McpServerPicker";
 import { AgentPicker } from "./AgentPicker";
 import { NewTaskUnreadConversations } from "./NewTaskUnreadConversations";
+import { conversationVisibleTitle } from "./conversationTitle";
 import { HostDirectoryPicker } from "./HostDirectoryPicker";
 import { useSkillStore } from "@/store/skillStore";
+import { useConversationReferenceDrop } from "@/hooks/useConversationReferenceDrop";
 import { useAttachmentImport } from "@/hooks/useAttachmentImport";
 import { useWorkspaceFileMentions } from "@/hooks/useWorkspaceFileMentions";
 import { resolveDeferredAttachmentImport } from "@/utils/attachmentImport";
@@ -113,18 +137,17 @@ import {
   unprotectManagedAttachments
 } from "@/utils/managedAttachmentProtection";
 import { WorkspaceFileMentionMenu } from "./WorkspaceFileMentionMenu";
-import {
-  conversationDisplayCwd,
-  projectLabelFromCwd
-} from "./conversationProjectGrouping";
+import { ComposerWorkspaceMeta } from "./ComposerWorkspaceMeta";
+import { useComposerGitInfo } from "@/hooks/useComposerGitInfo";
 import {
   agentEntriesNeedingDetection,
   agentEntriesNeedingRefresh,
   agentRuntimeKey,
   buildAgentAvailabilityGroups,
-  type AgentAvailabilityEntry,
+  preferredAvailableAgentId,
   type AgentAvailabilityGroups
 } from "@/utils/agentAvailability";
+import { useAgentAvailabilityChecks } from "./useAgentAvailabilityChecks";
 
 const EMPTY_MESSAGES: never[] = [];
 
@@ -465,6 +488,21 @@ function preparedTaskWorkspaceMetadata(
   };
 }
 
+function buildNewTaskMetadata(
+  preparedWorkspace: PreparedTaskWorkspace | null | undefined,
+  mcpServerIds: string[]
+): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {
+    ...(preparedWorkspace
+      ? preparedTaskWorkspaceMetadata(preparedWorkspace)
+      : {})
+  };
+  if (mcpServerIds.length) {
+    metadata.mcpServerIds = mcpServerIds;
+  }
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
 function pluginAgentForAdapter(adapter?: string): NativePluginAgent | undefined {
   const normalized = adapter?.trim().toLowerCase();
   if (normalized?.startsWith("codex")) return "codex";
@@ -622,7 +660,15 @@ function AttachmentTray({
               "FILE"
             )}
           </span>
-          <span className="attachment-chip-main">
+          <span
+            className="attachment-chip-main"
+            title={t("docStudio.openInStudio", "Open in DocStudio")}
+            onClick={() => {
+              if (attachment.path && window.freebuddy?.docStudio) {
+                void window.freebuddy.docStudio.openWindow(attachment.path);
+              }
+            }}
+          >
             <span className="attachment-chip-name">{attachment.name}</span>
             <span className="attachment-chip-meta">{attachmentSummary(attachment)}</span>
           </span>
@@ -775,7 +821,10 @@ function HandoffConversationCard({
   return (
     <ContextReferenceCard
       label={t("handoff.referenceLabel")}
-      title={conversation.title}
+      title={conversationVisibleTitle(
+        conversation,
+        t("workflow.delegation.sessionTitleFallback")
+      )}
       meta={metaParts.join(" · ")}
       description={t(
         contextAvailable
@@ -843,45 +892,88 @@ function SharedConversationReferences({
 }
 
 export function ChatView({
-  onOpenAgentSettings
+  onOpenAgentSettings,
+  onOpenMcpSettings,
+  messageFocus,
+  onMessageFocused,
+  variant = "default",
+  hideHeader = false,
+  conversationId,
+  getPromptContext,
+  composerAccessory,
+  renderMessageFooter,
+  renderCodeBlock,
+  emptyState,
+  placeholder
 }: {
   onOpenAgentSettings?: () => void;
+  onOpenMcpSettings?: () => void;
+  messageFocus?: { conversationId: string; messageId: string } | null;
+  onMessageFocused?: () => void;
+  variant?: "default" | "mini";
+  hideHeader?: boolean;
+  conversationId?: string;
+  getPromptContext?: () => string | undefined;
+  composerAccessory?: ReactNode;
+  renderMessageFooter?: (m: ConversationMessage) => ReactNode;
+  renderCodeBlock?: (lang: string, code: string, closed: boolean) => ReactNode | null;
+  emptyState?: ReactNode;
+  placeholder?: string;
 }) {
   const { t } = useTranslation();
-  const activeId = useConversationStore((s) => s.activeId);
+  const storeActiveId = useConversationStore((s) => s.activeId);
+  const activeId = conversationId ?? storeActiveId;
   const conversations = useConversationStore((s) => s.conversations);
   const members = useConversationStore((s) => s.members);
   // Select only the active conversation's slices so a background conversation
   // streaming events (which always rebuilds the messages/live maps) does not
   // re-render this component.
   const messages = useConversationStore((s) =>
-    s.activeId ? s.messages[s.activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+    activeId ? s.messages[activeId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+  );
+  const olderMessagesAvailable = useConversationStore((s) =>
+    activeId ? Boolean(s.olderMessagesAvailable[activeId]) : false
   );
   const live = useConversationStore((s) =>
-    s.activeId ? s.live[s.activeId] : undefined
+    activeId ? s.live[activeId] : undefined
   );
   const createConversation = useConversationStore((s) => s.newConversation);
   const sendMessage = useConversationStore((s) => s.sendMessage);
   const stopActive = useConversationStore((s) => s.stopActive);
   const notify = useAgentBridgeStore((s) => s.notify);
+  const scheduledSend = useScheduledSendStore((s) =>
+    activeId ? s.entries[activeId] : undefined
+  );
+  const scheduledSendNow = useScheduledSendStore((s) =>
+    activeId && s.entries[activeId] ? s.now : 0
+  );
+  const scheduleSend = useScheduledSendStore((s) => s.schedule);
+  const removeScheduledSend = useScheduledSendStore((s) => s.remove);
+  const fireScheduledSendNow = useScheduledSendStore((s) => s.fireNow);
+  const retryScheduledSend = useScheduledSendStore((s) => s.retry);
   const setApprovalMode = useConversationStore(
     (s) => s.setConversationApprovalMode
   );
   const setConfigOptionOverrides = useConversationStore(
     (s) => s.setConversationConfigOptionOverrides
   );
-  const setConversationSkills = useConversationStore((s) => s.setConversationSkills);
   const skills = useSkillStore((s) => s.skills);
   const skillsLoaded = useSkillStore((s) => s.loaded);
+  const skillsLoading = useSkillStore((s) => s.loading);
+  const skillsError = useSkillStore((s) => s.error);
   const loadSkills = useSkillStore((s) => s.load);
 
   const taskMode = useNewTaskUiStore((s) => s.taskMode);
+  const preferredAgentId = useNewTaskUiStore((s) => s.preferredAgentId);
+  const setPreferredAgentId = useNewTaskUiStore((s) => s.setPreferredAgentId);
   const setTaskMode = useNewTaskUiStore((s) => s.setTaskMode);
   const requestedTeamId = useNewTaskUiStore((s) => s.requestedTeamId);
   const setRequestedTeamId = useNewTaskUiStore((s) => s.setRequestedTeamId);
   const requestedCwd = useNewTaskUiStore((s) => s.requestedCwd);
   const requestedProjectId = useNewTaskUiStore((s) => s.requestedProjectId);
   const requestedDraft = useNewTaskUiStore((s) => s.requestedDraft);
+  const requestedAgentId = useNewTaskUiStore((s) => s.requestedAgentId);
+  const requestedAttachments = useNewTaskUiStore((s) => s.requestedAttachments);
   const cwdRequestToken = useNewTaskUiStore((s) => s.cwdRequestToken);
   const teamMode = taskMode === "team";
   const workflowMode = false;
@@ -913,8 +1005,28 @@ export function ChatView({
   const executorsLoaded = useCliExecutorStore((s) => s.loaded);
   const executorOverrides = useCliExecutorStore((s) => s.overrides);
   const executorRuntimes = useCliExecutorStore((s) => s.runtimes);
+  const providers = useProviderStore((s) => s.providers);
 
   const [draft, setDraft] = useState("");
+  const [messageSkillDrafts, setMessageSkillDrafts] = useState<Record<string, SkillSnapshot[]>>({});
+  const messageSkills = activeId ? messageSkillDrafts[activeId] ?? [] : [];
+  const setMessageSkills = useCallback((selected: SkillSnapshot[]) => {
+    if (activeId) setMessageSkillDrafts(current => ({ ...current, [activeId]: selected }));
+  }, [activeId]);
+  const referenceScope = activeId ?? "new-task";
+  const [referenceDrafts, setReferenceDrafts] = useState<Record<string, ConversationReferenceDraft[]>>({});
+  const selectedReferences = referenceDrafts[referenceScope] ?? [];
+  const setSelectedReferences = useCallback((references: ConversationReferenceDraft[]) => {
+    setReferenceDrafts(current => ({ ...current, [referenceScope]: references }));
+  }, [referenceScope]);
+  const [referencePickerScope, setReferencePickerScope] = useState<string>();
+  useEffect(() => setReferencePickerScope(undefined), [referenceScope]);
+  const referencePicker = referencePickerScope === referenceScope ? <ConversationReferencePicker
+    key={referenceScope} targetId={activeId} selected={selectedReferences} onChange={setSelectedReferences}
+    onClose={() => setReferencePickerScope(undefined)} /> : null;
+  const [newTaskMessageSkills, setNewTaskMessageSkills] = useState<SkillSnapshot[]>([]);
+  const [historyReveal, setHistoryReveal] = useState(INITIAL_VISIBLE_MESSAGES);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [newTaskDraft, setNewTaskDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [newTaskPendingAttachments, setNewTaskPendingAttachments] = useState<ChatAttachment[]>([]);
@@ -924,15 +1036,26 @@ export function ChatView({
   const sendInFlightRef = useRef(false);
   const newTaskSendInFlightRef = useRef(false);
   const [selectedMemberId, setSelectedMemberId] = useState("");
-  const [checkingAgentIds, setCheckingAgentIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  const checkingAgentIdsRef = useRef<Set<string>>(new Set());
+  const { checkingAgentIds, checkAgentEntries } = useAgentAvailabilityChecks();
   const initialAgentDetectionStartedRef = useRef(false);
   const memberSelectionTouchedRef = useRef(false);
-  const [newTaskSkillIds, setNewTaskSkillIds] = useState<string[]>([]);
+  const [newTaskMcpServerIds, setNewTaskMcpServerIds] = useState<string[]>([]);
   const [newTaskCwd, setNewTaskCwd] = useState("");
   const [newTaskProjectId, setNewTaskProjectId] = useState<string | undefined>();
+  const applyNewTaskWorkspace = useCallback(async (cwd: string) => {
+    setNewTaskCwd(cwd);
+    const trimmed = cwd.trim();
+    if (!trimmed) {
+      setNewTaskProjectId(undefined);
+      return;
+    }
+    try {
+      const project = await useProjectStore.getState().ensureForCwd(trimmed);
+      setNewTaskProjectId(project.id);
+    } catch {
+      setNewTaskProjectId(undefined);
+    }
+  }, []);
   const [newTaskWorkspaceMode, setNewTaskWorkspaceMode] =
     useState<TaskWorkspaceMode>("local");
   const [newTaskBranch, setNewTaskBranch] = useState("");
@@ -945,12 +1068,31 @@ export function ChatView({
   const [newTaskConfigOptionOverrides, setNewTaskConfigOptionOverrides] =
     useState<Record<string, string>>({});
   const [newTaskConfigLoading, setNewTaskConfigLoading] = useState(false);
+  const [activeConversationConfigOptions, setActiveConversationConfigOptions] =
+    useState<SessionConfigOption[] | null>(null);
   const newTaskConfigProbeGenerationRef = useRef(0);
   const [permissionMode, setPermissionMode] = useState<"auto" | "ask">("auto");
   const [preflightMsg, setPreflightMsg] = useState<string | null>(null);
-  const [contextReferences, setContextReferences] = useState<
-    ConversationContextReference[]
-  >([]);
+  const [contextReferencesByConversation, setContextReferencesByConversation] =
+    useState<Record<string, ConversationContextReference[]>>({});
+  const contextReferences = useMemo(
+    () => activeId ? contextReferencesByConversation[activeId] ?? [] : [],
+    [activeId, contextReferencesByConversation]
+  );
+  const contextReferenceVersionsRef = useRef(new Map<string, number>());
+  const updateContextReferences = useCallback((
+    id: string,
+    references: ConversationContextReference[]
+  ) => {
+    contextReferenceVersionsRef.current.set(
+      id,
+      (contextReferenceVersionsRef.current.get(id) ?? 0) + 1
+    );
+    setContextReferencesByConversation((current) => ({
+      ...current,
+      [id]: references
+    }));
+  }, []);
   const [submitPreview, setSubmitPreview] = useState<{
     conversationId: string;
     prompt: string;
@@ -958,6 +1100,7 @@ export function ChatView({
     createdAt: string;
     userMessageId: string;
     assistantMessageId: string;
+    skillSnapshot?: SkillSnapshot[];
   } | null>(null);
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<{
     runId: string;
@@ -970,6 +1113,20 @@ export function ChatView({
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const focusComposer = useCallback(() => {
+    const activeEl = document.activeElement;
+    const isTypingElsewhere =
+      activeEl &&
+      activeEl !== chatTextareaRef.current &&
+      activeEl !== document.body &&
+      (activeEl.tagName === "INPUT" ||
+        activeEl.tagName === "TEXTAREA" ||
+        activeEl.tagName === "SELECT" ||
+        (activeEl as HTMLElement).isContentEditable);
+    if (!isTypingElsewhere) {
+      chatTextareaRef.current?.focus();
+    }
+  }, []);
   const pendingAttachmentsRef = useRef(pendingAttachments);
   const draftRef = useRef(draft);
   const conversationDraftsRef = useRef(new Map<string, string>());
@@ -978,28 +1135,81 @@ export function ChatView({
   const newTaskPendingAttachmentsRef = useRef(newTaskPendingAttachments);
   const attachmentImportGenerationRef = useRef(0);
   const isNearBottomRef = useRef(true);
-  const [slashIndex, setSlashIndex] = useState(0);
+  const snapTargetRef = useRef<number | null>(null);
+  const emptyStateVisibleRef = useRef(false);
+  const pinToBottom = useCallback((el: HTMLDivElement) => {
+    // When the custom empty state is showing there is no history to pin to:
+    // keep the scroll origin at the top so the block isn't clipped upward.
+    if (emptyStateVisibleRef.current) {
+      snapTargetRef.current = 0;
+      el.scrollTop = 0;
+      return;
+    }
+    snapTargetRef.current = el.scrollHeight - el.clientHeight;
+    el.scrollTop = el.scrollHeight;
+  }, []);
   const conv = conversations.find((c) => c.id === activeId);
+
+  const conversationMcpServerIds = useMemo(() => {
+    const metadata = conv?.metadata;
+    if (metadata && Array.isArray(metadata.mcpServerIds)) {
+      return (metadata.mcpServerIds as unknown[]).filter(
+        (id): id is string => typeof id === "string"
+      );
+    }
+    return [];
+  }, [conv?.metadata]);
+
+  const setConversationMcpServerIds = useConversationStore(
+    (s) => s.setConversationMcpServerIds
+  );
+
+  const handleMcpServerIdsChange = useCallback(
+    async (ids: string[]) => {
+      if (!conv?.id) return;
+      try {
+        await setConversationMcpServerIds(conv.id, ids);
+      } catch {
+        notify(t("mcp.saveSelectionFailed"));
+      }
+    },
+    [conv?.id, setConversationMcpServerIds, notify, t]
+  );
+
   useEffect(() => {
     let active = true;
-    if (!activeId) {
-      setContextReferences([]);
-      return () => {
-        active = false;
-      };
-    }
+    if (!activeId) return;
+    const version = contextReferenceVersionsRef.current.get(activeId) ?? 0;
+    const isCurrent = () =>
+      active && (contextReferenceVersionsRef.current.get(activeId) ?? 0) === version;
     void cliClient
       .listConversationContextReferences(activeId)
       .then((references) => {
-        if (active) setContextReferences(references);
+        if (!isCurrent()) return;
+        setContextReferencesByConversation((current) => {
+          // An attach response may already identify a message still being saved.
+          // Keep that pending binding until the persisted history can resolve it.
+          const previous = new Map(
+            (current[activeId] ?? []).map((reference) => [reference.id, reference])
+          );
+          return {
+            ...current,
+            [activeId]: references.map((reference) => {
+              const targetMessageId = reference.targetMessageId ??
+                previous.get(reference.id)?.targetMessageId;
+              return targetMessageId ? { ...reference, targetMessageId } : reference;
+            })
+          };
+        });
       })
       .catch(() => {
-        if (active) setContextReferences([]);
+        // Keep cached refs if this read fails; a successful attach may already
+        // have supplied everything needed to render the current conversation.
       });
     return () => {
       active = false;
     };
-  }, [activeId]);
+  }, [activeId, messages.length]);
   const activeRun = useWorkflowStore((s) => s.activeRun);
   const workflowFollowupAgent =
     activeRun && activeRun.conversationId === conv?.id
@@ -1025,36 +1235,92 @@ export function ChatView({
     [agentAvailability.available]
   );
   const agentDisplayName = displayAgentName(member?.name ?? conv?.agentName, member?.cli.adapter ?? conv?.adapter);
-  const conversationWorkspacePath = conv ? conversationDisplayCwd(conv) : "";
-  const conversationWorkspaceName = conversationWorkspacePath
-    ? projectLabelFromCwd(conversationWorkspacePath)
-    : t("chat.noWorkspace");
-  const conversationWorkspaceTitle =
-    conv?.sourceCwd && conv.cwd
-      ? t("chat.isolatedWorkspaceTooltip", {
-          source: conv.sourceCwd,
-          workspace: conv.cwd
-        })
-      : conv?.cwd;
+  const hasRunningMessage = useMemo(
+    () =>
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          (message.status === "running" || message.status === "starting")
+      ),
+    [messages]
+  );
   const running =
-    live?.status === "running" || live?.status === "starting";
+    live?.status === "running" ||
+    live?.status === "starting" ||
+    hasRunningMessage;
   const sending =
     running ||
     (submitPreview !== null && submitPreview.conversationId === conv?.id);
-  const replayConvId = useReplayStore((s) => s.conversationId);
-  const replayIndex = useReplayStore((s) => s.index);
-  const stopReplay = useReplayStore((s) => s.stop);
-  const replaying = replayConvId === conv?.id && replayConvId !== null;
-  const starterPrompts = [
-    t("chat.starter.one"),
-    t("chat.starter.two"),
-    t("chat.starter.three")
-  ];
+  const prevSendingRef = useRef(sending);
+  useEffect(() => {
+    if (prevSendingRef.current && !sending) {
+      focusComposer();
+    }
+    prevSendingRef.current = sending;
+  }, [sending, focusComposer]);
+  const isGuide =
+    member?.profile === "guide" ||
+    conv?.agentId === ONBOARDING_GUIDE_AGENT_ID ||
+    member?.id === ONBOARDING_GUIDE_AGENT_ID;
+  const starterPrompts = isGuide
+    ? [
+        t("onboarding.starter.tour"),
+        t("onboarding.starter.installAgent"),
+        t("onboarding.starter.freebie"),
+        t("onboarding.starter.tryCoding")
+      ]
+    : [
+        t("chat.starter.one"),
+        t("chat.starter.two"),
+        t("chat.starter.three")
+      ];
+
+  const [setupCardExpanded, setSetupCardExpanded] = useState(false);
+
+  // Guide sessions may install agents from chat via bash, so the setup card
+  // must re-detect after each completed turn to reflect what the assistant
+  // actually installed (otherwise it keeps showing stale "not installed").
+  const [guideTurnCount, setGuideTurnCount] = useState(0);
+  const prevGuideSendingRef = useRef(sending);
+  useEffect(() => {
+    if (!isGuide) {
+      prevGuideSendingRef.current = sending;
+      return;
+    }
+    if (prevGuideSendingRef.current && !sending) {
+      setGuideTurnCount((count) => count + 1);
+      // A completed guide turn may have installed agents via bash. Settle any
+      // pending hand-off through FreeBuddy's own check pipeline so the CLI
+      // agent list shows verified state, not the assistant's claim.
+      void useGuideInstallStore
+        .getState()
+        .settleGuideTurn(useConversationStore.getState().activeId);
+    }
+    prevGuideSendingRef.current = sending;
+  }, [isGuide, sending]);
+
+  const handleAskGuide = useCallback(
+    (prompt: string) => {
+      if (activeId) {
+        setSetupCardExpanded(true);
+        void sendMessage({
+          conversationId: activeId,
+          prompt
+        });
+      } else {
+        setDraft(prompt);
+        setTimeout(() => {
+          chatTextareaRef.current?.focus();
+        }, 50);
+      }
+    },
+    [activeId, sendMessage]
+  );
 
   const sessionMeta = useMemo(() => {
     if (!conv) {
       return {
-        commands: [] as AvailableCommandItem[],
+        commands: [],
         configOptions: [] as ConfigOptionItem[]
       };
     }
@@ -1063,7 +1329,7 @@ export function ChatView({
         .filter((message) => message.role === "assistant")
         .flatMap((message) => {
           try {
-            const items = JSON.parse(message.content);
+            const items = parseStoredStreamItems(message.content, message.id);
             return Array.isArray(items) ? items : [];
           } catch {
             return [];
@@ -1072,7 +1338,6 @@ export function ChatView({
       live?.items
     );
   }, [conv, live?.items, messages]);
-  const availableCommands = sessionMeta.commands;
   const sessionConfigOptions = sessionMeta.configOptions;
 
   // Persist the thought_level candidates an agent reports for each model while
@@ -1101,7 +1366,65 @@ export function ChatView({
       .catch(() => {});
   }, [conv?.agentId, sessionConfigOptions]);
 
-  const slashDraft = useMemo(() => parseSlashDraft(draft), [draft]);
+  useEffect(() => {
+    if (!running || !conv?.id) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+
+      const isEscape = event.key === "Escape";
+      const isCtrlC =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "c";
+
+      if (!isEscape && !isCtrlC) return;
+
+      // Do not interrupt if an overlay, modal, menu, or lightbox is open
+      const hasOverlay = [
+        ...document.querySelectorAll(
+          '[role="dialog"], [role="menu"], .modal, .modal-backdrop, .image-lightbox'
+        )
+      ].some(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          getComputedStyle(element).visibility !== "hidden"
+      );
+      if (hasOverlay) return;
+
+      // Do not hijack typing in other inputs outside this chat view
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        target.tagName === "INPUT" &&
+        target !== chatTextareaRef.current
+      ) {
+        return;
+      }
+
+      // For Ctrl+C, only stop if no text is selected (to preserve normal copy)
+      if (isCtrlC) {
+        const hasSelection = Boolean(
+          window.getSelection()?.toString() ||
+            (document.activeElement instanceof HTMLInputElement &&
+              document.activeElement.selectionStart !==
+                document.activeElement.selectionEnd) ||
+            (document.activeElement instanceof HTMLTextAreaElement &&
+              document.activeElement.selectionStart !==
+                document.activeElement.selectionEnd)
+        );
+        if (hasSelection) return;
+      }
+
+      event.preventDefault();
+      void stopActive(conv.id);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [running, conv?.id, stopActive]);
+
   const projects = useProjectStore((s) => s.projects);
   const conversationProject = useMemo(() => {
     if (!conv?.projectId) return undefined;
@@ -1114,72 +1437,11 @@ export function ChatView({
       .filter(Boolean);
     return folders.length > 0 ? folders : undefined;
   }, [conversationProject]);
-  const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
-  const [workspacePopoverStyle, setWorkspacePopoverStyle] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
-  const workspaceDetailsRef = useRef<HTMLDivElement>(null);
-  const workspaceSummaryRef = useRef<HTMLButtonElement>(null);
-
-  const closeWorkspaceDetails = useCallback(() => {
-    setWorkspaceDetailsOpen(false);
-    setWorkspacePopoverStyle(null);
-  }, []);
-
-  const toggleWorkspaceDetails = useCallback(() => {
-    setWorkspaceDetailsOpen((open) => {
-      if (open) {
-        setWorkspacePopoverStyle(null);
-        return false;
-      }
-      const anchor = workspaceSummaryRef.current;
-      if (anchor) {
-        const rect = anchor.getBoundingClientRect();
-        const width = Math.min(300, window.innerWidth - 24);
-        const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
-        setWorkspacePopoverStyle({
-          top: Math.max(12, rect.top - 8),
-          left
-        });
-      }
-      return true;
-    });
-  }, []);
-
+  const composerGitInfo = useComposerGitInfo(conv?.cwd, `${conv?.id}:${running}`);
   useEffect(() => {
-    if (!workspaceDetailsOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!workspaceDetailsRef.current?.contains(event.target as Node)) {
-        closeWorkspaceDetails();
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWorkspaceDetails();
-    };
-    const onReposition = () => {
-      const anchor = workspaceSummaryRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const width = Math.min(300, window.innerWidth - 24);
-      const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12));
-      setWorkspacePopoverStyle({
-        top: Math.max(12, rect.top - 8),
-        left
-      });
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", onReposition);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", onReposition);
-    };
-  }, [workspaceDetailsOpen, closeWorkspaceDetails]);
-  useEffect(() => {
-    closeWorkspaceDetails();
-  }, [conv?.id, closeWorkspaceDetails]);
+    setHistoryReveal(INITIAL_VISIBLE_MESSAGES);
+    setLoadingEarlier(false);
+  }, [conv?.id]);
   const newTaskMentionRoots = useMemo(() => {
     if (!newTaskProjectId) return undefined;
     const project = projects.find((entry) => entry.id === newTaskProjectId);
@@ -1194,25 +1456,17 @@ export function ChatView({
     onChange: setDraft,
     textareaRef: chatTextareaRef
   });
-  const composerWorkspaceLabel = useMemo(() => {
-    const folders = conversationMentionRoots;
-    if (folders && folders.length > 0 && conversationProject) {
-      const name =
-        conversationProject.name?.trim() ||
-        folderBaseName(conversationProject.primaryPath || conv?.cwd || folders[0]);
-      return `${name} · ${t("chat.folderCount", { count: folders.length })}`;
-    }
-    return conversationWorkspaceName;
-  }, [
-    conversationMentionRoots,
-    conversationProject,
-    conversationWorkspaceName,
-    conv?.cwd,
-    t
-  ]);
-  const composerHasProjectWorkspace =
-    (conversationMentionRoots?.length ?? 0) > 0 && !!conversationProject;
-
+  const messageSkillsDisabled = Boolean(sending || sendLock || pendingWorkflowAction ||
+    conv?.kind === "workflow" || conv?.kind === "delegation");
+  const referenceTags = <ConversationReferenceTags references={selectedReferences} disabled={sendLock || newTaskSendLock || sending || Boolean(pendingWorkflowAction)}
+    onRemove={id => {
+      setSelectedReferences(selectedReferences.filter(reference => reference.id !== id));
+      window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".chat-composer textarea, .new-task-composer textarea")?.focus());
+    }} />;
+  const skillCommands = useSkillCommands({
+    draft, onDraft: setDraft, skills, selected: messageSkills, onSelected: setMessageSkills,
+    textareaRef: chatTextareaRef, scopeKey: activeId, disabled: messageSkillsDisabled
+  });
   const workflowPlan = useMemo<WorkflowPlan | null>(() => {
     if (!activeRun || activeRun.conversationId !== conv?.id) return null;
     try {
@@ -1243,18 +1497,6 @@ export function ChatView({
     activeRun?.status === "blocked" ||
     activeRun?.status === "pending_approval";
 
-  const filteredSlashCommands = useMemo(() => {
-    if (!slashDraft) return [];
-    const query = slashDraft.query.trim().toLowerCase();
-    return availableCommands.filter((command) =>
-      command.name.toLowerCase().startsWith(query)
-    );
-  }, [availableCommands, slashDraft]);
-
-  useEffect(() => {
-    setSlashIndex(0);
-  }, [draft]);
-
   useEffect(() => {
     if (!approvedWorkflowGate) return;
     if (
@@ -1278,6 +1520,7 @@ export function ChatView({
         status: "sent",
         content: submitPreview.prompt,
         attachments: submitPreview.attachments,
+        skillSnapshot: submitPreview.skillSnapshot,
         authorUsername: currentUser?.username ?? null,
         createdAt: submitPreview.createdAt,
         updatedAt: submitPreview.createdAt
@@ -1300,105 +1543,50 @@ export function ChatView({
     return preview.filter((m) => !existing.has(m.id));
   }, [conv, submitPreview, messages, member, currentUser?.username]);
 
-  const storeFrames = useReplayStore((s) => s.frames);
-  const replayFrame =
-    replaying && replayIndex >= 0 && replayIndex < storeFrames.length
-      ? storeFrames[replayIndex]
-      : undefined;
   const displayMessages = useMemo<ConversationMessage[]>(() => {
-    if (!replaying) {
-      const current = [...messages, ...previewMessages];
-      if (!live) return current;
-      const liveContent = JSON.stringify(live.items);
-      return current.map((message) =>
-        message.id === live.messageId
-          ? {
-              ...message,
-              status: live.status,
-              content: liveContent
-            }
-          : message
-      );
-    }
-    if (!replayFrame) return [];
-    return messages.slice(0, replayFrame.messageIndex + 1);
-  }, [replaying, replayFrame, messages, previewMessages, live]);
+    const current = [...messages, ...previewMessages];
+    if (!live) return current;
+    const liveContent = JSON.stringify(live.items);
+    return current.map((message) =>
+      message.id === live.messageId
+        ? {
+            ...message,
+            status: live.status,
+            content: liveContent
+          }
+        : message
+    );
+  }, [messages, previewMessages, live]);
+  const historyWindow = useMemo(
+    () => visibleConversationSlice(displayMessages, historyReveal),
+    [displayMessages, historyReveal]
+  );
+  const renderedMessages = historyWindow.items;
+  emptyStateVisibleRef.current =
+    renderedMessages.length === 0 && variant === "mini" && emptyState != null;
+  const hiddenHistoryCount = historyWindow.hiddenCount;
   const shareReferencesByMessageId = useMemo(
     () => assignShareReferencesToMessages(displayMessages, contextReferences),
     [displayMessages, contextReferences]
   );
-  const replayPartial = useMemo<{
-    messageId: string;
-    blockLimit?: number;
-    typingChars?: number;
-  } | null>(() => {
-    if (!replaying || !replayFrame) return null;
-    const message = messages[replayFrame.messageIndex];
-    return message
-      ? {
-          messageId: message.id,
-          blockLimit: replayFrame.blockLimit,
-          typingChars: replayFrame.typingChars
-        }
-      : null;
-  }, [replaying, replayFrame, messages]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
+    // Scroll events fired by our own snap-to-bottom must not unpin the view:
+    // content can grow asynchronously below the snap point before the event
+    // is dispatched, which would otherwise leave the user stranded mid-history.
+    if (
+      snapTargetRef.current !== null &&
+      el.scrollTop === snapTargetRef.current
+    ) {
+      isNearBottomRef.current = true;
+      return;
+    }
+    snapTargetRef.current = null;
     const offset = el.scrollHeight - el.scrollTop - el.clientHeight;
     isNearBottomRef.current = offset < 120;
   };
-
-  const checkAgentEntries = useCallback(
-    async (entries: AgentAvailabilityEntry[]) => {
-      if (!cliClient.isAvailable()) return;
-      const targets = entries.filter(
-        (entry) => !checkingAgentIdsRef.current.has(entry.member.id)
-      );
-      if (targets.length === 0) return;
-
-      const nextChecking = new Set(checkingAgentIdsRef.current);
-      targets.forEach((entry) => nextChecking.add(entry.member.id));
-      checkingAgentIdsRef.current = nextChecking;
-      setCheckingAgentIds(new Set(nextChecking));
-
-      let cursor = 0;
-      const worker = async () => {
-        while (cursor < targets.length) {
-          const entry = targets[cursor];
-          cursor += 1;
-          const member = entry.member;
-          const resolved = useCliExecutorStore
-            .getState()
-            .resolve(member.cli.adapter);
-          try {
-            await cliClient.check(
-              member.cli.adapter,
-              member.cli.binary || resolved?.binary,
-              { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
-              entry.runtimeKey
-            );
-          } catch {
-            // Background availability checks are reflected by runtime state.
-          }
-        }
-      };
-
-      try {
-        await Promise.all(
-          Array.from({ length: Math.min(2, targets.length) }, () => worker())
-        );
-        await refreshRuntimes();
-      } finally {
-        const remaining = new Set(checkingAgentIdsRef.current);
-        targets.forEach((entry) => remaining.delete(entry.member.id));
-        checkingAgentIdsRef.current = remaining;
-        setCheckingAgentIds(new Set(remaining));
-      }
-    },
-    [refreshRuntimes]
-  );
 
   useEffect(() => {
     if (activeId || taskMode !== "normal" || !executorsLoaded) return;
@@ -1419,7 +1607,7 @@ export function ChatView({
     if (activeId || taskMode !== "normal" || memberSelectionTouchedRef.current) {
       return;
     }
-    const preferred = agentAvailability.available[0]?.member.id ?? "";
+    const preferred = preferredAvailableAgentId(agentAvailability, preferredAgentId);
     if (preferred !== selectedMemberId) {
       setSelectedMemberId(preferred);
       const preferredMember = members.find((entry) => entry.id === preferred);
@@ -1431,6 +1619,7 @@ export function ChatView({
     activeId,
     agentAvailability.available,
     members,
+    preferredAgentId,
     selectedMemberId,
     taskMode
   ]);
@@ -1444,10 +1633,8 @@ export function ChatView({
   }, [loadSkills, skillsLoaded]);
 
   useEffect(() => {
-    if (activeId || taskMode !== "normal") return;
-    const selectedMember = members.find((entry) => entry.id === selectedMemberId);
-    setNewTaskSkillIds(selectedMember?.cli.skillIds ?? []);
-  }, [activeId, members, selectedMemberId, taskMode]);
+    if (teamMode) setNewTaskMessageSkills([]);
+  }, [teamMode]);
 
   useEffect(() => {
     const generation = ++newTaskConfigProbeGenerationRef.current;
@@ -1498,6 +1685,24 @@ export function ChatView({
             // [none, high] on the default) are wrong until we substitute the
             // values seen for the remembered model in a real conversation.
             let effective = opts;
+            if (stored.provider) {
+              try {
+                const providerCached =
+                  await cliClient.getCachedSessionConfigOptions({
+                    ...probeInput,
+                    configOptionOverrides: { provider: stored.provider }
+                  });
+                if (
+                  newTaskConfigProbeGenerationRef.current === generation &&
+                  providerCached.length > 0
+                ) {
+                  effective = providerCached;
+                  setNewTaskConfigOptions(providerCached);
+                }
+              } catch {
+                /* ignore: provider cache lookup is best-effort */
+              }
+            }
             if (stored.model) {
               try {
                 const seenRaw = await cliClient.getSetting(
@@ -1570,20 +1775,75 @@ export function ChatView({
     executorOverrides,
     availableAgentIds,
     members,
-    selectedMemberId
+    selectedMemberId,
+    providers
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     isNearBottomRef.current = true;
-  }, [activeId]);
+    const el = scrollRef.current;
+    if (el) pinToBottom(el);
+  }, [activeId, pinToBottom]);
+
+  // Keep active conversation composer options in sync when providers or agent config changes
+  useEffect(() => {
+    if (!activeId || !conv?.agentId) {
+      setActiveConversationConfigOptions(null);
+      return;
+    }
+    const member = members.find((entry) => entry.id === conv.agentId);
+    if (!member) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const resolved = useCliExecutorStore.getState().resolve(member.cli.adapter);
+        const probeInput = {
+          agentId: member.id,
+          adapter: member.cli.adapter,
+          binary: member.cli.binary || resolved?.binary,
+          extraArgs: [
+            ...(resolved?.extraArgs ?? []),
+            ...(member.cli.extraArgs ?? [])
+          ],
+          env: {
+            ...(resolved?.env ?? {}),
+            ...(member.cli.env ?? {})
+          },
+          cwd: conv.cwd || undefined,
+          configOptionOverrides: conv.configOptionOverrides
+        };
+
+        const cached = await cliClient.getCachedSessionConfigOptions(probeInput);
+        if (!cancelled && cached.length > 0) {
+          setActiveConversationConfigOptions(cached);
+        }
+
+        const fresh = await cliClient.inspectSessionConfigOptions(probeInput);
+        if (!cancelled && fresh.length > 0) {
+          setActiveConversationConfigOptions(fresh);
+        }
+      } catch {
+        // ignore best-effort probe failure
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeId,
+    conv?.agentId,
+    conv?.cwd,
+    conv?.configOptionOverrides,
+    providers,
+    executorOverrides,
+    members
+  ]);
 
   useEffect(() => {
     if (activeId) void loadWorkflowForConversation(activeId);
   }, [activeId, loadWorkflowForConversation]);
-
-  useEffect(() => {
-    stopReplay();
-  }, [activeId, stopReplay]);
 
   useEffect(() => {
     clearTeamPreview();
@@ -1617,10 +1877,40 @@ export function ChatView({
   useEffect(() => {
     if (activeId) return;
     if (cwdRequestToken === 0) return;
-    setNewTaskCwd(requestedCwd ?? "");
-    setNewTaskProjectId(requestedProjectId);
     setNewTaskDraft(requestedDraft ?? "");
-  }, [activeId, cwdRequestToken, requestedCwd, requestedDraft, requestedProjectId]);
+    setNewTaskMessageSkills([]);
+    if (requestedAttachments !== undefined) {
+      setNewTaskPendingAttachments(requestedAttachments);
+    }
+    if (requestedProjectId) {
+      setNewTaskCwd(requestedCwd ?? "");
+      setNewTaskProjectId(requestedProjectId);
+      return;
+    }
+    void applyNewTaskWorkspace(requestedCwd ?? "");
+  }, [
+    activeId,
+    applyNewTaskWorkspace,
+    cwdRequestToken,
+    requestedAttachments,
+    requestedCwd,
+    requestedDraft,
+    requestedProjectId
+  ]);
+
+  // Preselect an agent requested by another page (e.g. right after a freebie
+  // import). Applied once per request token, retrying until the member exists.
+  const appliedAgentRequestTokenRef = useRef(0);
+  useEffect(() => {
+    if (activeId || cwdRequestToken === 0 || !requestedAgentId) return;
+    if (appliedAgentRequestTokenRef.current === cwdRequestToken) return;
+    const member = members.find((entry) => entry.id === requestedAgentId);
+    if (!member) return;
+    appliedAgentRequestTokenRef.current = cwdRequestToken;
+    memberSelectionTouchedRef.current = true;
+    setSelectedMemberId(requestedAgentId);
+    if (member.cli.approvalMode) setPermissionMode(member.cli.approvalMode);
+  }, [activeId, cwdRequestToken, members, requestedAgentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1669,12 +1959,63 @@ export function ChatView({
     }
   }, [activeId, conv?.approvalMode, member?.cli.approvalMode]);
 
+  // Keep the view pinned while content grows without a messages/live change:
+  // streamed chunks inside the last message, lazily-rendered blocks, workflow
+  // step panels and media can all increase scrollHeight after the last snap.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const seen = new WeakSet<Element>();
+    const resizeObserver = new ResizeObserver(() => {
+      if (isNearBottomRef.current) pinToBottom(el);
+    });
+    const observeChildren = () => {
+      for (const child of el.children) {
+        if (!seen.has(child)) {
+          seen.add(child);
+          resizeObserver.observe(child);
+        }
+      }
+    };
+    const mutationObserver = new MutationObserver(() => {
+      observeChildren();
+      if (isNearBottomRef.current) pinToBottom(el);
+    });
+    mutationObserver.observe(el, { childList: true });
+    observeChildren();
+    return () => {
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [activeId, pinToBottom]);
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && (replaying || isNearBottomRef.current)) {
-      el.scrollTop = el.scrollHeight;
+    if (el && isNearBottomRef.current) {
+      pinToBottom(el);
     }
-  }, [messages, live, submitPreview, gatingPhaseId, replaying, replayIndex]);
+  }, [
+    messages,
+    live,
+    submitPreview,
+    scheduledSend?.createdAt,
+    gatingPhaseId
+  ]);
+
+  useLayoutEffect(() => {
+    if (!messageFocus || messageFocus.conversationId !== activeId) return;
+    const index = displayMessages.findIndex((message) => message.id === messageFocus.messageId);
+    if (index < 0) return;
+    const reveal = displayMessages.length - index;
+    if (reveal > historyReveal) { setHistoryReveal(reveal); return; }
+    const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageFocus.messageId)}"]`);
+    if (!target) return;
+    isNearBottomRef.current = false;
+    snapTargetRef.current = null;
+    target.scrollIntoView({ block: "center", behavior: "instant" });
+    target.focus({ preventScroll: true });
+    onMessageFocused?.();
+  }, [messageFocus, activeId, displayMessages, historyReveal, onMessageFocused]);
 
   useEffect(() => {
     if (!pendingWorkflowAction) return;
@@ -1705,7 +2046,11 @@ export function ChatView({
         : []
     );
     previousConversationIdRef.current = activeId;
-  }, [activeId]);
+    if (activeId) {
+      const timer = window.setTimeout(focusComposer, 50);
+      return () => window.clearTimeout(timer);
+    }
+  }, [activeId, focusComposer]);
 
   const formatMergeWarnings = (
     warnings: ReturnType<typeof mergePendingAttachments>["warnings"]
@@ -1789,7 +2134,7 @@ export function ChatView({
   const canImportAttachments = (target: "chat" | "new") => {
     if (attachmentBusy) return false;
     if (target === "chat") {
-      if (sending || replaying || sendLock || sendInFlightRef.current) return false;
+      if (sending || sendLock || sendInFlightRef.current) return false;
     } else if (newTaskSendLock || newTaskSendInFlightRef.current) {
       return false;
     }
@@ -1923,6 +2268,30 @@ export function ChatView({
     onImport: (files) => void handleImportAttachments("new", files)
   });
 
+  const conversationDrop = useConversationReferenceDrop({
+    conversations,
+    targetId: conv?.id,
+    scopeKey: referenceScope,
+    disabled: attachmentBusy || (conv ? sending || sendLock || Boolean(pendingWorkflowAction) : newTaskSendLock),
+    onAdd: reference => setSelectedReferences(mergeConversationReferences(selectedReferences, [reference])),
+    onReject: reason => notify(t(reason === "self" ? "contextShare.cannotReferenceSelf" : "contextShare.dragSourceUnavailable"))
+  });
+  const composerAttachmentImport = conv ? chatAttachmentImport : newTaskAttachmentImport;
+  const composerDropHandlers = {
+    onDragEnter: (event: DragEvent) => {
+      if (!conversationDrop.handleDragEnter(event)) composerAttachmentImport.handleDragEnter(event);
+    },
+    onDragLeave: (event: DragEvent) => {
+      if (!conversationDrop.handleDragLeave(event)) composerAttachmentImport.handleDragLeave(event);
+    },
+    onDragOver: (event: DragEvent) => {
+      if (!conversationDrop.handleDragOver(event)) composerAttachmentImport.handleDragOver(event);
+    },
+    onDrop: (event: DragEvent) => {
+      if (!conversationDrop.handleDrop(event)) composerAttachmentImport.handleDrop(event);
+    }
+  };
+
   const handleRemovePendingAttachment = (id: string) => {
     if (attachmentBusy || sendLock || sendInFlightRef.current) return;
     setPendingAttachments((prev) => {
@@ -2025,12 +2394,13 @@ export function ChatView({
     setPreflightMsg(null);
 
     try {
+      const outgoingPrompt = await buildReferencedPrompt(prompt, selectedReferences, cliClient.createConversationShare);
       if (teamMode) {
         const team = allTeams.find((tt) => tt.id === selectedTeamId)!;
         if (isDelegationTeam(team)) {
           const preparedWorkspace = await prepareWorkspaceForNewTask();
           const cwd = preparedWorkspace?.cwd;
-          const goal = composeMessageWithAttachments(prompt, attachmentsToSend);
+          const goal = composeMessageWithAttachments(outgoingPrompt, attachmentsToSend);
           const res = await delegationClient.createRun({
             teamId: team.id,
             goal,
@@ -2039,6 +2409,7 @@ export function ChatView({
           if (!res.ok) {
             throw new Error(res.error);
           }
+          setSelectedReferences([]);
           setNewTaskDraft("");
           setNewTaskPendingAttachments((prev) =>
             detachAttachmentsForSend(attachmentsToSend, prev)
@@ -2055,34 +2426,37 @@ export function ChatView({
           member: teamMember,
           cwd,
           projectId: newTaskProjectId,
-          metadata: preparedWorkspace
-            ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-            : undefined,
+          metadata: buildNewTaskMetadata(
+            preparedWorkspace,
+            newTaskMcpServerIds
+          ),
           title: buildConversationTitle({
             prompt,
             attachmentName: attachmentsToSend[0]?.name,
             fallback: team.name
           }),
           approvalMode: permissionMode,
-          skillIds: newTaskSkillIds
+          skillIds: teamMember.cli.skillIds
         });
+        const userMsgId = nanoid();
         const attached = await cliClient.attachConversationShares({
           targetConversationId: newConv.id,
-          text: prompt
+          targetMessageId: userMsgId,
+          text: outgoingPrompt
         });
-        setContextReferences(attached.references);
+        updateContextReferences(newConv.id, attached.references);
         setNewTaskDraft("");
+        setNewTaskMessageSkills([]);
         setNewTaskPendingAttachments((prev) =>
           detachAttachmentsForSend(attachmentsToSend, prev)
         );
-        const userMsgId = nanoid();
         const now = new Date().toISOString();
         const savedUser = await cliClient.appendMessage({
           id: userMsgId,
           conversationId: newConv.id,
           role: "user",
           status: "sent",
-          content: prompt,
+          content: outgoingPrompt,
           attachments: attachmentsToSend
         });
         useConversationStore.setState((s) => ({
@@ -2095,7 +2469,7 @@ export function ChatView({
                 conversationId: newConv.id,
                 role: "user",
                 status: "sent",
-                content: prompt,
+                content: outgoingPrompt,
                 ...(attachmentsToSend.length
                   ? { attachments: savedUser.attachments ?? attachmentsToSend }
                   : {}),
@@ -2108,13 +2482,14 @@ export function ChatView({
         const started = await createAndStartTeam({
           teamId: team.id,
           conversationId: newConv.id,
-          goal: composeMessageWithAttachments(prompt, attachmentsToSend),
+          goal: composeMessageWithAttachments(outgoingPrompt, attachmentsToSend),
           cwd
         });
         if (!started) {
           const errors = useWorkflowStore.getState().pendingErrors;
           throw new Error(errors.length ? errors.join("; ") : "workflow did not start");
         }
+        setSelectedReferences([]);
         await loadWorkflowForConversation(newConv.id);
         return;
       }
@@ -2129,35 +2504,43 @@ export function ChatView({
         member: selectedMember,
         cwd: preparedWorkspace?.cwd,
         projectId: newTaskProjectId,
-        metadata: preparedWorkspace
-          ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-          : undefined,
+        metadata: buildNewTaskMetadata(
+          preparedWorkspace,
+          newTaskMcpServerIds
+        ),
         title: buildConversationTitle({
           prompt,
           attachmentName: attachmentsToSend[0]?.name,
           fallback: t("chat.defaultAttachmentTitle")
         }),
         approvalMode: permissionMode,
-        configOptionOverrides: newTaskConfigOptionOverrides,
-        skillIds: newTaskSkillIds
+        configOptionOverrides: newTaskConfigOptionOverrides
       });
+      setPreferredAgentId(selectedMember.id);
+      const userMessageId = nanoid();
       const attached = await cliClient.attachConversationShares({
         targetConversationId: newConv.id,
-        text: prompt
+        targetMessageId: userMessageId,
+        text: outgoingPrompt
       });
-      setContextReferences(attached.references);
+      updateContextReferences(newConv.id, attached.references);
       setNewTaskDraft("");
+      setNewTaskMessageSkills([]);
       setNewTaskPendingAttachments((prev) =>
         detachAttachmentsForSend(attachmentsToSend, prev)
       );
       await sendMessage({
         conversationId: newConv.id,
-        prompt,
+        userMessageId,
+        prompt: outgoingPrompt,
         attachments: attachmentsToSend,
-        approvalModeOverride: permissionMode
+        approvalModeOverride: permissionMode,
+        messageSkills: newTaskMessageSkills
       });
+      setSelectedReferences([]);
     } catch (e) {
       setNewTaskDraft(prompt);
+      setNewTaskMessageSkills(newTaskMessageSkills);
       setNewTaskPendingAttachments((prev) =>
         restoreAttachmentsForSend(attachmentsToSend, prev)
       );
@@ -2170,15 +2553,22 @@ export function ChatView({
       unprotectManagedAttachments(attachmentsToSend);
       newTaskSendInFlightRef.current = false;
       setNewTaskSendLock(false);
+      window.setTimeout(focusComposer, 0);
     }
   };
 
-  const handleSelectSlashCommand = (command: AvailableCommandItem) => {
-    setDraft(`/${command.name} `);
-    chatTextareaRef.current?.focus();
-  };
-
   const resolveWorkflowFollowupMember = async () => {
+    // A delegation conversation may still reference its original, deleted agent.
+    // Resolve the current team entry before validating the historical binding.
+    if (conv && delegationClient.isAvailable()) {
+      const delegationRun = await delegationClient.getRunByConversation(conv.id);
+      if (delegationRun?.teamId) {
+        const team = await delegationClient.get(delegationRun.teamId);
+        const currentMember = resolveDelegationFollowupMember(team, members);
+        if (!currentMember) throw new Error(t("errors.teamFollowupAgentMissing"));
+        return currentMember;
+      }
+    }
     if (!conv || !workflowClient.isAvailable()) return member;
     const run =
       activeRun?.conversationId === conv.id
@@ -2189,9 +2579,10 @@ export function ChatView({
   };
 
   const onSend = async () => {
-    if (attachmentBusy || sendInFlightRef.current || sendLock) return;
+    if (attachmentBusy || sendInFlightRef.current || sendLock || sending) return;
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
+    const skillsToSend = messageSkills;
 
     if (pendingWorkflowAction) {
       if (!conv || !prompt || sending) return;
@@ -2206,11 +2597,19 @@ export function ChatView({
 
     try {
       if (pendingWorkflowAction) {
+        const outgoingPrompt = await buildReferencedPrompt(prompt, selectedReferences, cliClient.createConversationShare, conv!.id);
+        const userMessageId = nanoid();
+        const attached = await cliClient.attachConversationShares({
+          targetConversationId: conv!.id,
+          targetMessageId: userMessageId,
+          text: outgoingPrompt
+        });
+        updateContextReferences(conv!.id, attached.references);
         setPreflightMsg(null);
         isNearBottomRef.current = true;
-        const userMessageId = nanoid();
         const now = new Date().toISOString();
         setDraft("");
+        focusComposer();
         setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
         try {
           const savedUser = await cliClient.appendMessage({
@@ -2218,7 +2617,7 @@ export function ChatView({
             conversationId: conv!.id,
             role: "user",
             status: "sent",
-            content: prompt,
+            content: outgoingPrompt,
             attachments: attachmentsToSend
           });
           useConversationStore.setState((s) => ({
@@ -2231,7 +2630,7 @@ export function ChatView({
                   conversationId: conv!.id,
                   role: "user",
                   status: "sent",
-                  content: prompt,
+                  content: outgoingPrompt,
                   ...(attachmentsToSend.length
                     ? { attachments: savedUser.attachments ?? attachmentsToSend }
                     : {}),
@@ -2244,9 +2643,10 @@ export function ChatView({
           const ok = await requestGateChanges(
             pendingWorkflowAction.runId,
             pendingWorkflowAction.phaseId,
-            composeMessageWithAttachments(prompt, attachmentsToSend)
+            composeMessageWithAttachments(outgoingPrompt, attachmentsToSend)
           );
           if (ok) {
+            setSelectedReferences([]);
             setPendingWorkflowAction(null);
           } else {
             setPreflightMsg(t("workflow.requestChangesFailed"));
@@ -2259,11 +2659,13 @@ export function ChatView({
           setPreflightMsg(
             t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) })
           );
+          focusComposer();
         }
         return;
       }
 
       const targetMember = await resolveWorkflowFollowupMember();
+      if (!targetMember) throw new Error(t("errors.followupAgentMissing"));
       if (!conv || !targetMember || (!prompt && attachmentsToSend.length === 0) || sending) {
         return;
       }
@@ -2278,26 +2680,34 @@ export function ChatView({
         attachments: attachmentsToSend,
         createdAt: new Date().toISOString(),
         userMessageId,
-        assistantMessageId
+        assistantMessageId,
+        skillSnapshot: skillsToSend
       };
       setSubmitPreview(preview);
       setDraft("");
+      setMessageSkills([]);
+      focusComposer();
       setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
 
       if (!(await preflightMember(targetMember))) {
         setSubmitPreview(null);
         setDraft(prompt);
+        setMessageSkills(skillsToSend);
         setPendingAttachments((prev) =>
           restoreAttachmentsForSend(attachmentsToSend, prev)
         );
+        focusComposer();
         return;
       }
 
+      const outgoingPrompt = await buildReferencedPrompt(prompt, selectedReferences, cliClient.createConversationShare, conv.id);
       const attached = await cliClient.attachConversationShares({
         targetConversationId: conv.id,
-        text: prompt
+        targetMessageId: userMessageId,
+        text: outgoingPrompt
       });
-      setContextReferences(attached.references);
+      updateContextReferences(conv.id, attached.references);
+      setSubmitPreview({ ...preview, prompt: outgoingPrompt });
       if (attached.attachedCount > 0) {
         notify(t("contextShare.linkAttached"));
       }
@@ -2308,39 +2718,100 @@ export function ChatView({
         delegationClient.isAvailable() &&
         (await delegationClient.hasRunForConversation(conv.id))
       ) {
+        if (skillsToSend.length) throw new Error(t("chat.teamSkillsHint"));
         const res = await delegationClient.followUp({
           conversationId: conv.id,
-          prompt: composeMessageWithAttachments(prompt, attachmentsToSend)
+          prompt: composeMessageWithAttachments(outgoingPrompt, attachmentsToSend)
         });
         if (!res.ok) {
           throw new Error(res.error);
         }
-        await useConversationStore.getState().loadMessages(conv.id);
+        setSelectedReferences([]);
+        const [, references] = await Promise.allSettled([
+          useConversationStore.getState().loadMessages(conv.id),
+          cliClient.listConversationContextReferences(conv.id)
+        ]);
+        // Delegation persists its own message ID rather than the preview ID.
+        // A refresh failure must not turn an accepted follow-up into a retry.
+        if (references.status === "fulfilled") {
+          updateContextReferences(conv.id, references.value);
+        }
         setSubmitPreview(null);
         return;
       }
 
       await sendMessage({
         conversationId: conv.id,
-        prompt,
+        prompt: outgoingPrompt,
         attachments: attachmentsToSend,
         userMessageId,
         assistantMessageId,
-        approvalModeOverride: permissionMode
+        approvalModeOverride: permissionMode,
+        hiddenContext: getPromptContext?.(),
+        messageSkills: skillsToSend
       });
+      setSelectedReferences([]);
       setSubmitPreview(null);
     } catch (e) {
       setSubmitPreview(null);
       setDraft(prompt);
+      setMessageSkills(skillsToSend);
       setPendingAttachments((prev) =>
         restoreAttachmentsForSend(attachmentsToSend, prev)
       );
       setPreflightMsg(t("errors.sendFailed", { err: e instanceof Error ? e.message : String(e) }));
+      focusComposer();
     } finally {
       unprotectManagedAttachments(attachmentsToSend);
       sendInFlightRef.current = false;
       setSendLock(false);
+      window.setTimeout(focusComposer, 0);
     }
+  };
+
+  const onScheduleSend = (fireAt: number) => {
+    if (!conv || attachmentBusy || sendLock || pendingWorkflowAction) return;
+    const prompt = draft.trim();
+    const attachmentsToSend = pendingAttachments;
+    if (!prompt && attachmentsToSend.length === 0) return;
+
+    const previous = useScheduledSendStore.getState().entries[conv.id];
+    scheduleSend({
+      conversationId: conv.id,
+      prompt,
+      attachments: attachmentsToSend,
+      messageSkills,
+      conversationReferences: selectedReferences,
+      fireAt
+    });
+    protectManagedAttachments(attachmentsToSend);
+    if (previous) unprotectManagedAttachments(previous.attachments);
+    setPreflightMsg(null);
+    setDraft("");
+    setMessageSkills([]);
+    setSelectedReferences([]);
+    setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
+    window.setTimeout(focusComposer, 0);
+  };
+
+  const onEditScheduledSend = () => {
+    if (!conv) return;
+    const entry = removeScheduledSend(conv.id);
+    if (!entry) return;
+    unprotectManagedAttachments(entry.attachments);
+    setMessageSkills(mergeMessageSkills(messageSkills, entry.messageSkills ?? []));
+    setSelectedReferences(mergeConversationReferences(selectedReferences, entry.conversationReferences ?? []));
+    setDraft((current) =>
+      current.trim() ? `${entry.prompt}\n${current}` : entry.prompt
+    );
+    setPendingAttachments((prev) => restoreAttachmentsForSend(entry.attachments, prev));
+    window.setTimeout(() => chatTextareaRef.current?.focus(), 0);
+  };
+
+  const onCancelScheduledSend = () => {
+    if (!conv) return;
+    const entry = removeScheduledSend(conv.id);
+    if (entry) unprotectManagedAttachments(entry.attachments);
   };
 
   const handleGeneratePlan = async () => {
@@ -2398,9 +2869,10 @@ export function ChatView({
         member: teamMember,
         cwd,
         projectId: newTaskProjectId,
-        metadata: preparedWorkspace
-          ? preparedTaskWorkspaceMetadata(preparedWorkspace)
-          : undefined,
+        metadata: buildNewTaskMetadata(
+          preparedWorkspace,
+          newTaskMcpServerIds
+        ),
         title: buildConversationTitle({
           prompt: pendingTeamPreview.goal,
           fallback: pendingTeamPreview.teamName
@@ -2448,7 +2920,17 @@ export function ChatView({
         configOptionOverrides={newTaskConfigOptionOverrides}
         configOptionsLoading={newTaskConfigLoading}
         skills={skills}
-        selectedSkillIds={newTaskSkillIds}
+        skillsLoading={skillsLoading}
+        skillsError={skillsError}
+        onReloadSkills={loadSkills}
+        messageSkills={newTaskMessageSkills}
+        onMessageSkills={setNewTaskMessageSkills}
+        referenceTags={referenceTags}
+        referencePicker={referencePicker}
+        onSelectConversationReference={() => setReferencePickerScope(referenceScope)}
+        mcpServerIds={newTaskMcpServerIds}
+        onMcpServerIds={setNewTaskMcpServerIds}
+        onOpenMcpSettings={onOpenMcpSettings}
         pluginAgent={pluginAgentForAdapter(
           members.find((entry) => entry.id === selectedMemberId)?.cli.adapter
         )}
@@ -2457,6 +2939,7 @@ export function ChatView({
         onMember={(id) => {
           memberSelectionTouchedRef.current = true;
           setSelectedMemberId(id);
+          setPreferredAgentId(id);
           const selectedMember = members.find((entry) => entry.id === id);
           if (selectedMember?.cli.approvalMode) {
             setPermissionMode(selectedMember.cli.approvalMode);
@@ -2466,10 +2949,50 @@ export function ChatView({
           void checkAgentEntries(agentEntriesNeedingDetection(agentAvailability))
         }
         onManageAgents={() => onOpenAgentSettings?.()}
-        onConfigOptionOverrides={(next) => {
+        onConfigOptionOverrides={async (next) => {
           const prevModel = newTaskConfigOptionOverrides.model;
-          setNewTaskConfigOptionOverrides(next);
+          const prevProvider = newTaskConfigOptionOverrides.provider;
+          const currentProvider = next.provider;
           const member = members.find((entry) => entry.id === selectedMemberId);
+
+          if (member && currentProvider !== prevProvider) {
+            const resolved = useCliExecutorStore
+              .getState()
+              .resolve(member.cli.adapter);
+            const providerProbeInput = {
+              agentId: member.id,
+              adapter: member.cli.adapter,
+              binary: member.cli.binary || resolved?.binary,
+              extraArgs: [
+                ...(resolved?.extraArgs ?? []),
+                ...(member.cli.extraArgs ?? [])
+              ],
+              env: { ...(resolved?.env ?? {}), ...(member.cli.env ?? {}) },
+              cwd: newTaskCwd.trim() || undefined,
+              configOptionOverrides: currentProvider
+                ? { provider: currentProvider }
+                : undefined
+            };
+            try {
+              let targetOptions =
+                await cliClient.getCachedSessionConfigOptions(providerProbeInput);
+              if (targetOptions.length === 0 && currentProvider) {
+                targetOptions =
+                  await cliClient.inspectSessionConfigOptions(providerProbeInput);
+              }
+              if (targetOptions.length > 0) {
+                setNewTaskConfigOptions(targetOptions);
+                const modelOpt = findMainModelConfigOption(targetOptions);
+                if (modelOpt?.currentValue) {
+                  next = { ...next, model: modelOpt.currentValue };
+                }
+              }
+            } catch {
+              /* best-effort live refresh on provider switch */
+            }
+          }
+
+          setNewTaskConfigOptionOverrides(next);
           if (member) {
             void cliClient
               .setSetting(
@@ -2510,10 +3033,8 @@ export function ChatView({
               .catch(() => {});
           }
         }}
-        onSkills={setNewTaskSkillIds}
         onCwd={(cwd) => {
-          setNewTaskCwd(cwd);
-          setNewTaskProjectId(undefined);
+          void applyNewTaskWorkspace(cwd);
         }}
         onWorkspaceMode={setNewTaskWorkspaceMode}
         onBranch={setNewTaskBranch}
@@ -2522,11 +3043,12 @@ export function ChatView({
         onSelectAttachments={() => void handleSelectAttachments("new")}
         onRemoveAttachment={handleRemoveNewTaskPendingAttachment}
         attachmentBusy={attachmentBusy}
+        conversationDropActive={conversationDrop.dragActive}
         attachmentDropActive={newTaskAttachmentImport.dragActive}
-        onAttachmentDragEnter={newTaskAttachmentImport.handleDragEnter}
-        onAttachmentDragLeave={newTaskAttachmentImport.handleDragLeave}
-        onAttachmentDragOver={newTaskAttachmentImport.handleDragOver}
-        onAttachmentDrop={newTaskAttachmentImport.handleDrop}
+        onAttachmentDragEnter={composerDropHandlers.onDragEnter}
+        onAttachmentDragLeave={composerDropHandlers.onDragLeave}
+        onAttachmentDragOver={composerDropHandlers.onDragOver}
+        onAttachmentDrop={composerDropHandlers.onDrop}
         onAttachmentPaste={newTaskAttachmentImport.handlePaste}
         onTaskMode={(m) => {
           setTaskMode(m);
@@ -2538,6 +3060,7 @@ export function ChatView({
         }}
         sendLocked={newTaskSendLock}
         onSubmit={() => void onCreateAndSend()}
+        variant={variant}
       />
     );
   }
@@ -2545,19 +3068,79 @@ export function ChatView({
 
 
   return (
-    <div className="chat-view">
-      <CodeWhipOverlay />
-      <div className={`chat-scroll${replaying ? " replay-active" : ""}`} ref={scrollRef} onScroll={handleScroll}>
-        {messages.length === 0 && !conv?.sourceConversationId && (
-          <div className="chat-empty chat-empty-hero">
-            <p className="eyebrow">{t("chat.newAgentChat")}</p>
-            <h2>{t("chat.emptyHeroHeading", { name: member?.name ?? "" })}</h2>
-            <p className="muted">
-              {t("chat.emptyHeroBody")}
+    <div className={`chat-view${variant === "mini" ? " chat-view-mini" : ""}`}>
+      {referencePicker}
+      {variant !== "mini" && <CodeWhipOverlay />}
+      <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
+        {isGuide && variant !== "mini" && (
+          <div className="guide-chat-banner" role="status">
+            <div className="guide-chat-banner-info">
+              <Sparkles size={15} className="guide-chat-banner-icon" />
+              <span>{t("onboarding.guideBannerText")}</span>
+            </div>
+            <div className="guide-chat-banner-actions">
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  className={`guide-chat-banner-btn guide-chat-banner-btn--setup${setupCardExpanded ? " is-active" : ""}`}
+                  onClick={() => setSetupCardExpanded((prev) => !prev)}
+                  title={t("onboarding.guideBannerSetup")}
+                >
+                  <Layers size={13} />
+                  <span>{t("onboarding.guideBannerSetup")}</span>
+                  {setupCardExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                </button>
+              )}
+              {onOpenAgentSettings && (
+                <button
+                  type="button"
+                  className="guide-chat-banner-btn"
+                  onClick={onOpenAgentSettings}
+                >
+                  {t("onboarding.guideBannerSettings")}
+                </button>
+              )}
+
+            </div>
+          </div>
+        )}
+        {isGuide && messages.length > 0 && setupCardExpanded && (
+          <div className="guide-chat-floating-card">
+            <OnboardingGuideSetupCard
+              onOpenSettings={onOpenAgentSettings}
+              onAskGuide={handleAskGuide}
+              refreshKey={guideTurnCount}
+            />
+          </div>
+        )}
+        {messages.length === 0 && !conv?.sourceConversationId && variant !== "mini" && (
+          <div className={`chat-empty chat-empty-hero${isGuide ? " chat-empty-hero--guide" : ""}`}>
+            <p className="eyebrow">
+              {isGuide ? t("onboarding.guideEyebrow") : t("chat.newAgentChat")}
             </p>
+            <h2>
+              {isGuide
+                ? t("onboarding.guideHeroHeading")
+                : t("chat.emptyHeroHeading", { name: member?.name ?? "" })}
+            </h2>
+            <p className="muted">
+              {isGuide ? t("onboarding.guideHeroBody") : t("chat.emptyHeroBody")}
+            </p>
+            {isGuide && (
+              <OnboardingGuideSetupCard
+                onOpenSettings={onOpenAgentSettings}
+                onAskGuide={handleAskGuide}
+                refreshKey={guideTurnCount}
+              />
+            )}
             <div className="starter-prompts">
               {starterPrompts.map((prompt) => (
                 <button key={prompt} onClick={() => {
+                  if (isGuide && prompt === t("onboarding.starter.installAgent")) {
+                    setSetupCardExpanded(true);
+                    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                    return;
+                  }
                   setDraft(prompt);
                   chatTextareaRef.current?.focus();
                 }}>
@@ -2587,16 +3170,66 @@ export function ChatView({
             }}
           />
         )}
-        {displayMessages.map((m, idx) => {
-          const partial =
-            replayPartial && replayPartial.messageId === m.id
-              ? replayPartial
-              : undefined;
+        {hiddenHistoryCount > 0 || olderMessagesAvailable ? (
+          <button
+            type="button"
+            className="chat-load-earlier"
+            disabled={loadingEarlier}
+            onClick={() => {
+              if (hiddenHistoryCount > 0) {
+                setHistoryReveal(
+                  (count) =>
+                    count + Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
+                );
+                return;
+              }
+              if (!conv?.id || loadingEarlier) return;
+              setLoadingEarlier(true);
+              void useConversationStore
+                .getState()
+                .loadOlderMessages(conv.id)
+                .then((loaded) => {
+                  if (loaded > 0) {
+                    setHistoryReveal((count) => count + loaded);
+                  }
+                })
+                .finally(() => {
+                  setLoadingEarlier(false);
+                });
+            }}
+          >
+            {t("chat.loadEarlier", {
+              count:
+                hiddenHistoryCount > 0
+                  ? Math.min(VISIBLE_MESSAGE_STEP, hiddenHistoryCount)
+                  : VISIBLE_MESSAGE_STEP
+            })}
+          </button>
+        ) : null}
+        {renderedMessages.length === 0 &&
+          variant === "mini" &&
+          (emptyState ?? (
+          <div className="chat-empty-state">
+            <AgentAvatar
+              agentId={conv.agentId ?? member?.id}
+              adapter={conv.adapter ?? member?.cli.adapter}
+              iconKey={member?.avatar}
+            />
+            <strong className="chat-empty-title">
+              {conv.agentName ?? member?.name ?? "FreeBuddy"}
+            </strong>
+            <span className="chat-empty-desc">
+              {t("butler.emptyPrompt")}
+            </span>
+          </div>
+          ))}
+        <MarkdownCodeBlockContext.Provider value={renderCodeBlock ?? null}>
+        {renderedMessages.map((m, idx) => {
           const messageMember =
             (m.agentId ? membersById.get(m.agentId) : undefined) ??
             (m.agentName ? membersByName.get(m.agentName) : undefined);
           const shareReferences = shareReferencesByMessageId.get(m.id);
-          const prevMessage = idx > 0 ? displayMessages[idx - 1] : undefined;
+          const prevMessage = idx > 0 ? renderedMessages[idx - 1] : undefined;
           const showHandoff =
             !!prevMessage &&
             prevMessage.role === "assistant" &&
@@ -2620,21 +3253,58 @@ export function ChatView({
                 adapter={m.adapter ?? messageMember?.cli.adapter ?? conv?.adapter}
                 agentName={m.agentName ?? messageMember?.name ?? conv?.agentName}
                 agentIconKey={messageMember?.avatar}
-                blockLimit={partial?.blockLimit}
-                typingChars={partial?.typingChars}
                 cwd={conv?.cwd || conv?.sourceCwd}
                 afterContent={
-                  shareReferences && shareReferences.length > 0 ? (
-                    <SharedConversationReferences
-                      references={shareReferences}
-                      conversations={conversations}
-                    />
+                  (shareReferences && shareReferences.length > 0) ||
+                  (m.role === "assistant" && renderMessageFooter) ? (
+                    <>
+                      {shareReferences && shareReferences.length > 0 ? (
+                        <SharedConversationReferences
+                          references={shareReferences}
+                          conversations={conversations}
+                        />
+                      ) : null}
+                      {m.role === "assistant" ? renderMessageFooter?.(m) : null}
+                    </>
                   ) : undefined
                 }
               />
             </Fragment>
           );
         })}
+        </MarkdownCodeBlockContext.Provider>
+        {scheduledSend && scheduledSend.conversationId === conv.id ? (
+          <div
+            className={`scheduled-send-bubble scheduled-send-bubble-${scheduledSend.status}`}
+          >
+            <MessageBubble
+              message={{
+                id: `scheduled-send:${conv.id}`,
+                conversationId: conv.id,
+                role: "user",
+                status: "sent",
+                content: scheduledSend.prompt,
+                attachments: scheduledSend.attachments,
+                skillSnapshot: scheduledSend.messageSkills,
+                authorUsername: currentUser?.username ?? null,
+                createdAt: new Date(scheduledSend.createdAt).toISOString(),
+                updatedAt: new Date(scheduledSend.createdAt).toISOString()
+              }}
+              cwd={conv.cwd || conv.sourceCwd}
+              afterContent={<>
+                <ConversationReferenceTags references={scheduledSend.conversationReferences ?? []} />
+                <ScheduledSendMeta
+                  entry={scheduledSend}
+                  now={scheduledSendNow}
+                  onSendNow={() => fireScheduledSendNow(conv.id)}
+                  onRetry={() => retryScheduledSend(conv.id)}
+                  onEdit={onEditScheduledSend}
+                  onCancel={onCancelScheduledSend}
+                />
+              </>}
+            />
+          </div>
+        ) : null}
         {activeRun?.conversationId === conv.id &&
           workflowGateIsActionable &&
           gatingPhaseId &&
@@ -2670,97 +3340,40 @@ export function ChatView({
       {conv && <DelegationApprovalCard conversationId={conv.id} />}
 
       <div
-        className={`chat-composer${replaying ? " replay-disabled" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}`}
-        onDragEnter={chatAttachmentImport.handleDragEnter}
-        onDragLeave={chatAttachmentImport.handleDragLeave}
-        onDragOver={chatAttachmentImport.handleDragOver}
-        onDrop={chatAttachmentImport.handleDrop}
+        className={`chat-composer${variant === "mini" ? " chat-composer-mini" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}${conversationDrop.dragActive ? " conversation-drop-active" : ""}`}
+        onDragEnter={composerDropHandlers.onDragEnter}
+        onDragLeave={composerDropHandlers.onDragLeave}
+        onDragOver={composerDropHandlers.onDragOver}
+        onDrop={composerDropHandlers.onDrop}
       >
+        {conversationDrop.dragActive && <div className="conversation-drop-overlay" role="status">
+          <MessagesSquare size={20} aria-hidden="true" />{t("contextShare.dropToReference")}
+        </div>}
         {chatAttachmentImport.dragActive ? (
           <div className="attachment-drop-overlay" aria-hidden="true">
             {t("chat.dropAttachmentsHint")}
           </div>
         ) : null}
-        <div className="composer-context-row">
-          <span>{agentDisplayName}</span>
-          <div
-            className="composer-workspace-meta"
-            ref={workspaceDetailsRef}
-            title={conversationWorkspaceTitle}
-          >
-            {composerHasProjectWorkspace ? (
-              <button
-                ref={workspaceSummaryRef}
-                type="button"
-                className={`composer-workspace-summary${workspaceDetailsOpen ? " open" : ""}`}
-                aria-expanded={workspaceDetailsOpen}
-                aria-label={t("chat.workspaceDetails")}
-                title={composerWorkspaceLabel}
-                onClick={toggleWorkspaceDetails}
-              >
-                {conv.sourceCwd ? (
-                  <FolderLock aria-hidden="true" size={12} strokeWidth={1.8} />
-                ) : (
-                  <Folder aria-hidden="true" size={12} strokeWidth={1.8} />
-                )}
-                <span>{composerWorkspaceLabel}</span>
-              </button>
-            ) : (
-              <span className="composer-workspace-context">
-                {conv.sourceCwd ? (
-                  <FolderLock size={13} strokeWidth={1.8} aria-hidden="true" />
-                ) : null}
-                <span className="composer-workspace-name">
-                  {composerWorkspaceLabel}
-                </span>
-              </span>
-            )}
-            {conv.sourceCwd ? (
-              <span className="composer-workspace-badge">
-                {t("chat.isolatedWorkspace")}
-              </span>
-            ) : null}
-            {workspaceDetailsOpen &&
-            composerHasProjectWorkspace &&
-            conversationProject &&
-            workspacePopoverStyle ? (
-              <div
-                className="composer-workspace-popover"
-                role="dialog"
-                style={{
-                  top: workspacePopoverStyle.top,
-                  left: workspacePopoverStyle.left,
-                  transform: "translateY(-100%)"
-                }}
-              >
-                <div className="composer-workspace-popover-title">
-                  {conversationProject.name}
-                </div>
-                <ul className="composer-workspace-popover-list">
-                  {conversationProject.folders.map((folder) => {
-                    const showPrimary =
-                      conversationProject.folders.length > 1 &&
-                      pathsEqual(folder, conversationProject.primaryPath);
-                    return (
-                      <li key={folder} title={folder}>
-                        <Folder aria-hidden="true" size={13} strokeWidth={1.7} />
-                        <span>{formatDisplayPath(folder)}</span>
-                        {showPrimary ? (
-                          <em>{t("chat.primaryBadge")}</em>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ) : null}
+        {variant !== "mini" && (
+          <div className="composer-context-row">
+            <span>{agentDisplayName}</span>
+            <ComposerWorkspaceMeta
+              key={conv.id}
+              conversation={conv}
+              project={conversationProject}
+              gitInfo={composerGitInfo}
+            />
           </div>
-        </div>
+        )}
+        {composerAccessory}
         <AttachmentTray
           attachments={pendingAttachments}
           onRemove={handleRemovePendingAttachment}
           removeDisabled={attachmentBusy || sendLock}
         />
+        {referenceTags}
+        <MessageSkillTags skills={messageSkills} disabled={messageSkillsDisabled}
+          onRemove={skillCommands.remove} />
         <div className="composer-input-wrap">
           {chatFileMentions.active ? (
             <WorkspaceFileMentionMenu
@@ -2769,64 +3382,60 @@ export function ChatView({
               loading={chatFileMentions.loading}
               onSelect={chatFileMentions.selectMatch}
             />
-          ) : slashDraft && availableCommands.length > 0 ? (
-            <SlashCommandMenu
-              commands={availableCommands}
-              query={slashDraft.query}
-              selectedIndex={slashIndex}
-              onSelect={handleSelectSlashCommand}
-            />
+          ) : skillCommands.active ? (
+            <SlashCommandMenu anchorRef={chatTextareaRef} id={skillCommands.id} skills={skillCommands.matches} query={skillCommands.query}
+              selectedIndex={skillCommands.selectedIndex} onSelect={skillCommands.select} onHighlight={skillCommands.setSelectedIndex}
+              loading={skillsLoading} error={skillsError} onRetry={loadSkills} />
           ) : null}
           <textarea
             ref={chatTextareaRef}
-            rows={3}
+            rows={variant === "mini" ? 2 : 3}
             value={draft}
-            disabled={sending || replaying || attachmentBusy || sendLock}
+            disabled={attachmentBusy}
             placeholder={
-              pendingWorkflowAction
+              placeholder ??
+              (pendingWorkflowAction
                 ? t("workflow.requestChangesPlaceholder")
                 : sending
                 ? t("chat.agentRunning")
-                : availableCommands.length > 0
+                : messageSkills.length ? t("chat.skillTaskPlaceholder")
+                : !messageSkillsDisabled && skills.some(skill => skill.enabled && skill.trusted)
                   ? t("chat.inputPlaceholderWithSlash")
-                  : t("chat.inputPlaceholder")
+                  : t("chat.inputPlaceholder"))
             }
-            onChange={chatFileMentions.handleChange}
+            aria-autocomplete="list"
+            aria-haspopup="listbox"
+            aria-controls={skillCommands.active ? skillCommands.id : undefined}
+            aria-activedescendant={skillCommands.active && skillCommands.matches.length ? `${skillCommands.id}-${skillCommands.selectedIndex}` : undefined}
+            onChange={event => { chatFileMentions.handleChange(event); skillCommands.handleChange(event); }}
+            onBlur={skillCommands.handleBlur}
             onClick={chatFileMentions.handleCaretChange}
             onKeyUp={chatFileMentions.handleCaretChange}
-            onPaste={chatAttachmentImport.handlePaste}
+            onPaste={event => { skillCommands.handlePaste(); chatAttachmentImport.handlePaste(event); }}
             onKeyDown={(e) => {
               if (chatFileMentions.handleKeyDown(e)) return;
-              if (slashDraft && filteredSlashCommands.length > 0) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setSlashIndex((index) => (index + 1) % filteredSlashCommands.length);
-                  return;
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setSlashIndex(
-                    (index) =>
-                      (index - 1 + filteredSlashCommands.length) %
-                      filteredSlashCommands.length
-                  );
-                  return;
-                }
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  const selected = filteredSlashCommands[slashIndex];
-                  if (selected) handleSelectSlashCommand(selected);
-                  return;
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setDraft("");
-                  return;
-                }
+              if (skillCommands.handleKeyDown(e)) return;
+              if (running && conv?.id && e.key === "Escape") {
+                e.preventDefault();
+                void stopActive(conv.id);
+                return;
+              }
+              if (
+                running &&
+                conv?.id &&
+                (e.ctrlKey || e.metaKey) &&
+                !e.altKey &&
+                !e.shiftKey &&
+                e.key.toLowerCase() === "c" &&
+                e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+              ) {
+                e.preventDefault();
+                void stopActive(conv.id);
+                return;
               }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!attachmentBusy && !sendLock) void onSend();
+                if (!attachmentBusy && !sendLock && !sending) void onSend();
               }
             }}
           />
@@ -2835,65 +3444,142 @@ export function ChatView({
           <div className="composer-tools">
             <ComposerAddMenu
               skills={skills}
-              selectedIds={conv?.skillSnapshot.map((skill) => skill.id) ?? []}
-              requiredIds={member?.requiredSkillIds}
+              selectedIds={messageSkills.map(skill => skill.id)}
+              requiredIds={[]}
               pluginAgent={pluginAgentForAdapter(member?.cli.adapter ?? conv?.adapter)}
               attachmentDisabled={
                 sending ||
-                replaying ||
                 attachmentBusy ||
                 pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
               }
-              skillsDisabled={sending || replaying}
-              pluginsDisabled={sending || replaying}
+              skillsDisabled={messageSkillsDisabled}
+              pluginsDisabled={sending}
+              onSelectConversationReference={() => setReferencePickerScope(referenceScope)}
+              referencesDisabled={sending || sendLock || attachmentBusy || Boolean(pendingWorkflowAction)}
               onSelectAttachments={() => void handleSelectAttachments("chat")}
               onSelectPlugin={(plugin) =>
                 insertPluginMention(draft, plugin, chatTextareaRef.current, setDraft)
               }
-              onSkillsChange={(ids) => {
-                if (conv?.id) void setConversationSkills(conv.id, ids);
-              }}
+              onSkillsChange={skillCommands.selectIds}
             />
-            <label
-              className="composer-permission"
-              title={t("chat.permissionHint")}
-            >
-              <span className="composer-permission-label">{t("chat.permission")}</span>
-              <select
-                className="composer-permission-select"
-                value={permissionMode}
+            {currentUser?.isOwner !== false && window.freebuddy?.platform !== "web" ? (
+              <McpServerPicker
+                selectedIds={conversationMcpServerIds}
+                onSelectionChange={handleMcpServerIdsChange}
                 disabled={sending}
-                onChange={(event) => {
-                  const next = event.target.value as "auto" | "ask";
-                  setPermissionMode(next);
-                  if (conv?.id) void setApprovalMode(conv.id, next);
-                }}
+                cwd={conv?.cwd}
+                onOpenSettings={onOpenMcpSettings}
+              />
+            ) : conversationMcpServerIds.length > 0 ? (
+              <span
+                className="composer-mcp-remote-notice"
+                title={t("mcp.notAvailableRemote")}
               >
-                <option value="auto">{t("chat.approvalAuto")}</option>
-                <option value="ask">{t("chat.approvalAsk")}</option>
-              </select>
-            </label>
+                <Server size={14} aria-hidden="true" />
+                <span className="mcp-remote-notice-text">{t("mcp.notAvailableRemote")}</span>
+              </span>
+            ) : null}
+            {variant !== "mini" && (
+              <label
+                className="composer-permission"
+                title={t("chat.permissionHint")}
+              >
+                <span className="composer-permission-label">{t("chat.permission")}</span>
+                <select
+                  className="composer-permission-select"
+                  value={permissionMode}
+                  disabled={sending}
+                  onChange={(event) => {
+                    const next = event.target.value as "auto" | "ask";
+                    setPermissionMode(next);
+                    if (conv?.id) void setApprovalMode(conv.id, next);
+                  }}
+                >
+                  <option value="auto">{t("chat.approvalAuto")}</option>
+                  <option value="ask">{t("chat.approvalAsk")}</option>
+                </select>
+              </label>
+            )}
           </div>
           <div className="composer-tail">
             <SessionConfigPicker
               className="composer-session-config"
-              options={sessionConfigOptions}
+              options={activeConversationConfigOptions ?? sessionConfigOptions}
               overrides={conv?.configOptionOverrides}
-              disabled={sending || replaying}
+              disabled={sending}
               fallback={
                 <span className="composer-hint">{t("chat.enterHint")}</span>
               }
-              onChange={(next) => {
-                if (conv?.id) void setConfigOptionOverrides(conv.id, next);
+              onChange={async (next) => {
+                const prevProvider = conv?.configOptionOverrides?.provider;
+                const currentProvider = next.provider;
+                const member = members.find(
+                  (entry) => entry.id === conv?.agentId
+                );
+                if (member && currentProvider !== prevProvider) {
+                  const resolved = useCliExecutorStore
+                    .getState()
+                    .resolve(member.cli.adapter);
+                  const providerProbeInput = {
+                    agentId: member.id,
+                    adapter: member.cli.adapter,
+                    binary: member.cli.binary || resolved?.binary,
+                    extraArgs: [
+                      ...(resolved?.extraArgs ?? []),
+                      ...(member.cli.extraArgs ?? [])
+                    ],
+                    env: {
+                      ...(resolved?.env ?? {}),
+                      ...(member.cli.env ?? {})
+                    },
+                    cwd: conv?.cwd || undefined,
+                    configOptionOverrides: currentProvider
+                      ? { provider: currentProvider }
+                      : undefined
+                  };
+                  try {
+                    let targetOptions =
+                      await cliClient.getCachedSessionConfigOptions(
+                        providerProbeInput
+                      );
+                    if (targetOptions.length === 0 && currentProvider) {
+                      targetOptions =
+                        await cliClient.inspectSessionConfigOptions(
+                          providerProbeInput
+                        );
+                    }
+                    if (targetOptions.length > 0) {
+                      setActiveConversationConfigOptions(targetOptions);
+                      const modelOpt = findMainModelConfigOption(targetOptions);
+                      if (modelOpt?.currentValue) {
+                        next = { ...next, model: modelOpt.currentValue };
+                      }
+                    }
+                  } catch {
+                    /* best-effort live refresh on provider switch */
+                  }
+                }
+                if (conv?.id) {
+                  void setConfigOptionOverrides(conv.id, next);
+                  useConversationStore.getState().requestFreshContext(conv.id);
+                }
               }}
             />
+            {variant !== "mini" && !sending && !pendingWorkflowAction ? (
+              <ScheduledSendControl
+                adapter={member?.cli.adapter ?? conv.adapter}
+                disabled={attachmentBusy || sendLock}
+                canSchedule={!!(draft.trim() || pendingAttachments.length > 0)}
+                onSchedule={onScheduleSend}
+              />
+            ) : null}
             {sending ? (
               <button
                 className="danger stop-icon-button"
                 type="button"
                 disabled={!running}
-                title={running ? t("chat.stop") : t("status.starting")}
-                aria-label={running ? t("chat.stopAria") : t("chat.startingAria")}
+                title={running ? `${t("chat.stop")} (Esc)` : t("status.starting")}
+                aria-label={running ? `${t("chat.stopAria")} (Esc)` : t("chat.startingAria")}
                 onClick={() => void stopActive(conv.id)}
               >
                 {running ? <StopIcon /> : <span className="starting-spinner">…</span>}
@@ -2941,7 +3627,17 @@ function NewTaskHome({
   configOptionOverrides,
   configOptionsLoading,
   skills,
-  selectedSkillIds,
+  skillsLoading,
+  skillsError,
+  onReloadSkills,
+  messageSkills,
+  onMessageSkills,
+  referenceTags,
+  referencePicker,
+  onSelectConversationReference,
+  mcpServerIds = [],
+  onMcpServerIds,
+  onOpenMcpSettings,
   pluginAgent,
   preflightMsg,
   onDraft,
@@ -2949,7 +3645,6 @@ function NewTaskHome({
   onRefreshAgents,
   onManageAgents,
   onConfigOptionOverrides,
-  onSkills,
   onCwd,
   onWorkspaceMode,
   onBranch,
@@ -2959,6 +3654,7 @@ function NewTaskHome({
   onRemoveAttachment,
   attachmentBusy,
   sendLocked,
+  conversationDropActive,
   attachmentDropActive,
   onAttachmentDragEnter,
   onAttachmentDragLeave,
@@ -2967,7 +3663,8 @@ function NewTaskHome({
   onAttachmentPaste,
   onTaskMode,
   onTeam,
-  onSubmit
+  onSubmit,
+  variant = "default"
 }: {
   draft: string;
   agentAvailability: AgentAvailabilityGroups;
@@ -2988,7 +3685,17 @@ function NewTaskHome({
   configOptionOverrides: Record<string, string>;
   configOptionsLoading: boolean;
   skills: ReturnType<typeof useSkillStore.getState>["skills"];
-  selectedSkillIds: string[];
+  skillsLoading: boolean;
+  skillsError?: string;
+  onReloadSkills: () => void;
+  messageSkills: SkillSnapshot[];
+  onMessageSkills: (value: SkillSnapshot[]) => void;
+  referenceTags: ReactNode;
+  referencePicker: ReactNode;
+  onSelectConversationReference: () => void;
+  mcpServerIds?: string[];
+  onMcpServerIds?: (ids: string[]) => void;
+  onOpenMcpSettings?: () => void;
   pluginAgent?: NativePluginAgent;
   preflightMsg: string | null;
   onDraft: (value: string) => void;
@@ -2996,7 +3703,6 @@ function NewTaskHome({
   onRefreshAgents: () => void;
   onManageAgents: () => void;
   onConfigOptionOverrides: (value: Record<string, string>) => void;
-  onSkills: (ids: string[]) => void;
   onCwd: (value: string) => void;
   onWorkspaceMode: (value: TaskWorkspaceMode) => void;
   onBranch: (value: string) => void;
@@ -3006,6 +3712,7 @@ function NewTaskHome({
   onRemoveAttachment: (id: string) => void;
   attachmentBusy: boolean;
   sendLocked: boolean;
+  conversationDropActive: boolean;
   attachmentDropActive: boolean;
   onAttachmentDragEnter: (event: DragEvent) => void;
   onAttachmentDragLeave: (event: DragEvent) => void;
@@ -3015,9 +3722,17 @@ function NewTaskHome({
   onTaskMode: (value: "normal" | "team") => void;
   onTeam: (id: string) => void;
   onSubmit: () => void;
+  variant?: "default" | "mini";
 }) {
   const { t } = useTranslation();
+  const currentUser = useConversationStore((s) => s.currentUser);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, []);
   const teamMode = taskMode === "team";
   const selectedTeam = teams.find((tt) => tt.id === selectedTeamId);
   const delegationPreviewTeam =
@@ -3033,6 +3748,10 @@ function NewTaskHome({
     roots: workspaceRoots,
     onChange: onDraft,
     textareaRef
+  });
+  const skillCommands = useSkillCommands({
+    draft, onDraft, skills, selected: messageSkills, onSelected: onMessageSkills,
+    textareaRef, scopeKey: selectedMemberId, disabled: sendLocked || teamMode
   });
   const workspaceParts = cwd.trim().split(/[\\/]/).filter(Boolean);
   const workspaceName = workspaceParts[workspaceParts.length - 1] || cwd.trim();
@@ -3053,42 +3772,56 @@ function NewTaskHome({
   };
 
   return (
-    <div className="new-task-view">
+    <div className={`new-task-view${variant === "mini" ? " new-task-view-mini" : ""}`}>
       <div className="new-task-stack">
         <h1 className="new-task-title">{t("chat.heroTitle")}</h1>
-        <div
-          className="new-task-mode-tabs"
-          role="tablist"
-          aria-label={t("workflow.modeTabsAria")}
-        >
-          <button
-            className={`new-task-mode-tab${taskMode === "normal" ? " active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={taskMode === "normal"}
-            onClick={() => onTaskMode("normal")}
+        <div className="new-task-mode-tabs">
+          <div
+            className="new-task-mode-choices"
+            role="tablist"
+            aria-label={t("workflow.modeTabsAria")}
           >
-            {t("workflow.normalMode")}
-          </button>
-          <button
-            className={`new-task-mode-tab${taskMode === "team" ? " active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={taskMode === "team"}
-            onClick={() => onTaskMode("team")}
-          >
-            {t("workflow.teamExecution")}
-          </button>
+            <button
+              className={`new-task-mode-tab${taskMode === "normal" ? " active" : ""}`}
+              type="button"
+              role="tab"
+              aria-selected={taskMode === "normal"}
+              onClick={() => onTaskMode("normal")}
+            >
+              {t("workflow.normalMode")}
+            </button>
+            <button
+              className={`new-task-mode-tab${taskMode === "team" ? " active" : ""}`}
+              type="button"
+              role="tab"
+              aria-selected={taskMode === "team"}
+              onClick={() => onTaskMode("team")}
+            >
+              {t("workflow.teamExecution")}
+            </button>
+          </div>
+          {!isWebPlatform && window.freebuddy?.docStudio?.openWindow && (
+            <button
+              className="new-task-mode-tab"
+              type="button"
+              onClick={() => void window.freebuddy?.docStudio?.openWindow()}
+            >
+              {t("docStudio.documentMode")}
+            </button>
+          )}
         </div>
 
         <section
-          className={`new-task-composer${attachmentDropActive ? " attachment-drop-active" : ""}`}
+          className={`new-task-composer${attachmentDropActive ? " attachment-drop-active" : ""}${conversationDropActive ? " conversation-drop-active" : ""}`}
           aria-label={t("chat.newTaskAria")}
           onDragEnter={onAttachmentDragEnter}
           onDragLeave={onAttachmentDragLeave}
           onDragOver={onAttachmentDragOver}
           onDrop={onAttachmentDrop}
         >
+        {conversationDropActive && <div className="conversation-drop-overlay" role="status">
+          <MessagesSquare size={20} aria-hidden="true" />{t("contextShare.dropToReference")}
+        </div>}
         {attachmentDropActive ? (
           <div className="attachment-drop-overlay" aria-hidden="true">
             {t("chat.dropAttachmentsHint")}
@@ -3099,6 +3832,10 @@ function NewTaskHome({
           onRemove={onRemoveAttachment}
           removeDisabled={attachmentBusy || sendLocked}
         />
+        {referencePicker}
+        {referenceTags}
+        <MessageSkillTags skills={messageSkills} disabled={sendLocked || teamMode}
+          onRemove={skillCommands.remove} />
         {fileMentions.active ? (
           <WorkspaceFileMentionMenu
             matches={fileMentions.matches}
@@ -3106,20 +3843,30 @@ function NewTaskHome({
             loading={fileMentions.loading}
             onSelect={fileMentions.selectMatch}
           />
+        ) : skillCommands.active ? (
+          <SlashCommandMenu anchorRef={textareaRef} id={skillCommands.id} skills={skillCommands.matches} query={skillCommands.query}
+            selectedIndex={skillCommands.selectedIndex} onSelect={skillCommands.select} onHighlight={skillCommands.setSelectedIndex}
+            loading={skillsLoading} error={skillsError} onRetry={onReloadSkills} />
         ) : null}
         <textarea
           ref={textareaRef}
           autoFocus
           rows={4}
           value={draft}
-          disabled={attachmentBusy || sendLocked}
-          placeholder={t("chat.inputPlaceholder")}
-          onChange={fileMentions.handleChange}
+          disabled={attachmentBusy}
+          placeholder={t(messageSkills.length ? "chat.skillTaskPlaceholder" : !teamMode && skills.some(skill => skill.enabled && skill.trusted) ? "chat.inputPlaceholderWithSlash" : "chat.inputPlaceholder")}
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-controls={skillCommands.active ? skillCommands.id : undefined}
+          aria-activedescendant={skillCommands.active && skillCommands.matches.length ? `${skillCommands.id}-${skillCommands.selectedIndex}` : undefined}
+          onChange={event => { fileMentions.handleChange(event); skillCommands.handleChange(event); }}
+          onBlur={skillCommands.handleBlur}
           onClick={fileMentions.handleCaretChange}
           onKeyUp={fileMentions.handleCaretChange}
-          onPaste={onAttachmentPaste}
+          onPaste={event => { skillCommands.handlePaste(); onAttachmentPaste(event); }}
           onKeyDown={(event) => {
             if (fileMentions.handleKeyDown(event)) return;
+            if (skillCommands.handleKeyDown(event)) return;
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               if (!attachmentBusy && !sendLocked) onSubmit();
@@ -3130,24 +3877,32 @@ function NewTaskHome({
         <div className="new-task-toolbar">
           <ComposerAddMenu
             skills={skills}
-            selectedIds={selectedSkillIds}
-            requiredIds={
-              agentAvailability.available.find(
-                (entry) => entry.member.id === selectedMemberId
-              )?.member.requiredSkillIds
-            }
+            selectedIds={messageSkills.map(skill => skill.id)}
             pluginAgent={pluginAgent}
             attachmentDisabled={
               attachmentBusy || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
             }
-            skillsDisabled={sendLocked}
+            skillsDisabled={sendLocked || teamMode}
             pluginsDisabled={sendLocked}
+            onSelectConversationReference={onSelectConversationReference}
+            referencesDisabled={sendLocked || attachmentBusy}
             onSelectAttachments={onSelectAttachments}
             onSelectPlugin={(plugin) =>
               insertPluginMention(draft, plugin, textareaRef.current, onDraft)
             }
-            onSkillsChange={onSkills}
+            onSkillsChange={skillCommands.selectIds}
           />
+          {currentUser?.isOwner !== false &&
+          window.freebuddy?.platform !== "web" &&
+          !(teamMode && selectedTeam && isDelegationTeam(selectedTeam)) ? (
+            <McpServerPicker
+              selectedIds={mcpServerIds}
+              onSelectionChange={(ids) => onMcpServerIds?.(ids)}
+              disabled={sendLocked}
+              cwd={cwd}
+              onOpenSettings={onOpenMcpSettings}
+            />
+          ) : null}
           {teamMode ? (
             <label className="new-task-team-picker" title={t("workflow.selectTeam")}>
               {teams.filter((tt) => tt.enabled).length === 0 ? (

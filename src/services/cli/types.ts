@@ -16,6 +16,7 @@ export interface CLIExecutorOverride {
   codexByok?: CLICodexByokConfig;
   claudeByok?: CLIClaudeByokConfig;
   deepseekByok?: CLIDeepSeekByokConfig;
+  piByok?: CLIPiByokConfig;
   skillIds?: string[];
 }
 
@@ -35,6 +36,7 @@ export interface CLICodexByokConfig {
 
 export interface CLIClaudeByokConfig {
   enabled?: boolean;
+  providerId?: string;
   baseUrl?: string;
   envKey?: string;
   apiKey?: string;
@@ -47,6 +49,7 @@ export interface CLIClaudeByokConfig {
 
 export interface CLIDeepSeekByokConfig {
   enabled?: boolean;
+  providerId?: string;
   baseUrl?: string;
   envKey?: string;
   wireApi?: "chat" | "responses";
@@ -54,6 +57,19 @@ export interface CLIDeepSeekByokConfig {
   apiKeyPreview?: string;
   officialApiKey?: string;
   officialApiKeyPreview?: string;
+  models?: CLIByokModel[];
+  /** Provider model context window in tokens. */
+  contextWindow?: number;
+}
+
+export interface CLIPiByokConfig {
+  enabled?: boolean;
+  /** Referenced provider id (provider-xxx); when set, baseUrl/key/models come from that provider. */
+  providerId?: string;
+  baseUrl?: string;
+  envKey?: string;
+  apiKey?: string;
+  apiKeyPreview?: string;
   models?: CLIByokModel[];
   /** Provider model context window in tokens. */
   contextWindow?: number;
@@ -203,6 +219,7 @@ export interface SessionConfigProbeInput {
   extraArgs?: string[];
   env?: Record<string, string>;
   cwd?: string;
+  configOptionOverrides?: Record<string, string>;
 }
 
 export type BrowserToolAction =
@@ -401,6 +418,8 @@ export interface CliInstallResult {
   stderr: string;
 }
 
+export type { CliRuntimeUpdateRequest, CliUpgradePlan } from "../../../electron/shared/cliRuntimeUpdate";
+
 export type CliInstallFailureCode =
   | "tool_missing"
   | "node_arch_mismatch"
@@ -422,10 +441,13 @@ export interface CliRuntime {
   binaryPath?: string;
   version?: string;
   latestVersion?: string;
+  minimumVersion?: string;
+  updateCheckSupported?: boolean;
   updateStatus?:
     | "idle"
     | "checking"
     | "current"
+    | "available"
     | "updating"
     | "updated"
     | "error";
@@ -475,6 +497,46 @@ export type CodexUsageResult =
         | "expired_token"
         | "request_failed"
         | "invalid_response";
+      error?: string;
+      fetchedAt: string;
+    };
+
+export interface AntigravityQuotaBucket {
+  bucketId: string;
+  displayName: string;
+  window: string;
+  windowSeconds: number;
+  remainingFraction: number;
+  usedPercent: number;
+  leftPercent: number;
+  resetTime?: string;
+  resetAt?: number;
+  description?: string;
+}
+
+export interface AntigravityQuotaGroup {
+  displayName: string;
+  description?: string;
+  buckets: AntigravityQuotaBucket[];
+}
+
+export type AntigravityUsageResult =
+  | {
+      ok: true;
+      email?: string;
+      planType?: string;
+      groups: AntigravityQuotaGroup[];
+      fetchedAt: string;
+    }
+  | {
+      ok: false;
+      reason:
+        | "missing_auth"
+        | "invalid_auth"
+        | "expired_token"
+        | "request_failed"
+        | "invalid_response"
+        | "unsupported_platform";
       error?: string;
       fetchedAt: string;
     };
@@ -554,10 +616,11 @@ export interface AttachmentCandidate {
 }
 
 export interface WorkspaceFileMatch {
-  /** Path inserted into the composer: relative for single-root, absolute for multi-root. */
+  /** Path inserted into the composer: relative for single-root, absolute for multi-root. Directories end with "/". */
   path: string;
   name: string;
   directory: string;
+  kind: "file" | "directory";
   /** Absolute workspace root when the match came from a multi-root search. */
   root?: string;
   /** Disambiguated display path (basename(root)/rel) for multi-root picker UI. */
@@ -644,6 +707,11 @@ export interface Conversation {
   skillSnapshot: SkillSnapshot[];
   titleSource?: ConversationTitleSource;
   archived: boolean;
+  /** Pinned conversations float to the top of their list group. */
+  pinned?: boolean;
+  pinnedAt?: string;
+  /** Manual list position; null = order by activity (new arrivals float in). */
+  sortPosition?: number | null;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
@@ -667,12 +735,15 @@ export type MessageStatus =
 
 export interface ConversationMessage {
   id: string;
+  /** Database insertion order for messages sharing a timestamp. */
+  sequence?: number;
   conversationId: string;
   role: MessageRole;
   status: MessageStatus;
   /** For assistant messages: JSON-serialized CliStreamItem[]; for user: text. */
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;
@@ -714,6 +785,7 @@ export interface AppendMessageInput {
   status: MessageStatus;
   content: string;
   attachments?: ChatAttachment[];
+  skillSnapshot?: SkillSnapshot[];
   taskId?: string;
   agentId?: string;
   agentName?: string;
@@ -781,6 +853,10 @@ export interface TransferConversationInput {
   targetAgentId: string;
   targetAgentName: string;
   targetAdapter: string;
+  /** Optional session config overrides (model, thought level) for the target conversation. */
+  configOptionOverrides?: Record<string, string>;
+  /** Optional MCP server IDs override. If not provided, inherits from source conversation. */
+  mcpServerIds?: string[];
 }
 
 export interface TransferConversationResult {
@@ -788,6 +864,20 @@ export interface TransferConversationResult {
   briefId: string | null;
   seedPrompt: string;
   warning?: "brief_extraction_failed";
+}
+
+export interface ForkConversationInput {
+  sourceConversationId: string;
+  /** Fork point: messages up to and including this one are copied. */
+  throughMessageId: string;
+  targetConversationId?: string;
+  /** Title for the fork; defaults to the source title. */
+  title?: string;
+}
+
+export interface ForkConversationResult {
+  conversation: Conversation;
+  copiedMessages: number;
 }
 
 export interface ImportCodexSessionResult {
@@ -805,6 +895,8 @@ export interface ConversationContextReference {
   id: string;
   snapshotId: string;
   targetConversationId: string;
+  /** First user message introducing this share in the complete history. */
+  targetMessageId?: string;
   referenceType: ConversationContextReferenceType;
   source: HandoffBriefSource;
   transcriptAvailable: boolean;
@@ -824,12 +916,97 @@ export interface CreateConversationShareResult {
   transcriptTruncated: boolean;
 }
 
+export interface ListMessagesQuery {
+  limit?: number;
+  beforeCreatedAt?: string;
+  beforeId?: string;
+}
+
+export interface ListMessagesPage {
+  messages: ConversationMessage[];
+  hasMore: boolean;
+}
+
+export interface MessageDetailsPage {
+  items?: CliStreamItem[];
+  available: boolean;
+  text: string;
+  nextOffset: number;
+  hasMore: boolean;
+}
+
 export interface AttachConversationSharesInput {
   targetConversationId: string;
   text: string;
+  /** UI hint before the message is saved; not persisted with the reference. */
+  targetMessageId?: string;
 }
 
 export interface AttachConversationSharesResult {
   references: ConversationContextReference[];
   attachedCount: number;
+}
+
+// ---- User MCP Servers (Phase 1) ----
+
+export interface UserMcpServerEnvVar {
+  name: string;
+  value?: string;
+  valuePreview?: string;
+  valueEncrypted?: string;
+  secret?: boolean;
+  hasValue?: boolean;
+  previousName?: string;
+}
+
+export interface McpOAuthStatus {
+  state: "disconnected" | "authorizing" | "connected" | "error";
+  error?: string;
+  expiresAt?: number;
+  sessionOnly?: boolean;
+}
+
+export interface UserMcpServerInput {
+  id?: string;
+  name: string;
+  transport?: "stdio" | "http" | "sse";
+  command?: string;
+  args?: string[];
+  env?: UserMcpServerEnvVar[];
+  url?: string;
+  headers?: UserMcpServerEnvVar[];
+  authType?: "headers" | "oauth";
+  oauthClientId?: string;
+  oauthScope?: string;
+  enabled?: boolean;
+}
+
+export interface UserMcpServer {
+  id: string;
+  name: string;
+  transport?: "stdio" | "http" | "sse";
+  command: string;
+  args: string[];
+  env: UserMcpServerEnvVar[];
+  url?: string;
+  headers?: UserMcpServerEnvVar[];
+  authType?: "headers" | "oauth";
+  oauthClientId?: string;
+  oauthScope?: string;
+  oauthStatus?: McpOAuthStatus;
+  enabled: boolean;
+  lastCheckStatus?: "ok" | "error";
+  lastCheckError?: string;
+  lastCheckTools?: string[];
+  lastCheckedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserMcpServerSelfCheckResult {
+  status: "ok" | "error";
+  code?: string;
+  error?: string;
+  tools?: string[];
+  stderr?: string;
 }

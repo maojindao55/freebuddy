@@ -95,7 +95,7 @@ test("successful package install is verified before the UI reports success", () 
 test("concurrent agent installs keep stream events scoped to their request", () => {
   assert.match(preloadSource, /nextCliInstallRequestId/);
   assert.match(preloadSource, /event\.requestId !== requestId/);
-  assert.match(preloadSource, /\{ adapter, command, requestId \}/);
+  assert.match(preloadSource, /\{ adapter, command, requestId, targetVersion \}/);
   assert.match(checkSource, /\{ \.\.\.payload, requestId \}/);
   assert.match(ipcSource, /event\.sender,[\s\S]*args\.adapter,[\s\S]*args\.requestId/);
   assert.equal(ipcSource.includes("BrowserWindow.getFocusedWindow()?.webContents"), false);

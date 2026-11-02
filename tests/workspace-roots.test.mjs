@@ -102,6 +102,24 @@ test("isPathWithinRoots resolves symlinks before checking containment", async (t
   }
 });
 
+test("filterPathsWithinRoots drops non-strings, blanks, and out-of-root entries", async (t) => {
+  const { filterPathsWithinRoots } = await loadWorkspaceRoots();
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-filter-roots-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const allowed = path.join(temp, "allowed");
+  const outside = path.join(temp, "outside");
+  const inside = path.join(allowed, "project");
+  fs.mkdirSync(inside, { recursive: true });
+  fs.mkdirSync(outside);
+
+  assert.deepEqual(
+    filterPathsWithinRoots([inside, outside, "", "  ", 42, null], [allowed]),
+    [inside]
+  );
+  assert.deepEqual(filterPathsWithinRoots([inside], []), []);
+  assert.deepEqual(filterPathsWithinRoots("not-an-array", [allowed]), []);
+});
+
 test("webUIServer exposes an authed, sandboxed /api/listDirs endpoint", () => {
   const server = fs.readFileSync(
     new URL("../electron/webUIServer.ts", import.meta.url),

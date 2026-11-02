@@ -1,0 +1,16 @@
+.provider-brand-icon.provider-brand-icon-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--fb-panel-soft, #f1f5f9);
+  color: var(--fb-text-primary, #1e293b);
+}
+
+.provider-brand-icon > svg,
+.provider-brand-icon > img {
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}

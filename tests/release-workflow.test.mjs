@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { MacUpdater } from "electron-updater/out/MacUpdater.js";
+import { findFile, parseUpdateInfo, resolveFiles } from "electron-updater/out/providers/Provider.js";
 
 const packageJson = JSON.parse(
   fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")
@@ -48,7 +55,7 @@ test("release workflow uploads version-suffixed assets and update metadata for e
   assert.match(workflow, /node scripts\/release-notes\.mjs --version "\$\{\{ env\.RELEASE_TAG \}\}"/);
   assert.match(workflow, /--notes-file \.release-notes\.md/);
   assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-__VERSION__\.dmg/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-__VERSION__\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-arm64-__VERSION__\.zip/);
   assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.dmg/);
   assert.match(workflow, /FreeBuddy_macOS-Intel-__VERSION__\.zip/);
   assert.match(workflow, /FreeBuddy_Windows_x64-__VERSION__\.exe/);
@@ -59,12 +66,24 @@ test("release workflow uploads version-suffixed assets and update metadata for e
   assert.match(workflow, /\$assetName = \$assetName\.Replace\("__VERSION__", "v\$appVersion"\)/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm test/);
+  assert.match(workflow, /Import macOS signing certificate/);
+  assert.match(workflow, /scripts\/import-macos-csc-cert\.sh/);
+  assert.match(workflow, /Checkout signing helper/);
+  assert.match(workflow, /path:\s+\.ci-helpers/);
   assert.match(workflow, /ensure-tokscale-platform\.mjs --platform \$\{\{ matrix\.tokscale_platform \}\} --arch \$\{\{ matrix\.tokscale_arch \}\}/);
   // Build only; assets are renamed and uploaded manually to keep friendly names.
   assert.match(workflow, /npx electron-builder \$\{\{ matrix\.builder_args \}\} --publish never/);
+  const buildStep = workflow.split("- name: Build Electron app")[1]?.split("- name:")[0] ?? "";
+  assert.match(buildStep, /CSC_IDENTITY_AUTO_DISCOVERY/);
+  assert.doesNotMatch(
+    buildStep,
+    /CSC_LINK:/,
+    "electron-builder must not receive CSC_LINK; it would rebuild a temp keychain and fail on macOS 26.6"
+  );
+  assert.doesNotMatch(buildStep, /CSC_KEY_PASSWORD:/);
   assert.match(workflow, /gh release upload/);
   assert.match(workflow, /Upload macOS update metadata/);
-  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-\$\{version_suffix\}\.zip/);
+  assert.match(workflow, /FreeBuddy_macOS-Apple-Silicon-arm64-\$\{version_suffix\}\.zip/);
   assert.match(workflow, /FreeBuddy_macOS-Intel-\$\{version_suffix\}\.zip/);
   // Auto-update metadata: latest.yml rewritten to the version-suffixed Windows name.
   assert.match(workflow, /Upload Windows update metadata/);
@@ -73,11 +92,138 @@ test("release workflow uploads version-suffixed assets and update metadata for e
   // AppImage and .deb both auto-update through latest-linux.yml; rewrite both
   // friendly asset names so Ubuntu .deb installs do not 404.
   assert.match(workflow, /Upload Linux update metadata/);
-  assert.match(workflow, /find release -name latest-linux\.yml/);
+  assert.match(workflow, /find release -maxdepth 1 -name latest-linux\.yml/);
+  assert.match(workflow, /FILE=\$\(find release -maxdepth 1 -name "\$find_pattern"/);
+  assert.doesNotMatch(workflow, /Get-ChildItem -Path release -Recurse/);
   assert.match(workflow, /FreeBuddy_Linux_x64-\$\{version_suffix\}\.AppImage/);
   assert.match(workflow, /FreeBuddy_Ubuntu_x64-\$\{version_suffix\}\.deb/);
   assert.match(
     workflow,
     /FreeBuddy-\[0-9\]\+\\.\[0-9\]\+\\.\[0-9\]\+-linux-\(amd64\|x64\|x86_64\)\\.deb/
   );
+});
+
+test("merged macOS update metadata selects the published ZIP for each actual updater architecture", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-mac-update-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const suffix = `v${packageJson.version}`;
+  const publishedName = (platform) => {
+    const template = workflow.match(new RegExp(`^\\s+(FreeBuddy_macOS-${platform}-[^\\s|]+\\.zip)\\|\\*\\.zip$`, "m"))?.[1];
+    assert.ok(template, `missing published ZIP asset for ${platform}`);
+    return template.replace("__VERSION__", suffix);
+  };
+  const armZip = publishedName("Apple-Silicon");
+  const intelZip = publishedName("Intel");
+  const metadataName = variable => workflow.match(new RegExp(`${variable}="([^"]+)"`))?.[1]
+    .replace("${version_suffix}", suffix);
+  assert.equal(metadataName("arm_zip"), armZip, "ARM metadata and uploaded ZIP names must match");
+  assert.equal(metadataName("x64_zip"), intelZip, "Intel metadata and uploaded ZIP names must match");
+  assert.match(workflow, /"\$\{arm_zip\}\.blockmap"/, "ARM blockmap uses the same updated asset name");
+
+  const hashes = new Map();
+  const writeMetadata = (arch, zip) => {
+    const zipBody = Buffer.from(`sample ${arch} update ZIP`);
+    const hash = createHash("sha512").update(zipBody).digest("base64");
+    hashes.set(zip, hash);
+    const target = path.join(directory, `latest-mac-${arch}.yml`);
+    fs.writeFileSync(target, `version: ${packageJson.version}\nfiles:\n  - url: ${zip}\n    sha512: ${hash}\n    size: ${zipBody.length}\npath: ${zip}\nsha512: ${hash}\nreleaseDate: '2026-10-25T00:00:00.000Z'\n`);
+    return target;
+  };
+  const armMetadata = writeMetadata("arm64", armZip);
+  const intelMetadata = writeMetadata("x64", intelZip);
+  const mergedPath = path.join(directory, "latest-mac.yml");
+  execFileSync(process.execPath, [
+    fileURLToPath(new URL("../scripts/merge-mac-latest-yml.mjs", import.meta.url)),
+    armMetadata, intelMetadata, mergedPath
+  ]);
+  const baseUrl = new URL(`https://github.com/maojindao55/freebuddy/releases/download/${suffix}/`);
+  const updateInfo = parseUpdateInfo(fs.readFileSync(mergedPath, "utf8"), "latest-mac.yml", new URL("latest-mac.yml", baseUrl));
+  const files = resolveFiles(updateInfo, baseUrl);
+  assert.equal(updateInfo.version, packageJson.version);
+  assert.equal(files.length, 2);
+  for (const [isArm64, expectedZip] of [[false, intelZip], [true, armZip]]) {
+    const selected = findFile(MacUpdater.filterFilesForArch(files, isArm64), "zip", ["pkg", "dmg"]);
+    assert.equal(selected.url.pathname.split("/").at(-1), expectedZip);
+    assert.equal(selected.info.sha512, hashes.get(expectedZip));
+  }
+});
+
+test("macOS cert import uses the keychain password for set-key-partition-list", () => {
+  const script = fs.readFileSync(
+    new URL("../scripts/import-macos-csc-cert.sh", import.meta.url),
+    "utf8"
+  );
+  assert.match(script, /security create-keychain -p "\$\{keychain_password\}"/);
+  assert.match(
+    script,
+    /security set-key-partition-list[\s\S]*?-k "\$\{keychain_password\}"/
+  );
+  assert.match(script, /-P "\$\{CSC_KEY_PASSWORD:-\}"/);
+});
+
+test("macOS cert import replaces a leftover keychain before create-keychain", () => {
+  const script = fs.readFileSync(
+    new URL("../scripts/import-macos-csc-cert.sh", import.meta.url),
+    "utf8"
+  );
+  const deleteAt = script.search(/security delete-keychain/);
+  const createAt = script.search(/security create-keychain/);
+  assert.ok(deleteAt >= 0, "must delete any leftover keychain (npm test on Darwin leaves one)");
+  assert.ok(createAt >= 0);
+  assert.ok(
+    deleteAt < createAt,
+    "delete-keychain must run before create-keychain to avoid SecKeychainCreate exit 48"
+  );
+  assert.match(script, /security list-keychains -d user/);
+  assert.doesNotMatch(script, /security list-keychain /);
+  assert.doesNotMatch(
+    script,
+    /-t cert/,
+    "PKCS12 import must include the private key; -t cert drops the identity"
+  );
+});
+
+test("macOS cert import test does not create a keychain during npm test on Darwin", () => {
+  const source = fs.readFileSync(new URL(import.meta.url), "utf8");
+  const marker = 'test("macOS cert import is a no-op off Darwin", async () => {';
+  const start = source.lastIndexOf(marker);
+  assert.ok(start >= 0, "expected the Darwin no-op test");
+  const darwinTest = source.slice(start);
+  const platformCheck = darwinTest.indexOf('process.platform === "darwin"');
+  const spawn = darwinTest.indexOf("spawnSync(");
+  assert.ok(platformCheck >= 0, "expected a Darwin platform guard");
+  assert.ok(spawn >= 0, "expected spawnSync of the import script");
+  assert.ok(
+    platformCheck < spawn,
+    "spawnSync must be skipped on Darwin so npm test does not leave freebuddy-signing.keychain-db"
+  );
+  assert.match(
+    darwinTest,
+    /fileURLToPath\(/,
+    "URL.pathname is /D:/... on Windows; bash cannot open that path (exit 127)"
+  );
+  assert.doesNotMatch(darwinTest, /\.pathname/);
+});
+
+test("macOS cert import is a no-op off Darwin", async () => {
+  if (process.platform === "darwin") {
+    return;
+  }
+  // Windows bash may be WSL, which cannot open a C:/ path without translation.
+  if (process.platform === "win32") {
+    return;
+  }
+  const { spawnSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const scriptPath = fileURLToPath(
+    new URL("../scripts/import-macos-csc-cert.sh", import.meta.url)
+  );
+  const bashPath =
+    process.platform === "win32" ? scriptPath.replaceAll("\\", "/") : scriptPath;
+  const result = spawnSync("bash", [bashPath], {
+    encoding: "utf8",
+    env: { ...process.env, CSC_LINK: "dGVzdA==" },
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.match(result.stdout, /Skipping macOS certificate import/);
 });

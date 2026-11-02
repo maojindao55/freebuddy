@@ -33,8 +33,12 @@ import {
   type DelegateExecArgs,
   type DelegateExecResult
 } from "./delegationDispatch.js";
-import { buildDelegateTaskPrompt } from "./delegation/protocol/text.js";
+import {
+  buildDelegateFollowUpTask,
+  buildDelegateTaskPrompt
+} from "./delegation/protocol/text.js";
 import type { DelegateAgentRunner } from "./delegationRunner.js";
+import { logMain } from "../debugLog.js";
 import {
   classifyNewDelegationChildren,
   delegationWakeInfoForSettled,
@@ -71,11 +75,26 @@ function delegationTurnSessionId(runId: string, nodeKey: string): string {
 function modelConfigOverride(entry: {
   model?: string;
   modelOptionId?: string;
+  provider?: string;
+  providerOptionId?: string;
+  thoughtLevel?: string;
+  thoughtLevelOptionId?: string;
 }): Record<string, string> | undefined {
+  const overrides: Record<string, string> = {};
+  const provider = entry.provider?.trim();
+  if (provider) {
+    overrides[entry.providerOptionId?.trim() || "provider"] = provider;
+  }
   const model = entry.model?.trim();
-  if (!model) return undefined;
-  const optionId = entry.modelOptionId?.trim() || "model";
-  return { [optionId]: model };
+  if (model) {
+    const optionId = entry.modelOptionId?.trim() || "model";
+    overrides[optionId] = model;
+  }
+  const thoughtLevel = entry.thoughtLevel?.trim();
+  if (thoughtLevel) {
+    overrides[entry.thoughtLevelOptionId?.trim() || "thought_level"] = thoughtLevel;
+  }
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
 
 type ResolvedAgent = {
@@ -141,6 +160,10 @@ export class DelegationRuntime {
       writeApproval: (binding, teammate) => this.requestWriteApproval(binding.runId, teammate),
       onSettle: (id) => {
         const evtRun = this.findRunIdForEvent(id);
+        logMain().info("delegation", "settlement notification received", {
+          childEventId: id, runId: evtRun ?? null,
+          hasOrchestrator: Boolean(evtRun && this.contexts.get(evtRun)?.orchestrator)
+        });
         if (evtRun) {
           this.contexts.get(evtRun)?.orchestrator?.onEventSettled(id);
           const child = this.contexts
@@ -225,6 +248,7 @@ export class DelegationRuntime {
     if (ctx.orchestrator) return ctx.orchestrator;
     const orch = new DelegationOrchestrator({
       runId: ctx.runId,
+      trace: (event, data) => logMain().info("delegation", event, data),
       roster: ctx.roster,
       sharedInstructions: ctx.sharedInstructions,
       policy: ctx.policy,
@@ -403,9 +427,8 @@ export class DelegationRuntime {
     let ctx = this.contexts.get(runId);
     if (!ctx) ctx = this.loadContextFromDb(runId);
     if (!ctx) throw new Error("delegation run not found");
+    this.refreshTeamFromDb(ctx);
 
-    this.killedRunIds.delete(runId);
-    this.pausedRunIds.delete(runId);
     const entry = ctx.roster.find((r) => r.id === ctx!.entryRoleId) ?? ctx.roster[0];
     const events = listDelegationEvents(runId);
     let root = events.find((e) => e.depth === 0);
@@ -428,11 +451,44 @@ export class DelegationRuntime {
     const orch = this.ensureOrchestrator(ctx);
     if (!orch.state) orch.bindEntry(root.id);
 
+    const isParkedWaiting = Boolean(
+      orch.state &&
+      orch.state.nodes[root.id]?.status === "parked" &&
+      listDelegationEvents(runId).some(
+        (e) => e.parentEventId === root.id && (e.status === "running" || e.status === "pending")
+      )
+    );
+
+    if (!isParkedWaiting) {
+      const activeSessions = this.activeSessionsByRun.get(runId);
+      if (activeSessions && activeSessions.size > 0) {
+        for (const sessionId of activeSessions) {
+          try {
+            cliKill(sessionId);
+          } catch {
+            /* noop */
+          }
+        }
+        this.activeSessionsByRun.delete(runId);
+        cancelActiveDelegationEvents(runId, "follow_up_interrupted");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+
+    this.killedRunIds.delete(runId);
+    this.pausedRunIds.delete(runId);
+
+    const followUpTask = buildDelegateFollowUpTask(
+      root.taskText,
+      userPrompt,
+      root.status
+    );
+
     // Reset root to running for the follow-up turn.
     transitionDelegationEvent(root.id, "running", null, { allowReopen: true });
 
     const prompt = buildDelegateTaskPrompt(
-      userPrompt,
+      followUpTask,
       ctx.roster,
       entry.id,
       0,
@@ -450,6 +506,7 @@ export class DelegationRuntime {
       prompt
     });
 
+    if (result.parked) return;
     if (this.killedRunIds.has(runId)) return;
     const status: DelegationEventStatus = result.error ? "failed" : "done";
     updateDelegationEvent(root.id, {
@@ -501,6 +558,9 @@ export class DelegationRuntime {
     this.activeSessionsByRun.set(opts.ctx.runId, sessions);
     let removeSignalListener: (() => void) | undefined;
     try {
+      logMain().info("delegation", "agent turn launching", {
+        runId: opts.ctx.runId, parentEventId: opts.parentEventId, sessionId: opts.sessionId, depth: opts.depth
+      });
       const runAgent = () =>
         this.deps.runAgent({
           sessionId: opts.sessionId,
@@ -561,6 +621,10 @@ export class DelegationRuntime {
         );
       }
       const result = await Promise.race(races);
+      logMain().info("delegation", "agent turn returned", {
+        runId: opts.ctx.runId, parentEventId: opts.parentEventId, sessionId: opts.sessionId,
+        exitCode: result.exitCode, failed: Boolean(result.error)
+      });
       if (this.pausedRunIds.has(opts.ctx.runId) || this.killedRunIds.has(opts.ctx.runId)) {
         return {
           summary: result.summary,

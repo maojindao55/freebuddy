@@ -1,4 +1,5 @@
 import type { Conversation, Project } from "@/services/cli/types";
+import type { UnreadConversationMap } from "@/store/conversationUnread";
 
 export const PROJECT_PREVIEW_LIMIT = 5;
 /** Max project rows shown in the sidebar before "show more". */
@@ -16,6 +17,62 @@ export type ConversationProjectGroup = {
   latestAt: number;
 };
 
+export type ProjectSortMode = "activity" | "fixed";
+
+/** Pins take priority in either mode; conversation order within a group is unchanged. */
+export function sortProjectGroups(
+  groups: ConversationProjectGroup[],
+  pinnedKeys: string[],
+  mode: ProjectSortMode = "activity",
+  fixedOrder: string[] = []
+): ConversationProjectGroup[] {
+  const pins = new Map(pinnedKeys.map((key, index) => [key, index]));
+  const positions = new Map(fixedOrder.map((key, index) => [key, index]));
+  return [...groups].sort((a, b) => {
+    const aPin = pins.get(a.key);
+    const bPin = pins.get(b.key);
+    if (aPin !== undefined || bPin !== undefined) {
+      return (aPin ?? Infinity) - (bPin ?? Infinity);
+    }
+    if (mode === "fixed") {
+      const aPosition = positions.get(a.key) ?? Infinity;
+      const bPosition = positions.get(b.key) ?? Infinity;
+      if (aPosition !== bPosition) return aPosition - bPosition;
+    }
+    const aHasItems = a.items.length > 0 ? 1 : 0;
+    const bHasItems = b.items.length > 0 ? 1 : 0;
+    return bHasItems - aHasItems || b.latestAt - a.latestAt || a.label.localeCompare(b.label);
+  });
+}
+
+/** Derive the complete unread view before applying any sidebar display limits. */
+export function unreadConversationView(
+  conversations: Conversation[],
+  projects: ConversationProjectGroup[],
+  unread: UnreadConversationMap
+): { projects: ConversationProjectGroup[]; recent: Conversation[]; count: number } {
+  const unreadItems = conversations.filter((conversation) => Boolean(unread[conversation.id]));
+  const unreadIds = new Set(unreadItems.map((conversation) => conversation.id));
+  const matchingProjects = projects
+    .map((project) => ({
+      ...project,
+      items: project.items.filter((conversation) => unreadIds.has(conversation.id))
+    }))
+    .filter((project) => project.items.length > 0);
+  const groupedIds = new Set(
+    matchingProjects.flatMap((project) => project.items.map((conversation) => conversation.id))
+  );
+
+  return {
+    projects: matchingProjects,
+    // Cwd-only conversations can belong to a project too; show each unread once.
+    recent: unreadItems
+      .filter((conversation) => !groupedIds.has(conversation.id))
+      .sort(compareConversationsForList),
+    count: unreadItems.length
+  };
+}
+
 function conversationTimeValue(conversation: Conversation) {
   return conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt;
 }
@@ -23,6 +80,38 @@ function conversationTimeValue(conversation: Conversation) {
 export function conversationActivityTime(conversation: Conversation): number {
   const ts = Date.parse(conversationTimeValue(conversation));
   return Number.isFinite(ts) ? ts : 0;
+}
+
+/**
+ * Sidebar order within a group: pinned conversations float above unpinned ones
+ * (most recently pinned first); manually positioned rows keep their order;
+ * rows without a position (new arrivals, untouched groups) lead, sorted by
+ * activity, newest first.
+ */
+export function compareConversationsForList(
+  a: Conversation,
+  b: Conversation
+): number {
+  const aPinned = a.pinned ? 1 : 0;
+  const bPinned = b.pinned ? 1 : 0;
+  if (aPinned !== bPinned) return bPinned - aPinned;
+  if (aPinned === 1) {
+    const aPinnedAt = Date.parse(a.pinnedAt ?? "");
+    const bPinnedAt = Date.parse(b.pinnedAt ?? "");
+    const aAt = Number.isFinite(aPinnedAt) ? aPinnedAt : 0;
+    const bAt = Number.isFinite(bPinnedAt) ? bPinnedAt : 0;
+    if (aAt !== bAt) return bAt - aAt;
+  }
+  const aPosition = typeof a.sortPosition === "number" ? a.sortPosition : null;
+  const bPosition = typeof b.sortPosition === "number" ? b.sortPosition : null;
+  if (aPosition !== null && bPosition !== null) {
+    if (aPosition !== bPosition) return aPosition - bPosition;
+  } else if (aPosition !== null) {
+    return 1;
+  } else if (bPosition !== null) {
+    return -1;
+  }
+  return conversationActivityTime(b) - conversationActivityTime(a);
 }
 
 /** Last path segment for sidebar project label. */
@@ -40,6 +129,20 @@ export function conversationDisplayCwd(
   conversation: Pick<Conversation, "cwd" | "sourceCwd">
 ): string {
   return conversation.sourceCwd?.trim() || conversation.cwd?.trim() || "";
+}
+
+/** Real Git worktree directory when the conversation is running in worktree mode. */
+export function conversationWorktreePath(
+  conversation?: Pick<Conversation, "cwd" | "metadata">
+): string | undefined {
+  const taskWorkspace = conversation?.metadata?.taskWorkspace;
+  if (!taskWorkspace || typeof taskWorkspace !== "object") return undefined;
+  const rec = taskWorkspace as Record<string, unknown>;
+  if (rec.mode !== "worktree") return undefined;
+  if (typeof rec.worktreeRoot === "string" && rec.worktreeRoot.trim()) {
+    return rec.worktreeRoot.trim();
+  }
+  return conversation?.cwd?.trim() || undefined;
 }
 
 /**
@@ -71,7 +174,7 @@ export function groupConversationsByProject(
   }
   const groups = Array.from(map.values());
   for (const group of groups) {
-    group.items.sort((a, b) => conversationActivityTime(b) - conversationActivityTime(a));
+    group.items.sort(compareConversationsForList);
   }
   groups.sort((a, b) => b.latestAt - a.latestAt || a.label.localeCompare(b.label));
   return groups;
@@ -80,6 +183,11 @@ export function groupConversationsByProject(
 /**
  * Group conversations by projectId. Every project in `projects` appears even with
  * zero conversations. `key` is the project id when present.
+ *
+ * The cwd fallback only applies to conversations that were never assigned (or
+ * whose project disappeared). One explicitly removed via "remove from project"
+ * carries `metadata.projectDetached` and stays in Recent even though its cwd
+ * still resolves to a project folder.
  */
 export function groupConversationsByProjects(
   items: Conversation[],
@@ -96,7 +204,7 @@ export function groupConversationsByProjects(
 
   for (const conversation of items) {
     let projectId = conversation.projectId?.trim();
-    if (!projectId) {
+    if (!projectId && !conversation.metadata?.projectDetached) {
       const cwd = conversationDisplayCwd(conversation);
       if (cwd) {
         projectId = folderToProjectId.get(projectKeyFromCwd(cwd));
@@ -111,9 +219,7 @@ export function groupConversationsByProjects(
   const groups: ConversationProjectGroup[] = projects.map((project) => {
     const projectItems = byProjectId.get(project.id) ?? [];
     byProjectId.delete(project.id);
-    projectItems.sort(
-      (a, b) => conversationActivityTime(b) - conversationActivityTime(a)
-    );
+    projectItems.sort(compareConversationsForList);
     let latestAt = 0;
     for (const conversation of projectItems) {
       latestAt = Math.max(latestAt, conversationActivityTime(conversation));
@@ -183,6 +289,6 @@ export function recentConversations(
       if (knownProjectIds === undefined) return false;
       return !knownProjectIds.has(projectId);
     })
-    .sort((a, b) => conversationActivityTime(b) - conversationActivityTime(a))
+    .sort(compareConversationsForList)
     .slice(0, limit);
 }

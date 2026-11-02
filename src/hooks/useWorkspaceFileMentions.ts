@@ -117,12 +117,16 @@ export function useWorkspaceFileMentions({
   }, [activeMention, cwd, rootsKey, roots]);
 
   const selectMatch = useCallback(
-    (match: WorkspaceFileMatch) => {
+    (match: WorkspaceFileMatch, options?: { drillDown?: boolean }) => {
       if (!activeMention) return;
       const inserted = insertWorkspaceFileMention(value, activeMention, match.path);
-      dismissedValueRef.current = inserted.value;
+      const drillDraft =
+        options?.drillDown && match.kind === "directory"
+          ? findWorkspaceFileMentionDraft(inserted.value, inserted.cursor)
+          : null;
+      dismissedValueRef.current = drillDraft ? null : inserted.value;
       requestGenerationRef.current += 1;
-      setActiveMention(null);
+      setActiveMention(drillDraft);
       setMatches([]);
       setLoading(false);
       onChange(inserted.value);
@@ -131,9 +135,10 @@ export function useWorkspaceFileMentions({
         if (!textarea) return;
         textarea.focus();
         textarea.setSelectionRange(inserted.cursor, inserted.cursor);
+        if (drillDraft) updateActiveMention(inserted.value, inserted.cursor);
       });
     },
-    [activeMention, onChange, textareaRef, value]
+    [activeMention, onChange, textareaRef, updateActiveMention, value]
   );
 
   const handleKeyDown = useCallback(
@@ -160,7 +165,7 @@ export function useWorkspaceFileMentions({
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
         const selected = matches[selectedIndex];
-        if (selected) selectMatch(selected);
+        if (selected) selectMatch(selected, { drillDown: event.key === "Tab" });
         return true;
       }
       return false;

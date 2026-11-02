@@ -38,18 +38,21 @@ test("project path helpers collapse home and compare case-insensitively", async 
 
 test("composer and workspace panel surface multi-root project mounts", () => {
   const chat = read("src/components/CLI/ChatView.tsx");
+  const composer = read("src/components/CLI/ComposerWorkspaceMeta.tsx");
   const panel = read("src/components/CLI/WorkspacePanel.tsx");
+  const session = read("src/components/CLI/AgentSessionCard.tsx");
   const styles = read("styles.css");
   const en = JSON.parse(read("src/locales/en.json"));
   const zh = JSON.parse(read("src/locales/zh-CN.json"));
 
-  assert.match(chat, /composer-workspace-summary/);
-  assert.match(chat, /composer-workspace-popover/);
-  assert.match(chat, /chat\.folderCount/);
-  assert.match(panel, /workspace\.mountedFolders/);
-  assert.match(panel, /workspace-mounted-list/);
-  assert.match(panel, /activeProject && mountedFolders\.length > 0/);
-  assert.match(chat, /composerHasProjectWorkspace/);
+  assert.match(composer, /composer-workspace-summary/);
+  assert.match(composer, /composer-workspace-popover/);
+  assert.match(composer, /chat\.folderCount/);
+  assert.match(session, /workspace\.mountedFolders/);
+  assert.match(session, /workspace-mounted-list/);
+  assert.match(panel, /folders=\{mountedFolders\}/);
+  assert.match(session, /folders\.length > 1/);
+  assert.match(chat, /<ComposerWorkspaceMeta/);
   assert.match(styles, /\.composer-workspace-popover\s*\{/);
   assert.match(styles, /\.workspace-mounted-list\s*\{/);
 
@@ -58,4 +61,32 @@ test("composer and workspace panel surface multi-root project mounts", () => {
   assert.ok(en.workspace.mountedFolders);
   assert.ok(zh.workspace.mountedFolders);
   assert.equal(zh.chat.folderCount.includes("目录"), true);
+});
+
+test("workspace panel passes the real worktree directory to session details", () => {
+  const panel = read("src/components/CLI/WorkspacePanel.tsx");
+  const session = read("src/components/CLI/AgentSessionCard.tsx");
+  const chat = read("src/components/CLI/ChatView.tsx");
+  const grouping = read("src/components/CLI/conversationProjectGrouping.ts");
+  const styles = read("styles.css");
+  const en = JSON.parse(read("src/locales/en.json"));
+  const zh = JSON.parse(read("src/locales/zh-CN.json"));
+
+  assert.match(grouping, /export function conversationWorktreePath/);
+  assert.match(panel, /conversationWorktreePath/);
+  assert.match(panel, /worktreePath=\{worktreePath\}/);
+  assert.match(session, /workspace\.worktree/);
+  assert.match(session, /workspace-worktree-row/);
+  assert.match(session, /workspace-worktree-copy/);
+  assert.match(session, /shortPath\(worktreePath\)/);
+  assert.match(chat, /applyNewTaskWorkspace/);
+  assert.match(chat, /ensureForCwd/);
+  assert.match(chat, /onCwd=\{\(cwd\) => \{\s*void applyNewTaskWorkspace\(cwd\);/);
+  assert.match(styles, /\.workspace-worktree-copy\s*\{/);
+  assert.doesNotMatch(styles, /\.workspace-worktree-row dd[\s\S]{0,80}word-break:\s*break-all/);
+
+  assert.ok(en.workspace.worktree);
+  assert.ok(zh.workspace.worktree);
+  assert.ok(en.workspace.copyWorktree);
+  assert.ok(zh.workspace.copyWorktree);
 });

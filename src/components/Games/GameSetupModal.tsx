@@ -9,6 +9,7 @@ import type {
   SessionConfigOption,
   SessionConfigProbeInput
 } from "@/services/cli/types";
+import { findMainModelConfigOption } from "@/utils/sessionConfigOptions";
 import { bundledGameEntry, useBrowserStore } from "@/store/browserStore";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
@@ -82,8 +83,7 @@ export function GameSetupModal({ open, onClose }: GameSetupModalProps) {
 
   const convStore = useConversationStore();
   const isPlayableGameAgent = useCallback(
-    (m: CLIMember) =>
-      m.enabled !== false && m.profile !== "butler" && m.id !== "cli-butlerbuddy",
+    (m: CLIMember) => m.enabled !== false && !m.profile,
     []
   );
 
@@ -238,7 +238,7 @@ export function GameSetupModal({ open, onClose }: GameSetupModalProps) {
   const getAvailableModelsForAgent = (agentId: string) => {
     if (!agentId) return [];
     const options = modelOptionsByAgent[agentId] ?? [];
-    const opt = options.find((entry) => entry.category === "model") ?? options.find((entry) => entry.id === "model");
+    const opt = findMainModelConfigOption(options);
     return opt?.values ?? [];
   };
 
@@ -267,7 +267,7 @@ export function GameSetupModal({ open, onClose }: GameSetupModalProps) {
         const title = `[${gameName}] vs ${selectedMember.name}${modelName}`;
 
         const modelOptions = modelOptionsByAgent[selectedMember.id] ?? [];
-        const modelOption = modelOptions.find((e) => e.category === "model") ?? modelOptions.find((e) => e.id === "model");
+        const modelOption = findMainModelConfigOption(modelOptions);
         const modelOptionId = modelOption?.id ?? "model";
         const configOverrides = selectedModel ? { [modelOptionId]: selectedModel } : undefined;
 
@@ -315,7 +315,7 @@ export function GameSetupModal({ open, onClose }: GameSetupModalProps) {
         const title = `[${gameName} ${t("game.modeAgentVsAgent")}] ${agent1Member.name} VS ${agent2Member.name}`;
 
         const modelOptions1 = modelOptionsByAgent[agent1Member.id] ?? [];
-        const modelOption1 = modelOptions1.find((e) => e.category === "model") ?? modelOptions1.find((e) => e.id === "model");
+        const modelOption1 = findMainModelConfigOption(modelOptions1);
         const modelOptionId1 = modelOption1?.id ?? "model";
         const configOverrides1 = agent1Model ? { [modelOptionId1]: agent1Model } : undefined;
 
@@ -359,7 +359,7 @@ export function GameSetupModal({ open, onClose }: GameSetupModalProps) {
         const title = `[${gameName} ${t("game.modeAgentVsEngine")}] ${selectedMember.name} VS AlphaEngine`;
 
         const modelOptions = modelOptionsByAgent[selectedMember.id] ?? [];
-        const modelOption = modelOptions.find((e) => e.category === "model") ?? modelOptions.find((e) => e.id === "model");
+        const modelOption = findMainModelConfigOption(modelOptions);
         const modelOptionId = modelOption?.id ?? "model";
         const configOverrides = selectedModel ? { [modelOptionId]: selectedModel } : undefined;
 

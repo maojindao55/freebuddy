@@ -159,6 +159,112 @@ test("multi-root search returns absolute paths for insertion and keeps a disambi
   assert.ok(!inserted.value.includes("\\"));
 });
 
+test("workspace indexing derives directories from indexed files (git repo)", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-dir-index-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "src", "components", "nested"), { recursive: true });
+  fs.mkdirSync(path.join(root, "node_modules", "components"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "components", "button.tsx"), "export {};\n");
+  fs.writeFileSync(path.join(root, "src", "components", "nested", "deep.ts"), "export {};\n");
+  fs.writeFileSync(path.join(root, "src", "app.tsx"), "export {};\n");
+  fs.writeFileSync(path.join(root, "node_modules", "components", "index.js"), "ignored\n");
+  fs.writeFileSync(path.join(root, ".gitignore"), "node_modules/\n");
+  execFileSync("git", ["init", "-q"], { cwd: root });
+
+  const results = await workspaceFiles.searchWorkspaceFiles(root, "components", 20);
+  assert.deepEqual(results[0], {
+    path: "src/components/",
+    name: "components",
+    directory: "src",
+    kind: "directory"
+  });
+  const button = results.find((entry) => entry.path === "src/components/button.tsx");
+  assert.equal(button?.kind, "file");
+  assert.ok(
+    results.every((entry) => !entry.path.startsWith("node_modules")),
+    "ignored directories never leak into derived directory results"
+  );
+
+  const drilled = await workspaceFiles.searchWorkspaceFiles(root, "src/components/", 20);
+  assert.deepEqual(
+    drilled.map((entry) => entry.path),
+    ["src/components/nested/", "src/components/button.tsx", "src/components/nested/deep.ts"]
+  );
+});
+
+test("workspace indexing derives directories from the non-git fallback scan", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-dir-fallback-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "docs", "guides"), { recursive: true });
+  fs.mkdirSync(path.join(root, "node_modules", "guides"), { recursive: true });
+  fs.writeFileSync(path.join(root, "docs", "guides", "intro.md"), "# intro\n");
+  fs.writeFileSync(path.join(root, "node_modules", "guides", "index.js"), "ignored\n");
+
+  const results = await workspaceFiles.searchWorkspaceFiles(root, "guides", 20);
+  assert.deepEqual(
+    results.map((entry) => entry.path),
+    ["docs/guides/", "docs/guides/intro.md"]
+  );
+  assert.equal(results[0].kind, "directory");
+});
+
+test("multi-root search labels directory matches with a trailing slash", async (t) => {
+  const primary = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-multi-dir-primary-"));
+  const secondary = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-multi-dir-secondary-"));
+  t.after(() => {
+    fs.rmSync(primary, { recursive: true, force: true });
+    fs.rmSync(secondary, { recursive: true, force: true });
+  });
+  fs.mkdirSync(path.join(primary, "src"), { recursive: true });
+  fs.mkdirSync(path.join(secondary, "lib", "utils"), { recursive: true });
+  fs.writeFileSync(path.join(primary, "src", "a.ts"), "export {};\n");
+  fs.writeFileSync(path.join(secondary, "lib", "utils", "helper.ts"), "export {};\n");
+  execFileSync("git", ["init", "-q"], { cwd: primary });
+  execFileSync("git", ["init", "-q"], { cwd: secondary });
+
+  const results = await workspaceFiles.searchWorkspaceFiles(primary, "utils", 20, [
+    primary,
+    secondary
+  ]);
+  const secondaryRoot = await fs.promises.realpath(secondary);
+  assert.deepEqual(results[0], {
+    path: `${path.join(secondaryRoot, "lib", "utils")}/`,
+    name: "utils",
+    directory: "lib",
+    kind: "directory",
+    root: secondaryRoot,
+    label: `${path.basename(secondary)}/lib/utils/`
+  });
+});
+
+test("mention parser highlights directory mentions and formats drill-down drafts", () => {
+  assert.deepEqual(mentions.splitWorkspaceFileMentions("看下@src/components/ 目录"), [
+    { kind: "text", value: "看下" },
+    { kind: "mention", value: "@src/components/", path: "src/components/" },
+    { kind: "text", value: " 目录" }
+  ]);
+  assert.deepEqual(mentions.splitWorkspaceFileMentions("@/ 不是路径"), [
+    { kind: "text", value: "@/ 不是路径" }
+  ]);
+  assert.equal(
+    mentions.formatWorkspaceFileMention("src/my dir/"),
+    '@"src/my dir/"'
+  );
+
+  const draft = "看@comp";
+  const active = mentions.findWorkspaceFileMentionDraft(draft, 6);
+  assert.ok(active);
+  const inserted = mentions.insertWorkspaceFileMention(draft, active, "src/components/");
+  assert.deepEqual(inserted, {
+    value: "看@src/components/",
+    cursor: "看@src/components/".length
+  });
+  assert.deepEqual(
+    mentions.findWorkspaceFileMentionDraft(inserted.value, inserted.cursor),
+    { start: 1, end: inserted.value.length, query: "src/components/" }
+  );
+});
+
 test("renderer and Electron bridge wire mentions without changing attachment prompts", () => {
   const files = {
     chatView: fs.readFileSync(
@@ -183,12 +289,16 @@ test("renderer and Electron bridge wire mentions without changing attachment pro
       new URL("../src/store/conversationStore.ts", import.meta.url),
       "utf8"
     ),
-    styles: fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8")
+    styles: fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8"),
+    webPreload: fs.readFileSync(new URL("../public/web-preload.js", import.meta.url), "utf8")
   };
   assert.equal((files.chatView.match(/useWorkspaceFileMentions\(\{/g) ?? []).length, 2);
   assert.match(files.chatView, /roots:\s*conversationMentionRoots/);
   assert.match(files.chatView, /roots:\s*workspaceRoots/);
   assert.match(files.mentionHook, /searchWorkspaceFiles\(cwd, activeMention\.query, 24, searchRoots\)/);
+  assert.match(files.mentionHook, /selectMatch\(selected, \{ drillDown: event\.key === "Tab" \}\)/);
+  assert.match(files.mentionMenu, /match\.kind === "directory"/);
+  assert.match(files.webPreload, /roots: roots/);
   assert.match(files.messageBubble, /splitPluginMentions\(content\)/);
   assert.match(files.messageBubble, /splitWorkspaceFileMentions\(segment\.value\)/);
   assert.match(

@@ -138,6 +138,7 @@ export function sanitizeStreamItems(
     if (item.kind === "file-edit") {
       out.push({
         ...item,
+        truncated: item.truncated || [item.patch, item.oldText, item.newText].some((value) => typeof value === "string" && truncateStreamText(value) !== value),
         ...(typeof item.patch === "string"
           ? { patch: truncateStreamText(item.patch) }
           : {}),

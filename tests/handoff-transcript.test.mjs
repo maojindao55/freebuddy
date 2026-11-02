@@ -105,3 +105,34 @@ test("orphan cleanup preserves referenced snapshots and removes stale files", ()
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("snapshot hydration is bounded per message and preserves missing-content notices", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fb-transcript-diffs-"));
+  try {
+    let returnedChars = 0;
+    const edits = Array.from({ length: 50 }, (_, index) => ({ kind: "file-edit", path: `${index}.ts`, blobKey: `${index}` }));
+    const transcript = createHandoffTranscriptSnapshot(dir, "bounded", [message({
+      role: "assistant", content: JSON.stringify(edits)
+    })], (conversationId, blobKey, maxChars) => {
+      assert.equal(conversationId, "A");
+      assert.ok(maxChars <= 16_000);
+      returnedChars += maxChars * 3;
+      return { oldText: "a".repeat(maxChars), newText: "b".repeat(maxChars), patch: "c".repeat(maxChars), truncated: true };
+    });
+    assert.ok(returnedChars <= 64 * 1024);
+    assert.equal(transcript.truncated, true);
+    assert.ok(fs.readFileSync(transcript.path, "utf8").trim().split("\n").every(line => Buffer.byteLength(line) <= 64 * 1024));
+    for (const reader of [() => undefined, () => { throw new Error("unavailable"); }]) {
+      const missing = createHandoffTranscriptSnapshot(dir, "missing", [message({
+        role: "assistant", content: JSON.stringify([edits[0], { kind: "text", content: "kept" }])
+      })], reader);
+      const [loaded] = readHandoffTranscriptSnapshot(dir, missing);
+      assert.equal(missing.truncated, true);
+      assert.equal(loaded.content[0].contentUnavailable, true);
+      assert.equal(loaded.content[0].blobKey, undefined);
+      assert.equal(loaded.content[1].content, "kept");
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

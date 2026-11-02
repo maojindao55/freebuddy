@@ -23,6 +23,23 @@ test("task prompt wraps the task with the roster header", async () => {
   assert.match(p, /协作团队/);
 });
 
+test("failed and terse delegation follow-ups restore the original task context", async () => {
+  const { buildDelegateFollowUpTask } = await import(
+    "../dist-electron/cli/delegationPrompt.js"
+  );
+  const failed = buildDelegateFollowUpTask("制作宣传片", "继续", "failed");
+  assert.match(failed, /Original task:\n制作宣传片/);
+  assert.match(failed, /Latest user instruction:\n继续/);
+
+  const terse = buildDelegateFollowUpTask("制作宣传片", "continue", "done");
+  assert.match(terse, /Original task:\n制作宣传片/);
+
+  assert.equal(
+    buildDelegateFollowUpTask("制作宣传片", "把片尾延长两秒", "done"),
+    "把片尾延长两秒"
+  );
+});
+
 test("task and wake prompts separate routing capability from execution instructions", async () => {
   const { buildDelegateTaskPrompt, buildDelegateWakePrompt } = await import(
     "../dist-electron/cli/delegationPrompt.js"

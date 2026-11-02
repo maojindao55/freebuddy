@@ -1,24 +1,68 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  Archive,
+  Bot,
+  ChartColumn,
+  Cog,
+  Cpu,
+  Info,
+  Layers,
+  Newspaper,
+  Puzzle,
+  Share2,
+  Server,
+} from "lucide-react";
 import { AboutTab } from "./AboutTab";
+import { ArchivedConversationsTab } from "./ArchivedConversationsTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
+import { ProvidersTab } from "./ProvidersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { InfoCardsTab } from "./InfoCardsTab";
 import { SkillsTab } from "./SkillsTab";
 import { PluginsTab } from "./PluginsTab";
 import { RemoteTab } from "./RemoteTab";
+import { UsageTab } from "./UsageTab";
+import { McpServersTab } from "./McpServersTab";
+import { useConversationStore } from "@/store/conversationStore";
 
-export type SettingsTab = "general" | "cli" | "skills" | "plugins" | "feed" | "remote" | "about";
+export type SettingsTab = "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "archived" | "remote" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "cli", labelKey: "settings.tabs.cli" },
+  { key: "providers", labelKey: "settings.tabs.providers" },
+  { key: "mcp", labelKey: "settings.tabs.mcp" },
   { key: "skills", labelKey: "settings.tabs.skills" },
   { key: "plugins", labelKey: "settings.tabs.plugins" },
   { key: "feed", labelKey: "settings.tabs.feed" },
+  { key: "usage", labelKey: "settings.tabs.usage" },
+  { key: "archived", labelKey: "settings.tabs.archived" },
   { key: "general", labelKey: "settings.tabs.general" },
   { key: "remote", labelKey: "settings.tabs.remote" },
   { key: "about", labelKey: "settings.tabs.about" }
+];
+
+/** Per-tab icon so the sidebar is scannable at a glance. */
+const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> = {
+  general: Cog,
+  cli: Bot,
+  providers: Cpu,
+  mcp: Server,
+  skills: Layers,
+  plugins: Puzzle,
+  feed: Newspaper,
+  usage: ChartColumn,
+  archived: Archive,
+  remote: Share2,
+  about: Info,
+};
+
+/** Grouped sidebar sections; every tab key above appears exactly once. */
+const TAB_GROUPS: { groupKey: string; items: SettingsTab[] }[] = [
+  { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "mcp", "skills", "plugins"] },
+  { groupKey: "settings.navGroup.data", items: ["feed", "usage", "archived"] },
+  { groupKey: "settings.navGroup.system", items: ["general", "remote", "about"] },
 ];
 
 interface SettingsSurfaceProps {
@@ -34,24 +78,42 @@ interface ControlledSettingsSurfaceProps extends SettingsSurfaceProps {
 export function SettingsNav({
   activeTab,
   onTabChange,
-  className = ""
+  className = "",
+  hiddenTabs = []
 }: {
   activeTab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
   className?: string;
+  hiddenTabs?: SettingsTab[];
 }) {
   const { t } = useTranslation();
+  const labelByKey = new Map(SETTINGS_TABS.map((tab) => [tab.key, tab.labelKey]));
+  const hiddenSet = new Set(hiddenTabs);
   return (
     <nav className={`settings-nav${className ? ` ${className}` : ""}`}>
-      {SETTINGS_TABS.map((tab) => (
-        <button
-          key={tab.key}
-          className={`settings-nav-item${activeTab === tab.key ? " active" : ""}`}
-          onClick={() => onTabChange(tab.key)}
-        >
-          {t(tab.labelKey)}
-        </button>
-      ))}
+      {TAB_GROUPS.map((group) => {
+        const visibleItems = group.items.filter((key) => !hiddenSet.has(key));
+        if (visibleItems.length === 0) return null;
+        return (
+          <div key={group.groupKey} className="settings-nav-group">
+            <div className="settings-nav-group-title">{t(group.groupKey)}</div>
+            {visibleItems.map((key) => {
+              const Icon = TAB_ICONS[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`settings-nav-item${activeTab === key ? " active" : ""}`}
+                  onClick={() => onTabChange(key)}
+                >
+                  <Icon size={14} />
+                  <span className="settings-nav-label">{t(labelByKey.get(key)!)}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
     </nav>
   );
 }
@@ -70,8 +132,19 @@ function SettingsContent({
   showNav?: boolean;
 }) {
   const { t } = useTranslation();
+  const currentUser = useConversationStore((s) => s.currentUser);
   const [internalActiveTab, setInternalActiveTab] = useState<SettingsTab>(initialTab);
   const activeTab = controlledActiveTab ?? internalActiveTab;
+
+  const hiddenTabs = useMemo<SettingsTab[]>(() => {
+    const hidden: SettingsTab[] = [];
+    const remoteWeb =
+      typeof window !== "undefined" && window.freebuddy?.platform === "web";
+    if (remoteWeb || (currentUser && !currentUser.isOwner)) {
+      hidden.push("mcp");
+    }
+    return hidden;
+  }, [currentUser]);
 
   useEffect(() => {
     if (!controlledActiveTab) setInternalActiveTab(initialTab);
@@ -90,9 +163,29 @@ function SettingsContent({
           <CLIAdaptersTab />
         </SettingsTabErrorBoundary>
       )}
+      {activeTab === "providers" && (
+        <SettingsTabErrorBoundary>
+          <ProvidersTab />
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "mcp" && !hiddenTabs.includes("mcp") && (
+        <SettingsTabErrorBoundary>
+          <McpServersTab />
+        </SettingsTabErrorBoundary>
+      )}
       {activeTab === "skills" && <SkillsTab />}
       {activeTab === "plugins" && <PluginsTab />}
       {activeTab === "feed" && <InfoCardsTab />}
+      {activeTab === "usage" && (
+        <SettingsTabErrorBoundary>
+          <UsageTab />
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "archived" && (
+        <SettingsTabErrorBoundary>
+          <ArchivedConversationsTab />
+        </SettingsTabErrorBoundary>
+      )}
       {activeTab === "remote" && <RemoteTab />}
       {activeTab === "about" && <AboutTab />}
     </>
@@ -112,7 +205,7 @@ function SettingsContent({
       )}
       <div className={`settings-layout${showNav ? "" : " settings-layout-content-only"}`}>
         {showNav && (
-          <SettingsNav activeTab={activeTab} onTabChange={handleTabChange} />
+          <SettingsNav activeTab={activeTab} onTabChange={handleTabChange} hiddenTabs={hiddenTabs} />
         )}
         <div className={`settings-panel${showNav ? "" : " settings-panel-full"}`}>
           {activeContent}

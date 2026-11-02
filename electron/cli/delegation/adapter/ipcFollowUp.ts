@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   appendMessage,
+  updateConversationAgentBinding,
   notifyConversationsChanged
 } from "../../conversations.js";
 import { getDelegationRunByConversation } from "../../delegationRuns.js";
@@ -37,6 +38,10 @@ export async function handleDelegationFollowUp(
   const member = entry
     ? listCliMembers().find((m) => m.id === entry.agentId)
     : undefined;
+  if (!team || !entry || !member) {
+    return { ok: false, error: "Team entry agent is unavailable. Select a valid entry agent in team settings." };
+  }
+  updateConversationAgentBinding(input.conversationId, member);
 
   appendMessage({
     id: randomUUID(),

@@ -11,7 +11,7 @@ export const DEFAULT_PREVIEW_WIDTH = 680;
 export const DETAIL_MIN_WIDTH = 320;
 export const DETAIL_MAX_WIDTH = 960;
 
-export type DetailTab = "overview" | "preview" | "diff";
+export type DetailTab = "overview" | "preview" | "diff" | "document";
 
 function clampWidth(value: number): number {
   return Math.min(

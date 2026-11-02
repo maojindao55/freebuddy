@@ -35,7 +35,10 @@ const { savedAsOfficeFilePath } = await import("../dist-electron/mcp/officeEngin
 const {
   registerDocStudioWindow,
   unregisterDocStudioWindow,
-  isDocStudioWindowSender
+  isDocStudioWindowSender,
+  registerDocStudioMainWindow,
+  unregisterDocStudioMainWindow,
+  isDocStudioMainWindowSender
 } = await import("../dist-electron/docStudioWindowRegistry.js");
 
 test("DocStudio window identity is registered and cleared without Electron runtime imports", () => {
@@ -45,6 +48,23 @@ test("DocStudio window identity is registered and cleared without Electron runti
   assert.equal(isDocStudioWindowSender(sender), true);
   unregisterDocStudioWindow(sender.id);
   assert.equal(isDocStudioWindowSender(sender), false);
+});
+
+test("the main window webContents is allow-listed separately and clearable", () => {
+  const sender = { id: 246913578 };
+  assert.equal(isDocStudioMainWindowSender(sender), false);
+  registerDocStudioMainWindow(sender.id);
+  assert.equal(isDocStudioMainWindowSender(sender), true);
+  assert.equal(isDocStudioWindowSender(sender), false);
+  unregisterDocStudioMainWindow(sender.id);
+  assert.equal(isDocStudioMainWindowSender(sender), false);
+  // Re-registering a different webContents replaces the stale main-window id.
+  registerDocStudioMainWindow(sender.id);
+  const other = { id: 246913579 };
+  registerDocStudioMainWindow(other.id);
+  assert.equal(isDocStudioMainWindowSender(sender), false);
+  assert.equal(isDocStudioMainWindowSender(other), true);
+  unregisterDocStudioMainWindow(other.id);
 });
 
 test("only a successful save to a separate Office path can open a new tab", () => {
@@ -197,7 +217,7 @@ test("office engine preview IPC is sender- and path-guarded", () => {
   const idx = bridge.indexOf('"docStudio:officePreview"');
   assert.ok(idx >= 0, "docStudio:officePreview handler missing");
   const body = bridge.slice(idx, idx + 600);
-  assert.match(body, /isDocStudioWindowSender\(event\.sender\)/, "officePreview lacks sender check");
+  assert.match(body, /isAllowedDocSender\(event\.sender\)/, "officePreview lacks sender check");
   assert.match(body, /isAllowedOfficeEnginePath/, "officePreview lacks path check");
   // openWindow must accept engine files too.
   const openIdx = bridge.indexOf('"docStudio:openWindow"');

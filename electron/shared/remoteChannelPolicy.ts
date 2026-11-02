@@ -292,6 +292,7 @@ const DENY = [
   "docStudio:openWindow",
   "docStudio:openConversation",
   "docStudio:setActiveConversation",
+  "docStudio:isConversationEmbedded",
   "docStudio:defaultDirectory",
   "docStudio:showOpenDialog",
   "docStudio:showItemInFolder",
@@ -302,6 +303,8 @@ const DENY = [
   "docStudio:engineEditorStatus",
   "docStudio:officeEngineAddonStatus",
   "docStudio:officeEngineAddonDownload",
+  "docStudio:resolveConversationFile",
+  "docStudio:attachFileToConversation",
 
   // Anything that installs or updates code on the host.
   "cli:install",

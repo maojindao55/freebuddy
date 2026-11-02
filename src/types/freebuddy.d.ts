@@ -399,7 +399,7 @@ declare global {
     ): () => void;
     onBrowserTool(cb: (event: BrowserToolEvent) => void): () => void;
     resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean>;
-    onOpenConversation(cb: (conversationId: string) => void): () => void;
+    onOpenConversation(cb: (conversationId: string, embed?: boolean) => void): () => void;
     onNewConversation(cb: () => void): () => void;
     onExternalShare(cb: (payload: ExternalSharePayload) => void): () => void;
     onShellOpen(cb: (payload: ShellOpenPayload) => void): () => void;
@@ -1061,10 +1061,13 @@ declare global {
     openWindow(target?: string | { filePath?: string }): Promise<boolean>;
     openConversation(conversationId: string): Promise<boolean>;
     setActiveConversation(conversationId: string | null): Promise<boolean>;
+    isConversationEmbedded(conversationId: string): Promise<boolean>;
     getDefaultDirectory(): Promise<string | null>;
+    resolveConversationFile(conversationId: string): Promise<string | null>;
+    attachFileToConversation(conversationId: string, filePath: string): Promise<boolean>;
     showOpenDialog(defaultPath?: string): Promise<string[] | null>;
     showItemInFolder(filePath: string): Promise<boolean>;
-    openConversationInMain(conversationId: string): Promise<boolean>;
+    openConversationInMain(conversationId: string, options?: { embed?: boolean }): Promise<boolean>;
     watchFile(filePath: string): Promise<boolean>;
     unwatchFile(filePath: string): Promise<boolean>;
     getEnginePreview(filePath: string): Promise<{

@@ -608,20 +608,28 @@ export async function runAcpAgent({
     const publishFinished = () => {
       if (errorMessage) emit({ type: "error", message: errorMessage });
       emit({ type: "done", exitCode });
-      const savedOfficeFiles = args.conversationId ? takeSavedOfficeFiles(args.conversationId) : [];
-      if (standaloneDocStudio && args.conversationId && !webContents.isDestroyed()) {
-        if (!officeFileForSession && savedOfficeFiles[0]) {
-          try {
-            associateDocStudioOfficeFile(args.conversationId, savedOfficeFiles[0]);
-          } catch {
-            /* Opening the file is still useful if conversation mapping fails. */
+      // DocStudio save events (standalone window or embedded in the main
+      // window) associate the file and notify the surface that previewed it.
+      // takeSavedOfficeFiles is only called here so ordinary chats skip the
+      // event file read entirely.
+      if (args.conversationId && !webContents.isDestroyed()) {
+        const isDocStudioRun = standaloneDocStudio ||
+          getConversation(args.conversationId)?.kind === "doc-studio";
+        const savedOfficeFiles = isDocStudioRun ? takeSavedOfficeFiles(args.conversationId) : [];
+        if (isDocStudioRun && savedOfficeFiles.length) {
+          if (!officeFileForSession && savedOfficeFiles[0]) {
+            try {
+              associateDocStudioOfficeFile(args.conversationId, savedOfficeFiles[0]);
+            } catch {
+              /* Opening the file is still useful if conversation mapping fails. */
+            }
           }
-        }
-        for (const filePath of savedOfficeFiles) {
-          try {
-            webContents.send("docStudio:fileSavedAs", { filePath });
-          } catch {
-            break;
+          for (const filePath of savedOfficeFiles) {
+            try {
+              webContents.send("docStudio:fileSavedAs", { filePath });
+            } catch {
+              break;
+            }
           }
         }
       }
@@ -1752,11 +1760,15 @@ export async function runAcpAgent({
           })
         );
       }
-      // All standalone DocStudio conversations, including its empty state, get
-      // the office engine's create/edit/save tools.
+      // All DocStudio conversations — standalone window or embedded in the
+      // main window — including their empty state, get the office engine's
+      // create/edit/save tools. Normal (non doc-studio) conversations are
+      // never affected.
       if (args.conversationId && !remoteIsolated) {
+        const docStudioSurface = standaloneDocStudio ||
+          getConversation(args.conversationId)?.kind === "doc-studio";
         const officeFile = resolveDocStudioOfficeFile(args.conversationId);
-        if (officeFile || standaloneDocStudio) {
+        if (officeFile || docStudioSurface) {
           const officeServer = await registerOfficeEngineToolSession(
             args.sessionId, args.conversationId, officeFile ?? ""
           );
@@ -1766,6 +1778,8 @@ export async function runAcpAgent({
           } else if (standaloneDocStudio) {
             throw new Error("Office engine is unavailable. Download it in Settings > About before using DocStudio AI.");
           }
+          // Embedded main-window runs skip silently: the chat stays usable and
+          // the embedded preview surfaces engineUnavailable on its own.
         }
       }
     }

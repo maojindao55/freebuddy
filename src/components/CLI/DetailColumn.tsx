@@ -9,7 +9,9 @@ import { useBrowserStore } from "@/store/browserStore";
 import { BrowserCanvas } from "../Browser/BrowserCanvas";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { FileDiffPanel } from "./FileChanges";
+import { EmbeddedDocViewer } from "./EmbeddedDocViewer";
 import { useFileDiffStore } from "@/store/fileDiffStore";
+import type { DetailTab } from "@/store/detailLayoutStore";
 
 export function DetailColumn({ runningCount }: { runningCount: number }) {
   const { t } = useTranslation();
@@ -27,6 +29,16 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
     if (activeTab === "preview") setBrowserMounted(true);
   }, [activeTab]);
 
+  const activeConv = useConversationStore((s) =>
+    activeId ? s.conversations.find((c) => c.id === activeId) : undefined
+  );
+  // Doc conversations are identified by their conversation kind — the same
+  // discriminator every route uses (docStudio:openConversation, setActive's
+  // standalone redirect, the sidebar). markDocStudioConversation always sets
+  // kind together with metadata.docStudioFilePath, so kind alone is the
+  // canonical test; the metadata field is just the attached file payload.
+  const isDoc = activeConv?.kind === "doc-studio";
+
   useEffect(() => {
     if (!activeId) return;
     const conv = useConversationStore
@@ -34,8 +46,15 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
       .conversations.find((c) => c.id === activeId);
     const openingDiff = useDetailLayoutStore.getState().activeTab === "diff"
       && useFileDiffStore.getState().selection?.conversationId === activeId;
-    if (previousId.current !== activeId || (!openingDiff && conv?.kind === "game")) {
-      useDetailLayoutStore.getState().setActiveTab(conv?.kind === "game" ? "preview" : "overview");
+    const docMode = conv?.kind === "doc-studio";
+    if (previousId.current !== activeId || (!openingDiff && (conv?.kind === "game" || docMode))) {
+      if (conv?.kind === "game") {
+        useDetailLayoutStore.getState().setActiveTab("preview");
+      } else if (docMode) {
+        useDetailLayoutStore.getState().setActiveTab("document");
+      } else if (!openingDiff) {
+        useDetailLayoutStore.getState().setActiveTab("overview");
+      }
     }
     previousId.current = activeId;
     void useBrowserStore.getState().ensureFor(activeId, conv?.cwd);
@@ -74,13 +93,32 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
         onMouseDown={onResizeStart}
       />
       <nav className="detail-tabs file-detail-tabs" aria-label={t("workspace.panelAria")}>
-        {(["overview", "preview", "diff"] as const).map((tab) => <button
-          key={tab} type="button" className={`detail-tab${activeTab === tab ? " active" : ""}`}
-          aria-pressed={activeTab === tab} onClick={() => setActiveTab(tab)}
-        >
-          {t(tab === "overview" ? "fileDiff.overview" : tab === "preview" ? "browser.tabBrowser" : "fileDiff.title")}
-          {tab === "preview" && previewAvailable && <span className="detail-tab-badge" aria-label={t("browser.previewBadge")} />}
-        </button>)}
+        {[
+          { tab: "overview" as DetailTab, label: t("fileDiff.overview") },
+          { tab: "preview" as DetailTab, label: t("browser.tabBrowser") },
+          { tab: "diff" as DetailTab, label: t("fileDiff.title") },
+          ...(isDoc
+            ? [
+                {
+                  tab: "document" as DetailTab,
+                  label: t("docStudio.kindBadge", { defaultValue: "Document" })
+                }
+              ]
+            : [])
+        ].map(({ tab, label }) => (
+          <button
+            key={tab}
+            type="button"
+            className={`detail-tab${activeTab === tab ? " active" : ""}`}
+            aria-pressed={activeTab === tab}
+            onClick={() => setActiveTab(tab)}
+          >
+            {label}
+            {tab === "preview" && previewAvailable && (
+              <span className="detail-tab-badge" aria-label={t("browser.previewBadge")} />
+            )}
+          </button>
+        ))}
         {activeTab !== "overview" && <button type="button" className="detail-panel-collapse-btn detail-tab-close" onClick={() => setActiveTab("overview")} title={t(activeTab === "diff" ? "fileDiff.close" : "browser.close")} aria-label={t(activeTab === "diff" ? "fileDiff.close" : "browser.close")}><X size={16} /></button>}
         <button type="button" className="detail-panel-collapse-btn" onClick={toggleDetailCollapsed} title={t("detail.collapse")} aria-label={t("detail.collapse")}><PanelRight size={16} /></button>
       </nav>
@@ -90,6 +128,9 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
           <BrowserCanvas visible={activeTab === "preview"} />
         </div>}
         {activeTab === "diff" && <FileDiffPanel />}
+        {activeTab === "document" && activeId && (
+          <EmbeddedDocViewer conversationId={activeId} />
+        )}
       </div>
     </aside>
   );

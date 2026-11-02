@@ -1,6 +1,7 @@
 import { getDb } from "./db.js";
 import { acpProcessPool } from "./acpProcessPool.js";
 import { BrowserWindow } from "electron";
+import { removeDocStudioEmbeddedConversation } from "../docStudioWindowRegistry.js";
 import {
   discardManagedAttachmentIfUnreferenced,
   isManagedAttachmentPath
@@ -759,6 +760,11 @@ export function archiveConversation(id: string, archived: boolean): void {
 }
 
 export function deleteConversation(id: string): void {
+  // A deleted conversation can no longer be docked anywhere: drop its
+  // embedded-viewer dock record. Every deletion path funnels through here
+  // (the cli:deleteConversation handler and the butler conversation_delete
+  // tool), so a dock record cannot outlive its conversation.
+  removeDocStudioEmbeddedConversation(id);
   const managedPaths: string[] = [];
   const rows = getDb()
     .prepare(

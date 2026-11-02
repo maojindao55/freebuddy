@@ -84,7 +84,7 @@ function runPowerShell(
     const child = spawn(
       resolveWindowsPowerShell(env),
       args,
-      { env }
+      { env, windowsHide: true }
     );
     let stdout = "";
     let settled = false;

@@ -483,7 +483,8 @@ async function runCliAgent(
   const child = reused?.child ?? spawn(spawnCommand.bin, spawnCommand.args, {
     cwd: executionArgs.cwd,
     env: spawnCommand.env,
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: process.platform === "win32"
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
   const attachSandboxStdin = (
     target: ChildProcessByStdio<Writable, Readable, Readable>,
@@ -571,7 +572,8 @@ async function runCliAgent(
           const restarted = spawn(spawnCommand.bin, spawnCommand.args, {
             cwd: executionArgs.cwd,
             env: spawnCommand.env,
-            stdio: ["pipe", "pipe", "pipe"]
+            stdio: ["pipe", "pipe", "pipe"],
+            windowsHide: process.platform === "win32"
           }) as ChildProcessByStdio<Writable, Readable, Readable>;
           attachSandboxStdin(restarted, true);
           await new Promise<void>((resolve, reject) => {

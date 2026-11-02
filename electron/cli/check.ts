@@ -118,7 +118,7 @@ function which(
 
   return new Promise((resolve) => {
     const cmd = isWindows ? "where" : "which";
-    const child = spawn(cmd, [bin], { env: mergedEnv });
+    const child = spawn(cmd, [bin], { env: mergedEnv, windowsHide: isWindows });
     let out = "";
     child.stdout!.on("data", (d) => (out += d.toString()));
     child.on("error", () => resolve(undefined));
@@ -230,7 +230,7 @@ function runCheckProbe(
 ): Promise<CliProbeResult> {
   return new Promise((resolve) => {
     const mergedEnv = applyManagedNodeEnvironment({ ...process.env, ...(env || {}) });
-    const child = spawn(bin, args, { env: mergedEnv });
+    const child = spawn(bin, args, { env: mergedEnv, windowsHide: process.platform === "win32" });
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -816,7 +816,7 @@ function runProcess(
 ): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     const env = applyManagedNodeEnvironment({ ...process.env, ...extraEnv, NPM_CONFIG_OFFLINE: "false" }, { install: true });
-    const child = spawn(bin, args, { env });
+    const child = spawn(bin, args, { env, windowsHide: process.platform === "win32" });
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -1282,7 +1282,7 @@ export function cliInstall(command: string, adapter = "custom", targetVersion?: 
         args = ["-lc", installCommand];
       }
 
-      const child = spawn(shell, args, { env: preflight.env });
+      const child = spawn(shell, args, { env: preflight.env, windowsHide: isWindows });
       let stdout = "";
       let stderr = "";
       let timedOut = false;
@@ -1390,7 +1390,7 @@ export function cliInstallStream(
         args = ["-lc", installCommand];
       }
 
-      const child = spawn(shell, args, { env: preflight.env });
+      const child = spawn(shell, args, { env: preflight.env, windowsHide: isWindows });
       let stdout = "";
       let stderr = "";
       let settled = false;

@@ -177,7 +177,8 @@ export async function inspectSessionConfigOptions(
   const child = spawn(built.bin, built.args, {
     cwd,
     env,
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: process.platform === "win32"
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
 
   let nextRequestId = 0;

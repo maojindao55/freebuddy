@@ -230,7 +230,7 @@ function runCheckProbe(
 ): Promise<CliProbeResult> {
   return new Promise((resolve) => {
     const mergedEnv = applyManagedNodeEnvironment({ ...process.env, ...(env || {}) });
-    const child = spawn(bin, args, { env: mergedEnv });
+    const child = spawn(bin, args, { env: mergedEnv, windowsHide: process.platform === "win32" });
     let stdout = "";
     let stderr = "";
     let settled = false;

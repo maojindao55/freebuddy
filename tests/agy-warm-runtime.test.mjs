@@ -45,7 +45,7 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
     await Promise.all(logCompletions);
     fs.rmSync(root, { recursive: true, force: true });
   });
-  const children = [], events = [], requests = [], captures = [], browser = new Map();
+  const children = [], events = [], requests = [], captures = [], browser = new Map(), spawnOptions = [];
   const fullText = "# 中文🙂\n".repeat(100000);
   const fixture = localDiffFixture(t, [{ type: "diff", path: "task.md", newText: fullText }]);
   let persistedText;
@@ -96,7 +96,8 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
     },
     unregisterBrowserToolSession: task => browser.delete(task),
     killProcessTree: child => child.kill(),
-    spawn: () => {
+    spawn: (_bin, _args, options) => {
+      spawnOptions.push(options);
       const child = new EventEmitter();
       Object.assign(child, { pid: 1000 + children.length, exitCode: null, signalCode: null, stdout: new PassThrough(), stderr: new PassThrough() });
       let turn = 0;
@@ -161,5 +162,6 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   await runtime.shutdownCliProcesses();
   assert.deepEqual(captures, ["one", "two", "config", "owner"].flatMap(id => [["prepare", id], ["seal", id]]));
   assert.ok(children.every(child => child.exitCode === 0));
+  assert.ok(spawnOptions.every(options => options.windowsHide === (process.platform === "win32")));
   assert.equal(browser.size, 0);
 });

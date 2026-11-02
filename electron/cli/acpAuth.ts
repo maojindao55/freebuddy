@@ -87,7 +87,8 @@ async function withAcpAgent<T>(
   const child = spawn(built.bin, built.args, {
     cwd,
     env,
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: process.platform === "win32"
   }) as ChildProcessByStdio<Writable, Readable, Readable>;
   const pending = new Map<
     string,

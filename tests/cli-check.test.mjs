@@ -55,6 +55,15 @@ test("agy-acp checks agy-acp binary probe", () => {
   });
 });
 
+test("background ACP spawns hide the Windows console window", () => {
+  for (const file of ["runtime.ts", "acpAuth.ts", "sessionConfigProbe.ts"]) {
+    const source = fs.readFileSync(new URL(`../electron/cli/${file}`, import.meta.url), "utf8");
+    assert.ok(!/spawn\([^;]+?\{[^;]+?stdio: \["pipe", "pipe", "pipe"\]\s*\}\)/s.test(source), file);
+  }
+  const source = fs.readFileSync(new URL("../electron/cli/check.ts", import.meta.url), "utf8");
+  assert.match(source, /function runCheckProbe[\s\S]+?windowsHide: process\.platform === "win32"/);
+});
+
 test("zcode-acp checks zcode-acp-server binary probe", () => {
   assert.deepEqual(getCliCheckProbe("zcode-acp"), {
     args: ["--version"],

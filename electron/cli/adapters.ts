@@ -1631,8 +1631,12 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
     }
     case "opencode-acp": {
       const { model, args: acpArgs } = splitModelArg(extra);
+      // `opencode acp` takes its working directory from the spawn cwd (1.x
+      // defaulted `--cwd` to process.cwd()) and opencode 2.x removed the
+      // `--cwd` flag entirely, so passing it breaks 2.x with
+      // "Unrecognized flag: --cwd in command opencode acp". The directory is
+      // delivered via the spawn cwd and the ACP session/new request instead.
       const args: string[] = ["acp"];
-      if (input.cwd) args.push("--cwd", input.cwd);
       args.push(...acpArgs);
       const configContent = buildOpenCodeConfigContent({
         model,

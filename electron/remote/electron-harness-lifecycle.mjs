@@ -55,6 +55,38 @@ export function createBoundedRedactedOutput(secrets = [], limit = OUTPUT_LIMIT) 
 
 export function childExited(child) { return child.exitCode !== null || child.signalCode !== null; }
 
+export function describeChildExit(child) {
+  if (!child) return "was not started";
+  if (child.signalCode) return `was terminated by ${child.signalCode}`;
+  if (typeof child.exitCode === "number") return `exited with code ${child.exitCode}`;
+  return "is still running";
+}
+
+/**
+ * Wait for a child-backed HTTP endpoint to be ready, failing early if its
+ * process exits.  A successful spawn or startup log is not sufficient: the
+ * caller must not open a dependent WebSocket until the listener is accepting
+ * requests.
+ */
+export async function waitForHttpOk(url, child, { timeoutMs = 10_000, intervalMs = 50, fetchImpl = fetch } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastProblem = "endpoint was not probed";
+  while (Date.now() <= deadline) {
+    if (childExited(child)) throw new Error(`child ${describeChildExit(child)} before ${url} became ready (${lastProblem})`);
+    try {
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(Math.min(1_000, Math.max(1, deadline - Date.now()))) });
+      await response.arrayBuffer();
+      if (response.ok) return;
+      lastProblem = `received HTTP ${response.status}`;
+    } catch (error) {
+      lastProblem = error instanceof Error ? error.message : "request failed";
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  if (childExited(child)) throw new Error(`child ${describeChildExit(child)} before ${url} became ready (${lastProblem})`);
+  throw new Error(`timed out waiting for ${url} to become ready (${lastProblem})`);
+}
+
 export async function waitForExit(child, timeoutMs) {
   if (childExited(child)) return true;
   return new Promise(resolve => {

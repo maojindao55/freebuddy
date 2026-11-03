@@ -12,7 +12,14 @@ compose_file="$script_dir/compose.yaml"
 database_file="$RELAY_DATA_DIR/relay.db"
 relay_logs_file=$(mktemp)
 caddy_logs_file=$(mktemp)
-trap 'rm -f "$relay_logs_file" "$caddy_logs_file"' EXIT HUP INT TERM
+cleanup() {
+	rm -f "$relay_logs_file" "$caddy_logs_file"
+	unset DEV_AUTH_ADMIN_TOKEN DEV_AUTH_HOST_TOKEN SMOKE_PAYLOAD_SENTINEL
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [ ! -f "$database_file" ]; then
 	echo "data-boundary verification failed: Relay SQLite file is missing" >&2

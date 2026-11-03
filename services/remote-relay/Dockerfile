@@ -4,11 +4,13 @@ FROM golang:1.27-alpine AS builder
 
 ARG TARGETOS=linux
 ARG TARGETARCH
+ARG GOPROXY
+ENV GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
 
 WORKDIR /src
 
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download && go mod verify
 
 COPY cmd/relay ./cmd/relay
 COPY internal ./internal

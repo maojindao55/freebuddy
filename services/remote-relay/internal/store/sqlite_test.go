@@ -71,3 +71,108 @@ func TestOpen_EmptyPath(t *testing.T) {
 		t.Fatal("expected error for empty sqlite path, got nil")
 	}
 }
+
+func TestStore_PersistenceAcrossRestart(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "persist_test.db")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 1. Initial boot: open DB, run migrations, create an admin session record
+	db1, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("first Open failed: %v", err)
+	}
+
+	if err := RunMigrations(ctx, db1.DB); err != nil {
+		_ = db1.Close()
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+
+	sessionStore1 := NewSessionStore(db1.DB)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	sess := &AdminSession{
+		ID:               "sess_persist_123",
+		TokenHash:        "thash_persist_123",
+		RefreshHash:      "rhash_persist_123",
+		TokenFamilyID:    "fam_persist_123",
+		DeviceLabel:      "Dev Phone",
+		CreatedAt:        now,
+		LastUsedAt:       now,
+		ExpiresAt:        now.Add(24 * time.Hour),
+		RefreshExpiresAt: now.Add(7 * 24 * time.Hour),
+	}
+	if err := sessionStore1.CreateSession(ctx, sess); err != nil {
+		_ = db1.Close()
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	// Verify session is active before restart
+	got1, err := sessionStore1.GetActiveSessionByTokenHash(ctx, "thash_persist_123")
+	if err != nil {
+		_ = db1.Close()
+		t.Fatalf("GetActiveSessionByTokenHash before restart failed: %v", err)
+	}
+	if got1.ID != sess.ID {
+		_ = db1.Close()
+		t.Fatalf("expected session ID %q, got %q", sess.ID, got1.ID)
+	}
+
+	// 2. Simulate shutdown / restart by closing db1
+	if err := db1.Close(); err != nil {
+		t.Fatalf("db1.Close failed: %v", err)
+	}
+
+	// 3. Re-open database from same file path (simulating restart)
+	db2, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("second Open failed: %v", err)
+	}
+	defer db2.Close()
+
+	// Verify migrations are still applied and idempotent
+	if err := RunMigrations(ctx, db2.DB); err != nil {
+		t.Fatalf("second RunMigrations failed: %v", err)
+	}
+	migrations, err := GetAppliedMigrations(ctx, db2.DB)
+	if err != nil {
+		t.Fatalf("GetAppliedMigrations after restart failed: %v", err)
+	}
+	if len(migrations) != 1 || migrations[0].Version != 1 {
+		t.Fatalf("expected 1 migration with version 1, got %+v", migrations)
+	}
+
+	// 4. Verify identity session metadata persisted across restart
+	sessionStore2 := NewSessionStore(db2.DB)
+	got2, err := sessionStore2.GetActiveSessionByTokenHash(ctx, "thash_persist_123")
+	if err != nil {
+		t.Fatalf("GetActiveSessionByTokenHash after restart failed: %v", err)
+	}
+	if got2.ID != sess.ID {
+		t.Errorf("expected session ID %q, got %q", sess.ID, got2.ID)
+	}
+	if got2.TokenHash != sess.TokenHash || got2.RefreshHash != sess.RefreshHash {
+		t.Errorf("token hash or refresh hash mismatch after restart")
+	}
+	if got2.TokenFamilyID != sess.TokenFamilyID || got2.DeviceLabel != sess.DeviceLabel {
+		t.Errorf("family ID or device label mismatch after restart")
+	}
+
+	// 5. Verify touch works on persisted session after restart
+	newUsedAt := now.Add(5 * time.Minute)
+	if err := sessionStore2.TouchSession(ctx, got2.ID, newUsedAt); err != nil {
+		t.Fatalf("TouchSession after restart failed: %v", err)
+	}
+
+	// 6. Verify all expected metadata tables exist and are queryable.
+	// Note: At M2, this test specifically proves admin_sessions row-level persistence
+	// and schema existence for hosts/pairings/audit_events. It does not prove row persistence
+	// for hosts or pairings, which belong to M3/M4.
+	for _, tbl := range []string{"admin_sessions", "hosts", "pairings", "audit_events"} {
+		var count int
+		if err := db2.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+tbl).Scan(&count); err != nil {
+			t.Errorf("failed to query table %s after restart: %v", tbl, err)
+		}
+	}
+}

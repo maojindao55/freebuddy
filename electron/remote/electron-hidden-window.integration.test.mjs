@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import WebSocket from "ws";
-import { childExited, createBoundedRedactedOutput, nextFrame, stopChild, waitFor } from "./electron-harness-lifecycle.mjs";
+import { childExited, createBoundedRedactedOutput, nextFrame, stopChild, waitFor, waitForHttpOk } from "./electron-harness-lifecycle.mjs";
 
 async function freePort() { const server = net.createServer(); server.listen(0, "127.0.0.1"); await once(server, "listening"); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; }
 function command(child, value) { child.stdin.write(`${JSON.stringify(value)}\n`); }
@@ -28,6 +28,20 @@ async function resumeWhenHostOnline(admin, hostId, id) {
 const require = createRequire(import.meta.url);
 const electronBinary = require("electron");
 const HARNESS_MESSAGE_LIMIT = 4 * 1024;
+
+async function connectAdmin(port, token, relayOutput, label) {
+  const admin = new WebSocket(`ws://127.0.0.1:${port}/v1/ws/admin`, { headers: { Authorization: `Bearer ${token}` } });
+  const auth = nextFrame(admin);
+  try {
+    const [, frame] = await Promise.all([once(admin, "open"), auth]);
+    assert.equal(frame.type, "auth.ok", `${label} admin connection did not authenticate`);
+  } catch (error) {
+    admin.close();
+    const message = error instanceof Error ? error.message : "admin WebSocket connection failed";
+    throw new Error(`${label} admin connection failed: ${message}; relay output: ${relayOutput.read() || "(none)"}`);
+  }
+  return admin;
+}
 
 function createSecretOutputObserver(secrets) {
   const longestSecretLength = Math.max(...secrets.map(secret => secret.length));
@@ -84,11 +98,15 @@ test("M3 real Electron safeStorage host serves reads while a BrowserWindow is hi
     await assertGuiRuntimeAvailable(electronEnvironment);
     const build = spawnSync("go", ["build", "-o", relayBinary, "./cmd/relay"], { cwd: "services/remote-relay", encoding: "utf8" }); assert.equal(build.status, 0, build.stderr || build.stdout);
     relay = spawn(relayBinary, [], { env: { ...process.env, LISTEN_ADDR: `127.0.0.1:${port}`, SQLITE_PATH: path.join(temp, "relay.sqlite"), DEV_AUTH_MODE: "true", DEV_AUTH_ADMIN_TOKEN: adminToken, DEV_AUTH_HOST_TOKEN: hostToken, DEV_AUTH_HOST_ID: hostId, LOG_FORMAT: "json" }, stdio: ["ignore", "pipe", "pipe"] });
-    electron = spawn(electronBinary, ["electron/remote/electron-hidden-window-harness.mjs"], { cwd: process.cwd(), env: { ...electronEnvironment, FB_REMOTE_READONLY_DEV: "1", FB_REMOTE_DEV_ENDPOINT: `ws://127.0.0.1:${port}/v1/ws/host`, FB_REMOTE_DEV_HOST_TOKEN: hostToken, FB_REMOTE_DEV_HOST_ID: hostId, FB_REMOTE_TEST_USER_DATA: path.join(temp, "userData") }, stdio: ["pipe", "pipe", "pipe"] });
     const secrets = [adminToken, hostToken]; const secretOutput = createSecretOutputObserver(secrets);
     const messages = []; let remainder = ""; const electronStderr = createBoundedRedactedOutput(secrets); const relayOutput = createBoundedRedactedOutput(secrets);
-    electron.stdout.on("data", chunk => { secretOutput.observe(chunk); remainder = `${remainder}${chunk}`.slice(-16 * 1024); const lines = remainder.split("\n"); remainder = lines.pop(); for (const line of lines) { const message = readHarnessMessage(line); if (message) { messages.push(message); if (messages.length > 128) messages.shift(); } } });
     relay.stdout.on("data", chunk => { secretOutput.observe(chunk); relayOutput.append(chunk); }); relay.stderr.on("data", chunk => { secretOutput.observe(chunk); relayOutput.append(chunk); });
+    await waitForHttpOk(`http://127.0.0.1:${port}/readyz`, relay).catch(error => {
+      const message = error instanceof Error ? error.message : "Relay readiness failed";
+      throw new Error(`${message}; relay output: ${relayOutput.read() || "(none)"}`);
+    });
+    electron = spawn(electronBinary, ["electron/remote/electron-hidden-window-harness.mjs"], { cwd: process.cwd(), env: { ...electronEnvironment, FB_REMOTE_READONLY_DEV: "1", FB_REMOTE_DEV_ENDPOINT: `ws://127.0.0.1:${port}/v1/ws/host`, FB_REMOTE_DEV_HOST_TOKEN: hostToken, FB_REMOTE_DEV_HOST_ID: hostId, FB_REMOTE_TEST_USER_DATA: path.join(temp, "userData") }, stdio: ["pipe", "pipe", "pipe"] });
+    electron.stdout.on("data", chunk => { secretOutput.observe(chunk); remainder = `${remainder}${chunk}`.slice(-16 * 1024); const lines = remainder.split("\n"); remainder = lines.pop(); for (const line of lines) { const message = readHarnessMessage(line); if (message) { messages.push(message); if (messages.length > 128) messages.shift(); } } });
     electron.stderr.on("data", chunk => { secretOutput.observe(chunk); electronStderr.append(chunk); });
     await waitFor(() => messages.some(message => message.type === "ready" || message.type === "error" || message.type === "blocked_safe_storage") || electron.exitCode !== null)
       .catch(error => { throw new Error(`${error.message}; Electron stderr: ${electronStderr.read() || "(none)"}; relay output: ${relayOutput.read() || "(none)"}; stdout stages: ${JSON.stringify(messages.filter(message => message.type === "stage").map(message => message.stage))}`); });
@@ -106,12 +124,12 @@ test("M3 real Electron safeStorage host serves reads while a BrowserWindow is hi
     assert.equal(remoteStartingStage >= 0, true, `Electron did not begin actual safeStorage-backed remote initialization: ${electronStderr.read()}`);
     assert.equal(messages.some(message => message.type === "stage" && message.stage === "remote_started"), true, `Electron did not start the headless remote service: ${electronStderr.read()}`);
     assert.equal(messages.find(message => message.type === "ready")?.visible, true, `Electron harness never became ready: ${electronStderr.read()}`);
-    admin = new WebSocket(`ws://127.0.0.1:${port}/v1/ws/admin`, { headers: { Authorization: `Bearer ${adminToken}` } }); const firstAuth = nextFrame(admin); await once(admin, "open"); assert.equal((await firstAuth).type, "auth.ok");
+    admin = await connectAdmin(port, adminToken, relayOutput, "initial");
     const visibleSnapshot = await resumeWhenHostOnline(admin, hostId, "msg_visible_snapshot"); assert.equal(visibleSnapshot.payload.conversations[0].conversationId, "conv_electron_hidden");
     command(electron, { type: "hide" }); await waitFor(() => messages.some(message => message.type === "hidden")); assert.equal(messages.find(message => message.type === "hidden").visible, false);
     const event = nextFrame(admin); command(electron, { type: "event" }); const hiddenEvent = await event; assert.equal(hiddenEvent.type, "event"); assert.equal(hiddenEvent.payload.name, "conversation.updated");
     admin.close(); await once(admin, "close"); command(electron, { type: "event" });
-    admin = new WebSocket(`ws://127.0.0.1:${port}/v1/ws/admin`, { headers: { Authorization: `Bearer ${adminToken}` } }); const reconnectAuth = nextFrame(admin); await once(admin, "open"); await reconnectAuth;
+    admin = await connectAdmin(port, adminToken, relayOutput, "reconnect");
     const fallback = nextFrame(admin); admin.send(JSON.stringify({ v: 1, type: "resume", id: "msg_reconnect_fallback", hostId, sentAt: new Date().toISOString(), payload: { resumeFrom: 99_999 } })); assert.equal((await fallback).type, "snapshot");
   } finally {
     admin?.close();

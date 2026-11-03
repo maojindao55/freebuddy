@@ -1,21 +1,21 @@
-# Remote Relay M2 CVM Deployment Runbook
+# Remote Relay M2 公网 DEV 部署手册
 
-本手册仅覆盖 M2「CVM 可访问环境」。当前仍使用显式 `DEV_AUTH_MODE` 临时令牌，不包含真实微信 `code2Session`、正式主机配对、Electron 远程写操作、小程序业务页面或终端能力。
+本手册覆盖 M2「公网 DEV 可访问环境」。当前仍使用显式 `DEV_AUTH_MODE` 临时令牌，不包含真实微信 `code2Session`、正式主机配对、Electron 远程写操作、小程序业务页面或终端能力。
 
 ## DNS、备案与 TLS
 
 部署前必须具备：
 
-- 一台可运行 Docker Engine 与 Docker Compose plugin 的腾讯云 CVM。
-- 一个解析到该 CVM 公网地址的专用域名，例如 `remote.example.com`。
-- 若服务位于中国大陆，按腾讯云和适用监管要求完成域名实名认证、备案及接入确认；条件不满足时不得声称公网 TLS 已上线。
+- 一台可运行 Docker Engine 与 Docker Compose plugin 的云主机（当前部署目标为百度智能云 BCC 实例 106.13.104.125，规划兼容通用 Linux 云主机）。
+- 一个解析到该云主机公网地址的专用域名，例如 `remote.example.com`。
+- 若服务位于中国大陆，按云服务商和适用监管要求完成域名实名认证、备案及接入确认；条件不满足时不得声称公网 TLS 已上线。
 - 80/TCP 与 443/TCP 可从公网访问。若启用 HTTP/3，可额外开放 443/UDP。
 
 Caddy 从 `RELAY_DOMAIN` 获取站点名并自动申请、续期 TLS 证书。Relay 本身只监听 Docker 内部网络的 `:8080`，不终止 TLS。Caddy access log 配置了 `format filter` 过滤，显式删除 `Authorization`、`X-Dev-Admin-Token`、`X-Dev-Host-Token` 与 `Cookie` 请求头，防止敏感凭据泄漏到访问日志中。
 
-## 腾讯云安全组
+## 云侧安全组
 
-应用公网入站规则只能包含：
+Relay 服务自身新增的公网入站规则只能包含：
 
 | 协议 | 端口 | 来源 | 用途 |
 | --- | --- | --- | --- |
@@ -23,7 +23,27 @@ Caddy 从 `RELAY_DOMAIN` 获取站点名并自动申请、续期 TLS 证书。Re
 | TCP | 443 | `0.0.0.0/0`、`::/0` | HTTPS/WSS |
 | UDP | 443 | `0.0.0.0/0`、`::/0` | 可选 HTTP/3 |
 
-禁止为 `8080` 创建公网入站规则。SSH 不得对全网开放；仅允许固定管理 IP，或使用腾讯云带外登录/堡垒机。主机防火墙应与安全组保持相同边界。
+禁止为 Relay 的 `8080` 创建公网入站规则。SSH 不得对全网开放；仅允许固定管理 IP，或使用云服务商控制台带外登录/堡垒机。Relay 在容器网络内部仅向 Caddy 提供 8080，宿主机绝不直接发布 8080 端口。
+
+### Relay 自身网络边界与共享主机 DEV 例外
+
+1. **Relay 自身入口约束**：
+   - Relay 容器仅在 `internal: true` 的 `relay_internal` Docker 桥接网络中通过 `expose: "8080"` 声明端口，不向宿主机发布任何端口。
+   - 唯一对外发布端口的是边缘代理 Caddy（`80:80` 与 `443:443`）。Relay 自身绝不监听或暴露非 80/443 的公网入口。
+
+2. **共享主机既存业务 DEV 例外（百度智能云 106.13.104.125）**：
+   - 当前部署目标云主机上存在既有业务容器（监听并暴露 `3000`、`8791` 等端口）。
+   - 用户已明确确认：共享主机既有 3000/8791 维持现状，批准作为 M2 公网 DEV 验收例外。不得把整台主机描述为“公网只开放 80/443”，也不得为 Relay 改动既有业务容器、云侧安全组或宿主机防火墙（iptables）；所有既有业务容器、网络与防火墙配置保持完全不动。
+   - Relay 维护者严禁擅自修改或停止用户既有业务容器，严禁改动宿主机 iptables 或云安全组；必须恪守不改、不停既存业务原则。
+   - 该例外仅适用于 M2 DEV 环境及后续只读开发验证，不是整机生产网络边界已合格的声明。
+
+3. **生产环境隔离选项与 M8 复审要求（不造成当前 DEV 阻塞）**：
+   - 当前 M2 DEV 验收不要求关闭 3000/8791 或变更既有业务配置。
+   - 面向未来生产环境时，可将以下路径列为生产候选选项（供后续生产环境参考，不作为当前 DEV 阶段阻塞项）：
+     - **独立专用云主机（推荐生产方案）**：为 Remote Relay 开通专用云主机（如独立百度智能云 BCC 实例），杜绝与旧业务同机混部，安全组收敛为仅 80/443 及管理 IP SSH。
+     - **业务迁移**：将既有业务容器迁移至专用业务机，使 Relay 主机净化为专用网关。
+     - **安全组/网络深度收敛**：在业务维护窗口由相关维护人员评估收敛规则或绑定至专用内网/回环地址。
+   - **M8 发布前风险复审**：在 M8 正式发布前，必须针对共享主机的公网暴露与混部隔离风险重新进行安全审查，并单独作出生产风险决策；M2 DEV 阶段无需提前执行上述生产隔离变更。
 
 验证监听面与服务声明：
 
@@ -39,7 +59,7 @@ sudo docker compose --env-file /etc/freebuddy/remote-relay.env \
 
 Compose 只能发布 `80:80`、`443:443`，不得出现宿主 `8080` 映射。
 
-## CVM 目录与权限
+## 云主机目录与权限
 
 Relay 使用 UID/GID `10001`，Caddy 使用 UID/GID `10000`：
 
@@ -125,19 +145,147 @@ curl --fail --silent --show-error https://remote.example.com/readyz
 
 ## 外部 TLS/WSS 验证
 
-在 CVM 外的受信任运维机上，从安全秘密存储加载 token，不在命令行中直接写 token：
+外部验证在云主机外的受信任运维机上执行。必须在检出的 FreeBuddy 仓库根目录执行下列自包含脚本。该脚本将外部 WSS smoke 验证与远端数据边界安全校验整合为单一、可复制且经过测试的执行流：
+
+1. **环境与路径前提**：脚本由 `set -euo pipefail` 保护，确保任何步骤出错或管道命令失败立即非零退出；显式校验必须从 FreeBuddy 仓库检出根目录运行。
+2. **凭据隔离与权限保障**：运维 token（`DEV_AUTH_ADMIN_TOKEN` 与 `DEV_AUTH_HOST_TOKEN`）必须由受信秘密管理器（如企业密钥库、Vault、无交互 CI 环境变量注入等）在启动验证子 shell 前以非执行方式直接注入进程环境变量，绝不得通过 `source` / `.` 执行本地 env 文件以消除代码注入路径；脚本开头显式拒绝 `SMOKE_ENV_FILE` 且严格校验两项必需 token 非空；sentinel 纯在内存中生成或由预设环境变量加载，绝不在本机磁盘落地临时文件，彻底消除文件载荷执行风险；token 与 sentinel 均通过环境变量与安全管道注入，绝不作为任何命令的命令行参数（argv）、日志或源码。
+3. **主机公钥预验与 known_hosts 校验**：运维人员必须预先通过带外可信渠道（如云服务商控制台获取的主机指纹）核实云主机的 SSH 公钥指纹，并写入运维机的 `~/.ssh/known_hosts`。脚本执行时调用 `ssh-keygen -F remote.example.com` 校验 `known_hosts` 中是否存在该主机记录（防止非交互 `BatchMode=yes` 遇未收录公钥直接被阻断，或静默受到未知主机指纹威胁）。**安全语义说明**：`ssh-keygen -F` 检查仅验证 `known_hosts` 文件中存在匹配记录，该检查本身绝不证明公钥真实性或来源合法性；公钥指纹的真实权威来源必须在写入 `known_hosts` 前经带外通道确认。SSH 连接保持 `-o BatchMode=yes -o StrictHostKeyChecking=yes`。
+4. **外部 WSS 路由验证**：在执行任何后续逻辑前，先对内存中的 sentinel 严格校验纯十六进制格式（`^[0-9a-fA-F]{32,64}$`），若预设异常或非纯 hex 立即阻断退出，杜绝任何命令注入与预设 payload 执行风险；随后进入 `services/remote-relay` 模块目录执行 `go run ./cmd/wss-smoke`，验证 TLS/WSS 建连、双向鉴权、RPC 回显与 1000 条事件序列号。
+5. **单次 SSH 零磁盘残留管道校验**：通过单次 SSH 管道（`BatchMode=yes`、`StrictHostKeyChecking=yes`、`sudo -n bash -s`）将严格校验后的纯 hex sentinel 仅注入远端进程内存并执行数据边界校验，全程不在云端磁盘落地任何 sentinel 文件。
+6. **双端信号退出契约与可靠清理**：本机与远端均注册 EXIT trap `unset` 敏感环境变量；捕捉到 SIGINT（退出码 130）与 SIGTERM（退出码 143）或发生任何故障（如 SSH 传输失败退出 255）时，均可靠释放内存变量并准确返回真实的非零退出状态码。
 
 ```bash
-set -a
-. /secure/path/remote-relay-smoke.env
-set +a
-export RELAY_PUBLIC_BASE_URL=https://remote.example.com
-export SMOKE_HOST_ID=host_dev
-export SMOKE_PAYLOAD_SENTINEL=$(openssl rand -hex 24)
-go run ./services/remote-relay/cmd/wss-smoke -events 1000
-```
+(
+set -euo pipefail
 
-模拟器要求 `https://` 或 `wss://`，分别鉴权 Admin 与 Host，验证一轮 RPC 请求/响应，并严格检查 1000 条事件的 `seq`。它不打印 token 或 payload sentinel。
+# 必须在 FreeBuddy 仓库检出根目录执行（确保子模块与脚本路径有效）
+if [ ! -f "services/remote-relay/cmd/wss-smoke/main.go" ]; then
+  echo "安全校验失败：请在 FreeBuddy 仓库检出根目录执行此脚本" >&2
+  exit 1
+fi
+
+cleanup_local_smoke() {
+  local rc=$?
+  unset DEV_AUTH_ADMIN_TOKEN DEV_AUTH_HOST_TOKEN SMOKE_ADMIN_TOKEN SMOKE_HOST_TOKEN SMOKE_PAYLOAD_SENTINEL ENCODED_ADMIN_TOKEN ENCODED_HOST_TOKEN
+  exit "$rc"
+}
+trap cleanup_local_smoke EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# 严禁使用 SMOKE_ENV_FILE 本地文件载入凭据（彻底消除 source 执行本地文件的命令注入路径）
+if [ -n "${SMOKE_ENV_FILE:-}" ]; then
+  echo "安全校验失败：禁止使用 SMOKE_ENV_FILE 本地文件载入凭据；DEV_AUTH_ADMIN_TOKEN 与 DEV_AUTH_HOST_TOKEN 必须由受信秘密管理器在启动子 shell 前以非执行方式直接注入环境变量" >&2
+  exit 1
+fi
+
+# 严格校验必需的运维 token 环境变量（必须由受信秘密管理器非执行式注入，缺失立即阻断退出）
+if [ -z "${DEV_AUTH_ADMIN_TOKEN:-}" ] || [ -z "${DEV_AUTH_HOST_TOKEN:-}" ]; then
+  echo "安全校验失败：缺少必需的 DEV_AUTH_ADMIN_TOKEN 或 DEV_AUTH_HOST_TOKEN 环境变量（须由受信秘密管理器非执行式注入）" >&2
+  exit 1
+fi
+
+# 纯内存环境变量生成或读取预设 sentinel（绝不在本机磁盘落地临时环境文件，彻底消除文件载荷执行风险）
+: "${SMOKE_PAYLOAD_SENTINEL:=$(openssl rand -hex 32)}"
+
+# 在执行任何后续逻辑前，先对内存中的 sentinel 严格校验纯 Hex 格式（防注入与异常预设；校验失败立即阻断退出）
+if ! printf '%s' "$SMOKE_PAYLOAD_SENTINEL" | grep -Eq '^[0-9a-fA-F]{32,64}$'; then
+  echo "安全校验失败：SMOKE_PAYLOAD_SENTINEL 必须为 32-64 位纯 Hex 字符串" >&2
+  exit 1
+fi
+export SMOKE_PAYLOAD_SENTINEL
+
+# 校验云主机公钥是否已记录在本地 known_hosts 中
+# 语义说明：ssh-keygen -F 仅检查 known_hosts 文件中是否存在匹配记录，防止 BatchMode 因无交互提示直接拒绝；
+# 该检查本身不证明公钥真实性或来源合法性，运维人员必须预先通过带外可信渠道核实公钥指纹并写入 known_hosts。
+if ! ssh-keygen -F remote.example.com >/dev/null 2>&1; then
+  echo "安全校验失败：未在 known_hosts 找到 remote.example.com 公钥记录，请预先通过可信渠道核实公钥并加入 known_hosts" >&2
+  exit 1
+fi
+
+# 进入包含 go.mod 的 Relay 模块目录执行外部 WSS smoke
+(
+  cd services/remote-relay
+  go run ./cmd/wss-smoke \
+    -base-url https://remote.example.com \
+    -host-id host_dev \
+    -events 1000
+)
+
+# 对运维机内存中的两 token 进行安全编码，经单次 SSH stdin 管道传递到远端解码
+# 绝不进入进程 argv/系统日志，任意原值均无法突破 shell 语法，远端绝不执行 RELAY_ENV_FILE
+ENCODED_ADMIN_TOKEN="$(printf '%s' "$DEV_AUTH_ADMIN_TOKEN" | base64 | tr -d '\r\n')"
+ENCODED_HOST_TOKEN="$(printf '%s' "$DEV_AUTH_HOST_TOKEN" | base64 | tr -d '\r\n')"
+
+if ! printf '%s' "$ENCODED_ADMIN_TOKEN" | grep -Eq '^[A-Za-z0-9+/=]+$' || \
+   ! printf '%s' "$ENCODED_HOST_TOKEN" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
+  echo "安全校验失败：token 编码格式异常" >&2
+  exit 1
+fi
+
+# 单次 SSH 管道执行校验：全程零云端磁盘残留、无传输后空档、argv 无秘密
+{
+  printf 'export SMOKE_PAYLOAD_SENTINEL=%s\n' "$SMOKE_PAYLOAD_SENTINEL"
+  printf 'ENCODED_ADMIN_TOKEN=%s\n' "$ENCODED_ADMIN_TOKEN"
+  printf 'ENCODED_HOST_TOKEN=%s\n' "$ENCODED_HOST_TOKEN"
+  cat <<'EOF'
+set -euo pipefail
+
+cleanup_cloud_verify() {
+  local rc=$?
+  unset DEV_AUTH_ADMIN_TOKEN DEV_AUTH_HOST_TOKEN SMOKE_ADMIN_TOKEN SMOKE_HOST_TOKEN SMOKE_PAYLOAD_SENTINEL ENCODED_ADMIN_TOKEN ENCODED_HOST_TOKEN
+  exit "$rc"
+}
+trap cleanup_cloud_verify EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# 经 stdin 数据流安全解码 token（无 argv 暴露，非执行式解析，绝不 source 远端 env 文件）
+DEV_AUTH_ADMIN_TOKEN="$(printf '%s' "${ENCODED_ADMIN_TOKEN:-}" | { base64 -d 2>/dev/null || base64 -D; })"
+DEV_AUTH_HOST_TOKEN="$(printf '%s' "${ENCODED_HOST_TOKEN:-}" | { base64 -d 2>/dev/null || base64 -D; })"
+if [ -z "$DEV_AUTH_ADMIN_TOKEN" ] || [ -z "$DEV_AUTH_HOST_TOKEN" ]; then
+  echo "安全校验失败：远端解码 token 失败或 token 为空" >&2
+  exit 1
+fi
+export DEV_AUTH_ADMIN_TOKEN DEV_AUTH_HOST_TOKEN
+
+RELAY_ENV_FILE="${RELAY_ENV_FILE:-/etc/freebuddy/remote-relay.env}"
+RELAY_DATA_DIR="${RELAY_DATA_DIR:-/var/lib/freebuddy/remote-relay}"
+FREEBUDDY_DIR="${FREEBUDDY_DIR:-/opt/freebuddy}"
+
+validate_secure_file() {
+  local target="$1"
+  if [ ! -f "$target" ]; then
+    echo "安全校验失败：文件不存在: $target" >&2
+    return 1
+  fi
+  local owner
+  owner="$(stat -c '%u' "$target" 2>/dev/null || stat -f '%u' "$target" 2>/dev/null)"
+  if [ "$owner" != "0" ]; then
+    echo "安全校验失败：$target 属主必须为 root (UID 0)，当前为 $owner" >&2
+    return 1
+  fi
+  local mode
+  mode="$(stat -c '%a' "$target" 2>/dev/null || stat -f '%Lp' "$target" 2>/dev/null)"
+  if [ "$mode" != "600" ] && [ "$mode" != "400" ]; then
+    echo "安全校验失败：$target 权限必须为 0600 或 0400，当前为 $mode" >&2
+    return 1
+  fi
+  return 0
+}
+
+validate_secure_file "$RELAY_ENV_FILE"
+
+# RELAY_ENV_FILE 仅作为 docker compose --env-file 的只读数据路径，绝不得执行（禁止 source/.）
+export RELAY_ENV_FILE
+export RELAY_DATA_DIR
+
+cd "$FREEBUDDY_DIR"
+services/remote-relay/deploy/verify-data-boundary.sh
+EOF
+} | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes ops@remote.example.com 'sudo -n bash -s'
+)
+```
 
 ## 重启与持久性
 
@@ -154,7 +302,12 @@ sudo sqlite3 /var/lib/freebuddy/remote-relay/relay.db \
   'SELECT version,name FROM schema_migrations ORDER BY version;'
 ```
 
-M2 只验证 `/data` 与 migration 元数据跨重启保留。正式管理员会话和配对记录要等后续真实认证/配对阶段实现后再验证，当前不得伪造该结论。
+M2 阶段在云主机（当前为百度智能云 106.13.104.125）上运行于 `DEV_AUTH_MODE=true` 临时令牌模式，未接入真实微信认证与主机配对流程，因此云主机数据库中的 `admin_sessions`、`hosts`、`pairings`、`audit_events` 四张业务表在 M2 为空属于正常预期。
+
+**持久性边界与验收判定**：
+1. **测试层验证**：在隔离的 Go 单测环境（`internal/store/TestStore_PersistenceAcrossRestart`）中，已通过文件级 SQLite 模拟完整的数据库关闭与重新打开，证明了 `admin_sessions` 会话记录的行级跨重启持久性（创建、检索、Touch、更新），以及其他三张元数据表（`hosts`、`pairings`、`audit_events`）的表结构存在与可查询性；该单测不用于证明 `hosts` 或 `pairings` 真实业务行的跨重启持久性。
+2. **DEV 验收标准**：在 M2 公网 DEV 环境中，Relay 重启后 SQLite `schema_migrations`（版本 1）元数据保持、数据库就绪（`/readyz` 通过）且元数据表可查询，配合通过外部 WSS DEV smoke 测试，即满足 M2 公网 DEV 出口条件。严禁在 M2 伪造正式微信认证，严禁向数据库注入虚假记录，严禁越权提前实现 M3/M4/M5 逻辑。
+3. **真实业务记录持久性推迟至 M4**：真实管理员会话与主机配对业务记录的跨重启持久性验证已明确推迟至 M4「小程序只读接入」阶段出口闭环；M2 DEV 验收不再以此为阻塞。
 
 ## 备份
 
@@ -230,17 +383,24 @@ M2 DEV token 轮换步骤：
 
 Compose 为 Relay/Caddy 配置了 Docker `json-file` 轮转。监控至少包括：容器重启、磁盘水位、`/readyz`、活动连接数、认证失败、RPC timeout、backpressure 和 heartbeat timeout。
 
-完成 smoke 后执行：
+### 数据边界校验执行
 
-```bash
-export RELAY_ENV_FILE=/etc/freebuddy/remote-relay.env
-export RELAY_DATA_DIR=/var/lib/freebuddy/remote-relay
-set -a
-. "$RELAY_ENV_FILE"
-set +a
-export SMOKE_PAYLOAD_SENTINEL=<本次 smoke 使用的值>
-services/remote-relay/deploy/verify-data-boundary.sh
-```
+外部 smoke 完成后，必须执行数据边界校验。校验通过[外部 TLS/WSS 验证](#外部-tlswss-验证)中运维机脚本的单次 SSH 标准输入安全管道（`BatchMode=yes`、`StrictHostKeyChecking=yes`、`sudo -n bash -s`）统一调度执行，将 sentinel 仅传入云端 root bash 内存环境变量中，全程零云端磁盘文件残留，杜绝传输中断残存文件与传输-校验时间差风险。
+
+校验脚本会检查 Relay 和 Caddy 容器日志以及 SQLite 数据文件（含 WAL/SHM），确认没有记录敏感凭证与业务载荷。
+
+### 操作路径、权限、清理与日志安全说明
+
+1. **零持久化与云端无磁盘文件残留**：
+   - sentinel 仅作为运维机与云端 root bash 进程内存中的临时环境变量存在，不向运维机或云端文件系统写入任何 sentinel 文件，杜绝中断残存及预置符号链接劫持风险。
+2. **两阶段可靠清理与信号退出契约**：
+   - 运维机与云端均由 EXIT trap 严格保障在命令成功、发生任何非零故障或收到中断信号时可靠 `unset` 敏感环境变量。
+   - 捕捉到 SIGINT 时显式退出码 130，捕捉到 SIGTERM 时显式退出码 143，在退出前由 EXIT trap 完成变量释放，确保退出状态码真实反映中断状态。
+3. **严格不落参数与日志**：
+   - 生成、传递与加载全程使用标准输入管道或安全文件重定向，严禁将 sentinel 或 token 作为任何命令的命令行参数（`argv`），严禁使用 `echo "$SMOKE_PAYLOAD_SENTINEL"`。
+   - 避免将 sentinel 明文写入 shell 历史（`HISTFILE`）、系统审计日志（auditd）或终端回显。
+4. **服务边界与凭据防泄漏**：
+   - 不得新增通用秘密存储服务或修改 Relay 自身服务代码；校验完全基于现有 root-only 临时环境文件与标准环境变量接口。
 
 脚本只报告 pass/fail，不回显 token 或 sentinel；它通过管道将搜索模式传入标准输入（避免在 `ps aux` 进程参数列表中泄漏敏感凭证），严格检查 Relay 与 Caddy 的 Docker 容器日志，以及 SQLite 二进制数据库文件（包括 `relay.db`、`relay.db-wal` 和 `relay.db-shm`）中不存在这些原文。若失败，立即停止 Relay、隔离日志/备份并按安全事件处理，禁止继续部署。
 
@@ -255,4 +415,8 @@ sudo docker compose --env-file /etc/freebuddy/remote-relay.env \
 
 ## 外部验证阻塞
 
-若缺少 CVM、域名解析、备案条件、80/443 入站或可信 TLS 证书，只能完成镜像、Compose、Caddy、静态检查和本地容器验证。此时 M2 的“外网 `wss://<domain>/v1/ws/...` 建连”出口明确为 **blocked**，不得把本地 `httptest`、自签名 TLS 或 Compose 启动冒充公网验证成功。
+若缺少云主机（当前部署目标为百度智能云 106.13.104.125）、未完成域名备案、公网 80/443 入站不通、未获取可信 CA 证书，或外部 WSS DEV smoke 验证失败，M2「公网 DEV 可访问环境」出口明确为 **blocked**（或 `needs_changes`），不得把本地 `httptest`、自签名 TLS 或单纯 Compose 启动冒充公网 DEV 验收通过。
+
+**DEV 例外与后续阶段出口明确**：
+1. **共享主机既存端口例外**：共用云主机上既有业务的 3000/8791 维持现状，是用户批准的 M2 公网 DEV 阶段例外，不作为当前 M2 DEV 验收的阻塞项。该例外不代表整机生产网络边界已合格；M8 发布前须重新审查共享主机的公网暴露与隔离风险，并单独作出生产风险决策。
+2. **元数据持久性验收解耦**：DEV smoke 与 migration 元数据持久性可签 M2 DEV 出口。真实管理员会话与主机配对业务记录的跨重启持久性统一推迟至 M4 验收，不在 M2 造成阻塞。

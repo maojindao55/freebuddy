@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { childExited, nextFrame, waitFor, waitForExit, withTemporaryDirectory } from "./electron-harness-lifecycle.mjs";
+import { childExited, describeChildExit, nextFrame, waitFor, waitForExit, waitForHttpOk, withTemporaryDirectory } from "./electron-harness-lifecycle.mjs";
 
 test("harness waitFor clears its polling interval after timeout", async () => {
   const originalSetInterval = global.setInterval;
@@ -35,6 +35,26 @@ test("harness waitForExit removes its exit listener after timeout", async () => 
 test("harness child exit check requires an exit code or signal", () => {
   assert.equal(childExited({ exitCode: null, signalCode: null }), false);
   assert.equal(childExited({ exitCode: null, signalCode: "SIGTERM" }), true);
+  assert.equal(describeChildExit({ exitCode: 1, signalCode: null }), "exited with code 1");
+  assert.equal(describeChildExit({ exitCode: null, signalCode: "SIGTERM" }), "was terminated by SIGTERM");
+});
+
+test("harness waits for HTTP readiness and reports early child exit", async () => {
+  const child = { exitCode: null, signalCode: null };
+  let requests = 0;
+  await waitForHttpOk("http://127.0.0.1:1/readyz", child, {
+    intervalMs: 1,
+    fetchImpl: async () => ({
+      ok: ++requests === 3,
+      status: requests === 3 ? 200 : 503,
+      arrayBuffer: async () => new ArrayBuffer(0)
+    })
+  });
+  assert.equal(requests, 3);
+  await assert.rejects(
+    waitForHttpOk("http://127.0.0.1:1/readyz", { exitCode: 1, signalCode: null }, { fetchImpl: async () => { throw new Error("must not request"); } }),
+    /exited with code 1/,
+  );
 });
 
 test("harness removes its temporary directory when setup fails", async () => {

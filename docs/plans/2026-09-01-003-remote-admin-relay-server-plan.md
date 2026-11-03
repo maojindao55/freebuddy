@@ -16,7 +16,7 @@ depends_on:
 
 ## Goal Capsule
 
-- **目标：** 在腾讯云 CVM 上运行一个小型 Go 服务，完成唯一管理员微信身份验证、桌面主机配对/认证、双向 WSS 路由和最小审计。
+- **目标：** 在云主机（当前为百度智能云）上运行一个小型 Go 服务，完成唯一管理员微信身份验证、桌面主机配对/认证、双向 WSS 路由和最小审计。
 - **数据边界：** 服务持久化身份、令牌哈希、主机公钥、配对状态和不含业务载荷的审计元数据；不持久化消息、代码、终端输入输出和事件内容。
 - **部署边界：** 单实例优先，SQLite 持久化；Caddy 终止 TLS；Relay 监听容器内 `:8080`。
 - **依赖：** 必须消费 [远程控制协议方案](./2026-09-01-002-remote-admin-protocol-plan.md) 的 schema/fixtures，不得另行设计 wire format。
@@ -254,7 +254,7 @@ services/remote-relay/
 
 - 多阶段 Docker 构建、非 root 用户、只读 root filesystem（可行时）、`/data` volume。
 - Caddy 反代 WSS，设置正确 forwarded header 信任边界。
-- 文档化腾讯云安全组、域名/TLS、备份、升级、回滚和秘密轮换。
+- 文档化云侧安全组、域名/TLS、备份、升级、回滚和秘密轮换。
 
 ## Test Plan
 
@@ -288,8 +288,8 @@ go vet ./...
 
 部署文档至少包含：
 
-- DNS、域名备案、腾讯云安全组和 Caddy TLS 配置。
-- 公网只开放 80/443，SSH 使用密钥并限制来源 IP；Relay 8080 不直接暴露。
+- DNS、域名备案、云侧安全组和 Caddy TLS 配置。
+- 生产环境公网只开放 80/443，SSH 使用密钥并限制来源 IP；Relay 8080 不直接暴露。当前共享主机的 M2 DEV 例外及其发布前复审要求以[总控方案 M2](./2026-09-01-001-remote-admin-control-master-plan.md)为准，不得把 Relay 的端口边界等同于整机端口边界。
 - 环境变量秘密的安全配置方式，禁止放在镜像层和 Git。
 - `/data` 备份/恢复演练和 migration 回滚边界。
 - 健康检查、日志轮转、磁盘水位、连接数、认证失败和背压告警。
@@ -304,7 +304,7 @@ go vet ./...
 - 业务载荷不会出现在 SQLite、结构化日志或审计表。
 - 单个慢客户端和异常大 frame 不影响其他连接或耗尽内存。
 - SIGTERM 能停止新请求并显式关闭 WebSocket，进程在 grace period 内退出。
-- CVM Docker+Caddy 环境通过 WSS 真机/模拟器验证。
+- 云主机 Docker+Caddy 环境通过 WSS 真机/模拟器验证。
 
 ## Handoff Prompt
 

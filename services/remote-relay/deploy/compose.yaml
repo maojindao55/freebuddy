@@ -6,6 +6,8 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
     restart: unless-stopped
     init: true
     env_file:

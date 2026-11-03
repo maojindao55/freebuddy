@@ -7,7 +7,7 @@ import {
   resolveCodexBinaryHint,
   resolveNodeBinaryHint
 } from "./codexBinaryHint.js";
-import { buildCodexAppServerWrapperContent } from "./codexByokWrapper.js";
+import { buildCodexAppServerWrapperContent, type CodexByokProviderConfig } from "./codexByokWrapper.js";
 import {
   registerCodexChatBridgeRoute,
   setResponsesBridgeLogger,
@@ -409,12 +409,13 @@ function readOverrideBinary(id: string): string | undefined {
 }
 
 function createCodexAppServerWrapper(
-  modelCatalogPath: string
+  modelCatalogPath: string,
+  provider?: CodexByokProviderConfig
 ): string | undefined {
   const dir = path.join(getDataDir(), "codex-wrappers");
   fs.mkdirSync(dir, { recursive: true });
   const { extension, script } =
-    buildCodexAppServerWrapperContent(modelCatalogPath);
+    buildCodexAppServerWrapperContent(modelCatalogPath, process.platform, provider);
   const file = path.join(
     dir,
     `${safeCatalogFilePart(modelCatalogPath)}${extension}`
@@ -1035,23 +1036,30 @@ export function resolveCodexByokEnv(
     ...(model ? [{ id: model }] : []),
     ...readCachedCodexModelSlugs().map((slug) => ({ id: slug }))
   ]);
-  const modelCatalogPath = createCodexByokModelCatalog(
-    catalogModels,
-    byok.contextWindow
-  );
-  const codexPath = modelCatalogPath
-    ? createCodexAppServerWrapper(modelCatalogPath)
-    : undefined;
+  // Resolve the effective base_url before building the wrapper: codex itself no
+  // longer speaks chat/completions, so chat providers are routed through
+  // FreeBuddy's local Responses↔chat bridge. The wrapper's `-c` provider layer
+  // and the request config must agree on the same URL.
   const wireApi = normalizeWireApi(byok.wireApi);
   let baseUrl = byok.baseUrl?.trim();
   if (wireApi === "chat" && baseUrl) {
-    // codex itself no longer speaks chat/completions; hand codex a local
-    // bridge route that translates Responses ↔ chat/completions instead.
     // Without a running bridge fall back to direct "responses" (previous
     // behavior) so codex still starts.
     const route = registerCodexChatBridgeRoute(baseUrl);
     if (route) baseUrl = `http://127.0.0.1:${route.port}/v1/${route.routeId}`;
   }
+  const modelCatalogPath = createCodexByokModelCatalog(
+    catalogModels,
+    byok.contextWindow
+  );
+  const codexPath = modelCatalogPath
+    ? createCodexAppServerWrapper(modelCatalogPath, {
+        providerId,
+        providerName: byok.providerName,
+        baseUrl,
+        envKey
+      })
+    : undefined;
   const config: Record<string, unknown> = {
     model_provider: providerId,
     ...(model ? { model } : {}),

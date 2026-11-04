@@ -2,6 +2,14 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.57] - 2026-11-04
+
+### 问题修复
+
+- prevent background command hangs and settle cancelled turns (#227)
+- pass the BYOK provider into codex's config layer (#229)
+- drop --cwd from the ACP launch args (#228)
+
 ## [0.10.56] - 2026-11-02
 
 ### 问题修复

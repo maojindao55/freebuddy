@@ -113,6 +113,91 @@ test("buildCodexAppServerWrapperContent emits Windows cmd and Unix sh scripts", 
   assert.match(unix.script, /FREEBUDDY_NODE_BIN/);
 });
 
+test("Codex BYOK wrapper repeats the provider in the codex config layer", () => {
+  // codex 0.166.0 added a per-turn `modelProviderMismatch` check: the provider
+  // recorded on the thread must equal the provider the config layer resolves.
+  // FreeBuddy only sent it in the thread/start request, so codex resolved
+  // "openai" and rejected every prompt. The wrapper must therefore repeat the
+  // provider through `-c`.
+  assert.match(
+    wrapperSource,
+    /export function buildCodexProviderConfigArgs/,
+    "wrapper module must expose the provider -c builder"
+  );
+  assert.match(
+    wrapperSource,
+    /model_provider=\$\{tomlLiteral\(providerId\)\}/,
+    "model_provider must be written as a TOML literal"
+  );
+  assert.match(
+    wrapperSource,
+    /model_providers=\{\$\{tomlLiteral\(providerId\)\}/,
+    "model_providers entry must use the provider id as the table key"
+  );
+  assert.match(
+    wrapperSource,
+    /providerWords[\s\S]*?` -c \$\{shellSingleQuote\(arg\)\}`/,
+    "Unix wrapper must give every provider value its own -c flag"
+  );
+  assert.match(
+    wrapperSource,
+    /providerArgsCmd[\s\S]*?` -c "\$\{arg/,
+    "Windows wrapper must give every provider value its own -c flag"
+  );
+  assert.match(
+    storeSource,
+    /createCodexAppServerWrapper\(modelCatalogPath,\s*\{[\s\S]*?providerId/,
+    "resolveCodexByokEnv must pass the provider into the wrapper"
+  );
+});
+
+test("Codex provider -c payload contains no double quotes and keeps TOML literals", async (t) => {
+  let buildCodexProviderConfigArgs;
+  try {
+    ({ buildCodexProviderConfigArgs } = await import(
+      "../dist-electron/cli/codexByokWrapper.js"
+    ));
+  } catch {
+    t.skip("dist-electron wrapper not built yet");
+    return;
+  }
+
+  const args = buildCodexProviderConfigArgs({
+    providerId: "provider-longcat-7h89mc",
+    providerName: "美团 LongCat 开放平台",
+    baseUrl: "https://api.longcat.chat/openai/v1",
+    envKey: "OPENAI_API_KEY"
+  });
+  assert.equal(args.length, 2);
+  assert.equal(args[0], "model_provider='provider-longcat-7h89mc'");
+  assert.match(args[1], /^model_providers=\{'provider-longcat-7h89mc'=\{/);
+  assert.match(args[1], /name='美团 LongCat 开放平台'/);
+  assert.match(args[1], /wire_api='responses'/);
+  // No double quote anywhere: the payload is safe for cmd.exe and sh alike.
+  for (const arg of args) assert.equal(arg.includes('"'), false, arg);
+
+  // Dots/spaces in the id stay a valid TOML literal key.
+  const dotted = buildCodexProviderConfigArgs({
+    providerId: "weird.id x",
+    baseUrl: "https://example.test/v1"
+  });
+  assert.equal(dotted[0], "model_provider='weird.id x'");
+  assert.match(dotted[1], /\{'weird\.id x'=\{/);
+  // A missing base_url cannot describe a provider, so nothing is injected.
+  assert.deepEqual(
+    buildCodexProviderConfigArgs({ providerId: "provider-x" }),
+    []
+  );
+  assert.deepEqual(buildCodexProviderConfigArgs(undefined), []);
+  // A single quote in a value is doubled, never escaping out of the literal.
+  const quoted = buildCodexProviderConfigArgs({
+    providerId: "provider-q",
+    providerName: "Bob's API",
+    baseUrl: "https://example.test/v1"
+  });
+  assert.match(quoted[1], /name='Bob''s API'/);
+});
+
 test("Claude BYOK compaction preserves window instead of dropping it on persist", () => {
   assert.match(
     storeSource,

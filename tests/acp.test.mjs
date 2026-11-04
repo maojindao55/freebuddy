@@ -133,9 +133,23 @@ test("buildCommand starts OpenCode through its ACP server", () => {
   });
 
   assert.equal(built.bin, "opencode");
-  assert.deepEqual(built.args, ["acp", "--cwd", "/tmp/project"]);
+  assert.deepEqual(built.args, ["acp"]);
   assert.equal(built.promptViaStdin, false);
   assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand never passes --cwd to the OpenCode ACP server", () => {
+  // opencode 2.x rejects `acp --cwd`; the directory travels via spawn cwd and
+  // the ACP session/new request. Guards against reintroducing the flag.
+  const built = buildCommand({
+    adapter: "opencode-acp",
+    prompt: "hello",
+    cwd: "/tmp/project",
+    workspaceRoots: ["/tmp/project", "/tmp/other"]
+  });
+
+  assert.equal(built.args.includes("--cwd"), false);
+  assert.equal(built.args[0], "acp");
 });
 
 test("buildCommand omits OpenCode permission for single workspace root", () => {
@@ -194,7 +208,7 @@ test("buildCommand applies OpenCode ACP model through config env", () => {
     extraArgs: ["-m", "openai/gpt-4.1", "--print-logs"]
   });
 
-  assert.deepEqual(built.args, ["acp", "--cwd", "/tmp/project", "--print-logs"]);
+  assert.deepEqual(built.args, ["acp", "--print-logs"]);
   assert.deepEqual(built.env, {
     OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: "openai/gpt-4.1" })
   });

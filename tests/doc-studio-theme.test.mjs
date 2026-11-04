@@ -20,6 +20,9 @@ test("DocStudio synchronizes Office themes across system changes and loading tab
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), "freebuddy-doc-theme-"));
   const server = await createServer({
     root,
+    // Parallel browser tests must not replace each other's optimized dependencies.
+    cacheDir: path.join(profile, "node_modules", ".vite"),
+    optimizeDeps: { entries: ["tests/fixtures/doc-studio-preview.html"] },
     logLevel: "error",
     server: { host: "127.0.0.1", port: 0, strictPort: false }
   });
@@ -98,8 +101,17 @@ test("DocStudio synchronizes Office themes across system changes and loading tab
     });
     let sequence = 0;
     const pending = new Map();
+    const browserErrors = [];
     ws.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
+      if (message.method === "Runtime.exceptionThrown") {
+        const details = message.params.exceptionDetails;
+        browserErrors.push(details.exception?.description ?? details.text);
+      }
+      if (message.method === "Network.responseReceived" && message.params.response.status >= 400) {
+        const { status, url } = message.params.response;
+        browserErrors.push(`HTTP ${status}: ${url}`);
+      }
       const request = pending.get(message.id);
       if (!request) return;
       pending.delete(message.id);
@@ -121,18 +133,22 @@ test("DocStudio synchronizes Office themes across system changes and loading tab
       assert.equal(result.exceptionDetails, undefined, `Browser evaluation failed: ${expression}`);
       return result.result.value;
     };
-    const waitFor = async (expression) => {
-      for (let attempt = 0; attempt < 200; attempt++) {
+    const waitFor = async (expression, timeoutMs = 20000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
         if (await evaluate(expression)) return;
         await sleep(100);
       }
-      assert.fail(`Browser condition not reached: ${expression}`);
+      assert.fail(`Browser condition not reached: ${expression}\n${browserErrors.join("\n")}`);
     };
     await cdp("Page.enable");
+    await cdp("Runtime.enable");
+    await cdp("Network.enable");
     await cdp("Emulation.setEmulatedMedia", {features:[{name:"prefers-color-scheme", value:"dark"}]});
     await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await cdp("Page.navigate", { url: `http://127.0.0.1:${port}/tests/fixtures/doc-studio-preview.html?view=empty` });
-    await waitFor("!!document.querySelector('.ds-resize-handle') && typeof window.onOpenDocStudioFile === 'function'");
+    // Cold dependency optimization competes with the rest of the release suite.
+    await waitFor("!!document.querySelector('.ds-resize-handle') && typeof window.onOpenDocStudioFile === 'function'", 60000);
 
     await waitFor("document.documentElement.dataset.theme === 'light'");
     await evaluate(`window.__officeReports = {}; window.addEventListener('message', (event) => {

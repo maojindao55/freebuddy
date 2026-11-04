@@ -21,7 +21,8 @@ test("PowerShell missing mandatory arguments return an error without waiting for
   const manager = createAcpTerminalManager({});
   t.after(() => manager.dispose());
   const { terminalId } = await manager.create({ sessionId: "powershell", command: resolveWindowsPowerShell(process.env),
-    args: ["-NoProfile", "-Command", "Test-Path"] });
+    // PowerShell 7's default ConciseView omits the error identifier.
+    args: ["-NoProfile", "-Command", "$ErrorView = 'NormalView'; Test-Path"] });
   assert.notEqual((await manager.waitForExit(terminalId)).exitCode, 0);
   assert.match(manager.output(terminalId).output, /MissingMandatoryParameter|NonInteractive/);
 });

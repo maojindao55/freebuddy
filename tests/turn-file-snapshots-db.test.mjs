@@ -27,11 +27,11 @@ function setup(t, filename = ":memory:") {
   db.prepare(`INSERT INTO conversations(id, title, agent_id, agent_name, adapter, owner_id, created_at, updated_at)
     VALUES ('conversation', 'test', 'agent', 'Agent', 'qoder-acp', 'alice', '0', '0')`).run();
   message(db, "run", "message");
-  t.after(() => { setDbForTest(null); if (db.open) db.close(); cleanWorkspace(root); });
+  t.after(() => { setDbForTest(null); if (db.open) db.close(); return cleanWorkspace(root); });
   return { root, db, file: name => path.join(root, name), prepare: (limits, taskId = "run", roots = [root]) =>
     runAsCaller("alice", () => prepareTurnFileCapture({ conversationId: "conversation", taskId, roots, limits: { milliseconds: 10000, ...limits } })) };
 }
-function cleanWorkspace(root) {
+async function cleanWorkspace(root) {
   const resolved = path.resolve(root);
   assert.equal(path.dirname(resolved), path.resolve(os.tmpdir()));
   assert.ok(path.basename(resolved).startsWith("freebuddy-file-versions-"));
@@ -44,7 +44,7 @@ function cleanWorkspace(root) {
     }
   };
   writableFiles(resolved);
-  fs.rmSync(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await fs.promises.rm(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 function message(db, taskId, id) {
   db.prepare(`INSERT INTO conversation_messages(id, conversation_id, role, status, content, task_id, created_at, updated_at)

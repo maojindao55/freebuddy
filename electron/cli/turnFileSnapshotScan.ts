@@ -70,9 +70,13 @@ async function enumerate(root: Root, limits: Limits, deadline: number, rememberD
     return true;
   };
   let gitEnumerated = false;
+  // Do not launch a process with an already exhausted budget. On Windows,
+  // terminating the Git launcher can leave its child holding the workspace.
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) { root.complete = false; return files; }
   try {
     const result = await git("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "."], {
-      cwd: root.path, encoding: "utf8", windowsHide: true, timeout: Math.max(1, deadline - Date.now()), maxBuffer: 8 * 1024 * 1024
+      cwd: root.path, encoding: "utf8", windowsHide: true, timeout: remainingMs, maxBuffer: 8 * 1024 * 1024
     });
     for (const entry of result.stdout.split("\0")) {
       if (entry && !add(path.resolve(root.path, entry))) break;

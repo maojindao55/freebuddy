@@ -18774,6 +18774,49 @@ button.ghost:focus-visible,
   font-size: 12px;
 }
 
+.tool-activity-status {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+}
+
+.tool-activity-status.quiet {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--fb-text-primary);
+}
+
+.tool-activity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.tool-activity-heading button {
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tool-activity-heading button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.tool-activity-status p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
 .stream-tool-locations {
   display: inline-flex;
   flex-wrap: wrap;

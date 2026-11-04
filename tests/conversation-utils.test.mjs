@@ -20,6 +20,17 @@ async function loadConversationUtils() {
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 
+test("tool timing survives partial output and completion merges", async () => {
+  const { appendItems } = await loadConversationUtils();
+  const initial = [{ kind: "tool-call", id: "command", tool: "run_command", status: "running", startedAt: 100, lastProgressAt: 100 }];
+  const progress = appendItems(initial, [{ kind: "tool-call", id: "command", tool: "tool", lastProgressAt: 300 }]);
+  const final = appendItems(progress, [{ kind: "tool-call", id: "command", tool: "tool", status: "completed" }]);
+  assert.equal(final[0].tool, "run_command");
+  assert.equal(final[0].startedAt, 100);
+  assert.equal(final[0].lastProgressAt, 300);
+  assert.equal(final[0].status, "completed");
+});
+
 test("Claude partial output and final snapshots share block identity without duplicating text or thinking", async () => {
   const { appendItems } = await loadConversationUtils();
   const parser = getParser("claude-json");

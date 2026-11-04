@@ -12,6 +12,8 @@ import ts from "typescript";
 import * as acp from "../dist-electron/cli/acp.js";
 import * as acpLocalDiff from "../dist-electron/cli/acpLocalDiff.js";
 import * as acpEmbeddedTerminal from "../dist-electron/cli/acpEmbeddedTerminal.js";
+import * as acpToolActivity from "../dist-electron/cli/acpToolActivity.js";
+import * as backgroundExecution from "../dist-electron/cli/backgroundExecution.js";
 import { AcpProcessPool } from "../dist-electron/cli/acpProcessPool.js";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
 import { localDiffFixture } from "./fixtures/agy-local-diff.mjs";
@@ -29,6 +31,8 @@ function load(file, services) {
       if (name === "./acp.js") return acp;
       if (name === "./acpLocalDiff.js") return acpLocalDiff;
       if (name === "./acpEmbeddedTerminal.js") return acpEmbeddedTerminal;
+      if (name === "./acpToolActivity.js") return acpToolActivity;
+      if (name === "./backgroundExecution.js") return backgroundExecution;
       if (name === "cross-spawn") return { __esModule: true, default: services.spawn };
       return new Proxy(services, { get: (object, key) => key === "__esModule" ? true : object[key] ?? (() => {}) });
     }
@@ -143,6 +147,8 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   assert.ok(editEvent);
   assert.ok(JSON.stringify(editEvent).length < 4096);
   await runtime.cliRun(wc, { ...args, sessionId: "two" });
+  assert.equal(spawnOptions[0].env.GCM_INTERACTIVE, "0");
+  assert.equal(spawnOptions[0].env.GIT_TERMINAL_PROMPT, "0");
   assert.equal(children[0].stdin.listenerCount("error"), 1);
   assert.equal(children.length, 1);
   assert.equal(registrations, 1); assert.equal(rebindings, 1);

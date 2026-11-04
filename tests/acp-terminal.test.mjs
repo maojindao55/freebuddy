@@ -1,10 +1,52 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resolveWindowsPowerShell } from "../dist-electron/cli/windowsEnv.js";
 
 import {
   createAcpTerminalManager,
   MAX_TERMINAL_OUTPUT_BYTES
 } from "../dist-electron/cli/acpTerminal.js";
+
+test("terminal commands inherit noninteractive Git policy even if requested env enables prompts", async t => {
+  const manager = createAcpTerminalManager({});
+  t.after(() => manager.dispose());
+  const { terminalId } = await manager.create({ sessionId: "env", command: process.execPath,
+    args: ["-e", "console.log(JSON.stringify([process.env.GCM_INTERACTIVE,process.env.GIT_TERMINAL_PROMPT]))"],
+    env: [{ name: "GCM_INTERACTIVE", value: "true" }, { name: "GIT_TERMINAL_PROMPT", value: "1" }] });
+  assert.equal((await manager.waitForExit(terminalId)).exitCode, 0);
+  assert.deepEqual(JSON.parse(manager.output(terminalId).output.trim()), ["0", "0"]);
+});
+
+test("PowerShell missing mandatory arguments return an error without waiting for input", { skip: process.platform !== "win32", timeout: 10000 }, async t => {
+  const manager = createAcpTerminalManager({});
+  t.after(() => manager.dispose());
+  const { terminalId } = await manager.create({ sessionId: "powershell", command: resolveWindowsPowerShell(process.env),
+    args: ["-NoProfile", "-Command", "Test-Path"] });
+  assert.notEqual((await manager.waitForExit(terminalId)).exitCode, 0);
+  assert.match(manager.output(terminalId).output, /MissingMandatoryParameter|NonInteractive/);
+});
+
+test("Windows terminal cancellation reaps grandchildren and releases exit waiters", { skip: process.platform !== "win32", timeout: 10000 }, async t => {
+  const manager = createAcpTerminalManager({});
+  let descendant;
+  t.after(() => {
+    manager.dispose();
+    if (descendant) { try { process.kill(descendant); } catch { /* already reaped */ } }
+  });
+  const { terminalId } = await manager.create({ sessionId: "tree", command: process.execPath,
+    args: ["-e", "const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:['ignore','inherit','inherit']});console.log(child.pid);setInterval(()=>{},1000)"] });
+  for (let tries = 0; tries < 100; tries++) {
+    const match = manager.output(terminalId).output.match(/\d+/);
+    if (match) { descendant = Number(match[0]); break; }
+    await new Promise(resolve => setTimeout(resolve, 30));
+  }
+  assert.ok(descendant, "descendant started");
+  const waiting = manager.waitForExit(terminalId);
+  manager.kill(terminalId);
+  await waiting;
+  assert.equal(manager.output(terminalId).exited, true);
+  assert.throws(() => process.kill(descendant, 0), /ESRCH/);
+});
 
 test("terminal manager streams output and reports exit status", async () => {
   const events = [];

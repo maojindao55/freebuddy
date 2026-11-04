@@ -5,6 +5,7 @@ import path from "node:path";
 import type { WebContents } from "electron";
 import type { Readable, Writable } from "node:stream";
 import { createHash } from "node:crypto";
+import { authenticationExecutionEnv, backgroundExecutionEnv } from "./backgroundExecution.js";
 
 import {
   buildCommand,
@@ -418,7 +419,7 @@ async function runCliAgent(
   let spawnCommand: SandboxedSpawn = {
     bin: built.bin,
     args: built.args,
-    env
+    env: backgroundExecutionEnv(env)
   };
   if (processSandboxed) {
     try {
@@ -428,7 +429,7 @@ async function runCliAgent(
         args: built.args,
         cwd: executionArgs.cwd ?? process.cwd(),
         readOnlyWorkspace,
-        env,
+        env: spawnCommand.env,
         extraReadPaths: [
           ...(executionArgs.promptAttachments ?? []).map(
             (attachment) => attachment.path
@@ -562,7 +563,7 @@ async function runCliAgent(
           bin: spawnCommand.bin,
           args: spawnCommand.args,
           cwd: executionArgs.cwd,
-          env: spawnCommand.env
+          env: authenticationExecutionEnv(spawnCommand.env, env)
         },
         claudeAcpSessionOptions: resolveClaudeByokSessionOptions(
           args.agentId,

@@ -93,7 +93,7 @@ test("ACP turns are cancelled when the agent stops producing output", () => {
   // Every live session/update frame resets the timer, mirroring promptHadContent.
   assert.match(
     acpRuntimeSource,
-    /promptHadContent = true;\s*\n\s*armInactivityTimer\(\);/
+    /promptHadContent = true;\s*activityRevision \+= 1;\s*armInactivityTimer\(\);/
   );
   // On expiry the run is torn down via the existing cancel+finish path so the
   // workflow runtime observes the standard error+done event pair.
@@ -144,10 +144,11 @@ test("ACP inactivity watchdog probes liveness before cancelling and caps repriev
   );
 });
 
-test("ACP watchdog grants bounded time to an explicitly active tool call", () => {
+test("ACP watchdog requires a successful probe before granting bounded extra time", () => {
   assert.match(acpRuntimeSource, /updateActiveAcpToolCalls/);
   assert.match(acpRuntimeSource, /const activeToolCallIds = new Set<string>\(\)/);
-  assert.match(acpRuntimeSource, /alive \|\| hasActiveToolCall/);
+  assert.doesNotMatch(acpRuntimeSource, /alive \|\| hasActiveToolCall/);
+  assert.match(acpRuntimeSource, /alive &&\s*inactivityReprieves < MAX_INACTIVITY_REPRIEVES/);
   assert.match(acpRuntimeSource, /MAX_INACTIVITY_REPRIEVES/);
 });
 

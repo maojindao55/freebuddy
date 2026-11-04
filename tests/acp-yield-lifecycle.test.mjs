@@ -12,6 +12,8 @@ import * as acp from "../dist-electron/cli/acp.js";
 import * as acpLocalDiff from "../dist-electron/cli/acpLocalDiff.js";
 import * as piTurn from "../dist-electron/cli/piTurn.js";
 import * as acpEmbeddedTerminal from "../dist-electron/cli/acpEmbeddedTerminal.js";
+import * as acpToolActivity from "../dist-electron/cli/acpToolActivity.js";
+import * as backgroundExecution from "../dist-electron/cli/backgroundExecution.js";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
 import { PiRunUsageReader } from "../dist-electron/cli/piRunUsage.js";
 import { DelegationOrchestrator, createMemoryDelegationRepository } from "../packages/delegation-runtime/dist/index.js";
@@ -32,6 +34,8 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
   child.stderr ??= new PassThrough();
   const running = new Map();
   const events = [], requests = [], traces = [];
+  let promptRequestId;
+  let terminalOptions;
   const captureOrder = [];
   const timers = new Set();
   const isPi = mode.startsWith("pi-");
@@ -90,6 +94,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
         }
         else if (msg.method === "session/new" || msg.method === "session/load") reply(msg, { sessionId: "fake-session" });
         else if (msg.method === "session/prompt") {
+          promptRequestId = msg.id;
           if (captureOptions) { assert.ok(captureOrder.includes("prepared")); captureOrder.push("prompt"); }
           if (mode === "pi-terminal-metadata") {
             notify({ sessionUpdate: "tool_call", toolCallId: "pi-tool", kind: "execute", title: "git status --short", status: "in_progress",
@@ -150,6 +155,11 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
           } else if (mode === "failed") child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32603, message: "fixture prompt failed" } }) + "\n");
           else if (mode.startsWith("yield")) running.get("test-turn").yield();
           else if (mode === "cancel" || mode === "stdin-cancel-error") running.get("test-turn").cancel();
+          else if (mode === "cancel-unresponsive") running.get("test-turn").cancel();
+          else if (mode === "active-tool-dead" || mode === "active-tool-alive" || mode === "progress-during-probe" || mode === "terminal-progress-during-probe") {
+            notify({ sessionUpdate: "tool_call", toolCallId: "silent", title: "run_command", status: "in_progress",
+              ...(mode === "terminal-progress-during-probe" ? { content: [{ type: "terminal", terminalId: "host-terminal" }] } : {}) });
+          }
           else if (mode === "stdin-probe-error") { /* Wait for the inactivity probe. */ }
           else if (mode === "stdin-stream-error") child.stdin.emit("error", new Error("write EPIPE"));
           else if (mode === "stdin-permission-error" || mode === "stdin-terminal-error" || mode === "stdin-unsupported-error") {
@@ -209,6 +219,24 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
           if (["yield-close", "cancel", "pi-cancel", "pi-cancel-thinking", "pi-yield"].includes(mode)) close();
           // yield-silent deliberately never replies or exits until killed.
         } else if (msg.method === "session/list") {
+          if (mode === "terminal-progress-during-probe") {
+            terminalOptions.onOutput("host-terminal", { output: "streaming output", truncated: false, exited: false });
+            child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "unsupported" } }) + "\n");
+            setTimeout(() => {
+              notify({ sessionUpdate: "tool_call_update", toolCallId: "silent", status: "completed" });
+              reply({ id: promptRequestId }, { stopReason: "end_turn" });
+            }, 5);
+            return;
+          }
+          if (mode === "active-tool-dead") {
+            child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "unsupported" } }) + "\n");
+            return;
+          }
+          if (mode === "progress-during-probe") {
+            notify({ sessionUpdate: "tool_call_update", toolCallId: "silent", status: "completed", rawOutput: "finished" });
+            // Finish shortly after the probe returns. The stale probe must not kill the turn.
+            setTimeout(() => reply({ id: promptRequestId }, { stopReason: "end_turn" }), 5);
+          }
           if (mode === "exit-during-list") close();
           else if (mode !== "silent-cleanup") reply(msg, { sessions: [] });
         } else if (msg.method === "session/close" && mode !== "silent-cleanup") reply(msg, {});
@@ -233,11 +261,11 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
     PiRunUsageReader,
     getDataDir: () => piDataDir,
     persistFileEditItems: (_sessionId, items) => items,
-    createAcpTerminalManager: () => ({ dispose: noop }),
+    createAcpTerminalManager: options => { terminalOptions = options; return { dispose: noop }; },
     logMain: () => ({ info: (...args) => traces.push(args), warn: (...args) => traces.push(args), error: (...args) => traces.push(args) }),
     selectAcpSessionStartMode: acp.selectAcpSessionStartMode,
     getLanguage: () => "en-US",
-    killProcessTree: () => { killCount++; close(); },
+    killProcessTree: () => { killCount++; if (mode !== "cancel-unresponsive") close(); },
     formatAcpAgentExitMessage: (code) => `Agent exited ${code}`
   };
   const exports = {};
@@ -246,7 +274,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
     setTimeout: (fn, delay) => {
       // Accelerate teardown, and the watchdog only for the failed-probe case.
       const timer = setTimeout(fn, [250, 500, 2000].includes(delay) ||
-        (mode === "stdin-probe-error" && delay === 10 * 60 * 1000) ? 10 : delay);
+        ((mode === "stdin-probe-error" || mode.startsWith("active-tool-") || mode.endsWith("progress-during-probe")) && delay === 10 * 60 * 1000) ? 10 : delay);
       timers.add(timer);
       return timer;
     },
@@ -257,6 +285,8 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
       if (name === "./acpLocalDiff.js") return acpLocalDiff;
       if (name === "./piTurn.js") return piTurn;
       if (name === "./acpEmbeddedTerminal.js") return acpEmbeddedTerminal;
+      if (name === "./acpToolActivity.js") return acpToolActivity;
+      if (name === "./backgroundExecution.js") return backgroundExecution;
       return new Proxy(services, { get: (obj, key) => key === "__esModule" ? true : obj[key] ?? noop });
     }
   };
@@ -295,6 +325,45 @@ test("Pi display-only terminal metadata reaches live output and exit events", as
   assert.equal(call.tool, "git status --short");
   assert.equal(call.input, undefined);
   assert.equal(result.requests.includes("terminal/create"), false);
+});
+
+test("an active tool does not earn watchdog reprieves when its adapter cannot answer the probe", async t => {
+  const result = await runScenario(t, "active-tool-dead");
+  assert.equal(result.requests.filter(method => method === "session/list").length, 1);
+  assert.equal(result.events.find(event => event.type === "done").exitCode, -1);
+  assert.match(result.events.find(event => event.type === "error").message, /did not respond to a liveness probe/);
+  assert.equal(result.running.size, 0);
+});
+
+test("a responsive silent adapter still has bounded liveness reprieves", async t => {
+  const result = await runScenario(t, "active-tool-alive");
+  assert.equal(result.requests.filter(method => method === "session/list").length, 3);
+  assert.equal(result.events.find(event => event.type === "done").exitCode, -1);
+  assert.match(result.events.find(event => event.type === "error").message, /reprieves exhausted/);
+});
+
+test("tool progress during a liveness probe prevents stale timeout cancellation", async t => {
+  const result = await runScenario(t, "progress-during-probe");
+  assert.equal(result.events.find(event => event.type === "done").exitCode, 0);
+  assert.equal(result.events.some(event => event.type === "error"), false);
+  const tool = result.events.flatMap(event => event.items ?? []).find(item => item.kind === "tool-call");
+  assert.ok(tool.startedAt > 0);
+  assert.ok(tool.lastProgressAt >= tool.startedAt);
+});
+
+test("streaming client terminal output rescues the turn even when the liveness probe is unsupported", async t => {
+  const result = await runScenario(t, "terminal-progress-during-probe");
+  assert.equal(result.events.find(event => event.type === "done").exitCode, 0);
+  assert.equal(result.events.some(event => event.type === "error"), false);
+  assert.ok(result.events.some(event => event.type === "terminal-update" && event.output === "streaming output"));
+});
+
+test("cancelling a nonresponsive adapter settles the turn without a process close event", async t => {
+  const result = await runScenario(t, "cancel-unresponsive");
+  assert.ok(result.killCount > 0);
+  assert.equal(result.events.filter(event => event.type === "done").length, 1);
+  assert.equal(result.running.size, 0);
+  assert.equal(result.events.some(event => event.type === "error"), false);
 });
 
 test("modern Pi status uses diagnostics while completion follows ACP without native inference", async t => {

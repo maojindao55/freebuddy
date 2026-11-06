@@ -29,6 +29,8 @@ const MCP_RESERVED_NAMES = new Set([
   "freebuddy-workspace-fs"
 ]);
 const MCP_NAME_PATTERN = /^[A-Za-z0-9_-]{1,48}$/;
+// Local launchers such as npx and uvx may install dependencies before replying.
+const MCP_STARTUP_TIMEOUT_MS = 120_000;
 const MCP_SELF_CHECK_TIMEOUT_MS = 15_000;
 const MCP_PROTOCOL_VERSION = "2024-11-05";
 const SECRET_NAME_PATTERN = /(^|[-_.])(?:token|api[-_]?key|secret|password|passwd|pat|auth|credential)s?$/i;
@@ -73,6 +75,7 @@ export interface UserMcpServer {
   env: UserMcpServerEnvVar[];
   enabled: boolean;
   lastCheckStatus?: "ok" | "error";
+  lastCheckCode?: string;
   lastCheckError?: string;
   lastCheckTools?: string[];
   lastCheckedAt?: string;
@@ -144,6 +147,7 @@ function rowToServer(r: any): UserMcpServer {
       r.last_check_status === "ok" || r.last_check_status === "error"
         ? r.last_check_status
         : undefined,
+    lastCheckCode: r.last_check_code ?? undefined,
     lastCheckError: r.last_check_error ?? undefined,
     lastCheckTools: parseTools(r.last_check_tools),
     lastCheckedAt: r.last_checked_at ?? undefined,
@@ -442,7 +446,7 @@ export function updateUserMcpServer(
     const field = key as keyof typeof previousConnection;
     return JSON.stringify(connection[field]) !== JSON.stringify(previousConnection[field]);
   })) {
-    updates.push("last_check_status = NULL", "last_check_error = NULL", "last_check_tools = NULL", "last_checked_at = NULL");
+    updates.push("last_check_status = NULL", "last_check_code = NULL", "last_check_error = NULL", "last_check_tools = NULL", "last_checked_at = NULL");
   }
 
   if (input.name !== undefined) {
@@ -521,6 +525,7 @@ function updateSelfCheckResult(
     .prepare(
       `UPDATE user_mcp_servers SET
          last_check_status = ?,
+         last_check_code = ?,
          last_check_error = ?,
          last_check_tools = ?,
          last_checked_at = ?
@@ -528,6 +533,7 @@ function updateSelfCheckResult(
     )
     .run(
       result.status,
+      result.code ?? null,
       result.error ?? null,
       result.tools ? JSON.stringify(result.tools) : null,
       now,
@@ -842,6 +848,9 @@ export async function selfCheckUserMcpServer(
 
   return new Promise((resolve) => {
     let finished = false;
+    let initialized = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let child: ChildProcessByStdio<Writable, Readable, Readable> | undefined;
     let stdout = "";
     let stdoutDiscarding = false;
     let stderr = "";
@@ -852,18 +861,43 @@ export async function selfCheckUserMcpServer(
     const finish = (result: UserMcpServerSelfCheckResult) => {
       if (finished) return;
       finished = true;
+      clearTimeout(timeout);
+      if (child) {
+        // Unix launchers may spawn installers and the actual MCP server. Keep
+        // the probe in its own process group so none outlive the self-check.
+        if (process.platform !== "win32" && child.pid) {
+          try {
+            process.kill(-child.pid, "SIGKILL");
+          } catch {
+            killProcessTree(child, "force");
+          }
+        } else {
+          killProcessTree(child, "force");
+        }
+      }
       const redactedStderr = stderr.trim()
         ? redactSecrets(stderr.trim().slice(-MAX_STDERR_BYTES), secretValues)
         : undefined;
       const finalResult = {
         ...result,
+        error: result.error ? redactSecrets(result.error, secretValues) : undefined,
         stderr: redactedStderr
       };
       updateSelfCheckResult(id, finalResult);
       resolve(finalResult);
     };
 
-    let child: ChildProcessByStdio<Writable, Readable, Readable>;
+    const armTimeout = (phase: "startup" | "tools") => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => finish({
+        status: "error",
+        code: `${phase}_timeout`,
+        error: phase === "startup"
+          ? "MCP server startup timed out after 120 seconds. First-time dependency installation may take longer; check your network and retry."
+          : "MCP server started but did not return its tool list within 15 seconds. Check the server logs and retry."
+      }), phase === "startup" ? MCP_STARTUP_TIMEOUT_MS : MCP_SELF_CHECK_TIMEOUT_MS);
+    };
+
     const writeToStdin = (data: string) => {
       if (finished || !child?.stdin?.writable) return;
       child.stdin.write(data);
@@ -875,23 +909,19 @@ export async function selfCheckUserMcpServer(
         cwd: cwd || process.cwd(),
         env: { ...process.env, ...resolvedEnv },
         stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
         windowsVerbatimArguments: spawnConfig.windowsVerbatimArguments,
         windowsHide: process.platform === "win32"
       });
       child.stdin.on("error", () => {});
 
-      const timeout = setTimeout(() => {
-        killProcessTree(child, "force");
-        finish({ status: "error", error: "Self-check timed out" });
-      }, MCP_SELF_CHECK_TIMEOUT_MS);
+      armTimeout("startup");
 
       child.on("error", (err) => {
-        clearTimeout(timeout);
         finish({ status: "error", error: `Spawn failed: ${err.message}` });
       });
 
       child.on("exit", (code, signal) => {
-        clearTimeout(timeout);
         if (!finished) {
           if (signal) {
             finish({ status: "error", error: `Process killed by ${signal}` });
@@ -933,11 +963,22 @@ export async function selfCheckUserMcpServer(
           stdoutDiscarding = true;
         }
         for (const line of lines) {
+          if (finished) break;
           if (line.length > MAX_PENDING_STDOUT_CHARS) continue;
           if (!line.trim()) continue;
           try {
             const msg = JSON.parse(line);
-            if (msg.jsonrpc === "2.0" && msg.id === initRequestId && msg.result) {
+            if (msg.jsonrpc === "2.0" && msg.id === initRequestId && !initialized) {
+              if (msg.error) {
+                finish({
+                  status: "error", code: "initialize_failed",
+                  error: `MCP initialization failed: ${msg.error.message ?? JSON.stringify(msg.error)}`
+                });
+                continue;
+              }
+              if (!msg.result) continue;
+              initialized = true;
+              armTimeout("tools");
               writeToStdin(
                 JSON.stringify({
                   jsonrpc: "2.0",
@@ -951,9 +992,7 @@ export async function selfCheckUserMcpServer(
                 params: {}
               };
               writeToStdin(JSON.stringify(listToolsRequest) + "\n");
-            } else if (msg.jsonrpc === "2.0" && msg.id === listToolsRequestId) {
-              clearTimeout(timeout);
-              killProcessTree(child, "term");
+            } else if (msg.jsonrpc === "2.0" && msg.id === listToolsRequestId && initialized) {
               if (msg.error) {
                 finish({
                   status: "error",

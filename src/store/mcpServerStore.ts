@@ -223,7 +223,7 @@ export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
         oauthAuthorizingIds: state.oauthAuthorizingIds.filter((entry) => entry !== id),
         servers: state.servers.map((server) => server.id === id ? {
           ...server, oauthStatus: status, lastCheckStatus: undefined,
-          lastCheckError: undefined, lastCheckTools: undefined, lastCheckedAt: undefined
+          lastCheckCode: undefined, lastCheckError: undefined, lastCheckTools: undefined, lastCheckedAt: undefined
         } : server)
       }));
       return status;
@@ -284,6 +284,7 @@ export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
           ? {
               ...s,
               lastCheckStatus: result.status,
+              lastCheckCode: result.code,
               lastCheckError: result.error,
               lastCheckTools: result.tools,
               lastCheckedAt: new Date().toISOString()

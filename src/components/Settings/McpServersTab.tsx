@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useMcpServerStore } from "@/store/mcpServerStore";
+import { mcpSelfCheckErrorMessage } from "@/services/cli/mcpSelfCheckMessages";
 import type {
   UserMcpServer,
   UserMcpServerEnvVar,
@@ -302,7 +303,8 @@ function McpServerEditor({
   const oauthDisconnecting = server ? oauthDisconnectingIds.includes(server.id) : false;
   const oauthStatus = oauthAuthorizing ? "authorizing" : server?.oauthStatus?.state ?? "disconnected";
   const isOAuth = transport !== "stdio" && authType === "oauth";
-  const busy = saving || checking || deleting || startingOAuth || oauthAuthorizing || oauthDisconnecting;
+  const navigationBusy = saving || deleting || startingOAuth || oauthAuthorizing || oauthDisconnecting;
+  const busy = navigationBusy || checking;
   const oauthConnectionChanged = isOAuth && (!server ||
     server.authType !== "oauth" || transport !== (server.transport ?? "stdio") ||
     url.trim() !== (server.url ?? "") || oauthClientId.trim() !== (server.oauthClientId ?? "") ||
@@ -557,8 +559,9 @@ function McpServerEditor({
     void runSelfCheck();
   }, []);
 
-  const displayedCheckResult: UserMcpServerSelfCheckResult | null = checkResult ?? (!dirty && server?.lastCheckStatus ? {
+  const displayedCheckResult: UserMcpServerSelfCheckResult | null = checking ? null : checkResult ?? (!dirty && server?.lastCheckStatus ? {
     status: server.lastCheckStatus,
+    code: server.lastCheckCode,
     error: server.lastCheckError,
     tools: server.lastCheckTools
   } : null);
@@ -570,7 +573,7 @@ function McpServerEditor({
           type="button"
           className="mcp-icon-btn"
           onClick={handleBack}
-          disabled={busy}
+          disabled={navigationBusy}
         >
           <ChevronLeft size={16} />
           {t("common.back")}
@@ -773,10 +776,13 @@ function McpServerEditor({
               ) : (
                 <RefreshCw size={14} />
               )}
-              {dirty
+              {checking ? t("mcp.checking") : dirty
                 ? t("mcpServers.saveAndCheck", "Save & check")
                 : t("mcpServers.runSelfCheck")}
             </button>
+            {checking && <p className="mcp-form-hint" role="status">
+              {t(transport === "stdio" ? "mcpServers.checkingLocalHint" : "mcpServers.checkingRemoteHint")}
+            </p>}
             {isOAuth && (oauthStatus !== "connected" || oauthConnectionChanged) &&
               <p className="mcp-form-hint">{t("mcpServers.oauthCheckHint")}</p>}
             {displayedCheckResult && (
@@ -796,9 +802,7 @@ function McpServerEditor({
                   <>
                     <AlertTriangle size={14} />
                     <span>
-                      {displayedCheckResult.code === "cwd_required"
-                        ? t("mcpServers.error.cwdRequired")
-                        : displayedCheckResult.error}
+                      {mcpSelfCheckErrorMessage(displayedCheckResult, t)}
                     </span>
                   </>
                 )}
@@ -860,7 +864,7 @@ function McpServerEditor({
             type="button"
             className="secondary"
             onClick={handleBack}
-            disabled={busy}
+            disabled={navigationBusy}
           >
             {t("common.cancel")}
           </button>
@@ -1085,7 +1089,11 @@ export function McpServersTab() {
       {loaded && servers.length > 0 && (
         <div className="mcp-servers-list">
           {servers.map((server) => {
-            const statusPill = !server.enabled
+            const checking = checkingSet.has(server.id);
+            const lastError = mcpSelfCheckErrorMessage({ code: server.lastCheckCode, error: server.lastCheckError }, t);
+            const statusPill = checking
+              ? { cls: "unknown", text: t("mcp.checking") }
+              : !server.enabled
               ? { cls: "disabled", text: t("mcp.disabled") }
               : server.lastCheckStatus === "ok"
                 ? {
@@ -1117,7 +1125,7 @@ export function McpServersTab() {
                     status={server.lastCheckStatus}
                     checking={checkingSet.has(server.id)}
                     lastCheckedAt={server.lastCheckedAt}
-                    lastError={server.lastCheckError}
+                    lastError={lastError}
                   />
                 </div>
                 <button
@@ -1134,13 +1142,16 @@ export function McpServersTab() {
                   <div className="mcp-server-command" title={commandLine}>
                     {commandLine}
                   </div>
-                  {server.lastCheckStatus === "error" &&
+                  {checking && <div className="mcp-server-check-hint" role="status">
+                    {t((server.transport ?? "stdio") === "stdio" ? "mcpServers.checkingLocalHint" : "mcpServers.checkingRemoteHint")}
+                  </div>}
+                  {!checking && server.lastCheckStatus === "error" &&
                     server.lastCheckError && (
                       <div
                         className="mcp-server-last-error"
-                        title={server.lastCheckError}
+                        title={lastError}
                       >
-                        {server.lastCheckError}
+                        {lastError}
                       </div>
                     )}
                 </button>

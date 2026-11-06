@@ -1231,6 +1231,7 @@ export function migrate(db: DB) {
       env TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
       last_check_status TEXT,
+      last_check_code TEXT,
       last_check_error TEXT,
       last_check_tools TEXT,
       last_checked_at TEXT,
@@ -1255,6 +1256,7 @@ export function migrate(db: DB) {
     db.exec("ALTER TABLE user_mcp_servers ADD COLUMN headers TEXT NOT NULL DEFAULT '[]'");
   }
   for (const [name, definition] of [
+    ["last_check_code", "TEXT"],
     ["auth_type", "TEXT NOT NULL DEFAULT 'headers'"],
     ["oauth_client_id", "TEXT"],
     ["oauth_scope", "TEXT"],

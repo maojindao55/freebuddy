@@ -107,7 +107,7 @@ export async function authorizeUserMcpServer(id: string): Promise<McpOAuthStatus
 export async function disconnectUserMcpServer(id: string): Promise<McpOAuthStatus> {
   const value = row(id);
   broker.revoke(id);
-  getDb().prepare("UPDATE user_mcp_servers SET oauth_revision = oauth_revision + 1, last_check_status = NULL, last_check_error = NULL, last_check_tools = NULL, last_checked_at = NULL WHERE id = ?").run(id);
+  getDb().prepare("UPDATE user_mcp_servers SET oauth_revision = oauth_revision + 1, last_check_status = NULL, last_check_code = NULL, last_check_error = NULL, last_check_tools = NULL, last_checked_at = NULL WHERE id = ?").run(id);
   if (value?.auth_type === "oauth" && value.transport !== "stdio" && value.url) {
     await oauth.disconnect(serverFromRow(value));
   } else {

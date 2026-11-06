@@ -996,6 +996,7 @@ export interface UserMcpServer {
   oauthStatus?: McpOAuthStatus;
   enabled: boolean;
   lastCheckStatus?: "ok" | "error";
+  lastCheckCode?: string;
   lastCheckError?: string;
   lastCheckTools?: string[];
   lastCheckedAt?: string;

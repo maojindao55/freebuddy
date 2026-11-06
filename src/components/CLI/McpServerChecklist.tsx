@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { useMcpServerStore } from "@/store/mcpServerStore";
 import type { UserMcpServer } from "@/services/cli/types";
+import { mcpSelfCheckErrorMessage } from "@/services/cli/mcpSelfCheckMessages";
 
 import "./McpServerPicker.css";
 
@@ -33,13 +34,15 @@ function McpServerChecklistRow({
   const statusError = server.lastCheckStatus === "error";
   const remoteUrl = (server.transport ?? "stdio") !== "stdio" ? server.url : undefined;
 
-  const statusTitle = isDisabled
+  const statusTitle = checking
+    ? t((server.transport ?? "stdio") === "stdio" ? "mcpServers.checkingLocalHint" : "mcpServers.checkingRemoteHint")
+    : isDisabled
     ? selected
       ? t("mcp.serverDisabledWillSkip", "Server is disabled and will be skipped")
       : t("mcp.serverDisabled", "Server is disabled")
     : statusError
       ? t("mcp.lastCheckFailed", "Last check failed: {{error}}", {
-          error: server.lastCheckError ?? "unknown"
+          error: mcpSelfCheckErrorMessage({ code: server.lastCheckCode, error: server.lastCheckError }, t)
         })
       : statusOk
         ? t("mcp.lastCheckOk", "Last check succeeded")

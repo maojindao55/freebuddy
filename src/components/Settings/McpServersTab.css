@@ -659,6 +659,12 @@ button.secondary.mcp-danger:hover:not(:disabled) {
   gap: 10px;
 }
 
+.mcp-server-check-hint {
+  margin-top: 4px;
+  color: var(--fb-text-tertiary);
+  font-size: 12px;
+}
+
 .mcp-self-check-result {
   display: flex;
   align-items: center;

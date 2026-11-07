@@ -137,6 +137,11 @@ declare global {
   }
 
   interface FreebuddyCli {
+    listMessageQueues(): Promise<import("../../electron/shared/messageQueueTypes").MessageQueueSnapshot[]>;
+    getMessageQueue(id: string): Promise<import("../../electron/shared/messageQueueTypes").MessageQueueSnapshot>;
+    changeMessageQueue(input: import("../../electron/shared/messageQueueTypes").MessageQueueCommand): Promise<import("../../electron/shared/messageQueueTypes").MessageQueueSnapshot>;
+    claimConversationSend(input: import("../../electron/shared/messageQueueTypes").ConversationSendClaim): Promise<boolean>;
+    releaseConversationSend(input: import("../../electron/shared/messageQueueTypes").ConversationSendClaim): Promise<void>;
     listAdapters(): Promise<CLIAdapterDefinition[]>;
 
     listOverrides(): Promise<CLIExecutorOverride[]>;

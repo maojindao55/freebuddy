@@ -43,6 +43,7 @@ const records: SkillRecord[] = [
 const saved = new Map<string, ConversationMessage>();
 let onRun: (args: CliRunArgs) => void = () => {};
 const methods = {
+  claimConversationSend: async () => true, releaseConversationSend: noop,
   getSetting: async () => null, setSetting: noop,
   listConversationContextReferences: async (id: string) => references.get(id) ?? [], listFollowupMessages: async () => [],
   listConversations: async () => useConversationStore.getState().conversations,

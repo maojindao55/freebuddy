@@ -40,6 +40,20 @@ export async function fireScheduledSend(entry: ScheduledSend): Promise<void> {
     if (entry.status !== "waiting") scheduled.setStatus(conv.id, "waiting");
     return;
   }
+  if (cliClient.isMessageQueueAvailable()) {
+    try {
+      const queue = await cliClient.getMessageQueue(conv.id);
+      if (queue.busy || queue.editingId || queue.entries.length) {
+        scheduled.setStatus(conv.id, "waiting");
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      scheduled.setStatus(conv.id, "failed", message);
+      notify(i18next.t("scheduledSend.failedNotification", { err: message }));
+      return;
+    }
+  }
 
   if (inFlight.has(conv.id)) return;
   inFlight.add(conv.id);
@@ -60,13 +74,17 @@ export async function fireScheduledSend(entry: ScheduledSend): Promise<void> {
       if (!res.ok) throw new Error(res.error);
       await useConversationStore.getState().loadMessages(conv.id);
     } else {
-      await useConversationStore.getState().sendMessage({
+      const accepted = await useConversationStore.getState().sendMessage({
         conversationId: conv.id,
         prompt,
         attachments: entry.attachments,
         messageSkills: entry.messageSkills,
         approvalModeOverride: conv.approvalMode
       });
+      if (!accepted) {
+        useScheduledSendStore.getState().setStatus(conv.id, "waiting");
+        return;
+      }
     }
 
     useScheduledSendStore.getState().remove(conv.id);

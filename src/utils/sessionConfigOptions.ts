@@ -127,6 +127,18 @@ export function resolveConfigOptionOverrides(
   return Object.keys(pruned).length > 0 ? pruned : undefined;
 }
 
+/** Freeze displayed defaults too, so a queued turn does not inherit later changes. */
+export function snapshotSessionConfigOptionOverrides(
+  overrides: Record<string, string> | undefined,
+  options: SessionConfigOptionLike[]
+): Record<string, string> {
+  const snapshot: Record<string, string> = {};
+  for (const option of options) {
+    if (option.currentValue && !Object.hasOwn(snapshot, option.id)) snapshot[option.id] = option.currentValue;
+  }
+  return { ...snapshot, ...(resolveConfigOptionOverrides(overrides, options) ?? {}) };
+}
+
 export function reconcileConfigOptionOverrides(
   overrides: Record<string, string> | undefined,
   options: SessionConfigOptionLike[]

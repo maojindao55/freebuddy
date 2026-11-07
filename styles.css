@@ -29378,3 +29378,59 @@ button.ghost:focus-visible,
   .chat-composer-actions { gap: 8px; }
   .composer-tail { flex-shrink: 0; }
 }
+
+/* Compact conversation outbox. The popover stays outside the transcript. */
+.chat-composer:has(.message-queue-control) { overflow: visible; }
+.chat-view:has(.message-queue-control) { --chat-composer-reserve: 246px; }
+.message-queue-control { position: absolute; bottom: calc(100% + 12px); left: 0; right: 0; }
+.message-queue-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; height: 38px; padding: 0 14px; border: 1px solid var(--fb-border-strong); border-radius: 12px; background: var(--fb-panel-soft); color: var(--fb-text-primary); font-size: 13px; cursor: pointer; }
+.message-queue-trigger > span { display: flex; align-items: center; gap: 9px; }
+.message-queue-trigger strong { font-weight: 600; white-space: nowrap; }
+.message-queue-trigger small { color: var(--fb-warning); font-size: 11px; white-space: nowrap; }
+.message-queue-trigger.paused { border-color: var(--fb-warning); }
+.message-queue-timing { font-size: 12px; color: var(--fb-text-secondary); }
+.message-queue-timing .expanded { transform: rotate(180deg); }
+.message-queue-popover { position: absolute; bottom: calc(100% + 12px); right: 8px; width: min(480px, calc(100vw - 40px)); max-width: 100%; background: var(--fb-panel-bg); border: 1px solid var(--fb-border-strong); border-radius: 16px; box-shadow: var(--fb-shadow-lg); padding: 8px 16px; color: var(--fb-text-primary); }
+.message-queue-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 6px; }
+.message-queue-popover h3 { font-size: 13px; font-weight: 500; color: var(--fb-text-secondary); margin: 0; line-height: 1.5; }
+.message-queue-popover header p { font-size: 12px; color: var(--fb-text-secondary); margin: 5px 0 0; line-height: 1.5; }
+.message-queue-popover ol { margin: 0; padding: 0; list-style: none; max-height: min(320px, calc(100dvh - 400px)); overflow-y: auto; }
+.message-queue-popover li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--fb-border); }
+.message-queue-popover li:last-child { padding-bottom: 0; }
+.message-queue-number { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; height: 24px; min-width: 24px; padding: 0 5px; background: var(--fb-panel-soft); border-radius: 7px; font-size: 12px; }
+.message-queue-content { flex: 1; min-width: 0; }
+.message-queue-content > p { font-size: 13px; line-height: 1.7; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-queue-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; padding: 0; background: transparent; border: 0; border-radius: 6px; color: var(--fb-text-secondary); cursor: pointer; }
+.message-queue-icon:hover:not(:disabled) { background: var(--fb-hover); color: var(--fb-text-primary); }
+.message-queue-icon:disabled { opacity: .35; cursor: default; }
+.message-queue-item-actions { display: flex; gap: 2px; }
+.message-queue-metadata { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 3px; }
+.message-queue-metadata:empty { display: none; }
+.message-queue-metadata > span { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fb-text-secondary); overflow-wrap: anywhere; }
+.message-queue-edit-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--fb-border-strong); border-radius: 6px; background: var(--fb-panel-soft); color: var(--fb-text-primary); padding: 5px 9px; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.message-queue-edit { flex: 1; min-width: 0; }
+.message-queue-edit textarea { width: 100%; min-height: 74px; max-height: 160px; resize: vertical; margin: 0; border: 1px solid var(--fb-border-strong); border-radius: 8px; background: var(--fb-panel-soft); color: var(--fb-text-primary); padding: 8px; font-size: 13px; line-height: 1.7; outline-color: var(--fb-brand); }
+.message-queue-edit-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 7px; }
+.message-queue-edit-actions .message-queue-save { background: var(--fb-active); color: var(--fb-active-fg); }
+.message-queue-error { color: var(--fb-danger); font-size: 12px; line-height: 1.5; margin: 8px 0; overflow-wrap: anywhere; }
+.message-queue-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.message-queue-control button:focus-visible { outline: 2px solid var(--fb-brand); outline-offset: 2px; }
+@media(max-width: 640px) {
+  .message-queue-popover { right: 0; padding: 8px 12px; }
+  .message-queue-timing { font-size: 11px; }
+  .message-queue-trigger { padding: 0 10px; font-size: 12px; }
+  .message-queue-popover ol { max-height: min(260px, calc(100dvh - 330px)); }
+}
+.chat-composer:has(.message-queue-control) .composer-context-row { border-radius: 24px 24px 0 0; }
+.chat-composer:has(.message-queue-control) .chat-composer-actions { border-radius: 0 0 24px 24px; }
+.chat-composer-mini:has(.message-queue-control) .chat-composer-actions { border-radius: 0 0 14px 14px; }
+.message-queue-enabled .chat-composer-actions { flex-wrap: wrap; gap: 8px; }
+.message-queue-enabled .composer-tail { min-width: 0; margin-left: auto; }
+.chat-composer-mini.message-queue-enabled .composer-hint { display: none; }
+.chat-view-mini:has(.message-queue-control) .chat-scroll { padding-bottom: 58px; scroll-padding-bottom: 58px; }
+@media (max-width: 760px) {
+  .chat-composer.message-queue-enabled:not(.chat-composer-mini) { grid-row: 3; align-self: end; }
+  .message-queue-enabled .composer-hint { display: none; }
+  .chat-view:has(.message-queue-enabled) { --chat-composer-reserve: 8px; }
+  .chat-view:has(.message-queue-control) { --chat-composer-reserve: 50px; }
+}

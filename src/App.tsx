@@ -69,6 +69,7 @@ import {
 import { isAppInBackground } from "./utils/appFocus";
 import { shouldFollowConversationSelection } from "./utils/conversationPanelNavigation";
 import { startScheduledSendRunner } from "./services/scheduledSend/runner";
+import { startMessageQueueRunner } from "./services/messageQueue/runner";
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -146,6 +147,7 @@ function App() {
   }, [loadExecutors, loadProviders, loadConversations, refreshProjects]);
 
   useEffect(() => startScheduledSendRunner(), []);
+  useEffect(() => startMessageQueueRunner(), []);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;

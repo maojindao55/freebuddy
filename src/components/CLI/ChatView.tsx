@@ -23,6 +23,7 @@ import {
   GitBranch,
   Laptop,
   Layers,
+  ListPlus,
   MessagesSquare,
   Plus,
   Search,
@@ -35,6 +36,9 @@ import { useTranslation } from "react-i18next";
 import { ONBOARDING_GUIDE_AGENT_ID } from "@/config/agentProfiles";
 import { OnboardingGuideSetupCard } from "@/components/Onboarding/OnboardingGuideSetupCard";
 import { useConversationStore } from "@/store/conversationStore";
+import { useMessageQueueStore } from "@/store/messageQueueStore";
+import { MessageQueueControl } from "./MessageQueueControl";
+import { startMessageQueueRunner } from "@/services/messageQueue/runner";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useGuideInstallStore } from "@/store/guideInstallStore";
 import { useWorkflowStore } from "@/store/workflowStore";
@@ -49,7 +53,8 @@ import { useProjectStore } from "@/store/projectStore";
 import { cliClient } from "@/services/cli/client";
 import {
   findMainModelConfigOption,
-  pruneConfigOptionOverrides
+  pruneConfigOptionOverrides,
+  snapshotSessionConfigOptionOverrides
 } from "@/utils/sessionConfigOptions";
 import type {
   AttachmentPrepareRejection,
@@ -940,6 +945,10 @@ export function ChatView({
   const createConversation = useConversationStore((s) => s.newConversation);
   const sendMessage = useConversationStore((s) => s.sendMessage);
   const stopActive = useConversationStore((s) => s.stopActive);
+  const messageQueue = useMessageQueueStore(s => activeId ? s.queues[activeId] : undefined);
+  const enqueueMessage = useMessageQueueStore(s => s.enqueue);
+  const queueSubmissionRef = useRef<{ fingerprint: string; id: string } | undefined>(undefined);
+  useEffect(() => startMessageQueueRunner(), []);
   const notify = useAgentBridgeStore((s) => s.notify);
   const scheduledSend = useScheduledSendStore((s) =>
     activeId ? s.entries[activeId] : undefined
@@ -1251,6 +1260,9 @@ export function ChatView({
   const sending =
     running ||
     (submitPreview !== null && submitPreview.conversationId === conv?.id);
+  const queueSupported = Boolean(conv && (!conv.kind || conv.kind === "default") &&
+    activeRun?.conversationId !== conv.id && !pendingWorkflowAction && cliClient.isMessageQueueAvailable());
+  const queueSend = queueSupported && Boolean(sending || messageQueue?.entries.length || messageQueue?.busy || queueSubmissionRef.current);
   const prevSendingRef = useRef(sending);
   useEffect(() => {
     if (prevSendingRef.current && !sending) {
@@ -1456,9 +1468,9 @@ export function ChatView({
     onChange: setDraft,
     textareaRef: chatTextareaRef
   });
-  const messageSkillsDisabled = Boolean(sending || sendLock || pendingWorkflowAction ||
+  const messageSkillsDisabled = Boolean((sending && !queueSupported) || sendLock || pendingWorkflowAction ||
     conv?.kind === "workflow" || conv?.kind === "delegation");
-  const referenceTags = <ConversationReferenceTags references={selectedReferences} disabled={sendLock || newTaskSendLock || sending || Boolean(pendingWorkflowAction)}
+  const referenceTags = <ConversationReferenceTags references={selectedReferences} disabled={sendLock || newTaskSendLock || (sending && !queueSupported) || Boolean(pendingWorkflowAction)}
     onRemove={id => {
       setSelectedReferences(selectedReferences.filter(reference => reference.id !== id));
       window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".chat-composer textarea, .new-task-composer textarea")?.focus());
@@ -2134,7 +2146,7 @@ export function ChatView({
   const canImportAttachments = (target: "chat" | "new") => {
     if (attachmentBusy) return false;
     if (target === "chat") {
-      if (sending || sendLock || sendInFlightRef.current) return false;
+      if ((sending && !queueSupported) || sendLock || sendInFlightRef.current) return false;
     } else if (newTaskSendLock || newTaskSendInFlightRef.current) {
       return false;
     }
@@ -2272,7 +2284,7 @@ export function ChatView({
     conversations,
     targetId: conv?.id,
     scopeKey: referenceScope,
-    disabled: attachmentBusy || (conv ? sending || sendLock || Boolean(pendingWorkflowAction) : newTaskSendLock),
+    disabled: attachmentBusy || (conv ? (sending && !queueSupported) || sendLock || Boolean(pendingWorkflowAction) : newTaskSendLock),
     onAdd: reference => setSelectedReferences(mergeConversationReferences(selectedReferences, [reference])),
     onReject: reason => notify(t(reason === "self" ? "contextShare.cannotReferenceSelf" : "contextShare.dragSourceUnavailable"))
   });
@@ -2579,6 +2591,49 @@ export function ChatView({
   };
 
   const onSend = async () => {
+    if (newTaskSendLock) return;
+    if (queueSend && conv) {
+      if (attachmentBusy || sendInFlightRef.current || sendLock) return;
+      if (!draft.trim() && !pendingAttachments.length) return;
+      const conversationId = conv.id;
+      const originalDraft = draft;
+      const attachments = pendingAttachments;
+      const entry = {
+        prompt: draft.trim(), attachments, messageSkills,
+        conversationReferences: selectedReferences, approvalMode: permissionMode,
+        configOptionOverrides: snapshotSessionConfigOptionOverrides(conv.configOptionOverrides, activeConversationConfigOptions ?? sessionConfigOptions), hiddenContext: getPromptContext?.()
+      };
+      const fingerprint = JSON.stringify({ conversationId, ...entry });
+      if (queueSubmissionRef.current?.fingerprint !== fingerprint) queueSubmissionRef.current = { fingerprint, id: nanoid() };
+      sendInFlightRef.current = true;
+      setSendLock(true);
+      protectManagedAttachments(attachments);
+      try {
+        await enqueueMessage(conversationId, { ...entry, id: queueSubmissionRef.current.id });
+        queueSubmissionRef.current = undefined;
+        setMessageSkillDrafts(current => ({ ...current, [conversationId]: (current[conversationId] ?? []).filter(skill => !entry.messageSkills.some(sent => sent.id === skill.id)) }));
+        setReferenceDrafts(current => ({ ...current, [conversationId]: (current[conversationId] ?? []).filter(reference => !entry.conversationReferences.some(sent => sent.id === reference.id)) }));
+        if (useConversationStore.getState().activeId === conversationId) {
+          setDraft(current => current === originalDraft ? "" : current);
+          setPendingAttachments(current => detachAttachmentsForSend(attachments, current));
+          setPreflightMsg(null);
+          focusComposer();
+        } else {
+          if (conversationDraftsRef.current.get(conversationId) === originalDraft) conversationDraftsRef.current.set(conversationId, "");
+          conversationAttachmentsRef.current.set(conversationId, detachAttachmentsForSend(attachments, conversationAttachmentsRef.current.get(conversationId) ?? []));
+        }
+        notify(t("messageQueue.enqueued"));
+      } catch (error) {
+        const message = t("messageQueue.enqueueFailed", { error: error instanceof Error ? error.message : String(error) });
+        if (useConversationStore.getState().activeId === conversationId) setPreflightMsg(message);
+        else notify(message);
+      } finally {
+        unprotectManagedAttachments(attachments);
+        sendInFlightRef.current = false;
+        setSendLock(false);
+      }
+      return;
+    }
     if (attachmentBusy || sendInFlightRef.current || sendLock || sending) return;
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
@@ -2740,7 +2795,7 @@ export function ChatView({
         return;
       }
 
-      await sendMessage({
+      const accepted = await sendMessage({
         conversationId: conv.id,
         prompt: outgoingPrompt,
         attachments: attachmentsToSend,
@@ -2750,6 +2805,7 @@ export function ChatView({
         hiddenContext: getPromptContext?.(),
         messageSkills: skillsToSend
       });
+      if (!accepted) throw new Error(t("messageQueue.busy"));
       setSelectedReferences([]);
       setSubmitPreview(null);
     } catch (e) {
@@ -3340,12 +3396,13 @@ export function ChatView({
       {conv && <DelegationApprovalCard conversationId={conv.id} />}
 
       <div
-        className={`chat-composer${variant === "mini" ? " chat-composer-mini" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}${conversationDrop.dragActive ? " conversation-drop-active" : ""}`}
+        className={`chat-composer${variant === "mini" ? " chat-composer-mini" : ""}${queueSupported ? " message-queue-enabled" : ""}${chatAttachmentImport.dragActive ? " attachment-drop-active" : ""}${conversationDrop.dragActive ? " conversation-drop-active" : ""}`}
         onDragEnter={composerDropHandlers.onDragEnter}
         onDragLeave={composerDropHandlers.onDragLeave}
         onDragOver={composerDropHandlers.onDragOver}
         onDrop={composerDropHandlers.onDrop}
       >
+        {queueSupported && <MessageQueueControl key={conv.id} conversationId={conv.id} />}
         {conversationDrop.dragActive && <div className="conversation-drop-overlay" role="status">
           <MessagesSquare size={20} aria-hidden="true" />{t("contextShare.dropToReference")}
         </div>}
@@ -3396,7 +3453,7 @@ export function ChatView({
               placeholder ??
               (pendingWorkflowAction
                 ? t("workflow.requestChangesPlaceholder")
-                : sending
+                : queueSend ? t("messageQueue.placeholder") : sending
                 ? t("chat.agentRunning")
                 : messageSkills.length ? t("chat.skillTaskPlaceholder")
                 : !messageSkillsDisabled && skills.some(skill => skill.enabled && skill.trusted)
@@ -3434,8 +3491,9 @@ export function ChatView({
                 return;
               }
               if (e.key === "Enter" && !e.shiftKey) {
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 e.preventDefault();
-                if (!attachmentBusy && !sendLock && !sending) void onSend();
+                if (!attachmentBusy && !sendLock && !newTaskSendLock && (!sending || queueSend)) void onSend();
               }
             }}
           />
@@ -3448,14 +3506,14 @@ export function ChatView({
               requiredIds={[]}
               pluginAgent={pluginAgentForAdapter(member?.cli.adapter ?? conv?.adapter)}
               attachmentDisabled={
-                sending ||
+                (sending && !queueSupported) ||
                 attachmentBusy ||
                 pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
               }
               skillsDisabled={messageSkillsDisabled}
-              pluginsDisabled={sending}
+              pluginsDisabled={sending && !queueSupported}
               onSelectConversationReference={() => setReferencePickerScope(referenceScope)}
-              referencesDisabled={sending || sendLock || attachmentBusy || Boolean(pendingWorkflowAction)}
+              referencesDisabled={(sending && !queueSupported) || sendLock || attachmentBusy || Boolean(pendingWorkflowAction)}
               onSelectAttachments={() => void handleSelectAttachments("chat")}
               onSelectPlugin={(plugin) =>
                 insertPluginMention(draft, plugin, chatTextareaRef.current, setDraft)
@@ -3508,7 +3566,7 @@ export function ChatView({
               overrides={conv?.configOptionOverrides}
               disabled={sending}
               fallback={
-                <span className="composer-hint">{t("chat.enterHint")}</span>
+                <span className="composer-hint">{t(queueSend ? "messageQueue.enterHint" : "chat.enterHint")}</span>
               }
               onChange={async (next) => {
                 const prevProvider = conv?.configOptionOverrides?.provider;
@@ -3584,20 +3642,22 @@ export function ChatView({
               >
                 {running ? <StopIcon /> : <span className="starting-spinner">…</span>}
               </button>
-            ) : (
+            ) : null}
+            {(!sending || queueSupported) && (
               <button
                 className="primary send-icon-button"
                 type="button"
                 disabled={
                   sendLock ||
+                  newTaskSendLock ||
                   attachmentBusy ||
                   !(draft.trim() || pendingAttachments.length > 0)
                 }
-                title={t("chat.send")}
-                aria-label={t("chat.sendAria")}
+                title={t(queueSend ? "messageQueue.enqueue" : "chat.send")}
+                aria-label={t(queueSend ? "messageQueue.enqueue" : "chat.sendAria")}
                 onClick={onSend}
               >
-                ↑
+                {queueSend ? <ListPlus size={17} /> : "↑"}
               </button>
             )}
           </div>

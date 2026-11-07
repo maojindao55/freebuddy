@@ -24,6 +24,13 @@ async function loadConversationStoreHarness() {
     export let followupMessages = [];
     export let capturedFollowupQuery;
     export let capturedForkInput;
+    export let claimAllowed = true;
+    export let runFailure;
+    export let eventHandler;
+    export const persistedMessages = new Map();
+    export let handledEvents = 0;
+    export function setClaimAllowed(value) { claimAllowed = value; }
+    export function setRunFailure(value) { runFailure = value; }
     export function setFollowupMessages(value) { followupMessages = value; }
 
     export function setSavedToolSession(value) {
@@ -65,7 +72,15 @@ async function loadConversationStoreHarness() {
     ];
 
     export const cliClient = {
-      appendMessage: async (message) => message,
+      claimConversationSend: async () => claimAllowed,
+      releaseConversationSend: async () => undefined,
+      appendMessage: async (message) => {
+        if (persistedMessages.has(message.id)) throw new Error("duplicate message");
+        persistedMessages.set(message.id, message);
+        return message;
+      },
+      listMessage: async (id) => persistedMessages.get(id),
+      attachConversationShares: async () => ({references:[], attachedCount:0}),
       archiveConversation: async () => undefined,
       forkConversation: async (input) => {
         capturedForkInput = input;
@@ -90,11 +105,12 @@ async function loadConversationStoreHarness() {
         capturedFollowupQuery = { conversationId, excludeMessageIds };
         return followupMessages.filter((message) => !excludeMessageIds.includes(message.id));
       },
-      updateMessage: async () => undefined,
-      onEvent: () => () => {},
+      updateMessage: async (input) => { persistedMessages.set(input.id, {...persistedMessages.get(input.id),...input}); },
+      onEvent: (_id, handler) => { eventHandler = handler; return () => {}; },
       awaitPendingMcpSelection: async () => {},
       run: async (args) => {
         capturedRunArgs = args;
+        if (runFailure) throw new Error(runFailure);
       }
     };
 
@@ -110,6 +126,7 @@ async function loadConversationStoreHarness() {
     };
 
     export const composeMessageWithAttachments = (prompt) => prompt;
+    export const buildReferencedPrompt = async (prompt) => prompt;
     export const filterSessionConfigPickerOptions = () => [];
     export const resolveConfigOptionOverrides = () => undefined;
 
@@ -140,7 +157,7 @@ async function loadConversationStoreHarness() {
     export const mergeConversationMessages = (_, messages) => messages;
     export const shouldApplyAgentSessionTitle = () => false;
     export const handleStreamControlEvent = () => false;
-    export const handleStreamEvent = () => undefined;
+    export const handleStreamEvent = () => { handledEvents += 1; };
     export const killConversation = async () => undefined;
     export const latestConfigOptionsFromItems = () => [];
     export const latestConfigOptionsFromMessages = () => [];
@@ -206,6 +223,9 @@ async function loadConversationStoreHarness() {
     import(toDataUrl(mockedStoreSource)),
     import(mockUrl)
   ]);
+  mocks.persistedMessages.clear();
+  mocks.setClaimAllowed(true);
+  mocks.setRunFailure(undefined);
   return { ...storeModule, mocks };
 }
 
@@ -489,4 +509,42 @@ test("forkConversation keeps followup context so the first send sees forked hist
   // No source-session resume and no fresh-context reset: a brand-new session.
   assert.equal(mocks.capturedRunArgs.toolSessionId, undefined);
   assert.equal(mocks.capturedRunArgs.resumeToolSession, true);
+});
+
+function seedQueueSendHarness(store) {
+  store.setState({
+    conversations: [{id:'queue-conversation',title:'Queue test',agentId:'agent-1',agentName:'Mock ACP',adapter:'mock-acp',skillSnapshot:[]}],
+    messages:{},live:{},pendingFreshContext:{}
+  });
+}
+
+test('a rejected host claim returns busy without persisting or losing a user message',async()=>{
+  const {useConversationStore:store,mocks}=await loadConversationStoreHarness();
+  seedQueueSendHarness(store);mocks.persistedMessages.clear();mocks.setClaimAllowed(false);
+  try{
+    const accepted=await store.getState().sendMessage({conversationId:'queue-conversation',prompt:'still pending'});
+    assert.equal(accepted,false);assert.equal(mocks.persistedMessages.size,0);assert.equal(store.getState().live['queue-conversation'],undefined);
+  }finally{mocks.setClaimAllowed(true);}
+});
+
+test('retrying an unaccepted queued launch reuses its message ids without duplicate transcript entries',async()=>{
+  const {useConversationStore:store,mocks}=await loadConversationStoreHarness();
+  seedQueueSendHarness(store);mocks.persistedMessages.clear();mocks.setRunFailure('launch rejected');
+  const input={conversationId:'queue-conversation',prompt:'queued work',queueId:'outbox-item',userMessageId:'queue-user',assistantMessageId:'queue-assistant'};
+  try{
+    await assert.rejects(()=>store.getState().sendMessage(input),/launch rejected/);
+    assert.equal(mocks.persistedMessages.size,2);assert.equal(mocks.persistedMessages.get('queue-assistant').status,'failed');
+    mocks.setRunFailure(undefined);
+    assert.equal(await store.getState().sendMessage(input),true);
+    assert.equal(mocks.persistedMessages.size,2);assert.equal(mocks.capturedRunArgs.userMessageId,'queue-user');
+  }finally{mocks.setRunFailure(undefined);}
+});
+
+test('events from an earlier turn cannot mutate the next live turn',async()=>{
+  const {useConversationStore:store,mocks}=await loadConversationStoreHarness();
+  seedQueueSendHarness(store);mocks.persistedMessages.clear();
+  await store.getState().sendMessage({conversationId:'queue-conversation',prompt:'first'});
+  const oldHandler=mocks.eventHandler, before=mocks.handledEvents;
+  store.setState({live:{'queue-conversation':{messageId:'next-message',taskSessionId:'next-task',status:'running',items:[]}}});
+  oldHandler({type:'done',exitCode:0});assert.equal(mocks.handledEvents,before);assert.equal(store.getState().live['queue-conversation'].taskSessionId,'next-task');
 });

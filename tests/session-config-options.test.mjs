@@ -164,3 +164,13 @@ test("pruneConfigOptionOverrides drops models from previous provider", async () 
   assert.deepEqual(pruned, { provider: "openai-codex" });
 });
 
+
+test('queued configuration freezes displayed defaults and applies valid explicit choices',async()=>{
+  const {snapshotSessionConfigOptionOverrides}=await loadModule();
+  const options=structuredClone(sample);
+  const snapshot=snapshotSessionConfigOptionOverrides({model:'m2',effort:'high'},options);
+  assert.equal(snapshot.model,'m2');assert.equal(snapshot.effort,'high');assert.equal(snapshot.mode,'ask');
+  options.find(option=>option.id==='model').currentValue='another-model';
+  assert.equal(snapshot.model,'m2');
+  assert.deepEqual(snapshotSessionConfigOptionOverrides({model:'explicit-without-probe'},[]),{model:'explicit-without-probe'});
+});

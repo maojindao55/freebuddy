@@ -27,6 +27,8 @@ export function getDb(): DB {
   db.pragma("foreign_keys = ON");
   migrate(db);
   recoverInterruptedFileCaptures(db);
+  // Never resume unattended work after restarting the application.
+  recoverMessageQueues(db);
   const transcriptRows = db
     .prepare(
       `SELECT transcript_path FROM handoff_briefs WHERE transcript_path IS NOT NULL
@@ -52,6 +54,13 @@ export function getDataDir(): string {
   const dir = path.join(app.getPath("userData"), "freebuddy");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+export function recoverMessageQueues(db: DB): void {
+  db.transaction(() => {
+    db.exec(`UPDATE conversation_queue_state SET paused = 1, reason = 'restart';
+      UPDATE conversation_message_queue SET claim_token = NULL;`);
+  })();
 }
 
 export function getLogDir(): string {
@@ -342,6 +351,31 @@ export function migrate(db: DB) {
     CREATE INDEX IF NOT EXISTS idx_messages_task_conv
       ON conversation_messages(task_id, conversation_id)
       WHERE task_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS conversation_queue_state (
+      conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+      paused INTEGER NOT NULL DEFAULT 0,
+      reason TEXT,
+      error TEXT
+    );
+    CREATE TABLE IF NOT EXISTS conversation_message_queue (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT NOT NULL UNIQUE,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      payload TEXT NOT NULL,
+      attachments TEXT NOT NULL DEFAULT '[]',
+      user_message_id TEXT NOT NULL UNIQUE,
+      assistant_message_id TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      claim_token TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_queue_conversation
+      ON conversation_message_queue(conversation_id, sequence);
+    CREATE TABLE IF NOT EXISTS conversation_queue_receipts (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      payload_hash TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS file_edit_blobs (
       sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -884,6 +918,8 @@ export function migrate(db: DB) {
   const conversationCols = db
     .prepare("PRAGMA table_info(conversations)")
     .all() as Array<{ name: string }>;
+  const queueStateCols = db.prepare("PRAGMA table_info(conversation_queue_state)").all() as Array<{ name: string }>;
+  if (!queueStateCols.some(column => column.name === "error")) db.exec("ALTER TABLE conversation_queue_state ADD COLUMN error TEXT");
   if (!conversationCols.some((c) => c.name === "approval_mode")) {
     db.exec("ALTER TABLE conversations ADD COLUMN approval_mode TEXT");
   }

@@ -2949,5 +2949,42 @@
     "polishDesc": "优化措辞，让表达更流畅",
     "outlineDesc": "梳理结构，生成层级大纲",
     "translateDesc": "中英互译，保留原有格式"
+  },
+  "messageQueue": {
+    "title": "待发送消息",
+    "count": "待发送 {{count}}",
+    "afterReply": "当前回复完成后依次发送",
+    "afterReplyShort": "当前回复后依次发送",
+    "placeholder": "继续输入，当前回复完成后发送",
+    "enqueue": "加入队列",
+    "enqueued": "已加入待发队列",
+    "enqueueFailed": "加入队列失败：{{error}}",
+    "busy": "当前会话正在发送，草稿已保留，请稍后重试。",
+    "paused": "已暂停",
+    "waitingResume": "等待继续发送",
+    "pause": "暂停队列",
+    "resume": "继续发送",
+    "edit": "编辑待发消息",
+    "remove": "移除",
+    "editItem": "编辑第 {{index}} 条待发消息",
+    "removeItem": "移除第 {{index}} 条待发消息",
+    "editing": "编辑期间暂停自动发送",
+    "editingElsewhere": "正在其他窗口编辑",
+    "editExpired": "编辑已过期，请复制修改内容后重新打开编辑。",
+    "editHint": "可在发送前编辑或移除消息",
+    "reference": "引用：{{title}}",
+    "sending": "正在发送…",
+    "attachmentMessage": "附件消息",
+    "changeFailed": "更新队列失败：{{error}}",
+    "reason": {
+      "manual": "队列已暂停，待发消息已保留",
+      "stopped": "当前回复已停止，点击继续发送",
+      "failed": "当前回复出错，待发消息已保留",
+      "restart": "已恢复上次的待发消息，点击继续发送",
+      "interrupted": "发送已中断，待发消息已保留",
+      "archived": "会话已归档"
+    },
+    "enterHint": "Enter 加入队列 · Shift+Enter 换行",
+    "waitingForFinish": "正在结束当前回复，请稍候再继续"
   }
 }

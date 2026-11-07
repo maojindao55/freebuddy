@@ -57,11 +57,12 @@ async function scheduledHarness({ failSnapshot = false, failAttach = false, dele
     export const calls = [];
     export const entry = { conversationId: "target", prompt: "use context", attachments: [], conversationReferences: [{ id: "source", title: "source", agentName: "Codex" }], status: "pending" };
     const store = { conversations: [{ id: "target", approvalMode: "ask" }], isRunning: () => false,
-      sendMessage: async args => { calls.push(["send", args]); }, loadMessages: async () => {} };
+      sendMessage: async args => { calls.push(["send", args]); return true; }, loadMessages: async () => {} };
     export const useConversationStore = { getState: () => store };
     export const useScheduledSendStore = { getState: () => ({ setStatus: (...args) => calls.push(["status", ...args]), remove: (...args) => calls.push(["remove", ...args]) }) };
     export const useAgentBridgeStore = { getState: () => ({ notify: text => calls.push(["notify", text]) }) };
     export const cliClient = {
+      isMessageQueueAvailable: () => false,
       createConversationShare: async input => { calls.push(["snapshot", input]); if (${failSnapshot}) throw new Error("source denied"); return { link: "freebuddy://conversation-share/v1/abcdefghijklmnopqrstuv" }; },
       attachConversationShares: async input => { calls.push(["attach", input]); if (${failAttach}) throw new Error("attach failed"); return { references: [], attachedCount: 1 }; }
     };

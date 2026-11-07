@@ -59,6 +59,8 @@ const ALLOW = [
   "cli:inspectSessionConfigOptions",
   "cli:kill",
   "cli:run",
+  "cli:claimConversationSend",
+  "cli:releaseConversationSend",
 
   // Interactive prompts belonging to an in-flight session.
   "cli:authenticationDecision",
@@ -194,6 +196,10 @@ const ALLOW = [
 ] as const;
 
 const ADMIN_ONLY = [
+  // Native desktop outbox v1. Remote clients keep their existing send flow.
+  "cli:listMessageQueues",
+  "cli:getMessageQueue",
+  "cli:changeMessageQueue",
   // Delegation teams are shared host configuration, not per-user resources.
   "delegation:createTeam",
   "delegation:deleteTeam",

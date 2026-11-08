@@ -22,6 +22,11 @@ test("Codex BYOK wrapper module is platform-aware for Windows .cmd and Unix .sh"
   assert.match(wrapperSource, /\.cmd/);
   assert.match(wrapperSource, /codex\.cmd/);
   assert.match(wrapperSource, /FREEBUDDY_CODEX_BIN/);
+  assert.match(
+    wrapperSource,
+    /script\.replace\(\/\\r\?\\n\/g,\s*["']\\r\\n["']\)/,
+    "Windows wrapper must normalize line endings to CRLF"
+  );
   assert.match(storeSource, /from ["'].\/codexByokWrapper/);
   assert.match(storeSource, /buildCodexAppServerWrapperContent/);
 });
@@ -64,8 +69,14 @@ test("buildCodexAppServerWrapperContent emits Windows cmd and Unix sh scripts", 
       "../dist-electron/cli/codexByokWrapper.js"
     ));
   } catch {
-    t.skip("dist-electron wrapper not built yet");
-    return;
+    try {
+      ({ buildCodexAppServerWrapperContent } = await import(
+        "../electron/cli/codexByokWrapper.ts"
+      ));
+    } catch {
+      t.skip("dist-electron wrapper not built yet");
+      return;
+    }
   }
 
   const catalogPath = path.win32.join(
@@ -99,6 +110,16 @@ test("buildCodexAppServerWrapperContent emits Windows cmd and Unix sh scripts", 
     "catalog path must be set without nested JSON quotes that break cmd.exe"
   );
   assert.doesNotMatch(win.script, /#!\/bin\/sh/);
+  assert.equal(
+    win.script.includes("\r\n"),
+    true,
+    "Windows wrapper must use CRLF line endings for cmd.exe compatibility"
+  );
+  assert.equal(
+    /(?<!\r)\n/.test(win.script),
+    false,
+    "Windows wrapper must not contain bare LF line endings"
+  );
 
   const unix = buildCodexAppServerWrapperContent(catalogPath, "darwin");
   assert.equal(unix.extension, ".sh");
@@ -158,8 +179,14 @@ test("Codex provider -c payload contains no double quotes and keeps TOML literal
       "../dist-electron/cli/codexByokWrapper.js"
     ));
   } catch {
-    t.skip("dist-electron wrapper not built yet");
-    return;
+    try {
+      ({ buildCodexProviderConfigArgs } = await import(
+        "../electron/cli/codexByokWrapper.ts"
+      ));
+    } catch {
+      t.skip("dist-electron wrapper not built yet");
+      return;
+    }
   }
 
   const args = buildCodexProviderConfigArgs({

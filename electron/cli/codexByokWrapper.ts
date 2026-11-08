@@ -113,7 +113,10 @@ if defined LOCALAPPDATA if exist "%LOCALAPPDATA%\\Yarn\\bin\\codex.cmd" (
 echo FreeBuddy Codex BYOK wrapper could not find the codex binary. 1>&2
 exit /b 127
 `;
-    return { extension: ".cmd", script };
+    // cmd.exe on Windows requires CRLF line endings in batch files; bare LF
+    // causes file-pointer offset drift that truncates commands (e.g.
+    // 'DisableDelayedExpansion' becomes 'ayedExpansion') and crashes with 255.
+    return { extension: ".cmd", script: script.replace(/\r?\n/g, "\r\n") };
   }
 
   const catalogArg = `model_catalog_json=${JSON.stringify(modelCatalogPath)}`;

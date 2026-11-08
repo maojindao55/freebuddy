@@ -215,6 +215,11 @@ const cli = {
     ipcRenderer.invoke("cli:listFollowupMessages", conversationId, excludeMessageIds),
   appendMessage: (input: unknown) =>
     ipcRenderer.invoke("cli:appendMessage", input),
+  listMessageQueues: () => ipcRenderer.invoke("cli:listMessageQueues"),
+  getMessageQueue: (id: string) => ipcRenderer.invoke("cli:getMessageQueue", id),
+  changeMessageQueue: (input: unknown) => ipcRenderer.invoke("cli:changeMessageQueue", input),
+  claimConversationSend: (input: unknown) => ipcRenderer.invoke("cli:claimConversationSend", input),
+  releaseConversationSend: (input: unknown) => ipcRenderer.invoke("cli:releaseConversationSend", input),
   updateMessage: (input: unknown) =>
     ipcRenderer.invoke("cli:updateMessage", input),
 

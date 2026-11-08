@@ -2964,5 +2964,42 @@
     "polishDesc": "Improve wording and flow",
     "outlineDesc": "Structure into a heading outline",
     "translateDesc": "Translate, preserving formatting"
+  },
+  "messageQueue": {
+    "title": "Queued messages",
+    "count": "Queued {{count}}",
+    "afterReply": "Sent one at a time after the current reply",
+    "afterReplyShort": "After the current reply",
+    "placeholder": "Keep typing — send after the current reply",
+    "enqueue": "Add to queue",
+    "enqueued": "Added to the message queue",
+    "enqueueFailed": "Could not add to queue: {{error}}",
+    "busy": "This conversation is busy. Your draft has been kept; try again.",
+    "paused": "Paused",
+    "waitingResume": "Waiting to resume",
+    "pause": "Pause queue",
+    "resume": "Resume sending",
+    "edit": "Edit queued message",
+    "remove": "Remove",
+    "editItem": "Edit queued message {{index}}",
+    "removeItem": "Remove queued message {{index}}",
+    "editing": "Automatic sending waits while you edit",
+    "editingElsewhere": "Being edited in another window",
+    "editExpired": "The editing session expired. Copy your changes and reopen the editor.",
+    "editHint": "Edit or remove messages before they are sent",
+    "reference": "Reference: {{title}}",
+    "sending": "Sending…",
+    "attachmentMessage": "Attachment message",
+    "changeFailed": "Could not update the queue: {{error}}",
+    "reason": {
+      "manual": "Queue paused; pending messages are saved",
+      "stopped": "Reply stopped; resume when you are ready",
+      "failed": "The reply failed; pending messages are saved",
+      "restart": "Restored after restart; resume when you are ready",
+      "interrupted": "Sending was interrupted; pending messages are saved",
+      "archived": "This conversation was archived"
+    },
+    "enterHint": "Enter to queue · Shift+Enter for newline",
+    "waitingForFinish": "Waiting for the current reply to finish saving"
   }
 }

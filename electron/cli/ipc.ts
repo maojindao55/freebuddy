@@ -1,5 +1,10 @@
 import { app, ipcMain, BrowserWindow, dialog, shell, type IpcMainInvokeEvent } from "electron";
 import { registerHandler } from "../invokeRegistry.js";
+import {
+  acceptConversationSend, acknowledgeConversationSend, cancelConversationSend, changeMessageQueue, claimConversationSend,
+  conversationSendEvent, getMessageQueue, listMessageQueues, pauseMessageQueue, releaseConversationSend
+} from "./messageQueue.js";
+import type { ConversationSendClaim, MessageQueueCommand } from "../shared/messageQueueTypes.js";
 import { appendRendererLogEntries } from "../debugLog.js";
 import {
   buildDebugLogPreview,
@@ -993,6 +998,11 @@ export function registerCliIpc() {
     if (args.conversationId && !conversation) {
       throw new Error("conversation_not_found");
     }
+    // Claim synchronously, before workspace resolution can yield to another sender.
+    if (args.conversationId && !claimConversationSend({ conversationId: args.conversationId, sessionId: args.sessionId }, event.sender.id)) {
+      throw new Error("conversation_busy");
+    }
+    try {
     recordSessionOwner(args.sessionId, conversation?.ownerId ?? getCallerUserId());
     const {
       contextReferences: _rendererContextReferences,
@@ -1045,9 +1055,13 @@ export function registerCliIpc() {
       }
     }
     // Don't await: spawn returns immediately, streaming continues via events.
-    void cliRun(win.webContents, runArgs).catch((error) => {
+    if (args.conversationId) acceptConversationSend({ conversationId: args.conversationId, sessionId: args.sessionId }, event.sender.id);
+    void cliRun(win.webContents, runArgs, (e) => {
+      if (args.conversationId) conversationSendEvent(args.conversationId, args.sessionId, e);
+    }).catch((error) => {
       const message = (error as Error)?.message || String(error);
       console.error(`[cli] run failed for ${args.sessionId}:`, error);
+      if (args.conversationId) conversationSendEvent(args.conversationId, args.sessionId, { type: "done", exitCode: -1 });
       safeSendToWebContents(
         win.webContents,
         channelName(args.sessionId),
@@ -1061,6 +1075,10 @@ export function registerCliIpc() {
       clearSessionOwner(args.sessionId);
     });
     return { sessionId: args.sessionId };
+    } catch (error) {
+      if (args.conversationId) releaseConversationSend({ conversationId: args.conversationId, sessionId: args.sessionId }, event.sender.id);
+      throw error;
+    }
   });
   registerHandler(
     "cli:getCachedSessionConfigOptions",
@@ -1074,6 +1092,7 @@ export function registerCliIpc() {
   );
   registerHandler("cli:kill", (_e, sessionId: string) => {
     if (!callerCanControlSession(sessionId)) return false;
+    cancelConversationSend(sessionId);
     const killed = cliKill(sessionId);
     // A live run clears its owner after broadcasting its terminal event.
     // Clean up here only when there is no process that can do so.
@@ -1326,6 +1345,19 @@ export function registerCliIpc() {
   });
 
   // ---- Conversations -----------------------------------------------------
+
+  registerHandler("cli:listMessageQueues", () => listMessageQueues());
+  registerHandler("cli:getMessageQueue", (_e, id: string) => getMessageQueue(id));
+  registerHandler("cli:changeMessageQueue", (event, command: MessageQueueCommand) => changeMessageQueue(command, event.sender.id));
+  registerHandler("cli:claimConversationSend", (event, input: ConversationSendClaim) => {
+    const accepted = claimConversationSend(input, event.sender.id);
+    if (accepted) recordSessionOwner(input.sessionId, requireOwnedConversation(input.conversationId)?.ownerId ?? getCallerUserId());
+    return accepted;
+  });
+  registerHandler("cli:releaseConversationSend", (event, input: ConversationSendClaim) => {
+    if (!requireOwnedConversation(input.conversationId)) throw new Error("conversation_not_found");
+    releaseConversationSend(input, event.sender.id);
+  });
 
   registerHandler("cli:listConversations", (_e, args: ListConversationsArgs = {}) =>
     listConversations(args)
@@ -1625,6 +1657,7 @@ export function registerCliIpc() {
     "cli:archiveConversation",
     (_e, args: { id: string; archived: boolean }) => {
       if (!requireOwnedConversation(args.id)) return;
+      if (args.archived) pauseMessageQueue(args.id, "archived");
       archiveConversation(args.id, args.archived);
       notifyConversationsChanged();
     }
@@ -1808,6 +1841,7 @@ export function registerCliIpc() {
   registerHandler("cli:updateMessage", (_e, input: UpdateMessageInput) => {
     if (!callerCanAccessMessage(input.id)) return;
     updateMessage(input);
+    if (input.status === "done" || input.status === "failed" || input.status === "killed") acknowledgeConversationSend(input.id);
   });
 
   registerHandler("settings:get", (_e, key: string) => getSetting(key));

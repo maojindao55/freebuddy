@@ -67,6 +67,7 @@ import {
   type UnreadConversationMap
 } from "./conversationUnread";
 import { isAppInBackground } from "@/utils/appFocus";
+import { buildReferencedPrompt, type ConversationReferenceDraft } from "@/utils/conversationReferences";
 
 function resolveWorkspaceRootsForConversation(conv: Conversation): string[] {
   const taskWorkspace = conv.metadata?.taskWorkspace;
@@ -210,7 +211,9 @@ export interface ConversationState {
     configOptionOverrides?: Record<string, string>;
     hiddenContext?: string;
     messageSkills?: SkillSnapshot[];
-  }): Promise<void>;
+    queueId?: string;
+    conversationReferences?: ConversationReferenceDraft[];
+  }): Promise<boolean>;
   stopActive(conversationId: string): Promise<void>;
   isRunning(conversationId: string): boolean;
 }
@@ -1419,11 +1422,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     memberOverride,
     configOptionOverrides,
     hiddenContext,
-    messageSkills = []
+    messageSkills = [],
+    queueId,
+    conversationReferences = []
   }) {
-    const trimmed = prompt.trim();
-    if (!trimmed && attachments.length === 0) return;
-    if (get().isRunning(conversationId)) return;
+    let trimmed = prompt.trim();
+    if (!trimmed && attachments.length === 0) return false;
+    if (get().isRunning(conversationId)) return false;
 
     const userMsgId = userMessageId ?? nanoid();
     const assistantMsgId = assistantMessageId ?? nanoid();
@@ -1458,19 +1463,25 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const conv = get().conversations.find((c) => c.id === conversationId);
     if (!conv) {
       releaseClaimedLive();
-      return;
+      return false;
     }
-    const workflowRun = await workflowRunForConversation(conversationId);
-    const member =
-      memberOverride ??
-      (memberForWorkflowFollowup(workflowRun, get().members) ??
-      get().members.find((m) => m.id === conv.agentId));
-    if (!member) {
-      releaseClaimedLive();
-      throw new Error(`Member ${conv.agentId} not found`);
-    }
-
+    let claimed = false;
+    let claimHeartbeat: ReturnType<typeof setInterval> | undefined;
+    const claim = { conversationId, sessionId: taskSessionId, queueId };
     try {
+    claimed = await cliClient.claimConversationSend(claim);
+    if (!claimed) {
+      releaseClaimedLive();
+      return false;
+    }
+    claimHeartbeat = setInterval(() => { void cliClient.claimConversationSend(claim).catch(() => {}); }, 15_000);
+    const workflowRun = await workflowRunForConversation(conversationId);
+    const member = memberOverride ?? (memberForWorkflowFollowup(workflowRun, get().members) ?? get().members.find(m => m.id === conv.agentId));
+    if (!member) throw new Error(`Member ${conv.agentId} not found`);
+    if (queueId) {
+      trimmed = await buildReferencedPrompt(trimmed, conversationReferences, cliClient.createConversationShare, conversationId);
+      await cliClient.attachConversationShares({ targetConversationId: conversationId, targetMessageId: userMsgId, text: trimmed });
+    }
     if (!internalPrompt) {
       const userMsg: ConversationMessage = {
         id: userMsgId,
@@ -1493,7 +1504,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
           )
         }
       }));
-      const savedUser = await cliClient.appendMessage({
+      const savedUser = (queueId ? await cliClient.listMessage(userMsgId) : undefined) ?? await cliClient.appendMessage({
         id: userMsgId,
         conversationId,
         role: "user",
@@ -1502,6 +1513,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         attachments,
         skillSnapshot: messageSkills
       });
+      if (queueId && savedUser.content !== trimmed) await cliClient.updateMessage({ id: userMsgId, content: trimmed });
       set((s) => ({
         messages: {
           ...s.messages,
@@ -1538,7 +1550,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
         )
       }
     }));
-    await cliClient.appendMessage({
+    const existingAssistant = queueId ? await cliClient.listMessage(assistantMsgId) : undefined;
+    if (existingAssistant) {
+      await cliClient.updateMessage({ id: assistantMsgId, status: "running", content: "[]" });
+    } else await cliClient.appendMessage({
       id: assistantMsgId,
       conversationId,
       role: "assistant",
@@ -1690,6 +1705,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     });
 
     const unsubscribe = cliClient.onEvent(taskSessionId, (e: CliEvent) => {
+      if (get().live[conversationId]?.taskSessionId !== taskSessionId) return;
       handleStreamEvent(
         set,
         get,
@@ -1710,6 +1726,8 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
     try {
       await cliClient.awaitPendingMcpSelection(conversationId);
+      const currentLive = get().live[conversationId];
+      if (!currentLive || currentLive.taskSessionId !== taskSessionId || currentLive.status === "killed") throw new Error("conversation_stopped");
       await cliClient.run(runArgs);
     } catch (err) {
       const msg = (err as Error)?.message || String(err);
@@ -1772,10 +1790,15 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
             (persistError as Error)?.message || String(persistError)
         });
       }
+      if (queueId) throw err;
     }
+    return true;
     } catch (err) {
       releaseClaimedLive();
       throw err;
+    } finally {
+      if (claimHeartbeat) clearInterval(claimHeartbeat);
+      if (claimed) await cliClient.releaseConversationSend(claim).catch(() => {});
     }
   },
 

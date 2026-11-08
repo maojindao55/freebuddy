@@ -30,7 +30,7 @@ function harness({ team = false, gate = false, delegation = false, refreshFails 
   const refs = [{ id: "source", title: "source", agentName: "Codex" }];
   let sequence = 0;
   const scope = {
-    attachmentBusy: false, sending: false, sendLock: false, newTaskSendLock: false,
+    attachmentBusy: false, sending: false, sendLock: false, newTaskSendLock: false, queueSend: false,
     sendInFlightRef: { current: false }, newTaskSendInFlightRef: { current: false },
     attachmentImportGenerationRef: { current: 0 }, isNearBottomRef: { current: false },
     draft: "use context", newTaskDraft: "use context", pendingAttachments: [], newTaskPendingAttachments: [],
@@ -49,7 +49,7 @@ function harness({ team = false, gate = false, delegation = false, refreshFails 
     detachAttachmentsForSend: () => [], restoreAttachmentsForSend: value => value,
     protectManagedAttachments: () => {}, unprotectManagedAttachments: () => {}, focusComposer: () => {},
     window: { setTimeout: () => {} }, t: key => key,
-    sendMessage: async args => record("send")(args),
+    sendMessage: async args => { record("send")(args); return true; },
     updateContextReferences: record("refs"), notify: record("notify"),
     cliClient: {
       createConversationShare: async () => ({ link: "freebuddy://conversation-share/v1/abcdefghijklmnopqrstuv" }),

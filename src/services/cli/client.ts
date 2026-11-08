@@ -402,6 +402,15 @@ export const cliClient = {
   appendMessage(input: AppendMessageInput): Promise<ConversationMessage> {
     return api().appendMessage(input);
   },
+  isMessageQueueAvailable(): boolean {
+    const host = window.freebuddy?.cli;
+    return window.freebuddy?.platform !== "web" && Boolean(host && Object.hasOwn(host, "listMessageQueues") && typeof host.listMessageQueues === "function");
+  },
+  listMessageQueues() { return api().listMessageQueues(); },
+  getMessageQueue(id: string) { return api().getMessageQueue(id); },
+  changeMessageQueue(input: import("../../../electron/shared/messageQueueTypes").MessageQueueCommand) { return api().changeMessageQueue(input); },
+  claimConversationSend(input: import("../../../electron/shared/messageQueueTypes").ConversationSendClaim) { return api().claimConversationSend(input); },
+  releaseConversationSend(input: import("../../../electron/shared/messageQueueTypes").ConversationSendClaim) { return api().releaseConversationSend(input); },
   updateMessage(input: UpdateMessageInput): Promise<void> {
     return api().updateMessage(input);
   },

@@ -768,9 +768,10 @@ export function deleteConversation(id: string): void {
   const managedPaths: string[] = [];
   const rows = getDb()
     .prepare(
-      `SELECT attachments FROM conversation_messages WHERE conversation_id = ? AND attachments IS NOT NULL`
+      `SELECT attachments FROM conversation_messages WHERE conversation_id = ? AND attachments IS NOT NULL
+       UNION ALL SELECT attachments FROM conversation_message_queue WHERE conversation_id = ?`
     )
-    .all(id) as Array<{ attachments: string | null }>;
+    .all(id, id) as Array<{ attachments: string | null }>;
 
   for (const row of rows) {
     if (!row.attachments) continue;

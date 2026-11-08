@@ -223,6 +223,8 @@
       setConversationApprovalMode: function (id, approvalMode) { return invoke("cli:setConversationApprovalMode", { id: id, approvalMode: approvalMode }); },
       setConversationConfigOptionOverrides: function (id, overrides) { return invoke("cli:setConversationConfigOptionOverrides", { id: id, overrides: overrides }); },
       setConversationSkills: function (id, skillIds) { return invoke("cli:setConversationSkills", { id: id, skillIds: skillIds }); },
+      claimConversationSend: function (input) { return invoke("cli:claimConversationSend", input); },
+      releaseConversationSend: function (input) { return invoke("cli:releaseConversationSend", input); },
       listMessages: function (conversationId, options) { return invoke("cli:listMessages", conversationId, options); },
       listMessage: function (id) { return invoke("cli:listMessage", id); },
       listMessageFileEdits: function (messageId, cursor, groupFiles) { return invoke("cli:listMessageFileEdits", messageId, cursor, groupFiles); },

@@ -273,6 +273,7 @@ const DENY = [
   "cli:selectDirectory",
   "cli:inspectTaskWorkspace",
   "cli:createTaskBranch",
+  "cli:pullTaskBranch",
   "cli:prepareTaskWorkspace",
   "cli:openBrowserExternal",
   "cli:showNativeBrowser",

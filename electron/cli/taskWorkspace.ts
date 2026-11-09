@@ -31,6 +31,13 @@ export interface CreateTaskBranchInput {
   startPoint?: string;
 }
 
+export interface PullTaskBranchResult {
+  info: GitWorkspaceInfo;
+  updated: boolean;
+  previousHead: string;
+  head: string;
+}
+
 export interface PreparedTaskWorkspace {
   cwd: string;
   sourceCwd: string;
@@ -40,11 +47,16 @@ export interface PreparedTaskWorkspace {
   worktreeRoot?: string;
 }
 
-async function runGit(cwd: string, args: string[]): Promise<string> {
+async function runGit(
+  cwd: string,
+  args: string[],
+  options: { timeout?: number; env?: NodeJS.ProcessEnv } = {}
+): Promise<string> {
   const result = await execFileAsync("git", ["-C", cwd, ...args], {
     encoding: "utf8",
     maxBuffer: MAX_GIT_OUTPUT,
-    windowsHide: true
+    windowsHide: true,
+    ...options
   });
   return result.stdout.trim();
 }
@@ -168,6 +180,41 @@ export async function createTaskBranch(
   }
 
   return inspectTaskWorkspace(sourceCwd);
+}
+
+export async function pullTaskBranch(cwd: string): Promise<PullTaskBranchResult> {
+  const sourceCwd = normalizeDirectory(cwd);
+  const info = await inspectTaskWorkspace(sourceCwd);
+  if (!info.isGitRepository || !info.root) {
+    throw new Error("Pulling requires a Git repository");
+  }
+  if (!info.currentBranch) {
+    throw new Error("Pulling requires a checked-out branch (HEAD is detached)");
+  }
+  try {
+    await runGit(info.root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+  } catch {
+    throw new Error(`Branch ${info.currentBranch} has no upstream to pull from`);
+  }
+
+  const previousHead = await runGit(info.root, ["rev-parse", "HEAD"]);
+  try {
+    // Fast-forward only: never create merge commits or rewrite local work.
+    await runGit(info.root, ["pull", "--ff-only"], {
+      timeout: 120_000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }
+    });
+  } catch (error) {
+    throw new Error(`Unable to pull Git branch: ${gitErrorMessage(error)}`);
+  }
+  const head = await runGit(info.root, ["rev-parse", "HEAD"]);
+
+  return {
+    info: await inspectTaskWorkspace(sourceCwd),
+    updated: head !== previousHead,
+    previousHead,
+    head
+  };
 }
 
 export async function prepareTaskWorkspace(

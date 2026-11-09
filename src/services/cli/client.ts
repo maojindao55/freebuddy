@@ -31,6 +31,7 @@ import type {
   WorkspaceFileMatch,
   CreateTaskBranchInput,
   GitWorkspaceInfo,
+  PullTaskBranchResult,
   PrepareTaskWorkspaceInput,
   PreparedTaskWorkspace,
   PrepareAttachmentFilesResult,
@@ -422,6 +423,9 @@ export const cliClient = {
   },
   createTaskBranch(input: CreateTaskBranchInput): Promise<GitWorkspaceInfo> {
     return api().createTaskBranch(input);
+  },
+  pullTaskBranch(cwd: string): Promise<PullTaskBranchResult> {
+    return api().pullTaskBranch(cwd);
   },
   prepareTaskWorkspace(
     input: PrepareTaskWorkspaceInput

@@ -3419,6 +3419,7 @@ export function ChatView({
               conversation={conv}
               project={conversationProject}
               gitInfo={composerGitInfo}
+              running={running}
             />
           </div>
         )}

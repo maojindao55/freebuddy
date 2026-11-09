@@ -1,17 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Folder, FolderLock, GitBranch } from "lucide-react";
+import { AlertCircle, Check, Folder, FolderLock, GitBranch, Loader2, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { cliClient } from "@/services/cli/client";
 import type { Conversation, GitWorkspaceInfo, Project } from "@/services/cli/types";
 import { copyToClipboard } from "@/utils/clipboard";
 import { folderBaseName, formatDisplayPath, pathsEqual } from "@/utils/projectPaths";
 import { conversationDisplayCwd } from "./conversationProjectGrouping";
 
-export function ComposerWorkspaceMeta({ conversation, project, gitInfo }: {
+type PullState =
+  | { kind: "idle" }
+  | { kind: "pulling" }
+  | { kind: "done"; message: string }
+  | { kind: "failed"; message: string };
+
+export function ComposerWorkspaceMeta({ conversation, project, gitInfo, running = false }: {
   conversation: Conversation;
   project?: Project;
   gitInfo?: GitWorkspaceInfo;
+  running?: boolean;
 }) {
   const { t } = useTranslation();
+  const [pull, setPull] = useState<PullState>({ kind: "idle" });
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number }>();
   const [copied, setCopied] = useState(false);
@@ -74,6 +83,36 @@ export function ComposerWorkspaceMeta({ conversation, project, gitInfo }: {
     setCopyFailed(false);
   }, [branchLabel]);
   useEffect(() => {
+    if (pull.kind !== "done") return;
+    const timer = window.setTimeout(() => setPull({ kind: "idle" }), 3000);
+    return () => window.clearTimeout(timer);
+  }, [pull]);
+  const canPull = Boolean(gitInfo?.currentBranch && conversation.cwd) &&
+    globalThis.window?.freebuddy?.platform !== "web";
+  const pullLatest = useCallback(() => {
+    const cwd = conversation.cwd;
+    if (!cwd || running || pull.kind === "pulling") return;
+    setPull({ kind: "pulling" });
+    cliClient.pullTaskBranch(cwd).then(result => {
+      setPull({
+        kind: "done",
+        message: result.updated
+          ? t("chat.pullBranchUpdated", { head: result.head.slice(0, 7) })
+          : t("chat.pullBranchUpToDate")
+      });
+    }).catch((error: unknown) => {
+      const raw = error instanceof Error ? error.message : String(error);
+      setPull({
+        kind: "failed",
+        message: t("chat.pullBranchFailed", { error: raw.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") })
+      });
+    });
+  }, [conversation.cwd, running, pull.kind, t]);
+  const pullTitle = running ? t("chat.pullBranchRunning")
+    : pull.kind === "pulling" ? t("chat.pullBranchPulling")
+    : pull.kind === "done" || pull.kind === "failed" ? pull.message
+    : t("chat.pullBranch", { branch: gitInfo?.currentBranch ?? "" });
+  useEffect(() => {
     if (!copied) return;
     const timer = window.setTimeout(() => setCopied(false), 1500);
     return () => window.clearTimeout(timer);
@@ -121,6 +160,19 @@ export function ComposerWorkspaceMeta({ conversation, project, gitInfo }: {
         {copied ? <Check size={12} aria-hidden="true" /> : <GitBranch size={12} aria-hidden="true" />}
         <span>{branchLabel}</span>
       </button>
+      {canPull && <button
+        type="button"
+        className={`composer-branch-pull${pull.kind === "failed" ? " failed" : ""}`}
+        aria-label={pullTitle}
+        title={pullTitle}
+        disabled={running || pull.kind === "pulling"}
+        onClick={pullLatest}
+      >
+        {pull.kind === "pulling" ? <Loader2 size={12} className="spin" aria-hidden="true" />
+          : pull.kind === "done" ? <Check size={12} aria-hidden="true" />
+          : pull.kind === "failed" ? <AlertCircle size={12} aria-hidden="true" />
+          : <RefreshCw size={12} aria-hidden="true" />}
+      </button>}
     </>}
     {open && hasProject && project && position ? (
       <div className="composer-workspace-popover" role="dialog" aria-label={t("chat.workspaceDetails")} style={{ ...position, transform: "translateY(-100%)" }}>
@@ -134,6 +186,7 @@ export function ComposerWorkspaceMeta({ conversation, project, gitInfo }: {
         </ul>
       </div>
     ) : null}
-    <span className="sr-only" role="status">{copyFailed ? t("workspace.copyFailed") : copied ? t("workspace.copied") : ""}</span>
+    <span className="sr-only" role="status">{copyFailed ? t("workspace.copyFailed") : copied ? t("workspace.copied")
+      : pull.kind === "done" || pull.kind === "failed" ? pull.message : ""}</span>
   </div>;
 }

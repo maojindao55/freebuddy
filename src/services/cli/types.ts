@@ -636,6 +636,13 @@ export interface GitWorkspaceInfo {
   branches: string[];
 }
 
+export interface PullTaskBranchResult {
+  info: GitWorkspaceInfo;
+  updated: boolean;
+  previousHead: string;
+  head: string;
+}
+
 export interface CreateTaskBranchInput {
   cwd: string;
   name: string;

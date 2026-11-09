@@ -229,6 +229,7 @@ import {
   createTaskBranch,
   inspectTaskWorkspace,
   prepareTaskWorkspace,
+  pullTaskBranch,
   type CreateTaskBranchInput,
   type PrepareTaskWorkspaceInput
 } from "./taskWorkspace.js";
@@ -801,6 +802,13 @@ export function registerCliIpc() {
         : {})
     };
     return createTaskBranch(parsed);
+  });
+
+  registerHandler("cli:pullTaskBranch", async (_event, rawCwd: unknown) => {
+    if (typeof rawCwd !== "string" || !rawCwd.trim()) {
+      throw new Error("Task workspace directory is required");
+    }
+    return pullTaskBranch(rawCwd);
   });
 
   registerHandler(

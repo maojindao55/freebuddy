@@ -34,6 +34,7 @@ import type {
   WorkspaceFileMatch,
   CreateTaskBranchInput,
   GitWorkspaceInfo,
+  PullTaskBranchResult,
   PrepareTaskWorkspaceInput,
   PreparedTaskWorkspace,
   PrepareAttachmentFilesResult,
@@ -327,6 +328,7 @@ declare global {
     selectDirectory(defaultPath?: string): Promise<string | null>;
     inspectTaskWorkspace(cwd: string): Promise<GitWorkspaceInfo>;
     createTaskBranch(input: CreateTaskBranchInput): Promise<GitWorkspaceInfo>;
+    pullTaskBranch(cwd: string): Promise<PullTaskBranchResult>;
     prepareTaskWorkspace(
       input: PrepareTaskWorkspaceInput
     ): Promise<PreparedTaskWorkspace>;

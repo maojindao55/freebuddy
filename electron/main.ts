@@ -83,6 +83,7 @@ import {
 import { applyWindowsExplorerCommandPackage } from "./cli/windowsExplorerCommand.js";
 import { initializeAgentUsageReconciler } from "./cli/usageReconciler.js";
 import { initDebugLog, logMain } from "./debugLog.js";
+import { formatStartupFailure } from "./shared/startupFailure.js";
 import {
   clearMainWindowPresence,
   setMainWindowPresence,
@@ -2106,7 +2107,40 @@ app.on("child-process-gone", (_event, details) => {
   });
 });
 
-app.whenReady().then(async () => {
+/**
+ * Surfaces a rejected startup step instead of leaving a windowless process
+ * running. Without this, a synchronous throw in `bootstrap()` (e.g. `getDb()`
+ * failing to load its native module) rejects the `whenReady()` chain, skips
+ * `createWindow()`, and the only trace is the JSONL debug log.
+ */
+function reportStartupFailure(error: unknown): void {
+  logMain().error("crash", "startup failed", {
+    stage: "whenReady",
+    error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+    stack: error instanceof Error ? error.stack?.slice(0, 4000) : undefined
+  });
+
+  const report = formatStartupFailure({
+    stage: "whenReady",
+    error,
+    appName: APP_NAME,
+    locale: app.getLocale()
+  });
+
+  console.error(`[FreeBuddy] startup failed — ${report.summary}`);
+
+  try {
+    // Do not attach this to a BrowserWindow: the failure may be exactly that
+    // no window exists yet. `showErrorBox` is a native modal and works before
+    // the first window is created.
+    dialog.showErrorBox(report.title, `${report.message}\n\n${report.detail}`);
+  } catch (dialogError) {
+    console.error("[FreeBuddy] failed to show startup error box", dialogError);
+  }
+  process.exitCode = 1;
+}
+
+async function bootstrap(): Promise<void> {
   initDebugLog();
   scheduleButlerBuddySleepBoundary();
   logMain().info("main", "app ready", {
@@ -2300,7 +2334,14 @@ app.whenReady().then(async () => {
       revealMainWindow();
     }
   });
-});
+}
+
+// `.then(onFulfilled, onRejected)` would not catch a rejection thrown by
+// `bootstrap()` itself — only by `whenReady()`. Chain a real `.catch()` so any
+// failing startup step reaches `reportStartupFailure`.
+void app.whenReady()
+  .then(bootstrap)
+  .catch(reportStartupFailure);
 
 app.on("window-all-closed", () => {
   // The app lives in the tray. Only the tray's "Quit" entry or an explicit

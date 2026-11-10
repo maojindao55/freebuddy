@@ -621,6 +621,26 @@ test("tool block renderer groups command items with the tool call", () => {
   assert.match(bubbleSource, /extras=\{block\.extras\}/);
 });
 
+test("an error card hides the redundant non-zero exit line", async () => {
+  const source = ts.transpileModule(
+    fs.readFileSync(new URL("../src/components/CLI/messageBlocks.ts", import.meta.url), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }
+  ).outputText.replace(
+    /import \{ appendItems \} from "@\/store\/conversationUtils";/,
+    "const appendItems = (a, b) => [...a, ...b];"
+  );
+  const { filterVisibleItems } = await import(
+    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+  );
+  const failedExit = { kind: "done", exitCode: -1 };
+  const error = { kind: "error", message: "authentication failed or timed out" };
+  assert.deepEqual(filterVisibleItems([error, failedExit]), [error]);
+  assert.deepEqual(filterVisibleItems([failedExit]), [failedExit]);
+  const stderr = { kind: "command-output", stream: "stderr", content: "noise" };
+  assert.deepEqual(filterVisibleItems([stderr, { ...error, details: ["log"] }]).length, 1);
+  assert.deepEqual(filterVisibleItems([stderr, error]).length, 2);
+});
+
 test("tool invocation renderer applies final result deduplication", () => {
   const source = fs.readFileSync(
     new URL("../src/components/CLI/StreamItem.tsx", import.meta.url),

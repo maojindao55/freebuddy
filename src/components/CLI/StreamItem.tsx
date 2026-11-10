@@ -1,7 +1,10 @@
 import type { TFunction } from "i18next";
 import {
+  AlertCircle,
   Brain,
   Check,
+  ChevronDown,
+  ChevronRight,
   Code,
   Copy,
   Download,
@@ -1395,6 +1398,46 @@ function TerminalEmbed({
   );
 }
 
+function ErrorCard({ item }: { item: Extract<CliStreamItem, { kind: "error" }> }) {
+  const { t } = useTranslation();
+  const [showLog, setShowLog] = useState(false);
+  return (
+    <div className="stream-error">
+      <div className="stream-error-head">
+        <AlertCircle size={15} className="stream-error-icon" aria-label={t("stream.errorLabel")} />
+        <span className="stream-error-message">{item.message}</span>
+      </div>
+      <div className="stream-error-actions">
+        {item.details?.length ? (
+          <button
+            type="button"
+            className="stream-error-action"
+            aria-expanded={showLog}
+            onClick={() => setShowLog((open) => !open)}
+          >
+            {showLog ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
+            {t("stream.viewRawLog", { count: item.details.length })}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="stream-error-action stream-error-export-logs"
+          onClick={() =>
+            useDebugLogsDialogStore
+              .getState()
+              .setOpen(true, useConversationStore.getState().activeId ?? undefined)
+          }
+        >
+          {t("debugLogs.exportLink")}
+        </button>
+      </div>
+      {showLog && item.details?.length ? (
+        <pre className="stream-error-log">{item.details.join("\n")}</pre>
+      ) : null}
+    </div>
+  );
+}
+
 export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string }) {
   const { t } = useTranslation();
   switch (item.kind) {
@@ -1535,30 +1578,7 @@ export function StreamItem({ item, cwd }: { item: CliStreamItem; cwd?: string })
       );
     }
     case "error":
-      return (
-        <div className="stream-error">
-          <div>
-            <span className="stream-label">{t("stream.errorLabel")}</span> {item.message}
-          </div>
-          {item.details?.length ? (
-            <details className="stream-error-details">
-              <summary>{t("stream.viewRawLog", { count: item.details.length })}</summary>
-              <pre>{item.details.join("\n")}</pre>
-            </details>
-          ) : null}
-          <button
-            type="button"
-            className="link-btn stream-error-export-logs"
-            onClick={() =>
-              useDebugLogsDialogStore
-                .getState()
-                .setOpen(true, useConversationStore.getState().activeId ?? undefined)
-            }
-          >
-            {t("debugLogs.exportLink")}
-          </button>
-        </div>
-      );
+      return <ErrorCard item={item} />;
     case "done":
       if (!item.exitCode || item.exitCode === 0) return null;
       return (

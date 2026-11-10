@@ -41,7 +41,7 @@ import { MessageSkillTags } from "./MessageSkillTags";
 import { useImageLightbox } from "./ImageLightbox";
 import { StreamItem, StreamToolInvocation } from "./StreamItem";
 import { ToolActivityStatus } from "./ToolActivityStatus";
-import { isVisibleItem, visibleBlocks } from "./messageBlocks";
+import { filterVisibleItems, visibleBlocks } from "./messageBlocks";
 import { selectRunMetrics } from "./runCardMetrics";
 import { hasMessageRunMetrics, LiveRunElapsed, MessageRunMetrics } from "./MessageRunMetrics";
 import { useWhipEffectStore, type WhipTargetPoint } from "@/store/whipEffectStore";
@@ -830,12 +830,7 @@ export const MessageBubble = memo(function MessageBubble({
     }
     return normalizeStoredItems(appendItems(restored, saved));
   }, [items, restoredItems]);
-  const visibleItems = useMemo(() => {
-    const hideDiagnosticStderr = displayItems.some(
-      (item) => item.kind === "error" && Boolean(item.details?.length)
-    );
-    return displayItems.filter((item) => isVisibleItem(item, hideDiagnosticStderr));
-  }, [displayItems]);
+  const visibleItems = useMemo(() => filterVisibleItems(displayItems), [displayItems]);
   const blocks = useMemo(() => visibleBlocks(visibleItems), [visibleItems]);
   const renderedBlocks = blocks;
   const renderedSections = useMemo(

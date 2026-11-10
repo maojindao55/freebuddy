@@ -18,6 +18,16 @@ export function isVisibleItem(item: CliStreamItem, hideDiagnosticStderr = false)
   );
 }
 
+export function filterVisibleItems(items: CliStreamItem[]): CliStreamItem[] {
+  const errors = items.filter((item) => item.kind === "error");
+  const hideDiagnosticStderr = errors.some((item) => Boolean(item.details?.length));
+  return items.filter((item) => {
+    // The error card already reports the failure; a bare exit code repeats it.
+    if (errors.length && item.kind === "done" && item.exitCode) return false;
+    return isVisibleItem(item, hideDiagnosticStderr);
+  });
+}
+
 export type VisibleBlock =
   | { kind: "single"; item: CliStreamItem }
   | {
@@ -103,14 +113,7 @@ export function computeMessageBlocks(messageContent: string): VisibleBlock[] {
     const base = Array.isArray(parsed)
       ? (parsed as CliStreamItem[])
       : [{ kind: "raw", content: messageContent } satisfies CliStreamItem];
-    const items = normalizeLight(base);
-    const hideDiagnosticStderr = items.some(
-      (item) => item.kind === "error" && Boolean(item.details?.length)
-    );
-    const visible = items.filter((item) =>
-      isVisibleItem(item, hideDiagnosticStderr)
-    );
-    return visibleBlocks(visible);
+    return visibleBlocks(filterVisibleItems(normalizeLight(base)));
   } catch {
     return [{ kind: "single", item: { kind: "raw", content: messageContent } }];
   }

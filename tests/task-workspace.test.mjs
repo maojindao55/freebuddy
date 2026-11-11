@@ -8,7 +8,8 @@ import test from "node:test";
 import {
   createTaskBranch,
   inspectTaskWorkspace,
-  prepareTaskWorkspace
+  prepareTaskWorkspace,
+  pullTaskBranch
 } from "../dist-electron/cli/taskWorkspace.js";
 
 function git(cwd, args) {
@@ -72,6 +73,36 @@ test("task workspace creates and checks out a validated branch", async (t) => {
     createTaskBranch({ cwd: repo, name: "bad branch name" }),
     /Invalid Git branch name/
   );
+});
+
+test("pulling fast-forwards the current branch from its upstream", async (t) => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-task-pull-"));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+  const origin = path.join(tempRoot, "origin");
+  const clone = path.join(tempRoot, "clone");
+  createRepository(origin);
+  git(tempRoot, ["clone", "-q", origin, clone]);
+
+  await assert.rejects(
+    pullTaskBranch(origin),
+    /has no upstream/
+  );
+
+  const upToDate = await pullTaskBranch(clone);
+  assert.equal(upToDate.updated, false);
+  assert.equal(upToDate.info.currentBranch, "main");
+
+  fs.writeFileSync(path.join(origin, "next.txt"), "next\n", "utf8");
+  git(origin, ["add", "next.txt"]);
+  git(origin, ["commit", "-q", "-m", "next"]);
+
+  const pulled = await pullTaskBranch(clone);
+  assert.equal(pulled.updated, true);
+  assert.equal(pulled.head, git(origin, ["rev-parse", "HEAD"]));
+  assert.equal(fs.existsSync(path.join(clone, "next.txt")), true);
+
+  git(clone, ["switch", "-q", "--detach"]);
+  await assert.rejects(pullTaskBranch(clone), /detached/);
 });
 
 test("worktree mode creates an isolated checkout from the selected branch", async (t) => {

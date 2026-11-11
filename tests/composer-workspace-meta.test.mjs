@@ -17,6 +17,7 @@ const imports = {
   "react/jsx-runtime": import.meta.resolve("react/jsx-runtime"),
   "lucide-react": import.meta.resolve("lucide-react"),
   "react-i18next": import.meta.resolve("react-i18next"),
+  "@/services/cli/client": asModule("export const cliClient = { pullTaskBranch: async () => { throw new Error('unused'); } };"),
   "@/utils/clipboard": asModule(compile("../src/utils/clipboard.ts")),
   "@/utils/projectPaths": asModule(compile("../src/utils/projectPaths.ts")),
   "./conversationProjectGrouping": asModule(compile("../src/components/CLI/conversationProjectGrouping.ts"))
@@ -42,7 +43,10 @@ test("active branch follows the retained project and directory count in both lan
     assert.match(html, /aria-haspopup="dialog"/);
     assert.match(html, /aria-expanded="false"/);
     assert.match(html, /composer-workspace-folder-count/);
+    assert.match(html, /class="composer-branch-pull"/);
   }
+  const running = await render({ running: true, gitInfo: { isGitRepository: true, currentBranch: "main", branches: [] } });
+  assert.match(running, /class="composer-branch-pull"[^>]*disabled=""/);
 });
 
 test("actual worktree branch wins over the recorded starting branch; detached checkout is explicit", async () => {

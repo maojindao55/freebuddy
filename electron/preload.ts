@@ -229,6 +229,8 @@ const cli = {
     ipcRenderer.invoke("cli:inspectTaskWorkspace", cwd),
   createTaskBranch: (input: unknown) =>
     ipcRenderer.invoke("cli:createTaskBranch", input),
+  pullTaskBranch: (cwd: string) =>
+    ipcRenderer.invoke("cli:pullTaskBranch", cwd),
   prepareTaskWorkspace: (input: unknown) =>
     ipcRenderer.invoke("cli:prepareTaskWorkspace", input),
   searchWorkspaceFiles: (cwd: string, query: string, limit?: number, roots?: string[]) =>

@@ -27,7 +27,7 @@ function seed(){
   const assistant:ConversationMessage={id:'fixture-assistant',conversationId:id,role:'assistant',status:'running',content:'[]',agentId:conversation.agentId,agentName:conversation.agentName,adapter:conversation.adapter,taskId:'fixture-running',createdAt:now,updatedAt:now};
   saved.set(user.id,user);saved.set(assistant.id,assistant);
   useConversationStore.setState({activeId:id,messages:{[id]:[user,assistant]},live:{[id]:{messageId:assistant.id,taskSessionId:'fixture-running',items:[{kind:'text',role:'assistant',content:'正在检查登录表单与错误提示…'}],status:'running'}}});
-  queue={conversationId:id,paused:false,busy:true,entries:[entry('mobile','顺便补上移动端适配'),entry('keyboard','然后检查键盘操作与焦点状态')]};
+  queue={conversationId:id,supported:true,paused:false,busy:true,entries:[entry('mobile','顺便补上移动端适配'),entry('keyboard','然后检查键盘操作与焦点状态')]};
   useMessageQueueStore.setState({queues:{[id]:clone(queue)}});
 }
 function finish(failed=false){
@@ -50,6 +50,7 @@ const methods={
   ...native,
   listMessageQueues:async()=>queue.entries.length?[clone(queue)]:[],
   getMessageQueue:async()=>clone(queue),
+  getConversation:async()=>({...conversation,messageQueueSupported:queue.supported}),
   changeMessageQueue:async(command:MessageQueueCommand)=>{
     if(command.action==='enqueue')queue.entries.push({...clone(command.entry),conversationId:id,userMessageId:`user-${command.entry.id}`,assistantMessageId:`assistant-${command.entry.id}`,createdAt:now,sending:false});
     if(command.action==='remove')queue.entries=queue.entries.filter(item=>item.id!==command.id);

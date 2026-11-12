@@ -1665,7 +1665,6 @@ export function registerCliIpc() {
     "cli:archiveConversation",
     (_e, args: { id: string; archived: boolean }) => {
       if (!requireOwnedConversation(args.id)) return;
-      if (args.archived) pauseMessageQueue(args.id, "archived");
       archiveConversation(args.id, args.archived);
       notifyConversationsChanged();
     }

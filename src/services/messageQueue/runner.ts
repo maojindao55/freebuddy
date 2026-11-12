@@ -12,7 +12,7 @@ export async function dispatchQueuedMessage(entry: QueuedMessage): Promise<void>
   if (dispatching.has(id)) return;
   const conversationStore = useConversationStore.getState();
   const queue = useMessageQueueStore.getState().queues[id];
-  if (!queue || queue.paused || queue.editingId || queue.busy || queue.entries[0]?.id !== entry.id || conversationStore.isRunning(id)) return;
+  if (!queue || !queue.supported || queue.paused || queue.editingId || queue.busy || queue.entries[0]?.id !== entry.id || conversationStore.isRunning(id)) return;
   dispatching.add(id);
   try {
     let conversation = conversationStore.conversations.find(item => item.id === id);

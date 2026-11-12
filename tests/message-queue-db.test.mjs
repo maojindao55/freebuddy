@@ -228,3 +228,95 @@ test('resume waits for a cancelled preparation to release its claim',async t=>{
   c.queue.releaseConversationSend({conversationId:'chat',sessionId:'cancelled'},1);
   assert.equal(c.change({action:'resume'}).paused,false);
 });
+
+test('host queue capability includes completed runs even before the UI loads a workflow', async t => {
+  const c = await setup(t); if (!c) return;
+  assert.equal(c.conversations.getConversation('chat').messageQueueSupported, true);
+  const workflows = await import('../dist-electron/cli/workflows.js');
+  c.as('alice', () => workflows.createWorkflowRun({
+    id: 'finished-workflow', conversationId: 'chat', name: 'Review', goal: 'done',
+    status: 'completed', maxLoops: 1, planJson: '{"phases":[]}'
+  }));
+  const conversation = c.conversations.getConversation('chat');
+  assert.equal(conversation.kind, 'default', 'capability does not depend on a persisted type change');
+  assert.equal(conversation.messageQueueSupported, false);
+  assert.equal(c.snapshot().supported, false);
+  assert.throws(() => c.enqueue('blocked'), /message_queue_unsupported/);
+});
+
+test('migration repairs legacy team kinds without changing explicit kinds or the timeline', async t => {
+  const c = await setup(t); if (!c) return;
+  const workflows = await import('../dist-electron/cli/workflows.js');
+  const delegation = await import('../dist-electron/cli/delegationRuns.js');
+  for (const [id, kind] of [['legacy-team', 'default'], ['legacy-workflow', 'default'], ['document', 'doc-studio']]) {
+    c.create(id, 'alice', kind);
+    c.as('alice', () => workflows.createWorkflowRun({
+      id: `workflow-${id}`, conversationId: id, name: id, goal: 'done',
+      status: 'completed', maxLoops: 1, planJson: '{"phases":[]}'
+    }));
+  }
+  c.as('alice', () => delegation.createDelegationRun({
+    id: 'legacy-delegation', conversationId: 'legacy-team', goal: 'done', teamId: 'team', teamSnapshotJson: '{}'
+  }));
+  const before = c.conversations.getConversation('legacy-team');
+  c.database.migrate(c.db); c.database.migrate(c.db);
+  const repaired = c.conversations.getConversation('legacy-team');
+  assert.equal(repaired.kind, 'delegation', 'delegation takes precedence over an older workflow');
+  assert.equal(repaired.updatedAt, before.updatedAt);
+  assert.equal(repaired.createdAt, before.createdAt);
+  assert.equal(repaired.messageQueueSupported, false);
+  assert.equal(c.conversations.getConversation('legacy-workflow').kind, 'workflow');
+  assert.equal(c.conversations.getConversation('document').kind, 'doc-studio');
+});
+
+test('document conversion pauses pending prompts but leaves them editable and removable', async t => {
+  const c = await setup(t); if (!c) return;
+  c.enqueue('pending');
+  c.as('alice', () => c.conversations.markDocStudioConversation('chat', '/tmp/queue-regression.docx'));
+  assert.equal(c.db.prepare("SELECT paused FROM conversation_queue_state WHERE conversation_id = 'chat'").get().paused, 1);
+  const state = c.snapshot();
+  assert.equal(state.supported, false); assert.equal(state.paused, true); assert.equal(state.reason, 'unsupported');
+  assert.equal(state.entries[0].prompt, 'pending');
+  assert.throws(() => c.change({ action: 'resume' }), /message_queue_unsupported/);
+  c.change({ action: 'edit', id: 'pending', token: 'editor' });
+  c.change({ action: 'save', id: 'pending', token: 'editor', prompt: 'saved for later' });
+  assert.equal(c.snapshot().entries[0].prompt, 'saved for later');
+  c.change({ action: 'remove', id: 'pending' });
+  assert.equal(c.snapshot().entries.length, 0);
+});
+
+test('a run attached to a queued chat pauses dispatch on the next snapshot', async t => {
+  const c = await setup(t); if (!c) return;
+  c.enqueue('pending');
+  const delegation = await import('../dist-electron/cli/delegationRuns.js');
+  c.as('alice', () => delegation.createDelegationRun({
+    id: 'attached-team', conversationId: 'chat', goal: 'work', teamId: 'team', teamSnapshotJson: '{}'
+  }));
+  const state = c.as('alice', () => c.queue.listMessageQueues())[0];
+  assert.equal(state.supported, false); assert.equal(state.paused, true); assert.equal(state.reason, 'unsupported');
+  assert.equal(state.error, undefined, 'an unsupported conversation is a capability change, not a dispatch failure');
+  assert.equal(state.entries.length, 1);
+});
+
+test('all archive callers pause pending messages and restoring does not auto-resume them', async t => {
+  const c = await setup(t); if (!c) return;
+  c.enqueue('pending');
+  c.conversations.archiveConversation('chat', true);
+  const row = c.db.prepare("SELECT paused, reason FROM conversation_queue_state WHERE conversation_id = 'chat'").get();
+  assert.deepEqual(row, { paused: 1, reason: 'archived' });
+  assert.equal(c.snapshot().supported, false);
+  c.conversations.archiveConversation('chat', false);
+  assert.equal(c.snapshot().supported, true); assert.equal(c.snapshot().paused, true);
+  c.change({ action: 'resume' }); assert.equal(c.claim('restored-send', 'pending'), true);
+});
+
+test('a queued preparation cannot launch after the conversation changes kind', async t => {
+  const c = await setup(t); if (!c) return;
+  c.enqueue('pending'); assert.equal(c.claim('preparing', 'pending'), true);
+  c.persist(c.snapshot().entries[0], 'preparing');
+  c.as('alice', () => c.conversations.markDocStudioConversation('chat', '/tmp/queue-regression.docx'));
+  assert.throws(() => c.accept('preparing'), /message_queue_unsupported/);
+  c.queue.releaseConversationSend({ conversationId: 'chat', sessionId: 'preparing' }, 1);
+  const state = c.snapshot();
+  assert.equal(state.entries.length, 1); assert.equal(state.entries[0].sending, false); assert.equal(state.paused, true);
+});

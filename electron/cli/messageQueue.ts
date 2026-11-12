@@ -5,6 +5,7 @@ import { requireOwnedConversation, updateMessage } from "./conversations.js";
 import { cleanupManagedAttachmentsIfUnreferenced } from "./attachments.js";
 import { clearSessionOwner, getSessionOwner } from "./sessionOwners.js";
 import type { CliEvent } from "./runtimeShared.js";
+import { supportsMessageQueue } from "../shared/messageQueueTypes.js";
 import type {
   ConversationSendClaim, MessageQueueCommand, MessageQueueSnapshot,
   QueuedMessage, QueuedMessageInput
@@ -40,9 +41,7 @@ function owned(id: string) {
 }
 
 function queueSupported(id: string) {
-  const conversation = owned(id);
-  if (conversation.archived || (conversation.kind && conversation.kind !== "default") ||
-      getDb().prepare("SELECT 1 FROM workflow_runs WHERE conversation_id = ? LIMIT 1").get(id)) {
+  if (!supportsMessageQueue(owned(id))) {
     throw new Error("message_queue_unsupported");
   }
 }
@@ -84,9 +83,10 @@ function databaseBusy(id: string): boolean {
 }
 
 export function getMessageQueue(id: string): MessageQueueSnapshot {
-  owned(id);
+  const conversation = owned(id);
+  const supported = supportsMessageQueue(conversation);
   expireLeases(id);
-  const row = getDb().prepare("SELECT paused, reason, error FROM conversation_queue_state WHERE conversation_id = ?").get(id) as { paused: number; reason: string | null; error: string | null } | undefined;
+  let row = getDb().prepare("SELECT paused, reason, error FROM conversation_queue_state WHERE conversation_id = ?").get(id) as { paused: number; reason: string | null; error: string | null } | undefined;
   const rows = getDb().prepare("SELECT * FROM conversation_message_queue WHERE conversation_id = ? ORDER BY sequence").all(id) as Array<{
     payload: string; user_message_id: string; assistant_message_id: string; created_at: string; claim_token: string | null
   }>;
@@ -95,7 +95,12 @@ export function getMessageQueue(id: string): MessageQueueSnapshot {
     userMessageId: item.user_message_id, assistantMessageId: item.assistant_message_id,
     createdAt: item.created_at, sending: Boolean(item.claim_token)
   }));
-  return { conversationId: id, entries, paused: Boolean(row?.paused) && entries.length > 0,
+  if (!supported && entries.length) {
+    const reason = conversation.archived ? "archived" : "unsupported";
+    if (!row?.paused || row.reason !== reason || row.error) setPaused(id, true, reason);
+    row = { paused: 1, reason, error: null };
+  }
+  return { conversationId: id, supported, entries, paused: Boolean(row?.paused) && entries.length > 0,
     reason: row?.reason ?? undefined, error: row?.error ?? undefined, editingId: editors.get(id)?.id,
     busy: claims.has(id) || databaseBusy(id) };
 }
@@ -108,7 +113,7 @@ export function listMessageQueues(): MessageQueueSnapshot[] {
 export function changeMessageQueue(command: MessageQueueCommand, windowId: number): MessageQueueSnapshot {
   const id = command.conversationId;
   owned(id);
-  if (command.action !== "pause" && command.action !== "remove" && command.action !== "cancelEdit") queueSupported(id);
+  if (command.action === "enqueue" || command.action === "resume") queueSupported(id);
   expireLeases(id);
   const state = getMessageQueue(id);
   if (command.action === "enqueue") {
@@ -206,6 +211,7 @@ export function acceptConversationSend(input: ConversationSendClaim, windowId: n
   const claim = claims.get(input.conversationId);
   if (!claim || claim.sessionId !== input.sessionId || claim.windowId !== windowId || claim.cancelled || claim.running) throw new Error("conversation_send_not_claimed");
   if (claim.queueId) {
+    queueSupported(input.conversationId);
     const queue = getMessageQueue(input.conversationId);
     if (queue.paused || queue.editingId) throw new Error("message_queue_paused");
     const entry = queue.entries.find(item => item.id === claim.queueId);

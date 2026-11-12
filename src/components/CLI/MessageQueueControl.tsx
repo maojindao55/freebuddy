@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useMessageQueueStore } from "@/store/messageQueueStore";
 import type { MessageQueueCommand, QueuedMessage } from "../../../electron/shared/messageQueueTypes";
 
-export function MessageQueueControl({ conversationId }: { conversationId: string }) {
+export function MessageQueueControl({ conversationId, supported }: { conversationId: string; supported: boolean }) {
   const { t } = useTranslation();
   const queue = useMessageQueueStore(state => state.queues[conversationId]);
   const change = useMessageQueueStore(state => state.change);
@@ -71,13 +71,14 @@ export function MessageQueueControl({ conversationId }: { conversationId: string
     }
   }
   if (!queue?.entries.length) return null;
+  const canSend = supported && queue.supported;
   const editingElsewhere = Boolean(queue.editingId && queue.editingId !== editing);
   const waitingForFinish = queue.paused && queue.busy && (queue.reason === "stopped" || queue.reason === "failed");
-  const status = editing ? t("messageQueue.editing") : editingElsewhere ? t("messageQueue.editingElsewhere") : waitingForFinish ? t("messageQueue.waitingForFinish") : queue.paused ? t(`messageQueue.reason.${queue.reason ?? "manual"}`) : undefined;
+  const status = editing ? t("messageQueue.editing") : editingElsewhere ? t("messageQueue.editingElsewhere") : !canSend ? t(`messageQueue.reason.${queue.reason === "archived" ? "archived" : "unsupported"}`) : waitingForFinish ? t("messageQueue.waitingForFinish") : queue.paused ? t(`messageQueue.reason.${queue.reason ?? "manual"}`) : undefined;
   return <div className="message-queue-control" ref={rootRef}>
     {open && <section className="message-queue-popover" id={`message-queue-${conversationId}`} role="dialog" aria-label={t("messageQueue.title")}>
       <header><div><h3>{t("messageQueue.count", { count: queue.entries.length })}</h3>{status && <p>{status}</p>}</div>
-        <button type="button" className="message-queue-icon" disabled={pending || Boolean(queue.editingId) || waitingForFinish} title={t(queue.paused ? "messageQueue.resume" : "messageQueue.pause")} aria-label={t(queue.paused ? "messageQueue.resume" : "messageQueue.pause")} onClick={() => void mutate({ conversationId, action: queue.paused ? "resume" : "pause" })}>{queue.paused ? <Play size={16} /> : <Pause size={16} />}</button>
+        <button type="button" className="message-queue-icon" disabled={!canSend || pending || Boolean(queue.editingId) || waitingForFinish} title={t(queue.paused ? "messageQueue.resume" : "messageQueue.pause")} aria-label={t(queue.paused ? "messageQueue.resume" : "messageQueue.pause")} onClick={() => void mutate({ conversationId, action: queue.paused ? "resume" : "pause" })}>{queue.paused ? <Play size={16} /> : <Pause size={16} />}</button>
       </header>
       <ol>{queue.entries.map((entry, index) => <li key={entry.id}>
         <span className="message-queue-number">{index + 1}</span>
@@ -103,9 +104,9 @@ export function MessageQueueControl({ conversationId }: { conversationId: string
       {error && <p className="message-queue-error" role="alert">{error}</p>}
       {queue.paused && queue.error && <p className="message-queue-error" role="alert">{queue.error}</p>}
     </section>}
-    <button type="button" className={`message-queue-trigger${queue.paused ? " paused" : ""}`} ref={triggerRef} aria-expanded={open} aria-controls={`message-queue-${conversationId}`} onClick={() => { if (!editing) setOpen(!open); }}>
-      <span><List size={16} /><strong>{t("messageQueue.count", { count: queue.entries.length })}</strong>{queue.paused && <small>{t("messageQueue.paused")}</small>}</span>
-      <span className="message-queue-timing">{t(queue.paused ? "messageQueue.waitingResume" : "messageQueue.afterReplyShort")}<ChevronDown size={16} className={open ? "expanded" : undefined} /></span>
+    <button type="button" className={`message-queue-trigger${queue.paused || !canSend ? " paused" : ""}`} ref={triggerRef} aria-expanded={open} aria-controls={`message-queue-${conversationId}`} onClick={() => { if (!editing) setOpen(!open); }}>
+      <span><List size={16} /><strong>{t("messageQueue.count", { count: queue.entries.length })}</strong>{(queue.paused || !canSend) && <small>{t("messageQueue.paused")}</small>}</span>
+      <span className="message-queue-timing">{t(!canSend ? "messageQueue.editHint" : queue.paused ? "messageQueue.waitingResume" : "messageQueue.afterReplyShort")}<ChevronDown size={16} className={open ? "expanded" : undefined} /></span>
     </button>
   </div>;
 }

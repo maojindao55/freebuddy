@@ -9,6 +9,7 @@ const compile = value => ts.transpileModule(value, {
 }).outputText;
 const chat = ts.createSourceFile("ChatView.tsx", fs.readFileSync(new URL("../src/components/CLI/ChatView.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const { buildReferencedPrompt } = await import(dataUrl(compile(fs.readFileSync(new URL("../src/utils/conversationReferences.ts", import.meta.url), "utf8"))));
+const { supportsMessageQueue } = await import(dataUrl(compile(fs.readFileSync(new URL("../electron/shared/messageQueueTypes.ts", import.meta.url), "utf8"))));
 
 // Execute the production send handlers with isolated service/state boundaries.
 async function handler(name, scope) {
@@ -23,14 +24,18 @@ async function handler(name, scope) {
   return module.default(scope);
 }
 
-function harness({ team = false, gate = false, delegation = false, refreshFails = false } = {}) {
+function harness({ team = false, gate = false, delegation = false, refreshFails = false, queue = false, queueError, freshConversation } = {}) {
   const calls = [];
   const record = name => (...args) => calls.push([name, ...args]);
   const member = { id: "agent", cli: { skillIds: [] } };
   const refs = [{ id: "source", title: "source", agentName: "Codex" }];
   let sequence = 0;
   const scope = {
-    attachmentBusy: false, sending: false, sendLock: false, newTaskSendLock: false, queueSend: false,
+    attachmentBusy: false, sending: false, sendLock: false, newTaskSendLock: false, queueSend: queue,
+    supportsMessageQueue, queueSubmissionRef: { current: new Map() },
+    activeConversationConfigOptions: [], sessionConfigOptions: [], snapshotSessionConfigOptionOverrides: () => ({}),
+    setMessageSkillDrafts: record('skillDrafts'), setReferenceDrafts: record('referenceDrafts'),
+    enqueueMessage: async (...args) => { record('enqueue')(...args); if (queueError) throw new Error(queueError); },
     sendInFlightRef: { current: false }, newTaskSendInFlightRef: { current: false },
     attachmentImportGenerationRef: { current: 0 }, isNearBottomRef: { current: false },
     draft: "use context", newTaskDraft: "use context", pendingAttachments: [], newTaskPendingAttachments: [],
@@ -52,6 +57,8 @@ function harness({ team = false, gate = false, delegation = false, refreshFails 
     sendMessage: async args => { record("send")(args); return true; },
     updateContextReferences: record("refs"), notify: record("notify"),
     cliClient: {
+      isMessageQueueAvailable: () => true,
+      getConversation: async () => freshConversation ?? { id: 'target', kind: 'default', archived: false, messageQueueSupported: true },
       createConversationShare: async () => ({ link: "freebuddy://conversation-share/v1/abcdefghijklmnopqrstuv" }),
       attachConversationShares: async input => {
         record("attach")(input);
@@ -65,13 +72,91 @@ function harness({ team = false, gate = false, delegation = false, refreshFails 
     },
     delegationClient: { isAvailable: () => delegation, hasRunForConversation: async () => delegation,
       followUp: async args => { record("followup")(args); return { ok: true }; } },
-    useConversationStore: { setState: () => {}, getState: () => ({ loadMessages: async () => {
+    useConversationStore: { setState: record('conversationState'), getState: () => ({ activeId: 'target', loadMessages: async () => {
       if (refreshFails) throw new Error("load failed");
     } }) }
   };
   for (const name of ["setSendLock", "setNewTaskSendLock", "setPreflightMsg", "setDraft", "setNewTaskDraft", "setMessageSkills", "setNewTaskMessageSkills", "setPendingAttachments", "setNewTaskPendingAttachments", "setSubmitPreview", "setPreferredAgentId", "setSelectedReferences", "setPendingWorkflowAction"]) scope[name] = record(name);
   return { calls, scope };
 }
+
+test('a stale queue decision routes a legacy self-organizing followup to the delegation bus', async () => {
+  const { scope, calls } = harness({ queue: true, delegation: true,
+    freshConversation: { id: 'target', kind: 'default', archived: false, messageQueueSupported: false } });
+  scope.queueSubmissionRef.current.set('target', { id: 'failed-attempt', fingerprint: 'old' });
+  await (await handler('onSend', scope))();
+  assert.equal(calls.filter(([kind]) => kind === 'followup').length, 1);
+  assert.equal(calls.some(([kind]) => kind === 'enqueue' || kind === 'send'), false);
+  assert.equal(scope.queueSubmissionRef.current.has('target'), false);
+});
+
+test('stale queue eligibility cannot enqueue or start a second turn while a team is still busy', async () => {
+  const { scope, calls } = harness({ queue: true, delegation: true,
+    freshConversation: { id: 'target', kind: 'delegation', archived: false, messageQueueSupported: false } });
+  scope.sending = true;
+  await (await handler('onSend', scope))();
+  assert.equal(calls.some(([kind]) => ['enqueue', 'send', 'followup', 'setDraft'].includes(kind)), false);
+  assert.equal(scope.sendInFlightRef.current, false);
+});
+
+test('archive races keep the draft and do not attempt to enqueue', async () => {
+  const { scope, calls } = harness({ queue: true,
+    freshConversation: { id: 'target', kind: 'default', archived: true, messageQueueSupported: false } });
+  await (await handler('onSend', scope))();
+  assert.equal(calls.some(([kind]) => ['enqueue', 'send', 'setDraft'].includes(kind)), false);
+  assert.ok(calls.some(([kind, value]) => kind === 'setPreflightMsg' && value === 'messageQueue.conversationUnavailable'));
+  assert.equal(scope.sendInFlightRef.current, false);
+});
+
+test('a late unsupported response clears only this conversation retry and keeps the draft', async () => {
+  const { scope, calls } = harness({ queue: true, queueError: "Error invoking remote method 'cli:changeMessageQueue': Error: message_queue_unsupported" });
+  scope.queueSubmissionRef.current.set('another-chat', { id: 'other-attempt', fingerprint: 'other' });
+  await (await handler('onSend', scope))();
+  assert.equal(calls.filter(([kind]) => kind === 'enqueue').length, 1);
+  assert.equal(scope.queueSubmissionRef.current.has('target'), false);
+  assert.equal(scope.queueSubmissionRef.current.has('another-chat'), true);
+  assert.equal(calls.some(([kind]) => kind === 'setDraft'), false);
+  assert.ok(calls.some(([kind, value]) => kind === 'setPreflightMsg' && value === 'messageQueue.unavailable'));
+});
+
+test('lost-response retries keep a stable id scoped to the original conversation', async () => {
+  const { scope, calls } = harness({ queue: true, queueError: 'IPC response lost' });
+  await (await handler('onSend', scope))();
+  await (await handler('onSend', scope))();
+  const attempts = calls.filter(([kind]) => kind === 'enqueue');
+  assert.equal(attempts.length, 2); assert.equal(attempts[0][2].id, attempts[1][2].id);
+  scope.conv = { id: 'another-chat', kind: 'default', archived: false };
+  scope.queueSupported = true; scope.sending = false; scope.messageQueue = undefined;
+  assert.equal(await handler('queueSend', scope), false, 'an unrelated retry cannot force an idle chat into the queue');
+});
+
+test('host capability disables the queue before workflow state is loaded', async () => {
+  const { scope } = harness();
+  scope.activeRun = null; scope.messageQueue = undefined;
+  scope.conv = { id: 'target', kind: 'default', archived: false, messageQueueSupported: false };
+  assert.equal(await handler('queueSupported', scope), false);
+  scope.conv = { id: 'target', kind: 'default', archived: true, messageQueueSupported: true };
+  assert.equal(await handler('queueSupported', scope), false);
+  scope.conv = { id: 'target', kind: 'default', archived: false, messageQueueSupported: true };
+  assert.equal(await handler('queueSupported', scope), true);
+});
+
+test('the background runner never dispatches an unsupported snapshot', async () => {
+  const file = ts.createSourceFile('runner.ts', fs.readFileSync(new URL('../src/services/messageQueue/runner.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
+  const node = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'dispatchQueuedMessage');
+  const factory = (await import(dataUrl(compile(`export default scope => {
+    const { dispatching, useConversationStore, useMessageQueueStore } = scope;
+    ${node.getText(file).replace(/^export /, '')}
+    return dispatchQueuedMessage;
+  };`)))).default;
+  const entry = { id: 'pending', conversationId: 'team' };
+  const state = { queues: { team: { supported: false, paused: false, busy: false, entries: [entry] } } };
+  let sent = false;
+  const dispatch = factory({ dispatching: new Set(), useMessageQueueStore: { getState: () => state },
+    useConversationStore: { getState: () => ({ isRunning: () => false, sendMessage: () => { sent = true; } }) } });
+  await dispatch(entry);
+  assert.equal(sent, false);
+});
 
 for (const scenario of [
   { label: "new conversation", name: "onCreateAndSend", sent: "send" },

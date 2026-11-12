@@ -2980,6 +2980,8 @@
     "enqueue": "Add to queue",
     "enqueued": "Added to the message queue",
     "enqueueFailed": "Could not add to queue: {{error}}",
+    "unavailable": "This conversation cannot queue messages. Your draft is saved; send it after the current reply finishes.",
+    "conversationUnavailable": "This conversation is archived or unavailable. Your draft is saved.",
     "busy": "This conversation is busy. Your draft has been kept; try again.",
     "paused": "Paused",
     "waitingResume": "Waiting to resume",
@@ -3003,7 +3005,8 @@
       "failed": "The reply failed; pending messages are saved",
       "restart": "Restored after restart; resume when you are ready",
       "interrupted": "Sending was interrupted; pending messages are saved",
-      "archived": "This conversation was archived"
+      "archived": "This conversation was archived",
+      "unsupported": "Automatic sending is unavailable; pending messages are saved and can be edited or removed"
     },
     "enterHint": "Enter to queue · Shift+Enter for newline",
     "waitingForFinish": "Waiting for the current reply to finish saving"

@@ -714,6 +714,7 @@ export interface Conversation {
   skillSnapshot: SkillSnapshot[];
   titleSource?: ConversationTitleSource;
   archived: boolean;
+  messageQueueSupported?: boolean;
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;

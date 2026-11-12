@@ -30,8 +30,19 @@ export interface QueuedMessage extends QueuedMessageInput {
   sending: boolean;
 }
 
+/** The host also checks historical workflow/delegation runs when setting this flag. */
+export function supportsMessageQueue(conversation?: {
+  kind?: string;
+  archived?: boolean;
+  messageQueueSupported?: boolean;
+} | null): boolean {
+  return Boolean(conversation && !conversation.archived &&
+    (!conversation.kind || conversation.kind === "default") && conversation.messageQueueSupported !== false);
+}
+
 export interface MessageQueueSnapshot {
   conversationId: string;
+  supported: boolean;
   entries: QueuedMessage[];
   paused: boolean;
   reason?: string;

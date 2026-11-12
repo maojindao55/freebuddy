@@ -38,6 +38,7 @@ import { OnboardingGuideSetupCard } from "@/components/Onboarding/OnboardingGuid
 import { useConversationStore } from "@/store/conversationStore";
 import { useMessageQueueStore } from "@/store/messageQueueStore";
 import { MessageQueueControl } from "./MessageQueueControl";
+import { supportsMessageQueue } from "../../../electron/shared/messageQueueTypes";
 import { startMessageQueueRunner } from "@/services/messageQueue/runner";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useGuideInstallStore } from "@/store/guideInstallStore";
@@ -947,7 +948,7 @@ export function ChatView({
   const stopActive = useConversationStore((s) => s.stopActive);
   const messageQueue = useMessageQueueStore(s => activeId ? s.queues[activeId] : undefined);
   const enqueueMessage = useMessageQueueStore(s => s.enqueue);
-  const queueSubmissionRef = useRef<{ fingerprint: string; id: string } | undefined>(undefined);
+  const queueSubmissionRef = useRef(new Map<string, { fingerprint: string; id: string }>());
   useEffect(() => startMessageQueueRunner(), []);
   const notify = useAgentBridgeStore((s) => s.notify);
   const scheduledSend = useScheduledSendStore((s) =>
@@ -1260,9 +1261,10 @@ export function ChatView({
   const sending =
     running ||
     (submitPreview !== null && submitPreview.conversationId === conv?.id);
-  const queueSupported = Boolean(conv && (!conv.kind || conv.kind === "default") &&
-    activeRun?.conversationId !== conv.id && !pendingWorkflowAction && cliClient.isMessageQueueAvailable());
-  const queueSend = queueSupported && Boolean(sending || messageQueue?.entries.length || messageQueue?.busy || queueSubmissionRef.current);
+  const queueSupported = Boolean(conv && supportsMessageQueue(conv) &&
+    messageQueue?.supported !== false && activeRun?.conversationId !== conv.id &&
+    !pendingWorkflowAction && cliClient.isMessageQueueAvailable());
+  const queueSend = queueSupported && Boolean(sending || messageQueue?.entries.length || messageQueue?.busy || (conv && queueSubmissionRef.current.has(conv.id)));
   const prevSendingRef = useRef(sending);
   useEffect(() => {
     if (prevSendingRef.current && !sending) {
@@ -2436,6 +2438,7 @@ export function ChatView({
         const cwd = preparedWorkspace?.cwd;
         const newConv = await createConversation({
           member: teamMember,
+          kind: "workflow",
           cwd,
           projectId: newTaskProjectId,
           metadata: buildNewTaskMetadata(
@@ -2591,8 +2594,45 @@ export function ChatView({
   };
 
   const onSend = async () => {
-    if (newTaskSendLock) return;
-    if (queueSend && conv) {
+    if (newTaskSendLock || attachmentBusy || sendInFlightRef.current || sendLock || !conv) return;
+    if (!draft.trim() && !pendingAttachments.length) return;
+    const refreshQueueSupport = async () => {
+      const fresh = await cliClient.getConversation(conv.id);
+      if (fresh) useConversationStore.setState(state => ({
+        conversations: state.conversations.map(item => item.id === fresh.id ? {
+          ...item, kind: fresh.kind, archived: fresh.archived, messageQueueSupported: fresh.messageQueueSupported
+        } : item)
+      }));
+      return fresh;
+    };
+    let shouldEnqueue = queueSend;
+    if (shouldEnqueue) {
+      // A different window or a team run may have changed this conversation
+      // since the composer rendered. Never route that stale view into the outbox.
+      sendInFlightRef.current = true;
+      setSendLock(true);
+      protectManagedAttachments(pendingAttachments);
+      try {
+        const fresh = await refreshQueueSupport();
+        if (!fresh || fresh.archived) {
+          queueSubmissionRef.current.delete(conv.id);
+          const message = t("messageQueue.conversationUnavailable");
+          if (useConversationStore.getState().activeId === conv.id) setPreflightMsg(message);
+          else notify(message);
+          return;
+        }
+        shouldEnqueue = supportsMessageQueue(fresh);
+        if (!shouldEnqueue) queueSubmissionRef.current.delete(conv.id);
+      } catch (error) {
+        setPreflightMsg(t("errors.sendFailed", { err: error instanceof Error ? error.message : String(error) }));
+        return;
+      } finally {
+        unprotectManagedAttachments(pendingAttachments);
+        sendInFlightRef.current = false;
+        setSendLock(false);
+      }
+    }
+    if (shouldEnqueue) {
       if (attachmentBusy || sendInFlightRef.current || sendLock) return;
       if (!draft.trim() && !pendingAttachments.length) return;
       const conversationId = conv.id;
@@ -2604,13 +2644,16 @@ export function ChatView({
         configOptionOverrides: snapshotSessionConfigOptionOverrides(conv.configOptionOverrides, activeConversationConfigOptions ?? sessionConfigOptions), hiddenContext: getPromptContext?.()
       };
       const fingerprint = JSON.stringify({ conversationId, ...entry });
-      if (queueSubmissionRef.current?.fingerprint !== fingerprint) queueSubmissionRef.current = { fingerprint, id: nanoid() };
+      if (queueSubmissionRef.current.get(conversationId)?.fingerprint !== fingerprint) {
+        queueSubmissionRef.current.set(conversationId, { fingerprint, id: nanoid() });
+      }
+      const submission = queueSubmissionRef.current.get(conversationId)!;
       sendInFlightRef.current = true;
       setSendLock(true);
       protectManagedAttachments(attachments);
       try {
-        await enqueueMessage(conversationId, { ...entry, id: queueSubmissionRef.current.id });
-        queueSubmissionRef.current = undefined;
+        await enqueueMessage(conversationId, { ...entry, id: submission.id });
+        queueSubmissionRef.current.delete(conversationId);
         setMessageSkillDrafts(current => ({ ...current, [conversationId]: (current[conversationId] ?? []).filter(skill => !entry.messageSkills.some(sent => sent.id === skill.id)) }));
         setReferenceDrafts(current => ({ ...current, [conversationId]: (current[conversationId] ?? []).filter(reference => !entry.conversationReferences.some(sent => sent.id === reference.id)) }));
         if (useConversationStore.getState().activeId === conversationId) {
@@ -2624,7 +2667,13 @@ export function ChatView({
         }
         notify(t("messageQueue.enqueued"));
       } catch (error) {
-        const message = t("messageQueue.enqueueFailed", { error: error instanceof Error ? error.message : String(error) });
+        const detail = error instanceof Error ? error.message : String(error);
+        const unavailable = /message_queue_unsupported|conversation_not_found/.test(detail);
+        if (unavailable) {
+          queueSubmissionRef.current.delete(conversationId);
+          await refreshQueueSupport().catch(() => {});
+        }
+        const message = unavailable ? t("messageQueue.unavailable") : t("messageQueue.enqueueFailed", { error: detail });
         if (useConversationStore.getState().activeId === conversationId) setPreflightMsg(message);
         else notify(message);
       } finally {
@@ -2923,6 +2972,7 @@ export function ChatView({
       const cwd = preparedWorkspace?.cwd ?? pendingTeamPreview.cwd;
       const newConv = await createConversation({
         member: teamMember,
+        kind: "workflow",
         cwd,
         projectId: newTaskProjectId,
         metadata: buildNewTaskMetadata(
@@ -3402,7 +3452,7 @@ export function ChatView({
         onDragOver={composerDropHandlers.onDragOver}
         onDrop={composerDropHandlers.onDrop}
       >
-        {queueSupported && <MessageQueueControl key={conv.id} conversationId={conv.id} />}
+        {(queueSupported || Boolean(messageQueue?.entries.length)) && <MessageQueueControl key={conv.id} conversationId={conv.id} supported={queueSupported} />}
         {conversationDrop.dragActive && <div className="conversation-drop-overlay" role="status">
           <MessagesSquare size={20} aria-hidden="true" />{t("contextShare.dropToReference")}
         </div>}

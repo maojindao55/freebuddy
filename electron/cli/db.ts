@@ -1002,6 +1002,15 @@ export function migrate(db: DB) {
     db.exec("ALTER TABLE workflow_runs ADD COLUMN runtime_api_version TEXT");
   }
 
+  // Older team chats were created as default conversations. Their run records
+  // remain authoritative even after completion; preserve explicit special kinds.
+  db.exec(`UPDATE conversations SET kind = CASE WHEN EXISTS (
+      SELECT 1 FROM workflow_runs WHERE conversation_id = conversations.id AND kind = 'delegation'
+    ) THEN 'delegation' ELSE 'workflow' END
+    WHERE COALESCE(kind, 'default') IN ('', 'default') AND EXISTS (
+      SELECT 1 FROM workflow_runs WHERE conversation_id = conversations.id
+    )`);
+
   const workflowStepCols = db
     .prepare("PRAGMA table_info(workflow_steps)")
     .all() as Array<{ name: string }>;

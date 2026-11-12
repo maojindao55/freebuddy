@@ -25,6 +25,7 @@ import {
   type RemoteWorkspace
 } from "./remoteWorkspaces.js";
 import { safeSendToWebContents } from "./ipcSend.js";
+import { supportsMessageQueue } from "../shared/messageQueueTypes.js";
 import {
   IPC_LIST_MESSAGES_PAGE_SIZE,
   IPC_LIST_MESSAGES_PAGE_CHARS,
@@ -80,6 +81,7 @@ export interface Conversation {
   skillSnapshot: SkillSnapshot[];
   titleSource?: ConversationTitleSource;
   archived: boolean;
+  messageQueueSupported?: boolean;
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;
@@ -193,13 +195,18 @@ function rowToConversation(
   ) {
     sourceCwd = (taskWorkspace as Record<string, unknown>).sourceCwd as string;
   }
+  const kind = (r.kind as ConversationKind) || "default";
+  const archived = r.archived === 1;
+  const messageQueueSupported = supportsMessageQueue({ kind, archived }) &&
+    !getDb().prepare("SELECT 1 FROM workflow_runs WHERE conversation_id = ? LIMIT 1").get(r.id);
   return {
     id: r.id,
     title: r.title,
     agentId: r.agent_id,
     agentName: r.agent_name,
     adapter: r.adapter,
-    kind: (r.kind as ConversationKind) || "default",
+    kind,
+    messageQueueSupported,
     metadata,
     cwd,
     sourceCwd,
@@ -213,7 +220,7 @@ function rowToConversation(
     ),
     skillSnapshot: parseSkillSnapshot(r.skill_snapshot),
     titleSource: parseTitleSource(r.title_source),
-    archived: r.archived === 1,
+    archived,
     pinned: r.pinned === 1,
     pinnedAt: r.pinned_at ?? undefined,
     /** Manual list position; null = order by activity (new arrivals float in). */
@@ -443,9 +450,11 @@ export function markDocStudioConversation(id: string, filePath?: string): boolea
   if (conv.kind === "doc-studio" && (!filePath || conv.metadata?.docStudioFilePath === filePath)) {
     return true;
   }
-  getDb()
-    .prepare("UPDATE conversations SET kind = ?, metadata = ? WHERE id = ?")
-    .run("doc-studio", JSON.stringify(metadata), id);
+  getDb().transaction(() => {
+    getDb().prepare("UPDATE conversations SET kind = ?, metadata = ? WHERE id = ?")
+      .run("doc-studio", JSON.stringify(metadata), id);
+    pausePendingMessages(id, "unsupported");
+  })();
   notifyConversationsChanged();
   return true;
 }
@@ -750,13 +759,20 @@ export function updateConversationAgentName(
     .run(agentName, now, agentId);
 }
 
+function pausePendingMessages(id: string, reason: string): void {
+  getDb().prepare(`UPDATE conversation_queue_state SET paused = 1, reason = ?, error = NULL
+    WHERE conversation_id = ? AND EXISTS (
+      SELECT 1 FROM conversation_message_queue WHERE conversation_id = ?
+    )`).run(reason, id, id);
+}
+
 export function archiveConversation(id: string, archived: boolean): void {
   const now = new Date().toISOString();
-  getDb()
-    .prepare(
-      `UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?`
-    )
-    .run(archived ? 1 : 0, now, id);
+  getDb().transaction(() => {
+    getDb().prepare(`UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?`)
+      .run(archived ? 1 : 0, now, id);
+    if (archived) pausePendingMessages(id, "archived");
+  })();
 }
 
 export function deleteConversation(id: string): void {

@@ -1259,9 +1259,16 @@ export interface BridgeRoute {
   chatPath: string;
 }
 
-export interface BridgeRequestLog {
+interface BridgeLogContext {
+  requestId: string;
+  routeId: string;
   model: string;
   stream: boolean;
+  maxOutputTokens?: number;
+}
+
+export interface BridgeRequestLog extends BridgeLogContext {
+  event: "request";
   toolNames: string[];
   customToolNames: string[];
   localShellToolNames: string[];
@@ -1269,21 +1276,114 @@ export interface BridgeRequestLog {
   droppedToolTypes: string[];
 }
 
-/** Injected from the Electron main process so this module stays Electron-free. */
-let bridgeLogger: ((log: BridgeRequestLog) => void) | undefined;
+type BridgeTermination = "sse_done" | "eof" | "json" | "http_error" |
+  "invalid_response" | "request_error" | "upstream_error" | "client_closed";
 
-/** Wire a logger to surface tool-translation summaries in the debug log. */
+export interface BridgeCompletionLog extends BridgeLogContext {
+  event: "completion";
+  termination: BridgeTermination;
+  durationMs: number;
+  attempts: number;
+  status?: number;
+  responseFormat?: "sse" | "sniffed_sse" | "json";
+  upstreamRequestId?: string;
+  upstreamResponseId?: string;
+  bridgeResponseId?: string;
+  finishReasons: { index: number; reason: string | null }[];
+  sawDone: boolean;
+  chunkCount: number;
+  malformedChunkCount: number;
+  upstreamError: boolean;
+  errorCode?: string;
+  usage?: JsonObject;
+}
+
+export type BridgeLog = BridgeRequestLog | BridgeCompletionLog;
+
+/** Injected from the Electron main process so this module stays Electron-free. */
+let bridgeLogger: ((log: BridgeLog) => void) | undefined;
+
+/** Log metadata only; never arbitrary headers, prompts or tool arguments. */
 export function setResponsesBridgeLogger(
-  logger: ((log: BridgeRequestLog) => void) | undefined
+  logger: ((log: BridgeLog) => void) | undefined
 ): void {
   bridgeLogger = logger;
 }
 
-function logBridgeRequest(log: BridgeRequestLog): void {
+function logBridgeEvent(log: BridgeLog): void {
   try {
     bridgeLogger?.(log);
   } catch {
     /* never let logging break a request */
+  }
+}
+
+/** Observe the original chat protocol before conversion discards its stop metadata. */
+class BridgeDiagnostics {
+  private readonly startedAt = Date.now();
+  private logged = false;
+  private readonly finishReasons = new Map<number, string | null>();
+  readonly result: Omit<BridgeCompletionLog, keyof BridgeLogContext | "event" | "durationMs" | "finishReasons"> = {
+    termination: "request_error",
+    attempts: 0,
+    sawDone: false,
+    chunkCount: 0,
+    malformedChunkCount: 0,
+    upstreamError: false
+  };
+
+  constructor(readonly context: BridgeLogContext) {}
+
+  observeResponse(response: IncomingMessage): void {
+    this.result.status = response.statusCode;
+    // Only provider request identifiers are allowlisted, never arbitrary headers.
+    const id = response.headers["x-request-id"] ?? response.headers["x-bce-request-id"];
+    this.result.upstreamRequestId = typeof id === "string" ? id.slice(0, 200) : undefined;
+  }
+
+  observeChat(chunk: JsonObject): void {
+    this.result.chunkCount += 1;
+    if (typeof chunk.id === "string") this.result.upstreamResponseId = chunk.id.slice(0, 200);
+    if (asObject(chunk.usage)) this.result.usage = normalizeResponsesUsage(chunk.usage);
+    if (extractUpstreamErrorMessage(chunk) !== undefined) this.result.upstreamError = true;
+    asArray(chunk.choices).forEach((raw, position) => {
+      const choice = asObject(raw);
+      const index = num(choice?.index) ?? position;
+      const reason = choice?.finish_reason;
+      // Bound metadata even if a provider returns an unexpected number of choices.
+      if (this.finishReasons.size >= 16 && !this.finishReasons.has(index)) return;
+      if (typeof reason === "string") this.finishReasons.set(index, reason.slice(0, 128));
+      else if (reason === null && !this.finishReasons.has(index)) this.finishReasons.set(index, null);
+    });
+  }
+
+  observeFrame(frame: SseFrame): JsonObject | undefined {
+    if (frame.data === "[DONE]") {
+      this.result.sawDone = true;
+      return undefined;
+    }
+    const chunk = parseJsonObject(frame.data);
+    if (chunk) this.observeChat(chunk);
+    else this.result.malformedChunkCount += 1;
+    return chunk;
+  }
+
+  observeError(error: unknown): void {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (typeof code === "string" && /^[A-Z0-9_]{1,64}$/.test(code)) this.result.errorCode = code;
+  }
+
+  finish(termination = this.result.termination): void {
+    if (this.logged) return;
+    this.logged = true;
+    logBridgeEvent({
+      ...this.context,
+      ...this.result,
+      event: "completion",
+      termination,
+      durationMs: Date.now() - this.startedAt,
+      finishReasons: [...this.finishReasons].map(([index, reason]) => ({ index, reason }))
+    });
   }
 }
 
@@ -1455,9 +1555,16 @@ async function handleBridgeRequest(
     return;
   }
 
-  logBridgeRequest({
+  const diagnostics = new BridgeDiagnostics({
+    requestId: genId("bridge"),
+    routeId: match[1],
     model: String(translated.chat.model ?? ""),
     stream: translated.stream,
+    maxOutputTokens: num(translated.chat.max_completion_tokens) ?? num(translated.chat.max_tokens)
+  });
+  logBridgeEvent({
+    ...diagnostics.context,
+    event: "request",
     toolNames: (asArray(translated.chat.tools) as JsonObject[])
       .map((tool) => asObject(tool?.function)?.name)
       .filter((name): name is string => typeof name === "string"),
@@ -1467,11 +1574,39 @@ async function handleBridgeRequest(
     droppedToolTypes: translated.droppedToolTypes
   });
 
+  try {
+    await forwardBridgeRequest(req, res, route, translated, responsesBody, diagnostics);
+  } catch (error) {
+    diagnostics.result.termination = "upstream_error";
+    diagnostics.observeError(error);
+    throw error;
+  } finally {
+    diagnostics.finish();
+  }
+}
+
+async function forwardBridgeRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  route: BridgeRoute,
+  translated: ResponsesToChatResult,
+  responsesBody: unknown,
+  diagnostics: BridgeDiagnostics
+): Promise<void> {
   const authorization = req.headers.authorization;
   const controller = new AbortController();
   res.on("close", () => {
-    if (!res.writableEnded) controller.abort();
+    if (!res.writableEnded) {
+      diagnostics.finish("client_closed");
+      controller.abort();
+    }
   });
+  const requestUpstream = async (target: BridgeRoute, body: JsonObject) => {
+    diagnostics.result.attempts += 1;
+    const response = await requestChatCompletions(target, body, authorization, controller.signal);
+    diagnostics.observeResponse(response);
+    return response;
+  };
 
   const requestModel =
     typeof asObject(responsesBody)?.model === "string"
@@ -1480,13 +1615,9 @@ async function handleBridgeRequest(
 
   let upstream: IncomingMessage;
   try {
-    upstream = await requestChatCompletions(
-      route,
-      translated.chat,
-      authorization,
-      controller.signal
-    );
+    upstream = await requestUpstream(route, translated.chat);
   } catch (error) {
+    diagnostics.observeError(error);
     sendJson(res, 502, {
       error: { message: `bridge upstream failed: ${(error as Error).message}` }
     });
@@ -1509,12 +1640,7 @@ async function handleBridgeRequest(
         base: route.base,
         chatPath: "/v1/chat/completions"
       };
-      const retried = await requestChatCompletions(
-        fallback,
-        translated.chat,
-        authorization,
-        controller.signal
-      );
+      const retried = await requestUpstream(fallback, translated.chat);
       const retriedStatus = retried.statusCode ?? 0;
       const retriedType = String(retried.headers["content-type"] ?? "");
       if (retriedStatus !== 404 && !(retriedStatus < 400 && retriedType.includes("text/html"))) {
@@ -1530,7 +1656,10 @@ async function handleBridgeRequest(
     }
   }
 
+  // A rejected fallback can leave us using the original response.
+  diagnostics.observeResponse(upstream);
   if (status >= 400) {
+    diagnostics.result.termination = "http_error";
     const text = await readUpstreamBody(upstream);
     const stripped = stripOptionalChatFields(translated.chat);
     if (
@@ -1538,13 +1667,10 @@ async function handleBridgeRequest(
       JSON.stringify(stripped) !== JSON.stringify(translated.chat)
     ) {
       try {
-        upstream = await requestChatCompletions(
-          route,
-          stripped,
-          authorization,
-          controller.signal
-        );
+        upstream = await requestUpstream(route, stripped);
       } catch (error) {
+        diagnostics.result.termination = "request_error";
+        diagnostics.observeError(error);
         sendJson(res, 502, {
           error: {
             message: `bridge upstream failed: ${(error as Error).message}`
@@ -1565,7 +1691,8 @@ async function handleBridgeRequest(
   contentType = String(upstream.headers["content-type"] ?? "");
 
   if (translated.stream && contentType.includes("text/event-stream")) {
-    await pipeUpstreamSse(upstream, res, translated, requestModel);
+    diagnostics.result.responseFormat = "sse";
+    await pipeUpstreamSse(upstream, res, translated, requestModel, diagnostics);
     return;
   }
 
@@ -1573,6 +1700,7 @@ async function handleBridgeRequest(
 
   // A few gateways stream SSE but label it application/json; sniff it.
   if (translated.stream && bodyText.trimStart().startsWith("data:")) {
+    diagnostics.result.responseFormat = "sniffed_sse";
     writeSseHead(res);
     for (const event of synthesizeSseFromChatText(
       bodyText,
@@ -1580,7 +1708,8 @@ async function handleBridgeRequest(
       translated.customToolNames,
       translated.localShellToolNames,
       translated.toolSearchToolNames,
-      translated.toolNamespaces
+      translated.toolNamespaces,
+      diagnostics
     )) {
       res.write(event);
     }
@@ -1588,11 +1717,14 @@ async function handleBridgeRequest(
     return;
   }
 
+  diagnostics.result.responseFormat = "json";
   const chatJson = parseJsonObject(bodyText);
+  if (chatJson) diagnostics.observeChat(chatJson);
   const upstreamError = chatJson
     ? extractUpstreamErrorMessage(chatJson)
     : undefined;
   if (!chatJson || upstreamError !== undefined || !asArray(chatJson.choices).length) {
+    diagnostics.result.termination = "invalid_response";
     const message =
       upstreamError ??
       `bridge could not parse upstream chat response (status ${status}, content-type ${contentType || "unknown"}, body: ${bodySnippet(bodyText)})`;
@@ -1607,6 +1739,7 @@ async function handleBridgeRequest(
     translated.toolNamespaces
   );
   if (!responseObj) {
+    diagnostics.result.termination = "invalid_response";
     sendJson(res, 502, {
       error: {
         message: `bridge could not parse upstream chat response (status ${status}, content-type ${contentType || "unknown"}, body: ${bodySnippet(bodyText)})`
@@ -1614,6 +1747,8 @@ async function handleBridgeRequest(
     });
     return;
   }
+  diagnostics.result.bridgeResponseId = String(responseObj.id);
+  diagnostics.result.termination = "json";
   if (translated.stream) {
     writeSseHead(res);
     for (const event of responsesObjectToSseEvents(responseObj)) {
@@ -1641,7 +1776,8 @@ function synthesizeSseFromChatText(
   customToolNames: string[],
   localShellToolNames: string[] = [],
   toolSearchToolNames: string[] = [],
-  toolNamespaces: ToolNamespaces = {}
+  toolNamespaces: ToolNamespaces = {},
+  diagnostics?: BridgeDiagnostics
 ): string[] {
   const stream = new ChatToResponsesStream(
     model,
@@ -1651,16 +1787,21 @@ function synthesizeSseFromChatText(
     toolNamespaces
   );
   const parser = new SseParser();
+  if (diagnostics) diagnostics.result.bridgeResponseId = stream.responseId;
   const events = [...stream.begin()];
   const feed = (frames: SseFrame[]) => {
     for (const frame of frames) {
+      const chunk = diagnostics ? diagnostics.observeFrame(frame) : parseJsonObject(frame.data);
       if (frame.data === "[DONE]") return;
-      const chunk = parseJsonObject(frame.data);
       if (chunk) events.push(...stream.handleChatChunk(chunk));
     }
   };
   feed(parser.push(text));
   feed(parser.flush());
+  if (diagnostics) {
+    diagnostics.result.termination = stream.hasUpstreamError() ? "upstream_error" :
+      diagnostics.result.sawDone ? "sse_done" : "eof";
+  }
   if (stream.hasUpstreamError()) {
     return [...events, ...stream.fail(stream.getUpstreamError() ?? "upstream error")];
   }
@@ -1723,7 +1864,8 @@ async function pipeUpstreamSse(
   upstream: IncomingMessage,
   res: ServerResponse,
   translated: ResponsesToChatResult,
-  requestModel: string | undefined
+  requestModel: string | undefined,
+  diagnostics: BridgeDiagnostics
 ): Promise<void> {
   writeSseHead(res);
   const stream = new ChatToResponsesStream(
@@ -1733,6 +1875,7 @@ async function pipeUpstreamSse(
     translated.toolSearchToolNames,
     translated.toolNamespaces
   );
+  diagnostics.result.bridgeResponseId = stream.responseId;
   for (const event of stream.begin()) res.write(event);
 
   const parser = new SseParser();
@@ -1742,8 +1885,8 @@ async function pipeUpstreamSse(
 
   const drainToClient = (text: string): boolean => {
     for (const frame of parser.push(text)) {
+      const chunk = diagnostics.observeFrame(frame);
       if (frame.data === "[DONE]") return false;
-      const chunk = parseJsonObject(frame.data);
       if (!chunk) continue;
       for (const event of stream.handleChatChunk(chunk)) {
         res.write(event);
@@ -1757,6 +1900,8 @@ async function pipeUpstreamSse(
     const done = () => {
       if (settled) return;
       settled = true;
+      diagnostics.result.termination = stream.hasUpstreamError() ? "upstream_error" :
+        diagnostics.result.sawDone ? "sse_done" : "eof";
       clearInterval(keepalive);
       if (!res.writableEnded) {
         const failure = stream.getUpstreamError();
@@ -1772,6 +1917,8 @@ async function pipeUpstreamSse(
     const fail = (error: Error) => {
       if (settled) return;
       settled = true;
+      diagnostics.result.termination = "upstream_error";
+      diagnostics.observeError(error);
       clearInterval(keepalive);
       if (!res.writableEnded) {
         for (const event of stream.fail(error.message)) res.write(event);
@@ -1782,12 +1929,14 @@ async function pipeUpstreamSse(
 
     upstream.setEncoding("utf8");
     upstream.on("data", (text: string) => {
+      if (settled) return;
       if (!drainToClient(text)) done();
     });
     upstream.on("end", () => {
+      if (settled) return;
       for (const frame of parser.flush()) {
+        const chunk = diagnostics.observeFrame(frame);
         if (frame.data === "[DONE]") break;
-        const chunk = parseJsonObject(frame.data);
         if (chunk) {
           for (const event of stream.handleChatChunk(chunk)) res.write(event);
         }

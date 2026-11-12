@@ -2,6 +2,18 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.61] - 2026-11-12
+
+### 新功能
+
+- add one-click fast-forward pull for the current branch
+
+### 问题修复
+
+- keep team conversations out of message queues
+- make the run failure card less alarming
+- surface startup failures instead of a windowless process
+
 ## [0.10.60] - 2026-11-08
 
 ### 新功能

@@ -11,6 +11,9 @@ const defaultAgentIcon: Partial<Record<CLIAdapterId, string>> = {
   "cursor-agent-acp": "Cursor",
   "kimi-acp": "Kimi",
   "qoder-acp": "Qoder",
+  // LobeHub ships no Comate mark; 文心 (ERNIE) is the brand family Comate
+  // belongs to (文心快码). Swap in a local asset if an official logo appears.
+  "comate-acp": "Wenxin",
   "codebuddy-acp": "CodeBuddy",
   "grok-acp": "Grok",
   "agy-acp": "Gemini",

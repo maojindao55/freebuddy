@@ -114,6 +114,15 @@ export const builtinCliMembers: CLIMember[] = [
     cli: { adapter: "qoder-acp", approvalMode: "auto", showStderr: true }
   },
   {
+    id: "cli-comate-acp",
+    kind: "cli",
+    name: "Comate",
+    description: "Local Baidu Comate CLI coding agent.",
+    source: "builtin",
+    enabled: true,
+    cli: { adapter: "comate-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
     id: "cli-codebuddy-acp",
     kind: "cli",
     name: "CodeBuddy",

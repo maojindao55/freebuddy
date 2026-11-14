@@ -10,6 +10,7 @@ export type CLIAdapterId =
   | "cursor-agent-acp"
   | "kimi-acp"
   | "qoder-acp"
+  | "comate-acp"
   | "codebuddy-acp"
   | "grok-acp"
   | "agy-acp"
@@ -123,6 +124,19 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: [],
     installHint: "curl -fsSL https://qoder.com/install | bash",
     docsUrl: "https://docs.qoder.com/en/cli/acp",
+    protocol: "acp"
+  },
+  {
+    id: "comate-acp",
+    label: "Comate",
+    defaultBinary: "comate-acp",
+    streamMode: "raw",
+    commandGroup: "comate",
+    capabilities: { toolSession: true },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g comate-acp",
+    docsUrl: "https://www.npmjs.com/package/comate-acp",
     protocol: "acp"
   },
   {

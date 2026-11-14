@@ -112,6 +112,7 @@ FreeBuddy 为下列工具提供内置集成，通过 ACP（Agent Client Protocol
 | **Cursor** | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
 | **Kimi** | `kimi` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
 | **Qoder** | `qodercli` | `curl -fsSL https://qoder.com/install \| bash` |
+| **Comate（文心快码）** | `comate-acp` | `npm install -g comate-acp`；需已安装 `comatecli`（百度 Comate CLI） |
 | **CodeBuddy** | `codebuddy` | `npm install -g @tencent-ai/codebuddy-code` |
 | **Grok** | `grok` | 设置 → CLI Agent → **安装** |
 | **Antigravity** | `agy-acp` | `npm install -g agy-acp-bridge`；需可用的 Antigravity CLI |

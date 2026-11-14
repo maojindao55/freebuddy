@@ -28,6 +28,7 @@ export type CLIAdapterId =
   | "cursor-agent-acp"
   | "kimi-acp"
   | "qoder-acp"
+  | "comate-acp"
   | "codebuddy-acp"
   | "grok-acp"
   | "agy-acp"
@@ -209,6 +210,21 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
         ? "irm https://qoder.com/install.ps1 | iex"
         : "curl -fsSL https://qoder.com/install | bash",
     docsUrl: "https://docs.qoder.com/en/cli/acp",
+    protocol: "acp"
+  },
+  {
+    // comatecli has no ACP mode; comate-acp is the adapter that provides one.
+    id: "comate-acp",
+    label: "Comate",
+    defaultBinary: "comate-acp",
+    checkProbe: { args: ["--version"], versionOptional: false },
+    streamMode: "raw",
+    commandGroup: "comate",
+    capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".comate/skills"], reloadPolicy: "process-start" } },
+    toolSessionArgs: [],
+    toolSessionArgPrefixes: [],
+    installHint: "npm install -g comate-acp",
+    docsUrl: "https://www.npmjs.com/package/comate-acp",
     protocol: "acp"
   },
   {
@@ -1689,6 +1705,16 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
     case "codebuddy-acp": {
       const args: string[] = ["--acp"];
       args.push(...extra);
+      return {
+        bin,
+        args,
+        promptViaStdin: false,
+        protocol: "acp"
+      };
+    }
+    case "comate-acp": {
+      // The adapter is itself the ACP server; comatecli is resolved inside it.
+      const args: string[] = [...extra];
       return {
         bin,
         args,

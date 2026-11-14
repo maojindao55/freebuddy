@@ -84,6 +84,12 @@ export const builtinCliMembers: CLIMember[] = [
     cli: { adapter: "qoder-acp", approvalMode: "auto", showStderr: true }
   },
   {
+    id: "cli-comate-acp",
+    name: "Comate",
+    enabled: true,
+    cli: { adapter: "comate-acp", approvalMode: "auto", showStderr: true }
+  },
+  {
     id: "cli-codebuddy-acp",
     name: "CodeBuddy",
     enabled: true,

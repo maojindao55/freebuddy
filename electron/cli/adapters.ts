@@ -13,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolvePiAcpSpawnPlan } from "./piRuntime.js";
+import { isAntigravityBridgeBinary } from "../shared/antigravity.js";
 
 /** Node 22+ emits this for `node:sqlite`; DeepSeek ACP uses it via session-query-sqlite. */
 export const DSH_ACP_NODE_DISABLE_WARNING =
@@ -261,15 +262,17 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
   {
     id: "agy-acp",
     label: "Antigravity",
-    defaultBinary: "agy-acp",
-    checkProbe: { args: ["--version"], versionOptional: true },
+    defaultBinary: "agy",
+    checkProbe: { args: ["--version"], versionOptional: false },
     streamMode: "raw",
     commandGroup: "antigravity",
     capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".agents/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "npm install -g agy-acp-bridge",
-    docsUrl: "https://github.com/maojindao55/agy-acp",
+    installHint: process.platform === "win32"
+      ? "irm https://antigravity.google/cli/install.ps1 | iex"
+      : "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    docsUrl: "https://antigravity.google/docs/ide/extensions/acp/",
     protocol: "acp"
   },
   {
@@ -1732,7 +1735,11 @@ export function buildCommand(input: BuildCommandInput): BuiltCommand {
       };
     }
     case "agy-acp": {
-      const args: string[] = [...extra];
+      const nativeExtra = extra[0] === "acp" ? extra.slice(1) : extra;
+      const args: string[] = isAntigravityBridgeBinary(bin)
+        ? [...extra]
+        : ["acp", ...(nativeExtra.some(arg => /^--process-per-session(?:=|$)/.test(arg))
+          ? [] : ["--process-per-session"]), ...nativeExtra];
       return {
         bin,
         args,

@@ -1620,10 +1620,19 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     const fromLive = latestConfigOptionsFromItems(liveItems ?? []);
     const configOptions = fromLive.length > 0 ? fromLive : fromMessages;
     const activeOverrides = configOptionOverrides ?? conv.configOptionOverrides;
-    const overridesToSend = resolveConfigOptionOverrides(
+    let overridesToSend = resolveConfigOptionOverrides(
       activeOverrides,
       configOptions
     );
+    if (member.cli.adapter === "agy-acp") {
+      // Old messages can still carry the bridge catalog on the first native turn.
+      const { antigravityConfigOverrides, isAntigravityBridgeBinary } = await import("../../electron/shared/antigravity");
+      const bridge = isAntigravityBridgeBinary(binary);
+      overridesToSend = {
+        ...antigravityConfigOverrides(overridesToSend, bridge),
+        ...resolveConfigOptionOverrides(antigravityConfigOverrides(activeOverrides, bridge), configOptions)
+      };
+    }
     const combinedOverrides = {
       ...(member.cli.adapter === "codex-acp" && memberExecutor?.codexByok?.enabled
         ? { model: memberExecutor.codexByok.models?.[0]?.id?.trim() }

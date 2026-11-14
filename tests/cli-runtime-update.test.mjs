@@ -9,7 +9,8 @@ import { readRuntimePackage, getRuntimePackagePolicy } from "../dist-electron/cl
 test("optional probes retain Antigravity versions and reject help banners", () => {
   assert.equal(versionFromProbe("agy-acp 0.3.6", true), "0.3.6");
   assert.equal(versionFromProbe("Usage: agy-acp [options]", true), undefined);
-  assert.equal(runtimeVersionBelow("0.3.6", getRuntimePackagePolicy("agy-acp").minimumVersion), true);
+  assert.equal(runtimeVersionBelow("0.3.6", getRuntimePackagePolicy("agy-acp", "agy-acp").minimumVersion), true);
+  assert.equal(getRuntimePackagePolicy("agy-acp", "agy"), undefined);
   assert.equal(runtimeVersionBelow("0.3.8", "0.3.8"), false);
 });
 

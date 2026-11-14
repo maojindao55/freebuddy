@@ -169,14 +169,14 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
   {
     id: "agy-acp",
     label: "Antigravity",
-    defaultBinary: "agy-acp",
+    defaultBinary: "agy",
     streamMode: "raw",
     commandGroup: "antigravity",
     capabilities: { toolSession: true },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "npm install -g agy-acp-bridge",
-    docsUrl: "https://github.com/maojindao55/agy-acp",
+    installHint: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    docsUrl: "https://antigravity.google/docs/ide/extensions/acp/",
     protocol: "acp"
   },
   {

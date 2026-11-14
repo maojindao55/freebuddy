@@ -114,7 +114,7 @@ Use **Settings → CLI Agents → Install** for the installation method appropri
 | **Comate** | `comate-acp` | `npm install -g comate-acp`; requires `comatecli` (Baidu Comate CLI) |
 | **CodeBuddy** | `codebuddy` | `npm install -g @tencent-ai/codebuddy-code` |
 | **Grok** | `grok` | Settings → CLI Agents → **Install** |
-| **Antigravity** | `agy-acp` | `npm install -g agy-acp-bridge`; requires an available Antigravity CLI |
+| **Antigravity** | `agy acp` | Install the [official Antigravity CLI](https://antigravity.google/docs/cli/tutorial/) (1.5.9 or newer); see [migration notes](docs/antigravity-native-acp.md) |
 | **DeepSeek Harness** | `deepseek-harness-acp` | Settings → CLI Agents → **Install** (`deepseek-harness-acp`) |
 | **ZCode** | `zcode-acp-server` | `npm install -g zcode-acp-server` |
 | **Cline** | `cline` | `npm install -g cline` |

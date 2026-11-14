@@ -155,7 +155,7 @@ test("ACP watchdog requires a successful probe before granting bounded extra tim
 test("ACP runtime fails turns that contain terminal adapter errors", () => {
   assert.match(
     acpRuntimeSource,
-    /acpUpdateToItems\(localDiff\.update, sessionId, args\.adapter\)/
+    /acpUpdateToItems\(localDiff\.update, sessionId, args\.adapter, \{/
   );
   assert.match(acpRuntimeSource, /turnTerminalErrorMessage = terminalError\.message/);
   assert.match(

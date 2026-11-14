@@ -1552,7 +1552,8 @@ export function acpNonRetryableUpstreamError(update: any): string | undefined {
 export function acpUpdateToItems(
   update: any,
   fallbackSessionId?: string,
-  adapter?: string
+  adapter?: string,
+  options?: { legacyAgyBridge?: boolean }
 ): AcpStreamItem[] {
   const type = String(update?.sessionUpdate ?? "");
   switch (type) {
@@ -1561,13 +1562,18 @@ export function acpUpdateToItems(
     case "agent_message_chunk":
       {
         const text = textFromContent(update.content).trim();
+        // Native ACP can return provider failures as warning text with end_turn.
+        if (adapter === "agy-acp" && options?.legacyAgyBridge === false &&
+            /^⚠\s*[A-Z][A-Z_]+\s*\(code [45]\d{2}\):/.test(text)) {
+          return [{ kind: "error", message: text.replace(/^⚠\s*/, ""), terminal: true }];
+        }
         // agy-acp-bridge <= 0.3.1 reports a failed native `agy` result as an
         // ordinary, message-id-less assistant chunk and then resolves the ACP
         // prompt with `end_turn`. Without this adapter-specific compatibility
         // guard, timeouts such as "The stream was interrupted" are persisted
         // and announced as successful assistant replies.
         if (
-          adapter === "agy-acp" &&
+          (options?.legacyAgyBridge ?? adapter === "agy-acp") &&
           !update.messageId &&
           /^Error:\s*\S/i.test(text)
         ) {

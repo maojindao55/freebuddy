@@ -1,8 +1,21 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { extractSemver } from "./version.js";
 
-/** Match the bridge's executable selection, including a newly installed CLI. */
+export async function latestAntigravityVersion(fetcher = fetch): Promise<string> {
+  const response = await fetcher("https://api.github.com/repos/google-antigravity/antigravity-cli/releases/latest", {
+    headers: { accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (!response.ok) throw new Error(`Antigravity release check failed (${response.status})`);
+  const release = await response.json() as { tag_name?: string };
+  const version = extractSemver(release.tag_name)?.raw;
+  if (!version) throw new Error("Antigravity release returned an invalid version");
+  return version;
+}
+
+/** Locate the native CLI, retaining legacy bridge executable overrides. */
 export function antigravityUpdateBinary(
   env: NodeJS.ProcessEnv,
   platform = process.platform,
@@ -30,7 +43,7 @@ export function antigravityUpdateBinary(
       } catch { /* Continue to the next bridge search location. */ }
     }
   }
-  // npm's postinstall may create this executable after preparing the plan.
+  // The installer may create this executable after preparing the plan.
   return installDirectory ? paths.join(installDirectory, windows ? "agy.exe" : "agy") : "agy";
 }
 

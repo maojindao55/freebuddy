@@ -48,10 +48,10 @@ test("legacy adapters still require a version response", () => {
   });
 });
 
-test("agy-acp checks agy-acp binary probe", () => {
+test("Antigravity checks the official CLI version", () => {
   assert.deepEqual(getCliCheckProbe("agy-acp"), {
     args: ["--version"],
-    versionOptional: true
+    versionOptional: false
   });
 });
 

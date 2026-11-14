@@ -115,7 +115,7 @@ FreeBuddy 为下列工具提供内置集成，通过 ACP（Agent Client Protocol
 | **Comate（文心快码）** | `comate-acp` | `npm install -g comate-acp`；需已安装 `comatecli`（百度 Comate CLI） |
 | **CodeBuddy** | `codebuddy` | `npm install -g @tencent-ai/codebuddy-code` |
 | **Grok** | `grok` | 设置 → CLI Agent → **安装** |
-| **Antigravity** | `agy-acp` | `npm install -g agy-acp-bridge`；需可用的 Antigravity CLI |
+| **Antigravity** | `agy acp` | 安装[官方 Antigravity CLI](https://antigravity.google/docs/cli/tutorial/)（1.5.9 或更新版本）；兼容迁移见[接入说明](docs/antigravity-native-acp.md) |
 | **DeepSeek Harness** | `deepseek-harness-acp` | 设置 → CLI Agent → **安装**（`deepseek-harness-acp`） |
 | **ZCode** | `zcode-acp-server` | `npm install -g zcode-acp-server` |
 | **Cline** | `cline` | `npm install -g cline` |

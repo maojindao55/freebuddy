@@ -43,8 +43,10 @@ import {
 import { findMacAppCliBinary } from "./macAppCli.js";
 import { hasLocalAgentApp } from "./localAgentApps.js";
 import { logMain } from "../debugLog.js";
+import { acpProcessPool } from "./acpProcessPool.js";
 import { getRuntimePackagePolicy, readRuntimePackage } from "./runtimePackages.js";
-import { antigravityUpdateBinary, antigravityUpgradeCommand } from "./antigravityUpdate.js";
+import { antigravityUpdateBinary, antigravityUpgradeCommand, latestAntigravityVersion } from "./antigravityUpdate.js";
+import { ANTIGRAVITY_MINIMUM_VERSION, isAntigravityBridgeBinary } from "../shared/antigravity.js";
 import { checkRuntimeUpdate, upgradeVerificationError, versionFromProbe, type CliRuntimeUpdateRequest, type CliUpgradePlan, type RuntimeUpdateStatus } from "../shared/cliRuntimeUpdate.js";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
@@ -321,6 +323,10 @@ function upsertRuntime(
          installed=excluded.installed,
          binary_path=excluded.binary_path,
          version=COALESCE(excluded.version, CASE WHEN cli_runtimes.binary_path=excluded.binary_path THEN cli_runtimes.version END),
+         latest_version=CASE WHEN cli_runtimes.binary_path=excluded.binary_path THEN cli_runtimes.latest_version END,
+         update_status=CASE WHEN cli_runtimes.binary_path=excluded.binary_path THEN cli_runtimes.update_status END,
+         last_update_check_at=CASE WHEN cli_runtimes.binary_path=excluded.binary_path THEN cli_runtimes.last_update_check_at END,
+         last_update_error=CASE WHEN cli_runtimes.binary_path=excluded.binary_path THEN cli_runtimes.last_update_error END,
          last_check_at=excluded.last_check_at,
          last_error=excluded.last_error,
          updated_at=excluded.updated_at`
@@ -386,6 +392,9 @@ export async function cliCheck(
     ...(env || {})
   });
   let resolved = await which(bin, effectiveEnv as Record<string, string>);
+  if (adapter === "agy-acp" && !resolved && bin === "agy") {
+    resolved = await which(antigravityUpdateBinary(effectiveEnv), effectiveEnv as Record<string, string>);
+  }
   // New Qoder CLI releases use `qoder`; do not confuse the IDE launcher
   // with the ACP CLI. Respect explicit custom binaries.
   if (adapter === "qoder-acp" && !resolved && bin === "qodercli") {
@@ -485,7 +494,8 @@ export async function cliCheck(
     trackAgentSetup(adapter, "check", "missing", error);
     return { installed: false };
   }
-  const probe = getCliCheckProbe(adapter);
+  const bridge = adapter === "agy-acp" && isAntigravityBridgeBinary(resolved);
+  const probe = bridge ? { args: ["--version"], versionOptional: true } : getCliCheckProbe(adapter);
   if (probe.skipSpawn) {
     const result: CliCheckResult = { installed: true, path: resolved };
     upsertRuntime(runtimeKey, true, resolved);
@@ -509,7 +519,16 @@ export async function cliCheck(
     trackAgentSetup(adapter, "check", "probe_failed", error);
     return { installed: false };
   }
-  const policy = getRuntimePackagePolicy(adapter);
+  if (adapter === "agy-acp" && !bridge) {
+    const acpHelp = await runCheckProbe(resolved, ["acp", "--help"], effectiveEnv as Record<string, string>);
+    if (!acpHelp.ok || !/\bACP\b|Agent Client Protocol/.test(`${acpHelp.stdout}\n${acpHelp.stderr}`)) {
+      const error = "Antigravity CLI requires native ACP support; run agy update";
+      upsertRuntime(runtimeKey, false, resolved, versionFromProbe(probeResult.output, true), error);
+      trackAgentSetup(adapter, "check", "probe_failed", error);
+      return { installed: false };
+    }
+  }
+  const policy = getRuntimePackagePolicy(adapter, resolved);
   const packageVersion = policy ? readRuntimePackage(resolved, policy.packageName)?.version : undefined;
   const result: CliCheckResult = {
     installed: true,
@@ -570,8 +589,10 @@ export function listRuntimes(): CliRuntime[] {
     binaryPath: r.binary_path ?? undefined,
     version: r.version ?? undefined,
     latestVersion: r.latest_version ?? undefined,
-    minimumVersion: getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter)?.minimumVersion,
-    updateCheckSupported: !!getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter),
+    minimumVersion: getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter, r.binary_path ?? undefined)?.minimumVersion
+      ?? ((aliases.get(r.adapter) ?? r.adapter) === "agy-acp" ? ANTIGRAVITY_MINIMUM_VERSION : undefined),
+    updateCheckSupported: (aliases.get(r.adapter) ?? r.adapter) === "agy-acp"
+      || !!getRuntimePackagePolicy(aliases.get(r.adapter) ?? r.adapter),
     updateStatus: (r.update_status as CliRuntimeUpdateStatus | null) ?? undefined,
     lastUpdateCheckAt: r.last_update_check_at ?? undefined,
     lastUpdateError: r.last_update_error ?? undefined,
@@ -652,11 +673,15 @@ export function cliCheckUpdates(args: CliRuntimeUpdateRequest): Promise<CliRunti
     const previous = runtimeFor(key);
     if (previous?.updateStatus === "updating" || runtimeInstallationPromises.has(runtimeInstallKey(args.adapter))) return previous;
     const installed = await cliCheck(args.adapter, args.binary, args.env, key);
-    const policy = getRuntimePackagePolicy(args.adapter);
-    if (!installed.installed || !policy) return runtimeFor(key);
-    const snapshot = { ...previous, version: runtimeFor(key)?.version };
+    const policy = getRuntimePackagePolicy(args.adapter, installed.path);
+    const nativeAntigravity = args.adapter === "agy-acp" && !isAntigravityBridgeBinary(installed.path);
+    if (!installed.installed || (!policy && !nativeAntigravity)) return runtimeFor(key);
+    const sameBackend = args.adapter !== "agy-acp" ||
+      isAntigravityBridgeBinary(previous?.binaryPath) === isAntigravityBridgeBinary(installed.path);
+    const snapshot = { ...(sameBackend ? previous : {}), version: runtimeFor(key)?.version };
     setRuntimeUpdateState(key, "checking");
-    const state = await checkRuntimeUpdate(snapshot, () => latestPackageVersion(policy.packageName, args.env), {
+    const state = await checkRuntimeUpdate(snapshot, () => nativeAntigravity
+      ? latestAntigravityVersion() : latestPackageVersion(policy!.packageName, args.env), {
       force: args.force || previous?.binaryPath !== installed.path
     });
     if (runtimeInstallationPromises.has(runtimeInstallKey(args.adapter))) return runtimeFor(key);
@@ -674,9 +699,15 @@ export function cliCheckUpdates(args: CliRuntimeUpdateRequest): Promise<CliRunti
 /** Passive checks complement existing Codex/DeepSeek update policies. */
 export async function startRuntimeUpdateChecks(): Promise<void> {
   await Promise.allSettled([codexToolchainAutoUpdatePromise, dshAcpAutoUpdatePromise]);
+  const overrides = new Map((getDb().prepare("SELECT id, base_adapter, binary FROM cli_executor_overrides").all() as
+    Array<{ id: string; base_adapter: string | null; binary: string | null }>).map(row => [row.id, row]));
   for (const runtime of listRuntimes()) {
-    if (!runtime.installed || !getRuntimePackagePolicy(runtime.adapter)) continue;
-    try { await cliCheckUpdates({ adapter: runtime.adapter, binary: runtime.binaryPath }); }
+    if (!runtime.installed || !runtime.updateCheckSupported) continue;
+    const override = overrides.get(runtime.adapter);
+    const adapter = override?.base_adapter || runtime.adapter;
+    const binary = override?.binary?.trim() || (adapter === "agy-acp" && isAntigravityBridgeBinary(runtime.binaryPath)
+      ? "agy" : runtime.binaryPath);
+    try { await cliCheckUpdates({ adapter, runtimeAdapter: runtime.adapter, binary }); }
     catch (error) { logMain().warn("runtime", "agent update check failed", { adapter: runtime.adapter, error: String(error) }); }
   }
 }
@@ -728,6 +759,8 @@ function acquireRuntimeInstall(adapter: string): () => void {
   assertRuntimeIdle(adapter);
   const key = runtimeInstallKey(adapter);
   if (runtimeInstallationPromises.has(key)) throw new Error("runtime_install_in_progress");
+  // An idle AGY worker must not keep the old engine alive after a CLI upgrade.
+  if (adapter === "agy-acp") acpProcessPool.dispose();
   let finish = () => {};
   runtimeInstallationPromises.set(key, new Promise(resolve => { finish = resolve; }));
   let released = false;
@@ -743,11 +776,23 @@ export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<
   assertRuntimeIdle(args.adapter);
   const definition = getAdapterDefinition(args.adapter);
   if (!definition?.installHint || args.adapter === "pi-acp") throw new Error("runtime_update_managed_by_app");
-  const policy = getRuntimePackagePolicy(args.adapter);
   const runtime = await cliCheckUpdates({ ...args, force: true });
+  const policy = getRuntimePackagePolicy(args.adapter, runtime?.binaryPath ?? args.binary);
   const plan: CliUpgradePlan = { command: definition.installHint,
     previousVersion: runtime?.installed ? runtime.version : undefined,
     expectedBinaryPath: runtime?.installed ? runtime.binaryPath : undefined };
+  if (args.adapter === "agy-acp" && !isAntigravityBridgeBinary(runtime?.binaryPath ?? args.binary)) {
+    const env = await getFreshWindowsEnvironment({ ...process.env, ...args.env });
+    const binary = runtime?.binaryPath ?? antigravityUpdateBinary(env);
+    const versions = [ANTIGRAVITY_MINIMUM_VERSION, runtime?.latestVersion, runtime?.version]
+      .flatMap(version => { const parsed = extractSemver(version); return parsed ? [parsed] : []; });
+    const target = versions.reduce((highest, version) => compareSemver(version, highest) > 0 ? version : highest);
+    return { ...plan,
+      command: runtime?.installed || runtime?.binaryPath ? antigravityUpgradeCommand(undefined, binary) : definition.installHint,
+      expectedBinaryPath: binary,
+      targetVersion: target.raw,
+      updatesNativeCli: true };
+  }
   if (!policy) return plan;
   if (runtime?.installed && (runtime.updateStatus === "error" || !runtime.latestVersion)) throw new Error("runtime_update_check_failed");
   plan.targetVersion = runtime?.installed ? runtime.latestVersion : await latestPackageVersion(policy.packageName, args.env);
@@ -765,7 +810,8 @@ export async function prepareCliUpgrade(args: CliRuntimeUpdateRequest): Promise<
   } else {
     const pkg = readRuntimePackage(runtime?.binaryPath, policy.packageName);
     if (runtime?.installed && !pkg?.prefix) throw new Error("runtime_install_source_unknown");
-    plan.command = definition.installHint.replace(policy.packageName, `${policy.packageName}@${plan.targetVersion}`)
+    const installHint = args.adapter === "agy-acp" ? "npm install -g agy-acp-bridge" : definition.installHint;
+    plan.command = installHint.replace(policy.packageName, `${policy.packageName}@${plan.targetVersion}`)
       + (pkg?.prefix ? ` --prefix ${quoteForShell(pkg.prefix)}` : "") + " --no-audit --no-fund";
   }
   if (args.adapter === "agy-acp") {

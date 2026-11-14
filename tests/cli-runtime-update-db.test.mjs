@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { EventEmitter } from "node:events";
+import { acpProcessPool } from "../dist-electron/cli/acpProcessPool.js";
 
 let Database;
 let bindingAvailable = true;
@@ -15,7 +17,7 @@ try {
 } catch { bindingAvailable = false; }
 const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
 const { app: testElectronApp } = await import("electron");
-const { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstallStream, startDshAcpAutoUpdate, listRuntimes, recordRuntimeAgentVersion, waitForRuntimeInstall } = await import("../dist-electron/cli/check.js");
+const { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstallStream, startDshAcpAutoUpdate, startRuntimeUpdateChecks, listRuntimes, recordRuntimeAgentVersion, waitForRuntimeInstall } = await import("../dist-electron/cli/check.js");
 // Process fixtures use executable symlinks. The Windows shim identity is
 // covered separately by cli-runtime-update.test.mjs on every platform.
 const skip = !bindingAvailable || process.platform === "win32";
@@ -148,6 +150,117 @@ test("shared installation blocks a second installer and defers runtime checks an
     fs.writeFileSync(release, "");
     await installation;
   }
+});
+
+function setupNative(t, { version = "1.5.8", acp = true, handshake = true } = {}) {
+  const fixture = setup(t);
+  const binary = path.join(fixture.root, "native", "agy");
+  const versionFile = path.join(fixture.root, "native", "version");
+  fs.mkdirSync(path.dirname(binary));
+  fs.writeFileSync(versionFile, version);
+  const node = execFileSync("which", ["node"], { encoding: "utf8" }).trim();
+  fs.writeFileSync(binary, `#!${node}
+import fs from 'node:fs';import readline from 'node:readline';
+const file=${JSON.stringify(versionFile)};
+const args=process.argv.slice(2);
+if(args[0]==='--version'){console.log(fs.readFileSync(file,'utf8'));process.exit(0);}
+if(args[0]==='update'){fs.writeFileSync(file,'1.5.9');console.log('native update completed');process.exit(0);}
+if(args[0]==='acp'&&args[1]==='--help'){console.log(${JSON.stringify(acp ? "Start the Agent Client Protocol (ACP) stdio server" : "Unknown command acp")});process.exit(${acp ? 0 : 1});}
+if(args[0]!=='acp'||!args.includes('--process-per-session'))process.exit(2);
+readline.createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);if(r.method==='initialize')console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result:{protocolVersion:${handshake ? 1 : 999},agentInfo:{name:'Antigravity ACP Server',version:fs.readFileSync(file,'utf8')},agentCapabilities:{}}}));});
+`, { mode: 0o755 });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    assert.equal(url, "https://api.github.com/repos/google-antigravity/antigravity-cli/releases/latest");
+    return { ok: true, json: async () => ({ tag_name: "1.5.9" }) };
+  };
+  t.after(() => { globalThis.fetch = previousFetch; });
+  return { ...fixture, binary, versionFile, request: { adapter: "agy-acp", binary, env: { PATH: process.env.PATH }, force: true } };
+}
+
+test("native detection checks ACP support and reports the native minimum version", { skip }, async t => {
+  const { request } = setupNative(t);
+  const detected = await cliCheck(request.adapter, request.binary, request.env);
+  assert.equal(detected.version, "1.5.8");
+  assert.equal(listRuntimes()[0].minimumVersion, "1.5.9");
+  assert.equal(listRuntimes()[0].updateCheckSupported, true);
+});
+
+test("native detection rejects an old CLI that has no ACP command", { skip }, async t => {
+  const { request } = setupNative(t, { acp: false });
+  assert.equal((await cliCheck(request.adapter, request.binary, request.env)).installed, false);
+  assert.match(listRuntimes()[0].lastError, /requires native ACP/);
+  const plan = await prepareCliUpgrade(request);
+  assert.match(plan.command, /update$/);
+  assert.doesNotMatch(plan.command, /npm/);
+});
+
+test("native upgrade checks official releases, updates the selected binary and verifies ACP", { skip }, async t => {
+  const { request, binary } = setupNative(t);
+  let disposed = false;
+  const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null,
+    stdin: { destroyed: false }, stdout: { resume() {} }, stderr: { resume() {} } });
+  acpProcessPool.put("upgrade-test", { child, fingerprint: "old-engine", conversationId: "test", requestId: 0,
+    dispose: () => { disposed = true; } });
+  t.after(() => acpProcessPool.dispose());
+  const plan = await prepareCliUpgrade(request);
+  assert.equal(plan.targetVersion, "1.5.9");
+  assert.equal(plan.expectedBinaryPath, binary);
+  assert.equal(plan.updatesNativeCli, true);
+  assert.doesNotMatch(plan.command, /npm install|agy-acp-bridge/);
+  await assert.rejects(verifyCliUpgrade(request, plan), /runtime_target_not_active/);
+  const installed = await cliInstallStream(plan.command, null, request.adapter, "native-upgrade");
+  assert.equal(installed.success, true, installed.stderr);
+  assert.equal(disposed, true, "upgrading must discard idle workers running the old engine");
+  assert.equal((await verifyCliUpgrade(request, plan)).version, "1.5.9");
+});
+
+test("native self-update remains available when release checks are offline", { skip }, async t => {
+  const { request } = setupNative(t);
+  globalThis.fetch = async () => { throw new Error("release network offline"); };
+  assert.equal((await cliCheckUpdates(request)).installed, true);
+  assert.equal(listRuntimes()[0].updateStatus, "error");
+  const plan = await prepareCliUpgrade(request);
+  assert.match(plan.command, /update$/);
+  assert.equal(plan.targetVersion, "1.5.9");
+});
+
+test("switching from a bridge runtime clears its npm release cache", { skip }, async t => {
+  const { request, db } = setupNative(t);
+  db.prepare("INSERT INTO cli_runtimes (adapter,installed,binary_path,version,latest_version,update_status,last_update_check_at,updated_at) VALUES ('agy-acp',1,'/old/agy-acp','0.3.8','0.3.9','available','today','today')").run();
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  await cliCheckUpdates(request);
+  const runtime = listRuntimes()[0];
+  assert.equal(runtime.version, "1.5.8");
+  assert.equal(runtime.latestVersion, undefined);
+  assert.equal(runtime.updateStatus, "error");
+});
+
+test("native upgrade verification fails when the ACP handshake is broken", { skip }, async t => {
+  const { request } = setupNative(t, { version: "1.5.9", handshake: false });
+  const plan = await prepareCliUpgrade(request);
+  await assert.rejects(verifyCliUpgrade(request, plan), /Unsupported ACP protocol version 999/);
+  assert.equal(listRuntimes()[0].installed, false);
+});
+
+test("startup migrates cached bridge paths while preserving explicit bridge overrides", { skip }, async t => {
+  const { binary, db } = setupNative(t);
+  process.env.PATH = path.dirname(binary) + path.delimiter + process.env.PATH;
+  db.prepare("INSERT INTO cli_runtimes (adapter,installed,binary_path,version,updated_at) VALUES ('agy-acp',1,'/old/agy-acp','0.3.8','today')").run();
+  await startRuntimeUpdateChecks();
+  assert.equal(listRuntimes()[0].binaryPath, binary);
+  assert.equal(listRuntimes()[0].version, "1.5.8");
+  const bridge = path.join(path.dirname(path.dirname(binary)), "selected", "bin", "agy-acp");
+  db.prepare("INSERT INTO cli_executor_overrides (id,binary,updated_at) VALUES ('agy-acp',?,'today')").run(bridge);
+  await startRuntimeUpdateChecks();
+  assert.equal(listRuntimes()[0].binaryPath, bridge);
+  assert.equal(listRuntimes()[0].version, "0.3.6");
+});
+
+test("native upgrades never accept a downgrade when an installed release is newer than the API", { skip }, async t => {
+  const { request } = setupNative(t, { version: "1.6.0" });
+  const plan = await prepareCliUpgrade(request);
+  assert.equal(plan.targetVersion, "1.6.0");
 });
 
 // Bare package requests deliberately resolve to the stale cached version.

@@ -6,6 +6,7 @@ import {
   type CLIAdapterId
 } from "@/config/cliAdapters";
 import { cliClient } from "@/services/cli/client";
+import { isAntigravityBridgeBinary } from "../../electron/shared/antigravity";
 import type {
   CLIExecutorOverride,
   CliRuntime
@@ -175,7 +176,9 @@ export const useCliExecutorStore = create<State>((set, get) => ({
       baseAdapter: isClone ? def.id : undefined,
       isClone,
       label: o?.label?.trim() || def.label,
-      binary: (o?.binary?.trim() || (runtimes[id]?.installed ? runtimes[id]?.binaryPath : undefined) || def.defaultBinary) ?? def.id,
+      binary: (o?.binary?.trim() || (runtimes[id]?.installed &&
+        !(baseAdapter === "agy-acp" && isAntigravityBridgeBinary(runtimes[id]?.binaryPath))
+        ? runtimes[id]?.binaryPath : undefined) || def.defaultBinary) ?? def.id,
       extraArgs: o?.extraArgs?.filter(Boolean) ?? [],
       env: o?.env,
       icon: o?.icon,

@@ -43,6 +43,7 @@ import { useProviderStore } from "@/store/providerStore";
 import { ProviderSelect } from "./ProviderSelect";
 import { cliAdapterDefinitions, type CLIAdapterDefinition } from "@/config/cliAdapters";
 import { runtimeVersionBelow } from "../../../electron/shared/cliRuntimeUpdate";
+import { isAntigravityBridgeBinary } from "../../../electron/shared/antigravity";
 
 const CODEX_ACP_UPGRADE_REQUIRED = "codex-acp requires @agentclientprotocol/codex-acp";
 const BYOK_CONTEXT_WINDOW_MIN = 100000;
@@ -1104,11 +1105,12 @@ function AdapterHeaderMeta({
   const rt = ex.runtime;
   const codexCliRuntime = useCliExecutorStore((state) => state.runtimes.codex);
   const isAntigravity = (ex.baseAdapter ?? ex.id) === "agy-acp";
+  const isAntigravityBridge = isAntigravity && isAntigravityBridgeBinary(ex.binary);
   return (
     <>
       {!checking && rt?.installed && (
         <span>
-          {t(isAntigravity ? "settings.cli.adapterVersionLabel" : "settings.cli.versionLabel")} <code>{rt.version || t("settings.cli.versionUnknown")}</code>
+          {t(isAntigravityBridge ? "settings.cli.adapterVersionLabel" : "settings.cli.versionLabel")} <code>{rt.version || t("settings.cli.versionUnknown")}</code>
         </span>
       )}
       {rt?.installed && runtimeVersionBelow(rt.version, rt.minimumVersion) && <span className="adapter-status error">
@@ -1127,8 +1129,8 @@ function AdapterHeaderMeta({
       )}
       <RuntimeAutoUpdateStatus
         runtime={rt}
-        label={isAntigravity ? `${ex.label} ACP` : ex.label}
-        adapterOnly={isAntigravity}
+        label={isAntigravityBridge ? `${ex.label} ACP` : ex.label}
+        adapterOnly={isAntigravityBridge}
       />
       {ex.id === "codex-acp" && (
         <RuntimeAutoUpdateStatus runtime={codexCliRuntime} label="Codex CLI" />

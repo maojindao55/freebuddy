@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { extractSemver } from "./version.js";
+import { isAntigravityBridgeBinary } from "../shared/antigravity.js";
 
 export interface RuntimePackagePolicy {
   packageName: string;
@@ -18,13 +19,15 @@ const policies: Record<string, RuntimePackagePolicy> = {
   opencode: { packageName: "opencode-ai" },
   "opencode-acp": { packageName: "opencode-ai" },
   "codebuddy-acp": { packageName: "@tencent-ai/codebuddy-code" },
-  "agy-acp": { packageName: "agy-acp-bridge", minimumVersion: "0.3.8" },
   "dsh-acp": { packageName: "deepseek-harness-acp", managed: true },
   "zcode-acp": { packageName: "zcode-acp-server" },
   "cline-acp": { packageName: "cline" }
 };
 
-export function getRuntimePackagePolicy(adapter: string): RuntimePackagePolicy | undefined {
+export function getRuntimePackagePolicy(adapter: string, binary?: string): RuntimePackagePolicy | undefined {
+  if (adapter === "agy-acp" && isAntigravityBridgeBinary(binary)) {
+    return { packageName: "agy-acp-bridge", minimumVersion: "0.3.8" };
+  }
   return policies[adapter];
 }
 

@@ -50,6 +50,7 @@ import { getDataDir } from "./db.js";
 import { persistFileEditItems } from "./fileEditBlobs.js";
 import { prepareTurnFileCapture, finalizeTurnFileCapture, type TurnFileCapture } from "./turnFileSnapshots.js";
 import { importAgyLocalDiff, withoutInlineFileBodies } from "./acpLocalDiff.js";
+import { antigravityConfigOverrides, isAntigravityBridgeBinary } from "../shared/antigravity.js";
 import { findLastPiSessionErrorMessage } from "./piRuntime.js";
 import {
   hasCliByokModels,
@@ -879,7 +880,9 @@ export async function runAcpAgent({
       }
       const localDiff = importAgyLocalDiff(msg.params?.update, args.adapter);
       const timing = promptStarted ? toolActivity.observe(msg.params?.update) : undefined;
-      const items = acpUpdateToItems(localDiff.update, sessionId, args.adapter).map(item =>
+      const items = acpUpdateToItems(localDiff.update, sessionId, args.adapter, {
+        legacyAgyBridge: args.adapter === "agy-acp" && isAntigravityBridgeBinary(args.binary)
+      }).map(item =>
         item.kind === "tool-call" && timing ? { ...item, ...timing } : item);
       piTurn?.observe(items, updateType === "tool_call" ? msg.params?.update?.toolCallId : undefined);
       metrics?.observe(items, arrivedAt);
@@ -1884,7 +1887,9 @@ export async function runAcpAgent({
     }
 
     const applyConfigOptionOverrides = async () => {
-      const overrides = { ...(args.configOptionOverrides ?? {}) };
+      const overrides = { ...(args.adapter === "agy-acp"
+        ? antigravityConfigOverrides(args.configOptionOverrides, isAntigravityBridgeBinary(args.binary))
+        : args.configOptionOverrides) };
       if (!overrides.model && args.adapter === "pi-acp") {
         const defaultPiModel = resolvePiByokDefaultModel(
           args.agentId,
@@ -2149,7 +2154,8 @@ export async function runAcpAgent({
     }
 
     keepWarm = Boolean(warmConnection && parkConnection && activeAcpSessionId &&
-      warmConnection.initialize?._meta?.freebuddy?.persistentSession === true && !cancellationRequested &&
+      (warmConnection.initialize?._meta?.freebuddy?.persistentSession === true ||
+        (args.adapter === "agy-acp" && agentInfo?.name === "Antigravity ACP Server" && agentCaps.loadSession)) && !cancellationRequested &&
       !connectionClosed() && !inactivityFired && !turnHadTerminalError);
     if (!keepWarm && !cancellationRequested && !connectionClosed() && agentCaps?.sessionCapabilities?.close) {
       try {

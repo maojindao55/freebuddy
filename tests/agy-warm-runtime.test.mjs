@@ -14,6 +14,8 @@ import * as acpLocalDiff from "../dist-electron/cli/acpLocalDiff.js";
 import * as acpEmbeddedTerminal from "../dist-electron/cli/acpEmbeddedTerminal.js";
 import * as acpToolActivity from "../dist-electron/cli/acpToolActivity.js";
 import * as backgroundExecution from "../dist-electron/cli/backgroundExecution.js";
+import * as antigravity from "../dist-electron/shared/antigravity.js";
+import * as antigravitySessions from "../dist-electron/cli/antigravitySessions.js";
 import { AcpProcessPool } from "../dist-electron/cli/acpProcessPool.js";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
 import { localDiffFixture } from "./fixtures/agy-local-diff.mjs";
@@ -33,6 +35,8 @@ function load(file, services) {
       if (name === "./acpEmbeddedTerminal.js") return acpEmbeddedTerminal;
       if (name === "./acpToolActivity.js") return acpToolActivity;
       if (name === "./backgroundExecution.js") return backgroundExecution;
+      if (name === "../shared/antigravity.js") return antigravity;
+      if (name === "./antigravitySessions.js") return antigravitySessions;
       if (name === "cross-spawn") return { __esModule: true, default: services.spawn };
       return new Proxy(services, { get: (object, key) => key === "__esModule" ? true : object[key] ?? (() => {}) });
     }
@@ -40,7 +44,7 @@ function load(file, services) {
   return exports;
 }
 
-test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP routing and rebuilds changed config", async t => {
+for (const native of [false, true]) test(`FreeBuddy cliRun reuses ${native ? "native" : "bridge"} AGY, preserves MCP routing and rebuilds changed config`, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-warm-runtime-"));
   const pool = new AcpProcessPool();
   const logCompletions = [];
@@ -79,7 +83,7 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
       ...item, toolOutputs: item.toolOutputs?.map(output => {
         if (output.kind !== "file-edit") return output;
         // Storage receives the full body while the artifact still exists.
-        assert.ok(fs.existsSync(fixture.filename));
+        if (!native) assert.ok(fs.existsSync(fixture.filename));
         persistedText = output.newText;
         return { kind: output.kind, path: output.path, action: output.action, blobKey: "saved-diff" };
       })
@@ -110,8 +114,11 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
         const request = JSON.parse(chunk.toString()); requests.push({ pid: child.pid, ...request }); callback();
         queueMicrotask(() => {
           if (request.method === "initialize") reply(request, { protocolVersion: 1,
-            _meta: { freebuddy: { persistentSession: true } }, agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } } });
+            ...(native ? { agentInfo: { name: "Antigravity ACP Server", version: "1.5.9" } }
+              : { _meta: { freebuddy: { persistentSession: true } } }),
+            agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } } });
           else if (["session/new", "session/load"].includes(request.method)) reply(request, { sessionId: `native-${child.pid}` });
+          else if (request.method === "session/set_config_option") reply(request, {});
           else if (request.method === "session/prompt") {
             turn++;
             child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
@@ -119,7 +126,10 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
             } }) + "\n");
             if (children.length === 1 && turn === 1) {
               child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
-                sessionId: `native-${child.pid}`, update: fixture.update
+                sessionId: `native-${child.pid}`, update: native
+                  ? { sessionUpdate: "tool_call_update", toolCallId: "native-edit", status: "completed",
+                      content: [{ type: "diff", path: "task.md", oldText: "", newText: fullText }] }
+                  : fixture.update
               } }) + "\n");
             }
             reply(request, { stopReason: "end_turn", usage: { inputTokens: 100, outputTokens: turn * 10, thoughtTokens: 2 },
@@ -139,14 +149,17 @@ test("FreeBuddy cliRun reuses AGY through actual ACP lifecycle, preserves MCP ro
   services.runAcpAgent = load("../electron/cli/acpRuntime.ts", services).runAcpAgent;
   const runtime = load("../electron/cli/runtime.ts", services);
   const wc = { id: 1 };
-  const args = { adapter: "agy-acp", agentId: "agent", agentName: "AGY", conversationId: "chat", cwd: root, prompt: "hello" };
+  const args = { adapter: "agy-acp", binary: native ? "agy" : "agy-acp", agentId: "agent", agentName: "AGY", conversationId: "chat", cwd: root, prompt: "hello", configOptionOverrides: { effort: "medium" } };
   await runtime.cliRun(wc, { ...args, sessionId: "one" });
   assert.equal(persistedText, fullText);
-  assert.equal(fs.existsSync(fixture.filename), false);
+  if (!native) assert.equal(fs.existsSync(fixture.filename), false);
   const editEvent = events.find(event => event.items?.some(item => item.toolOutputs?.some(output => output.blobKey === "saved-diff")));
   assert.ok(editEvent);
   assert.ok(JSON.stringify(editEvent).length < 4096);
   await runtime.cliRun(wc, { ...args, sessionId: "two" });
+  const controls = requests.filter(request => request.method === "session/set_config_option");
+  assert.deepEqual(controls.map(request => [request.params.configId, request.params.value]),
+    Array.from({ length: 2 }, () => [native ? "thought_level" : "effort", "medium"]));
   assert.equal(spawnOptions[0].env.GCM_INTERACTIVE, "0");
   assert.equal(spawnOptions[0].env.GIT_TERMINAL_PROMPT, "0");
   assert.equal(children[0].stdin.listenerCount("error"), 1);

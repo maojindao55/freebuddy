@@ -56,7 +56,8 @@ verified", prioritizing their existing tools, then hand off gracefully.
    - Comate:      `npm install -g comate-acp`  (binary `comate-acp`; needs `comatecli`)
    - CodeBuddy:   `npm install -g @tencent-ai/codebuddy-code`  (binary `codebuddy`)
    - Grok:        `curl -fsSL https://x.ai/cli/install.sh | bash`  (binary `grok`)
-   - Antigravity: `npm install -g agy-acp-bridge`  (binary `agy-acp`)
+   - Antigravity: `curl -fsSL https://antigravity.google/cli/install.sh | bash`  (binary `agy`; FreeBuddy runs `agy acp --process-per-session`)
+     On Windows, use `irm https://antigravity.google/cli/install.ps1 | iex`.
    - ZCode:       `npm install -g zcode-acp-server`  (binary `zcode-acp-server`)
    - Cline:       `npm install -g cline`  (binary `cline`)
    - Devin:       `curl -fsSL https://cli.devin.ai/install.sh | bash`  (binary `devin`)

@@ -73,6 +73,8 @@ import {
 import { isolateRemoteCwdForCaller } from "./remoteWorkspaceAccess.js";
 import { clearSessionOwner } from "./sessionOwners.js";
 import { RunMetricsCollector } from "./runMetricsCollector.js";
+import { resolveAntigravitySession } from "./antigravitySessions.js";
+import { isAntigravityBridgeBinary } from "../shared/antigravity.js";
 
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
@@ -337,6 +339,14 @@ async function runCliAgent(
     await ensureManagedNodeRuntime(getDataDir());
     if (executionArgs.adapter === "pi-acp") {
       await ensurePackagedPiRuntime(getDataDir());
+    }
+    if (executionArgs.adapter === "agy-acp" && toolSessionId && !remoteIsolated &&
+        !isAntigravityBridgeBinary(executionArgs.binary)) {
+      const resolved = resolveAntigravitySession(toolSessionId);
+      if (resolved.migrated) {
+        appendLog(logStream, "system", `migrated Antigravity bridge session ${toolSessionId} to ${resolved.sessionId ?? "new session"}`);
+        toolSessionId = resolved.sessionId;
+      }
     }
     built = buildCommand({
       adapter: executionArgs.adapter,

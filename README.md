@@ -111,6 +111,7 @@ Use **Settings → CLI Agents → Install** for the installation method appropri
 | **Cursor** | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
 | **Kimi** | `kimi` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
 | **Qoder** | `qodercli` | `curl -fsSL https://qoder.com/install \| bash` |
+| **Comate** | `comate-acp` | `npm install -g comate-acp`; requires `comatecli` (Baidu Comate CLI) |
 | **CodeBuddy** | `codebuddy` | `npm install -g @tencent-ai/codebuddy-code` |
 | **Grok** | `grok` | Settings → CLI Agents → **Install** |
 | **Antigravity** | `agy-acp` | `npm install -g agy-acp-bridge`; requires an available Antigravity CLI |

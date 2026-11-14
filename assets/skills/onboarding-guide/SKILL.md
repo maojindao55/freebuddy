@@ -53,6 +53,7 @@ verified", prioritizing their existing tools, then hand off gracefully.
    - Cursor:      `curl https://cursor.com/install -fsS | bash`  (binary `cursor-agent`)
    - Kimi:        `curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash`  (binary `kimi`)
    - Qoder:       `curl -fsSL https://qoder.com/install | bash`  (binary `qodercli`)
+   - Comate:      `npm install -g comate-acp`  (binary `comate-acp`; needs `comatecli`)
    - CodeBuddy:   `npm install -g @tencent-ai/codebuddy-code`  (binary `codebuddy`)
    - Grok:        `curl -fsSL https://x.ai/cli/install.sh | bash`  (binary `grok`)
    - Antigravity: `npm install -g agy-acp-bridge`  (binary `agy-acp`)

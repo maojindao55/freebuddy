@@ -8,6 +8,7 @@ const KNOWN_ADAPTERS = new Set([
   "cursor-agent-acp",
   "kimi-acp",
   "qoder-acp",
+  "comate-acp",
   "codebuddy-acp",
   "grok-acp",
   "agy-acp",

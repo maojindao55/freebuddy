@@ -238,6 +238,7 @@ test("visible adapter definitions are ACP-only with product names", () => {
       { id: "cursor-agent-acp", label: "Cursor", protocol: "acp" },
       { id: "kimi-acp", label: "Kimi", protocol: "acp" },
       { id: "qoder-acp", label: "Qoder", protocol: "acp" },
+      { id: "comate-acp", label: "Comate", protocol: "acp" },
       { id: "codebuddy-acp", label: "CodeBuddy", protocol: "acp" },
       { id: "grok-acp", label: "Grok", protocol: "acp" },
       { id: "agy-acp", label: "Antigravity", protocol: "acp" },
@@ -464,6 +465,28 @@ test("buildCommand forwards extra args to Qoder ACP server", () => {
   });
 
   assert.deepEqual(built.args, ["--acp", "--yolo", "--some-flag"]);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand starts Comate through its ACP adapter binary", () => {
+  const built = buildCommand({ adapter: "comate-acp", prompt: "hello" });
+
+  // comate-acp is itself the ACP server, so it takes no subcommand.
+  assert.equal(built.bin, "comate-acp");
+  assert.deepEqual(built.args, []);
+  assert.equal(built.promptViaStdin, false);
+  assert.equal(built.protocol, "acp");
+});
+
+test("buildCommand forwards extra args to the Comate ACP adapter", () => {
+  const built = buildCommand({
+    adapter: "comate-acp",
+    prompt: "hello",
+    extraArgs: ["--some-flag"]
+  });
+
+  assert.deepEqual(built.args, ["--some-flag"]);
   assert.equal(built.promptViaStdin, false);
   assert.equal(built.protocol, "acp");
 });

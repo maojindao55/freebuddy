@@ -975,6 +975,186 @@ function closeServer(server) {
   return new Promise((resolve) => server.close(resolve));
 }
 
+test("bridge logs original upstream endings across HTTP response formats", async (t) => {
+  assert.ok(bridge, "build the Electron bridge before running its HTTP tests");
+  const secret = "bridge-diagnostic-secret";
+  const privateText = "private conversation content";
+  const cases = [
+    { name: "stop", format: "sse", reason: "stop", done: true },
+    { name: "length", format: "sse", reason: "length", done: true },
+    { name: "tools", format: "sse", reason: "tool_calls", done: true },
+    { name: "filter", format: "sse", reason: "content_filter", done: true },
+    { name: "eof", format: "sse", reason: "stop", done: false },
+    { name: "missing-reason", format: "sse", reason: undefined, done: false },
+    { name: "sniffed", format: "sniffed_sse", reason: "length", done: true },
+    { name: "json", format: "json", reason: "stop", stream: false },
+    { name: "json-for-stream", format: "json", reason: "length" },
+    { name: "http-error", status: 503, termination: "http_error" },
+    { name: "invalid-json", format: "json", termination: "invalid_response" },
+    { name: "provider-error", format: "sse", termination: "upstream_error", done: true },
+    { name: "disconnect", format: "sse", termination: "upstream_error" },
+    { name: "request-disconnect", termination: "request_error", networkFailure: true },
+    { name: "final-frame", format: "sse", reason: "length", done: false, finalFrame: true }
+  ];
+  const logs = [];
+  let received = 0;
+  const upstream = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      received += 1;
+      const body = JSON.parse(raw);
+      const scenario = cases.find((entry) => entry.name === body.model);
+      assert.ok(scenario, "test must reach the intended upstream handler");
+      assert.equal(req.headers.authorization, `Bearer ${secret}`);
+      if (scenario.networkFailure) {
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(scenario.status ?? 200, {
+        "content-type": scenario.format === "sse" ? "text/event-stream" : "application/json",
+        "x-bce-request-id": `provider-request-${scenario.name}`,
+        "x-private-header": secret
+      });
+      if (scenario.status) {
+        res.end(JSON.stringify({ error: { message: privateText } }));
+        return;
+      }
+      if (scenario.name === "invalid-json") {
+        res.end(privateText);
+        return;
+      }
+      const chat = {
+        id: `chat-${scenario.name}`,
+        choices: [{ index: 0, message: { role: "assistant", content: privateText }, finish_reason: scenario.reason }],
+        usage: { prompt_tokens: 17, completion_tokens: 3, total_tokens: 20 }
+      };
+      if (scenario.format === "json") {
+        res.end(JSON.stringify(chat));
+        return;
+      }
+      res.write(`data: ${JSON.stringify({
+        id: chat.id,
+        choices: [{ index: 0, delta: { content: privateText }, finish_reason: null }]
+      })}\n\n`);
+      if (scenario.name === "disconnect") {
+        setTimeout(() => res.destroy(), 20);
+        return;
+      }
+      if (scenario.name === "provider-error") {
+        res.write(`data: ${JSON.stringify({ error: { message: privateText } })}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify({ ...chat, choices: [{ index: 0, delta: {}, finish_reason: scenario.reason }] })}${scenario.finalFrame ? "" : "\n\n"}`);
+      }
+      if (scenario.done) res.write("data: [DONE]\n\n");
+      res.end();
+    });
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  bridge.setResponsesBridgeLogger((log) => logs.push(log));
+  try {
+    const port = await bridge.startResponsesBridge();
+    const route = bridge.registerCodexChatBridgeRoute(`http://127.0.0.1:${upstream.address().port}/v1`);
+    const requestIds = new Set();
+    for (const scenario of cases) {
+      await t.test(scenario.name, async () => {
+        const offset = logs.length;
+        const response = await postJson(
+          `http://127.0.0.1:${port}/v1/${route.routeId}/responses`,
+          { model: scenario.name, input: privateText, stream: scenario.stream ?? true, max_output_tokens: 123 },
+          { authorization: `Bearer ${secret}` }
+        );
+        const entries = logs.slice(offset);
+        assert.equal(entries.length, 2, "emit exactly one request and one terminal record");
+        const [request, ending] = entries;
+        assert.equal(request.event, "request");
+        assert.equal(ending.event, "completion");
+        assert.equal(ending.requestId, request.requestId);
+        assert.equal(ending.routeId, route.routeId);
+        assert.ok(!requestIds.has(ending.requestId), "concurrent/repeated model requests need distinct identifiers");
+        requestIds.add(ending.requestId);
+        assert.equal(ending.model, scenario.name);
+        assert.equal(ending.maxOutputTokens, 123);
+        assert.equal(ending.upstreamRequestId, scenario.networkFailure ? undefined : `provider-request-${scenario.name}`);
+        assert.equal(ending.status, scenario.networkFailure ? undefined : scenario.status ?? 200);
+        assert.equal(ending.attempts, 1);
+        assert.ok(ending.durationMs >= 0);
+        assert.equal(ending.responseFormat, scenario.format);
+        assert.equal(ending.termination, scenario.termination ??
+          (scenario.format === "json" ? "json" : scenario.done ? "sse_done" : "eof"));
+        assert.equal(ending.sawDone, scenario.done ?? false);
+        if (!scenario.status && !scenario.networkFailure && scenario.name !== "invalid-json") {
+          assert.equal(ending.upstreamResponseId, `chat-${scenario.name}`);
+          assert.deepEqual(ending.finishReasons, [{ index: 0, reason: scenario.reason ?? null }]);
+        }
+        if (!scenario.termination) {
+          assert.equal(ending.usage.input_tokens, 17);
+          assert.equal(ending.usage.output_tokens, 3);
+          assert.equal(ending.usage.total_tokens, 20);
+          const responseId = scenario.stream === false ? response.json().id : sseEvents(response.raw)[0].response.id;
+          assert.equal(ending.bridgeResponseId, responseId, "link upstream metadata to the response Codex receives");
+        }
+        if (scenario.name === "disconnect") {
+          assert.equal(ending.errorCode, "ECONNRESET");
+          assert.ok(sseEvents(response.raw).some((event) => event.type === "response.failed"));
+        }
+        assert.equal(ending.upstreamError, scenario.name === "provider-error");
+        const serialized = JSON.stringify(entries);
+        assert.ok(!serialized.includes(secret), "auth and arbitrary provider headers must not be logged");
+        assert.ok(!serialized.includes(privateText), "prompts, model content and provider error text must not be logged");
+      });
+    }
+    assert.equal(received, cases.length, "all cases exercised a real HTTP upstream");
+  } finally {
+    bridge.setResponsesBridgeLogger(undefined);
+    await bridge.closeResponsesBridge();
+    await closeServer(upstream);
+  }
+});
+
+test("bridge records client cancellation once and tolerates a failing logger", async (t) => {
+  assert.ok(bridge);
+  let terminal;
+  const completed = new Promise((resolve) => { terminal = resolve; });
+  const logs = [];
+  const upstream = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "working" } }] })}\n\n`);
+    });
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  bridge.setResponsesBridgeLogger((log) => {
+    logs.push(log);
+    if (log.event === "completion") terminal(log);
+    throw new Error("logger unavailable");
+  });
+  try {
+    const port = await bridge.startResponsesBridge();
+    const route = bridge.registerCodexChatBridgeRoute(`http://127.0.0.1:${upstream.address().port}/v1`);
+    await new Promise((resolve, reject) => {
+      const req = http.request({ hostname: "127.0.0.1", port, path: `/v1/${route.routeId}/responses`, method: "POST" }, (res) => {
+        res.once("data", () => {
+          res.destroy();
+          resolve();
+        });
+      });
+      req.on("error", reject);
+      req.end(JSON.stringify({ model: "m", input: "hi", stream: true }));
+    });
+    const ending = await completed;
+    assert.equal(ending.termination, "client_closed");
+    assert.equal(ending.sawDone, false);
+    assert.equal(ending.requestId, logs[0].requestId);
+  } finally {
+    await bridge.closeResponsesBridge();
+    await closeServer(upstream);
+    assert.equal(logs.filter((log) => log.event === "completion").length, 1);
+    bridge.setResponsesBridgeLogger(undefined);
+  }
+});
+
 test("bridge retries optional-field rejections and relays other errors", async (t) => {
   if (!bridge) {
     t.skip("dist-electron bridge not built yet");
@@ -982,6 +1162,8 @@ test("bridge retries optional-field rejections and relays other errors", async (
   }
 
   const requests = [];
+  const logs = [];
+  bridge.setResponsesBridgeLogger((log) => logs.push(log));
   const upstream = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
@@ -1041,6 +1223,8 @@ test("bridge retries optional-field rejections and relays other errors", async (
     assert.deepEqual(relayed.json(), {
       error: { message: "provider exploded" }
     });
+    assert.equal(logs.at(-1).termination, "http_error");
+    assert.equal(logs.at(-1).attempts, 1);
 
     // optional fields rejected → one retry without them succeeds
     const ok = await postJson(endpoint, {
@@ -1055,6 +1239,12 @@ test("bridge retries optional-field rejections and relays other errors", async (
     assert.notEqual(lastTwo[0].stream_options, undefined);
     assert.equal(lastTwo[1].reasoning_effort, undefined);
     assert.equal(lastTwo[1].stream_options, undefined);
+    const ending = logs.at(-1);
+    assert.equal(ending.termination, "json");
+    assert.equal(ending.status, 200, "record the successful retry rather than the rejected first attempt");
+    assert.equal(ending.attempts, 2);
+    assert.deepEqual(ending.finishReasons, [{ index: 0, reason: "stop" }]);
+    assert.equal(logs.filter((log) => log.event === "completion").length, 2);
 
     const events = sseEvents(ok.raw);
     assert.equal(events[0].type, "response.created");
@@ -1069,6 +1259,7 @@ test("bridge retries optional-field rejections and relays other errors", async (
       4
     );
   } finally {
+    bridge.setResponsesBridgeLogger(undefined);
     await bridge.closeResponsesBridge();
     await closeServer(upstream);
   }

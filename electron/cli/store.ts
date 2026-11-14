@@ -599,9 +599,16 @@ function hasCodexChatWireByok(): boolean {
 export async function ensureCodexChatBridge(): Promise<void> {
   if (!hasCodexChatWireByok()) return;
   setResponsesBridgeLogger((log) => {
+    if (log.event === "completion") {
+      logMain().info("responsesBridge", "upstream finished", log);
+      return;
+    }
     logMain().info("responsesBridge", "request translated", {
+      requestId: log.requestId,
+      routeId: log.routeId,
       model: log.model,
       stream: log.stream,
+      maxOutputTokens: log.maxOutputTokens,
       tools: log.toolNames,
       localShell: log.localShellToolNames,
       custom: log.customToolNames,

@@ -77,6 +77,8 @@ test("probe failures identify the adapter and RPC phase, and console errors reta
     }
     setDbForTest(null);
     delete globalThis.__freebuddyElectronGetPath;
-    fs.rmSync(root, { recursive: true, force: true });
+    // Windows keeps the probe's cwd locked until asynchronous process-tree
+    // termination completes. Yield while retrying so its handles can close.
+    await fs.promises.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

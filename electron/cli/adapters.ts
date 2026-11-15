@@ -224,7 +224,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true, skills: { mode: "native", nativeDirs: [".comate/skills"], reloadPolicy: "process-start" } },
     toolSessionArgs: [],
     toolSessionArgPrefixes: [],
-    installHint: "npm install -g comate-acp",
+    installHint: "npm install -g comate-acp @comate/comatecli",
     docsUrl: "https://www.npmjs.com/package/comate-acp",
     protocol: "acp"
   },

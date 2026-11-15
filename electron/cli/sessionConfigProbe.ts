@@ -4,6 +4,7 @@ import type { ChildProcessByStdio } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 
 import spawn from "cross-spawn";
+import { logMain } from "../debugLog.js";
 
 import {
   acpSessionSetupToItems,
@@ -139,6 +140,33 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 export async function inspectSessionConfigOptions(
   input: SessionConfigProbeInput
 ): Promise<SessionConfigOption[]> {
+  const startedAt = Date.now();
+  const diagnostics = { phase: "prepare", stderrTail: "" };
+  try {
+    return await probeSessionConfigOptions(input, diagnostics);
+  } catch (error) {
+    logMain().error("acp", "session config probe failed", {
+      adapter: input.adapter,
+      agentId: input.agentId,
+      cwd: input.cwd,
+      phase: diagnostics.phase,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        code: (error as Error & { code?: unknown }).code
+      } : String(error),
+      stderr: diagnostics.stderrTail || undefined
+    });
+    throw error;
+  }
+}
+
+async function probeSessionConfigOptions(
+  input: SessionConfigProbeInput,
+  diagnostics: { phase: string; stderrTail: string }
+): Promise<SessionConfigOption[]> {
   const definition = getAdapterDefinition(input.adapter);
   if (definition?.protocol !== "acp") return [];
 
@@ -174,6 +202,7 @@ export async function inspectSessionConfigOptions(
       built.env?.ANTHROPIC_MODEL
     )
   );
+  diagnostics.phase = "spawn";
   const child = spawn(built.bin, built.args, {
     cwd,
     env,
@@ -188,16 +217,19 @@ export async function inspectSessionConfigOptions(
     { resolve: (value: any) => void; reject: (reason: Error) => void }
   >();
   const stdout = readline.createInterface({ input: child.stdout });
-  // Drain diagnostics so a verbose agent cannot fill the stderr pipe and
-  // deadlock this otherwise short-lived metadata probe.
-  child.stderr.resume();
+  // Keep a bounded tail for failures while draining verbose diagnostics.
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    diagnostics.stderrTail = `${diagnostics.stderrTail}${chunk}`.slice(-4000);
+  });
 
   const rejectPending = (error: Error) => {
     for (const waiter of pending.values()) waiter.reject(error);
     pending.clear();
   };
-  const request = (message: AcpMessage) =>
-    withTimeout(
+  const request = (message: AcpMessage) => {
+    diagnostics.phase = message.method ?? "ACP request";
+    return withTimeout(
       new Promise<any>((resolve, reject) => {
         if (message.id == null) {
           reject(new Error("ACP requests require an id"));
@@ -208,6 +240,7 @@ export async function inspectSessionConfigOptions(
       }),
       message.method ?? "ACP request"
     );
+  };
 
   stdout.on("line", (line) => {
     const message = parseAcpLine(line);

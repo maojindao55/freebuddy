@@ -60,7 +60,17 @@ function interceptConsole(logger: DebugLogger): void {
 
 function safeStringify(value: unknown): string {
   try {
-    const serialized = JSON.stringify(value);
+    const serialized = JSON.stringify(value, (_key, entry) =>
+      entry instanceof Error
+        ? {
+            ...entry,
+            name: entry.name,
+            message: entry.message,
+            stack: entry.stack,
+            cause: entry.cause
+          }
+        : entry
+    );
     return serialized === undefined ? String(value) : serialized;
   } catch {
     return String(value);

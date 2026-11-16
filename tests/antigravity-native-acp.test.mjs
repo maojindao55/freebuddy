@@ -7,7 +7,13 @@ import { createHash } from "node:crypto";
 import { buildCommand, getAdapterDefinition } from "../dist-electron/cli/adapters.js";
 import { resolveAntigravitySession } from "../dist-electron/cli/antigravitySessions.js";
 import { antigravityConfigOverrides, isAntigravityBridgeBinary } from "../dist-electron/shared/antigravity.js";
-import { acpUpdateToItems } from "../dist-electron/cli/acp.js";
+import {
+  acpUpdateToItems,
+  emptyAcpTurnErrorMessage,
+  isNativeAntigravityAcp,
+  shouldSkipWarmSessionLoad,
+  updateActiveAcpToolCalls
+} from "../dist-electron/cli/acp.js";
 import { latestAntigravityVersion } from "../dist-electron/cli/antigravityUpdate.js";
 
 test("Antigravity launches native ACP with isolated sessions and preserves caller flags", () => {
@@ -101,4 +107,46 @@ test("native updates use the official release, rejecting network errors and inva
   }), "1.5.9");
   await assert.rejects(latestAntigravityVersion(async () => ({ ok: false, status: 503 })), /503/);
   await assert.rejects(latestAntigravityVersion(async () => ({ ok: true, json: async () => ({ tag_name: "not-a-version" }) })), /invalid version/);
+});
+
+test("warm native AGY session helpers skip redundant session/load and surface empty-turn diagnostics", () => {
+  assert.equal(isNativeAntigravityAcp("agy-acp", { name: "Antigravity ACP Server" }), true);
+  assert.equal(isNativeAntigravityAcp("agy-acp", { name: "agy-acp" }), false);
+  assert.equal(
+    shouldSkipWarmSessionLoad({
+      adapter: "agy-acp",
+      agentInfo: { name: "Antigravity ACP Server" },
+      warmSessionId: "s-1",
+      requestedToolSessionId: "s-1"
+    }),
+    true
+  );
+  assert.equal(
+    shouldSkipWarmSessionLoad({
+      adapter: "agy-acp",
+      agentInfo: { name: "agy-acp" },
+      warmSessionId: "s-1",
+      requestedToolSessionId: "s-1"
+    }),
+    false
+  );
+  const ids = new Set();
+  const names = new Map();
+  updateActiveAcpToolCalls(ids, { sessionUpdate: "tool_call", toolCallId: "q1", name: "ask_question", status: "in_progress" }, names);
+  updateActiveAcpToolCalls(ids, { sessionUpdate: "tool_call_update", toolCallId: "q1", status: "pending" }, names);
+  assert.equal(names.get("q1"), "ask_question");
+  assert.match(
+    emptyAcpTurnErrorMessage({
+      adapter: "agy-acp",
+      resumedOrWarm: true,
+      pendingAskQuestion: true,
+      sessionId: "s-1",
+      language: "zh-CN"
+    }),
+    /ask_question.*agy --conversation s-1/
+  );
+  assert.equal(
+    emptyAcpTurnErrorMessage({ adapter: "kimi-acp", resumedOrWarm: false, language: "en-US" }),
+    undefined
+  );
 });

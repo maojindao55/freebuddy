@@ -31,7 +31,10 @@ import {
   shouldEmitAcpUpdate,
   shouldWriteAcpStdoutLog,
   compactAcpStdoutLine,
+  emptyAcpTurnErrorMessage,
+  isNativeAntigravityAcp,
   shouldSkipUserMessageChunk,
+  shouldSkipWarmSessionLoad,
   shouldDiscardAcpToolSession,
   shouldRetryEmptyResumedDshTurn,
   textFromContent,
@@ -308,6 +311,8 @@ export async function runAcpAgent({
   let turnTerminalErrorMessage: string | undefined;
   let turnHadLiveAgentChunk = false;
   let sessionWasResumed = false;
+  let warmSessionReused = false;
+  const previousTurnPendingAskQuestion = Boolean(warmConnection?.pendingAskQuestion);
   let mcpServers: AcpStdioMcpServer[] = [];
   let mcpSecretValues: string[] = [];
   const redactMcpLog = (text: string) =>
@@ -318,6 +323,7 @@ export async function runAcpAgent({
   let emptySessionResetAttempted = false;
   let nonRetryableUpstreamError: string | undefined;
   const activeToolCallIds = new Set<string>();
+  const activeToolNames = new Map<string, string>();
   const toolActivity = new AcpToolActivityTracker();
   const embeddedTerminals = new AcpEmbeddedTerminalTracker();
   let activePrompt = args.prompt;
@@ -781,7 +787,7 @@ export async function runAcpAgent({
       }
       const updateType = String(msg.params?.update?.sessionUpdate ?? "");
       if (promptStarted) {
-        updateActiveAcpToolCalls(activeToolCallIds, msg.params?.update);
+        updateActiveAcpToolCalls(activeToolCallIds, msg.params?.update, activeToolNames);
       }
       const upstreamFailure = acpNonRetryableUpstreamError(msg.params?.update);
       if (!nonRetryableUpstreamError && upstreamFailure) {
@@ -1381,10 +1387,22 @@ export async function runAcpAgent({
     });
   };
 
+  const clearWarmSessionState = () => {
+    warmSessionReused = false;
+    if (!warmConnection) return;
+    warmConnection.sessionId = undefined;
+    warmConnection.sessionSetup = undefined;
+    warmConnection.pendingAskQuestion = undefined;
+  };
+
   const restartAndInitialize = async () => {
     const restarted = await restartAgent();
     child = restarted.child;
-    if (warmConnection) { warmConnection.child = child; warmConnection.initialize = undefined; }
+    if (warmConnection) {
+      warmConnection.child = child;
+      warmConnection.initialize = undefined;
+    }
+    clearWarmSessionState();
     pid = restarted.pid;
     activeAcpSessionId = undefined;
     promptStarted = false;
@@ -1423,6 +1441,28 @@ export async function runAcpAgent({
     };
 
     sessionWasResumed = false;
+    warmSessionReused = false;
+    if (
+      shouldSkipWarmSessionLoad({
+        adapter: args.adapter,
+        agentInfo,
+        warmSessionId: warmConnection?.sessionId,
+        requestedToolSessionId
+      })
+    ) {
+      activeAcpSessionId = warmConnection!.sessionId!;
+      warmSessionReused = true;
+      appendLog(
+        logStream,
+        "system",
+        `reusing warm ACP session ${activeAcpSessionId}; skipping session/load`
+      );
+      if (warmConnection?.sessionSetup) {
+        emitSetupItems(warmConnection.sessionSetup);
+      }
+      return;
+    }
+
     const sessionStartMode = selectAcpSessionStartMode(
       requestedToolSessionId,
       agentCaps
@@ -1439,6 +1479,7 @@ export async function runAcpAgent({
       );
       activeAcpSessionId = requestedToolSessionId!;
       sessionWasResumed = true;
+      if (warmConnection) warmConnection.sessionSetup = loaded;
       emitSetupItems(loaded);
     } else if (sessionStartMode === "resume") {
       const resumed = await request(
@@ -1452,12 +1493,14 @@ export async function runAcpAgent({
       );
       activeAcpSessionId = requestedToolSessionId!;
       sessionWasResumed = true;
+      if (warmConnection) warmConnection.sessionSetup = resumed;
       emitSetupItems(resumed);
     } else {
       const created = await request(
         buildSessionNewRequest(nextId(), args.cwd, mcpServers, sessionMeta)
       );
       activeAcpSessionId = created?.sessionId ?? created?.session_id;
+      if (warmConnection) warmConnection.sessionSetup = created;
       emitSetupItems(created);
     }
   };
@@ -1496,6 +1539,7 @@ export async function runAcpAgent({
     turnHadLiveAgentChunk = false;
     inactivityReprieves = 0;
     activeToolCallIds.clear();
+    activeToolNames.clear();
     toolActivity.clear();
     // Replay suppression remains active on resumed sessions until the first
     // live chunk or non-replayed tool call signals real generation.
@@ -1692,6 +1736,7 @@ export async function runAcpAgent({
     requestedToolSessionId = undefined;
     activeAcpSessionId = undefined;
     sessionWasResumed = false;
+    clearWarmSessionState();
   };
 
   try {
@@ -2012,6 +2057,7 @@ export async function runAcpAgent({
         }
         requestedToolSessionId = undefined;
         activeAcpSessionId = undefined;
+        clearWarmSessionState();
         activePrompt = [
           args.prompt.trimEnd(),
           "",
@@ -2085,6 +2131,7 @@ export async function runAcpAgent({
       requestedToolSessionId = undefined;
       activeAcpSessionId = undefined;
       sessionWasResumed = false;
+      clearWarmSessionState();
       activePrompt = [
         args.prompt.trimEnd(),
         "",
@@ -2100,6 +2147,26 @@ export async function runAcpAgent({
     if (yieldRequested || finished) return;
     await syncSessionMetadataFromList();
     if (yieldRequested || finished) return;
+
+    if (!promptHadContent && !finished && !cancellationRequested) {
+      const resumedOrWarm = warmSessionReused || initialPromptResumedSession;
+      clearWarmSessionState();
+      const emptyTurnError = emptyAcpTurnErrorMessage({
+        adapter: args.adapter,
+        resumedOrWarm,
+        pendingAskQuestion: previousTurnPendingAskQuestion,
+        sessionId: activeAcpSessionId,
+        language: getLanguage()
+      });
+      if (emptyTurnError) {
+        appendLog(
+          logStream,
+          "system",
+          `ACP resumed/warm turn returned no content (session=${activeAcpSessionId ?? "unknown"} pendingAskQuestion=${previousTurnPendingAskQuestion})`
+        );
+        throw new Error(emptyTurnError);
+      }
+    }
 
     // Some agents (e.g. kimi when signed out) let session creation succeed but
     // return an empty turn because the model layer is unauthenticated. If the
@@ -2153,9 +2220,13 @@ export async function runAcpAgent({
       }
     }
 
+    const hasPendingAskQuestion = Array.from(activeToolNames.values()).some(
+      (name) => name === "ask_question"
+    );
     keepWarm = Boolean(warmConnection && parkConnection && activeAcpSessionId &&
+      promptHadContent &&
       (warmConnection.initialize?._meta?.freebuddy?.persistentSession === true ||
-        (args.adapter === "agy-acp" && agentInfo?.name === "Antigravity ACP Server" && agentCaps.loadSession)) && !cancellationRequested &&
+        (isNativeAntigravityAcp(args.adapter, agentInfo) && agentCaps.loadSession)) && !cancellationRequested &&
       !connectionClosed() && !inactivityFired && !turnHadTerminalError);
     if (!keepWarm && !cancellationRequested && !connectionClosed() && agentCaps?.sessionCapabilities?.close) {
       try {
@@ -2171,6 +2242,7 @@ export async function runAcpAgent({
       warmConnection.requestId = requestId;
       warmConnection.sessionId = activeAcpSessionId;
       warmConnection.previousRunId = args.sessionId;
+      warmConnection.pendingAskQuestion = hasPendingAskQuestion;
       finish("done", 0);
       await captureCompletion;
       parkConnection();

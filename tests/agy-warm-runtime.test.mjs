@@ -168,8 +168,13 @@ for (const native of [false, true]) test(`FreeBuddy cliRun reuses ${native ? "na
   assert.equal(requests.filter(r => r.method === "initialize").length, 1);
   assert.equal(requests.filter(r => r.method === "session/close").length, 0);
   const mcp1 = requests.find(r => r.method === "session/new").params.mcpServers;
-  const mcp2 = requests.find(r => r.method === "session/load").params.mcpServers;
-  assert.deepEqual(mcp2, mcp1);
+  const loadRequests = requests.filter(r => r.method === "session/load");
+  if (native) {
+    assert.equal(loadRequests.length, 0);
+  } else {
+    assert.equal(loadRequests.length, 1);
+    assert.deepEqual(loadRequests[0].params.mcpServers, mcp1);
+  }
   const summaries = events.flatMap(e => e.items ?? []).filter(i => i.runMetrics?.status === "done").map(i => i.runMetrics);
   assert.deepEqual(summaries.map(m => m.outputTokens), [10, 20]);
   assert.deepEqual(summaries.map(m => m.tokensPerSecond), [10, 20]);
@@ -183,4 +188,144 @@ for (const native of [false, true]) test(`FreeBuddy cliRun reuses ${native ? "na
   assert.ok(children.every(child => child.exitCode === 0));
   assert.ok(spawnOptions.every(options => options.windowsHide === (process.platform === "win32")));
   assert.equal(browser.size, 0);
+});
+
+test("native AGY warm reuse skips session/load after pending ask_question and fails without parking or auth prompt on empty end_turn", async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-agy-empty-turn-"));
+  const pool = new AcpProcessPool();
+  const logCompletions = [];
+  t.after(async () => {
+    pool.dispose();
+    await Promise.all(logCompletions);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const children = [], events = [], requests = [];
+  let saved, turnMode = "ask_question";
+  const noop = () => {};
+  const services = {
+    fs: { ...fs, createWriteStream: (...args) => {
+      const stream = fs.createWriteStream(...args);
+      logCompletions.push(finished(stream));
+      return stream;
+    } },
+    acpProcessPool: pool, RunMetricsCollector,
+    getLogDir: () => root, getDataDir: () => root,
+    getCallerUserId: () => "owner", getLanguage: () => "zh-CN",
+    getAdapterDefinition: () => ({ capabilities: { toolSession: true } }),
+    buildCommand: () => ({ bin: "fake-agy", args: ["acp"], protocol: "acp" }),
+    resolveCliByokEnv: () => ({}), sanitizeCliAgentEnv: env => env,
+    applyManagedNodeEnvironment: env => env,
+    getToolSession: () => saved,
+    saveToolSession: (_agent, _scope, adapter, sessionId) => { saved = { adapter, sessionId }; },
+    prepareTurnFileCapture: async input => ({ taskId: input.taskId }),
+    finalizeTurnFileCapture: async () => {},
+    persistFileEditItems: (_session, items) => items,
+    logMain: () => ({ info: noop, warn: noop, error: noop }),
+    safeSendToWebContents: (_contents, _channel, event) => events.push(event),
+    adapterAcceptsClientMcpServers: () => true,
+    getConversation: () => ({ kind: "chat" }),
+    getConversationMcpServerIds: () => [],
+    createAcpTerminalManager: () => ({ dispose: noop }),
+    registerBrowserToolSession: async () => ({ name: "browser", command: "mock", args: [] }),
+    rebindBrowserToolSession: () => true,
+    unregisterBrowserToolSession: noop,
+    killProcessTree: child => child.kill(),
+    spawn: () => {
+      const child = new EventEmitter();
+      Object.assign(child, { pid: 2000 + children.length, exitCode: null, signalCode: null, stdout: new PassThrough(), stderr: new PassThrough() });
+      const reply = (request, result) => child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\n");
+      child.stdin = new Writable({ write(chunk, _encoding, callback) {
+        const request = JSON.parse(chunk.toString());
+        requests.push({ pid: child.pid, ...request });
+        callback();
+        queueMicrotask(() => {
+          if (request.method === "initialize") {
+            reply(request, {
+              protocolVersion: 1,
+              agentInfo: { name: "Antigravity ACP Server", version: "1.5.9" },
+              agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } },
+              authMethods: [
+                { id: "oauth-personal", name: "Log in with Google" },
+                { id: "terminal-login", name: "Log in from the terminal", type: "terminal", args: ["--login"] }
+              ]
+            });
+          } else if (request.method === "session/new" || request.method === "session/load") {
+            reply(request, { sessionId: "agy-session-1" });
+          } else if (request.method === "session/prompt") {
+            if (turnMode === "ask_question") {
+              child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+                sessionId: "agy-session-1",
+                update: { sessionUpdate: "tool_call", toolCallId: "ask-1", name: "ask_question", status: "in_progress" }
+              } }) + "\n");
+              child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+                sessionId: "agy-session-1",
+                update: { sessionUpdate: "tool_call_update", toolCallId: "ask-1", name: "ask_question", status: "pending" }
+              } }) + "\n");
+              child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+                sessionId: "agy-session-1",
+                update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Choose 1 or 2" } }
+              } }) + "\n");
+            } else if (turnMode === "answer_ok") {
+              child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+                sessionId: "agy-session-1",
+                update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Completed after ask_question" } }
+              } }) + "\n");
+            }
+            reply(request, { stopReason: "end_turn" });
+          } else if (request.method === "session/list") {
+            reply(request, { sessions: [] });
+          } else {
+            reply(request, {});
+          }
+        });
+      } });
+      child.kill = () => {
+        if (child.exitCode !== null) return;
+        child.exitCode = 0; child.signalCode = "SIGTERM";
+        child.stdin.destroy(); child.stdout.end(); child.stderr.end(); child.emit("close", 0);
+      };
+      children.push(child);
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    }
+  };
+
+  services.runAcpAgent = load("../electron/cli/acpRuntime.ts", services).runAcpAgent;
+  const runtime = load("../electron/cli/runtime.ts", services);
+  const wc = { id: 1 };
+  const baseArgs = { adapter: "agy-acp", binary: "agy", agentId: "agent", agentName: "AGY", conversationId: "chat-ask", cwd: root, prompt: "switch branch" };
+
+  // Turn 1 leaves ask_question pending at end_turn and stays warm.
+  await runtime.cliRun(wc, { ...baseArgs, sessionId: "t1" });
+  assert.equal(children.length, 1);
+
+  // Turn 2 reuses the warm connection without sending session/load, so ask_question can resolve cleanly.
+  turnMode = "answer_ok";
+  await runtime.cliRun(wc, { ...baseArgs, sessionId: "t2", prompt: "1" });
+  assert.equal(children.length, 1);
+  assert.equal(requests.filter(r => r.method === "session/load").length, 0);
+
+  // Turn 3 simulates another pending ask_question followed by Turn 4 returning empty end_turn.
+  turnMode = "ask_question";
+  await runtime.cliRun(wc, { ...baseArgs, sessionId: "t3", prompt: "ask again" });
+  turnMode = "empty_end_turn";
+  await runtime.cliRun(wc, { ...baseArgs, sessionId: "t4", prompt: "reply" });
+
+  // Turn 4 must fail visibly (not trigger auth or silent exitCode=0) and evict the warm process.
+  const t4Events = events.slice(events.findLastIndex(e => e.type === "started"));
+  assert.equal(t4Events.some(e => e.type === "authentication"), false);
+  const errEvent = t4Events.find(e => e.type === "error");
+  assert.ok(errEvent);
+  assert.match(errEvent.message, /ask_question/);
+  assert.match(errEvent.message, /agy --conversation agy-session-1/);
+  assert.equal(t4Events.find(e => e.type === "done").exitCode, -1);
+  assert.equal(children[0].exitCode, 0);
+
+  // Turn 5 must spawn a new process (and do a fresh session/load) rather than reusing the evicted one.
+  turnMode = "answer_ok";
+  await runtime.cliRun(wc, { ...baseArgs, sessionId: "t5", prompt: "retry" });
+  assert.equal(children.length, 2);
+  assert.equal(requests.filter(r => r.pid === children[1].pid && r.method === "session/load").length, 1);
+  await runtime.shutdownCliProcesses();
 });

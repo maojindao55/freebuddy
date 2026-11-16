@@ -40,6 +40,12 @@ import { SkillPicker } from "@/components/CLI/SkillPicker";
 import { useSkillStore } from "@/store/skillStore";
 import { useOnboardingStore } from "@/store/onboardingStore";
 import { useProviderStore } from "@/store/providerStore";
+import {
+  protocolsOf,
+  resolveProviderBaseUrl,
+  resolveProviderEnvKey,
+  type ProviderProtocol
+} from "@/services/providers/types";
 import { ProviderSelect } from "./ProviderSelect";
 import { cliAdapterDefinitions, type CLIAdapterDefinition } from "@/config/cliAdapters";
 import { runtimeVersionBelow } from "../../../electron/shared/cliRuntimeUpdate";
@@ -1343,6 +1349,13 @@ function EditOverridePanel({
     return pid && pid !== "proxy" && pid !== "custom" ? pid : undefined;
   });
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
+  const selectedProviderProtocols = useMemo(
+    () => (selectedProvider ? protocolsOf(selectedProvider) : []),
+    [selectedProvider]
+  );
+  const [piProtocol, setPiProtocol] = useState<ProviderProtocol | undefined>(
+    () => savedPiByok?.protocol
+  );
   const [codexProviderId, setCodexProviderId] = useState(
     savedCodexByok?.providerId ?? "proxy"
   );
@@ -1414,16 +1427,38 @@ function EditOverridePanel({
     if (!providersLoaded) void loadProviders();
   }, [loadProviders, providersLoaded]);
 
+  const effectivePiProtocol = useMemo<ProviderProtocol | undefined>(() => {
+    if (!isPi || !selectedProvider) return undefined;
+    if (piProtocol && selectedProviderProtocols.includes(piProtocol)) {
+      return piProtocol;
+    }
+    if (selectedProviderProtocols.includes("openai-chat")) return "openai-chat";
+    return selectedProviderProtocols[0];
+  }, [isPi, selectedProvider, piProtocol, selectedProviderProtocols]);
+
+  const resolvedProviderProtocol = useMemo<ProviderProtocol>(() => {
+    if (isClaude) return "anthropic";
+    if (isDeepSeek) return "deepseek";
+    if (isPi) return effectivePiProtocol ?? "openai-chat";
+    return codexWireApi === "responses" ? "openai-responses" : "openai-chat";
+  }, [isClaude, isDeepSeek, isPi, effectivePiProtocol, codexWireApi]);
+
+  const resolvedProviderUrl = useMemo(() => {
+    if (!selectedProvider) return "";
+    return resolveProviderBaseUrl(selectedProvider, resolvedProviderProtocol);
+  }, [selectedProvider, resolvedProviderProtocol]);
+
   useEffect(() => {
     if (selectedProvider) {
-      if (selectedProvider.baseUrl && !codexBaseUrl) {
-        setCodexBaseUrl(selectedProvider.baseUrl);
+      if (resolvedProviderUrl && !codexBaseUrl) {
+        setCodexBaseUrl(resolvedProviderUrl);
       }
-      if (selectedProvider.envKey && !codexEnvKey) {
-        setCodexEnvKey(selectedProvider.envKey);
+      const nextEnvKey = resolveProviderEnvKey(selectedProvider, resolvedProviderProtocol);
+      if (nextEnvKey && !codexEnvKey) {
+        setCodexEnvKey(nextEnvKey);
       }
     }
-  }, [selectedProvider, codexBaseUrl, codexEnvKey]);
+  }, [selectedProvider, resolvedProviderUrl, resolvedProviderProtocol, codexBaseUrl, codexEnvKey]);
 
   useEffect(() => {
     if (selectedProvider) {
@@ -1534,6 +1569,47 @@ function EditOverridePanel({
           }))
       : normalizedByokModels;
 
+    const selectedProviderProtos =
+      selectedProvider?.protocols && selectedProvider.protocols.length > 0
+        ? selectedProvider.protocols
+        : selectedProvider?.protocol
+          ? [selectedProvider.protocol]
+          : [];
+    const safeCodexWireApi =
+      typeof codexWireApi !== "undefined" ? codexWireApi : ("responses" as const);
+    const resolvedCodexWireApi =
+      selectedProviderProtos.includes("openai-chat") &&
+      selectedProviderProtos.includes("openai-responses")
+        ? safeCodexWireApi
+        : selectedProviderProtos.includes("openai-responses")
+          ? ("responses" as const)
+          : ("chat" as const);
+    const rawProviderEnvKey = selectedProvider?.envKey?.trim();
+    const claudeProviderEnvKey =
+      rawProviderEnvKey && rawProviderEnvKey !== "OPENAI_API_KEY"
+        ? rawProviderEnvKey
+        : codexEnvKey.trim() && codexEnvKey.trim() !== "OPENAI_API_KEY"
+          ? codexEnvKey.trim()
+          : "ANTHROPIC_API_KEY";
+    const resolvedPiProtocol =
+      typeof piProtocol !== "undefined" &&
+      piProtocol &&
+      selectedProviderProtos.includes(piProtocol)
+        ? piProtocol
+        : typeof effectivePiProtocol !== "undefined"
+          ? effectivePiProtocol
+          : undefined;
+    const piProviderEnvKey =
+      resolvedPiProtocol === "anthropic"
+        ? rawProviderEnvKey && rawProviderEnvKey !== "OPENAI_API_KEY"
+          ? rawProviderEnvKey
+          : "ANTHROPIC_API_KEY"
+        : resolvedPiProtocol === "deepseek"
+          ? rawProviderEnvKey && rawProviderEnvKey !== "OPENAI_API_KEY"
+            ? rawProviderEnvKey
+            : "DEEPSEEK_API_KEY"
+          : rawProviderEnvKey || codexEnvKey.trim() || "OPENAI_API_KEY";
+
     const codexByokConfig =
       isCodex && codexByokEnabled
         ? selectedProviderId
@@ -1543,7 +1619,7 @@ function EditOverridePanel({
               providerId: selectedProviderId,
               providerName: selectedProvider?.name || codexProviderName.trim() || "BYOK provider",
               envKey: selectedProvider?.envKey || codexEnvKey.trim() || "OPENAI_API_KEY",
-              wireApi: selectedProvider?.protocol === "openai-responses" ? ("responses" as const) : ("chat" as const),
+              wireApi: resolvedCodexWireApi,
               models: effectiveByokModels
             }
           : {
@@ -1564,7 +1640,7 @@ function EditOverridePanel({
           ? {
               enabled: true,
               providerId: selectedProviderId,
-              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "ANTHROPIC_API_KEY",
+              envKey: claudeProviderEnvKey,
               models: effectiveByokModels,
               compaction: { enabled: claudeCompactionEnabled }
             }
@@ -1587,7 +1663,10 @@ function EditOverridePanel({
           ? {
             enabled: true,
             providerId: selectedProviderId,
-            envKey: selectedProvider?.envKey || codexEnvKey.trim() || "DEEPSEEK_API_KEY",
+            envKey:
+              rawProviderEnvKey && rawProviderEnvKey !== "OPENAI_API_KEY"
+                ? rawProviderEnvKey
+                : codexEnvKey.trim() || "DEEPSEEK_API_KEY",
             wireApi: "chat" as const,
             models: effectiveByokModels
           }
@@ -1617,7 +1696,8 @@ function EditOverridePanel({
               // Provider-reference mode: store providerId with current models snapshot
               enabled: true,
               providerId: selectedProviderId,
-              envKey: selectedProvider?.envKey || codexEnvKey.trim() || "OPENAI_API_KEY",
+              ...(resolvedPiProtocol ? { protocol: resolvedPiProtocol } : {}),
+              envKey: piProviderEnvKey,
               models: effectiveByokModels
             }
           : {
@@ -1881,12 +1961,29 @@ function EditOverridePanel({
                       if (pid) {
                         const p = providers.find((x) => x.id === pid);
                         if (p) {
+                          const pProtos = protocolsOf(p);
+                          let nextTargetProto: ProviderProtocol = "openai-chat";
                           if (isCodex) {
                             setCodexProviderId(p.presetId ?? p.id);
                             setCodexProviderName(p.name);
+                            const nextWireApi = pProtos.includes("openai-responses")
+                              ? ("responses" as const)
+                              : ("chat" as const);
+                            setCodexWireApi(nextWireApi);
+                            nextTargetProto =
+                              nextWireApi === "responses" ? "openai-responses" : "openai-chat";
+                          } else if (isClaude) {
+                            nextTargetProto = "anthropic";
+                          } else if (isDeepSeek) {
+                            nextTargetProto = "deepseek";
+                          } else if (isPi) {
+                            nextTargetProto = pProtos.includes("openai-chat")
+                              ? "openai-chat"
+                              : (pProtos[0] ?? "openai-chat");
+                            setPiProtocol(nextTargetProto);
                           }
-                          setCodexBaseUrl(p.baseUrl);
-                          setCodexEnvKey(p.envKey);
+                          setCodexBaseUrl(resolveProviderBaseUrl(p, nextTargetProto));
+                          setCodexEnvKey(resolveProviderEnvKey(p, nextTargetProto));
                           const active = p.models.filter((m) => m.enabled !== false);
                           setByokModels(
                             active.map((m) => ({
@@ -1900,13 +1997,48 @@ function EditOverridePanel({
                             setModel(active[0].id);
                           }
                         }
+                      } else if (isPi) {
+                        setPiProtocol(undefined);
                       }
                     }}
                   />
                 </div>
+                {isPi && selectedProvider && selectedProviderProtocols.length > 1 ? (
+                  <label className="adapter-editor-field">
+                    <span className="adapter-editor-field-label">
+                      {t("settings.cli.byok.piProtocol")}
+                    </span>
+                    <select
+                      value={effectivePiProtocol ?? "openai-chat"}
+                      onChange={(e) => {
+                        const nextProto = e.target.value as ProviderProtocol;
+                        setPiProtocol(nextProto);
+                        setCodexBaseUrl(resolveProviderBaseUrl(selectedProvider, nextProto));
+                        setCodexEnvKey(resolveProviderEnvKey(selectedProvider, nextProto));
+                      }}
+                    >
+                      {selectedProviderProtocols.map((proto) => {
+                        const labelKey =
+                          proto === "openai-responses"
+                            ? "providers.protoOpenAiResponses"
+                            : proto === "anthropic"
+                              ? "providers.protoAnthropic"
+                              : proto === "deepseek"
+                                ? "providers.protoDeepSeek"
+                                : "providers.protoOpenAiChat";
+                        return (
+                          <option key={proto} value={proto}>
+                            {t(labelKey)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <span className="settings-field-hint">{t("settings.cli.byok.piProtocolHint")}</span>
+                  </label>
+                ) : null}
                 {selectedProvider ? (
                   <p className="settings-field-hint">
-                    {t("providers.managedHint")}：{selectedProvider.name} · {selectedProvider.baseUrl}
+                    {t("providers.managedHint")}：{selectedProvider.name} · {resolvedProviderUrl}
                     {selectedProvider.apiKeyPreview ? ` · ${selectedProvider.apiKeyPreview}` : ""}
                   </p>
                 ) : null}
@@ -1914,7 +2046,7 @@ function EditOverridePanel({
                   <span className="adapter-editor-field-label">{t("settings.cli.byok.baseUrl")}</span>
                   <input
                     type="url"
-                    value={selectedProvider ? selectedProvider.baseUrl : codexBaseUrl}
+                    value={selectedProvider ? resolvedProviderUrl : codexBaseUrl}
                     placeholder={byokBaseUrlPlaceholder}
                     disabled={Boolean(selectedProvider)}
                     onChange={(e) => setCodexBaseUrl(e.target.value)}

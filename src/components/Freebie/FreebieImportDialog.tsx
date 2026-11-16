@@ -178,6 +178,7 @@ export function FreebieImportDialog({
         protocol: preset.protocol,
         protocols: preset.protocols?.length ? preset.protocols : [preset.protocol],
         baseUrl: preset.baseUrl,
+        ...(preset.anthropicBaseUrl ? { anthropicBaseUrl: preset.anthropicBaseUrl } : {}),
         envKey: preset.envKey ?? defaultEnvKeyForProtocol(preset.protocol),
         apiKey: trimmedKey || undefined,
         models: mergedModels,

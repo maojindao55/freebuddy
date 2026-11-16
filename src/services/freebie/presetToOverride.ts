@@ -202,7 +202,7 @@ export function buildFreebieOverride(input: BuildFreebieOverrideInput): CLIExecu
       override.claudeByok = {
         enabled: true,
         ...(providerId ? { providerId } : {}),
-        ...(apiKey ? { apiKey, baseUrl: preset.baseUrl, envKey } : {}),
+        ...(apiKey ? { apiKey, baseUrl: preset.anthropicBaseUrl ?? preset.baseUrl, envKey } : {}),
         models,
         contextWindow: preset.contextWindow
       };

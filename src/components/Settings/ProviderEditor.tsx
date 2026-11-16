@@ -18,10 +18,16 @@ import { useProviderStore } from "@/store/providerStore";
 import { providersClient } from "@/services/providers/client";
 import { copyToClipboard } from "@/utils/clipboard";
 import { FREEBIE_BUNDLED_PROVIDERS } from "@/config/freebie";
-import type { Provider, ProviderModel, ProviderProtocol } from "@/services/providers/types";
+import type {
+  Provider,
+  ProviderEndpointTestResult,
+  ProviderModel,
+  ProviderProtocol,
+} from "@/services/providers/types";
 import {
   defaultEnvKeyForProtocol,
-  protocolsOf,
+  providerUsesAnthropicUrl,
+  providerUsesOpenAiUrl,
 } from "@/services/providers/types";
 import { ProviderModelManager } from "./ProviderModelManager";
 import {
@@ -162,9 +168,55 @@ export function ProviderEditor({
     return selectedProtocols[0] ?? "openai-chat";
   }, [selectedProtocols]);
 
-  const [baseUrl, setBaseUrl] = useState(
-    initial?.baseUrl ?? preset?.baseUrl ?? PROTOCOL_CONFIG["openai-chat"].defaultUrl,
+  const initialBaseline = useMemo(() => {
+    if (!initial) {
+      const presetProtos = preset
+        ? preset.protocols?.length
+          ? [...preset.protocols]
+          : [preset.protocol]
+        : (["openai-chat"] as ProviderProtocol[]);
+      const presetOpenAi = providerUsesOpenAiUrl(presetProtos);
+      return {
+        openAiBaseUrl: preset
+          ? presetOpenAi
+            ? preset.baseUrl
+            : ""
+          : PROTOCOL_CONFIG["openai-chat"].defaultUrl,
+        anthropicBaseUrl: preset
+          ? preset.anthropicBaseUrl ?? (!presetOpenAi ? preset.baseUrl : "")
+          : "",
+      };
+    }
+    const initProtos = initial.protocols?.length ? initial.protocols : [initial.protocol];
+    const initOpenAi = providerUsesOpenAiUrl(initProtos);
+    const initAnthropicOnly = !initOpenAi && providerUsesAnthropicUrl(initProtos);
+    return {
+      openAiBaseUrl: initAnthropicOnly ? "" : initial.baseUrl,
+      anthropicBaseUrl: initial.anthropicBaseUrl ?? (initAnthropicOnly ? initial.baseUrl : ""),
+    };
+  }, [initial, preset]);
+
+  const [baseUrl, setBaseUrl] = useState(initialBaseline.openAiBaseUrl);
+  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState(initialBaseline.anthropicBaseUrl);
+
+  const hasOpenAiEndpoint = useMemo(
+    () => providerUsesOpenAiUrl(selectedProtocols),
+    [selectedProtocols],
   );
+  const hasAnthropicEndpoint = useMemo(
+    () => providerUsesAnthropicUrl(selectedProtocols),
+    [selectedProtocols],
+  );
+  const hasRequiredUrl = useMemo(
+    () => (hasOpenAiEndpoint ? Boolean(baseUrl.trim()) : Boolean(anthropicBaseUrl.trim())),
+    [hasOpenAiEndpoint, baseUrl, anthropicBaseUrl],
+  );
+  const primaryEndpointUrl = useMemo(() => {
+    const trimmedOpenAi = baseUrl.trim();
+    const trimmedAnthropic = anthropicBaseUrl.trim();
+    if (hasOpenAiEndpoint) return trimmedOpenAi || trimmedAnthropic;
+    return trimmedAnthropic || trimmedOpenAi;
+  }, [hasOpenAiEndpoint, baseUrl, anthropicBaseUrl]);
 
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -194,6 +246,7 @@ export function ProviderEditor({
     latencyMs?: number;
     error?: string;
     count?: number;
+    endpoints?: ProviderEndpointTestResult[];
   } | null>(null);
   const [errorExpanded, setErrorExpanded] = useState(false);
 
@@ -212,8 +265,8 @@ export function ProviderEditor({
   );
 
   const consoleUrl = useMemo(
-    () => detectConsoleUrl(baseUrl, initial?.presetId ?? presetId),
-    [baseUrl, initial?.presetId, presetId],
+    () => detectConsoleUrl(primaryEndpointUrl, initial?.presetId ?? presetId),
+    [primaryEndpointUrl, initial?.presetId, presetId],
   );
 
   const keyPlaceholder = useMemo(() => {
@@ -254,55 +307,83 @@ export function ProviderEditor({
     });
   };
 
-  const testConnection = useCallback(async () => {
-    if (!baseUrl.trim()) {
-      setTestResult({
-        ok: false,
-        error: t("providers.baseUrl") + " " + t("providers.noKey"),
-      });
-      return null;
-    }
-    setTesting(true);
-    setErrorExpanded(false);
-    setTestResult(null);
-    try {
-      const res = await providersClient.test({
-        id: initial?.id,
-        baseUrl: baseUrl.trim(),
-        protocol: primaryProtocol,
-        apiKey: apiKey.trim() || undefined,
-      });
-      setTestResult({
-        ok: res.ok,
-        latencyMs: res.latencyMs,
-        error: res.error,
-        count: res.models?.length,
-      });
-      // Reflect the result on the sidebar health dot immediately, without a
-      // full refresh that would clobber unsaved form state.
-      if (initial?.id) {
-        applyHealth(initial.id, {
+  const testConnection = useCallback(
+    async (endpoint: "all" | "openai" | "anthropic" = "all") => {
+      const targetUrl =
+        endpoint === "anthropic"
+          ? anthropicBaseUrl.trim() || baseUrl.trim()
+          : endpoint === "openai"
+            ? baseUrl.trim()
+            : primaryEndpointUrl;
+      if (!targetUrl) {
+        setTestResult({
+          ok: false,
+          error: t("providers.baseUrl") + " " + t("providers.noKey"),
+        });
+        return null;
+      }
+      setTesting(true);
+      setErrorExpanded(false);
+      setTestResult(null);
+      try {
+        const activeModel = models.find((m) => m.enabled !== false)?.id ?? models[0]?.id;
+        const res = await providersClient.test({
+          id: initial?.id,
+          baseUrl: hasOpenAiEndpoint ? baseUrl.trim() || anthropicBaseUrl.trim() : anthropicBaseUrl.trim(),
+          anthropicBaseUrl: hasAnthropicEndpoint ? anthropicBaseUrl.trim() || undefined : undefined,
+          protocol: primaryProtocol,
+          protocols: selectedProtocols,
+          endpoint,
+          apiKey: apiKey.trim() || undefined,
+          model: activeModel,
+        });
+        setTestResult({
           ok: res.ok,
           latencyMs: res.latencyMs,
           error: res.error,
-          checkedAt: res.checkedAt,
+          count: res.models?.length,
+          endpoints: res.endpoints,
         });
+        // Reflect the result on the sidebar health dot immediately, without a
+        // full refresh that would clobber unsaved form state.
+        if (initial?.id) {
+          applyHealth(initial.id, {
+            ok: res.ok,
+            latencyMs: res.latencyMs,
+            error: res.error,
+            checkedAt: res.checkedAt,
+          });
+        }
+        return res;
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        setTestResult({ ok: false, error: err });
+        return null;
+      } finally {
+        setTesting(false);
       }
-      return res;
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      setTestResult({ ok: false, error: err });
-      return null;
-    } finally {
-      setTesting(false);
-    }
-  }, [baseUrl, primaryProtocol, apiKey, initial?.id, applyHealth, t]);
+    },
+    [
+      anthropicBaseUrl,
+      baseUrl,
+      primaryEndpointUrl,
+      hasOpenAiEndpoint,
+      hasAnthropicEndpoint,
+      primaryProtocol,
+      selectedProtocols,
+      apiKey,
+      models,
+      initial?.id,
+      applyHealth,
+      t,
+    ],
+  );
 
   const onFetchModels = useCallback(async () => {
     setFetchingModels(true);
     setModelMessage(null);
     try {
-      const res = await testConnection();
+      const res = await testConnection(hasOpenAiEndpoint ? "openai" : "anthropic");
       if (!res) return;
       if (!res.ok) {
         setModelMessage({
@@ -367,7 +448,16 @@ export function ProviderEditor({
     if (name.trim() !== initial.name) return true;
     // Backend normalises baseUrl by stripping trailing slashes; compare the
     // same way so a saved value never shows as dirty again.
-    if (baseUrl.trim().replace(/\/+$/, "") !== initial.baseUrl) return true;
+    const currentOpenAi = hasOpenAiEndpoint ? baseUrl.trim().replace(/\/+$/, "") : "";
+    const currentAnthropic = hasAnthropicEndpoint
+      ? anthropicBaseUrl.trim().replace(/\/+$/, "")
+      : "";
+    if (currentOpenAi !== initialBaseline.openAiBaseUrl.trim().replace(/\/+$/, "")) {
+      return true;
+    }
+    if (currentAnthropic !== initialBaseline.anthropicBaseUrl.trim().replace(/\/+$/, "")) {
+      return true;
+    }
     if (apiKey.trim() !== "") return true;
     const initProtos = initial.protocols?.length ? initial.protocols : [initial.protocol];
     if (
@@ -377,7 +467,17 @@ export function ProviderEditor({
       return true;
     }
     return false;
-  }, [initial, name, baseUrl, apiKey, selectedProtocols]);
+  }, [
+    initial,
+    initialBaseline,
+    name,
+    hasOpenAiEndpoint,
+    hasAnthropicEndpoint,
+    baseUrl,
+    anthropicBaseUrl,
+    apiKey,
+    selectedProtocols,
+  ]);
 
   const modelsDirty = useMemo(() => {
     return normalizeModels(models) !== normalizeModels(initial?.models ?? []);
@@ -399,7 +499,8 @@ export function ProviderEditor({
         name: name.trim(),
         protocol: primaryProtocol,
         protocols: selectedProtocols,
-        baseUrl: baseUrl.trim(),
+        baseUrl: hasOpenAiEndpoint ? baseUrl.trim() : anthropicBaseUrl.trim(),
+        anthropicBaseUrl: hasAnthropicEndpoint ? anthropicBaseUrl.trim() : "",
         envKey: envPlaceholder,
         apiKey: apiKey.trim() || undefined,
         models,
@@ -418,7 +519,10 @@ export function ProviderEditor({
     name,
     primaryProtocol,
     selectedProtocols,
+    hasOpenAiEndpoint,
+    hasAnthropicEndpoint,
     baseUrl,
+    anthropicBaseUrl,
     envPlaceholder,
     apiKey,
     models,
@@ -437,14 +541,14 @@ export function ProviderEditor({
     if (models.length > 0 && !models.some((m) => m.enabled !== false)) {
       return;
     }
-    if (!name.trim() || !baseUrl.trim()) {
+    if (!name.trim() || !hasRequiredUrl) {
       return;
     }
     const timer = setTimeout(() => {
       void submit();
     }, 800);
     return () => clearTimeout(timer);
-  }, [initial?.id, isDirty, saving, models, name, baseUrl, submit]);
+  }, [initial?.id, isDirty, saving, models, name, hasRequiredUrl, submit]);
 
   return (
     <div className="provider-detail-workspace">
@@ -464,7 +568,26 @@ export function ProviderEditor({
                 : t("providers.newProvider")}
             </h3>
             <div className="provider-detail-meta">
-            <span className="provider-endpoint" title={baseUrl}>{baseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
+            <span
+              className="provider-endpoint"
+              title={[
+                hasOpenAiEndpoint ? baseUrl.trim() : "",
+                hasAnthropicEndpoint ? anthropicBaseUrl.trim() : "",
+              ]
+                .filter(Boolean)
+                .join(" | ")}
+            >
+              {(() => {
+                const strip = (u: string) => u.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+                const openAiClean = hasOpenAiEndpoint && baseUrl.trim() ? strip(baseUrl) : "";
+                const claudeClean =
+                  hasAnthropicEndpoint && anthropicBaseUrl.trim() ? strip(anthropicBaseUrl) : "";
+                if (openAiClean && claudeClean && claudeClean !== openAiClean) {
+                  return `${openAiClean} · Anthropic: ${claudeClean}`;
+                }
+                return openAiClean || claudeClean;
+              })()}
+            </span>
             {initial?.lastHealth === "ok" ? (
               <span className="provider-health-badge ok" title={initial.lastCheckedAt}>
                 <span className="provider-health-dot" />
@@ -511,8 +634,8 @@ export function ProviderEditor({
           <button
             type="button"
             className="provider-header-btn secondary"
-            disabled={testing || !baseUrl.trim()}
-            onClick={() => void testConnection()}
+            disabled={testing || !hasRequiredUrl}
+            onClick={() => void testConnection("all")}
             title={t("providers.testFormHint")}
           >
             <RefreshCw size={14} className={testing ? "spinning" : ""} />
@@ -522,7 +645,7 @@ export function ProviderEditor({
             <button
               type="button"
               className="provider-header-btn primary"
-              disabled={saving || !name.trim() || !baseUrl.trim()}
+              disabled={saving || !name.trim() || !hasRequiredUrl}
               onClick={() => void submit()}
             >
               {saving ? (
@@ -597,6 +720,30 @@ export function ProviderEditor({
                     </>
                   )}
                 </div>
+                {testResult.endpoints && testResult.endpoints.length > 1 ? (
+                  <div className="provider-endpoint-results">
+                    {testResult.endpoints.map((ep) => (
+                      <span
+                        key={ep.endpoint}
+                        className={`provider-endpoint-pill ${ep.ok ? "ok" : "error"}`}
+                        title={ep.error || ep.baseUrl}
+                      >
+                        <strong>
+                          {t(
+                            ep.endpoint === "anthropic"
+                              ? "providers.endpointClaude"
+                              : "providers.endpointOpenAi",
+                          )}
+                        </strong>
+                        <span>
+                          {ep.ok
+                            ? `${ep.latencyMs}ms${ep.models?.length ? ` · ${ep.models.length}` : ""}`
+                            : ep.error || t("providers.testFailedShort")}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {!testResult.ok && errorExpanded ? (
                   <div className="provider-test-detail">
                     <pre className="provider-test-detail-error">
@@ -649,100 +796,156 @@ export function ProviderEditor({
                 placeholder={t("providers.modelNamePlaceholder")}
               />
             </label>
-
           </div>
 
-          <div className="provider-compact-row">
-            <label className="provider-compact-field provider-compact-url">
-              <span>{t("providers.baseUrl")}</span>
-              <input
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://..."
-              />
-            </label>
-            <div className="provider-compact-field provider-compact-key">
-              <div className="provider-key-label-row">
-                <label htmlFor={`${panelId}-api-key`}>{t("providers.apiKey")}</label>
-                {consoleUrl ? (
-                  <a
-                    href={consoleUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="provider-key-console-link"
+          <div className="provider-compact-field provider-compact-protos">
+            <span>{t("providers.supportedProtocols")}</span>
+            <div className="provider-proto-pills">
+              {PROTOCOLS.map((p) => {
+                const active = selectedProtocols.includes(p);
+                const cfg = PROTOCOL_CONFIG[p];
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`provider-proto-pill ${active ? "active" : ""}`}
+                    aria-pressed={active}
+                    onClick={() => {
+                      toggleProtocol(p);
+                      if (!active) {
+                        if (p === "anthropic") {
+                          const willHaveOpenAi = providerUsesOpenAiUrl(selectedProtocols);
+                          if (!anthropicBaseUrl.trim() && !willHaveOpenAi) {
+                            setAnthropicBaseUrl(cfg.defaultUrl);
+                          }
+                        } else if (!baseUrl.trim()) {
+                          setBaseUrl(cfg.defaultUrl);
+                        }
+                      }
+                    }}
+                    title={t(cfg.descKey)}
                   >
-                    {t("providers.getKey")}
-                    <ExternalLink size={12} />
-                  </a>
-                ) : null}
-              </div>
-              <div className="provider-key-input-wrapper">
-                <input
-                  id={`${panelId}-api-key`}
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={keyPlaceholder}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <div className="provider-key-actions">
+                    <div className={`proto-pill-check ${active ? "checked" : ""}`}>
+                      {active ? <Check size={10} /> : null}
+                    </div>
+                    <span>{t(cfg.labelKey)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="provider-compact-field provider-compact-url">
+            <div className="provider-url-stack">
+              {hasOpenAiEndpoint ? (
+                <div className="provider-url-item">
+                  <div className="provider-url-label-row">
+                    <label htmlFor={`${panelId}-openai-url`}>
+                      {hasAnthropicEndpoint ? t("providers.openAiBaseUrl") : t("providers.baseUrl")}
+                    </label>
+                    {hasAnthropicEndpoint ? (
+                      <button
+                        type="button"
+                        className="provider-url-test-btn"
+                        disabled={testing || !baseUrl.trim()}
+                        onClick={() => void testConnection("openai")}
+                      >
+                        {t("providers.testEndpoint")}
+                      </button>
+                    ) : null}
+                  </div>
+                  <input
+                    id={`${panelId}-openai-url`}
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://..."
+                  />
+                </div>
+              ) : null}
+
+              {hasAnthropicEndpoint ? (
+                <div className="provider-url-item">
+                  <div className="provider-url-label-row">
+                    <label htmlFor={`${panelId}-claude-url`}>
+                      {hasOpenAiEndpoint ? t("providers.claudeBaseUrl") : t("providers.baseUrl")}
+                    </label>
+                    {hasOpenAiEndpoint ? (
+                      <button
+                        type="button"
+                        className="provider-url-test-btn"
+                        disabled={testing || (!anthropicBaseUrl.trim() && !baseUrl.trim())}
+                        onClick={() => void testConnection("anthropic")}
+                      >
+                        {t("providers.testEndpoint")}
+                      </button>
+                    ) : null}
+                  </div>
+                  <input
+                    id={`${panelId}-claude-url`}
+                    value={anthropicBaseUrl}
+                    onChange={(e) => setAnthropicBaseUrl(e.target.value)}
+                    placeholder={
+                      hasOpenAiEndpoint
+                        ? t("providers.claudeBaseUrlPlaceholderShared")
+                        : "https://api.anthropic.com/v1"
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="provider-compact-field provider-compact-key">
+            <div className="provider-key-label-row">
+              <label htmlFor={`${panelId}-api-key`}>{t("providers.apiKey")}</label>
+              {consoleUrl ? (
+                <a
+                  href={consoleUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="provider-key-console-link"
+                >
+                  {t("providers.getKey")}
+                  <ExternalLink size={12} />
+                </a>
+              ) : null}
+            </div>
+            <div className="provider-key-input-wrapper">
+              <input
+                id={`${panelId}-api-key`}
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={keyPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <div className="provider-key-actions">
+                <button
+                  type="button"
+                  className="provider-eye-btn"
+                  title={showKey ? t("providers.hideKey") : t("providers.showKey")}
+                  onClick={() => setShowKey(!showKey)}
+                >
+                  {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+                {(apiKey || initial?.hasKey) && (
                   <button
                     type="button"
                     className="provider-eye-btn"
-                    title={showKey ? t("providers.hideKey") : t("providers.showKey")}
-                    onClick={() => setShowKey(!showKey)}
+                    title={keyCopied ? t("providers.keyCopied") : t("providers.copyKey")}
+                    onClick={() => void onCopyKey()}
                   >
-                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {keyCopied ? (
+                      <Check size={14} className="copied-icon" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
                   </button>
-                  {(apiKey || initial?.hasKey) && (
-                    <button
-                      type="button"
-                      className="provider-eye-btn"
-                      title={keyCopied ? t("providers.keyCopied") : t("providers.copyKey")}
-                      onClick={() => void onCopyKey()}
-                    >
-                      {keyCopied ? (
-                        <Check size={14} className="copied-icon" />
-                      ) : (
-                        <Copy size={14} />
-                      )}
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           </div>
-
-            <div className="provider-compact-field provider-compact-protos">
-              <span>{t("providers.supportedProtocols")}</span>
-              <div className="provider-proto-pills">
-                {PROTOCOLS.map((p) => {
-                  const active = selectedProtocols.includes(p);
-                  const cfg = PROTOCOL_CONFIG[p];
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      className={`provider-proto-pill ${active ? "active" : ""}`}
-                      aria-pressed={active}
-                      onClick={() => {
-                        toggleProtocol(p);
-                        if (!baseUrl && !active) {
-                          setBaseUrl(cfg.defaultUrl);
-                        }
-                      }}
-                      title={t(cfg.descKey)}
-                    >
-                      <div className={`proto-pill-check ${active ? "checked" : ""}`}>
-                        {active ? <Check size={10} /> : null}
-                      </div>
-                      <span>{t(cfg.labelKey)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
           <div className="provider-connection-footer">
           {initial && onDeleted && (
@@ -766,10 +969,10 @@ export function ProviderEditor({
             models={models}
             onChange={setModels}
             toolbarActions={
-            <button
+              <button
               type="button"
               className="provider-secondary-btn"
-              disabled={fetchingModels || !baseUrl.trim() || (!apiKey.trim() && !initial?.hasKey)}
+              disabled={fetchingModels || !hasRequiredUrl || (!apiKey.trim() && !initial?.hasKey)}
               onClick={() => void onFetchModels()}
             >
               <Download

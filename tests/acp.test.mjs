@@ -48,11 +48,14 @@ import {
   buildSessionPromptRequest,
   buildSessionResumeRequest,
   buildSessionSetConfigOptionRequest,
+  buildSessionSetModeRequest,
   buildTerminalOutputResponse,
   contentBlockToItems,
+  hasAcpModeConfigOption,
   isMissingSavedSessionError,
   formatAcpRpcError,
   parseAcpLine,
+  resolveClaudeAcpModeOverride,
   selectAcpAuthMethod,
   selectAcpSessionStartMode,
   shouldDiscardAcpToolSession,
@@ -3102,4 +3105,167 @@ test("isMissingSavedSessionError does not abandon session on active writer confl
     }
   };
   assert.equal(isMissingSavedSessionError(err), false);
+});
+
+test("buildSessionSetModeRequest builds a session/set_mode RPC request", () => {
+  assert.deepEqual(buildSessionSetModeRequest(7, "sess-1", "default"), {
+    jsonrpc: "2.0",
+    id: 7,
+    method: "session/set_mode",
+    params: {
+      sessionId: "sess-1",
+      modeId: "default"
+    }
+  });
+});
+
+test("hasAcpModeConfigOption distinguishes native mode configOptions from legacy modes", () => {
+  assert.equal(
+    hasAcpModeConfigOption({ configOptions: [{ id: "mode", category: "mode" }] }),
+    true
+  );
+  assert.equal(
+    hasAcpModeConfigOption({ config_options: [{ id: "permission_mode", category: "mode" }] }),
+    true
+  );
+  assert.equal(
+    hasAcpModeConfigOption({
+      configOptions: [{ id: "model", category: "model" }],
+      modes: { currentModeId: "auto", availableModes: [{ id: "auto" }] }
+    }),
+    false
+  );
+  assert.equal(hasAcpModeConfigOption({}), false);
+});
+
+test("resolveClaudeAcpModeOverride avoids Claude auto mode classifier while respecting FreeBuddy approvalMode", () => {
+  const claudeModeValues = [
+    { id: "default", name: "Default" },
+    { id: "acceptEdits", name: "Accept Edits" },
+    { id: "auto", name: "Auto" },
+    { id: "bypassPermissions", name: "Bypass Permissions" },
+    { id: "plan", name: "Plan" }
+  ];
+  const makeModeOption = (currentValue, values = claudeModeValues, id = "mode") => ({
+    id,
+    category: "mode",
+    name: "Mode",
+    currentValue,
+    values
+  });
+
+  // Non-Claude adapters and missing mode options are left alone.
+  assert.equal(
+    resolveClaudeAcpModeOverride({
+      adapter: "codex-acp",
+      approvalMode: "auto",
+      setupOptions: [makeModeOption("auto")]
+    }),
+    undefined
+  );
+  assert.equal(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "auto",
+      setupOptions: []
+    }),
+    undefined
+  );
+
+  // approvalMode === "auto": auto -> bypassPermissions, falling back to default if bypassPermissions is unavailable.
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "auto",
+      setupOptions: [makeModeOption("auto")]
+    }),
+    { modeOptionId: "mode", value: "bypassPermissions", clearRequestedMode: false }
+  );
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude",
+      approvalMode: "auto",
+      setupOptions: [
+        makeModeOption("auto", [
+          { id: "default", name: "Default" },
+          { id: "auto", name: "Auto" }
+        ])
+      ]
+    }),
+    { modeOptionId: "mode", value: "default", clearRequestedMode: false }
+  );
+
+  // approvalMode === "auto": stale requestedMode "auto" does not trigger an extra RPC when already bypassPermissions.
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "auto",
+      requestedMode: "auto",
+      setupOptions: [makeModeOption("bypassPermissions")]
+    }),
+    { modeOptionId: "mode", clearRequestedMode: true }
+  );
+
+  // Explicit non-auto settings.json mode is preserved unless overridden; explicit requestedMode is honored.
+  assert.equal(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "auto",
+      setupOptions: [makeModeOption("acceptEdits")]
+    }),
+    undefined
+  );
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "auto",
+      requestedMode: "acceptEdits",
+      setupOptions: [makeModeOption("auto")]
+    }),
+    { modeOptionId: "mode", value: "acceptEdits", clearRequestedMode: false }
+  );
+
+  // approvalMode === "ask" (or unset): auto and stale bypassPermissions both revert to default.
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "ask",
+      setupOptions: [makeModeOption("auto")]
+    }),
+    { modeOptionId: "mode", value: "default", clearRequestedMode: false }
+  );
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "ask",
+      setupOptions: [makeModeOption("bypassPermissions")]
+    }),
+    { modeOptionId: "mode", value: "default", clearRequestedMode: false }
+  );
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "ask",
+      requestedMode: "bypassPermissions",
+      setupOptions: [makeModeOption("auto")]
+    }),
+    { modeOptionId: "mode", value: "default", clearRequestedMode: false }
+  );
+  assert.deepEqual(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "ask",
+      requestedMode: "auto",
+      setupOptions: [makeModeOption("default")]
+    }),
+    { modeOptionId: "mode", clearRequestedMode: true }
+  );
+  assert.equal(
+    resolveClaudeAcpModeOverride({
+      adapter: "claude-agent-acp",
+      approvalMode: "ask",
+      setupOptions: [makeModeOption("plan", claudeModeValues, "permission_mode")]
+    }),
+    undefined
+  );
 });

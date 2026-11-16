@@ -26,14 +26,14 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const require = createRequire(import.meta.url);
 
-async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions) {
+async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions, scenarioOptions) {
   const child = warm?.child ?? new EventEmitter();
   child.exitCode = null;
   child.signalCode = null;
   child.stdout ??= new PassThrough();
   child.stderr ??= new PassThrough();
   const running = new Map();
-  const events = [], requests = [], traces = [];
+  const events = [], requests = [], rpcMessages = [], traces = [];
   let promptRequestId;
   let terminalOptions;
   const captureOrder = [];
@@ -66,6 +66,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
     write(chunk, _encoding, callback) {
       const msg = JSON.parse(chunk.toString());
       requests.push(msg.method);
+      rpcMessages.push({ method: msg.method, params: msg.params });
       const failingMethod = {
         "stdin-initialize-error": "initialize",
         "stdin-prompt-error": "session/prompt",
@@ -92,7 +93,97 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
             ...(mode.startsWith("pi-v1-") ? { _meta: { piAcp: { lifecycleStatusVersion: 1, promptOutcomeVersion: 1 } } } : {}),
             agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } } });
         }
-        else if (msg.method === "session/new" || msg.method === "session/load") reply(msg, { sessionId: "fake-session" });
+        else if (msg.method === "session/new" || msg.method === "session/load") {
+          if (mode === "claude-auto-native-mode") {
+            reply(msg, {
+              sessionId: "fake-session",
+              configOptions: [
+                {
+                  id: "model",
+                  category: "model",
+                  name: "Model",
+                  type: "select",
+                  currentValue: "claude-sonnet-4-5",
+                  options: [
+                    { value: "claude-sonnet-4-5", name: "Sonnet" },
+                    { value: "claude-opus-4-6", name: "Opus" }
+                  ]
+                },
+                {
+                  id: "mode",
+                  category: "mode",
+                  name: "Mode",
+                  type: "select",
+                  currentValue: "auto",
+                  options: [
+                    { value: "default", name: "Default" },
+                    { value: "acceptEdits", name: "Accept Edits" },
+                    { value: "auto", name: "Auto" },
+                    { value: "bypassPermissions", name: "Bypass Permissions" }
+                  ]
+                }
+              ]
+            });
+          } else if (mode === "claude-auto-legacy-modes") {
+            reply(msg, {
+              sessionId: "fake-session",
+              modes: {
+                currentModeId: "auto",
+                availableModes: [
+                  { id: "default", name: "Default" },
+                  { id: "acceptEdits", name: "Accept Edits" },
+                  { id: "auto", name: "Auto" },
+                  { id: "bypassPermissions", name: "Bypass Permissions" }
+                ]
+              }
+            });
+          } else {
+            reply(msg, { sessionId: "fake-session" });
+          }
+        }
+        else if (msg.method === "session/set_config_option") {
+          reply(
+            msg,
+            mode === "claude-auto-native-mode"
+              ? {
+                  configOptions: [
+                    {
+                      id: "model",
+                      category: "model",
+                      name: "Model",
+                      type: "select",
+                      currentValue:
+                        msg.params?.configId === "model"
+                          ? msg.params.value
+                          : "claude-opus-4-6",
+                      options: [
+                        { value: "claude-sonnet-4-5", name: "Sonnet" },
+                        { value: "claude-opus-4-6", name: "Opus" }
+                      ]
+                    },
+                    {
+                      id: "mode",
+                      category: "mode",
+                      name: "Mode",
+                      type: "select",
+                      currentValue:
+                        msg.params?.configId === "mode"
+                          ? msg.params.value
+                          : "auto",
+                      options: [
+                        { value: "default", name: "Default" },
+                        { value: "acceptEdits", name: "Accept Edits" },
+                        { value: "auto", name: "Auto" },
+                        { value: "bypassPermissions", name: "Bypass Permissions" }
+                      ]
+                    }
+                  ]
+                }
+              : { configOptions: [] }
+          );
+        } else if (msg.method === "session/set_mode") {
+          reply(msg, {});
+        }
         else if (msg.method === "session/prompt") {
           promptRequestId = msg.id;
           if (captureOptions) { assert.ok(captureOrder.includes("prepared")); captureOrder.push("prompt"); }
@@ -264,6 +355,8 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
     createAcpTerminalManager: options => { terminalOptions = options; return { dispose: noop }; },
     logMain: () => ({ info: (...args) => traces.push(args), warn: (...args) => traces.push(args), error: (...args) => traces.push(args) }),
     selectAcpSessionStartMode: acp.selectAcpSessionStartMode,
+    mergeCliByokModelOption: (_agentId, _adapter, options) => options,
+    hasCliByokModels: () => false,
     getLanguage: () => "en-US",
     killProcessTree: () => { killCount++; if (mode !== "cancel-unresponsive") close(); },
     formatAcpAgentExitMessage: (code) => `Agent exited ${code}`
@@ -297,7 +390,8 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
   const turn = exports.runAcpAgent({
     child, pid: 1, webContents: {},
     warmConnection, parkConnection: warmConnection ? () => { parked = true; } : undefined,
-    args: { sessionId: "test-turn", agentId: "test", adapter: isPi ? "pi-acp" : adapter, approvalMode: "auto", prompt: "test", knownStreamMessageIds: ["historical"],
+    args: { sessionId: "test-turn", agentId: "test", adapter: isPi ? "pi-acp" : adapter, approvalMode: scenarioOptions?.approvalMode ?? "auto", prompt: "test", knownStreamMessageIds: ["historical"],
+      ...(scenarioOptions?.configOptionOverrides ? { configOptionOverrides: scenarioOptions.configOptionOverrides } : {}),
       ...(captureOptions ? { conversationId: "conversation", cwd: "C:/project" } : {}) },
     toolSessionId: warm?.sessionId ?? (mode === "metrics" ? "fake-session" : undefined),
     logStream: null, running, capturedSessions: new Map(), emit: event => { events.push(event); if (event.type === "done") captureOrder.push("done"); }, metrics,
@@ -310,7 +404,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions)
     })]);
   } finally { clearTimeout(deadline); }
   await new Promise(resolve => setTimeout(resolve, 30));
-  return { events, requests, traces, running, killCount, metricSnapshots, warmConnection, parked, child, captureOrder };
+  return { events, requests, rpcMessages, traces, running, killCount, metricSnapshots, warmConnection, parked, child, captureOrder };
 }
 
 test("Pi display-only terminal metadata reaches live output and exit events", async t => {
@@ -652,4 +746,68 @@ test("cancelled AGY turns are reaped instead of entering the warm pool", async t
   assert.equal(result.metricSnapshots.at(-1).status, "cancelled");
   assert.equal(result.requests.includes("session/list"), false);
   assert.equal(result.requests.includes("session/close"), false);
+});
+
+test("claude-agent-acp switches away from auto mode after model override and before prompt in auto mode", async t => {
+  const result = await runScenario(
+    t,
+    "claude-auto-native-mode",
+    "claude-agent-acp",
+    undefined,
+    undefined,
+    {
+      approvalMode: "auto",
+      configOptionOverrides: { model: "claude-opus-4-6" }
+    }
+  );
+  assert.equal(result.events.find(event => event.type === "done").exitCode, 0);
+  const configCalls = result.rpcMessages
+    .filter(message => message.method === "session/set_config_option")
+    .map(message => ({ configId: message.params?.configId, value: message.params?.value }));
+  assert.deepEqual(configCalls, [
+    { configId: "model", value: "claude-opus-4-6" },
+    { configId: "mode", value: "bypassPermissions" }
+  ]);
+  const lastConfigIdx = result.requests.lastIndexOf("session/set_config_option");
+  const promptIdx = result.requests.indexOf("session/prompt");
+  assert.ok(lastConfigIdx !== -1 && lastConfigIdx < promptIdx);
+});
+
+test("claude-agent-acp switches stale auto mode to default before prompt in ask mode", async t => {
+  const result = await runScenario(
+    t,
+    "claude-auto-native-mode",
+    "claude-agent-acp",
+    undefined,
+    undefined,
+    {
+      approvalMode: "ask",
+      configOptionOverrides: { mode: "auto" }
+    }
+  );
+  assert.equal(result.events.find(event => event.type === "done").exitCode, 0);
+  const configCalls = result.rpcMessages
+    .filter(message => message.method === "session/set_config_option")
+    .map(message => ({ configId: message.params?.configId, value: message.params?.value }));
+  assert.deepEqual(configCalls, [{ configId: "mode", value: "default" }]);
+  assert.ok(result.requests.indexOf("session/set_config_option") < result.requests.indexOf("session/prompt"));
+});
+
+test("claude-agent-acp falls back to session/set_mode when only legacy modes are advertised", async t => {
+  const result = await runScenario(
+    t,
+    "claude-auto-legacy-modes",
+    "claude-agent-acp",
+    undefined,
+    undefined,
+    { approvalMode: "auto" }
+  );
+  assert.equal(result.events.find(event => event.type === "done").exitCode, 0);
+  assert.equal(result.requests.includes("session/set_config_option"), false);
+  const setModeCall = result.rpcMessages.find(message => message.method === "session/set_mode");
+  assert.deepEqual(setModeCall?.params, {
+    sessionId: "fake-session",
+    modeId: "bypassPermissions"
+  });
+  assert.ok(result.requests.indexOf("session/set_mode") < result.requests.indexOf("session/prompt"));
 });

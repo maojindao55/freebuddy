@@ -22,8 +22,11 @@ import {
   buildSessionPromptRequest,
   buildSessionResumeRequest,
   buildSessionSetConfigOptionRequest,
+  buildSessionSetModeRequest,
   buildTerminalOutputResponse,
+  hasAcpModeConfigOption,
   parseAcpLine,
+  resolveClaudeAcpModeOverride,
   selectAcpSessionStartMode,
   selectAcpAuthMethod,
   shouldDropReplayPhaseAgentChunk,
@@ -42,7 +45,8 @@ import {
   type AcpAuthMethod,
   type AcpMessage,
   type AcpSessionMeta,
-  type AcpRequestId
+  type AcpRequestId,
+  type ConfigOptionItem
 } from "./acp.js";
 import { createAcpTerminalManager } from "./acpTerminal.js";
 import { updateRuntimeRun, recordRuntimeAgentVersion } from "./check.js";
@@ -308,6 +312,8 @@ export async function runAcpAgent({
   let turnTerminalErrorMessage: string | undefined;
   let turnHadLiveAgentChunk = false;
   let sessionWasResumed = false;
+  let sessionSetupConfigOptions: ConfigOptionItem[] = [];
+  let sessionHasNativeModeConfigOption = false;
   let mcpServers: AcpStdioMcpServer[] = [];
   let mcpSecretValues: string[] = [];
   const redactMcpLog = (text: string) =>
@@ -1391,6 +1397,8 @@ export async function runAcpAgent({
     promptHadContent = false;
     turnHadLiveAgentChunk = false;
     sessionWasResumed = false;
+    sessionSetupConfigOptions = [];
+    sessionHasNativeModeConfigOption = false;
     updateRunningProcess();
     attachConnection();
     const init = await request(buildInitializeRequest(nextId()));
@@ -1406,6 +1414,7 @@ export async function runAcpAgent({
   const establishSession = async () => {
     const emitSetupItems = (result: any) => {
       if (!activeAcpSessionId) return;
+      sessionHasNativeModeConfigOption = hasAcpModeConfigOption(result);
       const items = acpSessionSetupToItems(activeAcpSessionId, result).map(
         (item) => item.kind === "config-options"
           ? {
@@ -1419,10 +1428,14 @@ export async function runAcpAgent({
             }
           : item
       );
+      sessionSetupConfigOptions =
+        items.find((item) => item.kind === "config-options")?.options ?? [];
       if (items.length) emit({ type: "items", items });
     };
 
     sessionWasResumed = false;
+    sessionSetupConfigOptions = [];
+    sessionHasNativeModeConfigOption = false;
     const sessionStartMode = selectAcpSessionStartMode(
       requestedToolSessionId,
       agentCaps
@@ -1692,6 +1705,8 @@ export async function runAcpAgent({
     requestedToolSessionId = undefined;
     activeAcpSessionId = undefined;
     sessionWasResumed = false;
+    sessionSetupConfigOptions = [];
+    sessionHasNativeModeConfigOption = false;
   };
 
   try {
@@ -1890,6 +1905,21 @@ export async function runAcpAgent({
       const overrides = { ...(args.adapter === "agy-acp"
         ? antigravityConfigOverrides(args.configOptionOverrides, isAntigravityBridgeBinary(args.binary))
         : args.configOptionOverrides) };
+      const resolvedMode = resolveClaudeAcpModeOverride({
+        adapter: args.adapter,
+        approvalMode: args.approvalMode,
+        setupOptions: sessionSetupConfigOptions,
+        requestedMode: overrides.mode
+      });
+      if (resolvedMode) {
+        if (resolvedMode.value) {
+          if (resolvedMode.modeOptionId !== "mode") delete overrides.mode;
+          overrides[resolvedMode.modeOptionId] = resolvedMode.value;
+        } else if (resolvedMode.clearRequestedMode) {
+          delete overrides[resolvedMode.modeOptionId];
+          delete overrides.mode;
+        }
+      }
       if (!overrides.model && args.adapter === "pi-acp") {
         const defaultPiModel = resolvePiByokDefaultModel(
           args.agentId,
@@ -1900,7 +1930,12 @@ export async function runAcpAgent({
         }
       }
       if (!Object.keys(overrides).length || !activeAcpSessionId) return;
-      const order = ["provider", "model", "thought_level"];
+      const order = [
+        "provider",
+        "model",
+        resolvedMode?.modeOptionId ?? "mode",
+        "thought_level"
+      ];
       const sortedOverrides = Object.entries(overrides).sort(([a], [b]) => {
         const ai = order.indexOf(a);
         const bi = order.indexOf(b);
@@ -1919,6 +1954,36 @@ export async function runAcpAgent({
           continue;
         }
         try {
+          if (
+            resolvedMode &&
+            configId === resolvedMode.modeOptionId &&
+            !sessionHasNativeModeConfigOption
+          ) {
+            await request(
+              buildSessionSetModeRequest(nextId(), activeAcpSessionId, value)
+            );
+            sessionSetupConfigOptions = sessionSetupConfigOptions.map(
+              (option) =>
+                option.id === configId
+                  ? {
+                      ...option,
+                      currentValue: value,
+                      currentLabel:
+                        option.values?.find((candidate) => candidate.id === value)
+                          ?.name ?? value
+                    }
+                  : option
+            );
+            if (sessionSetupConfigOptions.length) {
+              emit({
+                type: "items",
+                items: [
+                  { kind: "config-options", options: sessionSetupConfigOptions }
+                ]
+              });
+            }
+            continue;
+          }
           const result = await request(
             buildSessionSetConfigOptionRequest(
               nextId(),
@@ -1962,7 +2027,13 @@ export async function runAcpAgent({
                 }
               : item
             );
-          if (items.length) emit({ type: "items", items });
+          if (items.length) {
+            const updatedOptions = items.find(
+              (item) => item.kind === "config-options"
+            )?.options;
+            if (updatedOptions) sessionSetupConfigOptions = updatedOptions;
+            emit({ type: "items", items });
+          }
         } catch (err) {
           const message = (err as Error)?.message || String(err);
           appendLog(
@@ -2037,7 +2108,10 @@ export async function runAcpAgent({
         isAuthenticationRequiredError(promptErr)
       ) {
         const restarted = await authenticate(authMethods);
-        if (restarted) await establishSession();
+        if (restarted) {
+          await establishSession();
+          await applyConfigOptionOverrides();
+        }
         await runPromptOnSession();
       } else {
         throw promptErr;
@@ -2111,7 +2185,10 @@ export async function runAcpAgent({
         hasCliByokModels(args.agentId, args.adapter);
       if (!authenticationAttempted && !isPiByok) {
         const restarted = await authenticate(authMethods);
-        if (restarted) await establishSession();
+        if (restarted) {
+          await establishSession();
+          await applyConfigOptionOverrides();
+        }
         await runPromptOnSession();
       }
       if (!promptHadContent) {

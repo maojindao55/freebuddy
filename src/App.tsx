@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { LayoutGrid, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Stethoscope, Sun } from "lucide-react";
+import { LayoutGrid, ListTodo, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Stethoscope, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
 import { ConversationList } from "./components/CLI/ConversationList";
 import { ConversationTaskPanel } from "./components/CLI/ConversationTaskPanel";
+import { TodoConversationsPanel } from "./components/CLI/TodoConversationsPanel";
 import { useConversationOverviewUpdates } from "./components/CLI/useConversationOverviewUpdates";
 import { ConversationCommandPalette } from "./components/CLI/ConversationCommandPalette";
 import {
@@ -117,7 +118,7 @@ function App() {
   const fullscreenTransition = useRef(false);
   const fullscreenRevision = useRef(0);
   const preferredConversationView = useConversationPanelUiStore((s) => s.preferredView);
-  useConversationOverviewUpdates(!settingsOpen && (workspaceView === "chat" || workspaceView === "conversationBoard"));
+  useConversationOverviewUpdates(!settingsOpen && (workspaceView === "chat" || workspaceView === "conversationBoard" || workspaceView === "todos"));
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [contextSourceId, setContextSourceId] = useState<string>();
   const [codexImportOpen, setCodexImportOpen] = useState(false);
@@ -662,6 +663,8 @@ function App() {
   const members = useConversationStore((s) => s.members);
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
+  const setConversationTodo = useConversationStore((s) => s.setConversationTodo);
+  const todoCount = conversations.reduce((count, c) => count + (!c.archived && c.todo ? 1 : 0), 0);
   const activeConversation = conversations.find((c) => c.id === activeId);
   const previewOpen = activeDetailTab === "preview" && !detailCollapsed;
   const detailViewVisible = !settingsOpen && workspaceView === "chat" && Boolean(activeConversation);
@@ -868,6 +871,10 @@ function App() {
 
   useEffect(() => {
     const off = window.freebuddy?.window?.onOpenView?.((payload) => {
+      if (payload.view === "todos") {
+        openTodos();
+        return;
+      }
       if (payload.view === "scheduledTasks") {
         openScheduledTasks();
         return;
@@ -960,7 +967,9 @@ function App() {
   }, [exitPanelFullscreen]);
 
   useEffect(() => {
-    if (workspaceView !== "conversationBoard" || settingsOpen) void exitPanelFullscreen();
+    if ((workspaceView !== "conversationBoard" && workspaceView !== "todos") || settingsOpen) {
+      void exitPanelFullscreen();
+    }
   }, [workspaceView, settingsOpen, exitPanelFullscreen]);
 
   useEffect(() => {
@@ -971,7 +980,7 @@ function App() {
       }
     };
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || workspaceView !== "conversationBoard") return;
+      if (event.key !== "Escape" || event.defaultPrevented || (workspaceView !== "conversationBoard" && workspaceView !== "todos")) return;
       const hasOverlay = [...document.querySelectorAll('[role="dialog"], [role="menu"], .ant-select-dropdown')]
         .some((element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden");
       if (hasOverlay) return;
@@ -999,6 +1008,11 @@ function App() {
     useConversationPanelUiStore.getState().setPreferredView("list");
     void exitPanelFullscreen();
     setWorkspaceView("chat");
+  };
+  const openTodos = () => {
+    setSettingsOpen(false);
+    void exitPanelFullscreen();
+    setWorkspaceView("todos");
   };
   const openPanelConversation = async (id: string) => {
     const conversation = useConversationStore.getState().conversations.find((item) => item.id === id);
@@ -1047,6 +1061,8 @@ function App() {
     ? t("common.settings")
     : workspaceView === "conversationBoard"
       ? t("conversationPanel.title")
+    : workspaceView === "todos"
+      ? t("todoPanel.title")
     : workspaceView === "scheduledTasks"
       ? t("scheduledTasks.title")
       : workspaceView === "workflowTeams"
@@ -1096,7 +1112,7 @@ function App() {
     >
     <ImageLightboxProvider>
     <div
-      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" ? " conversation-panel-mode" : ""}${!settingsOpen && workspaceView === "conversationBoard" && panelFullscreen ? " conversation-panel-fullscreen" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${previewVisible ? " browser-preview-visible" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
+      className={`app-shell${isElectron ? " electron-shell" : ""}${!settingsOpen && workspaceView === "chat" && isNewTask ? " new-task-mode" : ""}${!settingsOpen && workspaceView !== "chat" ? " tool-page-mode" : ""}${!settingsOpen && (workspaceView === "conversationBoard" || workspaceView === "todos") ? " conversation-panel-mode" : ""}${!settingsOpen && (workspaceView === "conversationBoard" || workspaceView === "todos") && panelFullscreen ? " conversation-panel-fullscreen" : ""}${settingsOpen ? " settings-mode" : ""}${!settingsOpen && sidebarCollapsed ? " sidebar-collapsed" : ""}${!settingsOpen && workspaceView === "chat" && activeConversation && detailCollapsed ? " detail-collapsed" : ""}${previewVisible ? " browser-preview-visible" : ""}${!chromeVisible ? " chrome-hidden" : ""}${platform ? ` platform-${platform}` : ""}`}
       data-theme={theme}
       style={{ "--fb-detail-width": `${effectiveDetailWidth}px`, "--fb-sidebar-width": sidebarCollapsed ? "0px" : "272px" } as CSSProperties}
     >
@@ -1151,7 +1167,9 @@ function App() {
             <SidebarNavigation
               workspaceView={workspaceView}
               isNewTask={isNewTask}
+              todoCount={todoCount}
               onNewTask={startNewTask}
+              onOpenTodos={openTodos}
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
               onOpenFreebie={openFreebie}
@@ -1250,6 +1268,22 @@ function App() {
                   <LayoutGrid size={16} aria-hidden="true" />
                 </button>
               )}
+              <button
+                type="button"
+                className={`titlebar-icon-button${activeConversation.todo ? " is-todo-active" : ""}`}
+                title={activeConversation.todo ? t("conversations.unmarkTodo") : t("conversations.markTodo")}
+                aria-label={activeConversation.todo ? t("conversations.unmarkTodo") : t("conversations.markTodo")}
+                aria-pressed={Boolean(activeConversation.todo)}
+                onClick={() => {
+                  void setConversationTodo(activeConversation.id, !activeConversation.todo).catch((error) => {
+                    if (import.meta.env?.DEV) {
+                      console.warn("[FreeBuddy] Failed to toggle todo:", error);
+                    }
+                  });
+                }}
+              >
+                <ListTodo size={14} aria-hidden="true" />
+              </button>
               {activeConversationHasContent && (
                 <button
                   type="button"
@@ -1319,6 +1353,15 @@ function App() {
               onOpenFile={(conversationId, messageId, path) => void openPanelFile(conversationId, messageId, path)}
               onNewConversation={() => startNewTask()}
             />
+          ) : workspaceView === "todos" ? (
+            <TodoConversationsPanel
+              fullscreen={panelFullscreen}
+              onToggleFullscreen={() => void togglePanelFullscreen()}
+              onOpenAllConversations={openConversationPanel}
+              onOpenConversation={(id) => void openPanelConversation(id)}
+              onOpenFile={(conversationId, messageId, path) => void openPanelFile(conversationId, messageId, path)}
+              onNewConversation={() => startNewTask()}
+            />
           ) : workspaceView === "scheduledTasks" ? (
             <section className="workspace-tool-page">
               <div className="workspace-tool-page-inner">
@@ -1372,6 +1415,7 @@ function App() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         onNewTask={startNewTask}
+        onOpenTodos={openTodos}
         onOpenScheduledTasks={openScheduledTasks}
         onOpenSettings={() => openSettings("cli")}
         onImportCodexSession={() => {

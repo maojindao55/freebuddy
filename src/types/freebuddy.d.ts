@@ -283,6 +283,7 @@ declare global {
     ): Promise<void>;
     archiveConversation(id: string, archived: boolean): Promise<void>;
     setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+    setConversationTodo(id: string, todo: boolean): Promise<Conversation>;
     moveConversationToProject(
       id: string,
       projectId: string | null
@@ -416,7 +417,7 @@ declare global {
     onOpenTaskReceipt(cb: () => void): () => void;
     onOpenView(
       cb: (payload: {
-        view: "chat" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie" | string;
+        view: "chat" | "todos" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie" | string;
         teamId?: string;
         create?: boolean;
       }) => void
@@ -424,7 +425,7 @@ declare global {
     onOpenSettings(cb: (tab: string) => void): () => void;
     onAppearanceChanged(cb: (theme: string) => void): () => void;
     setUiPresence(snapshot: {
-      workspaceView: "chat" | "conversationBoard" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
+      workspaceView: "chat" | "conversationBoard" | "todos" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
       settingsOpen: boolean;
       settingsTab:
         | "general"

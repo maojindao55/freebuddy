@@ -215,6 +215,7 @@
       updateConversationAgentName: function (agentId, agentName) { return invoke("cli:updateConversationAgentName", { agentId: agentId, agentName: agentName }); },
       archiveConversation: function (id, archived) { return invoke("cli:archiveConversation", { id: id, archived: archived }); },
       setConversationPinned: function (id, pinned) { return invoke("cli:setConversationPinned", { id: id, pinned: pinned }); },
+      setConversationTodo: function (id, todo) { return invoke("cli:setConversationTodo", { id: id, todo: todo }); },
       forkConversation: function (input) { return invoke("cli:forkConversation", input); },
       moveConversationToProject: function (id, projectId) { return invoke("cli:moveConversationToProject", { id: id, projectId: projectId }); },
       setConversationOrder: function (conversationIds) { return invoke("cli:setConversationOrder", { conversationIds: conversationIds }); },

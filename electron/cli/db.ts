@@ -307,6 +307,8 @@ export function migrate(db: DB) {
       metadata TEXT,
       pinned INTEGER NOT NULL DEFAULT 0,
       pinned_at TEXT,
+      todo INTEGER NOT NULL DEFAULT 0,
+      todo_at TEXT,
       sort_position INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_conversations_updated
@@ -964,6 +966,12 @@ export function migrate(db: DB) {
   }
   if (!conversationCols.some((c) => c.name === "pinned_at")) {
     db.exec("ALTER TABLE conversations ADD COLUMN pinned_at TEXT");
+  }
+  if (!conversationCols.some((c) => c.name === "todo")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN todo INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!conversationCols.some((c) => c.name === "todo_at")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN todo_at TEXT");
   }
   if (!conversationCols.some((c) => c.name === "sort_position")) {
     db.exec("ALTER TABLE conversations ADD COLUMN sort_position INTEGER");

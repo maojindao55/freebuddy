@@ -48,6 +48,7 @@ const ALLOW = [
   "cli:setConversationOrder",
   "cli:setConversationPinned",
   "cli:setConversationSkills",
+  "cli:setConversationTodo",
   "cli:transferConversation",
   "cli:updateConversationAgentName",
   "cli:updateMessage",

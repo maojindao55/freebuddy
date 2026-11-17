@@ -2,6 +2,18 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.66] - 2026-11-17
+
+### 新功能
+
+- add conversation todo markers and Todos board
+- support separate Anthropic base URL and per-endpoint checks
+
+### 问题修复
+
+- skip redundant warm AGY session/load and surface empty end_turn errors
+- avoid Claude auto mode classifier when FreeBuddy owns approvals
+
 ## [0.10.65] - 2026-11-15
 
 ### 问题修复

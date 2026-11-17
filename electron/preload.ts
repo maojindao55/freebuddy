@@ -365,6 +365,12 @@ const cli = {
     const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
     ipcRenderer.on(channel, handler);
     return () => ipcRenderer.off(channel, handler);
+  },
+  onIdlePermission(cb: (event: unknown) => void): () => void {
+    const channel = "freebuddy://acp-permission";
+    const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
   }
 };
 

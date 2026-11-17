@@ -159,6 +159,14 @@ declare global {
     onRuntimeUpdated(cb: (runtime: CliRuntime) => void): () => void;
     onConversationsChanged(cb: () => void): () => void;
     onMessagesChanged(cb: (conversationId: string) => void): () => void;
+    onIdlePermission(
+      cb: (event: {
+        conversationId: string;
+        action: "enqueue" | "remove";
+        request?: CliPermissionRequest;
+        requestId?: string;
+      }) => void
+    ): () => void;
     codexUsage(): Promise<CodexUsageResult>;
     antigravityUsage(): Promise<AntigravityUsageResult>;
     usageSummary(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;

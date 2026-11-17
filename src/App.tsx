@@ -39,6 +39,7 @@ import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
 import { FreebiePage } from "./components/Freebie/FreebiePage";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
+import { usePermissionStore } from "./store/permissionStore";
 import { useProviderStore } from "./store/providerStore";
 import { useConversationStore } from "./store/conversationStore";
 import { useConversationPanelUiStore } from "./store/conversationPanelUiStore";
@@ -262,6 +263,19 @@ function App() {
       const isStreaming = !!live && (live.status === "starting" || live.status === "running");
       if (isStreaming) return;
       void state.loadMessages(conversationId);
+    });
+    return () => off?.();
+  }, []);
+
+  useEffect(() => {
+    const off = window.freebuddy?.cli?.onIdlePermission?.((event) => {
+      if (!event?.conversationId) return;
+      const store = usePermissionStore.getState();
+      if (event.action === "enqueue" && event.request) {
+        store.enqueue(event.conversationId, event.request);
+      } else if (event.action === "remove" && event.requestId) {
+        store.remove(event.requestId);
+      }
     });
     return () => off?.();
   }, []);

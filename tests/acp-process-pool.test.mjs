@@ -59,3 +59,18 @@ test("idle timeout releases its process and tools", async () => {
   assert.equal(c.disposals, 1);
   assert.equal(pool.take("key", "command", "native-session"), undefined);
 });
+
+test("idle monitor hooks start on put and stop on take or discard", () => {
+  const pool = new AcpProcessPool();
+  let starts = 0, stops = 0;
+  const c = { ...connection(), startIdle: () => { starts++; }, stopIdle: () => { stops++; } };
+  pool.put("key", c);
+  assert.equal(starts, 1);
+  assert.equal(stops, 0);
+  assert.equal(pool.take("key", "command", "native-session"), c);
+  assert.equal(stops, 1);
+  pool.put("key", c);
+  assert.equal(starts, 2);
+  pool.discard("key");
+  assert.equal(stops, 2);
+});

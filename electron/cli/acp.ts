@@ -12,6 +12,7 @@ import type {
 
 import type { AcpStdioMcpServer } from "../shared/browserToolProtocol.js";
 import { fileEditFromToolResponse } from "./acpFileEditVersions.js";
+import type { CliPermissionOption } from "./runtimeShared.js";
 
 export type AcpRequestId = number | string | null;
 
@@ -52,6 +53,45 @@ export function isNativeAntigravityAcp(
   agentInfo?: { name?: string }
 ): boolean {
   return adapter === "agy-acp" && agentInfo?.name === "Antigravity ACP Server";
+}
+
+export function normalizePermissionOptions(raw: unknown): CliPermissionOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CliPermissionOption[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const optionId =
+      typeof e.optionId === "string"
+        ? e.optionId
+        : typeof e.id === "string"
+          ? e.id
+          : undefined;
+    if (!optionId) continue;
+    out.push({
+      optionId,
+      name:
+        typeof e.name === "string"
+          ? e.name
+          : typeof e.label === "string"
+            ? (e.label as string)
+            : undefined,
+      kind: typeof e.kind === "string" ? (e.kind as string) : undefined
+    });
+  }
+  return out;
+}
+
+export function pickAutoApprovedOption(
+  options: CliPermissionOption[]
+): CliPermissionOption | undefined {
+  const allowOnce = options.find((o) => o.kind === "allow_once");
+  if (allowOnce) return allowOnce;
+  const allowAlways = options.find((o) => o.kind === "allow_always");
+  if (allowAlways) return allowAlways;
+  const idHint = options.find((o) => /^allow(-|_)?(once|always)?$/i.test(o.optionId));
+  if (idHint) return idHint;
+  return undefined;
 }
 
 export function shouldSkipWarmSessionLoad(input: {

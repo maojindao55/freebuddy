@@ -4,8 +4,9 @@ import { resolveWindowsPowerShell } from "./windowsEnv.js";
 
 const execFileAsync = promisify(execFile);
 
-const USAGE_SUMMARY_URL =
-  "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary";
+const DEFAULT_CLOUD_CODE_URL = "https://daily-cloudcode-pa.googleapis.com";
+const BUSINESS_CLOUD_CODE_URL = "https://cloudcode-pa.googleapis.com";
+const USAGE_SUMMARY_PATH = "/v1internal:retrieveUserQuotaSummary";
 
 export type AntigravityQuotaBucket = {
   bucketId: string;
@@ -64,6 +65,28 @@ export interface ReadAntigravityUsageOptions {
   keyringReader?: () => Promise<string | null>;
   fetchImpl?: FetchLike;
   nowMs?: number;
+  cloudCodeUrl?: string;
+}
+
+/**
+ * Resolves the Cloud Code Assist quota summary endpoint to match `agy` CLI routing:
+ * consumer/default logins query `daily-cloudcode-pa.googleapis.com`, while
+ * business/enterprise logins query `cloudcode-pa.googleapis.com`.
+ */
+export function resolveAntigravityUsageUrl(
+  authMethod?: string,
+  cloudCodeUrl = process.env.CLOUD_CODE_URL
+): string {
+  const customBase = cloudCodeUrl?.trim().replace(/\/+$/, "");
+  if (customBase && /^https?:\/\//i.test(customBase)) {
+    return `${customBase}${USAGE_SUMMARY_PATH}`;
+  }
+  const normalized = authMethod?.trim().toLowerCase();
+  const baseUrl =
+    normalized === "business" || normalized === "oauth-business"
+      ? BUSINESS_CLOUD_CODE_URL
+      : DEFAULT_CLOUD_CODE_URL;
+  return `${baseUrl}${USAGE_SUMMARY_PATH}`;
 }
 
 export function resolveAntigravityUserAgent(): string {
@@ -88,7 +111,8 @@ export async function readAntigravityUsage(
       "user-agent": resolveAntigravityUserAgent()
     };
 
-    const response = await fetchImpl(USAGE_SUMMARY_URL, {
+    const usageUrl = resolveAntigravityUsageUrl(auth.authMethod, options.cloudCodeUrl);
+    const response = await fetchImpl(usageUrl, {
       method: "POST",
       headers,
       body: "{}"
@@ -121,7 +145,7 @@ async function readAntigravityAuth(
   fetchedAt: string,
   nowMs?: number
 ): Promise<
-  | { ok: true; accessToken: string; email?: string }
+  | { ok: true; accessToken: string; email?: string; authMethod?: string }
   | Extract<AntigravityUsageResult, { ok: false }>
 > {
   let rawSecret: string | null = null;
@@ -193,19 +217,28 @@ async function readAntigravityAuth(
     }
   }
 
-  let email: string | undefined;
+  let email: string | undefined =
+    typeof parsed.id_token_email === "string" && parsed.id_token_email.trim()
+      ? parsed.id_token_email.trim()
+      : undefined;
   const idToken = parsed.id_token;
-  if (typeof idToken === "string") {
+  if (!email && typeof idToken === "string") {
     const claims = decodeJwtPayload(idToken);
     if (claims && typeof claims === "object" && typeof (claims as Record<string, unknown>).email === "string") {
       email = (claims as Record<string, unknown>).email as string;
     }
   }
 
+  const authMethod =
+    typeof parsed.auth_method === "string" && parsed.auth_method.trim()
+      ? parsed.auth_method.trim()
+      : undefined;
+
   return {
     ok: true,
     accessToken,
-    email
+    email,
+    authMethod
   };
 }
 
@@ -347,13 +380,17 @@ function normalizeAntigravityUsageResponse(
       const bucketId = typeof b.bucketId === "string" ? b.bucketId : "";
       const bDisplayName = typeof b.displayName === "string" ? b.displayName : bucketId;
       const windowStr = typeof b.window === "string" ? b.window : "window";
+      const disabled = b.disabled === true;
       const remainingFraction =
         typeof b.remainingFraction === "number" && Number.isFinite(b.remainingFraction)
           ? Math.max(0, Math.min(1, b.remainingFraction))
-          : 1;
+          : disabled
+            ? 0
+            : 1;
 
-      const leftPercent = Math.round(remainingFraction * 100);
-      const usedPercent = Math.max(0, 100 - leftPercent);
+      // Preserve two decimal places like `agy /usage` so values such as 99.59% do not round to 100%.
+      const leftPercent = Math.round(remainingFraction * 10_000) / 100;
+      const usedPercent = Math.max(0, Math.round((100 - leftPercent) * 100) / 100);
 
       let windowSeconds = 18_000; // default 5 hours
       if (windowStr.includes("week")) {

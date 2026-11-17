@@ -7,7 +7,9 @@ function createMockKeyring(options = {}) {
   const {
     accessToken = "mock_access_token",
     expiry = new Date(Date.now() + 3600 * 1000).toISOString(),
-    email = "testuser@gmail.com"
+    email = "testuser@gmail.com",
+    authMethod = "consumer",
+    emailFormat = "id_token"
   } = options;
 
   const enc = (value) =>
@@ -18,8 +20,10 @@ function createMockKeyring(options = {}) {
   const idToken = `${enc({ alg: "none" })}.${enc({ email })}.sig`;
 
   const payload = JSON.stringify({
-    auth_method: "consumer",
-    id_token: idToken,
+    auth_method: authMethod,
+    ...(emailFormat === "id_token_email"
+      ? { id_token_email: email }
+      : { id_token: idToken }),
     token: {
       access_token: accessToken,
       token_type: "Bearer",
@@ -118,14 +122,87 @@ test("readAntigravityUsage parses quota summary successfully", async () => {
   assert.equal(argonGroup.buckets[0].bucketId, "gemini-argon-wtu-weekly");
   assert.equal(argonGroup.buckets[0].window, "weekly");
   assert.equal(argonGroup.buckets[0].windowSeconds, 604_800);
-  assert.equal(argonGroup.buckets[0].leftPercent, 83);
-  assert.equal(argonGroup.buckets[0].usedPercent, 17);
+  assert.equal(argonGroup.buckets[0].leftPercent, 83.31);
+  assert.equal(argonGroup.buckets[0].usedPercent, 16.69);
 
   assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].url,
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+  );
   assert.equal(calls[0].init.headers.authorization, "Bearer mock_access_token");
   assert.match(
     calls[0].init.headers["user-agent"],
     /^antigravity\/cli\/1\.4\.6 \(aidev_client; os_type=\w+; arch=\w+\)$/
+  );
+});
+
+test("readAntigravityUsage preserves fractional percentages like 99.59% and extracts id_token_email", async () => {
+  const mockKeyring = createMockKeyring({
+    email: "argonuser@gmail.com",
+    emailFormat: "id_token_email"
+  });
+
+  const result = await mod.readAntigravityUsage({
+    keyringReader: async () => mockKeyring,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      async json() {
+        return {
+          groups: [
+            {
+              displayName: "Gemini 4 Argon",
+              buckets: [
+                {
+                  bucketId: "gemini-argon-wtu-weekly",
+                  displayName: "Gemini 4 Argon Weekly Limit",
+                  window: "weekly",
+                  resetTime: "2026-11-23T07:16:26Z",
+                  remainingFraction: 0.995934
+                },
+                {
+                  bucketId: "disabled-bucket",
+                  displayName: "Disabled Bucket",
+                  window: "5h",
+                  disabled: true
+                }
+              ]
+            }
+          ]
+        };
+      }
+    })
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.email, "argonuser@gmail.com");
+  assert.equal(result.groups[0].buckets[0].leftPercent, 0);
+  assert.equal(result.groups[0].buckets[0].usedPercent, 100);
+  assert.equal(result.groups[0].buckets[1].leftPercent, 99.59);
+  assert.equal(result.groups[0].buckets[1].usedPercent, 0.41);
+});
+
+test("resolveAntigravityUsageUrl routes consumer to daily-cloudcode-pa and business to cloudcode-pa", () => {
+  assert.equal(
+    mod.resolveAntigravityUsageUrl("consumer", undefined),
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+  );
+  assert.equal(
+    mod.resolveAntigravityUsageUrl(undefined, undefined),
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+  );
+  assert.equal(
+    mod.resolveAntigravityUsageUrl("business", undefined),
+    "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+  );
+  assert.equal(
+    mod.resolveAntigravityUsageUrl("oauth-business", undefined),
+    "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+  );
+  assert.equal(
+    mod.resolveAntigravityUsageUrl("consumer", "https://custom.example.com/"),
+    "https://custom.example.com/v1internal:retrieveUserQuotaSummary"
   );
 });
 

@@ -540,7 +540,7 @@ export function WorkspacePanel(_props: { runningCount: number }) {
                       label={antigravityUsageWindowLabel(bucket, t)}
                       bucket={bucket}
                       leftLabel={t("workspace.antigravityLeft", {
-                        percent: bucket.leftPercent
+                        percent: formatAntigravityPercent(bucket.leftPercent)
                       })}
                       resetLabel={
                         bucket.resetAt
@@ -679,6 +679,10 @@ function AntigravityLimitRow({
       {resetLabel && <small>{resetLabel}</small>}
     </div>
   );
+}
+
+function formatAntigravityPercent(percent: number): string {
+  return Number.isInteger(percent) ? String(percent) : percent.toFixed(2);
 }
 
 function antigravityUsageWindowLabel(

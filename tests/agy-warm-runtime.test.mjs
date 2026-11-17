@@ -16,6 +16,7 @@ import * as acpToolActivity from "../dist-electron/cli/acpToolActivity.js";
 import * as backgroundExecution from "../dist-electron/cli/backgroundExecution.js";
 import * as antigravity from "../dist-electron/shared/antigravity.js";
 import * as antigravitySessions from "../dist-electron/cli/antigravitySessions.js";
+import * as cliStream from "@freebuddy/cli-stream";
 import { AcpProcessPool } from "../dist-electron/cli/acpProcessPool.js";
 import { RunMetricsCollector } from "../dist-electron/cli/runMetricsCollector.js";
 import { localDiffFixture } from "./fixtures/agy-local-diff.mjs";
@@ -37,6 +38,8 @@ function load(file, services) {
       if (name === "./backgroundExecution.js") return backgroundExecution;
       if (name === "../shared/antigravity.js") return antigravity;
       if (name === "./antigravitySessions.js") return antigravitySessions;
+      if (name === "./acpIdleMonitor.js" && services.acpIdleMonitor) return services.acpIdleMonitor;
+      if (name === "@freebuddy/cli-stream") return cliStream;
       if (name === "cross-spawn") return { __esModule: true, default: services.spawn };
       return new Proxy(services, { get: (object, key) => key === "__esModule" ? true : object[key] ?? (() => {}) });
     }
@@ -327,5 +330,157 @@ test("native AGY warm reuse skips session/load after pending ask_question and fa
   await runtime.cliRun(wc, { ...baseArgs, sessionId: "t5", prompt: "retry" });
   assert.equal(children.length, 2);
   assert.equal(requests.filter(r => r.pid === children[1].pid && r.method === "session/load").length, 1);
+  await runtime.shutdownCliProcesses();
+});
+
+test("native AGY warm idle monitor captures post-end_turn background updates and permissions", async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-agy-idle-monitor-"));
+  const pool = new AcpProcessPool();
+  const logCompletions = [];
+  t.after(async () => {
+    pool.dispose();
+    await Promise.all(logCompletions);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const children = [], requests = [], appended = [], updated = [], ipcMessages = [], resolvers = new Map();
+  let saved, ownerRecorded = null, currentChild;
+  const noop = () => {};
+  const services = {
+    fs: { ...fs, createWriteStream: (...args) => {
+      const stream = fs.createWriteStream(...args);
+      logCompletions.push(finished(stream));
+      return stream;
+    } },
+    acpProcessPool: pool, RunMetricsCollector,
+    getLogDir: () => root, getDataDir: () => root,
+    getCallerUserId: () => "owner", getLanguage: () => "zh-CN",
+    getAdapterDefinition: () => ({ capabilities: { toolSession: true } }),
+    buildCommand: () => ({ bin: "fake-agy", args: ["acp"], protocol: "acp" }),
+    resolveCliByokEnv: () => ({}), sanitizeCliAgentEnv: env => env,
+    applyManagedNodeEnvironment: env => env,
+    getToolSession: () => saved,
+    saveToolSession: (_agent, _scope, adapter, sessionId) => { saved = { adapter, sessionId }; },
+    prepareTurnFileCapture: async input => ({ taskId: input.taskId }),
+    finalizeTurnFileCapture: async () => {},
+    persistFileEditItems: (_ctx, items) => items,
+    appendMessage: input => { appended.push(input); return input; },
+    updateMessage: input => { updated.push(input); },
+    safeSendToWebContents: (_contents, channel, payload) => { ipcMessages.push({ channel, payload }); },
+    registerPermissionResolver: (sessionId, requestId, fn) => { resolvers.set(`${sessionId}:${requestId}`, fn); },
+    takePermissionResolver: (sessionId, requestId) => {
+      const key = `${sessionId}:${requestId}`;
+      const fn = resolvers.get(key);
+      resolvers.delete(key);
+      return fn;
+    },
+    clearPermissionResolversForSession: sessionId => {
+      for (const k of resolvers.keys()) if (k.startsWith(`${sessionId}:`)) resolvers.delete(k);
+    },
+    recordSessionOwner: (sessionId, userId) => { ownerRecorded = { sessionId, userId }; },
+    clearSessionOwner: noop,
+    logMain: () => ({ info: noop, warn: noop, error: noop }),
+    adapterAcceptsClientMcpServers: () => true,
+    getConversation: () => ({ kind: "chat" }),
+    getConversationMcpServerIds: () => [],
+    createAcpTerminalManager: () => ({ dispose: noop }),
+    registerBrowserToolSession: async () => ({ name: "browser", command: "mock", args: [] }),
+    rebindBrowserToolSession: () => true,
+    unregisterBrowserToolSession: noop,
+    killProcessTree: child => child.kill(),
+    spawn: () => {
+      const child = new EventEmitter();
+      currentChild = child;
+      Object.assign(child, { pid: 3000 + children.length, exitCode: null, signalCode: null, stdout: new PassThrough(), stderr: new PassThrough() });
+      const reply = (request, result) => child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\n");
+      child.stdin = new Writable({ write(chunk, _encoding, callback) {
+        const message = JSON.parse(chunk.toString());
+        requests.push(message);
+        callback();
+        if (!message.method) return;
+        queueMicrotask(() => {
+          if (message.method === "initialize") {
+            reply(message, {
+              protocolVersion: 1,
+              agentInfo: { name: "Antigravity ACP Server", version: "1.5.10" },
+              agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } }
+            });
+          } else if (message.method === "session/new" || message.method === "session/load") {
+            reply(message, { sessionId: "agy-1510-session" });
+          } else if (message.method === "session/prompt") {
+            child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+              sessionId: "agy-1510-session",
+              update: { sessionUpdate: "tool_call", toolCallId: "bg-1", name: "run_command", status: "in_progress", title: "sleep 12" }
+            } }) + "\n");
+            child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+              sessionId: "agy-1510-session",
+              update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "STARTED" } }
+            } }) + "\n");
+            reply(message, { stopReason: "end_turn" });
+          } else if (message.method === "session/list") {
+            reply(message, { sessions: [] });
+          } else {
+            reply(message, {});
+          }
+        });
+      } });
+      child.kill = () => {
+        if (child.exitCode !== null) return;
+        child.exitCode = 0; child.signalCode = "SIGTERM";
+        child.stdin.destroy(); child.stdout.end(); child.stderr.end(); child.emit("close", 0);
+      };
+      children.push(child);
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    }
+  };
+
+  services.acpIdleMonitor = load("../electron/cli/acpIdleMonitor.ts", services);
+  services.runAcpAgent = load("../electron/cli/acpRuntime.ts", services).runAcpAgent;
+  const runtime = load("../electron/cli/runtime.ts", services);
+  const wc = { id: 1, isDestroyed: () => false };
+  const baseArgs = { adapter: "agy-acp", binary: "agy", agentId: "agent", agentName: "AGY", conversationId: "chat-1510", cwd: root, prompt: "run long command", approvalMode: "ask" };
+
+  // Turn 1 ends while bg-1 is still running; connection parks with idle monitor attached.
+  await runtime.cliRun(wc, { ...baseArgs, sessionId: "run-1" });
+  assert.equal(appended.length, 0);
+
+  // While parked idle, agy 1.5.10 emits background tool completion, permission request, and wake-up reply.
+  currentChild.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+    sessionId: "agy-1510-session",
+    update: { sessionUpdate: "tool_call_update", toolCallId: "bg-1", name: "run_command", status: "completed", rawOutput: { output: "BG_DONE\n", exit_code: 0 } }
+  } }) + "\n");
+  currentChild.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: "idle-perm-1", method: "session/request_permission", params: {
+    sessionId: "agy-1510-session",
+    toolCall: { toolCallId: "bg-2", title: "echo second", kind: "execute" },
+    options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }, { optionId: "deny", name: "Deny", kind: "reject_once" }]
+  } }) + "\n");
+  await new Promise(resolve => setTimeout(resolve, 25));
+
+  const permEnqueue = ipcMessages.find(m => m.channel === "freebuddy://acp-permission" && m.payload.action === "enqueue");
+  assert.ok(permEnqueue);
+  assert.ok(ownerRecorded?.sessionId.startsWith("acp-idle-"));
+  const resolver = services.takePermissionResolver(permEnqueue.payload.request.sessionId, permEnqueue.payload.request.requestId);
+  assert.ok(resolver);
+  resolver({ outcome: "selected", optionId: "allow" });
+  assert.ok(requests.some(r => r.id === "idle-perm-1" && r.result?.outcome?.optionId === "allow"));
+
+  currentChild.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+    sessionId: "agy-1510-session",
+    update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "FINISHED" } }
+  } }) + "\n");
+  currentChild.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+    sessionId: "agy-1510-session",
+    update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: ":BG_DONE" } }
+  } }) + "\n");
+
+  // Starting Turn 2 immediately calls stopIdle(), flushing buffered wake-up items synchronously before reusing the process.
+  await runtime.cliRun(wc, { ...baseArgs, sessionId: "run-2", prompt: "next" });
+  assert.equal(children.length, 1);
+  assert.equal(appended.length, 1);
+  const finalContent = JSON.parse((updated.at(-1) ?? appended[0]).content);
+  assert.equal(finalContent.find(i => i.kind === "tool-call" && i.id === "bg-1").status, "completed");
+  assert.equal(finalContent.find(i => i.kind === "text").content, "FINISHED:BG_DONE");
+
   await runtime.shutdownCliProcesses();
 });

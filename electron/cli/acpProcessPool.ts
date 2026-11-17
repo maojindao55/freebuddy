@@ -13,6 +13,8 @@ export interface AcpWarmConnection {
   sessionId?: string;
   previousRunId?: string;
   browserServer?: AcpStdioMcpServer;
+  startIdle?: () => void;
+  stopIdle?: () => void;
   dispose: () => void;
 }
 
@@ -45,9 +47,13 @@ export class AcpProcessPool {
     this.idle.set(key, { connection, timer, close });
     connection.child.once("close", close);
     connection.child.once("error", close);
-    // Drain late diagnostics while idle; no completed run receives new events.
-    connection.child.stdout.resume();
-    connection.child.stderr.resume();
+    if (connection.startIdle) {
+      connection.startIdle();
+    } else {
+      // Drain late diagnostics while idle; no completed run receives new events.
+      connection.child.stdout.resume();
+      connection.child.stderr.resume();
+    }
     while (this.idle.size > this.limit) this.discard(this.idle.keys().next().value!);
   }
 
@@ -69,6 +75,7 @@ export class AcpProcessPool {
     clearTimeout(entry.timer);
     entry.connection.child.off("close", entry.close);
     entry.connection.child.off("error", entry.close);
+    entry.connection.stopIdle?.();
     return entry;
   }
 }

@@ -39,6 +39,9 @@ test("classifyWsChannel routes global, session-scoped, and desktop-only channels
 
   // Browser MCP events carry conversationId in the payload so WebUI can open
   // the Browser panel for the owning conversation.
+  assert.deepEqual(classifyWsChannel("freebuddy://acp-permission"), {
+    kind: "conversationPayload"
+  });
   assert.deepEqual(classifyWsChannel("freebuddy://browser-tool"), {
     kind: "conversationPayload"
   });

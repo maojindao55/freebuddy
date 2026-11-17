@@ -523,3 +523,258 @@ test("agent referencing provider resolves models dynamically from provider", asy
 
   setDbForTest(null);
 });
+
+test("dual-endpoint provider persists anthropicBaseUrl and resolves distinct endpoints across Codex, Claude, and Pi", async (t) => {
+  if (!bindingAvailable) {
+    t.skip("better-sqlite3 native binding unavailable under this Node");
+    return;
+  }
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const providers = await import("../dist-electron/cli/providers.js");
+  const store = await import("../dist-electron/cli/store.js");
+  const { testProvider } = await import("../dist-electron/cli/providerCheck.js");
+  const db = new Database(":memory:");
+  setDbForTest(db);
+  t.after(() => { setDbForTest(null); db.close(); });
+  migrate(db);
+
+  // 1. Create provider with both OpenAI and Claude URLs
+  const created = providers.upsertProvider({
+    name: "MultiRelay",
+    protocol: "openai-chat",
+    protocols: ["openai-chat", "openai-responses", "anthropic"],
+    baseUrl: "https://relay.example.test/v1/",
+    anthropicBaseUrl: "https://relay.example.test/claude/v1/",
+    envKey: "OPENAI_API_KEY",
+    apiKey: "sk-multi-secret",
+    models: [{ id: "gpt-4o" }, { id: "claude-sonnet-4-5" }],
+  });
+  assert.equal(created.baseUrl, "https://relay.example.test/v1");
+  assert.equal(created.anthropicBaseUrl, "https://relay.example.test/claude/v1");
+
+  // Partial update with anthropicBaseUrl: undefined preserves existing anthropicBaseUrl
+  const patched = providers.upsertProvider({
+    id: created.id,
+    name: "MultiRelay Renamed",
+    protocol: "openai-chat",
+    protocols: ["openai-chat", "openai-responses", "anthropic"],
+    baseUrl: "https://relay.example.test/v1",
+    models: [{ id: "gpt-4o" }, { id: "claude-sonnet-4-5" }],
+  });
+  assert.equal(patched.anthropicBaseUrl, "https://relay.example.test/claude/v1");
+
+  // 2. Codex & Claude BYOK resolve their respective endpoints without env-key leakage
+  store.upsertOverride({
+    id: "dual-codex",
+    baseAdapter: "codex-acp",
+    label: "Dual Codex",
+    codexByok: {
+      enabled: true,
+      providerId: created.id,
+      wireApi: "responses",
+      models: [{ id: "gpt-4o" }],
+    },
+  });
+  const codexEnv = store.resolveCodexByokEnv("cli-dual-codex", "codex-acp");
+  const codexCfg = JSON.parse(codexEnv.CODEX_CONFIG);
+  assert.equal(
+    codexCfg.model_providers[codexCfg.model_provider]?.base_url,
+    "https://relay.example.test/v1"
+  );
+  assert.equal(codexEnv.OPENAI_API_KEY, "sk-multi-secret");
+
+  store.upsertOverride({
+    id: "dual-claude",
+    baseAdapter: "claude-agent-acp",
+    label: "Dual Claude",
+    claudeByok: { enabled: true, providerId: created.id, models: [{ id: "claude-sonnet-4-5" }] },
+  });
+  const claudeEnv = store.resolveClaudeByokEnv("cli-dual-claude", "claude-agent-acp");
+  assert.equal(claudeEnv?.ANTHROPIC_BASE_URL, "https://relay.example.test/claude");
+  assert.equal(claudeEnv?.ANTHROPIC_API_KEY, "sk-multi-secret");
+  assert.equal(claudeEnv?.OPENAI_API_KEY, undefined);
+
+  // 3. Pi BYOK with protocol: "anthropic" uses anthropicBaseUrl & anthropic-messages
+  store.upsertOverride({
+    id: "dual-pi-claude",
+    baseAdapter: "pi-acp",
+    label: "Dual Pi Claude",
+    piByok: {
+      enabled: true,
+      providerId: created.id,
+      protocol: "anthropic",
+      envKey: "ANTHROPIC_API_KEY",
+      models: [{ id: "claude-sonnet-4-5" }],
+    },
+  });
+  const piClaudeEnv = store.resolvePiByokEnv("cli-dual-pi-claude", "pi-acp");
+  const piClaudeCfg = JSON.parse(piClaudeEnv.FREEBUDDY_PI_BYOK);
+  assert.equal(piClaudeCfg.api, "anthropic-messages");
+  assert.equal(piClaudeCfg.baseUrl, "https://relay.example.test/claude");
+  assert.equal(piClaudeEnv.FREEBUDDY_PI_RELAY_KEY, "sk-multi-secret");
+  assert.equal(piClaudeEnv.ANTHROPIC_API_KEY, undefined);
+  assert.equal(piClaudeEnv.OPENAI_API_KEY, undefined);
+
+  // 4. Pi BYOK with protocol: "openai-responses" uses OpenAI baseUrl & openai-responses
+  store.upsertOverride({
+    id: "dual-pi-responses",
+    baseAdapter: "pi-acp",
+    label: "Dual Pi Responses",
+    piByok: {
+      enabled: true,
+      providerId: created.id,
+      protocol: "openai-responses",
+      envKey: "OPENAI_API_KEY",
+      models: [{ id: "gpt-4o" }],
+    },
+  });
+  const piRespEnv = store.resolvePiByokEnv("cli-dual-pi-responses", "pi-acp");
+  const piRespCfg = JSON.parse(piRespEnv.FREEBUDDY_PI_BYOK);
+  assert.equal(piRespCfg.api, "openai-responses");
+  assert.equal(piRespCfg.baseUrl, "https://relay.example.test/v1");
+  assert.equal(piRespEnv.FREEBUDDY_PI_RELAY_KEY, "sk-multi-secret");
+  assert.equal(piRespEnv.OPENAI_API_KEY, undefined);
+
+  // 5. testProvider probes both endpoints with distinct headers and merges models
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), headers: init?.headers });
+    if (String(url).includes("/claude/")) {
+      return new Response(
+        JSON.stringify({ data: [{ id: "claude-sonnet-4-5" }, { id: "gpt-4o" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({ data: [{ id: "gpt-4o" }, { id: "o3-mini" }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  };
+  try {
+    const resAll = await testProvider(created.id);
+    assert.equal(resAll.ok, true);
+    assert.equal(resAll.endpoints?.length, 2);
+    assert.deepEqual(resAll.models, ["gpt-4o", "o3-mini", "claude-sonnet-4-5"]);
+    const openAiReq = requests.find((r) => r.url === "https://relay.example.test/v1/models");
+    const claudeReq = requests.find((r) => r.url === "https://relay.example.test/claude/v1/models");
+    assert.equal(openAiReq?.headers?.Authorization, "Bearer sk-multi-secret");
+    assert.equal(claudeReq?.headers?.["x-api-key"], "sk-multi-secret");
+
+    requests.length = 0;
+    const resClaudeOnly = await testProvider({
+      id: created.id,
+      baseUrl: "https://relay.example.test/v1",
+      anthropicBaseUrl: "https://relay.example.test/claude/v1",
+      protocols: ["openai-chat", "anthropic"],
+      endpoint: "anthropic",
+    });
+    assert.equal(resClaudeOnly.ok, true);
+    assert.equal(resClaudeOnly.endpoints?.length, 1);
+    assert.equal(resClaudeOnly.endpoints?.[0]?.endpoint, "anthropic");
+    assert.equal(requests.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // 6. Explicit empty string clears anthropicBaseUrl back to shared baseUrl
+  const cleared = providers.upsertProvider({
+    id: created.id,
+    name: "MultiRelay Shared",
+    protocol: "openai-chat",
+    protocols: ["openai-chat", "anthropic"],
+    baseUrl: "https://relay.example.test/v1",
+    anthropicBaseUrl: "",
+    models: [{ id: "claude-sonnet-4-5" }],
+  });
+  assert.equal(cleared.anthropicBaseUrl, undefined);
+  const sharedClaudeEnv = store.resolveClaudeByokEnv("cli-dual-claude", "claude-agent-acp");
+  assert.equal(sharedClaudeEnv?.ANTHROPIC_BASE_URL, "https://relay.example.test");
+});
+
+test("testProvider falls back to POST messages/completions when /models returns 404 and preserves 401 errors", async () => {
+  const { testProvider } = await import("../dist-electron/cli/providerCheck.js");
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // Case 1: Qianfan-style Anthropic gateway (/models & /v1/models return 404; POST /v1/messages checks auth & responds)
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      const target = String(url);
+      calls.push({ url: target, method: init?.method || "GET", headers: init?.headers, body: init?.body });
+      if (target.endsWith("/models")) {
+        return new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 });
+      }
+      if (target === "https://qianfan.example.test/anthropic/tokenplan/personal/v1/messages") {
+        const key = init?.headers?.["x-api-key"];
+        if (key === "bad-key") {
+          return new Response(
+            JSON.stringify({ error: { message: "invalid_iam_token" } }),
+            { status: 401 },
+          );
+        }
+        return new Response(
+          JSON.stringify({ error: { type: "invalid_request_error", message: "unknown model" } }),
+          { status: 400 },
+        );
+      }
+      return new Response("Not Found", { status: 404 });
+    };
+
+    const okProbe = await testProvider({
+      baseUrl: "https://qianfan.example.test/v2/tokenplan/personal",
+      anthropicBaseUrl: "https://qianfan.example.test/anthropic/tokenplan/personal",
+      protocols: ["openai-chat", "anthropic"],
+      endpoint: "anthropic",
+      apiKey: "valid-key",
+    });
+    assert.equal(okProbe.ok, true);
+    assert.deepEqual(
+      calls.map((c) => `${c.method} ${c.url}`),
+      [
+        "GET https://qianfan.example.test/anthropic/tokenplan/personal/models",
+        "GET https://qianfan.example.test/anthropic/tokenplan/personal/v1/models",
+        "POST https://qianfan.example.test/anthropic/tokenplan/personal/v1/messages",
+      ],
+    );
+
+    const badAuthProbe = await testProvider({
+      baseUrl: "https://qianfan.example.test/v2/tokenplan/personal",
+      anthropicBaseUrl: "https://qianfan.example.test/anthropic/tokenplan/personal",
+      protocols: ["openai-chat", "anthropic"],
+      endpoint: "anthropic",
+      apiKey: "bad-key",
+    });
+    assert.equal(badAuthProbe.ok, false);
+    assert.equal(badAuthProbe.error, "HTTP 401");
+
+    // Case 2: OpenAI gateway (/models -> 404, /v1/models -> 401) reports HTTP 401 instead of HTTP 404
+    globalThis.fetch = async (url) => {
+      const target = String(url);
+      if (target.endsWith("/v1/models")) {
+        return new Response(JSON.stringify({ error: { code: "invalid_iam_token" } }), { status: 401 });
+      }
+      return new Response("404 page not found", { status: 404 });
+    };
+    const openAiBadKey = await testProvider({
+      baseUrl: "https://qianfan.example.test/v2/tokenplan/personal",
+      protocols: ["openai-chat"],
+      endpoint: "openai",
+      apiKey: "bad-key",
+    });
+    assert.equal(openAiBadKey.ok, false);
+    assert.equal(openAiBadKey.error, "HTTP 401");
+
+    // Case 3: Genuine wrong path returns HTTP 404 even after POST fallback
+    globalThis.fetch = async () => new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 });
+    const deadRoute = await testProvider({
+      baseUrl: "https://qianfan.example.test/wrong/path",
+      protocols: ["anthropic"],
+      apiKey: "valid-key",
+    });
+    assert.equal(deadRoute.ok, false);
+    assert.equal(deadRoute.error, "HTTP 404");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

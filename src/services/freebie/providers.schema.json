@@ -33,6 +33,7 @@
           "items": { "enum": ["openai-chat", "openai-responses", "anthropic", "deepseek"] }
         },
         "baseUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "anthropicBaseUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
         "envKey": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" },
         "models": {
           "type": "array",

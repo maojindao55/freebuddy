@@ -38,13 +38,18 @@ export function currentConversationPanelSnapshot(
 }
 
 /** Preserve positions during streaming; append newly observed conversations at the front. */
-export function stableConversationOrder(previous: string[], conversations: Conversation[]): string[] {
+export function stableConversationOrder(
+  previous: string[],
+  conversations: Conversation[],
+  sortTime: (conversation: Conversation) => string | undefined = (conversation) =>
+    conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt
+): string[] {
   const present = new Set(conversations.map((conversation) => conversation.id));
   const retained = previous.filter((id) => present.has(id));
   const known = new Set(retained);
   const additions = conversations.filter((conversation) => !known.has(conversation.id)).sort((a, b) => {
-    const timeA = Date.parse(a.lastMessageAt ?? a.updatedAt ?? a.createdAt) || 0;
-    const timeB = Date.parse(b.lastMessageAt ?? b.updatedAt ?? b.createdAt) || 0;
+    const timeA = Date.parse(sortTime(a) ?? "") || 0;
+    const timeB = Date.parse(sortTime(b) ?? "") || 0;
     return timeB - timeA || a.id.localeCompare(b.id);
   });
   return [...additions.map((conversation) => conversation.id), ...retained];

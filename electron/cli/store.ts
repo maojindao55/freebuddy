@@ -78,6 +78,8 @@ export interface CLIPiByokConfig {
   enabled?: boolean;
   /** 引用的服务商 id（provider-xxx），有值时 baseUrl/Key/模型走服务商 */
   providerId?: string;
+  /** 引用多协议服务商时选用的协议 */
+  protocol?: "openai-chat" | "openai-responses" | "anthropic" | "deepseek";
   baseUrl?: string;
   envKey?: string;
   apiKey?: string;
@@ -502,6 +504,36 @@ function providerModelsOf(rec: Record<string, unknown>): CLIByokModel[] {
   }
 }
 
+function parseProviderRowProtocols(rawProtocols: unknown, fallback: unknown): string[] {
+  const fb = typeof fallback === "string" && fallback.trim() ? fallback.trim() : "openai-chat";
+  if (typeof rawProtocols === "string" && rawProtocols.trim()) {
+    try {
+      const parsed = JSON.parse(rawProtocols);
+      if (Array.isArray(parsed) && parsed.length) {
+        const list = parsed.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+        if (list.length) return list;
+      }
+    } catch { /* ignore */ }
+  }
+  return [fb];
+}
+
+function resolveEnvKeyForProtocol(
+  rowEnvKey: string | undefined,
+  rawEnvKey: string | undefined,
+  protocol: string,
+): string | undefined {
+  const candidate = rowEnvKey?.trim() || rawEnvKey?.trim();
+  if (!candidate) return undefined;
+  if (protocol === "anthropic" && (candidate === "OPENAI_API_KEY" || candidate === "DEEPSEEK_API_KEY")) {
+    return "ANTHROPIC_API_KEY";
+  }
+  if (protocol !== "anthropic" && candidate === "ANTHROPIC_API_KEY") {
+    return protocol === "deepseek" ? "DEEPSEEK_API_KEY" : "OPENAI_API_KEY";
+  }
+  return candidate;
+}
+
 /** 同步版：providers 表已有数据时直接读（resolve*Env 是同步的，保持同步） */
 function resolveByokWithProvider(
   overrideId: string,
@@ -530,10 +562,35 @@ function resolveByokWithProvider(
       apiKey = decryptSecret(enc);
     } catch { apiKey = undefined; }
     const models = providerModelsOf(row);
+    const rowProtocols = parseProviderRowProtocols(row.protocols, row.protocol);
+    const openAiUrl = (row.base_url as string | undefined)?.trim();
+    const anthropicUrl = (row.anthropic_base_url as string | undefined)?.trim();
+    const piRequestedProtocol = (raw as { protocol?: string }).protocol?.trim();
+    const piProtocol =
+      piRequestedProtocol && rowProtocols.includes(piRequestedProtocol)
+        ? piRequestedProtocol
+        : (row.protocol as string | undefined) || rowProtocols[0] || "openai-chat";
+    const targetProtocol =
+      kind === "claude"
+        ? "anthropic"
+        : kind === "deepseek"
+          ? "deepseek"
+          : kind === "pi"
+            ? piProtocol
+            : "openai-chat";
+    const providerBaseUrl =
+      targetProtocol === "anthropic"
+        ? anthropicUrl || openAiUrl
+        : openAiUrl || anthropicUrl;
+    const resolvedEnvKey = resolveEnvKeyForProtocol(
+      row.env_key as string | undefined,
+      (raw as { envKey?: string }).envKey,
+      targetProtocol,
+    );
     const merged = {
       ...raw,
-      baseUrl: (row.base_url as string) || (raw as { baseUrl?: string }).baseUrl,
-      envKey: (row.env_key as string) || (raw as { envKey?: string }).envKey,
+      baseUrl: providerBaseUrl || (raw as { baseUrl?: string }).baseUrl,
+      envKey: resolvedEnvKey || (raw as { envKey?: string }).envKey,
       models: models.length ? models : (raw as { models?: CLIByokModel[] }).models,
       contextWindow:
         (raw as { contextWindow?: number }).contextWindow ?? (row.context_window as number | undefined),
@@ -550,7 +607,7 @@ function resolveByokWithProvider(
       (merged as Record<string, unknown>).wireApi = row.wire_api as string;
     }
     if (kind === "pi") {
-      (merged as Record<string, unknown>).__providerProtocol = row.protocol as string | undefined;
+      (merged as Record<string, unknown>).__providerProtocol = piProtocol;
     }
     return merged as ResolvedCodexByok;
   } catch {
@@ -640,6 +697,7 @@ function normalizePiByokForStorage(
     return {
       enabled: true,
       providerId: providerRef,
+      ...(input.protocol ? { protocol: input.protocol } : {}),
       ...(input.baseUrl?.trim() ? { baseUrl: input.baseUrl.trim() } : {}),
       ...(input.envKey?.trim() ? { envKey: input.envKey.trim() } : {}),
       ...(input.models?.length ? { models: normalizeByokModels(input.models) } : {}),
@@ -1264,17 +1322,30 @@ export function resolvePiByokEnv(
   const model =
     selectedModel?.trim() ||
     models[0]?.id;
+  const api = piApiForProtocol(byok.__providerProtocol);
+  const rawBaseUrl = byok.baseUrl?.trim();
+  const baseUrl = rawBaseUrl
+    ? api === "anthropic-messages"
+      ? rawBaseUrl.replace(/\/v1\/?$/, "")
+      : rawBaseUrl
+    : undefined;
   const env: Record<string, string> = {};
-  const isCustomBaseUrl = Boolean(
-    byok.baseUrl?.trim() && !byok.baseUrl.includes("api.openai.com")
+  const isCustomOpenAiUrl = Boolean(
+    baseUrl && !baseUrl.includes("api.openai.com")
+  );
+  const isCustomAnthropicUrl = Boolean(
+    baseUrl && !baseUrl.includes("api.anthropic.com")
   );
   if (apiKey) {
     env.FREEBUDDY_PI_RELAY_KEY = apiKey;
     const keyName = byok.envKey?.trim() || "OPENAI_API_KEY";
-    // Only inject OPENAI_API_KEY if the endpoint actually targets official OpenAI.
-    // When using a custom relay/proxy, exposing non-OpenAI credentials in OPENAI_API_KEY
-    // causes pi's built-in OpenAI provider to activate and fail upstream authentication.
-    if (!isCustomBaseUrl || keyName !== "OPENAI_API_KEY") {
+    // Only inject OPENAI_API_KEY / ANTHROPIC_API_KEY if the endpoint actually targets official APIs.
+    // When using a custom relay/proxy, exposing relay credentials in those env vars causes pi's
+    // built-in providers to activate and fail upstream authentication.
+    if (
+      (keyName !== "OPENAI_API_KEY" || !isCustomOpenAiUrl) &&
+      (keyName !== "ANTHROPIC_API_KEY" || !isCustomAnthropicUrl)
+    ) {
       env[keyName] = apiKey;
     }
   }
@@ -1282,9 +1353,9 @@ export function resolvePiByokEnv(
     enabled: true,
     providerId: byok.providerId?.trim() || "freebuddy-byok",
     providerName: byok.providerId?.trim() || "FreeBuddy BYOK",
-    baseUrl: byok.baseUrl?.trim() || undefined,
+    baseUrl,
     envKey: "FREEBUDDY_PI_RELAY_KEY",
-    api: piApiForProtocol(byok.__providerProtocol),
+    api,
     models: models.map((model) => ({
       id: model.id,
       name: model.name ?? model.id,

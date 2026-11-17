@@ -100,6 +100,7 @@ const seedProviders = (): Provider[] => [
     protocol: "openai-chat",
     protocols: ["openai-chat", "openai-responses", "anthropic", "deepseek"],
     baseUrl: "https://token.sensenova.cn/v1",
+    anthropicBaseUrl: "https://token.sensenova.cn/anthropic",
     envKey: "OPENAI_API_KEY",
     enabled: true,
     position: 1,
@@ -140,6 +141,10 @@ const upsert = async ({ apiKey, ...input }: ProviderInput & { apiKey?: string })
     ...previous,
     ...input,
     id: input.id ?? `provider-preview-${nextProviderId++}`,
+    anthropicBaseUrl:
+      input.anthropicBaseUrl !== undefined
+        ? input.anthropicBaseUrl.trim().replace(/\/+$/, "") || undefined
+        : previous?.anthropicBaseUrl,
     envKey: input.envKey ?? defaultEnvKeyForProtocol(input.protocol),
     enabled: input.enabled ?? previous?.enabled ?? true,
     position: input.position ?? previous?.position ?? currentProviders().length,
@@ -176,12 +181,39 @@ const test = async (target: string | TestProviderOptions): Promise<ProviderTestR
   const id = typeof target === "string" ? target : target.id;
   const provider = currentProviders().find(item => item.id === id);
   const hasKey = provider?.hasKey || (typeof target !== "string" && Boolean(target.apiKey?.trim()));
+  const latencyMs = provider?.lastLatencyMs ?? 57;
+  const baseUrl = typeof target === "string" ? provider?.baseUrl ?? "" : target.baseUrl;
+  const anthropicBaseUrl =
+    typeof target === "string" ? provider?.anthropicBaseUrl : target.anthropicBaseUrl;
+  const endpointMode = typeof target === "string" ? "all" : target.endpoint ?? "all";
+  const ok = Boolean(hasKey);
+  const endpoints =
+    endpointMode === "all" && anthropicBaseUrl && anthropicBaseUrl !== baseUrl
+      ? [
+          {
+            endpoint: "openai" as const,
+            baseUrl,
+            ok,
+            latencyMs,
+            models: ok ? [...modelIds] : undefined,
+            error: ok ? undefined : "未配置 API Key。",
+          },
+          {
+            endpoint: "anthropic" as const,
+            baseUrl: anthropicBaseUrl,
+            ok,
+            latencyMs: latencyMs + 6,
+            error: ok ? undefined : "未配置 API Key。",
+          },
+        ]
+      : undefined;
   return {
-    ok: Boolean(hasKey),
-    latencyMs: provider?.lastLatencyMs ?? 57,
+    ok,
+    latencyMs,
     checkedAt: new Date().toISOString(),
-    models: hasKey ? [...modelIds] : undefined,
-    error: hasKey ? undefined : "未配置 API Key。此预览仅使用本地示例数据。",
+    models: ok ? [...modelIds] : undefined,
+    endpoints,
+    error: ok ? undefined : "未配置 API Key。此预览仅使用本地示例数据。",
   };
 };
 

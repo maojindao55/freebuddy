@@ -329,6 +329,9 @@ export const cliClient = {
   setConversationPinned(id: string, pinned: boolean): Promise<Conversation> {
     return api().setConversationPinned(id, pinned);
   },
+  setConversationTodo(id: string, todo: boolean): Promise<Conversation> {
+    return api().setConversationTodo(id, todo);
+  },
   moveConversationToProject(
     id: string,
     projectId: string | null

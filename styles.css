@@ -9470,6 +9470,19 @@ button.new-task-context-control {
   opacity: 0.48;
 }
 
+.titlebar-icon-button.is-todo-active {
+  border-color: color-mix(in srgb, var(--fb-warning) 42%, var(--fb-border));
+  background: color-mix(in srgb, var(--fb-warning) 12%, var(--fb-panel-bg));
+  color: var(--fb-warning);
+}
+
+.titlebar-icon-button.is-todo-active:hover:not(:disabled),
+.titlebar-icon-button.is-todo-active:focus-visible {
+  border-color: color-mix(in srgb, var(--fb-warning) 60%, var(--fb-border));
+  background: color-mix(in srgb, var(--fb-warning) 18%, var(--fb-panel-bg));
+  color: var(--fb-warning);
+}
+
 .titlebar-transfer-button {
   display: inline-flex;
   min-height: 30px;
@@ -13950,6 +13963,28 @@ button.new-task-context-control {
   stroke-width: 1.7;
 }
 
+.sidebar-primary-badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fb-text-secondary);
+  background: var(--fb-hover);
+}
+
+.sidebar-primary-item.active .sidebar-primary-badge {
+  color: var(--fb-brand);
+  background: color-mix(in srgb, var(--fb-brand) 14%, transparent);
+}
+
 .conv-list-search-toggle {
   border: 0;
   background: transparent;
@@ -15175,11 +15210,28 @@ button.new-task-context-control {
   color: var(--fb-text-primary);
 }
 
+.conv-action-button.todo-active {
+  color: var(--fb-warning);
+}
+
+.conv-action-button.todo-active:hover {
+  background: color-mix(in srgb, var(--fb-warning) 16%, transparent);
+  color: var(--fb-warning);
+}
+
 /* Pinned rows carry a small pin next to the title; the action group stays
    hover-only so pinned titles also render in full. */
 .conv-pinned-indicator {
   flex: 0 0 auto;
   color: var(--fb-brand);
+}
+
+.conv-todo-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--fb-warning);
 }
 
 /* Status slot occupies flow space only when there is something to show

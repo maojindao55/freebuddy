@@ -26,6 +26,7 @@ import { useTranslation } from "react-i18next";
 import {
   Archive,
   CheckCheck,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Folder,
@@ -36,6 +37,7 @@ import {
   LoaderCircle,
   LayoutGrid,
   List,
+  ListTodo,
   Lock,
   LockOpen,
   MessageSquare,
@@ -98,6 +100,9 @@ const ConversationRow = memo(function ConversationRow({
   const setConversationPinned = useConversationStore(
     (s) => s.setConversationPinned
   );
+  const setConversationTodo = useConversationStore(
+    (s) => s.setConversationTodo
+  );
   const archiveConversation = useConversationStore(
     (s) => s.archiveConversation
   );
@@ -121,6 +126,14 @@ const ConversationRow = memo(function ConversationRow({
     setConversationPinned(conversation.id, !conversation.pinned).catch((error) => {
       if (import.meta.env?.DEV) {
         console.warn("[FreeBuddy] Failed to pin conversation:", error);
+      }
+    });
+  };
+
+  const handleToggleTodo = () => {
+    setConversationTodo(conversation.id, !conversation.todo).catch((error) => {
+      if (import.meta.env?.DEV) {
+        console.warn("[FreeBuddy] Failed to toggle todo:", error);
       }
     });
   };
@@ -154,6 +167,15 @@ const ConversationRow = memo(function ConversationRow({
             key: "rename",
             icon: <Pencil size={14} aria-hidden="true" />,
             label: t("conversations.renameTitle")
+          },
+          {
+            key: "todo",
+            icon: conversation.todo
+              ? <CheckCircle2 size={14} aria-hidden="true" />
+              : <ListTodo size={14} aria-hidden="true" />,
+            label: conversation.todo
+              ? t("conversations.unmarkTodo")
+              : t("conversations.markTodo")
           },
           {
             key: "move",
@@ -191,6 +213,10 @@ const ConversationRow = memo(function ConversationRow({
           setMenuOpen(false);
           if (key === "rename") {
             setEditSignal((current) => current + 1);
+            return;
+          }
+          if (key === "todo") {
+            handleToggleTodo();
             return;
           }
           if (key === "archive") {
@@ -272,6 +298,15 @@ const ConversationRow = memo(function ConversationRow({
             {conversation.pinned && (
               <Pin className="conv-pinned-indicator" size={11} aria-hidden="true" />
             )}
+            {conversation.todo && (
+              <span
+                className="conv-todo-indicator"
+                title={t("conversations.todoBadge")}
+                aria-label={t("conversations.todoBadge")}
+              >
+                <ListTodo size={12} aria-hidden="true" />
+              </span>
+            )}
             <EditableConversationTitle
               conversation={conversation}
               variant="list"
@@ -309,6 +344,23 @@ const ConversationRow = memo(function ConversationRow({
             role="group"
             aria-label={t("conversations.projectMenu")}
           >
+            <button
+              type="button"
+              className={`conv-action-button${conversation.todo ? " todo-active" : ""}`}
+              title={conversation.todo
+                ? t("conversations.unmarkTodo")
+                : t("conversations.markTodo")}
+              aria-label={conversation.todo
+                ? t("conversations.unmarkTodo")
+                : t("conversations.markTodo")}
+              aria-pressed={Boolean(conversation.todo)}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleToggleTodo();
+              }}
+            >
+              <ListTodo aria-hidden="true" size={13} strokeWidth={1.8} />
+            </button>
             <button
               type="button"
               className="conv-action-button"

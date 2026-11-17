@@ -743,6 +743,22 @@ export function buildSessionSetConfigOptionRequest(
   };
 }
 
+export function buildSessionSetModeRequest(
+  id: AcpRequestId,
+  sessionId: string,
+  modeId: string
+): AcpMessage {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "session/set_mode",
+    params: {
+      sessionId,
+      modeId
+    }
+  };
+}
+
 export function buildSessionListRequest(
   id: AcpRequestId,
   cwd?: string
@@ -1161,7 +1177,7 @@ type AvailableCommandItem = Extract<
   { kind: "available-commands" }
 >["commands"][number];
 
-type ConfigOptionItem = Extract<
+export type ConfigOptionItem = Extract<
   AcpStreamItem,
   { kind: "config-options" }
 >["options"][number];
@@ -1417,6 +1433,82 @@ export function acpSessionSetupToItems(
   }
 
   return items;
+}
+
+export function hasAcpModeConfigOption(result: any): boolean {
+  const rawOptions = result?.configOptions ?? result?.config_options;
+  return (
+    Array.isArray(rawOptions) &&
+    rawOptions.some(
+      (option: any) =>
+        option?.id === "mode" || option?.category === "mode"
+    )
+  );
+}
+
+/** Avoid Claude Code's `auto` mode classifier (which emits repeated billing
+ *  warnings on third-party gateways) when FreeBuddy owns approval decisions. */
+export function resolveClaudeAcpModeOverride(input: {
+  adapter: string;
+  approvalMode?: "auto" | "ask";
+  setupOptions: ConfigOptionItem[];
+  requestedMode?: string;
+}):
+  | { modeOptionId: string; value?: string; clearRequestedMode: boolean }
+  | undefined {
+  if (input.adapter !== "claude-agent-acp" && input.adapter !== "claude") {
+    return undefined;
+  }
+  const modeOption = input.setupOptions.find(
+    (option) => option.id === "mode" || option.category === "mode"
+  );
+  if (!modeOption) return undefined;
+
+  const availableIds = new Set(
+    (modeOption.values ?? []).map((value) => value.id)
+  );
+  const currentMode = modeOption.currentValue;
+  const requested = input.requestedMode?.trim() || undefined;
+
+  let targetMode: string | undefined;
+  if (input.approvalMode === "auto") {
+    if (requested && requested !== "auto") {
+      targetMode = requested;
+    } else if (currentMode === "auto" || requested === "auto") {
+      targetMode = availableIds.has("bypassPermissions")
+        ? "bypassPermissions"
+        : availableIds.has("default")
+          ? "default"
+          : undefined;
+    }
+  } else {
+    const staleElevatedAskMode =
+      input.approvalMode === "ask" &&
+      (currentMode === "bypassPermissions" || requested === "bypassPermissions");
+    if (requested && requested !== "auto" && !staleElevatedAskMode) {
+      targetMode = requested;
+    } else if (
+      currentMode === "auto" ||
+      requested === "auto" ||
+      staleElevatedAskMode
+    ) {
+      targetMode = availableIds.has("default") ? "default" : undefined;
+    }
+  }
+
+  if (!targetMode) {
+    return requested === "auto"
+      ? { modeOptionId: modeOption.id, clearRequestedMode: true }
+      : undefined;
+  }
+  if (targetMode === currentMode) {
+    return { modeOptionId: modeOption.id, clearRequestedMode: true };
+  }
+  return {
+    modeOptionId: modeOption.id,
+    value: targetMode,
+    clearRequestedMode: false
+  };
 }
 
 export function acpSessionListToItems(

@@ -66,6 +66,8 @@ export interface CLIPiByokConfig {
   enabled?: boolean;
   /** Referenced provider id (provider-xxx); when set, baseUrl/key/models come from that provider. */
   providerId?: string;
+  /** Protocol selected when referencing a multi-protocol provider (defaults to provider's primary protocol). */
+  protocol?: "openai-chat" | "openai-responses" | "anthropic" | "deepseek";
   baseUrl?: string;
   envKey?: string;
   apiKey?: string;
@@ -718,6 +720,9 @@ export interface Conversation {
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;
+  /** Marked as a todo; remains in its regular list and also appears in Todos. */
+  todo?: boolean;
+  todoAt?: string;
   /** Manual list position; null = order by activity (new arrivals float in). */
   sortPosition?: number | null;
   createdAt: string;

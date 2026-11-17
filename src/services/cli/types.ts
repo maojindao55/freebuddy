@@ -66,6 +66,8 @@ export interface CLIPiByokConfig {
   enabled?: boolean;
   /** Referenced provider id (provider-xxx); when set, baseUrl/key/models come from that provider. */
   providerId?: string;
+  /** Protocol selected when referencing a multi-protocol provider (defaults to provider's primary protocol). */
+  protocol?: "openai-chat" | "openai-responses" | "anthropic" | "deepseek";
   baseUrl?: string;
   envKey?: string;
   apiKey?: string;

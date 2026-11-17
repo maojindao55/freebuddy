@@ -59,6 +59,7 @@ export interface ProviderPreset {
   protocol: ProviderProtocol;
   protocols?: ProviderProtocol[];
   baseUrl: string;
+  anthropicBaseUrl?: string;
   envKey?: string;
   models: ProviderModel[];
   contextWindow?: number;
@@ -73,6 +74,7 @@ export interface ProviderInput {
   protocol: ProviderProtocol;
   protocols?: ProviderProtocol[];
   baseUrl: string;
+  anthropicBaseUrl?: string;
   envKey?: string;
   models?: ProviderModel[];
   contextWindow?: number;
@@ -96,19 +98,33 @@ export interface Provider extends ProviderInput {
   updatedAt?: string;
 }
 
+export interface ProviderEndpointTestResult {
+  endpoint: "openai" | "anthropic";
+  baseUrl: string;
+  ok: boolean;
+  latencyMs: number;
+  models?: string[];
+  error?: string;
+}
+
 export interface ProviderTestResult {
   ok: boolean;
   latencyMs: number;
   models?: string[];
   error?: string;
   checkedAt: string;
+  endpoints?: ProviderEndpointTestResult[];
 }
 
 export interface TestProviderOptions {
   id?: string;
   baseUrl: string;
+  anthropicBaseUrl?: string;
   protocol?: ProviderProtocol;
+  protocols?: ProviderProtocol[];
+  endpoint?: "all" | "openai" | "anthropic";
   apiKey?: string;
+  model?: string;
 }
 
 export const PROVIDER_ID_PREFIX = "provider-";
@@ -163,4 +179,59 @@ export function defaultEnvKeyForProtocol(protocol: ProviderProtocol): string {
   if (protocol === "anthropic") return "ANTHROPIC_API_KEY";
   if (protocol === "deepseek") return "DEEPSEEK_API_KEY";
   return "OPENAI_API_KEY";
+}
+
+/** Whether any selected protocol uses the shared OpenAI-compatible Base URL (Chat / Responses / DeepSeek). */
+export function providerUsesOpenAiUrl(
+  provider: Pick<ProviderPreset, "protocol" | "protocols"> & { protocol?: ProviderProtocol } | readonly ProviderProtocol[],
+): boolean {
+  const protocols = Array.isArray(provider)
+    ? provider
+    : protocolsOf(provider as Pick<ProviderPreset, "protocol" | "protocols">);
+  return protocols.some((p) => p !== "anthropic");
+}
+
+/** Whether Anthropic Claude protocol is enabled on the provider. */
+export function providerUsesAnthropicUrl(
+  provider: Pick<ProviderPreset, "protocol" | "protocols"> & { protocol?: ProviderProtocol } | readonly ProviderProtocol[],
+): boolean {
+  const protocols = Array.isArray(provider)
+    ? provider
+    : protocolsOf(provider as Pick<ProviderPreset, "protocol" | "protocols">);
+  return protocols.includes("anthropic");
+}
+
+/**
+ * Resolves the effective base URL for a given wire protocol or CLI adapter id.
+ * Anthropic uses `anthropicBaseUrl` when set, falling back to `baseUrl`.
+ */
+export function resolveProviderBaseUrl(
+  provider: Pick<ProviderInput, "baseUrl" | "anthropicBaseUrl">,
+  target?: ProviderProtocol | string,
+): string {
+  const normalized = target?.replace(/^cli-/, "");
+  const wantsAnthropic =
+    normalized === "anthropic" ||
+    normalized === "claude-agent-acp" ||
+    normalized === "claude";
+  if (wantsAnthropic) {
+    return provider.anthropicBaseUrl?.trim() || provider.baseUrl?.trim() || "";
+  }
+  return provider.baseUrl?.trim() || provider.anthropicBaseUrl?.trim() || "";
+}
+
+/** Resolves the env var name for a specific protocol without leaking incompatible defaults across protocols. */
+export function resolveProviderEnvKey(
+  provider: Pick<ProviderInput, "envKey">,
+  protocol: ProviderProtocol,
+): string {
+  const custom = provider.envKey?.trim();
+  if (!custom) return defaultEnvKeyForProtocol(protocol);
+  if (protocol === "anthropic" && (custom === "OPENAI_API_KEY" || custom === "DEEPSEEK_API_KEY")) {
+    return "ANTHROPIC_API_KEY";
+  }
+  if (protocol !== "anthropic" && custom === "ANTHROPIC_API_KEY") {
+    return defaultEnvKeyForProtocol(protocol);
+  }
+  return custom;
 }

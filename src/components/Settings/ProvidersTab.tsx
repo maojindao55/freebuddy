@@ -60,6 +60,7 @@ export function ProvidersTab() {
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.baseUrl.toLowerCase().includes(q) ||
+          Boolean(p.anthropicBaseUrl?.toLowerCase().includes(q)) ||
           p.models.some((m) => m.id.toLowerCase().includes(q)),
       );
     }

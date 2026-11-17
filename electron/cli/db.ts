@@ -1170,6 +1170,7 @@ export function migrate(db: DB) {
       protocol TEXT NOT NULL DEFAULT 'openai-chat',
       protocols TEXT,
       base_url TEXT NOT NULL,
+      anthropic_base_url TEXT,
       env_key TEXT,
       api_key_encrypted TEXT,
       api_key_preview TEXT,
@@ -1189,6 +1190,12 @@ export function migrate(db: DB) {
     CREATE INDEX IF NOT EXISTS idx_providers_preset ON providers(preset_id);
     CREATE INDEX IF NOT EXISTS idx_providers_enabled ON providers(enabled, position);
   `);
+  const currentProviderCols = db
+    .prepare("PRAGMA table_info(providers)")
+    .all() as Array<{ name: string }>;
+  if (!currentProviderCols.some((c) => c.name === "anthropic_base_url")) {
+    db.exec("ALTER TABLE providers ADD COLUMN anthropic_base_url TEXT");
+  }
   // 老 freebie-* override 迁移：只建服务商架子（不含 Key，由用户重新填），避免 Key 明文搬运
   try {
     const hasOverrides = db

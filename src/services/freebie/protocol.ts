@@ -44,6 +44,8 @@ export interface FreebieProviderPreset {
   protocols?: FreebieProtocol[];
   /** HTTPS API base URL the agent will talk to. */
   baseUrl: string;
+  /** Optional dedicated Anthropic/Claude-compatible API base URL. */
+  anthropicBaseUrl?: string;
   /** Environment variable the base adapter reads the key from. */
   envKey?: string;
   models: FreebieModel[];
@@ -248,6 +250,17 @@ export function validateFreebiePreset(input: unknown): Validation<FreebieProvide
 
   const homepage = parseHttpsUrl(input.homepage);
   if (homepage) preset.homepage = homepage.toString();
+  if (
+    input.anthropicBaseUrl !== undefined &&
+    input.anthropicBaseUrl !== null &&
+    String(input.anthropicBaseUrl).trim() !== ""
+  ) {
+    const anthropicBaseUrl = parseHttpsUrl(input.anthropicBaseUrl);
+    if (!anthropicBaseUrl) {
+      return { ok: false, error: "anthropicBaseUrl must be an https URL" };
+    }
+    preset.anthropicBaseUrl = anthropicBaseUrl.toString().replace(/\/$/, "");
+  }
   const consoleUrl = parseHttpsUrl(input.consoleUrl);
   if (consoleUrl) preset.consoleUrl = consoleUrl.toString();
 

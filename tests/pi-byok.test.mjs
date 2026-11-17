@@ -141,3 +141,33 @@ test("direct Pi BYOK vision flags survive database save, reload, and runtime env
   const config = JSON.parse(env.FREEBUDDY_PI_BYOK);
   assert.deepEqual(registerModels(config).map(model => model.input), [["text", "image"], ["text"]]);
 });
+
+test("provider-backed Pi BYOK preserves selected protocol and switches endpoint cleanly", () => {
+  const models = [{ id: "claude-sonnet-4-5", supportsVision: true }];
+  const dualProvider = {
+    id: "provider-dual",
+    protocol: "openai-chat",
+    protocols: ["openai-chat", "openai-responses", "anthropic"],
+    baseUrl: "https://relay.example.test/v1",
+    anthropicBaseUrl: "https://relay.example.test/claude",
+    envKey: "OPENAI_API_KEY",
+    models
+  };
+  const viewAnthropic = editor(models, {
+    selectedProviderId: dualProvider.id,
+    selectedProvider: dualProvider,
+    piProtocol: "anthropic"
+  });
+  const savedAnthropic = viewAnthropic.save().piByok;
+  assert.equal(savedAnthropic.protocol, "anthropic");
+  assert.equal(savedAnthropic.envKey, "ANTHROPIC_API_KEY");
+
+  const viewResponses = editor(models, {
+    selectedProviderId: dualProvider.id,
+    selectedProvider: dualProvider,
+    piProtocol: "openai-responses"
+  });
+  const savedResponses = viewResponses.save().piByok;
+  assert.equal(savedResponses.protocol, "openai-responses");
+  assert.equal(savedResponses.envKey, "OPENAI_API_KEY");
+});

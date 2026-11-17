@@ -1,7 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useProviderStore } from "@/store/providerStore";
-import { isProviderCompatibleWithAdapter } from "@/services/providers/types";
+import {
+  isProviderCompatibleWithAdapter,
+  resolveProviderBaseUrl,
+} from "@/services/providers/types";
 
 /** Provider picker for Agent BYOK: pick a provider key instead of typing it. */
 export function ProviderSelect({ adapter, value, onChange }: {
@@ -43,7 +46,7 @@ export function ProviderSelect({ adapter, value, onChange }: {
       </label>
       {selected ? (
         <small className="provider-select-hint">
-          {selected.baseUrl} · {t("providers.managedHint")}
+          {resolveProviderBaseUrl(selected, adapter)} · {t("providers.managedHint")}
         </small>
       ) : null}
     </div>

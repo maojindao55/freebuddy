@@ -493,3 +493,39 @@ test("communityClient auth headers only contain anonymous device id and no secre
   }
 });
 
+test("validateFreebiePreset and buildFreebieOverride support optional anthropicBaseUrl", async () => {
+  const { validateFreebiePreset } = await loadProtocol();
+  const { buildFreebieOverride } = await loadPresetToOverride();
+
+  const validDual = validateFreebiePreset({
+    ...validPreset,
+    protocols: ["openai-chat", "anthropic"],
+    anthropicBaseUrl: "https://open.bigmodel.cn/api/anthropic/"
+  });
+  assert.equal(validDual.ok, true);
+  assert.equal(validDual.value.anthropicBaseUrl, "https://open.bigmodel.cn/api/anthropic");
+
+  const unsafeAnthropic = validateFreebiePreset({
+    ...validPreset,
+    anthropicBaseUrl: "http://relay.example.com/anthropic"
+  });
+  assert.equal(unsafeAnthropic.ok, false);
+  assert.match(unsafeAnthropic.error, /anthropicBaseUrl/i);
+
+  const claudeOverride = buildFreebieOverride({
+    preset: validDual.value,
+    apiKey: "sk-freebie-dual",
+    baseAdapter: "claude-agent-acp",
+    label: "Dual Claude"
+  });
+  assert.equal(claudeOverride.claudeByok?.baseUrl, "https://open.bigmodel.cn/api/anthropic");
+
+  const codexOverride = buildFreebieOverride({
+    preset: validDual.value,
+    apiKey: "sk-freebie-dual",
+    baseAdapter: "codex-acp",
+    label: "Dual Codex"
+  });
+  assert.equal(codexOverride.codexByok?.baseUrl, "https://open.bigmodel.cn/api/paas/v4");
+});
+

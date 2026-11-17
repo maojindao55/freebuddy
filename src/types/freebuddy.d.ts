@@ -134,7 +134,10 @@ declare global {
       enabled: boolean;
     }): Promise<import("@/services/providers/types").Provider>;
     reorder(ids: string[]): Promise<import("@/services/providers/types").Provider[]>;
-    test(id: string): Promise<import("@/services/providers/types").ProviderTestResult>;
+    test(
+      target: string | import("@/services/providers/types").TestProviderOptions
+    ): Promise<import("@/services/providers/types").ProviderTestResult>;
+    getApiKey(id: string): Promise<string | undefined>;
   }
 
   interface FreebuddyCli {

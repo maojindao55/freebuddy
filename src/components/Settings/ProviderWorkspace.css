@@ -79,7 +79,7 @@
 .providers-workspace .provider-compact-config {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas: "intro intro" "name name" "url url" "key key" "protocol protocol" "footer footer";
+  grid-template-areas: "intro intro" "name name" "protocol protocol" "url url" "key key" "footer footer";
   align-content: start;
   gap: 24px;
   padding: 26px 28px;
@@ -94,6 +94,19 @@
 .providers-workspace .provider-connection-intro p { margin: 0; color: var(--fb-text-tertiary); font-size: 12px; }
 .providers-workspace .provider-compact-name { grid-area: name; }
 .providers-workspace .provider-compact-url { grid-area: url; }
+.providers-workspace .provider-url-stack { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 640px; }
+.providers-workspace .provider-url-item { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.providers-workspace .provider-url-item input { width: 100%; box-sizing: border-box; }
+.providers-workspace .provider-url-label-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.providers-workspace .provider-url-label-row label,
+.providers-workspace .provider-url-label-row > span { font-size: 12px; font-weight: 550; color: var(--fb-text-secondary); }
+.providers-workspace .provider-url-test-btn { border: 0; background: transparent; padding: 0; color: var(--fb-brand); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
+.providers-workspace .provider-url-test-btn:hover:not(:disabled) { text-decoration: underline; }
+.providers-workspace .provider-url-test-btn:disabled { opacity: 0.45; cursor: default; }
+.providers-workspace .provider-endpoint-results { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.providers-workspace .provider-endpoint-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--fb-border); background: var(--fb-panel-soft); color: var(--fb-text-secondary); }
+.providers-workspace .provider-endpoint-pill.ok { color: var(--fb-success, #16a34a); border-color: color-mix(in srgb, currentColor 28%, transparent); }
+.providers-workspace .provider-endpoint-pill.error { color: var(--fb-danger, #ef4444); border-color: color-mix(in srgb, currentColor 28%, transparent); }
 .providers-workspace .provider-compact-key { grid-area: key; }
 .providers-workspace .provider-compact-protos { grid-area: protocol; }
 .providers-workspace .provider-compact-field { gap: 8px; width: 100%; max-width: 640px; }

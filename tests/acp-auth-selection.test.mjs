@@ -45,6 +45,12 @@ test("renderer queues, displays, resolves, and cleans up authentication requests
   assert.match(dialog, /ArrowUp: "\\u001b\[A"/);
 });
 
+test("Comate missing credentials open a terminal login and skip the unimplemented authenticate RPC", () => {
+  assert.match(runtime, /isAcpMissingCredentialMessage/);
+  assert.match(runtime, /credentialFileLoginMethod\(await chooseAuthMethod\(methods\)\)/);
+  assert.match(runtime, /if \(!skipsAuthenticateRpc\(method\)\)/);
+});
+
 test("terminal auth restarts ACP and repeats initialize before authenticate", () => {
   assert.match(runtime, /runAuthenticationTerminal/);
   assert.match(runtime, /await restartAndInitialize\(\)/);

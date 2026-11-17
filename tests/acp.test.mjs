@@ -56,8 +56,11 @@ import {
   formatAcpRpcError,
   parseAcpLine,
   resolveClaudeAcpModeOverride,
+  credentialFileLoginMethod,
+  isAcpMissingCredentialMessage,
   selectAcpAuthMethod,
   selectAcpSessionStartMode,
+  skipsAuthenticateRpc,
   shouldDiscardAcpToolSession,
   shouldEmitAcpUpdate,
   shouldRetryEmptyResumedDshTurn,
@@ -1161,6 +1164,26 @@ test("ACP auth request builders use stable v1 method shapes", () => {
     method: "logout",
     params: {}
   });
+});
+
+test("missing Comate credentials are treated as a login, not a finished turn", () => {
+  const wrapped =
+    "comatecli 退出码 1: Error: No license or token provided.\nTips：可进入如流群（12199111）获得帮助";
+  assert.equal(isAcpMissingCredentialMessage(wrapped), true);
+  assert.equal(isAcpMissingCredentialMessage("context window exceeded"), false);
+
+  const method = credentialFileLoginMethod({
+    id: "comate-login",
+    name: "Comate 登录",
+    description: "在终端运行 `comatecli login` 完成登录；已登录则可忽略。"
+  });
+  assert.equal(method.type, "terminal");
+  assert.deepEqual(method.args, ["--login"]);
+  assert.equal(skipsAuthenticateRpc(method), true);
+  assert.equal(
+    skipsAuthenticateRpc({ id: "chat-gpt", name: "ChatGPT", type: "terminal" }),
+    false
+  );
 });
 
 test("ACP auth selection prefers available API keys, otherwise interactive login", () => {

@@ -224,6 +224,47 @@ export function selectAcpAuthMethod(
   return interactiveMethods.length === 1 ? interactiveMethods[0] : undefined;
 }
 
+/** comatecli exits headless turns with this text instead of an ACP auth error. */
+export function isAcpMissingCredentialMessage(message: string): boolean {
+  return /no license or token provided/i.test(message);
+}
+
+/**
+ * comate-acp advertises `comate-login` without `type: "terminal"` and only
+ * starts `comatecli login` when its process is launched with `--login`.
+ * Credentials are written to disk, so the follow-up ACP `authenticate` call
+ * is not implemented and must be skipped.
+ */
+export function credentialFileLoginMethod(method: AcpAuthMethod): AcpAuthMethod {
+  const text = `${method.id} ${method.name ?? ""} ${method.description ?? ""}`;
+  if (method.id !== "comate-login" && !/comatecli\s+login/i.test(text)) {
+    return method;
+  }
+  const args = [...(method.args ?? [])];
+  if (!args.includes("--login")) args.push("--login");
+  const previous = method._meta?.freebuddy;
+  const freebuddy =
+    previous && typeof previous === "object"
+      ? { ...(previous as Record<string, unknown>) }
+      : {};
+  freebuddy.credentialFileLogin = true;
+  return {
+    ...method,
+    type: method.type === "agent" ? "agent" : "terminal",
+    args,
+    _meta: { ...method._meta, freebuddy }
+  };
+}
+
+export function skipsAuthenticateRpc(method: AcpAuthMethod): boolean {
+  const freebuddy = method._meta?.freebuddy;
+  return Boolean(
+    freebuddy &&
+      typeof freebuddy === "object" &&
+      (freebuddy as Record<string, unknown>).credentialFileLogin === true
+  );
+}
+
 export type AcpStreamItem =
   | {
       kind: "text";

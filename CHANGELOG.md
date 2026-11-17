@@ -2,6 +2,16 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.68] - 2026-11-17
+
+### 新功能
+
+- handle post-end_turn idle updates and permissions for agy 1.5.10+
+
+### 问题修复
+
+- align Antigravity quota endpoint and decimal precision with agy
+
 ## [0.10.67] - 2026-11-17
 
 ### 其他更新

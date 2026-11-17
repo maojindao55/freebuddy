@@ -171,3 +171,78 @@ test("provider-backed Pi BYOK preserves selected protocol and switches endpoint 
   assert.equal(savedResponses.protocol, "openai-responses");
   assert.equal(savedResponses.envKey, "OPENAI_API_KEY");
 });
+
+test("resolvePiByokEnv keeps custom relay keys out of OPENAI_API_KEY and ANTHROPIC_API_KEY while forwarding official API keys", async (t) => {
+  let db;
+  try {
+    const { default: Database } = await import("better-sqlite3");
+    db = new Database(":memory:");
+  } catch {
+    t.skip("better-sqlite3 native binding unavailable under this Node; run with scripts/run-electron-node-test.mjs");
+    return;
+  }
+  const { migrate, setDbForTest } = await import("../dist-electron/cli/db.js");
+  const providers = await import("../dist-electron/cli/providers.js");
+  const store = await import("../dist-electron/cli/store.js");
+  setDbForTest(db);
+  t.after(() => { setDbForTest(null); db.close(); });
+  migrate(db);
+
+  const customOpenAi = providers.upsertProvider({
+    name: "Custom OpenAI Relay",
+    protocol: "openai-chat",
+    protocols: ["openai-chat"],
+    baseUrl: "https://relay.example.test/v1",
+    envKey: "OPENAI_API_KEY",
+    apiKey: "sk-custom-openai",
+    models: [{ id: "gpt-4.1" }]
+  });
+  store.upsertOverride({
+    id: "pi-custom-openai",
+    baseAdapter: "pi-acp",
+    label: "Pi Custom OpenAI",
+    piByok: { enabled: true, providerId: customOpenAi.id, protocol: "openai-chat" }
+  });
+  const customOpenAiEnv = store.resolvePiByokEnv("cli-pi-custom-openai", "pi-acp");
+  assert.equal(customOpenAiEnv?.FREEBUDDY_PI_RELAY_KEY, "sk-custom-openai");
+  assert.equal(customOpenAiEnv?.OPENAI_API_KEY, undefined);
+
+  const customAnthropic = providers.upsertProvider({
+    name: "Custom Anthropic Relay",
+    protocol: "anthropic",
+    protocols: ["anthropic"],
+    anthropicBaseUrl: "https://relay.example.test/claude/v1",
+    envKey: "ANTHROPIC_API_KEY",
+    apiKey: "sk-custom-anthropic",
+    models: [{ id: "claude-sonnet-4-5" }]
+  });
+  store.upsertOverride({
+    id: "pi-custom-anthropic",
+    baseAdapter: "pi-acp",
+    label: "Pi Custom Anthropic",
+    piByok: { enabled: true, providerId: customAnthropic.id, protocol: "anthropic" }
+  });
+  const customAnthropicEnv = store.resolvePiByokEnv("cli-pi-custom-anthropic", "pi-acp");
+  assert.equal(customAnthropicEnv?.FREEBUDDY_PI_RELAY_KEY, "sk-custom-anthropic");
+  assert.equal(customAnthropicEnv?.ANTHROPIC_API_KEY, undefined);
+  assert.equal(JSON.parse(customAnthropicEnv?.FREEBUDDY_PI_BYOK ?? "{}").baseUrl, "https://relay.example.test/claude");
+
+  const officialOpenAi = providers.upsertProvider({
+    name: "Official OpenAI",
+    protocol: "openai-chat",
+    protocols: ["openai-chat"],
+    baseUrl: "https://api.openai.com/v1",
+    envKey: "OPENAI_API_KEY",
+    apiKey: "sk-official-openai",
+    models: [{ id: "gpt-4.1" }]
+  });
+  store.upsertOverride({
+    id: "pi-official-openai",
+    baseAdapter: "pi-acp",
+    label: "Pi Official OpenAI",
+    piByok: { enabled: true, providerId: officialOpenAi.id, protocol: "openai-chat" }
+  });
+  const officialOpenAiEnv = store.resolvePiByokEnv("cli-pi-official-openai", "pi-acp");
+  assert.equal(officialOpenAiEnv?.FREEBUDDY_PI_RELAY_KEY, "sk-official-openai");
+  assert.equal(officialOpenAiEnv?.OPENAI_API_KEY, "sk-official-openai");
+});

@@ -126,11 +126,12 @@ test("ensurePiSettings writes and pins defaultProvider and defaultModel idempote
   assert.equal(fs.statSync(settingsFile).mtimeMs, before);
 });
 
-test("pi BYOK resolves default model and avoids exposing custom relay keys in OPENAI_API_KEY", () => {
+test("pi BYOK resolves default model and avoids exposing custom relay keys in provider env vars", () => {
   const store = read("electron/cli/store.ts");
   assert.match(store, /export function resolvePiByokDefaultModel\(/);
   assert.match(store, /FREEBUDDY_PI_RELAY_KEY/);
-  assert.match(store, /isCustomBaseUrl/);
+  assert.match(store, /isCustomOpenAiUrl/);
+  assert.match(store, /isCustomAnthropicUrl/);
   assert.match(store, /resolveByokWithProvider\("pi-acp", "pi"\)/);
 });
 

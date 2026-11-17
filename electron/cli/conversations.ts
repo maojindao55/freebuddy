@@ -85,6 +85,9 @@ export interface Conversation {
   /** Pinned conversations float to the top of their list group. */
   pinned?: boolean;
   pinnedAt?: string;
+  /** Marked as a todo; remains in its regular list and also appears in Todos. */
+  todo?: boolean;
+  todoAt?: string;
   /** Manual list position; null = order by activity (new arrivals float in). */
   sortPosition?: number | null;
   createdAt: string;
@@ -223,6 +226,8 @@ function rowToConversation(
     archived,
     pinned: r.pinned === 1,
     pinnedAt: r.pinned_at ?? undefined,
+    todo: r.todo === 1,
+    todoAt: r.todo_at ?? undefined,
     /** Manual list position; null = order by activity (new arrivals float in). */
     sortPosition: typeof r.sort_position === "number" ? r.sort_position : null,
     createdAt: r.created_at,
@@ -496,6 +501,22 @@ export function setConversationPinned(id: string, pinned: boolean): Conversation
       `UPDATE conversations SET pinned = ?, pinned_at = ?, updated_at = ? WHERE id = ?`
     )
     .run(pinned ? 1 : 0, pinned ? now : null, now, id);
+  return getConversation(id) as Conversation;
+}
+
+/**
+ * Mark or clear a conversation as a todo. Todos stay in their original
+ * project/recent list and are aggregated in the Todos panel.
+ */
+export function setConversationTodo(id: string, todo: boolean): Conversation {
+  const conversation = requireOwnedConversation(id);
+  if (!conversation) throw new Error("Conversation not found");
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE conversations SET todo = ?, todo_at = ?, updated_at = ? WHERE id = ?`
+    )
+    .run(todo ? 1 : 0, todo ? now : null, now, id);
   return getConversation(id) as Conversation;
 }
 

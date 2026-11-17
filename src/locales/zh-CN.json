@@ -399,6 +399,8 @@
     "hostAccount": "本机",
     "primaryNavigation": "工作区导航",
     "newConversation": "新会话",
+    "todos": "待办",
+    "todosCount": "{{count}} 个待办会话",
     "scheduledTasks": "定时任务",
     "importCodexSession": "导入 Codex 会话",
     "teams": "团队",
@@ -648,6 +650,9 @@
     "new": "+ 新建",
     "pinConversation": "置顶",
     "unpinConversation": "取消置顶",
+    "todoBadge": "待办",
+    "markTodo": "标记为待办",
+    "unmarkTodo": "移出待办",
     "forkSuffix": "分叉",
     "moveToProject": "移动到项目",
     "removeFromProject": "移出项目",
@@ -2882,6 +2887,15 @@
     },
     "unavailableCount": "{{count}} 个会话的活动暂时无法更新",
     "codeResult": "代码或图表结果"
+  },
+  "todoPanel": {
+    "title": "待办",
+    "searchPlaceholder": "搜索待办会话",
+    "markDone": "完成",
+    "allConversations": "全部会话",
+    "emptyTitle": "暂无待办会话",
+    "emptyHint": "在侧边栏会话或标题栏点击待办图标，即可一键加入这里集中跟进。",
+    "browseConversations": "查看全部会话"
   },
   "docStudio": {
     "documentMode": "文档模式",

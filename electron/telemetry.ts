@@ -27,6 +27,7 @@ export type TelemetryEvent =
   | "conversation_forked"
   | "conversation_moved_to_project"
   | "conversation_pin_toggled"
+  | "conversation_todo_toggled"
   | "conversation_reordered"
   | "conversation_order_reset"
   | "agent_run_started"
@@ -52,6 +53,9 @@ interface ProductTelemetryEventProperties {
   };
   conversation_pin_toggled: {
     pinned: boolean;
+  };
+  conversation_todo_toggled: {
+    todo: boolean;
   };
   conversation_reordered: {
     ordered: number;

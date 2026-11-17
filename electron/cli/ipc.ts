@@ -83,6 +83,7 @@ import {
   setConversationMcpServerIds,
   setConversationPinned,
   setConversationSkills,
+  setConversationTodo,
   setConversationOrder,
   resetConversationOrder,
   recoverInterruptedMessages,
@@ -1681,6 +1682,23 @@ export function registerCliIpc() {
       const conversation = setConversationPinned(args.id, args.pinned);
       trackTelemetryEvent("conversation_pin_toggled", {
         pinned: args.pinned
+      });
+      notifyConversationsChanged();
+      return conversation;
+    }
+  );
+  registerHandler(
+    "cli:setConversationTodo",
+    (_e, args: { id: string; todo: boolean }): Conversation => {
+      if (typeof args.id !== "string" || !args.id.trim()) {
+        throw new Error("A conversation id is required.");
+      }
+      if (typeof args.todo !== "boolean") {
+        throw new Error("todo must be a boolean.");
+      }
+      const conversation = setConversationTodo(args.id, args.todo);
+      trackTelemetryEvent("conversation_todo_toggled", {
+        todo: args.todo
       });
       notifyConversationsChanged();
       return conversation;

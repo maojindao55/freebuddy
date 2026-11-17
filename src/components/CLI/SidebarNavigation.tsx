@@ -1,30 +1,36 @@
 import {
   AlarmClock,
   Gift,
+  ListTodo,
   MessageSquarePlus,
   UsersRound
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export type WorkspaceView = "chat" | "conversationBoard" | "scheduledTasks" | "workflowTeams" | "freebie";
+export type WorkspaceView = "chat" | "conversationBoard" | "todos" | "scheduledTasks" | "workflowTeams" | "freebie";
 
 export function SidebarNavigation({
   workspaceView,
   isNewTask,
+  todoCount = 0,
   onNewTask,
+  onOpenTodos,
   onOpenScheduledTasks,
   onOpenTeams,
   onOpenFreebie
 }: {
   workspaceView: WorkspaceView;
   isNewTask: boolean;
+  todoCount?: number;
   onNewTask: () => void;
+  onOpenTodos?: () => void;
   onOpenScheduledTasks: () => void;
   onOpenTeams: () => void;
   onOpenFreebie: () => void;
 }) {
   const { t } = useTranslation();
   const newTaskActive = workspaceView === "chat" && isNewTask;
+  const todosActive = workspaceView === "todos";
   const scheduledTasksActive = workspaceView === "scheduledTasks";
   const workflowTeamsActive = workspaceView === "workflowTeams";
   const freebieActive = workspaceView === "freebie";
@@ -43,6 +49,27 @@ export function SidebarNavigation({
           </span>
           <span>{t("sidebar.newConversation")}</span>
         </button>
+        {onOpenTodos && (
+          <button
+            type="button"
+            className={`sidebar-primary-item${todosActive ? " active" : ""}`}
+            aria-current={todosActive ? "page" : undefined}
+            onClick={onOpenTodos}
+          >
+            <span className="sidebar-primary-icon" aria-hidden="true">
+              <ListTodo />
+            </span>
+            <span>{t("sidebar.todos")}</span>
+            {todoCount > 0 && (
+              <span
+                className="sidebar-primary-badge"
+                aria-label={t("sidebar.todosCount", { count: todoCount })}
+              >
+                {todoCount}
+              </span>
+            )}
+          </button>
+        )}
         <button
           type="button"
           className={`sidebar-primary-item${scheduledTasksActive ? " active" : ""}`}

@@ -171,6 +171,8 @@ const cli = {
     ipcRenderer.invoke("cli:archiveConversation", { id, archived }),
   setConversationPinned: (id: string, pinned: boolean) =>
     ipcRenderer.invoke("cli:setConversationPinned", { id, pinned }),
+  setConversationTodo: (id: string, todo: boolean) =>
+    ipcRenderer.invoke("cli:setConversationTodo", { id, todo }),
   moveConversationToProject: (id: string, projectId: string | null) =>
     ipcRenderer.invoke("cli:moveConversationToProject", { id, projectId }),
   setConversationOrder: (conversationIds: string[]) =>

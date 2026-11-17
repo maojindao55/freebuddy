@@ -399,6 +399,8 @@
     "hostAccount": "Host",
     "primaryNavigation": "Workspace navigation",
     "newConversation": "New conversation",
+    "todos": "Todos",
+    "todosCount": "{{count}} todo conversations",
     "scheduledTasks": "Scheduled tasks",
     "importCodexSession": "Import Codex session",
     "teams": "Teams",
@@ -648,6 +650,9 @@
     "new": "+ New",
     "pinConversation": "Pin",
     "unpinConversation": "Unpin",
+    "todoBadge": "Todo",
+    "markTodo": "Mark as todo",
+    "unmarkTodo": "Remove from todos",
     "forkSuffix": "fork",
     "moveToProject": "Move to project",
     "removeFromProject": "Remove from project",
@@ -2897,6 +2902,15 @@
     },
     "unavailableCount": "Activity updates unavailable for {{count}} conversations",
     "codeResult": "Code or diagram result"
+  },
+  "todoPanel": {
+    "title": "Todos",
+    "searchPlaceholder": "Search todos",
+    "markDone": "Done",
+    "allConversations": "All conversations",
+    "emptyTitle": "No todo conversations yet",
+    "emptyHint": "Mark any conversation from the sidebar or chat header to track follow-ups here.",
+    "browseConversations": "Browse all conversations"
   },
   "docStudio": {
     "documentMode": "Document mode",

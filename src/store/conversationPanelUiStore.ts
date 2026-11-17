@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create, type StoreApi } from "zustand";
 
 export type ConversationPanelFilter = "all" | "running" | "attention" | "unread";
 export type ConversationPreferredView = "list" | "panel";
@@ -12,15 +12,13 @@ function loadPreferredView(): ConversationPreferredView {
   }
 }
 
-interface ConversationPanelUiState {
-  preferredView: ConversationPreferredView;
+export interface ConversationBoardFilterUiState {
   query: string;
   filter: ConversationPanelFilter;
   projectKey: string;
   scrollOffset: number;
   visibleCount: number;
   orderedIds: string[];
-  setPreferredView(view: ConversationPreferredView): void;
   setQuery(query: string): void;
   setFilter(filter: ConversationPanelFilter): void;
   setProjectKey(projectKey: string): void;
@@ -29,15 +27,33 @@ interface ConversationPanelUiState {
   setOrderedIds(orderedIds: string[]): void;
 }
 
+interface ConversationPanelUiState extends ConversationBoardFilterUiState {
+  preferredView: ConversationPreferredView;
+  setPreferredView(view: ConversationPreferredView): void;
+}
+
+function createBoardFilterUiSlice<T extends ConversationBoardFilterUiState>(
+  set: StoreApi<T>["setState"]
+): ConversationBoardFilterUiState {
+  return {
+    query: "",
+    filter: "all",
+    projectKey: "",
+    scrollOffset: 0,
+    visibleCount: 24,
+    orderedIds: [],
+    setQuery(query) { set({ query, scrollOffset: 0, visibleCount: 24 } as Partial<T>); },
+    setFilter(filter) { set({ filter, scrollOffset: 0, visibleCount: 24 } as Partial<T>); },
+    setProjectKey(projectKey) { set({ projectKey, scrollOffset: 0, visibleCount: 24 } as Partial<T>); },
+    setScrollOffset(scrollOffset) { set({ scrollOffset: Math.max(0, scrollOffset) } as Partial<T>); },
+    showMore() { set((state) => ({ visibleCount: state.visibleCount + 24 }) as Partial<T>); },
+    setOrderedIds(orderedIds) { set({ orderedIds } as Partial<T>); }
+  };
+}
+
 /** Navigation through a card never changes the user's explicit view preference. */
 export const useConversationPanelUiStore = create<ConversationPanelUiState>((set) => ({
   preferredView: loadPreferredView(),
-  query: "",
-  filter: "all",
-  projectKey: "",
-  scrollOffset: 0,
-  visibleCount: 24,
-  orderedIds: [],
   setPreferredView(preferredView) {
     try {
       globalThis.localStorage?.setItem(STORAGE_KEY, preferredView);
@@ -46,10 +62,10 @@ export const useConversationPanelUiStore = create<ConversationPanelUiState>((set
     }
     set({ preferredView });
   },
-  setQuery(query) { set({ query, scrollOffset: 0, visibleCount: 24 }); },
-  setFilter(filter) { set({ filter, scrollOffset: 0, visibleCount: 24 }); },
-  setProjectKey(projectKey) { set({ projectKey, scrollOffset: 0, visibleCount: 24 }); },
-  setScrollOffset(scrollOffset) { set({ scrollOffset: Math.max(0, scrollOffset) }); },
-  showMore() { set((state) => ({ visibleCount: state.visibleCount + 24 })); },
-  setOrderedIds(orderedIds) { set({ orderedIds }); }
+  ...createBoardFilterUiSlice(set)
 }));
+
+/** Independent filter/scroll state for the Todos board view. */
+export const useTodoPanelUiStore = create<ConversationBoardFilterUiState>((set) =>
+  createBoardFilterUiSlice(set)
+);

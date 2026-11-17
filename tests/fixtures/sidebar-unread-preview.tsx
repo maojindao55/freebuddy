@@ -145,7 +145,7 @@ function Preview() {
           <div className="sidebar-brand-text"><div className="sidebar-brand-row"><h1>FreeBuddy</h1><span className="sidebar-dev-badge">DEV</span></div></div>
         </div>
       </div>
-      <SidebarNavigation workspaceView={workspaceView} isNewTask={!active} onNewTask={newTask} onOpenScheduledTasks={() => setWorkspaceView("scheduledTasks")} onOpenTeams={() => setWorkspaceView("workflowTeams")} onOpenFreebie={() => setWorkspaceView("freebie")} />
+      <SidebarNavigation workspaceView={workspaceView} isNewTask={!active} onNewTask={newTask} onOpenTodos={() => setWorkspaceView("todos")} onOpenScheduledTasks={() => setWorkspaceView("scheduledTasks")} onOpenTeams={() => setWorkspaceView("workflowTeams")} onOpenFreebie={() => setWorkspaceView("freebie")} />
       <ConversationList onNewTaskInProject={newTask} />
       <div className="sidebar-footer"><span className="sidebar-user-name">{currentUser?.username}</span><span className="footer-version">v0.10.24</span></div>
     </aside>

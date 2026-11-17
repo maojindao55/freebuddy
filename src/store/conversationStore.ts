@@ -181,6 +181,7 @@ export interface ConversationState {
     restored: Conversation
   ): Promise<void>;
   setConversationPinned(id: string, pinned: boolean): Promise<Conversation>;
+  setConversationTodo(id: string, todo: boolean): Promise<Conversation>;
   moveConversationToProject(
     id: string,
     projectId: string | null
@@ -1266,6 +1267,16 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   async setConversationPinned(id, pinned) {
     const conversation = await cliClient.setConversationPinned(id, pinned);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === conversation.id ? conversation : c
+      )
+    }));
+    return conversation;
+  },
+
+  async setConversationTodo(id, todo) {
+    const conversation = await cliClient.setConversationTodo(id, todo);
     set((s) => ({
       conversations: s.conversations.map((c) =>
         c.id === conversation.id ? conversation : c

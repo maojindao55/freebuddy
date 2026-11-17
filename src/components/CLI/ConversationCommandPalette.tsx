@@ -6,7 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { Search } from "lucide-react";
+import { ListTodo, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { displayAgentName } from "@/config/agentDisplay";
@@ -36,6 +36,7 @@ export function ConversationCommandPalette({
   open,
   onClose,
   onNewTask,
+  onOpenTodos,
   onOpenScheduledTasks,
   onOpenSettings,
   onImportCodexSession,
@@ -44,6 +45,7 @@ export function ConversationCommandPalette({
   open: boolean;
   onClose: () => void;
   onNewTask: (options?: { cwd?: string }) => void;
+  onOpenTodos?: () => void;
   onOpenScheduledTasks: () => void;
   onOpenSettings: () => void;
   onImportCodexSession: () => void;
@@ -90,6 +92,18 @@ export function ConversationCommandPalette({
       });
     }
     items.push(
+      ...(onOpenTodos
+        ? [
+            {
+              id: "todos",
+              label: t("sidebar.todos"),
+              run: () => {
+                onOpenTodos();
+                onClose();
+              }
+            }
+          ]
+        : []),
       {
         id: "scheduled",
         label: t("sidebar.scheduledTasks"),
@@ -121,6 +135,7 @@ export function ConversationCommandPalette({
     currentProjectCwd,
     onClose,
     onNewTask,
+    onOpenTodos,
     onOpenScheduledTasks,
     onOpenSettings,
     onImportCodexSession,
@@ -308,6 +323,13 @@ export function ConversationCommandPalette({
                       >
                         <span className="command-palette-row-title">
                           <ConversationKindBadge conversation={conversation} />
+                          {conversation.todo && (
+                            <ListTodo
+                              size={13}
+                              className="conv-todo-indicator"
+                              aria-label={t("conversations.todoBadge")}
+                            />
+                          )}
                           <span>
                             {conversationVisibleTitle(
                               conversation,

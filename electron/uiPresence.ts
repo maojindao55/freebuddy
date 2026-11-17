@@ -1,6 +1,7 @@
 export type MainWorkspaceView =
   | "chat"
   | "conversationBoard"
+  | "todos"
   | "scheduledTasks"
   | "workflowTeams"
   | "usage"
@@ -55,6 +56,7 @@ export interface ButlerBuddyTaskPresence {
 const WORKSPACE_VIEWS = new Set<MainWorkspaceView>([
   "chat",
   "conversationBoard",
+  "todos",
   "scheduledTasks",
   "workflowTeams",
   "usage",

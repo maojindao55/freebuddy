@@ -27,7 +27,8 @@ export interface AcpMessage {
 /** Keep the inactivity watchdog aware of a silent, in-flight ACP tool call. */
 export function updateActiveAcpToolCalls(
   activeToolCallIds: Set<string>,
-  update: any
+  update: any,
+  activeToolNames?: Map<string, string>
 ): void {
   const type = String(update?.sessionUpdate ?? "");
   if (type !== "tool_call" && type !== "tool_call_update") return;
@@ -37,9 +38,60 @@ export function updateActiveAcpToolCalls(
   const status = String(update?.status ?? "").toLowerCase();
   if (["completed", "failed", "cancelled", "done", "error"].includes(status)) {
     activeToolCallIds.delete(toolCallId);
+    activeToolNames?.delete(toolCallId);
     return;
   }
   activeToolCallIds.add(toolCallId);
+  if (activeToolNames && typeof update?.name === "string" && update.name) {
+    activeToolNames.set(toolCallId, update.name);
+  }
+}
+
+export function isNativeAntigravityAcp(
+  adapter: string,
+  agentInfo?: { name?: string }
+): boolean {
+  return adapter === "agy-acp" && agentInfo?.name === "Antigravity ACP Server";
+}
+
+export function shouldSkipWarmSessionLoad(input: {
+  adapter: string;
+  agentInfo?: { name?: string };
+  warmSessionId?: string;
+  requestedToolSessionId?: string;
+}): boolean {
+  return Boolean(
+    isNativeAntigravityAcp(input.adapter, input.agentInfo) &&
+      input.warmSessionId &&
+      input.requestedToolSessionId &&
+      input.warmSessionId === input.requestedToolSessionId
+  );
+}
+
+export function emptyAcpTurnErrorMessage(input: {
+  adapter: string;
+  resumedOrWarm: boolean;
+  pendingAskQuestion?: boolean;
+  sessionId?: string;
+  language?: string;
+}): string | undefined {
+  if (input.adapter !== "agy-acp" || !input.resumedOrWarm) return undefined;
+  const isZh = String(input.language ?? "").startsWith("zh");
+  const hint = input.sessionId
+    ? isZh
+      ? `可在终端运行 \`agy --conversation ${input.sessionId}\` 处理挂起步骤，或新建会话继续。`
+      : `Run \`agy --conversation ${input.sessionId}\` in a terminal to resolve the pending step, or start a new conversation.`
+    : isZh
+      ? "请重试或新建会话继续。"
+      : "Please retry or start a new conversation.";
+  if (input.pendingAskQuestion) {
+    return isZh
+      ? `Agent 本轮未返回任何内容（上一轮 \`ask_question\` 交互未闭合导致会话挂起）。${hint}`
+      : `The agent completed the turn without producing output (the session is wedged on an unresolved \`ask_question\` interaction). ${hint}`;
+  }
+  return isZh
+    ? `Agent 本轮未返回任何内容（底层会话状态可能已挂起）。${hint}`
+    : `The agent completed the turn without producing output (the underlying session state may be wedged). ${hint}`;
 }
 
 export function shouldRetryEmptyResumedDshTurn(input: {

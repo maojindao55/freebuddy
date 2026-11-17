@@ -7,6 +7,8 @@ export interface AcpWarmConnection {
   fingerprint: string;
   conversationId: string;
   initialize?: any;
+  sessionSetup?: any;
+  pendingAskQuestion?: boolean;
   requestId: number;
   sessionId?: string;
   previousRunId?: string;

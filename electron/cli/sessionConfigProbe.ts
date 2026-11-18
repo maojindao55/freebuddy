@@ -12,6 +12,7 @@ import {
   buildSessionCloseRequest,
   buildSessionNewRequest,
   buildSessionSetConfigOptionRequest,
+  formatAcpRpcError,
   parseAcpLine,
   type AcpMessage
 } from "./acp.js";
@@ -53,6 +54,23 @@ export interface SessionConfigProbeInput {
 const PROBE_TIMEOUT_MS = 15_000;
 const CACHE_VERSION = 2;
 const CACHE_PREFIX = "session-config-options:";
+const inFlightProbes = new Map<string, Promise<SessionConfigOption[]>>();
+
+function inFlightProbeKey(input: SessionConfigProbeInput): string {
+  const envEntries = Object.entries(input.env ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b)
+  );
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        cacheKey: sessionConfigCacheKey(input),
+        cwd: input.cwd,
+        envEntries,
+        configOptionOverrides: input.configOptionOverrides ?? null
+      })
+    )
+    .digest("hex");
+}
 
 function sessionConfigCacheKey(input: SessionConfigProbeInput): string {
   // Deliberately exclude env values because they may contain API keys. Env
@@ -140,27 +158,42 @@ function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 export async function inspectSessionConfigOptions(
   input: SessionConfigProbeInput
 ): Promise<SessionConfigOption[]> {
+  const probeKey = inFlightProbeKey(input);
+  const existing = inFlightProbes.get(probeKey);
+  if (existing) return existing;
+
   const startedAt = Date.now();
   const diagnostics = { phase: "prepare", stderrTail: "" };
-  try {
-    return await probeSessionConfigOptions(input, diagnostics);
-  } catch (error) {
-    logMain().error("acp", "session config probe failed", {
-      adapter: input.adapter,
-      agentId: input.agentId,
-      cwd: input.cwd,
-      phase: diagnostics.phase,
-      durationMs: Date.now() - startedAt,
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-        code: (error as Error & { code?: unknown }).code
-      } : String(error),
-      stderr: diagnostics.stderrTail || undefined
+  const run = probeSessionConfigOptions(input, diagnostics)
+    .catch((error) => {
+      const rpcError = error instanceof Error
+        ? (error as Error & { code?: unknown; data?: unknown })
+        : undefined;
+      logMain().error("acp", "session config probe failed", {
+        adapter: input.adapter,
+        agentId: input.agentId,
+        cwd: input.cwd,
+        phase: diagnostics.phase,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          code: rpcError?.code,
+          ...(rpcError?.data !== undefined ? { data: rpcError.data } : {})
+        } : String(error),
+        stderr: diagnostics.stderrTail || undefined
+      });
+      throw error;
+    })
+    .finally(() => {
+      if (inFlightProbes.get(probeKey) === run) {
+        inFlightProbes.delete(probeKey);
+      }
     });
-    throw error;
-  }
+
+  inFlightProbes.set(probeKey, run);
+  return run;
 }
 
 async function probeSessionConfigOptions(
@@ -250,8 +283,14 @@ async function probeSessionConfigOptions(
       if (!waiter) return;
       pending.delete(String(message.id));
       if (message.error) {
-        const error = new Error(message.error.message);
-        (error as Error & { code?: number }).code = message.error.code;
+        const error = new Error(formatAcpRpcError(message.error)) as Error & {
+          code?: number;
+          data?: unknown;
+        };
+        error.code = message.error.code;
+        if (message.error.data !== undefined) {
+          error.data = message.error.data;
+        }
         waiter.reject(error);
       } else {
         waiter.resolve(message.result);

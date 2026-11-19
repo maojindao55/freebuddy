@@ -3669,8 +3669,7 @@ export function ChatView({
                   }
                 }
                 if (conv?.id) {
-                  void setConfigOptionOverrides(conv.id, next);
-                  useConversationStore.getState().requestFreshContext(conv.id);
+                  void setConfigOptionOverrides(conv.id, next).catch(() => {});
                 }
               }}
             />

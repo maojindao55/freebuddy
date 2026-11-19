@@ -123,6 +123,24 @@ export function resolveConfigOptionOverrides(
 ): Record<string, string> | undefined {
   if (!overrides || Object.keys(overrides).length === 0) return undefined;
   if (options.length === 0) return overrides;
+  const providerOption = findProviderConfigOption(options);
+  const requestedProvider = overrides.provider?.trim();
+  const providerSwitched = Boolean(
+    requestedProvider &&
+      providerOption?.currentValue &&
+      providerOption.currentValue !== requestedProvider &&
+      (!providerOption.values?.length ||
+        providerOption.values.some(
+          (candidate) => candidate.id === requestedProvider
+        ))
+  );
+  if (providerSwitched) {
+    const cleaned: Record<string, string> = {};
+    for (const [id, value] of Object.entries(overrides)) {
+      if (value != null && value !== "") cleaned[id] = value;
+    }
+    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+  }
   const pruned = pruneConfigOptionOverrides(overrides, options);
   return Object.keys(pruned).length > 0 ? pruned : undefined;
 }

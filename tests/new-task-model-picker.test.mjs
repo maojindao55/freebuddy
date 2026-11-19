@@ -71,3 +71,13 @@ test("new-task model picker shows persisted cache before refreshing ACP", () => 
   assert.match(probe, /cacheSessionConfigOptions\(input, options\)/);
   assert.match(probe, /if \(options\.length === 0\) return;/);
 });
+
+test("switching model inside an existing ChatView conversation preserves session context", () => {
+  const composerTail = chatView.slice(
+    chatView.indexOf('<div className="composer-tail">'),
+    chatView.indexOf("<ScheduledSendControl")
+  );
+  assert.match(composerTail, /<SessionConfigPicker/);
+  assert.match(composerTail, /setConfigOptionOverrides\(conv\.id, next\)/);
+  assert.doesNotMatch(composerTail, /requestFreshContext/);
+});

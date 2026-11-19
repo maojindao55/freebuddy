@@ -174,3 +174,33 @@ test('queued configuration freezes displayed defaults and applies valid explicit
   assert.equal(snapshot.model,'m2');
   assert.deepEqual(snapshotSessionConfigOptionOverrides({model:'explicit-without-probe'},[]),{model:'explicit-without-probe'});
 });
+
+test("resolveConfigOptionOverrides keeps new provider model before next turn options arrive", async () => {
+  const { resolveConfigOptionOverrides } = await loadModule();
+  const previousProviderOptions = [
+    {
+      id: "provider",
+      currentValue: "cline",
+      values: [{ id: "cline" }, { id: "openai-codex" }]
+    },
+    {
+      id: "model",
+      currentValue: "anthropic/claude-sonnet-5",
+      values: [{ id: "anthropic/claude-sonnet-5" }]
+    }
+  ];
+  assert.deepEqual(
+    resolveConfigOptionOverrides(
+      { provider: "openai-codex", model: "gpt-6-astra" },
+      previousProviderOptions
+    ),
+    { provider: "openai-codex", model: "gpt-6-astra" }
+  );
+  assert.equal(
+    resolveConfigOptionOverrides(
+      { provider: "unknown-provider", model: "gpt-6-astra" },
+      previousProviderOptions
+    ),
+    undefined
+  );
+});

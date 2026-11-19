@@ -26,11 +26,15 @@ async function loadConversationStoreHarness() {
     export let capturedForkInput;
     export let claimAllowed = true;
     export let runFailure;
+    export let configOverrideError;
+    export let configOverrideGate;
     export let eventHandler;
     export const persistedMessages = new Map();
     export let handledEvents = 0;
     export function setClaimAllowed(value) { claimAllowed = value; }
     export function setRunFailure(value) { runFailure = value; }
+    export function setConfigOverrideError(value) { configOverrideError = value; }
+    export function setConfigOverrideGate(value) { configOverrideGate = value; }
     export function setFollowupMessages(value) { followupMessages = value; }
 
     export function setSavedToolSession(value) {
@@ -106,6 +110,21 @@ async function loadConversationStoreHarness() {
         return followupMessages.filter((message) => !excludeMessageIds.includes(message.id));
       },
       updateMessage: async (input) => { persistedMessages.set(input.id, {...persistedMessages.get(input.id),...input}); },
+      setConversationConfigOptionOverrides: async (id, overrides) => {
+        if (configOverrideGate) await configOverrideGate;
+        if (configOverrideError) throw new Error(configOverrideError);
+        return {
+          id,
+          title: "Replay test",
+          agentId: "agent-1",
+          agentName: "Mock ACP",
+          adapter: "mock-acp",
+          skillSnapshot: [],
+          ...(overrides ? { configOptionOverrides: overrides } : {}),
+          createdAt: "2026-10-28T00:00:00.000Z",
+          updatedAt: "2026-10-28T00:00:00.000Z"
+        };
+      },
       onEvent: (_id, handler) => { eventHandler = handler; return () => {}; },
       awaitPendingMcpSelection: async () => {},
       run: async (args) => {
@@ -128,7 +147,8 @@ async function loadConversationStoreHarness() {
     export const composeMessageWithAttachments = (prompt) => prompt;
     export const buildReferencedPrompt = async (prompt) => prompt;
     export const filterSessionConfigPickerOptions = () => [];
-    export const resolveConfigOptionOverrides = () => undefined;
+    export const resolveConfigOptionOverrides = (overrides) =>
+      overrides && Object.keys(overrides).length > 0 ? overrides : undefined;
 
     export const useCliExecutorStore = {
       getState: () => ({
@@ -226,6 +246,8 @@ async function loadConversationStoreHarness() {
   mocks.persistedMessages.clear();
   mocks.setClaimAllowed(true);
   mocks.setRunFailure(undefined);
+  mocks.setConfigOverrideError(undefined);
+  mocks.setConfigOverrideGate(undefined);
   return { ...storeModule, mocks };
 }
 
@@ -547,4 +569,78 @@ test('events from an earlier turn cannot mutate the next live turn',async()=>{
   const oldHandler=mocks.eventHandler, before=mocks.handledEvents;
   store.setState({live:{'queue-conversation':{messageId:'next-message',taskSessionId:'next-task',status:'running',items:[]}}});
   oldHandler({type:'done',exitCode:0});assert.equal(mocks.handledEvents,before);assert.equal(store.getState().live['queue-conversation'].taskSessionId,'next-task');
+});
+
+test('switching model overrides updates store optimistically and keeps existing session context', async () => {
+  const { useConversationStore: store, mocks } = await loadConversationStoreHarness();
+  mocks.setSavedToolSession({
+    adapter: 'mock-acp',
+    sessionId: 'saved-session'
+  });
+  const timestamp = '2026-11-19T00:00:00.000Z';
+  const conversation = {
+    id: 'conv-model-switch',
+    title: 'Model switch test',
+    agentId: 'agent-1',
+    agentName: 'Mock ACP',
+    adapter: 'mock-acp',
+    cwd: '/tmp/model-switch',
+    configOptionOverrides: { model: 'model-a' },
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  let releaseGate;
+  const gate = new Promise((resolve) => {
+    releaseGate = resolve;
+  });
+  mocks.setConfigOverrideGate(gate);
+  store.setState({
+    conversations: [conversation],
+    messages: { [conversation.id]: [] },
+    live: {},
+    pendingFreshContext: {}
+  });
+
+  const pendingUpdate = store
+    .getState()
+    .setConversationConfigOptionOverrides(conversation.id, { model: 'model-b' });
+
+  // Optimistic update is visible immediately before IPC finishes, and does not reset context.
+  assert.deepEqual(store.getState().conversations[0].configOptionOverrides, {
+    model: 'model-b'
+  });
+  assert.notEqual(store.getState().pendingFreshContext[conversation.id], true);
+
+  await store.getState().sendMessage({
+    conversationId: conversation.id,
+    prompt: 'follow up after model switch',
+    userMessageId: 'u-2',
+    assistantMessageId: 'a-2'
+  });
+
+  assert.equal(mocks.capturedRunArgs.toolSessionId, 'saved-session');
+  assert.equal(mocks.capturedRunArgs.resumeToolSession, true);
+  assert.deepEqual(mocks.capturedRunArgs.configOptionOverrides, {
+    model: 'model-b'
+  });
+
+  releaseGate();
+  await pendingUpdate;
+  assert.deepEqual(store.getState().conversations[0].configOptionOverrides, {
+    model: 'model-b'
+  });
+
+  // Rolls back to previous overrides if persistence fails.
+  mocks.setConfigOverrideGate(undefined);
+  mocks.setConfigOverrideError('persist failed');
+  await assert.rejects(
+    () =>
+      store
+        .getState()
+        .setConversationConfigOptionOverrides(conversation.id, { model: 'model-c' }),
+    /persist failed/
+  );
+  assert.deepEqual(store.getState().conversations[0].configOptionOverrides, {
+    model: 'model-b'
+  });
 });

@@ -790,8 +790,7 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
 
   requestFreshContext(id) {
     // Force the next sendMessage for this conversation to start a fresh agent
-    // session (no toolSession resume). Used by the ButlerBuddy model picker so a
-    // newly chosen model reliably takes effect at session/new time.
+    // session (no toolSession resume).
     set((s) => ({
       pendingFreshContext: { ...s.pendingFreshContext, [id]: true }
     }));
@@ -1352,22 +1351,47 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
   },
 
   async setConversationConfigOptionOverrides(id, overrides) {
+    const previousOverrides = get().conversations.find(
+      (c) => c.id === id
+    )?.configOptionOverrides;
     const next =
       Object.keys(overrides).length > 0 ? overrides : null;
-    const updated = await cliClient.setConversationConfigOptionOverrides(
-      id,
-      next
-    );
+    const optimisticOverrides = next ? { ...next } : undefined;
+    // Update the store optimistically so an immediate send picks up the newly
+    // selected model/config before the IPC round-trip finishes.
     set((s) => ({
-      conversations: s.conversations.map((c) => {
-        if (c.id !== id) return c;
-        if (updated) return updated;
-        return {
-          ...c,
-          configOptionOverrides: next ?? undefined
-        };
-      })
+      conversations: s.conversations.map((c) =>
+        c.id === id
+          ? { ...c, configOptionOverrides: optimisticOverrides }
+          : c
+      )
     }));
+    try {
+      const updated = await cliClient.setConversationConfigOptionOverrides(
+        id,
+        next
+      );
+      set((s) => ({
+        conversations: s.conversations.map((c) => {
+          if (c.id !== id) return c;
+          if (c.configOptionOverrides !== optimisticOverrides) return c;
+          if (updated) return updated;
+          return {
+            ...c,
+            configOptionOverrides: optimisticOverrides
+          };
+        })
+      }));
+    } catch (error) {
+      set((s) => ({
+        conversations: s.conversations.map((c) =>
+          c.id === id && c.configOptionOverrides === optimisticOverrides
+            ? { ...c, configOptionOverrides: previousOverrides }
+            : c
+        )
+      }));
+      throw error;
+    }
   },
 
   async setConversationSkills(id, skillIds) {

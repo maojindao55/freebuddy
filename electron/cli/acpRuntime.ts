@@ -31,6 +31,9 @@ import {
   resolveClaudeAcpModeOverride,
   selectAcpSessionStartMode,
   selectAcpAuthMethod,
+  credentialFileLoginMethod,
+  isAcpMissingCredentialMessage,
+  skipsAuthenticateRpc,
   shouldDropReplayPhaseAgentChunk,
   shouldSuppressAcpReplayByPhase,
   shouldEmitAcpUpdate,
@@ -1639,7 +1642,7 @@ export async function runAcpAgent({
   };
 
   const authenticate = async (methods: AcpAuthMethod[]) => {
-    const method = await chooseAuthMethod(methods);
+    const method = credentialFileLoginMethod(await chooseAuthMethod(methods));
     authenticationAttempted = true;
     appendLog(
       logStream,
@@ -1661,7 +1664,11 @@ export async function runAcpAgent({
         emit
       });
       await restartAndInitialize();
-      await request(buildAuthenticateRequest(nextId(), method.id));
+      // Disk-credential logins such as `comate-acp --login` have no
+      // `authenticate` RPC. Calling it fails the turn after a successful login.
+      if (!skipsAuthenticateRpc(method)) {
+        await request(buildAuthenticateRequest(nextId(), method.id));
+      }
       return true;
     }
     if (remoteIsolated && args.adapter.includes("grok")) {
@@ -1680,9 +1687,10 @@ export async function runAcpAgent({
     }
     if (e?.code === -32000) return true;
     if (e?.code === 401 || e?.code === 403) return true;
-    const message = String(e?.message ?? err).toLowerCase();
+    const message = String(e?.message ?? err);
+    if (isAcpMissingCredentialMessage(message)) return true;
     return /\b(auth|unauthorized|unauthenticated|login|credential|api key|subscription)\b/.test(
-      message
+      message.toLowerCase()
     );
   };
 

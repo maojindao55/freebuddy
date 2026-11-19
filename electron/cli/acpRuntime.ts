@@ -48,6 +48,7 @@ import {
   textFromContent,
   updateActiveAcpToolCalls,
   isMissingSavedSessionError,
+  isTransientSessionServiceInitError,
   formatAcpRpcError,
   isAcpMetadataSessionUpdate,
   type AcpAuthMethod,
@@ -259,6 +260,7 @@ export interface AcpRuntimeInput {
       autoCompactWindow?: number;
     };
   };
+  sessionServiceRetryDelaysMs?: number[];
   restartAgent: () => Promise<{
     child: ChildProcessByStdio<Writable, Readable, Readable>;
     pid: number;
@@ -281,6 +283,7 @@ export async function runAcpAgent({
   parkConnection,
   agentCommand,
   claudeAcpSessionOptions,
+  sessionServiceRetryDelaysMs = [1_500, 3_000],
   restartAgent
 }: AcpRuntimeInput): Promise<void> {
   let child = initialChild;
@@ -1399,7 +1402,32 @@ export async function runAcpAgent({
     applyInitialize(init);
   };
 
-  const establishSession = async () => {
+  const waitForSessionServiceRetryDelay = async (delayMs: number) => {
+    if (
+      delayMs <= 0 ||
+      finished ||
+      cancellationRequested ||
+      yieldRequested ||
+      connectionClosed()
+    ) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const targetChild = child;
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        targetChild.off("close", done);
+        resolve();
+      };
+      const timer = setTimeout(done, delayMs);
+      targetChild.once("close", done);
+    });
+  };
+
+  const establishSessionAttempt = async () => {
     const emitSetupItems = (result: any) => {
       if (!activeAcpSessionId) return;
       sessionHasNativeModeConfigOption = hasAcpModeConfigOption(result);
@@ -1484,6 +1512,45 @@ export async function runAcpAgent({
       activeAcpSessionId = created?.sessionId ?? created?.session_id;
       if (warmConnection) warmConnection.sessionSetup = created;
       emitSetupItems(created);
+    }
+  };
+
+  const establishSession = async () => {
+    const retryDelaysMs = sessionServiceRetryDelaysMs;
+    const totalAttempts = 1 + retryDelaysMs.length;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await establishSessionAttempt();
+        return;
+      } catch (sessionErr) {
+        if (
+          attempt >= retryDelaysMs.length ||
+          finished ||
+          cancellationRequested ||
+          yieldRequested ||
+          connectionClosed() ||
+          !isTransientSessionServiceInitError(sessionErr)
+        ) {
+          throw sessionErr;
+        }
+        const delayMs = Math.max(0, retryDelaysMs[attempt] ?? 0);
+        appendLog(
+          logStream,
+          "system",
+          `transient ACP session service init failure on attempt ${attempt + 1}/${totalAttempts}` +
+            `${requestedToolSessionId ? ` (retaining session ${requestedToolSessionId})` : ""}; ` +
+            `retrying in ${delayMs}ms: ${formatAcpRpcError(sessionErr)}`
+        );
+        await waitForSessionServiceRetryDelay(delayMs);
+        if (
+          finished ||
+          cancellationRequested ||
+          yieldRequested ||
+          connectionClosed()
+        ) {
+          throw sessionErr;
+        }
+      }
     }
   };
 

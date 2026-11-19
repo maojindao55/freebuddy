@@ -53,6 +53,7 @@ import {
   contentBlockToItems,
   hasAcpModeConfigOption,
   isMissingSavedSessionError,
+  isTransientSessionServiceInitError,
   formatAcpRpcError,
   parseAcpLine,
   resolveClaudeAcpModeOverride,
@@ -1347,12 +1348,43 @@ test("isMissingSavedSessionError recognizes Cursor Invalid params Session not fo
       message: "Failed to initialize session services"
     }
   });
-  assert.equal(isMissingSavedSessionError(cursorInitErr), true);
+  assert.equal(isMissingSavedSessionError(cursorInitErr), false);
+  assert.equal(
+    isMissingSavedSessionError(new Error(formatAcpRpcError(cursorInitErr))),
+    false
+  );
 
   const invalidParamsUnrelated = Object.assign(new Error("Invalid params"), {
     code: -32602
   });
   assert.equal(isMissingSavedSessionError(invalidParamsUnrelated), false);
+});
+
+test("isTransientSessionServiceInitError and formatAcpRpcError handle session service init failures", () => {
+  const cursorInitErr = Object.assign(new Error("Internal error"), {
+    code: -32603,
+    data: {
+      message: "Failed to initialize session services"
+    }
+  });
+  assert.equal(isTransientSessionServiceInitError(cursorInitErr), true);
+
+  const formatted = formatAcpRpcError(cursorInitErr);
+  assert.match(formatted, /Failed to initialize session services/);
+  assert.match(formatted, /原会话已保留/);
+  assert.equal(isTransientSessionServiceInitError(new Error(formatted)), true);
+
+  const sessionNotFound = Object.assign(new Error("Invalid params"), {
+    code: -32602,
+    data: {
+      message: 'Session "8140ff9a-7f50-426d-987e-3e8c5c2b0ece" not found'
+    }
+  });
+  assert.equal(isTransientSessionServiceInitError(sessionNotFound), false);
+  assert.match(
+    formatAcpRpcError(sessionNotFound),
+    /Session "8140ff9a-7f50-426d-987e-3e8c5c2b0ece" not found/
+  );
 });
 
 test("ACP session lifecycle injects FreeBuddy stdio MCP servers", () => {

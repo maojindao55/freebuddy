@@ -509,13 +509,7 @@ export function selectAcpSessionStartMode(
   return "new";
 }
 
-/**
- * Detect ACP session/load or session/resume failures where the saved session
- * id is gone (process died, session GC'd, etc.). Cursor reports this as
- * `-32602 Invalid params` with nested `Session "…" not found`; other agents
- * may use `-32002` / "resource not found".
- */
-export function isMissingSavedSessionError(err: unknown): boolean {
+function extractAcpErrorText(err: unknown): string {
   const e = err as Error & { code?: number; data?: unknown };
   const parts: string[] = [String(e?.message ?? err)];
   if (typeof e?.data === "string") {
@@ -523,14 +517,33 @@ export function isMissingSavedSessionError(err: unknown): boolean {
   } else if (e?.data && typeof e.data === "object") {
     const data = e.data as Record<string, unknown>;
     if (typeof data.message === "string") parts.push(data.message);
+    if (typeof data.details === "string") parts.push(data.details);
     try {
       parts.push(JSON.stringify(e.data));
     } catch {
       /* noop */
     }
   }
-  const haystack = parts.join(" ");
+  return parts.join(" ");
+}
+
+/**
+ * Detect ACP session/load or session/resume failures where the saved session
+ * id is gone (process died, session GC'd, etc.). Cursor reports this as
+ * `-32602 Invalid params` with nested `Session "…" not found`; other agents
+ * may use `-32002` / "resource not found".
+ *
+ * Note: Cursor's `Failed to initialize session services` (-32603) occurs in
+ * `initSharedServices()` before any session id is loaded or created (typically
+ * a transient backend/network failure), so it must NOT discard the saved session.
+ */
+export function isMissingSavedSessionError(err: unknown): boolean {
+  const e = err as Error & { code?: number; data?: unknown };
+  const haystack = extractAcpErrorText(err);
   if (/already\s+has\s+an\s+active\s+writer/i.test(haystack)) {
+    return false;
+  }
+  if (/failed to initialize session services/i.test(haystack)) {
     return false;
   }
   if (/session\s+["'`]?[^"'`\s]+["'`]?\s+not found/i.test(haystack)) {
@@ -539,14 +552,23 @@ export function isMissingSavedSessionError(err: unknown): boolean {
   if (e?.code === -32002 && /resource not found/i.test(haystack)) {
     return true;
   }
-  if (/failed to initialize session services/i.test(haystack)) {
-    return true;
-  }
   if (/session (?:load|resume|initialization) failed/i.test(haystack)) {
     return true;
   }
   return /saved (?:agent )?session.*(?:not found|no longer available|unavailable)/i.test(
     haystack
+  );
+}
+
+/**
+ * Detect transient ACP service initialization failures (such as Cursor's
+ * `Failed to initialize session services` when `initSharedServices()` fails
+ * on a flaky backend/TLS connection). Callers can safely retry while keeping
+ * any saved session id intact.
+ */
+export function isTransientSessionServiceInitError(err: unknown): boolean {
+  return /failed to initialize session services/i.test(
+    extractAcpErrorText(err)
   );
 }
 
@@ -619,7 +641,12 @@ export function formatAcpRpcError(err: unknown): string {
     return `该会话${threadSuffix}正被另一个 Codex/ChatGPT 实例占用，请关闭其他客户端后重试（thread already has an active writer）。`;
   }
 
-  // 3. Fallback for other errors: prefer specific details/message over generic "Internal error"
+  // 3. Detect transient session service initialization failures (e.g. Cursor initSharedServices network failure)
+  if (/failed to initialize session services/i.test(allTexts)) {
+    return "Agent 会话服务初始化失败（Failed to initialize session services），通常为连接服务端网络或代理异常，原会话已保留，请检查网络连通性后重试。";
+  }
+
+  // 4. Fallback for other errors: prefer specific details/message over generic "Internal error"
   const isGeneric = !rawMessage || /^internal error$/i.test(rawMessage) || /^request error$/i.test(rawMessage);
   if (isGeneric) {
     if (details) return details;

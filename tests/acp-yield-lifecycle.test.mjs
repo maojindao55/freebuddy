@@ -35,6 +35,7 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions,
   const running = new Map();
   const events = [], requests = [], rpcMessages = [], traces = [];
   let promptRequestId;
+  let sessionEstablishAttempts = 0;
   let terminalOptions;
   const captureOrder = [];
   const timers = new Set();
@@ -94,7 +95,43 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions,
             agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } } });
         }
         else if (msg.method === "session/new" || msg.method === "session/load") {
-          if (mode === "claude-auto-native-mode") {
+          sessionEstablishAttempts += 1;
+          if (
+            (mode === "transient-init-recover" && msg.method === "session/load" && sessionEstablishAttempts === 1) ||
+            (mode === "transient-init-exhaust" && msg.method === "session/load")
+          ) {
+            child.stdout.write(JSON.stringify({
+              jsonrpc: "2.0",
+              id: msg.id,
+              error: {
+                code: -32603,
+                message: "Internal error",
+                data: { message: "Failed to initialize session services" }
+              }
+            }) + "\n");
+          } else if (mode === "transient-init-then-missing" && msg.method === "session/load") {
+            if (sessionEstablishAttempts === 1) {
+              child.stdout.write(JSON.stringify({
+                jsonrpc: "2.0",
+                id: msg.id,
+                error: {
+                  code: -32603,
+                  message: "Internal error",
+                  data: { message: "Failed to initialize session services" }
+                }
+              }) + "\n");
+            } else {
+              child.stdout.write(JSON.stringify({
+                jsonrpc: "2.0",
+                id: msg.id,
+                error: {
+                  code: -32602,
+                  message: "Invalid params",
+                  data: { message: 'Session "saved-session-123" not found' }
+                }
+              }) + "\n");
+            }
+          } else if (mode === "claude-auto-native-mode") {
             reply(msg, {
               sessionId: "fake-session",
               configOptions: [
@@ -393,7 +430,10 @@ async function runScenario(t, mode, adapter = "codex-acp", warm, captureOptions,
     args: { sessionId: "test-turn", agentId: "test", adapter: isPi ? "pi-acp" : adapter, approvalMode: scenarioOptions?.approvalMode ?? "auto", prompt: "test", knownStreamMessageIds: ["historical"],
       ...(scenarioOptions?.configOptionOverrides ? { configOptionOverrides: scenarioOptions.configOptionOverrides } : {}),
       ...(captureOptions ? { conversationId: "conversation", cwd: "C:/project" } : {}) },
-    toolSessionId: warm?.sessionId ?? (mode === "metrics" ? "fake-session" : undefined),
+    toolSessionId: scenarioOptions?.toolSessionId ?? warm?.sessionId ?? (mode === "metrics" ? "fake-session" : undefined),
+    ...(scenarioOptions?.sessionServiceRetryDelaysMs
+      ? { sessionServiceRetryDelaysMs: scenarioOptions.sessionServiceRetryDelaysMs }
+      : {}),
     logStream: null, running, capturedSessions: new Map(), emit: event => { events.push(event); if (event.type === "done") captureOrder.push("done"); }, metrics,
     agentCommand: { bin: "fake", args: [], env: {} }, restartAgent: async () => { throw new Error("unexpected restart"); }
   });
@@ -810,4 +850,65 @@ test("claude-agent-acp falls back to session/set_mode when only legacy modes are
     modeId: "bypassPermissions"
   });
   assert.ok(result.requests.indexOf("session/set_mode") < result.requests.indexOf("session/prompt"));
+});
+
+test("transient session service init failure retries session/load without clearing saved toolSessionId", async t => {
+  const result = await runScenario(
+    t,
+    "transient-init-recover",
+    "cursor-agent-acp",
+    undefined,
+    undefined,
+    {
+      toolSessionId: "saved-session-123",
+      sessionServiceRetryDelaysMs: [1, 1]
+    }
+  );
+  assert.equal(result.events.find(event => event.type === "done")?.exitCode, 0);
+  const loadCalls = result.rpcMessages.filter(message => message.method === "session/load");
+  assert.equal(loadCalls.length, 2);
+  assert.deepEqual(loadCalls.map(call => call.params?.sessionId), ["saved-session-123", "saved-session-123"]);
+  assert.equal(result.requests.includes("session/new"), false);
+  assert.doesNotMatch(JSON.stringify(result.events), /no longer available/);
+  assert.equal(result.events.some(event => event.type === "error"), false);
+});
+
+test("exhausted transient session service init failures preserve saved toolSessionId instead of starting a fresh session", async t => {
+  const result = await runScenario(
+    t,
+    "transient-init-exhaust",
+    "cursor-agent-acp",
+    undefined,
+    undefined,
+    {
+      toolSessionId: "saved-session-123",
+      sessionServiceRetryDelaysMs: [1, 1]
+    }
+  );
+  assert.equal(result.requests.filter(method => method === "session/load").length, 3);
+  assert.equal(result.requests.includes("session/new"), false);
+  assert.doesNotMatch(JSON.stringify(result.events), /no longer available/);
+  const errEvent = result.events.find(event => event.type === "error");
+  assert.ok(errEvent);
+  assert.match(errEvent.message, /Failed to initialize session services/);
+  assert.doesNotMatch(errEvent.message, /no longer available/);
+  assert.notEqual(result.events.find(event => event.type === "done")?.exitCode, 0);
+});
+
+test("transient init retry that subsequently reports missing saved session clears stale session and starts fresh", async t => {
+  const result = await runScenario(
+    t,
+    "transient-init-then-missing",
+    "cursor-agent-acp",
+    undefined,
+    undefined,
+    {
+      toolSessionId: "saved-session-123",
+      sessionServiceRetryDelaysMs: [1, 1]
+    }
+  );
+  assert.equal(result.events.find(event => event.type === "done")?.exitCode, 0);
+  assert.equal(result.requests.filter(method => method === "session/load").length, 2);
+  assert.equal(result.requests.includes("session/new"), true);
+  assert.match(JSON.stringify(result.events), /Previous agent session is no longer available/);
 });

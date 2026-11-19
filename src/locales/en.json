@@ -256,7 +256,7 @@
     "butlerMainWindowShortcutUnavailable": "That shortcut is already used by another app. Try another one.",
     "butlerMainWindowShortcutInvalid": "Include Ctrl/⌘ or Alt together with another key.",
     "sidebarShortcutsTitle": "Sidebar shortcuts",
-    "sidebarShortcutsDescription": "Todos, scheduled tasks, teams, and free tier live in Settings by default. Pin any of them to the main sidebar for quick access.",
+    "sidebarShortcutsDescription": "Todos, scheduled tasks, teams, and free tier are always available in Settings. Todos, teams, and free tier are pinned to the main sidebar by default.",
     "sidebarShortcutTodosDescription": "Track conversations marked as todo with a live count badge.",
     "sidebarShortcutScheduledTasksDescription": "Run agent tasks on a schedule and inspect execution history.",
     "sidebarShortcutWorkflowTeamsDescription": "Configure multi-agent workflow and delegation teams.",

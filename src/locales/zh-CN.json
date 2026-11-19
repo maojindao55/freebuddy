@@ -256,7 +256,7 @@
     "butlerMainWindowShortcutUnavailable": "这个组合键已被其他应用占用，请换一个。",
     "butlerMainWindowShortcutInvalid": "请同时按下 Ctrl/⌘ 或 Alt 与另一个按键。",
     "sidebarShortcutsTitle": "侧边栏快捷入口",
-    "sidebarShortcutsDescription": "待办、定时任务、团队和白嫖默认收纳在设置中；按需开启即可固定到主侧边栏。",
+    "sidebarShortcutsDescription": "待办、定时任务、团队和白嫖均可在设置中访问；默认固定待办、团队和白嫖到主侧边栏，可按需调整。",
     "sidebarShortcutTodosDescription": "集中跟进标记为待办的对话，并在侧边栏显示数量。",
     "sidebarShortcutScheduledTasksDescription": "按计划自动运行 Agent 任务并查看执行历史。",
     "sidebarShortcutWorkflowTeamsDescription": "配置多 Agent 协作与工作流团队模板。",
@@ -264,7 +264,7 @@
     "sidebarOrderLabel": "侧边栏显示顺序",
     "sidebarMoveUp": "上移",
     "sidebarMoveDown": "下移",
-    "sidebarResetDefault": "全部移回设置"
+    "sidebarResetDefault": "恢复默认"
   },
   "app": {
     "brand": "FreeBuddy",

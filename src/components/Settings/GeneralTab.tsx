@@ -17,7 +17,9 @@ import {
 import { useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  DEFAULT_PINNED_SIDEBAR_ITEMS,
   PINNABLE_SIDEBAR_NAV_ITEMS,
+  isDefaultPinnedSidebarItems,
   type PinnableSidebarNavId
 } from "@/config/sidebarNavigation";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -194,6 +196,7 @@ export function GeneralTab() {
   const shortcutById = new Map(
     PINNABLE_SIDEBAR_NAV_ITEMS.map((item) => [item.id, item])
   );
+  const isDefaultPinned = isDefaultPinnedSidebarItems(sidebarPinnedItems);
 
   return (
     <div className="settings-tab-scroll">
@@ -242,7 +245,7 @@ export function GeneralTab() {
             );
           })}
 
-          {sidebarPinnedItems.length > 0 && (
+          {(sidebarPinnedItems.length > 1 || !isDefaultPinned) && (
             <>
               <div className="butler-settings-divider" />
               <div className="sidebar-shortcuts-footer">
@@ -290,16 +293,20 @@ export function GeneralTab() {
                     </div>
                   </div>
                 ) : null}
-                <div className="sidebar-shortcuts-reset-row">
-                  <button
-                    type="button"
-                    className="sidebar-shortcuts-reset-btn"
-                    onClick={() => void setSidebarPinnedItems([])}
-                  >
-                    <RotateCcw size={13} strokeWidth={1.9} />
-                    <span>{t("general.sidebarResetDefault")}</span>
-                  </button>
-                </div>
+                {!isDefaultPinned && (
+                  <div className="sidebar-shortcuts-reset-row">
+                    <button
+                      type="button"
+                      className="sidebar-shortcuts-reset-btn"
+                      onClick={() =>
+                        void setSidebarPinnedItems(DEFAULT_PINNED_SIDEBAR_ITEMS)
+                      }
+                    >
+                      <RotateCcw size={13} strokeWidth={1.9} />
+                      <span>{t("general.sidebarResetDefault")}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}

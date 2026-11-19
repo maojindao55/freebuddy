@@ -11,7 +11,11 @@ export const PINNABLE_SIDEBAR_NAV_IDS: readonly PinnableSidebarNavId[] = [
   "freebie"
 ] as const;
 
-export const DEFAULT_PINNED_SIDEBAR_ITEMS: readonly PinnableSidebarNavId[] = [];
+export const DEFAULT_PINNED_SIDEBAR_ITEMS: readonly PinnableSidebarNavId[] = [
+  "todos",
+  "workflowTeams",
+  "freebie"
+] as const;
 
 export const SIDEBAR_PINNED_ITEMS_SETTING_KEY = "ui.sidebarPinnedItems";
 
@@ -90,6 +94,13 @@ export function serializePinnedSidebarItems(
   items: readonly PinnableSidebarNavId[]
 ): string {
   return JSON.stringify(normalizePinnedSidebarItems(items));
+}
+
+export function isDefaultPinnedSidebarItems(
+  items: readonly PinnableSidebarNavId[]
+): boolean {
+  if (items.length !== DEFAULT_PINNED_SIDEBAR_ITEMS.length) return false;
+  return items.every((item, index) => item === DEFAULT_PINNED_SIDEBAR_ITEMS[index]);
 }
 
 function isInCanonicalOrder(items: readonly PinnableSidebarNavId[]): boolean {

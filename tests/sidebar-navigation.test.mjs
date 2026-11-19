@@ -73,20 +73,28 @@ test("workspace shortcuts live in Settings by default and can be pinned to the s
   assert.match(policy, /"ui\.sidebarPinnedItems"/);
 });
 
-test("sidebar navigation pinning helpers default to Settings and handle toggle, dedupe, and reorder", async () => {
+test("sidebar navigation pinning helpers default unconfigured users to todos, teams, and freebie while preserving explicit empty configs", async () => {
   const nav = await loadTs("../src/config/sidebarNavigation.ts");
   const presence = await loadTs("../electron/uiPresence.ts");
   const en = JSON.parse(read("../src/locales/en.json"));
   const zh = JSON.parse(read("../src/locales/zh-CN.json"));
 
-  assert.deepEqual(nav.DEFAULT_PINNED_SIDEBAR_ITEMS, []);
-  assert.deepEqual(nav.normalizePinnedSidebarItems(null), []);
-  assert.deepEqual(nav.normalizePinnedSidebarItems(""), []);
-  assert.deepEqual(nav.normalizePinnedSidebarItems("not-json"), []);
+  const expectedDefault = ["todos", "workflowTeams", "freebie"];
+  assert.deepEqual(nav.DEFAULT_PINNED_SIDEBAR_ITEMS, expectedDefault);
+  assert.deepEqual(nav.normalizePinnedSidebarItems(null), expectedDefault);
+  assert.deepEqual(nav.normalizePinnedSidebarItems(undefined), expectedDefault);
+  assert.deepEqual(nav.normalizePinnedSidebarItems(""), expectedDefault);
+  assert.deepEqual(nav.normalizePinnedSidebarItems("not-json"), expectedDefault);
+  // Explicitly unpinning everything saves "[]" and must stay empty.
+  assert.deepEqual(nav.normalizePinnedSidebarItems("[]"), []);
+  assert.deepEqual(nav.normalizePinnedSidebarItems([]), []);
   assert.deepEqual(
     nav.normalizePinnedSidebarItems('["freebie","unknown","todos","freebie"]'),
     ["freebie", "todos"]
   );
+  assert.equal(nav.isDefaultPinnedSidebarItems(expectedDefault), true);
+  assert.equal(nav.isDefaultPinnedSidebarItems(["workflowTeams", "todos", "freebie"]), false);
+  assert.equal(nav.isDefaultPinnedSidebarItems([]), false);
 
   // Pinning in canonical order keeps items cleanly sorted until manually reordered.
   let items = nav.togglePinnedSidebarItem([], "freebie", true);

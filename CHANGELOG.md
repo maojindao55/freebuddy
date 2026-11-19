@@ -2,6 +2,13 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.71] - 2026-11-19
+
+### 问题修复
+
+- preserve conversation context when switching models
+- track passive wakeup processing lifecycle
+
 ## [0.10.70] - 2026-11-19
 
 ### 新功能

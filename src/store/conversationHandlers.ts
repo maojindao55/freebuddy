@@ -503,6 +503,17 @@ export async function killConversation(
     }
   }
 
+  // Passive ACP work streams through persisted messages, without a local
+  // LiveAssistant. Stop its actual control session as well as updating the UI.
+  const passiveSessions = new Set((get().messages[conversationId] ?? [])
+    .filter((message) => message.role === "assistant" &&
+      (message.status === "running" || message.status === "starting") &&
+      message.taskId?.startsWith("acp-idle-"))
+    .map((message) => message.taskId!));
+  for (const sessionId of passiveSessions) {
+    try { await cliClient.kill(sessionId); } catch { /* ignore */ }
+  }
+
   if (delegationClient.isAvailable()) {
     try {
       const delegationRun = await delegationClient.getRunByConversation(conversationId);

@@ -27,7 +27,8 @@ function load(file, services) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true }
   }).outputText;
   const exports = {};
-  vm.runInNewContext(compiled, { exports, process, console, Buffer, setTimeout, clearTimeout,
+  vm.runInNewContext(compiled, { exports, process, console, Buffer,
+    setTimeout: services.setTimeout ?? setTimeout, clearTimeout: services.clearTimeout ?? clearTimeout,
     require: name => {
       if (name === "node:fs" && services.fs) return services.fs;
       if (name.startsWith("node:")) return require(name);
@@ -478,9 +479,153 @@ test("native AGY warm idle monitor captures post-end_turn background updates and
   await runtime.cliRun(wc, { ...baseArgs, sessionId: "run-2", prompt: "next" });
   assert.equal(children.length, 1);
   assert.equal(appended.length, 1);
+  assert.equal(appended[0].status, "running");
+  assert.ok(appended[0].taskId.startsWith("acp-idle-"));
+  assert.equal(updated.at(-1).status, "done");
   const finalContent = JSON.parse((updated.at(-1) ?? appended[0]).content);
   assert.equal(finalContent.find(i => i.kind === "tool-call" && i.id === "bg-1").status, "completed");
   assert.equal(finalContent.find(i => i.kind === "text").content, "FINISHED:BG_DONE");
 
+  // A second passive wake-up is cancellable through the normal CLI control
+  // path, even though its original session/prompt has already returned.
+  currentChild.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+    sessionId: "agy-1510-session",
+    update: { sessionUpdate: "tool_call_update", toolCallId: "bg-1", status: "completed" }
+  } }) + "\n");
+  assert.equal(appended.at(-1).status, "running");
+  assert.equal(runtime.cliKill(appended.at(-1).taskId), true);
+  assert.equal(updated.at(-1).status, "killed");
+  assert.equal(currentChild.exitCode, 0);
+
   await runtime.shutdownCliProcesses();
+});
+
+function idleMonitorFixture(t, approvalMode = "ask") {
+  let now = 0, timerId = 0;
+  const timers = new Map(), rows = new Map(), resolvers = new Map(), owners = new Map();
+  const running = new Map(), ipc = [];
+  const child = Object.assign(new EventEmitter(), {
+    pid: 4321, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough()
+  });
+  const services = {
+    setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { at: now + ms, fn }); return id; },
+    clearTimeout: id => timers.delete(id),
+    appendMessage: row => rows.set(row.id, { ...row }),
+    updateMessage: patch => Object.assign(rows.get(patch.id), patch),
+    persistFileEditItems: (_ctx, items) => items,
+    recordSessionOwner: (id, owner) => owners.set(id, owner),
+    clearSessionOwner: id => owners.delete(id),
+    registerPermissionResolver: (_session, id, fn) => resolvers.set(id, fn),
+    takePermissionResolver: (_session, id) => { const fn = resolvers.get(id); resolvers.delete(id); return fn; },
+    clearPermissionResolversForSession: () => resolvers.clear(),
+    safeSendToWebContents: (_wc, channel, payload) => ipc.push({ channel, payload }),
+    logMain: () => ({ warn() {} })
+  };
+  const { createAcpIdleMonitor } = load("../electron/cli/acpIdleMonitor.ts", services);
+  const monitor = createAcpIdleMonitor({
+    child, running, conversationId: "chat", acpSessionId: "native",
+    agentId: "agy", agentName: "AGY", adapter: "agy-acp", binary: "agy", approvalMode,
+    ownerUserId: "alice", webContents: { isDestroyed: () => false }
+  });
+  monitor.startIdle();
+  t.after(() => monitor.stopIdle());
+  const send = msg => child.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...msg }) + "\n");
+  const update = (value, sessionId = "native") => send({ method: "session/update", params: { sessionId, update: value } });
+  const tool = (id, status) => update({ sessionUpdate: "tool_call_update", toolCallId: id, title: "Run command", status });
+  const text = value => update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: value } });
+  const advance = ms => {
+    const end = now + ms;
+    for (;;) {
+      const next = [...timers].filter(([, timer]) => timer.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!next) break;
+      now = next[1].at; timers.delete(next[0]); next[1].fn();
+    }
+    now = end;
+  };
+  return { monitor, rows, running, owners, resolvers, ipc, services, update, send, tool, text, advance };
+}
+
+test("passive tool gaps keep one running reply until the assistant responds", t => {
+  const f = idleMonitorFixture(t);
+  f.update({ sessionUpdate: "usage_update", used: 10, size: 100 });
+  f.update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "foreign" } }, "other-session");
+  assert.equal(f.rows.size, 0);
+  f.tool("timer", "completed");
+  const row = [...f.rows.values()][0];
+  assert.equal(row.status, "running");
+  assert.ok(row.taskId.startsWith("acp-idle-"));
+  assert.equal(f.owners.get(row.taskId), "alice");
+  assert.equal(f.running.get(row.taskId).child.pid, 4321);
+  // Reproduce the shared conversation: multiple tools separated by slow
+  // model inference, with no new session/prompt RPC to own the wake-up.
+  f.advance(15000);
+  f.tool("check-ci", "in_progress");
+  f.advance(15000);
+  f.tool("check-ci", "completed");
+  f.advance(15000);
+  assert.equal(row.status, "running");
+  assert.equal(f.rows.size, 1);
+  f.text("All checks finished.");
+  f.advance(120);
+  assert.equal(row.status, "running");
+  f.advance(2000);
+  assert.equal(row.status, "done");
+  assert.equal(f.running.size, 0);
+  assert.equal(f.owners.size, 0);
+  assert.equal(JSON.parse(row.content).filter(i => i.kind === "tool-call").length, 2);
+  f.tool("next-timer", "completed");
+  assert.equal(f.rows.size, 2);
+});
+
+test("passive thinking, active tools and permissions prevent premature completion", t => {
+  const f = idleMonitorFixture(t);
+  f.text("Checking the build.");
+  f.advance(1000);
+  f.update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "working" } });
+  f.advance(15000);
+  const row = [...f.rows.values()][0];
+  assert.equal(row.status, "running");
+  f.tool("build", "in_progress");
+  f.text("Build still running.");
+  f.advance(15000);
+  assert.equal(row.status, "running");
+  f.tool("build", "completed");
+  f.send({ id: "permission-rpc", method: "session/request_permission", params: {
+    sessionId: "native", options: [{ optionId: "allow", kind: "allow_once", name: "Allow" }]
+  } });
+  f.text("Waiting for approval.");
+  f.advance(15000);
+  assert.equal(row.status, "running");
+  assert.equal(f.resolvers.size, 1);
+  const [requestId] = f.resolvers.keys();
+  f.services.takePermissionResolver(row.taskId, requestId)({ outcome: "selected", optionId: "allow" });
+  f.advance(15000);
+  assert.equal(row.status, "running");
+  f.text("Approved work finished.");
+  f.advance(2000);
+  assert.equal(row.status, "done");
+  assert.equal(f.resolvers.size, 0);
+});
+
+for (const status of ["failed", "killed"]) test(`passive ${status} teardown seals the reply and releases controls`, t => {
+  const f = idleMonitorFixture(t);
+  f.tool("pending", "in_progress");
+  const row = [...f.rows.values()][0];
+  if (status === "killed") f.running.get(row.taskId).cancel();
+  else f.monitor.stopIdle(status);
+  assert.equal(row.status, status);
+  f.advance(60000);
+  assert.equal(row.status, status);
+  assert.equal(f.running.size, 0);
+  assert.equal(f.owners.size, 0);
+});
+
+test("terminal errors from passive replies stay failed", t => {
+  const f = idleMonitorFixture(t);
+  f.text("\n⚠ FAILED_PRECONDITION (code 400): User location is not supported for the API use.\n");
+  const row = [...f.rows.values()][0];
+  assert.equal(row.status, "failed");
+  f.advance(60000);
+  assert.equal(row.status, "failed");
+  assert.equal(f.running.size, 0);
 });

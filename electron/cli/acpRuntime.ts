@@ -2370,14 +2370,15 @@ export async function runAcpAgent({
           child,
           conversationId: args.conversationId,
           acpSessionId: activeAcpSessionId!,
-          previousRunId: args.sessionId,
           agentId: args.agentId,
           agentName: args.agentName,
           adapter: args.adapter,
           binary: args.binary,
           approvalMode: args.approvalMode,
           ownerUserId: getCallerUserId(),
-          webContents
+          webContents,
+          running,
+          activeToolCallIds
         });
         warmConnection.startIdle = idleMonitor?.startIdle;
         warmConnection.stopIdle = idleMonitor?.stopIdle;

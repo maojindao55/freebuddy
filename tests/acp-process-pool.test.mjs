@@ -74,3 +74,17 @@ test("idle monitor hooks start on put and stop on take or discard", () => {
   pool.discard("key");
   assert.equal(stops, 2);
 });
+
+test("idle checkout, cancellation and crash preserve distinct monitor outcomes", () => {
+  const pool = new AcpProcessPool();
+  const outcomes = [];
+  const c = { ...connection(), stopIdle: status => outcomes.push(status) };
+  pool.put("key", c);
+  pool.take("key", "command", "native-session");
+  pool.put("key", c);
+  pool.discard("key");
+  pool.put("key", c);
+  c.child.emit("close", 1);
+  assert.deepEqual(outcomes, ["done", "killed", "failed"]);
+  pool.dispose();
+});

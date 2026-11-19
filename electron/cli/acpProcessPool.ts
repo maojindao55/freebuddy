@@ -14,7 +14,7 @@ export interface AcpWarmConnection {
   previousRunId?: string;
   browserServer?: AcpStdioMcpServer;
   startIdle?: () => void;
-  stopIdle?: () => void;
+  stopIdle?: (status?: "done" | "failed" | "killed") => void;
   dispose: () => void;
 }
 
@@ -41,8 +41,8 @@ export class AcpProcessPool {
     if (connection.child.exitCode !== null || connection.child.signalCode !== null || connection.child.stdin.destroyed) {
       connection.dispose(); return;
     }
-    const close = () => this.discard(key);
-    const timer = setTimeout(close, this.ttlMs);
+    const close = () => this.discard(key, "failed");
+    const timer = setTimeout(() => this.discard(key), this.ttlMs);
     timer.unref();
     this.idle.set(key, { connection, timer, close });
     connection.child.once("close", close);
@@ -57,8 +57,8 @@ export class AcpProcessPool {
     while (this.idle.size > this.limit) this.discard(this.idle.keys().next().value!);
   }
 
-  discard(key: string): void {
-    const entry = this.remove(key);
+  discard(key: string, status: "failed" | "killed" = "killed"): void {
+    const entry = this.remove(key, status);
     entry?.connection.dispose();
   }
 
@@ -68,14 +68,14 @@ export class AcpProcessPool {
 
   dispose(): void { for (const key of this.idle.keys()) this.discard(key); }
 
-  private remove(key: string) {
+  private remove(key: string, status: "done" | "failed" | "killed" = "done") {
     const entry = this.idle.get(key);
     if (!entry) return;
     this.idle.delete(key);
     clearTimeout(entry.timer);
     entry.connection.child.off("close", entry.close);
     entry.connection.child.off("error", entry.close);
-    entry.connection.stopIdle?.();
+    entry.connection.stopIdle?.(status);
     return entry;
   }
 }

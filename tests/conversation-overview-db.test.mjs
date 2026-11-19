@@ -101,6 +101,26 @@ test("permission and authentication counts reflect live requests without consumi
   assert.equal(f.overview("inputs").status, "running");
 });
 
+test("passive ACP replies replace the completed prompt status and surface their permissions", async t => {
+  const f = await fixture(t); if (!f) return;
+  f.conversation("passive");
+  f.message("user", "passive", "user", 1);
+  f.task("old-prompt", "done", 2);
+  f.message("prompt-reply", "passive", "assistant", 2, { taskId: "old-prompt" });
+  assert.equal(f.overview("passive").status, "completed");
+  f.message("passive-reply", "passive", "assistant", 3, { taskId: "acp-idle-wakeup", status: "running" });
+  assert.equal(f.overview("passive").status, "running");
+  f.runtime.registerPermissionResolver("acp-idle-wakeup", "permission", () => {});
+  assert.equal(f.overview("passive").status, "needs-input");
+  assert.equal(f.overview("passive").attentionCount, 1);
+  f.runtime.takePermissionResolver("acp-idle-wakeup", "permission");
+  for (const [messageStatus, status] of [["done", "completed"], ["failed", "failed"], ["killed", "stopped"]]) {
+    f.db.prepare("UPDATE conversation_messages SET status = ? WHERE id = 'passive-reply'").run(messageStatus);
+    assert.equal(f.overview("passive").status, status);
+  }
+  assert.equal(f.db.prepare("SELECT status FROM cli_tasks WHERE id = 'old-prompt'").get().status, "done");
+});
+
 test("a recovered failed message does not resurrect an abandoned running task", async (t) => {
   const f = await fixture(t); if (!f) return;
   f.conversation("recovery"); f.task("abandoned", "running", 1);

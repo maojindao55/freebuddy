@@ -74,12 +74,12 @@ test("DocStudio resizes across an Office iframe, releases the drag and retains t
       if (message.error) request.reject(new Error(message.error.message));
       else request.resolve(message.result);
     });
-    const cdp = (method, params = {}) => new Promise((resolve, reject) => {
+    const cdp = (method, params = {}, timeoutMs = 10000) => new Promise((resolve, reject) => {
       const id = ++sequence;
       const timeout = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`Timed out: ${method}`));
-      }, 10000);
+      }, timeoutMs);
       pending.set(id, { resolve, reject, timeout });
       ws.send(JSON.stringify({ id, method, params }));
     });
@@ -105,8 +105,8 @@ test("DocStudio resizes across an Office iframe, releases the drag and retains t
     await cdp("Runtime.enable");
     await cdp("Network.enable");
     await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-    await cdp("Page.navigate", { url: `http://127.0.0.1:${port}/tests/fixtures/doc-studio-preview.html?view=empty` });
     // Cold dependency optimization competes with the rest of the release suite.
+    await cdp("Page.navigate", { url: `http://127.0.0.1:${port}/tests/fixtures/doc-studio-preview.html?view=empty` }, 60000);
     await waitFor("!!document.querySelector('.ds-resize-handle') && typeof window.onOpenDocStudioFile === 'function'", 60000);
 
     // An opaque-origin iframe reproduces the engine's event boundary without
@@ -135,7 +135,7 @@ test("DocStudio resizes across an Office iframe, releases the drag and retains t
     assert.equal(await evaluate(`document.elementFromPoint(${handle.x - 300}, ${handle.y}).tagName`), "IFRAME", "the Office preview receives input again after dragging");
     assert.equal(await evaluate("localStorage.getItem('docStudio.copilotWidth')"), "550");
     await evaluate("window.__beforeResizeReload = true");
-    await cdp("Page.reload");
+    await cdp("Page.reload", {}, 30000);
     await waitFor("!window.__beforeResizeReload && !!document.querySelector('.ds-copilot-panel')");
     assert.equal(await panelWidth(), 550, "reopening retains the chosen width");
     const reopenedHandle = await evaluate("(() => { const r = document.querySelector('.ds-resize-handle').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 200 }; })()");

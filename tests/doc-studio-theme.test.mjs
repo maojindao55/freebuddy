@@ -119,12 +119,12 @@ test("DocStudio synchronizes Office themes across system changes and loading tab
       if (message.error) request.reject(new Error(message.error.message));
       else request.resolve(message.result);
     });
-    const cdp = (method, params = {}) => new Promise((resolve, reject) => {
+    const cdp = (method, params = {}, timeoutMs = 10000) => new Promise((resolve, reject) => {
       const id = ++sequence;
       const timeout = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`Timed out: ${method}`));
-      }, 10000);
+      }, timeoutMs);
       pending.set(id, { resolve, reject, timeout });
       ws.send(JSON.stringify({ id, method, params }));
     });
@@ -146,8 +146,8 @@ test("DocStudio synchronizes Office themes across system changes and loading tab
     await cdp("Network.enable");
     await cdp("Emulation.setEmulatedMedia", {features:[{name:"prefers-color-scheme", value:"dark"}]});
     await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-    await cdp("Page.navigate", { url: `http://127.0.0.1:${port}/tests/fixtures/doc-studio-preview.html?view=empty` });
     // Cold dependency optimization competes with the rest of the release suite.
+    await cdp("Page.navigate", { url: `http://127.0.0.1:${port}/tests/fixtures/doc-studio-preview.html?view=empty` }, 60000);
     await waitFor("!!document.querySelector('.ds-resize-handle') && typeof window.onOpenDocStudioFile === 'function'", 60000);
 
     await waitFor("document.documentElement.dataset.theme === 'light'");

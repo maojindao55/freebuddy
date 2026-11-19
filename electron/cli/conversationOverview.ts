@@ -285,6 +285,11 @@ export function listConversationOverviews(conversationIds: string[]): Conversati
       ? statusFromTask(currentAssistant.status) : "idle";
     let status: ConversationOverviewStatus = run ? statusFromRun(run) : task ? statusFromTask(task.status) :
       assistantStatus;
+    // Passive ACP replies outlive the original prompt and have a separate
+    // control session, without a new cli_tasks row. Their message is the
+    // current lifecycle evidence, not the completed prompt's task/run.
+    const passiveAssistant = currentAssistant?.task_id?.startsWith("acp-idle-") ? currentAssistant : undefined;
+    if (passiveAssistant && !run) status = statusFromTask(passiveAssistant.status);
     // Startup recovery marks interrupted assistant rows failed. A task row left
     // running by the force-quit must not revive that abandoned attempt.
     if (!run && task?.status === "running" && currentTaskMessage &&
@@ -305,7 +310,8 @@ export function listConversationOverviews(conversationIds: string[]): Conversati
           seen.add(candidate.task_id);
           attentionCount += pendingCounts.get(candidate.session_id ?? candidate.task_id) ?? 0;
         }
-      } else if (task) attentionCount += pendingSessionInputCount(task.session_id ?? task.id);
+      } else if (passiveAssistant?.task_id) attentionCount += pendingSessionInputCount(passiveAssistant.task_id);
+      else if (task) attentionCount += pendingSessionInputCount(task.session_id ?? task.id);
       if (attentionCount) status = "needs-input";
     }
     const messages = messagesQuery.all(id, user?.created_at ?? "", user?.created_at ?? "", user?.sequence ?? 0) as MessageRow[];

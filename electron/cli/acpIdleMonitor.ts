@@ -26,6 +26,7 @@ import {
   clearPermissionResolversForSession,
   registerPermissionResolver,
   takePermissionResolver,
+  type Running,
   type CliPermissionDecision,
   type CliPermissionRequest
 } from "./runtimeShared.js";
@@ -48,7 +49,6 @@ export interface AcpIdleMonitorInput {
   child: ChildProcessByStdio<Writable, Readable, Readable>;
   conversationId: string;
   acpSessionId: string;
-  previousRunId: string;
   agentId: string;
   agentName: string;
   adapter: CLIAdapterId;
@@ -56,6 +56,8 @@ export interface AcpIdleMonitorInput {
   approvalMode?: "auto" | "ask";
   ownerUserId?: string | null;
   webContents?: WebContents;
+  running: Map<string, Running>;
+  activeToolCallIds?: Iterable<string>;
 }
 
 type ToolCallItem = Extract<AcpStreamItem, { kind: "tool-call" }>;
@@ -186,20 +188,20 @@ export function isVisibleIdleStreamItem(item: AcpStreamItem): boolean {
  */
 export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
   startIdle: () => void;
-  stopIdle: () => void;
+  stopIdle: (status?: "done" | "failed" | "killed") => void;
 } {
   const {
     child,
     conversationId,
     acpSessionId,
-    previousRunId,
     agentId,
     agentName,
     adapter,
     binary,
     approvalMode,
     ownerUserId,
-    webContents
+    webContents,
+    running
   } = input;
 
   let active = false;
@@ -211,7 +213,8 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
   let idleItems: AcpStreamItem[] = [];
   let hasVisibleContent = false;
   let dirty = false;
-  const activeIdleToolIds = new Set<string>();
+  let replyAfterActivity = false;
+  const activeIdleToolIds = new Set(input.activeToolCallIds);
   const toolActivity = new AcpToolActivityTracker();
   const idleControlSessionId = `acp-idle-${randomUUID()}`;
   let idleOwnerRecorded = false;
@@ -246,7 +249,7 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     }
   };
 
-  const flush = () => {
+  const flush = (status: "running" | "done" | "failed" | "killed" = "running") => {
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = undefined;
@@ -261,9 +264,11 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
           id: idleMessageId,
           conversationId,
           role: "assistant",
-          status: "done",
+          status,
           content: serialized,
-          taskId: previousRunId,
+          // Passive work has its own control session. The previous prompt's
+          // task is already terminal and must not determine this reply's state.
+          taskId: idleControlSessionId,
           agentId,
           agentName,
           adapter,
@@ -272,7 +277,7 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
       } else {
         updateMessage({
           id: idleMessageId,
-          status: "done",
+          status,
           content: serialized
         });
       }
@@ -286,18 +291,39 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
 
   const scheduleFlush = () => {
     if (flushTimer) return;
-    flushTimer = setTimeout(flush, IDLE_FLUSH_DEBOUNCE_MS);
+    flushTimer = setTimeout(() => flush(), IDLE_FLUSH_DEBOUNCE_MS);
   };
 
-  const sealWakeupBurst = () => {
+  const beginWakeupBurst = () => {
+    if (!idleOwnerRecorded) {
+      recordSessionOwner(idleControlSessionId, ownerUserId ?? null);
+      idleOwnerRecorded = true;
+    }
+    running.set(idleControlSessionId, {
+      child,
+      pid: child.pid ?? 0,
+      cancel: () => stopIdle("killed")
+    });
+  };
+
+  const sealWakeupBurst = (status: "done" | "failed" | "killed" = "done") => {
     if (sealTimer) {
       clearTimeout(sealTimer);
       sealTimer = undefined;
     }
-    flush();
+    if (hasVisibleContent) dirty = true;
+    flush(status);
+    running.delete(idleControlSessionId);
+    if (idleOwnerRecorded && pendingPermissionTimeouts.size === 0) {
+      clearSessionOwner(idleControlSessionId);
+      idleOwnerRecorded = false;
+    }
     idleMessageId = undefined;
     idleItems = [];
     hasVisibleContent = false;
+    replyAfterActivity = false;
+    activeIdleToolIds.clear();
+    toolActivity.clear();
   };
 
   const scheduleSeal = () => {
@@ -305,8 +331,11 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
       clearTimeout(sealTimer);
       sealTimer = undefined;
     }
-    if (hasVisibleContent && activeIdleToolIds.size === 0) {
-      sealTimer = setTimeout(sealWakeupBurst, IDLE_SEAL_QUIET_MS);
+    // ACP provides no prompt response for a passive wake-up. Quiet between
+    // tools is not completion: wait for an assistant reply after the activity,
+    // with no outstanding tools or permission requests, before sealing it.
+    if (hasVisibleContent && replyAfterActivity && activeIdleToolIds.size === 0 && pendingPermissionTimeouts.size === 0) {
+      sealTimer = setTimeout(() => sealWakeupBurst(), IDLE_SEAL_QUIET_MS);
     }
   };
 
@@ -314,6 +343,12 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     const params = (msg.params ?? {}) as Record<string, unknown>;
     const options = normalizePermissionOptions(params.options);
     const requestRpcId = msg.id!;
+    beginWakeupBurst();
+    hasVisibleContent = true;
+    replyAfterActivity = false;
+    dirty = true;
+    flush();
+    scheduleSeal();
 
     if (approvalMode === "auto") {
       const auto = pickAutoApprovedOption(options);
@@ -330,10 +365,6 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     }
 
     const requestId = randomUUID();
-    if (!idleOwnerRecorded) {
-      recordSessionOwner(idleControlSessionId, ownerUserId ?? null);
-      idleOwnerRecorded = true;
-    }
     const toolCallRaw = (params.toolCall as Record<string, unknown> | undefined) ?? undefined;
     const toolCall = toolCallRaw
       ? {
@@ -364,6 +395,14 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
       }
       respondToPermission(requestRpcId, decision);
       sendPermissionEvent({ conversationId, action: "remove", requestId });
+      if (active) {
+        // The agent can start a slow tool/inference step after approval.
+        // Text shown before approval is not its final reply.
+        replyAfterActivity = false;
+        dirty = true;
+        flush();
+        scheduleSeal();
+      }
     });
 
     const timeout = setTimeout(() => {
@@ -390,6 +429,7 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     if (!active) return;
     const msg = parseAcpLine(line);
     if (!msg) return;
+    if (typeof msg.params?.sessionId === "string" && msg.params.sessionId !== acpSessionId) return;
 
     if (msg.method && msg.id != null) {
       if (msg.method === "session/request_permission") {
@@ -424,7 +464,7 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
 
     let storedItems = items;
     try {
-      storedItems = persistFileEditItems({ conversationId, sessionId: previousRunId }, items);
+      storedItems = persistFileEditItems({ conversationId, sessionId: idleControlSessionId }, items);
       if (localDiff.imported) {
         storedItems = withoutInlineFileBodies(storedItems);
         localDiff.release();
@@ -434,10 +474,20 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     }
 
     idleItems = mergeIdleStreamItems(idleItems, storedItems);
-    if (storedItems.some(isVisibleIdleStreamItem)) {
+    const visibleItems = storedItems.filter(isVisibleIdleStreamItem);
+    if (visibleItems.length) {
+      const firstActivity = !hasVisibleContent;
+      beginWakeupBurst();
       hasVisibleContent = true;
+      const last = visibleItems[visibleItems.length - 1];
+      replyAfterActivity = last.kind === "text" && last.role === "assistant" && Boolean(last.content.trim());
       dirty = true;
-      scheduleFlush();
+      if (visibleItems.some((item) => item.kind === "error" && item.terminal)) {
+        sealWakeupBurst("failed");
+        return;
+      }
+      if (firstActivity) flush();
+      else scheduleFlush();
     }
     scheduleSeal();
   };
@@ -453,7 +503,7 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     });
   };
 
-  const stopIdle = () => {
+  const stopIdle = (status: "done" | "failed" | "killed" = "done") => {
     if (!active) return;
     active = false;
     if (sealTimer) {
@@ -464,7 +514,6 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     rlOut = undefined;
     rlErr?.close();
     rlErr = undefined;
-    flush();
     for (const [requestId, timer] of pendingPermissionTimeouts) {
       clearTimeout(timer);
       const resolver = takePermissionResolver(idleControlSessionId, requestId);
@@ -479,6 +528,7 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     }
     pendingPermissionTimeouts.clear();
     clearPermissionResolversForSession(idleControlSessionId);
+    sealWakeupBurst(status);
     if (idleOwnerRecorded) {
       clearSessionOwner(idleControlSessionId);
       idleOwnerRecorded = false;
@@ -487,6 +537,7 @@ export function createAcpIdleMonitor(input: AcpIdleMonitorInput): {
     idleItems = [];
     hasVisibleContent = false;
     dirty = false;
+    replyAfterActivity = false;
     activeIdleToolIds.clear();
   };
 

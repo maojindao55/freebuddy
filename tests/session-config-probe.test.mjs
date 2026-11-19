@@ -33,8 +33,17 @@ function createFakeAcpAgentBinary(name, scriptBody) {
   const dir = path.join(tmpRoot, name);
   fs.mkdirSync(dir, { recursive: true });
   const jsPath = path.join(dir, "agent.mjs");
-  const binPath = path.join(dir, "agent.sh");
   fs.writeFileSync(jsPath, scriptBody, "utf8");
+  if (process.platform === "win32") {
+    const cmdPath = path.join(dir, "agent.cmd");
+    fs.writeFileSync(
+      cmdPath,
+      `@echo off\r\n"${process.execPath}" "${jsPath}" %*\r\n`,
+      "utf8"
+    );
+    return cmdPath;
+  }
+  const binPath = path.join(dir, "agent.sh");
   fs.writeFileSync(
     binPath,
     `#!/bin/sh\nexec "${process.execPath}" "${jsPath}" "$@"\n`,
@@ -43,9 +52,16 @@ function createFakeAcpAgentBinary(name, scriptBody) {
   return binPath;
 }
 
-test.after(() => {
+test.after(async () => {
   setDbForTest(null);
-  fs.rmSync(tmpRoot, { recursive: true, force: true });
+  // Windows keeps the probe's cwd locked until asynchronous process-tree
+  // termination completes. Yield while retrying so its handles can close.
+  await fs.promises.rm(tmpRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 20,
+    retryDelay: 100
+  });
 });
 
 test("inspectSessionConfigOptions unpacks RPC error data details and preserves code and data", async () => {

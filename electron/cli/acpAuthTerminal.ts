@@ -75,12 +75,37 @@ export function clearAuthenticationTerminalsForSession(sessionId: string) {
   }
 }
 
-/** Keep the latest `\r` update on each line. `\r\n` stays a normal line break. */
+const MAX_TERMINAL_OUTPUT_CHARS = 64 * 1024;
+
+function collapseCarriageReturnLine(line: string): string {
+  return line.replace(/\r+$/, "").split("\r").at(-1) ?? "";
+}
+
+/**
+ * Keep the latest `\r` update on each line.
+ * `\r\n` (and `\r\r\n` emitted by Unix PTY ONLCR) stays a normal line break.
+ */
 export function collapseCarriageReturns(text: string): string {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.split("\r").at(-1) ?? "")
-    .join("\n");
+  return text.split(/\r*\n/).map(collapseCarriageReturnLine).join("\n");
+}
+
+/**
+ * Fold a streamed PTY chunk into the bounded terminal buffer while preserving a
+ * trailing `\r` until the next chunk either overwrites or terminates the line.
+ */
+export function appendAuthenticationTerminalOutput(
+  previousBuffer: string,
+  chunk: string
+): { buffer: string; output: string } {
+  const combined = `${previousBuffer}${chunk}`;
+  const hasTrailingCr = /\r+$/.test(combined);
+  const buffer = `${collapseCarriageReturns(combined)}${
+    hasTrailingCr ? "\r" : ""
+  }`.slice(-MAX_TERMINAL_OUTPUT_CHARS);
+  return {
+    buffer,
+    output: hasTrailingCr ? buffer.slice(0, -1) : buffer
+  };
 }
 
 const COMATE_LOGIN_URL =
@@ -177,6 +202,7 @@ export async function runAuthenticationTerminal(options: {
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     let output = "";
+    let outputBuffer = "";
     let terminal: pty.IPty;
 
     const settle = (error?: Error) => {
@@ -190,8 +216,10 @@ export async function runAuthenticationTerminal(options: {
     };
 
     const openedLoginUrls = new Set<string>();
-    const publishOutput = (next: string) => {
-      output = collapseCarriageReturns(next).slice(-64 * 1024);
+    const publishOutput = (chunk: string) => {
+      const next = appendAuthenticationTerminalOutput(outputBuffer, chunk);
+      outputBuffer = next.buffer;
+      output = next.output;
       if (process.platform === "win32") {
         for (const url of comateLoginUrls(output)) {
           if (openedLoginUrls.has(url)) continue;
@@ -243,7 +271,7 @@ export async function runAuthenticationTerminal(options: {
     });
 
     terminal.onData((data) => {
-      publishOutput(`${output}${data}`);
+      publishOutput(data);
       emit({
         type: "authentication-terminal-update",
         requestId,

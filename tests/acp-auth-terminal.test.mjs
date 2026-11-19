@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 import {
+  appendAuthenticationTerminalOutput,
   authenticationTerminalLaunch,
   collapseCarriageReturns,
   comateLoginUrls,
@@ -59,6 +60,25 @@ test("login countdown keeps the URL and only the latest carriage-return update",
   assert.match(rendered, /剩余 179s/);
   assert.doesNotMatch(rendered, /剩余 180s/);
   assert.deepEqual(comateLoginUrls(rendered), [url]);
+
+  assert.equal(
+    collapseCarriageReturns(
+      "Opening login...\r\r\n\u001b[31mLogin failed: membership is inactive.\u001b[0m\r\r\n"
+    ),
+    "Opening login...\n\u001b[31mLogin failed: membership is inactive.\u001b[0m\n"
+  );
+  assert.equal(
+    collapseCarriageReturns("等待授权完成… 剩余 180s\r等待授权完成… 剩余 179s\r"),
+    "等待授权完成… 剩余 179s"
+  );
+
+  // Streaming chunks may end with `\r` before an overwrite or split `\r\r\n` newline.
+  let state = appendAuthenticationTerminalOutput("", `  ${url}\n\n\r等待 180s\r`);
+  assert.equal(state.output, `  ${url}\n\n等待 180s`);
+  state = appendAuthenticationTerminalOutput(state.buffer, "等待 179s\r");
+  assert.equal(state.output, `  ${url}\n\n等待 179s`);
+  state = appendAuthenticationTerminalOutput(state.buffer, "\r\nDone\r\r\n");
+  assert.equal(state.output, `  ${url}\n\n等待 179s\nDone\n`);
 });
 
 test("Windows Comate login does not let cmd.exe split the authorization URL", () => {

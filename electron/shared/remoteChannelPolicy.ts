@@ -398,8 +398,13 @@ export const REMOTE_READABLE_SETTING_KEYS: readonly string[] = [
   "language",
   "theme",
   "telemetry.enabled",
-  "member.runtimeOverrides"
+  "member.runtimeOverrides",
+  "ui.sidebarPinnedItems"
 ];
 
 /** Telemetry is a host-level privacy decision, so it is read-only remotely. */
-export const REMOTE_WRITABLE_SETTING_KEYS: readonly string[] = ["language", "theme"];
+export const REMOTE_WRITABLE_SETTING_KEYS: readonly string[] = [
+  "language",
+  "theme",
+  "ui.sidebarPinnedItems"
+];

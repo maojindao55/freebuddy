@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { LayoutGrid, ListTodo, Menu, Monitor, Moon, PanelLeft, PanelRight, Search, Share2, Stethoscope, Sun } from "lucide-react";
+import { LayoutGrid, ListTodo, Menu, Monitor, Moon, PanelLeft, PanelRight, Pin, Search, Share2, Stethoscope, Sun } from "lucide-react";
 
 import sidebarLogoUrl from "../assets/sidebar-logo.png";
 import { ChatView } from "./components/CLI/ChatView";
@@ -19,6 +19,10 @@ import {
   SidebarNavigation,
   type WorkspaceView
 } from "./components/CLI/SidebarNavigation";
+import {
+  isPinnableSidebarNavId,
+  type PinnableSidebarNavId
+} from "./config/sidebarNavigation";
 import { ImageLightboxProvider } from "./components/CLI/ImageLightbox";
 import { PermissionDialog } from "./components/CLI/PermissionDialog";
 import { AuthenticationDialog } from "./components/CLI/AuthenticationDialog";
@@ -119,7 +123,10 @@ function App() {
   const fullscreenTransition = useRef(false);
   const fullscreenRevision = useRef(0);
   const preferredConversationView = useConversationPanelUiStore((s) => s.preferredView);
-  useConversationOverviewUpdates(!settingsOpen && (workspaceView === "chat" || workspaceView === "conversationBoard" || workspaceView === "todos"));
+  useConversationOverviewUpdates(
+    (!settingsOpen && (workspaceView === "chat" || workspaceView === "conversationBoard" || workspaceView === "todos")) ||
+    (settingsOpen && settingsInitialTab === "todos")
+  );
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [contextSourceId, setContextSourceId] = useState<string>();
   const [codexImportOpen, setCodexImportOpen] = useState(false);
@@ -573,6 +580,9 @@ function App() {
   const theme = useSettingsStore((s) => s.resolvedTheme);
   const setTheme = useSettingsStore((s) => s.setTheme);
   const refreshSystemTheme = useSettingsStore((s) => s.refreshSystemTheme);
+  const sidebarPinnedItems = useSettingsStore((s) => s.sidebarPinnedItems);
+  const setSidebarNavPinned = useSettingsStore((s) => s.setSidebarNavPinned);
+  const toggleSidebarNavPinned = useSettingsStore((s) => s.toggleSidebarNavPinned);
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
@@ -882,22 +892,62 @@ function App() {
     setWorkspaceView("freebie");
     void setActive(undefined);
   };
+  const openWorkspaceTool = (
+    tool: PinnableSidebarNavId,
+    teamRequest?: { teamId?: string; create?: boolean }
+  ) => {
+    const pinned = useSettingsStore.getState().sidebarPinnedItems.includes(tool);
+    if (pinned) {
+      if (tool === "todos") {
+        openTodos();
+      } else if (tool === "scheduledTasks") {
+        openScheduledTasks();
+      } else if (tool === "workflowTeams") {
+        openWorkflowTeams(teamRequest);
+      } else {
+        openFreebie();
+      }
+      return;
+    }
+    if (tool === "workflowTeams" && teamRequest) {
+      setTeamPageRequest((current) => ({
+        key: current.key + 1,
+        teamId: teamRequest.teamId,
+        create: teamRequest.create
+      }));
+    }
+    openSettings(tool);
+  };
+
+  useEffect(() => {
+    if (
+      !settingsOpen &&
+      isPinnableSidebarNavId(workspaceView) &&
+      !sidebarPinnedItems.includes(workspaceView)
+    ) {
+      setWorkspaceView("chat");
+    }
+  }, [settingsOpen, workspaceView, sidebarPinnedItems]);
 
   useEffect(() => {
     const off = window.freebuddy?.window?.onOpenView?.((payload) => {
       if (payload.view === "todos") {
-        openTodos();
+        openWorkspaceTool("todos");
         return;
       }
       if (payload.view === "scheduledTasks") {
-        openScheduledTasks();
+        openWorkspaceTool("scheduledTasks");
         return;
       }
       if (payload.view === "workflowTeams") {
-        openWorkflowTeams({
+        openWorkspaceTool("workflowTeams", {
           teamId: payload.teamId,
           create: payload.create === true
         });
+        return;
+      }
+      if (payload.view === "freebie") {
+        openWorkspaceTool("freebie");
         return;
       }
       if (payload.view === "usage") {
@@ -1029,6 +1079,9 @@ function App() {
     setWorkspaceView("todos");
   };
   const openPanelConversation = async (id: string) => {
+    if (!useConversationStore.getState().conversations.some((item) => item.id === id)) {
+      await loadConversations();
+    }
     const conversation = useConversationStore.getState().conversations.find((item) => item.id === id);
     if (conversation?.kind === "doc-studio" && !(await isConversationEmbeddedInMainWindow(id))) {
       try {
@@ -1040,6 +1093,7 @@ function App() {
         // Show the conversation in the main window if DocStudio cannot open.
       }
     }
+    setSettingsOpen(false);
     void exitPanelFullscreen();
     setMessageFocus(null);
     setWorkspaceView("chat");
@@ -1147,6 +1201,9 @@ function App() {
               activeTab={settingsInitialTab}
               onTabChange={setSettingsInitialTab}
               className="settings-nav-sidebar"
+              pinnedItems={sidebarPinnedItems}
+              onTogglePin={(id) => void toggleSidebarNavPinned(id)}
+              todoCount={todoCount}
             />
           </>
         ) : (
@@ -1182,11 +1239,14 @@ function App() {
               workspaceView={workspaceView}
               isNewTask={isNewTask}
               todoCount={todoCount}
+              pinnedItems={sidebarPinnedItems}
               onNewTask={startNewTask}
               onOpenTodos={openTodos}
               onOpenScheduledTasks={openScheduledTasks}
               onOpenTeams={() => openWorkflowTeams()}
               onOpenFreebie={openFreebie}
+              onUnpinItem={(id) => void setSidebarNavPinned(id, false)}
+              onCustomizeSidebar={() => openSettings("general")}
             />
             <ConversationList
               panelActive={workspaceView === "conversationBoard"}
@@ -1266,6 +1326,26 @@ function App() {
           )}
           {settingsOpen ? (
             <div className="titlebar-actions titlebar-actions-plain">
+              {isPinnableSidebarNavId(settingsInitialTab) && (() => {
+                const pinned = sidebarPinnedItems.includes(settingsInitialTab);
+                return (
+                  <button
+                    type="button"
+                    className={`settings-pin-toggle${pinned ? " is-pinned" : ""}`}
+                    aria-pressed={pinned}
+                    onClick={() => void toggleSidebarNavPinned(settingsInitialTab)}
+                  >
+                    <Pin size={13} strokeWidth={1.9} aria-hidden="true" />
+                    <span>
+                      {t(
+                        pinned
+                          ? "settings.pinnedToSidebar"
+                          : "settings.pinToSidebar"
+                      )}
+                    </span>
+                  </button>
+                );
+              })()}
               <button
                 type="button"
                 className="text-button"
@@ -1357,6 +1437,13 @@ function App() {
               activeTab={settingsInitialTab}
               onTabChange={setSettingsInitialTab}
               onClose={() => setSettingsOpen(false)}
+              onOpenConversation={(id) => void openPanelConversation(id)}
+              onOpenFile={(conversationId, messageId, path) =>
+                void openPanelFile(conversationId, messageId, path)
+              }
+              onOpenAllConversations={openConversationPanel}
+              onNewConversation={(options) => void startNewTask(options)}
+              teamPageRequest={teamPageRequest}
             />
           ) : workspaceView === "conversationBoard" ? (
             <ConversationTaskPanel
@@ -1429,8 +1516,10 @@ function App() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         onNewTask={startNewTask}
-        onOpenTodos={openTodos}
-        onOpenScheduledTasks={openScheduledTasks}
+        onOpenTodos={() => openWorkspaceTool("todos")}
+        onOpenScheduledTasks={() => openWorkspaceTool("scheduledTasks")}
+        onOpenTeams={() => openWorkspaceTool("workflowTeams")}
+        onOpenFreebie={() => openWorkspaceTool("freebie")}
         onOpenSettings={() => openSettings("cli")}
         onImportCodexSession={() => {
           setCommandPaletteOpen(false);

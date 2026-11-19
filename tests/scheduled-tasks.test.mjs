@@ -158,7 +158,7 @@ test("scheduled tasks are general, recurring, persisted, bridged, and mounted", 
   assert.match(main, /initializeScheduledTaskScheduler/);
   assert.match(app, /<ScheduledTasksTab/);
   assert.match(app, /workspaceView === "scheduledTasks"/);
-  assert.doesNotMatch(settings, /ScheduledTasksTab/);
+  assert.match(settings, /<ScheduledTasksTab/);
   assert.match(types, /scheduledTasks: FreebuddyScheduledTasks/);
   assert.match(serviceTypes, /configOptionOverrides\?: Record<string, string>/);
   assert.equal(en.scheduledTasks.errors.titleRequired, "Task name is required.");

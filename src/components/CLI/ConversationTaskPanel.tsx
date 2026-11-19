@@ -48,8 +48,8 @@ export type ConversationBoardMode = "all" | "todos";
 export interface ConversationBoardProps {
   mode: ConversationBoardMode;
   ui: ConversationBoardFilterUiState;
-  fullscreen: boolean;
-  onToggleFullscreen(): void;
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onList?: () => void;
   onOpenAllConversations?: () => void;
   onOpenConversation(id: string): void;
@@ -396,7 +396,9 @@ export function ConversationBoard({
           {!isTodos && (
             <button type="button" className="ctp-new-button" onClick={onNewConversation}><Plus size={18} aria-hidden="true" /><span>{t("conversationPanel.newConversation")}</span></button>
           )}
-          <button type="button" className="ctp-fullscreen-button" onClick={onToggleFullscreen} title={t(fullscreen ? "conversationPanel.exitFullscreen" : "conversationPanel.fullscreen")} aria-label={t(fullscreen ? "conversationPanel.exitFullscreen" : "conversationPanel.fullscreen")}>{fullscreen ? <Minimize size={19} aria-hidden="true" /> : <Maximize size={19} aria-hidden="true" />}<span>{t(fullscreen ? "conversationPanel.exitFullscreen" : "conversationPanel.fullscreen")}</span></button>
+          {onToggleFullscreen && (
+            <button type="button" className="ctp-fullscreen-button" onClick={onToggleFullscreen} title={t(fullscreen ? "conversationPanel.exitFullscreen" : "conversationPanel.fullscreen")} aria-label={t(fullscreen ? "conversationPanel.exitFullscreen" : "conversationPanel.fullscreen")}>{fullscreen ? <Minimize size={19} aria-hidden="true" /> : <Maximize size={19} aria-hidden="true" />}<span>{t(fullscreen ? "conversationPanel.exitFullscreen" : "conversationPanel.fullscreen")}</span></button>
+          )}
         </div>
       </header>
       <div className="ctp-controls">

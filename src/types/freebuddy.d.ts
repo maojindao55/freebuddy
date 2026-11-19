@@ -436,6 +436,10 @@ declare global {
       workspaceView: "chat" | "conversationBoard" | "todos" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";
       settingsOpen: boolean;
       settingsTab:
+        | "todos"
+        | "scheduledTasks"
+        | "workflowTeams"
+        | "freebie"
         | "general"
         | "cli"
         | "providers"

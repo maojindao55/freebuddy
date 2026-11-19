@@ -254,7 +254,17 @@
     "butlerMainWindowShortcutReset": "Restore default shortcut",
     "butlerMainWindowShortcutReady": "Global shortcut is active",
     "butlerMainWindowShortcutUnavailable": "That shortcut is already used by another app. Try another one.",
-    "butlerMainWindowShortcutInvalid": "Include Ctrl/⌘ or Alt together with another key."
+    "butlerMainWindowShortcutInvalid": "Include Ctrl/⌘ or Alt together with another key.",
+    "sidebarShortcutsTitle": "Sidebar shortcuts",
+    "sidebarShortcutsDescription": "Todos, scheduled tasks, teams, and free tier live in Settings by default. Pin any of them to the main sidebar for quick access.",
+    "sidebarShortcutTodosDescription": "Track conversations marked as todo with a live count badge.",
+    "sidebarShortcutScheduledTasksDescription": "Run agent tasks on a schedule and inspect execution history.",
+    "sidebarShortcutWorkflowTeamsDescription": "Configure multi-agent workflow and delegation teams.",
+    "sidebarShortcutFreebieDescription": "Browse free-tier model providers and import them in one click.",
+    "sidebarOrderLabel": "Sidebar order",
+    "sidebarMoveUp": "Move up",
+    "sidebarMoveDown": "Move down",
+    "sidebarResetDefault": "Reset to default"
   },
   "app": {
     "brand": "FreeBuddy",
@@ -406,7 +416,9 @@
     "teams": "Teams",
     "usage": "Usage",
     "freebie": "Free tier",
-    "allTeams": "All teams"
+    "allTeams": "All teams",
+    "unpinFromSidebar": "Unpin from sidebar",
+    "customizeSidebar": "Customize sidebar…"
   },
   "freebie": {
     "title": "Free tier",
@@ -1289,7 +1301,11 @@
   },
   "settings": {
     "backToApp": "Back to app",
+    "pinToSidebar": "Pin to sidebar",
+    "pinnedToSidebar": "Pinned to sidebar",
+    "unpinFromSidebar": "Unpin from sidebar",
     "tabs": {
+      "todos": "Todos",
       "scheduledTasks": "Scheduled Tasks",
       "general": "General",
       "cli": "CLI Agents",
@@ -1298,7 +1314,8 @@
       "feed": "Information Cards",
       "usage": "Usage",
       "archived": "Archived",
-      "workflowTeams": "Workflow Teams",
+      "workflowTeams": "Teams",
+      "freebie": "Free tier",
       "remote": "Shared",
       "about": "About",
       "providers": "Providers",
@@ -1548,6 +1565,7 @@
       "defaultAlt": "Default"
     },
     "navGroup": {
+      "workspace": "Workspace",
       "ai": "AI",
       "data": "Data & Insights",
       "system": "System"

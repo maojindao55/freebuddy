@@ -4810,6 +4810,142 @@ html[data-surface="butler-screen-ball"] #root {
   color: var(--fb-brand);
   font-weight: 600;
 }
+
+.settings-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.settings-nav-row:hover {
+  background: var(--fb-panel-soft);
+}
+
+.settings-nav-row.active {
+  background: var(--fb-brand-glow);
+}
+
+.settings-nav-sidebar .settings-nav-row.active {
+  background: color-mix(in srgb, var(--fb-brand) 12%, transparent);
+}
+
+.settings-nav-row .settings-nav-item {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+}
+
+.settings-nav-row .settings-nav-item:hover,
+.settings-nav-row .settings-nav-item.active,
+.settings-nav-sidebar .settings-nav-row .settings-nav-item.active {
+  background: transparent;
+}
+
+.settings-nav-row:hover .settings-nav-item {
+  color: var(--fb-text-primary);
+}
+
+.settings-nav-badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--fb-text-secondary);
+  background: var(--fb-hover);
+}
+
+.settings-nav-row.active .settings-nav-badge {
+  color: var(--fb-brand);
+  background: color-mix(in srgb, var(--fb-brand) 14%, transparent);
+}
+
+.settings-nav-pin-btn {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  margin-right: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fb-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.settings-nav-row:hover .settings-nav-pin-btn,
+.settings-nav-row:focus-within .settings-nav-pin-btn,
+.settings-nav-pin-btn.is-pinned {
+  opacity: 1;
+}
+
+.settings-nav-pin-btn:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+
+.settings-nav-pin-btn.is-pinned {
+  color: var(--fb-brand);
+}
+
+.settings-nav-pin-btn.is-pinned:hover {
+  background: color-mix(in srgb, var(--fb-brand) 14%, transparent);
+  color: var(--fb-brand);
+}
+
+.settings-nav-pin-btn:focus-visible {
+  opacity: 1;
+  outline: 2px solid color-mix(in srgb, var(--fb-brand) 52%, transparent);
+  outline-offset: 1px;
+}
+
+.settings-pin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: 999px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.settings-pin-toggle:hover {
+  background: var(--fb-hover);
+  color: var(--fb-text-primary);
+}
+
+.settings-pin-toggle.is-pinned {
+  border-color: color-mix(in srgb, var(--fb-brand) 38%, var(--fb-border));
+  background: color-mix(in srgb, var(--fb-brand) 11%, var(--fb-panel-bg));
+  color: var(--fb-brand);
+}
+
+.settings-pin-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fb-brand) 52%, transparent);
+  outline-offset: 1px;
+}
+
 .settings-panel {
   overflow-y: auto;
   padding-right: 4px;
@@ -4844,6 +4980,39 @@ html[data-surface="butler-screen-ball"] #root {
   min-height: 0;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.settings-surface-page .settings-panel.settings-panel-full.settings-panel--flush,
+.settings-panel.settings-panel--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-tab-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.settings-tab-scroll-inner {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 4px 24px;
+}
+
+.settings-freebie-host {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--fb-home-bg-primary);
 }
 
 .skills-tab {
@@ -7473,7 +7642,8 @@ html[data-surface="butler-screen-ball"] #root {
     display: none;
   }
 
-  .settings-nav-item {
+  .settings-nav-item,
+  .settings-nav-row {
     flex: 0 0 auto;
   }
 
@@ -7497,6 +7667,10 @@ html[data-surface="butler-screen-ball"] #root {
 
   .settings-nav-sidebar .settings-nav-item {
     flex: 0 0 auto;
+  }
+
+  .settings-nav-sidebar .settings-nav-row .settings-nav-item {
+    flex: 1;
   }
 
 }
@@ -19931,6 +20105,119 @@ button.ghost:focus-visible,
   height: 1px;
   margin: 0 16px;
   background: var(--fb-border);
+}
+
+.sidebar-shortcuts-row {
+  min-height: 60px;
+  padding: 10px 16px;
+}
+
+.sidebar-shortcuts-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px 14px;
+  background: var(--fb-panel-soft);
+}
+
+.sidebar-shortcuts-order {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-shortcuts-order-label {
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sidebar-shortcuts-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-shortcuts-order-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 9px;
+  background: var(--fb-panel-bg);
+}
+
+.sidebar-shortcuts-order-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sidebar-shortcuts-order-name > svg {
+  color: var(--fb-text-secondary);
+}
+
+.sidebar-shortcuts-order-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-shortcuts-move-btn {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-shortcuts-move-btn:hover:not(:disabled) {
+  background: var(--fb-hover);
+  border-color: var(--fb-border-strong);
+  color: var(--fb-text-primary);
+}
+
+.sidebar-shortcuts-move-btn:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+.sidebar-shortcuts-reset-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sidebar-shortcuts-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  background: var(--fb-panel-bg);
+  color: var(--fb-text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-shortcuts-reset-btn:hover {
+  background: var(--fb-hover);
+  border-color: var(--fb-border-strong);
+  color: var(--fb-text-primary);
 }
 
 .butler-settings-game-button {

@@ -1,14 +1,25 @@
 import {
+  AlarmClock,
   AlertCircle,
   AppWindow,
   Check,
+  ChevronDown,
+  ChevronUp,
   Crosshair,
+  Gift,
   Keyboard,
+  ListTodo,
+  PanelLeft,
   PawPrint,
-  RotateCcw
+  RotateCcw,
+  UsersRound
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  PINNABLE_SIDEBAR_NAV_ITEMS,
+  type PinnableSidebarNavId
+} from "@/config/sidebarNavigation";
 import { useSettingsStore } from "@/store/settingsStore";
 import {
   SUPPORTED_LANGUAGE_PREFERENCES,
@@ -18,6 +29,16 @@ import {
   SUPPORTED_THEME_PREFERENCES,
   type ThemePreference
 } from "@/utils/detectTheme";
+
+const SIDEBAR_SHORTCUT_ICON: Record<
+  PinnableSidebarNavId,
+  ComponentType<{ size?: number | string; strokeWidth?: number }>
+> = {
+  todos: ListTodo,
+  scheduledTasks: AlarmClock,
+  workflowTeams: UsersRound,
+  freebie: Gift
+};
 
 const LANGUAGE_LABEL_KEY: Record<LanguagePreference, string> = {
   system: "general.languageSystem",
@@ -92,6 +113,10 @@ export function GeneralTab() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const telemetryEnabled = useSettingsStore((s) => s.telemetryEnabled);
   const setTelemetryEnabled = useSettingsStore((s) => s.setTelemetryEnabled);
+  const sidebarPinnedItems = useSettingsStore((s) => s.sidebarPinnedItems);
+  const setSidebarPinnedItems = useSettingsStore((s) => s.setSidebarPinnedItems);
+  const setSidebarNavPinned = useSettingsStore((s) => s.setSidebarNavPinned);
+  const moveSidebarNavPinned = useSettingsStore((s) => s.moveSidebarNavPinned);
   const butlerVisible = useSettingsStore((s) => s.butlerBuddyVisible);
   const shortcutEnabled = useSettingsStore((s) => s.butlerBuddyShortcutEnabled);
   const shortcut = useSettingsStore((s) => s.butlerBuddyShortcut);
@@ -166,8 +191,121 @@ export function GeneralTab() {
       ? t("general.butlerMainWindowShortcutUnavailable")
       : "");
 
+  const shortcutById = new Map(
+    PINNABLE_SIDEBAR_NAV_ITEMS.map((item) => [item.id, item])
+  );
+
   return (
-    <>
+    <div className="settings-tab-scroll">
+      <section
+        id="sidebar-shortcuts-settings"
+        className="settings-section butler-settings-section sidebar-shortcuts-section"
+      >
+        <div className="butler-settings-heading">
+          <span className="butler-settings-heading-icon" aria-hidden="true">
+            <PanelLeft size={17} strokeWidth={1.9} />
+          </span>
+          <div>
+            <h3>{t("general.sidebarShortcutsTitle")}</h3>
+            <p>{t("general.sidebarShortcutsDescription")}</p>
+          </div>
+        </div>
+
+        <div className="butler-settings-card sidebar-shortcuts-card">
+          {PINNABLE_SIDEBAR_NAV_ITEMS.map((item, index) => {
+            const Icon = SIDEBAR_SHORTCUT_ICON[item.id];
+            const pinned = sidebarPinnedItems.includes(item.id);
+            return (
+              <div key={item.id}>
+                {index > 0 && <div className="butler-settings-divider" />}
+                <div className="butler-settings-row sidebar-shortcuts-row">
+                  <span className="butler-settings-row-icon" aria-hidden="true">
+                    <Icon size={18} strokeWidth={1.8} />
+                  </span>
+                  <div className="butler-settings-copy">
+                    <strong>{t(item.sidebarLabelKey)}</strong>
+                    <small>{t(item.descriptionKey)}</small>
+                  </div>
+                  <label className="butler-settings-switch">
+                    <input
+                      type="checkbox"
+                      checked={pinned}
+                      onChange={(event) =>
+                        void setSidebarNavPinned(item.id, event.target.checked)
+                      }
+                      aria-label={t(item.sidebarLabelKey)}
+                    />
+                    <span aria-hidden="true" />
+                  </label>
+                </div>
+              </div>
+            );
+          })}
+
+          {sidebarPinnedItems.length > 0 && (
+            <>
+              <div className="butler-settings-divider" />
+              <div className="sidebar-shortcuts-footer">
+                {sidebarPinnedItems.length > 1 ? (
+                  <div className="sidebar-shortcuts-order">
+                    <span className="sidebar-shortcuts-order-label">
+                      {t("general.sidebarOrderLabel")}
+                    </span>
+                    <div className="sidebar-shortcuts-order-list">
+                      {sidebarPinnedItems.map((id, index) => {
+                        const def = shortcutById.get(id);
+                        if (!def) return null;
+                        const Icon = SIDEBAR_SHORTCUT_ICON[id];
+                        return (
+                          <div key={id} className="sidebar-shortcuts-order-item">
+                            <span className="sidebar-shortcuts-order-name">
+                              <Icon size={14} strokeWidth={1.8} />
+                              <span>{t(def.sidebarLabelKey)}</span>
+                            </span>
+                            <span className="sidebar-shortcuts-order-actions">
+                              <button
+                                type="button"
+                                className="sidebar-shortcuts-move-btn"
+                                disabled={index === 0}
+                                onClick={() => void moveSidebarNavPinned(id, "up")}
+                                title={t("general.sidebarMoveUp")}
+                                aria-label={t("general.sidebarMoveUp")}
+                              >
+                                <ChevronUp size={13} strokeWidth={2} />
+                              </button>
+                              <button
+                                type="button"
+                                className="sidebar-shortcuts-move-btn"
+                                disabled={index === sidebarPinnedItems.length - 1}
+                                onClick={() => void moveSidebarNavPinned(id, "down")}
+                                title={t("general.sidebarMoveDown")}
+                                aria-label={t("general.sidebarMoveDown")}
+                              >
+                                <ChevronDown size={13} strokeWidth={2} />
+                              </button>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="sidebar-shortcuts-reset-row">
+                  <button
+                    type="button"
+                    className="sidebar-shortcuts-reset-btn"
+                    onClick={() => void setSidebarPinnedItems([])}
+                  >
+                    <RotateCcw size={13} strokeWidth={1.9} />
+                    <span>{t("general.sidebarResetDefault")}</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
       <section className="settings-section butler-settings-section">
         <div className="butler-settings-heading">
           <span className="butler-settings-heading-icon" aria-hidden="true">
@@ -449,6 +587,6 @@ export function GeneralTab() {
           </span>
         </label>
       </section>
-    </>
+    </div>
   );
 }

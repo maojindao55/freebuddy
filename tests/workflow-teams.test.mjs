@@ -400,12 +400,12 @@ test("workflow runtime forwards step model overrides to cliRun", () => {
   assert.match(src, /configOptionOverrides: args\.configOptionOverrides/);
 });
 
-test("main workspace mounts WorkflowTeamsTab outside Settings", () => {
+test("WorkflowTeamsTab is mounted in Settings by default and in main workspace when pinned", () => {
   const app = read("../src/App.tsx");
   const settings = read("../src/components/Settings/SettingsModal.tsx");
   assert.match(app, /workspaceView === "workflowTeams"/);
   assert.match(app, /<WorkflowTeamsTab/);
-  assert.doesNotMatch(settings, /<WorkflowTeamsTab/);
+  assert.match(settings, /<WorkflowTeamsTab/);
 });
 
 test("team page refreshes workflow and self-organizing teams when opened", () => {

@@ -2,16 +2,16 @@ import { useTodoPanelUiStore } from "@/store/conversationPanelUiStore";
 import { ConversationBoard } from "./ConversationTaskPanel";
 
 export interface TodoConversationsPanelProps {
-  fullscreen: boolean;
-  onToggleFullscreen(): void;
-  onOpenAllConversations(): void;
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+  onOpenAllConversations?: () => void;
   onOpenConversation(id: string): void;
   onNewConversation(): void;
   onOpenFile?(conversationId: string, messageId: string, path: string): void;
 }
 
 export function TodoConversationsPanel({
-  fullscreen,
+  fullscreen = false,
   onToggleFullscreen,
   onOpenAllConversations,
   onOpenConversation,

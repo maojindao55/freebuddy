@@ -2,6 +2,15 @@ import { create } from "zustand";
 import i18next from "i18next";
 import { cliClient } from "@/services/cli/client";
 import {
+  DEFAULT_PINNED_SIDEBAR_ITEMS,
+  SIDEBAR_PINNED_ITEMS_SETTING_KEY,
+  movePinnedSidebarItem,
+  normalizePinnedSidebarItems,
+  serializePinnedSidebarItems,
+  togglePinnedSidebarItem,
+  type PinnableSidebarNavId
+} from "@/config/sidebarNavigation";
+import {
   normalizeLanguagePreference,
   resolveLanguagePreference,
   type AppLocale,
@@ -15,6 +24,29 @@ import {
   type ThemePreference
 } from "@/utils/detectTheme";
 
+const SIDEBAR_PINNED_STORAGE_KEY = "freebuddy.ui.sidebarPinnedItems.v1";
+
+function readLocalSidebarPinnedItems(): PinnableSidebarNavId[] {
+  try {
+    return normalizePinnedSidebarItems(
+      globalThis.localStorage?.getItem(SIDEBAR_PINNED_STORAGE_KEY)
+    );
+  } catch {
+    return [...DEFAULT_PINNED_SIDEBAR_ITEMS];
+  }
+}
+
+function writeLocalSidebarPinnedItems(items: readonly PinnableSidebarNavId[]) {
+  try {
+    globalThis.localStorage?.setItem(
+      SIDEBAR_PINNED_STORAGE_KEY,
+      serializePinnedSidebarItems(items)
+    );
+  } catch {
+    // Ignore storage errors in restricted environments.
+  }
+}
+
 interface SettingsState {
   loaded: boolean;
   language: LanguagePreference;
@@ -22,6 +54,7 @@ interface SettingsState {
   theme: ThemePreference;
   resolvedTheme: ResolvedTheme;
   telemetryEnabled: boolean;
+  sidebarPinnedItems: PinnableSidebarNavId[];
   butlerBuddyVisible: boolean;
   butlerBuddyShortcutEnabled: boolean;
   butlerBuddyShortcut: string;
@@ -38,6 +71,13 @@ interface SettingsState {
     options?: { syncPeers?: boolean }
   ): Promise<void>;
   setTelemetryEnabled(enabled: boolean): Promise<void>;
+  setSidebarPinnedItems(items: readonly PinnableSidebarNavId[]): Promise<void>;
+  setSidebarNavPinned(id: PinnableSidebarNavId, pinned: boolean): Promise<void>;
+  toggleSidebarNavPinned(id: PinnableSidebarNavId): Promise<void>;
+  moveSidebarNavPinned(
+    id: PinnableSidebarNavId,
+    direction: "up" | "down"
+  ): Promise<void>;
   updateButlerBuddyPreferences(input: {
     visible?: boolean;
     shortcutEnabled?: boolean;
@@ -59,13 +99,14 @@ interface SettingsState {
   refreshSystemTheme(): void;
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   loaded: false,
   language: "system",
   resolvedLanguage: "en",
   theme: "system",
   resolvedTheme: getSystemTheme(),
   telemetryEnabled: true,
+  sidebarPinnedItems: [...DEFAULT_PINNED_SIDEBAR_ITEMS],
   butlerBuddyVisible: false,
   butlerBuddyShortcutEnabled: true,
   butlerBuddyShortcut: "CommandOrControl+Shift+Space",
@@ -82,6 +123,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const systemTheme = getSystemTheme();
     if (!cliClient.isAvailable()) {
       const resolved = resolveLanguagePreference("system", systemLanguage);
+      const localPinned = readLocalSidebarPinnedItems();
       await i18next.changeLanguage(resolved);
       set({
         loaded: true,
@@ -90,6 +132,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         theme: "system",
         resolvedTheme: resolveThemePreference("system", systemTheme),
         telemetryEnabled: true,
+        sidebarPinnedItems: localPinned,
         butlerBuddyVisible: false,
         butlerBuddyShortcutEnabled: true,
         butlerBuddyShortcut: "CommandOrControl+Shift+Space",
@@ -107,6 +150,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const resolved = resolveLanguagePreference(preference, systemLanguage);
     const storedTheme = await cliClient.getSetting("theme");
     const storedTelemetryEnabled = await cliClient.getSetting("telemetry.enabled");
+    const storedSidebarPinned = await cliClient
+      .getSetting(SIDEBAR_PINNED_ITEMS_SETTING_KEY)
+      .catch(() => null);
+    const sidebarPinnedItems = normalizePinnedSidebarItems(storedSidebarPinned);
+    writeLocalSidebarPinnedItems(sidebarPinnedItems);
     const butlerPreferences =
       typeof window.freebuddy?.butlerBuddy?.getPreferences === "function"
         ? await window.freebuddy.butlerBuddy.getPreferences().catch(() => undefined)
@@ -121,6 +169,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       theme: themePreference,
       resolvedTheme,
       telemetryEnabled: storedTelemetryEnabled !== "false",
+      sidebarPinnedItems,
       butlerBuddyVisible: butlerPreferences?.visible ?? false,
       butlerBuddyShortcutEnabled: butlerPreferences?.shortcutEnabled ?? true,
       butlerBuddyShortcut:
@@ -166,6 +215,37 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     if (cliClient.isAvailable()) {
       await cliClient.setSetting("telemetry.enabled", enabled ? "true" : "false");
     }
+  },
+
+  async setSidebarPinnedItems(items) {
+    const normalized = normalizePinnedSidebarItems(items);
+    set({ sidebarPinnedItems: normalized });
+    writeLocalSidebarPinnedItems(normalized);
+    if (cliClient.isAvailable()) {
+      await cliClient
+        .setSetting(
+          SIDEBAR_PINNED_ITEMS_SETTING_KEY,
+          serializePinnedSidebarItems(normalized)
+        )
+        .catch(() => {
+          // Keep optimistic UI state if remote/host persistence is unavailable.
+        });
+    }
+  },
+
+  async setSidebarNavPinned(id, pinned) {
+    const next = togglePinnedSidebarItem(get().sidebarPinnedItems, id, pinned);
+    await get().setSidebarPinnedItems(next);
+  },
+
+  async toggleSidebarNavPinned(id) {
+    const next = togglePinnedSidebarItem(get().sidebarPinnedItems, id);
+    await get().setSidebarPinnedItems(next);
+  },
+
+  async moveSidebarNavPinned(id, direction) {
+    const next = movePinnedSidebarItem(get().sidebarPinnedItems, id, direction);
+    await get().setSidebarPinnedItems(next);
   },
 
   async updateButlerBuddyPreferences(input) {

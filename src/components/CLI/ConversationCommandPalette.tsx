@@ -38,6 +38,8 @@ export function ConversationCommandPalette({
   onNewTask,
   onOpenTodos,
   onOpenScheduledTasks,
+  onOpenTeams,
+  onOpenFreebie,
   onOpenSettings,
   onImportCodexSession,
   onSelectConversation
@@ -47,6 +49,8 @@ export function ConversationCommandPalette({
   onNewTask: (options?: { cwd?: string }) => void;
   onOpenTodos?: () => void;
   onOpenScheduledTasks: () => void;
+  onOpenTeams?: () => void;
+  onOpenFreebie?: () => void;
   onOpenSettings: () => void;
   onImportCodexSession: () => void;
   onSelectConversation?: (conversationId: string) => void;
@@ -112,6 +116,30 @@ export function ConversationCommandPalette({
           onClose();
         }
       },
+      ...(onOpenTeams
+        ? [
+            {
+              id: "teams",
+              label: t("sidebar.teams"),
+              run: () => {
+                onOpenTeams();
+                onClose();
+              }
+            }
+          ]
+        : []),
+      ...(onOpenFreebie
+        ? [
+            {
+              id: "freebie",
+              label: t("sidebar.freebie"),
+              run: () => {
+                onOpenFreebie();
+                onClose();
+              }
+            }
+          ]
+        : []),
       {
         id: "import-codex-session",
         label: t("sidebar.importCodexSession"),
@@ -137,6 +165,8 @@ export function ConversationCommandPalette({
     onNewTask,
     onOpenTodos,
     onOpenScheduledTasks,
+    onOpenTeams,
+    onOpenFreebie,
     onOpenSettings,
     onImportCodexSession,
     t

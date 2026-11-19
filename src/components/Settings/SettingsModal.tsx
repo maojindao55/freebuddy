@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  AlarmClock,
   Archive,
   Bot,
   ChartColumn,
   Cog,
   Cpu,
+  Gift,
   Info,
   Layers,
+  ListTodo,
   Newspaper,
+  Pin,
   Puzzle,
   Share2,
   Server,
+  UsersRound
 } from "lucide-react";
 import { AboutTab } from "./AboutTab";
 import { ArchivedConversationsTab } from "./ArchivedConversationsTab";
@@ -20,16 +25,29 @@ import { ProvidersTab } from "./ProvidersTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { InfoCardsTab } from "./InfoCardsTab";
+import { ScheduledTasksTab } from "./ScheduledTasksTab";
 import { SkillsTab } from "./SkillsTab";
 import { PluginsTab } from "./PluginsTab";
 import { RemoteTab } from "./RemoteTab";
 import { UsageTab } from "./UsageTab";
+import { WorkflowTeamsTab } from "./WorkflowTeamsTab";
 import { McpServersTab } from "./McpServersTab";
+import { TodoConversationsPanel } from "@/components/CLI/TodoConversationsPanel";
+import { FreebiePage } from "@/components/Freebie/FreebiePage";
+import {
+  isPinnableSidebarNavId,
+  type PinnableSidebarNavId
+} from "@/config/sidebarNavigation";
 import { useConversationStore } from "@/store/conversationStore";
+import { useSettingsStore } from "@/store/settingsStore";
 
-export type SettingsTab = "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "archived" | "remote" | "about";
+export type SettingsTab = "todos" | "scheduledTasks" | "workflowTeams" | "freebie" | "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "archived" | "remote" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
+  { key: "todos", labelKey: "settings.tabs.todos" },
+  { key: "scheduledTasks", labelKey: "settings.tabs.scheduledTasks" },
+  { key: "workflowTeams", labelKey: "settings.tabs.workflowTeams" },
+  { key: "freebie", labelKey: "settings.tabs.freebie" },
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "providers", labelKey: "settings.tabs.providers" },
   { key: "mcp", labelKey: "settings.tabs.mcp" },
@@ -45,6 +63,10 @@ export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
 
 /** Per-tab icon so the sidebar is scannable at a glance. */
 const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> = {
+  todos: ListTodo,
+  scheduledTasks: AlarmClock,
+  workflowTeams: UsersRound,
+  freebie: Gift,
   general: Cog,
   cli: Bot,
   providers: Cpu,
@@ -60,12 +82,21 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
 
 /** Grouped sidebar sections; every tab key above appears exactly once. */
 const TAB_GROUPS: { groupKey: string; items: SettingsTab[] }[] = [
+  { groupKey: "settings.navGroup.workspace", items: ["todos", "scheduledTasks", "workflowTeams", "freebie"] },
   { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "mcp", "skills", "plugins"] },
   { groupKey: "settings.navGroup.data", items: ["feed", "usage", "archived"] },
   { groupKey: "settings.navGroup.system", items: ["general", "remote", "about"] },
 ];
 
-interface SettingsSurfaceProps {
+export interface SettingsWorkspaceHandlers {
+  onOpenConversation?: (conversationId: string) => void;
+  onOpenFile?: (conversationId: string, messageId: string, path: string) => void;
+  onOpenAllConversations?: () => void;
+  onNewConversation?: (options?: { agentId?: string }) => void;
+  teamPageRequest?: { key: number; teamId?: string; create?: boolean };
+}
+
+interface SettingsSurfaceProps extends SettingsWorkspaceHandlers {
   onClose: () => void;
   initialTab?: SettingsTab;
 }
@@ -79,16 +110,23 @@ export function SettingsNav({
   activeTab,
   onTabChange,
   className = "",
-  hiddenTabs = []
+  hiddenTabs = [],
+  pinnedItems = [],
+  onTogglePin,
+  todoCount = 0
 }: {
   activeTab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
   className?: string;
   hiddenTabs?: SettingsTab[];
+  pinnedItems?: readonly PinnableSidebarNavId[];
+  onTogglePin?: (id: PinnableSidebarNavId) => void;
+  todoCount?: number;
 }) {
   const { t } = useTranslation();
   const labelByKey = new Map(SETTINGS_TABS.map((tab) => [tab.key, tab.labelKey]));
   const hiddenSet = new Set(hiddenTabs);
+  const pinnedSet = new Set(pinnedItems);
   return (
     <nav className={`settings-nav${className ? ` ${className}` : ""}`}>
       {TAB_GROUPS.map((group) => {
@@ -99,11 +137,53 @@ export function SettingsNav({
             <div className="settings-nav-group-title">{t(group.groupKey)}</div>
             {visibleItems.map((key) => {
               const Icon = TAB_ICONS[key];
+              const isActive = activeTab === key;
+              if (isPinnableSidebarNavId(key)) {
+                const isPinned = pinnedSet.has(key);
+                const pinLabel = t(
+                  isPinned ? "settings.unpinFromSidebar" : "settings.pinToSidebar"
+                );
+                return (
+                  <div
+                    key={key}
+                    className={`settings-nav-row${isActive ? " active" : ""}${isPinned ? " is-pinned" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className={`settings-nav-item${isActive ? " active" : ""}`}
+                      onClick={() => onTabChange(key)}
+                    >
+                      <Icon size={14} />
+                      <span className="settings-nav-label">{t(labelByKey.get(key)!)}</span>
+                      {key === "todos" && todoCount > 0 && (
+                        <span
+                          className="settings-nav-badge"
+                          aria-label={t("sidebar.todosCount", { count: todoCount })}
+                        >
+                          {todoCount}
+                        </span>
+                      )}
+                    </button>
+                    {onTogglePin && (
+                      <button
+                        type="button"
+                        className={`settings-nav-pin-btn${isPinned ? " is-pinned" : ""}`}
+                        aria-pressed={isPinned}
+                        aria-label={pinLabel}
+                        title={pinLabel}
+                        onClick={() => onTogglePin(key)}
+                      >
+                        <Pin size={13} strokeWidth={1.9} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                );
+              }
               return (
                 <button
                   key={key}
                   type="button"
-                  className={`settings-nav-item${activeTab === key ? " active" : ""}`}
+                  className={`settings-nav-item${isActive ? " active" : ""}`}
                   onClick={() => onTabChange(key)}
                 >
                   <Icon size={14} />
@@ -123,6 +203,11 @@ function SettingsContent({
   initialTab = "cli",
   activeTab: controlledActiveTab,
   onTabChange,
+  onOpenConversation,
+  onOpenFile,
+  onOpenAllConversations,
+  onNewConversation,
+  teamPageRequest,
   surface = "modal",
   showHeader = true,
   showNav = true
@@ -133,6 +218,11 @@ function SettingsContent({
 }) {
   const { t } = useTranslation();
   const currentUser = useConversationStore((s) => s.currentUser);
+  const todoCount = useConversationStore((s) =>
+    s.conversations.reduce((count, entry) => (entry.todo ? count + 1 : count), 0)
+  );
+  const sidebarPinnedItems = useSettingsStore((s) => s.sidebarPinnedItems);
+  const toggleSidebarNavPinned = useSettingsStore((s) => s.toggleSidebarNavPinned);
   const [internalActiveTab, setInternalActiveTab] = useState<SettingsTab>(initialTab);
   const activeTab = controlledActiveTab ?? internalActiveTab;
 
@@ -155,8 +245,74 @@ function SettingsContent({
     if (!controlledActiveTab) setInternalActiveTab(tab);
   };
 
+  const handleOpenConversation = (conversationId: string) => {
+    if (onOpenConversation) {
+      onOpenConversation(conversationId);
+      return;
+    }
+    onClose();
+    void useConversationStore.getState().setActive(conversationId);
+  };
+
+  const handleNewConversation = (options?: { agentId?: string }) => {
+    if (onNewConversation) {
+      onNewConversation(options);
+      return;
+    }
+    onClose();
+  };
+
+  const isFlushPanel = activeTab === "todos" || activeTab === "freebie";
+
   const activeContent = (
     <>
+      {activeTab === "todos" && (
+        <SettingsTabErrorBoundary>
+          <TodoConversationsPanel
+            fullscreen={false}
+            onOpenAllConversations={onOpenAllConversations}
+            onOpenConversation={handleOpenConversation}
+            onOpenFile={onOpenFile}
+            onNewConversation={() => handleNewConversation()}
+          />
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "scheduledTasks" && (
+        <SettingsTabErrorBoundary>
+          <div className="settings-tab-scroll">
+            <div className="settings-tab-scroll-inner">
+              <ScheduledTasksTab
+                onOpenConversation={(conversationId) => {
+                  handleOpenConversation(conversationId);
+                }}
+              />
+            </div>
+          </div>
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "workflowTeams" && (
+        <SettingsTabErrorBoundary>
+          <div className="settings-tab-scroll">
+            <div className="settings-tab-scroll-inner">
+              <WorkflowTeamsTab
+                key={teamPageRequest?.key ?? 0}
+                initialTeamId={teamPageRequest?.teamId}
+                startCreating={teamPageRequest?.create}
+              />
+            </div>
+          </div>
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "freebie" && (
+        <SettingsTabErrorBoundary>
+          <div className="settings-freebie-host">
+            <FreebiePage
+              onStartChat={(agentId) => handleNewConversation({ agentId })}
+              onOpenAgentSettings={() => handleTabChange("cli")}
+            />
+          </div>
+        </SettingsTabErrorBoundary>
+      )}
       {activeTab === "general" && <GeneralTab />}
       {activeTab === "cli" && (
         <SettingsTabErrorBoundary>
@@ -205,9 +361,18 @@ function SettingsContent({
       )}
       <div className={`settings-layout${showNav ? "" : " settings-layout-content-only"}`}>
         {showNav && (
-          <SettingsNav activeTab={activeTab} onTabChange={handleTabChange} hiddenTabs={hiddenTabs} />
+          <SettingsNav
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            hiddenTabs={hiddenTabs}
+            pinnedItems={sidebarPinnedItems}
+            onTogglePin={(id) => void toggleSidebarNavPinned(id)}
+            todoCount={todoCount}
+          />
         )}
-        <div className={`settings-panel${showNav ? "" : " settings-panel-full"}`}>
+        <div
+          className={`settings-panel${showNav ? "" : " settings-panel-full"}${isFlushPanel ? " settings-panel--flush" : ""}`}
+        >
           {activeContent}
         </div>
       </div>

@@ -254,7 +254,17 @@
     "butlerMainWindowShortcutReset": "恢复默认快捷键",
     "butlerMainWindowShortcutReady": "全局快捷键已生效",
     "butlerMainWindowShortcutUnavailable": "这个组合键已被其他应用占用，请换一个。",
-    "butlerMainWindowShortcutInvalid": "请同时按下 Ctrl/⌘ 或 Alt 与另一个按键。"
+    "butlerMainWindowShortcutInvalid": "请同时按下 Ctrl/⌘ 或 Alt 与另一个按键。",
+    "sidebarShortcutsTitle": "侧边栏快捷入口",
+    "sidebarShortcutsDescription": "待办、定时任务、团队和白嫖均可在设置中访问；默认固定待办、团队和白嫖到主侧边栏，可按需调整。",
+    "sidebarShortcutTodosDescription": "集中跟进标记为待办的对话，并在侧边栏显示数量。",
+    "sidebarShortcutScheduledTasksDescription": "按计划自动运行 Agent 任务并查看执行历史。",
+    "sidebarShortcutWorkflowTeamsDescription": "配置多 Agent 协作与工作流团队模板。",
+    "sidebarShortcutFreebieDescription": "浏览免费模型额度并一键导入为可用服务商。",
+    "sidebarOrderLabel": "侧边栏显示顺序",
+    "sidebarMoveUp": "上移",
+    "sidebarMoveDown": "下移",
+    "sidebarResetDefault": "恢复默认"
   },
   "app": {
     "brand": "FreeBuddy",
@@ -406,7 +416,9 @@
     "teams": "团队",
     "usage": "用量",
     "freebie": "白嫖",
-    "allTeams": "全部团队"
+    "allTeams": "全部团队",
+    "unpinFromSidebar": "取消固定（移回设置）",
+    "customizeSidebar": "自定义侧边栏…"
   },
   "freebie": {
     "title": "白嫖专区",
@@ -1275,7 +1287,11 @@
   },
   "settings": {
     "backToApp": "返回应用",
+    "pinToSidebar": "固定到侧边栏",
+    "pinnedToSidebar": "已固定到侧边栏",
+    "unpinFromSidebar": "取消固定到侧边栏",
     "tabs": {
+      "todos": "待办",
       "scheduledTasks": "定时任务",
       "general": "通用",
       "cli": "CLI Agent",
@@ -1284,7 +1300,8 @@
       "feed": "信息卡片",
       "usage": "用量",
       "archived": "已归档",
-      "workflowTeams": "工作流团队",
+      "workflowTeams": "团队",
+      "freebie": "白嫖",
       "remote": "共享",
       "about": "关于",
       "providers": "服务商",
@@ -1533,6 +1550,7 @@
       "defaultAlt": "默认"
     },
     "navGroup": {
+      "workspace": "工作区",
       "ai": "AI 能力",
       "data": "数据与洞察",
       "system": "系统"

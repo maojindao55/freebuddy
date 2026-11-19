@@ -8,9 +8,14 @@ export type MainWorkspaceView =
   | "freebie";
 
 export type MainSettingsTab =
+  | "todos"
+  | "scheduledTasks"
+  | "workflowTeams"
+  | "freebie"
   | "general"
   | "cli"
   | "providers"
+  | "mcp"
   | "skills"
   | "plugins"
   | "feed"
@@ -64,9 +69,14 @@ const WORKSPACE_VIEWS = new Set<MainWorkspaceView>([
 ]);
 
 const SETTINGS_TABS = new Set<MainSettingsTab>([
+  "todos",
+  "scheduledTasks",
+  "workflowTeams",
+  "freebie",
   "general",
   "cli",
   "providers",
+  "mcp",
   "skills",
   "plugins",
   "feed",

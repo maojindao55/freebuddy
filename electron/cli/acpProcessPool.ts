@@ -13,6 +13,7 @@ export interface AcpWarmConnection {
   sessionId?: string;
   previousRunId?: string;
   browserServer?: AcpStdioMcpServer;
+  contextServer?: AcpStdioMcpServer;
   startIdle?: () => void;
   stopIdle?: (status?: "done" | "failed" | "killed") => void;
   dispose: () => void;

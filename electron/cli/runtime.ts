@@ -30,6 +30,7 @@ import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { runAcpAgent } from "./acpRuntime.js";
 import { acpProcessPool, type AcpWarmConnection } from "./acpProcessPool.js";
 import { unregisterBrowserToolSession } from "../browserToolService.js";
+import { unregisterContextToolSession } from "../contextToolService.js";
 import { getCallerUserId } from "./callerContext.js";
 import { runLegacyCliAgent } from "./legacyRuntime.js";
 import { getDataDir, getLogDir } from "./db.js";
@@ -489,6 +490,14 @@ async function runCliAgent(
     mcpConfig: mcpConfigFingerprint(mcpServerIds),
     skills: (executionArgs.skills ?? []).map(({ id, contentHash, rootPath }) =>
       ({ id, contentHash, rootPath })).sort((a, b) => a.id.localeCompare(b.id)),
+    contextReferences: (executionArgs.contextReferences ?? []).map(
+      ({ id, referenceType, createdAt, transcript }) => ({
+        id,
+        referenceType,
+        createdAt,
+        transcriptPath: transcript?.path ?? null
+      })
+    ),
   })).digest("hex");
   const reused = warmKey ? acpProcessPool.take(warmKey, warmFingerprint, toolSessionId) : undefined;
   const child = reused?.child ?? spawn(spawnCommand.bin, spawnCommand.args, {
@@ -546,7 +555,10 @@ async function runCliAgent(
     const connection: AcpWarmConnection | undefined = warmKey ? reused ?? {
       child, fingerprint: warmFingerprint, conversationId: args.conversationId!, requestId: 0,
       dispose: () => {
-        if (connection?.previousRunId) unregisterBrowserToolSession(connection.previousRunId);
+        if (connection?.previousRunId) {
+          unregisterBrowserToolSession(connection.previousRunId);
+          unregisterContextToolSession(connection.previousRunId);
+        }
         try { killProcessTree(connection?.child ?? child, "term"); } catch { /* already closed */ }
       },
     } : undefined;

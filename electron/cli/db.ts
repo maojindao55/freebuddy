@@ -301,6 +301,9 @@ export function migrate(db: DB) {
     );
     CREATE INDEX IF NOT EXISTS idx_cli_agent_accounts_adapter
       ON cli_agent_accounts(adapter, is_active DESC, updated_at DESC);
+    UPDATE cli_agent_accounts
+       SET label = substr(label, 1, length(label) - 13)
+     WHERE label LIKE '% (auto-saved)' AND length(label) > 13;
 
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,

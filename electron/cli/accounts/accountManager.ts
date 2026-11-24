@@ -199,7 +199,7 @@ export function createCliAccountManager(deps: CliAccountManagerDeps = {}) {
       const baseName = detected.identity || "Antigravity";
       createAccountRecord({
         adapter,
-        label: `${baseName} (auto-saved)`,
+        label: baseName,
         accountIdentity: detected.identity,
         authMethod: detected.authMethod,
         storageMode: driver.storageMode,

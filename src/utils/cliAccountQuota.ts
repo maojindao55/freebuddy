@@ -96,3 +96,42 @@ export function primaryQuotaSummary(
     stale: pills[0].stale
   };
 }
+
+/** Removes any legacy auto-saved suffix when displaying account labels. */
+export function cleanCliAccountLabel(label: string): string {
+  const cleaned = label.replace(/\s*\(auto-saved\)$/i, "").trim();
+  return cleaned || label;
+}
+
+/**
+ * Formats an account label for compact single-line headers, showing only the
+ * email local-part unless another account in the list shares that prefix.
+ */
+export function compactCliAccountTriggerLabel(
+  rawLabel: string,
+  allAccounts: readonly { label: string; accountIdentity?: string }[]
+): string {
+  const cleaned = cleanCliAccountLabel(rawLabel);
+  const atIndex = cleaned.indexOf("@");
+  if (atIndex <= 0) return cleaned;
+
+  const localPart = cleaned.slice(0, atIndex);
+  const normalizedTarget = cleaned.toLowerCase();
+  const normalizedLocal = localPart.toLowerCase();
+
+  const hasLocalPartCollision = allAccounts.some((account) => {
+    const candidates = [account.accountIdentity, cleanCliAccountLabel(account.label)];
+    return candidates.some((candidate) => {
+      if (!candidate) return false;
+      const lower = candidate.trim().toLowerCase();
+      const idx = lower.indexOf("@");
+      return (
+        idx > 0 &&
+        lower !== normalizedTarget &&
+        lower.slice(0, idx) === normalizedLocal
+      );
+    });
+  });
+
+  return hasLocalPartCollision ? cleaned : localPart;
+}

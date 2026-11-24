@@ -17450,20 +17450,20 @@ button.ghost:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 9px 10px 9px 14px;
+  padding: 8px 10px 8px 8px;
   border-bottom: 1px solid var(--fb-border);
 }
 
 .antigravity-usage-header-main {
   display: flex;
   align-items: center;
-  gap: 6px;
   flex: 1 1 auto;
   min-width: 0;
 }
 
 .antigravity-usage-brand {
   flex: 0 0 auto;
+  padding-left: 6px;
   color: var(--fb-text-tertiary);
   font-size: 11px;
   font-weight: 700;
@@ -17472,18 +17472,10 @@ button.ghost:disabled {
   line-height: 18px;
 }
 
-.antigravity-usage-sep {
-  flex: 0 0 auto;
-  color: var(--fb-text-tertiary);
-  opacity: 0.55;
-  font-size: 12px;
-  line-height: 1;
-}
-
 .antigravity-account-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
@@ -17503,6 +17495,11 @@ button.ghost:disabled {
 .antigravity-account-trigger[aria-expanded="true"] {
   border-color: var(--fb-border);
   background: var(--fb-hover);
+}
+
+.antigravity-account-trigger-icon {
+  flex: 0 0 auto;
+  color: var(--fb-text-tertiary);
 }
 
 .antigravity-account-trigger-label {

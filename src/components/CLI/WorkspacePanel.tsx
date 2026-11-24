@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseStoredStreamItems } from "@freebuddy/cli-stream";
-import { Check, ChevronDown, Download, Plus, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Download, Plus, RefreshCw, User } from "lucide-react";
 import { delegationClient, type DelegationRunRow } from "@/services/delegation/client";
 
 import type { TFunction } from "i18next";
@@ -24,7 +24,6 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { useProjectStore } from "@/store/projectStore";
 import {
   cleanCliAccountLabel,
-  compactCliAccountTriggerLabel,
   formatAccountQuotaPercent,
   primaryQuotaSummary
 } from "@/utils/cliAccountQuota";
@@ -569,10 +568,6 @@ export function WorkspacePanel(_props: { runningCount: number }) {
                   : activeAccount
                     ? activeAccount.label
                     : t("workspace.antigravityAccounts.noneSignedIn");
-            const compactLabel = compactCliAccountTriggerLabel(
-              rawTriggerLabel,
-              accounts
-            );
             const cleanedFullLabel = cleanCliAccountLabel(rawTriggerLabel);
             const fullTriggerTitle =
               activeAccount?.accountIdentity ||
@@ -590,46 +585,40 @@ export function WorkspacePanel(_props: { runningCount: number }) {
                 <div className="antigravity-usage-header">
                   <div className="antigravity-usage-header-main">
                     {supportsAccounts ? (
-                      <>
-                        <span
-                          className="antigravity-usage-brand"
-                          title={t("workspace.antigravityUsage")}
-                        >
-                          Antigravity
+                      <button
+                        type="button"
+                        className="antigravity-account-trigger"
+                        aria-haspopup="menu"
+                        aria-expanded={accountMenuOpen}
+                        title={fullTriggerTitle}
+                        onClick={() => {
+                          clearCliAccountError("agy-acp");
+                          setAccountMenuOpen((open) => {
+                            const next = !open;
+                            if (next && accounts.length > 0 && !agyAccountsBusy) {
+                              void refreshCliAccountQuota("agy-acp");
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        <User
+                          size={13}
+                          className="antigravity-account-trigger-icon"
+                          aria-hidden="true"
+                        />
+                        {agyAccountsState?.externalAccountMismatch ? (
+                          <span className="antigravity-account-mismatch-dot" />
+                        ) : null}
+                        <span className="antigravity-account-trigger-label">
+                          {cleanedFullLabel}
                         </span>
-                        <span className="antigravity-usage-sep" aria-hidden="true">
-                          ·
-                        </span>
-                        <button
-                          type="button"
-                          className="antigravity-account-trigger"
-                          aria-haspopup="menu"
-                          aria-expanded={accountMenuOpen}
-                          title={fullTriggerTitle}
-                          onClick={() => {
-                            clearCliAccountError("agy-acp");
-                            setAccountMenuOpen((open) => {
-                              const next = !open;
-                              if (next && accounts.length > 0 && !agyAccountsBusy) {
-                                void refreshCliAccountQuota("agy-acp");
-                              }
-                              return next;
-                            });
-                          }}
-                        >
-                          {agyAccountsState?.externalAccountMismatch ? (
-                            <span className="antigravity-account-mismatch-dot" />
-                          ) : null}
-                          <span className="antigravity-account-trigger-label">
-                            {compactLabel}
-                          </span>
-                          <ChevronDown
-                            size={12}
-                            className="antigravity-account-trigger-chevron"
-                            aria-hidden="true"
-                          />
-                        </button>
-                      </>
+                        <ChevronDown
+                          size={12}
+                          className="antigravity-account-trigger-chevron"
+                          aria-hidden="true"
+                        />
+                      </button>
                     ) : (
                       <span
                         className="antigravity-usage-brand"

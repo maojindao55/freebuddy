@@ -1,8 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { resolveWindowsPowerShell } from "./windowsEnv.js";
-
-const execFileAsync = promisify(execFile);
+import { readSystemKeyringSecret } from "./systemKeyring.js";
 
 const DEFAULT_CLOUD_CODE_URL = "https://daily-cloudcode-pa.googleapis.com";
 const BUSINESS_CLOUD_CODE_URL = "https://cloudcode-pa.googleapis.com";
@@ -140,6 +136,102 @@ export async function readAntigravityUsage(
   }
 }
 
+export type ParsedAntigravityKeyringSecret =
+  | {
+      ok: true;
+      accessToken: string;
+      email?: string;
+      authMethod?: string;
+      expired: boolean;
+      expiryMs?: number;
+    }
+  | {
+      ok: false;
+      reason: "invalid_auth";
+      error: string;
+    };
+
+export function parseAntigravityKeyringSecret(
+  rawSecret: string,
+  nowMs?: number
+): ParsedAntigravityKeyringSecret {
+  let decodedText = rawSecret.trim();
+  const base64Prefix = "go-keyring-base64:";
+  if (decodedText.startsWith(base64Prefix)) {
+    try {
+      decodedText = Buffer.from(decodedText.slice(base64Prefix.length), "base64").toString("utf-8");
+    } catch {
+      return { ok: false, reason: "invalid_auth", error: "Malformed base64 secret" };
+    }
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(decodedText);
+  } catch {
+    return { ok: false, reason: "invalid_auth", error: "Invalid JSON in credentials" };
+  }
+
+  let tokenObj = parsed.token;
+  if (typeof tokenObj === "string" && tokenObj.startsWith("{")) {
+    try {
+      tokenObj = JSON.parse(tokenObj);
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!tokenObj || typeof tokenObj !== "object") {
+    return { ok: false, reason: "invalid_auth", error: "No token object found" };
+  }
+
+  const tokenRecord = tokenObj as Record<string, unknown>;
+  const accessToken = typeof tokenRecord.access_token === "string" ? tokenRecord.access_token : undefined;
+  if (!accessToken) {
+    return { ok: false, reason: "invalid_auth", error: "Missing access_token" };
+  }
+
+  let expired = false;
+  let expiryMs: number | undefined;
+  const expiry = tokenRecord.expiry;
+  if (typeof expiry === "string" || typeof expiry === "number") {
+    const parsedExpiryMs = typeof expiry === "number" ? expiry * 1000 : Date.parse(expiry);
+    if (Number.isFinite(parsedExpiryMs)) {
+      expiryMs = parsedExpiryMs;
+      const currentMs = nowMs ?? Date.now();
+      if (parsedExpiryMs <= currentMs) {
+        expired = true;
+      }
+    }
+  }
+
+  let email: string | undefined =
+    typeof parsed.id_token_email === "string" && parsed.id_token_email.trim()
+      ? parsed.id_token_email.trim()
+      : undefined;
+  const idToken = parsed.id_token;
+  if (!email && typeof idToken === "string") {
+    const claims = decodeJwtPayload(idToken);
+    if (claims && typeof claims === "object" && typeof (claims as Record<string, unknown>).email === "string") {
+      email = (claims as Record<string, unknown>).email as string;
+    }
+  }
+
+  const authMethod =
+    typeof parsed.auth_method === "string" && parsed.auth_method.trim()
+      ? parsed.auth_method.trim()
+      : undefined;
+
+  return {
+    ok: true,
+    accessToken,
+    email,
+    authMethod,
+    expired,
+    expiryMs
+  };
+}
+
 async function readAntigravityAuth(
   keyringReader: (() => Promise<string | null>) | undefined,
   fetchedAt: string,
@@ -172,182 +264,20 @@ async function readAntigravityAuth(
     return { ok: false, reason: "missing_auth", fetchedAt };
   }
 
-  let decodedText = rawSecret.trim();
-  const base64Prefix = "go-keyring-base64:";
-  if (decodedText.startsWith(base64Prefix)) {
-    try {
-      decodedText = Buffer.from(decodedText.slice(base64Prefix.length), "base64").toString("utf-8");
-    } catch {
-      return { ok: false, reason: "invalid_auth", error: "Malformed base64 secret", fetchedAt };
-    }
+  const parsed = parseAntigravityKeyringSecret(rawSecret, nowMs);
+  if (!parsed.ok) {
+    return { ok: false, reason: parsed.reason, error: parsed.error, fetchedAt };
   }
-
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(decodedText);
-  } catch {
-    return { ok: false, reason: "invalid_auth", error: "Invalid JSON in credentials", fetchedAt };
+  if (parsed.expired) {
+    return { ok: false, reason: "expired_token", error: "Access token is expired", fetchedAt };
   }
-
-  let tokenObj = parsed.token;
-  if (typeof tokenObj === "string" && tokenObj.startsWith("{")) {
-    try {
-      tokenObj = JSON.parse(tokenObj);
-    } catch {
-      // ignore
-    }
-  }
-
-  if (!tokenObj || typeof tokenObj !== "object") {
-    return { ok: false, reason: "invalid_auth", error: "No token object found", fetchedAt };
-  }
-
-  const tokenRecord = tokenObj as Record<string, unknown>;
-  const accessToken = typeof tokenRecord.access_token === "string" ? tokenRecord.access_token : undefined;
-  if (!accessToken) {
-    return { ok: false, reason: "invalid_auth", error: "Missing access_token", fetchedAt };
-  }
-
-  const expiry = tokenRecord.expiry;
-  if (typeof expiry === "string" || typeof expiry === "number") {
-    const expiryMs = typeof expiry === "number" ? expiry * 1000 : Date.parse(expiry);
-    const currentMs = nowMs ?? Date.now();
-    if (Number.isFinite(expiryMs) && expiryMs <= currentMs) {
-      return { ok: false, reason: "expired_token", error: "Access token is expired", fetchedAt };
-    }
-  }
-
-  let email: string | undefined =
-    typeof parsed.id_token_email === "string" && parsed.id_token_email.trim()
-      ? parsed.id_token_email.trim()
-      : undefined;
-  const idToken = parsed.id_token;
-  if (!email && typeof idToken === "string") {
-    const claims = decodeJwtPayload(idToken);
-    if (claims && typeof claims === "object" && typeof (claims as Record<string, unknown>).email === "string") {
-      email = (claims as Record<string, unknown>).email as string;
-    }
-  }
-
-  const authMethod =
-    typeof parsed.auth_method === "string" && parsed.auth_method.trim()
-      ? parsed.auth_method.trim()
-      : undefined;
 
   return {
     ok: true,
-    accessToken,
-    email,
-    authMethod
+    accessToken: parsed.accessToken,
+    email: parsed.email,
+    authMethod: parsed.authMethod
   };
-}
-
-async function readSystemKeyringSecret(service: string, account: string): Promise<string | null> {
-  const platform = process.platform;
-  if (platform === "darwin") {
-    const { stdout } = await execFileAsync("security", [
-      "find-generic-password",
-      "-s",
-      service,
-      "-a",
-      account,
-      "-w"
-    ]);
-    return stdout;
-  }
-
-  if (platform === "linux") {
-    const { stdout } = await execFileAsync("secret-tool", [
-      "lookup",
-      "service",
-      service,
-      "account",
-      account
-    ]);
-    return stdout;
-  }
-
-  if (platform === "win32") {
-    // On Windows, zalando/go-keyring uses Windows Credential Manager under the target name `<service>:<account>`
-    // using Win32 CredReadW (generic credentials). We invoke CredReadW via PowerShell P/Invoke.
-    const target = `${service}:${account}`;
-    const psScript = `
-$code = @'
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-
-public class WinCredReader {
-    [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool CredRead(string target, int type, int reservedFlag, out IntPtr credentialPtr);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern void CredFree(IntPtr buffer);
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct CREDENTIAL {
-        public uint Flags;
-        public uint Type;
-        public IntPtr TargetName;
-        public IntPtr Comment;
-        public long LastWritten;
-        public uint CredentialBlobSize;
-        public IntPtr CredentialBlob;
-        public uint Persist;
-        public uint AttributeCount;
-        public IntPtr Attributes;
-        public IntPtr TargetAlias;
-        public IntPtr UserName;
-    }
-
-    public static string ReadGeneric(string target) {
-        IntPtr credPtr = IntPtr.Zero;
-        if (!CredRead(target, 1, 0, out credPtr) || credPtr == IntPtr.Zero) {
-            return null;
-        }
-        try {
-            CREDENTIAL cred = (CREDENTIAL)Marshal.PtrToStructure(credPtr, typeof(CREDENTIAL));
-            if (cred.CredentialBlobSize == 0 || cred.CredentialBlob == IntPtr.Zero) {
-                return string.Empty;
-            }
-            byte[] bytes = new byte[cred.CredentialBlobSize];
-            Marshal.Copy(cred.CredentialBlob, bytes, 0, (int)cred.CredentialBlobSize);
-            if (bytes.Length >= 2 && bytes[1] == 0 && (bytes.Length < 4 || bytes[3] == 0)) {
-                return Encoding.Unicode.GetString(bytes);
-            }
-            return Encoding.UTF8.GetString(bytes);
-        } finally {
-            CredFree(credPtr);
-        }
-    }
-}
-'@;
-Add-Type -TypeDefinition $code;
-$secret = [WinCredReader]::ReadGeneric("${target}");
-if ($null -eq $secret -and "${service}") {
-    $secret = [WinCredReader]::ReadGeneric("${service}");
-}
-if ($null -ne $secret) {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
-    [Console]::Out.Write($secret);
-} else {
-    exit 1;
-}
-`;
-    const encodedCommand = Buffer.from(psScript, "utf16le").toString("base64");
-    const pwshPath = resolveWindowsPowerShell(process.env);
-    const { stdout } = await execFileAsync(pwshPath, [
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-EncodedCommand",
-      encodedCommand
-    ], { windowsHide: true });
-    return stdout;
-  }
-
-  throw new Error(`Unsupported keyring platform: ${platform}`);
 }
 
 function normalizeAntigravityUsageResponse(

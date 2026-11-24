@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseStoredStreamItems } from "@freebuddy/cli-stream";
+import { Check, ChevronDown, Download, Plus } from "lucide-react";
 import { delegationClient, type DelegationRunRow } from "@/services/delegation/client";
 
 import type { TFunction } from "i18next";
@@ -16,9 +17,15 @@ import type {
   ConversationMessage
 } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
+import { useCliAccountsStore } from "@/store/cliAccountsStore";
+import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
 import { useWorkflowStore } from "@/store/workflowStore";
 import { useProjectStore } from "@/store/projectStore";
+import {
+  formatAccountQuotaPercent,
+  primaryQuotaSummary
+} from "@/utils/cliAccountQuota";
 import { AgentAvatar } from "./AgentAvatar";
 import { AgentSessionCard } from "./AgentSessionCard";
 import { runCardElapsedMs, selectRunCardMetrics } from "./runCardMetrics";
@@ -55,7 +62,22 @@ export function WorkspacePanel(_props: { runningCount: number }) {
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
   const [antigravityUsage, setAntigravityUsage] = useState<AntigravityUsageResult | undefined>();
   const [antigravityUsageLoading, setAntigravityUsageLoading] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const [resetCreditsExpanded, setResetCreditsExpanded] = useState(false);
+  const agyAccountsState = useCliAccountsStore((s) => s.byAdapter["agy-acp"]);
+  const agyAccountsBusy = useCliAccountsStore(
+    (s) => s.busyByAdapter["agy-acp"] === true
+  );
+  const agyAccountsError = useCliAccountsStore(
+    (s) => s.errorByAdapter["agy-acp"]
+  );
+  const loadCliAccounts = useCliAccountsStore((s) => s.load);
+  const importCliAccount = useCliAccountsStore((s) => s.importCurrent);
+  const switchCliAccount = useCliAccountsStore((s) => s.switchAccount);
+  const startCliAccountLogin = useCliAccountsStore((s) => s.startLogin);
+  const refreshCliAccountQuota = useCliAccountsStore((s) => s.refreshQuota);
+  const clearCliAccountError = useCliAccountsStore((s) => s.clearError);
   const loadWorkflowForConversation = useWorkflowStore((s) => s.loadForConversation);
   const clearActiveWorkflowConversation = useWorkflowStore(
     (s) => s.clearActiveConversation
@@ -272,6 +294,32 @@ export function WorkspacePanel(_props: { runningCount: number }) {
   }, [isCodexAgent, status]);
 
   useEffect(() => {
+    if (!isAntigravityAgent || !cliClient.supportsCliAccounts()) {
+      setAccountMenuOpen(false);
+      return;
+    }
+    void loadCliAccounts("agy-acp");
+  }, [isAntigravityAgent, loadCliAccounts]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [accountMenuOpen]);
+
+  useEffect(() => {
     if (!isAntigravityAgent) {
       setAntigravityUsage(undefined);
       setAntigravityUsageLoading(false);
@@ -304,7 +352,13 @@ export function WorkspacePanel(_props: { runningCount: number }) {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [isAntigravityAgent, status]);
+  }, [
+    isAntigravityAgent,
+    status,
+    agyAccountsState?.activeAccountId,
+    agyAccountsState?.detectedSystemAccount?.identity,
+    agyAccountsState?.externalAccountMismatch
+  ]);
 
   return (
     <div className="workspace-cards" aria-label={t("workspace.panelAria")}>
@@ -523,6 +577,199 @@ export function WorkspacePanel(_props: { runningCount: number }) {
                 : t("workspace.antigravityUsageRefresh")}
             </button>
           </div>
+          {cliClient.supportsCliAccounts() && agyAccountsState?.supported && (
+            <div className="antigravity-account-bar" ref={accountMenuRef}>
+              {(() => {
+                const accounts = agyAccountsState.accounts;
+                const activeAccount = accounts.find(
+                  (account) => account.id === agyAccountsState.activeAccountId
+                );
+                const detectedIdentity =
+                  agyAccountsState.detectedSystemAccount?.identity ||
+                  (antigravityUsage?.ok ? antigravityUsage.email : undefined);
+                const triggerLabel =
+                  activeAccount && !agyAccountsState.externalAccountMismatch
+                    ? activeAccount.label
+                    : detectedIdentity
+                      ? detectedIdentity
+                      : activeAccount
+                        ? activeAccount.label
+                        : t("workspace.antigravityAccounts.noneSignedIn");
+                const switchBlocked = agyAccountsState.hasRunningTasks || isLive;
+
+                return (
+                  <>
+                    <button
+                      type="button"
+                      className="antigravity-account-trigger"
+                      aria-haspopup="menu"
+                      aria-expanded={accountMenuOpen}
+                      title={
+                        activeAccount?.accountIdentity ||
+                        detectedIdentity ||
+                        triggerLabel
+                      }
+                      onClick={() => {
+                        clearCliAccountError("agy-acp");
+                        setAccountMenuOpen((open) => {
+                          const next = !open;
+                          if (next && accounts.length > 0 && !agyAccountsBusy) {
+                            void refreshCliAccountQuota("agy-acp");
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      <span className="antigravity-account-trigger-label">
+                        {triggerLabel}
+                      </span>
+                      {agyAccountsState.externalAccountMismatch ? (
+                        <span className="antigravity-account-mismatch-dot" />
+                      ) : null}
+                      <ChevronDown size={13} aria-hidden="true" />
+                    </button>
+
+                    {agyAccountsError ? (
+                      <div className="antigravity-account-error" role="alert">
+                        {agyAccountsError}
+                      </div>
+                    ) : null}
+
+                    {accountMenuOpen ? (
+                      <div
+                        className="antigravity-account-popover"
+                        role="menu"
+                        aria-label={t("workspace.antigravityAccounts.menuAria")}
+                      >
+                        {accounts.length > 0 ? (
+                          <div className="antigravity-account-options">
+                            {accounts.map((account) => {
+                              const isCurrent =
+                                account.isActive &&
+                                !agyAccountsState.externalAccountMismatch;
+                              const summary = primaryQuotaSummary(
+                                account.quotaSnapshot
+                              );
+                              const isExpired =
+                                account.quotaSnapshot?.ok === false &&
+                                account.quotaSnapshot.reason === "expired_token";
+                              return (
+                                <button
+                                  key={account.id}
+                                  type="button"
+                                  role="menuitemradio"
+                                  aria-checked={isCurrent}
+                                  className={`antigravity-account-option${
+                                    isCurrent ? " active" : ""
+                                  }`}
+                                  disabled={
+                                    isCurrent || agyAccountsBusy || switchBlocked
+                                  }
+                                  title={
+                                    switchBlocked && !isCurrent
+                                      ? t("workspace.antigravityAccounts.busyHint")
+                                      : account.accountIdentity || account.label
+                                  }
+                                  onClick={() => {
+                                    void switchCliAccount("agy-acp", account.id).then(
+                                      (res) => {
+                                        if (res) setAccountMenuOpen(false);
+                                      }
+                                    );
+                                  }}
+                                >
+                                  <span className="antigravity-account-option-check">
+                                    {isCurrent ? (
+                                      <Check size={13} aria-hidden="true" />
+                                    ) : null}
+                                  </span>
+                                  <span className="antigravity-account-option-copy">
+                                    <strong>{account.label}</strong>
+                                    {account.accountIdentity &&
+                                    account.accountIdentity !== account.label ? (
+                                      <small>{account.accountIdentity}</small>
+                                    ) : null}
+                                  </span>
+                                  {summary ? (
+                                    <span
+                                      className={`antigravity-account-option-quota ${summary.status}${
+                                        summary.stale ? " stale" : ""
+                                      }`}
+                                    >
+                                      {formatAccountQuotaPercent(summary.leftPercent)}%
+                                    </span>
+                                  ) : isExpired ? (
+                                    <span className="antigravity-account-option-quota expired">
+                                      {t("workspace.antigravityAccounts.expiredShort")}
+                                    </span>
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="antigravity-account-empty">
+                            {t("workspace.antigravityAccounts.empty")}
+                          </p>
+                        )}
+
+                        <div className="antigravity-account-popover-footer">
+                          {agyAccountsState.externalAccountMismatch &&
+                          agyAccountsState.detectedSystemAccount ? (
+                            <button
+                              type="button"
+                              className="antigravity-account-footer-btn"
+                              disabled={agyAccountsBusy}
+                              onClick={() => {
+                                const identity =
+                                  agyAccountsState.detectedSystemAccount?.identity;
+                                void importCliAccount("agy-acp", identity).then(
+                                  (res) => {
+                                    if (res) setAccountMenuOpen(false);
+                                  }
+                                );
+                              }}
+                            >
+                              <Download size={13} aria-hidden="true" />
+                              <span>
+                                {t("workspace.antigravityAccounts.importCurrent")}
+                              </span>
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="antigravity-account-footer-btn"
+                            disabled={agyAccountsBusy || switchBlocked}
+                            title={
+                              switchBlocked
+                                ? t("workspace.antigravityAccounts.busyHint")
+                                : undefined
+                            }
+                            onClick={() => {
+                              const agyExecutor = useCliExecutorStore
+                                .getState()
+                                .resolve("agy-acp");
+                              setAccountMenuOpen(false);
+                              void startCliAccountLogin({
+                                adapter: "agy-acp",
+                                binary: agyExecutor?.binary,
+                                env: agyExecutor?.env
+                              });
+                            }}
+                          >
+                            <Plus size={13} aria-hidden="true" />
+                            <span>
+                              {t("workspace.antigravityAccounts.addAccount")}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                );
+              })()}
+            </div>
+          )}
           {antigravityUsage?.ok ? (
             <div className="codex-limit-list antigravity-limit-list">
               {antigravityUsage.groups.map((group, gIdx) => (

@@ -4,6 +4,7 @@ import type { AcpStdioMcpServer } from "../shared/browserToolProtocol.js";
 
 export interface AcpWarmConnection {
   child: ChildProcessByStdio<Writable, Readable, Readable>;
+  adapter?: string;
   fingerprint: string;
   conversationId: string;
   initialize?: any;
@@ -64,6 +65,12 @@ export class AcpProcessPool {
 
   closeConversation(conversationId: string): void {
     for (const [key, { connection }] of this.idle) if (connection.conversationId === conversationId) this.discard(key);
+  }
+
+  disposeByAdapter(adapter: string): void {
+    for (const [key, { connection }] of this.idle) {
+      if (connection.adapter === adapter) this.discard(key);
+    }
   }
 
   dispose(): void { for (const key of this.idle.keys()) this.discard(key); }

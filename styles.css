@@ -17441,6 +17441,461 @@ button.ghost:disabled {
   color: var(--fb-text-tertiary);
 }
 
+.antigravity-account-bar {
+  position: relative;
+  padding: 0 14px 10px;
+}
+
+.antigravity-account-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-sm);
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.antigravity-account-trigger:hover {
+  border-color: var(--fb-border-strong);
+  background: var(--fb-hover);
+}
+
+.antigravity-account-trigger-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.antigravity-account-mismatch-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: var(--fb-warning, #f59e0b);
+}
+
+.antigravity-account-error {
+  margin-top: 6px;
+  color: var(--fb-danger);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.antigravity-account-popover {
+  position: absolute;
+  top: calc(100% - 6px);
+  left: 14px;
+  right: 14px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: var(--fb-rounded-md);
+  background: var(--fb-panel-bg);
+  box-shadow: var(--fb-shadow-lg, 0 10px 28px rgba(0, 0, 0, 0.22));
+}
+
+.antigravity-account-options {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.antigravity-account-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--fb-rounded-sm);
+  background: transparent;
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.antigravity-account-option:hover:not(:disabled) {
+  background: var(--fb-hover);
+}
+
+.antigravity-account-option.active {
+  background: var(--fb-brand-glow);
+}
+
+.antigravity-account-option:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.antigravity-account-option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--fb-brand);
+}
+
+.antigravity-account-option-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.antigravity-account-option-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.antigravity-account-option-copy small {
+  overflow: hidden;
+  color: var(--fb-text-tertiary);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.antigravity-account-option-quota {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.antigravity-account-option-quota.warning {
+  color: var(--fb-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.antigravity-account-option-quota.danger {
+  color: var(--fb-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.antigravity-account-option-quota.stale,
+.antigravity-account-option-quota.expired {
+  opacity: 0.65;
+  color: var(--fb-text-tertiary);
+  background: var(--fb-panel-soft);
+}
+
+.antigravity-account-empty {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
+.antigravity-account-popover-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--fb-border);
+}
+
+.antigravity-account-footer-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--fb-rounded-sm);
+  background: transparent;
+  color: var(--fb-brand);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.antigravity-account-footer-btn:hover:not(:disabled) {
+  background: var(--fb-brand-glow);
+}
+
+.antigravity-account-footer-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── CLI Multi-Account Settings Section ── */
+.cli-accounts-section {
+  gap: 12px;
+}
+
+.cli-accounts-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cli-accounts-heading {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cli-accounts-global-hint {
+  margin: 0;
+}
+
+.cli-accounts-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cli-accounts-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.cli-accounts-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.cli-accounts-switch-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--fb-brand);
+  border-color: var(--fb-brand-glow);
+}
+
+.cli-account-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: var(--fb-rounded-sm);
+  background: rgba(244, 63, 94, 0.08);
+  color: var(--fb-danger);
+  font-size: 12px;
+}
+
+.cli-account-error-dismiss {
+  flex: 0 0 auto;
+  color: inherit;
+}
+
+.cli-account-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border-strong);
+  border-radius: var(--fb-rounded-md);
+  background: var(--fb-panel-bg);
+  font-size: 12px;
+}
+
+.cli-account-banner.warn {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--fb-text-primary);
+}
+
+.cli-account-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cli-account-banner-copy span {
+  color: var(--fb-text-secondary);
+  font-size: 11.5px;
+}
+
+.cli-accounts-empty {
+  margin: 0;
+  font-size: 12px;
+}
+
+.cli-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cli-account-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--fb-border);
+  border-radius: var(--fb-rounded-md);
+  background: var(--fb-panel-bg);
+  transition: border-color 0.15s ease;
+}
+
+.cli-account-card.active {
+  border-color: var(--fb-brand);
+}
+
+.cli-account-card-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cli-account-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cli-account-label {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--fb-text-primary);
+}
+
+.cli-account-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.cli-account-badge.active {
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+}
+
+.cli-account-badge.out-of-sync {
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--fb-warning, #f59e0b);
+}
+
+.cli-account-identity {
+  font-size: 12px;
+  color: var(--fb-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cli-account-rename-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.cli-account-rename-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+}
+
+.cli-account-quota-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.cli-account-quota-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cli-account-quota-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.cli-account-quota-pill.warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--fb-warning, #f59e0b);
+}
+
+.cli-account-quota-pill.danger {
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--fb-danger, #ef4444);
+}
+
+.cli-account-quota-pill.stale {
+  opacity: 0.65;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-tertiary);
+}
+
+.cli-account-quota-note {
+  font-size: 11px;
+  color: var(--fb-text-tertiary);
+}
+
+.cli-account-quota-note.warn {
+  color: var(--fb-warning, #f59e0b);
+}
+
+.cli-account-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .codex-reset-credits small,
 .codex-limit-row small,
 .codex-usage-empty {

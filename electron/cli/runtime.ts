@@ -40,13 +40,17 @@ import { getToolSession } from "./store.js";
 import {
   appendLog,
   channelName,
+  hasActiveRunsForAdapter,
   insertTask,
+  markAdapterRunActive,
   setTaskPid,
+  unmarkAdapterRunActive,
   updateTaskStatus,
   type CliEvent,
   type CliRunArgs,
   type Running
 } from "./runtimeShared.js";
+import { getActiveAccountContext } from "./accounts/accountContext.js";
 import { getConversationMcpServerIds } from "./conversations.js";
 import { mcpConfigFingerprint } from "./mcpServers.js";
 import { killProcessTree } from "./process-kill.js";
@@ -76,6 +80,7 @@ import { RunMetricsCollector } from "./runMetricsCollector.js";
 import { resolveAntigravitySession } from "./antigravitySessions.js";
 import { isAntigravityBridgeBinary } from "../shared/antigravity.js";
 
+export { hasActiveRunsForAdapter };
 export type { CliEvent, CliRunArgs } from "./runtimeShared.js";
 
 const running = new Map<string, Running>();
@@ -234,7 +239,10 @@ async function runCliAgent(
   emit: (event: CliEvent) => void,
   metrics: RunMetricsCollector
 ): Promise<void> {
-
+  markAdapterRunActive(args.sessionId, args.adapter);
+  let delegatedRunCleanupToChild = false;
+  try {
+  const activeAccount = getActiveAccountContext(args.adapter) ?? { revision: 0 };
   const logFile = path.join(getLogDir(), `${args.sessionId}.jsonl`);
   let logStream: fs.WriteStream | null = null;
   try {
@@ -262,17 +270,24 @@ async function runCliAgent(
     const prev = toolSessionScope
       ? getToolSession(args.agentId, toolSessionScope)
       : undefined;
-    if (remoteIsolated) {
-      // Renderer history can contain a desktop-owned ACP session id. Remote
-      // callers may resume only the owner-scoped session stored server-side;
-      // trusting a renderer-supplied id can load another user's cwd/config.
-      if (prev?.adapter === args.adapter) {
-        toolSessionId = prev.sessionId;
-      }
-    } else {
-      toolSessionId = args.toolSessionId;
-      if (!toolSessionId && prev?.adapter === args.adapter) {
-        toolSessionId = prev.sessionId;
+    const accountMismatch = Boolean(
+      activeAccount.accountId &&
+        prev?.accountId &&
+        prev.accountId !== activeAccount.accountId
+    );
+    if (!accountMismatch) {
+      if (remoteIsolated) {
+        // Renderer history can contain a desktop-owned ACP session id. Remote
+        // callers may resume only the owner-scoped session stored server-side;
+        // trusting a renderer-supplied id can load another user's cwd/config.
+        if (prev?.adapter === args.adapter) {
+          toolSessionId = prev.sessionId;
+        }
+      } else {
+        toolSessionId = args.toolSessionId;
+        if (!toolSessionId && prev?.adapter === args.adapter) {
+          toolSessionId = prev.sessionId;
+        }
       }
     }
   }
@@ -420,8 +435,11 @@ async function runCliAgent(
   }
   const env = mergeBuiltEnv(
     mergeBuiltEnv(
-      applyManagedNodeEnvironment({ ...process.env, ...(effectiveArgs.env || {}) }, { install: true }),
-      built.env
+      mergeBuiltEnv(
+        applyManagedNodeEnvironment({ ...process.env, ...(effectiveArgs.env || {}) }, { install: true }),
+        built.env
+      ),
+      activeAccount.env
     ),
     byokEnv
   );
@@ -485,6 +503,7 @@ async function runCliAgent(
     bin: spawnCommand.bin, args: spawnCommand.args, cwd: executionArgs.cwd,
     env: Object.entries(spawnCommand.env).sort(([a], [b]) => a.localeCompare(b)),
     access: executionArgs.workspaceAccess, approval: executionArgs.approvalMode,
+    account: { accountId: activeAccount.accountId ?? null, revision: activeAccount.revision },
     mcpServerIds: mcpServerIds.slice().sort(),
     mcpConfig: mcpConfigFingerprint(mcpServerIds),
     skills: (executionArgs.skills ?? []).map(({ id, contentHash, rootPath }) =>
@@ -544,7 +563,7 @@ async function runCliAgent(
 
   if (built.protocol === "acp") {
     const connection: AcpWarmConnection | undefined = warmKey ? reused ?? {
-      child, fingerprint: warmFingerprint, conversationId: args.conversationId!, requestId: 0,
+      child, adapter: args.adapter, fingerprint: warmFingerprint, conversationId: args.conversationId!, requestId: 0,
       dispose: () => {
         if (connection?.previousRunId) unregisterBrowserToolSession(connection.previousRunId);
         try { killProcessTree(connection?.child ?? child, "term"); } catch { /* already closed */ }
@@ -608,6 +627,8 @@ async function runCliAgent(
   }
 
   if (processSandboxed) child.once("close", cleanupSandboxCommand);
+  delegatedRunCleanupToChild = true;
+  child.once("close", () => unmarkAdapterRunActive(args.sessionId));
   runLegacyCliAgent({
     child,
     args: executionArgs,
@@ -621,6 +642,11 @@ async function runCliAgent(
     metrics,
     resumed: Boolean(toolSessionId) || userControlsResume
   });
+  } finally {
+    if (!delegatedRunCleanupToChild) {
+      unmarkAdapterRunActive(args.sessionId);
+    }
+  }
 }
 
 export function cliKill(sessionId: string): boolean {

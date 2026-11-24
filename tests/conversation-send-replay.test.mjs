@@ -170,6 +170,10 @@ async function loadConversationStoreHarness() {
       getState: () => ({ projects: [] })
     };
 
+    export const useCliAccountsStore = {
+      getState: () => ({ activeAccountIdForAdapter: () => undefined })
+    };
+
     export const buildOrphanFollowupContext = () => undefined;
     export const composeOrphanFollowupPrompt = (prompt) => prompt;
     export const defaultTitleFor = () => "Mock ACP";

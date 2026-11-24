@@ -33,6 +33,7 @@ import {
   resolveConfigOptionOverrides
 } from "@/utils/sessionConfigOptions";
 
+import { useCliAccountsStore } from "./cliAccountsStore";
 import { useCliExecutorStore } from "./cliExecutorStore";
 import { useProjectStore } from "./projectStore";
 import {
@@ -1615,17 +1616,28 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ? workflowFollowupToolSessionScope(workflowRun, member)
       : `conversation:${conv.id}`;
 
+    const activeAccountId =
+      useCliAccountsStore?.getState?.()?.activeAccountIdForAdapter?.(
+        member.cli.adapter
+      );
     let resumedFromSessionId: string | undefined;
     if (!wantFresh) {
       const prev = await cliClient.getToolSession(member.id, toolSessionScope);
-      if (prev && prev.adapter === member.cli.adapter) {
-        resumedFromSessionId = prev.sessionId;
-      }
-      if (!workflowRun) {
-        resumedFromSessionId ??= latestSessionIdFromMessages(
-          get().messages[conversationId] ?? [],
-          member.cli.adapter
-        );
+      const accountMismatch = Boolean(
+        activeAccountId &&
+          prev?.accountId &&
+          prev.accountId !== activeAccountId
+      );
+      if (!accountMismatch) {
+        if (prev && prev.adapter === member.cli.adapter) {
+          resumedFromSessionId = prev.sessionId;
+        }
+        if (!workflowRun) {
+          resumedFromSessionId ??= latestSessionIdFromMessages(
+            get().messages[conversationId] ?? [],
+            member.cli.adapter
+          );
+        }
       }
     }
     const userPrompt = composeMessageWithAttachments(trimmed, attachments);

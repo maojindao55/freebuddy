@@ -194,6 +194,17 @@ import { registerDelegationTeamIpc } from "./delegationTeamIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
 import { readAntigravityUsage } from "./antigravityUsage.js";
 import {
+  deleteAccount,
+  getAccountsState,
+  importCurrentSystemAccount,
+  recordActiveUsageSnapshot,
+  refreshAccountQuota,
+  renameAccount,
+  startInteractiveAccountLogin,
+  switchAccount
+} from "./accounts/accountManager.js";
+import type { CliAccountLoginInput } from "../shared/cliAccountTypes.js";
+import {
   deleteSkill,
   importSkills,
   listSkills,
@@ -961,7 +972,48 @@ export function registerCliIpc() {
   registerHandler("cli:prepareUpgrade", (_e, args: CliRuntimeUpdateRequest) => prepareCliUpgrade(args));
   registerHandler("cli:verifyUpgrade", (_e, args: { request: CliRuntimeUpdateRequest; plan: CliUpgradePlan }) => verifyCliUpgrade(args.request, args.plan));
   registerHandler("cli:codexUsage", () => readCodexUsage());
-  registerHandler("cli:antigravityUsage", () => readAntigravityUsage());
+  registerHandler("cli:antigravityUsage", async () => {
+    const result = await readAntigravityUsage();
+    recordActiveUsageSnapshot("agy-acp", result);
+    return result;
+  });
+  registerHandler("cliAccounts:getState", (_e, adapter: string) =>
+    getAccountsState(adapter)
+  );
+  registerHandler(
+    "cliAccounts:importCurrent",
+    (_e, args: { adapter: string; label?: string }) =>
+      importCurrentSystemAccount(args.adapter, args.label)
+  );
+  registerHandler(
+    "cliAccounts:switch",
+    (_e, args: { adapter: string; accountId: string }) =>
+      switchAccount(args.adapter, args.accountId)
+  );
+  registerHandler(
+    "cliAccounts:startLogin",
+    (event, args: CliAccountLoginInput) =>
+      startInteractiveAccountLogin(args, (cliEvent) => {
+        safeSendToWebContents(
+          event.sender,
+          "cli-accounts://auth-terminal",
+          cliEvent
+        );
+      })
+  );
+  registerHandler(
+    "cliAccounts:refreshQuota",
+    (_e, args: { adapter: string; accountId?: string }) =>
+      refreshAccountQuota(args.adapter, args.accountId)
+  );
+  registerHandler(
+    "cliAccounts:rename",
+    (_e, args: { id: string; label: string }) =>
+      renameAccount(args.id, args.label)
+  );
+  registerHandler("cliAccounts:delete", (_e, id: string) =>
+    deleteAccount(id)
+  );
   registerHandler("cli:probeAuthentication", (_e, args: CliAuthControlArgs) =>
     probeAcpAuthentication(args)
   );

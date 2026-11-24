@@ -21,6 +21,7 @@ import { useWorkflowStore } from "@/store/workflowStore";
 import { useProjectStore } from "@/store/projectStore";
 import { AgentAvatar } from "./AgentAvatar";
 import { AgentSessionCard } from "./AgentSessionCard";
+import { ConversationDigestCard } from "./ConversationDigestCard";
 import { runCardElapsedMs, selectRunCardMetrics } from "./runCardMetrics";
 import { InfoCardHost } from "../InfoCards/InfoCardHost";
 import { WorkflowRunPanel } from "../Workflows/WorkflowRunPanel";
@@ -36,7 +37,12 @@ type PlanEntry = PlanItem["entries"][number];
 // reference when there is no active conversation (avoids re-renders).
 const EMPTY_MESSAGES: ConversationMessage[] = [];
 
-export function WorkspacePanel(_props: { runningCount: number }) {
+export function WorkspacePanel({
+  onJumpToMessage
+}: {
+  runningCount: number;
+  onJumpToMessage?: (conversationId: string, messageId: string) => void;
+}) {
   const { t, i18n } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const conversations = useConversationStore((s) => s.conversations);
@@ -383,6 +389,14 @@ export function WorkspacePanel(_props: { runningCount: number }) {
             ))}
           </ol>
         </section>
+      )}
+
+      {activeId && (
+        <ConversationDigestCard
+          conversationId={activeId}
+          messageCount={totalMessages}
+          onJumpToMessage={onJumpToMessage}
+        />
       )}
 
       {isCodexAgent && (

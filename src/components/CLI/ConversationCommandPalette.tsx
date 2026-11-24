@@ -6,12 +6,16 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { ListTodo, Search } from "lucide-react";
+import { ListTodo, Search, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { displayAgentName } from "@/config/agentDisplay";
+import { cliClient } from "@/services/cli/client";
 import { useConversationStore } from "@/store/conversationStore";
-import type { Conversation } from "@/services/cli/types";
+import type {
+  Conversation,
+  ConversationTopicSearchHit
+} from "@/services/cli/types";
 import {
   conversationDisplayCwd,
   projectLabelFromCwd,
@@ -42,7 +46,8 @@ export function ConversationCommandPalette({
   onOpenFreebie,
   onOpenSettings,
   onImportCodexSession,
-  onSelectConversation
+  onSelectConversation,
+  onSelectTopic
 }: {
   open: boolean;
   onClose: () => void;
@@ -54,6 +59,7 @@ export function ConversationCommandPalette({
   onOpenSettings: () => void;
   onImportCodexSession: () => void;
   onSelectConversation?: (conversationId: string) => void;
+  onSelectTopic?: (conversationId: string, messageId: string) => void;
 }) {
   const { t } = useTranslation();
   const titleId = useId();
@@ -65,6 +71,7 @@ export function ConversationCommandPalette({
   const setActive = useConversationStore((s) => s.setActive);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [topicHits, setTopicHits] = useState<ConversationTopicSearchHit[]>([]);
 
   const currentProjectCwd = useMemo(() => {
     const active = conversations.find((conversation) => conversation.id === activeId);
@@ -195,12 +202,13 @@ export function ConversationCommandPalette({
       .slice(0, RESULT_LIMIT);
   }, [conversations, query, t]);
 
-  const selectableCount = results.length + actions.length;
+  const selectableCount = results.length + topicHits.length + actions.length;
 
   useEffect(() => {
     if (!open) {
       setQuery("");
       setActiveIndex(0);
+      setTopicHits([]);
       return;
     }
     previousFocusRef.current = document.activeElement as HTMLElement | null;
@@ -210,6 +218,30 @@ export function ConversationCommandPalette({
       previousFocusRef.current?.focus();
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const trimmed = query.trim();
+    if (trimmed.length < 2 || !cliClient.isAvailable()) {
+      setTopicHits([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void cliClient
+        .searchConversationTopics({ query: trimmed, limit: 6 })
+        .then((hits) => {
+          if (!cancelled) setTopicHits(hits);
+        })
+        .catch(() => {
+          if (!cancelled) setTopicHits([]);
+        });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, query]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -232,13 +264,26 @@ export function ConversationCommandPalette({
     onClose();
   };
 
+  const selectTopicHit = (hit: ConversationTopicSearchHit) => {
+    if (onSelectTopic) onSelectTopic(hit.conversationId, hit.startMessageId);
+    else if (onSelectConversation) onSelectConversation(hit.conversationId);
+    else void setActive(hit.conversationId);
+    onClose();
+  };
+
   const activateIndex = (index: number) => {
     if (index < results.length) {
       const conversation = results[index];
       if (conversation) selectConversation(conversation);
       return;
     }
-    const action = actions[index - results.length];
+    const topicIndex = index - results.length;
+    if (topicIndex < topicHits.length) {
+      const hit = topicHits[topicIndex];
+      if (hit) selectTopicHit(hit);
+      return;
+    }
+    const action = actions[topicIndex - topicHits.length];
     action?.run();
   };
 
@@ -380,6 +425,51 @@ export function ConversationCommandPalette({
               </ul>
             )}
           </section>
+          {topicHits.length > 0 && (
+            <section
+              className="command-palette-section command-palette-topics"
+              aria-label={t("commandPalette.matchingTopics")}
+            >
+              <h5>{t("commandPalette.matchingTopics")}</h5>
+              <ul role="listbox" aria-label={t("commandPalette.matchingTopics")}>
+                {topicHits.map((hit, hitIndex) => {
+                  const index = results.length + hitIndex;
+                  return (
+                    <li key={`${hit.conversationId}:${hit.topicId}`} role="none">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={activeIndex === index}
+                        className={`command-palette-row command-palette-topic-row${activeIndex === index ? " active" : ""}`}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        onClick={() => selectTopicHit(hit)}
+                      >
+                        <span className="command-palette-row-title">
+                          <Sparkles
+                            size={13}
+                            className="command-palette-topic-icon"
+                            aria-hidden="true"
+                          />
+                          <span className="command-palette-topic-text">
+                            <strong>{hit.title}</strong>
+                            {hit.summary && hit.summary !== hit.title && (
+                              <small>{hit.summary}</small>
+                            )}
+                          </span>
+                        </span>
+                        <span className="command-palette-row-meta">
+                          {hit.conversationTitle}
+                        </span>
+                        <span className={`command-palette-topic-status is-${hit.status}`}>
+                          {t(`conversationDigest.status.${hit.status}`)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
           <section
             className="command-palette-section command-palette-actions"
             aria-label={t("commandPalette.recommended")}
@@ -387,7 +477,7 @@ export function ConversationCommandPalette({
             <h5>{t("commandPalette.recommended")}</h5>
             <ul>
               {actions.map((action, actionIndex) => {
-                const index = results.length + actionIndex;
+                const index = results.length + topicHits.length + actionIndex;
                 return (
                   <li key={action.id}>
                     <button

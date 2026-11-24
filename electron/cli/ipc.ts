@@ -19,6 +19,13 @@ import { pathToFileURL } from "node:url";
 import { cliAdapterDefinitions } from "./adapters.js";
 import { readMessageDetails } from "./messageDetails.js";
 import { listConversationOverviews } from "./conversationOverview.js";
+import {
+  getConversationDigest,
+  getConversationDigestConfigState,
+  scheduleConversationDigest,
+  searchConversationTopics,
+  setConversationDigestConfig
+} from "./conversationDigest.js";
 import { listMessageFileEdits, readMessageFileEdit, readFileEditBlob, readFileEditSnapshot, readTurnFileSnapshotForHandoff } from "./fileEditBlobs.js";
 import { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
 import type { CliRuntimeUpdateRequest, CliUpgradePlan } from "../shared/cliRuntimeUpdate.js";
@@ -72,6 +79,7 @@ import {
   listConversations,
   getMessageForIpc,
   listMessages,
+  listMessagesAroundForIpc,
   listMessagesForIpc,
   listFollowupMessagesForIpc,
   moveConversationToProject,
@@ -1374,6 +1382,49 @@ export function registerCliIpc() {
   registerHandler("cli:listConversationOverviews", (_e, conversationIds: string[]) =>
     listConversationOverviews(conversationIds)
   );
+  registerHandler("cli:getConversationDigest", (_e, conversationId: string) =>
+    getConversationDigest(conversationId)
+  );
+  registerHandler(
+    "cli:refreshConversationDigest",
+    (_e, args: { conversationId: string; forceRebuild?: boolean }) => {
+      const conversationId = String(args?.conversationId ?? "").trim();
+      if (!conversationId || !requireOwnedConversation(conversationId)) {
+        return null;
+      }
+      const queued = scheduleConversationDigest(conversationId, {
+        immediate: true,
+        forceRebuild: Boolean(args?.forceRebuild)
+      });
+      const current = getConversationDigest(conversationId);
+      if (current && queued && current.status !== "running") {
+        return { ...current, status: "queued" as const };
+      }
+      return current;
+    }
+  );
+  registerHandler(
+    "cli:searchConversationTopics",
+    (
+      _e,
+      args: { query: string; limit?: number; includeArchived?: boolean }
+    ) => searchConversationTopics(args ?? { query: "" })
+  );
+  registerHandler("cli:getConversationDigestConfig", () =>
+    getConversationDigestConfigState()
+  );
+  registerHandler(
+    "cli:setConversationDigestConfig",
+    (
+      _e,
+      patch: {
+        enabled?: boolean;
+        providerId?: string;
+        model?: string;
+        minUserTurns?: number;
+      }
+    ) => setConversationDigestConfig(patch ?? {})
+  );
   registerHandler("cli:getConversation", (_e, id: string) =>
     requireOwnedConversation(id)
   );
@@ -1827,6 +1878,19 @@ export function registerCliIpc() {
         return { messages: [], hasMore: false };
       }
       const page = listMessagesForIpc(conversationId, options);
+      return {
+        messages: sanitizeMessagesForIpc(page.messages),
+        hasMore: page.hasMore
+      };
+    }
+  );
+  registerHandler(
+    "cli:listMessagesAround",
+    (_e, conversationId: string, targetMessageId: string) => {
+      if (!requireOwnedConversation(conversationId)) {
+        return { messages: [], hasMore: false };
+      }
+      const page = listMessagesAroundForIpc(conversationId, targetMessageId);
       return {
         messages: sanitizeMessagesForIpc(page.messages),
         hasMore: page.hasMore

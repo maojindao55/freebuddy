@@ -29,20 +29,24 @@ const ALLOW = [
   "cli:deleteConversation",
   "cli:forkConversation",
   "cli:getConversation",
+  "cli:getConversationDigest",
   "cli:listConversationContextReferences",
   "cli:listConversations",
   "cli:listConversationOverviews",
   "cli:listFollowupMessages",
   "cli:listMessage",
   "cli:listMessages",
+  "cli:listMessagesAround",
   "cli:readMessageDetails",
   "cli:listMessageFileEdits",
   "cli:moveConversationToProject",
   "cli:readFileEditBlob",
   "cli:readMessageFileEdit",
+  "cli:refreshConversationDigest",
   "cli:removeConversationContextReference",
   "cli:renameConversation",
   "cli:resetConversationOrder",
+  "cli:searchConversationTopics",
   "cli:setConversationApprovalMode",
   "cli:setConversationConfigOptionOverrides",
   "cli:setConversationOrder",
@@ -226,6 +230,10 @@ const ADMIN_ONLY = [
   // Per-conversation MCP server selection - remote users cannot use MCP.
   "cli:getConversationMcpServerIds",
   "cli:setConversationMcpServerIds",
+
+  // Digest provider/model configuration is host-level configuration.
+  "cli:getConversationDigestConfig",
+  "cli:setConversationDigestConfig",
 
   // 服务商含 API Key：读是脱敏列表，写是 host 配置，均仅桌面端。
   "providers:list",

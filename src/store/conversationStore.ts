@@ -125,6 +125,7 @@ export interface ConversationState {
   setActive(id: string | undefined): Promise<void>;
   loadMessages(id: string, messageIds?: string[]): Promise<void>;
   loadOlderMessages(id: string): Promise<number>;
+  ensureMessageLoaded(conversationId: string, messageId: string): Promise<boolean>;
   markConversationUnread(id: string): void;
   markConversationCompletedUnread(
     id: string,
@@ -1008,6 +1009,34 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     } finally {
       olderMessagesInFlight.delete(id);
     }
+  },
+
+  async ensureMessageLoaded(conversationId, messageId) {
+    if (!cliClient.isAvailable() || !conversationId || !messageId) return false;
+    const current = get().messages[conversationId] ?? [];
+    if (current.some((message) => message.id === messageId)) {
+      return true;
+    }
+    const page = await cliClient.listMessagesAround(conversationId, messageId);
+    let loadedTarget = false;
+    set((s) => {
+      const merged = mergeConversationMessages(
+        s.messages[conversationId] ?? [],
+        page.messages
+      );
+      loadedTarget = merged.some((message) => message.id === messageId);
+      return {
+        messages: {
+          ...s.messages,
+          [conversationId]: merged
+        },
+        olderMessagesAvailable: {
+          ...s.olderMessagesAvailable,
+          [conversationId]: page.hasMore
+        }
+      };
+    });
+    return loadedTarget;
   },
 
   async newConversation({

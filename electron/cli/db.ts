@@ -1328,6 +1328,41 @@ export function migrate(db: DB) {
     }
   }
 
+  // ---- ButlerBuddy Async Conversation Digest ----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_digest_state (
+      conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+      overall_summary TEXT,
+      source TEXT NOT NULL DEFAULT 'rule',
+      status TEXT NOT NULL DEFAULT 'idle',
+      last_message_id TEXT,
+      last_message_seq INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS conversation_topics (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      source TEXT NOT NULL DEFAULT 'rule',
+      start_message_id TEXT NOT NULL,
+      end_message_id TEXT NOT NULL,
+      turn_count INTEGER NOT NULL DEFAULT 1,
+      keywords_json TEXT NOT NULL DEFAULT '[]',
+      files_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_conversation_topics_conv
+      ON conversation_topics(conversation_id, sort_order ASC);
+    CREATE INDEX IF NOT EXISTS idx_conversation_topics_updated
+      ON conversation_topics(updated_at DESC);
+  `);
+
   installHostIdempotencySchema(db);
   pruneHostIdempotencyResults({
     db,

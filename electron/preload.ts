@@ -63,6 +63,33 @@ const cli = {
   },
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
   antigravityUsage: () => ipcRenderer.invoke("cli:antigravityUsage"),
+  getAccountsState: (adapter: string) =>
+    ipcRenderer.invoke("cliAccounts:getState", adapter),
+  importCurrentAccount: (args: { adapter: string; label?: string }) =>
+    ipcRenderer.invoke("cliAccounts:importCurrent", args),
+  switchAccount: (args: { adapter: string; accountId: string }) =>
+    ipcRenderer.invoke("cliAccounts:switch", args),
+  startAccountLogin: (args: unknown) =>
+    ipcRenderer.invoke("cliAccounts:startLogin", args),
+  refreshAccountQuota: (args: { adapter: string; accountId?: string }) =>
+    ipcRenderer.invoke("cliAccounts:refreshQuota", args),
+  renameAccount: (args: { id: string; label: string }) =>
+    ipcRenderer.invoke("cliAccounts:rename", args),
+  deleteAccount: (id: string) =>
+    ipcRenderer.invoke("cliAccounts:delete", id),
+  onAccountsChanged: (cb: (payload: { adapter?: string; at?: number }) => void): (() => void) => {
+    const channel = "cli-accounts://changed";
+    const handler = (_e: IpcRendererEvent, payload: { adapter?: string; at?: number }) =>
+      cb(payload ?? {});
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
+  onAccountAuthTerminalEvent: (cb: (event: unknown) => void): (() => void) => {
+    const channel = "cli-accounts://auth-terminal";
+    const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
   usageSummary: (period?: unknown) => ipcRenderer.invoke("cli:usageSummary", period),
   refreshUsage: (period?: unknown) => ipcRenderer.invoke("cli:refreshUsage", period),
   cursorUsageStatus: () => ipcRenderer.invoke("cli:cursorUsageStatus"),

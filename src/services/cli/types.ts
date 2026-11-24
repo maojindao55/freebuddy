@@ -543,6 +543,18 @@ export type AntigravityUsageResult =
       fetchedAt: string;
     };
 
+export type {
+  CliAccountLoginInput,
+  CliAccountMutationResult,
+  CliAccountQuotaBucket,
+  CliAccountQuotaGroup,
+  CliAccountQuotaSnapshot,
+  CliAccountStorageMode,
+  CliAgentAccount,
+  CliAgentSystemAccountState,
+  DetectedSystemAccount
+} from "../../../electron/shared/cliAccountTypes";
+
 export interface CliTaskRow {
   id: string;
   agentId: string;
@@ -590,6 +602,7 @@ export interface ToolSessionRecord {
   adapter: string;
   sessionId: string;
   title?: string;
+  accountId?: string;
   updatedAt: string;
 }
 

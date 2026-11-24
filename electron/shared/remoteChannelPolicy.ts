@@ -245,6 +245,13 @@ const ADMIN_ONLY = [
   // Host-level credentials for the coding CLIs.
   "cli:logout",
   "cli:probeAuthentication",
+  "cliAccounts:getState",
+  "cliAccounts:importCurrent",
+  "cliAccounts:switch",
+  "cliAccounts:startLogin",
+  "cliAccounts:refreshQuota",
+  "cliAccounts:rename",
+  "cliAccounts:delete",
   "cli:checkUpdates",
   "cli:verifyUpgrade",
   "cli:connectCursorUsage",

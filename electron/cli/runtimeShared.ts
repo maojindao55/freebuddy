@@ -461,3 +461,21 @@ export function pendingSessionInputCounts(): ReadonlyMap<string, number> {
   ]);
   return new Map([...sessions].map((sessionId) => [sessionId, pendingSessionInputCount(sessionId)]));
 }
+
+const activeRunAdapters = new Map<string, string>();
+
+export function markAdapterRunActive(sessionId: string, adapter: string): void {
+  if (!sessionId || !adapter) return;
+  activeRunAdapters.set(sessionId, adapter);
+}
+
+export function unmarkAdapterRunActive(sessionId: string): void {
+  activeRunAdapters.delete(sessionId);
+}
+
+export function hasActiveRunsForAdapter(adapter: string): boolean {
+  for (const activeAdapter of activeRunAdapters.values()) {
+    if (activeAdapter === adapter) return true;
+  }
+  return false;
+}

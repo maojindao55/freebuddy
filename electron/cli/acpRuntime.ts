@@ -113,6 +113,7 @@ import {
 } from "../delegationToolService.js";
 import { BUTLERBUDDY_AGENT_ID } from "./agentProfiles.js";
 import {
+  rebindContextToolSession,
   registerContextToolSession,
   unregisterContextToolSession
 } from "../contextToolService.js";
@@ -628,7 +629,7 @@ export async function runAcpAgent({
     unregisterSkillToolSession(args.sessionId);
     unregisterButlerToolSession(args.sessionId);
     unregisterDelegateToolSession(args.sessionId);
-    unregisterContextToolSession(args.sessionId);
+    if (!keepWarm) unregisterContextToolSession(args.sessionId);
     unregisterWorkspaceFsToolSession(args.sessionId);
     clearAuthenticationTerminalsForSession(args.sessionId);
     clearAuthenticationResolversForSession(args.sessionId);
@@ -1869,9 +1870,25 @@ export async function runAcpAgent({
         );
       }
       if (args.contextReferences?.length) {
-        mcpServers.push(
-          registerContextToolSession(args.sessionId, args.contextReferences)
+        const previousRunId = warmConnection?.previousRunId;
+        const rebound = Boolean(
+          warmConnection?.contextServer &&
+            previousRunId &&
+            rebindContextToolSession(previousRunId, args.sessionId)
         );
+        const contextServer = rebound
+          ? warmConnection!.contextServer!
+          : registerContextToolSession(args.sessionId, args.contextReferences);
+        if (warmConnection) {
+          warmConnection.contextServer = contextServer;
+          if (!rebound && warmConnection.sessionId) {
+            clearWarmSessionState();
+          }
+        }
+        mcpServers.push(contextServer);
+      } else if (warmConnection?.contextServer) {
+        warmConnection.contextServer = undefined;
+        if (warmConnection.sessionId) clearWarmSessionState();
       }
       const roots = (args.workspaceRoots ?? [])
         .map((root) => (typeof root === "string" ? root.trim() : ""))

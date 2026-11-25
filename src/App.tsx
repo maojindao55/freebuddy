@@ -42,7 +42,9 @@ import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
 import { FreebiePage } from "./components/Freebie/FreebiePage";
+import { useCliAccountsStore } from "./store/cliAccountsStore";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
+import { useAuthenticationStore } from "./store/authenticationStore";
 import { usePermissionStore } from "./store/permissionStore";
 import { useProviderStore } from "./store/providerStore";
 import { useConversationStore } from "./store/conversationStore";
@@ -285,6 +287,26 @@ function App() {
       }
     });
     return () => off?.();
+  }, []);
+
+  useEffect(() => {
+    if (!cliClient.supportsCliAccounts()) return;
+    void useCliAccountsStore.getState().load("agy-acp");
+    const off = cliClient.onAccountAuthTerminalEvent((event) => {
+      const auth = useAuthenticationStore.getState();
+      if (event.type === "authentication-terminal-started") {
+        auth.startTerminal("__cli-accounts__", event.request);
+      } else if (event.type === "authentication-terminal-update") {
+        auth.updateTerminal(event.requestId, {
+          output: event.output,
+          running: event.running,
+          exitCode: event.exitCode
+        });
+      } else if (event.type === "authentication-terminal-resolved") {
+        auth.removeTerminal(event.requestId);
+      }
+    });
+    return () => off();
   }, []);
 
   useEffect(() => {

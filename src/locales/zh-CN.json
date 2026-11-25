@@ -1143,6 +1143,15 @@
     "antigravityUsageWindow": "使用额度",
     "antigravityLeft": "剩余 {{percent}}%",
     "antigravityResetAt": "{{time}} 重置",
+    "antigravityAccounts": {
+      "noneSignedIn": "未托管账号",
+      "menuAria": "切换 Antigravity 账号",
+      "busyHint": "请等待当前 Antigravity 任务完成后再切换账号。",
+      "expiredShort": "已过期",
+      "empty": "暂无已保存账号。",
+      "importCurrent": "导入当前系统账号",
+      "addAccount": "添加账号"
+    },
     "codexResetCredits": "重置次数",
     "codexResetCreditsCount": "{{available}} 可用 / {{total}} 总计",
     "codexResetCreditsExpireAt": "下次 {{time}} 过期",
@@ -1569,7 +1578,32 @@
         "runtime_install_source_unknown": "当前代理不属于可识别的全局 npm 安装，请使用原安装方式升级后重新检测。",
         "runtime_update_managed_by_app": "此代理随 FreeBuddy 更新，请更新应用。"
       },
-      "installPreparationFailed": "无法开始安装或升级：{{reason}}"
+      "installPreparationFailed": "无法开始安装或升级：{{reason}}",
+      "accounts": {
+        "title": "多账号管理",
+        "globalSlotHint": "切换账号会更新系统钥匙串中的全局凭据，对所有 Antigravity 会话及终端 agy 命令同步生效。",
+        "refreshAll": "刷新全部额度",
+        "refreshOne": "刷新额度",
+        "add": "添加账号",
+        "runningTasksBlocked": "当前有正在运行的 Antigravity 任务，请等待任务结束后再切换或登录账号。",
+        "detectedTitle": "检测到系统当前已登录账号",
+        "detectedDescription": "系统钥匙串当前登录为 {{identity}}。",
+        "unknownIdentity": "未知账号",
+        "importCurrent": "导入当前账号",
+        "empty": "暂未保存任何账号。你可以添加新账号，或先在终端完成登录后导入。",
+        "renameAria": "账号别名",
+        "activeBadge": "当前使用",
+        "outOfSyncBadge": "已脱节",
+        "authMethodPersonal": "个人版",
+        "authMethodBusiness": "企业版",
+        "expiredHint": "凭据已过期 — 切换激活或重新登录后可刷新额度。",
+        "quotaError": "额度读取失败。",
+        "restoreActive": "恢复切换",
+        "switch": "切换",
+        "relogin": "重新登录",
+        "rename": "重命名",
+        "deleteConfirm": "确定移除已保存的账号“{{label}}”？（仅从 FreeBuddy 账号库移除，不会注销终端当前登录态。）"
+      }
     },
     "avatar": {
       "groups": {

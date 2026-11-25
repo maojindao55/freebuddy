@@ -23,11 +23,15 @@ import { localDiffFixture } from "./fixtures/agy-local-diff.mjs";
 
 const require = createRequire(import.meta.url);
 function load(file, services) {
-  const compiled = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true }
-  }).outputText;
+  const fileUrl = new URL(file, import.meta.url);
+  const compiled = ts.transpileModule(
+    fs.readFileSync(fileUrl, "utf8").replaceAll("import.meta.url", JSON.stringify(fileUrl.href)),
+    {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true }
+    }
+  ).outputText;
   const exports = {};
-  vm.runInNewContext(compiled, { exports, process, console, Buffer,
+  vm.runInNewContext(compiled, { exports, process, console, Buffer, URL,
     setTimeout: services.setTimeout ?? setTimeout, clearTimeout: services.clearTimeout ?? clearTimeout,
     require: name => {
       if (name === "node:fs" && services.fs) return services.fs;
@@ -40,6 +44,7 @@ function load(file, services) {
       if (name === "../shared/antigravity.js") return antigravity;
       if (name === "./antigravitySessions.js") return antigravitySessions;
       if (name === "./acpIdleMonitor.js" && services.acpIdleMonitor) return services.acpIdleMonitor;
+      if (name === "../contextToolService.js" && services.contextToolService) return services.contextToolService;
       if (name === "@freebuddy/cli-stream") return cliStream;
       if (name === "cross-spawn") return { __esModule: true, default: services.spawn };
       return new Proxy(services, { get: (object, key) => key === "__esModule" ? true : object[key] ?? (() => {}) });
@@ -628,4 +633,200 @@ test("terminal errors from passive replies stay failed", t => {
   f.advance(60000);
   assert.equal(row.status, "failed");
   assert.equal(f.running.size, 0);
+});
+
+function contextWarmRuntimeFixture(t, native) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freebuddy-agy-context-warm-"));
+  const pool = new AcpProcessPool();
+  const logCompletions = [];
+  t.after(async () => {
+    pool.dispose();
+    await Promise.all(logCompletions);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const children = [], requests = [];
+  let saved;
+  const noop = () => {};
+  const services = {
+    fs: { ...fs, createWriteStream: (...args) => {
+      const stream = fs.createWriteStream(...args);
+      logCompletions.push(finished(stream));
+      return stream;
+    } },
+    acpProcessPool: pool, RunMetricsCollector,
+    getLogDir: () => root, getDataDir: () => root,
+    getCallerUserId: () => "owner", getLanguage: () => "zh-CN",
+    getAdapterDefinition: () => ({ capabilities: { toolSession: true } }),
+    buildCommand: () => ({ bin: "fake-agy", args: [], protocol: "acp" }),
+    resolveCliByokEnv: () => ({}), sanitizeCliAgentEnv: env => env,
+    applyManagedNodeEnvironment: env => env,
+    getToolSession: () => saved,
+    saveToolSession: (_agent, _scope, adapter, sessionId) => { saved = { adapter, sessionId }; },
+    prepareTurnFileCapture: async input => ({ taskId: input.taskId }),
+    finalizeTurnFileCapture: async () => {},
+    persistFileEditItems: (_ctx, items) => items,
+    logMain: () => ({ info: noop, warn: noop, error: noop }),
+    safeSendToWebContents: noop,
+    adapterAcceptsClientMcpServers: () => true,
+    getConversation: () => ({ kind: "chat" }),
+    getConversationMcpServerIds: () => [],
+    createAcpTerminalManager: () => ({ dispose: noop }),
+    registerBrowserToolSession: async () => ({ name: "freebuddy-browser", command: "mock", args: [] }),
+    rebindBrowserToolSession: () => true,
+    unregisterBrowserToolSession: noop,
+    killProcessTree: child => child.kill(),
+    spawn: () => {
+      const child = new EventEmitter();
+      Object.assign(child, { pid: 4000 + children.length, exitCode: null, signalCode: null, stdout: new PassThrough(), stderr: new PassThrough() });
+      const reply = (request, result) => child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\n");
+      child.stdin = new Writable({ write(chunk, _encoding, callback) {
+        const request = JSON.parse(chunk.toString());
+        requests.push({ pid: child.pid, ...request });
+        callback();
+        queueMicrotask(() => {
+          if (request.method === "initialize") {
+            reply(request, {
+              protocolVersion: 1,
+              ...(native
+                ? { agentInfo: { name: "Antigravity ACP Server", version: "1.5.14" } }
+                : { _meta: { freebuddy: { persistentSession: true } } }),
+              agentCapabilities: { loadSession: true, sessionCapabilities: { list: {}, close: {} } }
+            });
+          } else if (request.method === "session/new" || request.method === "session/load") {
+            reply(request, { sessionId: "agy-ctx-session" });
+          } else if (request.method === "session/prompt") {
+            child.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: {
+              sessionId: "agy-ctx-session",
+              update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } }
+            } }) + "\n");
+            reply(request, { stopReason: "end_turn" });
+          } else if (request.method === "session/list") {
+            reply(request, { sessions: [] });
+          } else {
+            reply(request, {});
+          }
+        });
+      } });
+      child.kill = () => {
+        if (child.exitCode !== null) return;
+        child.exitCode = 0; child.signalCode = "SIGTERM";
+        child.stdin.destroy(); child.stdout.end(); child.stderr.end(); child.emit("close", 0);
+      };
+      children.push(child);
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    }
+  };
+
+  services.contextToolService = load("../electron/contextToolService.ts", { getDataDir: () => root });
+  services.runAcpAgent = load("../electron/cli/acpRuntime.ts", services).runAcpAgent;
+  const runtime = load("../electron/cli/runtime.ts", services);
+  const makeRef = (id) => ({
+    id,
+    referenceType: "share",
+    brief: {
+      version: 1,
+      generatedAt: "2026-11-22T08:00:00Z",
+      source: { conversationId: `src-${id}`, agentId: "cli-agy-acp", agentName: "Antigravity", adapter: "agy-acp", title: id, messageCount: 2 },
+      originalGoal: id,
+      recentUserMessages: [id],
+      lastAssistantSummary: id,
+      fileChanges: [],
+      transcriptExcerpts: []
+    },
+    source: { conversationId: `src-${id}`, agentId: "cli-agy-acp", agentName: "Antigravity", adapter: "agy-acp", title: id, messageCount: 2 },
+    createdAt: "2026-11-22T08:00:00Z"
+  });
+  const contextServerOf = req => req.params.mcpServers.find(server => server.name === "freebuddy-context");
+  const manifestPathOf = server => server?.env?.find(entry => entry.name === "FREEBUDDY_CONTEXT_MANIFEST")?.value;
+  const baseArgs = { adapter: "agy-acp", binary: native ? "agy" : "agy-acp", agentId: "agent", agentName: "AGY", conversationId: "chat-ctx", cwd: root, prompt: "hello" };
+  return { root, children, requests, runtime, wc: { id: 1 }, baseArgs, makeRef, contextServerOf, manifestPathOf };
+}
+
+for (const native of [false, true]) test(`AGY warm pool (${native ? "native" : "bridge"}) rebuilds on contextReference changes and retains manifest while warm`, async t => {
+  const f = contextWarmRuntimeFixture(t, native);
+  const refA = f.makeRef("ctx-a");
+  const refB = f.makeRef("ctx-b");
+
+  // Turn 1: no contextReferences.
+  await f.runtime.cliRun(f.wc, { ...f.baseArgs, sessionId: "t1" });
+  assert.equal(f.children.length, 1);
+  const new1 = f.requests.find(r => r.pid === f.children[0].pid && r.method === "session/new");
+  assert.equal(f.contextServerOf(new1), undefined);
+
+  // Turn 2: attaching refA misses warm fingerprint -> spawns new child and sends session/load with freebuddy-context.
+  await f.runtime.cliRun(f.wc, { ...f.baseArgs, sessionId: "t2", contextReferences: [refA] });
+  assert.equal(f.children.length, 2);
+  assert.equal(f.children[0].exitCode, 0);
+  const load2 = f.requests.find(r => r.pid === f.children[1].pid && r.method === "session/load");
+  assert.ok(load2);
+  const manifest2 = f.manifestPathOf(f.contextServerOf(load2));
+  assert.ok(manifest2);
+  assert.equal(fs.existsSync(manifest2), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(manifest2, "utf8")).references.map(r => r.id), ["ctx-a"]);
+
+  // Turn 3: unchanged refA reuses warm child and retains Turn 2 manifest on disk.
+  await f.runtime.cliRun(f.wc, { ...f.baseArgs, sessionId: "t3", contextReferences: [refA] });
+  assert.equal(f.children.length, 2);
+  assert.equal(fs.existsSync(manifest2), true);
+  assert.deepEqual(fs.readdirSync(path.join(f.root, "context-sessions")), [path.basename(manifest2)]);
+  const loadsOnChild1 = f.requests.filter(r => r.pid === f.children[1].pid && r.method === "session/load");
+  if (native) {
+    assert.equal(loadsOnChild1.length, 1);
+  } else {
+    assert.equal(loadsOnChild1.length, 2);
+    assert.deepEqual(loadsOnChild1[1].params.mcpServers, loadsOnChild1[0].params.mcpServers);
+  }
+
+  // Turn 4: adding refB misses warm fingerprint -> disposes Turn 2/3 child + deletes manifest2, spawns new child with [refA, refB].
+  await f.runtime.cliRun(f.wc, { ...f.baseArgs, sessionId: "t4", contextReferences: [refA, refB] });
+  assert.equal(f.children.length, 3);
+  assert.equal(f.children[1].exitCode, 0);
+  assert.equal(fs.existsSync(manifest2), false);
+  const load4 = f.requests.find(r => r.pid === f.children[2].pid && r.method === "session/load");
+  assert.ok(load4);
+  const manifest4 = f.manifestPathOf(f.contextServerOf(load4));
+  assert.ok(manifest4 && manifest4 !== manifest2);
+  assert.equal(fs.existsSync(manifest4), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(manifest4, "utf8")).references.map(r => r.id), ["ctx-a", "ctx-b"]);
+
+  // Turn 5: clearing contextReferences misses warm fingerprint -> disposes Turn 4 child + deletes manifest4, spawns new child without freebuddy-context.
+  await f.runtime.cliRun(f.wc, { ...f.baseArgs, sessionId: "t5", contextReferences: [] });
+  assert.equal(f.children.length, 4);
+  assert.equal(f.children[2].exitCode, 0);
+  assert.equal(fs.existsSync(manifest4), false);
+  const load5 = f.requests.find(r => r.pid === f.children[3].pid && r.method === "session/load");
+  assert.ok(load5);
+  assert.equal(f.contextServerOf(load5), undefined);
+
+  await f.runtime.shutdownCliProcesses();
+  assert.deepEqual(fs.readdirSync(path.join(f.root, "context-sessions")), []);
+});
+
+test("native AGY warm reuse re-registers context manifest and forces session/load if parked manifest disappears", async t => {
+  const f = contextWarmRuntimeFixture(t, true);
+  const refA = f.makeRef("ctx-a");
+
+  await f.runtime.cliRun(f.wc, { ...f.baseArgs, sessionId: "r1", contextReferences: [refA] });
+  assert.equal(f.children.length, 1);
+  const new1 = f.requests.find(r => r.pid === f.children[0].pid && r.method === "session/new");
+  const manifest1 = f.manifestPathOf(f.contextServerOf(new1));
+  assert.ok(manifest1);
+  assert.equal(fs.existsSync(manifest1), true);
+
+  // Simulate external deletion of the parked manifest before the next turn.
+  fs.unlinkSync(manifest1);
+
+  await f.runtime.cliRun(f.wc, { ...f.baseArgs, sessionId: "r2", contextReferences: [refA] });
+  assert.equal(f.children.length, 1);
+  const load2 = f.requests.find(r => r.pid === f.children[0].pid && r.method === "session/load");
+  assert.ok(load2, "missing parked manifest must trigger session/load with the re-registered server");
+  const manifest2 = f.manifestPathOf(f.contextServerOf(load2));
+  assert.ok(manifest2 && manifest2 !== manifest1);
+  assert.equal(fs.existsSync(manifest2), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(manifest2, "utf8")).references.map(r => r.id), ["ctx-a"]);
+
+  await f.runtime.shutdownCliProcesses();
+  assert.deepEqual(fs.readdirSync(path.join(f.root, "context-sessions")), []);
 });

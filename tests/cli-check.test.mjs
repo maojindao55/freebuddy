@@ -72,7 +72,7 @@ test("auxiliary background processes hide the Windows console window", () => {
     ["acpTerminal.ts", /stdio: \["ignore", "pipe", "pipe"\],\s*windowsHide: process\.platform === "win32"/],
     ["mcpServers.ts", /windowsVerbatimArguments: spawnConfig\.windowsVerbatimArguments,\s*windowsHide: process\.platform === "win32"/],
     ["nativePlugins.ts", /\{ env, windowsHide: process\.platform === "win32" \}/],
-    ["antigravityUsage.ts", /\], \{ windowsHide: true \}\);/]
+    ["systemKeyring.ts", /\], \{ windowsHide: true \}\);/]
   ]);
   for (const [file, pattern] of expected) {
     const source = fs.readFileSync(new URL(`../electron/cli/${file}`, import.meta.url), "utf8");

@@ -20,6 +20,9 @@ import type {
   CliTaskListArgs,
   CodexUsageResult,
   AntigravityUsageResult,
+  CliAccountLoginInput,
+  CliAccountMutationResult,
+  CliAgentSystemAccountState,
   AgentUsagePeriod,
   AgentUsageSummary,
   CursorUsageConnectInput,
@@ -177,6 +180,31 @@ declare global {
     ): () => void;
     codexUsage(): Promise<CodexUsageResult>;
     antigravityUsage(): Promise<AntigravityUsageResult>;
+    getAccountsState?(adapter: string): Promise<CliAgentSystemAccountState>;
+    importCurrentAccount?(args: {
+      adapter: string;
+      label?: string;
+    }): Promise<CliAccountMutationResult>;
+    switchAccount?(args: {
+      adapter: string;
+      accountId: string;
+    }): Promise<CliAccountMutationResult>;
+    startAccountLogin?(
+      args: CliAccountLoginInput
+    ): Promise<CliAccountMutationResult>;
+    refreshAccountQuota?(args: {
+      adapter: string;
+      accountId?: string;
+    }): Promise<CliAgentSystemAccountState>;
+    renameAccount?(args: {
+      id: string;
+      label: string;
+    }): Promise<CliAccountMutationResult>;
+    deleteAccount?(id: string): Promise<CliAgentSystemAccountState>;
+    onAccountsChanged?(
+      cb: (payload: { adapter?: string; at?: number }) => void
+    ): () => void;
+    onAccountAuthTerminalEvent?(cb: (event: CliEvent) => void): () => void;
     usageSummary(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     refreshUsage(period?: AgentUsagePeriod): Promise<AgentUsageSummary>;
     cursorUsageStatus(): Promise<CursorUsageStatus>;

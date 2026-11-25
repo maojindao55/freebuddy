@@ -278,8 +278,32 @@ export function migrate(db: DB) {
       session_id TEXT NOT NULL,
       title TEXT,
       owner_id TEXT,
+      account_id TEXT,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS cli_agent_accounts (
+      id TEXT PRIMARY KEY,
+      adapter TEXT NOT NULL,
+      label TEXT NOT NULL,
+      account_identity TEXT,
+      auth_method TEXT,
+      storage_mode TEXT NOT NULL,
+      credential_encrypted TEXT,
+      profile_dir TEXT,
+      is_active INTEGER NOT NULL DEFAULT 0,
+      quota_snapshot TEXT,
+      quota_updated_at TEXT,
+      last_used_at TEXT,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cli_agent_accounts_adapter
+      ON cli_agent_accounts(adapter, is_active DESC, updated_at DESC);
+    UPDATE cli_agent_accounts
+       SET label = substr(label, 1, length(label) - 13)
+     WHERE label LIKE '% (auto-saved)' AND length(label) > 13;
 
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
@@ -880,6 +904,9 @@ export function migrate(db: DB) {
     .all() as Array<{ name: string }>;
   if (!toolSessionCols.some((c) => c.name === "owner_id")) {
     db.exec("ALTER TABLE cli_tool_sessions ADD COLUMN owner_id TEXT");
+  }
+  if (!toolSessionCols.some((c) => c.name === "account_id")) {
+    db.exec("ALTER TABLE cli_tool_sessions ADD COLUMN account_id TEXT");
   }
 
   const messageCols = db

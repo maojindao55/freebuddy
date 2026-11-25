@@ -22,6 +22,7 @@ import { ensurePackagedPiRuntime } from "./piRuntimePackage.js";
 import { waitForCodexToolchainAutoUpdate } from "./check.js";
 import { killProcessTree } from "./process-kill.js";
 import { mergeBuiltEnv } from "./runtime.js";
+import { getActiveAccountContext } from "./accounts/accountContext.js";
 import {
   cliByokModelSignature,
   ensureCodexChatBridge,
@@ -60,12 +61,15 @@ function inFlightProbeKey(input: SessionConfigProbeInput): string {
   const envEntries = Object.entries(input.env ?? {}).sort(([a], [b]) =>
     a.localeCompare(b)
   );
+  const accountContext = getActiveAccountContext(input.adapter) ?? { revision: 0 };
   return createHash("sha256")
     .update(
       JSON.stringify({
         cacheKey: sessionConfigCacheKey(input),
         cwd: input.cwd,
         envEntries,
+        accountId: accountContext.accountId ?? "",
+        accountRevision: accountContext.revision,
         configOptionOverrides: input.configOptionOverrides ?? null
       })
     )
@@ -76,6 +80,7 @@ function sessionConfigCacheKey(input: SessionConfigProbeInput): string {
   // Deliberately exclude env values because they may contain API keys. Env
   // names, launch configuration, and the public BYOK model list are enough to
   // invalidate most stale catalogs, while a successful probe refreshes them.
+  const accountContext = getActiveAccountContext(input.adapter) ?? { revision: 0 };
   const signature = JSON.stringify({
     agentId: input.agentId,
     adapter: input.adapter,
@@ -83,7 +88,9 @@ function sessionConfigCacheKey(input: SessionConfigProbeInput): string {
     extraArgs: input.extraArgs ?? [],
     envKeys: Object.keys(input.env ?? {}).sort(),
     byokModels: cliByokModelSignature(input.agentId, input.adapter),
-    provider: input.configOptionOverrides?.provider ?? ""
+    provider: input.configOptionOverrides?.provider ?? "",
+    accountId: accountContext.accountId ?? "",
+    accountRevision: accountContext.revision
   });
   return `${CACHE_PREFIX}${createHash("sha256").update(signature).digest("hex")}`;
 }

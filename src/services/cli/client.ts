@@ -19,6 +19,9 @@ import type {
   CliTaskRow,
   CodexUsageResult,
   AntigravityUsageResult,
+  CliAccountLoginInput,
+  CliAccountMutationResult,
+  CliAgentSystemAccountState,
   AgentUsagePeriod,
   AgentUsageSummary,
   CursorUsageConnectInput,
@@ -123,6 +126,90 @@ export const cliClient = {
   },
   antigravityUsage(): Promise<AntigravityUsageResult> {
     return api().antigravityUsage();
+  },
+  supportsCliAccounts(): boolean {
+    return (
+      window.freebuddy?.platform !== "web" &&
+      typeof window.freebuddy?.cli?.getAccountsState === "function"
+    );
+  },
+  getAccountsState(adapter: string): Promise<CliAgentSystemAccountState> {
+    const cli = window.freebuddy?.cli;
+    if (!cli?.getAccountsState) {
+      return Promise.resolve({
+        adapter,
+        supported: false,
+        supportsConcurrentProfiles: false,
+        hasRunningTasks: false,
+        externalAccountMismatch: false,
+        accounts: []
+      });
+    }
+    return cli.getAccountsState(adapter);
+  },
+  importCurrentAccount(args: {
+    adapter: string;
+    label?: string;
+  }): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.importCurrentAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.importCurrentAccount(args);
+  },
+  switchAccount(args: {
+    adapter: string;
+    accountId: string;
+  }): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.switchAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.switchAccount(args);
+  },
+  startAccountLogin(
+    args: CliAccountLoginInput
+  ): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.startAccountLogin) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.startAccountLogin(args);
+  },
+  refreshAccountQuota(args: {
+    adapter: string;
+    accountId?: string;
+  }): Promise<CliAgentSystemAccountState> {
+    const cli = api();
+    if (!cli.refreshAccountQuota) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.refreshAccountQuota(args);
+  },
+  renameAccount(args: {
+    id: string;
+    label: string;
+  }): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.renameAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.renameAccount(args);
+  },
+  deleteAccount(id: string): Promise<CliAgentSystemAccountState> {
+    const cli = api();
+    if (!cli.deleteAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.deleteAccount(id);
+  },
+  onAccountsChanged(
+    cb: (payload: { adapter?: string; at?: number }) => void
+  ): () => void {
+    return window.freebuddy?.cli?.onAccountsChanged?.(cb) ?? (() => {});
+  },
+  onAccountAuthTerminalEvent(cb: (event: CliEvent) => void): () => void {
+    return window.freebuddy?.cli?.onAccountAuthTerminalEvent?.(cb) ?? (() => {});
   },
   usageSummary(period: AgentUsagePeriod = "all"): Promise<AgentUsageSummary> {
     return api().usageSummary(period);

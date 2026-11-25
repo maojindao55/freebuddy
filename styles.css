@@ -30430,9 +30430,18 @@ button.ghost:focus-visible,
   background: var(--fb-brand-glow, rgba(16, 185, 129, 0.1));
 }
 
+.digest-refresh-btn.is-busy {
+  opacity: 1;
+  color: var(--fb-brand);
+  background: var(--fb-brand-glow, rgba(16, 185, 129, 0.12));
+}
+
 .digest-refresh-btn:disabled {
-  opacity: 0.55;
   cursor: default;
+}
+
+.digest-refresh-btn:disabled:not(.is-busy) {
+  opacity: 0.55;
 }
 
 .digest-spin {
@@ -30461,13 +30470,19 @@ button.ghost:focus-visible,
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 8px 14px 2px;
+  margin: 10px 12px 4px;
   padding: 0 9px;
   height: 30px;
   border: 1px solid var(--fb-border);
   border-radius: 8px;
   background: var(--fb-panel-soft);
   color: var(--fb-text-tertiary);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.digest-filter-wrap:focus-within {
+  border-color: var(--fb-brand);
+  background: var(--fb-panel-bg);
 }
 
 .digest-filter-input {

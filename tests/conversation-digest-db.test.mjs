@@ -678,3 +678,62 @@ test("Auto-mode falls back across enabled providers and strips raw HTML from err
   assert.equal(persisted.error, "Digest upstream HTTP 404: 404 Not Found");
   assert.ok(!persisted.error.includes("<html") && !persisted.error.includes("<body>"));
 });
+
+test("Layer 0 strips markdown links/formatting and recovers stale running/queued DB status", async (t) => {
+  const f = await fixture(t);
+  if (!f) return;
+
+  f.insertConv("conv-md", { title: "Markdown preview cleanup" });
+  f.insertMsg("mu1", "conv-md", "user", 1, {
+    content: "Update **`test-diff.txt`** via [file link](file:///Users/demo/test-diff.txt)"
+  });
+  f.insertMsg("ma1", "conv-md", "assistant", 2, {
+    status: "done",
+    content: [
+      {
+        kind: "text",
+        role: "assistant",
+        content: "已更新 [test-diff.txt](file:///Users/hongbin9/www/demo/test-diff.txt) 中的文本。"
+      }
+    ]
+  });
+
+  // Simulate stale 'running' state left behind after an ungraceful shutdown.
+  f.db
+    .prepare(
+      `INSERT INTO conversation_digest_state
+         (conversation_id, source, status, last_message_seq, updated_at)
+       VALUES ('conv-md', 'rule', 'running', 0, '2026-10-05T00:00:00.000Z')`
+    )
+    .run();
+
+  const ruleDigest = f.runAsCaller("alice", () => f.getConversationDigest("conv-md"));
+  assert.ok(ruleDigest);
+  assert.equal(ruleDigest.status, "idle", "stale rule 'running' recovers to idle when no active job exists");
+  assert.equal(ruleDigest.topics[0].title, "Update test-diff.txt via file link");
+  assert.equal(ruleDigest.topics[0].summary, "已更新 test-diff.txt 中的文本。");
+  assert.ok(!ruleDigest.topics[0].summary.includes("file:///"));
+
+  // Same stale 'running' recovery for persisted 'llm' topics -> recovers to 'ready'.
+  f.db
+    .prepare(
+      `INSERT INTO conversation_topics
+         (id, conversation_id, sort_order, title, summary, status, source,
+          start_message_id, end_message_id, turn_count, keywords_json, files_json,
+          created_at, updated_at)
+       VALUES ('topic-md-1', 'conv-md', 0, '更新 test-diff.txt', '已更新。', 'done', 'llm',
+               'mu1', 'ma1', 1, '[]', '[]', '2026-10-05T00:00:02.000Z', '2026-10-05T00:00:02.000Z')`
+    )
+    .run();
+  f.db
+    .prepare(
+      `UPDATE conversation_digest_state
+       SET source = 'llm', status = 'queued', last_message_seq = 2
+       WHERE conversation_id = 'conv-md'`
+    )
+    .run();
+
+  const llmDigest = f.runAsCaller("alice", () => f.getConversationDigest("conv-md"));
+  assert.ok(llmDigest);
+  assert.equal(llmDigest.status, "ready");
+});

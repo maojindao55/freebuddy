@@ -145,6 +145,16 @@ function stripInlineMedia(text: string): string {
   );
 }
 
+function stripMarkdownForPreview(text: string): string {
+  return text
+    .replace(/!\[([^\]]*)\]\([^)\s]+(?:\s+"[^"]*")?\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)\s]+(?:\s+"[^"]*")?\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/(^|\s)#{1,6}\s+/g, "$1");
+}
+
 function clipLine(value: string, max: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) return "";
@@ -371,14 +381,16 @@ function turnToRuleTopic(
   turn: ExtractedTurn,
   sortOrder: number
 ): ConversationTopic {
-  const titleSource = firstMeaningfulLine(turn.userText);
+  const titleSource = firstMeaningfulLine(stripMarkdownForPreview(turn.userText));
   const title =
     clipLine(titleSource, 56) || `Turn #${turn.turnIndex}`;
+  const cleanAssistant = stripMarkdownForPreview(turn.assistantText);
+  const cleanUser = stripMarkdownForPreview(turn.userText);
   const summary =
-    clipLine(turn.assistantText, 140) ||
+    clipLine(cleanAssistant, 140) ||
     (turn.files.length > 0
       ? clipLine(turn.files.slice(0, 3).join(", "), 140)
-      : clipLine(turn.userText, 140));
+      : clipLine(cleanUser, 140));
   return {
     id: `rule-${turn.userMessageId}`,
     conversationId,
@@ -545,12 +557,17 @@ export function getConversationDigest(
   const storedTopics = storedRows.map(rowToTopic);
 
   const { turns } = extractConversationTurns(conversationId);
-  const effectiveStatus =
+  const persistedStatus = normalizeDigestStatus(state?.status);
+  const effectiveStatus: ConversationDigestStatus =
     runningConversationId === conversationId
       ? "running"
       : queuedSet.has(conversationId) || pendingTimers.has(conversationId)
         ? "queued"
-        : normalizeDigestStatus(state?.status);
+        : persistedStatus === "running" || persistedStatus === "queued"
+          ? state?.source === "llm" && storedTopics.length > 0
+            ? "ready"
+            : "idle"
+          : persistedStatus;
 
   if (state?.source === "llm" && storedTopics.length > 0) {
     const trailingTurns = turns.filter((t) => t.endSeq > state.last_message_seq);
@@ -829,14 +846,14 @@ function sanitizeLlmTopics(input: {
 
     const matchedTurn = turnByStartId.get(validStart) ?? fallbackTurn;
     const title =
-      clipLine(String(raw.title ?? ""), 80) ||
+      clipLine(stripMarkdownForPreview(String(raw.title ?? "")), 80) ||
       existing?.title ||
-      clipLine(firstMeaningfulLine(matchedTurn.userText), 56) ||
+      clipLine(firstMeaningfulLine(stripMarkdownForPreview(matchedTurn.userText)), 56) ||
       `Topic #${result.length + 1}`;
     const summary =
-      clipLine(String(raw.summary ?? ""), 240) ||
+      clipLine(stripMarkdownForPreview(String(raw.summary ?? "")), 240) ||
       existing?.summary ||
-      clipLine(matchedTurn.assistantText, 140);
+      clipLine(stripMarkdownForPreview(matchedTurn.assistantText), 140);
     const keywords = Array.isArray(raw.keywords)
       ? raw.keywords
           .filter((k): k is string => typeof k === "string" && k.trim().length > 0)
@@ -935,7 +952,9 @@ function saveLlmDigestTransaction(input: {
          updated_at = excluded.updated_at`
     ).run(
       input.conversationId,
-      input.overallSummary ? clipLine(input.overallSummary, 160) : null,
+      input.overallSummary
+        ? clipLine(stripMarkdownForPreview(input.overallSummary), 160)
+        : null,
       input.lastMessageId ?? null,
       input.lastMessageSeq,
       now
@@ -1104,6 +1123,23 @@ export async function runConversationDigestNow(
     return getConversationDigest(conversationId);
   } catch (error) {
     if ((error as Error)?.name === "AbortError") {
+      if (getConversation(conversationId)) {
+        const revertedStatus: ConversationDigestStatus =
+          state?.source === "llm" ? "ready" : "idle";
+        const revertedAt = upsertDigestState({
+          conversationId,
+          source: normalizeDigestSource(state?.source),
+          status: revertedStatus,
+          lastMessageSeq: state?.last_message_seq ?? 0,
+          lastError: state?.last_error ?? null
+        });
+        emitDigestChanged({
+          conversationId,
+          status: revertedStatus,
+          source: normalizeDigestSource(state?.source),
+          updatedAt: revertedAt
+        });
+      }
       return null;
     }
     const message = (error instanceof Error ? error.message : String(error)).slice(
@@ -1244,4 +1280,15 @@ export function shutdownConversationDigest(): void {
     runningAbortController = null;
   }
   runningConversationId = null;
+  try {
+    getDb()
+      .prepare(
+        `UPDATE conversation_digest_state
+         SET status = CASE WHEN source = 'llm' THEN 'ready' ELSE 'idle' END
+         WHERE status IN ('running', 'queued')`
+      )
+      .run();
+  } catch {
+    // Ignore DB errors when already closed during teardown or tests.
+  }
 }

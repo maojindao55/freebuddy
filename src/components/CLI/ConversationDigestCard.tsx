@@ -137,12 +137,7 @@ export function ConversationDigestCard({
                   : t("conversationDigest.sourceRuleHint")
               }
             >
-              {isBusy ? (
-                <>
-                  <RefreshCw size={11} className="digest-spin" aria-hidden="true" />
-                  <span>{t("conversationDigest.organizing")}</span>
-                </>
-              ) : digest.source === "llm" ? (
+              {digest.source === "llm" ? (
                 <>
                   <Sparkles size={11} aria-hidden="true" />
                   <span>{t("conversationDigest.sourceLlm")}</span>
@@ -157,7 +152,7 @@ export function ConversationDigestCard({
           </div>
           <button
             type="button"
-            className="digest-refresh-btn"
+            className={`digest-refresh-btn${isBusy ? " is-busy" : ""}`}
             disabled={isBusy}
             onClick={() => void onRefreshClick()}
             title={t("conversationDigest.refreshTitle")}
@@ -168,9 +163,11 @@ export function ConversationDigestCard({
               aria-hidden="true"
             />
             <span>
-              {digest.source === "llm"
-                ? t("conversationDigest.reorganize")
-                : t("conversationDigest.organize")}
+              {isBusy
+                ? t("conversationDigest.organizing")
+                : digest.source === "llm"
+                  ? t("conversationDigest.reorganize")
+                  : t("conversationDigest.organize")}
             </span>
           </button>
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  AlertTriangle,
   ArrowLeft,
   Bot,
   CalendarClock,
@@ -13,6 +14,7 @@ import {
   History,
   Loader2,
   MessageSquare,
+  Paperclip,
   Pencil,
   Play,
   Plus,
@@ -35,6 +37,11 @@ import type {
 } from "@/services/scheduledTasks/types";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
 import { useConversationStore } from "@/store/conversationStore";
+import { useScheduledSendStore } from "@/store/scheduledSendStore";
+import {
+  formatCountdown,
+  formatScheduledFireTime
+} from "@/utils/scheduledSend";
 
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0] as const;
 const WEEKDAY_KEYS: Record<number, string> = {
@@ -110,7 +117,7 @@ export function ScheduledTasksTab({
 }: {
   onOpenConversation?: (conversationId: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [agents, setAgents] = useState<ScheduledTaskAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +129,8 @@ export function ScheduledTasksTab({
   const [runsByTask, setRunsByTask] = useState<Record<string, ScheduledTaskRun[]>>({});
   const [expandedPrompts, setExpandedPrompts] = useState<Record<string, boolean>>({});
   const members = useConversationStore((state) => state.members);
+  const conversations = useConversationStore((state) => state.conversations);
+  const scheduledNow = useScheduledSendStore((state) => state.now);
   const executorsLoaded = useCliExecutorStore((state) => state.loaded);
   const executorOverrides = useCliExecutorStore((state) => state.overrides);
   const [modelOptions, setModelOptions] = useState<SessionConfigOption[]>([]);
@@ -138,6 +147,28 @@ export function ScheduledTasksTab({
   const agentNames = useMemo(
     () => new Map(agents.map((agent) => [agent.id, agent.name])),
     [agents]
+  );
+
+  const conversationTitles = useMemo(
+    () => new Map(conversations.map((conv) => [conv.id, conv.title])),
+    [conversations]
+  );
+
+  const pendingMessages = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.targetKind === "conversation_message")
+        .sort((a, b) => {
+          const aTime = a.fireAtMs ?? (a.nextRunAt ? Date.parse(a.nextRunAt) : Number.MAX_SAFE_INTEGER);
+          const bTime = b.fireAtMs ?? (b.nextRunAt ? Date.parse(b.nextRunAt) : Number.MAX_SAFE_INTEGER);
+          return aTime - bTime;
+        }),
+    [tasks]
+  );
+
+  const regularTasks = useMemo(
+    () => tasks.filter((task) => task.targetKind !== "conversation_message"),
+    [tasks]
   );
 
   const modelOption = useMemo(
@@ -372,6 +403,11 @@ export function ScheduledTasksTab({
 
   const remove = async (task: ScheduledTask) => {
     if (!window.confirm(t("scheduledTasks.deleteConfirm", { title: task.title }))) return;
+    await scheduledTasksClient.delete(task.id);
+    await load();
+  };
+
+  const removePendingMessage = async (task: ScheduledTask) => {
     await scheduledTasksClient.delete(task.id);
     await load();
   };
@@ -686,7 +722,7 @@ export function ScheduledTasksTab({
 
       {loading ? (
         <div className="scheduled-task-empty"><Loader2 size={18} className="spin" /></div>
-      ) : tasks.length === 0 ? (
+      ) : pendingMessages.length === 0 && regularTasks.length === 0 ? (
         <div className="scheduled-task-empty">
           <div className="scheduled-task-empty-icon-wrapper">
             <Clock3 size={24} />
@@ -704,8 +740,229 @@ export function ScheduledTasksTab({
           </button>
         </div>
       ) : (
-        <ul className="scheduled-task-items">
-          {tasks.map((task) => (
+        <>
+          {pendingMessages.length > 0 && (
+            <section
+              className="scheduled-task-section"
+              aria-label={t("scheduledTasks.pendingMessagesTitle")}
+            >
+              <div className="scheduled-task-section-header">
+                <div className="scheduled-task-section-title">
+                  <MessageSquare size={13} />
+                  <span>{t("scheduledTasks.pendingMessagesTitle")}</span>
+                  <span className="scheduled-task-section-count">
+                    {pendingMessages.length}
+                  </span>
+                </div>
+                <span className="scheduled-task-section-hint">
+                  {t("scheduledTasks.pendingMessagesHint")}
+                </span>
+              </div>
+              <ul className="scheduled-task-items">
+                {pendingMessages.map((task) => {
+                  const status = task.lastStatus ?? "idle";
+                  const fireAt =
+                    task.fireAtMs ??
+                    (task.nextRunAt ? Date.parse(task.nextRunAt) : Number.NaN);
+                  const fireTime = Number.isFinite(fireAt)
+                    ? formatScheduledFireTime(fireAt, scheduledNow, i18n.language)
+                    : formatDate(task.nextRunAt);
+                  const convTitle =
+                    (task.targetConversationId &&
+                      conversationTitles.get(task.targetConversationId)) ||
+                    task.title;
+                  const attachmentCount = task.attachments?.length ?? 0;
+                  const isPendingCountdown =
+                    status === "idle" &&
+                    task.enabled &&
+                    Number.isFinite(fireAt) &&
+                    fireAt > scheduledNow;
+                  return (
+                    <li
+                      key={task.id}
+                      className={`scheduled-task-card scheduled-task-card-message scheduled-task-card-${status}`}
+                    >
+                      <div className="scheduled-task-card-main">
+                        <div className="scheduled-task-card-title-row">
+                          <div className="scheduled-task-card-title">
+                            <strong>{convTitle}</strong>
+                            <span className={`scheduled-task-status ${status}`}>
+                              {status === "running" && <Loader2 size={10} className="spin" />}
+                              {(status === "waiting" || status === "missed") && (
+                                <AlertTriangle size={10} />
+                              )}
+                              {status === "failed" && <XCircle size={10} />}
+                              {t(`scheduledTasks.status.${status}`)}
+                            </span>
+                            {task.triggerKind === "quota_reset" && (
+                              <span className="scheduled-task-trigger-badge">
+                                {t("scheduledTasks.trigger.quotaReset")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="scheduled-task-schedule-row">
+                          <span className="scheduled-task-schedule">
+                            <Clock3 size={13} />
+                            {isPendingCountdown
+                              ? t("scheduledSend.statusPending", {
+                                  time: fireTime,
+                                  countdown: formatCountdown(fireAt - scheduledNow)
+                                })
+                              : status === "missed"
+                                ? t("scheduledSend.statusMissed", { time: fireTime })
+                                : status === "waiting"
+                                  ? t("scheduledSend.statusWaiting")
+                                  : status === "running"
+                                    ? t("scheduledSend.statusSending")
+                                    : fireTime}
+                          </span>
+                        </div>
+
+                        {task.prompt.trim() && (
+                          <button
+                            type="button"
+                            className="scheduled-task-prompt-container"
+                            onClick={() => togglePromptExpanded(task.id)}
+                            title={t("scheduledTasks.promptToggle")}
+                            aria-expanded={Boolean(expandedPrompts[task.id])}
+                          >
+                            <MessageSquare size={12} />
+                            <span
+                              className={`scheduled-task-prompt-text ${expandedPrompts[task.id] ? "expanded" : ""}`}
+                            >
+                              {task.prompt}
+                            </span>
+                            {task.prompt.length > 90 && (
+                              <span className="scheduled-task-prompt-expand-btn">
+                                {expandedPrompts[task.id]
+                                  ? t("scheduledTasks.promptCollapse")
+                                  : t("scheduledTasks.promptExpand")}
+                              </span>
+                            )}
+                          </button>
+                        )}
+
+                        <div
+                          className="scheduled-task-meta"
+                          aria-label={t("scheduledTasks.detailsLabel")}
+                        >
+                          {task.agentId && (
+                            <span className="scheduled-task-meta-item">
+                              <Bot size={11} />
+                              {t("scheduledTasks.agentValue", {
+                                agent: agentNames.get(task.agentId) ?? task.agentId
+                              })}
+                            </span>
+                          )}
+                          {attachmentCount > 0 && (
+                            <>
+                              {task.agentId && (
+                                <span
+                                  className="scheduled-task-meta-separator"
+                                  aria-hidden="true"
+                                >
+                                  ·
+                                </span>
+                              )}
+                              <span className="scheduled-task-meta-item">
+                                <Paperclip size={11} />
+                                {t("scheduledTasks.attachmentsCount", {
+                                  count: attachmentCount
+                                })}
+                              </span>
+                            </>
+                          )}
+                          {task.cwd && (
+                            <>
+                              {(task.agentId || attachmentCount > 0) && (
+                                <span
+                                  className="scheduled-task-meta-separator"
+                                  aria-hidden="true"
+                                >
+                                  ·
+                                </span>
+                              )}
+                              <span
+                                className="scheduled-task-meta-item scheduled-task-workspace-meta"
+                                title={task.cwd}
+                              >
+                                <FolderOpen size={11} />
+                                {formatWorkspaceName(task.cwd)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {task.lastError && (
+                          <p className="scheduled-task-error">
+                            {translateTaskError(task.lastError)}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="scheduled-task-card-actions">
+                        <div className="scheduled-task-action-group-left">
+                          <button
+                            type="button"
+                            className="scheduled-task-btn btn-primary"
+                            disabled={status === "running"}
+                            onClick={() => void runNow(task)}
+                          >
+                            <Play size={11} fill="currentColor" />
+                            {t("scheduledSend.sendNow")}
+                          </button>
+                          {task.targetConversationId && (
+                            <button
+                              type="button"
+                              className="scheduled-task-btn btn-link"
+                              onClick={() =>
+                                onOpenConversation?.(task.targetConversationId!)
+                              }
+                            >
+                              <ExternalLink size={11} />
+                              {t("scheduledTasks.openConversation")}
+                            </button>
+                          )}
+                        </div>
+                        <div className="scheduled-task-action-group-right">
+                          <button
+                            type="button"
+                            className="scheduled-task-btn btn-icon btn-danger"
+                            disabled={status === "running"}
+                            onClick={() => void removePendingMessage(task)}
+                            aria-label={t("scheduledSend.cancel")}
+                            title={t("scheduledSend.cancel")}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
+          {regularTasks.length > 0 && (
+            <section
+              className="scheduled-task-section"
+              aria-label={t("scheduledTasks.recurringSectionTitle")}
+            >
+              {pendingMessages.length > 0 && (
+                <div className="scheduled-task-section-header">
+                  <div className="scheduled-task-section-title">
+                    <CalendarClock size={13} />
+                    <span>{t("scheduledTasks.recurringSectionTitle")}</span>
+                    <span className="scheduled-task-section-count">
+                      {regularTasks.length}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <ul className="scheduled-task-items">
+                {regularTasks.map((task) => (
             <li key={task.id} className={`scheduled-task-card ${task.enabled ? "" : "disabled"}`}>
               <div className="scheduled-task-card-main">
                 <div className="scheduled-task-card-title-row">
@@ -902,6 +1159,9 @@ export function ScheduledTasksTab({
             </li>
           ))}
         </ul>
+            </section>
+          )}
+        </>
       )}
     </div>
   );

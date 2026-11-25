@@ -584,6 +584,13 @@ export function migrate(db: DB) {
       cwd TEXT,
       execution_mode TEXT NOT NULL DEFAULT 'new_conversation',
       config_option_overrides TEXT,
+      target_kind TEXT NOT NULL DEFAULT 'new_conversation',
+      target_conversation_id TEXT,
+      trigger_kind TEXT NOT NULL DEFAULT 'schedule',
+      fire_at_ms INTEGER,
+      cleanup_after_run INTEGER NOT NULL DEFAULT 0,
+      attachments TEXT,
+      payload_json TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
       next_run_at TEXT,
       last_run_at TEXT,
@@ -1195,6 +1202,36 @@ export function migrate(db: DB) {
   if (!currentScheduledTaskCols.some((c) => c.name === "config_option_overrides")) {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN config_option_overrides TEXT");
   }
+  if (!currentScheduledTaskCols.some((c) => c.name === "target_kind")) {
+    db.exec(
+      "ALTER TABLE scheduled_tasks ADD COLUMN target_kind TEXT NOT NULL DEFAULT 'new_conversation'"
+    );
+  }
+  if (!currentScheduledTaskCols.some((c) => c.name === "target_conversation_id")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN target_conversation_id TEXT");
+  }
+  if (!currentScheduledTaskCols.some((c) => c.name === "trigger_kind")) {
+    db.exec(
+      "ALTER TABLE scheduled_tasks ADD COLUMN trigger_kind TEXT NOT NULL DEFAULT 'schedule'"
+    );
+  }
+  if (!currentScheduledTaskCols.some((c) => c.name === "fire_at_ms")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN fire_at_ms INTEGER");
+  }
+  if (!currentScheduledTaskCols.some((c) => c.name === "cleanup_after_run")) {
+    db.exec(
+      "ALTER TABLE scheduled_tasks ADD COLUMN cleanup_after_run INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+  if (!currentScheduledTaskCols.some((c) => c.name === "attachments")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN attachments TEXT");
+  }
+  if (!currentScheduledTaskCols.some((c) => c.name === "payload_json")) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN payload_json TEXT");
+  }
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_target_conv ON scheduled_tasks(target_conversation_id)"
+  );
 
   // ---- 服务商 / Provider（模型 API 渠道，中转站/BYOK）----
   db.exec(`

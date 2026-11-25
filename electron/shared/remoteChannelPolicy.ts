@@ -131,11 +131,14 @@ const ALLOW = [
   "remote:whoami",
 
   // Scheduled tasks are scoped by owner_id inside the handlers.
+  "scheduledTasks:claimDispatch",
+  "scheduledTasks:completeDispatch",
   "scheduledTasks:create",
   "scheduledTasks:delete",
   "scheduledTasks:list",
   "scheduledTasks:listAgents",
   "scheduledTasks:listRuns",
+  "scheduledTasks:markWaiting",
   "scheduledTasks:run",
   "scheduledTasks:update",
 

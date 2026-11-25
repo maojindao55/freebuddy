@@ -19,6 +19,7 @@ const chatViewSource = read("../src/components/CLI/ChatView.tsx");
 const controlSource = read("../src/components/CLI/ScheduledSendControl.tsx");
 const storeSource = read("../src/store/scheduledSendStore.ts");
 const runnerSource = read("../src/services/scheduledSend/runner.ts");
+const tasksTabSource = read("../src/components/Settings/ScheduledTasksTab.tsx");
 const appSource = read("../src/App.tsx");
 const stylesSource = read("../styles.css");
 const en = JSON.parse(read("../src/locales/en.json"));
@@ -93,16 +94,25 @@ test("presets cover the common 5h rate-limit window", () => {
   assert.equal(utils.SCHEDULED_SEND_RESET_BUFFER_MS, 60_000);
 });
 
-test("composer wires the scheduled send control, bubble, and store", () => {
+test("composer wires the scheduled send control, bubble, NewTaskHome, and persisted store", () => {
   assert.match(chatViewSource, /<ScheduledSendControl/);
   assert.match(chatViewSource, /<ScheduledSendMeta/);
   assert.doesNotMatch(chatViewSource, /ScheduledSendBanner/);
   assert.match(chatViewSource, /useScheduledSendStore/);
-  assert.match(chatViewSource, /const onScheduleSend = \(fireAt: number\)/);
-  assert.match(chatViewSource, /protectManagedAttachments\(attachmentsToSend\);\s+if \(previous\) unprotectManagedAttachments/);
-  assert.match(chatViewSource, /onEdit=\{onEditScheduledSend\}/);
-  assert.match(chatViewSource, /onCancel=\{onCancelScheduledSend\}/);
-  assert.match(chatViewSource, /onSendNow=\{\(\) => fireScheduledSendNow\(conv\.id\)\}/);
+  assert.match(chatViewSource, /const formatScheduledSendError = \(/);
+  assert.match(chatViewSource, /let createdConvId: string \| null = null;/);
+  assert.match(chatViewSource, /deleteConversation\(createdConvId\)/);
+  assert.match(chatViewSource, /const onScheduleSend = async \(/);
+  assert.match(chatViewSource, /const onScheduleNewTask = async \(/);
+  assert.match(chatViewSource, /protectManagedAttachments\(attachmentsToSend\)/);
+  assert.match(chatViewSource, /removeScheduledSend\(conv\.id, \{ preserveAttachments: true \}\)/);
+  assert.match(chatViewSource, /onEdit=\{\(\) => void onEditScheduledSend\(\)\}/);
+  assert.match(chatViewSource, /onCancel=\{\(\) => void onCancelScheduledSend\(\)\}/);
+  assert.match(chatViewSource, /onSendNow=\{\(\) => void fireScheduledSendNow\(conv\.id\)\}/);
+  // NewTaskHome mounts ScheduledSendControl for normal single-agent tasks.
+  const newTaskSection = chatViewSource.slice(chatViewSource.indexOf("function NewTaskHome("));
+  assert.match(newTaskSection, /variant !== "mini" && !teamMode && onScheduleSend/);
+  assert.match(newTaskSection, /<ScheduledSendControl/);
 });
 
 test("scheduled message renders as a user bubble in the thread with a countdown row", () => {
@@ -112,6 +122,7 @@ test("scheduled message renders as a user bubble in the thread with a countdown 
   assert.match(chatViewSource, /afterContent=\{<>\s*<ConversationReferenceTags[^>]+\/>\s*<ScheduledSendMeta/);
   assert.match(controlSource, /className=\{`scheduled-send-meta scheduled-send-meta-\$\{entry\.status\}`\}/);
   assert.match(controlSource, /countdown: formatCountdown\(entry\.fireAt - now\)/);
+  assert.match(controlSource, /case "missed":/);
   assert.doesNotMatch(controlSource, /scheduled-send-banner/);
   assert.doesNotMatch(stylesSource, /scheduled-send-banner/);
   // The wrapper must share the centered 820px column with regular messages.
@@ -123,7 +134,7 @@ test("scheduled send trigger stays clickable with an empty draft; the message st
   assert.doesNotMatch(controlSource, /disabled=\{disabled \|\| !canSchedule\}/);
   assert.doesNotMatch(controlSource, /<textarea/);
   assert.match(controlSource, /className="scheduled-send-needs-draft"/);
-  assert.match(controlSource, /if \(!canSchedule\) return;\s+onSchedule\(fireAt\)/);
+  assert.match(controlSource, /if \(!canSchedule\) return;\s+onSchedule\(fireAt, triggerKind\)/);
   assert.equal((controlSource.match(/disabled=\{!canSchedule\}/g) ?? []).length, 2);
   assert.match(controlSource, /disabled=\{!canSchedule \|\| codexReset\.kind !== "ready"\}/);
   // Compact panel: no explanatory paragraph or section labels.
@@ -140,16 +151,26 @@ test("scheduled send control offers presets, quota reset, and a custom time", ()
   assert.match(controlSource, /createPortal\(/);
 });
 
-test("runner waits for running conversations and routes delegation follow-ups", () => {
+test("runner syncs with persisted scheduledTasks, claims dispatch atomically, and routes delegation follow-ups", () => {
   assert.match(runnerSource, /isRunning\(conv\.id\)/);
   assert.match(runnerSource, /setStatus\(conv\.id, "waiting"\)/);
+  assert.match(runnerSource, /scheduledTasksClient\s*\.markWaiting/);
+  assert.match(runnerSource, /scheduledTasksClient\s*\.claimDispatch/);
+  assert.match(runnerSource, /scheduledTasksClient\s*\.completeDispatch/);
+  assert.match(runnerSource, /scheduledTasksClient\s*\.onChanged/);
   assert.match(runnerSource, /delegationClient\.hasRunForConversation\(conv\.id\)/);
   assert.match(runnerSource, /delegationClient\.followUp\(/);
-  assert.match(runnerSource, /approvalModeOverride: conv\.approvalMode/);
+  assert.match(runnerSource, /if \(fresh\.archived\) \{\s+scheduled\.setStatus\(\s+entry\.conversationId,\s+"missed"/);
+  assert.match(runnerSource, /approvalModeOverride: entry\.approvalMode \?\? conv\.approvalMode/);
   assert.match(runnerSource, /setStatus\(conv\.id, "failed", message\)/);
   assert.match(runnerSource, /setInterval\(\(\) => runScheduledSendTick\(\), TICK_MS\)/);
   assert.match(storeSource, /export function dueScheduledSends/);
+  assert.match(storeSource, /export function scheduledTaskToScheduledSend/);
+  assert.match(storeSource, /targetKind: "conversation_message"/);
   assert.match(appSource, /useEffect\(\(\) => startScheduledSendRunner\(\), \[\]\)/);
+  assert.match(appSource, /if \(task\?\.targetKind === "conversation_message"\)/);
+  assert.match(tasksTabSource, /pendingMessagesTitle/);
+  assert.match(tasksTabSource, /task\.targetKind === "conversation_message"/);
 });
 
 test("scheduled send styles and translations exist in both locales", () => {

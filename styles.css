@@ -11615,6 +11615,11 @@ button.new-task-context-control {
   background: rgba(225, 29, 72, 0.08);
 }
 
+.scheduled-send-bubble-missed .msg-user .msg-bubble {
+  border-color: var(--fb-warning);
+  background: rgba(209, 134, 22, 0.08);
+}
+
 .scheduled-send-meta {
   display: inline-flex;
   max-width: 100%;
@@ -11627,7 +11632,8 @@ button.new-task-context-control {
   font-variant-numeric: tabular-nums;
 }
 
-.scheduled-send-meta-waiting {
+.scheduled-send-meta-waiting,
+.scheduled-send-meta-missed {
   color: var(--fb-warning);
 }
 
@@ -24924,6 +24930,69 @@ button.ghost:focus-visible,
   line-height: 1.4;
 }
 
+.scheduled-task-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scheduled-task-section + .scheduled-task-section {
+  margin-top: 6px;
+}
+
+.scheduled-task-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 0;
+}
+
+.scheduled-task-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fb-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.scheduled-task-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--fb-panel-soft);
+  color: var(--fb-text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.scheduled-task-section-hint {
+  color: var(--fb-text-tertiary);
+  font-size: 11px;
+}
+
+.scheduled-task-trigger-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--fb-brand-glow);
+  color: var(--fb-brand);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.scheduled-task-card-message {
+  border-style: dashed;
+}
+
 .scheduled-task-items {
   display: flex;
   flex-direction: column;
@@ -25011,6 +25080,12 @@ button.ghost:focus-visible,
 
 .scheduled-task-status.completed {
   color: var(--fb-brand);
+  background: transparent;
+}
+
+.scheduled-task-status.waiting,
+.scheduled-task-status.missed {
+  color: var(--fb-warning);
   background: transparent;
 }
 

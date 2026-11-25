@@ -102,6 +102,24 @@ function calendarDateKey(date: Date): string {
   ].join("-");
 }
 
+export function localDateAndTimeFromMs(
+  ms: number,
+  timeZone: string
+): { scheduleDate: string; timeLocal: string } | undefined {
+  if (!Number.isFinite(ms)) return undefined;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return undefined;
+  const parts = zonedParts(date, timeZone);
+  return {
+    scheduleDate: [
+      String(parts.year).padStart(4, "0"),
+      String(parts.month).padStart(2, "0"),
+      String(parts.day).padStart(2, "0")
+    ].join("-"),
+    timeLocal: `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`
+  };
+}
+
 export function nextScheduledOccurrence(
   schedule: ScheduledTaskSchedule,
   timeZone: string,

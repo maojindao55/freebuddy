@@ -187,6 +187,9 @@ function App() {
   useEffect(() => {
     const lastStatusMap = new Map<string, string | undefined>();
     const off = window.freebuddy?.scheduledTasks?.onChanged?.((task) => {
+      if (task?.targetKind === "conversation_message") {
+        return;
+      }
       if (!task || task.lastStatus === "completed" || task.lastStatus === "failed") {
         void refreshConversationList();
       }

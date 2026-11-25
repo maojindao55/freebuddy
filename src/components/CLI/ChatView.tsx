@@ -126,6 +126,7 @@ import {
   ScheduledSendMeta
 } from "./ScheduledSendControl";
 import { useScheduledSendStore } from "@/store/scheduledSendStore";
+import type { ScheduledSendTriggerKind } from "@/utils/scheduledSend";
 import { ComposerAddMenu } from "./ComposerAddMenu";
 import { McpServerPicker } from "./McpServerPicker";
 import { AgentPicker } from "./AgentPicker";
@@ -2880,38 +2881,160 @@ export function ChatView({
     }
   };
 
-  const onScheduleSend = (fireAt: number) => {
+  const formatScheduledSendError = (error: unknown): string => {
+    const raw = error instanceof Error ? error.message : String(error);
+    return raw
+      .split(/\s*;\s*/)
+      .filter(Boolean)
+      .map((part) => (part.startsWith("scheduledTasks.errors.") ? t(part) : part))
+      .join("; ");
+  };
+
+  const onScheduleSend = async (
+    fireAt: number,
+    triggerKind: ScheduledSendTriggerKind = "schedule"
+  ) => {
     if (!conv || attachmentBusy || sendLock || pendingWorkflowAction) return;
     const prompt = draft.trim();
     const attachmentsToSend = pendingAttachments;
+    const skillsToSend = messageSkills;
+    const refsToSend = selectedReferences;
     if (!prompt && attachmentsToSend.length === 0) return;
 
-    const previous = useScheduledSendStore.getState().entries[conv.id];
-    scheduleSend({
-      conversationId: conv.id,
-      prompt,
-      attachments: attachmentsToSend,
-      messageSkills,
-      conversationReferences: selectedReferences,
-      fireAt
-    });
+    const convId = conv.id;
+    const previous = useScheduledSendStore.getState().entries[convId];
     protectManagedAttachments(attachmentsToSend);
-    if (previous) unprotectManagedAttachments(previous.attachments);
-    setPreflightMsg(null);
-    setDraft("");
-    setMessageSkills([]);
-    setSelectedReferences([]);
-    setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
-    window.setTimeout(focusComposer, 0);
+    try {
+      const entry = await scheduleSend({
+        conversationId: convId,
+        agentId: conv.agentId,
+        title: conv.title,
+        prompt,
+        attachments: attachmentsToSend,
+        messageSkills: skillsToSend,
+        conversationReferences: refsToSend,
+        approvalMode: conv.approvalMode,
+        triggerKind,
+        fireAt
+      });
+      if (entry.taskId) {
+        unprotectManagedAttachments(attachmentsToSend);
+      }
+      if (previous && !previous.taskId) {
+        unprotectManagedAttachments(previous.attachments);
+      }
+      setPreflightMsg(null);
+      if (useConversationStore.getState().activeId === convId) {
+        setDraft("");
+        setMessageSkills([]);
+        setSelectedReferences([]);
+        setPendingAttachments((prev) => detachAttachmentsForSend(attachmentsToSend, prev));
+        window.setTimeout(focusComposer, 0);
+      }
+    } catch (e) {
+      unprotectManagedAttachments(attachmentsToSend);
+      setPreflightMsg(
+        t("errors.sendFailed", {
+          err: formatScheduledSendError(e)
+        })
+      );
+    }
   };
 
-  const onEditScheduledSend = () => {
+  const onScheduleNewTask = async (
+    fireAt: number,
+    triggerKind: ScheduledSendTriggerKind = "schedule"
+  ) => {
+    if (newTaskSendLock || newTaskSendInFlightRef.current || attachmentBusy || teamMode) return;
+    const prompt = newTaskDraft.trim();
+    const attachmentsToSend = newTaskPendingAttachments;
+    const skillsToSend = newTaskMessageSkills;
+    const refsToSend = selectedReferences;
+    if (!prompt && attachmentsToSend.length === 0) return;
+
+    const selectedMember = members.find((m) => m.id === selectedMemberId);
+    if (!selectedMember || !availableAgentIds.has(selectedMember.id)) return;
+
+    newTaskSendInFlightRef.current = true;
+    setNewTaskSendLock(true);
+    setPreflightMsg(null);
+    protectManagedAttachments(attachmentsToSend);
+    let keepMemoryProtection = false;
+    let createdConvId: string | null = null;
+    try {
+      if (!(await preflightMember(selectedMember))) return;
+      const preparedWorkspace = await prepareWorkspaceForNewTask();
+      const newConv = await createConversation({
+        member: selectedMember,
+        cwd: preparedWorkspace?.cwd,
+        projectId: newTaskProjectId,
+        metadata: buildNewTaskMetadata(preparedWorkspace, newTaskMcpServerIds),
+        title: buildConversationTitle({
+          prompt,
+          attachmentName: attachmentsToSend[0]?.name,
+          fallback: t("chat.defaultAttachmentTitle")
+        }),
+        approvalMode: permissionMode,
+        configOptionOverrides: newTaskConfigOptionOverrides
+      });
+      createdConvId = newConv.id;
+      setPreferredAgentId(selectedMember.id);
+      const entry = await scheduleSend({
+        conversationId: newConv.id,
+        agentId: selectedMember.id,
+        title: newConv.title,
+        prompt,
+        attachments: attachmentsToSend,
+        messageSkills: skillsToSend,
+        conversationReferences: refsToSend,
+        approvalMode: permissionMode,
+        triggerKind,
+        fireAt
+      });
+      createdConvId = null;
+      if (!entry.taskId) {
+        keepMemoryProtection = true;
+      }
+      setNewTaskDraft("");
+      setNewTaskMessageSkills([]);
+      setSelectedReferences([]);
+      setNewTaskPendingAttachments((prev) =>
+        detachAttachmentsForSend(attachmentsToSend, prev)
+      );
+    } catch (e) {
+      if (createdConvId) {
+        const convStore = useConversationStore.getState();
+        if (convStore.activeId === createdConvId) {
+          await convStore.setActive(undefined).catch(() => {});
+        }
+        await convStore.deleteConversation(createdConvId).catch(() => {});
+      }
+      setPreflightMsg(
+        t("errors.taskFailed", {
+          err: formatScheduledSendError(e)
+        })
+      );
+    } finally {
+      if (!keepMemoryProtection) {
+        unprotectManagedAttachments(attachmentsToSend);
+      }
+      newTaskSendInFlightRef.current = false;
+      setNewTaskSendLock(false);
+      window.setTimeout(focusComposer, 0);
+    }
+  };
+
+  const onEditScheduledSend = async () => {
     if (!conv) return;
-    const entry = removeScheduledSend(conv.id);
+    const entry = await removeScheduledSend(conv.id, { preserveAttachments: true });
     if (!entry) return;
-    unprotectManagedAttachments(entry.attachments);
+    if (!entry.taskId) {
+      unprotectManagedAttachments(entry.attachments);
+    }
     setMessageSkills(mergeMessageSkills(messageSkills, entry.messageSkills ?? []));
-    setSelectedReferences(mergeConversationReferences(selectedReferences, entry.conversationReferences ?? []));
+    setSelectedReferences(
+      mergeConversationReferences(selectedReferences, entry.conversationReferences ?? [])
+    );
     setDraft((current) =>
       current.trim() ? `${entry.prompt}\n${current}` : entry.prompt
     );
@@ -2919,10 +3042,12 @@ export function ChatView({
     window.setTimeout(() => chatTextareaRef.current?.focus(), 0);
   };
 
-  const onCancelScheduledSend = () => {
+  const onCancelScheduledSend = async () => {
     if (!conv) return;
-    const entry = removeScheduledSend(conv.id);
-    if (entry) unprotectManagedAttachments(entry.attachments);
+    const entry = await removeScheduledSend(conv.id);
+    if (entry && !entry.taskId) {
+      unprotectManagedAttachments(entry.attachments);
+    }
   };
 
   const handleGeneratePlan = async () => {
@@ -3171,6 +3296,12 @@ export function ChatView({
           setRequestedTeamId(teamId);
         }}
         sendLocked={newTaskSendLock}
+        selectedAdapter={
+          members.find((entry) => entry.id === selectedMemberId)?.cli.adapter
+        }
+        onScheduleSend={(fireAt, triggerKind) =>
+          void onScheduleNewTask(fireAt, triggerKind)
+        }
         onSubmit={() => void onCreateAndSend()}
         variant={variant}
       />
@@ -3408,10 +3539,10 @@ export function ChatView({
                 <ScheduledSendMeta
                   entry={scheduledSend}
                   now={scheduledSendNow}
-                  onSendNow={() => fireScheduledSendNow(conv.id)}
-                  onRetry={() => retryScheduledSend(conv.id)}
-                  onEdit={onEditScheduledSend}
-                  onCancel={onCancelScheduledSend}
+                  onSendNow={() => void fireScheduledSendNow(conv.id)}
+                  onRetry={() => void retryScheduledSend(conv.id)}
+                  onEdit={() => void onEditScheduledSend()}
+                  onCancel={() => void onCancelScheduledSend()}
                 />
               </>}
             />
@@ -3684,7 +3815,7 @@ export function ChatView({
                 adapter={member?.cli.adapter ?? conv.adapter}
                 disabled={attachmentBusy || sendLock}
                 canSchedule={!!(draft.trim() || pendingAttachments.length > 0)}
-                onSchedule={onScheduleSend}
+                onSchedule={(fireAt, triggerKind) => void onScheduleSend(fireAt, triggerKind)}
               />
             ) : null}
             {sending ? (
@@ -3779,6 +3910,8 @@ function NewTaskHome({
   onAttachmentPaste,
   onTaskMode,
   onTeam,
+  selectedAdapter,
+  onScheduleSend,
   onSubmit,
   variant = "default"
 }: {
@@ -3837,6 +3970,8 @@ function NewTaskHome({
   onAttachmentPaste: (event: ClipboardEvent) => void;
   onTaskMode: (value: "normal" | "team") => void;
   onTeam: (id: string) => void;
+  selectedAdapter?: string;
+  onScheduleSend?: (fireAt: number, triggerKind: ScheduledSendTriggerKind) => void;
   onSubmit: () => void;
   variant?: "default" | "mini";
 }) {
@@ -4083,6 +4218,20 @@ function NewTaskHome({
                   ) : null
                 }
                 onChange={onConfigOptionOverrides}
+              />
+            ) : null}
+            {variant !== "mini" && !teamMode && onScheduleSend ? (
+              <ScheduledSendControl
+                adapter={selectedAdapter}
+                disabled={
+                  sendLocked ||
+                  attachmentBusy ||
+                  !agentAvailability.available.some(
+                    (entry) => entry.member.id === selectedMemberId
+                  )
+                }
+                canSchedule={!!(draft.trim() || pendingAttachments.length > 0)}
+                onSchedule={onScheduleSend}
               />
             ) : null}
             <button

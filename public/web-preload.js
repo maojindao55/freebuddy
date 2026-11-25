@@ -443,8 +443,11 @@
       listAgents: function () { return invoke("scheduledTasks:listAgents"); },
       create: function (input) { return invoke("scheduledTasks:create", input); },
       update: function (args) { return invoke("scheduledTasks:update", args); },
-      delete: function (id) { return invoke("scheduledTasks:delete", id); },
+      delete: function (id, options) { return invoke("scheduledTasks:delete", id, options); },
       run: function (id) { return invoke("scheduledTasks:run", id); },
+      claimDispatch: function (id, options) { return invoke("scheduledTasks:claimDispatch", id, options); },
+      completeDispatch: function (args) { return invoke("scheduledTasks:completeDispatch", args); },
+      markWaiting: function (id) { return invoke("scheduledTasks:markWaiting", id); },
       onChanged: function (cb) { return subscribe("scheduledTasks://changed", cb); }
     },
 

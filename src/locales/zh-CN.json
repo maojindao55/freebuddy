@@ -857,7 +857,8 @@
     "statusWaiting": "已到时间 · 等待当前任务结束后发送",
     "statusSending": "正在发送定时消息…",
     "statusFailed": "定时发送失败：{{err}}",
-    "keepAppOpen": "请保持 FreeBuddy 运行；关闭应用后定时会丢失。",
+    "statusMissed": "已错过原定时间（{{time}}）",
+    "keepAppOpen": "已持久化保存，重启应用不会丢失；到点时需保持 FreeBuddy 运行。",
     "sendNow": "立即发送",
     "retry": "重试",
     "edit": "改回草稿",
@@ -1780,9 +1781,17 @@
     "agentValue": "Agent：{{agent}}",
     "nextRun": "下次：{{time}}",
     "openResult": "查看结果",
+    "openConversation": "打开对话",
     "runNow": "立即运行",
     "history": "执行历史",
     "noHistory": "暂无执行记录",
+    "pendingMessagesTitle": "待发送的定时消息",
+    "pendingMessagesHint": "来自对话或新建任务，重启应用后自动保留。",
+    "recurringSectionTitle": "定时任务",
+    "attachmentsCount": "{{count}} 个附件",
+    "trigger": {
+      "quotaReset": "额度重置"
+    },
     "weekdays": {
       "sun": "周日",
       "mon": "周一",
@@ -1803,9 +1812,11 @@
     },
     "status": {
       "idle": "未运行",
+      "waiting": "等待中",
       "running": "运行中",
       "completed": "已完成",
-      "failed": "失败"
+      "failed": "失败",
+      "missed": "已错过"
     },
     "errors": {
       "titleRequired": "请填写任务名称。",
@@ -1819,6 +1830,7 @@
       "invalidMonthDay": "每月运行日必须在 1 到 31 之间。",
       "oneTimeMustBeFuture": "单次任务必须设置为未来时间。",
       "agentUnavailable": "所选 Agent 当前不可用。",
+      "conversationUnavailable": "目标对话不可用或已归档。",
       "taskNotFound": "未找到该定时任务。",
       "windowUnavailable": "FreeBuddy 窗口当前不可用。",
       "appClosed": "FreeBuddy 在任务完成前已关闭。",

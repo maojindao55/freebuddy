@@ -943,8 +943,14 @@ const scheduledTasks = {
   listAgents: () => ipcRenderer.invoke("scheduledTasks:listAgents"),
   create: (input: unknown) => ipcRenderer.invoke("scheduledTasks:create", input),
   update: (args: unknown) => ipcRenderer.invoke("scheduledTasks:update", args),
-  delete: (id: string) => ipcRenderer.invoke("scheduledTasks:delete", id),
+  delete: (id: string, options?: { preserveAttachments?: boolean }) =>
+    ipcRenderer.invoke("scheduledTasks:delete", id, options),
   run: (id: string) => ipcRenderer.invoke("scheduledTasks:run", id),
+  claimDispatch: (id: string, options?: { force?: boolean }) =>
+    ipcRenderer.invoke("scheduledTasks:claimDispatch", id, options),
+  completeDispatch: (args: unknown) =>
+    ipcRenderer.invoke("scheduledTasks:completeDispatch", args),
+  markWaiting: (id: string) => ipcRenderer.invoke("scheduledTasks:markWaiting", id),
   onChanged: (cb: (task: unknown) => void): (() => void) => {
     const channel = "scheduledTasks://changed";
     const handler = (_e: IpcRendererEvent, task: unknown) => cb(task);

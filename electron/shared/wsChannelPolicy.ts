@@ -15,6 +15,7 @@ const GLOBAL_CHANNELS = new Set([
 ]);
 const CONVERSATION_PAYLOAD_CHANNELS = new Set([
   "messages://changed",
+  "conversationDigest://changed",
   // Idle ACP permission requests include conversationId in the payload.
   "freebuddy://acp-permission",
   // Browser MCP events include conversationId in the payload.

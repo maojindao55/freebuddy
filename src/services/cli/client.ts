@@ -59,6 +59,11 @@ import type {
   AttachConversationSharesInput,
   AttachConversationSharesResult,
   ConversationContextReference,
+  ConversationDigest,
+  ConversationDigestChangedEvent,
+  ConversationDigestConfig,
+  ConversationDigestConfigState,
+  ConversationTopicSearchHit,
   BrowserToolAction,
   BrowserToolResult,
   NativeBrowserBounds,
@@ -357,6 +362,46 @@ export const cliClient = {
   listConversationOverviews(conversationIds: string[]): Promise<ConversationOverview[]> {
     return api().listConversationOverviews(conversationIds);
   },
+  getConversationDigest(conversationId: string): Promise<ConversationDigest | null> {
+    const fn = window.freebuddy?.cli?.getConversationDigest;
+    if (!fn) return Promise.resolve(null);
+    return fn(conversationId);
+  },
+  refreshConversationDigest(args: {
+    conversationId: string;
+    forceRebuild?: boolean;
+  }): Promise<ConversationDigest | null> {
+    const fn = window.freebuddy?.cli?.refreshConversationDigest;
+    if (!fn) return Promise.resolve(null);
+    return fn(args);
+  },
+  searchConversationTopics(args: {
+    query: string;
+    limit?: number;
+    includeArchived?: boolean;
+  }): Promise<ConversationTopicSearchHit[]> {
+    const fn = window.freebuddy?.cli?.searchConversationTopics;
+    if (!fn) return Promise.resolve([]);
+    return fn(args);
+  },
+  getConversationDigestConfig(): Promise<ConversationDigestConfigState | null> {
+    const fn = window.freebuddy?.cli?.getConversationDigestConfig;
+    if (!fn) return Promise.resolve(null);
+    return fn();
+  },
+  setConversationDigestConfig(
+    patch: Partial<ConversationDigestConfig>
+  ): Promise<ConversationDigestConfigState | null> {
+    const fn = window.freebuddy?.cli?.setConversationDigestConfig;
+    if (!fn) return Promise.resolve(null);
+    return fn(patch);
+  },
+  onConversationDigestChanged(
+    cb: (event: ConversationDigestChangedEvent) => void
+  ): () => void {
+    const fn = window.freebuddy?.cli?.onConversationDigestChanged;
+    return fn ? fn(cb) : () => {};
+  },
   getConversation(id: string): Promise<Conversation | undefined> {
     return api().getConversation(id);
   },
@@ -468,6 +513,14 @@ export const cliClient = {
     options?: ListMessagesQuery
   ): Promise<ListMessagesPage> {
     return api().listMessages(conversationId, options);
+  },
+  listMessagesAround(
+    conversationId: string,
+    messageId: string
+  ): Promise<ListMessagesPage> {
+    const fn = window.freebuddy?.cli?.listMessagesAround;
+    if (!fn) return api().listMessages(conversationId);
+    return fn(conversationId, messageId);
   },
   listMessage(id: string): Promise<ConversationMessage | undefined> {
     return api().listMessage(id);

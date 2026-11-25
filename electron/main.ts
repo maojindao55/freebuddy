@@ -28,11 +28,20 @@ import { setLocalInvokeWindowGetter, registerHandler } from "./invokeRegistry.js
 import { setButlerAppWindowGetter } from "./butlerToolService.js";
 import { ensureOwnerUser, getOwnerUser } from "./cli/users.js";
 import {
+  bindConversationDeletedNotifier,
   bindConversationNotifier,
+  bindConversationTurnFinishedNotifier,
   getConversation,
   requireOwnedConversation,
   updateConversationMetadata
 } from "./cli/conversations.js";
+import {
+  bindConversationDigestNotifier,
+  cancelConversationDigest,
+  scheduleConversationDigest,
+  shutdownConversationDigest
+} from "./cli/conversationDigest.js";
+import { broadcastEvent } from "./eventBus.js";
 import { bindDelegationRunFinishedNotifier } from "./cli/delegationRuns.js";
 import { applyOwnerBackfill } from "./cli/ownerBackfill.js";
 import { initFileBridge } from "./fileBridge.js";
@@ -1746,6 +1755,11 @@ function shutdownAppServices(): Promise<void> {
         await shutdownTelemetry().catch(() => {});
       }
       try {
+        shutdownConversationDigest();
+      } catch {
+        /* digest scheduler may not have started */
+      }
+      try {
         await shutdownCliProcesses();
       } catch {
         /* agent runtime may not have started */
@@ -2246,6 +2260,22 @@ async function bootstrap(): Promise<void> {
   bindConversationNotifier((conversationId) => {
     for (const win of BrowserWindow.getAllWindows()) {
       safeSendToWebContents(win.webContents, "messages://changed", { conversationId });
+    }
+  });
+  bindConversationTurnFinishedNotifier((conversationId) => {
+    scheduleConversationDigest(conversationId);
+  });
+  bindConversationDeletedNotifier((conversationId) => {
+    cancelConversationDigest(conversationId);
+  });
+  bindConversationDigestNotifier((event) => {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length === 0) {
+      broadcastEvent("conversationDigest://changed", event);
+      return;
+    }
+    for (const win of windows) {
+      safeSendToWebContents(win.webContents, "conversationDigest://changed", event);
     }
   });
   bindDelegationRunFinishedNotifier((event) => {

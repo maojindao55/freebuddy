@@ -2028,6 +2028,12 @@ export function ChatView({
     snapTargetRef.current = null;
     target.scrollIntoView({ block: "center", behavior: "instant" });
     target.focus({ preventScroll: true });
+    target.classList.remove("is-jump-highlighted");
+    void target.offsetWidth;
+    target.classList.add("is-jump-highlighted");
+    const clearHighlight = () => target.classList.remove("is-jump-highlighted");
+    target.addEventListener("animationend", clearHighlight, { once: true });
+    window.setTimeout(clearHighlight, 1800);
     onMessageFocused?.();
   }, [messageFocus, activeId, displayMessages, historyReveal, onMessageFocused]);
 

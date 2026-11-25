@@ -64,7 +64,12 @@ import type {
   CreateConversationShareResult,
   AttachConversationSharesInput,
   AttachConversationSharesResult,
-  ConversationContextReference
+  ConversationContextReference,
+  ConversationDigest,
+  ConversationDigestChangedEvent,
+  ConversationDigestConfig,
+  ConversationDigestConfigState,
+  ConversationTopicSearchHit
 } from "@/services/cli/types";
 import type { CliStreamItem } from "@/services/cli/parsers";
 import type {
@@ -162,6 +167,9 @@ declare global {
     onRuntimeUpdated(cb: (runtime: CliRuntime) => void): () => void;
     onConversationsChanged(cb: () => void): () => void;
     onMessagesChanged(cb: (conversationId: string) => void): () => void;
+    onConversationDigestChanged?(
+      cb: (event: ConversationDigestChangedEvent) => void
+    ): () => void;
     onIdlePermission(
       cb: (event: {
         conversationId: string;
@@ -279,6 +287,20 @@ declare global {
 
     listConversations(args?: ListConversationsArgs): Promise<Conversation[]>;
     listConversationOverviews(conversationIds: string[]): Promise<ConversationOverview[]>;
+    getConversationDigest?(conversationId: string): Promise<ConversationDigest | null>;
+    refreshConversationDigest?(args: {
+      conversationId: string;
+      forceRebuild?: boolean;
+    }): Promise<ConversationDigest | null>;
+    searchConversationTopics?(args: {
+      query: string;
+      limit?: number;
+      includeArchived?: boolean;
+    }): Promise<ConversationTopicSearchHit[]>;
+    getConversationDigestConfig?(): Promise<ConversationDigestConfigState>;
+    setConversationDigestConfig?(
+      patch: Partial<ConversationDigestConfig>
+    ): Promise<ConversationDigestConfigState>;
     getConversation(id: string): Promise<Conversation | undefined>;
     createConversation(
       input: CreateConversationInput
@@ -349,6 +371,10 @@ declare global {
         beforeCreatedAt?: string;
         beforeId?: string;
       }
+    ): Promise<{ messages: ConversationMessage[]; hasMore: boolean }>;
+    listMessagesAround?(
+      conversationId: string,
+      messageId: string
     ): Promise<{ messages: ConversationMessage[]; hasMore: boolean }>;
     listMessage(id: string): Promise<ConversationMessage | undefined>;
     listMessageFileEdits(messageId: string, cursor?: number, groupFiles?: boolean): Promise<FileEditPage>;
@@ -446,7 +472,9 @@ declare global {
     ): () => void;
     onBrowserTool(cb: (event: BrowserToolEvent) => void): () => void;
     resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean>;
-    onOpenConversation(cb: (conversationId: string, embed?: boolean) => void): () => void;
+    onOpenConversation(
+      cb: (conversationId: string, embed?: boolean, messageId?: string) => void
+    ): () => void;
     onNewConversation(cb: () => void): () => void;
     onExternalShare(cb: (payload: ExternalSharePayload) => void): () => void;
     onShellOpen(cb: (payload: ShellOpenPayload) => void): () => void;

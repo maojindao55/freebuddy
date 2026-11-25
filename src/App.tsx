@@ -334,7 +334,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId, embed) => {
+    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId, embed, messageId) => {
       void (async () => {
         const state = useConversationStore.getState();
         // Conversations created in other renderer processes (e.g. DocStudio)
@@ -360,6 +360,14 @@ function App() {
         setSettingsOpen(false);
         setWorkspaceView("chat");
         await useConversationStore.getState().setActive(conversationId);
+        if (messageId) {
+          const loaded = await useConversationStore
+            .getState()
+            .ensureMessageLoaded(conversationId, messageId);
+          if (loaded && useConversationStore.getState().activeId === conversationId) {
+            setMessageFocus({ conversationId, messageId });
+          }
+        }
       })();
     });
     return () => {
@@ -1121,6 +1129,16 @@ function App() {
     setWorkspaceView("chat");
     await setActive(id);
   };
+  const openConversationAtMessage = async (conversationId: string, messageId?: string) => {
+    await openPanelConversation(conversationId);
+    if (!messageId) return;
+    const loaded = await useConversationStore
+      .getState()
+      .ensureMessageLoaded(conversationId, messageId);
+    if (loaded && useConversationStore.getState().activeId === conversationId) {
+      setMessageFocus({ conversationId, messageId });
+    }
+  };
   const openPanelFile = async (conversationId: string, messageId: string, path: string) => {
     if (useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
       await openPanelConversation(conversationId);
@@ -1525,7 +1543,12 @@ function App() {
       </main>
 
       {activeConversation && !settingsOpen && workspaceView === "chat" && !detailCollapsed && (
-        <DetailColumn runningCount={runningCount} />
+        <DetailColumn
+          runningCount={runningCount}
+          onJumpToMessage={(conversationId, messageId) => {
+            void openConversationAtMessage(conversationId, messageId);
+          }}
+        />
       )}
 
       <CliInstallPanelHost />
@@ -1548,6 +1571,9 @@ function App() {
           setCodexImportOpen(true);
         }}
         onSelectConversation={(id) => { void openPanelConversation(id); }}
+        onSelectTopic={(conversationId, messageId) => {
+          void openConversationAtMessage(conversationId, messageId);
+        }}
       />
       {contextSource && (
         <ConversationContextDialog

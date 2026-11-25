@@ -12,6 +12,7 @@ import {
   PanelLeft,
   PawPrint,
   RotateCcw,
+  Sparkles,
   UsersRound
 } from "lucide-react";
 import { useEffect, useState, type ComponentType } from "react";
@@ -22,6 +23,12 @@ import {
   isDefaultPinnedSidebarItems,
   type PinnableSidebarNavId
 } from "@/config/sidebarNavigation";
+import { cliClient } from "@/services/cli/client";
+import type {
+  ConversationDigestConfig,
+  ConversationDigestConfigState
+} from "@/services/cli/types";
+import { useProviderStore } from "@/store/providerStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import {
   SUPPORTED_LANGUAGE_PREFERENCES,
@@ -144,6 +151,44 @@ export function GeneralTab() {
   const [recordingTarget, setRecordingTarget] =
     useState<ShortcutRecordingTarget>(null);
   const [captureError, setCaptureError] = useState("");
+  const providers = useProviderStore((s) => s.providers);
+  const [digestState, setDigestState] =
+    useState<ConversationDigestConfigState | null>(null);
+
+  useEffect(() => {
+    if (!cliClient.isAvailable()) return;
+    void useProviderStore.getState().load();
+    void cliClient
+      .getConversationDigestConfig()
+      .then((state) => {
+        if (state) setDigestState(state);
+      })
+      .catch(() => {
+        // Ignore digest settings probe error when unavailable.
+      });
+  }, []);
+
+  const updateDigestConfig = async (
+    patch: Partial<ConversationDigestConfig>
+  ) => {
+    if (!cliClient.isAvailable()) return;
+    try {
+      const next = await cliClient.setConversationDigestConfig(patch);
+      if (next) setDigestState(next);
+    } catch {
+      // Ignore host-only setting update errors in restricted sessions.
+    }
+  };
+
+  const digestProviders = providers.filter((p) => p.enabled && p.hasKey);
+  const selectedDigestProvider = digestState?.config.providerId
+    ? digestProviders.find((p) => p.id === digestState.config.providerId)
+    : digestProviders.find(
+        (p) => p.id === digestState?.availability.resolvedProviderId
+      );
+  const selectedDigestModels = (selectedDigestProvider?.models ?? []).filter(
+    (m) => m.enabled !== false
+  );
 
   useEffect(() => {
     if (!recordingTarget) return;
@@ -549,6 +594,94 @@ export function GeneralTab() {
               <span>{t("general.butlerMainWindowShortcutReady")}</span>
             </div>
           ) : null}
+
+          {digestState && (
+            <>
+              <div className="butler-settings-divider" />
+
+              <div className="butler-settings-row">
+                <span className="butler-settings-row-icon" aria-hidden="true">
+                  <Sparkles size={18} strokeWidth={1.8} />
+                </span>
+                <div className="butler-settings-copy">
+                  <strong>{t("general.butlerDigestTitle")}</strong>
+                  <small>{t("general.butlerDigestDescription")}</small>
+                </div>
+                <label className="butler-settings-switch">
+                  <input
+                    type="checkbox"
+                    checked={digestState.config.enabled}
+                    onChange={(event) =>
+                      void updateDigestConfig({ enabled: event.target.checked })
+                    }
+                    aria-label={t("general.butlerDigestTitle")}
+                  />
+                  <span aria-hidden="true" />
+                </label>
+              </div>
+
+              <div className="butler-digest-controls">
+                <label className="butler-digest-field">
+                  <span>{t("general.butlerDigestProviderLabel")}</span>
+                  <select
+                    value={digestState.config.providerId}
+                    onChange={(event) =>
+                      void updateDigestConfig({
+                        providerId: event.target.value,
+                        model: ""
+                      })
+                    }
+                  >
+                    <option value="">{t("general.butlerDigestProviderAuto")}</option>
+                    {digestProviders.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="butler-digest-field">
+                  <span>{t("general.butlerDigestModelLabel")}</span>
+                  {selectedDigestModels.length > 0 ? (
+                    <select
+                      value={digestState.config.model}
+                      onChange={(event) =>
+                        void updateDigestConfig({ model: event.target.value })
+                      }
+                    >
+                      <option value="">{t("general.butlerDigestModelAuto")}</option>
+                      {selectedDigestModels.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name ? `${model.name} (${model.id})` : model.id}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={digestState.config.model}
+                      placeholder={t("general.butlerDigestModelAuto")}
+                      onChange={(event) =>
+                        void updateDigestConfig({ model: event.target.value })
+                      }
+                    />
+                  )}
+                </label>
+
+                <p
+                  className={`butler-digest-status ${digestState.availability.hasAvailableProvider ? "is-ready" : "is-missing"}`}
+                >
+                  {digestState.availability.hasAvailableProvider
+                    ? t("general.butlerDigestResolved", {
+                        provider: digestState.availability.resolvedProviderName ?? "",
+                        model: digestState.availability.resolvedModel ?? ""
+                      })
+                    : t("general.butlerDigestNoProvider")}
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </section>
 

@@ -30704,6 +30704,22 @@ button.ghost:focus-visible,
 
 .msg[data-message-id]:focus {
   outline: none;
+}
+
+.msg-user[data-message-id].is-jump-highlighted .msg-bubble,
+.msg-assistant[data-message-id].is-jump-highlighted {
+  animation: digest-jump-flash 1.6s ease-out;
+}
+
+.msg-assistant[data-message-id].is-jump-highlighted {
   border-radius: 12px;
-  box-shadow: 0 0 0 2px var(--fb-brand-glow);
+}
+
+@keyframes digest-jump-flash {
+  0%, 25% {
+    box-shadow: 0 0 0 2px var(--fb-brand);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
 }

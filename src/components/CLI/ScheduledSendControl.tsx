@@ -22,7 +22,8 @@ import {
   pickCodexUsageResetAt,
   presetFireAt,
   supportsCodexUsageReset,
-  toDateTimeLocalInputValue
+  toDateTimeLocalInputValue,
+  type ScheduledSendTriggerKind
 } from "@/utils/scheduledSend";
 
 type PanelPosition = {
@@ -59,7 +60,7 @@ type ControlProps = {
   disabled?: boolean;
   /** False when the composer has nothing (text or attachments) to schedule yet. */
   canSchedule: boolean;
-  onSchedule: (fireAt: number) => void;
+  onSchedule: (fireAt: number, triggerKind: ScheduledSendTriggerKind) => void;
 };
 
 export function ScheduledSendControl({
@@ -153,9 +154,9 @@ export function ScheduledSendControl({
     };
   }, [open, showCodexReset]);
 
-  const commit = (fireAt: number) => {
+  const commit = (fireAt: number, triggerKind: ScheduledSendTriggerKind) => {
     if (!canSchedule) return;
-    onSchedule(fireAt);
+    onSchedule(fireAt, triggerKind);
     setOpen(false);
   };
 
@@ -165,7 +166,7 @@ export function ScheduledSendControl({
       setCustomError(t("scheduledSend.customInvalid"));
       return;
     }
-    commit(fireAt);
+    commit(fireAt, "schedule");
   };
 
   const panelStyle: CSSProperties | undefined = position
@@ -218,7 +219,7 @@ export function ScheduledSendControl({
                     type="button"
                     className="scheduled-send-preset"
                     disabled={!canSchedule}
-                    onClick={() => commit(presetFireAt(minutes))}
+                    onClick={() => commit(presetFireAt(minutes), "delay")}
                   >
                     {minutes >= 60
                       ? t("scheduledSend.presetHours", { count: minutes / 60 })
@@ -232,7 +233,7 @@ export function ScheduledSendControl({
                   className="scheduled-send-preset scheduled-send-preset-reset"
                   disabled={!canSchedule || codexReset.kind !== "ready"}
                   onClick={() => {
-                    if (codexReset.kind === "ready") commit(codexReset.fireAt);
+                    if (codexReset.kind === "ready") commit(codexReset.fireAt, "quota_reset");
                   }}
                 >
                   {codexReset.kind === "ready"
@@ -315,6 +316,9 @@ export function ScheduledSendMeta({
       break;
     case "failed":
       statusText = t("scheduledSend.statusFailed", { err: entry.error ?? "" });
+      break;
+    case "missed":
+      statusText = t("scheduledSend.statusMissed", { time: fireTime });
       break;
     default:
       statusText = t("scheduledSend.statusPending", {

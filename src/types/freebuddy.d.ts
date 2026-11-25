@@ -115,6 +115,8 @@ import type {
 import type {
   ScheduledTask,
   ScheduledTaskAgent,
+  ScheduledTaskDispatchClaimResult,
+  ScheduledTaskDispatchOutcome,
   ScheduledTaskInput,
   ScheduledTaskMutationResult,
   ScheduledTaskRun
@@ -835,8 +837,20 @@ declare global {
       id: string;
       input: ScheduledTaskInput;
     }): Promise<ScheduledTaskMutationResult>;
-    delete(id: string): Promise<boolean>;
+    delete(id: string, options?: { preserveAttachments?: boolean }): Promise<boolean>;
     run(id: string): Promise<boolean>;
+    claimDispatch(
+      id: string,
+      options?: { force?: boolean }
+    ): Promise<ScheduledTaskDispatchClaimResult>;
+    completeDispatch(args: {
+      id: string;
+      claimToken: string;
+      outcome: ScheduledTaskDispatchOutcome;
+      error?: string;
+      preserveAttachments?: boolean;
+    }): Promise<boolean>;
+    markWaiting(id: string): Promise<boolean>;
     onChanged(cb: (task?: ScheduledTask) => void): () => void;
   }
 

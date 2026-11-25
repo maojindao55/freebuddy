@@ -827,7 +827,8 @@
     "statusWaiting": "Time reached · waiting for the current run to finish",
     "statusSending": "Sending scheduled message…",
     "statusFailed": "Scheduled send failed: {{err}}",
-    "keepAppOpen": "Keep FreeBuddy open; scheduled sends are dropped when the app closes.",
+    "statusMissed": "Missed scheduled time ({{time}})",
+    "keepAppOpen": "Saved across restarts. Keep FreeBuddy running at the scheduled time to send automatically.",
     "sendNow": "Send now",
     "retry": "Retry",
     "edit": "Back to draft",
@@ -1730,9 +1731,17 @@
     "agentValue": "Agent: {{agent}}",
     "nextRun": "Next: {{time}}",
     "openResult": "Open result",
+    "openConversation": "Open conversation",
     "runNow": "Run now",
     "history": "History",
     "noHistory": "No runs yet",
+    "pendingMessagesTitle": "Pending scheduled messages",
+    "pendingMessagesHint": "Scheduled from chat or new task; persists across restarts.",
+    "recurringSectionTitle": "Scheduled tasks",
+    "attachmentsCount": "{{count}} attachment(s)",
+    "trigger": {
+      "quotaReset": "Quota reset"
+    },
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",
@@ -1753,9 +1762,11 @@
     },
     "status": {
       "idle": "Not run",
+      "waiting": "Waiting",
       "running": "Running",
       "completed": "Completed",
-      "failed": "Failed"
+      "failed": "Failed",
+      "missed": "Missed"
     },
     "errors": {
       "titleRequired": "Task name is required.",
@@ -1769,6 +1780,7 @@
       "invalidMonthDay": "The day of month must be between 1 and 31.",
       "oneTimeMustBeFuture": "The one-time task must be scheduled in the future.",
       "agentUnavailable": "The selected agent is unavailable.",
+      "conversationUnavailable": "The target conversation is unavailable or archived.",
       "taskNotFound": "The scheduled task was not found.",
       "windowUnavailable": "The FreeBuddy window is unavailable.",
       "appClosed": "FreeBuddy closed before the task completed.",

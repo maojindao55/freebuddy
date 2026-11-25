@@ -34,11 +34,18 @@ import {
 } from "./messagePayloadSanitize.js";
 
 let notifyMessagesChangedHandler: ((conversationId: string) => void) | null = null;
+let notifyScheduledTasksChangedHandler: (() => void) | null = null;
 
 export function bindConversationNotifier(
   fn: ((conversationId: string) => void) | null
 ): void {
   notifyMessagesChangedHandler = fn;
+}
+
+export function bindScheduledTasksChangedNotifier(
+  fn: (() => void) | null
+): void {
+  notifyScheduledTasksChangedHandler = fn;
 }
 
 export function notifyConversationsChanged(): void {
@@ -789,11 +796,26 @@ function pausePendingMessages(id: string, reason: string): void {
 
 export function archiveConversation(id: string, archived: boolean): void {
   const now = new Date().toISOString();
+  let pausedScheduledTasks = 0;
   getDb().transaction(() => {
     getDb().prepare(`UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?`)
       .run(archived ? 1 : 0, now, id);
-    if (archived) pausePendingMessages(id, "archived");
+    if (archived) {
+      pausePendingMessages(id, "archived");
+      pausedScheduledTasks = getDb()
+        .prepare(
+          `UPDATE scheduled_tasks
+           SET enabled = 0, last_status = 'missed', updated_at = ?
+           WHERE target_conversation_id = ?
+             AND target_kind = 'conversation_message'
+             AND enabled = 1`
+        )
+        .run(now, id).changes;
+    }
   })();
+  if (pausedScheduledTasks > 0) {
+    notifyScheduledTasksChangedHandler?.();
+  }
 }
 
 export function deleteConversation(id: string): void {
@@ -806,9 +828,10 @@ export function deleteConversation(id: string): void {
   const rows = getDb()
     .prepare(
       `SELECT attachments FROM conversation_messages WHERE conversation_id = ? AND attachments IS NOT NULL
-       UNION ALL SELECT attachments FROM conversation_message_queue WHERE conversation_id = ?`
+       UNION ALL SELECT attachments FROM conversation_message_queue WHERE conversation_id = ?
+       UNION ALL SELECT attachments FROM scheduled_tasks WHERE target_conversation_id = ? AND attachments IS NOT NULL`
     )
-    .all(id, id) as Array<{ attachments: string | null }>;
+    .all(id, id, id) as Array<{ attachments: string | null }>;
 
   for (const row of rows) {
     if (!row.attachments) continue;
@@ -824,10 +847,16 @@ export function deleteConversation(id: string): void {
     }
   }
 
+  const deletedScheduledTasks = getDb()
+    .prepare(`DELETE FROM scheduled_tasks WHERE target_conversation_id = ?`)
+    .run(id).changes;
   getDb().prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
   acpProcessPool.closeConversation(id);
   for (const filePath of managedPaths) {
     discardManagedAttachmentIfUnreferenced(filePath);
+  }
+  if (deletedScheduledTasks > 0) {
+    notifyScheduledTasksChangedHandler?.();
   }
 }
 

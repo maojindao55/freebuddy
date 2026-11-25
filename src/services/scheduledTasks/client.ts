@@ -1,6 +1,8 @@
 import type {
   ScheduledTask,
   ScheduledTaskAgent,
+  ScheduledTaskDispatchClaimResult,
+  ScheduledTaskDispatchOutcome,
   ScheduledTaskInput,
   ScheduledTaskMutationResult,
   ScheduledTaskRun
@@ -31,11 +33,29 @@ export const scheduledTasksClient = {
   update(id: string, input: ScheduledTaskInput): Promise<ScheduledTaskMutationResult> {
     return api().update({ id, input });
   },
-  delete(id: string): Promise<boolean> {
-    return api().delete(id);
+  delete(id: string, options?: { preserveAttachments?: boolean }): Promise<boolean> {
+    return api().delete(id, options);
   },
   run(id: string): Promise<boolean> {
     return api().run(id);
+  },
+  claimDispatch(
+    id: string,
+    options?: { force?: boolean }
+  ): Promise<ScheduledTaskDispatchClaimResult> {
+    return api().claimDispatch(id, options);
+  },
+  completeDispatch(args: {
+    id: string;
+    claimToken: string;
+    outcome: ScheduledTaskDispatchOutcome;
+    error?: string;
+    preserveAttachments?: boolean;
+  }): Promise<boolean> {
+    return api().completeDispatch(args);
+  },
+  markWaiting(id: string): Promise<boolean> {
+    return api().markWaiting(id);
   },
   onChanged(cb: (task?: ScheduledTask) => void): (() => void) | undefined {
     return window.freebuddy?.scheduledTasks?.onChanged?.(cb);

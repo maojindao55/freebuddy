@@ -67,6 +67,7 @@ async function scheduledHarness({ failSnapshot = false, failAttach = false, dele
       attachConversationShares: async input => { calls.push(["attach", input]); if (${failAttach}) throw new Error("attach failed"); return { references: [], attachedCount: 1 }; }
     };
     export const delegationClient = { isAvailable: () => ${delegation}, hasRunForConversation: async () => ${delegation}, followUp: async args => { calls.push(["followup", args]); return { ok: true }; } };
+    export const scheduledTasksClient = { isAvailable: () => false };
     export const unprotectManagedAttachments = () => calls.push(["unprotect"]);
     export const composeMessageWithAttachments = text => text;
     export const truncatePromptPreview = text => text;

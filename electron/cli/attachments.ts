@@ -336,7 +336,8 @@ export function listReferencedManagedAttachmentPaths(): Set<string> {
   const rows = getDb()
     .prepare(
       `SELECT attachments FROM conversation_messages WHERE attachments IS NOT NULL
-       UNION ALL SELECT attachments FROM conversation_message_queue`
+       UNION ALL SELECT attachments FROM conversation_message_queue
+       UNION ALL SELECT attachments FROM scheduled_tasks WHERE attachments IS NOT NULL`
     )
     .all() as Array<{ attachments: string | null }>;
 
@@ -355,7 +356,8 @@ export function countManagedAttachmentReferences(filePath: string): number {
   const rows = getDb()
     .prepare(
       `SELECT attachments FROM conversation_messages WHERE attachments IS NOT NULL
-       UNION ALL SELECT attachments FROM conversation_message_queue`
+       UNION ALL SELECT attachments FROM conversation_message_queue
+       UNION ALL SELECT attachments FROM scheduled_tasks WHERE attachments IS NOT NULL`
     )
     .all() as Array<{ attachments: string | null }>;
 

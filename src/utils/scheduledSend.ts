@@ -8,7 +8,14 @@ export const CODEX_USAGE_ADAPTERS: ReadonlySet<string> = new Set([
   "codex-acp"
 ]);
 
-export type ScheduledSendStatus = "pending" | "waiting" | "sending" | "failed";
+export type ScheduledSendStatus =
+  | "pending"
+  | "waiting"
+  | "sending"
+  | "failed"
+  | "missed";
+
+export type ScheduledSendTriggerKind = "schedule" | "delay" | "quota_reset";
 
 export interface CodexUsageWindowLike {
   leftPercent: number;
@@ -124,6 +131,17 @@ export function formatCountdown(remainingMs: number): string {
   const seconds = totalSeconds % 60;
   if (hours > 0) return `${hours}:${pad2(minutes)}:${pad2(seconds)}`;
   return `${pad2(minutes)}:${pad2(seconds)}`;
+}
+
+export function toLocalDateAndTime(ms: number): {
+  scheduleDate: string;
+  timeLocal: string;
+} {
+  const date = new Date(ms);
+  return {
+    scheduleDate: `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
+    timeLocal: `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  };
 }
 
 export function truncatePromptPreview(prompt: string, max = 80): string {

@@ -9,6 +9,7 @@ import type {
   DraftToolEvent,
   DraftToolResolution
 } from "./shared/browserToolProtocol.js";
+import type { McpSchemeImportEvent } from "./shared/mcpSchemeLink.js";
 
 type CliInstallEvent =
   | { type: "stdout" | "stderr"; content: string }
@@ -578,6 +579,14 @@ const window = {
       cb(payload?.tab ?? "cli");
     ipcRenderer.on("freebuddy://open-settings", handler);
     return () => ipcRenderer.off("freebuddy://open-settings", handler);
+  },
+  onMcpImport(cb: (payload: McpSchemeImportEvent) => void): () => void {
+    const handler = (_e: IpcRendererEvent, payload: McpSchemeImportEvent) => cb(payload);
+    ipcRenderer.on("freebuddy://mcp-import", handler);
+    return () => ipcRenderer.off("freebuddy://mcp-import", handler);
+  },
+  consumePendingMcpImport(): Promise<McpSchemeImportEvent | null> {
+    return ipcRenderer.invoke("window:consume-pending-mcp-import");
   },
   onAppearanceChanged(cb: (theme: string) => void): () => void {
     const handler = (_e: IpcRendererEvent, payload: { theme?: string }) =>

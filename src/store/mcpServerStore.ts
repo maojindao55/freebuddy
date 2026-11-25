@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { cliClient } from "@/services/cli/client";
+import type { McpSchemeImportEvent } from "../../electron/shared/mcpSchemeLink";
 import type {
   McpOAuthStatus,
   UserMcpServer,
@@ -16,6 +17,9 @@ interface McpServerStoreState {
   oauthAuthorizingIds: string[];
   oauthDisconnectingIds: string[];
   error: string | null;
+  pendingImport: McpSchemeImportEvent | null;
+  setPendingImport: (event: McpSchemeImportEvent | null) => void;
+  clearPendingImport: () => void;
   load: () => Promise<void>;
   refresh: () => Promise<void>;
   create: (input: UserMcpServerInput) => Promise<UserMcpServer>;
@@ -56,6 +60,10 @@ export const useMcpServerStore = create<McpServerStoreState>((set, get) => ({
   oauthAuthorizingIds: [],
   oauthDisconnectingIds: [],
   error: null,
+  pendingImport: null,
+
+  setPendingImport: (pendingImport) => set({ pendingImport }),
+  clearPendingImport: () => set({ pendingImport: null }),
 
   load: async () => {
     if (get().loading) return;

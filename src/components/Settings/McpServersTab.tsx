@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   Info,
+  Link2,
   Loader2,
   Plus,
   RefreshCw,
@@ -16,7 +17,16 @@ import {
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useMcpServerStore } from "@/store/mcpServerStore";
+import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { mcpSelfCheckErrorMessage } from "@/services/cli/mcpSelfCheckMessages";
+import {
+  buildMcpSchemeLink,
+  parseMcpSchemeLink,
+  type McpSchemeImportDraft,
+  type McpSchemeLinkErrorCode,
+  type McpSchemeLinkSource,
+  type McpSchemeLinkWarning
+} from "../../../electron/shared/mcpSchemeLink";
 import type {
   UserMcpServer,
   UserMcpServerEnvVar,
@@ -24,6 +34,22 @@ import type {
   UserMcpServerSelfCheckResult
 } from "@/services/cli/types";
 import "./McpServersTab.css";
+
+interface ActiveMcpImport {
+  id: string;
+  source: McpSchemeLinkSource;
+  draft: McpSchemeImportDraft;
+  warnings: McpSchemeLinkWarning[];
+}
+
+function mapSchemeLinkError(
+  errorCode: McpSchemeLinkErrorCode,
+  t: (key: string) => string
+): string {
+  const key = `mcpServers.error.scheme_${errorCode}`;
+  const translated = t(key);
+  return translated !== key ? translated : t("mcpServers.error.scheme_invalid_config");
+}
 
 const MCP_SERVER_TEMPLATES: Array<{
   name: string;
@@ -66,7 +92,7 @@ function createValueDrafts(values: UserMcpServerEnvVar[] = []): EnvVarDraft[] {
     id: nanoid(6),
     originalName: entry.name,
     name: entry.name,
-    value: entry.secret ? "" : (entry.value ?? ""),
+    value: entry.secret && entry.hasValue ? "" : (entry.value ?? ""),
     valuePreview: entry.valuePreview,
     hasStoredSecret: entry.secret === true && Boolean(entry.hasValue),
     secret: entry.secret ?? false
@@ -254,35 +280,46 @@ function StatusDot({
 
 function McpServerEditor({
   server,
+  importedDraft,
+  existingServerNames,
   onSave,
   onDelete,
   onBack,
+  onDirtyChange,
+  onCopyShareLink,
+  copiedShareLink,
   isNew,
   autoSelfCheck,
   onAutoSelfCheckDone
 }: {
   server: UserMcpServer | null;
+  importedDraft?: ActiveMcpImport | null;
+  existingServerNames?: string[];
   onSave: (input: UserMcpServerInput) => Promise<UserMcpServer | undefined>;
   onDelete?: (id: string) => Promise<void>;
   onBack: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onCopyShareLink?: (server: UserMcpServer) => void;
+  copiedShareLink?: boolean;
   isNew: boolean;
   autoSelfCheck?: boolean;
   onAutoSelfCheckDone?: () => void;
 }) {
   const { t } = useTranslation();
-  const [name, setName] = useState(server?.name ?? "");
-  const [command, setCommand] = useState(server?.command ?? "");
+  const seed = server ?? importedDraft?.draft;
+  const [name, setName] = useState(seed?.name ?? "");
+  const [command, setCommand] = useState(seed?.command ?? "");
   const [argsLines, setArgsLines] = useState(
-    server?.args?.join("\n") ?? ""
+    seed?.args?.join("\n") ?? ""
   );
-  const [transport, setTransport] = useState<McpTransport>(server?.transport ?? "stdio");
-  const [url, setUrl] = useState(server?.url ?? "");
-  const [authType, setAuthType] = useState<"headers" | "oauth">(server?.authType ?? "headers");
-  const [oauthClientId, setOAuthClientId] = useState(server?.oauthClientId ?? "");
-  const [oauthScope, setOAuthScope] = useState(server?.oauthScope ?? "");
+  const [transport, setTransport] = useState<McpTransport>(seed?.transport ?? "stdio");
+  const [url, setUrl] = useState(seed?.url ?? "");
+  const [authType, setAuthType] = useState<"headers" | "oauth">(seed?.authType ?? "headers");
+  const [oauthClientId, setOAuthClientId] = useState(seed?.oauthClientId ?? "");
+  const [oauthScope, setOAuthScope] = useState(seed?.oauthScope ?? "");
   const [startingOAuth, setStartingOAuth] = useState(false);
-  const [envVars, setEnvVars] = useState<EnvVarDraft[]>(() => createValueDrafts(server?.env));
-  const [headers, setHeaders] = useState<EnvVarDraft[]>(() => createValueDrafts(server?.headers));
+  const [envVars, setEnvVars] = useState<EnvVarDraft[]>(() => createValueDrafts(seed?.env));
+  const [headers, setHeaders] = useState<EnvVarDraft[]>(() => createValueDrafts(seed?.headers));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -366,6 +403,26 @@ function McpServerEditor({
       ? oauthClientId.trim() !== (server.oauthClientId ?? "") || oauthScope.trim() !== (server.oauthScope ?? "")
       : valueDraftsChanged(headers, server.headers);
   }, [isNew, server, name, transport, url, authType, oauthClientId, oauthScope, command, argsLines, envVars, headers]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
+
+  const duplicateImportName = useMemo(() => {
+    if (!isNew || !importedDraft || !existingServerNames?.length) return false;
+    const trimmed = name.trim().toLowerCase();
+    if (!trimmed) return false;
+    return existingServerNames.some((entry) => entry.toLowerCase() === trimmed);
+  }, [isNew, importedDraft, existingServerNames, name]);
+
+  const hasEmptyImportValues = useMemo(() => {
+    if (!isNew || !importedDraft) return false;
+    if (transport === "stdio") {
+      return envVars.some((entry) => entry.name.trim() && !entry.value);
+    }
+    return authType === "headers" && headers.some((entry) => entry.name.trim() && !entry.value);
+  }, [isNew, importedDraft, transport, authType, envVars, headers]);
 
   useEffect(() => {
     setCheckResult(null);
@@ -582,10 +639,51 @@ function McpServerEditor({
           {isNew ? t("mcpServers.new") : t("mcpServers.edit")}
           {server && <span className="muted"> {server.name}</span>}
         </h3>
+        {!isNew && server && onCopyShareLink && (
+          <div className="mcp-editor-header-actions">
+            <button
+              type="button"
+              className="mcp-icon-btn"
+              onClick={() => onCopyShareLink(server)}
+              disabled={busy}
+              title={t("mcpServers.copyShareLink")}
+              aria-label={t("mcpServers.copyShareLink")}
+            >
+              {copiedShareLink ? <Check size={14} /> : <Link2 size={14} />}
+              {t("mcpServers.copyShareLink")}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mcp-editor-content">
-      {isNew && (
+      {isNew && importedDraft && (
+        <div className="mcp-import-banner" role="status">
+          <Info size={16} aria-hidden="true" />
+          <div className="mcp-import-banner-body">
+            <strong>{t("mcpServers.importBannerTitle", { source: importedDraft.source })}</strong>
+            <p>{t("mcpServers.importBannerHint")}</p>
+            {(importedDraft.warnings.length > 0 || duplicateImportName || hasEmptyImportValues) && (
+              <ul className="mcp-import-banner-warnings">
+                {importedDraft.warnings.includes("name_normalized") && (
+                  <li>{t("mcpServers.importWarningNameNormalized")}</li>
+                )}
+                {importedDraft.warnings.includes("contains_secrets") && (
+                  <li>{t("mcpServers.importWarningContainsSecrets")}</li>
+                )}
+                {duplicateImportName && (
+                  <li>{t("mcpServers.importWarningDuplicateName", { name: name.trim() })}</li>
+                )}
+                {hasEmptyImportValues && (
+                  <li>{t("mcpServers.importWarningEmptyValues")}</li>
+                )}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isNew && !importedDraft && (
         <div className="mcp-templates">
           <span className="mcp-templates-label">
             {t("mcpServers.templates", "Quick fill")}
@@ -912,19 +1010,78 @@ export function McpServersTab() {
   const checkingIds = useMcpServerStore((s) => s.checkingIds);
   const oauthAuthorizingIds = useMcpServerStore((s) => s.oauthAuthorizingIds);
   const oauthDisconnectingIds = useMcpServerStore((s) => s.oauthDisconnectingIds);
+  const pendingImport = useMcpServerStore((s) => s.pendingImport);
+  const clearPendingImport = useMcpServerStore((s) => s.clearPendingImport);
 
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
+  const [activeImport, setActiveImport] = useState<ActiveMcpImport | null>(null);
+  const [importPanelOpen, setImportPanelOpen] = useState(false);
+  const [importLinkText, setImportLinkText] = useState("");
+  const [importLinkError, setImportLinkError] = useState<string | null>(null);
+  const [copiedServerId, setCopiedServerId] = useState<string | null>(null);
   const [autoCheckId, setAutoCheckId] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const editorDirtyRef = useRef(false);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const checkingSet = useMemo(() => new Set(checkingIds), [checkingIds]);
   const oauthBusySet = useMemo(() => new Set([
     ...oauthAuthorizingIds, ...oauthDisconnectingIds,
     ...servers.filter((server) => server.oauthStatus?.state === "authorizing").map((server) => server.id)
   ]), [oauthAuthorizingIds, oauthDisconnectingIds, servers]);
+  const existingServerNames = useMemo(() => servers.map((s) => s.name), [servers]);
+
+  const handleEditorDirtyChange = useCallback((dirty: boolean) => {
+    editorDirtyRef.current = dirty;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimer.current) {
+        clearTimeout(copyResetTimer.current);
+        copyResetTimer.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
+
+  useEffect(() => {
+    if (!pendingImport) return;
+    clearPendingImport();
+    if (pendingImport.errorCode) {
+      const errorMessage = mapSchemeLinkError(pendingImport.errorCode, t);
+      setListError(errorMessage);
+      if (selectedId !== null) {
+        if (!editorDirtyRef.current) {
+          setActiveImport(null);
+          setSelectedId(null);
+        } else {
+          useAgentBridgeStore.getState().notify(errorMessage);
+        }
+      }
+      return;
+    }
+    if (!pendingImport.draft) return;
+    if (
+      selectedId !== null &&
+      editorDirtyRef.current &&
+      !window.confirm(t("mcpServers.importReplaceUnsaved"))
+    ) {
+      return;
+    }
+    setListError(null);
+    setImportPanelOpen(false);
+    setImportLinkError(null);
+    setActiveImport({
+      id: pendingImport.id,
+      source: pendingImport.source,
+      draft: pendingImport.draft,
+      warnings: pendingImport.warnings ?? []
+    });
+    setSelectedId("new");
+  }, [pendingImport, clearPendingImport, selectedId, t]);
 
   const selectedServer = useMemo(() => {
     if (selectedId === "new" || !selectedId) return null;
@@ -934,6 +1091,7 @@ export function McpServersTab() {
   const handleCreate = useCallback(
     async (input: UserMcpServerInput) => {
       const server = await create(input);
+      setActiveImport(null);
       setAutoCheckId(server.transport !== "stdio" && server.authType === "oauth" ? null : server.id);
       setSelectedId(server.id);
       return server;
@@ -956,6 +1114,56 @@ export function McpServersTab() {
     },
     [remove]
   );
+
+  const handleCopyShareLink = useCallback(
+    async (server: UserMcpServer) => {
+      try {
+        const { url, strippedSecrets } = buildMcpSchemeLink(server);
+        await navigator.clipboard.writeText(url);
+        setCopiedServerId(server.id);
+        if (copyResetTimer.current) {
+          clearTimeout(copyResetTimer.current);
+        }
+        copyResetTimer.current = setTimeout(() => {
+          setCopiedServerId(null);
+          copyResetTimer.current = null;
+        }, 2000);
+        useAgentBridgeStore
+          .getState()
+          .notify(
+            t(
+              strippedSecrets
+                ? "mcpServers.shareLinkCopiedSecretsStripped"
+                : "mcpServers.shareLinkCopied"
+            )
+          );
+      } catch {
+        setListError(t("mcpServers.error.copyShareLinkFailed"));
+      }
+    },
+    [t]
+  );
+
+  const handleParseImportLink = useCallback(() => {
+    const parsed = parseMcpSchemeLink(importLinkText, {
+      allowThirdPartySchemes: true
+    });
+    if (!parsed.ok) {
+      setImportLinkError(mapSchemeLinkError(parsed.errorCode, t));
+      return;
+    }
+    setListError(null);
+    setImportLinkError(null);
+    setImportLinkText("");
+    setImportPanelOpen(false);
+    setActiveImport({
+      id: nanoid(8),
+      source: parsed.source,
+      draft: parsed.draft,
+      warnings: parsed.warnings
+    });
+    setSelectedId("new");
+  }, [importLinkText, t]);
 
   const handleCheckAll = useCallback(async () => {
     const queue = servers.filter((server) => server.enabled && !oauthBusySet.has(server.id) &&
@@ -987,11 +1195,19 @@ export function McpServersTab() {
   if (selectedId) {
     return (
       <McpServerEditor
-        key={selectedId}
+        key={selectedId === "new" ? `new:${activeImport?.id ?? "blank"}` : selectedId}
         server={selectedServer}
+        importedDraft={selectedId === "new" ? activeImport : null}
+        existingServerNames={existingServerNames}
         onSave={selectedId === "new" ? handleCreate : handleUpdate}
         onDelete={selectedId === "new" ? undefined : handleDelete}
-        onBack={() => setSelectedId(null)}
+        onBack={() => {
+          setActiveImport(null);
+          setSelectedId(null);
+        }}
+        onDirtyChange={handleEditorDirtyChange}
+        onCopyShareLink={handleCopyShareLink}
+        copiedShareLink={Boolean(selectedServer && copiedServerId === selectedServer.id)}
         isNew={selectedId === "new"}
         autoSelfCheck={autoCheckId === selectedId}
         onAutoSelfCheckDone={() => setAutoCheckId(null)}
@@ -1020,8 +1236,22 @@ export function McpServersTab() {
           )}
           <button
             type="button"
+            className="secondary"
+            onClick={() => {
+              setImportLinkError(null);
+              setImportPanelOpen((open) => !open);
+            }}
+          >
+            <Link2 size={14} />
+            {t("mcpServers.importFromLink")}
+          </button>
+          <button
+            type="button"
             className="primary"
-            onClick={() => setSelectedId("new")}
+            onClick={() => {
+              setActiveImport(null);
+              setSelectedId("new");
+            }}
           >
             <Plus size={14} />
             {t("mcpServers.add")}
@@ -1038,6 +1268,73 @@ export function McpServersTab() {
         <div className="mcp-storage-warning" role="status">
           <AlertTriangle size={16} />
           <span>{t("mcpServers.secretStorageWarning")}</span>
+        </div>
+      )}
+
+      {importPanelOpen && (
+        <div className="mcp-import-panel">
+          <div className="mcp-import-panel-header">
+            <strong>{t("mcpServers.importLinkTitle")}</strong>
+            <button
+              type="button"
+              className="mcp-icon-btn"
+              onClick={() => {
+                setImportPanelOpen(false);
+                setImportLinkError(null);
+              }}
+              aria-label={t("common.close")}
+              title={t("common.close")}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <textarea
+            value={importLinkText}
+            onChange={(event) => {
+              setImportLinkText(event.target.value);
+              if (importLinkError) setImportLinkError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                handleParseImportLink();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setImportPanelOpen(false);
+                setImportLinkError(null);
+              }
+            }}
+            placeholder={t("mcpServers.importLinkPlaceholder")}
+            aria-label={t("mcpServers.importLinkTitle")}
+            rows={2}
+            autoFocus
+            spellCheck={false}
+          />
+          <p className="mcp-form-hint">{t("mcpServers.importLinkHint")}</p>
+          {importLinkError && (
+            <div className="mcp-form-error" role="alert">
+              {importLinkError}
+            </div>
+          )}
+          <div className="mcp-import-panel-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setImportPanelOpen(false);
+                setImportLinkError(null);
+              }}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={handleParseImportLink}
+            >
+              {t("mcpServers.importLinkSubmit")}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1075,14 +1372,30 @@ export function McpServersTab() {
           </span>
           <h3>{t("mcpServers.empty")}</h3>
           <p className="muted">{t("mcpServers.emptyHint")}</p>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => setSelectedId("new")}
-          >
-            <Plus size={14} />
-            {t("mcpServers.add")}
-          </button>
+          <div className="mcp-empty-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setImportLinkError(null);
+                setImportPanelOpen(true);
+              }}
+            >
+              <Link2 size={14} />
+              {t("mcpServers.importFromLink")}
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setActiveImport(null);
+                setSelectedId("new");
+              }}
+            >
+              <Plus size={14} />
+              {t("mcpServers.add")}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1156,6 +1469,19 @@ export function McpServersTab() {
                     )}
                 </button>
                 <div className="mcp-server-actions">
+                  <button
+                    type="button"
+                    className="mcp-icon-btn"
+                    onClick={() => void handleCopyShareLink(server)}
+                    title={t("mcpServers.copyShareLink")}
+                    aria-label={t("mcpServers.copyShareLink")}
+                  >
+                    {copiedServerId === server.id ? (
+                      <Check size={14} />
+                    ) : (
+                      <Link2 size={14} />
+                    )}
+                  </button>
                   <button
                     type="button"
                     className="mcp-icon-btn"

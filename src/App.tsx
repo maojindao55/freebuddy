@@ -56,6 +56,7 @@ import { useDebugLogsDialogStore } from "./store/debugLogsDialogStore";
 import { useOnboardingStore } from "./store/onboardingStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useSkillStore } from "./store/skillStore";
+import { useMcpServerStore } from "./store/mcpServerStore";
 import { useUpdaterStore } from "./store/updaterStore";
 import { useDetailLayoutStore, selectDetailWidth } from "./store/detailLayoutStore";
 import { useBrowserSidebarLayout, resolveDetailWidth, getResponsiveDetailCollapse } from "./hooks/useBrowserSidebarLayout";
@@ -519,6 +520,29 @@ function App() {
       setSettingsOpen(true);
     });
     return () => {
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const handleMcpImport = (
+      payload: import("../electron/shared/mcpSchemeLink").McpSchemeImportEvent
+    ) => {
+      if (cancelled) return;
+      useMcpServerStore.getState().setPendingImport(payload);
+      setSettingsInitialTab("mcp");
+      setSettingsOpen(true);
+    };
+    const off = window.freebuddy?.window?.onMcpImport?.(handleMcpImport);
+    void window.freebuddy?.window
+      ?.consumePendingMcpImport?.()
+      .then((pending) => {
+        if (pending) handleMcpImport(pending);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
       off?.();
     };
   }, []);

@@ -489,6 +489,12 @@ declare global {
       }) => void
     ): () => void;
     onOpenSettings(cb: (tab: string) => void): () => void;
+    onMcpImport?(
+      cb: (payload: import("../../electron/shared/mcpSchemeLink").McpSchemeImportEvent) => void
+    ): () => void;
+    consumePendingMcpImport?(): Promise<
+      import("../../electron/shared/mcpSchemeLink").McpSchemeImportEvent | null
+    >;
     onAppearanceChanged(cb: (theme: string) => void): () => void;
     setUiPresence(snapshot: {
       workspaceView: "chat" | "conversationBoard" | "todos" | "scheduledTasks" | "workflowTeams" | "usage" | "freebie";

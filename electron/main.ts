@@ -94,6 +94,12 @@ import { initializeAgentUsageReconciler } from "./cli/usageReconciler.js";
 import { initDebugLog, logMain } from "./debugLog.js";
 import { formatStartupFailure } from "./shared/startupFailure.js";
 import {
+  findSchemeUrlInArgv,
+  isMcpSchemeUrl,
+  parseMcpSchemeLink,
+  type McpSchemeImportEvent
+} from "./shared/mcpSchemeLink.js";
+import {
   clearMainWindowPresence,
   setMainWindowPresence,
   getMainWindowPresence,
@@ -161,8 +167,6 @@ crashReporter.start({
   compress: false
 });
 
-const PROTOCOL = isDevInstance ? "freebuddy-dev" : "freebuddy";
-
 let pendingExternalShare: {
   id: string;
   timestamp: number;
@@ -188,6 +192,8 @@ let pendingShellOpen: ShellOpenEvent | null = null;
 const queuedShellOpenPaths: string[] = [];
 let shellOpenListenerReady = false;
 let shellOpenFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingMcpImport: McpSchemeImportEvent | null = null;
+let mcpImportListenerReady = false;
 
 function emitShellOpen(event: ShellOpenEvent) {
   if (!event.cwd && event.files.length === 0) return;
@@ -356,9 +362,57 @@ function handleExternalShare(shareId: string | null, payloadPath: string | null)
   }
 }
 
+function emitMcpImport(event: McpSchemeImportEvent) {
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isLoading() &&
+    mcpImportListenerReady
+  ) {
+    safeSendToWebContents(mainWindow.webContents, "freebuddy://mcp-import", event);
+    revealMainWindow();
+    return;
+  }
+  pendingMcpImport = event;
+  if (app.isReady()) {
+    revealMainWindow();
+  }
+}
+
+function handleMcpImportSchemeUrl(raw: string) {
+  const result = parseMcpSchemeLink(raw, { allowThirdPartySchemes: false });
+  const fallbackSource = raw.trim().toLowerCase().startsWith("freebuddy-dev://")
+    ? "freebuddy-dev"
+    : "freebuddy";
+  const event: McpSchemeImportEvent = result.ok
+    ? {
+        id: crypto.randomUUID(),
+        source: result.source,
+        draft: result.draft,
+        warnings: result.warnings
+      }
+    : {
+        id: crypto.randomUUID(),
+        source: result.source ?? fallbackSource,
+        errorCode: result.errorCode
+      };
+
+  logMain().info("mcp-scheme", "received mcp scheme link", {
+    ok: result.ok,
+    source: event.source,
+    transport: result.ok ? result.draft.transport : undefined,
+    errorCode: result.ok ? undefined : result.errorCode
+  });
+
+  emitMcpImport(event);
+}
+
 function handleSchemeUrl(raw: string) {
   try {
     const parsed = new URL(raw);
+    if (app.isPackaged && !isDevInstance && parsed.protocol.toLowerCase() === "freebuddy-dev:") {
+      return;
+    }
     const action = parsed.hostname || parsed.pathname.replace(/^\//, "");
     if (action === "preview" && mainWindow && !mainWindow.isDestroyed()) {
       safeSendToWebContents(mainWindow.webContents, "freebuddy://bridge", {
@@ -373,23 +427,25 @@ function handleSchemeUrl(raw: string) {
       handleExternalShare(shareId, payloadPath);
       return;
     }
+    if (isMcpSchemeUrl(raw)) {
+      handleMcpImportSchemeUrl(raw);
+      return;
+    }
   } catch {
     // ignore malformed scheme urls
   }
 }
 
 if (app.isPackaged) {
-  if (!app.isDefaultProtocolClient(PROTOCOL)) {
-    app.setAsDefaultProtocolClient(PROTOCOL);
-  }
   if (!isDevInstance && !app.isDefaultProtocolClient("freebuddy")) {
     app.setAsDefaultProtocolClient("freebuddy");
   }
-  if (isDevInstance && !app.isDefaultProtocolClient("freebuddy-dev")) {
-    app.setAsDefaultProtocolClient("freebuddy-dev");
-  }
+} else if (process.platform === "darwin") {
+  app.setAsDefaultProtocolClient("freebuddy-dev");
 } else {
-  const devArgs = process.argv.slice(1);
+  const devArgs = process.argv
+    .slice(1)
+    .filter((arg) => !/^freebuddy(?:-dev)?:\/\//i.test(arg));
   if (!app.isDefaultProtocolClient("freebuddy-dev", process.execPath, devArgs)) {
     app.setAsDefaultProtocolClient("freebuddy-dev", process.execPath, devArgs);
   }
@@ -414,7 +470,7 @@ app.on("open-file", (event, filePath) => {
 });
 
 app.on("second-instance", (_event, argv) => {
-  const url = argv.find((arg) => arg.startsWith("freebuddy://") || arg.startsWith("freebuddy-dev://"));
+  const url = findSchemeUrlInArgv(argv);
   if (url) handleSchemeUrl(url);
   const launchPaths = collectLaunchShellOpenPaths(argv);
   const docPaths = launchPaths.filter(isDocStudioOpenableFile);
@@ -1858,11 +1914,16 @@ function createWindow() {
   });
 
   mainWindow.on("closed", () => {
+    mcpImportListenerReady = false;
     mainWindow = null;
     clearMainWindowPresence();
     butlerBuddyTask = null;
     butlerBuddyStateCoordinator.setStreaming(false);
     closeButlerBuddyWindows();
+  });
+
+  mainWindow.webContents.on("did-start-loading", () => {
+    mcpImportListenerReady = false;
   });
 
   // Allow-list the main window's own webContents for DocStudio IPC (the
@@ -2009,6 +2070,14 @@ type SaveReceiptImagePayload = {
 };
 
 function registerTaskNotificationIpc(): void {
+  ipcMain.handle("window:consume-pending-mcp-import", (event) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents) return null;
+    mcpImportListenerReady = true;
+    const next = pendingMcpImport;
+    pendingMcpImport = null;
+    return next;
+  });
   ipcMain.handle("window:get-fullscreen", (event) => {
     const win = mainWindow;
     if (!win || win.isDestroyed() || event.sender !== win.webContents) return false;
@@ -2312,6 +2381,10 @@ async function bootstrap(): Promise<void> {
     }
   }
   createWindow();
+  const initialSchemeUrl = findSchemeUrlInArgv(process.argv);
+  if (initialSchemeUrl) {
+    handleSchemeUrl(initialSchemeUrl);
+  }
   screen.on("display-metrics-changed", () => {
     updateButlerScreenBallDisplayAfterDrag();
   });

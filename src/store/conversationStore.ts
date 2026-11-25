@@ -33,6 +33,7 @@ import {
   resolveConfigOptionOverrides
 } from "@/utils/sessionConfigOptions";
 
+import { useCliAccountsStore } from "./cliAccountsStore";
 import { useCliExecutorStore } from "./cliExecutorStore";
 import { useProjectStore } from "./projectStore";
 import {
@@ -125,6 +126,7 @@ export interface ConversationState {
   setActive(id: string | undefined): Promise<void>;
   loadMessages(id: string, messageIds?: string[]): Promise<void>;
   loadOlderMessages(id: string): Promise<number>;
+  ensureMessageLoaded(conversationId: string, messageId: string): Promise<boolean>;
   markConversationUnread(id: string): void;
   markConversationCompletedUnread(
     id: string,
@@ -1010,6 +1012,34 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
 
+  async ensureMessageLoaded(conversationId, messageId) {
+    if (!cliClient.isAvailable() || !conversationId || !messageId) return false;
+    const current = get().messages[conversationId] ?? [];
+    if (current.some((message) => message.id === messageId)) {
+      return true;
+    }
+    const page = await cliClient.listMessagesAround(conversationId, messageId);
+    let loadedTarget = false;
+    set((s) => {
+      const merged = mergeConversationMessages(
+        s.messages[conversationId] ?? [],
+        page.messages
+      );
+      loadedTarget = merged.some((message) => message.id === messageId);
+      return {
+        messages: {
+          ...s.messages,
+          [conversationId]: merged
+        },
+        olderMessagesAvailable: {
+          ...s.olderMessagesAvailable,
+          [conversationId]: page.hasMore
+        }
+      };
+    });
+    return loadedTarget;
+  },
+
   async newConversation({
     member,
     cwd,
@@ -1615,17 +1645,28 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
       ? workflowFollowupToolSessionScope(workflowRun, member)
       : `conversation:${conv.id}`;
 
+    const activeAccountId =
+      useCliAccountsStore?.getState?.()?.activeAccountIdForAdapter?.(
+        member.cli.adapter
+      );
     let resumedFromSessionId: string | undefined;
     if (!wantFresh) {
       const prev = await cliClient.getToolSession(member.id, toolSessionScope);
-      if (prev && prev.adapter === member.cli.adapter) {
-        resumedFromSessionId = prev.sessionId;
-      }
-      if (!workflowRun) {
-        resumedFromSessionId ??= latestSessionIdFromMessages(
-          get().messages[conversationId] ?? [],
-          member.cli.adapter
-        );
+      const accountMismatch = Boolean(
+        activeAccountId &&
+          prev?.accountId &&
+          prev.accountId !== activeAccountId
+      );
+      if (!accountMismatch) {
+        if (prev && prev.adapter === member.cli.adapter) {
+          resumedFromSessionId = prev.sessionId;
+        }
+        if (!workflowRun) {
+          resumedFromSessionId ??= latestSessionIdFromMessages(
+            get().messages[conversationId] ?? [],
+            member.cli.adapter
+          );
+        }
       }
     }
     const userPrompt = composeMessageWithAttachments(trimmed, attachments);

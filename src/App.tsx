@@ -42,7 +42,9 @@ import { CliInstallPanelHost } from "./components/Settings/CliInstallPanelHost";
 import { ScheduledTasksTab } from "./components/Settings/ScheduledTasksTab";
 import { WorkflowTeamsTab } from "./components/Settings/WorkflowTeamsTab";
 import { FreebiePage } from "./components/Freebie/FreebiePage";
+import { useCliAccountsStore } from "./store/cliAccountsStore";
 import { useCliExecutorStore } from "./store/cliExecutorStore";
+import { useAuthenticationStore } from "./store/authenticationStore";
 import { usePermissionStore } from "./store/permissionStore";
 import { useProviderStore } from "./store/providerStore";
 import { useConversationStore } from "./store/conversationStore";
@@ -291,6 +293,26 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!cliClient.supportsCliAccounts()) return;
+    void useCliAccountsStore.getState().load("agy-acp");
+    const off = cliClient.onAccountAuthTerminalEvent((event) => {
+      const auth = useAuthenticationStore.getState();
+      if (event.type === "authentication-terminal-started") {
+        auth.startTerminal("__cli-accounts__", event.request);
+      } else if (event.type === "authentication-terminal-update") {
+        auth.updateTerminal(event.requestId, {
+          output: event.output,
+          running: event.running,
+          exitCode: event.exitCode
+        });
+      } else if (event.type === "authentication-terminal-resolved") {
+        auth.removeTerminal(event.requestId);
+      }
+    });
+    return () => off();
+  }, []);
+
+  useEffect(() => {
     const handleFocus = () => {
       const state = useConversationStore.getState();
       if (isConversationReadingVisible() && state.activeId && state.unreadConversations[state.activeId]) {
@@ -315,7 +337,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId, embed) => {
+    const off = window.freebuddy?.window?.onOpenConversation?.((conversationId, embed, messageId) => {
       void (async () => {
         const state = useConversationStore.getState();
         // Conversations created in other renderer processes (e.g. DocStudio)
@@ -341,6 +363,14 @@ function App() {
         setSettingsOpen(false);
         setWorkspaceView("chat");
         await useConversationStore.getState().setActive(conversationId);
+        if (messageId) {
+          const loaded = await useConversationStore
+            .getState()
+            .ensureMessageLoaded(conversationId, messageId);
+          if (loaded && useConversationStore.getState().activeId === conversationId) {
+            setMessageFocus({ conversationId, messageId });
+          }
+        }
       })();
     });
     return () => {
@@ -1102,6 +1132,16 @@ function App() {
     setWorkspaceView("chat");
     await setActive(id);
   };
+  const openConversationAtMessage = async (conversationId: string, messageId?: string) => {
+    await openPanelConversation(conversationId);
+    if (!messageId) return;
+    const loaded = await useConversationStore
+      .getState()
+      .ensureMessageLoaded(conversationId, messageId);
+    if (loaded && useConversationStore.getState().activeId === conversationId) {
+      setMessageFocus({ conversationId, messageId });
+    }
+  };
   const openPanelFile = async (conversationId: string, messageId: string, path: string) => {
     if (useConversationStore.getState().conversations.some((item) => item.id === conversationId && item.kind === "doc-studio")) {
       await openPanelConversation(conversationId);
@@ -1506,7 +1546,12 @@ function App() {
       </main>
 
       {activeConversation && !settingsOpen && workspaceView === "chat" && !detailCollapsed && (
-        <DetailColumn runningCount={runningCount} />
+        <DetailColumn
+          runningCount={runningCount}
+          onJumpToMessage={(conversationId, messageId) => {
+            void openConversationAtMessage(conversationId, messageId);
+          }}
+        />
       )}
 
       <CliInstallPanelHost />
@@ -1529,6 +1574,9 @@ function App() {
           setCodexImportOpen(true);
         }}
         onSelectConversation={(id) => { void openPanelConversation(id); }}
+        onSelectTopic={(conversationId, messageId) => {
+          void openConversationAtMessage(conversationId, messageId);
+        }}
       />
       {contextSource && (
         <ConversationContextDialog

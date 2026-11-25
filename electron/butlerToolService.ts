@@ -50,6 +50,10 @@ import {
   notifyConversationsChanged,
   type ConversationMessage
 } from "./cli/conversations.js";
+import {
+  getConversationDigest,
+  searchConversationTopics
+} from "./cli/conversationDigest.js";
 import { getDb } from "./cli/db.js";
 import { cliCheck, listRuntimes } from "./cli/check.js";
 import { setSetting } from "./cli/settings.js";
@@ -120,6 +124,8 @@ type ButlerToolAction =
   | "conversation_delete"
   | "conversation_self_check"
   | "conversation_messages"
+  | "conversation_digest_get"
+  | "conversation_topics_search"
   | "agent_check"
   | "settings_open"
   | "set_appearance"
@@ -166,6 +172,8 @@ function isButlerToolAction(value: unknown): value is ButlerToolAction {
     value === "conversation_delete" ||
     value === "conversation_self_check" ||
     value === "conversation_messages" ||
+    value === "conversation_digest_get" ||
+    value === "conversation_topics_search" ||
     value === "agent_check" ||
     value === "settings_open" ||
     value === "set_appearance" ||
@@ -649,6 +657,34 @@ async function dispatchButlerAction(
         messages: page.map(publicConversationMessage)
       };
     }
+    case "conversation_digest_get": {
+      const conversationId = String(
+        params.conversationId ?? params.id ?? ""
+      ).trim();
+      if (!conversationId) {
+        return { ok: false, error: "conversationId is required." };
+      }
+      const digest = withCaller(binding, () =>
+        getConversationDigest(conversationId)
+      );
+      if (!digest) {
+        return { ok: false, error: "Conversation not found." };
+      }
+      return { ok: true, digest };
+    }
+    case "conversation_topics_search": {
+      const query = String(params.query ?? "").trim();
+      if (!query) {
+        return { ok: false, error: "query is required." };
+      }
+      const limit =
+        typeof params.limit === "number" ? params.limit : undefined;
+      const includeArchived = params.includeArchived === true;
+      const hits = withCaller(binding, () =>
+        searchConversationTopics({ query, limit, includeArchived })
+      );
+      return { ok: true, query, hits };
+    }
     case "agent_check": {
       const adapter = String(params.adapter ?? "").trim();
       if (!adapter) {
@@ -757,14 +793,21 @@ async function dispatchButlerAction(
       if (!target) {
         return { ok: false, error: "No active window to open conversation." };
       }
+      const messageId =
+        typeof params.messageId === "string" ? params.messageId.trim() : "";
       focusButlerAppWindow();
-      safeSendToWebContents(target, "window:open-conversation", conv.id);
+      safeSendToWebContents(
+        target,
+        "window:open-conversation",
+        messageId ? { conversationId: conv.id, messageId } : conv.id
+      );
       return {
         ok: true,
         id: conv.id,
         title: conv.title,
         agentId: conv.agentId,
-        agentName: conv.agentName
+        agentName: conv.agentName,
+        ...(messageId ? { messageId } : {})
       };
     }
     case "view_open": {

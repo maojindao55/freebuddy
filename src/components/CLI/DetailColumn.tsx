@@ -13,7 +13,13 @@ import { EmbeddedDocViewer } from "./EmbeddedDocViewer";
 import { useFileDiffStore } from "@/store/fileDiffStore";
 import type { DetailTab } from "@/store/detailLayoutStore";
 
-export function DetailColumn({ runningCount }: { runningCount: number }) {
+export function DetailColumn({
+  runningCount,
+  onJumpToMessage
+}: {
+  runningCount: number;
+  onJumpToMessage?: (conversationId: string, messageId: string) => void;
+}) {
   const { t } = useTranslation();
   const activeId = useConversationStore((s) => s.activeId);
   const entry = useBrowserStore((s) =>
@@ -121,7 +127,12 @@ export function DetailColumn({ runningCount }: { runningCount: number }) {
         <button type="button" className="detail-panel-collapse-btn" onClick={toggleDetailCollapsed} title={t("detail.collapse")} aria-label={t("detail.collapse")}><PanelRight size={16} /></button>
       </nav>
       <div className="detail-tab-body">
-        {activeTab === "overview" && <WorkspacePanel runningCount={runningCount} />}
+        {activeTab === "overview" && (
+          <WorkspacePanel
+            runningCount={runningCount}
+            onJumpToMessage={onJumpToMessage}
+          />
+        )}
         {(browserMounted || activeTab === "preview") && <div className="detail-browser-host" hidden={activeTab !== "preview"}>
           <BrowserCanvas visible={activeTab === "preview"} />
         </div>}

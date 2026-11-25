@@ -19,6 +19,13 @@ import { pathToFileURL } from "node:url";
 import { cliAdapterDefinitions } from "./adapters.js";
 import { readMessageDetails } from "./messageDetails.js";
 import { listConversationOverviews } from "./conversationOverview.js";
+import {
+  getConversationDigest,
+  getConversationDigestConfigState,
+  scheduleConversationDigest,
+  searchConversationTopics,
+  setConversationDigestConfig
+} from "./conversationDigest.js";
 import { listMessageFileEdits, readMessageFileEdit, readFileEditBlob, readFileEditSnapshot, readTurnFileSnapshotForHandoff } from "./fileEditBlobs.js";
 import { cliCheck, cliCheckUpdates, prepareCliUpgrade, verifyCliUpgrade, cliInstall, cliInstallStream, listRuntimes } from "./check.js";
 import type { CliRuntimeUpdateRequest, CliUpgradePlan } from "../shared/cliRuntimeUpdate.js";
@@ -72,6 +79,7 @@ import {
   listConversations,
   getMessageForIpc,
   listMessages,
+  listMessagesAroundForIpc,
   listMessagesForIpc,
   listFollowupMessagesForIpc,
   moveConversationToProject,
@@ -193,6 +201,17 @@ import { registerDelegationIpc } from "./delegationIpc.js";
 import { registerDelegationTeamIpc } from "./delegationTeamIpc.js";
 import { readCodexUsage } from "./codexUsage.js";
 import { readAntigravityUsage } from "./antigravityUsage.js";
+import {
+  deleteAccount,
+  getAccountsState,
+  importCurrentSystemAccount,
+  recordActiveUsageSnapshot,
+  refreshAccountQuota,
+  renameAccount,
+  startInteractiveAccountLogin,
+  switchAccount
+} from "./accounts/accountManager.js";
+import type { CliAccountLoginInput } from "../shared/cliAccountTypes.js";
 import {
   deleteSkill,
   importSkills,
@@ -961,7 +980,48 @@ export function registerCliIpc() {
   registerHandler("cli:prepareUpgrade", (_e, args: CliRuntimeUpdateRequest) => prepareCliUpgrade(args));
   registerHandler("cli:verifyUpgrade", (_e, args: { request: CliRuntimeUpdateRequest; plan: CliUpgradePlan }) => verifyCliUpgrade(args.request, args.plan));
   registerHandler("cli:codexUsage", () => readCodexUsage());
-  registerHandler("cli:antigravityUsage", () => readAntigravityUsage());
+  registerHandler("cli:antigravityUsage", async () => {
+    const result = await readAntigravityUsage();
+    recordActiveUsageSnapshot("agy-acp", result);
+    return result;
+  });
+  registerHandler("cliAccounts:getState", (_e, adapter: string) =>
+    getAccountsState(adapter)
+  );
+  registerHandler(
+    "cliAccounts:importCurrent",
+    (_e, args: { adapter: string; label?: string }) =>
+      importCurrentSystemAccount(args.adapter, args.label)
+  );
+  registerHandler(
+    "cliAccounts:switch",
+    (_e, args: { adapter: string; accountId: string }) =>
+      switchAccount(args.adapter, args.accountId)
+  );
+  registerHandler(
+    "cliAccounts:startLogin",
+    (event, args: CliAccountLoginInput) =>
+      startInteractiveAccountLogin(args, (cliEvent) => {
+        safeSendToWebContents(
+          event.sender,
+          "cli-accounts://auth-terminal",
+          cliEvent
+        );
+      })
+  );
+  registerHandler(
+    "cliAccounts:refreshQuota",
+    (_e, args: { adapter: string; accountId?: string }) =>
+      refreshAccountQuota(args.adapter, args.accountId)
+  );
+  registerHandler(
+    "cliAccounts:rename",
+    (_e, args: { id: string; label: string }) =>
+      renameAccount(args.id, args.label)
+  );
+  registerHandler("cliAccounts:delete", (_e, id: string) =>
+    deleteAccount(id)
+  );
   registerHandler("cli:probeAuthentication", (_e, args: CliAuthControlArgs) =>
     probeAcpAuthentication(args)
   );
@@ -1373,6 +1433,49 @@ export function registerCliIpc() {
   );
   registerHandler("cli:listConversationOverviews", (_e, conversationIds: string[]) =>
     listConversationOverviews(conversationIds)
+  );
+  registerHandler("cli:getConversationDigest", (_e, conversationId: string) =>
+    getConversationDigest(conversationId)
+  );
+  registerHandler(
+    "cli:refreshConversationDigest",
+    (_e, args: { conversationId: string; forceRebuild?: boolean }) => {
+      const conversationId = String(args?.conversationId ?? "").trim();
+      if (!conversationId || !requireOwnedConversation(conversationId)) {
+        return null;
+      }
+      const queued = scheduleConversationDigest(conversationId, {
+        immediate: true,
+        forceRebuild: Boolean(args?.forceRebuild)
+      });
+      const current = getConversationDigest(conversationId);
+      if (current && queued && current.status !== "running") {
+        return { ...current, status: "queued" as const };
+      }
+      return current;
+    }
+  );
+  registerHandler(
+    "cli:searchConversationTopics",
+    (
+      _e,
+      args: { query: string; limit?: number; includeArchived?: boolean }
+    ) => searchConversationTopics(args ?? { query: "" })
+  );
+  registerHandler("cli:getConversationDigestConfig", () =>
+    getConversationDigestConfigState()
+  );
+  registerHandler(
+    "cli:setConversationDigestConfig",
+    (
+      _e,
+      patch: {
+        enabled?: boolean;
+        providerId?: string;
+        model?: string;
+        minUserTurns?: number;
+      }
+    ) => setConversationDigestConfig(patch ?? {})
   );
   registerHandler("cli:getConversation", (_e, id: string) =>
     requireOwnedConversation(id)
@@ -1827,6 +1930,19 @@ export function registerCliIpc() {
         return { messages: [], hasMore: false };
       }
       const page = listMessagesForIpc(conversationId, options);
+      return {
+        messages: sanitizeMessagesForIpc(page.messages),
+        hasMore: page.hasMore
+      };
+    }
+  );
+  registerHandler(
+    "cli:listMessagesAround",
+    (_e, conversationId: string, targetMessageId: string) => {
+      if (!requireOwnedConversation(conversationId)) {
+        return { messages: [], hasMore: false };
+      }
+      const page = listMessagesAroundForIpc(conversationId, targetMessageId);
       return {
         messages: sanitizeMessagesForIpc(page.messages),
         hasMore: page.hasMore

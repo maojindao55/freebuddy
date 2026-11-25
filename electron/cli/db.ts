@@ -278,8 +278,32 @@ export function migrate(db: DB) {
       session_id TEXT NOT NULL,
       title TEXT,
       owner_id TEXT,
+      account_id TEXT,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS cli_agent_accounts (
+      id TEXT PRIMARY KEY,
+      adapter TEXT NOT NULL,
+      label TEXT NOT NULL,
+      account_identity TEXT,
+      auth_method TEXT,
+      storage_mode TEXT NOT NULL,
+      credential_encrypted TEXT,
+      profile_dir TEXT,
+      is_active INTEGER NOT NULL DEFAULT 0,
+      quota_snapshot TEXT,
+      quota_updated_at TEXT,
+      last_used_at TEXT,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cli_agent_accounts_adapter
+      ON cli_agent_accounts(adapter, is_active DESC, updated_at DESC);
+    UPDATE cli_agent_accounts
+       SET label = substr(label, 1, length(label) - 13)
+     WHERE label LIKE '% (auto-saved)' AND length(label) > 13;
 
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
@@ -888,6 +912,9 @@ export function migrate(db: DB) {
   if (!toolSessionCols.some((c) => c.name === "owner_id")) {
     db.exec("ALTER TABLE cli_tool_sessions ADD COLUMN owner_id TEXT");
   }
+  if (!toolSessionCols.some((c) => c.name === "account_id")) {
+    db.exec("ALTER TABLE cli_tool_sessions ADD COLUMN account_id TEXT");
+  }
 
   const messageCols = db
     .prepare("PRAGMA table_info(conversation_messages)")
@@ -1364,6 +1391,41 @@ export function migrate(db: DB) {
       db.exec(`ALTER TABLE user_mcp_servers ADD COLUMN ${name} ${definition}`);
     }
   }
+
+  // ---- ButlerBuddy Async Conversation Digest ----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_digest_state (
+      conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+      overall_summary TEXT,
+      source TEXT NOT NULL DEFAULT 'rule',
+      status TEXT NOT NULL DEFAULT 'idle',
+      last_message_id TEXT,
+      last_message_seq INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS conversation_topics (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      source TEXT NOT NULL DEFAULT 'rule',
+      start_message_id TEXT NOT NULL,
+      end_message_id TEXT NOT NULL,
+      turn_count INTEGER NOT NULL DEFAULT 1,
+      keywords_json TEXT NOT NULL DEFAULT '[]',
+      files_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_conversation_topics_conv
+      ON conversation_topics(conversation_id, sort_order ASC);
+    CREATE INDEX IF NOT EXISTS idx_conversation_topics_updated
+      ON conversation_topics(updated_at DESC);
+  `);
 
   installHostIdempotencySchema(db);
   pruneHostIdempotencyResults({

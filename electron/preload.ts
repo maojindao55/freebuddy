@@ -61,8 +61,58 @@ const cli = {
     ipcRenderer.on(channel, handler);
     return () => ipcRenderer.off(channel, handler);
   },
+  onConversationDigestChanged: (
+    cb: (event: {
+      conversationId: string;
+      status: string;
+      source: string;
+      updatedAt: string;
+    }) => void
+  ): (() => void) => {
+    const channel = "conversationDigest://changed";
+    const handler = (
+      _e: IpcRendererEvent,
+      payload: {
+        conversationId: string;
+        status: string;
+        source: string;
+        updatedAt: string;
+      }
+    ) => {
+      if (payload?.conversationId) cb(payload);
+    };
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
   codexUsage: () => ipcRenderer.invoke("cli:codexUsage"),
   antigravityUsage: () => ipcRenderer.invoke("cli:antigravityUsage"),
+  getAccountsState: (adapter: string) =>
+    ipcRenderer.invoke("cliAccounts:getState", adapter),
+  importCurrentAccount: (args: { adapter: string; label?: string }) =>
+    ipcRenderer.invoke("cliAccounts:importCurrent", args),
+  switchAccount: (args: { adapter: string; accountId: string }) =>
+    ipcRenderer.invoke("cliAccounts:switch", args),
+  startAccountLogin: (args: unknown) =>
+    ipcRenderer.invoke("cliAccounts:startLogin", args),
+  refreshAccountQuota: (args: { adapter: string; accountId?: string }) =>
+    ipcRenderer.invoke("cliAccounts:refreshQuota", args),
+  renameAccount: (args: { id: string; label: string }) =>
+    ipcRenderer.invoke("cliAccounts:rename", args),
+  deleteAccount: (id: string) =>
+    ipcRenderer.invoke("cliAccounts:delete", id),
+  onAccountsChanged: (cb: (payload: { adapter?: string; at?: number }) => void): (() => void) => {
+    const channel = "cli-accounts://changed";
+    const handler = (_e: IpcRendererEvent, payload: { adapter?: string; at?: number }) =>
+      cb(payload ?? {});
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
+  onAccountAuthTerminalEvent: (cb: (event: unknown) => void): (() => void) => {
+    const channel = "cli-accounts://auth-terminal";
+    const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.off(channel, handler);
+  },
   usageSummary: (period?: unknown) => ipcRenderer.invoke("cli:usageSummary", period),
   refreshUsage: (period?: unknown) => ipcRenderer.invoke("cli:refreshUsage", period),
   cursorUsageStatus: () => ipcRenderer.invoke("cli:cursorUsageStatus"),
@@ -140,6 +190,25 @@ const cli = {
     ipcRenderer.invoke("cli:listConversations", args),
   listConversationOverviews: (conversationIds: string[]) =>
     ipcRenderer.invoke("cli:listConversationOverviews", conversationIds),
+  getConversationDigest: (conversationId: string) =>
+    ipcRenderer.invoke("cli:getConversationDigest", conversationId),
+  refreshConversationDigest: (args: {
+    conversationId: string;
+    forceRebuild?: boolean;
+  }) => ipcRenderer.invoke("cli:refreshConversationDigest", args),
+  searchConversationTopics: (args: {
+    query: string;
+    limit?: number;
+    includeArchived?: boolean;
+  }) => ipcRenderer.invoke("cli:searchConversationTopics", args),
+  getConversationDigestConfig: () =>
+    ipcRenderer.invoke("cli:getConversationDigestConfig"),
+  setConversationDigestConfig: (patch: {
+    enabled?: boolean;
+    providerId?: string;
+    model?: string;
+    minUserTurns?: number;
+  }) => ipcRenderer.invoke("cli:setConversationDigestConfig", patch),
   getConversation: (id: string) => ipcRenderer.invoke("cli:getConversation", id),
   createConversation: (input: unknown) =>
     ipcRenderer.invoke("cli:createConversation", input),
@@ -203,6 +272,8 @@ const cli = {
     conversationId: string,
     options?: { limit?: number; beforeCreatedAt?: string; beforeId?: string }
   ) => ipcRenderer.invoke("cli:listMessages", conversationId, options),
+  listMessagesAround: (conversationId: string, messageId: string) =>
+    ipcRenderer.invoke("cli:listMessagesAround", conversationId, messageId),
   listMessage: (id: string) =>
     ipcRenderer.invoke("cli:listMessage", id),
   readMessageDetails: (messageId: string, offset?: number) =>
@@ -406,10 +477,19 @@ const window = {
   resolveBrowserTool(resolution: BrowserToolResolution): Promise<boolean> {
     return ipcRenderer.invoke("browser-tool:resolve", resolution);
   },
-  onOpenConversation(cb: (conversationId: string, embed?: boolean) => void): () => void {
-    const handler = (_e: IpcRendererEvent, payload: string | { conversationId: string; embed?: boolean }) => {
+  onOpenConversation(
+    cb: (conversationId: string, embed?: boolean, messageId?: string) => void
+  ): () => void {
+    const handler = (
+      _e: IpcRendererEvent,
+      payload:
+        | string
+        | { conversationId: string; embed?: boolean; messageId?: string }
+    ) => {
       if (typeof payload === "string") cb(payload);
-      else if (payload && typeof payload.conversationId === "string") cb(payload.conversationId, payload.embed);
+      else if (payload && typeof payload.conversationId === "string") {
+        cb(payload.conversationId, payload.embed, payload.messageId);
+      }
     };
     ipcRenderer.on("window:open-conversation", handler);
     return () => ipcRenderer.off("window:open-conversation", handler);

@@ -15,6 +15,7 @@ import {
 } from "./responsesBridge.js";
 import { getDataDir, getDb } from "./db.js";
 import { getCallerUserId, isCallerAdmin } from "./callerContext.js";
+import { getActiveAccountContext } from "./accounts/accountContext.js";
 import { logMain } from "../debugLog.js";
 
 export interface CLICodexByokConfig {
@@ -1526,6 +1527,7 @@ export interface ToolSessionRecord {
   sessionId: string;
   title?: string;
   ownerId?: string | null;
+  accountId?: string;
   updatedAt: string;
 }
 
@@ -1547,7 +1549,7 @@ export function getToolSession(
   let row = getDb()
     .prepare(
       `SELECT key, agent_id, workspace_path, adapter, session_id, title,
-              owner_id, updated_at
+              owner_id, account_id, updated_at
        FROM cli_tool_sessions WHERE key = ?`
     )
     .get(toolSessionKey(agentId, workspacePath, ownerId)) as
@@ -1559,6 +1561,7 @@ export function getToolSession(
         session_id: string;
         title: string | null;
         owner_id: string | null;
+        account_id: string | null;
         updated_at: string;
       }
     | undefined;
@@ -1566,7 +1569,7 @@ export function getToolSession(
     row = getDb()
       .prepare(
         `SELECT key, agent_id, workspace_path, adapter, session_id, title,
-                owner_id, updated_at
+                owner_id, account_id, updated_at
          FROM cli_tool_sessions WHERE key = ?`
       )
       .get(toolSessionKey(agentId, workspacePath, null)) as typeof row;
@@ -1580,6 +1583,7 @@ export function getToolSession(
     sessionId: row.session_id,
     title: row.title ?? undefined,
     ownerId: row.owner_id ?? null,
+    ...(row.account_id ? { accountId: row.account_id } : {}),
     updatedAt: row.updated_at
   };
 }
@@ -1589,21 +1593,25 @@ export function saveToolSession(
   workspacePath: string,
   adapter: string,
   sessionId: string,
-  title?: string
+  title?: string,
+  accountId?: string
 ): void {
   const now = new Date().toISOString();
   const ownerId = getCallerUserId();
+  const resolvedAccountId =
+    accountId ?? getActiveAccountContext(adapter)?.accountId ?? null;
   getDb()
     .prepare(
       `INSERT INTO cli_tool_sessions
          (key, agent_id, workspace_path, adapter, session_id, title, owner_id,
-          updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          account_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET
          adapter=excluded.adapter,
          session_id=excluded.session_id,
          title=COALESCE(excluded.title, cli_tool_sessions.title),
          owner_id=excluded.owner_id,
+         account_id=excluded.account_id,
          updated_at=excluded.updated_at`
     )
     .run(
@@ -1614,6 +1622,7 @@ export function saveToolSession(
       sessionId,
       title ?? null,
       ownerId,
+      resolvedAccountId,
       now
     );
 }

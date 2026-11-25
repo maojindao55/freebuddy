@@ -19,6 +19,9 @@ import type {
   CliTaskRow,
   CodexUsageResult,
   AntigravityUsageResult,
+  CliAccountLoginInput,
+  CliAccountMutationResult,
+  CliAgentSystemAccountState,
   AgentUsagePeriod,
   AgentUsageSummary,
   CursorUsageConnectInput,
@@ -56,6 +59,11 @@ import type {
   AttachConversationSharesInput,
   AttachConversationSharesResult,
   ConversationContextReference,
+  ConversationDigest,
+  ConversationDigestChangedEvent,
+  ConversationDigestConfig,
+  ConversationDigestConfigState,
+  ConversationTopicSearchHit,
   BrowserToolAction,
   BrowserToolResult,
   NativeBrowserBounds,
@@ -118,6 +126,90 @@ export const cliClient = {
   },
   antigravityUsage(): Promise<AntigravityUsageResult> {
     return api().antigravityUsage();
+  },
+  supportsCliAccounts(): boolean {
+    return (
+      window.freebuddy?.platform !== "web" &&
+      typeof window.freebuddy?.cli?.getAccountsState === "function"
+    );
+  },
+  getAccountsState(adapter: string): Promise<CliAgentSystemAccountState> {
+    const cli = window.freebuddy?.cli;
+    if (!cli?.getAccountsState) {
+      return Promise.resolve({
+        adapter,
+        supported: false,
+        supportsConcurrentProfiles: false,
+        hasRunningTasks: false,
+        externalAccountMismatch: false,
+        accounts: []
+      });
+    }
+    return cli.getAccountsState(adapter);
+  },
+  importCurrentAccount(args: {
+    adapter: string;
+    label?: string;
+  }): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.importCurrentAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.importCurrentAccount(args);
+  },
+  switchAccount(args: {
+    adapter: string;
+    accountId: string;
+  }): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.switchAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.switchAccount(args);
+  },
+  startAccountLogin(
+    args: CliAccountLoginInput
+  ): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.startAccountLogin) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.startAccountLogin(args);
+  },
+  refreshAccountQuota(args: {
+    adapter: string;
+    accountId?: string;
+  }): Promise<CliAgentSystemAccountState> {
+    const cli = api();
+    if (!cli.refreshAccountQuota) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.refreshAccountQuota(args);
+  },
+  renameAccount(args: {
+    id: string;
+    label: string;
+  }): Promise<CliAccountMutationResult> {
+    const cli = api();
+    if (!cli.renameAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.renameAccount(args);
+  },
+  deleteAccount(id: string): Promise<CliAgentSystemAccountState> {
+    const cli = api();
+    if (!cli.deleteAccount) {
+      throw new Error("CLI account management is unavailable");
+    }
+    return cli.deleteAccount(id);
+  },
+  onAccountsChanged(
+    cb: (payload: { adapter?: string; at?: number }) => void
+  ): () => void {
+    return window.freebuddy?.cli?.onAccountsChanged?.(cb) ?? (() => {});
+  },
+  onAccountAuthTerminalEvent(cb: (event: CliEvent) => void): () => void {
+    return window.freebuddy?.cli?.onAccountAuthTerminalEvent?.(cb) ?? (() => {});
   },
   usageSummary(period: AgentUsagePeriod = "all"): Promise<AgentUsageSummary> {
     return api().usageSummary(period);
@@ -270,6 +362,46 @@ export const cliClient = {
   listConversationOverviews(conversationIds: string[]): Promise<ConversationOverview[]> {
     return api().listConversationOverviews(conversationIds);
   },
+  getConversationDigest(conversationId: string): Promise<ConversationDigest | null> {
+    const fn = window.freebuddy?.cli?.getConversationDigest;
+    if (!fn) return Promise.resolve(null);
+    return fn(conversationId);
+  },
+  refreshConversationDigest(args: {
+    conversationId: string;
+    forceRebuild?: boolean;
+  }): Promise<ConversationDigest | null> {
+    const fn = window.freebuddy?.cli?.refreshConversationDigest;
+    if (!fn) return Promise.resolve(null);
+    return fn(args);
+  },
+  searchConversationTopics(args: {
+    query: string;
+    limit?: number;
+    includeArchived?: boolean;
+  }): Promise<ConversationTopicSearchHit[]> {
+    const fn = window.freebuddy?.cli?.searchConversationTopics;
+    if (!fn) return Promise.resolve([]);
+    return fn(args);
+  },
+  getConversationDigestConfig(): Promise<ConversationDigestConfigState | null> {
+    const fn = window.freebuddy?.cli?.getConversationDigestConfig;
+    if (!fn) return Promise.resolve(null);
+    return fn();
+  },
+  setConversationDigestConfig(
+    patch: Partial<ConversationDigestConfig>
+  ): Promise<ConversationDigestConfigState | null> {
+    const fn = window.freebuddy?.cli?.setConversationDigestConfig;
+    if (!fn) return Promise.resolve(null);
+    return fn(patch);
+  },
+  onConversationDigestChanged(
+    cb: (event: ConversationDigestChangedEvent) => void
+  ): () => void {
+    const fn = window.freebuddy?.cli?.onConversationDigestChanged;
+    return fn ? fn(cb) : () => {};
+  },
   getConversation(id: string): Promise<Conversation | undefined> {
     return api().getConversation(id);
   },
@@ -381,6 +513,14 @@ export const cliClient = {
     options?: ListMessagesQuery
   ): Promise<ListMessagesPage> {
     return api().listMessages(conversationId, options);
+  },
+  listMessagesAround(
+    conversationId: string,
+    messageId: string
+  ): Promise<ListMessagesPage> {
+    const fn = window.freebuddy?.cli?.listMessagesAround;
+    if (!fn) return api().listMessages(conversationId);
+    return fn(conversationId, messageId);
   },
   listMessage(id: string): Promise<ConversationMessage | undefined> {
     return api().listMessage(id);

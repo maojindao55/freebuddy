@@ -32,6 +32,7 @@ import type {
 } from "@/services/cli/types";
 import { AgentAvatar } from "@/components/CLI/AgentAvatar";
 import { AvatarPicker } from "./AvatarPicker";
+import { CliAccountsSection } from "./CliAccountsSection";
 import { useCliInstallStore } from "@/store/cliInstallStore";
 import { useAgentBridgeStore } from "@/store/agentBridgeStore";
 import { useGuideInstallStore } from "@/store/guideInstallStore";
@@ -1489,6 +1490,9 @@ function EditOverridePanel({
   if (!ex) return null;
 
   const isClone = Boolean(ex.isClone);
+  const isNativeAntigravity =
+    (ex.baseAdapter ?? ex.id) === "agy-acp" &&
+    !isAntigravityBridgeBinary(ex.binary);
   const supportsByok = isCodex || isClaude || isDeepSeek || isPi;
   const byokContextWindowInvalid =
     byokContextWindow.trim() !== "" &&
@@ -1852,6 +1856,14 @@ function EditOverridePanel({
             </label>
           )}
         </div>
+
+        {cliClient.supportsCliAccounts() && isNativeAntigravity && (
+          <CliAccountsSection
+            adapter="agy-acp"
+            binary={ex.binary}
+            env={ex.env}
+          />
+        )}
 
         {/* ── Command Configuration section ── */}
         <div className="adapter-editor-section">

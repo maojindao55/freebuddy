@@ -35,6 +35,8 @@ import {
 
 let notifyMessagesChangedHandler: ((conversationId: string) => void) | null = null;
 let notifyScheduledTasksChangedHandler: (() => void) | null = null;
+let notifyTurnFinishedHandler: ((conversationId: string) => void) | null = null;
+let notifyConversationDeletedHandler: ((conversationId: string) => void) | null = null;
 
 export function bindConversationNotifier(
   fn: ((conversationId: string) => void) | null
@@ -46,6 +48,18 @@ export function bindScheduledTasksChangedNotifier(
   fn: (() => void) | null
 ): void {
   notifyScheduledTasksChangedHandler = fn;
+}
+
+export function bindConversationTurnFinishedNotifier(
+  fn: ((conversationId: string) => void) | null
+): void {
+  notifyTurnFinishedHandler = fn;
+}
+
+export function bindConversationDeletedNotifier(
+  fn: ((conversationId: string) => void) | null
+): void {
+  notifyConversationDeletedHandler = fn;
 }
 
 export function notifyConversationsChanged(): void {
@@ -847,10 +861,14 @@ export function deleteConversation(id: string): void {
     }
   }
 
-  const deletedScheduledTasks = getDb()
+  const db = getDb();
+  const deletedScheduledTasks = db
     .prepare(`DELETE FROM scheduled_tasks WHERE target_conversation_id = ?`)
     .run(id).changes;
-  getDb().prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
+  db.prepare(`DELETE FROM conversation_topics WHERE conversation_id = ?`).run(id);
+  db.prepare(`DELETE FROM conversation_digest_state WHERE conversation_id = ?`).run(id);
+  db.prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
+  notifyConversationDeletedHandler?.(id);
   acpProcessPool.closeConversation(id);
   for (const filePath of managedPaths) {
     discardManagedAttachmentIfUnreferenced(filePath);
@@ -958,7 +976,15 @@ export function updateMessage(input: UpdateMessageInput): void {
     .run(...params);
   if (input.status !== undefined) {
     const msg = getMessage(input.id);
-    if (msg) notifyMessagesChangedHandler?.(msg.conversationId);
+    if (msg) {
+      notifyMessagesChangedHandler?.(msg.conversationId);
+      if (
+        msg.role === "assistant" &&
+        (input.status === "done" || input.status === "failed")
+      ) {
+        notifyTurnFinishedHandler?.(msg.conversationId);
+      }
+    }
   }
 }
 
@@ -1102,6 +1128,84 @@ export function listMessagesForIpc(
   const hasMore = rows.length > page.length;
   page.reverse();
   return { messages: page.map(rowToMessage), hasMore };
+}
+
+/**
+ * Load a message window centered around a specific message ID so jumping to an
+ * earlier requirement topic brings its surrounding context into the timeline.
+ */
+export function listMessagesAroundForIpc(
+  conversationId: string,
+  targetMessageId: string
+): ListMessagesIpcPage {
+  const db = getDb();
+  const target = db
+    .prepare(
+      `SELECT id, rowid AS message_sequence, created_at
+       FROM conversation_messages
+       WHERE conversation_id = ? AND id = ?`
+    )
+    .get(conversationId, targetMessageId) as
+    | { id: string; message_sequence: number; created_at: string }
+    | undefined;
+  if (!target) {
+    return listMessagesForIpc(conversationId);
+  }
+
+  const newerRow = db
+    .prepare(
+      `SELECT COUNT(*) AS cnt
+       FROM conversation_messages
+       WHERE conversation_id = ?
+         AND (created_at > ? OR (created_at = ? AND rowid > ?))`
+    )
+    .get(
+      conversationId,
+      target.created_at,
+      target.created_at,
+      target.message_sequence
+    ) as { cnt: number };
+
+  const olderRows = db
+    .prepare(
+      `${IPC_MESSAGE_SELECT}
+       WHERE conversation_id = ?
+         AND (created_at < ? OR (created_at = ? AND rowid < ?))
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT 13`
+    )
+    .all(
+      IPC_CONTENT_FETCH_CHARS,
+      conversationId,
+      target.created_at,
+      target.created_at,
+      target.message_sequence
+    ) as any[];
+  const hasMore = olderRows.length > 12;
+  const olderPage = olderRows.slice(0, 12).reverse();
+
+  const forwardLimit = newerRow.cnt <= 120 ? 140 : 41;
+  const forwardRows = db
+    .prepare(
+      `${IPC_MESSAGE_SELECT}
+       WHERE conversation_id = ?
+         AND (created_at > ? OR (created_at = ? AND rowid >= ?))
+       ORDER BY created_at ASC, rowid ASC
+       LIMIT ?`
+    )
+    .all(
+      IPC_CONTENT_FETCH_CHARS,
+      conversationId,
+      target.created_at,
+      target.created_at,
+      target.message_sequence,
+      forwardLimit
+    ) as any[];
+
+  return {
+    messages: [...olderPage, ...forwardRows].map(rowToMessage),
+    hasMore
+  };
 }
 
 /** Recent effective turns for context, independent of the UI's history window. */

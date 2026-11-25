@@ -255,6 +255,14 @@
     "butlerMainWindowShortcutReady": "Global shortcut is active",
     "butlerMainWindowShortcutUnavailable": "That shortcut is already used by another app. Try another one.",
     "butlerMainWindowShortcutInvalid": "Include Ctrl/⌘ or Alt together with another key.",
+    "butlerDigestTitle": "Async conversation digest",
+    "butlerDigestDescription": "Automatically consolidate multiple requirements within a conversation in the background after turns finish, without blocking coding sessions.",
+    "butlerDigestProviderLabel": "Digest provider",
+    "butlerDigestProviderAuto": "Auto-select enabled provider",
+    "butlerDigestModelLabel": "Light model",
+    "butlerDigestModelAuto": "Auto-select lightweight model",
+    "butlerDigestResolved": "Active engine: {{provider}} / {{model}}",
+    "butlerDigestNoProvider": "No provider with an API key is configured yet: local turn outlines and jump links still work, and adding a provider enables AI consolidation.",
     "sidebarShortcutsTitle": "Sidebar shortcuts",
     "sidebarShortcutsDescription": "Todos, scheduled tasks, teams, and free tier are always available in Settings. Todos, teams, and free tier are pinned to the main sidebar by default.",
     "sidebarShortcutTodosDescription": "Track conversations marked as todo with a live count badge.",
@@ -482,8 +490,31 @@
     "openShortcut": "Search conversations ⌘K",
     "title": "Search conversations",
     "commandMenu": "Command menu",
-    "placeholder": "Search by title, project, or agent…",
+    "placeholder": "Search by title, requirement, file, or agent…",
+    "matchingTopics": "Matching requirements",
     "recommended": "Recommended"
+  },
+  "conversationDigest": {
+    "title": "Requirements outline",
+    "sourceLlm": "Butler digest",
+    "sourceLlmHint": "Asynchronously grouped across follow-up turns by ButlerBuddy",
+    "sourceRule": "Local outline",
+    "sourceRuleHint": "Zero-LLM turn outline extracted directly from messages",
+    "organizing": "Organizing…",
+    "organize": "Organize",
+    "reorganize": "Re-organize",
+    "refreshTitle": "Ask ButlerBuddy to consolidate requirements in this conversation now",
+    "filterPlaceholder": "Filter requirements or files…",
+    "noMatches": "No matching requirements",
+    "turnCount": "{{count}} turns",
+    "errorNoProvider": "No BYOK provider with an API key is configured. Pick one in Settings → General → Async conversation digest; local outlines remain active.",
+    "errorGeneric": "Digest failed: {{error}}",
+    "status": {
+      "open": "Open",
+      "done": "Done",
+      "blocked": "Blocked",
+      "abandoned": "Abandoned"
+    }
   },
   "detail": {
     "expand": "Expand right panel",
@@ -1116,6 +1147,15 @@
     "antigravityUsageWindow": "Usage limit",
     "antigravityLeft": "{{percent}}% left",
     "antigravityResetAt": "resets at {{time}}",
+    "antigravityAccounts": {
+      "noneSignedIn": "No account saved",
+      "menuAria": "Switch Antigravity account",
+      "busyHint": "Wait for active Antigravity tasks to finish before switching accounts.",
+      "expiredShort": "Expired",
+      "empty": "No saved accounts yet.",
+      "importCurrent": "Import current account",
+      "addAccount": "Add account"
+    },
     "codexResetCredits": "Reset credits",
     "codexResetCreditsCount": "{{available}} available / {{total}} total",
     "codexResetCreditsExpireAt": "next expires at {{time}}",
@@ -1554,7 +1594,32 @@
         "runtime_install_source_unknown": "This agent is not a recognized global npm installation. Update it using its original installer, then check again.",
         "runtime_update_managed_by_app": "This agent is updated with FreeBuddy. Update the app."
       },
-      "installPreparationFailed": "Could not start installation or upgrade: {{reason}}"
+      "installPreparationFailed": "Could not start installation or upgrade: {{reason}}",
+      "accounts": {
+        "title": "Accounts",
+        "globalSlotHint": "Switching accounts updates the OS keyring globally and applies to all Antigravity sessions and terminal agy.",
+        "refreshAll": "Refresh quotas",
+        "refreshOne": "Refresh quota",
+        "add": "Add account",
+        "runningTasksBlocked": "Antigravity has an active task running. Wait for it to finish before switching or signing in.",
+        "detectedTitle": "Active system login detected",
+        "detectedDescription": "Signed in as {{identity}} in the OS keyring.",
+        "unknownIdentity": "unknown account",
+        "importCurrent": "Import current account",
+        "empty": "No accounts saved yet. Add an account or import your current system login.",
+        "renameAria": "Account label",
+        "activeBadge": "Active",
+        "outOfSyncBadge": "Out of sync",
+        "authMethodPersonal": "Personal",
+        "authMethodBusiness": "Business",
+        "expiredHint": "Token expired — switch to this account or re-sign in to refresh.",
+        "quotaError": "Failed to fetch quota.",
+        "restoreActive": "Restore",
+        "switch": "Switch",
+        "relogin": "Re-sign in",
+        "rename": "Rename",
+        "deleteConfirm": "Remove saved account \"{{label}}\"? (This removes it from FreeBuddy's vault without logging out your terminal.)"
+      }
     },
     "avatar": {
       "groups": {

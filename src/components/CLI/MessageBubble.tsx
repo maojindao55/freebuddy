@@ -1062,7 +1062,7 @@ export const MessageBubble = memo(function MessageBubble({
     const userInitial = (userAuthor[0] ?? "?").toUpperCase();
 
     return (
-      <div className="msg msg-user">
+      <div className="msg msg-user" data-message-id={message.id} tabIndex={-1}>
         <div className="msg-content-wrapper">
           <div className="msg-header">
             {timeStr && <span className="msg-time">{timeStr}</span>}

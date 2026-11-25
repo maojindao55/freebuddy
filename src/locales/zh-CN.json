@@ -255,6 +255,14 @@
     "butlerMainWindowShortcutReady": "全局快捷键已生效",
     "butlerMainWindowShortcutUnavailable": "这个组合键已被其他应用占用，请换一个。",
     "butlerMainWindowShortcutInvalid": "请同时按下 Ctrl/⌘ 或 Alt 与另一个按键。",
+    "butlerDigestTitle": "异步总结会话需求",
+    "butlerDigestDescription": "回合结束后在后台自动归并同一会话中的多个需求，仅使用纯文字目录与本地规则兜底，不占用主编码会话。",
+    "butlerDigestProviderLabel": "总结服务商",
+    "butlerDigestProviderAuto": "自动选择已启用服务商",
+    "butlerDigestModelLabel": "轻量模型",
+    "butlerDigestModelAuto": "自动选择轻量快模型",
+    "butlerDigestResolved": "当前将使用：{{provider}} / {{model}}",
+    "butlerDigestNoProvider": "暂未配置带密钥的服务商：仍可实时使用本地目录与跳转；配置服务商后可启用 AI 语义归并。",
     "sidebarShortcutsTitle": "侧边栏快捷入口",
     "sidebarShortcutsDescription": "待办、定时任务、团队和白嫖均可在设置中访问；默认固定待办、团队和白嫖到主侧边栏，可按需调整。",
     "sidebarShortcutTodosDescription": "集中跟进标记为待办的对话，并在侧边栏显示数量。",
@@ -482,8 +490,31 @@
     "openShortcut": "搜索对话 ⌘K",
     "title": "搜索对话",
     "commandMenu": "命令菜单",
-    "placeholder": "输入标题、项目或 Agent…",
+    "placeholder": "输入标题、需求关键词、文件或 Agent…",
+    "matchingTopics": "匹配的需求",
     "recommended": "推荐"
+  },
+  "conversationDigest": {
+    "title": "需求目录",
+    "sourceLlm": "Butler 整理",
+    "sourceLlmHint": "由 ButlerBuddy 异步归纳并合并多轮追问",
+    "sourceRule": "本地目录",
+    "sourceRuleHint": "零模型实时提取的轮次目录",
+    "organizing": "整理中…",
+    "organize": "整理",
+    "reorganize": "重新整理",
+    "refreshTitle": "立即让 ButlerBuddy 整理并归并本会话需求",
+    "filterPlaceholder": "过滤本会话需求或文件…",
+    "noMatches": "没有匹配的需求条目",
+    "turnCount": "{{count}} 轮",
+    "errorNoProvider": "尚未配置可用服务商（BYOK），请在 设置 → 通用 → 异步总结会话需求 中选择服务商；本地目录仍可正常定位。",
+    "errorGeneric": "本次整理未完成：{{error}}",
+    "status": {
+      "open": "进行中",
+      "done": "已完成",
+      "blocked": "阻塞",
+      "abandoned": "已放弃"
+    }
   },
   "detail": {
     "expand": "展开右侧栏",
@@ -1113,6 +1144,15 @@
     "antigravityUsageWindow": "使用额度",
     "antigravityLeft": "剩余 {{percent}}%",
     "antigravityResetAt": "{{time}} 重置",
+    "antigravityAccounts": {
+      "noneSignedIn": "未托管账号",
+      "menuAria": "切换 Antigravity 账号",
+      "busyHint": "请等待当前 Antigravity 任务完成后再切换账号。",
+      "expiredShort": "已过期",
+      "empty": "暂无已保存账号。",
+      "importCurrent": "导入当前系统账号",
+      "addAccount": "添加账号"
+    },
     "codexResetCredits": "重置次数",
     "codexResetCreditsCount": "{{available}} 可用 / {{total}} 总计",
     "codexResetCreditsExpireAt": "下次 {{time}} 过期",
@@ -1539,7 +1579,32 @@
         "runtime_install_source_unknown": "当前代理不属于可识别的全局 npm 安装，请使用原安装方式升级后重新检测。",
         "runtime_update_managed_by_app": "此代理随 FreeBuddy 更新，请更新应用。"
       },
-      "installPreparationFailed": "无法开始安装或升级：{{reason}}"
+      "installPreparationFailed": "无法开始安装或升级：{{reason}}",
+      "accounts": {
+        "title": "多账号管理",
+        "globalSlotHint": "切换账号会更新系统钥匙串中的全局凭据，对所有 Antigravity 会话及终端 agy 命令同步生效。",
+        "refreshAll": "刷新全部额度",
+        "refreshOne": "刷新额度",
+        "add": "添加账号",
+        "runningTasksBlocked": "当前有正在运行的 Antigravity 任务，请等待任务结束后再切换或登录账号。",
+        "detectedTitle": "检测到系统当前已登录账号",
+        "detectedDescription": "系统钥匙串当前登录为 {{identity}}。",
+        "unknownIdentity": "未知账号",
+        "importCurrent": "导入当前账号",
+        "empty": "暂未保存任何账号。你可以添加新账号，或先在终端完成登录后导入。",
+        "renameAria": "账号别名",
+        "activeBadge": "当前使用",
+        "outOfSyncBadge": "已脱节",
+        "authMethodPersonal": "个人版",
+        "authMethodBusiness": "企业版",
+        "expiredHint": "凭据已过期 — 切换激活或重新登录后可刷新额度。",
+        "quotaError": "额度读取失败。",
+        "restoreActive": "恢复切换",
+        "switch": "切换",
+        "relogin": "重新登录",
+        "rename": "重命名",
+        "deleteConfirm": "确定移除已保存的账号“{{label}}”？（仅从 FreeBuddy 账号库移除，不会注销终端当前登录态。）"
+      }
     },
     "avatar": {
       "groups": {

@@ -70,6 +70,24 @@ export function registerContextToolSession(
   };
 }
 
+export function rebindContextToolSession(
+  previousTaskSessionId: string,
+  nextTaskSessionId: string
+): boolean {
+  const manifest = manifests.get(previousTaskSessionId);
+  if (!manifest) return false;
+  if (!fs.existsSync(manifest)) {
+    manifests.delete(previousTaskSessionId);
+    return false;
+  }
+  if (previousTaskSessionId !== nextTaskSessionId) {
+    unregisterContextToolSession(nextTaskSessionId);
+    manifests.delete(previousTaskSessionId);
+    manifests.set(nextTaskSessionId, manifest);
+  }
+  return true;
+}
+
 export function unregisterContextToolSession(taskSessionId: string): void {
   const manifest = manifests.get(taskSessionId);
   manifests.delete(taskSessionId);

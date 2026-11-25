@@ -162,6 +162,9 @@
       onMessagesChanged: function (cb) {
         return subscribe("messages://changed", function (p) { if (p && p.conversationId) cb(p.conversationId); });
       },
+      onConversationDigestChanged: function (cb) {
+        return subscribe("conversationDigest://changed", function (p) { if (p && p.conversationId) cb(p); });
+      },
       codexUsage: function () { return invoke("cli:codexUsage"); },
       usageSummary: function (period) { return invoke("cli:usageSummary", period); },
       refreshUsage: function (period) { return invoke("cli:refreshUsage", period); },
@@ -203,6 +206,11 @@
 
       listConversations: function (args) { return invoke("cli:listConversations", args); },
       listConversationOverviews: function (conversationIds) { return invoke("cli:listConversationOverviews", conversationIds); },
+      getConversationDigest: function (conversationId) { return invoke("cli:getConversationDigest", conversationId); },
+      refreshConversationDigest: function (args) { return invoke("cli:refreshConversationDigest", args); },
+      searchConversationTopics: function (args) { return invoke("cli:searchConversationTopics", args); },
+      getConversationDigestConfig: function () { return invoke("cli:getConversationDigestConfig"); },
+      setConversationDigestConfig: function (patch) { return invoke("cli:setConversationDigestConfig", patch); },
       getConversation: function (id) { return invoke("cli:getConversation", id); },
       createConversation: function (input) { return invoke("cli:createConversation", input); },
       previewHandoffBrief: function (input) { return invoke("cli:previewHandoffBrief", input); },
@@ -227,6 +235,7 @@
       claimConversationSend: function (input) { return invoke("cli:claimConversationSend", input); },
       releaseConversationSend: function (input) { return invoke("cli:releaseConversationSend", input); },
       listMessages: function (conversationId, options) { return invoke("cli:listMessages", conversationId, options); },
+      listMessagesAround: function (conversationId, messageId) { return invoke("cli:listMessagesAround", conversationId, messageId); },
       listMessage: function (id) { return invoke("cli:listMessage", id); },
       listMessageFileEdits: function (messageId, cursor, groupFiles) { return invoke("cli:listMessageFileEdits", messageId, cursor, groupFiles); },
       readFileEditBlob: function (conversationId, blobKey, offset) { return invoke("cli:readFileEditBlob", conversationId, blobKey, offset); },

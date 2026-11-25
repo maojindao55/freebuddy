@@ -665,7 +665,7 @@ export function createButlerMcpServer(): McpServer {
     {
       title: "Open a Conversation in Main Window",
       description:
-        "Focus the main FreeBuddy window and open a conversation in the chat view. Pass id for an exact open, or titleQuery / lastMessageStatus to find one (e.g. lastMessageStatus=failed). If multiple match, returns matches for disambiguation instead of opening.",
+        "Focus the main FreeBuddy window and open a conversation in the chat view, optionally jumping directly to a specific messageId. Pass id for an exact open, or titleQuery / lastMessageStatus to find one (e.g. lastMessageStatus=failed). If multiple match, returns matches for disambiguation instead of opening.",
       inputSchema: {
         id: z.string().optional().describe("Exact conversation id to open."),
         titleQuery: z
@@ -679,7 +679,11 @@ export function createButlerMcpServer(): McpServer {
         archived: z
           .boolean()
           .optional()
-          .describe("Search archived conversations when using titleQuery/status filters.")
+          .describe("Search archived conversations when using titleQuery/status filters."),
+        messageId: z
+          .string()
+          .optional()
+          .describe("Optional message id (e.g. topic.startMessageId) to scroll to after opening.")
       },
       annotations: {
         destructiveHint: false,
@@ -690,6 +694,79 @@ export function createButlerMcpServer(): McpServer {
     async (args) => {
       try {
         return toolResult(await invokeButlerBridge("conversation_open", args));
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_conversation_digest_get",
+    {
+      title: "Get Conversation Requirement Digest",
+      description:
+        "Get the structured requirement/topic outline (title, summary, status, startMessageId, endMessageId, files) for a conversation. Read-only. Useful when a long conversation covers multiple requirements.",
+      inputSchema: {
+        conversationId: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Conversation id to inspect.")
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    async (args) => {
+      try {
+        return toolResult(
+          await invokeButlerBridge("conversation_digest_get", args)
+        );
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "freebuddy_conversation_topics_search",
+    {
+      title: "Search Requirements Across Conversations",
+      description:
+        "Search requirement topics and user requests across conversations by keyword, summary, or file path. Returns matching conversationId and startMessageId so you can jump directly with freebuddy_conversation_open. Read-only.",
+      inputSchema: {
+        query: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("Keywords to search across requirement titles, summaries, keywords, files, and user turns."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(40)
+          .optional()
+          .describe("Maximum number of matches to return (default 12)."),
+        includeArchived: z
+          .boolean()
+          .optional()
+          .describe("Whether to include archived conversations.")
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    async (args) => {
+      try {
+        return toolResult(
+          await invokeButlerBridge("conversation_topics_search", args)
+        );
       } catch (error) {
         return toolError(error);
       }

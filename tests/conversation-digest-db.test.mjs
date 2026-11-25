@@ -34,6 +34,7 @@ async function fixture(t) {
   t.after(() => {
     digestMod.setDigestFetchForTest(null);
     digestMod.setDigestDebounceMsForTest(null);
+    llmMod.setDigestTimeoutMsForTest(null);
     digestMod.shutdownConversationDigest();
     conversationsMod.bindConversationTurnFinishedNotifier(null);
     conversationsMod.bindConversationDeletedNotifier(null);
@@ -212,9 +213,11 @@ test("Layer 1 supports all 4 provider protocols, incremental merge, and sanitize
 
     let seenUrl = "";
     let seenHeaders = {};
+    let seenBody = {};
     f.setDigestFetchForTest(async (url, init) => {
       seenUrl = String(url);
       seenHeaders = init?.headers ?? {};
+      seenBody = JSON.parse(String(init?.body ?? "{}"));
       const llmPayload = {
         overallSummary: "Login UI built and refined",
         topics: [
@@ -240,10 +243,14 @@ test("Layer 1 supports all 4 provider protocols, incremental merge, and sanitize
     const digest = await f.runConversationDigestNow("conv-llm", { forceRebuild: true });
     assert.ok(digest);
     assert.equal(seenUrl, spec.expectedUrl);
+    assert.equal(seenBody.stream, true);
     if (spec.protocol === "anthropic") {
       assert.equal(seenHeaders["x-api-key"], "sk-test-123456");
+      assert.equal(seenBody.max_tokens, 8192);
     } else {
       assert.equal(seenHeaders.Authorization, "Bearer sk-test-123456");
+      assert.equal("max_tokens" in seenBody, false);
+      assert.equal("max_output_tokens" in seenBody, false);
     }
     assert.equal(digest.source, "llm");
     assert.equal(digest.topics.length, 1);
@@ -736,4 +743,425 @@ test("Layer 0 strips markdown links/formatting and recovers stale running/queued
   const llmDigest = f.runAsCaller("alice", () => f.getConversationDigest("conv-md"));
   assert.ok(llmDigest);
   assert.equal(llmDigest.status, "ready");
+});
+
+function sseResponse(frames) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      for (const frame of frames) {
+        controller.enqueue(encoder.encode(`data: ${typeof frame === "string" ? frame : JSON.stringify(frame)}\n\n`));
+      }
+      controller.close();
+    }
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" }
+  });
+}
+
+test("SSE streaming works across openai-chat, openai-responses, and anthropic protocols", async (t) => {
+  const f = await fixture(t);
+  if (!f) return;
+
+  f.insertConv("conv-sse", { title: "SSE stream" });
+  f.insertMsg("su1", "conv-sse", "user", 1, { content: "Stream digest test" });
+  f.insertMsg("sa1", "conv-sse", "assistant", 2, {
+    status: "done",
+    content: [{ kind: "text", role: "assistant", content: "Done." }]
+  });
+
+  const payloadStr = JSON.stringify({
+    overallSummary: "SSE parsed cleanly",
+    topics: [
+      {
+        id: "new-1",
+        title: "Streaming topic",
+        summary: "Merged via SSE.",
+        status: "done",
+        startMessageId: "su1",
+        endMessageId: "sa1",
+        turnCount: 1,
+        keywords: ["sse"],
+        files: []
+      }
+    ]
+  });
+  const half = Math.floor(payloadStr.length / 2);
+  const part1 = payloadStr.slice(0, half);
+  const part2 = payloadStr.slice(half);
+
+  const specs = [
+    {
+      protocol: "openai-chat",
+      frames: [
+        { choices: [{ delta: { content: part1 } }] },
+        { choices: [{ delta: { content: part2 }, finish_reason: "stop" }] },
+        "[DONE]"
+      ]
+    },
+    {
+      protocol: "openai-responses",
+      frames: [
+        { type: "response.output_text.delta", delta: part1 },
+        { type: "response.output_text.delta", delta: part2 },
+        { type: "response.completed", response: {} }
+      ]
+    },
+    {
+      protocol: "anthropic",
+      frames: [
+        { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "ignored" } },
+        { type: "content_block_delta", delta: { type: "text_delta", text: part1 } },
+        { type: "content_block_delta", delta: { type: "text_delta", text: part2 } },
+        { type: "message_delta", delta: { stop_reason: "end_turn" } }
+      ]
+    }
+  ];
+
+  for (const spec of specs) {
+    const provider = f.upsertProvider({
+      name: `SSE-${spec.protocol}`,
+      protocol: spec.protocol,
+      baseUrl: "https://sse.example.com/v1",
+      ...(spec.protocol === "anthropic" ? { anthropicBaseUrl: "https://sse.example.com/v1" } : {}),
+      apiKey: "sk-sse-1234",
+      models: [{ id: "fast-model", maxTokens: 4096 }]
+    });
+    f.setConversationDigestConfig({
+      enabled: true,
+      providerId: provider.id,
+      model: "fast-model",
+      minUserTurns: 1
+    });
+    let seenBody = {};
+    f.setDigestFetchForTest(async (_url, init) => {
+      seenBody = JSON.parse(String(init?.body ?? "{}"));
+      return sseResponse(spec.frames);
+    });
+
+    const digest = await f.runConversationDigestNow("conv-sse", { forceRebuild: true });
+    assert.ok(digest);
+    assert.equal(digest.source, "llm");
+    assert.equal(digest.topics[0].title, "Streaming topic");
+    if (spec.protocol === "anthropic") {
+      assert.equal(seenBody.max_tokens, 4096);
+    }
+  }
+});
+
+test("Timeouts surface explicit errors, trigger auto-mode fallback, and empty responses fall back", async (t) => {
+  const f = await fixture(t);
+  if (!f) return;
+
+  f.insertConv("conv-timeout", { title: "Timeout check" });
+  f.insertMsg("tu1", "conv-timeout", "user", 1, { content: "Long conversation task" });
+  f.insertMsg("ta1", "conv-timeout", "assistant", 2, {
+    status: "done",
+    content: [{ kind: "text", role: "assistant", content: "Finished." }]
+  });
+
+  f.setDigestTimeoutMsForTest(80);
+
+  const pSlow = f.upsertProvider({
+    name: "SlowProvider",
+    protocol: "openai-chat",
+    baseUrl: "https://slow.example.com/v1",
+    apiKey: "sk-slow-1234",
+    position: 10,
+    models: [{ id: "slow-mini" }]
+  });
+  f.setConversationDigestConfig({
+    enabled: true,
+    providerId: pSlow.id,
+    model: "slow-mini",
+    minUserTurns: 1
+  });
+
+  const hangFetch = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener(
+        "abort",
+        () => {
+          const err = new Error("Aborted");
+          err.name = "AbortError";
+          reject(err);
+        },
+        { once: true }
+      );
+    });
+
+  // 1. Single provider timeout persists status='error' with explicit message (never silent idle)
+  f.setDigestFetchForTest(hangFetch);
+  const timedOutRes = await f.runConversationDigestNow("conv-timeout", { forceRebuild: true });
+  assert.equal(timedOutRes, null);
+  const persistedErr = f.runAsCaller("alice", () => f.getConversationDigest("conv-timeout"));
+  assert.equal(persistedErr?.status, "error");
+  assert.match(persistedErr?.error ?? "", /timed out/i);
+
+  // 2. External AbortController cancels cleanly without writing error
+  f.db
+    .prepare("UPDATE conversation_digest_state SET status = 'idle', last_error = NULL WHERE conversation_id = 'conv-timeout'")
+    .run();
+  const extCtrl = new AbortController();
+  f.setDigestFetchForTest((url, init) => {
+    setTimeout(() => extCtrl.abort(), 15);
+    return hangFetch(url, init);
+  });
+  await f.runConversationDigestNow("conv-timeout", {
+    forceRebuild: true,
+    signal: extCtrl.signal
+  });
+  const abortedState = f.runAsCaller("alice", () => f.getConversationDigest("conv-timeout"));
+  assert.equal(abortedState?.status, "idle");
+  assert.equal(abortedState?.error, undefined);
+
+  // 3. Auto-mode falls back to provider #2 when provider #1 times out
+  f.upsertProvider({
+    name: "FastBackup",
+    protocol: "openai-chat",
+    baseUrl: "https://fast.example.com/v1",
+    apiKey: "sk-fast-1234",
+    position: 20,
+    models: [{ id: "fast-mini" }]
+  });
+  f.setConversationDigestConfig({
+    enabled: true,
+    providerId: "",
+    model: "",
+    minUserTurns: 1
+  });
+  f.setDigestFetchForTest((url, init) => {
+    const u = String(url);
+    if (u.includes("slow.example.com")) {
+      return hangFetch(url, init);
+    }
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  overallSummary: "Recovered from timeout",
+                  topics: [
+                    {
+                      id: "new-1",
+                      title: "Timeout fallback succeeded",
+                      summary: "Switched to FastBackup after timeout.",
+                      status: "done",
+                      startMessageId: "tu1",
+                      endMessageId: "ta1",
+                      turnCount: 1,
+                      keywords: ["timeout"],
+                      files: []
+                    }
+                  ]
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+  });
+
+  const recovered = await f.runConversationDigestNow("conv-timeout", { forceRebuild: true });
+  assert.equal(recovered?.source, "llm");
+  assert.equal(recovered?.topics[0].title, "Timeout fallback succeeded");
+
+  // 4. Empty output on /responses (reasoning-only) falls back to /chat/completions
+  f.setDigestTimeoutMsForTest(null);
+  const pResp = f.upsertProvider({
+    name: "RespEmpty",
+    protocol: "openai-responses",
+    protocols: ["openai-responses"],
+    baseUrl: "https://respempty.example.com/v1",
+    apiKey: "sk-resp-1234",
+    models: [{ id: "reasoning-mini" }]
+  });
+  f.setConversationDigestConfig({
+    enabled: true,
+    providerId: pResp.id,
+    model: "reasoning-mini",
+    minUserTurns: 1
+  });
+  const emptyFallbackUrls = [];
+  f.setDigestFetchForTest(async (url) => {
+    const u = String(url);
+    emptyFallbackUrls.push(u);
+    if (u.endsWith("/responses")) {
+      return new Response(
+        JSON.stringify({ output: [{ type: "reasoning", summary: [] }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                overallSummary: "Fallback from empty responses",
+                topics: [
+                  {
+                    id: "new-1",
+                    title: "Chat fallback ok",
+                    summary: "Recovered from empty responses output.",
+                    status: "done",
+                    startMessageId: "tu1",
+                    endMessageId: "ta1",
+                    turnCount: 1,
+                    keywords: ["responses"],
+                    files: []
+                  }
+                ]
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  });
+  const emptyRecovered = await f.runConversationDigestNow("conv-timeout", { forceRebuild: true });
+  assert.equal(emptyRecovered?.source, "llm");
+  assert.deepEqual(emptyFallbackUrls, [
+    "https://respempty.example.com/v1/responses",
+    "https://respempty.example.com/v1/chat/completions"
+  ]);
+});
+
+test("Long conversation chunks into batches of 8 and retains partial progress on mid-run failure", async (t) => {
+  const f = await fixture(t);
+  if (!f) return;
+
+  f.insertConv("conv-long-19", { title: "19-turn session" });
+  for (let i = 1; i <= 19; i += 1) {
+    f.insertMsg(`lu-${i}`, "conv-long-19", "user", i * 2 - 1, {
+      content: `Requirement ${i}`
+    });
+    f.insertMsg(`la-${i}`, "conv-long-19", "assistant", i * 2, {
+      status: "done",
+      content: [{ kind: "text", role: "assistant", content: `Completed requirement ${i}.` }]
+    });
+  }
+
+  const provider = f.upsertProvider({
+    name: "BatchMock",
+    protocol: "openai-chat",
+    baseUrl: "https://batch.example.com/v1",
+    apiKey: "sk-batch-1234",
+    models: [{ id: "batch-mini" }]
+  });
+  f.setConversationDigestConfig({
+    enabled: true,
+    providerId: provider.id,
+    model: "batch-mini",
+    minUserTurns: 2
+  });
+
+  const recordedBatches = [];
+  f.setDigestFetchForTest(async (_url, init) => {
+    const reqBody = JSON.parse(String(init?.body ?? "{}"));
+    const promptPayload = JSON.parse(reqBody.messages[1].content);
+    recordedBatches.push({
+      existingCount: promptPayload.existingTopics.length,
+      newTurnCount: promptPayload.newTurns.length,
+      firstTurnIndex: promptPayload.newTurns[0]?.turnIndex
+    });
+    const mergedTopics = [
+      ...promptPayload.existingTopics,
+      ...promptPayload.newTurns.map((turn, idx) => ({
+        id: `new-${promptPayload.existingTopics.length + idx + 1}`,
+        title: `Topic ${turn.turnIndex}`,
+        summary: `Summarized turn ${turn.turnIndex}`,
+        status: "done",
+        startMessageId: turn.userMessageId,
+        endMessageId: turn.assistantMessageId,
+        turnCount: 1,
+        keywords: [],
+        files: []
+      }))
+    ];
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                overallSummary: `Through ${mergedTopics.length}`,
+                topics: mergedTopics
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  });
+
+  const full = await f.runConversationDigestNow("conv-long-19", { forceRebuild: true });
+  assert.ok(full);
+  assert.equal(full.source, "llm");
+  assert.equal(full.status, "ready");
+  assert.equal(full.topics.length, 19);
+  assert.deepEqual(recordedBatches, [
+    { existingCount: 0, newTurnCount: 8, firstTurnIndex: 1 },
+    { existingCount: 8, newTurnCount: 8, firstTurnIndex: 9 },
+    { existingCount: 16, newTurnCount: 3, firstTurnIndex: 17 }
+  ]);
+
+  // Mid-run failure on batch 3 retains batches 1-2 LLM topics + exposes turns 17-19 as trailing Layer 0
+  let callCount = 0;
+  f.setDigestFetchForTest(async (_url, init) => {
+    callCount += 1;
+    if (callCount === 3) {
+      return new Response("upstream failure", { status: 500 });
+    }
+    const reqBody = JSON.parse(String(init?.body ?? "{}"));
+    const promptPayload = JSON.parse(reqBody.messages[1].content);
+    const mergedTopics = [
+      ...promptPayload.existingTopics,
+      ...promptPayload.newTurns.map((turn, idx) => ({
+        id: `new-${promptPayload.existingTopics.length + idx + 1}`,
+        title: `Partial topic ${turn.turnIndex}`,
+        summary: `Saved batch turn ${turn.turnIndex}`,
+        status: "done",
+        startMessageId: turn.userMessageId,
+        endMessageId: turn.assistantMessageId,
+        turnCount: 1,
+        keywords: [],
+        files: []
+      }))
+    ];
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                overallSummary: "Partial summary",
+                topics: mergedTopics
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  });
+
+  const failedThird = await f.runConversationDigestNow("conv-long-19", { forceRebuild: true });
+  assert.equal(failedThird, null);
+  const partial = f.runAsCaller("alice", () => f.getConversationDigest("conv-long-19"));
+  assert.ok(partial);
+  assert.equal(partial.status, "error");
+  assert.equal(partial.source, "llm");
+  assert.equal(partial.topics.length, 19);
+  assert.equal(partial.topics[15].source, "llm");
+  assert.equal(partial.topics[16].source, "rule");
+  assert.equal(partial.topics[18].source, "rule");
 });

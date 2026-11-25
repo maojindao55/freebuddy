@@ -22,9 +22,11 @@ import {
   callDigestLlm,
   resolveDigestProvider,
   resolveDigestProviders,
+  setDigestTimeoutMsForTest,
   type DigestTurnInput,
   type RawDigestTopicOutput
 } from "./conversationDigestLlm.js";
+export { setDigestTimeoutMsForTest };
 import { getDb } from "./db.js";
 import { getSetting, setSetting } from "./settings.js";
 
@@ -33,6 +35,10 @@ const DEFAULT_DEBOUNCE_MS = 3_500;
 const MAX_MESSAGE_BYTES = 256 * 1024;
 const MAX_USER_TEXT_CHARS = 1_200;
 const MAX_ASSISTANT_TEXT_CHARS = 1_200;
+const PROMPT_USER_TEXT_CHARS = 500;
+const PROMPT_ASSISTANT_TEXT_CHARS = 500;
+const LLM_BATCH_SIZE = 8;
+const MAX_REBUILD_TURNS = 40;
 const MAX_FILES_PER_TOPIC = 15;
 const MAX_KEYWORDS_PER_TOPIC = 8;
 const DEFAULT_MIN_USER_TURNS = 2;
@@ -900,6 +906,7 @@ function saveLlmDigestTransaction(input: {
   topics: ConversationTopic[];
   lastMessageId?: string;
   lastMessageSeq: number;
+  status?: ConversationDigestStatus;
 }): string | null {
   const db = getDb();
   const stillExists = db
@@ -908,6 +915,7 @@ function saveLlmDigestTransaction(input: {
   if (!stillExists) return null;
 
   const now = new Date().toISOString();
+  const targetStatus = input.status ?? "ready";
   db.transaction(() => {
     db.prepare(`DELETE FROM conversation_topics WHERE conversation_id = ?`).run(
       input.conversationId
@@ -941,11 +949,11 @@ function saveLlmDigestTransaction(input: {
     db.prepare(
       `INSERT INTO conversation_digest_state
          (conversation_id, overall_summary, source, status, last_message_id, last_message_seq, last_error, updated_at)
-       VALUES (?, ?, 'llm', 'ready', ?, ?, NULL, ?)
+       VALUES (?, ?, 'llm', ?, ?, ?, NULL, ?)
        ON CONFLICT(conversation_id) DO UPDATE SET
          overall_summary = excluded.overall_summary,
          source = 'llm',
-         status = 'ready',
+         status = excluded.status,
          last_message_id = excluded.last_message_id,
          last_message_seq = excluded.last_message_seq,
          last_error = NULL,
@@ -955,12 +963,34 @@ function saveLlmDigestTransaction(input: {
       input.overallSummary
         ? clipLine(stripMarkdownForPreview(input.overallSummary), 160)
         : null,
+      targetStatus,
       input.lastMessageId ?? null,
       input.lastMessageSeq,
       now
     );
   })();
   return now;
+}
+
+function toPromptTurns(turns: ExtractedTurn[]): DigestTurnInput[] {
+  return turns.map((turn) => ({
+    turnIndex: turn.turnIndex,
+    userMessageId: turn.userMessageId,
+    ...(turn.assistantMessageId
+      ? { assistantMessageId: turn.assistantMessageId }
+      : {}),
+    userText: clipMultiline(
+      stripMarkdownForPreview(turn.userText),
+      PROMPT_USER_TEXT_CHARS
+    ),
+    assistantText: clipMultiline(
+      stripMarkdownForPreview(turn.assistantText),
+      PROMPT_ASSISTANT_TEXT_CHARS
+    ),
+    status: turn.status,
+    files: turn.files,
+    createdAt: turn.createdAt
+  }));
 }
 
 // ---- Background Runner & Debounced Queue ----
@@ -978,9 +1008,29 @@ export async function runConversationDigestNow(
   const config = getConversationDigestConfig();
   if (!config.enabled && !forceRebuild) return null;
 
+  const db = getDb();
+  const state = db
+    .prepare(`SELECT * FROM conversation_digest_state WHERE conversation_id = ?`)
+    .get(conversationId) as DigestStateRow | undefined;
+
+  const settleIdleIfForced = () => {
+    if (!forceRebuild) return;
+    const settledStatus: ConversationDigestStatus =
+      state?.source === "llm" ? "ready" : "idle";
+    emitDigestChanged({
+      conversationId,
+      status: settledStatus,
+      source: normalizeDigestSource(state?.source),
+      updatedAt: state?.updated_at ?? new Date().toISOString()
+    });
+  };
+
   const { turns, validMessageIds, maxSeq } = extractConversationTurns(conversationId);
   const finishedTurns = turns.filter((turn) => !turn.hasActiveAssistant);
-  if (finishedTurns.length === 0) return null;
+  if (finishedTurns.length === 0) {
+    settleIdleIfForced();
+    return null;
+  }
 
   if (!forceRebuild && turns.some((turn) => turn.hasActiveAssistant)) {
     return null;
@@ -989,11 +1039,6 @@ export async function runConversationDigestNow(
   if (!forceRebuild && finishedTurns.length < config.minUserTurns) {
     return null;
   }
-
-  const db = getDb();
-  const state = db
-    .prepare(`SELECT * FROM conversation_digest_state WHERE conversation_id = ?`)
-    .get(conversationId) as DigestStateRow | undefined;
 
   const latestFinishedSeq = finishedTurns[finishedTurns.length - 1].endSeq;
   if (
@@ -1035,12 +1080,15 @@ export async function runConversationDigestNow(
       ).map(rowToTopic);
 
   const deltaTurns = forceRebuild
-    ? finishedTurns.slice(-40)
+    ? finishedTurns.slice(-MAX_REBUILD_TURNS)
     : finishedTurns
         .filter((turn) => turn.endSeq > (state?.last_message_seq ?? 0))
-        .slice(-12);
+        .slice(-MAX_REBUILD_TURNS);
 
-  if (deltaTurns.length === 0) return null;
+  if (deltaTurns.length === 0) {
+    settleIdleIfForced();
+    return null;
+  }
 
   const runningAt = upsertDigestState({
     conversationId,
@@ -1056,92 +1104,150 @@ export async function runConversationDigestNow(
     updatedAt: runningAt
   });
 
+  let workingTopics: ConversationTopic[] = [...existingTopics];
+  let workingOverallSummary = forceRebuild
+    ? undefined
+    : state?.overall_summary ?? undefined;
+  let savedAnyBatch = false;
+  let lastSavedSeq = state?.last_message_seq ?? 0;
+
   try {
-    let llmResult: Awaited<ReturnType<typeof callDigestLlm>> | undefined;
-    let lastAttemptError: unknown;
-    for (let i = 0; i < candidates.length; i += 1) {
-      const candidate = candidates[i];
-      try {
-        llmResult = await callDigestLlm({
-          resolved: candidate,
-          conversationTitle: conv.title,
-          existingOverallSummary: forceRebuild
-            ? undefined
-            : state?.overall_summary ?? undefined,
-          existingTopics,
-          newTurns: deltaTurns,
-          signal: options?.signal,
-          fetchImpl: testFetchImpl ?? fetch
-        });
-        break;
-      } catch (err) {
-        if ((err as Error)?.name === "AbortError") {
-          throw err;
-        }
-        lastAttemptError = err;
-        if (i < candidates.length - 1) {
-          logMain().warn(
-            "conversationDigest",
-            "provider attempt failed, trying fallback",
-            {
-              conversationId,
-              providerId: candidate.provider.id,
-              error: err instanceof Error ? err.message : String(err)
-            }
-          );
+    const batches: ExtractedTurn[][] = [];
+    for (let offset = 0; offset < deltaTurns.length; offset += LLM_BATCH_SIZE) {
+      batches.push(deltaTurns.slice(offset, offset + LLM_BATCH_SIZE));
+    }
+
+    let preferredCandidateIdx = 0;
+
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx += 1) {
+      if (options?.signal?.aborted) {
+        const abortErr = new Error("Digest aborted");
+        abortErr.name = "AbortError";
+        throw abortErr;
+      }
+
+      const batch = batches[batchIdx];
+      const batchLastTurn = batch[batch.length - 1];
+      const orderedIndices = [
+        preferredCandidateIdx,
+        ...candidates
+          .map((_, idx) => idx)
+          .filter((idx) => idx !== preferredCandidateIdx)
+      ];
+
+      let llmResult: Awaited<ReturnType<typeof callDigestLlm>> | undefined;
+      let lastAttemptError: unknown;
+
+      for (let pos = 0; pos < orderedIndices.length; pos += 1) {
+        const candidateIdx = orderedIndices[pos];
+        const candidate = candidates[candidateIdx];
+        try {
+          llmResult = await callDigestLlm({
+            resolved: candidate,
+            conversationTitle: conv.title,
+            existingOverallSummary: workingOverallSummary,
+            existingTopics: workingTopics,
+            newTurns: toPromptTurns(batch),
+            signal: options?.signal,
+            fetchImpl: testFetchImpl ?? fetch
+          });
+          preferredCandidateIdx = candidateIdx;
+          break;
+        } catch (err) {
+          if (options?.signal?.aborted) {
+            throw err;
+          }
+          lastAttemptError = err;
+          if (pos < orderedIndices.length - 1) {
+            logMain().warn(
+              "conversationDigest",
+              "provider attempt failed, trying fallback",
+              {
+                conversationId,
+                providerId: candidate.provider.id,
+                batchIndex: batchIdx,
+                error: err instanceof Error ? err.message : String(err)
+              }
+            );
+          }
         }
       }
+
+      if (!llmResult) {
+        throw lastAttemptError ?? new Error("Digest providers unavailable.");
+      }
+
+      const turnsThroughBatch = finishedTurns.filter(
+        (turn) => turn.endSeq <= batchLastTurn.endSeq
+      );
+      const sanitizedTopics = sanitizeLlmTopics({
+        conversationId,
+        rawTopics: llmResult.topics,
+        existingTopics: workingTopics,
+        turns: turnsThroughBatch.length > 0 ? turnsThroughBatch : batch,
+        validMessageIds
+      });
+
+      workingTopics = sanitizedTopics;
+      if (llmResult.overallSummary?.trim()) {
+        workingOverallSummary = llmResult.overallSummary;
+      }
+
+      const isLastBatch = batchIdx === batches.length - 1;
+      const batchSeq = isLastBatch
+        ? Math.max(maxSeq, batchLastTurn.endSeq)
+        : batchLastTurn.endSeq;
+      const savedAt = saveLlmDigestTransaction({
+        conversationId,
+        overallSummary: workingOverallSummary,
+        topics: workingTopics,
+        lastMessageId: batchLastTurn.endMessageId,
+        lastMessageSeq: batchSeq,
+        status: isLastBatch ? "ready" : "running"
+      });
+      if (!savedAt) return null;
+
+      savedAnyBatch = true;
+      lastSavedSeq = batchSeq;
+      emitDigestChanged({
+        conversationId,
+        status: isLastBatch ? "ready" : "running",
+        source: "llm",
+        updatedAt: savedAt
+      });
     }
-    if (!llmResult) {
-      throw lastAttemptError ?? new Error("Digest providers unavailable.");
-    }
 
-    const sanitizedTopics = sanitizeLlmTopics({
-      conversationId,
-      rawTopics: llmResult.topics,
-      existingTopics,
-      turns: finishedTurns,
-      validMessageIds
-    });
-
-    const lastTurn = finishedTurns[finishedTurns.length - 1];
-    const savedAt = saveLlmDigestTransaction({
-      conversationId,
-      overallSummary: llmResult.overallSummary,
-      topics: sanitizedTopics,
-      lastMessageId: lastTurn.endMessageId,
-      lastMessageSeq: Math.max(maxSeq, lastTurn.endSeq)
-    });
-    if (!savedAt) return null;
-
-    emitDigestChanged({
-      conversationId,
-      status: "ready",
-      source: "llm",
-      updatedAt: savedAt
-    });
     return getConversationDigest(conversationId);
   } catch (error) {
-    if ((error as Error)?.name === "AbortError") {
+    const isExternalAbort = Boolean(options?.signal?.aborted);
+    const effectiveSource = savedAnyBatch
+      ? "llm"
+      : normalizeDigestSource(state?.source);
+    const effectiveSeq = savedAnyBatch
+      ? lastSavedSeq
+      : state?.last_message_seq ?? 0;
+
+    if (isExternalAbort) {
       if (getConversation(conversationId)) {
         const revertedStatus: ConversationDigestStatus =
-          state?.source === "llm" ? "ready" : "idle";
+          effectiveSource === "llm" ? "ready" : "idle";
         const revertedAt = upsertDigestState({
           conversationId,
-          source: normalizeDigestSource(state?.source),
+          source: effectiveSource,
           status: revertedStatus,
-          lastMessageSeq: state?.last_message_seq ?? 0,
-          lastError: state?.last_error ?? null
+          lastMessageSeq: effectiveSeq,
+          lastError: savedAnyBatch ? null : state?.last_error ?? null
         });
         emitDigestChanged({
           conversationId,
           status: revertedStatus,
-          source: normalizeDigestSource(state?.source),
+          source: effectiveSource,
           updatedAt: revertedAt
         });
       }
       return null;
     }
+
     const message = (error instanceof Error ? error.message : String(error)).slice(
       0,
       240
@@ -1154,15 +1260,15 @@ export async function runConversationDigestNow(
     if (!stillExists) return null;
     const errorAt = upsertDigestState({
       conversationId,
-      source: normalizeDigestSource(state?.source),
+      source: effectiveSource,
       status: "error",
-      lastMessageSeq: state?.last_message_seq ?? 0,
+      lastMessageSeq: effectiveSeq,
       lastError: message
     });
     emitDigestChanged({
       conversationId,
       status: "error",
-      source: normalizeDigestSource(state?.source),
+      source: effectiveSource,
       updatedAt: errorAt
     });
     return null;

@@ -30349,10 +30349,7 @@ button.ghost:focus-visible,
 /* ---- ButlerBuddy Async Conversation Digest ---- */
 
 .digest-card-top {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 12px 14px 10px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--fb-border);
 }
 
@@ -30446,14 +30443,6 @@ button.ghost:focus-visible,
 
 .digest-spin {
   animation: run-metrics-spin 1.1s linear infinite;
-}
-
-.digest-overall-summary {
-  margin: 0;
-  color: var(--fb-text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
 }
 
 .digest-error-hint {

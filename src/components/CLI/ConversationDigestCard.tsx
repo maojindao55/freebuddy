@@ -171,10 +171,6 @@ export function ConversationDigestCard({
             </span>
           </button>
         </div>
-
-        {digest.overallSummary && (
-          <p className="digest-overall-summary">{digest.overallSummary}</p>
-        )}
       </div>
 
       {digest.status === "error" && digest.error && (

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { FileCode2, ListTree, RefreshCw, Search, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileCode2, ListTree, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cliClient } from "@/services/cli/client";
@@ -51,7 +51,9 @@ export function ConversationDigestCard({
   const { t } = useTranslation();
   const [digest, setDigest] = useState<ConversationDigest | null>(null);
   const [filter, setFilter] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const filterInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadDigest = useCallback(async () => {
     if (!cliClient.isAvailable() || !conversationId) {
@@ -68,7 +70,11 @@ export function ConversationDigestCard({
 
   useEffect(() => {
     setFilter("");
+    setSearchOpen(false);
     setRefreshing(false);
+  }, [conversationId]);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       if (!cliClient.isAvailable() || !conversationId) {
@@ -99,10 +105,24 @@ export function ConversationDigestCard({
   }, [conversationId, loadDigest]);
 
   const topics = digest?.topics ?? [];
+  const canFilter = topics.length >= 2;
+  const effectiveFilter = canFilter ? filter : "";
   const filteredTopics = useMemo(
-    () => topics.filter((topic) => topicMatchesQuery(topic, filter)),
-    [topics, filter]
+    () => topics.filter((topic) => topicMatchesQuery(topic, effectiveFilter)),
+    [topics, effectiveFilter]
   );
+
+  useEffect(() => {
+    if (!canFilter && (searchOpen || filter)) {
+      setSearchOpen(false);
+      setFilter("");
+    }
+  }, [canFilter, searchOpen, filter]);
+
+  useEffect(() => {
+    if (!searchOpen || !canFilter) return;
+    filterInputRef.current?.focus();
+  }, [searchOpen, canFilter]);
 
   if (!digest || topics.length === 0) return null;
 
@@ -120,6 +140,24 @@ export function ConversationDigestCard({
       if (next) setDigest(next);
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const onToggleSearch = () => {
+    if (searchOpen) {
+      setSearchOpen(false);
+      setFilter("");
+    } else {
+      setSearchOpen(true);
+    }
+  };
+
+  const onClearOrCloseSearch = () => {
+    if (filter) {
+      setFilter("");
+      filterInputRef.current?.focus();
+    } else {
+      setSearchOpen(false);
     }
   };
 
@@ -150,27 +188,92 @@ export function ConversationDigestCard({
               )}
             </span>
           </div>
-          <button
-            type="button"
-            className={`digest-refresh-btn${isBusy ? " is-busy" : ""}`}
-            disabled={isBusy}
-            onClick={() => void onRefreshClick()}
-            title={t("conversationDigest.refreshTitle")}
-          >
-            <RefreshCw
-              size={12}
-              className={isBusy ? "digest-spin" : undefined}
-              aria-hidden="true"
-            />
-            <span>
-              {isBusy
-                ? t("conversationDigest.organizing")
-                : digest.source === "llm"
-                  ? t("conversationDigest.reorganize")
-                  : t("conversationDigest.organize")}
-            </span>
-          </button>
+          <div className="digest-header-actions">
+            {canFilter && (
+              <button
+                type="button"
+                className={`digest-icon-btn${searchOpen ? " is-active" : ""}`}
+                onClick={onToggleSearch}
+                aria-expanded={searchOpen}
+                aria-label={
+                  searchOpen
+                    ? t("conversationDigest.closeFilter")
+                    : t("conversationDigest.toggleFilter")
+                }
+                title={
+                  searchOpen
+                    ? t("conversationDigest.closeFilter")
+                    : t("conversationDigest.toggleFilter")
+                }
+              >
+                <Search size={13} aria-hidden="true" />
+              </button>
+            )}
+            <button
+              type="button"
+              className={`digest-refresh-btn${isBusy ? " is-busy" : ""}`}
+              disabled={isBusy}
+              onClick={() => void onRefreshClick()}
+              title={t("conversationDigest.refreshTitle")}
+            >
+              <RefreshCw
+                size={12}
+                className={isBusy ? "digest-spin" : undefined}
+                aria-hidden="true"
+              />
+              <span>
+                {isBusy
+                  ? t("conversationDigest.organizing")
+                  : digest.source === "llm"
+                    ? t("conversationDigest.reorganize")
+                    : t("conversationDigest.organize")}
+              </span>
+            </button>
+          </div>
         </div>
+        {canFilter && searchOpen && (
+          <div className="digest-filter-wrap">
+            <Search size={12} aria-hidden="true" />
+            <input
+              ref={filterInputRef}
+              type="text"
+              className="digest-filter-input"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setFilter("");
+                  setSearchOpen(false);
+                }
+              }}
+              placeholder={t("conversationDigest.filterPlaceholder")}
+              aria-label={t("conversationDigest.filterPlaceholder")}
+            />
+            {filter.trim().length > 0 && (
+              <span className="digest-filter-count">
+                {filteredTopics.length}/{topics.length}
+              </span>
+            )}
+            <button
+              type="button"
+              className="digest-filter-clear"
+              onClick={onClearOrCloseSearch}
+              aria-label={
+                filter
+                  ? t("conversationDigest.clearFilter")
+                  : t("conversationDigest.closeFilter")
+              }
+              title={
+                filter
+                  ? t("conversationDigest.clearFilter")
+                  : t("conversationDigest.closeFilter")
+              }
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </div>
 
       {digest.status === "error" && digest.error && (
@@ -179,20 +282,6 @@ export function ConversationDigestCard({
             ? t("conversationDigest.errorNoProvider")
             : t("conversationDigest.errorGeneric", { error: digest.error })}
         </p>
-      )}
-
-      {topics.length >= 4 && (
-        <div className="digest-filter-wrap">
-          <Search size={12} aria-hidden="true" />
-          <input
-            type="text"
-            className="digest-filter-input"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder={t("conversationDigest.filterPlaceholder")}
-            aria-label={t("conversationDigest.filterPlaceholder")}
-          />
-        </div>
       )}
 
       {filteredTopics.length === 0 ? (

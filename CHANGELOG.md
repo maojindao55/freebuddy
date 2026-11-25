@@ -2,6 +2,16 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.73] - 2026-11-25
+
+### 新功能
+
+- collapse topic filter behind header search icon
+
+### 问题修复
+
+- add SSE streaming, chunked progressive batching, uncapped output tokens, and explicit timeout handling
+
 ## [0.10.72] - 2026-11-25
 
 ### 新功能

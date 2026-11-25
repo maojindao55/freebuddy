@@ -2,6 +2,28 @@
 
 记录面向用户的版本变更。每次执行 `npm run release` 时，系统会从上一个 tag 之后的提交生成初稿；如需使用人工或 Agent 润色的文案，可传入 `--notes-file <路径>`。
 
+## [0.10.72] - 2026-11-25
+
+### 新功能
+
+- unify scheduled conversation messages with persisted scheduled tasks
+- add multi-account management for Antigravity
+- add async conversation digest, requirements outline, and cross-session topic search
+
+### 问题修复
+
+- remove click focus ring on message bubbles and flash highlight only on jump
+- deduplicate busy header spinner, strip markdown links in previews, and recover stale running status
+- add endpoint/protocol/provider fallback and clean HTML upstream errors
+- rebuild warm AGY connections when conversation context changes
+
+### 体验优化
+
+- remove redundant overall summary paragraph from digest card
+- refine conversation digest card header typography and spacing
+- remove redundant Antigravity title from usage card header
+- streamline Antigravity usage header with inline account switcher
+
 ## [0.10.71] - 2026-11-19
 
 ### 问题修复

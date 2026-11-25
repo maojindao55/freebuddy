@@ -59,15 +59,21 @@ function pickProtocolAndUrl(
     ? provider.protocols
     : [provider.protocol];
   const openAiUrl = provider.baseUrl?.trim();
-  const anthropicUrl = (
-    provider.anthropicBaseUrl?.trim() || provider.baseUrl?.trim()
-  );
+  const anthropicUrl =
+    provider.anthropicBaseUrl?.trim() || provider.baseUrl?.trim();
 
-  // Prefer OpenAI-compatible protocols when baseUrl is configured so chat/responses
-  // relays don't need Anthropic headers unless the provider is Anthropic-only.
-  const openAiProto = protocols.find((p) => p !== "anthropic");
-  if (openAiProto && openAiUrl) {
-    return { protocol: openAiProto, baseUrl: openAiUrl };
+  // Prefer OpenAI Chat Completions / DeepSeek over Responses API because
+  // third-party relays more universally support /chat/completions.
+  if (openAiUrl) {
+    const chatProto = protocols.find(
+      (p) => p === "openai-chat" || p === "deepseek"
+    );
+    if (chatProto) {
+      return { protocol: chatProto, baseUrl: openAiUrl };
+    }
+    if (protocols.includes("openai-responses")) {
+      return { protocol: "openai-responses", baseUrl: openAiUrl };
+    }
   }
   if (protocols.includes("anthropic") && anthropicUrl) {
     return { protocol: "anthropic", baseUrl: anthropicUrl };
@@ -99,10 +105,10 @@ function pickLightModel(
   return defaultModelForProtocol(protocol);
 }
 
-/** Resolve an active BYOK provider + key + light model for background digests. */
-export function resolveDigestProvider(
+/** Resolve all enabled BYOK providers with keys (explicit config or priority fallback list). */
+export function resolveDigestProviders(
   config: ConversationDigestConfig
-): ResolvedDigestProvider | null {
+): ResolvedDigestProvider[] {
   const candidates: ProviderRecord[] = [];
   const configuredId = config.providerId.trim();
   if (configuredId) {
@@ -118,21 +124,29 @@ export function resolveDigestProvider(
     }
   }
 
+  const resolved: ResolvedDigestProvider[] = [];
   for (const provider of candidates) {
     const apiKey = getProviderApiKey(provider.id)?.trim();
     if (!apiKey) continue;
     const endpoint = pickProtocolAndUrl(provider);
     if (!endpoint) continue;
     const model = pickLightModel(provider, endpoint.protocol, config.model);
-    return {
+    resolved.push({
       provider,
       apiKey,
       protocol: endpoint.protocol,
       baseUrl: endpoint.baseUrl,
       model
-    };
+    });
   }
-  return null;
+  return resolved;
+}
+
+/** Resolve the primary BYOK provider + key + light model for background digests. */
+export function resolveDigestProvider(
+  config: ConversationDigestConfig
+): ResolvedDigestProvider | null {
+  return resolveDigestProviders(config)[0] ?? null;
 }
 
 function buildDigestPrompts(input: {
@@ -200,20 +214,148 @@ function buildDigestPrompts(input: {
   };
 }
 
-function buildEndpointUrl(
+function buildCandidateUrls(
   baseUrl: string,
   protocol: ProviderProtocol
-): string {
+): string[] {
   const clean = baseUrl.replace(/\/+$/, "");
+  if (!clean) return [];
   const suffix =
     protocol === "anthropic"
       ? "/messages"
       : protocol === "openai-responses"
         ? "/responses"
         : "/chat/completions";
-  if (clean.endsWith(suffix)) return clean;
-  if (clean.endsWith("/v1")) return `${clean}${suffix}`;
-  return `${clean}/v1${suffix}`;
+  if (clean.endsWith(suffix)) return [clean];
+  if (clean.endsWith("/v1")) return [`${clean}${suffix}`];
+
+  let pathname = "";
+  try {
+    pathname = new URL(clean).pathname;
+  } catch {
+    // Keep empty pathname when baseUrl cannot be parsed as URL.
+  }
+  // Respect already-versioned base URLs such as /v2/tokenplan/personal before appending /v1.
+  if (/\/v\d+(?:[a-z0-9._-]*)?(?:\/|$)/i.test(pathname)) {
+    return [`${clean}${suffix}`, `${clean}/v1${suffix}`];
+  }
+  return [`${clean}/v1${suffix}`, `${clean}${suffix}`];
+}
+
+function buildEndpointAttempts(
+  resolved: ResolvedDigestProvider
+): Array<{ protocol: ProviderProtocol; url: string }> {
+  const attempts: Array<{ protocol: ProviderProtocol; url: string }> = [];
+  const seen = new Set<string>();
+  const add = (protocol: ProviderProtocol, baseUrl: string) => {
+    for (const url of buildCandidateUrls(baseUrl, protocol)) {
+      const key = `${protocol}:${url}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      attempts.push({ protocol, url });
+    }
+  };
+
+  add(resolved.protocol, resolved.baseUrl);
+  if (resolved.protocol === "openai-responses") {
+    add("openai-chat", resolved.baseUrl);
+  }
+  const anthropicUrl = resolved.provider.anthropicBaseUrl?.trim();
+  if (
+    resolved.protocol !== "anthropic" &&
+    resolved.provider.protocols?.includes("anthropic") &&
+    anthropicUrl
+  ) {
+    add("anthropic", anthropicUrl);
+  }
+  return attempts;
+}
+
+function isModelNotFound404(detail: string): boolean {
+  if (!detail.trim()) return false;
+  try {
+    const parsed = JSON.parse(detail) as {
+      error?: { code?: unknown; type?: unknown; message?: unknown } | string;
+      message?: unknown;
+    };
+    if (!parsed || typeof parsed !== "object") return false;
+    const errStr =
+      typeof parsed.error === "string"
+        ? parsed.error
+        : parsed.error && typeof parsed.error === "object"
+          ? [parsed.error.code, parsed.error.type, parsed.error.message]
+              .filter((v): v is string => typeof v === "string")
+              .join(" ")
+          : typeof parsed.message === "string"
+            ? parsed.message
+            : "";
+    return /model[_\s-]*not[_\s-]*found|unknown[_\s-]*model|does not exist|unsupported[_\s-]*model/i.test(
+      errStr
+    );
+  } catch {
+    return false;
+  }
+}
+
+function formatUpstreamHttpError(status: number, rawBody: string): string {
+  const trimmed = rawBody.trim();
+  if (!trimmed) return `Digest upstream HTTP ${status}`;
+  if (/^<!doctype|^<html|^<head|^<body/i.test(trimmed) || trimmed.startsWith("<")) {
+    const titleMatch = trimmed.match(/<title>([^<]+)<\/title>/i);
+    const title = titleMatch?.[1]?.replace(/\s+/g, " ").trim();
+    return `Digest upstream HTTP ${status}${title ? `: ${title}` : ""}`;
+  }
+  const clean = trimmed.replace(/\s+/g, " ").slice(0, 180);
+  return `Digest upstream HTTP ${status}${clean ? `: ${clean}` : ""}`;
+}
+
+function buildRequest(
+  protocol: ProviderProtocol,
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): { headers: Record<string, string>; body: Record<string, unknown> } {
+  const headers: Record<string, string> =
+    protocol === "anthropic"
+      ? {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json"
+        }
+      : {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        };
+
+  let body: Record<string, unknown>;
+  if (protocol === "anthropic") {
+    body = {
+      model,
+      max_tokens: 1800,
+      temperature: 0.1,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }]
+    };
+  } else if (protocol === "openai-responses") {
+    body = {
+      model,
+      instructions: systemPrompt,
+      input: userPrompt,
+      max_output_tokens: 1800
+    };
+  } else {
+    body = {
+      model,
+      temperature: 0.1,
+      max_tokens: 1800,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ]
+    };
+  }
+  return { headers, body };
 }
 
 function extractTextFromResponse(
@@ -303,45 +445,9 @@ export async function callDigestLlm(input: {
     newTurns: input.newTurns
   });
 
-  const url = buildEndpointUrl(resolved.baseUrl, resolved.protocol);
-  const headers: Record<string, string> =
-    resolved.protocol === "anthropic"
-      ? {
-          "x-api-key": resolved.apiKey,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json"
-        }
-      : {
-          Authorization: `Bearer ${resolved.apiKey}`,
-          "Content-Type": "application/json"
-        };
-
-  let body: Record<string, unknown>;
-  if (resolved.protocol === "anthropic") {
-    body = {
-      model: resolved.model,
-      max_tokens: 1800,
-      temperature: 0.1,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }]
-    };
-  } else if (resolved.protocol === "openai-responses") {
-    body = {
-      model: resolved.model,
-      instructions: systemPrompt,
-      input: userPrompt,
-      max_output_tokens: 1800
-    };
-  } else {
-    body = {
-      model: resolved.model,
-      temperature: 0.1,
-      max_tokens: 1800,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
-    };
+  const attempts = buildEndpointAttempts(resolved);
+  if (attempts.length === 0) {
+    throw new Error("Digest upstream URL is empty.");
   }
 
   const ctrl = new AbortController();
@@ -350,24 +456,41 @@ export async function callDigestLlm(input: {
   signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
-    const res = await fetchImpl(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: ctrl.signal
-    });
-    if (!res.ok) {
-      const detail = (await res.text().catch(() => "")).slice(0, 180);
-      throw new Error(
-        `Digest upstream HTTP ${res.status}${detail ? `: ${detail}` : ""}`
+    for (let i = 0; i < attempts.length; i += 1) {
+      const attempt = attempts[i];
+      const hasMoreAttempts = i < attempts.length - 1;
+      const { headers, body } = buildRequest(
+        attempt.protocol,
+        resolved.apiKey,
+        resolved.model,
+        systemPrompt,
+        userPrompt
       );
+      const res = await fetchImpl(attempt.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+      if (!res.ok) {
+        const rawDetail = await res.text().catch(() => "");
+        if (
+          (res.status === 404 || res.status === 405) &&
+          hasMoreAttempts &&
+          !(res.status === 404 && isModelNotFound404(rawDetail))
+        ) {
+          continue;
+        }
+        throw new Error(formatUpstreamHttpError(res.status, rawDetail));
+      }
+      const json = await res.json();
+      const rawText = extractTextFromResponse(attempt.protocol, json);
+      if (!rawText.trim()) {
+        throw new Error("Digest upstream returned empty text.");
+      }
+      return parseDigestJson(rawText);
     }
-    const json = await res.json();
-    const rawText = extractTextFromResponse(resolved.protocol, json);
-    if (!rawText.trim()) {
-      throw new Error("Digest upstream returned empty text.");
-    }
-    return parseDigestJson(rawText);
+    throw new Error("Digest upstream request exhausted all endpoint attempts.");
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", onAbort);

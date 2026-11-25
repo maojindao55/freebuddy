@@ -21,6 +21,7 @@ import {
 import {
   callDigestLlm,
   resolveDigestProvider,
+  resolveDigestProviders,
   type DigestTurnInput,
   type RawDigestTopicOutput
 } from "./conversationDigestLlm.js";
@@ -984,8 +985,8 @@ export async function runConversationDigestNow(
     return null;
   }
 
-  const resolved = resolveDigestProvider(config);
-  if (!resolved) {
+  const candidates = resolveDigestProviders(config);
+  if (candidates.length === 0) {
     if (forceRebuild) {
       const updatedAt = upsertDigestState({
         conversationId,
@@ -1037,17 +1038,44 @@ export async function runConversationDigestNow(
   });
 
   try {
-    const llmResult = await callDigestLlm({
-      resolved,
-      conversationTitle: conv.title,
-      existingOverallSummary: forceRebuild
-        ? undefined
-        : state?.overall_summary ?? undefined,
-      existingTopics,
-      newTurns: deltaTurns,
-      signal: options?.signal,
-      fetchImpl: testFetchImpl ?? fetch
-    });
+    let llmResult: Awaited<ReturnType<typeof callDigestLlm>> | undefined;
+    let lastAttemptError: unknown;
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      try {
+        llmResult = await callDigestLlm({
+          resolved: candidate,
+          conversationTitle: conv.title,
+          existingOverallSummary: forceRebuild
+            ? undefined
+            : state?.overall_summary ?? undefined,
+          existingTopics,
+          newTurns: deltaTurns,
+          signal: options?.signal,
+          fetchImpl: testFetchImpl ?? fetch
+        });
+        break;
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") {
+          throw err;
+        }
+        lastAttemptError = err;
+        if (i < candidates.length - 1) {
+          logMain().warn(
+            "conversationDigest",
+            "provider attempt failed, trying fallback",
+            {
+              conversationId,
+              providerId: candidate.provider.id,
+              error: err instanceof Error ? err.message : String(err)
+            }
+          );
+        }
+      }
+    }
+    if (!llmResult) {
+      throw lastAttemptError ?? new Error("Digest providers unavailable.");
+    }
 
     const sanitizedTopics = sanitizeLlmTopics({
       conversationId,

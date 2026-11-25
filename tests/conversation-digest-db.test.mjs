@@ -455,3 +455,226 @@ test("Cross-session search, owner isolation, around-message window, and conversa
     0
   );
 });
+
+test("openai-responses 404 HTML fallback to chat/completions and versioned baseUrl handling", async (t) => {
+  const f = await fixture(t);
+  if (!f) return;
+
+  f.insertConv("conv-relay", { title: "Relay test" });
+  f.insertMsg("ru1", "conv-relay", "user", 1, { content: "Check relay fallback" });
+  f.insertMsg("ra1", "conv-relay", "assistant", 2, {
+    status: "done",
+    content: [{ kind: "text", role: "assistant", content: "Done." }]
+  });
+
+  const respProvider = f.upsertProvider({
+    name: "SenseAudioRelay",
+    protocol: "openai-responses",
+    protocols: ["openai-responses"],
+    baseUrl: "https://relay.example.com/v1",
+    apiKey: "sk-relay-1234",
+    models: [{ id: "deepseek-v4.1-flash" }]
+  });
+  f.setConversationDigestConfig({
+    enabled: true,
+    providerId: respProvider.id,
+    model: "",
+    minUserTurns: 1
+  });
+
+  const requestedUrls = [];
+  f.setDigestFetchForTest(async (url) => {
+    const u = String(url);
+    requestedUrls.push(u);
+    if (u.endsWith("/responses")) {
+      return new Response(
+        "<html><head><title>404 Not Found</title></head><body><center>nginx</center></body></html>",
+        { status: 404, headers: { "Content-Type": "text/html" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                overallSummary: "Relay fallback ok",
+                topics: [
+                  {
+                    id: "new-1",
+                    title: "Relay fallback check",
+                    summary: "Succeeded via /chat/completions.",
+                    status: "done",
+                    startMessageId: "ru1",
+                    endMessageId: "ra1",
+                    turnCount: 1,
+                    keywords: ["relay"],
+                    files: []
+                  }
+                ]
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  });
+
+  const digest = await f.runConversationDigestNow("conv-relay", { forceRebuild: true });
+  assert.ok(digest);
+  assert.equal(digest.source, "llm");
+  assert.deepEqual(requestedUrls, [
+    "https://relay.example.com/v1/responses",
+    "https://relay.example.com/v1/chat/completions"
+  ]);
+
+  const v2Provider = f.upsertProvider({
+    name: "QianfanV2",
+    protocol: "openai-chat",
+    protocols: ["openai-chat"],
+    baseUrl: "https://qianfan.example.com/v2/tokenplan/personal",
+    apiKey: "sk-v2-1234",
+    models: [{ id: "ernie-5.5-flash" }]
+  });
+  f.setConversationDigestConfig({
+    enabled: true,
+    providerId: v2Provider.id,
+    model: "",
+    minUserTurns: 1
+  });
+
+  const v2Urls = [];
+  f.setDigestFetchForTest(async (url) => {
+    v2Urls.push(String(url));
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                overallSummary: "V2 ok",
+                topics: [
+                  {
+                    id: "new-1",
+                    title: "Versioned endpoint",
+                    summary: "No bogus /v1 appended.",
+                    status: "done",
+                    startMessageId: "ru1",
+                    endMessageId: "ra1",
+                    turnCount: 1,
+                    keywords: ["v2"],
+                    files: []
+                  }
+                ]
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  });
+
+  const v2Digest = await f.runConversationDigestNow("conv-relay", { forceRebuild: true });
+  assert.ok(v2Digest);
+  assert.deepEqual(v2Urls, [
+    "https://qianfan.example.com/v2/tokenplan/personal/chat/completions"
+  ]);
+});
+
+test("Auto-mode falls back across enabled providers and strips raw HTML from errors", async (t) => {
+  const f = await fixture(t);
+  if (!f) return;
+
+  f.insertConv("conv-auto", { title: "Auto fallback" });
+  f.insertMsg("au1", "conv-auto", "user", 1, { content: "Summarize across providers" });
+  f.insertMsg("aa1", "conv-auto", "assistant", 2, {
+    status: "done",
+    content: [{ kind: "text", role: "assistant", content: "OK." }]
+  });
+
+  f.upsertProvider({
+    name: "PrimaryFail",
+    protocol: "openai-chat",
+    protocols: ["openai-chat"],
+    baseUrl: "https://primary.example.com/v1",
+    apiKey: "sk-primary-1234",
+    position: 10,
+    models: [{ id: "m1" }]
+  });
+  f.upsertProvider({
+    name: "BackupOk",
+    protocol: "openai-chat",
+    protocols: ["openai-chat"],
+    baseUrl: "https://backup.example.com/v1",
+    apiKey: "sk-backup-1234",
+    position: 20,
+    models: [{ id: "m2" }]
+  });
+  f.setConversationDigestConfig({
+    enabled: true,
+    providerId: "",
+    model: "",
+    minUserTurns: 1
+  });
+
+  const hitHosts = [];
+  f.setDigestFetchForTest(async (url) => {
+    const u = String(url);
+    hitHosts.push(new URL(u).host);
+    if (u.includes("primary.example.com")) {
+      return new Response("<html><head><title>502 Bad Gateway</title></head><body>upstream</body></html>", {
+        status: 502,
+        headers: { "Content-Type": "text/html" }
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                overallSummary: "Backup provider succeeded",
+                topics: [
+                  {
+                    id: "new-1",
+                    title: "Fallback provider test",
+                    summary: "Recovered using backup provider.",
+                    status: "done",
+                    startMessageId: "au1",
+                    endMessageId: "aa1",
+                    turnCount: 1,
+                    keywords: ["fallback"],
+                    files: []
+                  }
+                ]
+              })
+            }
+          }
+        ]
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  });
+
+  const recovered = await f.runConversationDigestNow("conv-auto", { forceRebuild: true });
+  assert.ok(recovered);
+  assert.equal(recovered.source, "llm");
+  assert.deepEqual(hitHosts, ["primary.example.com", "backup.example.com"]);
+
+  // If every provider returns HTML 404, stored error strips raw HTML markup cleanly.
+  f.setDigestFetchForTest(async () =>
+    new Response(
+      "<html>\n<head><title>404 Not Found</title></head>\n<body>\n<center>nginx</center>\n</body>\n</html>",
+      { status: 404, headers: { "Content-Type": "text/html" } }
+    )
+  );
+  const failed = await f.runConversationDigestNow("conv-auto", { forceRebuild: true });
+  assert.equal(failed, null);
+  const persisted = f.runAsCaller("alice", () => f.getConversationDigest("conv-auto"));
+  assert.ok(persisted);
+  assert.equal(persisted.status, "error");
+  assert.equal(persisted.error, "Digest upstream HTTP 404: 404 Not Found");
+  assert.ok(!persisted.error.includes("<html") && !persisted.error.includes("<body>"));
+});

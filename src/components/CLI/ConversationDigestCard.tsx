@@ -125,58 +125,60 @@ export function ConversationDigestCard({
 
   return (
     <section className="side-card digest-card" aria-label={t("conversationDigest.title")}>
-      <div className="side-card-header digest-card-header">
-        <div className="digest-card-title-group">
-          <span>{t("conversationDigest.title")}</span>
-          <span
-            className={`digest-source-badge ${digest.source === "llm" ? "is-llm" : "is-rule"}`}
-            title={
-              digest.source === "llm"
-                ? t("conversationDigest.sourceLlmHint")
-                : t("conversationDigest.sourceRuleHint")
-            }
+      <div className="digest-card-top">
+        <div className="digest-card-header">
+          <div className="digest-card-title-group">
+            <h3 className="digest-card-title">{t("conversationDigest.title")}</h3>
+            <span
+              className={`digest-source-badge ${digest.source === "llm" ? "is-llm" : "is-rule"}`}
+              title={
+                digest.source === "llm"
+                  ? t("conversationDigest.sourceLlmHint")
+                  : t("conversationDigest.sourceRuleHint")
+              }
+            >
+              {isBusy ? (
+                <>
+                  <RefreshCw size={11} className="digest-spin" aria-hidden="true" />
+                  <span>{t("conversationDigest.organizing")}</span>
+                </>
+              ) : digest.source === "llm" ? (
+                <>
+                  <Sparkles size={11} aria-hidden="true" />
+                  <span>{t("conversationDigest.sourceLlm")}</span>
+                </>
+              ) : (
+                <>
+                  <ListTree size={11} aria-hidden="true" />
+                  <span>{t("conversationDigest.sourceRule")}</span>
+                </>
+              )}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="digest-refresh-btn"
+            disabled={isBusy}
+            onClick={() => void onRefreshClick()}
+            title={t("conversationDigest.refreshTitle")}
           >
-            {isBusy ? (
-              <>
-                <RefreshCw size={11} className="digest-spin" aria-hidden="true" />
-                <span>{t("conversationDigest.organizing")}</span>
-              </>
-            ) : digest.source === "llm" ? (
-              <>
-                <Sparkles size={11} aria-hidden="true" />
-                <span>{t("conversationDigest.sourceLlm")}</span>
-              </>
-            ) : (
-              <>
-                <ListTree size={11} aria-hidden="true" />
-                <span>{t("conversationDigest.sourceRule")}</span>
-              </>
-            )}
-          </span>
+            <RefreshCw
+              size={12}
+              className={isBusy ? "digest-spin" : undefined}
+              aria-hidden="true"
+            />
+            <span>
+              {digest.source === "llm"
+                ? t("conversationDigest.reorganize")
+                : t("conversationDigest.organize")}
+            </span>
+          </button>
         </div>
-        <button
-          type="button"
-          className="digest-refresh-btn"
-          disabled={isBusy}
-          onClick={() => void onRefreshClick()}
-          title={t("conversationDigest.refreshTitle")}
-        >
-          <RefreshCw
-            size={12}
-            className={isBusy ? "digest-spin" : undefined}
-            aria-hidden="true"
-          />
-          <span>
-            {digest.source === "llm"
-              ? t("conversationDigest.reorganize")
-              : t("conversationDigest.organize")}
-          </span>
-        </button>
-      </div>
 
-      {digest.overallSummary && (
-        <p className="digest-overall-summary">{digest.overallSummary}</p>
-      )}
+        {digest.overallSummary && (
+          <p className="digest-overall-summary">{digest.overallSummary}</p>
+        )}
+      </div>
 
       {digest.status === "error" && digest.error && (
         <p className="digest-error-hint" role="status">

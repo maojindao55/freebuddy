@@ -9,7 +9,6 @@ protocols:
   - name: FreeBuddy URL Protocol
     schemes:
       - freebuddy
-      - freebuddy-dev
 
 directories:
   output: release

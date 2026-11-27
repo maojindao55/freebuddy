@@ -1,4 +1,4 @@
-import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, protocol, screen, shell } from "electron";
+import { app, BrowserWindow, crashReporter, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, protocol, screen, session, shell, systemPreferences } from "electron";
 import type { WebContents } from "electron";
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
@@ -10,6 +10,7 @@ import { shellEnv } from "shell-env";
 import AdmZip from "adm-zip";
 
 import { registerCliIpc } from "./cli/ipc.js";
+import { registerSpeechIpc } from "./speech/ipc.js";
 import { shutdownCliProcesses } from "./cli/runtime.js";
 import { stopSnapshotProcess } from "./cli/turnFileSnapshotProcess.js";
 import {
@@ -2223,6 +2224,83 @@ function reportStartupFailure(error: unknown): void {
   process.exitCode = 1;
 }
 
+function isTrustedFreebuddyAppOrigin(originOrUrl: string | undefined, webContents?: WebContents | null): boolean {
+  const candidate = (originOrUrl || webContents?.getURL() || "").trim();
+  if (!candidate) return false;
+  if (candidate === "file://" || candidate.startsWith("file://")) {
+    return true;
+  }
+  const devUrl = process.env.VITE_DEV_SERVER_URL?.trim();
+  if (isDev && devUrl) {
+    try {
+      return new URL(candidate).origin === new URL(devUrl).origin;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function configureDefaultSessionPermissions(): void {
+  const defaultSes = session.defaultSession;
+  if (!defaultSes) return;
+
+  defaultSes.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    if (!isTrustedFreebuddyAppOrigin(requestingOrigin, webContents)) {
+      return false;
+    }
+    if (permission === "media") {
+      const mediaTypes = (details as { mediaTypes?: string[] } | undefined)?.mediaTypes;
+      if (Array.isArray(mediaTypes) && mediaTypes.length > 0) {
+        return mediaTypes.every((t) => t === "audio");
+      }
+      return true;
+    }
+    return permission === "clipboard-read" || permission === "clipboard-sanitized-write" || permission === "notifications";
+  });
+
+  defaultSes.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const requestingOrigin = (details as { requestingUrl?: string; securityOrigin?: string } | undefined)?.securityOrigin
+      ?? (details as { requestingUrl?: string } | undefined)?.requestingUrl
+      ?? webContents?.getURL();
+
+    if (!isTrustedFreebuddyAppOrigin(requestingOrigin, webContents)) {
+      callback(false);
+      return;
+    }
+    if (permission === "media") {
+      const mediaTypes = (details as { mediaTypes?: string[] } | undefined)?.mediaTypes;
+      if (Array.isArray(mediaTypes) && mediaTypes.length > 0 && !mediaTypes.every((t) => t === "audio")) {
+        callback(false);
+        return;
+      }
+      if (process.platform === "darwin") {
+        const status = systemPreferences.getMediaAccessStatus("microphone");
+        if (status === "granted") {
+          callback(true);
+          return;
+        }
+        if (status === "not-determined") {
+          void systemPreferences
+            .askForMediaAccess("microphone")
+            .then((granted) => callback(granted))
+            .catch(() => callback(false));
+          return;
+        }
+        callback(false);
+        return;
+      }
+      callback(true);
+      return;
+    }
+    if (permission === "clipboard-read" || permission === "clipboard-sanitized-write" || permission === "notifications") {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
+}
+
 async function bootstrap(): Promise<void> {
   initDebugLog();
   scheduleButlerBuddySleepBoundary();
@@ -2323,7 +2401,9 @@ async function bootstrap(): Promise<void> {
   seedBuiltinSkills();
   seedBuiltinWorkflowTeams();
   seedBuiltinDelegationTeams();
+  configureDefaultSessionPermissions();
   registerCliIpc();
+  registerSpeechIpc();
   registerTaskNotificationIpc();
   registerButlerBuddyWindowIpc();
   bindConversationNotifier((conversationId) => {

@@ -1104,6 +1104,18 @@ const providers = {
   getApiKey: (id: string) => ipcRenderer.invoke("providers:getApiKey", id),
 };
 
+const speech = {
+  getConfig: () => ipcRenderer.invoke("speech:getConfig"),
+  saveProvider: (input: unknown) => ipcRenderer.invoke("speech:saveProvider", input),
+  savePreferences: (patch: unknown) => ipcRenderer.invoke("speech:savePreferences", patch),
+  testProvider: (req: unknown) => ipcRenderer.invoke("speech:testProvider", req),
+  transcribe: (req: unknown) => ipcRenderer.invoke("speech:transcribe", req),
+  synthesize: (req: unknown) => ipcRenderer.invoke("speech:synthesize", req),
+  cancel: (requestId: string) => ipcRenderer.invoke("speech:cancel", requestId),
+  microphoneStatus: () => ipcRenderer.invoke("speech:microphoneStatus"),
+  requestMicrophone: () => ipcRenderer.invoke("speech:requestMicrophone"),
+};
+
 const mcpServers = {
   list: () => ipcRenderer.invoke("mcpServers:list"),
   get: (id: string) => ipcRenderer.invoke("mcpServers:get", id),
@@ -1202,6 +1214,7 @@ contextBridge.exposeInMainWorld("freebuddy", {
   appVersion: process.env.FB_APP_VERSION ?? "",
   cli,
   providers,
+  speech,
   mcpServers,
   workflow,
   workflowTeams,

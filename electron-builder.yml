@@ -64,6 +64,7 @@ mac:
   entitlements: desktop/macos/entitlements.mac.plist
   entitlementsInherit: desktop/macos/entitlements.mac.inherit.plist
   extendInfo:
+    NSMicrophoneUsageDescription: FreeBuddy needs microphone access for voice input (speech-to-text).
     CFBundleDocumentTypes:
       - CFBundleTypeName: Folders
         CFBundleTypeRole: Viewer

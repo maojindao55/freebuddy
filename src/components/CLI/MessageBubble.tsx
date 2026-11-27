@@ -8,14 +8,16 @@ import {
   LoaderCircle,
   Package,
   Search,
+  Square,
   SquarePen,
   SquareTerminal,
   ThumbsDown,
   ThumbsUp,
+  Volume2,
   Wrench,
   type LucideIcon
 } from "lucide-react";
-import { memo, useCallback, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { useTranslation } from "react-i18next";
 import { isTruncatedStreamNotice, prepareStoredStreamItems } from "@freebuddy/cli-stream";
@@ -45,6 +47,9 @@ import { filterVisibleItems, visibleBlocks } from "./messageBlocks";
 import { selectRunMetrics } from "./runCardMetrics";
 import { hasMessageRunMetrics, LiveRunElapsed, MessageRunMetrics } from "./MessageRunMetrics";
 import { useWhipEffectStore, type WhipTargetPoint } from "@/store/whipEffectStore";
+import { speechClient } from "@/services/speech/client";
+import { useSpeechStore } from "@/store/speechStore";
+import "./VoiceControls.css";
 
 type MessageBlock = ReturnType<typeof visibleBlocks>[number];
 type MessageSection =
@@ -795,7 +800,8 @@ export const MessageBubble = memo(function MessageBubble({
   agentName,
   agentIconKey,
   afterContent,
-  cwd
+  cwd,
+  onOpenSpeechSettings
 }: {
   message: ConversationMessage;
   adapter?: string;
@@ -803,6 +809,7 @@ export const MessageBubble = memo(function MessageBubble({
   agentIconKey?: string;
   afterContent?: ReactNode;
   cwd?: string;
+  onOpenSpeechSettings?: () => void;
 }) {
   const { t } = useTranslation();
   const currentUser = useConversationStore((s) => s.currentUser);
@@ -954,6 +961,41 @@ export const MessageBubble = memo(function MessageBubble({
   );
   const copyText = messageText(message, items).trim();
   const showActionBar = message.role === "assistant" && message.status === "done" && Boolean(copyText);
+  const speechAvailable = speechClient.isAvailable();
+  const speechLoaded = useSpeechStore((s) => s.loaded);
+  const ttsConfigured = useSpeechStore((s) => Boolean(s.config?.preferences.activeTtsProvider));
+  const isSpeakingLoading = useSpeechStore(
+    (s) => s.speakingMessageId === message.id && s.playbackStatus === "loading"
+  );
+  const isSpeakingPlaying = useSpeechStore(
+    (s) => s.speakingMessageId === message.id && s.playbackStatus === "playing"
+  );
+  const isSpeakingError = useSpeechStore(
+    (s) => s.speakingMessageId === message.id && s.playbackStatus === "error"
+  );
+  const speakingError = useSpeechStore((s) =>
+    s.speakingMessageId === message.id ? s.playbackError : undefined
+  );
+  const isSpeakingActive = isSpeakingLoading || isSpeakingPlaying;
+
+  useEffect(() => {
+    if (showActionBar && speechAvailable && !speechLoaded) {
+      void useSpeechStore.getState().load();
+    }
+  }, [showActionBar, speechAvailable, speechLoaded]);
+
+  const toggleSpeak = () => {
+    if (!copyText) return;
+    if (isSpeakingActive) {
+      useSpeechStore.getState().stopSpeaking();
+      return;
+    }
+    if (!ttsConfigured) {
+      onOpenSpeechSettings?.();
+      return;
+    }
+    void useSpeechStore.getState().speakMessage(message.id, copyText).catch(() => {});
+  };
   const runMetrics = useMemo(
     () => (message.role === "assistant" ? selectRunMetrics(items, message.taskId) : undefined),
     [message.role, message.taskId, items]
@@ -1024,6 +1066,41 @@ export const MessageBubble = memo(function MessageBubble({
               <Copy className="msg-action-icon" aria-hidden="true" />
             )}
           </button>
+          {speechAvailable && (
+            <button
+              type="button"
+              className={`msg-action-btn${isSpeakingActive ? " speaking" : ""}${isSpeakingError ? " speech-error" : ""}`}
+              onClick={toggleSpeak}
+              title={
+                isSpeakingLoading
+                  ? t("speech.synthesizing")
+                  : isSpeakingPlaying
+                    ? t("speech.stopReading")
+                    : isSpeakingError && speakingError
+                      ? speakingError
+                      : ttsConfigured
+                        ? t("speech.readAloud")
+                        : t("speech.readAloudSetup")
+              }
+              aria-label={
+                isSpeakingLoading
+                  ? t("speech.synthesizing")
+                  : isSpeakingPlaying
+                    ? t("speech.stopReading")
+                    : ttsConfigured
+                      ? t("speech.readAloud")
+                      : t("speech.readAloudSetup")
+              }
+            >
+              {isSpeakingLoading ? (
+                <LoaderCircle className="msg-action-icon spin" aria-hidden="true" />
+              ) : isSpeakingPlaying ? (
+                <Square className="msg-action-icon msg-action-icon--stop" aria-hidden="true" />
+              ) : (
+                <Volume2 className="msg-action-icon msg-action-icon--speak" aria-hidden="true" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             className={`msg-action-btn${vote === "up" ? " active up" : ""}`}

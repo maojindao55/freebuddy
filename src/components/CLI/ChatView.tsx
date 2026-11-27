@@ -38,6 +38,7 @@ import { OnboardingGuideSetupCard } from "@/components/Onboarding/OnboardingGuid
 import { useConversationStore } from "@/store/conversationStore";
 import { useMessageQueueStore } from "@/store/messageQueueStore";
 import { MessageQueueControl } from "./MessageQueueControl";
+import { VoiceInputButton } from "./VoiceInputButton";
 import { supportsMessageQueue } from "../../../electron/shared/messageQueueTypes";
 import { startMessageQueueRunner } from "@/services/messageQueue/runner";
 import { useCliExecutorStore } from "@/store/cliExecutorStore";
@@ -901,6 +902,7 @@ function SharedConversationReferences({
 export function ChatView({
   onOpenAgentSettings,
   onOpenMcpSettings,
+  onOpenSpeechSettings,
   messageFocus,
   onMessageFocused,
   variant = "default",
@@ -915,6 +917,7 @@ export function ChatView({
 }: {
   onOpenAgentSettings?: () => void;
   onOpenMcpSettings?: () => void;
+  onOpenSpeechSettings?: () => void;
   messageFocus?: { conversationId: string; messageId: string } | null;
   onMessageFocused?: () => void;
   variant?: "default" | "mini";
@@ -3168,6 +3171,7 @@ export function ChatView({
         mcpServerIds={newTaskMcpServerIds}
         onMcpServerIds={setNewTaskMcpServerIds}
         onOpenMcpSettings={onOpenMcpSettings}
+        onOpenSpeechSettings={onOpenSpeechSettings}
         pluginAgent={pluginAgentForAdapter(
           members.find((entry) => entry.id === selectedMemberId)?.cli.adapter
         )}
@@ -3497,6 +3501,7 @@ export function ChatView({
                 agentName={m.agentName ?? messageMember?.name ?? conv?.agentName}
                 agentIconKey={messageMember?.avatar}
                 cwd={conv?.cwd || conv?.sourceCwd}
+                onOpenSpeechSettings={onOpenSpeechSettings}
                 afterContent={
                   (shareReferences && shareReferences.length > 0) ||
                   (m.role === "assistant" && renderMessageFooter) ? (
@@ -3725,6 +3730,19 @@ export function ChatView({
                 <span className="mcp-remote-notice-text">{t("mcp.notAvailableRemote")}</span>
               </span>
             ) : null}
+            <VoiceInputButton
+              draft={draft}
+              textareaRef={chatTextareaRef}
+              onDraft={setDraft}
+              onAutoSend={() => {
+                if (!attachmentBusy && !sendLock && !newTaskSendLock && (!sending || queueSend)) {
+                  void onSend();
+                }
+              }}
+              onOpenSpeechSettings={onOpenSpeechSettings}
+              disabled={attachmentBusy || sendLock}
+              compact={variant === "mini"}
+            />
             {variant !== "mini" && (
               <label
                 className="composer-permission"
@@ -3885,6 +3903,7 @@ function NewTaskHome({
   mcpServerIds = [],
   onMcpServerIds,
   onOpenMcpSettings,
+  onOpenSpeechSettings,
   pluginAgent,
   preflightMsg,
   onDraft,
@@ -3945,6 +3964,7 @@ function NewTaskHome({
   mcpServerIds?: string[];
   onMcpServerIds?: (ids: string[]) => void;
   onOpenMcpSettings?: () => void;
+  onOpenSpeechSettings?: () => void;
   pluginAgent?: NativePluginAgent;
   preflightMsg: string | null;
   onDraft: (value: string) => void;
@@ -4205,6 +4225,17 @@ function NewTaskHome({
               <option value="ask">{t("chat.approvalAsk")}</option>
             </select>
           </label>
+          <VoiceInputButton
+            draft={draft}
+            textareaRef={textareaRef}
+            onDraft={onDraft}
+            onAutoSend={() => {
+              if (!attachmentBusy && !sendLocked) onSubmit();
+            }}
+            onOpenSpeechSettings={onOpenSpeechSettings}
+            disabled={sendLocked || attachmentBusy}
+            compact={variant === "mini"}
+          />
           <div className="new-task-toolbar-tail">
             {!teamMode ? (
               <SessionConfigPicker

@@ -1,0 +1,136 @@
+.voice-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.voice-mic-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--fb-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.voice-mic-btn:hover:not(:disabled) {
+  color: var(--fb-brand);
+  border-color: var(--fb-brand);
+  background: var(--fb-brand-glow);
+}
+
+.voice-mic-btn.unconfigured {
+  opacity: 0.72;
+}
+
+.voice-mic-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.voice-recording-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--fb-text-primary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.voice-recording-pill.transcribing {
+  border-color: color-mix(in srgb, var(--fb-brand) 45%, transparent);
+  background: color-mix(in srgb, var(--fb-brand) 10%, transparent);
+}
+
+.voice-rec-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: voicePulse 1.1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes voicePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+.voice-level-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+}
+
+.voice-level-bar {
+  width: 2.5px;
+  border-radius: 2px;
+  background: #ef4444;
+  transition: height 0.08s ease;
+}
+
+.voice-rec-timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--fb-text-secondary);
+}
+
+.voice-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+}
+
+.voice-pill-btn.confirm {
+  background: #ef4444;
+  color: #fff;
+}
+
+.voice-pill-btn:hover {
+  opacity: 0.88;
+}
+
+.voice-error-tip {
+  font-size: 11.5px;
+  color: #ef4444;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-action-btn.speaking {
+  color: var(--fb-brand);
+}
+
+.msg-action-btn.speech-error {
+  color: var(--fb-danger, #ef4444);
+}

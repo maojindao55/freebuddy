@@ -150,6 +150,28 @@ declare global {
     getApiKey(id: string): Promise<string | undefined>;
   }
 
+  interface FreebuddySpeech {
+    getConfig(): Promise<import("../../electron/shared/speechTypes").SpeechConfigSnapshot>;
+    saveProvider(
+      input: import("../../electron/shared/speechTypes").SpeechProviderConfigUpdate
+    ): Promise<import("../../electron/shared/speechTypes").SpeechProviderConfig>;
+    savePreferences(
+      patch: Partial<import("../../electron/shared/speechTypes").SpeechPreferences>
+    ): Promise<import("../../electron/shared/speechTypes").SpeechPreferences>;
+    testProvider(
+      req: import("../../electron/shared/speechTypes").SpeechTestRequest
+    ): Promise<import("../../electron/shared/speechTypes").SpeechTestResult>;
+    transcribe(
+      req: import("../../electron/shared/speechTypes").SpeechTranscribeRequest
+    ): Promise<import("../../electron/shared/speechTypes").SpeechTranscribeResult>;
+    synthesize(
+      req: import("../../electron/shared/speechTypes").SpeechSynthesizeRequest
+    ): Promise<import("../../electron/shared/speechTypes").SpeechSynthesizeResult>;
+    cancel(requestId: string): Promise<boolean>;
+    microphoneStatus(): Promise<import("../../electron/shared/speechTypes").SpeechMicrophoneStatus>;
+    requestMicrophone(): Promise<import("../../electron/shared/speechTypes").SpeechMicrophoneRequestResult>;
+  }
+
   interface FreebuddyCli {
     listMessageQueues(): Promise<import("../../electron/shared/messageQueueTypes").MessageQueueSnapshot[]>;
     getMessageQueue(id: string): Promise<import("../../electron/shared/messageQueueTypes").MessageQueueSnapshot>;
@@ -507,6 +529,7 @@ declare global {
         | "general"
         | "cli"
         | "providers"
+        | "speech"
         | "mcp"
         | "skills"
         | "plugins"
@@ -1134,6 +1157,7 @@ declare global {
     sessionToken?: () => string;
     cli: FreebuddyCli;
     providers?: FreebuddyProviders;
+    speech?: FreebuddySpeech;
     mcpServers?: FreebuddyMcpServers;
     workflow: FreebuddyWorkflow;
     workflowTeams: FreebuddyWorkflowTeams;

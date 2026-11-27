@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   AlarmClock,
   Archive,
+  AudioLines,
   Bot,
   ChartColumn,
   Cog,
@@ -22,6 +23,7 @@ import { AboutTab } from "./AboutTab";
 import { ArchivedConversationsTab } from "./ArchivedConversationsTab";
 import { CLIAdaptersTab } from "./CLIAdaptersTab";
 import { ProvidersTab } from "./ProvidersTab";
+import { SpeechTab } from "./SpeechTab";
 import { SettingsTabErrorBoundary } from "./SettingsTabErrorBoundary";
 import { GeneralTab } from "./GeneralTab";
 import { InfoCardsTab } from "./InfoCardsTab";
@@ -41,7 +43,7 @@ import {
 import { useConversationStore } from "@/store/conversationStore";
 import { useSettingsStore } from "@/store/settingsStore";
 
-export type SettingsTab = "todos" | "scheduledTasks" | "workflowTeams" | "freebie" | "general" | "cli" | "providers" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "archived" | "remote" | "about";
+export type SettingsTab = "todos" | "scheduledTasks" | "workflowTeams" | "freebie" | "general" | "cli" | "providers" | "speech" | "mcp" | "skills" | "plugins" | "feed" | "usage" | "archived" | "remote" | "about";
 
 export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "todos", labelKey: "settings.tabs.todos" },
@@ -50,6 +52,7 @@ export const SETTINGS_TABS: { key: SettingsTab; labelKey: string }[] = [
   { key: "freebie", labelKey: "settings.tabs.freebie" },
   { key: "cli", labelKey: "settings.tabs.cli" },
   { key: "providers", labelKey: "settings.tabs.providers" },
+  { key: "speech", labelKey: "settings.tabs.speech" },
   { key: "mcp", labelKey: "settings.tabs.mcp" },
   { key: "skills", labelKey: "settings.tabs.skills" },
   { key: "plugins", labelKey: "settings.tabs.plugins" },
@@ -70,6 +73,7 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
   general: Cog,
   cli: Bot,
   providers: Cpu,
+  speech: AudioLines,
   mcp: Server,
   skills: Layers,
   plugins: Puzzle,
@@ -83,7 +87,7 @@ const TAB_ICONS: Record<SettingsTab, ComponentType<{ size?: number | string }>> 
 /** Grouped sidebar sections; every tab key above appears exactly once. */
 const TAB_GROUPS: { groupKey: string; items: SettingsTab[] }[] = [
   { groupKey: "settings.navGroup.workspace", items: ["todos", "scheduledTasks", "workflowTeams", "freebie"] },
-  { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "mcp", "skills", "plugins"] },
+  { groupKey: "settings.navGroup.ai", items: ["cli", "providers", "speech", "mcp", "skills", "plugins"] },
   { groupKey: "settings.navGroup.data", items: ["feed", "usage", "archived"] },
   { groupKey: "settings.navGroup.system", items: ["general", "remote", "about"] },
 ];
@@ -232,6 +236,7 @@ function SettingsContent({
       typeof window !== "undefined" && window.freebuddy?.platform === "web";
     if (remoteWeb || (currentUser && !currentUser.isOwner)) {
       hidden.push("mcp");
+      hidden.push("speech");
     }
     return hidden;
   }, [currentUser]);
@@ -322,6 +327,15 @@ function SettingsContent({
       {activeTab === "providers" && (
         <SettingsTabErrorBoundary>
           <ProvidersTab />
+        </SettingsTabErrorBoundary>
+      )}
+      {activeTab === "speech" && !hiddenTabs.includes("speech") && (
+        <SettingsTabErrorBoundary>
+          <div className="settings-tab-scroll">
+            <div className="settings-tab-scroll-inner">
+              <SpeechTab />
+            </div>
+          </div>
         </SettingsTabErrorBoundary>
       )}
       {activeTab === "mcp" && !hiddenTabs.includes("mcp") && (

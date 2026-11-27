@@ -15,6 +15,7 @@ export type MainSettingsTab =
   | "general"
   | "cli"
   | "providers"
+  | "speech"
   | "mcp"
   | "skills"
   | "plugins"
@@ -76,6 +77,7 @@ const SETTINGS_TABS = new Set<MainSettingsTab>([
   "general",
   "cli",
   "providers",
+  "speech",
   "mcp",
   "skills",
   "plugins",

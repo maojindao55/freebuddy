@@ -247,6 +247,17 @@ const ADMIN_ONLY = [
   "providers:test",
   "providers:getApiKey",
 
+  // 语音服务 (ASR/TTS) 含密钥且依赖本地麦克风，仅限桌面端访问。
+  "speech:getConfig",
+  "speech:saveProvider",
+  "speech:savePreferences",
+  "speech:testProvider",
+  "speech:transcribe",
+  "speech:synthesize",
+  "speech:cancel",
+  "speech:microphoneStatus",
+  "speech:requestMicrophone",
+
   // Host workspace project mounts affect agent cwd/roots; no remote path guard yet.
   "cli:createProject",
   "cli:ensureProjectForCwd",

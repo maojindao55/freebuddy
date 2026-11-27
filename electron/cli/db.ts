@@ -1427,6 +1427,36 @@ export function migrate(db: DB) {
       ON conversation_topics(updated_at DESC);
   `);
 
+  // ---- Speech (ASR / TTS) Providers ----
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS speech_providers (
+      kind TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      credential_mode TEXT NOT NULL DEFAULT 'custom',
+      linked_provider_id TEXT,
+      api_key_encrypted TEXT,
+      api_key_preview TEXT,
+      base_url TEXT,
+      dashscope_endpoint_preset TEXT,
+      volc_auth_mode TEXT,
+      volc_app_id TEXT,
+      volc_access_token_encrypted TEXT,
+      volc_access_token_preview TEXT,
+      volc_asr_resource_id TEXT,
+      volc_tts_resource_id TEXT,
+      asr_model TEXT,
+      tts_model TEXT,
+      tts_voice TEXT,
+      tts_format TEXT,
+      tts_sample_rate INTEGER,
+      last_health TEXT,
+      last_latency_ms INTEGER,
+      last_error TEXT,
+      last_checked_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
   installHostIdempotencySchema(db);
   pruneHostIdempotencyResults({
     db,

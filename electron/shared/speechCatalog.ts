@@ -131,6 +131,7 @@ export const DEFAULT_SPEECH_PREFERENCES: SpeechPreferences = {
   activeAsrProvider: null,
   activeTtsProvider: null,
   asrAfterTranscribe: "insert",
+  asrInputDeviceId: "",
   ttsPlaybackRate: 1.0,
   ttsStripCodeBlocks: true,
   ttsStripMarkdown: true,

@@ -30,6 +30,7 @@ test("speech_providers DB storage, secret masking, linked_provider resolution, a
     const initial = speechStorage.getSpeechConfig();
     assert.equal(initial.preferences.activeAsrProvider, null);
     assert.equal(initial.preferences.activeTtsProvider, null);
+    assert.equal(initial.preferences.asrInputDeviceId, "");
     assert.equal(initial.providers.deepseek.hasApiKey, false);
     assert.equal(initial.providers.dashscope.dashscopeEndpointPreset, "payg-cn");
     assert.equal(initial.providers.volcengine.volcAuthMode, "app_token");
@@ -122,14 +123,17 @@ test("speech_providers DB storage, secret masking, linked_provider resolution, a
       activeAsrProvider: "dashscope",
       activeTtsProvider: "volcengine",
       asrAfterTranscribe: "send",
+      asrInputDeviceId: "  mic-usb-1  ",
       ttsPlaybackRate: 9.9,
       ttsMaxChunkChars: 50,
     });
     assert.equal(prefs.activeAsrProvider, "dashscope");
     assert.equal(prefs.activeTtsProvider, "volcengine");
     assert.equal(prefs.asrAfterTranscribe, "send");
+    assert.equal(prefs.asrInputDeviceId, "mic-usb-1");
     assert.equal(prefs.ttsPlaybackRate, 2.0);
     assert.equal(prefs.ttsMaxChunkChars, 150);
+    assert.equal(speechStorage.getSpeechConfig().preferences.asrInputDeviceId, "mic-usb-1");
   } finally {
     setDbForTest(null);
   }

@@ -53,10 +53,25 @@ export const deepseekSpeechAdapter: SpeechAdapter = {
     const data = (await res.json()) as {
       text?: unknown;
       duration_ms?: unknown;
+      data?: { text?: unknown; duration_ms?: unknown };
+      result?: { text?: unknown; duration_ms?: unknown };
     };
+    const rawText =
+      [data?.text, data?.data?.text, data?.result?.text].find(
+        (candidate): candidate is string =>
+          typeof candidate === "string" && candidate.trim().length > 0,
+      ) ?? (typeof data?.text === "string" ? data.text : "");
+    const rawDuration =
+      typeof data?.duration_ms === "number"
+        ? data.duration_ms
+        : typeof data?.data?.duration_ms === "number"
+          ? data.data.duration_ms
+          : typeof data?.result?.duration_ms === "number"
+            ? data.result.duration_ms
+            : undefined;
     return {
-      text: typeof data?.text === "string" ? data.text.trim() : "",
-      ...(typeof data?.duration_ms === "number" ? { durationMs: data.duration_ms } : {}),
+      text: rawText.trim(),
+      ...(typeof rawDuration === "number" ? { durationMs: rawDuration } : {}),
     };
   },
 

@@ -107,6 +107,7 @@ export interface SpeechPreferences {
   activeAsrProvider: SpeechProviderKind | null;
   activeTtsProvider: SpeechProviderKind | null;
   asrAfterTranscribe: "insert" | "send";
+  asrInputDeviceId?: string;
   ttsPlaybackRate: number;
   ttsStripCodeBlocks: boolean;
   ttsStripMarkdown: boolean;

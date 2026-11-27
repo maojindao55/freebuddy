@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   Info,
   Loader2,
   Mic,
+  RefreshCw,
   Volume2,
 } from "lucide-react";
 import {
@@ -41,6 +42,11 @@ const BRAND_ICON_MAP: Record<SpeechProviderKind, string> = {
   dashscope: "qwen",
   volcengine: "doubao",
 };
+
+interface AudioInputDeviceOption {
+  deviceId: string;
+  label: string;
+}
 
 interface ProviderFormDraft {
   enabled: boolean;
@@ -182,6 +188,61 @@ export function SpeechTab() {
   const [saveFeedback, setSaveFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [testingTarget, setTestingTarget] = useState<"tts" | "asr" | null>(null);
   const [testResult, setTestResult] = useState<SpeechTestResult | null>(null);
+  const [audioDevices, setAudioDevices] = useState<AudioInputDeviceOption[]>([]);
+  const [micTesting, setMicTesting] = useState(false);
+  const [micTestLevel, setMicTestLevel] = useState(0);
+  const [micTestPeak, setMicTestPeak] = useState(0);
+  const [micTestError, setMicTestError] = useState<string | null>(null);
+  const enabledTouchedRef = useRef(false);
+  const micTestCleanupRef = useRef<(() => void) | null>(null);
+
+  const maybeAutoEnable = (nextDraft: ProviderFormDraft): ProviderFormDraft => {
+    if (enabledTouchedRef.current || nextDraft.enabled) return nextDraft;
+    const hasCredential =
+      (nextDraft.credentialMode === "linked_provider" &&
+        Boolean(nextDraft.linkedProviderId)) ||
+      Boolean(nextDraft.apiKey.trim()) ||
+      Boolean(nextDraft.volcAccessToken.trim()) ||
+      Boolean(nextDraft.volcAppId.trim());
+    return hasCredential ? { ...nextDraft, enabled: true } : nextDraft;
+  };
+
+  const refreshAudioDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      const inputs = list
+        .filter((d) => d.kind === "audioinput" && d.deviceId !== "")
+        .map((d, index) => ({
+          deviceId: d.deviceId,
+          label: d.label || `${t("speech.asrInputDevice")} #${index + 1}`,
+        }));
+      setAudioDevices(inputs);
+    } catch {
+      // ignore enumeration errors when mic permission has not been granted
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (!speechClient.isAvailable()) return;
+    void refreshAudioDevices();
+    const md = navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    const handleChange = () => {
+      void refreshAudioDevices();
+    };
+    md.addEventListener("devicechange", handleChange);
+    return () => {
+      md.removeEventListener("devicechange", handleChange);
+    };
+  }, [refreshAudioDevices]);
+
+  useEffect(() => {
+    return () => {
+      micTestCleanupRef.current?.();
+      micTestCleanupRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!loaded) void loadSpeech();
@@ -192,6 +253,7 @@ export function SpeechTab() {
 
   useEffect(() => {
     if (savedConfig) {
+      enabledTouchedRef.current = false;
       setDraft(configToDraft(savedConfig));
       setSaveFeedback(null);
       setTestResult(null);
@@ -297,11 +359,132 @@ export function SpeechTab() {
     return base;
   };
 
+  const stopMicTest = () => {
+    micTestCleanupRef.current?.();
+    micTestCleanupRef.current = null;
+    setMicTesting(false);
+    setMicTestLevel(0);
+  };
+
+  const startMicTest = async () => {
+    if (micTesting) {
+      stopMicTest();
+      return;
+    }
+    setMicTestError(null);
+    setMicTestPeak(0);
+    setMicTestLevel(0);
+    try {
+      const statusRes = await speechClient.microphoneStatus();
+      if (statusRes.status === "not-determined") {
+        const reqRes = await speechClient.requestMicrophone();
+        if (!reqRes.granted) {
+          setMicTestError(t("speech.micDenied"));
+          return;
+        }
+      } else if (statusRes.status === "denied" || statusRes.status === "restricted") {
+        setMicTestError(t("speech.micDenied"));
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setMicTestError(t("speech.micTestNoSignal"));
+        return;
+      }
+
+      const deviceId = prefs.asrInputDeviceId?.trim();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: deviceId ? { deviceId: { ideal: deviceId } } : true,
+        video: false,
+      });
+      void refreshAudioDevices();
+
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      if (ctx.state === "suspended") {
+        await ctx.resume();
+      }
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      const buf = new Float32Array(analyser.fftSize);
+      source.connect(analyser);
+
+      let maxPeak = 0;
+      const timer = window.setInterval(() => {
+        analyser.getFloatTimeDomainData(buf);
+        let sum = 0;
+        let framePeak = 0;
+        for (let i = 0; i < buf.length; i += 1) {
+          const v = buf[i];
+          const abs = Math.abs(v);
+          if (abs > framePeak) framePeak = abs;
+          sum += v * v;
+        }
+        const rms = Math.min(1, Math.sqrt(sum / buf.length));
+        if (framePeak > maxPeak) {
+          maxPeak = framePeak;
+          setMicTestPeak(maxPeak);
+        }
+        setMicTestLevel(rms);
+      }, 60);
+
+      micTestCleanupRef.current = () => {
+        window.clearInterval(timer);
+        try {
+          analyser.disconnect();
+        } catch {
+          // ignore
+        }
+        try {
+          source.disconnect();
+        } catch {
+          // ignore
+        }
+        for (const track of stream.getTracks()) {
+          try {
+            track.stop();
+          } catch {
+            // ignore
+          }
+        }
+        if (ctx.state !== "closed") {
+          void ctx.close().catch(() => {});
+        }
+      };
+      setMicTesting(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setMicTestError(
+        /denied|permission|notallowed/i.test(msg) ? t("speech.micDenied") : msg
+      );
+      stopMicTest();
+    }
+  };
+
   const handleSaveProvider = async () => {
     setSaving(true);
     setSaveFeedback(null);
     try {
-      const saved = await saveProvider(buildUpdatePayload());
+      const payload = buildUpdatePayload();
+      if (!enabledTouchedRef.current && !payload.enabled) {
+        const willHaveKey =
+          (!draft.clearApiKey && (savedConfig.hasApiKey || Boolean(payload.apiKey))) ||
+          (selectedKind === "volcengine" &&
+            draft.volcAuthMode === "app_token" &&
+            Boolean(payload.volcAppId?.trim()) &&
+            !draft.clearVolcAccessToken &&
+            (savedConfig.hasVolcAccessToken || Boolean(payload.volcAccessToken)));
+        const willHaveLinked =
+          draft.credentialMode === "linked_provider" && Boolean(payload.linkedProviderId);
+        if (willHaveKey || willHaveLinked) {
+          payload.enabled = true;
+        }
+      }
+      const saved = await saveProvider(payload);
+      enabledTouchedRef.current = false;
       setDraft(configToDraft(saved));
 
       // Auto-select first enabled & configured provider as default ASR/TTS when unassigned.
@@ -441,6 +624,71 @@ export function SpeechTab() {
           </div>
         </div>
 
+        <div className="speech-mic-row">
+          <div className="speech-field">
+            <label htmlFor="speech-mic-device">{t("speech.asrInputDevice")}</label>
+            <div className="speech-secret-row">
+              <select
+                id="speech-mic-device"
+                value={prefs.asrInputDeviceId ?? ""}
+                onChange={(e) => {
+                  if (micTesting) stopMicTest();
+                  void savePreferences({ asrInputDeviceId: e.target.value });
+                }}
+              >
+                <option value="">{t("speech.micSystemDefault")}</option>
+                {audioDevices.map((dev) => (
+                  <option key={dev.deviceId} value={dev.deviceId}>
+                    {dev.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="speech-icon-toggle"
+                onClick={() => void refreshAudioDevices()}
+                title={t("speech.micRefreshDevices")}
+                aria-label={t("speech.micRefreshDevices")}
+              >
+                <RefreshCw size={14} />
+              </button>
+              <button
+                type="button"
+                className="speech-btn"
+                onClick={() => void startMicTest()}
+              >
+                <Mic size={14} />
+                <span>
+                  {micTesting ? t("speech.micTestStop") : t("speech.micTestStart")}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {micTesting && (
+            <div className="speech-mic-meter-row">
+              <div className="speech-mic-meter-track">
+                <div
+                  className="speech-mic-meter-fill"
+                  style={{ width: `${Math.min(100, Math.round(micTestLevel * 500))}%` }}
+                />
+              </div>
+              <span className="speech-hint">
+                {micTestPeak >= 0.001
+                  ? t("speech.micTestActive")
+                  : t("speech.micTestNoSignal")}
+              </span>
+            </div>
+          )}
+
+          {micTestError && (
+            <div className="speech-banner error">
+              <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>{micTestError}</span>
+            </div>
+          )}
+        </div>
+
         <div className="speech-checkboxes">
           <label className="speech-checkbox-label">
             <input
@@ -527,9 +775,12 @@ export function SpeechTab() {
               <input
                 type="checkbox"
                 checked={draft.enabled}
-                onChange={(e) =>
-                  setDraft((prev) => (prev ? { ...prev, enabled: e.target.checked } : prev))
-                }
+                onChange={(e) => {
+                  enabledTouchedRef.current = true;
+                  setDraft((prev) =>
+                    prev ? { ...prev, enabled: e.target.checked } : prev
+                  );
+                }}
               />
               <span>{t("speech.enableProvider")}</span>
             </label>
@@ -579,12 +830,12 @@ export function SpeechTab() {
                 onClick={() =>
                   setDraft((prev) =>
                     prev
-                      ? {
+                      ? maybeAutoEnable({
                           ...prev,
                           credentialMode: "linked_provider",
                           linkedProviderId:
                             prev.linkedProviderId || availableLlmProviders[0]?.id || "",
-                        }
+                        })
                       : prev
                   )
                 }
@@ -603,7 +854,9 @@ export function SpeechTab() {
               value={draft.linkedProviderId}
               onChange={(e) =>
                 setDraft((prev) =>
-                  prev ? { ...prev, linkedProviderId: e.target.value } : prev
+                  prev
+                    ? maybeAutoEnable({ ...prev, linkedProviderId: e.target.value })
+                    : prev
                 )
               }
             >
@@ -661,7 +914,9 @@ export function SpeechTab() {
                     placeholder="App ID"
                     onChange={(e) =>
                       setDraft((prev) =>
-                        prev ? { ...prev, volcAppId: e.target.value } : prev
+                        prev
+                          ? maybeAutoEnable({ ...prev, volcAppId: e.target.value })
+                          : prev
                       )
                     }
                   />
@@ -681,11 +936,11 @@ export function SpeechTab() {
                       onChange={(e) =>
                         setDraft((prev) =>
                           prev
-                            ? {
+                            ? maybeAutoEnable({
                                 ...prev,
                                 volcAccessToken: e.target.value,
                                 clearVolcAccessToken: false,
-                              }
+                              })
                             : prev
                         )
                       }
@@ -732,7 +987,11 @@ export function SpeechTab() {
                     onChange={(e) =>
                       setDraft((prev) =>
                         prev
-                          ? { ...prev, apiKey: e.target.value, clearApiKey: false }
+                          ? maybeAutoEnable({
+                              ...prev,
+                              apiKey: e.target.value,
+                              clearApiKey: false,
+                            })
                           : prev
                       )
                     }
@@ -793,7 +1052,13 @@ export function SpeechTab() {
                 }
                 onChange={(e) =>
                   setDraft((prev) =>
-                    prev ? { ...prev, apiKey: e.target.value, clearApiKey: false } : prev
+                    prev
+                      ? maybeAutoEnable({
+                          ...prev,
+                          apiKey: e.target.value,
+                          clearApiKey: false,
+                        })
+                      : prev
                   )
                 }
               />

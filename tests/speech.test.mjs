@@ -46,6 +46,24 @@ test("wavEncoder encodes valid 16-bit mono PCM WAV, downsamples, and computes RM
   assert.equal(view.getUint32(24, true), 16000);
   assert.equal(view.getUint16(34, true), 16); // 16-bit
   assert.equal(view.getUint32(40, true), 160 * 2);
+
+  assert.equal(wavMod.computePeakLevel(new Float32Array([0, -0.25, 0.75, 0.1])), 0.75);
+  assert.equal(wavMod.computePeakLevel(new Float32Array(0)), 0);
+
+  // Stereo input where left channel is completely dead/silent and right channel has audio
+  const mixedSilentLeft = wavMod.mixChannelsToMono([
+    new Float32Array([0, 0, 0, 0]),
+    new Float32Array([0.5, -0.25, 0.75, -0.5]),
+  ]);
+  assert.deepEqual(Array.from(mixedSilentLeft), [0.5, -0.25, 0.75, -0.5]);
+
+  // Stereo input where both channels are active averages both
+  const mixedBothActive = wavMod.mixChannelsToMono([
+    new Float32Array([0.4, -0.4]),
+    new Float32Array([0.2, -0.2]),
+  ]);
+  assert.ok(Math.abs(mixedBothActive[0] - 0.3) < 1e-6);
+  assert.ok(Math.abs(mixedBothActive[1] + 0.3) < 1e-6);
 });
 
 test("speechText strips code blocks & markdown, chunks long text, and builds silent WAV", async () => {
@@ -92,6 +110,27 @@ test("speechText strips code blocks & markdown, chunks long text, and builds sil
   const silent = textMod.buildSilentWav(500, 16000);
   assert.equal(silent.byteLength, 44 + 8000 * 2);
   assert.equal(Buffer.from(silent.slice(0, 4)).toString("ascii"), "RIFF");
+
+  const wavMod = await importTranspiledTs("../src/services/speech/wavEncoder.ts");
+  const silentInfo = textMod.inspectPcm16Wav(silent);
+  assert.equal(silentInfo.valid, true);
+  assert.equal(silentInfo.sampleRate, 16000);
+  assert.equal(silentInfo.channels, 1);
+  assert.equal(silentInfo.durationMs, 500);
+  assert.equal(silentInfo.peak, 0);
+  assert.equal(silentInfo.rms, 0);
+
+  const toneWav = wavMod.encodePcm16Wav(
+    new Float32Array(1600).fill(0.5),
+    16000
+  );
+  const toneInfo = textMod.inspectPcm16Wav(toneWav);
+  assert.equal(toneInfo.valid, true);
+  assert.equal(toneInfo.durationMs, 100);
+  assert.ok(Math.abs(toneInfo.peak - 0.5) < 0.001);
+  assert.ok(Math.abs(toneInfo.rms - 0.5) < 0.001);
+
+  assert.equal(textMod.inspectPcm16Wav(new Uint8Array(10)).valid, false);
 });
 
 test("speechCatalog resolves DashScope PAYG / Token Plan origins and detects key mismatch", async () => {

@@ -195,6 +195,10 @@ export function getSpeechPreferences(): SpeechPreferences {
         ? parsed.activeTtsProvider
         : null,
       asrAfterTranscribe: parsed.asrAfterTranscribe === "send" ? "send" : "insert",
+      asrInputDeviceId:
+        typeof parsed.asrInputDeviceId === "string"
+          ? parsed.asrInputDeviceId.trim()
+          : "",
       ttsPlaybackRate: clampNumber(
         parsed.ttsPlaybackRate,
         DEFAULT_SPEECH_PREFERENCES.ttsPlaybackRate,
@@ -242,6 +246,10 @@ export function saveSpeechPreferences(patch: Partial<SpeechPreferences>): Speech
       patch.asrAfterTranscribe === "send" || patch.asrAfterTranscribe === "insert"
         ? patch.asrAfterTranscribe
         : current.asrAfterTranscribe,
+    asrInputDeviceId:
+      typeof patch.asrInputDeviceId === "string"
+        ? patch.asrInputDeviceId.trim()
+        : current.asrInputDeviceId ?? "",
     ttsPlaybackRate: clampNumber(
       patch.ttsPlaybackRate ?? current.ttsPlaybackRate,
       current.ttsPlaybackRate,

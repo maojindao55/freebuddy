@@ -63,6 +63,9 @@ export function VoiceInputButton({
   const asrAfterTranscribe = useSpeechStore(
     (s) => s.config?.preferences.asrAfterTranscribe ?? "insert"
   );
+  const asrInputDeviceId = useSpeechStore(
+    (s) => s.config?.preferences.asrInputDeviceId ?? ""
+  );
   const transcribe = useSpeechStore((s) => s.transcribe);
 
   const [phase, setPhase] = useState<"idle" | "recording" | "transcribing">("idle");
@@ -104,6 +107,14 @@ export function VoiceInputButton({
     }
   }, [draft, onAutoSend]);
 
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => {
+      if (mountedRef.current) setError(null);
+    }, 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   const finishRecording = useCallback(async () => {
     const recorder = recorderRef.current;
     if (!recorder || !recorder.isRecording) return;
@@ -111,11 +122,16 @@ export function VoiceInputButton({
     setLevel(0);
 
     try {
-      const { wav, durationMs } = await recorder.stop();
+      const { wav, durationMs, peak } = await recorder.stop();
       if (!mountedRef.current) return;
       if (wav.byteLength <= 44 || durationMs < 250) {
         setPhase("idle");
         setError(t("speech.recordingTooShort"));
+        return;
+      }
+      if (peak < 0.001) {
+        setPhase("idle");
+        setError(t("speech.micSilent"));
         return;
       }
 
@@ -223,6 +239,7 @@ export function VoiceInputButton({
       setLevel(0);
       await recorderRef.current.start({
         maxDurationSec: 115,
+        deviceId: asrInputDeviceId || undefined,
         onLevel: (lvl) => {
           if (mountedRef.current) setLevel(lvl);
         },
@@ -317,12 +334,35 @@ export function VoiceInputButton({
         aria-label={activeAsrProvider ? t("speech.voiceInput") : t("speech.voiceInputSetup")}
         onClick={() => void startRecording()}
       >
-        <Mic size={15} aria-hidden="true" />
+        <Mic size={16} strokeWidth={1.8} aria-hidden="true" />
       </button>
       {error && (
-        <span className="voice-error-tip" title={error}>
-          {error}
-        </span>
+        <div className="voice-error-popover" role="alert">
+          <span className="voice-error-text" title={error}>
+            {error}
+          </span>
+          {onOpenSpeechSettings && (
+            <button
+              type="button"
+              className="voice-error-action"
+              onClick={() => {
+                setError(null);
+                onOpenSpeechSettings();
+              }}
+            >
+              {t("speech.openVoiceSettings")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="voice-error-close"
+            title={t("speech.dismissError")}
+            aria-label={t("speech.dismissError")}
+            onClick={() => setError(null)}
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        </div>
       )}
     </div>
   );

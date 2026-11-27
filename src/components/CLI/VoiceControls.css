@@ -6,12 +6,12 @@
 }
 
 .voice-mic-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  place-items: center;
   width: 30px;
   height: 30px;
   padding: 0;
+  line-height: 0;
   border: 1px solid var(--fb-border);
   border-radius: 999px;
   background: transparent;
@@ -118,13 +118,82 @@
   opacity: 0.88;
 }
 
-.voice-error-tip {
-  font-size: 11.5px;
-  color: #ef4444;
-  max-width: 220px;
+.chat-composer:has(.voice-error-popover),
+.new-task-composer:has(.voice-error-popover) {
+  overflow: visible;
+}
+
+.voice-error-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(360px, 75vw);
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  background: var(--fb-panel-bg, #ffffff);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  color: #dc2626;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.voice-error-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.voice-error-action {
+  border: 1px solid var(--fb-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fb-text-primary);
+  font-size: 11px;
+  font-weight: 550;
+  padding: 2px 7px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.voice-error-action:hover {
+  border-color: var(--fb-brand);
+  color: var(--fb-brand);
+}
+
+.voice-error-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fb-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.voice-error-close:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--fb-text-primary);
+}
+
+.msg-action-btn svg.msg-action-icon--speak {
+  width: 18px;
+  height: 18px;
+}
+
+.msg-action-btn svg.msg-action-icon--stop {
+  width: 13px;
+  height: 13px;
 }
 
 .msg-action-btn.speaking {

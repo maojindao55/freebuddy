@@ -3248,6 +3248,16 @@
     "readAloudSetup": "Click to configure Text-to-Speech (TTS)",
     "synthesizing": "Synthesizing speech…",
     "stopReading": "Stop reading",
-    "emptyText": "No readable text content"
+    "emptyText": "No readable text content",
+    "micSilent": "No microphone signal detected. Check your input device or mic permission",
+    "asrInputDevice": "Microphone input device",
+    "micSystemDefault": "System default",
+    "micRefreshDevices": "Refresh",
+    "micTestStart": "Test mic",
+    "micTestStop": "Stop test",
+    "micTestActive": "Listening… speak into your mic",
+    "micTestNoSignal": "No audio signal detected yet",
+    "openVoiceSettings": "Settings",
+    "dismissError": "Dismiss"
   }
 }

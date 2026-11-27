@@ -121,3 +121,41 @@ export function computeRmsLevel(samples: Float32Array): number {
   }
   return Math.min(1, Math.sqrt(sum / samples.length));
 }
+
+export function computePeakLevel(samples: Float32Array): number {
+  if (!samples.length) return 0;
+  let peak = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const abs = Math.abs(samples[i]);
+    if (abs > peak) peak = abs;
+  }
+  return Math.min(1, peak);
+}
+
+/**
+ * Downmixes multi-channel Float32 buffers to mono while ignoring completely
+ * silent dead channels when at least one active channel carries signal.
+ */
+export function mixChannelsToMono(channels: readonly Float32Array[]): Float32Array {
+  if (!channels.length) return new Float32Array(0);
+  if (channels.length === 1) {
+    return new Float32Array(channels[0]);
+  }
+  const active = channels.filter((ch) => computePeakLevel(ch) >= 1e-4);
+  const selected = active.length > 0 ? active : channels;
+  const minLength = selected.reduce(
+    (min, ch) => Math.min(min, ch.length),
+    selected[0]?.length ?? 0
+  );
+  if (minLength <= 0) return new Float32Array(0);
+  const out = new Float32Array(minLength);
+  const count = selected.length;
+  for (let i = 0; i < minLength; i += 1) {
+    let sum = 0;
+    for (let c = 0; c < count; c += 1) {
+      sum += selected[c][i];
+    }
+    out[i] = sum / count;
+  }
+  return out;
+}

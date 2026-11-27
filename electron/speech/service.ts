@@ -9,7 +9,8 @@ import {
   type SpeechTranscribeRequest,
   type SpeechTranscribeResult,
 } from "../shared/speechTypes.js";
-import { buildSilentWav, cleanTextForSpeech } from "../shared/speechText.js";
+import { buildSilentWav, cleanTextForSpeech, inspectPcm16Wav } from "../shared/speechText.js";
+import { logMain } from "../debugLog.js";
 import {
   getSpeechPreferences,
   recordSpeechProviderHealth,
@@ -174,6 +175,7 @@ export function createSpeechService(options?: {
       });
     }
 
+    const wavStats = inspectPcm16Wav(audio);
     const adapter = ADAPTERS[config.kind];
     const { controller, unregister } = registerController(requestId);
     const sig = createRequestSignal(controller.signal, asrTimeoutMs);
@@ -187,14 +189,49 @@ export function createSpeechService(options?: {
         signal: sig.signal,
         fetchImpl,
       });
+      const latencyMs = Date.now() - started;
+      const trimmedText = out.text.trim();
+      if (!trimmedText) {
+        logMain().warn("speech", "asr returned empty transcript", {
+          provider: config.kind,
+          mimeType,
+          audioBytes: audio.byteLength,
+          wavValid: wavStats.valid,
+          sampleRate: wavStats.sampleRate,
+          channels: wavStats.channels,
+          durationMs: wavStats.durationMs,
+          peak: Number(wavStats.peak.toFixed(4)),
+          rms: Number(wavStats.rms.toFixed(4)),
+          latencyMs,
+        });
+      } else {
+        logMain().info("speech", "asr completed", {
+          provider: config.kind,
+          audioBytes: audio.byteLength,
+          durationMs: wavStats.durationMs,
+          peak: Number(wavStats.peak.toFixed(4)),
+          textLength: trimmedText.length,
+          latencyMs,
+        });
+      }
       return {
-        text: out.text,
+        text: trimmedText,
         ...(out.durationMs !== undefined ? { durationMs: out.durationMs } : {}),
         provider: config.kind,
-        latencyMs: Date.now() - started,
+        latencyMs,
       };
     } catch (err) {
-      throw normalizeThrownSpeechError(config.kind, err, sig);
+      const normalized = normalizeThrownSpeechError(config.kind, err, sig);
+      logMain().error("speech", "asr failed", {
+        provider: config.kind,
+        code: normalized.code,
+        status: normalized.status,
+        audioBytes: audio.byteLength,
+        wavValid: wavStats.valid,
+        peak: Number(wavStats.peak.toFixed(4)),
+        error: normalized.message,
+      });
+      throw normalized;
     } finally {
       sig.cleanup();
       unregister();
@@ -253,6 +290,13 @@ export function createSpeechService(options?: {
         latencyMs: Date.now() - started,
         cached: false,
       };
+      logMain().info("speech", "tts completed", {
+        provider: config.kind,
+        audioBytes: out.audio.byteLength,
+        mimeType: out.mimeType,
+        latencyMs: result.latencyMs,
+        cached: false,
+      });
       if (!req.skipCache) {
         setCacheEntry(cacheKey, {
           audio: out.audio,
@@ -263,7 +307,14 @@ export function createSpeechService(options?: {
       }
       return result;
     } catch (err) {
-      throw normalizeThrownSpeechError(config.kind, err, sig);
+      const normalized = normalizeThrownSpeechError(config.kind, err, sig);
+      logMain().error("speech", "tts failed", {
+        provider: config.kind,
+        code: normalized.code,
+        status: normalized.status,
+        error: normalized.message,
+      });
+      throw normalized;
     } finally {
       sig.cleanup();
       unregister();

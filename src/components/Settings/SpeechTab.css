@@ -312,8 +312,10 @@
   align-items: center;
 }
 
-.speech-secret-row input {
+.speech-secret-row input,
+.speech-secret-row select {
   flex: 1;
+  min-width: 0;
 }
 
 .speech-icon-toggle {
@@ -396,4 +398,32 @@
 .speech-hint {
   font-size: 11.5px;
   color: var(--fb-text-tertiary);
+}
+
+.speech-mic-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.speech-mic-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.speech-mic-meter-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fb-panel-soft);
+  border: 1px solid var(--fb-border);
+  overflow: hidden;
+}
+
+.speech-mic-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--fb-brand);
+  transition: width 0.08s ease;
 }

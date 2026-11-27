@@ -49,6 +49,7 @@ import { hasMessageRunMetrics, LiveRunElapsed, MessageRunMetrics } from "./Messa
 import { useWhipEffectStore, type WhipTargetPoint } from "@/store/whipEffectStore";
 import { speechClient } from "@/services/speech/client";
 import { useSpeechStore } from "@/store/speechStore";
+import "./VoiceControls.css";
 
 type MessageBlock = ReturnType<typeof visibleBlocks>[number];
 type MessageSection =
@@ -1094,9 +1095,9 @@ export const MessageBubble = memo(function MessageBubble({
               {isSpeakingLoading ? (
                 <LoaderCircle className="msg-action-icon spin" aria-hidden="true" />
               ) : isSpeakingPlaying ? (
-                <Square className="msg-action-icon" aria-hidden="true" />
+                <Square className="msg-action-icon msg-action-icon--stop" aria-hidden="true" />
               ) : (
-                <Volume2 className="msg-action-icon" aria-hidden="true" />
+                <Volume2 className="msg-action-icon msg-action-icon--speak" aria-hidden="true" />
               )}
             </button>
           )}

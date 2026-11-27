@@ -3,7 +3,7 @@
   "productName": "FreeBuddy",
   "version": "0.10.73",
   "private": true,
-  "description": "A WorkBuddy-style desktop AI workspace built with Electron, React, Vite, and TypeScript.",
+  "description": "A cross-platform desktop Agent Workbench for orchestrating ACP agents, tasks, context, MCP tools, and multi-agent teams.",
   "main": "dist-electron/main.js",
   "type": "module",
   "workspaces": [

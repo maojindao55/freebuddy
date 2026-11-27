@@ -36,6 +36,13 @@
   cursor: not-allowed;
 }
 
+.voice-mic-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex: 0 0 16px;
+}
+
 .voice-recording-pill {
   display: inline-flex;
   align-items: center;
@@ -187,13 +194,17 @@
 }
 
 .msg-action-btn svg.msg-action-icon--speak {
-  width: 18px;
-  height: 18px;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  stroke-width: 1.5;
 }
 
 .msg-action-btn svg.msg-action-icon--stop {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  stroke-width: 2.1;
 }
 
 .msg-action-btn.speaking {
